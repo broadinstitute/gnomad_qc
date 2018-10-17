@@ -1,0 +1,116 @@
+
+from gnomad_hail import *
+
+
+def import_clinvar(overwrite: bool = False):
+    from datetime import datetime
+    clinvar_ht = hl.import_table(clinvar_tsv_path, impute=True, min_partitions=100, force_bgz=True)
+    clinvar_ht = clinvar_ht.transmute(locus=hl.locus(clinvar_ht.chrom, clinvar_ht.pos),
+                                      alleles=hl.array([clinvar_ht.ref, clinvar_ht.alt]))
+    clinvar_ht = clinvar_ht.key_by('locus', 'alleles')
+    clinvar_mt = hl.MatrixTable.from_rows_table(clinvar_ht, partition_key='locus')
+    clinvar_mt = clinvar_mt.annotate_globals(imported_on=datetime.now().strftime('%Y-%m-%d'))
+    clinvar_vep = hl.vep(clinvar_mt, vep_config)
+    clinvar_vep.write(clinvar_mt_path, overwrite)
+
+
+def import_de_novos(overwrite: bool = False):
+    denovo_ht = hl.import_table('gs://gnomad/resources/validated_de_novos.txt.bgz', types={'pos': hl.tint32})
+    denovo_ht = denovo_ht.transmute(locus=hl.locus(hl.str(denovo_ht.chrom), denovo_ht.pos))
+    denovo_ht = denovo_ht.annotate(alleles=hl.min_rep(denovo_ht.locus, [denovo_ht.ref, denovo_ht.alt])[1])
+    denovo_ht = denovo_ht.drop('ref', 'alt').key_by('locus', 'alleles')
+    denovo_ht.write('', overwrite)
+
+
+def import_methylation(overwrite: bool = False):
+    data_path = 'gs://gnomad-resources/methylation/source/all_methylation.txt.bgz'
+    kt = hl.import_table(data_path, impute=True, min_partitions=100)
+    kt = kt.transmute(CHROM=hl.cond(kt['#CHROM'] == 'M', 'MT', kt['#CHROM']))
+    kt = kt.transmute(locus=hl.locus(kt.CHROM, kt.POS))
+    kt.key_by('locus').write(methylation_sites_mt_path(), overwrite)
+
+
+def import_exac_data(overwrite: bool = False):
+    vcf_path = "gs://gnomad/raw/source/ExAC.r1.sites.vep.vcf.gz"
+    vds = hl.import_vcf(vcf_path, force_bgz=True, min_partitions=1000)
+    vds = hl.split_multi_hts(vds)
+    vds = hl.vep(vds, vep_config)
+    vds.write(exac_release_sites_mt_path(), overwrite)
+
+
+def import_genome_coverage(overwrite: bool = False):
+    # TODO: move this to load_coverage script when per-individual coverage available
+    CHROMS = list(map(str, range(1, 23))) + ['X']
+    data_path = ["gs://gnomad/coverage/source/genomes/Panel.chr{}.genome.coverage.txt.bgz".format(x) for x in CHROMS]
+    ht = hl.import_table(data_path, impute=True, min_partitions=200)
+    ht.annotate(locus=hl.locus(ht['#chrom'], ht['pos'])).key_by('locus').write(coverage_ht_path('genomes'), overwrite)
+
+
+def import_cpgs(overwrite: bool = False):
+    hl.import_vcf('gs://gnomad-public/resources/cpg.vcf.bgz', min_partitions=20).write(cpg_sites_mt_path(), overwrite)
+
+
+def import_truth_sets(overwrite: bool = False):
+    root = 'gs://gnomad-public/truth-sets'
+    truth_sets = [
+        '1000G_omni2.5.b37.vcf.bgz',
+        'hapmap_3.3.b37.vcf.bgz',
+        'Mills_and_1000G_gold_standard.indels.b37.vcf.bgz',
+        'NA12878_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-Solid-10X_CHROM1-X_v3.3_highconf.vcf.bgz',
+        'hybrid.m37m.vcf.bgz',
+        '1000G_phase1.snps.high_confidence.b37.vcf.bgz'
+    ]
+    for truth_vcf in truth_sets:
+        vds_path = truth_vcf.replace('.vcf.bgz', '.mt')
+        vds = hl.import_vcf('{}/source/{}'.format(root, truth_vcf), min_partitions=10)
+        hl.split_multi_hts(vds).write('{}/hail-{}/{}'.format(root, CURRENT_HAIL_VERSION, vds_path), overwrite)
+
+
+def main(args):
+    hl.init(min_block_size=0)
+
+    if args.import_truth_sets:
+        import_truth_sets(args.overwrite)
+
+    if args.import_cpgs:
+        import_cpgs(args.overwrite)
+
+    if args.import_methylation:
+        import_methylation(args.overwrite)
+
+    if args.import_exac_data:
+        import_exac_data(args.overwrite)
+
+    if args.import_genome_coverage:
+        import_genome_coverage(args.overwrite)
+
+    if args.import_clinvar:
+        import_clinvar(args.overwrite)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
+    parser.add_argument('--import_truth_sets', help='Import truth data', action='store_true')
+    parser.add_argument('--import_cpgs', help='Import CpG data', action='store_true')
+    parser.add_argument('--import_methylation', help='Import methylation data', action='store_true')
+    parser.add_argument('--import_exac_data', help='Import ExAC data', action='store_true')
+    parser.add_argument('--import_genome_coverage', help='Import genome coverage data', action='store_true')
+    parser.add_argument('--import_clinvar', help='Import clinvar data', action='store_true')
+    parser.add_argument('--overwrite', help='Overwrite data', action='store_true')
+    args = parser.parse_args()
+
+    if args.slack_channel:
+        try_slack(args.slack_channel, main, args)
+    else:
+        main(args)
+
+# # v1
+# hc = HailContext(min_block_size=32)
+# hc.import_vcf('gs://exac2/ExAC.r1.sites.vep.vcf.gz', sites_only=True, force_bgz=True).vep(config=vep_config).write(final_exac_sites_vds)
+
+# exac = hc.import_vcf("gs://gnomad/raw/hail-0.1/vds/exac/exac_all.vcf.gz", header_file="gs://gnomad/raw/hail-0.1/vds/exac/header.vcf", force_bgz=True).min_rep().write("gs://gnomad/raw/hail-0.1/vds/exac/exac.vds")
+
+# Raw counts:
+# print hc.import_vcf('gs://exac2/variantqc/ExAC.merged.sites_only.vcf.ICfiltered.recalibrated.vcf.bgz').query_variants('variants.count()')[0]  # 18444471 sites
+# print hc.read('gs://exac2/variantqc/exac2_vqsr.vds').query_variants('variants.count()')[0]  # 21352671 variants
