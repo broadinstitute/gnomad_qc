@@ -47,8 +47,8 @@ def add_faf_expr(freq: hl.expr.ArrayExpression, freq_meta: hl.expr.ArrayExpressi
                              freq)
     return freqs_to_use.map(lambda f: hl.struct(
         meta=f.meta,
-        faf95=hl.experimental.filtering_allele_frequency(f.AC[1], f.AN, 0.95),
-        faf99=hl.experimental.filtering_allele_frequency(f.AC[1], f.AN, 0.99)
+        faf95=hl.experimental.filtering_allele_frequency(f.AC, f.AN, 0.95),
+        faf99=hl.experimental.filtering_allele_frequency(f.AC, f.AN, 0.99)
     ))
 
 
@@ -112,10 +112,18 @@ def generate_frequency_data(mt: hl.MatrixTable, calculate_downsampling: bool = F
     for i in range(len(sample_group_filters)):
         subgroup_dict = sample_group_filters[i][0]
         subgroup_dict['group'] = 'adj'
-        frequency_expression.append(hl.agg.call_stats(hl.agg.filter(mt.group_membership[i] & mt.adj, mt.GT), mt.alleles))
+        call_stats = hl.agg.call_stats(hl.agg.filter(mt.group_membership[i] & mt.adj, mt.GT), mt.alleles)
+        call_stats = hl.bind(lambda cs: cs.annotate(
+            AC=cs.AC[1], AF=cs.AF[1], homozygote_count=cs.homozygote_count[1]
+        ), call_stats)
+        frequency_expression.append(call_stats)
         meta_expressions.append(subgroup_dict)
 
-    frequency_expression.insert(1, hl.agg.call_stats(mt.GT, mt.alleles))
+    raw_stats = hl.agg.call_stats(mt.GT, mt.alleles)
+    raw_stats = hl.bind(lambda cs: cs.annotate(
+        AC=cs.AC[1], AF=cs.AF[1], homozygote_count=cs.homozygote_count[1]
+    ), raw_stats)
+    frequency_expression.insert(1, raw_stats)
     meta_expressions.insert(1, {'group': 'raw'})
 
     print(f'Calculating {len(frequency_expression)} aggregators...')

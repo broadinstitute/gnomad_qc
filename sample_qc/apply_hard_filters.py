@@ -96,7 +96,7 @@ def main(args):
                             (hl.agg.mean(mt.GT.n_alt_alleles()) / 2 > 0.001) &
                             (hl.agg.fraction(hl.is_defined(mt.GT)) > 0.99))
         mt.annotate_cols(callrate=hl.agg.fraction(hl.is_defined(mt.GT))).naive_coalesce(5000).write(qc_mt_path(data_type), overwrite=args.overwrite)
-    qc_mt = hl.read_matrix_table(qc_mt_path(data_type)).select_globals()  # FIXME remove select_globals() after re-writing MT from scratch
+    qc_mt = hl.read_matrix_table(qc_mt_path(data_type))
 
     logger.info("Importing metadata...")
     meta_ht = hl.import_table(qc_meta_path(data_type), impute=True, types={'age': hl.tfloat64}).key_by('s')

@@ -34,6 +34,7 @@ def main(args):
     if args.split_nonrefs:  # CPU-hours: 300 (E)
         mt = get_gnomad_data(data_type, split=False, non_refs_only=True)
         mt = hl.split_multi_hts(mt)
+        mt = mt.filter_entries(mt.is_missing | mt.GT.is_non_ref())
         mt.write(get_gnomad_data_path(data_type, split=True, non_refs_only=True), args.overwrite)
 
 
