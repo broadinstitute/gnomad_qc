@@ -112,7 +112,7 @@ def make_info_expr(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
         'rf_negative_label': ht.fail_hard_filters,
         'rf_label': ht.rf_label,
         'rf_train': ht.rf_train,
-        'rf_tp_probability': ht.rf_probability.get('TP'),
+        'rf_tp_probability': ht.rf_probability,
         'transmitted_singleton': ht.transmitted_singleton,
         'variant_type': ht.variant_type,
         'allele_type': ht.allele_type,
