@@ -177,7 +177,7 @@ def family_stats(mt: hl.MatrixTable, ped: hl.Pedigree, group_name: str) -> Tuple
 
 
 def read_fam(fam_file: str) -> hl.Table:
-    columns = ['trio_id', 's', 'fam_id', 'pat_id', 'mat_id', 'is_female']
+    columns = ['fam_id', 's', 'pat_id', 'mat_id', 'is_female']
     return hl.import_table(fam_file, no_header=True).rename({f'f{i}': c for i, c in enumerate(columns)}).key_by('s')
 
 
@@ -188,7 +188,8 @@ def annotate_unrelated_sample(mt: hl.MatrixTable, fam_file: str) -> hl.MatrixTab
 
 def generate_de_novos(mt: hl.MatrixTable, fam_file: str, freq_data: hl.Table) -> hl.Table:
     mt = mt.select_cols()
-    fam_ht = read_fam(fam_file)
+    fam_ht = read_fam(fam_file).key_by()
+    fam_ht = fam_ht.select(s=[fam_ht.s, fam_ht.pat_id, fam_ht.mat_id]).explode('s').key_by('s')
     mt = mt.filter_cols(hl.is_defined(fam_ht[mt.s]))
     mt = mt.select_rows()
     mt = hl.split_multi_hts(mt)
@@ -233,6 +234,9 @@ def main(args):
     if args.vep:  # CPU-hours: 250 (E), 600 (G)
         mt = get_gnomad_data(data_type).rows().select()
         hl.vep(mt, vep_config).write(annotations_ht_path(data_type, 'vep'), args.overwrite)
+
+        mt = get_gnomad_data(data_type).drop_cols().select_rows()
+        hl.vep(mt, vep_config, csq=True).rows().write(annotations_ht_path(data_type, 'vep_csq'), args.overwrite)
 
     if args.generate_allele_data:  # CPU-hours: 100 (E), 200 (G)
         mt = get_gnomad_data(data_type, split=False)

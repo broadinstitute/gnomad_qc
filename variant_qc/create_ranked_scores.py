@@ -48,7 +48,11 @@ def create_rf_rank(data_type: str, run_hash: str) -> None:
                   subrank_expr={
                       'singleton_rank': ht.singleton,
                       'biallelic_rank': ~ht.was_split,
-                      'biallelic_singleton_rank': ~ht.was_split & ht.singleton
+                      'biallelic_singleton_rank': ~ht.was_split & ht.singleton,
+                      'adj_rank': ht.ac > 0,
+                      'adj_biallelic_rank': ~ht.was_split & (ht.ac > 0),
+                      'adj_singleton_rank': ht.singleton & (ht.ac > 0),
+                      'adj_biallelic_singleton_rank': ~ht.was_split & ht.singleton & (ht.ac > 0)
                   }
                   )
     ht.write(rf_path(data_type, 'rf_result', run_hash=run_hash), overwrite=True)
@@ -83,7 +87,11 @@ def create_vqsr_rank_ht(data_type: str):
                   subrank_expr={
                       'singleton_rank': ht.singleton,
                       'biallelic_rank': ~ht.was_split,
-                      'biallelic_singleton_rank': ~ht.was_split & ht.singleton
+                      'biallelic_singleton_rank': ~ht.was_split & ht.singleton,
+                      'adj_rank': ht.ac > 0,
+                      'adj_biallelic_rank': ~ht.was_split & (ht.ac > 0),
+                      'adj_singleton_rank': ht.singleton & (ht.ac > 0),
+                      'adj_biallelic_singleton_rank': ~ht.was_split & ht.singleton & (ht.ac > 0)
                   }
                   )
     ht.write(score_ranking_path(data_type, 'vqsr'), overwrite=True)
@@ -99,14 +107,17 @@ def get_gnomad_annotations(data_type: str) -> hl.Table:
     :rtype: Table
     """
     if not hl.utils.hadoop_exists(f'gs://gnomad/variant_qc/temp/gnomad_{data_type}_annotations.ht'):
-        mt = get_gnomad_data(data_type, non_refs_only=True)
+        ht = get_gnomad_data(data_type).rows()
         call_stats_data = hl.read_table(annotations_ht_path(data_type, 'call_stats'))
-        ht = mt.select_rows(
-            n_nonref=call_stats_data[mt.row_key].qc_callstats.AC[1],
-            singleton=mt.info.AC[mt.a_index - 1] == 1,
-            info_ac=mt.info.AC[mt.a_index - 1],
-            was_split=mt.was_split
-        ).rows()
+        freq_data = hl.read_table(annotations_ht_path(data_type, 'frequencies'))
+        ht = ht.select(
+            n_nonref=call_stats_data[ht.key].qc_callstats[0].AC[1],
+            singleton=ht.info.AC[ht.a_index - 1] == 1,
+            info_ac=ht.info.AC[ht.a_index - 1],
+            was_split=ht.was_split,
+            ac=freq_data[ht.key].freq[0].AC[1],
+            ac_raw=freq_data[ht.key].freq[1].AC[1]
+        )
         ht.repartition(1000, shuffle=False).write(f'gs://gnomad/variant_qc/temp/gnomad_{data_type}_annotations.ht')
     return hl.read_table(f'gs://gnomad/variant_qc/temp/gnomad_{data_type}_annotations.ht')
 
@@ -150,7 +161,11 @@ def create_cnn_rank_file() -> None:
                   subrank_expr={
                       'singleton_rank': ht.singleton,
                       'biallelic_rank': ~ht.was_split,
-                      'biallelic_singleton_rank': ~ht.was_split & ht.singleton
+                      'biallelic_singleton_rank': ~ht.was_split & ht.singleton,
+                      'adj_rank': ht.ac > 0,
+                      'adj_biallelic_rank': ~ht.was_split & (ht.ac > 0),
+                      'adj_singleton_rank': ht.singleton & (ht.ac > 0),
+                      'adj_biallelic_singleton_rank': ~ht.was_split & ht.singleton & (ht.ac > 0)
                   }
                   )
 
@@ -200,7 +215,11 @@ def create_rf_2_0_2_rank(data_type: str, beta: bool) -> None:
                   subrank_expr={
                       'singleton_rank': ht.singleton,
                       'biallelic_rank': ~ht.was_split,
-                      'biallelic_singleton_rank': ~ht.was_split & ht.singleton
+                      'biallelic_singleton_rank': ~ht.was_split & ht.singleton,
+                      'adj_rank': ht.ac > 0,
+                      'adj_biallelic_rank': ~ht.was_split & (ht.ac > 0),
+                      'adj_singleton_rank': ht.singleton & (ht.ac > 0),
+                      'adj_biallelic_singleton_rank': ~ht.was_split & ht.singleton & (ht.ac > 0)
                   }
                   )
 
@@ -228,10 +247,12 @@ def create_binned_data(ht: hl.Table, data: str, data_type: str, n_bins: int) -> 
 
     # Load external evaluation data
     clinvar_ht = hl.read_matrix_table(clinvar_mt_path).rows().select('measureset_id')
-    denovo_ht = hl.import_table(validated_denovos_path(), types={'pos': hl.tint32})
-    denovo_ht = denovo_ht.transmute(locus=hl.locus(hl.str(denovo_ht.chrom), denovo_ht.pos))
-    denovo_ht = denovo_ht.annotate(alleles=hl.min_rep(denovo_ht.locus, [denovo_ht.ref, denovo_ht.alt])[1])
-    denovo_ht = denovo_ht.key_by('locus', 'alleles').select()
+    denovo_ht = get_validated_denovos_ht()
+    if data_type == 'exomes':
+        denovo_ht = denovo_ht.filter(denovo_ht.gnomad_exomes.high_quality)
+    else:
+        denovo_ht = denovo_ht.filter(denovo_ht.gnomad_genomes.high_quality)
+    denovo_ht = denovo_ht.select(validated_denovo=denovo_ht.validated, high_confidence_denovo=denovo_ht.Confidence == 'HIGH')
     ht_truth_data = hl.read_table(annotations_ht_path(data_type, 'truth_data'))
     fam_ht = hl.read_table(annotations_ht_path(data_type, 'family_stats'))
     fam_ht = fam_ht.select(
@@ -248,7 +269,7 @@ def create_binned_data(ht: hl.Table, data: str, data_type: str, n_bins: int) -> 
         **ht_truth_data[ht.key],
         **fam_ht[ht.key],
         **gnomad_ht[ht.key],
-        validated_denovo=hl.is_defined(denovo_ht[ht.key]),
+        **denovo_ht[ht.key],
         clinvar=hl.is_defined(clinvar_ht[ht.key].measureset_id),
         indel_length=hl.abs(ht.alleles[0].length()-ht.alleles[1].length()),
         rank_bins=hl.array(
@@ -280,6 +301,7 @@ def create_binned_data(ht: hl.Table, data: str, data_type: str, n_bins: int) -> 
             snv=hl.is_snp(ht.alleles[0], ht.alleles[1]),
             bi_allelic=hl.is_defined(ht.biallelic_rank),
             singleton=ht.singleton,
+            release_adj=ht.ac>0,
             bin=ht.bin
         )._set_buffer_size(20000)
         .aggregate(
@@ -295,6 +317,7 @@ def create_binned_data(ht: hl.Table, data: str, data_type: str, n_bins: int) -> 
             n_clinvar=hl.agg.count_where(ht.clinvar),
             n_singleton=hl.agg.count_where(ht.singleton),
             n_validated_de_novos=hl.agg.count_where(ht.validated_denovo),
+            n_high_confidence_de_novos=hl.agg.count_where(ht.high_confidence_denovo),
             n_de_novo=hl.agg.sum(hl.agg.filter(ht.family_stats.unrelated_qc_callstats.AC[1] == 0, ht.family_stats.mendel.errors)),
             n_trans_singletons=hl.agg.sum(hl.agg.filter((ht.info_ac < 3) & (ht.family_stats.unrelated_qc_callstats.AC[1] == 1), ht.family_stats.tdt.t)),
             n_untrans_singletons=hl.agg.sum(hl.agg.filter((ht.info_ac < 3) & (ht.family_stats.unrelated_qc_callstats.AC[1] == 1), ht.family_stats.tdt.u)),

@@ -108,12 +108,12 @@ def main(args):
             missing=hl.agg.count_where(hl.is_missing(pca_mt.GT)),
             total=hl.agg.count()
         )
+        # All variants must have a callrate at least .999 in each platform, or no more than 1 missing sample if platform <= 1000 samples
         pca_platforms_mt = pca_platforms_mt.annotate_entries(
             remove_variant=(hl.case()
                             .when(pca_platforms_mt.total > 1000, pca_platforms_mt.missing / pca_platforms_mt.total > 0.001)
                             .default(pca_platforms_mt.missing > 1))
         )
-        # All variants must have a callrate at least .999 in each platform, or no more than 1 missing sample if platform <= 1000 samples
         pca_platforms_mt = pca_platforms_mt.filter_rows(hl.agg.any(pca_platforms_mt.remove_variant), keep=False)
         pca_mt = pca_mt.filter_rows((hl.agg.mean(pca_mt.GT.n_alt_alleles()) / 2 > 0.001) & hl.is_defined(pca_platforms_mt[pca_mt.row_key, :]))
         variants, samples = pca_mt.count()
@@ -170,7 +170,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--population', help='Which super-populations to select (can be one of the major pops, eur, or all)', required=True)
-    parser.add_argument('--skip_filtering', help='Skip calculating population PCs on unrelated samples', action='store_true')
+    parser.add_argument('--skip_filtering', help='Skip calculating filtered joint MT', action='store_true')
     parser.add_argument('--skip_pop_pca', help='Skip calculating population PCs on unrelated samples', action='store_true')
     parser.add_argument('--overwrite', help='Overwrite pre-existing data', action='store_true')
     parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')

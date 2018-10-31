@@ -284,7 +284,7 @@ def create_rf_ht(
     call_stats_data = hl.read_table(annotations_ht_path(data_type, 'call_stats'))
 
     ht = mt.annotate_rows(
-        n_nonref=call_stats_data[mt.row_key].qc_callstats.AC[1],
+        n_nonref=call_stats_data[mt.row_key].qc_callstats[0].AC[1],
         singleton=mt.info.AC[mt.a_index - 1] == 1,
         info_ac=mt.info.AC[mt.a_index - 1],
         **ht_call_stats[mt.row_key],
@@ -436,13 +436,9 @@ def train_rf(data_type, args):
                                      fp_col='info_NEGATIVE_TRAIN_SITE' if args.vqsr_training else 'fail_hard_filters',
                                      fp_to_tp=args.fp_to_tp)
 
-    # print(ht.aggregate(hl.agg.counter(ht.rf_train)))
-    # print(ht.aggregate(hl.agg.counter(ht.rf_label)))
     ht = ht.persist()
 
     rf_ht = ht.filter(ht[TRAIN_COL])
-    # print(ht.aggregate(hl.agg.counter(ht.rf_train)))
-    # print(rf_ht.aggregate(hl.agg.counter(rf_ht.rf_label)))
     rf_features = get_features_list(True,
                                     not (args.vqsr_features or args.median_features),
                                     args.vqsr_features,
@@ -472,8 +468,6 @@ def train_rf(data_type, args):
         test_ht = filter_intervals(ht, test_intervals_locus, keep=True)
         test_ht.write('gs://gnomad-tmp/test_rf.ht', overwrite=True)
         test_ht = test_ht.filter(hl.is_defined(test_ht[LABEL_COL]))
-        # contigs = test_ht.aggregate(hl.agg.collect_as_set(test_ht.locus.contig))
-        # print(contigs)
         test_results = rf.test_model(test_ht,
                                      rf_model,
                                      features=get_features_list(True, not args.vqsr_features, args.vqsr_features),
@@ -509,19 +503,55 @@ def train_rf(data_type, args):
     return run_hash
 
 
-def prepare_final_ht(ht: hl.Table, snp_bin_cutoff: int, indel_bin_cutoff: int) -> hl.Table:
-    ht = ht.annotate(is_snp=hl.or_else(hl.is_snp(ht.alleles[0], ht.alleles[1]), False))
-    n_variants_per_bin = ht.aggregate(hl.agg.counter(ht.is_snp))
-    ht = ht.annotate(bin=hl.ceil(100 * hl.float(ht.rank + 1) / hl.literal(n_variants_per_bin)[ht.is_snp]))
+def prepare_final_ht(data_type: str, run_hash: str, snp_bin_cutoff: int, indel_bin_cutoff: int) -> hl.Table:
 
-    cutoffs_ht = ht.group_by(ht.bin, ht.is_snp).aggregate(bin_stats=hl.agg.stats(ht.rf_probability['TP']))
-    snp_rf_cutoff = cutoffs_ht.filter(cutoffs_ht.is_snp & (cutoffs_ht.bin == snp_bin_cutoff)).bin_stats.min.collect()[0]
-    indel_rf_cutoff = cutoffs_ht.filter(~cutoffs_ht.is_snp & (cutoffs_ht.bin == indel_bin_cutoff)).bin_stats.min.collect()[0]
+    # Get snv and indel RF cutoffs based on bin
+    binned_ht_path = score_ranking_path(data_type, run_hash, binned=True)
+    if not hl.hadoop_exists(score_ranking_path(data_type, run_hash, binned=True)):
+        sys.exit(f"Could not find binned HT for RF  run {run_hash} ({binned_ht_path}). Please run create_ranked_scores.py for that hash.")
+    binned_ht = hl.read_table(binned_ht_path)
+    snp_rf_cutoff, indel_rf_cutoff = binned_ht.aggregate([hl.agg.min(hl.agg.filter(binned_ht.snv & (binned_ht.bin == snp_bin_cutoff), binned_ht.min_score)),
+                                                          hl.agg.min(hl.agg.filter(~binned_ht.snv & (binned_ht.bin == indel_bin_cutoff), binned_ht.min_score))])
 
-    return ht.annotate(filters=hl.struct(
-        rf=(ht.is_snp & (ht.rf_probability['TP'] < snp_rf_cutoff)) | (~ht.is_snp & (ht.rf_probability['TP'] < indel_rf_cutoff)),
-        inbreeding_coeff=hl.is_defined(ht.info_InbreedingCoeff) & (ht.info_InbreedingCoeff < INBREEDING_COEFF_HARD_CUTOFF)  # TODO: add AC0 here? or in release script?
-    ))
+    # Add filters to RF HT
+    ht = hl.read_table(rf_path(data_type, 'rf_result', run_hash=run_hash))
+    ht = ht.annotate_globals(rf_hash=run_hash,
+                             rf_snv_cutoff=hl.struct(bin=snp_bin_cutoff, min_score=snp_rf_cutoff),
+                             rf_indel_cutoff=hl.struct(bin=indel_bin_cutoff, min_score=indel_rf_cutoff))
+    rf_filter_criteria = (hl.is_snp(ht.alleles[0], ht.alleles[1]) & (ht.rf_probability['TP'] < ht.rf_snv_cutoff.min_score)) | (
+            ~hl.is_snp(ht.alleles[0], ht.alleles[1]) & (ht.rf_probability['TP'] < ht.rf_indel_cutoff.min_score))
+    ht = ht.annotate(filters=hl.case()
+                     .when(rf_filter_criteria, {'RF'})
+                     .when(~rf_filter_criteria, hl.empty_set(hl.tstr))
+                     .or_error('Missing RF probability!'))
+
+    inbreeding_coeff_filter_criteria = hl.is_defined(ht.info_InbreedingCoeff) & (
+            ht.info_InbreedingCoeff < INBREEDING_COEFF_HARD_CUTOFF)
+    ht = ht.annotate(filters=hl.cond(inbreeding_coeff_filter_criteria,
+                                     ht.filters.add('InbreedingCoeff'), ht.filters))
+
+    freq_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies'))
+    ac0_filter_criteria = freq_ht[ht.key].freq[0].AC[1] == 0
+
+    ht = ht.annotate(
+        filters=hl.cond(ac0_filter_criteria, ht.filters.add('AC0'), ht.filters)
+    )
+
+    # Fix annotations for release
+    annotations_expr = {
+        'tp': hl.or_else(ht.tp, False),
+        'transmitted_singleton': hl.or_missing(freq_ht[ht.key].freq[1].AC[1] == 1, ht.transmitted_singleton)
+    }
+    if 'feature_imputed' in ht.row:
+        annotations_expr.update(
+            {x: hl.or_missing(~ht.feature_imputed[x], ht[x]) for x in [f for f in ht.row.feature_imputed]}
+        )
+
+    ht = ht.transmute(
+        **annotations_expr
+    )
+
+    return ht
 
 
 def main(args):
@@ -568,8 +598,7 @@ def main(args):
         ht.write(rf_path(data_type, 'rf_result', run_hash=run_hash), overwrite=args.overwrite)
 
     if args.finalize:
-        ht = hl.read_table(rf_path(data_type, 'rf_result', run_hash=run_hash))
-        ht = prepare_final_ht(ht, args.snp_bin_cutoff, args.indel_bin_cutoff).annotate_globals(rf_hash=run_hash)
+        ht = prepare_final_ht(data_type, args.run_hash, args.snp_bin_cutoff, args.indel_bin_cutoff)
         ht.write(annotations_ht_path(data_type, 'rf'), args.overwrite)
 
 
