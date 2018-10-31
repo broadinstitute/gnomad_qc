@@ -541,6 +541,7 @@ def prepare_final_ht(data_type: str, run_hash: str, snp_bin_cutoff: int, indel_b
     annotations_expr = {
         'tp': hl.or_else(ht.tp, False),
         'transmitted_singleton': hl.or_missing(freq_ht[ht.key].freq[1].AC[1] == 1, ht.transmitted_singleton)
+        'rf_probability': ht.rf_probability["TP"]
     }
     if 'feature_imputed' in ht.row:
         annotations_expr.update(
@@ -550,6 +551,9 @@ def prepare_final_ht(data_type: str, run_hash: str, snp_bin_cutoff: int, indel_b
     ht = ht.transmute(
         **annotations_expr
     )
+
+    #This column is added by the RF module based on a 0.5 threshold which doesn't correspond to what we use
+    ht = ht.drop(ht.rf_prediction)
 
     return ht
 
