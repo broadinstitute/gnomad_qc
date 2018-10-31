@@ -10,10 +10,10 @@ def generate_allele_data(mt: hl.MatrixTable) -> hl.Table:
     :return: Table with allele data annotations
     :rtype: Table
     """
-    ht = mt.drop_cols()
+    ht = mt.rows().select()
     allele_data = hl.struct(nonsplit_alleles=ht.alleles,
                             has_star=hl.any(lambda a: a == '*', ht.alleles))
-    ht = ht.annotate_rows(allele_data=allele_data.annotate(**add_variant_type(ht.alleles)))
+    ht = ht.annotate(allele_data=allele_data.annotate(**add_variant_type(ht.alleles)))
 
     ht = hl.split_multi_hts(ht)
     allele_type = (hl.case()
@@ -22,9 +22,9 @@ def generate_allele_data(mt: hl.MatrixTable) -> hl.Table:
                    .when(hl.is_deletion(ht.alleles[0], ht.alleles[1]), 'del')
                    .default('complex')
                    )
-    ht = ht.annotate_rows(allele_data=ht.allele_data.annotate(allele_type=allele_type,
+    ht = ht.annotate(allele_data=ht.allele_data.annotate(allele_type=allele_type,
                                                               was_mixed=ht.allele_data.variant_type == 'mixed'))
-    return ht.rows()
+    return ht
 
 
 def generate_call_stats(mt: hl.MatrixTable) -> hl.Table:
@@ -232,8 +232,8 @@ def main(args):
     data_type = 'genomes' if args.genomes else 'exomes'
 
     if args.vep:  # CPU-hours: 250 (E), 600 (G)
-        mt = get_gnomad_data(data_type).drop_cols().select_rows()
-        hl.vep(mt, vep_config).rows().write(annotations_ht_path(data_type, 'vep'), args.overwrite)
+        mt = get_gnomad_data(data_type).rows().select()
+        hl.vep(mt, vep_config).write(annotations_ht_path(data_type, 'vep'), args.overwrite)
 
         mt = get_gnomad_data(data_type).drop_cols().select_rows()
         hl.vep(mt, vep_config, csq=True).rows().write(annotations_ht_path(data_type, 'vep_csq'), args.overwrite)
