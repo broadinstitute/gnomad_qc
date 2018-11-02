@@ -623,7 +623,7 @@ def make_info_dict(prefix, label_groups=None, bin_edges=None, faf=False, popmax=
                 combo_dict = {
                     f"{prefix}_AC_{combo}": {"Number": "A",
                                              "Description": "Alternate allele count{}".format(make_combo_header_text('for', group_types, combo_fields, prefix))},
-                    f"{prefix}_AN_{combo}": {"Number": "A",
+                    f"{prefix}_AN_{combo}": {"Number": "1",
                                              "Description": "Total number of alleles{}".format(make_combo_header_text('in', group_types, combo_fields, prefix))},
                     f"{prefix}_AF_{combo}": {"Number": "A",
                                              "Description": "Alternate allele frequency{}".format(make_combo_header_text('in', group_types, combo_fields, prefix))},
@@ -649,8 +649,8 @@ def make_hist_bin_edges_expr(ht):
     :return: Dictionary keyed by histogram annotation name, with corresponding reformatted bin edges for values
     :rtype: Dict of str: str
     '''
-    edges_dict = {'gnomad_het': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_het[0].bin_edges)),
-                  'gnomad_hom': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_hom[0].bin_edges))}
+    edges_dict = {'gnomad_het': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_het.bin_edges)),
+                  'gnomad_hom': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_hom.bin_edges))}
     for hist in HISTS:
         edges_dict[hist] = '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0][hist].bin_edges)) if 'ab' in hist else \
             '|'.join(map(lambda x: str(int(x)), ht.take(1)[0][hist].bin_edges))
@@ -754,7 +754,7 @@ def release_ht_path(data_type: str, nested = True, with_subsets = True, temp = F
         return f'gs://gnomad/release/2.1/ht/gnomad.{data_type}.{RELEASE_VERSION}.{tag}.sites.ht'
 
 
-def release_vcf_path(data_type: str, contig=None):
+def release_vcf_path(data_type: str, contig=None, coding_only=False):
     '''
     Fetch filepath for release (variant-only) VCFs
     :param str data_type: 'exomes' or 'genomes'
@@ -764,6 +764,8 @@ def release_vcf_path(data_type: str, contig=None):
     '''
     if contig:
         return f'gs://gnomad-public/release/2.1/vcf/{data_type}/gnomad.{data_type}.{RELEASE_VERSION}.sites.chr{contig}.vcf.bgz'
+    elif data_type == 'genomes' and coding_only:
+        return f'gs://gnomad-public/release/2.1/vcf/{data_type}/gnomad.{data_type}.{RELEASE_VERSION}.exome_calling_intervals.sites.vcf.bgz'
     else:
         return f'gs://gnomad-public/release/2.1/vcf/{data_type}/gnomad.{data_type}.{RELEASE_VERSION}.sites.vcf.bgz'
 
@@ -1004,6 +1006,8 @@ def main(args):
 
         # Remove gnomad_ prefix for VCF export
         ht = hl.read_table(release_ht_path(data_type, nested=False, temp=True))
+        contigs = hl.eval(ht.aggregate(hl.agg.collect_as_set(ht.locus.contig)))
+
         ht = ht.drop('vep')
         row_annots = list(ht.row.info)
         new_row_annots = [x.replace('gnomad_', '').replace('_adj', '') for x in row_annots]
@@ -1027,13 +1031,20 @@ def main(args):
         ht = ht.key_by(locus=hl.locus(ht.locus.contig, ht.locus.position, reference_genome=gnomad_ref),
                        alleles=ht.alleles)
 
-        for contig in hl.eval(ht.aggregate(hl.agg.collect_as_set(ht.locus.contig))):
+        for contig in contigs:
             contig_ht = hl.filter_intervals(ht, [hl.parse_locus_interval(contig, reference_genome=gnomad_ref)])
             mt = hl.MatrixTable.from_rows_table(contig_ht).key_cols_by(s='foo')
             hl.export_vcf(mt, release_vcf_path(data_type, contig), metadata=header_dict)
 
         mt = hl.MatrixTable.from_rows_table(ht).key_cols_by(s='foo')
         hl.export_vcf(mt, release_vcf_path(data_type), metadata=header_dict)
+
+        # Export genome VCFs containing variants in exome calling intervals only
+        if data_type == 'genomes':
+            intervals = hl.import_locus_intervals(exome_calling_intervals_path, skip_invalid_intervals=True, reference_genome=gnomad_ref)
+            coding_mt = mt.filter_rows(hl.is_defined(intervals[mt.locus]), keep=True)
+            hl.export_vcf(coding_mt, release_vcf_path(data_type, coding_only=True), metadata=header_dict)
+
 
     if args.sanity_check_sites:
         if data_type == 'exomes':
