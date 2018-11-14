@@ -62,16 +62,14 @@ def generate_frequency_data(mt: hl.MatrixTable, calculate_downsampling: bool = F
     if calculate_downsampling:
         mt, downsamplings = generate_downsamplings_cumulative(mt)
         print(f'Got {len(downsamplings)} downsamplings: {downsamplings}')
-    cut_dict = {'pop': hl.agg.counter(hl.agg.filter(hl.is_defined(mt.meta.pop), mt.meta.pop)),
-                'sex': hl.agg.collect_as_set(hl.agg.filter(hl.is_defined(mt.meta.sex), mt.meta.sex)),
-                'subpop': hl.agg.collect_as_set(
-        hl.agg.filter(hl.is_defined(mt.meta.subpop) & hl.is_defined(mt.meta.pop),
-                      hl.struct(subpop=mt.meta.subpop, pop=mt.meta.pop)))
-    }
+    cut_dict = {'pop': hl.agg.filter(hl.is_defined(mt.meta.pop), hl.agg.counter(mt.meta.pop)),
+                'sex': hl.agg.filter(hl.is_defined(mt.meta.sex), hl.agg.collect_as_set(mt.meta.sex)),
+                'subpop': hl.agg.filter(hl.is_defined(mt.meta.subpop) & hl.is_defined(mt.meta.pop),
+                                        hl.agg.collect_as_set(hl.struct(subpop=mt.meta.subpop, pop=mt.meta.pop)))
+                }
     if calculate_by_platform:
-        cut_dict['platform'] = hl.agg.collect_as_set(
-            hl.agg.filter(hl.is_defined(mt.meta.qc_platform), mt.meta.qc_platform)
-        )
+        cut_dict['platform'] = hl.agg.filter(hl.is_defined(mt.meta.qc_platform),
+                                             hl.agg.collect_as_set(mt.meta.qc_platform))
     cut_data = mt.aggregate_cols(hl.struct(**cut_dict))
 
     sample_group_filters = [({}, True)]
