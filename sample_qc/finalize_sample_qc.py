@@ -38,11 +38,11 @@ def collapse_small_pops(ht: hl.Table,  min_pop_size: int) -> hl.Table:
         raise ValueError(f"Subpopulation {pop} not found in possible subpopulations.")
 
     ht = ht.persist()
-    pop_counts = ht.aggregate(hl.agg.counter(hl.agg.filter(ht.release, ht.pop)))
+    pop_counts = ht.aggregate(hl.agg.filter(ht.release, hl.agg.counter(ht.pop)))
     pop_collapse = {pop: "oth" for pop,n in pop_counts.items() if n < min_pop_size}
     pop_collapse = hl.literal(pop_collapse) if pop_collapse else hl.empty_dict(hl.tstr, hl.tstr)
 
-    subpop_counts = ht.aggregate(hl.agg.counter(hl.agg.filter(ht.release, ht.subpop)))
+    subpop_counts = ht.aggregate(hl.agg.filter(ht.release, hl.agg.counter(ht.subpop)))
     subpop_collapse = {subpop: get_subpop_oth(subpop) for subpop,n in subpop_counts.items() if n < min_pop_size}
     subpop_collapse = hl.literal(subpop_collapse) if subpop_collapse else hl.empty_dict(hl.tstr, hl.tstr)
 

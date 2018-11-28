@@ -332,8 +332,9 @@ def create_rf_ht(
         ht_by_variant = ht.group_by(ht.variant_type).partition_hint(1)
         medians = ht_by_variant.aggregate(
             **{feature: hl.median(
-                hl.agg.collect(
-                    hl.agg.filter(hl.rand_bool(prob_sample[ht.variant_type]), ht[feature])
+                hl.agg.filter(
+                    hl.rand_bool(prob_sample[ht.variant_type]),
+                    hl.agg.collect(ht[feature])
                 )
             ) for feature in numerical_features}
         ).collect()
@@ -350,8 +351,9 @@ def create_rf_ht(
         medians = ht.aggregate(
             hl.struct(
                 **{feature: hl.median(
-                    hl.agg.collect(
-                        hl.agg.filter(hl.rand_bool(prob_sample), ht[feature])
+                    hl.agg.filter(
+                        hl.rand_bool(prob_sample),
+                        hl.agg.collect(ht[feature])
                     )
                 ) for feature in numerical_features}
             )
@@ -510,8 +512,8 @@ def prepare_final_ht(data_type: str, run_hash: str, snp_bin_cutoff: int, indel_b
     if not hl.hadoop_exists(score_ranking_path(data_type, run_hash, binned=True)):
         sys.exit(f"Could not find binned HT for RF  run {run_hash} ({binned_ht_path}). Please run create_ranked_scores.py for that hash.")
     binned_ht = hl.read_table(binned_ht_path)
-    snp_rf_cutoff, indel_rf_cutoff = binned_ht.aggregate([hl.agg.min(hl.agg.filter(binned_ht.snv & (binned_ht.bin == snp_bin_cutoff), binned_ht.min_score)),
-                                                          hl.agg.min(hl.agg.filter(~binned_ht.snv & (binned_ht.bin == indel_bin_cutoff), binned_ht.min_score))])
+    snp_rf_cutoff, indel_rf_cutoff = binned_ht.aggregate([hl.agg.filter(binned_ht.snv & (binned_ht.bin == snp_bin_cutoff), hl.agg.min(binned_ht.min_score)),
+                                                          hl.agg.filter(~binned_ht.snv & (binned_ht.bin == indel_bin_cutoff), hl.agg.min(binned_ht.min_score))])
 
     # Add filters to RF HT
     ht = hl.read_table(rf_path(data_type, 'rf_result', run_hash=run_hash))

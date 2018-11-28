@@ -240,7 +240,7 @@ def create_binned_data(ht: hl.Table, data: str, data_type: str, n_bins: int) -> 
     """
 
     # Count variants for ranking
-    count_expr = {x: hl.agg.counter(hl.agg.filter(hl.is_defined(ht[x]), hl.cond(hl.is_snp(ht.alleles[0], ht.alleles[1]), 'snv', 'indel'))) for x in ht.row if x.endswith('rank')}
+    count_expr = {x: hl.agg.filter(hl.is_defined(ht[x]), hl.agg.counter(hl.cond(hl.is_snp(ht.alleles[0], ht.alleles[1]), 'snv', 'indel'))) for x in ht.row if x.endswith('rank')}
     rank_variant_counts = ht.aggregate(hl.Struct(**count_expr))
     logger.info(f"Found the following variant counts:\n {pformat(rank_variant_counts)}")
     ht = ht.annotate_globals(rank_variant_counts=rank_variant_counts)
@@ -318,9 +318,9 @@ def create_binned_data(ht: hl.Table, data: str, data_type: str, n_bins: int) -> 
             n_singleton=hl.agg.count_where(ht.singleton),
             n_validated_de_novos=hl.agg.count_where(ht.validated_denovo),
             n_high_confidence_de_novos=hl.agg.count_where(ht.high_confidence_denovo),
-            n_de_novo=hl.agg.sum(hl.agg.filter(ht.family_stats.unrelated_qc_callstats.AC[1] == 0, ht.family_stats.mendel.errors)),
-            n_trans_singletons=hl.agg.sum(hl.agg.filter((ht.info_ac < 3) & (ht.family_stats.unrelated_qc_callstats.AC[1] == 1), ht.family_stats.tdt.t)),
-            n_untrans_singletons=hl.agg.sum(hl.agg.filter((ht.info_ac < 3) & (ht.family_stats.unrelated_qc_callstats.AC[1] == 1), ht.family_stats.tdt.u)),
+            n_de_novo=hl.agg.filter(ht.family_stats.unrelated_qc_callstats.AC[1] == 0, hl.agg.sum(ht.family_stats.mendel.errors)),
+            n_trans_singletons=hl.agg.filter((ht.info_ac < 3) & (ht.family_stats.unrelated_qc_callstats.AC[1] == 1), hl.agg.sum(ht.family_stats.tdt.t)),
+            n_untrans_singletons=hl.agg.filter((ht.info_ac < 3) & (ht.family_stats.unrelated_qc_callstats.AC[1] == 1), hl.agg.sum(ht.family_stats.tdt.u)),
             n_train_trans_singletons=hl.agg.count_where((ht.family_stats.unrelated_qc_callstats.AC[1] == 1) & (ht.family_stats.tdt.t == 1)),
             n_omni=hl.agg.count_where(ht.truth_data.omni),
             n_mills=hl.agg.count_where(ht.truth_data.mills),
