@@ -110,7 +110,7 @@ def generate_frequency_data(mt: hl.MatrixTable, calculate_downsampling: bool = F
     for i in range(len(sample_group_filters)):
         subgroup_dict = sample_group_filters[i][0]
         subgroup_dict['group'] = 'adj'
-        call_stats = hl.agg.call_stats(hl.agg.filter(mt.group_membership[i] & mt.adj, mt.GT), mt.alleles)
+        call_stats = hl.agg.filter(mt.group_membership[i] & mt.adj, hl.agg.call_stats(mt.GT, mt.alleles))
         call_stats = hl.bind(lambda cs: cs.annotate(
             AC=cs.AC[1], AF=cs.AF[1], homozygote_count=cs.homozygote_count[1]
         ), call_stats)
@@ -129,8 +129,8 @@ def generate_frequency_data(mt: hl.MatrixTable, calculate_downsampling: bool = F
         'freq_meta': meta_expressions
     }
     mt = mt.annotate_rows(freq=frequency_expression,
-                          age_hist_het=hl.agg.hist(hl.agg.filter(mt.adj & mt.GT.is_het(), mt.age), 30, 80, 10),
-                          age_hist_hom=hl.agg.hist(hl.agg.filter(mt.adj & mt.GT.is_hom_var(), mt.age), 30, 80, 10))
+                          age_hist_het=hl.agg.filter(mt.adj & mt.GT.is_het(), hl.agg.hist(mt.age, 30, 80, 10)),
+                          age_hist_hom=hl.agg.filter(mt.adj & mt.GT.is_hom_var(), hl.agg.hist(mt.age, 30, 80, 10)))
     if calculate_downsampling: global_expression['downsamplings'] = downsamplings
     mt = mt.annotate_globals(**global_expression)
     sample_data = mt.cols()

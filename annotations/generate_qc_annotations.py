@@ -40,7 +40,7 @@ def generate_call_stats(mt: hl.MatrixTable) -> hl.Table:
     mt = unphase_mt(mt.select_rows())
     call_stats_expression = []
     for group in sample_group_filters.keys():
-        callstats = hl.agg.call_stats(hl.agg.filter(mt[group], mt.GT), mt.alleles)
+        callstats = hl.agg.filter(mt[group], hl.agg.call_stats(mt.GT, mt.alleles))
         call_stats_expression.append(callstats.annotate(meta={'group': group}))
 
     return mt.annotate_rows(qc_callstats=call_stats_expression).rows()
@@ -76,44 +76,40 @@ def generate_qc_annotations(mt: hl.MatrixTable, all_annotations: bool = True, me
         criteria = mt[group]
         hets = criteria & mt.GT.is_het()
         non_refs = criteria & mt.GT.is_non_ref()
+        nrq = -hl.log10(gp0)
 
-        het_pab = hl.agg.filter(hets, hl.log10(pab))
-        het_length = hl.agg.count(het_pab)
-
-        gq_agg = hl.agg.filter(non_refs, mt.GQ)
-        dp_agg = hl.agg.filter(non_refs, mt.DP)
-        nrq_agg = hl.agg.filter(non_refs, -hl.log10(gp0))
-        ab_agg = hl.agg.filter(hets, mt.AD[1] / hl.sum(mt.AD))
-        pab_agg = hl.agg.filter(hets, pab)
+        het_length = hl.agg.count_where(hets)
 
         qual_agg = -10 * hl.agg.sum(hl.agg.filter(non_refs, hl.cond(
             mt.PL[0] > 3000, -300, hl.log10(gp0)
         )))
 
         stats_expression = hl.struct(
-            pab=hl.agg.stats(pab_agg),
-            qd=hl.min(35, qual_agg / hl.agg.sum(dp_agg)),
+            pab=hl.agg.filter(hets, hl.agg.stats(pab)),
+            qd=hl.min(35, qual_agg / hl.agg.filter(non_refs, hl.agg.sum(mt.DP))),
             meta={'group': group})
 
         if all_annotations:
             stats_expression = stats_expression.annotate(
-                gq=hl.agg.stats(gq_agg), dp=hl.agg.stats(dp_agg),
-                nrq=hl.agg.stats(nrq_agg), ab=hl.agg.stats(ab_agg),
-                best_ab=hl.agg.min(hl.agg.filter(hets, hl.abs(mt.AD[1] / mt.DP - 0.5))),
-                nrdp=hl.agg.sum(hl.agg.filter(non_refs, mt.DP)),
+                gq=hl.agg.filter(non_refs, hl.agg.stats(mt.GQ)),
+                dp=hl.agg.filter(non_refs, hl.agg.stats(mt.DP)),
+                nrq=hl.agg.filter(non_refs, hl.agg.stats(nrq)),
+                ab=hl.agg.filter(hets, hl.agg.stats(mt.AD[1] / hl.sum(mt.AD))),
+                best_ab=hl.agg.filter(hets, hl.agg.min(hl.abs(mt.AD[1] / mt.DP - 0.5))),
+                nrdp=hl.agg.filter(non_refs, hl.agg.sum(mt.DP)),
                 qual=qual_agg,
                 combined_pab=hl.or_missing(
                     het_length == 0,
-                    -10 * hl.log10(hl.pchisqtail(-2 * hl.agg.sum(het_pab), 2 * het_length))
+                    -10 * hl.log10(hl.pchisqtail(-2 * hl.agg.filter(hets, hl.agg.sum(hl.log10(pab))), 2 * het_length))
                 )
             )
         if medians:
             stats_expression = stats_expression.annotate(
-                gq_median=hl.median(hl.agg.collect(gq_agg)),
-                dp_median=hl.median(hl.agg.collect(dp_agg)),
-                nrq_median=hl.median(hl.agg.collect(nrq_agg)),
-                ab_median=hl.median(hl.agg.collect(ab_agg)),
-                # pab_median=hl.median(hl.agg.collect(pab_agg))
+                gq_median=hl.median(hl.agg.filter(non_refs, hl.agg.collect(mt.GQ))),
+                dp_median=hl.median(hl.agg.filter(non_refs, hl.agg.collect(mt.DP))),
+                nrq_median=hl.median(hl.agg.filter(non_refs, hl.agg.collect(nrq))),
+                ab_median=hl.median(hl.agg.filter(hets, hl.agg.collect(mt.AD[1] / hl.sum(mt.AD))))
+                # pab_median=hl.median(hl.agg.filter(hets, hl.agg.collect(pab)))
             )
         qc_stats_expression.append(stats_expression)
     return mt.annotate_rows(qc_stats=qc_stats_expression).rows()
@@ -122,11 +118,11 @@ def generate_qc_annotations(mt: hl.MatrixTable, all_annotations: bool = True, me
 def generate_qual_hists(mt: hl.MatrixTable) -> hl.Table:
     mt = hl.split_multi_hts(mt)
     return mt.annotate_rows(
-        gq_hist_alt=hl.agg.hist(hl.agg.filter(mt.GT.is_non_ref(), mt.GQ), 0, 100, 20),
+        gq_hist_alt=hl.agg.filter(mt.GT.is_non_ref(), hl.agg.hist(mt.GQ, 0, 100, 20)),
         gq_hist_all=hl.agg.hist(mt.GQ, 0, 100, 20),
-        dp_hist_alt=hl.agg.hist(hl.agg.filter(mt.GT.is_non_ref(), mt.DP), 0, 100, 20),
+        dp_hist_alt=hl.agg.filter(mt.GT.is_non_ref(), hl.agg.hist(mt.DP, 0, 100, 20)),
         dp_hist_all=hl.agg.hist(mt.DP, 0, 100, 20),
-        ab_hist_alt=hl.agg.hist(hl.agg.filter(mt.GT.is_het(), mt.AD[1] / hl.sum(mt.AD)), 0, 1, 20)
+        ab_hist_alt=hl.agg.filter(mt.GT.is_het(), hl.agg.hist(mt.AD[1] / hl.sum(mt.AD), 0, 1, 20))
     ).rows()
 
 
@@ -169,9 +165,8 @@ def family_stats(mt: hl.MatrixTable, ped: hl.Pedigree, group_name: str) -> Tuple
     _, _, per_sample, per_variant = hl.mendel_errors(mt.GT, ped)
     family_stats_struct = hl.struct(mendel=per_variant[mt.row_key],
                                     tdt=tdt_table[mt.row_key],
-                                    unrelated_qc_callstats=hl.agg.call_stats(
-                                        hl.agg.filter(mt.high_quality & mt.unrelated_sample, mt.GT),
-                                        mt.alleles),
+                                    unrelated_qc_callstats=hl.agg.filter(mt.high_quality & mt.unrelated_sample,
+                                                                         hl.agg.call_stats(mt.GT, mt.alleles)),
                                     meta={'group': group_name})
     return family_stats_struct, per_sample
 
