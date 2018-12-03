@@ -4,14 +4,10 @@ from gnomad_hail import *
 
 def import_clinvar(overwrite: bool = False):
     from datetime import datetime
-    clinvar_ht = hl.import_table(clinvar_tsv_path, impute=True, min_partitions=100, force_bgz=True)
-    clinvar_ht = clinvar_ht.transmute(locus=hl.locus(clinvar_ht.chrom, clinvar_ht.pos),
-                                      alleles=hl.array([clinvar_ht.ref, clinvar_ht.alt]))
-    clinvar_ht = clinvar_ht.key_by('locus', 'alleles')
-    clinvar_mt = hl.MatrixTable.from_rows_table(clinvar_ht, partition_key='locus')
-    clinvar_mt = clinvar_mt.annotate_globals(imported_on=datetime.now().strftime('%Y-%m-%d'))
-    clinvar_vep = hl.vep(clinvar_mt, vep_config)
-    clinvar_vep.write(clinvar_mt_path, overwrite)
+    clinvar_ht = hl.import_vcf(clinvar_vcf_path, min_partitions=500, skip_invalid_loci=True).rows()
+    clinvar_ht = clinvar_ht.annotate_globals(imported_on=datetime.now().strftime('%Y-%m-%d'))
+    clinvar_ht = hl.vep(clinvar_ht, vep_config)
+    clinvar_ht.write(clinvar_ht_path, overwrite)
 
 
 def import_de_novos(overwrite: bool = False):

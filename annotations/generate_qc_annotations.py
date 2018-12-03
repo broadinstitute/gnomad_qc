@@ -230,8 +230,8 @@ def main(args):
         mt = get_gnomad_data(data_type).rows().select()
         hl.vep(mt, vep_config).write(annotations_ht_path(data_type, 'vep'), args.overwrite)
 
-        mt = get_gnomad_data(data_type).drop_cols().select_rows()
-        hl.vep(mt, vep_config, csq=True).rows().write(annotations_ht_path(data_type, 'vep_csq'), args.overwrite)
+        mt = get_gnomad_data(data_type).rows().select()
+        hl.vep(mt, vep_config, csq=True).write(annotations_ht_path(data_type, 'vep_csq'), args.overwrite)
 
     if args.generate_allele_data:  # CPU-hours: 100 (E), 200 (G)
         mt = get_gnomad_data(data_type, split=False)
@@ -244,7 +244,7 @@ def main(args):
         write_temp_gcs(mt, annotations_ht_path(data_type, 'qc_stats'), args.overwrite)
 
     if args.generate_qual_hists:  # CPU-hours: 4000 (E), 8000 (G)
-        mt = get_gnomad_data(data_type, raw=True, split=False)
+        mt = get_gnomad_data(data_type, raw=True, split=False, release_samples=True)
         ht = generate_qual_hists(mt)
         write_temp_gcs(ht, annotations_ht_path(data_type, 'qual_hists'), args.overwrite)
 
