@@ -38,8 +38,10 @@ def main(args):
     # Check annotations
     freq_ht.select('faf_ac', 'orig_faf95', 'new_faf95').show()
 
-    # Write
-    freq_ht.write(annotations_ht_path(data_type, 'frequencies_faf_corrected'))
+    # Write and overwrite
+    freq_ht.drop('faf_ac', 'ac1_pops', 'orig_faf95', 'new_faf95').write(annotations_ht_path(data_type, 'frequencies_faf_corrected'), args.overwrite)
+    new_freq_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies_faf_corrected'))
+    new_freq_ht.write(annotations_ht_path(data_type, 'frequencies'), args.overwrite)
 
 
 if __name__ == '__main__':
