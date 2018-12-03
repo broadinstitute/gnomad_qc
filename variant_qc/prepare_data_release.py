@@ -1,4 +1,5 @@
 from gnomad_hail import *
+from gnomad_hail.resources.variant_qc import *
 import copy
 import itertools
 
@@ -7,7 +8,7 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("data_release")
 logger.setLevel(logging.INFO)
 
-RELEASE_VERSION = 'r2.1'
+RELEASE_VERSION = 'r2.1.1'
 HISTS = ['gq_hist_alt', 'gq_hist_all', 'dp_hist_alt', 'dp_hist_all', 'ab_hist_alt']
 
 GROUPS = ['adj', 'raw']
@@ -18,6 +19,44 @@ NFE_SUBPOPS = ['onf', 'bgr', 'swe', 'nwe', 'seu', 'est']
 EAS_SUBPOPS = ['kor', 'oea', 'jpn']
 
 SORT_ORDER = ['popmax', 'group', 'pop', 'subpop', 'sex']
+
+INFO_DICT = {
+    'FS': {"Description": "Phred-scaled p-value of Fisher's exact test for strand bias"},
+    'InbreedingCoeff': {
+        "Description": "Inbreeding coefficient as estimated from the genotype likelihoods per-sample when compared against the Hardy-Weinberg expectation"},
+    'MQ': {"Description": "Root mean square of the mapping quality of reads across all samples"},
+    'MQRankSum': {
+        "Description": "Z-score from Wilcoxon rank sum test of alternate vs. reference read mapping qualities"},
+    'QD': {"Description": "Variant call confidence normalized by depth of sample reads supporting a variant"},
+    'ReadPosRankSum': {"Description": "Z-score from Wilcoxon rank sum test of alternate vs. reference read position bias"},
+    'SOR': {"Description": "Strand bias estimated by the symmetric odds ratio test"},
+    'VQSR_POSITIVE_TRAIN_SITE': {"Description": "Variant was used to build the positive training set of high-quality variants for VQSR"},
+    'VQSR_NEGATIVE_TRAIN_SITE': {
+        "Description": "Variant was used to build the negative training set of low-quality variants for VQSR"},
+    'BaseQRankSum': {"Description": "Z-score from Wilcoxon rank sum test of alternate vs. reference base qualities"},
+    'ClippingRankSum': {
+        "Description": "Z-score from Wilcoxon rank sum test of alternate vs. reference number of hard clipped bases"},
+    'DP': {"Description": "Depth of informative coverage for each sample; reads with MQ=255 or with bad mates are filtered"},
+    'VQSLOD': {
+        "Description": "Log-odds ratio of being a true variant versus being a false positive under the trained VQSR Gaussian mixture model"},
+    'VQSR_culprit': {"Description": "Worst-performing annotation in the VQSR Gaussian mixture model"},
+    'segdup': {"Description": "Variant falls within a segmental duplication region"},  # FIXME: all caps for flags?
+    'lcr': {"Description": "Variant falls within a low complexity region"},
+    'decoy': {"Description": "Variant falls within a reference decoy region"},
+    'nonpar': {"Description": "Variant (on sex chromosome) falls outside a pseudoautosomal region"},
+    'rf_positive_label': {"Description": "Variant was labelled as a positive example for training of random forest model"},
+    'rf_negative_label': {"Description": "Variant was labelled as a negative example for training of random forest model"},
+    'rf_label': {"Description": "Random forest training label"},  # export?
+    'rf_train': {"Description": "Variant was used in training random forest model"},  # export?
+    'rf_tp_probability': {"Description": "Random forest prediction probability for a site being a true variant"},
+    'transmitted_singleton': {"Description": "Variant was a callset-wide doubleton that was transmitted within a family (i.e., a singleton amongst unrelated sampes in cohort)"},
+    'variant_type': {"Description": "Variant type (snv, indel, multi-snv, multi-indel, or mixed)"},
+    'allele_type': {"Number": "A", "Description": "Allele type (snv, ins, del, or mixed)"},
+    'n_alt_alleles': {"Number": "A", "Description": "Total number of alternate alleles observed at variant locus"},
+    'was_mixed': {"Description": "Variant type was mixed"},
+    'has_star': {"Description": "Variant locus coincides with a spanning deletion (represented by a star) observed elsewhere in the callset"},
+    'pab_max': {"Number": "A", "Description": "Maximum p-value over callset for binomial test of observed allele balance for a heterozygous genotype, given expectation of AB=0.5"},
+}
 
 
 def flag_problematic_regions(ht: hl.Table) -> hl.Table:
@@ -30,10 +69,8 @@ def flag_problematic_regions(ht: hl.Table) -> hl.Table:
     lcr_intervals = hl.import_locus_intervals(lcr_intervals_path)
     decoy_intervals = hl.import_locus_intervals(decoy_intervals_path)
     segdup_intervals = hl.import_locus_intervals(segdup_intervals_path)
-    ht = ht.annotate(lcr=hl.is_defined(lcr_intervals[ht.locus]))  # TODO: combine annotations if Hail bug is fixed
-    ht = ht.annotate(decoy=hl.is_defined(decoy_intervals[ht.locus]))
-    ht = ht.annotate(segdup=hl.is_defined(segdup_intervals[ht.locus]))
-    ht = ht.annotate(nonpar=(ht.locus.in_x_nonpar() | ht.locus.in_y_nonpar()))
+    ht = ht.annotate(lcr=hl.is_defined(lcr_intervals[ht.locus]), decoy=hl.is_defined(decoy_intervals[ht.locus]),
+                     segdup=hl.is_defined(segdup_intervals[ht.locus]), nonpar=(ht.locus.in_x_nonpar() | ht.locus.in_y_nonpar()))
     return ht
 
 
@@ -154,13 +191,15 @@ def make_filters_sanity_check_expr(ht: hl.Table) -> Dict[str, hl.expr.Expression
 
 def sample_sum_check(ht: hl.Table, prefix: str, label_groups: Dict[str, List[str]], verbose: bool, subpop=None):
     '''
-    Compute the sum of annotations for a specified group of annotations, and compare to
-    :param Table ht:
-    :param str prefix:
-    :param dict label_groups:
-    :param bool verbose:
-    :param subpop:
-    :return:
+    Compute afresh the sum of annotations for a specified group of annotations, and compare to the annotated version;
+    display results from checking the sum of the specified annotations in the terminal
+    :param Table ht: Hail Table containing annotations to be summed
+    :param str prefix: Subset of gnomAD
+    :param dict label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
+        e.g. "sex" or "pop", and value is a list of all possible values for that grouping (e.g. ["male", "female"] or ["afr", "nfe", "amr"])
+    :param bool verbose: If True, show top values of annotations being checked, including checks that pass; if False,
+        show only top values of annotations that fail checks
+    :param str subpop: Subpop abbreviation, supplied only if subpopulations are included in the annotation groups being checked
     :rtype: None
     '''
     combo_AC = [ht.info[f'{prefix}_AC_{x}'] for x in make_label_combos(label_groups)]
@@ -187,6 +226,17 @@ def sample_sum_check(ht: hl.Table, prefix: str, label_groups: Dict[str, List[str
 
 
 def generic_field_check(ht: hl.Table, cond_expr, check_description, display_fields, verbose):
+    '''
+    Check a generic logical condition involving annotations in a Hail Table and print the results to terminal
+    :param Table ht: Table containing annotations to be checked
+    :param Expression cond_expr: logical expression referring to annotations in ht to be checked
+    :param str check_description: String describing the condition being checked; is displayed in terminal summary message
+    :param list of str display_fields: List of names of ht annotations to be displayed in case of failure (for troubleshooting purposes);
+        these fields are also displayed if verbose is True
+    :param bool verbose: If True, show top values of annotations being checked, including checks that pass; if False,
+        show only top values of annotations that fail checks
+    :rtype: None
+    '''
     ht_orig = ht
     ht = ht.filter(cond_expr)
     n_fail = ht.count()
@@ -201,9 +251,22 @@ def generic_field_check(ht: hl.Table, cond_expr, check_description, display_fiel
             ht_orig.select(*display_fields).show()
 
 
-def sanity_check_ht(ht: hl.Table, data_type, subsets, verbose):
+def sanity_check_ht(ht: hl.Table, data_type, subsets, missingness_threshold=0.5, verbose=False):
+    '''
+    Perform a battery of sanity checks on a specified group of subsets in a Hail Table containing variant annotations;
+    includes summaries of % filter status for different partitions of variants; histogram outlier bin checks; checks on
+    AC, AN, and AF annotations; checks that subgroup annotation values add up to the supergroup annotation values;
+    checks on sex-chromosome annotations; and summaries of % missingness in variant annotations
+    :param Table ht: Table containing variant annotations to check
+    :param str data_type: 'exomes' or 'genomes'
+    :param list of str subsets: List of subsets to be checked
+    :param bool verbose: If True, display top values of relevant annotations being checked, regardless of whether check
+        conditions are violated; if False, display only top values of relevant annotations if check conditions are violated
+    :return: Terminal display of results from the battery of sanity checks
+    :rtype: None
+    '''
     n_sites = ht.count()
-    contigs = hl.eval(ht.aggregate(hl.agg.collect_as_set(ht.locus.contig)))
+    contigs = ht.aggregate(hl.agg.collect_as_set(ht.locus.contig))
     logger.info(f'Found {n_sites} sites in {data_type} for contigs {contigs}')
     info_metrics = list(ht.row.info)
     non_info_metrics = list(ht.row)
@@ -291,7 +354,8 @@ def sanity_check_ht(ht: hl.Table, data_type, subsets, verbose):
                 logger.info(f"FAILED Y check: Found {values} in {metric}")
 
     logger.info('Check values of male nhomalt metrics for X nonpar variants are 0:')
-    ht_xnonpar = ht.filter(ht.locus.in_x_nonpar())
+    ht_x = hl.filter_intervals(ht, [hl.parse_locus_interval('X')])
+    ht_xnonpar = ht_x.filter(ht_x.locus.in_x_nonpar())
     n = ht_xnonpar.count()
     logger.info(f"Found {n} X nonpar sites")  # Lots of values found in male X nonpar sites
 
@@ -323,7 +387,7 @@ def sanity_check_ht(ht: hl.Table, data_type, subsets, verbose):
 
     n_fail = 0
     for metric, value in dict(output).items():
-        if value > 0.5:  # TODO: parametrize missing threshold?
+        if value > missingness_threshold:  # TODO: parametrize missing threshold?
             logger.info("FAILED missing check for {}: {}% missing".format(metric, 100 * value))
             n_fail += 1
         else:
@@ -332,6 +396,15 @@ def sanity_check_ht(ht: hl.Table, data_type, subsets, verbose):
 
 
 def make_freq_meta_index_dict(freq_meta):
+    '''
+    Make dictionary of the entries in the frequency array annotation, where keys are the grouping combinations and the values
+    are the 0-based integer indices
+    :param list of str freq_meta: Ordered list containing string entries describing all the grouping combinations contained in the
+        frequency array annotation
+    :return: Dictionary keyed by grouping combinations in the frequency array, with values describing the corresponding index
+        of each grouping entry in the frequency array
+    :rtype: Dict of str: int
+    '''
     index_dict = index_globals(freq_meta, dict(group=GROUPS))
     index_dict.update(index_globals(freq_meta, dict(group=GROUPS, pop=POPS)))
     index_dict.update(index_globals(freq_meta, dict(group=GROUPS, sex=SEXES)))
@@ -342,6 +415,17 @@ def make_freq_meta_index_dict(freq_meta):
 
 
 def index_globals(freq_meta, label_groups):
+    '''
+    Create a dictionary keyed by the specified label groupings with values describing the corresponding index of each grouping entry
+    in the freq_meta array annotation
+    :param list of str freq_meta: Ordered list containing string entries describing all the grouping combinations contained in the
+        frequency array annotation
+    :param dict label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
+        e.g. "sex" or "pop", and value is a list of all possible values for that grouping (e.g. ["male", "female"] or ["afr", "nfe", "amr"])
+    :return: Dictionary keyed by specified label grouping combinations, with values describing the corresponding index
+        of each grouping entry in the frequency array
+    :rtype: Dict of str: int
+    '''
     combos = make_label_combos(label_groups)
     index_dict = {}
 
@@ -354,6 +438,13 @@ def index_globals(freq_meta, label_groups):
 
 
 def unfurl_nested_annotations(ht):
+    '''
+    Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the values
+    of the dictionary are Hail Expressions describing how to access the corresponding values
+    :param Table ht: Hail Table containing the nested variant annotation arrays to be unfurled
+    :return: Dictionary containing variant annotations and their corresponding values
+    :rtype: Dict of str: Expression
+    '''
     expr_dict = dict()
 
     for k, i in hl.eval(ht.globals.freq_index_dict).items():
@@ -418,28 +509,17 @@ def unfurl_nested_annotations(ht):
     return expr_dict
 
 
-POP_DICT = {
-    'afr': 'African-American',
-    'amr': 'Latino',
-    'asj': 'Ashkenazi Jewish',
-    'eas': 'East Asian',
-    'fin': 'Finnish',
-    'nfe': 'non-Finnish European',
-    'oth': 'uncertain',
-    'sas': 'South Asian',
-    'kor': 'Korean',
-    'oea': 'non-Korean, non-Japanese East Asian',
-    'jpn': 'Japanese',
-    'nwe': 'North-Western European',
-    'swe': 'Swedish',
-    'seu': 'Southern European',
-    'est': 'Estonian',
-    'bgr': 'Bulgarian',
-    'onf': 'non-Finnish but otherwise indeterminate European'
-}
-
-
 def make_combo_header_text(preposition, group_types, combo_fields, prefix, faf=False):
+    '''
+    Programmatically generate text to populate the VCF header description for a given variant annotation with specific groupings and subset
+    :param str preposition: Relevant preposition to precede automatically generated text
+    :param list of str group_types: List of grouping types, e.g. "sex" or "pop"
+    :param list of str combo_fields: List of the specific values for each grouping type, for which the text is being generated
+    :param str prefix: Subset of gnomAD
+    :param bool faf: If True, use alternate logic to automatically populate descriptions for filter allele frequency annotations
+    :return: String with automatically generated description text for a given set of combo fields
+    :rtype: str
+    '''
     combo_dict = dict(zip(group_types, combo_fields))
 
     if not faf:
@@ -467,13 +547,24 @@ def make_combo_header_text(preposition, group_types, combo_fields, prefix, faf=F
 
 
 def make_info_dict(prefix, label_groups=None, bin_edges=None, faf=False, popmax=False):
+    '''
+    Generate dictionary of Number and Description attributes to be used in the VCF header
+    :param str prefix: Subset of gnomAD
+    :param dict label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
+        e.g. "sex" or "pop", and value is a list of all possible values for that grouping (e.g. ["male", "female"] or ["afr", "nfe", "amr"])
+    :param dict bin_edges: Dictionary keyed by annotation type, with values that reflect the bin edges corresponding to the annotation
+    :param bool faf: If True, use alternate logic to auto-populate dictionary values associated with filter allele frequency annotations
+    :param bool popmax: If True, use alternate logic to auto-populate dictionary values associated with popmax annotations
+    :return: Dictionary keyed by VCF INFO annotations, where values are Dictionaries of Number and Description attributes
+    :rtype: Dict of str: (Dict of str: str)
+    '''
     info_dict = dict()
 
     if popmax:
         popmax_text = "" if prefix == 'gnomad' else f" in the {prefix} subset"
         popmax_dict = {
             f'{prefix}_popmax': {"Number": "A",
-                                    "Description": "Population with maximum AF{}".format(popmax_text)},
+                                 "Description": "Population with maximum AF{}".format(popmax_text)},
             f'{prefix}_AC_popmax': {"Number": "A",
                                     "Description": "Allele count in the population with the maximum AF{}".format(popmax_text)},
             f'{prefix}_AN_popmax': {"Number": "A",
@@ -510,7 +601,7 @@ def make_info_dict(prefix, label_groups=None, bin_edges=None, faf=False, popmax=
                 combo_dict = {
                     f"{prefix}_AC_{combo}": {"Number": "A",
                                              "Description": "Alternate allele count{}".format(make_combo_header_text('for', group_types, combo_fields, prefix))},
-                    f"{prefix}_AN_{combo}": {"Number": "A",
+                    f"{prefix}_AN_{combo}": {"Number": "1",
                                              "Description": "Total number of alleles{}".format(make_combo_header_text('in', group_types, combo_fields, prefix))},
                     f"{prefix}_AF_{combo}": {"Number": "A",
                                              "Description": "Alternate allele frequency{}".format(make_combo_header_text('in', group_types, combo_fields, prefix))},
@@ -529,8 +620,15 @@ def make_info_dict(prefix, label_groups=None, bin_edges=None, faf=False, popmax=
 
 
 def make_hist_bin_edges_expr(ht):
-    edges_dict = {'gnomad_het': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_het[0].bin_edges)),
-                  'gnomad_hom': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_hom[0].bin_edges))}
+    '''
+    Create dictionary containing variant histogram annotations and their associated bin edges, formatted into a string
+    separated by pipe delimiters
+    :param Table ht: Table containing histogram variant annotations
+    :return: Dictionary keyed by histogram annotation name, with corresponding reformatted bin edges for values
+    :rtype: Dict of str: str
+    '''
+    edges_dict = {'gnomad_het': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_het.bin_edges)),
+                  'gnomad_hom': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_hom.bin_edges))}
     for hist in HISTS:
         edges_dict[hist] = '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0][hist].bin_edges)) if 'ab' in hist else \
             '|'.join(map(lambda x: str(int(x)), ht.take(1)[0][hist].bin_edges))
@@ -538,6 +636,12 @@ def make_hist_bin_edges_expr(ht):
 
 
 def make_hist_dict(bin_edges):
+    '''
+    Generate dictionary of Number and Description attributes to be used in the VCF header, specifically for histogram annotations
+    :param dict bin_edges: Dictionary keyed by histogram annotation name, with corresponding string-reformatted bin edges for values
+    :return: Dictionary keyed by VCF INFO annotations, where values are Dictionaries of Number and Description attributes
+    :rtype: Dict of str: (Dict of str: str)
+    '''
     header_hist_dict = {}
     for hist in HISTS:
         edges = bin_edges[hist]
@@ -556,46 +660,14 @@ def make_hist_dict(bin_edges):
         header_hist_dict.update(hist_dict)
     return header_hist_dict
 
-INFO_DICT = {
-    'FS': {"Description": "Phred-scaled p-value of Fisher's exact test for strand bias"},
-    'InbreedingCoeff': {
-        "Description": "Inbreeding coefficient as estimated from the genotype likelihoods per-sample when compared against the Hardy-Weinberg expectation"},
-    'MQ': {"Description": "Root mean square of the mapping quality of reads across all samples"},
-    'MQRankSum': {
-        "Description": "Z-score from Wilcoxon rank sum test of alternate vs. reference read mapping qualities"},
-    'QD': {"Description": "Variant call confidence normalized by depth of sample reads supporting a variant"},
-    'ReadPosRankSum': {"Description": "Z-score from Wilcoxon rank sum test of alternate vs. reference read position bias"},
-    'SOR': {"Description": "Strand bias estimated by the symmetric odds ratio test"},
-    'VQSR_POSITIVE_TRAIN_SITE': {"Description": "Variant was used to build the positive training set of high-quality variants for VQSR"},
-    'VQSR_NEGATIVE_TRAIN_SITE': {
-        "Description": "Variant was used to build the negative training set of low-quality variants for VQSR"},
-    'BaseQRankSum': {"Description": "Z-score from Wilcoxon rank sum test of alternate vs. reference base qualities"},
-    'ClippingRankSum': {
-        "Description": "Z-score from Wilcoxon rank sum test of alternate vs. reference number of hard clipped bases"},
-    'DP': {"Description": "Depth of informative coverage for each sample; reads with MQ=255 or with bad mates are filtered"},
-    'VQSLOD': {
-        "Description": "Log-odds ratio of being a true variant versus being a false positive under the trained VQSR Gaussian mixture model"},
-    'VQSR_culprit': {"Description": "Worst-performing annotation in the VQSR Gaussian mixture model"},
-    'segdup': {"Description": "Variant falls within a segmental duplication region"},  # FIXME: all caps for flags?
-    'lcr': {"Description": "Variant falls within a low complexity region"},
-    'decoy': {"Description": "Variant falls within a reference decoy region"},
-    'nonpar': {"Description": "Variant (on sex chromosome) falls outside a pseudoautosomal region"},
-    'rf_positive_label': {"Description": "Variant was labelled as a positive example for training of random forest model"},
-    'rf_negative_label': {"Description": "Variant was labelled as a negative example for training of random forest model"},
-    'rf_label': {"Description": "Random forest training label"},  # export?
-    'rf_train': {"Description": "Variant was used in training random forest model"},  # export?
-    'rf_tp_probability': {"Description": "Random forest prediction probability for a site being a true variant"},
-    'transmitted_singleton': {"Description": "Variant was a callset-wide doubleton that was transmitted within a family (i.e., a singleton amongst unrelated sampes in cohort)"},
-    'variant_type': {"Description": "Variant type (snv, indel, multi-snv, multi-indel, or mixed)"},
-    'allele_type': {"Number": "A", "Description": "Allele type (snv, ins, del, or mixed)"},
-    'n_alt_alleles': {"Number": "A", "Description": "Total number of alternate alleles observed at variant locus"},
-    'was_mixed': {"Description": "Variant type was mixed"},
-    'has_star': {"Description": "Variant locus coincides with a spanning deletion (represented by a star) observed elsewhere in the callset"},
-    'pab_max': {"Number": "A", "Description": "Maximum p-value over callset for binomial test of observed allele balance for a heterozygous genotype, given expectation of AB=0.5"},
-    'vep': {"Description": "Variant Effect Predictor annotations"}
-}
 
 def make_filter_dict(ht):
+    '''
+    Generate dictionary of Number and Description attributes to be used in the VCF header, specifically for FILTER annotations
+    :param Table ht: Table containing global annotations of the Random Forests SNP and indel cutoffs
+    :return: Dictionary keyed by VCF FILTER annotations, where values are Dictionaries of Number and Description attributes
+    :rtype: Dict of str: (Dict of str: str)
+    '''
     snp_cutoff = hl.eval(ht.globals.rf.rf_snv_cutoff)
     indel_cutoff = hl.eval(ht.globals.rf.rf_indel_cutoff)
     filter_dict = {
@@ -606,13 +678,27 @@ def make_filter_dict(ht):
     }
     return filter_dict
 
+
 def make_index_dict(ht):
+    '''
+    Create a look-up Dictionary for entries contained in the frequency annotation array
+    :param Table ht: Table containing freq_meta global annotation to be indexed
+    :return: Dictionary keyed by grouping combinations in the frequency array, with values describing the corresponding index
+        of each grouping entry in the frequency array
+    :rtype: Dict of str: int
+    '''
     freq_meta = hl.eval(ht.globals.freq_meta)
     index_dict = make_freq_meta_index_dict(freq_meta)
     return index_dict
 
 
 def set_female_y_metrics_to_na(ht):
+    '''
+    Set AC, AN, and nhomalt Y variant annotations for females to NA (instead of 0)
+    :param Table ht: Hail Table containing female variant annotations
+    :return: Table with reset annotations
+    :rtype: Table
+    '''
     metrics = list(ht.row.info)
     female_metrics = [x for x in metrics if '_female' in x]
     female_metrics = [x for x in female_metrics if ('nhomalt' in x) or ('AC' in x) or ('AN' in x)]
@@ -623,28 +709,33 @@ def set_female_y_metrics_to_na(ht):
     ht = ht.annotate(info=ht.info.annotate(**female_metrics_dict))
     return ht
 
-def release_ht_path(data_type: str, nested = True, with_subsets = True, temp = False):
-    tag = 'nested' if nested else 'flat'
-    tag = tag + '.with_subsets' if with_subsets else tag + '.no_subsets'
-    tag = tag + '.temp' if temp else tag
-    if nested and with_subsets:
-        return f'gs://gnomad-public/release/2.1/ht/{data_type}/gnomad.{data_type}.{RELEASE_VERSION}.sites.ht'
-    else:
-        return f'gs://gnomad/release/2.1/ht/gnomad.{data_type}.{RELEASE_VERSION}.{tag}.sites.ht'
-
-def release_vcf_path(data_type: str, contig=None):
-    if contig:
-        return f'gs://gnomad-public/release/2.1/vcf/{data_type}/gnomad.{data_type}.{RELEASE_VERSION}.sites.chr{contig}.vcf.bgz'
-    else:
-        return f'gs://gnomad-public/release/2.1/vcf/{data_type}/gnomad.{data_type}.{RELEASE_VERSION}.sites.vcf.bgz'
 
 def get_array_lengths(ht, subsets):
+    '''
+    Utility function to measure the array lengths of each frequency variant annotation for each subset in a nested Hail Table
+    _before_ subsets are concatenated
+    :param Table ht: Hail Table containing frequency array annotations for each gnomAD subset
+    :param list of str subsets: List of subsets to be measured
+    :return: List of the lengths of each frequency array, in the order of the supplied subset list
+    :rtype: List of int
+    '''
     l = [len(ht.take(1)[0].freq)]
     for subset in subsets:
         l.append(len(ht.take(1)[0][subset].freq))
     return l
 
+
 def build_new_index_dict(ht, subsets, array_lengths):
+    '''
+    Create a new index dictionary for the concatenated frequency array annotation (i.e., after frequency
+    arrays for each gnomAD subset have been concatenated into a single frequency array annotation)
+    :param Table ht: Hail Table containing global frequency index dictionary annotations for each subset
+    :param list of str subsets: List of subsets to be combined for the new index dictionary
+    :param list of int array_lengths: List of the lengths of the frequency array for each subset to be concatenated
+    :return: Dictionary keyed by subset grouping annotations, where values are the corresponding 0-based indices for the
+        subset groupings in the new concatenated frequency array annotation
+    :rtype: Dict of str: int
+    '''
     temp_index_dict = hl.eval(ht.globals.freq_index_dict)
     new_index_dict = {'gnomad_' + k: v for k, v in temp_index_dict.items()}
     n = array_lengths[0]
@@ -658,7 +749,17 @@ def build_new_index_dict(ht, subsets, array_lengths):
         n += array_lengths[i]
     return new_index_dict
 
+
 def concat_array_expr(ht, subsets, field):
+    '''
+    Create Hail Expression to concatenate specified variant annotations for a list of subsets into a single variant annotation,
+    where annotations to be combined are arrays
+    :param Table ht: Table containing annotations to be combined
+    :param list of str subsets: List of subsets whose variant annotations should be combined
+    :param str field: Variant annotation (array) to be concatenated
+    :return: Hail Expression to concatenate specified variant annotations across a list of subsets
+    :rtype: Expression
+    '''
     copy_subsets = copy.deepcopy(subsets)
     subset = copy_subsets.pop()
 
@@ -668,7 +769,17 @@ def concat_array_expr(ht, subsets, field):
         expr = concat_array_expr(ht, copy_subsets, field).extend(ht[subset][field])
     return expr
 
+
 def concat_struct_expr(ht, subsets, field):
+    '''
+    Create Hail Expression to concatenate specified variant annotations for a list of subsets into a single variant annotation,
+    where annotations to be combined are structs
+    :param Table ht: Table containing annotations to be combined
+    :param list of str subsets: List of subsets whose variant annotations should be combined
+    :param str field: Variant annotation (Struct) to be concatenated
+    :return: Hail Expression to concatenate specified variant annotations across a list of subsets
+    :rtype: Expression
+    '''
     copy_subsets = copy.deepcopy(subsets)
     subset = copy_subsets.pop()
 
@@ -680,6 +791,14 @@ def concat_struct_expr(ht, subsets, field):
 
 
 def make_faf_index_dict(ht, subset=None):  # NOTE: label groups: assumes 'adj', plus all pops
+    '''
+    Create a look-up Dictionary for entries contained in the filter allele frequency annotation array
+    :param Table ht: Table containing filter allele frequency annotations to be indexed
+    :param bool subset: If True, use alternate logic to access the correct faf annotation
+    :return: Dictionary of faf annotation population groupings, where values are the corresponding 0-based indices for the
+        groupings in the faf array
+    :rtype: Dict of str: int
+    '''
     combos = make_label_combos(dict(group=['adj'], pop=POPS))
     combos = combos + ['adj']
     index_dict = {}
@@ -695,7 +814,17 @@ def make_faf_index_dict(ht, subset=None):  # NOTE: label groups: assumes 'adj', 
                 index_dict.update({f"{combo}": i})
     return index_dict
 
+
 def build_faf_index_dict(ht, subsets):
+    '''
+    Create a new index dictionary for the concatenated filter allele frequency array annotation (i.e., after faf
+    arrays for each gnomAD subset have been concatenated into a single faf annotation)
+    :param Table ht: Hail Table containing global faf index dictionary annotations for each subset
+    :param list of str subsets: List of subsets to be combined for the new faf index dictionary
+    :return: Dictionary keyed by subset grouping annotations, where values are the corresponding 0-based indices for the
+        subset groupings in the new concatenated faf annotation
+    :rtype: Dict of str: int
+    '''
     temp_faf_index = make_faf_index_dict(ht)
     n = len(temp_faf_index)
     new_index_dict = {'gnomad_' + k: v for k, v in temp_faf_index.items()}
@@ -817,6 +946,8 @@ def main(args):
 
         # Remove gnomad_ prefix for VCF export
         ht = hl.read_table(release_ht_path(data_type, nested=False, temp=True))
+        contigs = hl.eval(ht.aggregate(hl.agg.collect_as_set(ht.locus.contig)))
+
         ht = ht.drop('vep')
         row_annots = list(ht.row.info)
         new_row_annots = [x.replace('gnomad_', '').replace('_adj', '') for x in row_annots]
@@ -840,13 +971,20 @@ def main(args):
         ht = ht.key_by(locus=hl.locus(ht.locus.contig, ht.locus.position, reference_genome=gnomad_ref),
                        alleles=ht.alleles)
 
-        for contig in hl.eval(ht.aggregate(hl.agg.collect_as_set(ht.locus.contig))):
+        for contig in contigs:
             contig_ht = hl.filter_intervals(ht, [hl.parse_locus_interval(contig, reference_genome=gnomad_ref)])
             mt = hl.MatrixTable.from_rows_table(contig_ht).key_cols_by(s='foo')
             hl.export_vcf(mt, release_vcf_path(data_type, contig), metadata=header_dict)
 
         mt = hl.MatrixTable.from_rows_table(ht).key_cols_by(s='foo')
         hl.export_vcf(mt, release_vcf_path(data_type), metadata=header_dict)
+
+        # Export genome VCFs containing variants in exome calling intervals only
+        if data_type == 'genomes':
+            intervals = hl.import_locus_intervals(exome_calling_intervals_path, skip_invalid_intervals=True, reference_genome=gnomad_ref)
+            coding_mt = mt.filter_rows(hl.is_defined(intervals[mt.locus]), keep=True)
+            hl.export_vcf(coding_mt, release_vcf_path(data_type, coding_only=True), metadata=header_dict)
+
 
     if args.sanity_check_sites:
         if data_type == 'exomes':
@@ -855,9 +993,8 @@ def main(args):
             subset_list = ['gnomad', 'controls', 'non_neuro', 'non_topmed'] if args.include_subset_frequencies else ['gnomad']
 
         ht = hl.read_table(release_ht_path(data_type, nested=False, temp=True))
-        sanity_check_ht(ht, data_type, subset_list, args.verbose)
+        sanity_check_ht(ht, data_type, subset_list, missingness_threshold=0.5, verbose=args.verbose)
 
-    # TODO: put in all docstrings
 
 
 if __name__ == '__main__':
