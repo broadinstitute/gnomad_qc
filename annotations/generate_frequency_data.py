@@ -4,6 +4,7 @@ from collections import Counter
 DOWNSAMPLINGS = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000,
                  55000, 60000, 65000, 70000, 75000, 80000, 85000, 90000, 95000, 100000, 110000, 120000]
 POPS_TO_REMOVE_FOR_POPMAX = ['asj', 'fin', 'oth']
+F_CUTOFF = 0.05
 
 
 def generate_downsamplings_cumulative(mt: hl.MatrixTable) -> Tuple[hl.MatrixTable, List[int]]:
@@ -145,6 +146,21 @@ def generate_frequency_data(mt: hl.MatrixTable, calculate_downsampling: bool = F
     return mt.rows(), sample_data
 
 
+def generate_consanguineous_frequency_data(ht: hl.Table, mt: hl.MatrixTable) -> hl.Table:
+    consang_call_stats = hl.agg.filter((mt.meta.Fstat >= F_CUTOFF) & mt.adj & (mt.meta.pop == 'sas'),
+                                       hl.agg.call_stats(mt.GT, mt.alleles))
+    consang_call_stats = hl.bind(lambda cs: cs.annotate(
+        AC=cs.AC[1], AF=cs.AF[1], homozygote_count=cs.homozygote_count[1]
+    ), consang_call_stats)
+    mt = mt.annotate_rows(consang=consang_call_stats)
+    ht = ht.annotate_globals(
+        freq_meta=ht.freq_meta.append({'group': 'adj', 'pop': 'sas', 'sample_set': 'consanguineous'})
+    )
+    return ht.annotate(
+        freq=ht.freq.append(mt[ht.key].consang)
+    )
+
+
 def main(args):
     hl.init(log='/frequency_annotations.log')
 
@@ -154,12 +170,19 @@ def main(args):
     if args.subset_samples_by_field:
         mt = mt.filter_cols(mt.meta[args.subset_samples_by_field], keep=not args.invert)
     logger.info(f'Calculating frequencies for {mt.count_cols()} samples with {args.subset_samples_by_field} == {not args.invert}')
-    ht, sample_table = generate_frequency_data(mt, args.downsampling, args.by_platform)
 
     location = f'frequencies_{args.subset_samples_by_field}' if args.subset_samples_by_field else 'frequencies'
-    write_temp_gcs(ht, annotations_ht_path(data_type, location), args.overwrite)
-    if args.downsampling:
-        sample_table.write(sample_annotations_table_path(data_type, 'downsampling'), args.overwrite)
+    if args.calculate_frequencies:
+        ht, sample_table = generate_frequency_data(mt, args.downsampling, args.by_platform)
+
+        write_temp_gcs(ht, annotations_ht_path(data_type, location), args.overwrite)
+        if args.downsampling:
+            sample_table.write(sample_annotations_table_path(data_type, 'downsampling'), args.overwrite)
+
+    if args.add_consanguineous_frequencies and not args.genomes:
+        ht = hl.read_table(annotations_ht_path(data_type, location))
+        ht = generate_consanguineous_frequency_data(ht, mt)
+        write_temp_gcs(ht, annotations_ht_path(data_type, f'{location}_with_consanguineous'), args.overwrite)
 
 
 if __name__ == '__main__':
@@ -167,6 +190,8 @@ if __name__ == '__main__':
     parser.add_argument('--exomes', help='Input MT is exomes. One of --exomes or --genomes is required.', action='store_true')
     parser.add_argument('--genomes', help='Input MT is genomes. One of --exomes or --genomes is required.', action='store_true')
     parser.add_argument('--downsampling', help='Also calculate downsampling frequency data', action='store_true')
+    parser.add_argument('--calculate_frequencies', help='Calcualte most frequency data', action='store_true')
+    parser.add_argument('--add_consanguineous_frequencies', help='Add consanguineous frequencies to existing file', action='store_true')
     parser.add_argument('--by_platform', help='Also calculate frequencies by platform', action='store_true')
     parser.add_argument('--subset_samples_by_field', help='Annotation field containing boolean values describing samples to keep in subset')
     parser.add_argument('--invert', help='Remove samples in --subset_samples_by_field instead of keeping (e.g. neuro)', action='store_true')
