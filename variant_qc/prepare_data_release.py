@@ -1,4 +1,5 @@
 from gnomad_hail import *
+from gnomad_hail.resources.variant_qc import *
 import copy
 import itertools
 
@@ -7,7 +8,7 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("data_release")
 logger.setLevel(logging.INFO)
 
-RELEASE_VERSION = 'r2.1'
+RELEASE_VERSION = 'r2.1.1'
 HISTS = ['gq_hist_alt', 'gq_hist_all', 'dp_hist_alt', 'dp_hist_all', 'ab_hist_alt']
 
 GROUPS = ['adj', 'raw']
@@ -18,26 +19,6 @@ NFE_SUBPOPS = ['onf', 'bgr', 'swe', 'nwe', 'seu', 'est']
 EAS_SUBPOPS = ['kor', 'oea', 'jpn']
 
 SORT_ORDER = ['popmax', 'group', 'pop', 'subpop', 'sex']
-
-POP_DICT = {
-    'afr': 'African-American',
-    'amr': 'Latino',
-    'asj': 'Ashkenazi Jewish',
-    'eas': 'East Asian',
-    'fin': 'Finnish',
-    'nfe': 'non-Finnish European',
-    'oth': 'uncertain',
-    'sas': 'South Asian',
-    'kor': 'Korean',
-    'oea': 'non-Korean, non-Japanese East Asian',
-    'jpn': 'Japanese',
-    'nwe': 'North-Western European',
-    'swe': 'Swedish',
-    'seu': 'Southern European',
-    'est': 'Estonian',
-    'bgr': 'Bulgarian',
-    'onf': 'other (non-Finnish) European'
-}
 
 INFO_DICT = {
     'FS': {"Description": "Phred-scaled p-value of Fisher's exact test for strand bias"},
@@ -75,7 +56,6 @@ INFO_DICT = {
     'was_mixed': {"Description": "Variant type was mixed"},
     'has_star': {"Description": "Variant locus coincides with a spanning deletion (represented by a star) observed elsewhere in the callset"},
     'pab_max': {"Number": "A", "Description": "Maximum p-value over callset for binomial test of observed allele balance for a heterozygous genotype, given expectation of AB=0.5"},
-    'vep': {"Description": "Variant Effect Predictor annotations"}
 }
 
 
@@ -89,10 +69,8 @@ def flag_problematic_regions(ht: hl.Table) -> hl.Table:
     lcr_intervals = hl.import_locus_intervals(lcr_intervals_path)
     decoy_intervals = hl.import_locus_intervals(decoy_intervals_path)
     segdup_intervals = hl.import_locus_intervals(segdup_intervals_path)
-    ht = ht.annotate(lcr=hl.is_defined(lcr_intervals[ht.locus]))  # TODO: combine annotations if Hail bug is fixed
-    ht = ht.annotate(decoy=hl.is_defined(decoy_intervals[ht.locus]))
-    ht = ht.annotate(segdup=hl.is_defined(segdup_intervals[ht.locus]))
-    ht = ht.annotate(nonpar=(ht.locus.in_x_nonpar() | ht.locus.in_y_nonpar()))
+    ht = ht.annotate(lcr=hl.is_defined(lcr_intervals[ht.locus]), decoy=hl.is_defined(decoy_intervals[ht.locus]),
+                     segdup=hl.is_defined(segdup_intervals[ht.locus]), nonpar=(ht.locus.in_x_nonpar() | ht.locus.in_y_nonpar()))
     return ht
 
 
@@ -213,7 +191,8 @@ def make_filters_sanity_check_expr(ht: hl.Table) -> Dict[str, hl.expr.Expression
 
 def sample_sum_check(ht: hl.Table, prefix: str, label_groups: Dict[str, List[str]], verbose: bool, subpop=None):
     '''
-    Compute afresh the sum of annotations for a specified group of annotations, and compare to the annotated version
+    Compute afresh the sum of annotations for a specified group of annotations, and compare to the annotated version;
+    display results from checking the sum of the specified annotations in the terminal
     :param Table ht: Hail Table containing annotations to be summed
     :param str prefix: Subset of gnomAD
     :param dict label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
@@ -221,7 +200,6 @@ def sample_sum_check(ht: hl.Table, prefix: str, label_groups: Dict[str, List[str
     :param bool verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks
     :param str subpop: Subpop abbreviation, supplied only if subpopulations are included in the annotation groups being checked
-    :return: Terminal display of results from checking the sum of the specified annotations
     :rtype: None
     '''
     combo_AC = [ht.info[f'{prefix}_AC_{x}'] for x in make_label_combos(label_groups)]
@@ -249,7 +227,7 @@ def sample_sum_check(ht: hl.Table, prefix: str, label_groups: Dict[str, List[str
 
 def generic_field_check(ht: hl.Table, cond_expr, check_description, display_fields, verbose):
     '''
-    Check a generic logical condition involving annotations in a Hail Table and print the results to terminalTablbe
+    Check a generic logical condition involving annotations in a Hail Table and print the results to terminal
     :param Table ht: Table containing annotations to be checked
     :param Expression cond_expr: logical expression referring to annotations in ht to be checked
     :param str check_description: String describing the condition being checked; is displayed in terminal summary message
@@ -257,7 +235,6 @@ def generic_field_check(ht: hl.Table, cond_expr, check_description, display_fiel
         these fields are also displayed if verbose is True
     :param bool verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks
-    :return: Terminal display of results from checking the sum of the specified annotations
     :rtype: None
     '''
     ht_orig = ht
@@ -274,7 +251,7 @@ def generic_field_check(ht: hl.Table, cond_expr, check_description, display_fiel
             ht_orig.select(*display_fields).show()
 
 
-def sanity_check_ht(ht: hl.Table, data_type, subsets, verbose):
+def sanity_check_ht(ht: hl.Table, data_type, subsets, missingness_threshold=0.5, verbose=False):
     '''
     Perform a battery of sanity checks on a specified group of subsets in a Hail Table containing variant annotations;
     includes summaries of % filter status for different partitions of variants; histogram outlier bin checks; checks on
@@ -289,7 +266,7 @@ def sanity_check_ht(ht: hl.Table, data_type, subsets, verbose):
     :rtype: None
     '''
     n_sites = ht.count()
-    contigs = hl.eval(ht.aggregate(hl.agg.collect_as_set(ht.locus.contig)))
+    contigs = ht.aggregate(hl.agg.collect_as_set(ht.locus.contig))
     logger.info(f'Found {n_sites} sites in {data_type} for contigs {contigs}')
     info_metrics = list(ht.row.info)
     non_info_metrics = list(ht.row)
@@ -377,7 +354,8 @@ def sanity_check_ht(ht: hl.Table, data_type, subsets, verbose):
                 logger.info(f"FAILED Y check: Found {values} in {metric}")
 
     logger.info('Check values of male nhomalt metrics for X nonpar variants are 0:')
-    ht_xnonpar = ht.filter(ht.locus.in_x_nonpar())
+    ht_x = hl.filter_intervals(ht, [hl.parse_locus_interval('X')])
+    ht_xnonpar = ht_x.filter(ht_x.locus.in_x_nonpar())
     n = ht_xnonpar.count()
     logger.info(f"Found {n} X nonpar sites")  # Lots of values found in male X nonpar sites
 
@@ -409,7 +387,7 @@ def sanity_check_ht(ht: hl.Table, data_type, subsets, verbose):
 
     n_fail = 0
     for metric, value in dict(output).items():
-        if value > 0.5:  # TODO: parametrize missing threshold?
+        if value > missingness_threshold:  # TODO: parametrize missing threshold?
             logger.info("FAILED missing check for {}: {}% missing".format(metric, 100 * value))
             n_fail += 1
         else:
@@ -732,44 +710,6 @@ def set_female_y_metrics_to_na(ht):
     return ht
 
 
-def release_ht_path(data_type: str, nested = True, with_subsets = True, temp = False):
-    '''
-    Fetch filepath for release (variant-only) Hail Tables
-    :param str data_type: 'exomes' or 'genomes'
-    :param bool nested: If True, fetch Table in which variant annotations (e.g., freq, popmax, faf, and age histograms)
-        are in array format ("nested"); if False, fetch Table in which nested variant annotations are unfurled
-    :param bool with_subsets: If True, fetch Table in which all gnomAD subsets are present; if False, fetch Table containing
-        only gnomAD annotations
-    :param bool temp: If True, fetch Table in which nested variant annotations are unfurled but listed under 'info' rather
-        than at the top level; used for sanity-checking sites
-    :return: Filepath for desired Hail Table
-    :rtype: str
-    '''
-    tag = 'nested' if nested else 'flat'
-    tag = tag + '.with_subsets' if with_subsets else tag + '.no_subsets'
-    tag = tag + '.temp' if temp else tag
-    if nested and with_subsets:
-        return f'gs://gnomad-public/release/2.1/ht/{data_type}/gnomad.{data_type}.{RELEASE_VERSION}.sites.ht'
-    else:
-        return f'gs://gnomad/release/2.1/ht/gnomad.{data_type}.{RELEASE_VERSION}.{tag}.sites.ht'
-
-
-def release_vcf_path(data_type: str, contig=None, coding_only=False):
-    '''
-    Fetch filepath for release (variant-only) VCFs
-    :param str data_type: 'exomes' or 'genomes'
-    :param str contig: String containing the name of the desired reference contig
-    :return: Filepath for the desired VCF
-    :rtype: str
-    '''
-    if contig:
-        return f'gs://gnomad-public/release/2.1/vcf/{data_type}/gnomad.{data_type}.{RELEASE_VERSION}.sites.chr{contig}.vcf.bgz'
-    elif data_type == 'genomes' and coding_only:
-        return f'gs://gnomad-public/release/2.1/vcf/{data_type}/gnomad.{data_type}.{RELEASE_VERSION}.exome_calling_intervals.sites.vcf.bgz'
-    else:
-        return f'gs://gnomad-public/release/2.1/vcf/{data_type}/gnomad.{data_type}.{RELEASE_VERSION}.sites.vcf.bgz'
-
-
 def get_array_lengths(ht, subsets):
     '''
     Utility function to measure the array lengths of each frequency variant annotation for each subset in a nested Hail Table
@@ -1053,7 +993,7 @@ def main(args):
             subset_list = ['gnomad', 'controls', 'non_neuro', 'non_topmed'] if args.include_subset_frequencies else ['gnomad']
 
         ht = hl.read_table(release_ht_path(data_type, nested=False, temp=True))
-        sanity_check_ht(ht, data_type, subset_list, args.verbose)
+        sanity_check_ht(ht, data_type, subset_list, missingness_threshold=0.5, verbose=args.verbose)
 
 
 
