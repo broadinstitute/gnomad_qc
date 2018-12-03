@@ -528,10 +528,10 @@ def make_combo_header_text(preposition, group_types, combo_fields, prefix, faf=F
             header_text = header_text + " " + combo_dict['sex']
         header_text = header_text + " samples"
         if 'subpop' in combo_dict.keys():
-            header_text = header_text + f" of {POP_DICT[combo_dict['subpop']]} ancestry"
+            header_text = header_text + f" of {pop_names[combo_dict['subpop']]} ancestry"
             combo_dict.pop('pop')
         if 'pop' in combo_dict.keys():
-            header_text = header_text + f" of {POP_DICT[combo_dict['pop']]} ancestry"
+            header_text = header_text + f" of {pop_names[combo_dict['pop']]} ancestry"
         if prefix != 'gnomad':
             header_text = header_text + f" in the {prefix} subset"
         if 'group' in group_types:
@@ -540,7 +540,7 @@ def make_combo_header_text(preposition, group_types, combo_fields, prefix, faf=F
     else:
         header_text = ""
         if 'pop' in combo_dict.keys():
-            header_text = f" of {POP_DICT[combo_dict['pop']]} ancestry"
+            header_text = f" of {pop_names[combo_dict['pop']]} ancestry"
         if prefix != 'gnomad':
             header_text = header_text + f" in the {prefix} subset"
     return header_text
