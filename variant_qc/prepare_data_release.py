@@ -8,7 +8,6 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("data_release")
 logger.setLevel(logging.INFO)
 
-RELEASE_VERSION = 'r2.1.1'
 HISTS = ['gq_hist_alt', 'gq_hist_all', 'dp_hist_alt', 'dp_hist_all', 'ab_hist_alt']
 
 GROUPS = ['adj', 'raw']
@@ -627,8 +626,8 @@ def make_hist_bin_edges_expr(ht):
     :return: Dictionary keyed by histogram annotation name, with corresponding reformatted bin edges for values
     :rtype: Dict of str: str
     '''
-    edges_dict = {'gnomad_het': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_het.bin_edges)),
-                  'gnomad_hom': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_hom.bin_edges))}
+    edges_dict = {'gnomad_het': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_het[0].bin_edges)),
+                  'gnomad_hom': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_hom[0].bin_edges))}
     for hist in HISTS:
         edges_dict[hist] = '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0][hist].bin_edges)) if 'ab' in hist else \
             '|'.join(map(lambda x: str(int(x)), ht.take(1)[0][hist].bin_edges))
@@ -843,7 +842,7 @@ def main(args):
     import_ht_path = release_ht_path(data_type) if args.include_subset_frequencies else release_ht_path(data_type, with_subsets=False)
 
     if args.prepare_internal_ht:
-        freq_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies')).drop('project_max')
+        freq_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies'))
         index_dict = make_index_dict(freq_ht)
 
         rf_ht = hl.read_table(annotations_ht_path(data_type, 'rf')).drop('info_ac', 'ac', 'ac_raw')
