@@ -1,30 +1,10 @@
 from gnomad_hail import *
+from gnomad_hail.resources.variant_qc import *
+
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("variant_histograms")
 logger.setLevel(logging.INFO)
-
-RELEASE_VERSION = 'r2.1'
-
-def release_ht_path(data_type: str, nested = True, with_subsets = True, temp = False):
-    tag = 'nested' if nested else 'flat'
-    tag = tag + '.with_subsets' if with_subsets else tag + '.no_subsets'
-    tag = tag + '.temp' if temp else tag
-    if nested and with_subsets:
-        return f'gs://gnomad-public/release/2.1/ht/{data_type}/gnomad.{data_type}.{RELEASE_VERSION}.sites.ht'
-    else:
-        return f'gs://gnomad/release/2.1/ht/gnomad.{data_type}.{RELEASE_VERSION}.{tag}.sites.ht'
-
-
-def release_var_hist_path(data_type: str):
-    return f'gs://gnomad/release/2.1/json/gnomad.{data_type}.json'
-
-
-def release_ht_path(data_type: str, nested = True, with_subsets = True, temp = False):
-    tag = 'nested' if nested else 'flat'
-    tag = tag + '.with_subsets' if with_subsets else tag + '.no_subsets'
-    tag = tag + '.temp' if temp else tag
-    return f'gs://gnomad/release/2.1/ht/gnomad.{data_type}.{RELEASE_VERSION}.{tag}.ht'
 
 
 def define_hist_ranges(ht):
@@ -44,6 +24,7 @@ def define_hist_ranges(ht):
         'pab_max': hl.agg.hist(ht.pab_max, 0, 1, 50)
     }
     return hist_dict
+
 
 def aggregate_qual_stats_by_bin(ht):
     ht = ht.annotate(metric=(hl.case()
