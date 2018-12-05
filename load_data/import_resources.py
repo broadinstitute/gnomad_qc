@@ -28,18 +28,10 @@ def import_methylation(overwrite: bool = False):
 
 def import_exac_data(overwrite: bool = False):
     vcf_path = "gs://gnomad/raw/source/ExAC.r1.sites.vep.vcf.gz"
-    vds = hl.import_vcf(vcf_path, force_bgz=True, min_partitions=1000)
+    vds = hl.import_vcf(vcf_path, force_bgz=True, min_partitions=5000).rows()
     vds = hl.split_multi_hts(vds)
     vds = hl.vep(vds, vep_config)
-    vds.write(exac_release_sites_mt_path(), overwrite)
-
-
-def import_genome_coverage(overwrite: bool = False):
-    # TODO: move this to load_coverage script when per-individual coverage available
-    CHROMS = list(map(str, range(1, 23))) + ['X']
-    data_path = ["gs://gnomad/coverage/source/genomes/Panel.chr{}.genome.coverage.txt.bgz".format(x) for x in CHROMS]
-    ht = hl.import_table(data_path, impute=True, min_partitions=200)
-    ht.annotate(locus=hl.locus(ht['#chrom'], ht['pos'])).key_by('locus').write(coverage_ht_path('genomes'), overwrite)
+    vds.write(exac_release_sites_ht_path(), overwrite)
 
 
 def import_cpgs(overwrite: bool = False):
