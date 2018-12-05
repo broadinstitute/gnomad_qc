@@ -80,7 +80,7 @@ def generate_qc_annotations(mt: hl.MatrixTable, all_annotations: bool = True, me
 
         het_length = hl.agg.count_where(hets)
 
-        qual_agg = -10 * hl.agg.sum(hl.agg.filter(non_refs, hl.cond(
+        qual_agg = -10 * hl.agg.filter(non_refs, hl.agg.sum(hl.cond(
             mt.PL[0] > 3000, -300, hl.log10(gp0)
         )))
 
