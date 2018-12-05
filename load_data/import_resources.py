@@ -69,9 +69,6 @@ def main(args):
     if args.import_exac_data:
         import_exac_data(args.overwrite)
 
-    if args.import_genome_coverage:
-        import_genome_coverage(args.overwrite)
-
     if args.import_clinvar:
         import_clinvar(args.overwrite)
 
@@ -83,7 +80,6 @@ if __name__ == '__main__':
     parser.add_argument('--import_cpgs', help='Import CpG data', action='store_true')
     parser.add_argument('--import_methylation', help='Import methylation data', action='store_true')
     parser.add_argument('--import_exac_data', help='Import ExAC data', action='store_true')
-    parser.add_argument('--import_genome_coverage', help='Import genome coverage data', action='store_true')
     parser.add_argument('--import_clinvar', help='Import clinvar data', action='store_true')
     parser.add_argument('--overwrite', help='Overwrite data', action='store_true')
     args = parser.parse_args()
