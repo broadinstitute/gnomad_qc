@@ -147,7 +147,9 @@ def generate_frequency_data(mt: hl.MatrixTable, calculate_downsampling: bool = F
 
 
 def generate_consanguineous_frequency_data(ht: hl.Table, mt: hl.MatrixTable) -> hl.Table:
-    consang_call_stats = hl.agg.filter((mt.meta.Fstat >= F_CUTOFF) & mt.adj & (mt.meta.pop == 'sas'),
+    projects_to_use = hl.literal({'PROMIS', 'T2D_28K_PROMIS_exomes', 'T2D_28K_Singapore_S.Asian_exomes', 'T2DGENES'})
+    consang_call_stats = hl.agg.filter((mt.meta.f.f_stat >= F_CUTOFF) & mt.adj &
+                                       (mt.meta.pop == 'sas') & projects_to_use.contains(mt.meta.project_id),
                                        hl.agg.call_stats(mt.GT, mt.alleles))
     consang_call_stats = hl.bind(lambda cs: cs.annotate(
         AC=cs.AC[1], AF=cs.AF[1], homozygote_count=cs.homozygote_count[1]
