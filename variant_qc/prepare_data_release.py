@@ -578,13 +578,13 @@ def make_info_dict(prefix, label_groups=None, bin_edges=None, faf=False, popmax=
         if prefix == 'gnomad':
             age_hist_dict = {
                 f"{prefix}_age_hist_het_bin_freq": {"Number": "A",
-                                                    "Description": f"Histogram of ages of heterozygous individuals; bin edges are: {bin_edges[f'{prefix}_het']}; number of individuals in each bin: {age_hist_data}"},
+                                                    "Description": f"Histogram of ages of heterozygous individuals; bin edges are: {bin_edges[f'{prefix}_het']}; total number of individuals of any genotype bin: {age_hist_data}"},
                 f"{prefix}_age_hist_het_n_smaller": {"Number": "A",
                                                      "Description": "Count of age values falling below lowest histogram bin edge for heterozygous individuals"},
                 f"{prefix}_age_hist_het_n_larger": {"Number": "A",
                                                     "Description": "Count of age values falling above highest histogram bin edge for heterozygous individuals"},
                 f"{prefix}_age_hist_hom_bin_freq": {"Number": "A",
-                                                    "Description": f"Histogram of ages of homozygous alternate individuals; bin edges are: {bin_edges[f'{prefix}_hom']}; number of individuals in each bin: {age_hist_data}"},
+                                                    "Description": f"Histogram of ages of homozygous alternate individuals; bin edges are: {bin_edges[f'{prefix}_hom']}; total number of individuals of any genotype bin: {age_hist_data}"},
                 f"{prefix}_age_hist_hom_n_smaller": {"Number": "A",
                                                      "Description": "Count of age values falling below lowest histogram bin edge for homozygous alternate individuals"},
                 f"{prefix}_age_hist_hom_n_larger": {"Number": "A",
