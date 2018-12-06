@@ -545,7 +545,7 @@ def make_combo_header_text(preposition, group_types, combo_fields, prefix, faf=F
     return header_text
 
 
-def make_info_dict(prefix, label_groups=None, bin_edges=None, faf=False, popmax=False):
+def make_info_dict(prefix, label_groups=None, bin_edges=None, faf=False, popmax=False, age_hist_data=None):
     '''
     Generate dictionary of Number and Description attributes to be used in the VCF header
     :param str prefix: Subset of gnomAD
@@ -554,6 +554,7 @@ def make_info_dict(prefix, label_groups=None, bin_edges=None, faf=False, popmax=
     :param dict bin_edges: Dictionary keyed by annotation type, with values that reflect the bin edges corresponding to the annotation
     :param bool faf: If True, use alternate logic to auto-populate dictionary values associated with filter allele frequency annotations
     :param bool popmax: If True, use alternate logic to auto-populate dictionary values associated with popmax annotations
+    :param str age_hist_data: Pipe-delimited string of age histograms, from get_age_distributions (somewhat required if popmax == True)
     :return: Dictionary keyed by VCF INFO annotations, where values are Dictionaries of Number and Description attributes
     :rtype: Dict of str: (Dict of str: str)
     '''
@@ -577,17 +578,17 @@ def make_info_dict(prefix, label_groups=None, bin_edges=None, faf=False, popmax=
         if prefix == 'gnomad':
             age_hist_dict = {
                 f"{prefix}_age_hist_het_bin_freq": {"Number": "A",
-                                                            "Description": "Histogram of ages of heterozygous individuals; bin edges are: {}".format(bin_edges[f'{prefix}_het'])},
+                                                    "Description": f"Histogram of ages of heterozygous individuals; bin edges are: {bin_edges[f'{prefix}_het']}; total number of individuals of any genotype bin: {age_hist_data}"},
                 f"{prefix}_age_hist_het_n_smaller": {"Number": "A",
-                                                             "Description": "Count of age values falling below lowest histogram bin edge for heterozygous individuals"},
+                                                     "Description": "Count of age values falling below lowest histogram bin edge for heterozygous individuals"},
                 f"{prefix}_age_hist_het_n_larger": {"Number": "A",
-                                                            "Description": "Count of age values falling above highest histogram bin edge for heterozygous individuals"},
+                                                    "Description": "Count of age values falling above highest histogram bin edge for heterozygous individuals"},
                 f"{prefix}_age_hist_hom_bin_freq": {"Number": "A",
-                                                            "Description": "Histogram of ages of homozygous alternate individuals; bin edges are: {}".format(bin_edges[f'{prefix}_hom'])},
+                                                    "Description": f"Histogram of ages of homozygous alternate individuals; bin edges are: {bin_edges[f'{prefix}_hom']}; total number of individuals of any genotype bin: {age_hist_data}"},
                 f"{prefix}_age_hist_hom_n_smaller": {"Number": "A",
-                                                             "Description": "Count of age values falling below lowest histogram bin edge for homozygous alternate individuals"},
+                                                     "Description": "Count of age values falling below lowest histogram bin edge for homozygous alternate individuals"},
                 f"{prefix}_age_hist_hom_n_larger": {"Number": "A",
-                                                            "Description": "Count of age values falling above highest histogram bin edge for homozygous alternate individuals"}
+                                                    "Description": "Count of age values falling above highest histogram bin edge for homozygous alternate individuals"}
             }
             info_dict.update(age_hist_dict)
     else:
@@ -835,11 +836,27 @@ def build_faf_index_dict(ht, subsets):
     return new_index_dict
 
 
+def get_age_distributions(data_type):
+    """
+    Get background distribution of ages among release samples
+
+    :param str data_type: One of 'exomes' or 'genomes'
+    :return: pipe-delimited string with ages in pre-determined bins (<30, 30-35, ..., 75-80, 80+)
+    :rtype: str
+    """
+    meta = get_gnomad_meta(data_type)
+    age_hist_data = meta.aggregate(hl.agg.filter(meta.release, hl.agg.hist(meta.age, 30, 80, 10)))
+    age_hist_data.bin_freq.insert(0, age_hist_data.n_smaller)
+    age_hist_data.bin_freq.append(age_hist_data.n_larger)
+    return '|'.join(age_hist_data.bin_freq)
+
+
 def main(args):
     hl.init(log='/release.log')
 
     data_type = 'genomes' if args.genomes else 'exomes'
     import_ht_path = release_ht_path(data_type) if args.include_subset_frequencies else release_ht_path(data_type, with_subsets=False)
+    age_hist_data = get_age_distributions(data_type)
 
     if args.prepare_internal_ht:
         freq_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies'))
@@ -914,7 +931,7 @@ def main(args):
         else:
             subset_list = ['gnomad', 'controls', 'non_neuro', 'non_topmed'] if args.include_subset_frequencies else ['gnomad']
         for subset in subset_list:
-            INFO_DICT.update(make_info_dict(subset, bin_edges=bin_edges, popmax=True))
+            INFO_DICT.update(make_info_dict(subset, bin_edges=bin_edges, popmax=True, age_hist_data=age_hist_data))
             INFO_DICT.update(make_info_dict(subset, dict(group=GROUPS)))
             INFO_DICT.update(make_info_dict(subset, dict(group=GROUPS, sex=SEXES)))
             INFO_DICT.update(make_info_dict(subset, dict(group=GROUPS, pop=POPS)))
@@ -984,7 +1001,6 @@ def main(args):
             coding_mt = mt.filter_rows(hl.is_defined(intervals[mt.locus]), keep=True)
             hl.export_vcf(coding_mt, release_vcf_path(data_type, coding_only=True), metadata=header_dict)
 
-
     if args.sanity_check_sites:
         if data_type == 'exomes':
             subset_list = ['gnomad', 'controls', 'non_neuro', 'non_cancer', 'non_topmed'] if args.include_subset_frequencies else ['gnomad']
@@ -993,7 +1009,6 @@ def main(args):
 
         ht = hl.read_table(release_ht_path(data_type, nested=False, temp=True))
         sanity_check_ht(ht, data_type, subset_list, missingness_threshold=0.5, verbose=args.verbose)
-
 
 
 if __name__ == '__main__':
