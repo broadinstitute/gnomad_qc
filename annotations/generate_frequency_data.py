@@ -150,7 +150,7 @@ def generate_consanguineous_frequency_data(ht: hl.Table, f_ht: hl.Table, mt: hl.
     mt = mt.annotate_cols(meta=mt.meta.annotate(f=f_ht[mt.col_key].pop_f))
     projects_to_use = hl.literal({'PROMIS', 'T2D_28K_PROMIS_exomes', 'T2D_28K_Singapore_S.Asian_exomes', 'T2DGENES'})
     consang_call_stats = hl.agg.filter((mt.meta.f.f_stat >= F_CUTOFF) & mt.adj &
-                                       (mt.meta.pop == 'sas') & projects_to_use.contains(mt.meta.project_id),
+                                       (mt.meta.pop == 'sas') & projects_to_use.contains(mt.meta.project_description),
                                        hl.agg.call_stats(mt.GT, mt.alleles))
     consang_call_stats = hl.bind(lambda cs: cs.annotate(
         AC=cs.AC[1], AF=cs.AF[1], homozygote_count=cs.homozygote_count[1]
@@ -160,7 +160,7 @@ def generate_consanguineous_frequency_data(ht: hl.Table, f_ht: hl.Table, mt: hl.
         freq_meta=ht.freq_meta.append({'group': 'adj', 'pop': 'sas', 'sample_set': 'consanguineous'})
     )
     return ht.annotate(
-        freq=ht.freq.append(mt[ht.key].consang)
+        freq=ht.freq.append(mt.rows()[ht.key].consang)
     )
 
 
@@ -184,6 +184,7 @@ def main(args):
 
     if args.add_consanguineous_frequencies and not args.genomes:
         f_ht = hl.read_table('gs://gnomad/sample_qc/f_stat/test_f_0.05_adj_filtered.ht')
+        f_ht = f_ht.filter(f_ht.data_type == 'exomes').key_by('s')
         ht = hl.read_table(annotations_ht_path(data_type, location))
         ht = generate_consanguineous_frequency_data(ht, f_ht, mt)
         write_temp_gcs(ht, annotations_ht_path(data_type, f'{location}_with_consanguineous'), args.overwrite)
