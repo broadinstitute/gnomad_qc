@@ -146,7 +146,8 @@ def generate_frequency_data(mt: hl.MatrixTable, calculate_downsampling: bool = F
     return mt.rows(), sample_data
 
 
-def generate_consanguineous_frequency_data(ht: hl.Table, mt: hl.MatrixTable) -> hl.Table:
+def generate_consanguineous_frequency_data(ht: hl.Table, f_ht: hl.Table, mt: hl.MatrixTable) -> hl.Table:
+    mt = mt.annotate_cols(meta=mt.meta.annotate(f=f_ht[mt.col_key].pop_f))
     projects_to_use = hl.literal({'PROMIS', 'T2D_28K_PROMIS_exomes', 'T2D_28K_Singapore_S.Asian_exomes', 'T2DGENES'})
     consang_call_stats = hl.agg.filter((mt.meta.f.f_stat >= F_CUTOFF) & mt.adj &
                                        (mt.meta.pop == 'sas') & projects_to_use.contains(mt.meta.project_id),
@@ -182,8 +183,9 @@ def main(args):
             sample_table.write(sample_annotations_table_path(data_type, 'downsampling'), args.overwrite)
 
     if args.add_consanguineous_frequencies and not args.genomes:
+        f_ht = hl.read_table('gs://gnomad/sample_qc/f_stat/test_f_0.05_adj_filtered.ht')
         ht = hl.read_table(annotations_ht_path(data_type, location))
-        ht = generate_consanguineous_frequency_data(ht, mt)
+        ht = generate_consanguineous_frequency_data(ht, f_ht, mt)
         write_temp_gcs(ht, annotations_ht_path(data_type, f'{location}_with_consanguineous'), args.overwrite)
 
 
