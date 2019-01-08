@@ -527,10 +527,10 @@ def make_combo_header_text(preposition, group_types, combo_fields, prefix, faf=F
             header_text = header_text + " " + combo_dict['sex']
         header_text = header_text + " samples"
         if 'subpop' in combo_dict.keys():
-            header_text = header_text + f" of {POP_DICT[combo_dict['subpop']]} ancestry"
+            header_text = header_text + f" of {pop_names[combo_dict['subpop']]} ancestry"
             combo_dict.pop('pop')
         if 'pop' in combo_dict.keys():
-            header_text = header_text + f" of {POP_DICT[combo_dict['pop']]} ancestry"
+            header_text = header_text + f" of {pop_names[combo_dict['pop']]} ancestry"
         if prefix != 'gnomad':
             header_text = header_text + f" in the {prefix} subset"
         if 'group' in group_types:
@@ -539,7 +539,7 @@ def make_combo_header_text(preposition, group_types, combo_fields, prefix, faf=F
     else:
         header_text = ""
         if 'pop' in combo_dict.keys():
-            header_text = f" of {POP_DICT[combo_dict['pop']]} ancestry"
+            header_text = f" of {pop_names[combo_dict['pop']]} ancestry"
         if prefix != 'gnomad':
             header_text = header_text + f" in the {prefix} subset"
     return header_text
@@ -630,7 +630,7 @@ def make_hist_bin_edges_expr(ht):
     edges_dict = {'gnomad_het': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_het[0].bin_edges)),
                   'gnomad_hom': '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0].age_hist_hom[0].bin_edges))}
     for hist in HISTS:
-        edges_dict[hist] = '|'.join(map(lambda x: f'{x:.1f}', ht.take(1)[0][hist].bin_edges)) if 'ab' in hist else \
+        edges_dict[hist] = '|'.join(map(lambda x: f'{x:.2f}', ht.take(1)[0][hist].bin_edges)) if 'ab' in hist else \
             '|'.join(map(lambda x: str(int(x)), ht.take(1)[0][hist].bin_edges))
     return edges_dict
 
@@ -848,7 +848,7 @@ def get_age_distributions(data_type):
     age_hist_data = meta.aggregate(hl.agg.filter(meta.release, hl.agg.hist(meta.age, 30, 80, 10)))
     age_hist_data.bin_freq.insert(0, age_hist_data.n_smaller)
     age_hist_data.bin_freq.append(age_hist_data.n_larger)
-    return '|'.join(age_hist_data.bin_freq)
+    return '|'.join(str(x) for x in age_hist_data.bin_freq)
 
 
 def main(args):
@@ -859,7 +859,7 @@ def main(args):
     age_hist_data = get_age_distributions(data_type)
 
     if args.prepare_internal_ht:
-        freq_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies'))
+        freq_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies_with_consanguineous'))  # FIXME: revert to plain 'frequencies' for v3+
         index_dict = make_index_dict(freq_ht)
 
         rf_ht = hl.read_table(annotations_ht_path(data_type, 'rf')).drop('info_ac', 'ac', 'ac_raw')
@@ -876,9 +876,13 @@ def main(args):
 
     if args.add_subset_frequencies:
         ht = hl.read_table(release_ht_path(data_type, with_subsets=False))
-        controls_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies_control')).drop('project_max')
-        non_neuro_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies_neuro')).drop('project_max')
-        non_topmed_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies_topmed')).drop('project_max')
+        controls_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies_control_with_consanguineous'))  # FIXME: revert to plain 'frequencies' for v3+
+        freq_index_dict = make_index_dict(controls_ht)
+        print(hl.eval(controls_ht.freq_meta))
+        controls_ht = controls_ht.drop('helloworld')
+
+        non_neuro_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies_neuro_with_consanguineous'))  # FIXME: revert to plain 'frequencies' for v3+
+        non_topmed_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies_topmed_with_consanguineous'))  # FIXME: revert to plain 'frequencies' for v3+
         controls_freq_meta = hl.eval(controls_ht.globals.freq_meta)
         [x.update({'subset': 'controls'}) for x in controls_freq_meta]
         non_neuro_freq_meta = hl.eval(non_neuro_ht.globals.freq_meta)
@@ -893,7 +897,7 @@ def main(args):
                                                    freq_meta=combined_ht.freq_meta.extend(controls_freq_meta).extend(non_neuro_freq_meta).extend(non_topmed_freq_meta))
 
         if data_type == 'exomes':
-            non_cancer_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies_tcga'))
+            non_cancer_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies_tcga_with_consanguineous'))
             non_cancer_freq_meta = hl.eval(non_cancer_ht.globals.freq_meta)
             [x.update({'subset': 'non_cancer'}) for x in non_cancer_freq_meta]
             combined_ht = combined_ht.annotate(non_cancer=non_cancer_ht[combined_ht.key])
@@ -990,7 +994,7 @@ def main(args):
         for contig in contigs:
             contig_ht = hl.filter_intervals(ht, [hl.parse_locus_interval(contig, reference_genome=gnomad_ref)])
             mt = hl.MatrixTable.from_rows_table(contig_ht).key_cols_by(s='foo')
-            hl.export_vcf(mt, release_vcf_path(data_type, contig), metadata=header_dict)
+            hl.export_vcf(mt, release_vcf_path(data_type, contig=contig), metadata=header_dict)
 
         mt = hl.MatrixTable.from_rows_table(ht).key_cols_by(s='foo')
         hl.export_vcf(mt, release_vcf_path(data_type), metadata=header_dict)
