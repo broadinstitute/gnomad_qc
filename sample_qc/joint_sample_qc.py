@@ -275,7 +275,8 @@ def main(args):
         joint_qc_mt = hl.read_matrix_table(qc_mt_path('joint'))
         variants, samples = joint_qc_mt.count()
         logger.info('Pruning {0} variants in {1} samples'.format(variants, samples))
-        joint_qc_pruned_mt = hl.ld_prune(joint_qc_mt.GT, r2=0.1)
+        joint_qc_pruned_ht = hl.ld_prune(joint_qc_mt.GT, r2=0.1)
+        joint_qc_pruned_mt = joint_qc_mt.filter_rows(hl.is_defined(joint_qc_pruned_ht[joint_qc_mt.row_key]))
         joint_qc_pruned_mt.write(qc_mt_path('joint', ld_pruned=True), args.overwrite)
 
     pruned_mt = hl.read_matrix_table(qc_mt_path('joint', ld_pruned=True))
