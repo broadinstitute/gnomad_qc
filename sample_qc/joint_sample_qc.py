@@ -275,7 +275,7 @@ def main(args):
         joint_qc_mt = hl.read_matrix_table(qc_mt_path('joint'))
         variants, samples = joint_qc_mt.count()
         logger.info('Pruning {0} variants in {1} samples'.format(variants, samples))
-        joint_qc_pruned_mt = hl.ld_prune(joint_qc_mt, r2=0.1, n_cores=args.num_cores)
+        joint_qc_pruned_mt = hl.ld_prune(joint_qc_mt.GT, r2=0.1)
         joint_qc_pruned_mt.write(qc_mt_path('joint', ld_pruned=True), args.overwrite)
 
     pruned_mt = hl.read_matrix_table(qc_mt_path('joint', ld_pruned=True))
@@ -405,7 +405,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--load_joint_pruned_qc_mt', help='Load a pre-computed LD-pruned joint MT instead of rewriting', action='store_true')
-    parser.add_argument('--num_cores', help='Required for LD Prune', default=32)
     parser.add_argument('--overwrite', help='Overwrite pre-existing data', action='store_true')
 
     parser.add_argument('--skip_platform_pca', help='Skip annotating and assigning platform PCs', action='store_true')
