@@ -1,5 +1,6 @@
 from gnomad_hail import *
 from gnomad_hail.resources.sample_qc import *
+import numpy as np
 import hdbscan
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -7,7 +8,7 @@ logger = logging.getLogger("unified_sample_qc_b")
 logger.setLevel(logging.INFO)
 
 
-def assign_platform_pcs(platform_pc_table: hl.Table, out_filepath: str, num_pcs: int = 9) -> hl.Table:
+def assign_platform_pcs(platform_pc_table: hl.Table, out_filepath: str) -> hl.Table:
     """
     Function assumes that platform_pc_table contains columns named 'combined_sample', 'gross_platform' (known labels), 'callratePC<n>'
 
@@ -19,8 +20,7 @@ def assign_platform_pcs(platform_pc_table: hl.Table, out_filepath: str, num_pcs:
     """
     # Read and format data for clustering
     data = platform_pc_table.to_pandas()
-    cols = ['PC' + str(i + 1) for i in range(num_pcs)]
-    callrate_data = data[cols].as_matrix()
+    callrate_data = np.matrix(data['scores'].tolist())
     logger.info('Assigning platforms to {} exome samples in MT...'.format(len(callrate_data)))
 
     # Cluster data
@@ -67,6 +67,8 @@ def main(args):
 
     logger.info('Annotating with platform PCs and known platform annotations...')
     scores = hl.read_table(exome_callrate_scores_ht_path).annotate(data_type='exomes')
+    if args.pc_scores_in_multiple_ann:
+        scores = scores.tranmute(scores=[ann for ann in scores.row if ann.startswith("PC")])
     platform_pcs = assign_platform_pcs(scores, qc_temp_data_prefix('exomes') + '.assigned_platform_pcs.txt.bgz')
     platform_pcs.write(qc_ht_path('exomes', 'platforms'), overwrite=args.overwrite)
 
@@ -77,6 +79,7 @@ if __name__ == '__main__':
     parser.add_argument('--overwrite', help='Overwrite pre-existing data', action='store_true')
     parser.add_argument('--skip_prepare_data_for_platform_pca', help='Skip prepping data for platform imputation (assuming already done)', action='store_true')
     parser.add_argument('--skip_run_platform_pca', help='Skip platform PCA (assuming already done)', action='store_true')
+    parser.add_argument('--pc_scores_in_multiple_ann', help='This option was added to deal with legacy scores HT, where the PC scores where stored in multiple annotations (PC1, ... PCn)', action='store_true')
     parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
 
     args = parser.parse_args()
