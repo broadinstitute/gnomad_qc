@@ -32,7 +32,7 @@ def assign_platform_pcs(platform_pc_table: hl.Table, out_filepath: str) -> hl.Ta
     data['qc_platform'] = cluster_labels
     with hl.hadoop_open(out_filepath, 'w') as out:
         data.to_csv(out, sep="\t", index=False)
-    new_data = hl.import_table(out_filepath, impute=True, types={'qc_platform': hl.str}).key_by('data_type', 's')
+    new_data = hl.import_table(out_filepath, impute=True, types={'qc_platform': hl.str, 'scores': hl.tarray(hl.tfloat)}).key_by('data_type', 's')
     return new_data
 
 
