@@ -8,13 +8,11 @@ logger = logging.getLogger("unified_sample_qc_b")
 logger.setLevel(logging.INFO)
 
 
-def assign_platform_pcs(platform_pc_table: hl.Table, out_filepath: str) -> hl.Table:
+def assign_platform_pcs(platform_pc_table: hl.Table) -> hl.Table:
     """
     Function assumes that platform_pc_table contains columns named 'combined_sample', 'gross_platform' (known labels), 'callratePC<n>'
 
     :param Table platform_pc_table: Table containing samples and callrate PCs
-    :param str out_filepath: filepath for tsv containing samples, callrate PCs, and imputed platform labels
-    :param int num_pcs: number of callrate PCs to use in platform imputation
     :return: Table containing samples, callrate PCs, and imputed platform labels
     :rtype: Table
     """
@@ -30,10 +28,9 @@ def assign_platform_pcs(platform_pc_table: hl.Table, out_filepath: str) -> hl.Ta
     logger.info('Found {} unique platforms during platform imputation...'.format(n_clusters))
 
     data['qc_platform'] = cluster_labels
-    with hl.hadoop_open(out_filepath, 'w') as out:
-        data.to_csv(out, sep="\t", index=False)
-    new_data = hl.import_table(out_filepath, impute=True, types={'qc_platform': hl.str, 'scores': hl.tarray(hl.tfloat)}).key_by('data_type', 's')
-    return new_data
+    ht = hl.Table.from_pandas(data, key=['data_type', 's'])
+    ht = ht.annotate(qc_platform=hl.str(ht.qc_platform))
+    return ht
 
 
 def main(args):
@@ -69,7 +66,7 @@ def main(args):
     scores = hl.read_table(exome_callrate_scores_ht_path).annotate(data_type='exomes')
     if args.pc_scores_in_multiple_ann:
         scores = scores.tranmute(scores=[ann for ann in scores.row if ann.startswith("PC")])
-    platform_pcs = assign_platform_pcs(scores, qc_temp_data_prefix('exomes') + '.assigned_platform_pcs.txt.bgz')
+    platform_pcs = assign_platform_pcs(scores)
     platform_pcs.write(qc_ht_path('exomes', 'platforms'), overwrite=args.overwrite)
 
 
