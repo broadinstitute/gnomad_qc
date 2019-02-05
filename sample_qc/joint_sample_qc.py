@@ -319,7 +319,7 @@ def main(args):
         logger.info('Computing population PCs and annotating with known population labels...')
         pca_evals, pca_scores, pca_loadings = hl.hwe_normalized_pca(pca_mt.GT, k=20, compute_loadings=True)
         pca_mt = pca_mt.annotate_rows(pca_af=hl.agg.mean(pca_mt.GT.n_alt_alleles()) / 2)
-        pca_loadings = pca_loadings.annotate(pca_af=pca_mt[pca_loadings.key, :].pca_af)
+        pca_loadings = pca_loadings.annotate(pca_af=pca_mt.rows()[pca_loadings.key].pca_af)
         pca_scores.write(ancestry_pca_scores_ht_path(), args.overwrite)
         pca_loadings.write(ancestry_pca_loadings_ht_path(), args.overwrite)
 

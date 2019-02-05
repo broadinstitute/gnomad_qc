@@ -115,13 +115,13 @@ def main(args):
                             .default(pca_platforms_mt.missing > 1))
         )
         pca_platforms_mt = pca_platforms_mt.filter_rows(hl.agg.any(pca_platforms_mt.remove_variant), keep=False)
-        pca_mt = pca_mt.filter_rows((hl.agg.mean(pca_mt.GT.n_alt_alleles()) / 2 > 0.001) & hl.is_defined(pca_platforms_mt[pca_mt.row_key, :]))
+        pca_mt = pca_mt.filter_rows((hl.agg.mean(pca_mt.GT.n_alt_alleles()) / 2 > 0.001) & hl.is_defined(pca_platforms_mt.rows()[pca_mt.row_key]))
         variants, samples = pca_mt.count()
         logger.info(f'{samples} samples, {variants} variants found in {args.population} in PCA MT after filtering variants by AF and platform callrate')
 
         pca_pruned = hl.ld_prune(pca_mt.GT, r2=0.1)
         pca_mt = pca_mt.filter_rows(hl.is_defined(pca_pruned[pca_mt.row_key]))
-        related_mt = related_mt.filter_rows(hl.is_defined(pca_mt[related_mt.row_key, :]))
+        related_mt = related_mt.filter_rows(hl.is_defined(pca_mt.rows()[related_mt.row_key]))
         pca_mt.write(f"{qc_temp_data_prefix('joint')}.{args.population}.unrelated.filtered.mt", args.overwrite)
         related_mt.write(f"{qc_temp_data_prefix('joint')}.{args.population}.related.filtered.mt", args.overwrite)
 
@@ -134,7 +134,7 @@ def main(args):
     if not args.skip_pop_pca:
         pca_evals, pca_scores, pca_loadings = hl.hwe_normalized_pca(pca_mt.GT, k=10, compute_loadings=True)
         pca_mt = pca_mt.annotate_rows(pca_af=hl.agg.mean(pca_mt.GT.n_alt_alleles()) / 2)
-        pca_loadings = pca_loadings.annotate(pca_af=pca_mt[pca_loadings.key, :].pca_af)
+        pca_loadings = pca_loadings.annotate(pca_af=pca_mt.rows()[pca_loadings.key].pca_af)
         pca_scores.write(ancestry_pca_scores_ht_path(args.population), args.overwrite)
         pca_loadings.write(ancestry_pca_loadings_ht_path(args.population), args.overwrite)
 
