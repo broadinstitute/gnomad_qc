@@ -386,7 +386,7 @@ def sanity_check_ht(ht: hl.Table, data_type, subsets, missingness_threshold=0.5,
 
     n_fail = 0
     for metric, value in dict(output).items():
-        if value > missingness_threshold:  # TODO: parametrize missing threshold?
+        if value > missingness_threshold:
             logger.info("FAILED missing check for {}: {}% missing".format(metric, 100 * value))
             n_fail += 1
         else:
