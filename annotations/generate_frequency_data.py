@@ -112,17 +112,17 @@ def generate_frequency_data(mt: hl.MatrixTable, calculate_downsampling: bool = F
         subgroup_dict = sample_group_filters[i][0]
         subgroup_dict['group'] = 'adj'
         call_stats = hl.agg.filter(mt.group_membership[i] & mt.adj, hl.agg.call_stats(mt.GT, mt.alleles))
-        call_stats = hl.bind(lambda cs: cs.annotate(
+        call_stats_bind = hl.bind(lambda cs: cs.annotate(
             AC=cs.AC[1], AF=cs.AF[1], homozygote_count=cs.homozygote_count[1]
         ), call_stats)
-        frequency_expression.append(call_stats)
+        frequency_expression.append(call_stats_bind)
         meta_expressions.append(subgroup_dict)
 
     raw_stats = hl.agg.call_stats(mt.GT, mt.alleles)
-    raw_stats = hl.bind(lambda cs: cs.annotate(
+    raw_stats_bind = hl.bind(lambda cs: cs.annotate(
         AC=cs.AC[1], AF=cs.AF[1], homozygote_count=cs.homozygote_count[1]
     ), raw_stats)
-    frequency_expression.insert(1, raw_stats)
+    frequency_expression.insert(1, raw_stats_bind)
     meta_expressions.insert(1, {'group': 'raw'})
 
     print(f'Calculating {len(frequency_expression)} aggregators...')
@@ -152,10 +152,10 @@ def generate_consanguineous_frequency_data(ht: hl.Table, f_ht: hl.Table, mt: hl.
     consang_call_stats = hl.agg.filter((mt.meta.f.f_stat >= F_CUTOFF) & mt.adj &
                                        (mt.meta.pop == 'sas') & projects_to_use.contains(mt.meta.project_description),
                                        hl.agg.call_stats(mt.GT, mt.alleles))
-    consang_call_stats = hl.bind(lambda cs: cs.annotate(
+    consang_call_stats_bind = hl.bind(lambda cs: cs.annotate(
         AC=cs.AC[1], AF=cs.AF[1], homozygote_count=cs.homozygote_count[1]
     ), consang_call_stats)
-    mt = mt.annotate_rows(consang=consang_call_stats)
+    mt = mt.annotate_rows(consang=consang_call_stats_bind)
     ht = ht.annotate_globals(
         freq_meta=ht.freq_meta.append({'group': 'adj', 'pop': 'sas', 'sample_set': 'consanguineous'})
     )
