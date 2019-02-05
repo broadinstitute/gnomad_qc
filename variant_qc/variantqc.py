@@ -542,7 +542,7 @@ def prepare_final_ht(data_type: str, run_hash: str, snp_bin_cutoff: int, indel_b
     # Fix annotations for release
     annotations_expr = {
         'tp': hl.or_else(ht.tp, False),
-        'transmitted_singleton': hl.or_missing(freq_ht[ht.key].freq[1].AC[1] == 1, ht.transmitted_singleton)
+        'transmitted_singleton': hl.or_missing(freq_ht[ht.key].freq[1].AC[1] == 1, ht.transmitted_singleton),
         'rf_probability': ht.rf_probability["TP"]
     }
     if 'feature_imputed' in ht.row:
