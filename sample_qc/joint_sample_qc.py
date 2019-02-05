@@ -164,8 +164,8 @@ def get_related_samples_to_drop(rank_table: hl.Table, relatedness_ht: hl.Table) 
     """
     # Define maximal independent set, using rank list
     related_pairs = relatedness_ht.filter(relatedness_ht.kin > 0.08838835).select('i', 'j')
-    related_samples = related_pairs.aggregate(hl.agg.collect_as_set(hl.agg.explode([related_pairs.i, related_pairs.j])))
-    logger.info('{} samples with at least 2nd-degree relatedness found in callset'.format(len(related_samples)))
+    n_related_samples = related_pairs.annotate(ij=[related_pairs.i, related_pairs.j]).explode('ij').key_by('ij').distinct().count()
+    logger.info('{} samples with at least 2nd-degree relatedness found in callset'.format(n_related_samples))
     max_rank = rank_table.count()
     related_pairs = related_pairs.annotate(id1_rank=hl.struct(id=related_pairs.i, rank=rank_table[related_pairs.i].rank),
                                            id2_rank=hl.struct(id=related_pairs.j, rank=rank_table[related_pairs.j].rank)
