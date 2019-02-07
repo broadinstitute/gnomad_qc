@@ -351,7 +351,7 @@ def main(args):
     joint_ht = joint_ht.annotate(qc_pop=hl.case(missing_false=True)
                                  .when(hl.is_defined(joint_ht.pop) & (joint_ht.batch == 1), 'est_b1')
                                  .when(hl.is_defined(joint_ht.pop) & (joint_ht.batch == 2), 'est_b2')
-                                 .default(joint_ht.pop))
+                                 .default(joint_ht.pop)).persist()
 
     # These are keyed by only `s`
     genome_mt = get_gnomad_data('genomes', adj=False, split=False, meta_root=None).select_cols()
