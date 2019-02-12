@@ -848,7 +848,7 @@ def get_age_distributions(data_type):
     age_hist_data = meta.aggregate(hl.agg.filter(meta.release, hl.agg.hist(meta.age, 30, 80, 10)))
     age_hist_data.bin_freq.insert(0, age_hist_data.n_smaller)
     age_hist_data.bin_freq.append(age_hist_data.n_larger)
-    return '|'.join(str(x) for x in age_hist_data.bin_freq)
+    return age_hist_data.bin_freq
 
 
 def main(args):
@@ -871,7 +871,8 @@ def main(args):
 
         logger.info('Adding annotations...')
         ht = prepare_table_annotations(freq_ht, rf_ht, vep_ht, dbsnp_ht, hist_ht, index_dict, allele_ht)
-        ht = ht.annotate_globals(freq_index_dict=make_index_dict(ht), faf_index_dict=make_faf_index_dict(ht))
+        ht = ht.annotate_globals(freq_index_dict=make_index_dict(ht), faf_index_dict=make_faf_index_dict(ht),
+                                 age_distribution=age_hist_data)
         ht.write(release_ht_path(data_type, with_subsets=False), args.overwrite)
 
     if args.add_subset_frequencies:
@@ -935,7 +936,8 @@ def main(args):
         else:
             subset_list = ['gnomad', 'controls', 'non_neuro', 'non_topmed'] if args.include_subset_frequencies else ['gnomad']
         for subset in subset_list:
-            INFO_DICT.update(make_info_dict(subset, bin_edges=bin_edges, popmax=True, age_hist_data=age_hist_data))
+            INFO_DICT.update(make_info_dict(subset, bin_edges=bin_edges, popmax=True,
+                                            age_hist_data='|'.join(str(x) for x in age_hist_data)))
             INFO_DICT.update(make_info_dict(subset, dict(group=GROUPS)))
             INFO_DICT.update(make_info_dict(subset, dict(group=GROUPS, sex=SEXES)))
             INFO_DICT.update(make_info_dict(subset, dict(group=GROUPS, pop=POPS)))
