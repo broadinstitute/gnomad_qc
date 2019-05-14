@@ -128,7 +128,7 @@ def main(args):
 
     data_type = 'genomes' if args.genomes else 'exomes'
 
-    mt = get_gnomad_data(data_type, raw=True, split=False, release_samples=True, release_annotations=True)
+    mt = get_gnomad_data(data_type, release_samples=True, release_annotations=True)
     pop_data = get_pop_and_subpop_counters(mt)
 
     if args.generate_ld_pruned_set:
