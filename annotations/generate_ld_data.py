@@ -23,7 +23,7 @@ def ld_scores_path(data_type: str, pop: str, version: str = CURRENT_RELEASE):
 def get_pop_and_subpop_counters(mt):
     cut_dict = {'pop': hl.agg.filter(hl.is_defined(mt.meta.pop) & (mt.meta.pop != 'oth'), hl.agg.counter(mt.meta.pop)),
                 'subpop': hl.agg.filter(hl.is_defined(mt.meta.subpop) & (mt.meta.subpop != 'oea') &
-                                        (mt.meta.subpopt != 'onf'), hl.agg.counter(mt.meta.subpop))
+                                        (mt.meta.subpop != 'onf'), hl.agg.counter(mt.meta.subpop))
                 }
     cut_data = mt.aggregate_cols(hl.struct(**cut_dict))
     return cut_data
