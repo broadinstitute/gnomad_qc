@@ -3,13 +3,16 @@ from hail.utils import new_temp_file
 from hail.utils.java import Env
 from hail.linalg import BlockMatrix
 
+COMMON_FREQ = 0.005
+RARE_FREQ = 0.0005
 
-def ld_matrix_path(data_type: str, pop: str, version: str = CURRENT_RELEASE):
-    return f'gs://gnomad-resources/ld/gnomad.{data_type}.r{version}.{pop}.ld.bm'
+
+def ld_matrix_path(data_type: str, pop: str, common_only: bool = True, version: str = CURRENT_RELEASE):
+    return f'gs://gnomad-resources/ld/gnomad.{data_type}.r{version}.{pop}.{"common." if common_only else ""}ld.bm'
 
 
-def ld_index_path(data_type: str, pop: str, version: str = CURRENT_RELEASE):
-    return f'gs://gnomad-resources/ld/gnomad.{data_type}.r{version}.{pop}.ld.variant_indices.ht'
+def ld_index_path(data_type: str, pop: str, common_only: bool = True, version: str = CURRENT_RELEASE):
+    return f'gs://gnomad-resources/ld/gnomad.{data_type}.r{version}.{pop}.{"common." if common_only else ""}ld.variant_indices.ht'
 
 
 def ld_pruned_path(data_type: str, pop: str, r2: str, version: str = CURRENT_RELEASE):
@@ -29,13 +32,18 @@ def get_pop_and_subpop_counters(mt):
     return cut_data
 
 
-def filter_mt_for_ld(mt, label, pop):
+def filter_mt_for_ld(mt, label, pop, common_only: bool = True):
+    frequency = COMMON_FREQ if common_only else RARE_FREQ
+    # At the moment, ld_matrix OOMs above ~30M variants, so filtering all populations to 0.05% to cut down on variants
+    # All work on standard machines except AFR
+    # Also creating `common_only` ones for most practical uses (above 0.5%)
     pop_mt = mt.filter_cols(mt.meta[label] == pop)
     meta_index = hl.zip_with_index(pop_mt.freq_meta).find(lambda f: (f[1].get(label) == pop)).collect()[0][0]
     pop_mt = pop_mt.annotate_rows(pop_freq=pop_mt.freq[meta_index])
     pop_mt = pop_mt.filter_rows((hl.len(pop_mt.filters) == 0) &
                                 (pop_mt.pop_freq.AC > 1) &
                                 (pop_mt.pop_freq.AN - pop_mt.pop_freq.AC > 1) &
+                                (pop_mt.pop_freq.AF > frequency) &
                                 #  the following filter is needed for "het-only" monomorphic sites
                                 #  as otherwise variance is 0, and so, row_correlation errors out
                                 ~((pop_mt.pop_freq.AF == 0.5) &
@@ -56,19 +64,20 @@ def generate_ld_pruned_set(mt: hl.MatrixTable, pop_data: dict, data_type: str, r
             ht.write(ld_pruned_path(data_type, pop, r2), overwrite)
 
 
-def generate_ld_matrix(mt, pop_data, data_type, radius: int = 1000000, overwrite: bool = False):
+def generate_ld_matrix(mt, pop_data, data_type, radius: int = 1000000, common_only: bool = True, overwrite: bool = False):
     for label, pops in dict(pop_data).items():
         for pop in pops:
-            pop_mt = filter_mt_for_ld(mt, label, pop)
+            pop_mt = filter_mt_for_ld(mt, label, pop, common_only)
 
-            pop_mt.rows().select('pop_freq').add_index().write(ld_index_path(data_type, pop), overwrite)
+            pop_mt.rows().select('pop_freq').add_index().write(ld_index_path(data_type, pop, common_only), overwrite)
             ld = hl.ld_matrix(pop_mt.GT.n_alt_alleles(), pop_mt.locus, radius).sparsify_triangle()
-            ld.write(ld_matrix_path(data_type, pop), overwrite)
+            ld.write(ld_matrix_path(data_type, pop, common_only), overwrite)
 
 
 def generate_ld_scores_from_ld_matrix(pop_data, data_type, min_frequency=0.01, call_rate_cutoff=0.8,
                                       radius: int = 1000000,
                                       overwrite=False):
+    # This function required a decent number of high-mem machines (with an SSD for good measure) to complete the AFR
     for label, pops in dict(pop_data).items():
         for pop, n in pops.items():
             ht = hl.read_table(ld_index_path(data_type, pop))
@@ -78,7 +87,7 @@ def generate_ld_scores_from_ld_matrix(pop_data, data_type, min_frequency=0.01, c
 
             indices = ht.idx.collect()
 
-            r2 = BlockMatrix.read(ld_matrix_path(data_type, pop))
+            r2 = BlockMatrix.read(ld_matrix_path(data_type, pop, min_frequency >= COMMON_FREQ))
             r2 = r2.filter(indices, indices) ** 2
             r2_adj = ((n - 1.0) / (n - 2.0)) * r2 - (1.0 / (n - 2.0))
 
@@ -111,6 +120,7 @@ def main(args):
     hl.init(log='/ld_annotations.log')
 
     data_type = 'genomes' if args.genomes else 'exomes'
+    # Only run on genomes so far
 
     mt = get_gnomad_data(data_type, release_samples=True, release_annotations=True)
     pop_data = get_pop_and_subpop_counters(mt)
@@ -119,7 +129,7 @@ def main(args):
         generate_ld_pruned_set(mt, pop_data, data_type, args.r2, args.radius, args.overwrite)
 
     if args.generate_ld_matrix:
-        generate_ld_matrix(mt, pop_data, data_type, args.radius, args.overwrite)
+        generate_ld_matrix(mt, pop_data, data_type, args.radius, args.common_only, args.overwrite)
 
     if args.generate_ld_scores:
         generate_ld_scores_from_ld_matrix(pop_data, data_type, args.min_frequency, args.min_call_rate, overwrite=args.overwrite)
@@ -131,6 +141,7 @@ if __name__ == '__main__':
     parser.add_argument('--genomes', help='Input MT is genomes. One of --exomes or --genomes is required.', action='store_true')
     parser.add_argument('--generate_ld_pruned_set', help='Calculates LD pruned set of variants', action='store_true')
     parser.add_argument('--generate_ld_matrix', help='Calculates LD matrix', action='store_true')
+    parser.add_argument('--common_only', help='Calculates LD matrix only on common variants (above 0.5%)', action='store_true')
     parser.add_argument('--generate_ld_scores', help='Calculates LD scores from LD matrix', action='store_true')
     parser.add_argument('--min_frequency', help='Minimum allele frequency to compute LD scores (default 0.01)', default=0.01, type=float)
     parser.add_argument('--min_call_rate', help='Minimum call rate to compute LD scores (default 0.8)', default=0.8, type=float)
