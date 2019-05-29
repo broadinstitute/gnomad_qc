@@ -43,13 +43,6 @@ MEDIAN_FEATURES = [
 INBREEDING_COEFF_HARD_CUTOFF = -0.3
 
 
-def filter_intervals(t: hl.Table, intervals: List[hl.expr.LocusExpression], keep: bool = True) -> hl.Table:
-    if isinstance(t, hl.MatrixTable):
-        return hl.filter_intervals(t, intervals, keep=keep)
-    else:
-        return t.filter(hl.array(intervals).any(lambda x: x.contains(t.locus)), keep=keep)
-
-
 def get_features_list(sites_features: bool, allele_features: bool, vqsr_features: bool, median_features: bool = False) -> List[str]:
     """
     Returns the list of features to use based on desired arguments (currently only VQSR / alleles)
@@ -103,7 +96,7 @@ def sample_rf_training_examples(
     def get_train_counts(ht: hl.Table) -> Tuple[int, int]:
 
         if 'test_intervals' in ht.globals:
-            interval_list = hl.eval_expr(ht.globals.test_intervals)
+            interval_list = hl.eval(ht.globals.test_intervals)
             ht = filter_intervals(ht, interval_list, keep=False)
 
         # Get stats about TP / FP sets
@@ -467,8 +460,8 @@ def train_rf(data_type, args):
     test_results = None
     if args.test_intervals:
         logger.info("Testing model {} on intervals {}".format(run_hash, ",".join(test_intervals_str)))
-        test_ht = filter_intervals(ht, test_intervals_locus, keep=True)
-        test_ht.write('gs://gnomad-tmp/test_rf.ht', overwrite=True)
+        test_ht = hl.filter_intervals(ht, test_intervals_locus, keep=True)
+        test_ht = test_ht.checkpoint('gs://gnomad-tmp/test_rf.ht', overwrite=True)
         test_ht = test_ht.filter(hl.is_defined(test_ht[LABEL_COL]))
         test_results = rf.test_model(test_ht,
                                      rf_model,
@@ -542,7 +535,7 @@ def prepare_final_ht(data_type: str, run_hash: str, snp_bin_cutoff: int, indel_b
     # Fix annotations for release
     annotations_expr = {
         'tp': hl.or_else(ht.tp, False),
-        'transmitted_singleton': hl.or_missing(freq_ht[ht.key].freq[1].AC[1] == 1, ht.transmitted_singleton)
+        'transmitted_singleton': hl.or_missing(freq_ht[ht.key].freq[1].AC[1] == 1, ht.transmitted_singleton),
         'rf_probability': ht.rf_probability["TP"]
     }
     if 'feature_imputed' in ht.row:
