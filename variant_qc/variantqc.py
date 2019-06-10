@@ -97,7 +97,7 @@ def sample_rf_training_examples(
 
         if 'test_intervals' in ht.globals:
             interval_list = hl.eval(ht.globals.test_intervals)
-            ht = filter_intervals(ht, interval_list, keep=False)
+            ht = hl.filter_intervals(ht, interval_list, keep=False)
 
         # Get stats about TP / FP sets
         train_stats = hl.struct(
@@ -140,7 +140,7 @@ def sample_rf_training_examples(
 
         if prob_fp < 1.0:
             ht = ht.annotate(**{train_col: hl.cond(hl.or_else(ht[tp_col], False), hl.or_else(~ht[fp_col], True), ht[fp_col])})
-            train_expr = hl.cond(ht[fp_col] & hl.or_else(~ht[tp_col], True), hl.rand_bool(prob_tp),  ht[train_col])
+            train_expr = hl.cond(ht[fp_col] & hl.or_else(~ht[tp_col], True), hl.rand_bool(prob_tp),  ht[train_col])  # BUG: should be prob_fp
             #train_expr = hl.cond(hl.or_else(ht[tp_col], False), hl.or_else(~ht[fp_col], True), ht[fp_col] & hl.rand_bool(prob_fp))  # Note: Hail propagates missing values with invert operator
         elif prob_tp < 1.0:
             ht = ht.annotate(**{train_col: hl.cond(hl.or_else(ht[fp_col], False), hl.or_else(~ht[tp_col], True), ht[tp_col])})
@@ -581,8 +581,10 @@ def main(args):
         ht = hl.read_table(rf_path(data_type, data='training', run_hash=run_hash))
 
         ht = rf.apply_rf_model(ht, rf_model, get_features_list(True, not args.vqsr_features, args.vqsr_features), label=LABEL_COL)
+        ht.describe()
+        ht.show()
 
-        if 'singleton' in ht.row and 'was_split' in ht.row: # Needed for backwards compatibility for RF runs that happened prior to updating annotations
+        if 'singleton' in ht.row and 'was_split' in ht.row:  # Needed for backwards compatibility for RF runs that happened prior to updating annotations
             ht = add_rank(ht,
                           score_expr=ht.rf_probability['FP'],
                           subrank_expr={
@@ -594,7 +596,7 @@ def main(args):
         else:
             logger.warn("Ranking was not added  because of missing annotations -- please run 'create_ranked_scores.py' to add rank.")
 
-        ht.write(rf_path(data_type, 'rf_result', run_hash=run_hash), overwrite=args.overwrite)
+        ht.write(rf_path(data_type, 'rf_result.spark2.4', run_hash=run_hash), overwrite=args.overwrite)
 
     if args.finalize:
         ht = prepare_final_ht(data_type, args.run_hash, args.snp_bin_cutoff, args.indel_bin_cutoff)
