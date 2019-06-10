@@ -140,7 +140,7 @@ def sample_rf_training_examples(
 
         if prob_fp < 1.0:
             ht = ht.annotate(**{train_col: hl.cond(hl.or_else(ht[tp_col], False), hl.or_else(~ht[fp_col], True), ht[fp_col])})
-            train_expr = hl.cond(ht[fp_col] & hl.or_else(~ht[tp_col], True), hl.rand_bool(prob_tp),  ht[train_col])  # BUG: should be prob_fp
+            train_expr = hl.cond(ht[fp_col] & hl.or_else(~ht[tp_col], True), hl.rand_bool(prob_fp),  ht[train_col])
             #train_expr = hl.cond(hl.or_else(ht[tp_col], False), hl.or_else(~ht[fp_col], True), ht[fp_col] & hl.rand_bool(prob_fp))  # Note: Hail propagates missing values with invert operator
         elif prob_tp < 1.0:
             ht = ht.annotate(**{train_col: hl.cond(hl.or_else(ht[fp_col], False), hl.or_else(~ht[tp_col], True), ht[tp_col])})
