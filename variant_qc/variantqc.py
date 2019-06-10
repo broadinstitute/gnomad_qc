@@ -581,8 +581,6 @@ def main(args):
         ht = hl.read_table(rf_path(data_type, data='training', run_hash=run_hash))
 
         ht = rf.apply_rf_model(ht, rf_model, get_features_list(True, not args.vqsr_features, args.vqsr_features), label=LABEL_COL)
-        ht.describe()
-        ht.show()
 
         if 'singleton' in ht.row and 'was_split' in ht.row:  # Needed for backwards compatibility for RF runs that happened prior to updating annotations
             ht = add_rank(ht,
@@ -596,7 +594,7 @@ def main(args):
         else:
             logger.warn("Ranking was not added  because of missing annotations -- please run 'create_ranked_scores.py' to add rank.")
 
-        ht.write(rf_path(data_type, 'rf_result.spark2.4', run_hash=run_hash), overwrite=args.overwrite)
+        ht.write(rf_path(data_type, 'rf_result', run_hash=run_hash), overwrite=args.overwrite)
 
     if args.finalize:
         ht = prepare_final_ht(data_type, args.run_hash, args.snp_bin_cutoff, args.indel_bin_cutoff)
