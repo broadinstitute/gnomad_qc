@@ -23,7 +23,7 @@ def get_coverage_expr(mt):
                 .when(mt.coverage >= 100, [1, 1, 1, 1, 1, 1, 1, 1, 1])
                 .when(mt.coverage >= 5, cov_arrays[mt.coverage - (mt.coverage % 5)])
                 .when(mt.coverage >= 1, [1, 0, 0, 0, 0, 0, 0, 0, 0])
-                .or_missing()
+                .default([0, 0, 0, 0, 0, 0, 0, 0, 0])
         )
     )
 
