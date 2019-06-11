@@ -3,19 +3,26 @@ from gnomad_hail import *
 
 
 def get_coverage_expr(mt):
+
+    cov_arrays = hl.literal({
+        x:
+            [1, 1, 1, 1, 1, 1, 1, 1, 0] if x >= 50
+        else [1, 1, 1, 1, 1, 1, 1, 0, 0] if x >= 30
+        else ([1]*(i+2)) + ([0]*(7-i))
+        for i, x in enumerate(range(5, 100, 5))
+    })
+
     return hl.bind(
-        lambda grp_expr: hl.struct(
+        lambda array_expr: hl.struct(
             **{
-                f'over_{x}': hl.int32(grp_expr.get(x, 0)) for x in [1, 5, 10, 15, 20, 25, 30, 50, 100]
+                f'over_{x}': hl.int32(array_expr[i]) for i, x in enumerate([1, 5, 10, 15, 20, 25, 30, 50, 100])
             }
         ),
-        hl.agg.counter(
+        hl.agg.array_sum(
             hl.case()
-                .when(mt.coverage >= 100, 100)
-                .when(mt.coverage >= 50, 100)
-                .when(mt.coverage >= 30, 100)
-                .when(mt.coverage >= 5, mt.coverage - (mt.coverage % 5))
-                .when(mt.coverage >= 1, 1)
+                .when(mt.coverage >= 100, [1, 1, 1, 1, 1, 1, 1, 1, 1])
+                .when(mt.coverage >= 5, cov_arrays[mt.coverage - (mt.coverage % 5)])
+                .when(mt.coverage >= 1, [1, 0, 0, 0, 0, 0, 0, 0, 0])
                 .or_missing()
         )
     )
@@ -119,7 +126,7 @@ def main(args):
         mt = mt.annotate_cols(meta=meta_ht.select('release', 'qc_platform', 'sex')[mt.s])
         mt = mt.filter_cols(mt.meta.release)
 
-        n = hl.literal(mt.aggregate_cols(hl.agg.counter((mt.meta.qc_platform, mt.meta.sex))))
+        n = mt.aggregate_cols(hl.agg.counter((mt.meta.qc_platform, mt.meta.sex)), _localize=False)
         grp_mt = (mt
                   .group_cols_by(mt.meta.qc_platform, mt.meta.sex)
                   .aggregate(mean=hl.agg.mean(mt.coverage),
