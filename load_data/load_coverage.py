@@ -2,32 +2,6 @@
 from gnomad_hail import *
 
 
-def get_coverage_expr(mt):
-
-    cov_arrays = hl.literal({
-        x:
-            [1, 1, 1, 1, 1, 1, 1, 1, 0] if x >= 50
-        else [1, 1, 1, 1, 1, 1, 1, 0, 0] if x >= 30
-        else ([1]*(i+2)) + ([0]*(7-i))
-        for i, x in enumerate(range(5, 100, 5))
-    })
-
-    return hl.bind(
-        lambda array_expr: hl.struct(
-            **{
-                f'over_{x}': hl.int32(array_expr[i]) for i, x in enumerate([1, 5, 10, 15, 20, 25, 30, 50, 100])
-            }
-        ),
-        hl.agg.array_sum(
-            hl.case()
-                .when(mt.coverage >= 100, [1, 1, 1, 1, 1, 1, 1, 1, 1])
-                .when(mt.coverage >= 5, cov_arrays[mt.coverage - (mt.coverage % 5)])
-                .when(mt.coverage >= 1, [1, 0, 0, 0, 0, 0, 0, 0, 0])
-                .default([0, 0, 0, 0, 0, 0, 0, 0, 0])
-        )
-    )
-
-
 def main(args):
     data_type = 'exomes' if args.exomes else 'genomes'
     num_partitions = 1000  # if args.exomes else 10000
@@ -48,8 +22,9 @@ def main(args):
     sample_count = 9733 if args.exomes else 1279
     assert sum([len(x[2]) for x in all_file_data]) == sample_count
 
-    meta_kt = get_gnomad_meta(data_type, full_meta=True)
-    bam_dict = dict(get_sample_data(meta_kt, [meta_kt.bam, meta_kt.s]))
+    meta_ht = get_gnomad_meta(data_type, full_meta=True)
+    bam_dict = dict(hl.tuple([meta_ht.bam, meta_ht.s]).collect())
+    # bam_dict = dict(get_sample_data(meta_ht, [meta_ht.bam, meta_ht.s]))
 
     assert all([all([y in bam_dict for y in x[2]]) for x in all_file_data])
 
@@ -107,10 +82,19 @@ def main(args):
         mt = hl.read_matrix_table(coverage_mt_path(data_type))
         meta_ht = get_gnomad_meta(data_type)
         mt = mt.filter_cols(meta_ht[mt.s].release)
-        mt = mt.annotate_rows(mean=hl.agg.mean(mt.coverage),
-                              median=hl.median(hl.agg.collect(mt.coverage)),
-                              **get_coverage_expr(mt))
-        ht = mt.rows()
+        ht = mt.annotate_rows(
+            mean=hl.agg.mean(mt.coverage),
+            median=hl.agg.approx_quantiles(mt.coverage, 0.5),
+            count_array=hl.rbind(
+                hl.agg.counter(hl.min(100, mt.coverage)),
+                lambda c: hl.range(0, 100).map(lambda i: c.get(i, 0))
+            )
+        ).rows()
+
+        ht = ht.transmute(
+            **{f'over_{x}': hl.sum(mt.count_array[x:]) for x in [1, 5, 10, 15, 20, 25, 30, 50, 100]}
+        )
+
         if args.exomes:
             ht.write(coverage_ht_path(data_type), args.overwrite)
         else:
@@ -127,12 +111,24 @@ def main(args):
         mt = mt.filter_cols(mt.meta.release)
 
         n = mt.aggregate_cols(hl.agg.counter((mt.meta.qc_platform, mt.meta.sex)), _localize=False)
-        grp_mt = (mt
-                  .group_cols_by(mt.meta.qc_platform, mt.meta.sex)
-                  .aggregate(mean=hl.agg.mean(mt.coverage),
-                             median=hl.median(hl.agg.collect(mt.coverage)),
-                             **get_coverage_expr(mt))
-                  )
+
+        grp_mt = (
+            mt
+                .group_cols_by(mt.meta.qc_platform, mt.meta.sex)
+                .aggregate(
+                mean=hl.agg.mean(mt.coverage),
+                median=hl.agg.approx_quantiles(mt.coverage, 0.5),
+                count_array=hl.rbind(
+                    hl.agg.counter(hl.min(100, mt.coverage)),
+                    lambda c: hl.range(0, 100).map(lambda i: c.get(i, 0))
+                )
+            )
+        )
+
+        grp_mt = grp_mt.transmute_entries(
+            **{f'over_{x}': hl.sum(grp_mt.count_array[x:]) for x in [1, 5, 10, 15, 20, 25, 30, 50, 100]}
+        )
+
         grp_mt = grp_mt.annotate_cols(
             n=n[(grp_mt.qc_platform, grp_mt.sex)]
         )
