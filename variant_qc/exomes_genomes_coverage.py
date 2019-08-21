@@ -1,9 +1,13 @@
 from gnomad_hail import *
 from gnomad_hail.resources.variant_qc import get_ucsc_mappability
 
-def import_cds_from_gtf() -> hl.Table:
+COVERAGE_BINS = [1] + list(range(5, 31, 5)) + [50, 100]
+
+
+def import_cds_from_gtf(overwrite: bool) -> hl.Table:
     """
     Creates a HT with a row for each base / gene that is in a CDS in gencode v19
+    :param bool overwrite: Overwrite existing table
     :return: HT
     :rtype: Table
     """
@@ -16,41 +20,44 @@ def import_cds_from_gtf() -> hl.Table:
     gtf = gtf.annotate(locus=hl.range(gtf.interval.start.position, gtf.interval.end.position).map(lambda x: hl.locus(gtf.interval.start.contig, x, 'GRCh37')))
     gtf = gtf.key_by().select('gene_id', 'locus', 'gene_name').explode('locus')
     gtf = gtf.key_by('locus', 'gene_id').distinct()
-    return gtf.checkpoint('gs://gnomad-tmp/gencode_grch37.gene_by_base.ht', overwrite=True)
+    return gtf.checkpoint('gs://gnomad-tmp/gencode_grch37.gene_by_base.ht', _read_if_exists=not overwrite)
 
-def compute_per_base_cds_coverage():
+
+def compute_per_base_cds_coverage(overwrite: bool):
     """
     Creates a HT with a row for each base and gene that is in a CDS in gencode v19 with the following information:
     1) gene id
     2) gnomAD exomes coverage by platform
     3) gnomAD genomes coverage by PCR status
+
+    :param bool overwrite: Whether to overwrite existing results
     """
 
     def get_haploid_coverage_struct(mt):
         return hl.cond(
             mt.locus.in_autosome_or_par(),
             hl.struct(
-                mean=0.5*hl.agg.sum(mt.mean  * mt.n)/hl.agg.sum(mt.n),
-                median=0.5*hl.median(hl.agg.collect(mt.median)),
+                mean=0.5 * hl.agg.sum(mt.mean * mt.n) / hl.agg.sum(mt.n),
+                median=0.5 * hl.median(hl.agg.collect(mt.median)),
                 **{
-                    f'over_{i/2}': hl.agg.sum(mt[f'over_{float(i)}']) / hl.agg.sum(mt.n)
-                    for i in [1] + list(range(5,31,5)) +  [50, 100]
+                    f'over_{i / 2}': hl.agg.sum(mt[f'over_{float(i)}']) / hl.agg.sum(mt.n)
+                    for i in COVERAGE_BINS
                 }
             ),
             hl.struct(
-                mean=hl.agg.sum(hl.cond(mt.sex == 'male', mt.mean * mt.n, 0.5*mt.mean * mt.n))/hl.agg.sum(mt.n),
-                median=hl.median(hl.agg.collect(hl.cond(mt.sex == 'male', mt.median, 0.5*mt.median))),
+                mean=hl.agg.sum(hl.cond(mt.sex == 'male', mt.mean * mt.n, 0.5 * mt.mean * mt.n)) / hl.agg.sum(mt.n),
+                median=hl.median(hl.agg.collect(hl.cond(mt.sex == 'male', mt.median, 0.5 * mt.median))),
                 **{
-                    f'over_{i/2}':
-                    hl.null(hl.tfloat32) if not f'over_{i/2}' in mt.entry else
-                    hl.agg.sum(
-                        hl.cond(
-                            mt.sex == 'male',
-                            mt[f'over_{i/2}'],
-                            mt[f'over_{float(i)}']
-                        )
-                    ) / hl.agg.sum(mt.n)
-                    for i in [1] + list(range(5,31,5)) +  [50, 100]
+                    f'over_{i / 2}':
+                        hl.null(hl.tfloat32) if not f'over_{i / 2}' in mt.entry else
+                        hl.agg.sum(
+                            hl.cond(
+                                mt.sex == 'male',
+                                mt[f'over_{i / 2}'],
+                                mt[f'over_{float(i)}']
+                            )
+                        ) / hl.agg.sum(mt.n)
+                    for i in COVERAGE_BINS
                 }
             )
         )
@@ -73,17 +80,17 @@ def compute_per_base_cds_coverage():
     ucsc_mappability = get_ucsc_mappability()
     gtf = import_cds_from_gtf()
 
-    gtf = gtf.annotate(
+    gene_by_base_cov_ht = gtf.annotate(
         **exomes_cov[gtf.locus],
         **genomes_cov[gtf.locus],
         mappability=ucsc_mappability[gtf.locus].duke_35_map
     )
-    gtf.write('gs://gnomad-lfran/exomes_genomes_coverage/gencode_grch37.gene_by_base.cov.ht', overwrite=True)
+    gene_by_base_cov_ht.write('gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37.gene_by_base.cov.ht', overwrite=overwrite)
 
 
-def export_gene_coverage():
+def export_gene_coverage(overwrite: bool):
     """
-    Exports gene coverage summary stats as tsv.
+    Exports gene coverage summary stats as HT and tsv.
     """
     min_good_coverage_dp = 'over_10.0'
     min_good_coverage_prop = 0.8
@@ -123,23 +130,27 @@ def export_gene_coverage():
         min_good_coverage_dp=min_good_coverage_dp
     )
 
-    cov.export('gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz')
+    cov = cov.checkpoint('gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.ht', _read_if_exists=not overwrite)
+    if not overwrite and hl.hadoop_is_file('gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz'):
+        logger.warn("gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz not exported as it already exists and --overwrite is not set.")
+    else:
+        cov.export('gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz')
 
 
 def main(args):
-
     if args.compute_per_base_cds_coverage:
         print("Computing per-base CDS coverage")
-        compute_per_base_cds_coverage()
+        compute_per_base_cds_coverage(args.overwrite)
 
     if args.export_gene_coverage:
         print("Exporting gene coverage")
-        export_gene_coverage()
+        export_gene_coverage(args.overwrite)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--compute_per_base_cds_coverage', help='Computes per-base coverage.', action='store_true')
+    parser.add_argument('--compute_per_base_cds_coverage', help='Computes per-base coverage for CDS regions.', action='store_true')
     parser.add_argument('--export_gene_coverage', help='Exports gene coverage in long format to tsv.', action='store_true')
+    parser.add_argument('--overwrite', help='Overwrites existing results if set.', action='store_true')
     args = parser.parse_args()
     main(args)
