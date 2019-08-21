@@ -20,7 +20,7 @@ def import_cds_from_gtf(overwrite: bool) -> hl.Table:
     gtf = gtf.annotate(locus=hl.range(gtf.interval.start.position, gtf.interval.end.position).map(lambda x: hl.locus(gtf.interval.start.contig, x, 'GRCh37')))
     gtf = gtf.key_by().select('gene_id', 'locus', 'gene_name').explode('locus')
     gtf = gtf.key_by('locus', 'gene_id').distinct()
-    return gtf.checkpoint('gs://gnomad-tmp/gencode_grch37.gene_by_base.ht', _read_if_exists=not overwrite)
+    return gtf.checkpoint('gs://gnomad-tmp/gencode_grch37.gene_by_base.ht', overwrite=overwrite, _read_if_exists=not overwrite)
 
 
 def compute_per_base_cds_coverage(overwrite: bool):
@@ -130,7 +130,7 @@ def export_gene_coverage(overwrite: bool):
         min_good_coverage_dp=min_good_coverage_dp
     )
 
-    cov = cov.checkpoint('gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.ht', _read_if_exists=not overwrite)
+    cov = cov.checkpoint('gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.ht', overwrite=overwrite, _read_if_exists=not overwrite)
     if not overwrite and hl.hadoop_is_file('gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz'):
         logger.warn("gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz not exported as it already exists and --overwrite is not set.")
     else:
