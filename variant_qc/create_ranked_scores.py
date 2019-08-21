@@ -246,7 +246,7 @@ def create_binned_data(ht: hl.Table, data: str, data_type: str, n_bins: int) -> 
     ht = ht.annotate_globals(rank_variant_counts=rank_variant_counts)
 
     # Load external evaluation data
-    clinvar_ht = hl.read_matrix_table(clinvar_mt_path).rows().select('measureset_id')
+    clinvar_ht = hl.read_table(clinvar_ht_path)
     denovo_ht = get_validated_denovos_ht()
     if data_type == 'exomes':
         denovo_ht = denovo_ht.filter(denovo_ht.gnomad_exomes.high_quality)
@@ -264,13 +264,14 @@ def create_binned_data(ht: hl.Table, data: str, data_type: str, n_bins: int) -> 
         vqsr_positive_train_site=gnomad_ht.info.POSITIVE_TRAIN_SITE,
         fail_hard_filters=(gnomad_ht.info.QD < 2) | (gnomad_ht.info.FS > 60) | (gnomad_ht.info.MQ < 30)
     )
+    lcr_intervals = hl.import_locus_intervals(lcr_intervals_path)
 
     ht = ht.annotate(
         **ht_truth_data[ht.key],
         **fam_ht[ht.key],
         **gnomad_ht[ht.key],
         **denovo_ht[ht.key],
-        clinvar=hl.is_defined(clinvar_ht[ht.key].measureset_id),
+        clinvar=hl.is_defined(clinvar_ht[ht.key]),
         indel_length=hl.abs(ht.alleles[0].length()-ht.alleles[1].length()),
         rank_bins=hl.array(
             [hl.Struct(
@@ -278,7 +279,8 @@ def create_binned_data(ht: hl.Table, data: str, data_type: str, n_bins: int) -> 
                 bin=hl.int(hl.ceil(hl.float(ht[rank_name] + 1) / hl.floor(ht.globals.rank_variant_counts[rank_name][hl.cond(hl.is_snp(ht.alleles[0], ht.alleles[1]), 'snv', 'indel')] / n_bins)))
             )
                 for rank_name in rank_variant_counts]
-        )
+        ),
+        lcr=hl.is_defined(lcr_intervals[ht.locus])
     )
 
     ht = ht.explode(ht.rank_bins)
@@ -288,11 +290,9 @@ def create_binned_data(ht: hl.Table, data: str, data_type: str, n_bins: int) -> 
     )
     ht = ht.filter(hl.is_defined(ht.bin))
 
-    ht.write(f'gs://gnomad-tmp/gnomad_score_binning_{data_type}_tmp_{data}.ht', overwrite=True)
+    ht = ht.checkpoint(f'gs://gnomad-tmp/gnomad_score_binning_{data_type}_tmp_{data}.ht', overwrite=True)
 
     # Create binned data
-    ht = hl.read_table(f'gs://gnomad-tmp/gnomad_score_binning_{data_type}_tmp_{data}.ht')
-
     return (
         ht
         .group_by(
@@ -319,6 +319,9 @@ def create_binned_data(ht: hl.Table, data: str, data_type: str, n_bins: int) -> 
             n_validated_de_novos=hl.agg.count_where(ht.validated_denovo),
             n_high_confidence_de_novos=hl.agg.count_where(ht.high_confidence_denovo),
             n_de_novo=hl.agg.filter(ht.family_stats.unrelated_qc_callstats.AC[1] == 0, hl.agg.sum(ht.family_stats.mendel.errors)),
+            n_de_novo_no_lcr=hl.agg.filter(~ht.lcr & (ht.family_stats.unrelated_qc_callstats.AC[1] == 0), hl.agg.sum(ht.family_stats.mendel.errors)),
+            n_de_novo_sites=hl.agg.filter(ht.family_stats.unrelated_qc_callstats.AC[1] == 0, hl.agg.count_where(ht.family_stats.mendel.errors > 0)),
+            n_de_novo_sites_no_lcr=hl.agg.filter(~ht.lcr & (ht.family_stats.unrelated_qc_callstats.AC[1] == 0), hl.agg.count_where(ht.family_stats.mendel.errors > 0)),
             n_trans_singletons=hl.agg.filter((ht.info_ac < 3) & (ht.family_stats.unrelated_qc_callstats.AC[1] == 1), hl.agg.sum(ht.family_stats.tdt.t)),
             n_untrans_singletons=hl.agg.filter((ht.info_ac < 3) & (ht.family_stats.unrelated_qc_callstats.AC[1] == 1), hl.agg.sum(ht.family_stats.tdt.u)),
             n_train_trans_singletons=hl.agg.count_where((ht.family_stats.unrelated_qc_callstats.AC[1] == 1) & (ht.family_stats.tdt.t == 1)),
