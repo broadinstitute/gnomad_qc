@@ -7,20 +7,8 @@ COMMON_FREQ = 0.005
 RARE_FREQ = 0.0005
 
 
-def ld_matrix_path(data_type: str, pop: str, common_only: bool = True, version: str = CURRENT_RELEASE):
-    return f'gs://gnomad-resources/ld/gnomad.{data_type}.r{version}.{pop}.{"common." if common_only else ""}ld.bm'
-
-
-def ld_index_path(data_type: str, pop: str, common_only: bool = True, version: str = CURRENT_RELEASE):
-    return f'gs://gnomad-resources/ld/gnomad.{data_type}.r{version}.{pop}.{"common." if common_only else ""}ld.variant_indices.ht'
-
-
 def ld_pruned_path(data_type: str, pop: str, r2: str, version: str = CURRENT_RELEASE):
     return f'gs://gnomad-resources/ld/gnomad.{data_type}.r{version}.{pop}.ld.pruned_set.r2_{r2}.ht'
-
-
-def ld_scores_path(data_type: str, pop: str, version: str = CURRENT_RELEASE):
-    return f'gs://gnomad-resources/ld/gnomad.{data_type}.r{version}.{pop}.ld_scores.ht'
 
 
 def get_pop_and_subpop_counters(mt):
@@ -64,30 +52,35 @@ def generate_ld_pruned_set(mt: hl.MatrixTable, pop_data: dict, data_type: str, r
             ht.write(ld_pruned_path(data_type, pop, r2), overwrite)
 
 
-def generate_ld_matrix(mt, pop_data, data_type, radius: int = 1000000, common_only: bool = True, overwrite: bool = False):
+def generate_ld_matrix(mt, pop_data, data_type, radius: int = 1000000, common_only: bool = True,
+                       adj: bool = False, overwrite: bool = False):
+    # Takes about 4 hours on 20 n1-standard-8 nodes (with SSD - not sure if necessary) per population
+    # Total of ~37 hours ($400)
     for label, pops in dict(pop_data).items():
         for pop in pops:
             pop_mt = filter_mt_for_ld(mt, label, pop, common_only)
 
-            pop_mt.rows().select('pop_freq').add_index().write(ld_index_path(data_type, pop, common_only), overwrite)
+            pop_mt.rows().select('pop_freq').add_index().write(ld_index_path(data_type, pop, common_only, adj), overwrite)
             ld = hl.ld_matrix(pop_mt.GT.n_alt_alleles(), pop_mt.locus, radius).sparsify_triangle()
-            ld.write(ld_matrix_path(data_type, pop, common_only), overwrite)
+            ld.write(ld_matrix_path(data_type, pop, common_only, adj), overwrite)
 
 
 def generate_ld_scores_from_ld_matrix(pop_data, data_type, min_frequency=0.01, call_rate_cutoff=0.8,
-                                      radius: int = 1000000,
+                                      adj: bool = False, radius: int = 1000000,
                                       overwrite=False):
     # This function required a decent number of high-mem machines (with an SSD for good measure) to complete the AFR
+    # For the rest, on 20 n1-standard-8's, 1h15m to export block matrix, 15 mins to compute LD scores per population (~$150 total)
     for label, pops in dict(pop_data).items():
         for pop, n in pops.items():
-            ht = hl.read_table(ld_index_path(data_type, pop))
+            if pop in ('nfe', 'fin', 'asj'): continue
+            ht = hl.read_table(ld_index_path(data_type, pop, adj=adj))
             ht = ht.filter((ht.pop_freq.AF >= min_frequency) &
                            (ht.pop_freq.AF <= 1 - min_frequency) &
                            (ht.pop_freq.AN / n >= 2 * call_rate_cutoff)).add_index(name='new_idx')
 
             indices = ht.idx.collect()
 
-            r2 = BlockMatrix.read(ld_matrix_path(data_type, pop, min_frequency >= COMMON_FREQ))
+            r2 = BlockMatrix.read(ld_matrix_path(data_type, pop, min_frequency >= COMMON_FREQ, adj=adj))
             r2 = r2.filter(indices, indices) ** 2
             r2_adj = ((n - 1.0) / (n - 2.0)) * r2 - (1.0 / (n - 2.0))
 
@@ -112,8 +105,8 @@ def generate_ld_scores_from_ld_matrix(pop_data, data_type, min_frequency=0.01, c
             ht_scores = ht_scores.add_index().rename({'f0': 'ld_score'})
             ht_scores = ht_scores.key_by('idx')
 
-            ht = ht.annotate(**ht_scores[ht.new_idx])
-            ht.filter(hl.is_defined(ht.ld_score)).write(ld_scores_path(data_type, pop), overwrite)
+            ht = ht.annotate(**ht_scores[ht.new_idx]).select_globals()
+            ht.filter(hl.is_defined(ht.ld_score)).write(ld_scores_path(data_type, pop, adj), overwrite)
 
 
 def main(args):
@@ -122,17 +115,17 @@ def main(args):
     data_type = 'genomes' if args.genomes else 'exomes'
     # Only run on genomes so far
 
-    mt = get_gnomad_data(data_type, release_samples=True, release_annotations=True)
+    mt = get_gnomad_data(data_type, release_samples=True, release_annotations=True, adj=args.adj)
     pop_data = get_pop_and_subpop_counters(mt)
 
     if args.generate_ld_pruned_set:
         generate_ld_pruned_set(mt, pop_data, data_type, args.r2, args.radius, args.overwrite)
 
     if args.generate_ld_matrix:
-        generate_ld_matrix(mt, pop_data, data_type, args.radius, args.common_only, args.overwrite)
+        generate_ld_matrix(mt, pop_data, data_type, args.radius, args.common_only, args.adj, args.overwrite)
 
     if args.generate_ld_scores:
-        generate_ld_scores_from_ld_matrix(pop_data, data_type, args.min_frequency, args.min_call_rate, overwrite=args.overwrite)
+        generate_ld_scores_from_ld_matrix(pop_data, data_type, args.min_frequency, args.min_call_rate, args.adj, overwrite=args.overwrite)
 
 
 if __name__ == '__main__':
@@ -142,6 +135,7 @@ if __name__ == '__main__':
     parser.add_argument('--generate_ld_pruned_set', help='Calculates LD pruned set of variants', action='store_true')
     parser.add_argument('--generate_ld_matrix', help='Calculates LD matrix', action='store_true')
     parser.add_argument('--common_only', help='Calculates LD matrix only on common variants (above 0.5%)', action='store_true')
+    parser.add_argument('--adj', help='Calculates LD matrix only on using high-quality genotypes', action='store_true')
     parser.add_argument('--generate_ld_scores', help='Calculates LD scores from LD matrix', action='store_true')
     parser.add_argument('--min_frequency', help='Minimum allele frequency to compute LD scores (default 0.01)', default=0.01, type=float)
     parser.add_argument('--min_call_rate', help='Minimum call rate to compute LD scores (default 0.8)', default=0.8, type=float)
