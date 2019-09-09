@@ -215,7 +215,7 @@ def main(args):
         mt = mt.annotate_rows(**get_gnomad_public_data('genomes')[mt.row_key]).annotate_globals(
             **get_gnomad_public_data('genomes').index_globals())
         pop_data = get_pop_and_subpop_counters(mt)
-        # generate_ld_matrix(mt, pop_data, 'genomes_snv_sv', args.radius, args.common_only, args.adj, args.overwrite)
+        generate_ld_matrix(mt, pop_data, 'genomes_snv_sv', args.radius, args.common_only, args.adj, args.overwrite)
         export_snv_sv_ld_matrix(pop_data, 'genomes_snv_sv', args.common_only, args.adj, args.overwrite)
 
 
