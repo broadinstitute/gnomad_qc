@@ -81,10 +81,13 @@ def generate_ld_matrix(mt, pop_data, data_type, radius: int = 1000000, common_on
     # Total of ~37 hours ($400)
     for label, pops in dict(pop_data).items():
         for pop in pops:
+            if data_type == 'genomes_snv_sv' and pop not in ('nfe', 'afr'): continue
             pop_mt = filter_mt_for_ld(mt, label, pop, common_only, sv_dataset=data_type == 'genomes_snv_sv')
 
             pop_mt.rows().select('pop_freq').add_index().write(ld_index_path(data_type, pop, common_only, adj), overwrite)
-            ld = hl.ld_matrix(pop_mt.GT.n_alt_alleles(), pop_mt.locus, radius).sparsify_triangle()
+            ld = hl.ld_matrix(pop_mt.GT.n_alt_alleles(), pop_mt.locus, radius)
+            if data_type != 'genomes_snv_sv':
+                ld = ld.sparsify_triangle()
             ld.write(ld_matrix_path(data_type, pop, common_only, adj), overwrite)
 
 
@@ -217,7 +220,7 @@ def main(args):
         mt = mt.annotate_rows(**get_gnomad_public_data('genomes')[mt.row_key]).annotate_globals(
             **get_gnomad_public_data('genomes').index_globals())
         pop_data = get_pop_and_subpop_counters(mt)
-        # generate_ld_matrix(mt, pop_data, 'genomes_snv_sv', args.radius, args.common_only, args.adj, args.overwrite)
+        generate_ld_matrix(mt, pop_data, 'genomes_snv_sv', args.radius, args.common_only, args.adj, args.overwrite)
         export_snv_sv_ld_matrix(pop_data, 'genomes_snv_sv', args.common_only, args.adj, args.overwrite)
 
 
