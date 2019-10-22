@@ -1,13 +1,13 @@
 from gnomad_hail import *
 
 
-def import_vcf(overwrite: bool):
+def import_vcf():
     mt = hl.import_vcf(gnomad_sv_vcf_path, force_bgz=True, min_partitions=300)
     meta = hl.import_table(gnomad_sv_release_samples_list_path, force=True, key='s')
     mt = mt.annotate_cols(
         release=hl.is_defined(meta[mt.col_key])
     )
-    mt.write(gnomad_sv_mt_path, overwrite=overwrite)
+    return mt
 
 
 def merge_genomes_sv_samples(genomes_mt: hl.MatrixTable, sv_mt: hl.MatrixTable) -> hl.Table:
@@ -62,7 +62,7 @@ def order_cols(mt1: hl.MatrixTable, mt2: hl.MatrixTable) -> Tuple[hl.MatrixTable
     )
 
 
-def merge_with_short_variants(overwrite: bool, min_af: float):
+def merge_with_short_variants(min_af: float):
     # Load gnomAD genomes and filter to PASS / release sites and samples
     gnomad_genomes = get_gnomad_data('genomes', adj=True, release_samples=True, release_annotations=True)
     gnomad_genomes = gnomad_genomes.filter_rows(
@@ -113,10 +113,10 @@ def merge_with_short_variants(overwrite: bool, min_af: float):
     merged_mt = merged_mt.annotate_globals(
         min_af=min_af
     )
-    merged_mt.write('gs://gnomad/projects/genomes_sv_ld/genomes_union_sv.mt', overwrite=overwrite)
+    return merged_mt
 
 
-def generate_age_hists(overwrite: bool):
+def generate_hists():
     mt = hl.read_matrix_table(gnomad_sv_mt_path)
     meta = get_gnomad_meta('genomes')
     meta = meta.key_by(s=(meta.project_id + "_" + meta.s).replace('\W+', '_'))
@@ -149,18 +149,21 @@ def generate_age_hists(overwrite: bool):
         **hist_expr
     )
 
-    hists.write('gs://gnomad/sv/gnomad_sv_hists.ht', overwrite=overwrite)
+    return hists
 
 
 def main(args):
     if args.import_vcf:
-        import_vcf(args.overwrite)
+        mt = import_vcf()
+        mt.write(gnomad_sv_mt_path, overwrite=args.overwrite)
 
     if args.merge_with_short_variants:
-        merge_with_short_variants(args.overwrite, args.short_variants_af)
+        mt = merge_with_short_variants(args.short_variants_af)
+        mt.write('gs://gnomad/projects/genomes_sv_ld/genomes_union_sv.mt', overwrite=args.overwrite)
 
-    if args.generate_age_hists:
-        generate_age_hists(args.overwrite)
+    if args.generate_hists:
+        hists_ht = generate_hists()
+        hists_ht.write('gs://gnomad-public/papers/2019-sv/gnomad_sv_hists.ht', overwrite=args.overwrite)
 
 
 if __name__ == '__main__':
@@ -168,7 +171,7 @@ if __name__ == '__main__':
     parser.add_argument('--import_vcf', help='Imports gnomAD SV VCF and writes it as MT.', action='store_true')
     parser.add_argument('--merge_with_short_variants', help='Creates an MT merging SVs and short variants. An AF cutoff is used for short variants (--short_variants_af)', action='store_true')
     parser.add_argument('--short_variants_af', help='Short variant AF cutoff (AF >= x in any pop) for merging SVs and short variants', default=0.005, type=float)
-    parser.add_argument('--generate_age_hists', help='Generate age histograms', action='store_true')
+    parser.add_argument('--generate_hists', help='Generate age and GQ histograms', action='store_true')
     parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
     parser.add_argument('--overwrite', help='Overwrite data', action='store_true')
     args = parser.parse_args()
