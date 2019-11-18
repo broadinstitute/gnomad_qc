@@ -12,18 +12,6 @@ def ld_pruned_path(data_type: str, pop: str, r2: str, version: str = CURRENT_REL
     return f'gs://gnomad-resources/ld/gnomad.{data_type}.r{version}.{pop}.ld.pruned_set.r2_{r2}.ht'
 
 
-def ld_snv_sv_path(pop):
-    return f'gs://gnomad-resources/ld/snv_sv/gnomad.genomes.r2.1.1.{pop}.snv_sv.ld.ht'
-
-
-def ld_snv_sv_index_path(pop, type):
-    return f'gs://gnomad-resources/ld/snv_sv/gnomad.genomes.r2.1.1.{pop}.snv_sv.ld.{type}.txt.bgz'
-
-
-def cross_pop_ld_scores_path(data_type: str, pop1: str, pop2: str, adj: bool = True, version: str = CURRENT_RELEASE):
-    return f'gs://gnomad-public/release/{version}/ld/scores/gnomad.{data_type}.r{version}.{pop1}.{pop2}.{"adj." if adj else ""}ld_scores.ht'
-
-
 def get_pop_and_subpop_counters(mt):
     cut_dict = {'pop': hl.agg.filter(hl.is_defined(mt.meta.pop) & (mt.meta.pop != 'oth'), hl.agg.counter(mt.meta.pop)),
                 'subpop': hl.agg.filter(hl.is_defined(mt.meta.subpop) & (mt.meta.subpop != 'oea') &
@@ -146,6 +134,21 @@ def generate_ld_scores_from_ld_matrix(pop_data, data_type, min_frequency=0.01, c
             compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite)
 
 
+def generate_all_cross_pop_ld_scores(pop_data, data_type, min_frequency=0.01, call_rate_cutoff=0.8,
+                                     adj: bool = False, radius: int = 1000000,
+                                     overwrite=False):
+    for label, pops in dict(pop_data).items():
+        for pop1, n in pops.items():
+            for label, pops in dict(pop_data).items():
+                for pop2, n in pops.items():
+                    if (pop1, pop2) in (
+                            ('eas', 'nfe'), ('afr', 'nfe'), ('eas', 'afr'),
+                            ('fin', 'nfe'), ('fin', 'eas'),
+                    ):
+                        generate_cross_pop_ld_scores_from_ld_matrices(pop1, pop2, data_type, pop_data, min_frequency,
+                                                                      call_rate_cutoff, adj, radius, overwrite)
+
+
 def generate_cross_pop_ld_scores_from_ld_matrices(pop1, pop2, data_type, pop_data, min_frequency=0.01, call_rate_cutoff=0.8,
                                                   adj: bool = False, radius: int = 1000000, overwrite=False):
     n1 = pop_data.pop[pop1]
@@ -160,8 +163,8 @@ def generate_cross_pop_ld_scores_from_ld_matrices(pop1, pop2, data_type, pop_dat
                      (ht2.pop_freq.AF <= 1 - min_frequency) &
                      (ht2.pop_freq.AN / n2 >= 2 * call_rate_cutoff))
 
-    ht1 = ht1.filter(hl.is_defined(ht2[ht1.key])).add_index(name='new_idx').checkpoint(f'{temp_bucket}/{pop1}_{pop2}.ht', _read_if_exists=True)
-    ht2 = ht2.filter(hl.is_defined(ht1[ht2.key])).add_index(name='new_idx').checkpoint(f'{temp_bucket}/{pop2}_{pop1}.ht', _read_if_exists=True)
+    ht1 = ht1.filter(hl.is_defined(ht2[ht1.key])).add_index(name='new_idx').checkpoint(f'{temp_bucket}/{pop1}_{pop2}.ht', overwrite=overwrite, _read_if_exists=not args.overwrite)
+    ht2 = ht2.filter(hl.is_defined(ht1[ht2.key])).add_index(name='new_idx').checkpoint(f'{temp_bucket}/{pop2}_{pop1}.ht', overwrite=overwrite, _read_if_exists=not args.overwrite)
     indices1 = ht1.idx.collect()
     indices2 = ht2.idx.collect()
     assert len(indices1) == len(indices2)
@@ -233,6 +236,9 @@ def main(args):
     if args.generate_ld_scores:
         generate_ld_scores_from_ld_matrix(pop_data, data_type, args.min_frequency, args.min_call_rate, args.adj, overwrite=args.overwrite)
 
+    if args.cross_pop_ld_scores:
+        generate_all_cross_pop_ld_scores(pop_data, data_type, args.min_frequency, args.min_call_rate, args.adj, overwrite=args.overwrite)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -244,6 +250,7 @@ if __name__ == '__main__':
     parser.add_argument('--common_only', help='Calculates LD matrix only on common variants (above 0.5%)', action='store_true')
     parser.add_argument('--adj', help='Calculates LD matrix only on using high-quality genotypes', action='store_true')
     parser.add_argument('--generate_ld_scores', help='Calculates LD scores from LD matrix', action='store_true')
+    parser.add_argument('--cross_pop_ld_scores', help='Calculates cross-pop LD scores from LD matrix', action='store_true')
     parser.add_argument('--min_frequency', help='Minimum allele frequency to compute LD scores (default 0.01)', default=0.01, type=float)
     parser.add_argument('--min_call_rate', help='Minimum call rate to compute LD scores (default 0.8)', default=0.8, type=float)
     parser.add_argument('--r2', help='r-squared to which to prune LD (default 0.2)', default="0.2")
