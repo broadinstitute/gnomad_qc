@@ -1,6 +1,7 @@
 from gnomad_hail import *
 from gnomad_hail.utils import rf
-from gnomad_hail.resources.variant_qc import *
+from gnomad_qc.resources import *
+from gnomad_qc.resources.variant_qc import *
 from pprint import pformat
 import json
 import uuid

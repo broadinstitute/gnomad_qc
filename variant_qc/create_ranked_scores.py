@@ -1,5 +1,6 @@
 from gnomad_hail import *
-from gnomad_hail.resources.variant_qc import *
+from gnomad_qc.resources import *
+from gnomad_qc.resources.variant_qc import *
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("rank_rf")
