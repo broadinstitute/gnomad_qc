@@ -1,5 +1,6 @@
 
 from gnomad_hail import *
+from gnomad_qc.resources import *
 
 
 def import_clinvar(overwrite: bool = False):
