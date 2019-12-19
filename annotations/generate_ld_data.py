@@ -1,4 +1,5 @@
 from gnomad_hail import *
+from gnomad_qc.resources import *
 from hail.utils import new_temp_file
 from hail.utils.java import Env
 from hail.linalg import BlockMatrix

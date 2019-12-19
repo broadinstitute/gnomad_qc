@@ -1,5 +1,6 @@
 from gnomad_hail import *
-from gnomad_hail.resources.variant_qc import get_ucsc_mappability
+from gnomad_qc.resources import *
+from gnomad_qc.resources.variant_qc import get_ucsc_mappability
 
 COVERAGE_BINS = [1] + list(range(5, 31, 5)) + [50, 100]
 

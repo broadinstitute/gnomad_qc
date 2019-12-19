@@ -1,5 +1,5 @@
 from gnomad_hail import *
-from gnomad_hail.resources.sample_qc import *
+from gnomad_qc.resources.sample_qc import *
 import numpy as np
 import pandas as pd
 import random

@@ -1,4 +1,5 @@
 from gnomad_hail import *
+from gnomad_qc.resources import *
 
 
 def import_vcf():
