@@ -32,7 +32,7 @@ def rf_run_hash_path(data_type: str, hail_version: str = CURRENT_HAIL_VERSION):
     :rtype: str
     """
 
-    return 'gs://gnomad/annotations/hail-{0}/mt/{1}/rf/gnomad.{1}.runs.json'.format(hail_version, data_type)
+    return 'gs://gnomad/annotations/hail-{0}/ht/{1}/rf/gnomad.{1}.runs.json'.format(hail_version, data_type)
 
 
 def rf_annotated_path(
@@ -48,7 +48,7 @@ def rf_annotated_path(
     :param hail_version: One of the HAIL_VERSIONs
     :return:
     """
-    return 'gs://gnomad/annotations/hail-{0}/mt/{1}/rf/gnomad.{1}.{2}.ht'.format(
+    return 'gs://gnomad/annotations/hail-{0}/ht/{1}/rf/gnomad.{1}.{2}.ht'.format(
         hail_version,
         data_type,
         "adj" if adj else 'raw')
@@ -75,7 +75,7 @@ def rf_path(data_type: str,
     """
 
     extension = 'model' if data == 'model' else 'ht'
-    return 'gs://gnomad/annotations/hail-{0}/mt/{1}/rf/{2}/gnomad.{1}.{2}.{3}.{4}'.format(hail_version, data_type, run_hash, data, extension)
+    return 'gs://gnomad/annotations/hail-{0}/ht/{1}/rf/{2}/gnomad.{1}.{2}.{3}.{4}'.format(hail_version, data_type, run_hash, data, extension)
 
 
 def score_ranking_path(data_type: str,
