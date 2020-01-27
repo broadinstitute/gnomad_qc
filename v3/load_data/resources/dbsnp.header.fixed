@@ -1,0 +1,12 @@
+##fileformat=VCFv4.0
+##fileDate=20180418
+##source=dbSNP
+##dbSNP_BUILD_ID=151
+##reference=GRCh38.p7
+##phasing=partial
+##variationPropertyDocumentationUrl=ftp://ftp.ncbi.nlm.nih.gov/snp/specs/dbSNP_BitField_latest.pdf	
+##INFO=<ID=RS,Number=1,Type=Integer,Description="dbSNP ID (i.e. rs number)">
+##INFO=<ID=RSPOS,Number=1,Type=Integer,Description="Chr position reported in dbSNP">
+##INFO=<ID=RV,Number=0,Type=Flag,Description="RS orientation is reversed">
+##INFO=<ID=dbSNPBuildID,Number=1,Type=Integer,Description="First dbSNP Build for RS">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
