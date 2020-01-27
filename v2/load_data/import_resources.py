@@ -27,14 +27,14 @@ def import_methylation(overwrite: bool = False):
     kt = kt.transmute(locus=hl.locus(kt.CHROM, kt.POS))
     kt.key_by('locus').write(methylation_sites_ht_path(), overwrite)
 
-    ht = hl.read_table(methylation_sites_mt_path())
+    ht = hl.read_table(methylation_sites_ht_path())
     ref_37 = hl.get_reference('GRCh37')
     ref_38 = hl.get_reference('GRCh38')
     ref_37.add_liftover('gs://hail-common/references/grch37_to_grch38.over.chain.gz', ref_38)
     ht = ht.annotate(new_locus=hl.liftover(ht.locus, 'GRCh38', include_strand=True),
                      old_locus=ht.locus)
     ht = ht.key_by(locus=ht.new_locus.result)
-    ht.write(methylation_sites_mt_path(ref='GRCh38'), overwrite=overwrite)
+    ht.write(methylation_sites_ht_path(ref='GRCh38'), overwrite=overwrite)
 
 
 def import_exac_data(overwrite: bool = False):
