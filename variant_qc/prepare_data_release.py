@@ -852,6 +852,20 @@ def get_age_distributions(data_type):
     return age_hist_data.bin_freq
 
 
+def liftover_ht(ht):
+    ref_37 = hl.get_reference('GRCh37')
+    ref_38 = hl.get_reference('GRCh38')
+    ref_37.add_liftover('gs://hail-common/references/grch37_to_grch38.over.chain.gz', ref_38)
+    ht = ht.annotate(new_locus=hl.liftover(ht.locus, 'GRCh38', include_strand=True),
+                     old_locus=ht.locus).drop('vep')
+    ht = ht.filter(~ht.new_locus.is_negative_strand)
+    ht = ht.key_by(locus=ht.new_locus.result, alleles=ht.alleles)
+    ht.write('gs://konradk/liftover_test/temp.ht', overwrite=True)
+    ht = hl.read_table('gs://konradk/liftover_test/temp.ht')
+    ht = hl.vep(ht, 'gs://gnomad-resources/loftee-beta/vep95-GRCh38-loftee-gcloud.json')
+    return ht
+
+
 def main(args):
     hl.init(log='/release.log')
 
@@ -1017,6 +1031,12 @@ def main(args):
         ht = hl.read_table(release_ht_path(data_type, nested=False, temp=True))
         sanity_check_ht(ht, data_type, subset_list, missingness_threshold=0.5, verbose=args.verbose)
 
+    if args.liftover:
+        ht = get_gnomad_public_data(data_type)
+        ht = liftover_ht(ht)
+        # ht.write(get_gnomad_public_data_path(data_type, ref='GRCh38'))
+        ht.write(f'gs://konradk/liftover_test/gnomad_{data_type}.ht', args.overwrite)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -1027,6 +1047,7 @@ if __name__ == '__main__':
     parser.add_argument('--include_subset_frequencies', help='Include frequency annotations for gnomAD subsets in release', action='store_true')
     parser.add_argument('--prepare_release_vcf', help='Prepare release VCF', action='store_true')
     parser.add_argument('--sanity_check_sites', help='Run sanity checks function', action='store_true')
+    parser.add_argument('--liftover', help='Liftover final sites file', action='store_true')
     parser.add_argument('--verbose', help='Run sanity checks function with verbose output', action='store_true')
     parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
     parser.add_argument('--overwrite', help='Overwrite data', action='store_true')
