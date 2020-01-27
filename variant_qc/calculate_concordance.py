@@ -1,6 +1,6 @@
 from gnomad_hail import *
-from gnomad_hail.resources import sample_qc
-from gnomad_hail.resources.variant_qc import *
+from gnomad_qc.resources import sample_qc
+from gnomad_qc.resources.variant_qc import *
 import pandas as pd
 from datetime import datetime
 

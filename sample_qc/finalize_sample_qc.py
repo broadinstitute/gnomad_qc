@@ -1,5 +1,5 @@
 from gnomad_hail import *
-from gnomad_hail.resources.sample_qc import *
+from gnomad_qc.resources.sample_qc import *
 import datetime
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")

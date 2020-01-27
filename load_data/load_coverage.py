@@ -1,5 +1,6 @@
 
 from gnomad_hail import *
+from gnomad_qc.resources import *
 
 
 def main(args):
@@ -22,8 +23,9 @@ def main(args):
     sample_count = 9733 if args.exomes else 1279
     assert sum([len(x[2]) for x in all_file_data]) == sample_count
 
-    meta_kt = get_gnomad_meta(data_type, full_meta=True)
-    bam_dict = dict(get_sample_data(meta_kt, [meta_kt.bam, meta_kt.s]))
+    meta_ht = get_gnomad_meta(data_type, full_meta=True)
+    bam_dict = dict(hl.tuple([meta_ht.bam, meta_ht.s]).collect())
+    # bam_dict = dict(get_sample_data(meta_ht, [meta_ht.bam, meta_ht.s]))
 
     assert all([all([y in bam_dict for y in x[2]]) for x in all_file_data])
 
@@ -81,44 +83,61 @@ def main(args):
         mt = hl.read_matrix_table(coverage_mt_path(data_type))
         meta_ht = get_gnomad_meta(data_type)
         mt = mt.filter_cols(meta_ht[mt.s].release)
-        mt = mt.annotate_rows(mean=hl.agg.mean(mt.coverage),
-                              median=hl.median(hl.agg.collect(mt.coverage)),
-                              over_1=hl.agg.fraction(mt.coverage >= 1),
-                              over_5=hl.agg.fraction(mt.coverage >= 5),
-                              over_10=hl.agg.fraction(mt.coverage >= 10),
-                              over_15=hl.agg.fraction(mt.coverage >= 15),
-                              over_20=hl.agg.fraction(mt.coverage >= 20),
-                              over_25=hl.agg.fraction(mt.coverage >= 25),
-                              over_30=hl.agg.fraction(mt.coverage >= 30),
-                              over_50=hl.agg.fraction(mt.coverage >= 50),
-                              over_100=hl.agg.fraction(mt.coverage >= 100))
-        ht = mt.rows()
+        ht = mt.annotate_rows(
+            mean=hl.agg.mean(mt.coverage),
+            median=hl.agg.approx_quantiles(mt.coverage, 0.5),
+            count_array=hl.rbind(
+                hl.agg.counter(hl.min(100, mt.coverage)),
+                lambda c: hl.range(0, 100).map(lambda i: c.get(i, 0))
+            )
+        ).rows()
+
+        ht = ht.transmute(
+            **{f'over_{x}': hl.sum(mt.count_array[x:]) for x in [1, 5, 10, 15, 20, 25, 30, 50, 100]}
+        )
+
         if args.exomes:
             ht.write(coverage_ht_path(data_type), args.overwrite)
         else:
-            ht.write(f'{root}/intermediates/final_aggregated.ht', args.overwrite)
-            ht = hl.read_table(f'{root}/intermediates/final_aggregated.ht')
+            ht = ht.checkpoint('gs://gnomad-tmp/coverage/genomes_agg.ht', overwrite=args.overwrite)
             ht.key_by('locus').write(coverage_ht_path(data_type), args.overwrite)
 
-    if args.aggregate_coverage_pops:
-        mt = hl.read_matrix_table(coverage_mt_path(data_type))
+    if args.aggregate_coverage_platforms:
         meta_ht = get_gnomad_meta(data_type)
-        mt = mt.annotate_cols(meta=meta_ht[mt.s])
+        if data_type == 'genomes':
+            meta_ht = meta_ht.annotate(qc_platform=hl.cond(meta_ht.pcr_free, 'pcr_free', 'pcr+'))
+
+        mt = hl.read_matrix_table(coverage_mt_path(data_type))
+        mt = mt.annotate_cols(meta=meta_ht.select('release', 'qc_platform', 'sex')[mt.s])
         mt = mt.filter_cols(mt.meta.release)
-        agg_ds = (mt
-                  .group_cols_by(mt.meta.pop, mt.meta.qc_platform)
-                  .aggregate(mean=hl.agg.mean(mt.coverage),
-                             median=hl.median(hl.agg.collect(mt.coverage)),
-                             over_1=hl.agg.fraction(mt.coverage >= 1),
-                             over_5=hl.agg.fraction(mt.coverage >= 5),
-                             over_10=hl.agg.fraction(mt.coverage >= 10),
-                             over_15=hl.agg.fraction(mt.coverage >= 15),
-                             over_20=hl.agg.fraction(mt.coverage >= 20),
-                             over_25=hl.agg.fraction(mt.coverage >= 25),
-                             over_30=hl.agg.fraction(mt.coverage >= 30),
-                             over_50=hl.agg.fraction(mt.coverage >= 50),
-                             over_100=hl.agg.fraction(mt.coverage >= 100)))
-        agg_ds.write(coverage_mt_path(data_type, by_population=True, by_platform=True), args.overwrite)
+
+        n = mt.aggregate_cols(hl.agg.counter((mt.meta.qc_platform, mt.meta.sex)), _localize=False)
+
+        grp_mt = (
+            mt
+                .group_cols_by(mt.meta.qc_platform, mt.meta.sex)
+                .aggregate(
+                mean=hl.agg.mean(mt.coverage),
+                median=hl.agg.approx_quantiles(mt.coverage, 0.5),
+                count_array=hl.rbind(
+                    hl.agg.counter(hl.min(100, mt.coverage)),
+                    lambda c: hl.range(0, 100).map(lambda i: c.get(i, 0))
+                )
+            )
+        )
+
+        grp_mt = grp_mt.transmute_entries(
+            **{f'over_{x}': hl.sum(grp_mt.count_array[x:]) for x in [1, 5, 10, 15, 20, 25, 30, 50, 100]}
+        )
+
+        grp_mt = grp_mt.annotate_cols(
+            n=n[(grp_mt.qc_platform, grp_mt.sex)]
+        )
+        if args.exomes:
+            grp_mt.write(coverage_mt_path(data_type, grouped=True), args.overwrite)
+        else:
+            grp_mt.checkpoint('gs://gnomad-tmp/coverage/genomes_agg_grouped.mt', overwrite=args.overwrite)
+            grp_mt.key_rows_by('locus').write(coverage_mt_path(data_type, grouped=True), args.overwrite)
 
     if args.export_coverage:
         ht = hl.read_table(coverage_ht_path(data_type)).key_by()
@@ -136,7 +155,7 @@ if __name__ == '__main__':
     parser.add_argument('--read_coverage_files', help='Read raw coverage .gz files', action='store_true')
     parser.add_argument('--merge_coverage_mts', help='Merge individual coverage .mt files', action='store_true')
     parser.add_argument('--aggregate_coverage', help='Aggregate coverage data', action='store_true')
-    parser.add_argument('--aggregate_coverage_pops', help='Aggregate coverage data', action='store_true')
+    parser.add_argument('--aggregate_coverage_platforms', help='Aggregate coverage data by platform and sex', action='store_true')
     parser.add_argument('--export_coverage', help='Export coverage data', action='store_true')
     parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
     parser.add_argument('--overwrite', help='Overwrite data', action='store_true')

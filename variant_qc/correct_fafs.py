@@ -1,6 +1,7 @@
 from gnomad_qc import *
 from gnomad_qc.variant_qc.prepare_data_release import *
 from gnomad_hail import *
+from gnomad_qc.resources import *
 
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")

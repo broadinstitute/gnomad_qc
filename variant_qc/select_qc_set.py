@@ -1,5 +1,6 @@
 from gnomad_hail import *
-from gnomad_hail.resources.variant_qc import *
+from gnomad_qc.resources import *
+from gnomad_qc.resources.variant_qc import *
 
 
 def get_trio_samples_to_keep(trios: hl.Table, n_keep: int) -> hl.Table:
