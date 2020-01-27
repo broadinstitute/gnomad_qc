@@ -44,13 +44,6 @@ MEDIAN_FEATURES = [
 INBREEDING_COEFF_HARD_CUTOFF = -0.3
 
 
-def filter_intervals(t: hl.Table, intervals: List[hl.expr.LocusExpression], keep: bool = True) -> hl.Table:
-    if isinstance(t, hl.MatrixTable):
-        return hl.filter_intervals(t, intervals, keep=keep)
-    else:
-        return t.filter(hl.array(intervals).any(lambda x: x.contains(t.locus)), keep=keep)
-
-
 def get_features_list(sites_features: bool, allele_features: bool, vqsr_features: bool, median_features: bool = False) -> List[str]:
     """
     Returns the list of features to use based on desired arguments (currently only VQSR / alleles)
@@ -104,8 +97,8 @@ def sample_rf_training_examples(
     def get_train_counts(ht: hl.Table) -> Tuple[int, int]:
 
         if 'test_intervals' in ht.globals:
-            interval_list = hl.eval_expr(ht.globals.test_intervals)
-            ht = filter_intervals(ht, interval_list, keep=False)
+            interval_list = hl.eval(ht.globals.test_intervals)
+            ht = hl.filter_intervals(ht, interval_list, keep=False)
 
         # Get stats about TP / FP sets
         train_stats = hl.struct(
@@ -148,7 +141,7 @@ def sample_rf_training_examples(
 
         if prob_fp < 1.0:
             ht = ht.annotate(**{train_col: hl.cond(hl.or_else(ht[tp_col], False), hl.or_else(~ht[fp_col], True), ht[fp_col])})
-            train_expr = hl.cond(ht[fp_col] & hl.or_else(~ht[tp_col], True), hl.rand_bool(prob_tp),  ht[train_col])
+            train_expr = hl.cond(ht[fp_col] & hl.or_else(~ht[tp_col], True), hl.rand_bool(prob_fp),  ht[train_col])
             #train_expr = hl.cond(hl.or_else(ht[tp_col], False), hl.or_else(~ht[fp_col], True), ht[fp_col] & hl.rand_bool(prob_fp))  # Note: Hail propagates missing values with invert operator
         elif prob_tp < 1.0:
             ht = ht.annotate(**{train_col: hl.cond(hl.or_else(ht[fp_col], False), hl.or_else(~ht[tp_col], True), ht[tp_col])})
@@ -468,8 +461,8 @@ def train_rf(data_type, args):
     test_results = None
     if args.test_intervals:
         logger.info("Testing model {} on intervals {}".format(run_hash, ",".join(test_intervals_str)))
-        test_ht = filter_intervals(ht, test_intervals_locus, keep=True)
-        test_ht.write('gs://gnomad-tmp/test_rf.ht', overwrite=True)
+        test_ht = hl.filter_intervals(ht, test_intervals_locus, keep=True)
+        test_ht = test_ht.checkpoint('gs://gnomad-tmp/test_rf.ht', overwrite=True)
         test_ht = test_ht.filter(hl.is_defined(test_ht[LABEL_COL]))
         test_results = rf.test_model(test_ht,
                                      rf_model,
@@ -590,7 +583,7 @@ def main(args):
 
         ht = rf.apply_rf_model(ht, rf_model, get_features_list(True, not args.vqsr_features, args.vqsr_features), label=LABEL_COL)
 
-        if 'singleton' in ht.row and 'was_split' in ht.row: # Needed for backwards compatibility for RF runs that happened prior to updating annotations
+        if 'singleton' in ht.row and 'was_split' in ht.row:  # Needed for backwards compatibility for RF runs that happened prior to updating annotations
             ht = add_rank(ht,
                           score_expr=ht.rf_probability['FP'],
                           subrank_expr={
