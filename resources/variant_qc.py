@@ -1,4 +1,5 @@
 from .basics import *
+from gnomad_qc import
 
 RELEASE_VERSION = 'r2.1.1'
 
@@ -202,3 +203,23 @@ def get_ucsc_mappability():
             hl.locus(ucsc_mappability.f0[3:], ucsc_mappability.f2 + 1)),
         duke_35_map=ucsc_mappability.f3
     ).key_by('interval')
+
+
+def get_rf_runs(data_type: str) -> Dict:
+    """
+
+    Loads RF run data from JSON file.
+
+    :param str data_type: One of 'exomes' or 'genomes'
+    :return: Dictionary containing the content of the JSON file, or an empty dictionary if the file wasn't found.
+    :rtype: dict
+    """
+
+    import json
+
+    json_file = rf_run_hash_path(data_type)
+    if hl.utils.hadoop_exists(json_file):
+        with hl.hadoop_open(rf_run_hash_path(data_type)) as f:
+            return json.load(f)
+    else:
+        raise FileNotFoundError(f"Could not find file {json_file}")
