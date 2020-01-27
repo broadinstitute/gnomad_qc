@@ -1,5 +1,4 @@
 from .basics import *
-from gnomad_qc import
 
 RELEASE_VERSION = 'r2.1.1'
 

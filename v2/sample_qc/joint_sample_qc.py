@@ -1,9 +1,6 @@
-from gnomad_hail import *
-from gnomad_qc.resources.sample_qc import *
 from create_fam import *
 from sklearn.ensemble import RandomForestClassifier
 import pandas as pd
-import random
 import pickle
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")

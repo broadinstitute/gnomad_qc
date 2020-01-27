@@ -1,10 +1,13 @@
 from gnomad_hail import *
-from gnomad_qc.resources.sample_qc import *
+from v2.resources.sample_qc import *
+from v2.resources import CURRENT_FAM, fam_path, get_gnomad_data
 import numpy as np
 import pandas as pd
 import random
 from datetime import datetime
 from pyspark.sql import SQLContext
+import argparse
+import sys
 
 
 class GnomADRelatedData:

@@ -1,8 +1,10 @@
 from gnomad_hail import *
-from gnomad_qc.resources import sample_qc
-from gnomad_qc.resources.variant_qc import *
+from v2.resources import sample_qc
+from v2.resources.variant_qc import *
 import pandas as pd
 from datetime import datetime
+import argparse
+import sys
 
 
 def write_duplicates(version: str, overwrite: bool) -> None:

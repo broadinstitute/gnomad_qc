@@ -1,5 +1,7 @@
+import argparse
+import sys
 from gnomad_hail import *
-from gnomad_qc.resources import *
+from v2.resources import *
 
 
 def generate_allele_data(mt: hl.MatrixTable) -> hl.Table:

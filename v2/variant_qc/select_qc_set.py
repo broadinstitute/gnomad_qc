@@ -1,6 +1,7 @@
 from gnomad_hail import *
-from gnomad_qc.resources import *
-from gnomad_qc.resources.variant_qc import *
+from v2.resources import *
+from v2.resources.variant_qc import *
+import argparse
 
 
 def get_trio_samples_to_keep(trios: hl.Table, n_keep: int) -> hl.Table:
@@ -94,7 +95,7 @@ def main(args):
 
         logger.info('Adding rankings for bi-allelics and singletons...')
         ht = hl.read_table('gs://gnomad/variant_qc/temp/gnomad.{0}.{1}_samples.vqsr.ranked.ht'.format(data_type, N))
-        ht = add_full_rankings(ht, ht.info.VQSLOD)
+        ht = add_full_rankings(ht, ht.info.VQSLOD) # FIXME:  This is stale
         ht.write('gs://gnomad/variant_qc/temp/gnomad.{0}.{1}_samples.vqsr.full_rankings.ht'.format(data_type, N), overwrite=True)  # TODO: move file locations once script is finalized
 
     # TODO: add code to rank RF?

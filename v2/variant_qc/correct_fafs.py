@@ -1,7 +1,8 @@
-from gnomad_qc import *
-from gnomad_qc.variant_qc.prepare_data_release import *
+from v2.variant_qc.prepare_data_release import *
 from gnomad_hail import *
-from gnomad_qc.resources import *
+from v2.resources import *
+import argparse
+import sys
 
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")

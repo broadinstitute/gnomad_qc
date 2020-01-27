@@ -1,6 +1,7 @@
 
 from gnomad_hail import *
-from gnomad_qc.resources import *
+from v2.resources import *
+import argparse
 
 
 def import_clinvar(overwrite: bool = False):
@@ -24,7 +25,7 @@ def import_methylation(overwrite: bool = False):
     kt = hl.import_table(data_path, impute=True, min_partitions=100)
     kt = kt.transmute(CHROM=hl.cond(kt['#CHROM'] == 'M', 'MT', kt['#CHROM']))
     kt = kt.transmute(locus=hl.locus(kt.CHROM, kt.POS))
-    kt.key_by('locus').write(methylation_sites_mt_path(), overwrite)
+    kt.key_by('locus').write(methylation_sites_ht_path(), overwrite)
 
     ht = hl.read_table(methylation_sites_mt_path())
     ref_37 = hl.get_reference('GRCh37')
@@ -45,7 +46,7 @@ def import_exac_data(overwrite: bool = False):
 
 
 def import_cpgs(overwrite: bool = False):
-    hl.import_vcf('gs://gnomad-public/resources/cpg.vcf.bgz', min_partitions=20).write(cpg_sites_mt_path(), overwrite)
+    hl.import_vcf('gs://gnomad-public/resources/cpg.vcf.bgz', min_partitions=20).rows().write(cpg_sites_ht_path(), overwrite)
 
 
 def import_truth_sets(overwrite: bool = False):

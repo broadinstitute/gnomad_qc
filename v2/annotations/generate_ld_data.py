@@ -1,8 +1,11 @@
-from gnomad_hail import *
-from gnomad_qc.resources import *
+import gnomad_hail.resources.grch37.gnomad_ld as ld_resources
+from v2.resources import *
 from hail.utils import new_temp_file
 from hail.utils.java import Env
 from hail.linalg import BlockMatrix
+import sys
+import argparse
+from gnomad_hail.utils.slack import try_slack
 
 COMMON_FREQ = 0.005
 RARE_FREQ = 0.0005
@@ -61,9 +64,9 @@ def generate_ld_matrix(mt, pop_data, data_type, radius: int = 1000000, common_on
         for pop in pops:
             pop_mt = filter_mt_for_ld(mt, label, pop, common_only)
 
-            pop_mt.rows().select('pop_freq').add_index().write(ld_index_path(data_type, pop, common_only, adj), overwrite)
+            pop_mt.rows().select('pop_freq').add_index().write(ld_resources._ld_index_path(data_type, pop, common_only, adj), overwrite)
             ld = hl.ld_matrix(pop_mt.GT.n_alt_alleles(), pop_mt.locus, radius).sparsify_triangle()
-            ld.write(ld_matrix_path(data_type, pop, common_only, adj), overwrite)
+            ld.write(ld_resources._ld_matrix_path(data_type, pop, common_only, adj), overwrite)
 
 
 def generate_ld_scores_from_ld_matrix(pop_data, data_type, min_frequency=0.01, call_rate_cutoff=0.8,
@@ -74,14 +77,14 @@ def generate_ld_scores_from_ld_matrix(pop_data, data_type, min_frequency=0.01, c
     for label, pops in dict(pop_data).items():
         for pop, n in pops.items():
             if pop in ('nfe', 'fin', 'asj'): continue
-            ht = hl.read_table(ld_index_path(data_type, pop, adj=adj))
+            ht = hl.read_table(ld_resources._ld_index_path(data_type, pop, adj=adj))
             ht = ht.filter((ht.pop_freq.AF >= min_frequency) &
                            (ht.pop_freq.AF <= 1 - min_frequency) &
                            (ht.pop_freq.AN / n >= 2 * call_rate_cutoff)).add_index(name='new_idx')
 
             indices = ht.idx.collect()
 
-            r2 = BlockMatrix.read(ld_matrix_path(data_type, pop, min_frequency >= COMMON_FREQ, adj=adj))
+            r2 = BlockMatrix.read(ld_resources._ld_matrix_path(data_type, pop, min_frequency >= COMMON_FREQ, adj=adj))
             r2 = r2.filter(indices, indices) ** 2
             r2_adj = ((n - 1.0) / (n - 2.0)) * r2 - (1.0 / (n - 2.0))
 
@@ -107,7 +110,7 @@ def generate_ld_scores_from_ld_matrix(pop_data, data_type, min_frequency=0.01, c
             ht_scores = ht_scores.key_by('idx')
 
             ht = ht.annotate(**ht_scores[ht.new_idx]).select_globals()
-            ht.filter(hl.is_defined(ht.ld_score)).write(ld_scores_path(data_type, pop, adj), overwrite)
+            ht.filter(hl.is_defined(ht.ld_score)).write(ld_resources._ld_scores_path(data_type, pop, adj), overwrite)
 
 
 def main(args):

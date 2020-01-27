@@ -1,5 +1,8 @@
 from gnomad_hail import *
-from gnomad_qc.resources.sample_qc import *
+from v2.resources.sample_qc import *
+from v2.resources import get_gnomad_data
+import argparse
+import sys
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("unified_sample_qc_a")

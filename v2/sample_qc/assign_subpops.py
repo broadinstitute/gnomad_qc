@@ -1,7 +1,7 @@
 from gnomad_hail import *
-from gnomad_qc.resources.sample_qc import *
+from v2.resources.sample_qc import *
 from joint_sample_qc import split_mt_by_relatedness, run_assign_population_pcs
-import pickle
+import argparse
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("subpops")

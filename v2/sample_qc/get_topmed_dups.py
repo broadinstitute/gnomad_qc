@@ -1,13 +1,15 @@
 from gnomad_hail import *
-from gnomad_qc.resources.variant_qc import *
-from gnomad_qc.resources.sample_qc import *
+from v2.resources.variant_qc import *
+from v2.resources.sample_qc import *
+import argparse
+import sys
 
 
 def create_shared_sites_table(data_type: str, overwrite: bool):
     freq_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies'))
     topmed_ht = hl.read_matrix_table('gs://gnomad-public/resources/hail-0.2/topmed.b37.mt').rows()
 
-    methyation_ht = hl.read_table(methylation_sites_mt_path())
+    methyation_ht = hl.read_table(methylation_sites_ht_path())
 
     gnomad = get_gnomad_data(data_type, non_refs_only=True, release_samples=True)
     gnomad = gnomad.select_cols(**gnomad.meta)

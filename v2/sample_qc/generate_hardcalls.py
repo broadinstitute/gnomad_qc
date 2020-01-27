@@ -1,5 +1,8 @@
 from gnomad_hail import *
-from gnomad_qc.resources.sample_qc import *
+from v2.resources.sample_qc import *
+from v2.resources import get_gnomad_data, get_gnomad_data_path
+import sys
+import argparse
 
 
 def main(args):

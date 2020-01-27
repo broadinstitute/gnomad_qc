@@ -1,5 +1,7 @@
 from gnomad_hail import *
-from gnomad_qc.resources.sample_qc import *
+from v2.resources.sample_qc import *
+from v2.resources import SUBPOPS, metadata_exomes_tsv_path, metadata_exomes_ht_path, metadata_genomes_ht_path, metadata_genomes_tsv_path
+import argparse
 import datetime
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")

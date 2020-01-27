@@ -1,10 +1,11 @@
 from gnomad_hail import *
 from gnomad_hail.utils import rf
-from gnomad_qc.resources import *
-from gnomad_qc.resources.variant_qc import *
+from v2.resources.variant_qc import *
 from pprint import pformat
 import json
 import uuid
+import sys
+import argparse
 
 LABEL_COL = 'rf_label'
 TRAIN_COL = 'rf_train'

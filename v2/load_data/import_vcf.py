@@ -1,6 +1,7 @@
 from gnomad_hail import *
-from gnomad_qc.resources import *
+from v2.resources import *
 import argparse
+import sys
 
 
 def main(args):
