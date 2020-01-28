@@ -111,6 +111,7 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     hard_filters['low_coverage'] = (cov_ht[ht.key].chr20_mean_dp < cov_threshold)
 
     # Remove extreme raw bi-allelic sample QC outliers
+    # These were determined by visual inspection of the metrics in gs://gnomad/sample_qc/  v3_genomes_sample_qc.ipynb
     bi_allelic_qc_ht = hl.read_table('gs://gnomad/sample_qc/ht/genomes_v3/sample_qc_bi_allelic.ht')[ht.key]
     hard_filters['bad_qc_metrics'] = (
             (bi_allelic_qc_ht.sample_qc.n_snp > 3.75e6) |
