@@ -1,6 +1,5 @@
 from gnomad_hail import *
 import numpy as np
-from gnomad_qc.resources.sample_qc import *
 from v2.resources.sample_qc import *
 from v2.resources import get_gnomad_data, evaluation_intervals_path
 import argparse

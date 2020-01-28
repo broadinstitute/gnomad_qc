@@ -2,6 +2,8 @@ from create_fam import *
 from sklearn.ensemble import RandomForestClassifier
 import pandas as pd
 import pickle
+import hail as hl
+from gnomad_hail import try_slack
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("unified_sample_qc_c")

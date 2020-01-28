@@ -1,6 +1,9 @@
 from gnomad_hail import *
 from v2.resources import *
 from collections import Counter
+from gnomad_hail.utils.annotations import pop_max_expr, project_max_expr
+import argparse
+import sys
 
 DOWNSAMPLINGS = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000,
                  55000, 60000, 65000, 70000, 75000, 80000, 85000, 90000, 95000, 100000, 110000, 120000]
@@ -140,9 +143,12 @@ def generate_frequency_data(mt: hl.MatrixTable, calculate_downsampling: bool = F
     pops = set(cut_data.pop.keys())
     [pops.discard(x) for x in POPS_TO_REMOVE_FOR_POPMAX]
 
-    mt = mt.annotate_rows(popmax=add_popmax_expr(mt.freq, mt.freq_meta, populations=pops),
-                          faf=add_faf_expr(mt.freq, mt.freq_meta, mt.locus, populations=pops))
-    mt = get_projectmax(mt, mt.project_id)
+    mt = mt.annotate_rows(
+        popmax=pop_max_expr(mt.freq, mt.freq_meta, pops_to_exclude=set(POPS_TO_REMOVE_FOR_POPMAX)),
+        faf=add_faf_expr(mt.freq, mt.freq_meta, mt.locus, populations=pops),
+        project_max=project_max_expr(mt.project_id, mt.GT, mt.alleles)
+
+    )
 
     return mt.rows(), sample_data
 
