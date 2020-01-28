@@ -64,8 +64,13 @@ def main(args):
 
     logger.info('Annotating with platform PCs and known platform annotations...')
     scores = hl.read_table(exome_callrate_scores_ht_path).annotate(data_type='exomes')
-    if args.pc_scores_in_multiple_ann:
-        scores = scores.tranmute(scores=[ann for ann in scores.row if ann.startswith("PC")])
+    if args.pc_scores_in_separate_fields:
+        scores = scores.transmute(scores=[
+            scores[ann] for ann in sorted(
+                [ann for ann in scores.row if ann.startswith("PC")],
+                key=lambda x: int(x[2:])
+            )
+        ])
     platform_pcs = assign_platform_pcs(scores)
     platform_pcs.write(qc_ht_path('exomes', 'platforms'), overwrite=args.overwrite)
 
@@ -76,7 +81,7 @@ if __name__ == '__main__':
     parser.add_argument('--overwrite', help='Overwrite pre-existing data', action='store_true')
     parser.add_argument('--skip_prepare_data_for_platform_pca', help='Skip prepping data for platform imputation (assuming already done)', action='store_true')
     parser.add_argument('--skip_run_platform_pca', help='Skip platform PCA (assuming already done)', action='store_true')
-    parser.add_argument('--pc_scores_in_multiple_ann', help='This option was added to deal with legacy scores HT, where the PC scores where stored in multiple annotations (PC1, ... PCn)', action='store_true')
+    parser.add_argument('--pc_scores_in_separate_fields', help='This option was added to deal with legacy scores HT, where the PC scores where stored in multiple annotations (PC1, ... PCn)', action='store_true')
     parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
 
     args = parser.parse_args()

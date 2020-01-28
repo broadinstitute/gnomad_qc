@@ -153,7 +153,14 @@ def get_related_samples_to_drop(rank_table: hl.Table, relatedness_ht: hl.Table) 
     """
     # Define maximal independent set, using rank list
     related_pairs = relatedness_ht.filter(relatedness_ht.kin > 0.08838835).select('i', 'j')
-    n_related_samples = related_pairs.annotate(ij=[related_pairs.i, related_pairs.j]).explode('ij').key_by('ij').distinct().count()
+    n_related_samples = hl.eval(hl.len(
+        related_pairs.aggregate(
+            hl.agg.explode(
+                lambda x: hl.agg.collect_as_set(x),
+                [related_pairs.i, related_pairs.j]
+            ),
+            _localize=False)
+    ))
     logger.info('{} samples with at least 2nd-degree relatedness found in callset'.format(n_related_samples))
     max_rank = rank_table.count()
     related_pairs = related_pairs.annotate(id1_rank=hl.struct(id=related_pairs.i, rank=rank_table[related_pairs.i].rank),
@@ -186,21 +193,14 @@ def compute_stratified_metrics_filter(ht: hl.Table, qc_metrics: List[str], strat
     ht = ht.select(*strata, **ht.sample_qc.select(*qc_metrics)).key_by('s').persist()
 
     def get_metric_expr(ht, metric):
-        return hl.bind(
-            lambda x: x.annotate(
-                upper=x.median + 4 * x.mad if metric != 'callrate' else 1,
-                lower=x.median - 4 * x.mad if metric != 'callrate' else 0.99
-            ),
-            hl.bind(
-                lambda elements, median: hl.struct(
-                    median=median,
-                    mad=1.4826 * hl.median(hl.abs(elements - median))
-                ),
-                *hl.bind(
-                    lambda x: hl.tuple([x, hl.median(x)]),
-                    hl.agg.collect(ht[metric])
-                )
-            )
+        metric_values = hl.agg.collect(ht[metric])
+        metric_median = hl.median(metric_values)
+        metric_mad = 1.4826 * hl.median(hl.abs(metric_values - metric_median))
+        return hl.struct(
+            median=metric_median,
+            mad=metric_mad,
+            upper=metric_median + 4 * metric_mad if metric != 'callrate' else 1,
+            lower=metric_median - 4 * metric_mad if metric != 'callrate' else 0.99
         )
 
     agg_expr = hl.struct(**{metric: get_metric_expr(ht, metric) for metric in qc_metrics})
@@ -253,6 +253,8 @@ def main(args):
         variants, samples = joint_qc_mt.count()
         logger.info('Pruning {0} variants in {1} samples'.format(variants, samples))
         joint_qc_pruned_ht = hl.ld_prune(joint_qc_mt.GT, r2=0.1)
+        # Note writing the LD-pruned MT is probably overkill
+        # vs using `filter_rows` to filter sites based on the LD-pruned HT.
         joint_qc_pruned_mt = joint_qc_mt.filter_rows(hl.is_defined(joint_qc_pruned_ht[joint_qc_mt.row_key]))
         joint_qc_pruned_mt.write(qc_mt_path('joint', ld_pruned=True), args.overwrite)
 
@@ -377,11 +379,11 @@ def main(args):
     # Annotate samples that fail their respective filters
     checkpoint = exome_ht.aggregate(hl.agg.count_where(hl.len(exome_ht.pop_platform_filters) == 0))
     logger.info(f'{checkpoint} exome samples found passing pop/platform-specific filtering')
-    exome_ht.annotate(data_type='exomes').key_by('data_type', 's').write(qc_ht_path('exomes', 'pop_platform'), args.overwrite)
+    exome_ht.key_by(data_type='exomes', s=exome_ht.s).write(qc_ht_path('exomes', 'pop_platform'), args.overwrite)
 
     checkpoint = genome_ht.aggregate(hl.agg.count_where(hl.len(genome_ht.pop_platform_filters) == 0))
     logger.info(f'{checkpoint} genome samples found passing pop/platform-specific filtering')
-    genome_ht.annotate(data_type='genomes').key_by('data_type', 's').write(qc_ht_path('genomes', 'pop_platform'), args.overwrite)
+    genome_ht.key_by(data_type='genomes', s=genome_ht.s).write(qc_ht_path('genomes', 'pop_platform'), args.overwrite)
 
 
 if __name__ == '__main__':
