@@ -1,4 +1,5 @@
 from gnomad_hail import *
+import numpy as np
 from gnomad_qc.resources.sample_qc import *
 import hdbscan
 
@@ -7,20 +8,17 @@ logger = logging.getLogger("unified_sample_qc_b")
 logger.setLevel(logging.INFO)
 
 
-def assign_platform_pcs(platform_pc_table: hl.Table, out_filepath: str, num_pcs: int = 9) -> hl.Table:
+def assign_platform_pcs(platform_pc_table: hl.Table) -> hl.Table:
     """
     Function assumes that platform_pc_table contains columns named 'combined_sample', 'gross_platform' (known labels), 'callratePC<n>'
 
     :param Table platform_pc_table: Table containing samples and callrate PCs
-    :param str out_filepath: filepath for tsv containing samples, callrate PCs, and imputed platform labels
-    :param int num_pcs: number of callrate PCs to use in platform imputation
     :return: Table containing samples, callrate PCs, and imputed platform labels
     :rtype: Table
     """
     # Read and format data for clustering
     data = platform_pc_table.to_pandas()
-    cols = ['PC' + str(i + 1) for i in range(num_pcs)]
-    callrate_data = data[cols].as_matrix()
+    callrate_data = np.matrix(data['scores'].tolist())
     logger.info('Assigning platforms to {} exome samples in MT...'.format(len(callrate_data)))
 
     # Cluster data
@@ -30,10 +28,9 @@ def assign_platform_pcs(platform_pc_table: hl.Table, out_filepath: str, num_pcs:
     logger.info('Found {} unique platforms during platform imputation...'.format(n_clusters))
 
     data['qc_platform'] = cluster_labels
-    with hl.hadoop_open(out_filepath, 'w') as out:
-        data.to_csv(out, sep="\t", index=False)
-    new_data = hl.import_table(out_filepath, impute=True, types={'qc_platform': hl.str}).key_by('data_type', 's')
-    return new_data
+    ht = hl.Table.from_pandas(data, key=['data_type', 's'])
+    ht = ht.annotate(qc_platform=hl.str(ht.qc_platform))
+    return ht
 
 
 def main(args):
@@ -67,7 +64,14 @@ def main(args):
 
     logger.info('Annotating with platform PCs and known platform annotations...')
     scores = hl.read_table(exome_callrate_scores_ht_path).annotate(data_type='exomes')
-    platform_pcs = assign_platform_pcs(scores, qc_temp_data_prefix('exomes') + '.assigned_platform_pcs.txt.bgz')
+    if args.pc_scores_in_separate_fields:
+        scores = scores.transmute(scores=[
+            scores[ann] for ann in sorted(
+                [ann for ann in scores.row if ann.startswith("PC")],
+                key=lambda x: int(x[2:])
+            )
+        ])
+    platform_pcs = assign_platform_pcs(scores)
     platform_pcs.write(qc_ht_path('exomes', 'platforms'), overwrite=args.overwrite)
 
 
@@ -77,6 +81,7 @@ if __name__ == '__main__':
     parser.add_argument('--overwrite', help='Overwrite pre-existing data', action='store_true')
     parser.add_argument('--skip_prepare_data_for_platform_pca', help='Skip prepping data for platform imputation (assuming already done)', action='store_true')
     parser.add_argument('--skip_run_platform_pca', help='Skip platform PCA (assuming already done)', action='store_true')
+    parser.add_argument('--pc_scores_in_separate_fields', help='This option was added to deal with legacy scores HT, where the PC scores where stored in multiple annotations (PC1, ... PCn)', action='store_true')
     parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
 
     args = parser.parse_args()

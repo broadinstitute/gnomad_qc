@@ -141,17 +141,6 @@ def gnomad_sample_qc(mt: hl.MatrixTable) -> hl.MatrixTable:
     return mt
 
 
-def make_pop_filters_expr(mt: hl.MatrixTable, qc_metrics: List[str]) -> hl.expr.SetExpression:
-    """
-    :param MatrixTable mt: MT to which the pop-/platform-specific filtering should apply
-    :param list qc_metrics: list of sample QC metrics for which to collect pop-/platform-specific filtering status
-    :return: SetExpression value used to create the pop_platform_filters sample annotation
-    :rtype: SetExpression
-    """
-    return hl.set(hl.filter(lambda x: hl.is_defined(x),
-                            [hl.or_missing(mt['fail_{}'.format(metric)], '{}'.format(metric)) for metric in qc_metrics]))
-
-
 def get_related_samples_to_drop(rank_table: hl.Table, relatedness_ht: hl.Table) -> hl.Table:
     """
     Use the maximal independence function in Hail to intelligently prune clusters of related individuals, removing
@@ -164,8 +153,15 @@ def get_related_samples_to_drop(rank_table: hl.Table, relatedness_ht: hl.Table) 
     """
     # Define maximal independent set, using rank list
     related_pairs = relatedness_ht.filter(relatedness_ht.kin > 0.08838835).select('i', 'j')
-    related_samples = related_pairs.aggregate(hl.agg.collect_as_set(hl.agg.explode([related_pairs.i, related_pairs.j])))
-    logger.info('{} samples with at least 2nd-degree relatedness found in callset'.format(len(related_samples)))
+    n_related_samples = hl.eval(hl.len(
+        related_pairs.aggregate(
+            hl.agg.explode(
+                lambda x: hl.agg.collect_as_set(x),
+                [related_pairs.i, related_pairs.j]
+            ),
+            _localize=False)
+    ))
+    logger.info('{} samples with at least 2nd-degree relatedness found in callset'.format(n_related_samples))
     max_rank = rank_table.count()
     related_pairs = related_pairs.annotate(id1_rank=hl.struct(id=related_pairs.i, rank=rank_table[related_pairs.i].rank),
                                            id2_rank=hl.struct(id=related_pairs.j, rank=rank_table[related_pairs.j].rank)
@@ -179,69 +175,50 @@ def get_related_samples_to_drop(rank_table: hl.Table, relatedness_ht: hl.Table) 
     return related_samples_to_drop_ranked.select(**related_samples_to_drop_ranked.node.id).key_by('data_type', 's')
 
 
-def calculate_metrics(mt: hl.MatrixTable, qc_metrics: List[str], data_type: str) -> hl.Table:
+def compute_stratified_metrics_filter(ht: hl.Table, qc_metrics: List[str], strata: List[str] = None) -> hl.Table:
     """
     Compute median, MAD, and upper and lower thresholds for each metric used in pop- and platform-specific outlier filtering
 
-    :param MatrixTable mt: MT containing relevant sample QC metric annotations
+    :param MatrixTable ht: HT containing relevant sample QC metric annotations
     :param list qc_metrics: list of metrics for which to compute the critical values for filtering outliers
-    :param str data_type: 'exomes' or 'genomes'
+    :param list of str strata: List of annotations used for stratification. These metrics should be discrete types!
     :return: Table grouped by pop and platform, with upper and lower threshold values computed for each sample QC metric
     :rtype: Table
     """
-    cols = ['qc_pop', 'qc_platform']
-    key = 's'
-    colnames = cols + ['sample_qc.{}'.format(metric) for metric in qc_metrics]
-    new_colnames = cols + ['{}'.format(metric) for metric in qc_metrics]
-    ht = mt.cols().flatten().select(*colnames).rename(dict(zip(colnames, new_colnames))).key_by(key)
 
-    key_expr = ['{0}_median'.format(metric) for metric in qc_metrics] + ['{0}_mad'.format(metric) for metric in qc_metrics]
-    value_expr = [hl.median(hl.agg.collect(ht['{}'.format(metric)])) for metric in qc_metrics] + \
-                 [1.4826 * hl.median(hl.abs(hl.agg.collect(ht['{0}'.format(metric)]) -
-                                            hl.median(hl.agg.collect(ht['{}'.format(metric)])))) for metric in qc_metrics]
-    ht = ht.group_by(ht.qc_pop, ht.qc_platform).aggregate(**dict(zip(key_expr, value_expr)))
+    def make_pop_filters_expr(ht: hl.Table, qc_metrics: List[str]) -> hl.expr.SetExpression:
+        return hl.set(hl.filter(lambda x: hl.is_defined(x),
+                                [hl.or_missing(ht[f'fail_{metric}'], metric) for metric in qc_metrics]))
 
-    upper_key_expr = ['{0}_upper'.format(metric) for metric in qc_metrics]
-    upper_value_expr = [ht['{0}_median'.format(metric)] + 4 * ht['{0}_mad'.format(metric)] if metric != 'callrate' else 1 for
-                        metric in qc_metrics]
+    ht = ht.select(*strata, **ht.sample_qc.select(*qc_metrics)).key_by('s').persist()
 
-    lower_key_expr = ['{0}_lower'.format(metric) for metric in qc_metrics]
-    lower_value_expr = [ht['{0}_median'.format(metric)] - 4 * ht['{0}_mad'.format(metric)] if metric != 'callrate' else 0.99 for
-                        metric in qc_metrics]
+    def get_metric_expr(ht, metric):
+        metric_values = hl.agg.collect(ht[metric])
+        metric_median = hl.median(metric_values)
+        metric_mad = 1.4826 * hl.median(hl.abs(metric_values - metric_median))
+        return hl.struct(
+            median=metric_median,
+            mad=metric_mad,
+            upper=metric_median + 4 * metric_mad if metric != 'callrate' else 1,
+            lower=metric_median - 4 * metric_mad if metric != 'callrate' else 0.99
+        )
 
-    annotation = dict(zip(upper_key_expr, upper_value_expr))
-    annotation.update(dict(zip(lower_key_expr, lower_value_expr)))
-    ht = ht.annotate(**annotation)
-    ht = ht.annotate(idx=ht.qc_pop + "_" + hl.str(ht.qc_platform))
-    ht = ht.filter(hl.is_defined(ht.idx))
-    ht.export(qc_temp_data_prefix(data_type) + '.platform_pop_MAD.txt.bgz')
-    return ht
-# TODO: investigate why some idx categories are NA (i.e., why some pop/platform information is missing)
+    agg_expr = hl.struct(**{metric: get_metric_expr(ht, metric) for metric in qc_metrics})
+    if strata:
+        ht = ht.annotate_globals(metrics_stats=ht.aggregate(hl.agg.group_by(hl.tuple([ht[x] for x in strata]), agg_expr)))
+    else:
+        ht = ht.annotate_globals(metrics_stats={(): ht.aggregate(agg_expr)})
 
+    strata_exp = hl.tuple([ht[x] for x in strata]) if strata else hl.tuple([])
 
-def apply_pop_platform_filters(ht: hl.Table, mt: hl.MatrixTable, qc_metrics: List[str]) -> hl.MatrixTable:
-    """
-    Flag samples that fall outside pop- and platform-specific QC metric thresholds
-
-    :param Table ht: Table containing upper- and lower-threshold values for each pop- and platform-specific cohort of samples
-    :param MatrixTable mt: MT containing samples to which pop- and platform-specific outlier filtering is applied
-    :param list qc_metrics: list of metrics on which to flag outlier samples
-    :return: MatrixTable containing the pop_platform_filter annotation summarizing metrics on which a given sample is an outlier
-    :rtype: MatrixTable
-    """
-    thresh_colnames = ['idx'] + ['{}_upper'.format(metric) for metric in qc_metrics] + [
-        '{}_lower'.format(metric) for metric in qc_metrics]
-    ht = ht.select(*thresh_colnames).key_by('idx')
-    ht.write('/tmp.h', True)  # temporary write/read for hail assert bug
-    ht = hl.read_table('/tmp.h')
-    mt = mt.annotate_cols(_thresholds=ht[mt.idx])
     fail_exprs = {
-        'fail_{}'.format(metric):
-            (mt.sample_qc['{}'.format(metric)] >= mt._thresholds['{}_upper'.format(metric)]) |
-            (mt.sample_qc['{}'.format(metric)] <= mt._thresholds['{}_lower'.format(metric)]) for metric in qc_metrics}
-    mt = mt.annotate_cols(**fail_exprs).drop('_thresholds')
-    pop_platform_filters = make_pop_filters_expr(mt, qc_metrics)
-    return mt.annotate_cols(pop_platform_filters=pop_platform_filters).drop('idx')
+        f'fail_{metric}':
+            (ht[metric] >= ht.metrics_stats[strata_exp][metric].upper) |
+            (ht[metric] <= ht.metrics_stats[strata_exp][metric].lower)
+        for metric in qc_metrics}
+    ht = ht.transmute(**fail_exprs)
+    pop_platform_filters = make_pop_filters_expr(ht, qc_metrics)
+    return ht.annotate(pop_platform_filters=pop_platform_filters)
 
 
 def split_mt_by_relatedness(pruned_mt: hl.MatrixTable) -> Tuple[hl.MatrixTable, hl.MatrixTable]:
@@ -275,7 +252,10 @@ def main(args):
         joint_qc_mt = hl.read_matrix_table(qc_mt_path('joint'))
         variants, samples = joint_qc_mt.count()
         logger.info('Pruning {0} variants in {1} samples'.format(variants, samples))
-        joint_qc_pruned_mt = hl.ld_prune(joint_qc_mt, r2=0.1, n_cores=args.num_cores)
+        joint_qc_pruned_ht = hl.ld_prune(joint_qc_mt.GT, r2=0.1)
+        # Note writing the LD-pruned MT is probably overkill
+        # vs using `filter_rows` to filter sites based on the LD-pruned HT.
+        joint_qc_pruned_mt = joint_qc_mt.filter_rows(hl.is_defined(joint_qc_pruned_ht[joint_qc_mt.row_key]))
         joint_qc_pruned_mt.write(qc_mt_path('joint', ld_pruned=True), args.overwrite)
 
     pruned_mt = hl.read_matrix_table(qc_mt_path('joint', ld_pruned=True))
@@ -318,8 +298,8 @@ def main(args):
 
         logger.info('Computing population PCs and annotating with known population labels...')
         pca_evals, pca_scores, pca_loadings = hl.hwe_normalized_pca(pca_mt.GT, k=20, compute_loadings=True)
-        pca_mt = pca_mt.annotate_rows(pca_af=hl.agg.mean(pca_mt.GT.n_alt_alleles()) / 2)
-        pca_loadings = pca_loadings.annotate(pca_af=pca_mt.rows()[pca_loadings.key].pca_af)
+        pca_af_ht = pca_mt.annotate_rows(pca_af=hl.agg.mean(pca_mt.GT.n_alt_alleles()) / 2).rows()
+        pca_loadings = pca_loadings.annotate(pca_af=pca_af_ht[pca_loadings.key].pca_af)
         pca_scores.write(ancestry_pca_scores_ht_path(), args.overwrite)
         pca_loadings.write(ancestry_pca_loadings_ht_path(), args.overwrite)
 
@@ -350,7 +330,7 @@ def main(args):
     joint_ht = joint_ht.annotate(qc_pop=hl.case(missing_false=True)
                                  .when(hl.is_defined(joint_ht.pop) & (joint_ht.batch == 1), 'est_b1')
                                  .when(hl.is_defined(joint_ht.pop) & (joint_ht.batch == 2), 'est_b2')
-                                 .default(joint_ht.pop))
+                                 .default(joint_ht.pop)).persist()
 
     # These are keyed by only `s`
     genome_mt = get_gnomad_data('genomes', adj=False, split=False, meta_root=None).select_cols()
@@ -365,47 +345,51 @@ def main(args):
 
     logger.info('Annotating population and platform assignments...')
     platform_ht = hl.read_table(qc_ht_path('exomes', 'platforms'))
-    exome_mt = exome_mt.annotate_cols(qc_platform=platform_ht.key_by('s')[exome_mt.s].qc_platform,
-                                      **joint_ht.filter(joint_ht.data_type == 'exomes').key_by('s')[exome_mt.s])
+    exome_ht = exome_mt.cols()
+    exome_ht = exome_ht.annotate(qc_platform=platform_ht.key_by('s')[exome_ht.s].qc_platform,
+                                      **joint_ht.filter(joint_ht.data_type == 'exomes').key_by('s')[exome_ht.s])
 
     genome_meta_ht = hl.read_table(qc_ht_path('genomes', 'hard_filters'))
-    genome_mt = genome_mt.annotate_cols(qc_platform=genome_meta_ht.key_by('s')[genome_mt.s].qc_platform,
-                                        **joint_ht.filter(joint_ht.data_type == 'genomes').key_by('s')[genome_mt.s])
+    genome_ht = genome_mt.cols()
+    genome_ht = genome_ht.annotate(qc_platform=genome_meta_ht.key_by('s')[genome_ht.s].qc_platform,
+                                        **joint_ht.filter(joint_ht.data_type == 'genomes').key_by('s')[genome_ht.s])
 
     exome_sample_qc_ht = hl.read_table(qc_temp_data_prefix('exomes') + '.sample_qc.ht')
     genome_sample_qc_ht = hl.read_table(qc_temp_data_prefix('genomes') + '.sample_qc.ht')
 
-    exome_mt = exome_mt.annotate_cols(**exome_sample_qc_ht[exome_mt.s])
-    genome_mt = genome_mt.annotate_cols(**genome_sample_qc_ht[genome_mt.s])
-    exome_mt = exome_mt.annotate_cols(idx=exome_mt.qc_pop + "_" + hl.str(exome_mt.qc_platform))
-    genome_mt = genome_mt.annotate_cols(idx=genome_mt.qc_pop + "_" + hl.str(genome_mt.qc_platform))
+    exome_ht = exome_ht.annotate(**exome_sample_qc_ht[exome_ht.s])
+    genome_ht = genome_ht.annotate(**genome_sample_qc_ht[genome_ht.s])
 
     # For each population, aggregate sample QC metrics and calculate the MAD/mean/stdev
     logger.info('Calculating platform- and population-specific sample QC thresholds...')
     exome_qc_metrics = ['n_snp', 'r_ti_tv', 'r_insertion_deletion', 'n_insertion', 'n_deletion', 'r_het_hom_var']
-    exome_ht = calculate_metrics(exome_mt, exome_qc_metrics, 'exomes')
+    exome_pop_platform_filter_ht = compute_stratified_metrics_filter(exome_ht, exome_qc_metrics, ['qc_pop', 'qc_platform'])
+    exome_ht = exome_ht.annotate_globals(hl.eval(exome_pop_platform_filter_ht.globals))
+    exome_ht = exome_ht.annotate(
+        **exome_pop_platform_filter_ht[exome_ht.key]
+    ).persist()
 
-    genome_qc_metrics = exome_qc_metrics + ['call_rate']
-    genome_ht = calculate_metrics(genome_mt, genome_qc_metrics, 'genomes')
+    genome_qc_metrics = ['n_snp', 'r_ti_tv', 'r_insertion_deletion', 'n_insertion', 'n_deletion', 'r_het_hom_var']
+    genome_pop_platform_filter_ht = compute_stratified_metrics_filter(genome_ht, genome_qc_metrics, ['qc_pop', 'qc_platform'])
+    genome_ht = genome_ht.annotate_globals(hl.eval(genome_pop_platform_filter_ht.globals))
+    genome_ht = genome_ht.annotate(
+        **genome_pop_platform_filter_ht[genome_ht.key]
+    ).persist()
 
     # Annotate samples that fail their respective filters
-    logger.info('Flagging samples failing pop/platform-specific sample qc thresholds...')
-    exome_mt = apply_pop_platform_filters(exome_ht, exome_mt, exome_qc_metrics)
-    checkpoint = exome_mt.aggregate_cols(hl.agg.count_where(hl.len(exome_mt.pop_platform_filters) == 0))
-    logger.info('{0} exome samples found passing pop/platform-specific filtering'.format(checkpoint))
-    exome_mt.cols().annotate(data_type='exomes').key_by('data_type', 's').write(qc_ht_path('exomes', 'pop_platform'), args.overwrite)
+    checkpoint = exome_ht.aggregate(hl.agg.count_where(hl.len(exome_ht.pop_platform_filters) == 0))
+    logger.info(f'{checkpoint} exome samples found passing pop/platform-specific filtering')
+    exome_ht.key_by(data_type='exomes', s=exome_ht.s).write(qc_ht_path('exomes', 'pop_platform'), args.overwrite)
 
-    genome_mt = apply_pop_platform_filters(genome_ht, genome_mt, genome_qc_metrics)
-    checkpoint = genome_mt.aggregate_cols(hl.agg.count_where(hl.len(genome_mt.pop_platform_filters) == 0))
-    logger.info('{0} genome samples found passing pop/platform-specific filtering'.format(checkpoint))
-    genome_mt.cols().annotate(data_type='genomes').key_by('data_type', 's').write(qc_ht_path('genomes', 'pop_platform'), args.overwrite)
+    checkpoint = genome_ht.aggregate(hl.agg.count_where(hl.len(genome_ht.pop_platform_filters) == 0))
+    logger.info(f'{checkpoint} genome samples found passing pop/platform-specific filtering')
+    genome_ht.key_by(data_type='genomes', s=genome_ht.s).write(qc_ht_path('genomes', 'pop_platform'), args.overwrite)
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--load_joint_pruned_qc_mt', help='Load a pre-computed LD-pruned joint MT instead of rewriting', action='store_true')
-    parser.add_argument('--num_cores', help='Required for LD Prune', default=32)
     parser.add_argument('--overwrite', help='Overwrite pre-existing data', action='store_true')
 
     parser.add_argument('--skip_platform_pca', help='Skip annotating and assigning platform PCs', action='store_true')
