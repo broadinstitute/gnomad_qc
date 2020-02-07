@@ -1,3 +1,4 @@
 git+https://github.com/macarthur-lab/gnomad_hail.git@master
 scikit-learn
+scipy<1.4
 hail
