@@ -1,5 +1,5 @@
 from gnomad_hail.utils.annotations import *
-from gnomad_qc.v3.resources import get_full_mt, meta_ht_path, freq_ht_path
+from gnomad_qc.v3.resources import get_gnomad_v3_mt, meta, freq
 import argparse
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
@@ -13,9 +13,8 @@ def main(args):
     hl.init(log='/frequency_data_generation.log', default_reference='GRCh38')
 
     logger.info("Reading sparse MT and metadata table...")
-    mt = get_full_mt(split=False, key_by_locus_and_alleles=True)
-    meta_ht = hl.read_table(meta_ht_path)
-    meta_ht = meta_ht.select('pop', 'sex', 'project_id', 'release', 'sample_filters')
+    mt = get_gnomad_v3_mt(split=False, key_by_locus_and_alleles=True)
+    meta_ht = meta.ht().select('pop', 'sex', 'project_id', 'release', 'sample_filters')
 
     if args.test:
         logger.info("Filtering to chr20:1-1000000")
@@ -64,7 +63,7 @@ def main(args):
     if args.test:
         mt.rows().write("gs://gnomad-tmp/gnomad_freq/chr20_1_1000000_freq.ht", overwrite=True)
     else:
-        mt.rows().write(freq_ht_path, overwrite=args.overwrite)
+        mt.rows().write(freq.path, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":

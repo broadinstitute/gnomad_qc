@@ -1,12 +1,9 @@
 import hail as hl
-from gnomad_qc.v3.resources import get_full_mt
-
-
-last_END_position_path = 'gs://gnomad/annotations/hail-0.2/ht/genomes_v3/gnomad_genomes_v3_last_END_positions.ht'
+from gnomad_qc.v3.resources import get_gnomad_v3_mt, last_END_position
 
 # END RESOURCES
 
-mt = get_full_mt(False)
+mt = get_gnomad_v3_mt(False)
 mt = mt.select_entries('END')
 t = mt._localize_entries('__entries', '__cols')
 t = t.select(
@@ -33,5 +30,5 @@ t = t.select(
         t.locus.position
     )
 )
-t.write(last_END_position_path, overwrite=True)
+t.write(last_END_position.path, overwrite=True)
 
