@@ -1,4 +1,3 @@
 git+https://github.com/macarthur-lab/gnomad_hail.git@master
-hail
-pandas
 scikit-learn
+hail
