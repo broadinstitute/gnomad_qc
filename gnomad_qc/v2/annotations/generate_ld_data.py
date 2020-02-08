@@ -170,7 +170,7 @@ def generate_cross_pop_ld_scores_from_ld_matrices(pop1, pop2, data_type, pop_dat
     # TODO: is a bias adjustment needed?
     # r2_adj = ((n - 1.0) / (n - 2.0)) * r2 - (1.0 / (n - 2.0))
 
-    out_name = cross_pop_ld_scores_path(data_type, pop1, pop2, adj)
+    out_name = ld_resources._cross_pop_ld_scores_path(data_type, pop1, pop2, adj)
     compute_and_annotate_ld_score(ht1, r_bm, radius, out_name, overwrite)
 
 
