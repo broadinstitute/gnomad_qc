@@ -5,7 +5,7 @@ from hail.linalg import BlockMatrix
 
 COMMON_FREQ = 0.005
 RARE_FREQ = 0.0005
-temp_bucket = 'gs://gnomad-tmp/ld'
+SNV_SV_POPS = ('nfe', 'afr')
 
 
 def ld_pruned_path(data_type: str, pop: str, r2: str, version: str = CURRENT_RELEASE):
@@ -69,7 +69,7 @@ def generate_ld_matrix(mt, pop_data, data_type, radius: int = 1000000, common_on
     # Total of ~37 hours ($400)
     for label, pops in dict(pop_data).items():
         for pop in pops:
-            if data_type == 'genomes_snv_sv' and pop not in ('nfe', 'afr'): continue
+            if data_type == 'genomes_snv_sv' and pop not in SNV_SV_POPS: continue
             pop_mt = filter_mt_for_ld(mt, label, pop, common_only, sv_dataset=data_type == 'genomes_snv_sv')
 
             pop_mt.rows().select('pop_freq').add_index().write(ld_index_path(data_type, pop, common_only, adj), overwrite)
@@ -82,34 +82,23 @@ def generate_ld_matrix(mt, pop_data, data_type, radius: int = 1000000, common_on
 def export_snv_sv_ld_matrix(pop_data, data_type, common_only: bool = True, adj: bool = False, overwrite: bool = False):
     for label, pops in dict(pop_data).items():
         for pop in pops:
-            if pop not in ('nfe', 'afr'): continue
+            if pop not in SNV_SV_POPS: continue
             bm = BlockMatrix.read(ld_matrix_path(data_type, pop, common_only, adj))
             ld_index = hl.read_table(ld_index_path(data_type, pop, common_only, adj))
             snvs = ld_index.filter(ld_index.alleles[0] != "N")
             svs = ld_index.filter(ld_index.alleles[0] == "N")
             snv_indices = snvs.idx.collect()
-            print(len(snv_indices))
             sv_indices = svs.idx.collect()
-            print(len(sv_indices))
             ht = bm.filter(snv_indices, sv_indices).entries(keyed=False)
             ht.filter(ht.entry != 0).write(ld_snv_sv_path(pop), overwrite)
 
             hl.read_table(ld_snv_sv_path(pop)).export(ld_snv_sv_path(pop).replace('.ht', '.txt.bgz'))
-            ld_index = hl.read_table(ld_index_path(data_type, pop, common_only, adj))
-            snvs = ld_index.filter(ld_index.alleles[0] != "N").add_index().key_by()
-            svs = ld_index.filter(ld_index.alleles[0] == "N").add_index().key_by()
+            snvs = snvs.add_index().key_by()
+            svs = svs.add_index().key_by()
             snvs.select(chrom=snvs.locus.contig, pos=snvs.locus.position, ref=snvs.alleles[0], alt=snvs.alleles[1],
                         i=snvs.idx).export(ld_snv_sv_index_path(pop, 'snv'))
             svs.select(chrom=svs.locus.contig, pos=svs.locus.position, ref=svs.alleles[0], alt=svs.alleles[1],
                        j=svs.idx).export(ld_snv_sv_index_path(pop, 'sv'))
-
-            # ld_index = hl.read_table('gs://gnomad-resources/snv_sv_ld/gnomad.nfe.common.adj.ld.variant_indices.ht')
-            # snvs = ld_index.filter(ld_index.alleles[0] != "N")
-            # svs = ld_index.filter(ld_index.alleles[0] == "N")
-            # snvs = snvs.add_index().key_by('idx')
-            # svs = svs.add_index().key_by('idx')
-            # snvs.filter(snvs.idx == 12972032).show()
-            # svs.filter(svs.idx == 16384).show()
 
 
 def generate_ld_scores_from_ld_matrix(pop_data, data_type, min_frequency=0.01, call_rate_cutoff=0.8,
@@ -150,7 +139,8 @@ def generate_all_cross_pop_ld_scores(pop_data, data_type, min_frequency=0.01, ca
 
 
 def generate_cross_pop_ld_scores_from_ld_matrices(pop1, pop2, data_type, pop_data, min_frequency=0.01, call_rate_cutoff=0.8,
-                                                  adj: bool = False, radius: int = 1000000, overwrite=False):
+                                                  adj: bool = False, radius: int = 1000000, overwrite=False,
+                                                  temp_bucket='gs://gnomad-tmp/ld'):
     n1 = pop_data.pop[pop1]
     n2 = pop_data.pop[pop2]
     ht1 = hl.read_table(ld_index_path(data_type, pop1, adj=adj))
@@ -163,8 +153,8 @@ def generate_cross_pop_ld_scores_from_ld_matrices(pop1, pop2, data_type, pop_dat
                      (ht2.pop_freq.AF <= 1 - min_frequency) &
                      (ht2.pop_freq.AN / n2 >= 2 * call_rate_cutoff))
 
-    ht1 = ht1.filter(hl.is_defined(ht2[ht1.key])).add_index(name='new_idx').checkpoint(f'{temp_bucket}/{pop1}_{pop2}.ht', overwrite=overwrite, _read_if_exists=not args.overwrite)
-    ht2 = ht2.filter(hl.is_defined(ht1[ht2.key])).add_index(name='new_idx').checkpoint(f'{temp_bucket}/{pop2}_{pop1}.ht', overwrite=overwrite, _read_if_exists=not args.overwrite)
+    ht1 = ht1.filter(hl.is_defined(ht2[ht1.key])).add_index(name='new_idx').checkpoint(f'{temp_bucket}/{pop1}_{pop2}.ht', overwrite=overwrite, _read_if_exists=not overwrite)
+    ht2 = ht2.filter(hl.is_defined(ht1[ht2.key])).add_index(name='new_idx').checkpoint(f'{temp_bucket}/{pop2}_{pop1}.ht', overwrite=overwrite, _read_if_exists=not overwrite)
     indices1 = ht1.idx.collect()
     indices2 = ht2.idx.collect()
     assert len(indices1) == len(indices2)
