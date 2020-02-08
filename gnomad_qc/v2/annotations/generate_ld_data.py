@@ -94,16 +94,15 @@ def export_snv_sv_ld_matrix(pop_data, data_type, common_only: bool = True, adj: 
             snv_indices = snvs.idx.collect()
             sv_indices = svs.idx.collect()
             ht = bm.filter(snv_indices, sv_indices).entries(keyed=False)
-            ht.filter(ht.entry != 0).write(ld_snv_sv_path(pop), overwrite)
+            ht.filter(ht.entry != 0).write(ld_resources._ld_snv_sv_path(pop), overwrite)
 
-            hl.read_table(ld_snv_sv_path(pop)).export(ld_snv_sv_path(pop).replace('.ht', '.txt.bgz'))
+            hl.read_table(ld_resources._ld_snv_sv_path(pop)).export(ld_resources._ld_snv_sv_path(pop).replace('.ht', '.txt.bgz'))
             snvs = snvs.add_index().key_by()
             svs = svs.add_index().key_by()
             snvs.select(chrom=snvs.locus.contig, pos=snvs.locus.position, ref=snvs.alleles[0], alt=snvs.alleles[1],
-                        i=snvs.idx).export(ld_snv_sv_index_path(pop, 'snv'))
+                        i=snvs.idx).export(ld_resources._ld_snv_sv_index_path(pop, 'snv'))
             svs.select(chrom=svs.locus.contig, pos=svs.locus.position, ref=svs.alleles[0], alt=svs.alleles[1],
-                       j=svs.idx).export(ld_snv_sv_index_path(pop, 'sv'))
-
+                       j=svs.idx).export(ld_resources._ld_snv_sv_index_path(pop, 'sv'))
 
 
 def generate_ld_scores_from_ld_matrix(pop_data, data_type, min_frequency=0.01, call_rate_cutoff=0.8,
@@ -158,8 +157,8 @@ def generate_cross_pop_ld_scores_from_ld_matrices(pop1, pop2, data_type, pop_dat
                      (ht2.pop_freq.AF <= 1 - min_frequency) &
                      (ht2.pop_freq.AN / n2 >= 2 * call_rate_cutoff))
 
-    ht1 = ht1.filter(hl.is_defined(ht2[ht1.key])).add_index(name='new_idx').checkpoint(f'{temp_bucket}/{pop1}_{pop2}.ht', overwrite=overwrite, _read_if_exists=not args.overwrite)
-    ht2 = ht2.filter(hl.is_defined(ht1[ht2.key])).add_index(name='new_idx').checkpoint(f'{temp_bucket}/{pop2}_{pop1}.ht', overwrite=overwrite, _read_if_exists=not args.overwrite)
+    ht1 = ht1.filter(hl.is_defined(ht2[ht1.key])).add_index(name='new_idx').checkpoint(f'{temp_bucket}/{pop1}_{pop2}.ht', overwrite=overwrite, _read_if_exists=not overwrite)
+    ht2 = ht2.filter(hl.is_defined(ht1[ht2.key])).add_index(name='new_idx').checkpoint(f'{temp_bucket}/{pop2}_{pop1}.ht', overwrite=overwrite, _read_if_exists=not overwrite)
     indices1 = ht1.idx.collect()
     indices2 = ht2.idx.collect()
     assert len(indices1) == len(indices2)
