@@ -3,7 +3,7 @@ from gnomad_qc.v3.resources import get_gnomad_v3_mt, last_END_position
 
 # END RESOURCES
 
-mt = get_gnomad_v3_mt(False)
+mt = get_gnomad_v3_mt()
 mt = mt.select_entries('END')
 t = mt._localize_entries('__entries', '__cols')
 t = t.select(

@@ -23,7 +23,7 @@ def compute_info() -> hl.Table:
     :return: Table with info fields
     :rtype: Table
     """
-    mt = get_gnomad_v3_mt(split=False, key_by_locus_and_alleles=True, remove_hard_filtered_samples=False)
+    mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, remove_hard_filtered_samples=False)
     mt = mt.filter_rows((hl.len(mt.alleles) > 1))
     mt = mt.transmute_entries(**mt.gvcf_info)
 
@@ -231,7 +231,7 @@ def main(args):
         split_info().write(get_info(split=True).path, overwrite=args.overwrite)
 
     if args.export_info_vcf:
-        info_ht = hl.read_table(get_info(split=False))
+        info_ht = get_info(split=False).ht()
         hl.export_vcf(ht_to_vcf_mt(info_ht), info_vcf_path)
 
     # if args.generate_ac: # TODO: compute AC and qc_AC as part of compute_info

@@ -2,7 +2,7 @@ from gnomad_hail.utils import get_adj_expr
 from gnomad_hail.utils.sample_qc import *
 from gnomad_hail.utils.sparse_mt import impute_sex_ploidy, densify_sites
 from gnomad_qc.v3.resources import *
-from gnomad_hail.resources.grch38 import purcell_5k, lcr, telomeres_and_centromeres
+from gnomad_hail.resources.grch38 import purcell_5k_intervals, lcr_intervals, telomeres_and_centromeres
 import pickle
 import argparse
 
@@ -17,7 +17,7 @@ def compute_sample_qc() -> hl.Table:
         mt,
         strata= {
             'bi_allelic': bi_allelic_expr(mt),
-        'multi_allelic': ~bi_allelic_expr(mt)
+            'multi_allelic': ~bi_allelic_expr(mt)
         },
         tmp_ht_prefix=get_sample_qc().path[:-3]
     )
@@ -35,14 +35,13 @@ def compute_sample_qc() -> hl.Table:
 def compute_qc_mt() -> hl.MatrixTable:
     # Load v2 and p5k sites for QC
     v2_qc_sites = hl.read_table(gnomad_v2_qc_sites.path).key_by('locus')
-    p5k = hl.read_table(purcell_5k.path)
-    qc_sites = v2_qc_sites.union(p5k, unify=True)
+    qc_sites = v2_qc_sites.union(purcell_5k_intervals.ht(), unify=True)
 
     qc_sites = qc_sites.filter(
-        hl.is_missing(lcr.ht()[qc_sites.key])
+        hl.is_missing(lcr_intervals.ht()[qc_sites.key])
     )
 
-    mt = get_gnomad_v3_mt(split=False, key_by_locus_and_alleles=True)
+    mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
     mt = mt.select_entries(
         'END',
         GT=mt.LGT,
@@ -138,13 +137,13 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
 def compute_sex() -> hl.Table:
     # Compute sex chrom poloidy
     ht = impute_sex_ploidy(
-        get_gnomad_v3_mt(split=False, remove_hard_filtered_samples=False),
+        get_gnomad_v3_mt(remove_hard_filtered_samples=False),
         excluded_intervals=telomeres_and_centromeres.ht()
     )
     ht = ht.checkpoint('gs://gnomad-tmp/sex_depth.ht', overwrite=True)
 
     # Compute F-stat
-    chrom_x_ht = get_gnomad_v3_mt(split=False, key_by_locus_and_alleles=True, remove_hard_filtered_samples=False)
+    chrom_x_ht = get_gnomad_v3_mt(key_by_locus_and_alleles=True, remove_hard_filtered_samples=False)
     n_samples = chrom_x_ht.count_cols()
     chrom_x_ht = hl.filter_intervals(chrom_x_ht, [hl.parse_locus_interval('chrX')])
     chrom_x_ht = chrom_x_ht.filter_rows((hl.len(chrom_x_ht.alleles) == 2))

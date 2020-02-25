@@ -13,7 +13,7 @@ def main(args):
     hl.init(log='/frequency_data_generation.log', default_reference='GRCh38')
 
     logger.info("Reading sparse MT and metadata table...")
-    mt = get_gnomad_v3_mt(split=False, key_by_locus_and_alleles=True)
+    mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
     meta_ht = meta.ht().select('pop', 'sex', 'project_id', 'release', 'sample_filters')
 
     if args.test:

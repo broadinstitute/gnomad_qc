@@ -32,7 +32,7 @@ def print_ref_block_stats(path: str):
             _print_block_stats(pickle.load(f))
 
 def compute_stats(stats_path: str):
-    mt = get_gnomad_v3_mt(split=False)
+    mt = get_gnomad_v3_mt()
     mt = mt.filter_entries(hl.is_defined(mt.END))
     ref_block_stats = mt.aggregate_entries(
         hl.struct(
