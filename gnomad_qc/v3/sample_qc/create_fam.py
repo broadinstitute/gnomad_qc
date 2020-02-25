@@ -1,0 +1,248 @@
+from typing import List
+from collections import defaultdict, Counter
+import argparse
+import hail as hl
+import random
+from gnomad_qc.v3.resources import (
+    meta,
+    pedigree,
+    trios,
+    get_gnomad_v3_mt,
+    ped_mendel_errors,
+    duplicates,
+    get_v3_relatedness_annotated_ht,
+    release_samples_rankings,
+    v3_sex,
+)
+from gnomad_hail import logger
+from gnomad_hail.utils.relatedness import (
+    get_duplicated_samples,
+    get_duplicated_samples_ht,
+    infer_families,
+)
+
+
+def create_fake_pedigree(
+    n: int, sample_list: List[str], real_pedigree: hl.Pedigree = None
+) -> hl.Pedigree:
+    """
+
+    Generates a "fake" pedigree made of trios created by sampling 3 random samples in the sample list.
+    If `real_pedigree` is given, then children from the real pedigrees won't be used as probands.
+    This functions insures that:
+    - All probands are unique
+    - All individuals in a trio are different
+
+    :param int n: Number of fake trios desired in the pedigree
+    :param list of str sample_list: List of samples
+    :param Pedigree real_pedigree: Optional pedigree to exclude children from
+    :return: Fake pedigree
+    :rtype: Pedigree
+    """
+
+    probands = set()
+    if real_pedigree is not None:
+        probands = {trio.s for trio in real_pedigree.trios}.intersection(
+            set(sample_list)
+        )
+        if len(probands) == len(sample_list):
+            raise ValueError(
+                "Full sample list for fake trios generation needs to include samples that aren't probands in the real trios."
+            )
+
+    fake_trios = []
+    for i in range(n):
+        mat_id, pat_id = random.sample(sample_list, 2)
+        s = random.choice(sample_list)
+        while s in probands.union({mat_id, pat_id}):
+            s = random.choice(sample_list)
+
+        probands.add(s)
+
+        fake_trios.append(
+            hl.Trio(
+                s=s,
+                pat_id=pat_id,
+                mat_id=mat_id,
+                fam_id=f"fake_{str(i+1)}",
+                is_female=True,
+            )
+        )
+
+    return hl.Pedigree(fake_trios)
+
+
+def run_mendel_errors() -> hl.Table:
+    meta_ht = meta.ht()
+    ped = pedigree.versions["raw"].pedigree()
+    logger.info(f"Running Mendel errors for {len(ped.trios)} trios.")
+
+    fake_ped = create_fake_pedigree(
+        n=100,
+        sample_list=list(
+            meta_ht.aggregate(
+                hl.agg.filter(
+                    hl.rand_bool(0.01)
+                    & (
+                        (hl.len(meta_ht.qc_metrics_filters) > 0)
+                        | hl.or_else(hl.len(meta_ht.hard_filters) > 0, False)
+                    ),
+                    hl.agg.collect_as_set(meta_ht.s),
+                )
+            )
+        ),
+        real_pedigree=ped,
+    )
+    merged_ped = hl.Pedigree(trios=ped.trios + fake_ped.trios)
+
+    ped_samples = hl.literal(
+        set(
+            [s for trio in merged_ped.trios for s in [trio.s, trio.pat_id, trio.mat_id]]
+        )
+    )
+    mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
+    mt = mt.filter_cols(ped_samples.contains(mt.s))
+    mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20")])
+    mt = mt.select_entries("GT", "END")
+    mt = hl.experimental.densify(mt)
+    mt = mt.filter_rows(hl.len(mt.alleles) == 2)
+    mendel_errors, _, _, _ = hl.mendel_errors(mt["GT"], merged_ped)
+    return mendel_errors
+
+
+def run_infer_families() -> hl.Pedigree:
+    logger.info("Inferring families")
+    ped = infer_families(
+        get_v3_relatedness_annotated_ht(), v3_sex.ht(), duplicates.ht()
+    )
+
+    # Remove all trios containing any QC-filtered sample
+    meta_ht = meta.ht()
+    filtered_samples = meta_ht.aggregate(
+        hl.agg.filter(
+            (hl.len(meta_ht.qc_metrics_filters) > 0)
+            | hl.or_else(hl.len(meta_ht.hard_filters) > 0, False),
+            hl.agg.collect_as_set(meta_ht.s),
+        )
+    )
+
+    return hl.Pedigree(
+        trios=[
+            trio
+            for trio in ped.trios
+            if trio.s not in filtered_samples
+            and trio.pat_id not in filtered_samples
+            and trio.mat_id not in filtered_samples
+        ]
+    )
+
+
+def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:
+    trios_per_fam = defaultdict(list)
+    for trio in ped.trios:
+        trios_per_fam[trio.fam_id].append(trio)
+
+    message = [
+        f"Found a total of {len(ped.trios)} trios in {len(trios_per_fam)} families:"
+    ]
+    for n_trios, n_fam in Counter(
+        [len(trios) for trios in trios_per_fam.values()]
+    ).items():
+        message.append(f"{n_fam} with {n_trios} trios.")
+    logger.info("\n".join(message))
+
+    return hl.Pedigree(trios=[trios[0] for trios in trios_per_fam.values()])
+
+
+def filter_ped(
+    raw_ped: hl.Pedigree, mendel: hl.Table, max_dnm: int, max_mendel: int
+) -> hl.Pedigree:
+    mendel = mendel.filter(mendel.fam_id.startswith("fake"))
+    mendel_by_s = (
+        mendel.group_by(mendel.s)
+        .aggregate(
+            fam_id=hl.agg.take(mendel.fam_id, 1)[0],
+            n_mendel=hl.agg.count(),
+            n_de_novo=hl.agg.count_where(mendel.mendel_code == 2),
+        )
+        .persist()
+    )
+
+    good_trios = mendel_by_s.aggregate(
+        hl.agg.filter(
+            (mendel_by_s.n_mendel < max_mendel) & (mendel_by_s.n_de_novo < max_dnm),
+            hl.agg.collect(mendel_by_s.s,),
+        )
+    )
+    logger.info(f"Found {len(good_trios)} trios passing filters")
+    return hl.Pedigree([trio for trio in raw_ped.trios if trio.s in good_trios])
+
+
+def main(args):
+
+    hl.init(default_reference="GRCh38")
+
+    if args.find_dups:
+        logger.info("Selecting best duplicate per duplicated sample set")
+        dups = get_duplicated_samples(get_v3_relatedness_annotated_ht())
+        dups_ht = get_duplicated_samples_ht(dups, release_samples_rankings.ht())
+        dups_ht.write(duplicates.path, overwrite=args.overwrite)
+
+    if args.infer_families:
+        ped = run_infer_families()
+        ped.write(pedigree.versison["raw"].path)
+        raw_trios = families_to_trios(ped)
+        raw_trios.write(trios.versions["raw"].path)
+
+    if args.run_mendel_errors:
+        mendel_errors = run_mendel_errors()
+        mendel_errors.write(ped_mendel_errors.path, overwrite=args.overwrite)
+
+    if args.finalize_ped:
+        final_ped = filter_ped(
+            pedigree.versions["raw"].pedigree,
+            ped_mendel_errors.ht(),
+            args.max_dnm,
+            args.max_mendel,
+        )
+        final_ped.write(pedigree.path)
+
+        final_trios = families_to_trios(final_ped)
+        final_trios.write(trios.path)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--overwrite",
+        help="Overwrite all data from this subset (default: False)",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--find_dups",
+        help="Creates a table with duplicate samples indicating which one is the best to use.",
+        action="store_true",
+    )
+    parser.add_argument("--infer_families", help="Infers families", action="store_true")
+    parser.add_argument(
+        "--run_mendel_errors", help="Runs mendel errors", action="store_true"
+    )
+    parser.add_argument(
+        "--finalize_ped",
+        help="Creates a final ped file by excluding families where the number of Mendel errors or de novos are higher than those specified in --max_dnm and --max_mendel",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--max_dnm",
+        help="Maximum number of raw de novo mutations for real trios",
+        defaut=2200,
+        type=int,
+    )
+    parser.add_argument(
+        "--max_mendel",
+        help="Maximum number of raw Mendel errors for real trios",
+        defaut=3750,
+        type=int,
+    )
+
+    main(parser.parse_args())

@@ -1,4 +1,6 @@
 from gnomad.resources import TableResource, MatrixTableResource
+from hail import Table
+from gnomad.utils.relatedness import get_relationship_expr
 
 SAMPLE_QC_ROOT = "gs://gnomad/sample_qc/ht/genomes_v3"
 
@@ -53,6 +55,18 @@ def get_ancestry_pca_eigenvalues_path(include_unreleasable_samples: bool = False
     :return: Ancestry PCA eigenvalues path
     """
     return _get_ancestry_pca_ht_path('scores', include_unreleasable_samples)
+
+
+def get_v3_relatedness_annotated_ht() -> Table:
+    relatedness_ht = v3_relatedness.ht()
+    return relatedness_ht.annotate(
+        relationship=get_relationship_expr(
+            kin_expr=relatedness_ht.kin,
+            ibd0_expr=relatedness_ht.ibd0,
+            ibd1_expr=relatedness_ht.ibd1,
+            ibd2_expr=relatedness_ht.ibd2,
+        )
+    )
 
 
 # QC Sites
