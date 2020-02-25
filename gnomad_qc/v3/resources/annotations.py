@@ -25,7 +25,7 @@ def get_filters(model_id: str, split: bool = True) -> TableResource:
     :param split: Split or multi-allelic version of the filtering file
     :return: Filtering annotation file
     """
-    path = '{}/filtering/{}{}.ht'.format(
+    path = '{}/{}_filtering{}.ht'.format(
         ANNOTATIONS_ROOT,
         model_id,
         '.split' if split else ''
