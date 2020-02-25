@@ -139,7 +139,7 @@ def main(args):
 
     if args.infer_families:
         ped = run_infer_families()
-        ped.write(pedigree.versison["raw"].path)
+        ped.write(pedigree.versions["raw"].path)
         raw_trios = families_to_trios(ped)
         raw_trios.write(trios.versions["raw"].path)
 
