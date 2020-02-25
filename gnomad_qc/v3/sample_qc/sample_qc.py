@@ -19,7 +19,8 @@ def compute_sample_qc() -> hl.Table:
             'bi_allelic': bi_allelic_expr(mt),
             'multi_allelic': ~bi_allelic_expr(mt)
         },
-        tmp_ht_prefix=get_sample_qc().path[:-3]
+        tmp_ht_prefix=get_sample_qc().path[:-3],
+        gt_expr=mt.GT
     )
 
     # Remove annotations that cannot be computed from the sparse format
@@ -161,11 +162,14 @@ def compute_sex() -> hl.Table:
         **inbreeding_ht[ht.key]
     )
 
+    x_ploidy_cutoff, y_ploidy_cutoff = get_ploidy_cutoffs(ht, f_stat_cutoff=0.5)
+
     return ht.annotate(
         **get_sex_expr(
             ht.chrX_ploidy,
             ht.chrY_ploidy,
-            ht.f_stat
+            x_ploidy_cutoff,
+            y_ploidy_cutoff
         )
     )
 
@@ -205,7 +209,7 @@ def run_pca(
         related_samples_to_drop: hl.Table
 ) -> Tuple[List[float], hl.Table, hl.Table]:
     logger.info("Running population PCA")
-    qc_mt = get_qc_mt()
+    qc_mt = v3_qc.mt()
 
     samples_to_drop = related_samples_to_drop.select()
     if not include_unreleasable_samples:
@@ -394,12 +398,14 @@ def main(args):
     if args.impute_sex:
         compute_sex().write(v3_sex.path, overwrite=args.overwrite)
     elif args.reannotate_sex:
-        sex_ht = v3_sex.ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True) # Copy HT to temp location to overwrite annotations
+        sex_ht = v3_sex.ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True) # Copy HT to temp location to overwrite annotation
+        x_ploidy_cutoff, y_ploidy_cutoff = get_ploidy_cutoffs(sex_ht, f_stat_cutoff=0.5)
         sex_ht = sex_ht.annotate(
             **get_sex_expr(
                 sex_ht.chrX_ploidy,
                 sex_ht.chrY_ploidy,
-                sex_ht.f_stat
+                x_ploidy_cutoff,
+                y_ploidy_cutoff
             )
         )
         sex_ht.write(v3_sex.path, overwrite=args.overwrite)
@@ -412,7 +418,7 @@ def main(args):
     if args.run_pc_relate:
         logger.info('Running PC-Relate')
         logger.warn("PC-relate requires SSDs and doesn't work with preemptible workers!")
-        qc_mt = get_qc_mt()
+        qc_mt = v3_qc.mt()
         eig, scores, _ = hl.hwe_normalized_pca(qc_mt.GT, k=10, compute_loadings=False)
         scores = scores.checkpoint(v3_pc_relate_pca_scores.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         relatedness_ht = hl.pc_relate(qc_mt.GT, min_individual_maf=0.01, scores_expr=scores[qc_mt.col_key].scores,

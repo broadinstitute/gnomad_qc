@@ -80,7 +80,7 @@ def compute_per_base_cds_coverage(overwrite: bool):
     genomes_cov = get_cov_ht('genomes')
     exomes_cov = get_cov_ht('exomes')
     ucsc_mappability = get_ucsc_mappability()
-    gtf = import_cds_from_gtf()
+    gtf = import_cds_from_gtf(overwrite)
 
     gene_by_base_cov_ht = gtf.annotate(
         **exomes_cov[gtf.locus],

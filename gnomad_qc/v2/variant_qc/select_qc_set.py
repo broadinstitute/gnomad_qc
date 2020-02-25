@@ -63,7 +63,7 @@ def main(args):
         keep_relateds = unpack_trios(keep_trios)
         mt = mt.annotate_cols(is_related=relateds.contains(mt.s), keep_related=mt.meta.high_quality & keep_relateds.contains(mt.s))
         n_high_quality_related = mt.aggregate_cols(hl.agg.count_where(mt.keep_related))
-        logger.info('Keeping {0} high-quality individuals out of {1} individuals in trios'.format(n_high_quality_related, hl.eval_expr(hl.len(keep_relateds))))
+        logger.info('Keeping {0} high-quality individuals out of {1} individuals in trios'.format(n_high_quality_related, hl.eval(hl.len(keep_relateds))))
 
         # Randomly sample high-quality unrelateds up to total number desired
         n_unrelateds_to_keep = N - n_high_quality_related
@@ -95,7 +95,7 @@ def main(args):
 
         logger.info('Adding rankings for bi-allelics and singletons...')
         ht = hl.read_table('gs://gnomad/variant_qc/temp/gnomad.{0}.{1}_samples.vqsr.ranked.ht'.format(data_type, N))
-        ht = add_full_rankings(ht, ht.info.VQSLOD) # FIXME:  This is stale
+        # ht = add_full_rankings(ht, ht.info.VQSLOD) # FIXME:  This is stale
         ht.write('gs://gnomad/variant_qc/temp/gnomad.{0}.{1}_samples.vqsr.full_rankings.ht'.format(data_type, N), overwrite=True)  # TODO: move file locations once script is finalized
 
     # TODO: add code to rank RF?
