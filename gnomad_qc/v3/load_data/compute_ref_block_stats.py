@@ -1,7 +1,8 @@
 import pickle
 from gnomad_hail import *
-from gnomad_qc.v3.resources import get_full_mt
+from gnomad_qc.v3.resources import get_gnomad_v3_mt
 import argparse
+
 
 def print_ref_block_stats(path: str):
     import numpy as np
@@ -31,7 +32,7 @@ def print_ref_block_stats(path: str):
             _print_block_stats(pickle.load(f))
 
 def compute_stats(stats_path: str):
-    mt = get_full_mt(split=False)
+    mt = get_gnomad_v3_mt()
     mt = mt.filter_entries(hl.is_defined(mt.END))
     ref_block_stats = mt.aggregate_entries(
         hl.struct(

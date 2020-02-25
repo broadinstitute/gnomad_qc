@@ -1,7 +1,16 @@
 from gnomad_hail import *
 from gnomad_hail.utils.sparse_mt import *
 from gnomad_hail.utils.variant_qc import *
-from gnomad_qc.v3.resources import *
+from gnomad_qc.v3.resources import (
+    get_gnomad_v3_mt,
+    get_info,
+    qc_ac,
+    fam_stats,
+    get_transmitted_singleton_vcf_path,
+    trios,
+    info_vcf_path,
+    vep
+)
 import argparse
 
 
@@ -14,7 +23,7 @@ def compute_info() -> hl.Table:
     :return: Table with info fields
     :rtype: Table
     """
-    mt = get_full_mt(split=False, key_by_locus_and_alleles=True, remove_hard_filtered_samples=False)
+    mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, remove_hard_filtered_samples=False)
     mt = mt.filter_rows((hl.len(mt.alleles) > 1))
     mt = mt.transmute_entries(**mt.gvcf_info)
 
@@ -24,7 +33,7 @@ def compute_info() -> hl.Table:
     info_expr = get_site_info_expr(
         mt,
         sum_agg_fields=INFO_SUM_AGG_FIELDS + ['RAW_MQ'],
-        int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS  + ['MQ_DP'],
+        int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ['MQ_DP'],
         array_sum_agg_fields=['SB']
     )
     info_expr = info_expr.annotate(
@@ -85,7 +94,7 @@ def split_info() -> hl.Table:
     :return: Info table with split multi-allelics
     :rtype: Table
     """
-    info_ht = hl.read_table(get_info_ht_path(split=False))
+    info_ht = get_info(split=False).ht()
 
     # Create split version
     info_ht = hl.split_multi(info_ht)
@@ -108,7 +117,7 @@ def generate_ac(mt: hl.MatrixTable, fam_file: str) -> hl.Table:
     mt = mt.filter_cols(mt.meta.high_quality)
     fam_ht = hl.import_fam(fam_file, delimiter="\t")
     mt = mt.annotate_cols(unrelated_sample=hl.is_missing(fam_ht[mt.s]))
-    mt = mt.filter_rows(hl.len(mt.alleles)>1)
+    mt = mt.filter_rows(hl.len(mt.alleles) > 1)
     mt = annotate_adj(mt)
     mt = mt.annotate_rows(
         ac_qc_samples_raw=hl.agg.sum(mt.GT.n_alt_alleles()),
@@ -141,7 +150,7 @@ def generate_fam_stats(
     mt = annotate_adj(mt)
     mt = mt.select_entries('GT', 'GQ', 'AD', 'END', 'adj')
     mt = hl.experimental.densify(mt)
-    mt = mt.filter_rows(hl.len(mt.alleles)==2)
+    mt = mt.filter_rows(hl.len(mt.alleles) == 2)
     mt = hl.trio_matrix(mt, pedigree=ped, complete_trios=True)
     trio_adj = (mt.proband_entry.adj & mt.father_entry.adj & mt.mother_entry.adj)
     parents_no_alt = (mt.mother_entry.AD[1] == 0) & (mt.father_entry.AD[1] == 0)
@@ -152,13 +161,13 @@ def generate_fam_stats(
         **generate_fam_stats_expr(
             mt,
             transmitted_strata={
-                'raw':  None,
+                'raw': None,
                 'adj': trio_adj
             },
             de_novo_strata={
                 'raw': None,
                 'adj': trio_adj,
-                'hq':  trio_adj &  parents_high_gq & parents_high_depth & parents_no_alt
+                'hq': trio_adj & parents_high_gq & parents_high_depth & parents_no_alt
             },
             proband_is_female_expr=mt.is_female
         )
@@ -170,12 +179,11 @@ def generate_fam_stats(
 
 
 def export_transmitted_singletons_vcf():
-    qc_ac_ht = hl.read_table(ac_ht_path)
-    fam_stats = hl.read_table(fam_stats_ht_path)
+    qc_ac_ht = qc_ac.ht()
 
     for transmission_confidence in ['raw', 'adj']:
         ts_ht = qc_ac_ht.filter(
-            (fam_stats[qc_ac_ht.key][f'n_transmitted_{transmission_confidence}'] == 1) &
+            (fam_stats.ht()[qc_ac_ht.key][f'n_transmitted_{transmission_confidence}'] == 1) &
             (qc_ac_ht.ac_qc_samples_raw == 2)
         )
 
@@ -189,7 +197,6 @@ def export_transmitted_singletons_vcf():
 
 
 def run_vep() -> hl.Table:
-
     def get_mt_partitions(mt_path: str) -> List[hl.Interval]:
         """
         This function loads the partitioning from a given MT.
@@ -208,50 +215,45 @@ def run_vep() -> hl.Table:
             intervals_json = json.load(f)['jRangeBounds']
             return hl.tarray(hl.tinterval(hl.tstruct(locus=mt.locus.dtype)))._convert_from_json(intervals_json)
 
-    # Load VEP table with the same partitioning as the gnomAD v3 MT
-    intervals = get_mt_partitions(get_full_mt_path())
-    vep_ht = hl.read_table(synthetic_grch38_vep_ht_path, _intervals=intervals)
+    ht = get_gnomad_v3_mt(key_by_locus_and_alleles=True).rows()
+    ht = ht.filter(hl.len(ht.alleles) > 1)
 
-    ht = get_full_mt(key_by_locus_and_alleles=True).rows()
-    ht = ht.filter(hl.len(ht.alleles)>1)
-
-    return vep_or_lookup_vep(ht, reference_vep_ht=vep_ht, reference='GRCh38')
+    return vep_or_lookup_vep(ht, reference='GRCh38')
 
 
 def main(args):
     hl.init(default_reference='GRCh38', log='/qc_annotations.log')
 
     if args.compute_info:
-        compute_info().write(get_info_ht_path(split=False), overwrite=args.overwrite)
+        compute_info().write(get_info(split=False).path, overwrite=args.overwrite)
 
     if args.split_info:
-        split_info().write(get_info_ht_path(split=True), overwrite=args.overwrite)
+        split_info().write(get_info(split=True).path, overwrite=args.overwrite)
 
     if args.export_info_vcf:
-        info_ht = hl.read_table(get_info_ht_path(split=False))
+        info_ht = get_info(split=False).ht()
         hl.export_vcf(ht_to_vcf_mt(info_ht), info_vcf_path)
 
-    if args.generate_ac:
-        mt = get_full_mt(split=True, key_by_locus_and_alleles=True)
-        meta_ht = hl.read_table(meta_ht_path)
-        mt = mt.annotate_cols(meta=meta_ht[mt.col_key])
-        ht = generate_ac(mt, ped_path).checkpoint('gs://gnomad-tmp/v3_ac_tmp.ht', overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-        ht.repartition(10000, shuffle=False).write(ac_ht_path, overwrite=args.overwrite)
+    # if args.generate_ac: # TODO: compute AC and qc_AC as part of compute_info
+    # mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, samples_meta=True)
+    # mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+    #
+    # ht = generate_ac(mt, ).checkpoint('gs://gnomad-tmp/v3_ac_tmp.ht', overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+    # ht.repartition(10000, shuffle=False).write(ac_ht_path, overwrite=args.overwrite)
 
     if args.generate_fam_stats:
-        mt = get_full_mt(split=True, key_by_locus_and_alleles=True)
-        meta_ht = hl.read_table(meta_ht_path)
-        mt = mt.annotate_cols(meta=meta_ht[mt.col_key])
-        fam_stats_ht = generate_fam_stats(mt, trios_path)
+        mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, samples_meta=True)
+        mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+        fam_stats_ht = generate_fam_stats(mt, trios.path)
         fam_stats_ht = fam_stats_ht.checkpoint('gs://gnomad-tmp/v3_fam_stats_tmp.ht', overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         fam_stats_ht = fam_stats_ht.repartition(10000, shuffle=False)
-        fam_stats_ht.write(fam_stats_ht_path, overwrite=args.overwrite)
+        fam_stats_ht.write(fam_stats.path, overwrite=args.overwrite)
 
     if args.export_transmitted_singletons_vcf:
         export_transmitted_singletons_vcf()
 
     if args.vep:
-        run_vep().write(vep_ht_path, overwrite=args.overwrite)
+        run_vep().write(vep.path, overwrite=args.overwrite)
 
 
 if __name__ == '__main__':

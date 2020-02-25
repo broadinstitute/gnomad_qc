@@ -1,4 +1,4 @@
-from gnomad_qc.v2.variant_qc.prepare_data_release import *
+from gnomad_qc.v2.variant_qc.prepare_data_release import make_index_dict, make_faf_index_dict
 from gnomad_hail import *
 from gnomad_qc.v2.resources import *
 import argparse
