@@ -1,7 +1,7 @@
 from gnomad_hail import try_slack
 import hail as hl
 import argparse
-from gnomad_qc.v3.resources import qual_hists_json_path, internal_ht_path
+from gnomad_qc.v3.resources import qual_hists_json_path, release_ht_path
 
 
 def define_hist_ranges(ht):
@@ -47,17 +47,14 @@ def aggregate_qual_stats_by_bin(ht):
 def main(args):
     hl.init(default_reference='GRCh38', log='/variant_histograms.log')
 
-    metrics = ['FS', 'InbreedingCoeff', 'MQ', 'MQRankSum', 'QD', 'ReadPosRankSum', 'SOR', 'BaseQRankSum',
-               'ClippingRankSum', 'DP', 'VQSLOD', 'rf_tp_probability', 'pab_max']
-
-    ht = hl.read_table(internal_ht_path)
+    ht = hl.read_table(release_ht_path())
     # NOTE: histogram aggregations are done on the entire callset (not just PASS variants), on raw data
 
     # NOTE: run the following code in a first pass to determine bounds for metrics
     # Evaluate minimum and maximum values for each metric of interest
     if args.first_pass:
         minmax_dict = {}
-        for metric in metrics:
+        for metric in define_hist_ranges(ht).keys():
             minmax_dict[metric] = hl.struct(min=hl.agg.min(ht[metric]), max=hl.cond(hl.agg.max(ht[metric])<1e10, hl.agg.max(ht[metric]), 1e10))
         minmax = ht.aggregate(hl.struct(**minmax_dict))
         print(minmax)
