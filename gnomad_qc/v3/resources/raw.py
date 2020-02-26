@@ -12,7 +12,7 @@ def get_gnomad_v3_mt(
 ) -> hl.MatrixTable:
     mt = gnomad_v3_genotypes.mt()
     if key_by_locus_and_alleles:
-        mt = hl.    MatrixTable(hl.ir.MatrixKeyRowsBy(mt._mir, ['locus', 'alleles'], is_sorted=True))
+        mt = hl.MatrixTable(hl.ir.MatrixKeyRowsBy(mt._mir, ['locus', 'alleles'], is_sorted=True))
 
     if remove_hard_filtered_samples:
         mt = mt.filter_cols(hl.is_missing(hard_filtered_samples.ht()[mt.col_key]))
