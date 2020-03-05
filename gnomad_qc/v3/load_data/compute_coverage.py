@@ -1,0 +1,51 @@
+import hail as hl
+import argparse
+from gnomad_hail.resources.grch38.reference_data import telomeres_and_centromeres
+from gnomad_hail.resources.grch38.gnomad import coverage, coverage_tsv_path
+from gnomad_hail.utils.generic import get_reference_ht
+from gnomad_hail.utils.sparse_mt import compute_coverage_stats
+from gnomad_qc.v3.resources import get_gnomad_v3_mt, meta
+import logging
+
+
+def main(args):
+    hl.init(default_reference='GRCh38')
+    logger = logging.getLogger("gnomad_qc.v3.load_data.compute_coverage")
+
+    if args.compute_coverage_ht:
+
+        print("Building reference context HT")
+        ref_ht = get_reference_ht(
+            hl.get_reference('GRCh38'),
+            excluded_intervals=telomeres_and_centromeres.ht().interval.collect()
+        )
+        ref_ht = ref_ht.checkpoint("gs://gnomad-tmp/ref_context.ht", overwrite=True)
+        logger.info("Done building reference context HT")
+
+        mt = get_gnomad_v3_mt()
+        mt = mt.filter_cols(meta.ht()[mt.col_key].release)
+
+        coverage_ht = compute_coverage_stats(
+            mt,
+            ref_ht
+        )
+
+        coverage_ht = coverage_ht.checkpoint('gs://gnomad-tmp/gnomad.genomes_v3.coverage.summary.ht', overwrite=True)
+        coverage_ht = coverage_ht.naive_coalesce(5000)
+
+        coverage_ht.write(coverage('genomes').versions['3.0'].path, overwrite=args.overwrite)
+
+    if args.export_coverage:
+        ht = coverage('genomes').versions['3.0'].ht()
+        if 'count_array' in ht.row_value: # Note that count_array isn't computed any more, so this is v3.0-specific
+            ht = ht.drop('count_array')
+        ht.export(coverage_tsv_path('genomes', '3.0'))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--overwrite', help='Overwrites existing hail tables', action='store_true')
+    parser.add_argument('--compute_coverage_ht', help='Computes the coverage HT', action='store_true')
+    parser.add_argument('--export_coverage', help='Exports coverage TSV file', action='store_true')
+
+    main(parser.parse_args())
