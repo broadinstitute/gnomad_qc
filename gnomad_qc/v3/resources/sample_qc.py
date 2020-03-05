@@ -74,3 +74,6 @@ duplicates = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_duplicates.ht')
 
 pop_tsv_path = 'gs://gnomad/sample_qc/temp/genomes_v3/gnomad_v3_RF_pop_assignments.txt.gz'
 pop_rf_path = 'gs://gnomad/sample_qc/temp/genomes_v3/gnomad_v3_pop.RF_fit.pickle'
+
+v2_v3_pc_relate_pca_scores = TableResource(f"{SAMPLE_QC_ROOT}/gnomad__v2_v3_release_pca_scores.ht")
+v2_v3_relatedness = TableResource(f"{SAMPLE_QC_ROOT}/gnomad__v2_v3_release_relatedness.ht")
