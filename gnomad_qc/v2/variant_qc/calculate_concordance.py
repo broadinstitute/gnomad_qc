@@ -1,10 +1,16 @@
-from gnomad_hail import *
+from gnomad.utils.relatedness import get_duplicated_samples
+from gnomad.utils import filter_to_autosomes, unphase_mt, add_rank, try_slack
 from gnomad_qc.v2.resources import sample_qc
 from gnomad_qc.v2.resources.variant_qc import *
 import pandas as pd
 from datetime import datetime
 import argparse
 import sys
+import hail as hl
+import logging
+from pprint import pformat
+
+logger = logging.getLogger("calculate_concordance")
 
 
 def write_duplicates(version: str, overwrite: bool) -> None:

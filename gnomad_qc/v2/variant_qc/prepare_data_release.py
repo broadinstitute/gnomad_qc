@@ -1,10 +1,10 @@
-from gnomad_hail import *
+from gnomad.utils.slack import try_slack
 from gnomad_qc.v2.resources.variant_qc import *
 import copy
 import itertools
 import argparse
 import sys
-
+import logging
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("data_release")

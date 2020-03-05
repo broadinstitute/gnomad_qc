@@ -1,10 +1,13 @@
-from gnomad_hail.utils import get_adj_expr
-from gnomad_hail.utils.sample_qc import *
-from gnomad_hail.utils.sparse_mt import impute_sex_ploidy, densify_sites
+from gnomad.utils import get_adj_expr
+from gnomad.utils.sample_qc import *
+from gnomad.utils.sparse_mt import impute_sex_ploidy, densify_sites
 from gnomad_qc.v3.resources import *
-from gnomad_hail.resources.grch38 import purcell_5k_intervals, lcr_intervals, telomeres_and_centromeres
+from gnomad.resources.grch38 import purcell_5k_intervals, lcr_intervals, telomeres_and_centromeres
 import pickle
 import argparse
+import logging
+
+logger = logging.getLogger("sample_qc")
 
 
 def compute_sample_qc() -> hl.Table:
@@ -15,7 +18,7 @@ def compute_sample_qc() -> hl.Table:
 
     sample_qc_ht = compute_stratified_sample_qc(
         mt,
-        strata= {
+        strata={
             'bi_allelic': bi_allelic_expr(mt),
             'multi_allelic': ~bi_allelic_expr(mt)
         },
@@ -107,7 +110,7 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     )
 
     # Remove low-coverage samples
-    cov_ht = v3_sex.ht() # chrom 20 coverage is computed to infer sex and used here
+    cov_ht = v3_sex.ht()  # chrom 20 coverage is computed to infer sex and used here
     hard_filters['low_coverage'] = (cov_ht[ht.key].chr20_mean_dp < cov_threshold)
 
     # Remove extreme raw bi-allelic sample QC outliers
@@ -154,7 +157,7 @@ def compute_sex() -> hl.Table:
     info_ht = get_info(split=False).ht()
     info_ht = hl.filter_intervals(info_ht, [hl.parse_locus_interval('chrX')])
     chrom_x_ht = chrom_x_ht.annotate_rows(
-        aaf=info_ht[chrom_x_ht.row_key].info.AC[0]/(2*n_samples)
+        aaf=info_ht[chrom_x_ht.row_key].info.AC[0] / (2 * n_samples)
     )
 
     inbreeding_ht = hl.impute_sex(chrom_x_ht.LGT, aaf_threshold=0.001, aaf='aaf')
@@ -179,7 +182,7 @@ def compute_sample_rankings(use_qc_metrics_filters: bool) -> hl.Table:
     project_ht = project_ht.select(
         'releasable',
         chr20_mean_dp=v3_sex.ht()[project_ht.key].chr20_mean_dp,
-        filtered=hl.or_else(hl.len(hard_filtered_samples.ht()[project_ht.key].hard_filters)>0, False)
+        filtered=hl.or_else(hl.len(hard_filtered_samples.ht()[project_ht.key].hard_filters) > 0, False)
     )
 
     if use_qc_metrics_filters:
@@ -188,7 +191,7 @@ def compute_sample_rankings(use_qc_metrics_filters: bool) -> hl.Table:
                 project_ht.filtered,
                 True,
                 hl.or_else(
-                    hl.len(regressed_metrics.ht()[project_ht.key].qc_metrics_filters)>0,
+                    hl.len(regressed_metrics.ht()[project_ht.key].qc_metrics_filters) > 0,
                     False
                 )
             )
@@ -230,26 +233,25 @@ def run_pca(
 def assign_pops(
         min_prob: float,
         include_unreleasable_samples: bool,
-        max_mislabeled_training_samples: int = 50 # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
+        max_mislabeled_training_samples: int = 50  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
 ) -> Tuple[hl.Table, Any]:
-
     logger.info("Assigning global population labels")
     pop_pca_scores_ht = get_ancestry_pca_scores(include_unreleasable_samples).ht()
     project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop=(
             hl.case()
-            .when(hl.is_defined(project_meta_ht.project_pop), project_meta_ht.project_pop)
-            .when(project_meta_ht.v2_pop != 'oth', project_meta_ht.v2_pop)
-            .or_missing()
+                .when(hl.is_defined(project_meta_ht.project_pop), project_meta_ht.project_pop)
+                .when(project_meta_ht.v2_pop != 'oth', project_meta_ht.v2_pop)
+                .or_missing()
         )
     )
 
     logger.info("Running RF using {} training examples".format(
         pop_pca_scores_ht.aggregate(
             hl.agg.count_where(hl.is_defined(pop_pca_scores_ht.training_pop))
-            )
         )
+    )
     )
 
     pop_ht, pops_rf_model = assign_population_pcs(
@@ -274,8 +276,8 @@ def assign_pops(
         logger.info("Running RF using {} training examples".format(
             pop_pca_scores_ht.aggregate(
                 hl.agg.count_where(hl.is_defined(pop_pca_scores_ht.training_pop))
-                )
             )
+        )
         )
 
         pop_ht, pops_rf_model = assign_population_pcs(
@@ -367,7 +369,7 @@ def generate_metadata() -> hl.Table:
         all_samples_related=hl.is_defined(pca_related_samples_to_drop_ht[meta_ht.key]),
     )
 
-    meta_ht =meta_ht.annotate(
+    meta_ht = meta_ht.annotate(
         hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
         sample_filters=add_filters_expr(
             filters={
@@ -378,15 +380,14 @@ def generate_metadata() -> hl.Table:
     )
 
     meta_ht = meta_ht.annotate(
-        high_quality= (hl.len(meta_ht.hard_filters)==0) & (hl.len(meta_ht.qc_metrics_filters)==0),
-        release=meta_ht.releasable & (hl.len(meta_ht.sample_filters)==0)
+        high_quality=(hl.len(meta_ht.hard_filters) == 0) & (hl.len(meta_ht.qc_metrics_filters) == 0),
+        release=meta_ht.releasable & (hl.len(meta_ht.sample_filters) == 0)
     )
 
     return meta_ht
 
 
 def main(args):
-
     hl.init(log='/hail.log', default_reference='GRCh38')
 
     if args.sample_qc:
@@ -398,7 +399,7 @@ def main(args):
     if args.impute_sex:
         compute_sex().write(v3_sex.path, overwrite=args.overwrite)
     elif args.reannotate_sex:
-        sex_ht = v3_sex.ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True) # Copy HT to temp location to overwrite annotation
+        sex_ht = v3_sex.ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True)  # Copy HT to temp location to overwrite annotation
         x_ploidy_cutoff, y_ploidy_cutoff = get_ploidy_cutoffs(sex_ht, f_stat_cutoff=0.5)
         sex_ht = sex_ht.annotate(
             **get_sex_expr(
@@ -426,9 +427,9 @@ def main(args):
         relatedness_ht.write(v3_relatedness.path, args.overwrite)
 
     if args.run_pca:
-        rank_ht = compute_sample_rankings(use_qc_metrics_filters=False) # QC metrics filters do not exist at this point
+        rank_ht = compute_sample_rankings(use_qc_metrics_filters=False)  # QC metrics filters do not exist at this point
         rank_ht = rank_ht.checkpoint(pca_samples_rankings.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-        filtered_samples = hl.literal(rank_ht.aggregate(hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s)))) # TODO: don't localize once hail bug is fixed
+        filtered_samples = hl.literal(rank_ht.aggregate(hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))))  # TODO: don't localize once hail bug is fixed
         samples_to_drop = compute_related_samples_to_drop(
             v3_relatedness.ht(),
             rank_ht,
@@ -466,7 +467,7 @@ def main(args):
     if args.compute_related_samples_to_drop:
         rank_ht = compute_sample_rankings(use_qc_metrics_filters=True)
         rank_ht = rank_ht.checkpoint(release_samples_rankings.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-        filtered_samples = hl.literal(rank_ht.aggregate(hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s)))) # TODO: don't localize once hail bug is fixed
+        filtered_samples = hl.literal(rank_ht.aggregate(hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))))  # TODO: don't localize once hail bug is fixed
         print(filtered_samples)
         samples_to_drop = compute_related_samples_to_drop(
             v3_relatedness.ht(),
@@ -480,9 +481,9 @@ def main(args):
         meta_ht = generate_metadata()
         meta_ht.checkpoint(meta.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         n_pcs = meta_ht.aggregate(hl.agg.min(hl.len(meta_ht.pca_scores)))
-        meta_ht  =  meta_ht.transmute(
-            **{f'PC{i+1}': meta_ht.pca_scores[i] for i in range(n_pcs)},
-            hard_filters=hl.or_missing(hl.len(meta_ht.hard_filters)>0, hl.delimit(meta_ht.hard_filters)),
+        meta_ht = meta_ht.transmute(
+            **{f'PC{i + 1}': meta_ht.pca_scores[i] for i in range(n_pcs)},
+            hard_filters=hl.or_missing(hl.len(meta_ht.hard_filters) > 0, hl.delimit(meta_ht.hard_filters)),
             qc_metrics_filters=hl.or_missing(hl.len(meta_ht.qc_metrics_filters) > 0, hl.delimit(meta_ht.qc_metrics_filters))
         )
         meta_ht.flatten().export(meta_tsv_path)

@@ -1,8 +1,9 @@
-from gnomad_hail import *
-from gnomad_qc.v2.resources import *
+from gnomad.utils import try_slack, add_rank
 from gnomad_qc.v2.resources.variant_qc import *
 import argparse
+import logging
 
+logger = logging.getLogger("select_qc_set")
 
 def get_trio_samples_to_keep(trios: hl.Table, n_keep: int) -> hl.Table:
     trios = trios.annotate(r_prob=hl.rand_unif(0, 1))

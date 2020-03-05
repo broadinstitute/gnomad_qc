@@ -1,5 +1,5 @@
 import hail as hl
-from gnomad_hail.resources.resource_utils import (
+from gnomad.resources.resource_utils import (
     TableResource,
     PedigreeResource,
     VersionedPedigreeResource

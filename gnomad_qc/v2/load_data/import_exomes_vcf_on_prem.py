@@ -1,7 +1,7 @@
 
 import hail as hl
 
-hl.init(sc=sc)
+# hl.init(sc=sc)
 
 # Note: all files were moved to HDFS on spark-c002 to speed along imports (now at 18 hours on 100 cores)
 

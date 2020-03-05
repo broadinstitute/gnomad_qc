@@ -1,8 +1,9 @@
-from gnomad_hail import *
+from gnomad.utils import annotate_adj, adjust_sex_ploidy, try_slack
 from gnomad_qc.v2.resources.sample_qc import *
 from gnomad_qc.v2.resources import get_gnomad_data, get_gnomad_data_path
 import sys
 import argparse
+import hail as hl
 
 
 def main(args):

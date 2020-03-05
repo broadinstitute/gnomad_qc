@@ -1,5 +1,5 @@
 import hail as hl
-from gnomad_hail.resources import MatrixTableResource
+from gnomad.resources import MatrixTableResource
 from gnomad_qc.v3.resources.sample_qc import hard_filtered_samples
 from gnomad_qc.v3.resources.meta import meta
 

@@ -1,4 +1,4 @@
-from gnomad_hail.resources.resource_utils import TableResource
+from gnomad.resources.resource_utils import TableResource
 
 VARIANT_QC_ROOT = 'gs://gnomad/variant_qc/genomes_v3'
 

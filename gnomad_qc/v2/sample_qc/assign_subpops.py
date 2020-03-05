@@ -1,7 +1,10 @@
-from gnomad_hail import *
+from gnomad.utils.slack import try_slack
+from gnomad.utils.generic import pc_project
 from gnomad_qc.v2.resources.sample_qc import *
-from joint_sample_qc import split_mt_by_relatedness, run_assign_population_pcs
+from .joint_sample_qc import split_mt_by_relatedness, run_assign_population_pcs
 import argparse
+import logging
+import hail as hl
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("subpops")

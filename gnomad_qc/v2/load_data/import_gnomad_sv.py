@@ -1,4 +1,4 @@
-from gnomad_hail import *
+from gnomad.utils import try_slack, logger
 from gnomad_qc.v2.resources import *
 import argparse
 

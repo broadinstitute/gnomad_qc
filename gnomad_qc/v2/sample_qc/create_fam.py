@@ -1,4 +1,5 @@
-from gnomad_hail import *
+from gnomad.utils.relatedness import get_duplicated_samples, infer_families
+from gnomad.utils.slack import try_slack
 from gnomad_qc.v2.resources.sample_qc import *
 from gnomad_qc.v2.resources import CURRENT_FAM, fam_path, get_gnomad_data
 import numpy as np
@@ -8,6 +9,12 @@ from datetime import datetime
 from pyspark.sql import SQLContext
 import argparse
 import sys
+import hail as hl
+from typing import Dict, List, Set, Tuple
+from _collections import Counter
+import logging
+
+logger = logging.getLogger("create_fam")
 
 
 class GnomADRelatedData:

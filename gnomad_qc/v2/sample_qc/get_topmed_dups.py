@@ -1,8 +1,11 @@
-from gnomad_hail import *
+from gnomad.utils import filter_to_autosomes, try_slack
 from gnomad_qc.v2.resources.variant_qc import *
 from gnomad_qc.v2.resources.sample_qc import *
 import argparse
 import sys
+import logging
+
+logger = logging.getLogger("topmed_dups")
 
 
 def create_shared_sites_table(data_type: str, overwrite: bool):

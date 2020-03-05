@@ -1,9 +1,9 @@
-from create_fam import *
+from .create_fam import *
 from sklearn.ensemble import RandomForestClassifier
 import pandas as pd
 import pickle
 import hail as hl
-from gnomad_hail import try_slack
+from gnomad.utils import try_slack, filter_to_autosomes, expand_pd_array_col, assign_population_pcs, filter_low_conf_regions, pc_project
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("unified_sample_qc_c")

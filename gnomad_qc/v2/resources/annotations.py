@@ -1,4 +1,4 @@
-from gnomad_hail.resources.resource_utils import TableResource
+from gnomad.resources.resource_utils import TableResource
 
 
 def _annotations_ht_path(data_type: str, annotation_type: str):

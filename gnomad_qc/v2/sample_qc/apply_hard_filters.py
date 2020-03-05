@@ -1,8 +1,10 @@
-from gnomad_hail import *
+from gnomad.utils.slack import try_slack
 from gnomad_qc.v2.resources.sample_qc import *
 from gnomad_qc.v2.resources import get_gnomad_data
 import argparse
 import sys
+import logging
+import hail as hl
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("unified_sample_qc_a")

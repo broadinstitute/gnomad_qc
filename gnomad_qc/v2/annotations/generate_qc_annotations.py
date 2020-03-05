@@ -1,6 +1,6 @@
 import argparse
 import sys
-from gnomad_hail import *
+from gnomad.utils import unphase_mt, filter_to_adj, add_variant_type, write_temp_gcs, try_slack
 from gnomad_qc.v2.resources import *
 
 

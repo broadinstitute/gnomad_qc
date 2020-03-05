@@ -1,7 +1,8 @@
 import pickle
-from gnomad_hail import *
+from gnomad.utils import get_adj_expr
 from gnomad_qc.v3.resources import get_gnomad_v3_mt
 import argparse
+import hail as hl
 
 
 def print_ref_block_stats(path: str):
