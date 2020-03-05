@@ -1,7 +1,7 @@
-from gnomad_hail import *
 from gnomad_qc.v2.resources.sample_qc import qc_mt_path
 from gnomad_qc.v3.resources import gnomad_v2_qc_sites
 import argparse
+import hail as hl
 
 
 def main(args):

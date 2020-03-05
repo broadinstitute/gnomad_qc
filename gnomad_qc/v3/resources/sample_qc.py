@@ -1,4 +1,4 @@
-from gnomad_hail.resources import TableResource, MatrixTableResource
+from gnomad.resources import TableResource, MatrixTableResource
 
 SAMPLE_QC_ROOT = "gs://gnomad/sample_qc/ht/genomes_v3"
 

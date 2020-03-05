@@ -1,11 +1,14 @@
-from gnomad_hail import *
-from gnomad_hail.utils import rf
+from gnomad.utils import pretty_print_runs, add_rank, try_slack
+from gnomad.utils import rf
 from gnomad_qc.v2.resources.variant_qc import *
 from pprint import pformat
 import json
 import uuid
 import sys
 import argparse
+import logging
+
+logger = logging.getLogger("variant_qc")
 
 LABEL_COL = 'rf_label'
 TRAIN_COL = 'rf_train'

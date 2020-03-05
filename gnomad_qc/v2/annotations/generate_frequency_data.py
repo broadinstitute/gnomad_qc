@@ -1,9 +1,13 @@
-from gnomad_hail import *
+from gnomad.utils.generic import get_sample_data, write_temp_gcs
+from  gnomad.utils.slack import try_slack
 from gnomad_qc.v2.resources import *
 from collections import Counter
-from gnomad_hail.utils.annotations import pop_max_expr, project_max_expr
+from gnomad.utils.annotations import pop_max_expr, project_max_expr
 import argparse
 import sys
+import logging
+
+logger = logging.getLogger("generate_frequency_data")
 
 DOWNSAMPLINGS = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000,
                  55000, 60000, 65000, 70000, 75000, 80000, 85000, 90000, 95000, 100000, 110000, 120000]

@@ -1,7 +1,9 @@
-from gnomad_hail import *
 from gnomad_qc.v2.resources import *
 from gnomad_qc.v2.resources.variant_qc import get_ucsc_mappability
 import argparse
+import logging
+
+logger = logging.getLogger("exomes_genomes_coverage")
 
 COVERAGE_BINS = [1] + list(range(5, 31, 5)) + [50, 100]
 

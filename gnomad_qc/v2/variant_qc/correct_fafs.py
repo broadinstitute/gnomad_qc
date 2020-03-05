@@ -1,8 +1,9 @@
 from gnomad_qc.v2.variant_qc.prepare_data_release import make_index_dict, make_faf_index_dict
-from gnomad_hail import *
+from gnomad.utils.slack import try_slack
 from gnomad_qc.v2.resources import *
 import argparse
 import sys
+import logging
 
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")

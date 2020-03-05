@@ -1,6 +1,8 @@
-from gnomad_hail import *
-from gnomad_hail.utils.sparse_mt import *
-from gnomad_hail.utils.variant_qc import *
+from gnomad.utils.gnomad_functions import annotate_adj
+from gnomad.utils.annotations import generate_trio_stats_expr
+from gnomad.utils.slack import try_slack
+from gnomad.utils.sparse_mt import *
+from gnomad.utils.variant_qc import *
 from gnomad_qc.v3.resources import (
     get_gnomad_v3_mt,
     get_info,
@@ -158,7 +160,7 @@ def generate_fam_stats(
     parents_high_gq = (mt.mother_entry.GQ >= 30) & (mt.father_entry.GQ >= 30)
 
     ht = mt.select_rows(
-        **generate_fam_stats_expr(
+        **generate_trio_stats_expr(
             mt,
             transmitted_strata={
                 'raw': None,

@@ -1,11 +1,11 @@
-import gnomad_hail.resources.grch37.gnomad_ld as ld_resources
+import gnomad.resources.grch37.gnomad_ld as ld_resources
 from gnomad_qc.v2.resources import *
 from hail.utils import new_temp_file
 from hail.utils.java import Env
 from hail.linalg import BlockMatrix
 import sys
 import argparse
-from gnomad_hail.utils.slack import try_slack
+from gnomad.utils.slack import try_slack
 
 COMMON_FREQ = 0.005
 RARE_FREQ = 0.0005

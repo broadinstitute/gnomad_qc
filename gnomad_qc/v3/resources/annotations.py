@@ -1,4 +1,4 @@
-from gnomad_hail import TableResource
+from gnomad.resources.resource_utils import TableResource
 
 ANNOTATIONS_ROOT = "gs://gnomad/annotations/hail-0.2/ht/genomes_v3"
 
