@@ -1,4 +1,4 @@
-gnomad==0.1.0
+git+https://github.com/broadinstitute/gnomad_methods@master
 scikit-learn
 scipy<1.4
 hail
