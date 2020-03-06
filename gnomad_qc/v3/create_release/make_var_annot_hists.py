@@ -1,6 +1,6 @@
-from gnomad_hail import try_slack
-from gnomad_hail.utils.annotations import get_annotations_hists, create_frequency_bins_expr
-from gnomad_hail.utils.constants import ANNOTATIONS_HISTS
+from gnomad.utils.slack import try_slack
+from gnomad.utils.annotations import get_annotations_hists, create_frequency_bins_expr
+from gnomad.utils.constants import ANNOTATIONS_HISTS
 import hail as hl
 import argparse
 from gnomad_qc.v3.resources import qual_hists_json_path, release_ht_path
@@ -21,6 +21,7 @@ def main(args):
 
     # NOTE: run the following code in a first pass to determine bounds for metrics
     # Evaluate minimum and maximum values for each metric of interest
+    # This doesn't need to be run unless the defaults do not result in nice-looking histograms.
     if args.first_pass:
         minmax_dict = {}
         for metric in hist_ranges_expr.keys():
@@ -54,7 +55,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--first_pass', help='Determine min/max values for each variant metric and prints them to stdout (to be used in hand-tooled histogram ranges)', action='store_true')
+    parser.add_argument('--first_pass', help='Determine min/max values for each variant metric and prints them to stdout (to be used in hand-tooled histogram ranges). Note that this should only be run if the defaults do not result in well-behaved histograms.', action='store_true')
     parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
     parser.add_argument('--overwrite', help='Overwrite data', action='store_true')
     args = parser.parse_args()
