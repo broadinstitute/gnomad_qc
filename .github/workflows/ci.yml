@@ -27,4 +27,4 @@ jobs:
           pip install -r requirements.txt
           pip install pylint
       - name: Run Pylint
-        run: pylint --disable=W --disable=C --disable=R gnomad_qc
+        run: ./lint --disable=W

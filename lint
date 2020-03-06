@@ -1,0 +1,9 @@
+#!/bin/sh
+
+cd "$(dirname "$0")"
+
+# Since this repository is structured as a collection of stand-alone scripts
+# rather than a package, Pylint must be run with the list of individual Python
+# modules.
+
+find . -type f -name '*.py' | xargs pylint "$@"
