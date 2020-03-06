@@ -79,7 +79,7 @@ def generate_qc_annotations(mt: hl.MatrixTable, all_annotations: bool = True, me
         criteria = mt[group]
         hets = criteria & mt.GT.is_het()
         non_refs = criteria & mt.GT.is_non_ref()
-        nrq = -hl.log10(gp0)
+        nrq = -1*hl.log10(gp0)
 
         het_length = hl.agg.count_where(hets)
 

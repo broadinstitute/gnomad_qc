@@ -1,9 +1,12 @@
-from .create_fam import *
+from gnomad_qc.v2.sample_qc.create_fam import *
+from gnomad_qc.v2.resources.sample_qc import rank_annotations_path, dup_pedigree_tsv_path
 from sklearn.ensemble import RandomForestClassifier
 import pandas as pd
 import pickle
 import hail as hl
 from gnomad.utils import try_slack, filter_to_autosomes, expand_pd_array_col, assign_population_pcs, filter_low_conf_regions, pc_project
+import logging
+from typing import List, Tuple
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("unified_sample_qc_c")
