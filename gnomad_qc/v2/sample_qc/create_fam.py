@@ -11,7 +11,7 @@ import argparse
 import sys
 import hail as hl
 from typing import Dict, List, Set, Tuple
-from _collections import Counter
+from collections import Counter
 import logging
 
 logger = logging.getLogger("create_fam")

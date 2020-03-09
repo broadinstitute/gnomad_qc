@@ -1,4 +1,6 @@
-gnomad==0.1.0
+# We're using the master of gnomad_method on github rather than the pip version
+# since gnomad_qc and gnonmad_method are being developed in tandem.
+git+https://github.com/broadinstitute/gnomad_methods@master
 scikit-learn
 scipy<1.4
 hail

@@ -11,9 +11,11 @@ def main(args):
     mt = hl.import_vcf(args.vcf, force_bgz=args.force_bgz, call_fields=['GT','PGT'],
                         header_file=args.header if args.header else None)
 
-    mt = hl.min_rep(mt, left_aligned=True)
+    mt = mt.key_rows_by(
+        **hl.min_rep(mt.locus, mt.alleles)
+    )
 
-    mt.write(get_gnomad_data_path(data_type, hail_version=0.2),
+    mt.write(get_gnomad_data_path(data_type),
              overwrite=args.overwrite)
 
 
