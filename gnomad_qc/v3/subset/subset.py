@@ -78,10 +78,14 @@ def main(args):
         logger.info("Subsetting samples to {pop} population")
         mt = mt.annotate_cols(pop=meta[mt.col_key].pop)
         mt = mt.filter_cols(mt.pop == pop)
-        mt = mt.cols().drop('pop')
+        mt = mt.cols().drop("pop")
 
     if subset:
         mt = subset_samples_and_variants(mt, subset, sparse=True)
+
+    if args.pull_meta:
+        meta = meta.semi_join(mt.cols())
+        meta.export(f"{args.output_path}/metadata.tsv.bgz")
 
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
     mt = hl.experimental.densify(mt)
@@ -93,9 +97,7 @@ def main(args):
     mt = mt.annotate_rows(info=info_ht[mt.row_key].info)
 
     mt = mt.naive_coalesce(1000)
-    hl.export_vcf(
-        mt, args.output_path, parallel="header_per_shard"
-    )
+    hl.export_vcf(mt, f"{args.output_path}/sharded_vcf/", parallel="header_per_shard")
 
 
 if __name__ == "__main__":
@@ -108,6 +110,9 @@ if __name__ == "__main__":
         "-s", "--subset", help="Path to subset table of sample IDs with header: s"
     )
     parser.add_argument("-pop", help="Subset from specific population")
+    parser.add_argument(
+        "--pull-meta", help="Pull sample subset metadata", action="store_true"
+    )
     parser.add_argument(
         "--output-path", help="Output file path for subsetted VCF", required=True,
     )
