@@ -5,6 +5,7 @@ from gnomad_qc.v3.resources.meta import meta as metadata
 from gnomad_qc.v3.resources.annotations import get_info
 from gnomad_qc.v3.resources.raw import get_gnomad_v3_mt
 from gnomad.resources.grch38.gnomad import GENOME_POPS
+from gnomad.utils.generic import subset_samples_and_variants
 
 
 logging.basicConfig(
@@ -14,26 +15,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("seqr_sample_qc")
 logger.setLevel(logging.INFO)
-
-
-def subset(mt, subset_list):
-    subset_count = subset_list.count()
-    logger.info(f"Subsetting {subset_count} samples")
-    anti_join_ht = subset_list.anti_join(mt.cols())
-    anti_join_ht_count = anti_join_ht.count()
-
-    if anti_join_ht_count != 0:
-        missing_samples = anti_join_ht.s.collect()
-        raise ValueError(
-            f"Only {subset_count-anti_join_ht_count} out of {subset_count} "
-            "subsetting-table IDs matched IDs in the matrix table. \n"
-            f"IDs that aren't in the matrix table: {missing_samples} \n"
-            f"All callset sample IDs:{mt.s.collect()}",
-            missing_samples,
-        )
-    mt = mt.semi_join_cols(subset_list)
-
-    return mt
 
 
 def format_info_for_vcf(info_ht) -> hl.Table:
@@ -85,7 +66,7 @@ def main(args):
         log="/subset.log", tmp_dir="hdfs:///subset.tmp/", default_reference="GRCh38"
     )
     pop = args.pop
-    sample_subset = hl.import_table(args.subset, key="s")
+    subset = args.subset
     mt = get_gnomad_v3_mt(
         key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
     )
@@ -99,8 +80,8 @@ def main(args):
         mt = mt.filter_cols(mt.pop == pop)
         mt = mt.cols().drop('pop')
 
-    if args.subset:
-        mt = subset(mt, sample_subset)
+    if subset:
+        mt = subset_samples_and_variants(mt, subset, sparse=True)
 
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
     mt = hl.experimental.densify(mt)
