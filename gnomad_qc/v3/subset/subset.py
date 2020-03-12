@@ -97,7 +97,7 @@ def main(args):
     mt = mt.annotate_rows(info=info_ht[mt.row_key].info)
 
     mt = mt.naive_coalesce(1000)
-    hl.export_vcf(mt, f"{args.output_path}/sharded_vcf/", parallel="header_per_shard")
+    hl.export_vcf(mt, f"{args.output_path}/sharded_vcf.bgz", parallel="header_per_shard")
 
 
 if __name__ == "__main__":
