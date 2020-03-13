@@ -341,6 +341,7 @@ def apply_regressed_filters(
 
 def generate_metadata() -> hl.Table:
     meta_ht = project_meta.ht()
+    sample_qc_ht = get_sample_qc("bi_allelic").ht()
     hard_filters_ht = hard_filtered_samples.ht()
     regressed_metrics_ht = regressed_metrics.ht()
     pop_ht = pop.ht()
@@ -361,6 +362,7 @@ def generate_metadata() -> hl.Table:
     )
 
     meta_ht = meta_ht.annotate(
+        sample_qc=sample_qc_ht[meta_ht.key].sample_qc,
         **hard_filters_ht[meta_ht.key],
         **regressed_metrics_ht[meta_ht.key],
         **pop_ht[meta_ht.key],
