@@ -178,13 +178,20 @@ def get_gnomad_meta(data_type: str, version: str = None, full_meta: bool = False
     """
     Wrapper function to get gnomAD metadata as Table
 
-    :param str data_type: One of `exomes` or `genomes`
+    :param str data_type: One of `exomes`, `genomes` or `joint`
     :param str version: Metadata version (None for current)
     :param bool full_meta: Whether to annotate full metadata (rather than just summarized version)
     :return: Metadata Table
     :rtype: Table
     """
-    ht = hl.read_table(get_gnomad_meta_path(data_type, version)).key_by('s')
+    if data_type == 'joint':
+        exomes_ht = hl.read_table(get_gnomad_meta_path('exomes', version)).key_by('s', data_type='exomes')
+        exomes_ht = exomes_ht.annotate(qc_platform=hl.str(exomes_ht.qc_platform))
+        genomes_ht = hl.read_table(get_gnomad_meta_path('genomes', version)).key_by('s', data_type='genomes')
+        ht = exomes_ht.union(genomes_ht, unify=True)
+    else:
+        ht = hl.read_table(get_gnomad_meta_path(data_type, version)).key_by('s')
+
     if not full_meta:
         columns = ['age', 'sex',
                    'hard_filters', 'perm_filters', 'pop_platform_filters', 'related',
@@ -195,8 +202,9 @@ def get_gnomad_meta(data_type: str, version: str = None, full_meta: bool = False
                    'high_quality', 'release']
         if data_type == 'genomes':
             columns.extend(['pcr_free', 'project_name', 'release_2_0_2'])
-        else:
+        elif data_type == 'exomes':
             columns.extend(['diabetes', 'exac_joint', 'tcga'])
+
         ht = ht.select(*columns)
     return ht
 
@@ -507,10 +515,6 @@ constraint_ht_path = 'gs://gnomad-public/papers/2019-flagship-lof/v1.0/gnomad.v2
 
 
 # Sample QC files
-def qc_mt_path(data_type: str):
-    return 'gs://gnomad/sample_qc/mt/gnomad.{}.high_callrate_common_biallelic_snps.mt'.format(data_type)
-
-
 def qc_ht_path(data_type: str):
     return 'gs://gnomad/sample_qc/ht/gnomad.{}.high_callrate_common_biallelic_snps.ht'.format(data_type)
 

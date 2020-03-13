@@ -1,6 +1,7 @@
 from gnomad.utils import get_adj_expr
 from gnomad.utils.sample_qc import *
 from gnomad.utils.sparse_mt import impute_sex_ploidy, densify_sites
+from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
 from gnomad_qc.v3.resources import *
 from gnomad.resources.grch38 import purcell_5k_intervals, lcr_intervals, telomeres_and_centromeres
 import pickle
@@ -38,7 +39,7 @@ def compute_sample_qc() -> hl.Table:
 
 def compute_qc_mt() -> hl.MatrixTable:
     # Load v2 and p5k sites for QC
-    v2_qc_sites = hl.read_table(gnomad_v2_qc_sites.path).key_by('locus')
+    v2_qc_sites = get_liftover_v2_qc_mt('joint', ld_pruned=True).rows().key_by('locus')
     qc_sites = v2_qc_sites.union(purcell_5k_intervals.ht(), unify=True)
 
     qc_sites = qc_sites.filter(
