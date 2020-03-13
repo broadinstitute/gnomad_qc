@@ -35,8 +35,8 @@ def run_mendel_errors() -> hl.Table:
                 hl.agg.filter(
                     hl.rand_bool(0.01)
                     & (
-                            (hl.len(meta_ht.qc_metrics_filters) > 0)
-                            | hl.or_else(hl.len(meta_ht.hard_filters) > 0, False)
+                            (hl.len(meta_ht.qc_metrics_filters) == 0)
+                            & hl.or_else(hl.len(meta_ht.hard_filters) == 0, False)
                     ),
                     hl.agg.collect_as_set(meta_ht.s),
                 )
@@ -53,7 +53,8 @@ def run_mendel_errors() -> hl.Table:
     )
     mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
     mt = mt.filter_cols(ped_samples.contains(mt.s))
-    mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20")])
+    mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20", reference_genome='GRCh38')])
+    mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
     mt = mt.select_entries("GT", "END")
     mt = hl.experimental.densify(mt)
     mt = mt.filter_rows(hl.len(mt.alleles) == 2)
@@ -114,7 +115,7 @@ def filter_ped(
             .aggregate(
             fam_id=hl.agg.take(mendel.fam_id, 1)[0],
             n_mendel=hl.agg.count(),
-            n_de_novo=hl.agg.count_where(mendel.mendel_code == 2),
+            n_de_novo=hl.agg.count_where(mendel.mendel_code == 2), # Code 2 is parents are hom ref, child is het
         )
             .persist()
     )

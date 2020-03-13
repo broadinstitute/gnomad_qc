@@ -58,6 +58,11 @@ def get_ancestry_pca_eigenvalues_path(include_unreleasable_samples: bool = False
 
 
 def get_v3_relatedness_annotated_ht() -> Table:
+    """
+    relatedness table annotated with get_relationship_expr.
+
+    :return: Annotated relatedness table
+    """
     relatedness_ht = v3_relatedness.ht()
     return relatedness_ht.annotate(
         relationship=get_relationship_expr(
@@ -69,22 +74,47 @@ def get_v3_relatedness_annotated_ht() -> Table:
     )
 
 
-# QC Sites
+# QC Sites (gnomAD v2 QC sites, lifted over)
 gnomad_v2_qc_sites = TableResource('gs://gnomad-public/resources/grch38/gnomad_v2_qc_sites_b38.ht')
+
+# Dense MT of v3 samples at QC sites
 v3_qc = MatrixTableResource('gs://gnomad/sample_qc/mt/genomes_v3/gnomad_v3_qc_mt_v2_sites_dense.mt')
 
+# PC relate PCA scores
 v3_pc_relate_pca_scores = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_qc_mt_v2_sites_pc_scores.ht')
-v3_relatedness = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_qc_mt_v2_sites_relatedness.ht')
-v3_sex = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_sex.ht')
-pca_related_samples_to_drop = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_related_samples_to_drop_for_pca.ht')
-release_related_samples_to_drop = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_related_release_samples_to_drop.ht')
-pop = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_pop.ht')
-hard_filtered_samples = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_hard_filtered_samples.ht')
-stratified_metrics = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_stratified_metrics.ht')
-regressed_metrics = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_regressed_metrics.ht')
-pca_samples_rankings = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_pca_samples_ranking.ht')
-release_samples_rankings = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_release_samples_ranking.ht')
-duplicates = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_duplicates.ht')
 
+# PC relate results
+v3_relatedness = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_qc_mt_v2_sites_relatedness.ht')
+
+# Sex imputation results
+v3_sex = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_sex.ht')
+
+# Samples to drop for PCA due to them being related
+pca_related_samples_to_drop = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_related_samples_to_drop_for_pca.ht')
+
+# Related samples to drop for release
+release_related_samples_to_drop = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_related_release_samples_to_drop.ht')
+
+# Inferred populations
+pop = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_pop.ht')
 pop_tsv_path = 'gs://gnomad/sample_qc/temp/genomes_v3/gnomad_v3_RF_pop_assignments.txt.gz'
 pop_rf_path = 'gs://gnomad/sample_qc/temp/genomes_v3/gnomad_v3_pop.RF_fit.pickle'
+
+# Hard-filtered samples
+hard_filtered_samples = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_hard_filtered_samples.ht')
+
+# Results of running population-based metrics filtering
+# Not used for v3 release (regresed metrics used instead)
+stratified_metrics = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_stratified_metrics.ht')
+
+# Results of running regressed metrics filtering
+regressed_metrics = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_regressed_metrics.ht')
+
+# Ranking of all samples based on quality metrics. Used to remove relateds for PCA.
+pca_samples_rankings = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_pca_samples_ranking.ht')
+
+# Ranking of all release samples based on quality metrics. Used to remove relateds for release.
+release_samples_rankings = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_release_samples_ranking.ht')
+
+# Duplicated (or twin) samples
+duplicates = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_duplicates.ht')

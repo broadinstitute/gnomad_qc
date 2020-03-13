@@ -21,8 +21,8 @@ project_meta = TableResource(
 pedigree = VersionedPedigreeResource(
     'final',  # TODO: Make sure "final" is the best label once the family scripts are in
     {
-        'raw': PedigreeResource(f'{META_ROOT}/gnomad_v3_raw.fam'),
-        'final': PedigreeResource(f'{META_ROOT}/gnomad_v3.fam')
+        'raw': PedigreeResource(f'{META_ROOT}/gnomad_v3_raw.fam', delimiter="\t"),
+        'final': PedigreeResource(f'{META_ROOT}/gnomad_v3.fam', delimiter="\t")
     }
 )
 
