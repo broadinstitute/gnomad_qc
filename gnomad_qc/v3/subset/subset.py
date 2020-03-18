@@ -17,48 +17,66 @@ logger = logging.getLogger("seqr_sample_qc")
 logger.setLevel(logging.INFO)
 
 
-def format_info_for_vcf(info_ht) -> hl.Table:
+def format_info_for_vcf(ht) -> hl.Table:
+    """Formats gnomAD MT fields with types that are not condusive to vcf export
+    :param ht: Table to reformat
+    :return: Reformatted Table
+    """
     logger.info(f"Formatting the info hail table for VCF export")
-    for f, ft in info_ht.info.dtype.items():
+    for f, ft in ht.info.dtype.items():
         if ft == hl.dtype("int64"):
-            info_ht = info_ht.annotate(
-                info=info_ht.info.annotate(
-                    **{f: hl.int32(hl.min(2 ** 31 - 1, info_ht.info[f]))}
+            ht = ht.annotate(
+                info=ht.info.annotate(
+                    **{f: hl.int32(hl.min(2 ** 31 - 1, ht.info[f]))}
                 )
             )
         elif ft == hl.dtype("float64"):
-            info_ht = info_ht.annotate(
-                info=info_ht.info.annotate(
-                    **{f: hl.float32(hl.min(2 ** 31 - 1, info_ht.info[f]))}
+            ht = ht.annotate(
+                info=ht.info.annotate(
+                    **{f: hl.float32(hl.min(2 ** 31 - 1, ht.info[f]))}
                 )
             )
         elif ft == hl.dtype("array<int64>"):
-            info_ht = info_ht.annotate(
-                info=info_ht.info.annotate(
+            ht = ht.annotate(
+                info=ht.info.annotate(
                     **{
-                        f: info_ht.info[f].map(
+                        f: ht.info[f].map(
                             lambda x: hl.int32(hl.min(2 ** 31 - 1, x))
                         )
                     }
                 )
             )
         elif ft == hl.dtype("array<float64>"):
-            info_ht = info_ht.annotate(
-                info=info_ht.info.annotate(
+            ht = ht.annotate(
+                info=ht.info.annotate(
                     **{
-                        f: info_ht.info[f].map(
+                        f: ht.info[f].map(
                             lambda x: hl.float32(hl.min(2 ** 31 - 1, x))
                         )
                     }
                 )
             )
-        elif ft == hl.dtype("array<array<int32>>"):
-            info_ht = info_ht.annotate(
-                info=info_ht.info.annotate(
-                    **{f: hl.flatmap(lambda x: x, info_ht.info[f])}
-                )
-            )
-    return info_ht
+    return ht    
+
+
+def compute_partitions(
+        mt, 
+        entry_size = 3.5,
+        partition_size=128000000
+) -> int:
+    """Computes a very rough estimate for the optimal number of partitions in a MT
+     using a the hail recommended partition size of 128MB and the rough estimate 
+     of 3.5B per entry in the gnomAD sparse MT.
+
+    :param mt: MatrixTable that will be resized
+    :param entry_size: Average size in bytes that a single entry requires , defaults to 3.5
+    :param partition_size: Amount of data per partition. Hail recommends 128MB, defaults to 128000000
+    :return: number of partitions for resizing MT  
+    """
+    rows, columns = mt.count()
+    mt_disk_est = rows * columns * entry_size
+    n_partitions = int(mt_disk_est/partition_size)
+    return n_partitions
 
 
 def main(args):
@@ -72,7 +90,11 @@ def main(args):
     )
     info_ht = get_info().ht()
     info_ht = format_info_for_vcf(info_ht)
-    meta = hl.read_table(metadata)
+
+    if 'SB' in info_ht.info and not isinstance(info_ht.info.SB, hl.expr.ArrayNumericExpression):
+        info_ht = info_ht.annotate(info=info_ht.info.annotate(SB=hl.flatten(info_ht.info.SB)))
+
+    meta = metadata.ht()
 
     if pop and pop in GENOME_POPS:
         logger.info("Subsetting samples to {pop} population")
@@ -81,7 +103,7 @@ def main(args):
         mt = mt.cols().drop("pop")
 
     if subset:
-        mt = subset_samples_and_variants(mt, subset, sparse=True)
+        mt = subset_samples_and_variants(mt, subset, sparse=True, gt_expr="LGT")
 
     if args.pull_meta:
         meta = meta.semi_join(mt.cols())
@@ -96,7 +118,9 @@ def main(args):
     mt = mt.drop(mt.gvcf_info)
     mt = mt.annotate_rows(info=info_ht[mt.row_key].info)
 
-    mt = mt.naive_coalesce(1000)
+    partitions = args.num_vcf_shards if args.num_vcf_shards else compute_partitions(mt)
+    mt = mt.naive_coalesce(partitions)
+
     hl.export_vcf(mt, f"{args.output_path}/sharded_vcf.bgz", parallel="header_per_shard")
 
 
@@ -116,6 +140,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-path", help="Output file path for subsetted VCF", required=True,
     )
+    parser.add_argument("--num-vcf-shards", help="Number of shards in output VCF", default=1000)
     parser.add_argument(
         "-o",
         "--overwrite",
