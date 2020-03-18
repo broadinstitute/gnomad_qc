@@ -167,7 +167,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-path", help="Output file path for subsetted VCF", required=True,
     )
-    parser.add_argument("--num-vcf-shards", help="Number of shards in output VCF", default=1000)
+    parser.add_argument("--num-vcf-shards", help="Number of shards in output VCF")
     parser.add_argument(
         "-o",
         "--overwrite",
