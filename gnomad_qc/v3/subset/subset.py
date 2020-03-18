@@ -16,13 +16,40 @@ logging.basicConfig(
 logger = logging.getLogger("seqr_sample_qc")
 logger.setLevel(logging.INFO)
 
+INFO_DICT = {
+    'info': {
+        'AC': {"Description": "Alternate Allele count in gnomAD post-filtering"}, 
+        'AC_raw': {"Description": "Raw alternate allele count in gnomAD"}, 
+        'AS_ReadPosRankSum': {"Description": "allele specific Z-score from Wilcoxon rank sum test of each Alt vs. Ref read position bias"}, 
+        'AS_MQRankSum': {"Description": "Allele-specifc Z-score from Wilcoxon rank sum test of alternate vs. reference read mapping qualities"}, 
+        'AS_RAW_MQ': {"Description": "Allele-specifc raw root mean square of the mapping quality of reads across all samples"}, 
+        'AS_QUALapprox': {"Description": "Allele-specifc sum of PL[0] values; used to approximate the QUAL score"}, 
+        'AS_MQ_DP': {"Description": "Allele-specifc depth over variant samples for better MQ calculation"}, 
+        'AS_VarDP': {"Description": "Allele-specific (informative) depth over variant genotypes -- including ref, RAW format"},  
+        'AS_MQ': {"Description": "Allele-specifc root mean square of the mapping quality of reads across all samples"},  
+        'AS_QD': {"Description": "Allele-specifc variant call confidence normalized by depth of sample reads supporting a variant"},  
+        'AS_FS': {"Description": "Allele-specifc Phred-scaled p-value of Fisher's exact test for strand bias"},  
+        'AS_SB_TABLE': {"Description": "Allele-specific forward/reverse read counts for strand bias tests"}, 
+        'ReadPosRankSum': {"Description": "Z-score from Wilcoxon rank sum test of alternate vs. reference read position bias"},  
+        'MQRankSum': {"Description": "Z-score from Wilcoxon rank sum test of alternate vs. reference read mapping qualities"}, 
+        'RAW_MQ': {"Description": "Raw root mean square of the mapping quality of reads across all samples"}, 
+        'QUALapprox': {"Description": "Sum of PL[0] values; used to approximate the QUAL score"},  
+        'MQ_DP': {"Description": "Depth over variant samples for better MQ calculation"},  
+        'VarDP': {"Description": "(informative) depth over variant genotypes"},  
+        'SB': {"Description": "Per-sample component statistics which comprise the Fisher's Exact Test to detect strand bias."}, 
+        'MQ': {"Description": "Root mean square of the mapping quality of reads across all samples"},
+        'QD': {"Description": "Variant call confidence normalized by depth of sample reads supporting a variant"},
+        'FS': {"Description": "Phred-scaled p-value of Fisher's exact test for strand bias"},
+    }
+}
+
 
 def format_info_for_vcf(ht) -> hl.Table:
     """Formats gnomAD MT fields with types that are not condusive to vcf export
     :param ht: Table to reformat
     :return: Reformatted Table
     """
-    logger.info(f"Formatting the info hail table for VCF export")
+    logger.info("Formatting the info hail table for VCF export")
     for f, ft in ht.info.dtype.items():
         if ft == hl.dtype("int64"):
             ht = ht.annotate(
@@ -121,7 +148,7 @@ def main(args):
     partitions = args.num_vcf_shards if args.num_vcf_shards else compute_partitions(mt)
     mt = mt.naive_coalesce(partitions)
 
-    hl.export_vcf(mt, f"{args.output_path}/sharded_vcf.bgz", parallel="header_per_shard")
+    hl.export_vcf(mt, f"{args.output_path}/sharded_vcf.bgz", parallel="header_per_shard", metadata=INFO_DICT)
 
 
 if __name__ == "__main__":
