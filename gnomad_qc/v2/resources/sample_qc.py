@@ -27,14 +27,13 @@ def get_liftover_v2_qc_mt(
         )
         grch38_qc_mt = grch38_qc_mt.filter_rows(
             grch38_qc_mt.locus.contig == 'chr' + grch38_qc_mt.locus37.contig
-        ).key_by('locus', 'alleles')
+        )
         grch38_qc_mt = grch38_qc_mt.key_rows_by(locus=grch38_qc_mt.locus38, alleles=grch38_qc_mt.alleles)
         grch38_qc_mt = grch38_qc_mt.checkpoint(path, overwrite=overwrite)
 
     if release_only:
         meta = get_gnomad_meta(data_type)
         grch38_qc_mt = grch38_qc_mt.filter_cols(meta[grch38_qc_mt.col_key].release)
-        grch38_qc_mt = grch38_qc_mt.select_cols()
 
     return grch38_qc_mt
 
@@ -42,7 +41,7 @@ def get_liftover_v2_qc_mt(
 def qc_mt_path(data_type: str, ld_pruned: bool = False, reference_genome: str = 'GRCh37') -> str:
     """
     Returns MatrixTable path for sample QC purposes: can be exomes, genomes, or joint (joint dataset can also be ld_pruned=True)
-    Criteria: callrate > 0.99, AF > 0.001, SNPs only, bi-allelics only
+    Criteria: callrate > 0.99, AF > 0.001, bi-allelics SNPs only
     """
     if data_type not in ('exomes', 'genomes', 'joint'):
         raise DataException("Select data_type as one of 'genomes' or 'exomes' or 'joint'")
