@@ -16,7 +16,29 @@ logging.basicConfig(
 logger = logging.getLogger("seqr_sample_qc")
 logger.setLevel(logging.INFO)
 
-INFO_DICT = {
+HEADER_DICT = {
+    "format": {
+        "GQ": {"Description": "Genotype Quality"},
+        "SB": {
+            "Description": "Per-sample component statistics which comprise the Fisher's Exact Test to detect strand bias"
+        },
+        "AD": {
+            "Description": "Allelic depths for the ref and alt alleles in the order listed"
+        },
+        "PID": {
+            "Description": "Physical phasing ID information, where each unique ID within a given sample (but not across samples) connects records within a phasing group"
+        },
+        "GT": {"Description": "Genotype"},
+        "MIN_DP": {"Description": "Minimum DP observed within the GVCF block"},
+        "PGT": {
+            "Description": "Physical phasing haplotype information, describing how the alternate alleles are phased in relation to one another"
+        },
+        "PL": {
+            "Description": "Normalized, Phred-scaled likelihoods for genotypes as defined in the VCF specification"
+        },
+        "DP": {"Description": "Approximate read depth"},
+        "RGQ": {"Description": ""},
+    },
     "info": {
         "AC": {"Description": "Alternate Allele count in gnomAD post-filtering"},
         "AC_raw": {"Description": "Raw alternate allele count in gnomAD"},
@@ -78,7 +100,7 @@ INFO_DICT = {
         "FS": {
             "Description": "Phred-scaled p-value of Fisher's exact test for strand bias"
         },
-    }
+    },
 }
 
 
@@ -126,7 +148,9 @@ def compute_partitions(mt, entry_size=3.5, partition_size=128000000) -> int:
     """
     rows, columns = mt.count()
     mt_disk_est = rows * columns * entry_size
-    n_partitions = int(mt_disk_est / partition_size)
+    n_partitions = (
+        int(mt_disk_est / partition_size) if (mt_disk_est / partition_size) > 20 else 20
+    )
     return n_partitions
 
 
@@ -139,7 +163,6 @@ def main(args):
     mt = get_gnomad_v3_mt(
         key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
     )
-    mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20", reference_genome="GRCh38")])
     info_ht = get_info().ht()
     info_ht = format_info_for_vcf(info_ht)
 
@@ -153,7 +176,7 @@ def main(args):
     meta = metadata.ht()
 
     if pop and pop in GENOME_POPS:
-        logger.info("Subsetting samples to {pop} population")
+        logger.info(f"Subsetting samples to {pop} population")
         mt = mt.annotate_cols(pop=meta[mt.col_key].pop)
         mt = mt.filter_cols(mt.pop == pop)
         mt = mt.cols().drop("pop")
@@ -174,14 +197,19 @@ def main(args):
     mt = mt.drop(mt.gvcf_info)
     mt = mt.annotate_rows(info=info_ht[mt.row_key].info)
 
-    partitions = args.num_vcf_shards if args.num_vcf_shards else compute_partitions(mt)
+    partitions = (
+        compute_partitions(mt) if not args.num_vcf_shards else args.num_vcf_shards
+    )
+    logger.info(f"Naive coalescing to {partitions}")
+
     mt = mt.naive_coalesce(partitions)
 
+    logger.info("Exporting VCF")
     hl.export_vcf(
         mt,
         f"{args.output_path}/sharded_vcf.bgz",
         parallel="header_per_shard",
-        metadata=INFO_DICT,
+        metadata=HEADER_DICT,
     )
 
 
@@ -201,7 +229,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-path", help="Output file path for subsetted VCF", required=True,
     )
-    parser.add_argument("--num-vcf-shards", help="Number of shards in output VCF")
+    parser.add_argument(
+        "--num-vcf-shards", help="Number of shards in output VCF", type=int
+    )
     parser.add_argument(
         "-o",
         "--overwrite",
