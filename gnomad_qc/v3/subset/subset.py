@@ -156,7 +156,7 @@ def compute_partitions(mt, entry_size=3.5, partition_size=128000000) -> int:
 
 def main(args):
     hl.init(
-        log="/subset.log", tmp_dir="hdfs:///subset.tmp/", default_reference="GRCh38"
+        log="/subset.log", default_reference="GRCh38"
     )
     pop = args.pop
     subset = args.subset
@@ -177,9 +177,7 @@ def main(args):
 
     if pop and pop in GENOME_POPS:
         logger.info(f"Subsetting samples to {pop} population")
-        mt = mt.annotate_cols(pop=meta[mt.col_key].pop)
-        mt = mt.filter_cols(mt.pop == pop)
-        mt = mt.cols().drop("pop")
+        mt = mt.filter_cols(meta[mt.col_key].pop == pop)
 
     if subset:
         mt = subset_samples_and_variants(mt, subset, sparse=True, gt_expr="LGT")
@@ -191,8 +189,8 @@ def main(args):
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
     mt = hl.experimental.densify(mt)
 
-    mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
     mt = mt.filter_rows(hl.len(mt.alleles) > 1)
+    mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
 
     mt = mt.drop(mt.gvcf_info)
     mt = mt.annotate_rows(info=info_ht[mt.row_key].info)
