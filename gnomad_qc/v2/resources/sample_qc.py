@@ -1,17 +1,60 @@
-from .basics import DataException
+from .basics import DataException, get_gnomad_meta
+from gnomad.utils.liftover import get_liftover_genome
+import hail as hl
 
 
-def qc_mt_path(data_type: str, ld_pruned: bool = False) -> str:
+def get_liftover_v2_qc_mt(
+        data_type: str,
+        ld_pruned: bool,
+        release_only: bool = False,
+        overwrite: bool = False
+) -> hl.MatrixTable:
     """
-    Returns MatrixTable for sample QC purposes: can be exomes, genomes, or joint (joint dataset can also be ld_pruned=True)
+    Returns MatrixTable for sample QC purposes on build 38: can be exomes, genomes, or joint (joint dataset can also be ld_pruned=True)
     Criteria: callrate > 0.99, AF > 0.001, SNPs only, bi-allelics only
+    Note: sites where the locus changes chromosome are discarded
+    """
+    path = qc_mt_path(data_type, ld_pruned, 'GRCh38')
+    if not overwrite and hl.hadoop_exists(path):
+        grch38_qc_mt = hl.read_matrix_table(path)
+    else:
+        grch38_qc_mt = hl.read_matrix_table(qc_mt_path(data_type, ld_pruned=ld_pruned))
+        get_liftover_genome(grch38_qc_mt)
+        grch38_qc_mt = grch38_qc_mt.key_rows_by()
+        grch38_qc_mt = grch38_qc_mt.transmute_rows(
+            locus=hl.liftover(grch38_qc_mt.locus, 'GRCh38'),
+            locus37=grch38_qc_mt.locus
+        )
+        grch38_qc_mt = grch38_qc_mt.filter_rows(
+            grch38_qc_mt.locus.contig == 'chr' + grch38_qc_mt.locus37.contig
+        )
+        grch38_qc_mt = grch38_qc_mt.key_rows_by(locus=grch38_qc_mt.locus38, alleles=grch38_qc_mt.alleles)
+        grch38_qc_mt = grch38_qc_mt.checkpoint(path, overwrite=overwrite)
+
+    if release_only:
+        meta = get_gnomad_meta(data_type)
+        grch38_qc_mt = grch38_qc_mt.filter_cols(meta[grch38_qc_mt.col_key].release)
+
+    return grch38_qc_mt
+
+
+def qc_mt_path(data_type: str, ld_pruned: bool = False, reference_genome: str = 'GRCh37') -> str:
+    """
+    Returns MatrixTable path for sample QC purposes: can be exomes, genomes, or joint (joint dataset can also be ld_pruned=True)
+    Criteria: callrate > 0.99, AF > 0.001, bi-allelics SNPs only
     """
     if data_type not in ('exomes', 'genomes', 'joint'):
         raise DataException("Select data_type as one of 'genomes' or 'exomes' or 'joint'")
     if ld_pruned and data_type != 'joint':
         raise DataException("ld_pruned = True is only available for 'joint'")
+    ref_str = ''
+    if reference_genome == 'GRCh38':
+        ref_str='.grch38'
+    elif reference_genome != 'GRCh37':
+        raise DataException('reference_genome must be one of "GRCh37" or "GRCh38"')
+
     ld_pruned = '.pruned' if ld_pruned else ''
-    return f'gs://gnomad/sample_qc/mt/gnomad.{data_type}.high_callrate_common_biallelic_snps{ld_pruned}.mt'
+    return f'gs://gnomad/sample_qc/mt/gnomad.{data_type}.high_callrate_common_biallelic_snps{ld_pruned}{ref_str}.mt'
 
 
 def qc_ht_path(data_type: str, part: str) -> str:

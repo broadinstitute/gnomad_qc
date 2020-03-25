@@ -1,6 +1,7 @@
 from gnomad.utils import get_adj_expr
 from gnomad.utils.sample_qc import *
 from gnomad.utils.sparse_mt import impute_sex_ploidy, densify_sites
+from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
 from gnomad_qc.v3.resources import *
 from gnomad.resources.grch38 import purcell_5k_intervals, lcr_intervals, telomeres_and_centromeres
 import pickle
@@ -38,7 +39,7 @@ def compute_sample_qc() -> hl.Table:
 
 def compute_qc_mt() -> hl.MatrixTable:
     # Load v2 and p5k sites for QC
-    v2_qc_sites = hl.read_table(gnomad_v2_qc_sites.path).key_by('locus')
+    v2_qc_sites = get_liftover_v2_qc_mt('joint', ld_pruned=True).rows().key_by('locus')
     qc_sites = v2_qc_sites.union(purcell_5k_intervals.ht(), unify=True)
 
     qc_sites = qc_sites.filter(
@@ -341,6 +342,7 @@ def apply_regressed_filters(
 
 def generate_metadata() -> hl.Table:
     meta_ht = project_meta.ht()
+    sample_qc_ht = get_sample_qc("bi_allelic").ht()
     hard_filters_ht = hard_filtered_samples.ht()
     regressed_metrics_ht = regressed_metrics.ht()
     pop_ht = pop.ht()
@@ -361,6 +363,7 @@ def generate_metadata() -> hl.Table:
     )
 
     meta_ht = meta_ht.annotate(
+        sample_qc=sample_qc_ht[meta_ht.key].sample_qc,
         **hard_filters_ht[meta_ht.key],
         **regressed_metrics_ht[meta_ht.key],
         **pop_ht[meta_ht.key],

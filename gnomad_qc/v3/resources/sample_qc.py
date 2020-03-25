@@ -116,5 +116,10 @@ pca_samples_rankings = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_pca_samples_ra
 # Ranking of all release samples based on quality metrics. Used to remove relateds for release.
 release_samples_rankings = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_release_samples_ranking.ht')
 
+
 # Duplicated (or twin) samples
 duplicates = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_duplicates.ht')
+
+# v2 samples overlap
+v2_v3_pc_relate_pca_scores = TableResource(f"{SAMPLE_QC_ROOT}/gnomad__v2_v3_release_pca_scores.ht")
+v2_v3_relatedness = TableResource(f"{SAMPLE_QC_ROOT}/gnomad__v2_v3_release_relatedness.ht")
