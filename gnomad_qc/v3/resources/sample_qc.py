@@ -1,6 +1,6 @@
 from gnomad.resources import TableResource, MatrixTableResource
 from hail import Table
-from gnomad.utils.relatedness import get_relationship_expr
+from gnomad.sample_qc.relatedness import get_relationship_expr
 
 SAMPLE_QC_ROOT = "gs://gnomad/sample_qc/ht/genomes_v3"
 

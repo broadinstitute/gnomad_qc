@@ -2,7 +2,7 @@ import hail as hl
 import argparse
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.resources.grch38.gnomad import coverage, coverage_tsv_path
-from gnomad.utils.generic import get_reference_ht
+from gnomad.utils.reference_genome import get_reference_ht
 from gnomad.utils.sparse_mt import compute_coverage_stats
 from gnomad_qc.v3.resources import get_gnomad_v3_mt, meta
 import logging

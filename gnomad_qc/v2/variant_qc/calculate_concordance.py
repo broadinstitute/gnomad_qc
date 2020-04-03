@@ -137,7 +137,7 @@ def write_truth_concordance(data_type: str, truth_sample: str, overwrite: bool) 
 
     mt = get_qc_samples_filtered_gnomad_data(data_type, autosomes_only=False)
     mt = mt.filter_cols(mt.s == sample_mapping[truth_sample][data_type])
-    mt.annotate_entries(GT=unphase_call_expr(mt.GT))
+    mt = mt.annotate_entries(GT=unphase_call_expr(mt.GT))
     mt = mt.key_cols_by(s=hl.str(truth_sample))
     mt = mt.repartition(1000 if data_type == 'genomes' else 100, shuffle=False)
 
