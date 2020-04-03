@@ -1,4 +1,5 @@
-from gnomad.utils import filter_to_autosomes, try_slack
+from gnomad.utils.filtering import filter_to_autosomes
+from gnomad.utils.slack import try_slack
 from gnomad_qc.v2.resources.variant_qc import *
 from gnomad_qc.v2.resources.sample_qc import *
 import argparse

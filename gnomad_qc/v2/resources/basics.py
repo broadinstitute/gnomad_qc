@@ -1,6 +1,6 @@
 import hail as hl
 from typing import *
-from gnomad.utils.generic import file_exists
+from gnomad.utils.file_utils import file_exists
 
 CURRENT_HAIL_VERSION = "0.2"
 CURRENT_RELEASE = "2.1.1"
@@ -137,7 +137,7 @@ def get_gnomad_data(data_type: str, adj: bool = False, split: bool = True, raw: 
     :return: gnomAD hardcalls dataset with chosen annotations
     :rtype: MatrixTable
     """
-    from gnomad.utils import filter_to_adj
+    from gnomad.utils.filtering import filter_to_adj
 
     if raw and split:
         raise DataException('No split raw data. Use of hardcalls is recommended.')

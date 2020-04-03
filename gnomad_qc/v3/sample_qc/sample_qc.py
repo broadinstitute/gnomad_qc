@@ -1,9 +1,15 @@
-from gnomad.utils import get_adj_expr
-from gnomad.utils.sample_qc import *
+from gnomad.utils.annotations import get_adj_expr, bi_allelic_expr
+from gnomad.utils.filtering import filter_to_autosomes, add_filters_expr
+from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
+from gnomad.sample_qc.filtering import compute_qc_metrics_residuals, compute_stratified_metrics_filter, compute_stratified_sample_qc
+from gnomad.sample_qc.pipeline import get_qc_mt
+from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
+from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
 from gnomad.utils.sparse_mt import impute_sex_ploidy, densify_sites
 from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
 from gnomad_qc.v3.resources import *
 from gnomad.resources.grch38 import purcell_5k_intervals, lcr_intervals, telomeres_and_centromeres
+from typing import List, Tuple, Any
 import pickle
 import argparse
 import logging

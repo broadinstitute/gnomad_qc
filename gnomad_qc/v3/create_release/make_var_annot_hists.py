@@ -1,6 +1,5 @@
 from gnomad.utils.slack import try_slack
-from gnomad.utils.annotations import get_annotations_hists, create_frequency_bins_expr
-from gnomad.utils.constants import ANNOTATIONS_HISTS
+from gnomad.utils.annotations import get_annotations_hists, create_frequency_bins_expr, ANNOTATIONS_HISTS
 import hail as hl
 import argparse
 from gnomad_qc.v3.resources import qual_hists_json_path, release_ht_path

@@ -8,8 +8,8 @@ def main(args):
     data_type = 'exomes' if args.exomes else 'genomes'
     hl.init(min_block_size=args.min_block_size)
 
-    mt = hl.import_vcf(args.vcf, force_bgz=args.force_bgz, call_fields=['GT','PGT'],
-                        header_file=args.header if args.header else None)
+    mt = hl.import_vcf(args.vcf, force_bgz=args.force_bgz, call_fields=['GT', 'PGT'],
+                       header_file=args.header if args.header else None)
 
     mt = mt.key_rows_by(
         **hl.min_rep(mt.locus, mt.alleles)
