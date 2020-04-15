@@ -1,5 +1,5 @@
 from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
-from gnomad_qc.v3.resources import gnomad_v2_qc_sites, v3_qc, meta, v2_v3_pc_relate_pca_scores, v2_v3_relatedness
+from gnomad_qc.v3.resources import v3_qc, meta, v2_v3_pc_relate_pca_scores, v2_v3_relatedness
 import hail as hl
 import argparse
 import logging

@@ -1,4 +1,6 @@
-from gnomad.utils import annotate_adj, adjust_sex_ploidy, try_slack
+from gnomad.utils.annotations import annotate_adj
+from gnomad.sample_qc.sex import adjust_sex_ploidy
+from gnomad.utils.slack import try_slack
 from gnomad_qc.v2.resources.sample_qc import *
 from gnomad_qc.v2.resources import get_gnomad_data, get_gnomad_data_path
 import sys

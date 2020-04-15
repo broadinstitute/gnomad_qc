@@ -16,7 +16,9 @@ from sklearn.ensemble import RandomForestClassifier
 import pandas as pd
 import pickle
 import hail as hl
-from gnomad.utils import try_slack, filter_to_autosomes, expand_pd_array_col, assign_population_pcs, filter_low_conf_regions, pc_project
+from gnomad.utils.slack import try_slack
+from gnomad.utils.filtering import filter_to_autosomes, filter_low_conf_regions
+from gnomad.sample_qc.ancestry import pc_project, assign_population_pcs
 import logging
 from typing import List, Tuple
 import argparse
@@ -120,11 +122,9 @@ def run_assign_population_pcs(pop_pc_table: hl.Table, outfile: str, picklefile: 
     :return: Table containing sample IDs and imputed population labels, trained random forest model
     :rtype: Table, RandomForestClassifier
     """
-    data = pop_pc_table.to_pandas()
-    data = expand_pd_array_col(data, 'scores', max(pcs), 'PC')
-    new_data, pop_clf = assign_population_pcs(
-        data,
-        pc_cols=['PC{}'.format(pc) for pc in pcs],
+    pop_df, pop_clf = assign_population_pcs(
+        pop_pc_table,
+        pc_cols=pop_pc_table.scores,
         fit=fit,
         seed=seed
     )
@@ -135,7 +135,7 @@ def run_assign_population_pcs(pop_pc_table: hl.Table, outfile: str, picklefile: 
             pickle.dump(pop_clf, out)
 
     with hl.hadoop_open(outfile, 'w') as out:
-        new_data.to_csv(out, sep="\t", na_rep="NA", index=False)
+        pop_df.to_csv(out, sep="\t", na_rep="NA", index=False)
     return hl.import_table(outfile, impute=True).key_by('data_type', 's'), pop_clf
 
 

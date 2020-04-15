@@ -1,5 +1,8 @@
-from gnomad.utils.relatedness import get_duplicated_samples
-from gnomad.utils import filter_to_autosomes, unphase_mt, add_rank, try_slack
+from gnomad.sample_qc.relatedness import get_duplicated_samples
+from gnomad.utils.filtering import filter_to_autosomes
+from gnomad.utils.annotations import unphase_call_expr
+from gnomad.variant_qc.evaluation import add_rank
+from gnomad.utils.slack import try_slack
 from gnomad_qc.v2.resources import sample_qc
 from gnomad_qc.v2.resources.variant_qc import *
 import pandas as pd
@@ -81,9 +84,11 @@ def write_omes_concordance(data_type: str, dup_version: str, by_platform: bool, 
     dup_ht = dup_ht.filter(dup_ht.dup_pair_rank == 0)
 
     # Unify sample names based on inferred duplicates (from pc_relate)
-    mt = unphase_mt(mt.filter_cols(hl.is_defined(dup_ht.key_by(f'{data_type}_s')[mt.s])))
+    mt = mt.filter_cols(hl.is_defined(dup_ht.key_by(f'{data_type}_s')[mt.s]))
+    mt = mt.annotate_entries(GT=unphase_call_expr(mt.GT))
     other_mt = other_mt.key_cols_by(s=dup_ht.key_by(f'{other_data_type}_s')[other_mt.s][f'{data_type}_s'])
-    other_mt = unphase_mt(other_mt.filter_cols(hl.is_defined(other_mt.s)))
+    other_mt = other_mt.filter_cols(hl.is_defined(other_mt.s))
+    other_mt = other_mt.annotate_entries(GT=unphase_call_expr(other_mt.GT))
 
     exome_calling_intervals = hl.import_locus_intervals(exome_calling_intervals_path, skip_invalid_intervals=True)
     mt = mt.filter_rows(hl.is_defined(exome_calling_intervals[mt.locus]))
@@ -132,7 +137,7 @@ def write_truth_concordance(data_type: str, truth_sample: str, overwrite: bool) 
 
     mt = get_qc_samples_filtered_gnomad_data(data_type, autosomes_only=False)
     mt = mt.filter_cols(mt.s == sample_mapping[truth_sample][data_type])
-    mt = unphase_mt(mt)
+    mt = mt.annotate_entries(GT=unphase_call_expr(mt.GT))
     mt = mt.key_cols_by(s=hl.str(truth_sample))
     mt = mt.repartition(1000 if data_type == 'genomes' else 100, shuffle=False)
 
@@ -141,7 +146,8 @@ def write_truth_concordance(data_type: str, truth_sample: str, overwrite: bool) 
     if data_type == 'exomes':
         exome_calling_intervals = hl.import_locus_intervals(exome_calling_intervals_path, skip_invalid_intervals=True)
         truth_mt = truth_mt.filter_rows(hl.is_defined(exome_calling_intervals[truth_mt.locus]))
-    truth_mt = unphase_mt(hl.split_multi_hts(truth_mt, left_aligned=False))
+    truth_mt = hl.split_multi_hts(truth_mt, left_aligned=False)
+    truth_mt = truth_mt.annotate_entries(GT=unphase_call_expr(truth_mt.GT))
 
     sample_concordance_ht, sites_concordance_ht = compute_concordance(mt, truth_mt, name=truth_sample)
     sites_concordance_ht.write(annotations_ht_path(data_type, f'{truth_sample}_concordance'), overwrite=overwrite)

@@ -1,4 +1,4 @@
-from gnomad.utils.relatedness import get_duplicated_samples, infer_families
+from gnomad.sample_qc.relatedness import get_duplicated_samples, infer_families
 from gnomad.utils.slack import try_slack
 from gnomad_qc.v2.resources.sample_qc import *
 from gnomad_qc.v2.resources import CURRENT_FAM, fam_path, get_gnomad_data

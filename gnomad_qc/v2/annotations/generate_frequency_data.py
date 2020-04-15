@@ -1,4 +1,4 @@
-from gnomad.utils.generic import get_sample_data, write_temp_gcs
+from gnomad.utils.file_utils import write_temp_gcs
 from  gnomad.utils.slack import try_slack
 from gnomad_qc.v2.resources import *
 from collections import Counter
@@ -16,7 +16,7 @@ F_CUTOFF = 0.05
 
 
 def generate_downsamplings_cumulative(mt: hl.MatrixTable) -> Tuple[hl.MatrixTable, List[int]]:
-    pop_data = [x[0] for x in get_sample_data(mt, [mt.meta.pop])]
+    pop_data = mt.meta.pop.collect()
     pops = Counter(pop_data)
     downsamplings = DOWNSAMPLINGS + list(pops.values())
     downsamplings = sorted([x for x in downsamplings if x <= sum(pops.values())])

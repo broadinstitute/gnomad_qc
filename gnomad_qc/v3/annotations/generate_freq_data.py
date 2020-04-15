@@ -1,5 +1,6 @@
 from gnomad.utils.annotations import annotate_freq, qual_hist_expr, pop_max_expr, faf_expr
-from gnomad.utils import adjusted_sex_ploidy_expr, get_adj_expr
+from gnomad.utils.annotations import get_adj_expr
+from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad_qc.v3.resources import get_gnomad_v3_mt, meta, freq
 import argparse
 import logging

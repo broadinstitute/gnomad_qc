@@ -1,6 +1,9 @@
 import argparse
 import sys
-from gnomad.utils import unphase_mt, filter_to_adj, add_variant_type, write_temp_gcs, try_slack
+from gnomad.utils.annotations import unphase_call_expr, add_variant_type
+from gnomad.utils.filtering import filter_to_adj
+from gnomad.utils.slack import try_slack
+from gnomad.utils.file_utils import write_temp_gcs
 from gnomad_qc.v2.resources import *
 
 
@@ -40,7 +43,8 @@ def generate_call_stats(mt: hl.MatrixTable) -> hl.Table:
         "all_samples_raw": True
     }
     mt = mt.select_cols(**sample_group_filters)
-    mt = unphase_mt(mt.select_rows())
+    mt = mt.annotate_entries(GT=unphase_call_expr(mt.GT))
+    mt = mt.select_rows()
     call_stats_expression = []
     for group in sample_group_filters.keys():
         callstats = hl.agg.filter(mt[group], hl.agg.call_stats(mt.GT, mt.alleles))
@@ -146,7 +150,7 @@ def generate_family_stats(mt: hl.MatrixTable, fam_file: str, calculate_adj: bool
     mt = annotate_unrelated_sample(mt, fam_file)
 
     # Unphased for now, since mendel_errors does not support phased alleles
-    mt = unphase_mt(mt)
+    mt = mt.annotate_entries(GT=unphase_call_expr(mt.GT))
     ped = hl.Pedigree.read(fam_file, delimiter='\\t')
     family_stats_struct, family_stats_sample_ht = family_stats(mt, ped, 'raw')
     mt = mt.annotate_rows(family_stats=[family_stats_struct])

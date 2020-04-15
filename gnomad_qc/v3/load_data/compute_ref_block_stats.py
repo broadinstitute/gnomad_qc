@@ -1,5 +1,5 @@
 import pickle
-from gnomad.utils import get_adj_expr
+from gnomad.utils.annotations import get_adj_expr
 from gnomad_qc.v3.resources import get_gnomad_v3_mt
 import argparse
 import hail as hl
