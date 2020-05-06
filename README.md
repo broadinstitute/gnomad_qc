@@ -6,7 +6,7 @@ NB: The scripts make reference to gnomAD-related metadata files (not public) and
 
 We therefore encourage users to browse through the code and identify modules and functions that will be useful in their own pipelines, and to edit and reconfigure the gnomAD pipeline to suit their particular analysis and QC needs. A more extensive overview and explanation of the gnomAD v2.1 QC process is available at: https://macarthurlab.org/2018/10/17/gnomad-v2-1/ and may help inform users’ design decisions for other pipelines.
 
-Note also that many basic functions and file paths used in the code are imported from a separate repo, gnomad_hail (https://github.com/macarthur-lab/gnomad_hail). The scripts below are run approximately in the order they are listed.
+Note also that many basic functions and file paths used in the code are imported from a separate repo, [gnomad_methods](https://github.com/broadinstitute/gnomad_methods). The scripts below are run approximately in the order they are listed.
 
 
 
