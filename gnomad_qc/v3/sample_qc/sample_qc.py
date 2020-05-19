@@ -155,7 +155,7 @@ def compute_sex() -> hl.Table:
     # Compute sex chrom poloidy
     ht = impute_sex_ploidy(
         get_gnomad_v3_mt(remove_hard_filtered_samples=False),
-        excluded_intervals=telomeres_and_centromeres.ht()
+        excluded_calling_intervals=telomeres_and_centromeres.ht()
     )
     ht = ht.checkpoint('gs://gnomad-tmp/sex_depth.ht', overwrite=True)
 
