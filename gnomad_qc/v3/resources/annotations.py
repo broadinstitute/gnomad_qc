@@ -40,3 +40,5 @@ vep = TableResource(f'{ANNOTATIONS_ROOT}/gnomad_genomes_v3_vep.ht')
 info_vcf_path = f'{ANNOTATIONS_ROOT}/gnomad_genomes_v3_info.vcf.bgz'
 qc_ac = TableResource(f'{ANNOTATIONS_ROOT}/gnomad_genomes_qc_ac.ht')
 fam_stats = TableResource(f'{ANNOTATIONS_ROOT}/gnomad_genomes_qc_fam_stats.ht')
+allele_data = TableResource(f'{ANNOTATIONS_ROOT}/gnomad_genomes_qc_allele_data.ht')
+
