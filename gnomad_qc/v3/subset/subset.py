@@ -245,7 +245,7 @@ def main(args):
         mt,
         f"{args.output_path}/sharded_vcf.bgz",
         parallel="header_per_shard",
-        metadata=HEADER_DICT,
+        metadata=header_dict,
     )
 
 
