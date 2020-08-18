@@ -208,28 +208,28 @@ def main(args):
     if args.subset_call_stats:
         mt = mt.annotate_rows(subset_callstats=hl.agg.call_stats(mt.GT,mt.alleles))     
         mt = mt.annotate_rows(info=mt.info.annotate(subset_AC=mt.subset_callstats.AC[1],
-                                           subset_AN=mt.subset_callstats.AN,
-                                           subset_AF=(mt.subset_callstats.AF[1].map(lambda x: hl.float32(hl.min(2 ** 31 - 1, x))))))
+                                                    subset_AN=mt.subset_callstats.AN,
+                                                    subset_AF=hl.float32(mt.subset_callstats.AF[1])))
         mt = mt.drop('subset_callstats')
-        header_dict = header_dict['info'].update({"subset_AC":"Alternate Allele count in subset post-filtering", 
-                                                "subset_AN":"Ref and Alternate allele number in subset post-filtering",
-                                                "subset_AF":"Alternate Allele frequency in subset post-filtering"})
+        header_dict['info'].update({"subset_AC": {"Description": "Alternate Allele count in subset post-filtering"} , 
+                                    "subset_AN": {"Description": "Ref and Alternate allele number in subset post-filtering"},
+                                    "subset_AF": {"Description": "Alternate Allele frequency in subset post-filtering"}})
     
     if args.add_gnomad_freqs:
         from gnomad_qc.v3.resources.annotations import freq
         freq = freq.ht()
         mt = mt.annotate_rows(info=mt.info.annotate(gnomAD_AC_adj=freq[mt.row_key].freq[0].AC, 
                                                     gnomAD_AN_adj=freq[mt.row_key].freq[0].AN,
-                                                    gnomAD_AF_adj=hl.float32(freq[mt.row_key].freq[0].AF)),
+                                                    gnomAD_AF_adj=hl.float32(freq[mt.row_key].freq[0].AF),
                                                     gnomAD_AC_raw=freq[mt.row_key].freq[1].AC, 
                                                     gnomAD_AN_raw=freq[mt.row_key].freq[1].AN,
-                                                    gnomAD_AF_raw=hl.float32(freq[mt.row_key].freq[1].AF))
-        header_dict = header_dict['info'].update({"gnomAD_AC_adj":"High quality alternate allele count in gnomAD post-filtering", 
-                                                "gnomAD_AN_adj":"High quality allele number. The total number of called alleles in gnomAD post-filtering",
-                                                "gnomAD_AF_adj":"High quality alternate allele frequency in gnomAD post-filtering",
-                                                "gnomAD_AC_raw":"Raw alternate allele count in gnomAD post-filtering", 
-                                                "gnomAD_AN_raw":"Raw allele number. The total number of called alleles in gnomAD post-filtering",
-                                                "gnomAD_AF_raw":"Raw alternate allele frequency in gnomAD post-filtering"})
+                                                    gnomAD_AF_raw=hl.float32(freq[mt.row_key].freq[1].AF)))
+        header_dict['info'].update({"gnomAD_AC_adj": {"Description": "High quality alternate allele count in gnomAD post-filtering"},
+                                    "gnomAD_AN_adj": {"Description": "High quality allele number. The total number of called alleles in gnomAD post-filtering"},
+                                    "gnomAD_AF_adj": {"Description": "High quality alternate allele frequency in gnomAD post-filtering"},
+                                    "gnomAD_AC_raw": {"Description": "Raw alternate allele count in gnomAD post-filtering"}, 
+                                    "gnomAD_AN_raw": {"Description": "Raw allele number. The total number of called alleles in gnomAD post-filtering"},
+                                    "gnomAD_AF_raw": {"Description": "Raw alternate allele frequency in gnomAD post-filtering"}})
 
     partitions = (
         compute_partitions(mt) if not args.num_vcf_shards else args.num_vcf_shards
@@ -290,6 +290,3 @@ if __name__ == "__main__":
         sys.exit('Error: At least subset path or population must be specified')
 
     main(args)
-
-
-#Do we want to pass in non-gnomAD mt?
