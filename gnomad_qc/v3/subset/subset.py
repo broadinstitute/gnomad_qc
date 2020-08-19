@@ -227,40 +227,40 @@ def main(args):
 
     if args.subset_call_stats:
         mt = mt.annotate_rows(subset_callstats_raw=hl.agg.call_stats(mt.GT, mt.alleles))     
-        mt = mt.annotate_rows(info=mt.info.annotate(subset_AC_raw=mt.subset_callstats.AC[1],
-                                                    subset_AN_raw=mt.subset_callstats.AN,
-                                                    subset_AF_raw=hl.float32(mt.subset_callstats.AF[1])))
+        mt = mt.annotate_rows(info=mt.info.annotate(AC_raw=mt.subset_callstats_raw.AC[1],
+                                                    AN_raw=mt.subset_callstats_raw.AN,
+                                                    AF_raw=hl.float32(mt.subset_callstats_raw.AF[1])))
         mt = mt.drop('subset_callstats_raw')
         mt = annotate_adj(mt)
         mt = mt.annotate_rows(subset_callstats_adj=hl.agg.filter(mt.adj, hl.agg.call_stats(mt.GT, mt.alleles)))
-        mt = mt.annotate_rows(info=mt.info.annotate(subset_AC_adj=mt.subset_callstats_adj.AC[1],
-                                                    subset_AN_adj=mt.subset_callstats_adj.AN,
-                                                    subset_AF_adj=hl.float32(mt.subset_callstats_adj.AF[1])))
+        mt = mt.annotate_rows(info=mt.info.annotate(AC=mt.subset_callstats_adj.AC[1],
+                                                    AN=mt.subset_callstats_adj.AN,
+                                                    AF=hl.float32(mt.subset_callstats_adj.AF[1])))
         mt = mt.drop('subset_callstats_adj')
         header_dict['info'].update({
-            "subset_AC_raw": 
+            "AC_raw": 
                 {
                 "Number": "A",
                 "Description": "Alternate allele count in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
                 },
-            "subset_AN_raw": 
+            "AN_raw": 
                 {
                 "Number": "1",
                 "Description": "Total number of alleles in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
                 },
-            "subset_AF_raw": {
+            "AF_raw": {
                 "Number": "A",
                 "Description": "Alternate allele frequency in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
                 },
-            "subset_AC_adj": {
+            "AC": {
                 "Number": "A",
                 "Description": "Alternate allele count in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
                 },
-             "subset_AN_adj": {
+            "AN": {
                 "Number": "1",
                 "Description": "Total number of alleles in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
                 },
-            "subset_AF_adj": {
+            "AF": {
                 "Number": "A",
                 "Description": "Alternate allele frequency in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
                 }
@@ -269,22 +269,22 @@ def main(args):
     
     if args.add_gnomad_freqs:
         freq_ht = freq.ht()
-        mt = mt.annotate_rows(info=mt.info.annotate(gnomAD_AC_adj=freq_ht[mt.row_key].freq[0].AC, 
-                                                    gnomAD_AN_adj=freq_ht[mt.row_key].freq[0].AN,
-                                                    gnomAD_AF_adj=hl.float32(freq_ht[mt.row_key].freq[0].AF),
+        mt = mt.annotate_rows(info=mt.info.annotate(gnomAD_AC=freq_ht[mt.row_key].freq[0].AC, 
+                                                    gnomAD_AN=freq_ht[mt.row_key].freq[0].AN,
+                                                    gnomAD_AF=hl.float32(freq_ht[mt.row_key].freq[0].AF),
                                                     gnomAD_AC_raw=freq_ht[mt.row_key].freq[1].AC, 
                                                     gnomAD_AN_raw=freq_ht[mt.row_key].freq[1].AN,
                                                     gnomAD_AF_raw=hl.float32(freq_ht[mt.row_key].freq[1].AF)))
         header_dict['info'].update({
-            "gnomAD_AC_adj": {
+            "gnomAD_AC": {
                 "Number": "A",
                 "Description": "High quality alternate allele count in gnomAD after filtering out low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
                 },
-            "gnomAD_AN_adj": {
+            "gnomAD_AN": {
                 "Number": "1",
                 "Description": "High quality allele number. The total number of called alleles in gnomAD after filtering out low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
                 },
-            "gnomAD_AF_adj": {
+            "gnomAD_AF": {
                 "Number": "A",
                 "Description": "High quality alternate allele frequency in gnomAD after filtering out low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
                 },
