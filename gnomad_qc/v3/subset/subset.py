@@ -65,14 +65,6 @@ HEADER_DICT = {
         "RGQ": {"Description": ""},
         },
     "info": {
-        "AC": {
-            "Number": "A",
-            "Description": "Alternate Allele count in gnomAD after filtering out low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-            },
-        "AC_raw": {
-            "Number": "A",
-            "Description": "Raw alternate allele count in gnomAD"
-            },
         "AS_ReadPosRankSum": {
             "Description": "Allele-specific Z-score from Wilcoxon rank sum test of each alternate vs. reference read position bias"
         },
@@ -199,6 +191,7 @@ def main(args):
         key_by_locus_and_alleles=True, remove_hard_filtered_samples=hard_filter, release_only=release_only
     )
     info_ht = get_info().ht()
+    info_ht = info_ht.annotate(info=info_ht.info.drop('AC', 'AC_raw')) # Note: AC and AC_raw are computed over all gnomAD samples
     info_ht = format_info_for_vcf(info_ht)
 
     # Flatten SB if it is an array of arrays
@@ -229,17 +222,17 @@ def main(args):
     mt = mt.filter_rows(hl.len(mt.alleles) > 1) # Note: This step is sparse-specific, removing monoallelic sites after densifying
     mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
 
-    mt = mt.drop(mt.gvcf_info) # Note: This field is sparse-specific 
+    mt = mt.drop(mt.gvcf_info) # Note: gvcf_info is sparse-specific 
     mt = mt.annotate_rows(info=info_ht[mt.row_key].info)
 
     if args.subset_call_stats:
-        mt = mt.annotate_rows(subset_callstats_raw=hl.agg.call_stats(mt.GT,mt.alleles))     
+        mt = mt.annotate_rows(subset_callstats_raw=hl.agg.call_stats(mt.GT, mt.alleles))     
         mt = mt.annotate_rows(info=mt.info.annotate(subset_AC_raw=mt.subset_callstats.AC[1],
                                                     subset_AN_raw=mt.subset_callstats.AN,
                                                     subset_AF_raw=hl.float32(mt.subset_callstats.AF[1])))
         mt = mt.drop('subset_callstats_raw')
         mt = annotate_adj(mt)
-        mt = mt.annotate_rows(subset_callstats_adj=hl.agg.filter(mt.adj, hl.agg.call_stats(mt.GT,mt.alleles)))
+        mt = mt.annotate_rows(subset_callstats_adj=hl.agg.filter(mt.adj, hl.agg.call_stats(mt.GT, mt.alleles)))
         mt = mt.annotate_rows(info=mt.info.annotate(subset_AC_adj=mt.subset_callstats_adj.AC[1],
                                                     subset_AN_adj=mt.subset_callstats_adj.AN,
                                                     subset_AF_adj=hl.float32(mt.subset_callstats_adj.AF[1])))
@@ -261,15 +254,15 @@ def main(args):
                 },
             "subset_AC_adj": {
                 "Number": "A",
-                "Description": "Alternate allele count in subset post-filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+                "Description": "Alternate allele count in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
                 },
              "subset_AN_adj": {
                 "Number": "1",
-                "Description": "Total number of alleles in subset post-filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+                "Description": "Total number of alleles in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
                 },
             "subset_AF_adj": {
                 "Number": "A",
-                "Description": "Alternate allele frequency in subset post-filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+                "Description": "Alternate allele frequency in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
                 }
             }
         )
