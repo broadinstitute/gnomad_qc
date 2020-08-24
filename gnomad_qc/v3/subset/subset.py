@@ -164,18 +164,18 @@ def format_info_for_vcf(ht) -> hl.Table:
 def compute_partitions(mt, entry_size=3.5, partition_size=128000000, min_partitions=20) -> int: #TODO: move to gnomad_methods
     """
     Computes a very rough estimate for the optimal number of partitions in a MT
-     using a the hail recommended partition size of 128MB and the rough estimate 
+     using a the hail recommended partition size of 128MB and the rough estimate
      of 3.5B per entry in the gnomAD sparse MT.
 
     :param mt: MatrixTable that will be resized
     :param entry_size: Average size in bytes that a single entry requires , defaults to 3.5
     :param partition_size: Amount of data per partition. Hail recommends 128MB, defaults to 128000000
     :param min_partitions: Minimum number of partitions for naive_coalesce, defaults to 20
-    :return: number of partitions for resizing MT  
+    :return: number of partitions for resizing MT
     """
-    rows, columns = mt.count()  
+    rows, columns = mt.count()
     mt_disk_est = rows * columns * entry_size
-    n_partitions = hl.max(int(mt_disk_est / partition_size), min_partitions)
+    n_partitions = hl.eval(hl.max(int(mt_disk_est / partition_size), min_partitions))
     return n_partitions 
 
 
@@ -215,6 +215,7 @@ def main(args):
         meta = meta.semi_join(mt.cols())
         meta.export(f"{args.output_path}/metadata.tsv.bgz")
 
+    logger.info("Splitting multi-allelics and densifying")
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
     mt = hl.experimental.densify(mt)
 
@@ -226,6 +227,7 @@ def main(args):
     mt = mt.annotate_rows(info=info_ht[mt.row_key].info)
 
     if args.subset_call_stats:
+        logger.info("Adding subset callstats")
         mt = mt.annotate_rows(subset_callstats_raw=hl.agg.call_stats(mt.GT, mt.alleles))     
         mt = mt.annotate_rows(info=mt.info.annotate(AC_raw=mt.subset_callstats_raw.AC[1],
                                                     AN_raw=mt.subset_callstats_raw.AN,
@@ -236,7 +238,7 @@ def main(args):
         mt = mt.annotate_rows(info=mt.info.annotate(AC=mt.subset_callstats_adj.AC[1],
                                                     AN=mt.subset_callstats_adj.AN,
                                                     AF=hl.float32(mt.subset_callstats_adj.AF[1])))
-        mt = mt.drop('subset_callstats_adj')
+        mt = mt.drop('subset_callstats_adj', 'adj')
         header_dict['info'].update({
             "AC_raw": 
                 {
@@ -268,6 +270,7 @@ def main(args):
         )
     
     if args.add_gnomad_freqs:
+        logger.info("Adding gnomAD callstats")
         freq_ht = freq.ht()
         mt = mt.annotate_rows(info=mt.info.annotate(gnomAD_AC=freq_ht[mt.row_key].freq[0].AC, 
                                                     gnomAD_AN=freq_ht[mt.row_key].freq[0].AN,
@@ -340,11 +343,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--num-vcf-shards", help="Number of shards in output VCF", type=int)
     parser.add_argument("--checkpoint-path", help="Path to final mt checkpoint")
-    parser.add_argument("--hard-filter-samples", help="Removes hard filtered samples", required=True, action="store_true")
-    parser.add_argument("--release-only", help="Keep release samples only", required=True, action="store_true")
-    parser.add_argument("--subset-call-stats", help="Adds subset callstats, AC, AN, AF")
-    parser.add_argument("--add-gnomad-freqs", help="Adds gnomAD's adj and raw callstats")
-    parser.add_argument("--sparse", help="Use if source MT is sparse", action="store_true")
+    parser.add_argument("--hard-filter-samples", help="Removes hard filtered samples", action="store_true")
+    parser.add_argument("--release-only", help="Keep release samples only", action="store_true")
+    parser.add_argument("--subset-call-stats", help="Adds subset callstats, AC, AN, AF", action="store_true")
+    parser.add_argument("--add-gnomad-freqs", help="Adds gnomAD's adj and raw callstats", action="store_true")
     parser.add_argument(
         "-o",
         "--overwrite",
