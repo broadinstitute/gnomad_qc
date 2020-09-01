@@ -77,6 +77,19 @@ def compute_info() -> hl.Table:
         AC=grp_ac_expr.map(lambda i: hl.int32(i.get(True, 0))),
     )
 
+    # Annotating raw MT with pab max
+    info_expr = info_expr.annotate(
+        AS_pab_max=hl.agg.array_agg(
+            lambda ai: hl.agg.filter(
+                mt.LA.contains(ai) & mt.LGT.is_het(),
+                hl.agg.max(
+                    hl.binom_test(mt.LAD[1], hl.sum(mt.LAD), 0.5, "two-sided")
+                ),
+            ),
+            hl.range(1, hl.len(mt.alleles)),
+        )
+    )
+
     info_ht = mt.select_rows(info=info_expr).rows()
 
     # Add lowqual flag
