@@ -17,19 +17,16 @@ def get_info(split: bool = True) -> TableResource:
     return TableResource(path)
 
 
-def get_filters(model_id: str, split: bool = True) -> TableResource:
+def get_filters(model_id: str, split: bool = True, finalized: bool = False) -> TableResource:
     """
     Gets the specified filtering annotation resource.
 
     :param model_id: Filtering model id
     :param split: Split or multi-allelic version of the filtering file
+    :param finalized:
     :return: Filtering annotation file
     """
-    path = '{}/{}_filtering{}.ht'.format(
-        ANNOTATIONS_ROOT,
-        model_id,
-        '.split' if split else ''
-    )
+    path = f"{ANNOTATIONS_ROOT}/filtering/{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
     return TableResource(path)
 
 
