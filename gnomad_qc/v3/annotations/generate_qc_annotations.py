@@ -1,4 +1,4 @@
-from gnomad.utils.annotations import annotate_adj
+from gnomad.utils.annotations import add_variant_type, annotate_adj
 from gnomad.sample_qc.relatedness import generate_trio_stats_expr
 from gnomad.utils.slack import try_slack
 from gnomad.utils.sparse_mt import *
@@ -146,10 +146,13 @@ def generate_allele_data(mt: hl.MatrixTable) -> hl.Table:
     :rtype: Table
     """
     ht = mt.rows().select()
-    ht = ht.annotate(nonsplit_alleles=ht.alleles, has_star=hl.any(lambda a: a == "*", ht.alleles))
-    ht = hl.experimental.sparse_split_multi(ht)
+    allele_data = hl.struct(
+        nonsplit_alleles=ht.alleles, has_star=hl.any(lambda a: a == "*", ht.alleles)
+    )
+    ht = ht.annotate(allele_data=allele_data.annotate(**add_variant_type(ht.alleles)))
+
+    ht = hl.split_multi_hts(ht)
     ht = ht.filter(hl.len(ht.alleles) > 1)
-    
     allele_type = (
         hl.case()
         .when(hl.is_snp(ht.alleles[0], ht.alleles[1]), "snv")
@@ -157,7 +160,11 @@ def generate_allele_data(mt: hl.MatrixTable) -> hl.Table:
         .when(hl.is_deletion(ht.alleles[0], ht.alleles[1]), "del")
         .default("complex")
     )
-    ht = ht.annotate(allele_type=allele_type, was_mixed=ht.variant_type == "mixed")
+    ht = ht.annotate(
+        allele_data=ht.allele_data.annotate(
+            allele_type=allele_type, was_mixed=ht.allele_data.variant_type == "mixed"
+        )
+    )
     return ht
 
 
@@ -334,7 +341,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--export_info_vcf", help="Export info as VCF", action="store_true"
     )
-    parser.add_argument('--generate_allele_data', help='Calculates allele data', action='store_true')
+    parser.add_argument(
+        "--generate_allele_data", help="Calculates allele data", action="store_true"
+    )
     parser.add_argument(
         "--generate_ac",
         help="Creates a table with ACs for QC, unrelated QC and release samples (raw and adj)",
