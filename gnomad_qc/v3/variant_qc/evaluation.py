@@ -180,7 +180,7 @@ def main(args):
         )
 
         mt = mt.filter_cols(
-            hl.literal([s["s"] for s in TRUTH_SAMPLES]).contains(mt.s)
+            hl.literal([v["s"] for k, v in TRUTH_SAMPLES.items()]).contains(mt.s)
         )
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
