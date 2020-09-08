@@ -49,7 +49,9 @@ logger = logging.getLogger("variant_qc_evaluation")
 logger.setLevel(logging.INFO)
 
 
-def create_quantile_bin_ht(model_id: str, n_bins: int, vqsr: bool = False, overwrite: bool = False) -> None:
+def create_quantile_bin_ht(
+    model_id: str, n_bins: int, vqsr: bool = False, overwrite: bool = False
+) -> None:
     """
     Creates a table with quantile bin annotations added for a RF run and writes it to its correct location in
     annotations.
@@ -60,15 +62,15 @@ def create_quantile_bin_ht(model_id: str, n_bins: int, vqsr: bool = False, overw
     :param overwrite: Should output files be overwritten if present
     :return: Nothing
     """
-    logger.info(
-        f"Annotating {model_id} HT with quantile bins using {n_bins}"
-    )
+    logger.info(f"Annotating {model_id} HT with quantile bins using {n_bins}")
     info_ht = get_info(split=True).ht()
     if vqsr:
         rf_ht = get_rf_annotated().ht()
         ht = get_filters(model_id, split=True).ht()
 
-        ht = ht.filter(~info_ht[ht.key].lowqual & ~hl.is_infinite(ht.info.VQSLOD))  # TODO: switch to use AS_lowqual?
+        ht = ht.filter(
+            ~info_ht[ht.key].lowqual & ~hl.is_infinite(ht.info.VQSLOD)
+        )  # TODO: switch to use AS_lowqual?
         ht = ht.annotate(
             **rf_ht[ht.key],
             info=info_ht[ht.key].info,
@@ -87,12 +89,12 @@ def create_quantile_bin_ht(model_id: str, n_bins: int, vqsr: bool = False, overw
             score=ht.rf_probability["TP"],
         )
 
-    ht = ht.filter(
-        ht.ac_qc_raw > 0
-    )
+    ht = ht.filter(ht.ac_raw > 0)
 
     bin_ht = create_binned_ht(ht, n_bins)
-    bin_ht.write(get_score_quantile_bins(model_id, aggregated=False).path, overwrite=overwrite)
+    bin_ht.write(
+        get_score_quantile_bins(model_id, aggregated=False).path, overwrite=overwrite
+    )
 
 
 def create_grouped_bin_ht(model_id: str, overwrite: bool = False) -> None:
@@ -127,16 +129,16 @@ def create_grouped_bin_ht(model_id: str, overwrite: bool = False) -> None:
 
     logger.info(f"Creating grouped bin table...")
     grouped_binned_ht = compute_grouped_binned_ht(
-        ht,
-        checkpoint_path=get_checkpoint_path(f"grouped_bin_{model_id}"),
+        ht, checkpoint_path=get_checkpoint_path(f"grouped_bin_{model_id}"),
     )
 
     logger.info(f"Aggregating grouped bin table...")
-    agg_ht = grouped_binned_ht.aggregate(**score_bin_agg(grouped_binned_ht, fam_stats_ht=trio_stats_ht))
+    agg_ht = grouped_binned_ht.aggregate(
+        **score_bin_agg(grouped_binned_ht, fam_stats_ht=trio_stats_ht)
+    )
 
     agg_ht.write(
-        get_score_quantile_bins(model_id, aggregated=True).path,
-        overwrite=overwrite,
+        get_score_quantile_bins(model_id, aggregated=True).path, overwrite=overwrite,
     )
 
 
@@ -144,7 +146,7 @@ def main(args):
     hl.init(log="/variant_qc_evaluation.log")
 
     if args.vqsr:
-        model_id = f'vqsr_{args.vqsr_type}'
+        model_id = f"vqsr_{args.vqsr_type}"
     else:
         model_id = args.run_hash
 
@@ -186,8 +188,7 @@ def main(args):
 
         # Checkpoint to prevent needing to go through the large table a second time
         mt = mt.checkpoint(
-            get_checkpoint_path("truth_samples", mt=True),
-            overwrite=args.overwrite,
+            get_checkpoint_path("truth_samples", mt=True), overwrite=args.overwrite,
         )
 
         for truth_sample in TRUTH_SAMPLES:
@@ -199,8 +200,7 @@ def main(args):
                 hl.agg.any(truth_sample_mt.GT.is_non_ref())
             )
             truth_sample_mt.naive_coalesce(args.n_partitions).write(
-                get_callset_truth_data(truth_sample).path,
-                overwrite=args.overwrite,
+                get_callset_truth_data(truth_sample).path, overwrite=args.overwrite,
             )
 
     if args.merge_with_truth_data:
@@ -219,7 +219,9 @@ def main(args):
 
             # remove low quality sites
             info_ht = get_info(split=True).ht()
-            mt = mt.filter_rows(~info_ht[mt.row_key].lowqual)  # TODO: should this switch to AS_lowqual
+            mt = mt.filter_rows(
+                ~info_ht[mt.row_key].lowqual
+            )  # TODO: should this switch to AS_lowqual
 
             ht = create_truth_sample_ht(mt, truth_mt, truth_hc_intervals)
             ht.write(
@@ -235,9 +237,7 @@ def main(args):
             ht = get_callset_truth_data(truth_sample, mt=False).ht()
 
             if args.filter_low_conf_regions:
-                logger.info(
-                    "Filtering out low confidence regions and segdups..."
-                )
+                logger.info("Filtering out low confidence regions and segdups...")
                 ht = filter_low_conf_regions(
                     ht,
                     filter_lcr=True,
@@ -252,16 +252,12 @@ def main(args):
             metric_ht = get_score_quantile_bins(model_id, aggregated=False).ht()
             ht = ht.filter(hl.is_defined(metric_ht[ht.key]))
 
-            ht = ht.annotate(
-                score=metric_ht[ht.key].score,
-            )
+            ht = ht.annotate(score=metric_ht[ht.key].score,)
 
-            ht = compute_binned_truth_sample_concordance(
-                ht,
-                metric_ht,
-                args.n_bins,
+            ht = compute_binned_truth_sample_concordance(ht, metric_ht, args.n_bins,)
+            ht = ht.annotate_globals(
+                filter_low_conf_regions=args.filter_low_conf_regions
             )
-            ht = ht.annotate_globals(filter_low_conf_regions=args.filter_low_conf_regions)
             ht.write(
                 get_binned_concordance(model_id, truth_sample).path,
                 overwrite=args.overwrite,
