@@ -284,60 +284,61 @@ if __name__ == "__main__":
         required=False,
     )
 
-    evaluation_params = parser.add_argument_group("Evaluation parameters")
-    evaluation_params.add_argument(
-        "--vqsr", help="When set, creates the VQSR rank file instead of an RF rank file.", action="store_true"
+    parser.add_argument(
+        "--vqsr",
+        help="When set, creates the VQSR rank file instead of an RF rank file.",
+        action="store_true",
     )
-    evaluation_params.add_argument(
+    parser.add_argument(
         "--vqsr_type",
         help="What type of VQSR was run: allele-specific, or allele-specific with transmitted singletons",
         type=str,
-        choices=['classic', 'alleleSpecific', 'alleleSpecificTrans'],
+        choices=["classic", "alleleSpecific", "alleleSpecificTrans"],
         default="alleleSpecificTrans",
     )
-    evaluation_params.add_argument(
+    parser.add_argument(
         "--create_quantile_bin_ht",
         help="When set, creates file annotated with quantile bin based on vqsr/RF run hash score.",
         action="store_true",
     )
-    evaluation_params.add_argument(
+    parser.add_argument(
         "--run_sanity_checks",
         help="When set, runs ranking sanity checks.",
         action="store_true",
     )
-    evaluation_params.add_argument(
+    parser.add_argument(
         "--create_aggregated_bin_ht",
         help="When set, creates a file with aggregate counts of variants based on quantile bins.",
         action="store_true",
     )
-    evaluation_params.add_argument(
+    parser.add_argument(
         "--n_bins",
         help="Number of bins for the binned file (default: 100)",
         default=100,
         type=int,
     )
-    evaluation_params.add_argument(
+    parser.add_argument(
         "--extract_truth_samples",
         help="Extract truth samples from matrix table",
         action="store_true",
     )
-    evaluation_params.add_argument(
+    parser.add_argument(
         "--n_partitions",
         help="Desired number of partitions for output Table/MatrixTable",
         default=5000,
         type=int,
     )
-    evaluation_params.add_argument(
+    parser.add_argument(
         "--merge_with_truth_data",
         help="Computes a table for each truth sample comparing the truth sample in the callset vs the truth.",
         action="store_true",
     )
-    evaluation_params.add_argument(
+    parser.add_argument(
         "--bin_truth_sample_concordance",
         help="Merges individual concordance results with specified metric binned files.",
         action="store_true",
     )
-    evaluation_params.add_argument(
+    parser.add_argument(
         "--filter_low_conf_regions",
         help="Filter low confidence regions and seqdups before calculating variant counts in the bins",
         action="store_true",
