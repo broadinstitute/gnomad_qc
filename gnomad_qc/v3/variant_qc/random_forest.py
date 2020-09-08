@@ -182,7 +182,7 @@ def train_rf(ht, args):
         features.remove("InbreedingCoeff")
 
     if args.vqsr_training:
-        vqsr_ht = get_filters(args.vqsr_type, split=True).ht()  # TODO: add some sort of check for vqsr_type
+        vqsr_ht = get_filters(f"vqsr_{args.vqsr_type}", split=True).ht()
         ht = ht.annotate(
             vqsr_POSITIVE_TRAIN_SITE=vqsr_ht[ht.key].info.POSITIVE_TRAIN_SITE,
             vqsr_NEGATIVE_TRAIN_SITE=vqsr_ht[ht.key].info.NEGATIVE_TRAIN_SITE,
