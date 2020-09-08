@@ -13,7 +13,11 @@ from gnomad.resources.grch38.reference_data import clinvar, get_truth_ht
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import add_filters_expr
 from gnomad.utils.slack import slack_notifications
-from gnomad.variant_qc.evaluation import compute_grouped_binned_ht
+from gnomad.variant_qc.evaluation import (
+    compute_binned_truth_sample_concordance,
+    compute_grouped_binned_ht,
+    create_truth_sample_ht,
+)
 from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg, train_rf_model
 from gnomad.variant_qc.random_forest import (
     apply_rf_model,
@@ -22,7 +26,22 @@ from gnomad.variant_qc.random_forest import (
     pretty_print_runs,
     save_model,
 )
-from gnomad_qc.v3.resources import allele_data, fam_stats, get_checkpoint_path, get_filters, get_info, qc_ac
+from gnomad_qc.v3.resources import (
+    allele_data,
+    fam_stats,
+    get_binned_concordance,
+    get_callset_truth_data,
+    get_checkpoint_path,
+    get_filters,
+    get_gnomad_v3_mt,
+    get_info,
+    get_rf,
+    get_rf_annotated,
+    get_score_quantile_bins,
+    get_truth_sample_data,
+    qc_ac,
+    TRUTH_SAMPLES,
+)
 from gnomad_qc.slack_creds import slack_token
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")

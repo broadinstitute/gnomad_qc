@@ -29,7 +29,10 @@ from gnomad_qc.v3.resources import (
     get_checkpoint_path,
     get_filters,
     get_info,
+    get_rf,
+    get_rf_annotated,
     qc_ac,
+    rf_run_hash_path,
 )
 from gnomad_qc.slack_creds import slack_token
 
