@@ -12,7 +12,7 @@ meta_tsv_path = f'{META_ROOT}/gnomad_v3_metadata_2019-09-27.tsv.gz'
 project_meta = TableResource(
     import_func=hl.import_table,
     import_args={
-        'path': f'{META_ROOT}/09-09-2019_v3_project_meta.txt',
+        'paths': f'{META_ROOT}/09-09-2019_v3_project_meta.txt',
         'impute': True,
         'key': 's',
         'min_partitions': 100
