@@ -1,14 +1,12 @@
 import hail as hl
 from gnomad.resources import DataException, MatrixTableResource
-from gnomad_qc.v3.resources.sample_qc import hard_filtered_samples
-from gnomad_qc.v3.resources.meta import meta
-
-RELEASES = ["3", "3.1"]
-CURRENT_RELEASE = "3.1"
-CURRENT_META_VERSION = "2019-09-27"
-META_VERSIONS = ["2019-09-27"]
-CURRENT_PROJECT_META_VERSION = "2020-09-11"
-PROJECT_META_VERSIONS = ["09-09-2019"]
+from gnomad_qc.v3.resources import (
+    CURRENT_META_VERSION,
+    CURRENT_RELEASE,
+    hard_filtered_samples,
+    meta,
+    RELEASES,
+)
 
 
 def get_gnomad_v3_mt(
@@ -52,7 +50,7 @@ def get_gnomad_v3_mt(
 
 
 # V3 genotype data
-def gnomad_v3_genotypes(version) -> MatrixTableResource:
+def gnomad_v3_genotypes(version: str = CURRENT_RELEASE) -> MatrixTableResource:
     """
     Get gnomAD v3 raw MatrixTable
 
@@ -62,11 +60,11 @@ def gnomad_v3_genotypes(version) -> MatrixTableResource:
     if version not in RELEASES:
         return DataException("Select version as one of: {}".format(",".join(RELEASES)))
 
-    if version == 3.0:
+    if version == "3":
         return MatrixTableResource(
             "gs://gnomad/raw/hail-0.2/mt/genomes_v3/gnomad_genomes_v3.repartitioned.mt"
         )
-    if version == 3.1:
+    if version == "3.1":
         return MatrixTableResource(
             "gs://gnomad/raw/genomes/3.1/gnomad_v3.1_sparse_unsplit.repartitioned.mt"
         )
