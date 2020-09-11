@@ -236,7 +236,7 @@ def main(args):
 
     if args.export_info_vcf:
         info_ht = get_info(split=False).ht()
-        hl.export_vcf(ht_to_vcf_mt(info_ht), info_vcf_path)
+        hl.export_vcf(ht_to_vcf_mt(info_ht), info_vcf_path())
 
     # if args.generate_ac: # TODO: compute AC and qc_AC as part of compute_info
     # mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, samples_meta=True)
