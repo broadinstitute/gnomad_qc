@@ -11,7 +11,7 @@ def get_sample_qc_root(version: str = CURRENT_RELEASE, mt: bool = False) -> str:
 
     :param version: Version of sample QC path to return
     :param mt: Whether path is for a MatrixTable, default is False
-    :return: root to sample QC path
+    :return: Root to sample QC path
     """
     return f"gs://gnomad/sample_qc/{'mt' if mt else 'ht'}/genomes_v{version}"
 
@@ -25,7 +25,7 @@ def get_sample_qc(version: str = CURRENT_RELEASE, strat: str = "all") -> TableRe
 
     :param version: Version of sample QC path to return
     :param strat: Which stratification to return
-    :return: sample QC table
+    :return: Sample QC table
     """
     return TableResource(f"{get_sample_qc_root(version)}/sample_qc_{strat}.ht")
 
@@ -36,11 +36,12 @@ def _get_ancestry_pca_ht_path(
     include_unreleasable_samples: bool = False,
 ) -> str:
     """
-    
-    :param part:
-    :param version:
-    :param include_unreleasable_samples:
-    :return:
+    Helper function to get path to files related to ancestry PCA
+
+    :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores)
+    :param version: Version of sample QC path to return
+    :param include_unreleasable_samples: Whether the file includes PCA info for unreleasable samples
+    :return: Path to requested ancestry PCA file
     """
     return "{}/gnomad_v{}_pca_{}{}.{}".format(
         get_sample_qc_root(version),
@@ -51,7 +52,7 @@ def _get_ancestry_pca_ht_path(
     )
 
 
-def get_ancestry_pca_loadings(
+def ancestry_pca_loadings(
     version: str = CURRENT_RELEASE, include_unreleasable_samples: bool = False
 ) -> TableResource:
     """
@@ -66,7 +67,7 @@ def get_ancestry_pca_loadings(
     )
 
 
-def get_ancestry_pca_scores(
+def ancestry_pca_scores(
     version: str = CURRENT_RELEASE, include_unreleasable_samples: bool = False
 ) -> TableResource:
     """
@@ -105,212 +106,208 @@ gnomad_v2_qc_sites = TableResource(
 )
 
 
-# Dense MT of v3 samples at QC sites
 def qc(version: str = CURRENT_RELEASE) -> MatrixTableResource:
     """
-
+    MatrixTableResource for the dense MT of v3 samples at v2 QC sites
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Sample QC MatrixTableResource
     """
     return MatrixTableResource(
         f"gs://gnomad/sample_qc/mt/genomes_v{version}/gnomad_v{version}_qc_mt_v2_sites_dense.mt"
     )
 
 
-# PC relate PCA scores
 def pc_relate_pca_scores(version: str = CURRENT_RELEASE) -> TableResource:
     """
-
+    TableResource for PC relate PCA scores using qc MT of v2 sites
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: PC relate scores TableResource
     """
     return TableResource(
         f"{get_sample_qc_root(version)}/gnomad_v{version}_qc_mt_v2_sites_pc_scores.ht"
     )
 
 
-# PC relate results
 def relatedness(version: str = CURRENT_RELEASE) -> TableResource:
     """
-
+    TableResource for PC relate relatedness results using qc MT of v2 sites
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Relatedness TableResource
     """
     return TableResource(
         f"{get_sample_qc_root(version)}/gnomad_v{version}_qc_mt_v2_sites_relatedness.ht"
     )
 
 
-# Sex imputation results
 def sex(version: str = CURRENT_RELEASE) -> TableResource:
     """
-
+    TableResource for sex imputation results
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Sex imputation TableResource
     """
     return TableResource(f"{get_sample_qc_root(version)}/gnomad_v{version}_sex.ht")
 
 
-# Samples to drop for PCA due to them being related
 def pca_related_samples_to_drop(version: str = CURRENT_RELEASE) -> TableResource:
     """
-
+    TableResource for samples to drop for PCA due to being related
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Related sample to drop TableResource
     """
     return TableResource(
         f"{get_sample_qc_root(version)}/gnomad_v{version}_related_samples_to_drop_for_pca.ht"
     )
 
 
-# Related samples to drop for release
 def release_related_samples_to_drop(version: str = CURRENT_RELEASE) -> TableResource:
     """
-
+    TableResource for related samples to drop for release
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Release samples to drop TableResource
     """
     return TableResource(
         f"{get_sample_qc_root(version)}/gnomad_v{version}_related_release_samples_to_drop.ht"
     )
 
 
-# Inferred populations
 def pop(version: str = CURRENT_RELEASE) -> TableResource:
     """
-
+    TableResource for inferred sample populations
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Sample population TableResource
     """
     return TableResource(f"{get_sample_qc_root(version)}/gnomad_v{version}_pop.ht")
 
 
 def pop_tsv_path(version: str = CURRENT_RELEASE) -> str:
     """
-
+    Path to tab delimited file indicating inferred sample populations
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: String path to sample populations
     """
     return f"gs://gnomad/sample_qc/temp/genomes_v{version}/gnomad_v{version}_RF_pop_assignments.txt.gz"
 
 
 def pop_rf_path(version: str = CURRENT_RELEASE) -> str:
     """
-
+    Path to RF model used for inferring sample populations
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: String path to sample pop RF model
     """
     return f"gs://gnomad/sample_qc/temp/genomes_v{version}/gnomad_v{version}_pop.RF_fit.pickle"
 
 
-# Hard-filtered samples
 def hard_filtered_samples(version: str = CURRENT_RELEASE) -> TableResource:
     """
-
+    TableResource containing hard-filtered samples
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Hard filtered sample TableResource
     """
     return TableResource(
         f"{get_sample_qc_root(version)}/gnomad_v{version}_hard_filtered_samples.ht"
     )
 
 
-# Results of running population-based metrics filtering
-# Not used for v3 release (regresed metrics used instead)
 def stratified_metrics(version: str = CURRENT_RELEASE) -> TableResource:
     """
+    TableResource containing the results of running population-based metrics filtering for outliers
 
+    .. note::
+
+     This table was not used for v3.0 release (`regressed_metrics` Table was used instead)
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Population stratified sample QC metrics TableResource
     """
     return TableResource(
         f"{get_sample_qc_root(version)}/gnomad_v{version}_stratified_metrics.ht"
     )
 
 
-# Results of running regressed metrics filtering
 def regressed_metrics(version: str = CURRENT_RELEASE) -> TableResource:
     """
-
+    TableResource containing the results of running regression-based metrics filtering for outliers
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Regressed sample QC metrics TableResource
     """
     return TableResource(
         f"{get_sample_qc_root(version)}/gnomad_v{version}_regressed_metrics.ht"
     )
 
 
-# Ranking of all samples based on quality metrics. Used to remove relateds for PCA.
 def pca_samples_rankings(version: str = CURRENT_RELEASE) -> TableResource:
     """
+    TableResource with the ranking of all samples based on quality metrics.
 
+    Used to remove related individuals for PCA.
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Sample PCA ranking TableResource
     """
     return TableResource(
         f"{get_sample_qc_root(version)}/gnomad_v{version}_pca_samples_ranking.ht"
     )
 
 
-# Ranking of all release samples based on quality metrics. Used to remove relateds for release.
 def release_samples_rankings(version: str = CURRENT_RELEASE) -> TableResource:
     """
+    TableResource with the ranking of all release samples based on quality metrics.
 
+    Used to remove related individuals for release.
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Release sample PCA ranking TableResource
     """
     return TableResource(
         f"{get_sample_qc_root(version)}/gnomad_v{version}_release_samples_ranking.ht"
     )
 
 
-# Picard metrics
 def picard_metrics(version: str = CURRENT_RELEASE) -> TableResource:
     """
+    TableResource of the sample picard metrics to be used for hard filtering
 
+    .. note::
+
+        These were not used for hard-filtering of samples in v3.0
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Picard metrics TableResource
     """
     return TableResource(
         f"{get_sample_qc_root(version)}/gnomad_v{version}_picard_metrics.ht"
     )
 
 
-# Duplicated (or twin) samples
 def duplicates(version: str = CURRENT_RELEASE) -> TableResource:
     """
-
+    TableResource indicating duplicated (or twin) samples
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Duplicate sample TableResource
     """
     return TableResource(
         f"{get_sample_qc_root(version)}/gnomad_v{version}_duplicates.ht"
     )
 
 
-# v2 samples overlap
 def v3_v2_pc_relate_pca_scores(version: str = CURRENT_RELEASE) -> TableResource:
     """
-
+    TableResource containing PC relate scores for the sample set that overlaps with v2 samples
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: PC relate scores of v2 overlapping samples
     """
     return TableResource(
         f"{get_sample_qc_root(version)}/gnomad__v2_v{version}_release_pca_scores.ht"
@@ -319,10 +316,10 @@ def v3_v2_pc_relate_pca_scores(version: str = CURRENT_RELEASE) -> TableResource:
 
 def v3_v2_relatedness(version: str = CURRENT_RELEASE) -> TableResource:
     """
-
+    TableResource containing relatedness information for the sample set that overlaps with v2 samples
 
     :param version: Version of sample QC path to return
-    :return:
+    :return: Relatedness of v2 overlapping samples
     """
     return TableResource(
         f"{get_sample_qc_root(version)}/gnomad__v2_v{version}_release_relatedness.ht"

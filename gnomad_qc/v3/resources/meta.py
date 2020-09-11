@@ -14,9 +14,10 @@ from gnomad_qc.v3.resources import (
 # Samples metadata
 def get_meta_root(version: str = CURRENT_RELEASE) -> str:
     """
+    Retrieves the path to the root metadata directory
 
-    :param version: Version of sample QC path to return
-    :return:
+    :param version: gnomAD release version
+    :return: String representation of the path to the root metadata directory
     """
     return f"gs://gnomad/metadata/genomes_v{version}"
 
@@ -25,10 +26,11 @@ def meta(
     version: str = CURRENT_RELEASE, meta_version: str = CURRENT_META_VERSION
 ) -> TableResource:
     """
+    Gets the TableResource for the finalized sample metadata information after sample QC
 
-    :param version: Version of sample QC path to return
-    :param meta_version:
-    :return:
+    :param version: gnomAD release version
+    :param meta_version: metadata version to return
+    :return: Table containing the finalized metadata
     """
     return TableResource(
         f"{get_meta_root(version)}/gnomad_v{version}_metadata_{meta_version}.ht"
@@ -39,10 +41,11 @@ def meta_tsv_path(
     version: str = CURRENT_RELEASE, meta_version: str = CURRENT_META_VERSION
 ) -> str:
     """
+    Gets the path to the finalized sample metadata information after sample QC
 
-    :param version: Version of sample QC path to return
-    :param meta_version:
-    :return:
+    :param version: gnomAD release version
+    :param meta_version: metadata version to return
+    :return: String path to the finalized metadata
     """
     return f"{get_meta_root(version)}/gnomad_v{version}_metadata_{meta_version}.tsv.gz"
 
@@ -53,11 +56,12 @@ def project_meta(
     min_partitions: int = 100,
 ) -> TableResource:
     """
+    Retrieves the project level matadata
 
-    :param version: Version of sample QC path to return
+    :param version: gnomAD release version
     :param proj_meta_version:
     :param min_partitions:
-    :return:
+    :return: Table containing project level metadata
     """
     return TableResource(
         import_func=hl.import_table,
@@ -73,7 +77,7 @@ def project_meta(
 def pedigree(version: str = CURRENT_RELEASE) -> VersionedPedigreeResource:
     """
 
-    :param version: Version of sample QC path to return
+    :param version: gnomAD release version
     :return:
     """
     return VersionedPedigreeResource(
@@ -92,7 +96,7 @@ def pedigree(version: str = CURRENT_RELEASE) -> VersionedPedigreeResource:
 def trios(version: str = CURRENT_RELEASE) -> VersionedPedigreeResource:
     """
 
-    :param version: Version of sample QC path to return
+    :param version: gnomAD release version
     :return:
     """
     return VersionedPedigreeResource(  # TODO: Should this be merged with Pedigree into a single resource?
@@ -111,7 +115,7 @@ def trios(version: str = CURRENT_RELEASE) -> VersionedPedigreeResource:
 def ped_mendel_errors(version: str = CURRENT_RELEASE) -> TableResource:
     """
 
-    :param version: Version of sample QC path to return
+    :param version: gnomAD release version
     :return:
     """
     return TableResource(

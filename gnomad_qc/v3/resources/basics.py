@@ -17,8 +17,19 @@ def get_gnomad_v3_mt(
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
     samples_meta: bool = False,
-    meta_version: str = CURRENT_METADATA_VERSION,
+    meta_version: str = CURRENT_META_VERSION,
 ) -> hl.MatrixTable:
+    """
+    Wrapper function to get gnomAD data with desired filtering and metadata annotations
+
+    :param version: Version of MT to return
+    :param key_by_locus_and_alleles: Whether to key the MatrixTable by locus and alleles (only needed for v3)
+    :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after sample QC)
+    :param release_only: Whether to filter the MT to only samples available for release (can only be used if metadata is present)
+    :param samples_meta: Whether to add metadata to MT in 'meta' column
+    :param meta_version: Version of metadata (Default is CURRENT_META_VERSION)
+    :return: gnomAD v3 dataset with chosen annotations and filters
+    """
     mt = gnomad_v3_genotypes(version).mt()
     if key_by_locus_and_alleles:
         mt = hl.MatrixTable(
@@ -42,6 +53,12 @@ def get_gnomad_v3_mt(
 
 # V3 genotype data
 def gnomad_v3_genotypes(version) -> MatrixTableResource:
+    """
+    Get gnomAD v3 raw MatrixTable
+
+    :param version: Version of raw MT to return
+    :return: gnomAD raw v3 MatrixTable
+    """
     if version not in RELEASES:
         return DataException("Select version as one of: {}".format(",".join(RELEASES)))
 
