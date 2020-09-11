@@ -18,7 +18,7 @@ def main(args):
 
     logger.info("Reading sparse MT and metadata table...")
     mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
-    meta_ht = meta.ht().select('pop', 'sex', 'project_id', 'release', 'sample_filters')
+    meta_ht = meta().ht().select('pop', 'sex', 'project_id', 'release', 'sample_filters')
 
     if args.test:
         logger.info("Filtering to chr20:1-1000000")
@@ -67,7 +67,7 @@ def main(args):
     if args.test:
         mt.rows().write("gs://gnomad-tmp/gnomad_freq/chr20_1_1000000_freq.ht", overwrite=True)
     else:
-        mt.rows().write(freq.path, overwrite=args.overwrite)
+        mt.rows().write(freq().path, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":

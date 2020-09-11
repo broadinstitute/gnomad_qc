@@ -23,7 +23,7 @@ def main(args):
         logger.info("Done building reference context HT")
 
         mt = get_gnomad_v3_mt()
-        mt = mt.filter_cols(meta.ht()[mt.col_key].release)
+        mt = mt.filter_cols(meta().ht()[mt.col_key].release)
 
         coverage_ht = compute_coverage_stats(
             mt,

@@ -183,11 +183,11 @@ def generate_fam_stats(
 
 
 def export_transmitted_singletons_vcf():
-    qc_ac_ht = qc_ac.ht()
+    qc_ac_ht = qc_ac().ht()
 
     for transmission_confidence in ['raw', 'adj']:
         ts_ht = qc_ac_ht.filter(
-            (fam_stats.ht()[qc_ac_ht.key][f'n_transmitted_{transmission_confidence}'] == 1) &
+            (fam_stats().ht()[qc_ac_ht.key][f'n_transmitted_{transmission_confidence}'] == 1) &
             (qc_ac_ht.ac_qc_samples_raw == 2)
         )
 
@@ -248,16 +248,16 @@ def main(args):
     if args.generate_fam_stats:
         mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, samples_meta=True)
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
-        fam_stats_ht = generate_fam_stats(mt, trios.path)
+        fam_stats_ht = generate_fam_stats(mt, trios().path)
         fam_stats_ht = fam_stats_ht.checkpoint('gs://gnomad-tmp/v3_fam_stats_tmp.ht', overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         fam_stats_ht = fam_stats_ht.repartition(10000, shuffle=False)
-        fam_stats_ht.write(fam_stats.path, overwrite=args.overwrite)
+        fam_stats_ht.write(fam_stats().path, overwrite=args.overwrite)
 
     if args.export_transmitted_singletons_vcf:
         export_transmitted_singletons_vcf()
 
     if args.vep:
-        run_vep().write(vep.path, overwrite=args.overwrite)
+        run_vep().write(vep().path, overwrite=args.overwrite)
 
 
 if __name__ == '__main__':

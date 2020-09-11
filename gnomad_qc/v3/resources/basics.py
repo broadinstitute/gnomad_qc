@@ -1,5 +1,5 @@
 import hail as hl
-from gnomad.resources import MatrixTableResource
+from gnomad.resources import DataException, MatrixTableResource
 from gnomad_qc.v3.resources.sample_qc import hard_filtered_samples
 from gnomad_qc.v3.resources.meta import meta
 
@@ -46,7 +46,7 @@ def get_gnomad_v3_mt(
             mt = mt.filter_cols(mt.meta.release)
 
     elif release_only:
-        mt = mt.filter_cols(meta.ht()[mt.col_key].release)
+        mt = mt.filter_cols(meta(version, meta_version).ht()[mt.col_key].release)
 
     return mt
 

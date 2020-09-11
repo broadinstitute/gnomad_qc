@@ -82,6 +82,19 @@ def ancestry_pca_scores(
     )
 
 
+def ancestry_pca_eigenvalues_path(
+    version: str = CURRENT_RELEASE, include_unreleasable_samples: bool = False
+) -> TableResource:
+    """
+    Gets the path to file containing ancestry PCA eigenvalues
+
+    :param version: Version of sample QC path to return
+    :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
+    :return: Ancestry PCA eigenvalues path
+    """
+    return _get_ancestry_pca_ht_path("eigenvalues", version, include_unreleasable_samples)
+
+
 def get_relatedness_annotated_ht(version: str = CURRENT_RELEASE) -> hl.Table:
     """
     relatedness table annotated with get_relationship_expr.
@@ -302,7 +315,7 @@ def duplicates(version: str = CURRENT_RELEASE) -> TableResource:
     )
 
 
-def v3_v2_pc_relate_pca_scores(version: str = CURRENT_RELEASE) -> TableResource:
+def v2_v3_pc_relate_pca_scores(version: str = CURRENT_RELEASE) -> TableResource:
     """
     TableResource containing PC relate scores for the sample set that overlaps with v2 samples
 
@@ -314,7 +327,7 @@ def v3_v2_pc_relate_pca_scores(version: str = CURRENT_RELEASE) -> TableResource:
     )
 
 
-def v3_v2_relatedness(version: str = CURRENT_RELEASE) -> TableResource:
+def v2_v3_relatedness(version: str = CURRENT_RELEASE) -> TableResource:
     """
     TableResource containing relatedness information for the sample set that overlaps with v2 samples
 

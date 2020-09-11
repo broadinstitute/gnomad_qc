@@ -30,5 +30,5 @@ t = t.select(
         t.locus.position
     )
 )
-t.write(last_END_position.path, overwrite=True)
+t.write(last_END_position().path, overwrite=True)
 

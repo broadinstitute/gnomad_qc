@@ -66,7 +66,7 @@ def compute_qc_mt() -> hl.MatrixTable:
     mt = densify_sites(
         mt,
         qc_sites,
-        hl.read_table(last_END_position.path)
+        hl.read_table(last_END_position().path)
     )
 
     mt = mt.filter_rows(
@@ -116,7 +116,7 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     )
 
     # Remove low-coverage samples
-    cov_ht = v3_sex.ht()  # chrom 20 coverage is computed to infer sex and used here
+    cov_ht = sex().ht()  # chrom 20 coverage is computed to infer sex and used here
     hard_filters['low_coverage'] = (cov_ht[ht.key].chr20_mean_dp < cov_threshold)
 
     # Remove extreme raw bi-allelic sample QC outliers
@@ -130,12 +130,12 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     )
 
     # Remove samples with ambiguous sex assignments
-    sex_ht = v3_sex.ht()[ht.key]
+    sex_ht = sex().ht()[ht.key]
     hard_filters['ambiguous_sex'] = (sex_ht.sex_karyotype == 'Ambiguous')
     hard_filters['sex_aneuploidy'] = ~hl.set({'Ambiguous', 'XX', 'XY'}).contains(sex_ht.sex_karyotype)
 
     # Remove samples that fail picard metric thresholds, percents are not divided by 100, e.g. 5% == 5.00, %5 != 0.05
-    picard_ht = picard_metrics.ht()[ht.key]
+    picard_ht = picard_metrics().ht()[ht.key]
     hard_filters['contamination'] = picard_ht.bam_metrics.freemix > 5.00
     hard_filters['chimera'] = picard_ht.bam_metrics.pct_chimeras > 5.00
     hard_filters['coverage'] = picard_ht.bam_metrics.mean_coverage < 15
@@ -191,11 +191,11 @@ def compute_sex() -> hl.Table:
 
 
 def compute_sample_rankings(use_qc_metrics_filters: bool) -> hl.Table:
-    project_ht = project_meta.ht()
+    project_ht = project_meta().ht()
     project_ht = project_ht.select(
         'releasable',
-        chr20_mean_dp=v3_sex.ht()[project_ht.key].chr20_mean_dp,
-        filtered=hl.or_else(hl.len(hard_filtered_samples.ht()[project_ht.key].hard_filters) > 0, False)
+        chr20_mean_dp=sex().ht()[project_ht.key].chr20_mean_dp,
+        filtered=hl.or_else(hl.len(hard_filtered_samples().ht()[project_ht.key].hard_filters) > 0, False)
     )
 
     if use_qc_metrics_filters:
@@ -204,7 +204,7 @@ def compute_sample_rankings(use_qc_metrics_filters: bool) -> hl.Table:
                 project_ht.filtered,
                 True,
                 hl.or_else(
-                    hl.len(regressed_metrics.ht()[project_ht.key].qc_metrics_filters) > 0,
+                    hl.len(regressed_metrics().ht()[project_ht.key].qc_metrics_filters) > 0,
                     False
                 )
             )
@@ -225,13 +225,13 @@ def run_pca(
         related_samples_to_drop: hl.Table
 ) -> Tuple[List[float], hl.Table, hl.Table]:
     logger.info("Running population PCA")
-    qc_mt = v3_qc.mt()
+    qc_mt = qc().mt()
 
     samples_to_drop = related_samples_to_drop.select()
     if not include_unreleasable_samples:
         logger.info("Excluding unreleasable samples for PCA.")
         samples_to_drop = samples_to_drop.union(
-            qc_mt.filter_cols(~project_meta.ht()[qc_mt.col_key].releasable).cols().select()
+            qc_mt.filter_cols(~project_meta().ht()[qc_mt.col_key].releasable).cols().select()
         )
     else:
         logger.info("Including unreleasable samples for PCA")
@@ -249,8 +249,8 @@ def assign_pops(
         max_mislabeled_training_samples: int = 50  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
 ) -> Tuple[hl.Table, Any]:
     logger.info("Assigning global population labels")
-    pop_pca_scores_ht = get_ancestry_pca_scores(include_unreleasable_samples).ht()
-    project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
+    pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples).ht()
+    project_meta_ht = project_meta().ht()[pop_pca_scores_ht.key]
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop=(
             hl.case()
@@ -308,7 +308,7 @@ def apply_stratified_filters(filtering_qc_metrics: List[str]) -> hl.Table:
     logger.info("Computing stratified QC metrics filters using metrics: " + ", ".join(filtering_qc_metrics))
     sample_qc_ht = hl.read_table(get_sample_qc('bi_allelic'))
     sample_qc_ht = sample_qc_ht.annotate(
-        qc_pop=pop.ht()[sample_qc_ht.key].pop
+        qc_pop=pop().ht()[sample_qc_ht.key].pop
     )
     stratified_metrics_ht = compute_stratified_metrics_filter(
         sample_qc_ht,
@@ -326,8 +326,8 @@ def apply_regressed_filters(
     sample_qc_ht = get_sample_qc('bi_allelic').ht()
     sample_qc_ht = sample_qc_ht.select(
         **sample_qc_ht.sample_qc,
-        **get_ancestry_pca_scores(include_unreleasable_samples).ht()[sample_qc_ht.key],
-        releasable=project_meta.ht()[sample_qc_ht.key].releasable
+        **ancestry_pca_scores(include_unreleasable_samples).ht()[sample_qc_ht.key],
+        releasable=project_meta().ht()[sample_qc_ht.key].releasable
     )
     residuals_ht = compute_qc_metrics_residuals(
         ht=sample_qc_ht,
@@ -353,14 +353,14 @@ def apply_regressed_filters(
 
 
 def generate_metadata() -> hl.Table:
-    meta_ht = project_meta.ht()
+    meta_ht = project_meta().ht()
     sample_qc_ht = get_sample_qc("bi_allelic").ht()
-    hard_filters_ht = hard_filtered_samples.ht()
-    regressed_metrics_ht = regressed_metrics.ht()
-    pop_ht = pop.ht()
-    release_related_samples_to_drop_ht = release_related_samples_to_drop.ht()
-    pca_related_samples_to_drop_ht = pca_related_samples_to_drop.ht()
-    sex_ht = v3_sex.ht()
+    hard_filters_ht = hard_filtered_samples().ht()
+    regressed_metrics_ht = regressed_metrics().ht()
+    pop_ht = pop().ht()
+    release_related_samples_to_drop_ht = release_related_samples_to_drop().ht()
+    pca_related_samples_to_drop_ht = pca_related_samples_to_drop().ht()
+    sex_ht = sex().ht()
     sex_ht = sex_ht.transmute(
         impute_sex_stats=hl.struct(
             f_stat=sex_ht.f_stat,
@@ -409,12 +409,12 @@ def main(args):
         compute_sample_qc().write(get_sample_qc().path, overwrite=args.overwrite)
 
     if args.compute_qc_mt:
-        compute_qc_mt().write(v3_qc.path, overwrite=args.overwrite)
+        compute_qc_mt().write(qc().path, overwrite=args.overwrite)
 
     if args.impute_sex:
-        compute_sex().write(v3_sex.path, overwrite=args.overwrite)
+        compute_sex().write(sex().path, overwrite=args.overwrite)
     elif args.reannotate_sex:
-        sex_ht = v3_sex.ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True)  # Copy HT to temp location to overwrite annotation
+        sex_ht = sex().ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True)  # Copy HT to temp location to overwrite annotation
         x_ploidy_cutoff, y_ploidy_cutoff = get_ploidy_cutoffs(sex_ht, f_stat_cutoff=0.5)
         sex_ht = sex_ht.annotate(
             **get_sex_expr(
@@ -424,43 +424,43 @@ def main(args):
                 y_ploidy_cutoff
             )
         )
-        sex_ht.write(v3_sex.path, overwrite=args.overwrite)
+        sex_ht.write(sex().path, overwrite=args.overwrite)
 
     if args.compute_hard_filters:
         compute_hard_filters(
             args.min_cov
-        ).write(hard_filtered_samples.path, overwrite=args.overwrite)
+        ).write(hard_filtered_samples().path, overwrite=args.overwrite)
 
     if args.run_pc_relate:
         logger.info('Running PC-Relate')
         logger.warn("PC-relate requires SSDs and doesn't work with preemptible workers!")
-        qc_mt = v3_qc.mt()
+        qc_mt = qc().mt()
         eig, scores, _ = hl.hwe_normalized_pca(qc_mt.GT, k=10, compute_loadings=False)
-        scores = scores.checkpoint(v3_pc_relate_pca_scores.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        scores = scores.checkpoint(pc_relate_pca_scores().path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         relatedness_ht = hl.pc_relate(qc_mt.GT, min_individual_maf=0.01, scores_expr=scores[qc_mt.col_key].scores,
                                       block_size=4096, min_kinship=0.05, statistics='all')
-        relatedness_ht.write(v3_relatedness.path, args.overwrite)
+        relatedness_ht.write(relatedness().path, args.overwrite)
 
     if args.run_pca:
         rank_ht = compute_sample_rankings(use_qc_metrics_filters=False)  # QC metrics filters do not exist at this point
-        rank_ht = rank_ht.checkpoint(pca_samples_rankings.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        rank_ht = rank_ht.checkpoint(pca_samples_rankings().path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         filtered_samples = hl.literal(rank_ht.aggregate(hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))))  # TODO: don't localize once hail bug is fixed
         samples_to_drop = compute_related_samples_to_drop(
-            v3_relatedness.ht(),
+            relatedness().ht(),
             rank_ht,
             args.kin_threshold,
             filtered_samples=filtered_samples
         )
-        samples_to_drop.checkpoint(pca_related_samples_to_drop.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-        pop_pca_eignevalues, pop_pca_scores_ht, pop_pca_loadings_ht = run_pca(args.include_unreleasable_samples, args.n_pcs, samples_to_drop)
-        pop_pca_scores_ht.write(get_ancestry_pca_scores(args.include_unreleasable_samples).path, overwrite=args.overwrite)
-        pop_pca_loadings_ht.write(get_ancestry_pca_loadings(args.include_unreleasable_samples).path, overwrite=args.overwrite)
-        with hl.utils.hadoop_open(get_ancestry_pca_eigenvalues_path(args.include_unreleasable_samples), mode='w') as f:
-            f.write(",".join([str(x) for x in pop_pca_eignevalues]))
+        samples_to_drop.checkpoint(pca_related_samples_to_drop().path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        pop_pca_eigenvalues, pop_pca_scores_ht, pop_pca_loadings_ht = run_pca(args.include_unreleasable_samples, args.n_pcs, samples_to_drop)
+        pop_pca_scores_ht.write(ancestry_pca_scores(args.include_unreleasable_samples).path, overwrite=args.overwrite)
+        pop_pca_loadings_ht.write(ancestry_pca_loadings(args.include_unreleasable_samples).path, overwrite=args.overwrite)
+        with hl.utils.hadoop_open(ancestry_pca_eigenvalues_path(args.include_unreleasable_samples), mode='w') as f:
+            f.write(",".join([str(x) for x in pop_pca_eigenvalues]))
 
     if args.assign_pops:
         pop_ht, pops_rf_model = assign_pops(args.min_pop_prob, args.include_unreleasable_samples)
-        pop_ht = pop_ht.checkpoint(pop.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        pop_ht = pop_ht.checkpoint(pop().path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         pop_ht.transmute(
             **{f'PC{i + 1}': pop_ht.pca_scores[i] for i in range(0, 10)}
         ).export(pop_tsv_path)
@@ -471,30 +471,30 @@ def main(args):
     if args.apply_stratified_filters:
         apply_stratified_filters(
             args.filtering_qc_metrics.split(",")
-        ).write(stratified_metrics.path, overwrite=args.overwrite)
+        ).write(stratified_metrics().path, overwrite=args.overwrite)
 
     if args.apply_regressed_filters:
         apply_regressed_filters(
             args.filtering_qc_metrics.split(","),
             args.include_unreleasable_samples
-        ).write(regressed_metrics.path, overwrite=args.overwrite)
+        ).write(regressed_metrics().path, overwrite=args.overwrite)
 
     if args.compute_related_samples_to_drop:
         rank_ht = compute_sample_rankings(use_qc_metrics_filters=True)
-        rank_ht = rank_ht.checkpoint(release_samples_rankings.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        rank_ht = rank_ht.checkpoint(release_samples_rankings().path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         filtered_samples = hl.literal(rank_ht.aggregate(hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))))  # TODO: don't localize once hail bug is fixed
         print(filtered_samples)
         samples_to_drop = compute_related_samples_to_drop(
-            v3_relatedness.ht(),
+            relatedness().ht(),
             rank_ht,
             args.kin_threshold,
             filtered_samples=filtered_samples
         )
-        samples_to_drop.write(release_related_samples_to_drop.path, overwrite=args.overwrite)
+        samples_to_drop.write(release_related_samples_to_drop().path, overwrite=args.overwrite)
 
     if args.generate_metadata:
         meta_ht = generate_metadata()
-        meta_ht.checkpoint(meta.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        meta_ht.checkpoint(meta().path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         n_pcs = meta_ht.aggregate(hl.agg.min(hl.len(meta_ht.pca_scores)))
         meta_ht = meta_ht.transmute(
             **{f'PC{i + 1}': meta_ht.pca_scores[i] for i in range(n_pcs)},
