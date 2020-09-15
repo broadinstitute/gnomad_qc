@@ -1,4 +1,4 @@
-from gnomad.utils.generic import filter_to_autosomes
+from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.slack import try_slack
 import numpy as np
 from gnomad_qc.v2.resources.sample_qc import *

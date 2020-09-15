@@ -1,8 +1,10 @@
-from gnomad.utils.gnomad_functions import annotate_adj
-from gnomad.utils.annotations import generate_trio_stats_expr
+from gnomad.utils.annotations import annotate_adj
+from gnomad.sample_qc.relatedness import generate_trio_stats_expr
 from gnomad.utils.slack import try_slack
 from gnomad.utils.sparse_mt import *
-from gnomad.utils.variant_qc import *
+from gnomad.utils.filtering import filter_to_autosomes
+from gnomad.utils.vep import vep_or_lookup_vep
+from gnomad.utils.vcf import ht_to_vcf_mt
 from gnomad_qc.v3.resources import (
     get_gnomad_v3_mt,
     get_info,

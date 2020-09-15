@@ -1,4 +1,5 @@
-from gnomad.utils import try_slack, add_rank
+from gnomad.utils.slack import try_slack
+from gnomad.variant_qc.evaluation import add_rank
 from gnomad_qc.v2.resources.variant_qc import *
 import argparse
 import logging

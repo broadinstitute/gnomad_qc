@@ -1,5 +1,6 @@
-from gnomad.utils import pretty_print_runs, add_rank, try_slack
-from gnomad.utils import rf
+from gnomad.variant_qc.evaluation import add_rank
+from gnomad.utils.slack import try_slack
+from gnomad.variant_qc import random_forest
 from gnomad_qc.v2.resources.variant_qc import *
 from pprint import pformat
 import json
@@ -450,14 +451,14 @@ def train_rf(data_type, args):
         args.max_depth,
         ",".join(test_intervals_str)))
 
-    rf_model = rf.train_rf(rf_ht,
+    rf_model = random_forest.train_rf(rf_ht,
                            features=rf_features,
                            label=LABEL_COL,
                            num_trees=args.num_trees,
                            max_depth=args.max_depth)
 
     logger.info("Saving RF model")
-    rf.save_model(rf_model,
+    random_forest.save_model(rf_model,
                   rf_path(data_type, data='model', run_hash=run_hash),
                   overwrite=args.overwrite
                   )
@@ -466,9 +467,9 @@ def train_rf(data_type, args):
     if args.test_intervals:
         logger.info("Testing model {} on intervals {}".format(run_hash, ",".join(test_intervals_str)))
         test_ht = hl.filter_intervals(ht, test_intervals_locus, keep=True)
-        test_ht = test_ht.checkpoint('gs://gnomad-tmp/test_rf.ht', overwrite=True)
+        test_ht = test_ht.checkpoint('gs://gnomad-tmp/test_random_forest.ht', overwrite=True)
         test_ht = test_ht.filter(hl.is_defined(test_ht[LABEL_COL]))
-        test_results = rf.test_model(test_ht,
+        test_results = random_forest.test_model(test_ht,
                                      rf_model,
                                      features=get_features_list(True, not args.vqsr_features, args.vqsr_features),
                                      label=LABEL_COL)
@@ -477,7 +478,7 @@ def train_rf(data_type, args):
         )
 
     logger.info("Writing RF training HT")
-    features_importance = rf.get_features_importance(rf_model)
+    features_importance = random_forest.get_features_importance(rf_model)
     ht = ht.annotate_globals(
         features_importance=features_importance,
         features=get_features_list(True, not args.vqsr_features, args.vqsr_features),
@@ -568,7 +569,7 @@ def main(args):
 
     if args.list_rf_runs:
         logger.info(f"RF runs for {data_type}:")
-        pretty_print_runs(get_rf_runs(data_type))
+        random_forest.pretty_print_runs(get_rf_runs(data_type))
 
     if args.annotate_for_rf:
         ht = create_rf_ht(data_type,
@@ -582,10 +583,10 @@ def main(args):
     if args.apply_rf:
         logger.info(f"Applying RF model {run_hash} to {data_type}.")
 
-        rf_model = rf.load_model(rf_path(data_type, data='model', run_hash=run_hash))
+        rf_model = random_forest.load_model(rf_path(data_type, data='model', run_hash=run_hash))
         ht = hl.read_table(rf_path(data_type, data='training', run_hash=run_hash))
 
-        ht = rf.apply_rf_model(ht, rf_model, get_features_list(True, not args.vqsr_features, args.vqsr_features), label=LABEL_COL)
+        ht = random_forest.apply_rf_model(ht, rf_model, get_features_list(True, not args.vqsr_features, args.vqsr_features), label=LABEL_COL)
 
         if 'singleton' in ht.row and 'was_split' in ht.row:  # Needed for backwards compatibility for RF runs that happened prior to updating annotations
             ht = add_rank(ht,

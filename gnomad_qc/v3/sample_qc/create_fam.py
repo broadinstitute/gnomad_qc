@@ -12,7 +12,7 @@ from gnomad_qc.v3.resources import (
     release_samples_rankings,
     v3_sex,
 )
-from gnomad.utils.relatedness import (
+from gnomad.sample_qc.relatedness import (
     get_duplicated_samples,
     get_duplicated_samples_ht,
     infer_families,

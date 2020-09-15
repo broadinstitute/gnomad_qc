@@ -1,6 +1,6 @@
 from gnomad.resources import TableResource, MatrixTableResource
 from hail import Table
-from gnomad.utils.relatedness import get_relationship_expr
+from gnomad.sample_qc.relatedness import get_relationship_expr
 
 SAMPLE_QC_ROOT = "gs://gnomad/sample_qc/ht/genomes_v3"
 
@@ -116,6 +116,8 @@ pca_samples_rankings = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_pca_samples_ra
 # Ranking of all release samples based on quality metrics. Used to remove relateds for release.
 release_samples_rankings = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_release_samples_ranking.ht')
 
+# Picard metrics 
+picard_metrics = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_picard_metrics.ht')
 
 # Duplicated (or twin) samples
 duplicates = TableResource(f'{SAMPLE_QC_ROOT}/gnomad_v3_duplicates.ht')

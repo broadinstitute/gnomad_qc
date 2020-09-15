@@ -1,9 +1,15 @@
-from gnomad.utils import get_adj_expr
-from gnomad.utils.sample_qc import *
+from gnomad.utils.annotations import get_adj_expr, bi_allelic_expr
+from gnomad.utils.filtering import filter_to_autosomes, add_filters_expr
+from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
+from gnomad.sample_qc.filtering import compute_qc_metrics_residuals, compute_stratified_metrics_filter, compute_stratified_sample_qc
+from gnomad.sample_qc.pipeline import get_qc_mt
+from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
+from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
 from gnomad.utils.sparse_mt import impute_sex_ploidy, densify_sites
 from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
 from gnomad_qc.v3.resources import *
 from gnomad.resources.grch38 import purcell_5k_intervals, lcr_intervals, telomeres_and_centromeres
+from typing import List, Tuple, Any
 import pickle
 import argparse
 import logging
@@ -97,7 +103,6 @@ def compute_qc_mt() -> hl.MatrixTable:
 
 def compute_hard_filters(cov_threshold: int) -> hl.Table:
     ht = get_gnomad_v3_mt(remove_hard_filtered_samples=False).cols()
-
     hard_filters = dict()
 
     # Remove samples failing fingerprinting
@@ -129,6 +134,13 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     hard_filters['ambiguous_sex'] = (sex_ht.sex_karyotype == 'Ambiguous')
     hard_filters['sex_aneuploidy'] = ~hl.set({'Ambiguous', 'XX', 'XY'}).contains(sex_ht.sex_karyotype)
 
+    # Remove samples that fail picard metric thresholds, percents are not divided by 100, e.g. 5% == 5.00, %5 != 0.05
+    picard_ht = picard_metrics.ht()[ht.key]
+    hard_filters['contamination'] = picard_ht.bam_metrics.freemix > 5.00
+    hard_filters['chimera'] = picard_ht.bam_metrics.pct_chimeras > 5.00
+    hard_filters['coverage'] = picard_ht.bam_metrics.mean_coverage < 15
+    hard_filters['insert_size'] = picard_ht.bam_metrics.median_insert_size < 250
+
     ht = ht.annotate(
         hard_filters=add_filters_expr(
             filters=hard_filters
@@ -143,7 +155,7 @@ def compute_sex() -> hl.Table:
     # Compute sex chrom poloidy
     ht = impute_sex_ploidy(
         get_gnomad_v3_mt(remove_hard_filtered_samples=False),
-        excluded_intervals=telomeres_and_centromeres.ht()
+        excluded_calling_intervals=telomeres_and_centromeres.ht()
     )
     ht = ht.checkpoint('gs://gnomad-tmp/sex_depth.ht', overwrite=True)
 
