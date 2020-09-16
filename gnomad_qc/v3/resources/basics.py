@@ -11,6 +11,7 @@ from gnomad_qc.v3.resources import (
 
 def get_gnomad_v3_mt(
     version: str = CURRENT_RELEASE,
+    split = False,
     key_by_locus_and_alleles: bool = False,
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
@@ -21,6 +22,7 @@ def get_gnomad_v3_mt(
     Wrapper function to get gnomAD data with desired filtering and metadata annotations
 
     :param version: Version of MT to return
+    :param split: Perform split on MT - Note: this will perform a split on the MT rather than grab an already split MT
     :param key_by_locus_and_alleles: Whether to key the MatrixTable by locus and alleles (only needed for v3)
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after sample QC)
     :param release_only: Whether to filter the MT to only samples available for release (can only be used if metadata is present)
@@ -45,6 +47,15 @@ def get_gnomad_v3_mt(
 
     elif release_only:
         mt = mt.filter_cols(meta(version, meta_version).ht()[mt.col_key].release)
+
+    if split:
+        mt = mt.annotate_rows(
+            n_unsplit_alleles=hl.len(mt.alleles),
+            mixed_site=(hl.len(mt.alleles) > 2) & hl.any(
+                lambda a: hl.is_indel(mt.alleles[0], a), mt.alleles[1:]) & hl.any(
+                lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:])
+        )
+        mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
     return mt
 
