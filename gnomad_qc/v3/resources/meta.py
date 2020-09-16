@@ -4,6 +4,7 @@ from gnomad.resources.resource_utils import (
     PedigreeResource,
     VersionedPedigreeResource,
 )
+from gnomad.utils.file_utils import file_exists
 from gnomad_qc.v3.resources import (
     CURRENT_PROJECT_META_VERSION,
     CURRENT_META_VERSION,
@@ -63,15 +64,19 @@ def project_meta(
     :param min_partitions:
     :return: Table containing project level metadata
     """
-    return TableResource(
-        import_func=hl.import_table,
-        import_args={
-            "paths": f"{get_meta_root(version)}/{proj_meta_version}_v{version}_project_meta.txt",
-            "impute": True,
-            "key": "s",
-            "min_partitions": min_partitions,
-        },
-    )
+    meta_path = f"{get_meta_root(version)}/{proj_meta_version}_v{version}_project_meta.txt"
+    if file_exists(meta_path):
+        return TableResource(
+            import_func=hl.import_table,
+            import_args={
+                "paths": meta_path,
+                "impute": True,
+                "key": "s",
+                "min_partitions": min_partitions,
+            },
+        )
+    else:
+        return TableResource(f"{get_meta_root(version)}/{proj_meta_version}_v{version}_project_meta.ht")
 
 
 def pedigree(version: str = CURRENT_RELEASE) -> VersionedPedigreeResource:
