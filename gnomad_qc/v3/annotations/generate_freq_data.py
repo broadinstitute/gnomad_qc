@@ -48,6 +48,10 @@ def main(args):
     mt = hl.experimental.densify(mt)
     mt = mt.filter_rows(hl.len(mt.alleles) > 1)
 
+    logger.info("Calculating InbreedingCoefficient...")
+    # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify
+    mt = mt.annotate_rows(InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT))
+
     logger.info("Generating frequency data...")
     mt = annotate_freq(
         mt,
@@ -58,6 +62,7 @@ def main(args):
     # Select freq, FAF and popmax
     faf, faf_meta = faf_expr(mt.freq, mt.freq_meta, mt.locus, POPS_TO_REMOVE_FOR_POPMAX)
     mt = mt.select_rows(
+        'InbreedingCoeff',
         'freq',
         faf=faf,
         popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
