@@ -159,13 +159,14 @@ def compute_sex() -> hl.Table:
 
     # Use AF from v3
     freq_ht = freq(versions="3").ht()
-    mt = mt.annotate_rows(AF=freq_ht[mt.row_key].freq[0].AF)
+    freq_ht = freq_ht.select(AF=freq_ht[mt.row_key].freq[0].AF)
 
     sex_ht = annotate_sex(
         mt,
         excluded_intervals=telomeres_and_centromeres.ht(),
         aaf_threshold=0.001,
         f_stat_cutoff=0.5,
+        sites_ht=freq_ht,
         aaf_expr="AF",
         gt_expr="LGT",
     )
