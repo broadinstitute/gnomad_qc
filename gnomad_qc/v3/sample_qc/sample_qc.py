@@ -408,9 +408,6 @@ def main(args):
     if args.sample_qc:
         compute_sample_qc().write(get_sample_qc().path, overwrite=args.overwrite)
 
-    if args.compute_qc_mt:
-        compute_qc_mt().write(qc().path, overwrite=args.overwrite)
-
     if args.impute_sex:
         compute_sex().write(sex().path, overwrite=args.overwrite)
     elif args.reannotate_sex:
@@ -430,6 +427,9 @@ def main(args):
         compute_hard_filters(
             args.min_cov
         ).write(hard_filtered_samples().path, overwrite=args.overwrite)
+
+    if args.compute_qc_mt:
+        compute_qc_mt().write(qc().path, overwrite=args.overwrite)
 
     if args.run_pc_relate:
         logger.info('Running PC-Relate')
@@ -508,10 +508,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--overwrite', help='Overwrite all data from this subset (default: False)', action='store_true')
     parser.add_argument('--sample_qc', help='Assigns pops from PCA', action='store_true')
-    parser.add_argument('--min_cov', help="Minimum coverage for inclusion when computing har-filters", default=18, type=int)
-    parser.add_argument('--compute_hard_filters', help='Computes samples to be hard-filtered', action='store_true')
     parser.add_argument('--impute_sex', help='Runs sex imputation. Also runs sex karyotyping annotation.', action='store_true')
     parser.add_argument('--reannotate_sex', help='Runs the sex karyotyping annotations again, without re-computing sex imputation metrics.', action='store_true')
+    parser.add_argument('--compute_hard_filters', help='Computes samples to be hard-filtered', action='store_true')
+    parser.add_argument('--min_cov', help="Minimum coverage for inclusion when computing har-filters", default=18, type=int)
     parser.add_argument('--compute_samples_ranking', help='Computes global samples ranking based on hard-filters, releasable and coverage.', action='store_true')
     parser.add_argument('--compute_qc_mt', help='Creates the QC MT based on liftover of v2 QC and Purcell 5k sites', action='store_true')
     parser.add_argument('--run_pc_relate', help='Run PC-relate', action='store_true')
