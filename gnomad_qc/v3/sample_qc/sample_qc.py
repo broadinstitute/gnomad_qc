@@ -158,8 +158,8 @@ def compute_sex(aaf_threshold=0.001, f_stat_cutoff=0.5) -> hl.Table:
     )
 
     # Use AF from v3
-    freq_ht = freq(versions="3").ht()
-    freq_ht = freq_ht.select(AF=freq_ht[mt.row_key].freq[0].AF)
+    freq_ht = freq(version="3").ht()
+    freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
     freq_ht = freq_ht.filter(freq_ht.AF > aaf_threshold)
 
     sex_ht = annotate_sex(
