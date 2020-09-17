@@ -1,4 +1,10 @@
-from gnomad.utils.annotations import annotate_freq, qual_hist_expr, pop_max_expr, faf_expr
+from gnomad.utils.annotations import (
+    annotate_freq,
+    bi_allelic_site_inbreeding_expr,
+    qual_hist_expr,
+    pop_max_expr,
+    faf_expr
+)
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad_qc.v3.resources import get_gnomad_v3_mt, meta, freq
