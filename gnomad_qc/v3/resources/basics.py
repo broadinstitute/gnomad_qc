@@ -1,17 +1,20 @@
 import hail as hl
-from gnomad.resources import DataException, MatrixTableResource
-from gnomad_qc.v3.resources import (
+from gnomad.resources.resource_utils import (
+    MatrixTableResource,
+    VersionedMatrixTableResource,
+)
+
+from gnomad_qc.v3.resources.constants import (
     CURRENT_META_VERSION,
     CURRENT_RELEASE,
-    hard_filtered_samples,
-    meta,
-    RELEASES,
 )
+from gnomad_qc.v3.resources.meta import meta
+from gnomad_qc.v3.sample_qc import hard_filtered_samples
 
 
 def get_gnomad_v3_mt(
     version: str = CURRENT_RELEASE,
-    split = False,
+    split=False,
     key_by_locus_and_alleles: bool = False,
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
@@ -30,7 +33,7 @@ def get_gnomad_v3_mt(
     :param meta_version: Version of metadata (Default is CURRENT_META_VERSION)
     :return: gnomAD v3 dataset with chosen annotations and filters
     """
-    mt = gnomad_v3_genotypes(version).mt()
+    mt = gnomad_v3_genotypes.versions[version].mt()
     if key_by_locus_and_alleles:
         mt = hl.MatrixTable(
             hl.ir.MatrixKeyRowsBy(mt._mir, ["locus", "alleles"], is_sorted=True)
@@ -51,31 +54,23 @@ def get_gnomad_v3_mt(
     if split:
         mt = mt.annotate_rows(
             n_unsplit_alleles=hl.len(mt.alleles),
-            mixed_site=(hl.len(mt.alleles) > 2) & hl.any(
-                lambda a: hl.is_indel(mt.alleles[0], a), mt.alleles[1:]) & hl.any(
-                lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:])
+            mixed_site=(hl.len(mt.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(mt.alleles[0], a), mt.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:]),
         )
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
     return mt
 
 
-# V3 genotype data
-def gnomad_v3_genotypes(version: str = CURRENT_RELEASE) -> MatrixTableResource:
-    """
-    Get gnomAD v3 raw MatrixTable
-
-    :param version: Version of raw MT to return
-    :return: gnomAD raw v3 MatrixTable
-    """
-    if version not in RELEASES:
-        return DataException("Select version as one of: {}".format(",".join(RELEASES)))
-
-    if version == "3":
-        return MatrixTableResource(
+gnomad_v3_genotypes = VersionedMatrixTableResource(
+    CURRENT_RELEASE,
+    {
+        "3": MatrixTableResource(
             "gs://gnomad/raw/hail-0.2/mt/genomes_v3/gnomad_genomes_v3.repartitioned.mt"
-        )
-    if version == "3.1":
-        return MatrixTableResource(
+        ),
+        "3.1": MatrixTableResource(
             "gs://gnomad/raw/genomes/3.1/gnomad_v3.1_sparse_unsplit.repartitioned.mt"
-        )
+        ),
+    },
+)
