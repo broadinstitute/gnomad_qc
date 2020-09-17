@@ -156,7 +156,6 @@ def compute_sex() -> hl.Table:
         key_by_locus_and_alleles=True,
         remove_hard_filtered_samples=False,
     )
-    mt = mt.filter_rows((hl.len(mt.alleles) == 2))
 
     # Use AF from v3
     freq_ht = freq(versions="3").ht()
