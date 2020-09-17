@@ -19,7 +19,13 @@ logger = logging.getLogger("sample_qc")
 
 def compute_sample_qc() -> hl.Table:
     logger.info("Computing sample QC")
-    mt = filter_to_autosomes(get_gnomad_v3_mt(key_by_locus_and_alleles=True))
+    mt = filter_to_autosomes(
+        get_gnomad_v3_mt(
+            split=True,
+            key_by_locus_and_alleles=True,
+            remove_hard_filtered_samples=False
+        )
+    )
     mt = mt.filter_rows(hl.len(mt.alleles) > 1)
     mt = mt.select_entries('GT')
 
@@ -30,7 +36,6 @@ def compute_sample_qc() -> hl.Table:
             'multi_allelic': ~bi_allelic_expr(mt)
         },
         tmp_ht_prefix=get_sample_qc().path[:-3],
-        gt_expr=mt.GT
     )
 
     # Remove annotations that cannot be computed from the sparse format
