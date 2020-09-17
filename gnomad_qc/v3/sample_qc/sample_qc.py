@@ -2,13 +2,13 @@ from gnomad.utils.annotations import get_adj_expr, bi_allelic_expr
 from gnomad.utils.filtering import filter_to_autosomes, add_filters_expr
 from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
 from gnomad.sample_qc.filtering import compute_qc_metrics_residuals, compute_stratified_metrics_filter, compute_stratified_sample_qc
-from gnomad.sample_qc.pipeline import get_qc_mt
+from gnomad.sample_qc.pipeline import annotate_sex, get_qc_mt
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
 from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
-from gnomad.utils.sparse_mt import impute_sex_ploidy, densify_sites
+from gnomad.utils.sparse_mt import densify_sites
 from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
 from gnomad_qc.v3.resources import *
-from gnomad.resources.grch38 import purcell_5k_intervals, lcr_intervals, telomeres_and_centromeres
+from gnomad.resources.grch38 import freq, purcell_5k_intervals, lcr_intervals, telomeres_and_centromeres
 from typing import List, Tuple, Any
 import pickle
 import argparse
@@ -152,42 +152,26 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
 
 
 def compute_sex() -> hl.Table:
-    # Compute sex chrom poloidy
-    ht = impute_sex_ploidy(
-        get_gnomad_v3_mt(remove_hard_filtered_samples=False),
-        excluded_calling_intervals=telomeres_and_centromeres.ht()
+    mt = get_gnomad_v3_mt(
+        key_by_locus_and_alleles=True,
+        remove_hard_filtered_samples=False,
     )
-    ht = ht.checkpoint('gs://gnomad-tmp/sex_depth.ht', overwrite=True)
+    mt = mt.filter_rows((hl.len(mt.alleles) == 2))
 
-    # Compute F-stat
-    chrom_x_ht = get_gnomad_v3_mt(key_by_locus_and_alleles=True, remove_hard_filtered_samples=False)
-    n_samples = chrom_x_ht.count_cols()
-    chrom_x_ht = hl.filter_intervals(chrom_x_ht, [hl.parse_locus_interval('chrX')])
-    chrom_x_ht = chrom_x_ht.filter_rows((hl.len(chrom_x_ht.alleles) == 2))
+    # Use AF from v3
+    freq_ht = freq(versions="3").ht()
+    mt = mt.annotate_rows(AF=freq_ht[mt.row_key].freq[0].AF)
 
-    # Use AC / 2*n_samples for AF. This doesn't take missing into account but avoids densifying
-    # Should be fine for this purpose.
-    info_ht = get_info(split=False).ht()
-    info_ht = hl.filter_intervals(info_ht, [hl.parse_locus_interval('chrX')])
-    chrom_x_ht = chrom_x_ht.annotate_rows(
-        aaf=info_ht[chrom_x_ht.row_key].info.AC[0] / (2 * n_samples)
+    sex_ht = annotate_sex(
+        mt,
+        excluded_intervals=telomeres_and_centromeres.ht(),
+        aaf_threshold=0.001,
+        f_stat_cutoff=0.5,
+        aaf_expr="AF",
+        gt_expr="LGT",
     )
 
-    inbreeding_ht = hl.impute_sex(chrom_x_ht.LGT, aaf_threshold=0.001, aaf='aaf')
-    ht = ht.annotate(
-        **inbreeding_ht[ht.key]
-    )
-
-    x_ploidy_cutoff, y_ploidy_cutoff = get_ploidy_cutoffs(ht, f_stat_cutoff=0.5)
-
-    return ht.annotate(
-        **get_sex_expr(
-            ht.chrX_ploidy,
-            ht.chrY_ploidy,
-            x_ploidy_cutoff,
-            y_ploidy_cutoff
-        )
-    )
+    return sex_ht
 
 
 def compute_sample_rankings(use_qc_metrics_filters: bool) -> hl.Table:
