@@ -28,7 +28,7 @@ def get_liftover_v2_qc_mt(
         grch38_qc_mt = grch38_qc_mt.filter_rows(
             grch38_qc_mt.locus.contig == 'chr' + grch38_qc_mt.locus37.contig
         )
-        grch38_qc_mt = grch38_qc_mt.key_rows_by(locus=grch38_qc_mt.locus38, alleles=grch38_qc_mt.alleles)
+        grch38_qc_mt = grch38_qc_mt.key_rows_by(locus=grch38_qc_mt.locus, alleles=grch38_qc_mt.alleles)
         grch38_qc_mt = grch38_qc_mt.checkpoint(path, overwrite=overwrite)
 
     if release_only:
