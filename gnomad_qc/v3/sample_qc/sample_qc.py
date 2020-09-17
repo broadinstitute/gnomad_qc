@@ -151,7 +151,7 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     return ht
 
 
-def compute_sex() -> hl.Table:
+def compute_sex(aaf_threshold=0.001, f_stat_cutoff=0.5) -> hl.Table:
     mt = get_gnomad_v3_mt(
         key_by_locus_and_alleles=True,
         remove_hard_filtered_samples=False,
@@ -160,12 +160,13 @@ def compute_sex() -> hl.Table:
     # Use AF from v3
     freq_ht = freq(versions="3").ht()
     freq_ht = freq_ht.select(AF=freq_ht[mt.row_key].freq[0].AF)
+    freq_ht = freq_ht.filter(freq_ht.AF > aaf_threshold)
 
     sex_ht = annotate_sex(
         mt,
         excluded_intervals=telomeres_and_centromeres.ht(),
-        aaf_threshold=0.001,
-        f_stat_cutoff=0.5,
+        aaf_threshold=aaf_threshold,
+        f_stat_cutoff=f_stat_cutoff,
         sites_ht=freq_ht,
         aaf_expr="AF",
         gt_expr="LGT",
