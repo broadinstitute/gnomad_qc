@@ -1,9 +1,11 @@
 import hail as hl
 from gnomad_qc.v3.resources import get_gnomad_v3_mt, last_END_position
 
+hl.init(log='/create_last_END_positions.log', default_reference='GRCh38')
+
 # END RESOURCES
 
-mt = get_gnomad_v3_mt()
+mt = get_gnomad_v3_mt(remove_hard_filtered_samples=False)
 mt = mt.select_entries('END')
 t = mt._localize_entries('__entries', '__cols')
 t = t.select(
@@ -31,4 +33,3 @@ t = t.select(
     )
 )
 t.write(last_END_position().path, overwrite=True)
-
