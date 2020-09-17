@@ -1,7 +1,7 @@
 from gnomad.utils.annotations import annotate_freq, qual_hist_expr, pop_max_expr, faf_expr
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
-from gnomad_qc.v3.resources import get_gnomad_v3_mt, meta, freq
+from gnomad_qc.v3.resources import get_gnomad_v3_mt, get_info, meta, freq
 import argparse
 import logging
 import hail as hl
@@ -41,6 +41,24 @@ def main(args):
     logger.info("Densify-ing...")
     mt = hl.experimental.densify(mt)
     mt = mt.filter_rows(hl.len(mt.alleles) > 1)
+
+    logger.info("Setting het genotypes at sites with >1% AF and > 0.9 AB to homalt...")
+    # hotfix for depletion of homozygous alternate genotypes
+    # Use AC / 2*n_samples for AF. This doesn't take missing into account but avoids extra frequency calculation
+    # TODO: this is fine for genomes, but will need to be modified for v4
+    info_ht = get_info(split=True).ht()
+    info_ht = info_ht.annotate_rows(
+        aaf=info_ht[info_ht.row_key].info.AC[0] / (2 * samples)
+    )
+    mt = mt.annotate_entries(
+        GT=hl.cond(
+            (info_ht[mt.row_key].aaf > 0.01)
+            & mt.GT.is_het()
+            & (mt.AD[1] / mt.DP > 0.9),
+            hl.call(1, 1),
+            mt.GT,
+        )
+    )
 
     logger.info("Generating frequency data...")
     mt = annotate_freq(
