@@ -1,55 +1,46 @@
 import hail as hl
-from gnomad.resources.resource_utils import (
-    MatrixTableResource,
-    VersionedMatrixTableResource,
-)
+from gnomad.resources.resource_utils import (MatrixTableResource,
+                                             VersionedMatrixTableResource)
 
-from gnomad_qc.v3.resources.constants import (
-    CURRENT_META_VERSION,
-    CURRENT_RELEASE,
-)
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v3.resources.meta import meta
-from gnomad_qc.v3.sample_qc import hard_filtered_samples
+from gnomad_qc.v3.resources.sample_qc import hard_filtered_samples
 
 
 def get_gnomad_v3_mt(
-    version: str = CURRENT_RELEASE,
     split=False,
     key_by_locus_and_alleles: bool = False,
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
     samples_meta: bool = False,
-    meta_version: str = CURRENT_META_VERSION,
 ) -> hl.MatrixTable:
     """
     Wrapper function to get gnomAD data with desired filtering and metadata annotations
 
-    :param version: Version of MT to return
     :param split: Perform split on MT - Note: this will perform a split on the MT rather than grab an already split MT
     :param key_by_locus_and_alleles: Whether to key the MatrixTable by locus and alleles (only needed for v3)
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after sample QC)
     :param release_only: Whether to filter the MT to only samples available for release (can only be used if metadata is present)
     :param samples_meta: Whether to add metadata to MT in 'meta' column
-    :param meta_version: Version of metadata (Default is CURRENT_META_VERSION)
     :return: gnomAD v3 dataset with chosen annotations and filters
     """
-    mt = gnomad_v3_genotypes.versions[version].mt()
+    mt = gnomad_v3_genotypes.mt()
     if key_by_locus_and_alleles:
         mt = hl.MatrixTable(
             hl.ir.MatrixKeyRowsBy(mt._mir, ["locus", "alleles"], is_sorted=True)
         )
 
     if remove_hard_filtered_samples:
-        mt = mt.filter_cols(hl.is_missing(hard_filtered_samples().ht()[mt.col_key]))
+        mt = mt.filter_cols(hl.is_missing(hard_filtered_samples.ht()[mt.col_key]))
 
     if samples_meta:
-        mt = mt.annotate_cols(meta=meta(version, meta_version).ht()[mt.col_key])
+        mt = mt.annotate_cols(meta=meta.ht()[mt.col_key])
 
         if release_only:
             mt = mt.filter_cols(mt.meta.release)
 
     elif release_only:
-        mt = mt.filter_cols(meta(version, meta_version).ht()[mt.col_key].release)
+        mt = mt.filter_cols(meta.ht()[mt.col_key].release)
 
     if split:
         mt = mt.annotate_rows(

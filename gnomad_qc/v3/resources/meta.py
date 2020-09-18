@@ -1,16 +1,11 @@
 import hail as hl
-from gnomad.resources.resource_utils import (
-    TableResource,
-    PedigreeResource,
-    VersionedPedigreeResource,
-    VersionedTableResource,
-)
-from gnomad_qc.v3.resources.constants import (
-    CURRENT_PROJECT_META_VERSION,
-    CURRENT_META_VERSION,
-    CURRENT_RELEASE,
-    RELEASES,
-)
+from gnomad.resources.resource_utils import (PedigreeResource, TableResource,
+                                             VersionedPedigreeResource,
+                                             VersionedTableResource)
+
+from gnomad_qc.v3.resources.constants import (CURRENT_META_VERSION,
+                                              CURRENT_PROJECT_META_VERSION,
+                                              CURRENT_RELEASE, RELEASES)
 
 
 # Samples metadata

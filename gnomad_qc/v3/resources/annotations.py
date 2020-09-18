@@ -1,6 +1,7 @@
-from gnomad.resources.resource_utils import TableResource, VersionedTableResource
+from gnomad.resources.resource_utils import (TableResource,
+                                             VersionedTableResource)
 
-from gnomad_qc.v3.resources import CURRENT_RELEASE, RELEASES
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
 
 def _annotations_root(version: str = CURRENT_RELEASE) -> str:
@@ -19,7 +20,7 @@ def get_info(split: bool = True) -> VersionedTableResource:
 
     :param version: Version of annotation path to return
     :param split: Whether to return the split or multi-allelic version of the resource
-    :return: gnomAD v3 info TableResource
+    :return: gnomAD v3 info VersionedTableResource
     """
 
     return VersionedTableResource(
@@ -37,7 +38,7 @@ def get_info(split: bool = True) -> VersionedTableResource:
 
 def get_vqsr_filters(
     model_id: str, split: bool = True, finalized: bool = False,
-) -> TableResource:
+) -> VersionedTableResource:
     """
     Gets the specified filtering annotation resource.
 

@@ -1,4 +1,5 @@
 import hail as hl
+
 from gnomad_qc.v3.resources import get_gnomad_v3_mt, last_END_position
 
 hl.init(log='/create_last_END_positions.log', default_reference='GRCh38')
@@ -32,4 +33,4 @@ t = t.select(
         t.locus.position
     )
 )
-t.write(last_END_position().path, overwrite=True)
+t.write(last_END_position.path, overwrite=True)
