@@ -24,6 +24,7 @@ jobs:
             pip-
       - name: Install dependencies
         run: |
+          pip install wheel
           pip install -r requirements.txt
           pip install pylint
       - name: Run Pylint
