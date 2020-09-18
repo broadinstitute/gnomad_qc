@@ -8,9 +8,11 @@ from gnomad.utils.sparse_mt import *
 from gnomad.utils.vcf import ht_to_vcf_mt
 from gnomad.utils.vep import vep_or_lookup_vep
 
-from gnomad_qc.v3.resources import (fam_stats, get_gnomad_v3_mt, get_info,
-                                    get_transmitted_singleton_vcf_path,
-                                    info_vcf_path, qc_ac, trios, vep)
+from gnomad_qc.v3.resources.annotations import (fam_stats, get_info,
+                                                info_vcf_path, qc_ac, vep)
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
+from gnomad_qc.v3.resources.meta import trios
+from gnomad_qc.v3.resources.variant_qc import get_transmitted_singleton_vcf_path
 
 
 def compute_info() -> hl.Table:

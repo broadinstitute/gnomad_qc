@@ -8,10 +8,12 @@ from gnomad.sample_qc.relatedness import (create_fake_pedigree,
                                           get_duplicated_samples_ht,
                                           infer_families)
 
-from gnomad_qc.v3.resources import (duplicates, get_gnomad_v3_mt,
-                                    get_relatedness_annotated_ht, meta,
-                                    ped_mendel_errors, pedigree,
-                                    release_samples_rankings, sex, trios)
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
+from gnomad_qc.v3.resources.meta import (meta, ped_mendel_errors, pedigree,
+                                         trios)
+from gnomad_qc.v3.resources.sample_qc import (duplicates,
+                                              get_relatedness_annotated_ht,
+                                              release_samples_rankings, sex)
 
 logger = logging.getLogger("create_fam")
 

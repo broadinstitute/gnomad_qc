@@ -1,6 +1,7 @@
 import hail as hl
 
-from gnomad_qc.v3.resources import get_gnomad_v3_mt, last_END_position
+from gnomad_qc.v3.resources.annotations import last_END_position
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 
 hl.init(log='/create_last_END_positions.log', default_reference='GRCh38')
 

@@ -7,7 +7,8 @@ from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.utils.reference_genome import get_reference_ht
 from gnomad.utils.sparse_mt import compute_coverage_stats
 
-from gnomad_qc.v3.resources.meta import get_gnomad_v3_mt, meta
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
+from gnomad_qc.v3.resources.meta import meta
 
 
 def main(args):

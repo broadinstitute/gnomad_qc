@@ -3,6 +3,7 @@ import logging
 import pickle
 from typing import Any, List, Tuple
 
+import hail as hl
 from gnomad.resources.grch38 import (lcr_intervals, purcell_5k_intervals,
                                      telomeres_and_centromeres)
 from gnomad.sample_qc.ancestry import (assign_population_pcs,
@@ -18,7 +19,23 @@ from gnomad.utils.filtering import add_filters_expr, filter_to_autosomes
 from gnomad.utils.sparse_mt import densify_sites, impute_sex_ploidy
 
 from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
-from gnomad_qc.v3.resources import *
+from gnomad_qc.v3.resources.annotations import get_info, last_END_position
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
+from gnomad_qc.v3.resources.meta import meta, meta_tsv_path, project_meta
+from gnomad_qc.v3.resources.sample_qc import (ancestry_pca_eigenvalues_path,
+                                              ancestry_pca_loadings,
+                                              ancestry_pca_scores,
+                                              get_sample_qc,
+                                              hard_filtered_samples,
+                                              pc_relate_pca_scores,
+                                              pca_related_samples_to_drop,
+                                              pca_samples_rankings,
+                                              picard_metrics, pop, pop_rf_path,
+                                              pop_tsv_path, qc,
+                                              regressed_metrics, relatedness,
+                                              release_related_samples_to_drop,
+                                              release_samples_rankings, sex,
+                                              stratified_metrics)
 
 logger = logging.getLogger("sample_qc")
 
@@ -206,7 +223,7 @@ def compute_sample_rankings(use_qc_metrics_filters: bool) -> hl.Table:
     project_ht = project_ht.select(
         'releasable',
         chr20_mean_dp=sex.ht()[project_ht.key].chr20_mean_dp,
-        filtered=hl.or_else(hl.len(hard_filtered_samples().ht()[project_ht.key].hard_filters) > 0, False)
+        filtered=hl.or_else(hl.len(hard_filtered_samples.ht()[project_ht.key].hard_filters) > 0, False)
     )
 
     if use_qc_metrics_filters:
@@ -366,7 +383,7 @@ def apply_regressed_filters(
 def generate_metadata() -> hl.Table:
     meta_ht = project_meta.ht()
     sample_qc_ht = get_sample_qc("bi_allelic").ht()
-    hard_filters_ht = hard_filtered_samples().ht()
+    hard_filters_ht = hard_filtered_samples.ht()
     regressed_metrics_ht = regressed_metrics.ht()
     pop_ht = pop.ht()
     release_related_samples_to_drop_ht = release_related_samples_to_drop.ht()
@@ -437,7 +454,7 @@ def main(args):
     if args.compute_hard_filters:
         compute_hard_filters(
             args.min_cov
-        ).write(hard_filtered_samples().path, overwrite=args.overwrite)
+        ).write(hard_filtered_samples.path, overwrite=args.overwrite)
 
     if args.compute_qc_mt:
         compute_qc_mt().write(qc.path, overwrite=args.overwrite)

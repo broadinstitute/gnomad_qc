@@ -4,8 +4,9 @@ import logging
 import hail as hl
 
 from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
-from gnomad_qc.v3.resources import (meta, qc, v2_v3_pc_relate_pca_scores,
-                                    v2_v3_relatedness)
+from gnomad_qc.v3.resources.meta import meta
+from gnomad_qc.v3.resources.sample_qc import (qc, v2_v3_pc_relate_pca_scores,
+                                              v2_v3_relatedness)
 
 logger = logging.getLogger("v2_pc_relate")
 

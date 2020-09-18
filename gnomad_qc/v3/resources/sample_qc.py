@@ -1,10 +1,11 @@
 import hail as hl
-from gnomad.resources import (MatrixTableResource, TableResource,
-                              VersionedMatrixTableResource,
-                              VersionedTableResource)
+from gnomad.resources.resource_utils import (MatrixTableResource,
+                                             TableResource,
+                                             VersionedMatrixTableResource,
+                                             VersionedTableResource)
 from gnomad.sample_qc.relatedness import get_relationship_expr
 
-from gnomad_qc.v3.resources import CURRENT_RELEASE, RELEASES
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
 
 def get_sample_qc_root(version: str = CURRENT_RELEASE, mt: bool = False) -> str:

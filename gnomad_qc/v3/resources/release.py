@@ -1,6 +1,6 @@
-from gnomad.resources import TableResource
+from gnomad.resources.resource_utils import TableResource
 
-from gnomad_qc.v3.resources import CURRENT_RELEASE
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
 
 qual_hists_json_path = "gs://gnomad/release/3.0/json/gnomad.genomes.r3.json"
 
