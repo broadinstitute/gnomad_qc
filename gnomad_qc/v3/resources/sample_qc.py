@@ -189,7 +189,7 @@ hard_filtered_samples = VersionedTableResource(
     {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_hard_filtered_samples.ht") for release in RELEASES}
 )
 
-# Results of running population-based metrics filtering	    :param version: Version of sample QC path to return
+# Results of running population-based metrics filtering
 # Not used for v3 release (regresed metrics used instead)
 stratified_metrics = VersionedTableResource(
     CURRENT_RELEASE,
@@ -208,7 +208,7 @@ pca_samples_rankings = VersionedTableResource(
     {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_pca_samples_ranking.ht") for release in RELEASES}
 )
 
-# Ranking of all release samples based on quality metrics. Used to remove relateds for release.	    :param version: Version of sample QC path to return
+# Ranking of all release samples based on quality metrics. Used to remove relateds for release.	
 release_samples_rankings = VersionedTableResource(
     CURRENT_RELEASE,
     {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_release_samples_ranking.ht") for release in RELEASES}
