@@ -11,7 +11,7 @@ from gnomad.sample_qc.ancestry import (assign_population_pcs,
 from gnomad.sample_qc.filtering import (compute_qc_metrics_residuals,
                                         compute_stratified_metrics_filter,
                                         compute_stratified_sample_qc)
-from gnomad.sample_qc.pipeline import get_qc_mt
+from gnomad.sample_qc.pipeline import annotate_sex, get_qc_mt
 from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
 from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
 from gnomad.utils.annotations import bi_allelic_expr, get_adj_expr
