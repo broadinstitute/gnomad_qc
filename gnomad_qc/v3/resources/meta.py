@@ -65,7 +65,7 @@ _project_meta_versions["v3.1"] = _project_meta_versions["2020-09-11"]
 
 
 _pedigree_versions = {
-    "final": PedigreeResource(
+    "v3.1": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1.fam", delimiter="\t",
     ),
     "v3.1_raw": PedigreeResource(
@@ -81,7 +81,7 @@ _pedigree_versions = {
 
 
 _trios_versions = {
-    "final": PedigreeResource(
+    "v3.1": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_trios.fam", delimiter="\t",
     ),
     "v3.1_raw": PedigreeResource(
@@ -100,8 +100,8 @@ meta = VersionedTableResource(CURRENT_META_VERSION, _meta_versions)
 project_meta = VersionedTableResource(
     CURRENT_PROJECT_META_VERSION, _project_meta_versions
 )
-pedigree = VersionedPedigreeResource("final", _pedigree_versions)
-trios = VersionedPedigreeResource("final", _trios_versions)
+pedigree = VersionedPedigreeResource("v3.1", _pedigree_versions)
+trios = VersionedPedigreeResource("v3.1", _trios_versions)
 ped_mendel_errors = VersionedTableResource(
     CURRENT_RELEASE,
     {

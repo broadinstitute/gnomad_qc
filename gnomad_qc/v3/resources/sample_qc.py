@@ -57,9 +57,9 @@ def _get_ancestry_pca_ht_path(
 
 
 def ancestry_pca_loadings(include_unreleasable_samples: bool = False
-) -> TableResource:
+) -> VersionedTableResource:
     """
-    Gets the ancestry PCA loadings TableResource
+    Gets the ancestry PCA loadings VersionedTableResource
 
     :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
     :return: Ancestry PCA loadings
@@ -73,7 +73,7 @@ def ancestry_pca_loadings(include_unreleasable_samples: bool = False
 def ancestry_pca_scores(include_unreleasable_samples: bool = False
 ) -> VersionedTableResource:
     """
-    Gets the ancestry PCA scores TableResource
+    Gets the ancestry PCA scores VersionedTableResource
 
     :param version: Version of sample QC path to return
     :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
@@ -88,9 +88,8 @@ def ancestry_pca_scores(include_unreleasable_samples: bool = False
 def ancestry_pca_eigenvalues_path(include_unreleasable_samples: bool = False
 ) -> VersionedTableResource:
     """
-    Gets the path to file containing ancestry PCA eigenvalues
+    Gets the ancestry PCA eigenvalues VersionedTableResource
 
-    :param version: Version of sample QC path to return
     :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
     :return: Ancestry PCA eigenvalues path
     """
@@ -168,7 +167,7 @@ def pop_tsv_path(version: str = CURRENT_RELEASE) -> str:
     """
     Path to tab delimited file indicating inferred sample populations
 
-    :param version: Version of sample QC path to return
+    :param version: gnomAD Version 
     :return: String path to sample populations
     """
     return f"gs://gnomad/sample_qc/temp/genomes_v{version}/gnomad_v{version}_RF_pop_assignments.txt.gz"
@@ -178,7 +177,7 @@ def pop_rf_path(version: str = CURRENT_RELEASE) -> str:
     """
     Path to RF model used for inferring sample populations
 
-    :param version: Version of sample QC path to return
+    :param version: gnomAD Version 
     :return: String path to sample pop RF model
     """
     return f"gs://gnomad/sample_qc/temp/genomes_v{version}/gnomad_v{version}_pop.RF_fit.pickle"

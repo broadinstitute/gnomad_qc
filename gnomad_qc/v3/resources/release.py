@@ -1,8 +1,13 @@
-from gnomad.resources.resource_utils import TableResource
-
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
 
-qual_hists_json_path = "gs://gnomad/release/3.0/json/gnomad.genomes.r3.json"
+def qual_hists_json_path(release_version: str= CURRENT_RELEASE) -> str:
+    """Fetch filepath for qual histograms JSON
+
+    :param release_version: Release version. Defualts to CURRENT RELEASE
+    :return: File path for histogram JSON
+    :rtype: str
+    """
+    return f"gs://gnomad/release/{release_version}/json/gnomad.genomes.r{release_version}.json"
 
 
 # TODO: Remove if not used after all python files are in
@@ -13,7 +18,7 @@ def release_ht_path(
     data_type: str = "genomes",
     release_version: str = CURRENT_RELEASE,
     public: bool = True,
-) -> TableResource:
+) -> str:
     """
     Fetch filepath for release (variant-only) Hail Tables
     :param data_type: 'exomes' or 'genomes'

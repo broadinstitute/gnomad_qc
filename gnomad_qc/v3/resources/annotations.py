@@ -51,7 +51,12 @@ def get_vqsr_filters(
         CURRENT_RELEASE,
         {
             release: TableResource(
-                f"{_annotations_root(release)}/filtering/{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
+                "{}/filtering/{}{}{}.ht".format(
+                    _annotations_root(release),
+                    model_id,
+                    '.finalized' if finalized else '',
+                    '.split' if split else ''
+                    )
             )
             for release in RELEASES
         },
