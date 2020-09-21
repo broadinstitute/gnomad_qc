@@ -1,42 +1,142 @@
-from gnomad.resources.resource_utils import TableResource
+from gnomad.resources.resource_utils import (TableResource,
+                                             VersionedTableResource)
 
-ANNOTATIONS_ROOT = "gs://gnomad/annotations/hail-0.2/ht/genomes_v3"
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
 
-def get_info(split: bool = True) -> TableResource:
+def _annotations_root(version: str = CURRENT_RELEASE) -> str:
+    """
+    Get root path to the variant annotation files
+
+    :param version: Version of annotation path to return
+    :return: root path of the variant annotation files
+    """
+    return f"gs://gnomad/annotations/hail-0.2/ht/genomes_v{version}"
+
+
+def get_info(split: bool = True) -> VersionedTableResource:
     """
     Gets the gnomAD v3 info TableResource
 
+    :param version: Version of annotation path to return
     :param split: Whether to return the split or multi-allelic version of the resource
-    :return: gnomAD v3 info TableResource
+    :return: gnomAD v3 info VersionedTableResource
     """
-    path = '{}/gnomad_genomes_v3_info{}.ht'.format(
-        ANNOTATIONS_ROOT,
-        '.split' if split else ''
+
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            release: TableResource(
+                path="{}/gnomad_genomes_v{}_info{}.ht".format(
+                    _annotations_root(release), release, ".split" if split else ""
+                )
+            )
+            for release in RELEASES
+        },
     )
-    return TableResource(path)
 
 
-def get_filters(model_id: str, split: bool = True) -> TableResource:
+def get_vqsr_filters(
+    model_id: str, split: bool = True, finalized: bool = False,
+) -> VersionedTableResource:
     """
     Gets the specified filtering annotation resource.
 
     :param model_id: Filtering model id
     :param split: Split or multi-allelic version of the filtering file
-    :return: Filtering annotation file
+    :param finalized: Whether to return the raw VQSR table or the finalized VQSR table representing determined cutoffs
+    :return: VQSR filtering annotation file
     """
-    path = '{}/{}_filtering{}.ht'.format(
-        ANNOTATIONS_ROOT,
-        model_id,
-        '.split' if split else ''
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            release: TableResource(
+                "{}/filtering/{}{}{}.ht".format(
+                    _annotations_root(release),
+                    model_id,
+                    '.finalized' if finalized else '',
+                    '.split' if split else ''
+                    )
+            )
+            for release in RELEASES
+        },
     )
-    return TableResource(path)
 
 
-last_END_position = TableResource(f'{ANNOTATIONS_ROOT}/gnomad_genomes_v3_last_END_positions.ht')
-freq = TableResource(f'{ANNOTATIONS_ROOT}/gnomad_genomes_v3.frequencies.ht')
-qual_hist = TableResource(f'{ANNOTATIONS_ROOT}/gnomad_genomes_v3.qual_hists.ht')
-vep = TableResource(f'{ANNOTATIONS_ROOT}/gnomad_genomes_v3_vep.ht')
-info_vcf_path = f'{ANNOTATIONS_ROOT}/gnomad_genomes_v3_info.vcf.bgz'
-qc_ac = TableResource(f'{ANNOTATIONS_ROOT}/gnomad_genomes_qc_ac.ht')
-fam_stats = TableResource(f'{ANNOTATIONS_ROOT}/gnomad_genomes_qc_fam_stats.ht')
+def info_vcf_path(version: str = CURRENT_RELEASE) -> str:
+    """
+    Path to sites VCF (input information for running VQSR)
+
+    :param version: Version of annotation path to return
+    :return: String for the path to the info VCF
+    """
+    return f"{_annotations_root(version)}/gnomad_genomes_v{version}_info.vcf.bgz"
+
+
+last_END_position = VersionedTableResource(
+    CURRENT_RELEASE,
+    {
+        release: TableResource(
+            f"{_annotations_root(release)}/gnomad_genomes_v{release}_last_END_positions.ht"
+        )
+        for release in RELEASES
+    },
+)
+
+freq = VersionedTableResource(
+    CURRENT_RELEASE,
+    {
+        release: TableResource(
+            f"{_annotations_root(release)}/gnomad_genomes_v{release}.frequencies.ht"
+        )
+        for release in RELEASES
+    },
+)
+
+qual_hist = VersionedTableResource(
+    CURRENT_RELEASE,
+    {
+        release: TableResource(
+            f"{_annotations_root(release)}/gnomad_genomes_v{release}.qual_hists.ht"
+        )
+        for release in RELEASES
+    },
+)
+
+vep = VersionedTableResource(
+    CURRENT_RELEASE,
+    {
+        release: TableResource(
+            f"{_annotations_root(release)}/gnomad_genomes_v{release}_vep.ht"
+        )
+        for release in RELEASES
+    },
+)
+
+qc_ac = VersionedTableResource(
+    CURRENT_RELEASE,
+    {
+        release: TableResource(f"{_annotations_root(release)}/gnomad_genomes_qc_ac.ht")
+        for release in RELEASES
+    },
+)
+
+fam_stats = VersionedTableResource(
+    CURRENT_RELEASE,
+    {
+        release: TableResource(
+            f"{_annotations_root(release)}/gnomad_genomes_qc_fam_stats.ht"
+        )
+        for release in RELEASES
+    },
+)
+
+allele_data = VersionedTableResource(
+    CURRENT_RELEASE,
+    {
+        release: TableResource(
+            f"{_annotations_root(release)}/gnomad_genomes_qc_allele_data.ht"
+        )
+        for release in RELEASES
+    },
+)
