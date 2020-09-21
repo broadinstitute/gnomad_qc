@@ -17,22 +17,6 @@ def get_info(split: bool = True) -> TableResource:
     return TableResource(path)
 
 
-def get_filters(model_id: str, split: bool = True) -> TableResource:
-    """
-    Gets the specified filtering annotation resource.
-
-    :param model_id: Filtering model id
-    :param split: Split or multi-allelic version of the filtering file
-    :return: Filtering annotation file
-    """
-    path = '{}/{}_filtering{}.ht'.format(
-        ANNOTATIONS_ROOT,
-        model_id,
-        '.split' if split else ''
-    )
-    return TableResource(path)
-
-
 last_END_position = TableResource(f'{ANNOTATIONS_ROOT}/gnomad_genomes_v3_last_END_positions.ht')
 freq = TableResource(f'{ANNOTATIONS_ROOT}/gnomad_genomes_v3.frequencies.ht')
 qual_hist = TableResource(f'{ANNOTATIONS_ROOT}/gnomad_genomes_v3.qual_hists.ht')
