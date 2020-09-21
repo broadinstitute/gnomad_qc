@@ -1,8 +1,12 @@
-from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
-from gnomad_qc.v3.resources import v3_qc, meta, v2_v3_pc_relate_pca_scores, v2_v3_relatedness
-import hail as hl
 import argparse
 import logging
+
+import hail as hl
+
+from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
+from gnomad_qc.v3.resources.meta import meta
+from gnomad_qc.v3.resources.sample_qc import (qc, v2_v3_pc_relate_pca_scores,
+                                              v2_v3_relatedness)
 
 logger = logging.getLogger("v2_pc_relate")
 
@@ -11,7 +15,7 @@ def main(args):
     if args.join_qc_mt:
         v2_qc_mt_liftover = get_liftover_v2_qc_mt('exomes', ld_pruned=True, release_only=True)
         v2_qc_mt_liftover = v2_qc_mt_liftover.key_cols_by(s=v2_qc_mt_liftover.s, data_type="v2_exomes")
-        v3_qc_mt = v3_qc.mt()
+        v3_qc_mt = qc.mt()
         v3_qc_mt = v3_qc_mt.filter_cols(meta.ht()[v3_qc_mt.col_key].release)
         v3_qc_mt = v3_qc_mt.select_rows().select_cols()
         v3_qc_mt = v3_qc_mt.key_cols_by(s=v3_qc_mt.s, data_type="v3_genomes")

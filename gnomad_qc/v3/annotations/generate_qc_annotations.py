@@ -1,21 +1,18 @@
-from gnomad.utils.annotations import annotate_adj
+import argparse
+
 from gnomad.sample_qc.relatedness import generate_trio_stats_expr
+from gnomad.utils.annotations import annotate_adj
+from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.slack import try_slack
 from gnomad.utils.sparse_mt import *
-from gnomad.utils.filtering import filter_to_autosomes
-from gnomad.utils.vep import vep_or_lookup_vep
 from gnomad.utils.vcf import ht_to_vcf_mt
-from gnomad_qc.v3.resources import (
-    get_gnomad_v3_mt,
-    get_info,
-    qc_ac,
-    fam_stats,
-    get_transmitted_singleton_vcf_path,
-    trios,
-    info_vcf_path,
-    vep
-)
-import argparse
+from gnomad.utils.vep import vep_or_lookup_vep
+
+from gnomad_qc.v3.resources.annotations import (fam_stats, get_info,
+                                                info_vcf_path, qc_ac, vep)
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
+from gnomad_qc.v3.resources.meta import trios
+from gnomad_qc.v3.resources.variant_qc import get_transmitted_singleton_vcf_path
 
 
 def compute_info() -> hl.Table:
@@ -30,6 +27,7 @@ def compute_info() -> hl.Table:
     mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, remove_hard_filtered_samples=False)
     mt = mt.filter_rows((hl.len(mt.alleles) > 1))
     mt = mt.transmute_entries(**mt.gvcf_info)
+    mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))  # Reduces memory usage of gnomad_methods 'get_as_info_expr'
 
     # Compute AS and site level info expr
     # Note that production defaults have changed:
@@ -61,7 +59,7 @@ def compute_info() -> hl.Table:
                 )
             )
         ),
-        hl.range(1, hl.len(mt.alleles))
+        mt['alt_alleles_range_array']
     )
 
     # Then, for each non-ref allele, compute
@@ -236,7 +234,7 @@ def main(args):
 
     if args.export_info_vcf:
         info_ht = get_info(split=False).ht()
-        hl.export_vcf(ht_to_vcf_mt(info_ht), info_vcf_path)
+        hl.export_vcf(ht_to_vcf_mt(info_ht), info_vcf_path())
 
     # if args.generate_ac: # TODO: compute AC and qc_AC as part of compute_info
     # mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, samples_meta=True)

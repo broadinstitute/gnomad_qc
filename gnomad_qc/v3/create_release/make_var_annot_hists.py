@@ -1,8 +1,14 @@
-from gnomad.utils.slack import try_slack
-from gnomad.utils.annotations import get_annotations_hists, create_frequency_bins_expr, ANNOTATIONS_HISTS
-import hail as hl
 import argparse
-from gnomad_qc.v3.resources import qual_hists_json_path, release_ht_path
+
+import hail as hl
+from gnomad.utils.annotations import (ANNOTATIONS_HISTS,
+                                      create_frequency_bins_expr,
+                                      get_annotations_hists)
+from gnomad.utils.slack import try_slack
+
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
+from gnomad_qc.v3.resources.release import (qual_hists_json_path,
+                                            release_ht_path)
 
 
 def main(args):
@@ -48,7 +54,7 @@ def main(args):
             _localize=False
         )
 
-        with hl.hadoop_open(qual_hists_json_path, 'w') as f:
+        with hl.hadoop_open(qual_hists_json_path(CURRENT_RELEASE), 'w') as f:
             f.write(hl.eval(hl.json(hists)))
 
 

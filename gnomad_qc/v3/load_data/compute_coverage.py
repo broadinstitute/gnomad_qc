@@ -1,11 +1,15 @@
-import hail as hl
 import argparse
-from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
+import logging
+
+import hail as hl
 from gnomad.resources.grch38.gnomad import coverage, coverage_tsv_path, CURRENT_GENOME_COVERAGE_RELEASE
+from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
+
 from gnomad.utils.reference_genome import get_reference_ht
 from gnomad.utils.sparse_mt import compute_coverage_stats
-from gnomad_qc.v3.resources import get_gnomad_v3_mt, meta
-import logging
+
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
+from gnomad_qc.v3.resources.meta import meta
 
 
 def main(args):
