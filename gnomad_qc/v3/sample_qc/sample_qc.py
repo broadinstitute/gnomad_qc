@@ -435,14 +435,17 @@ def main(args):
             sex_ht.filter(hl.is_missing(hard_filter_ht[sex_ht.key])),
             f_stat_cutoff=0.5
         )
-        upper_x = args.upper_x if args.upper_x else x_ploidy_cutoff[0]
-        lower_xx = args.lower_xx if args.lower_xx else x_ploidy_cutoff[1][0]
-        upper_xx = args.upper_xx if args.upper_xx else x_ploidy_cutoff[1][1]
-        lower_xxx = args.lower_xxx if args.lower_xxx else x_ploidy_cutoff[2]
-        lower_y = args.lower_y if args.lower_y else y_ploidy_cutoff[0][0]
-        upper_y = args.upper_y if args.upper_y else y_ploidy_cutoff[0][1]
-        lower_yy = args.lower_yy if args.lower_yy else y_ploidy_cutoff[1]
-
+x_ploidy_cutoffs = hl.struct(
+    upper_x = args.upper_x if args.upper_x else x_ploidy_cutoff[0],
+    lower_xx = args.lower_xx if args.lower_xx else x_ploidy_cutoff[1][0],
+    upper_xx = args.upper_xx if args.upper_xx else x_ploidy_cutoff[1][1],
+    lower_xxx = args.lower_xxx if args.lower_xxx else x_ploidy_cutoff[2]
+)
+y_ploidy_cutoffs=hl.struct(
+    lower_y = args.lower_y if args.lower_y else y_ploidy_cutoff[0][0],
+    upper_y = args.upper_y if args.upper_y else y_ploidy_cutoff[0][1],
+    lower_yy = args.lower_yy if args.lower_yy else y_ploidy_cutoff[1]
+)
         sex_ht = sex_ht.annotate(
             **get_sex_expr(
                 sex_ht.chrX_ploidy,
