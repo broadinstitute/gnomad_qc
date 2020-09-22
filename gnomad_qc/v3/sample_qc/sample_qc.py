@@ -34,7 +34,8 @@ from gnomad_qc.v3.resources.sample_qc import (ancestry_pca_eigenvalues_path,
                                               pop_tsv_path, qc,
                                               regressed_metrics, relatedness,
                                               release_related_samples_to_drop,
-                                              release_samples_rankings, sex,
+                                              release_samples_rankings,
+                                              sample_inbreeding, sex,
                                               stratified_metrics)
 
 logger = logging.getLogger("sample_qc")
