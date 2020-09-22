@@ -42,17 +42,16 @@ def main(args):
     mt = hl.experimental.densify(mt)
     mt = mt.filter_rows(hl.len(mt.alleles) > 1)
 
-    logger.info("Setting het genotypes at sites with >1% AF and > 0.9 AB to homalt...")
+    logger.info("Setting het genotypes at sites with >1% AF (using v3.0 frequencies) and > 0.9 AB to homalt...")
     # hotfix for depletion of homozygous alternate genotypes
-    # Use AC / 2*n_samples for AF. This doesn't take missing into account but avoids extra frequency calculation
-    # TODO: this is fine for genomes, but will need to be modified for v4
-    info_ht = get_info(split=True).ht()
-    info_ht = info_ht.annotate_rows(
-        aaf=info_ht[info_ht.row_key].info.AC[0] / (2 * samples)
-    )
+    # Using v3.0 AF to avoid an extra frequency calculation
+    # TODO: Using previous callset AF works for small incremental changes to a callset, but we need to revisit for large increments
+    freq_ht = freq.versions["3"].ht()
+    freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
+
     mt = mt.annotate_entries(
         GT=hl.cond(
-            (info_ht[mt.row_key].aaf > 0.01)
+            (freq_ht[mt.row_key].AF > 0.01)
             & mt.GT.is_het()
             & (mt.AD[1] / mt.DP > 0.9),
             hl.call(1, 1),
