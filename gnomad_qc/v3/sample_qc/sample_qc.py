@@ -168,8 +168,8 @@ def compute_hard_filters(cov_threshold: int, include_sex_filter: bool = True) ->
     if include_sex_filter:
         # Remove samples with ambiguous sex assignments
         sex_ht = sex.ht()[ht.key]
-        hard_filters['ambiguous_sex'] = (sex_ht.sex_karyotype == 'Ambiguous')
-        hard_filters['sex_aneuploidy'] = ~hl.set({'Ambiguous', 'XX', 'XY'}).contains(sex_ht.sex_karyotype)
+        hard_filters['ambiguous_sex'] = (sex_ht.sex_karyotype == 'ambiguous')
+        hard_filters['sex_aneuploidy'] = ~hl.set({'ambiguous', 'XX', 'XY'}).contains(sex_ht.sex_karyotype)
 
     ht = ht.annotate(
         hard_filters=add_filters_expr(
