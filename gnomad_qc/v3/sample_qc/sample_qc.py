@@ -482,8 +482,8 @@ def main(args):
             pickle.dump(pops_rf_model, out)
 
     if args.calculate_inbreeding:
-        qc_mt = qc().mt()
-        pop_ht = pop().ht()
+        qc_mt = qc.mt()
+        pop_ht = pop.ht()
         qc_mt = qc_mt.annotate_cols(pop=pop_ht[qc_mt.col_key].pop)
         qc_mt = qc_mt.annotate_rows(call_stats_by_pop=hl.agg.group_by(qc_mt.pop, hl.agg.call_stats(qc_mt.GT)))
         inbreeding_ht = qc_mt.annotate_cols(
@@ -546,6 +546,7 @@ if __name__ == "__main__":
     parser.add_argument('--include_unreleasable_samples', help='Includes unreleasable samples for computing PCA', action='store_true')
     parser.add_argument('--assign_pops', help='Assigns pops from PCA', action='store_true')
     parser.add_argument('--min_pop_prob', help='Minimum RF prob for pop assignment', default=0.9, type=float)
+    parser.add_argument('--calculate_inbreeding', help='Calculate sample level inbreeding', action='store_true')
     parser.add_argument('--filtering_qc_metrics', help="List of QC metrics for filtering.", default=",".join([
         'n_snp', 'n_singleton', 'r_ti_tv', 'r_insertion_deletion', 'n_insertion', 'n_deletion', 'r_het_hom_var',
         'n_het', 'n_hom_var', 'n_transition', 'n_transversion'
