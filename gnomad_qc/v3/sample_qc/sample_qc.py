@@ -481,6 +481,16 @@ def main(args):
         with hl.hadoop_open(pop_rf_path, 'wb') as out:
             pickle.dump(pops_rf_model, out)
 
+    if args.calculate_inbreeding:
+        qc_mt = qc().mt()
+        pop_ht = pop().ht()
+        qc_mt = qc_mt.annotate_cols(pop=pop_ht[qc_mt.col_key].pop)
+        qc_mt = qc_mt.annotate_rows(call_stats_by_pop=hl.agg.group_by(qc_mt.pop, hl.agg.call_stats(qc_mt.GT)))
+        inbreeding_ht = qc_mt.annotate_cols(
+            inbreeding=hl.agg.inbreeding(qc_mt.GT, qc_mt.call_stats_by_pop[qc_mt.pop].AF[1])
+        ).cols().select('inbreeding')
+        inbreeding_ht.write(sample_inbreeding.path, overwrite=args.overwrite)
+
     if args.apply_stratified_filters:
         apply_stratified_filters(
             args.filtering_qc_metrics.split(",")
