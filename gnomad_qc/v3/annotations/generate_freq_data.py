@@ -1,10 +1,14 @@
-from gnomad.utils.annotations import annotate_freq, qual_hist_expr, pop_max_expr, faf_expr
-from gnomad.utils.annotations import get_adj_expr
-from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
-from gnomad_qc.v3.resources import get_gnomad_v3_mt, meta, freq
 import argparse
 import logging
+
 import hail as hl
+from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
+from gnomad.utils.annotations import (annotate_freq, bi_allelic_site_inbreeding_expr, faf_expr, get_adj_expr,
+                                      pop_max_expr, qual_hist_expr)
+
+from gnomad_qc.v3.resources.annotations import freq
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
+from gnomad_qc.v3.resources.meta import meta
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 logger = logging.getLogger("gnomAD_frequency_data")
@@ -59,6 +63,10 @@ def main(args):
         )
     )
 
+    logger.info("Calculating InbreedingCoefficient...")
+    # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify
+    mt = mt.annotate_rows(InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT))
+
     logger.info("Generating frequency data...")
     mt = annotate_freq(
         mt,
@@ -69,6 +77,7 @@ def main(args):
     # Select freq, FAF and popmax
     faf, faf_meta = faf_expr(mt.freq, mt.freq_meta, mt.locus, POPS_TO_REMOVE_FOR_POPMAX)
     mt = mt.select_rows(
+        'InbreedingCoeff',
         'freq',
         faf=faf,
         popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX)

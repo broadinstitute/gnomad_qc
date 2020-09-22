@@ -1,31 +1,26 @@
-from collections import defaultdict, Counter
 import argparse
-import hail as hl
-from gnomad_qc.v3.resources import (
-    meta,
-    pedigree,
-    trios,
-    get_gnomad_v3_mt,
-    ped_mendel_errors,
-    duplicates,
-    get_v3_relatedness_annotated_ht,
-    release_samples_rankings,
-    v3_sex,
-)
-from gnomad.sample_qc.relatedness import (
-    get_duplicated_samples,
-    get_duplicated_samples_ht,
-    infer_families,
-    create_fake_pedigree,
-)
 import logging
+from collections import Counter, defaultdict
+
+import hail as hl
+from gnomad.sample_qc.relatedness import (create_fake_pedigree,
+                                          get_duplicated_samples,
+                                          get_duplicated_samples_ht,
+                                          infer_families)
+
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
+from gnomad_qc.v3.resources.meta import (meta, ped_mendel_errors, pedigree,
+                                         trios)
+from gnomad_qc.v3.resources.sample_qc import (duplicates,
+                                              get_relatedness_annotated_ht,
+                                              release_samples_rankings, sex)
 
 logger = logging.getLogger("create_fam")
 
 
 def run_mendel_errors() -> hl.Table:
     meta_ht = meta.ht()
-    ped = pedigree.versions["raw"].pedigree()
+    ped = pedigree.versions["v3.1_raw"].pedigree()
     logger.info(f"Running Mendel errors for {len(ped.trios)} trios.")
 
     fake_ped = create_fake_pedigree(
@@ -65,7 +60,7 @@ def run_mendel_errors() -> hl.Table:
 def run_infer_families() -> hl.Pedigree:
     logger.info("Inferring families")
     ped = infer_families(
-        get_v3_relatedness_annotated_ht(), v3_sex.ht(), duplicates.ht()
+        get_relatedness_annotated_ht(), sex.ht(), duplicates.ht()
     )
 
     # Remove all trios containing any QC-filtered sample
@@ -135,15 +130,15 @@ def main(args):
 
     if args.find_dups:
         logger.info("Selecting best duplicate per duplicated sample set")
-        dups = get_duplicated_samples(get_v3_relatedness_annotated_ht())
+        dups = get_duplicated_samples(get_relatedness_annotated_ht())
         dups_ht = get_duplicated_samples_ht(dups, release_samples_rankings.ht())
         dups_ht.write(duplicates.path, overwrite=args.overwrite)
 
     if args.infer_families:
         ped = run_infer_families()
-        ped.write(pedigree.versions["raw"].path)
+        ped.write(pedigree.versions["v3.1_raw"].path)
         raw_trios = families_to_trios(ped)
-        raw_trios.write(trios.versions["raw"].path)
+        raw_trios.write(trios.versions["v3.1_raw"].path)
 
     if args.run_mendel_errors:
         mendel_errors = run_mendel_errors()
@@ -151,7 +146,7 @@ def main(args):
 
     if args.finalize_ped:
         final_ped = filter_ped(
-            pedigree.versions["raw"].pedigree,
+            pedigree.versions["v3.1_raw"].pedigree,
             ped_mendel_errors.ht(),
             args.max_dnm,
             args.max_mendel,
