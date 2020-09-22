@@ -458,17 +458,8 @@ y_ploidy_cutoffs=hl.struct(
             )
         )
         sex_ht = sex_ht.annotate_globals(
-            x_ploidy_cutoffs=hl.struct(
-                upper_cutoff_X=upper_x,
-                lower_cutoff_XX=lower_xx,
-                upper_cutoff_XX=upper_xx,
-                lower_cutoff_XXX=lower_xxx,
-            ),
-            y_ploidy_cutoffs=hl.struct(
-                lower_cutoff_Y=lower_y,
-                upper_cutoff_Y=upper_y,
-                lower_cutoff_YY=lower_yy,
-            ),
+            x_ploidy_cutoffs=x_ploidy_cutoffs,
+            y_ploidy_cutoffs=y_ploidy_cutoffs,
         )
         sex_ht.write(sex.path, overwrite=args.overwrite)
 
