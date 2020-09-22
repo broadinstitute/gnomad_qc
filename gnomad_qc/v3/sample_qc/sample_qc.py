@@ -450,8 +450,11 @@ y_ploidy_cutoffs=hl.struct(
             **get_sex_expr(
                 sex_ht.chrX_ploidy,
                 sex_ht.chrY_ploidy,
-                (upper_x, (lower_xx, upper_xx), lower_xxx),
-                ((lower_y, upper_y), lower_yy)
+                (x_ploidy_cutoffs['upper_x'], 
+                (x_ploidy_cutoffs['lower_xx'], x_ploidy_cutoffs['upper_xx']), 
+                x_ploidy_cutoffs['lower_xxx']),
+                ((y_ploidy_cutoffs['lower_y'], y_ploidy_cutoffs['upper_y']),
+                y_ploidy_cutoffs['lower_yy'])
             )
         )
         sex_ht = sex_ht.annotate_globals(
