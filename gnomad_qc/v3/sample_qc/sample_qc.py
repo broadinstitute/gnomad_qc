@@ -100,7 +100,7 @@ def compute_qc_mt() -> hl.MatrixTable:
     mt = mt.filter_rows(
         (hl.len(mt.alleles) == 2) &
         hl.is_snp(mt.alleles[0], mt.alleles[1]) &
-        (qc_sites[mt.row_key].alleles == mt.alleles)
+        (qc_sites[mt.locus].alleles == mt.alleles)
 
     )
     mt = mt.checkpoint('gs://gnomad-tmp/gnomad_v3_qc_mt_v2_sites_dense.mt', overwrite=True)
