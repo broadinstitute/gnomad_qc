@@ -129,7 +129,7 @@ def compute_qc_mt() -> hl.MatrixTable:
     return qc_mt
 
 
-def compute_hard_filters(cov_threshold: int) -> hl.Table:
+def compute_hard_filters(cov_threshold: int, include_sex_filter: bool = True) -> hl.Table:
     ht = get_gnomad_v3_mt(remove_hard_filtered_samples=False).cols()
     hard_filters = dict()
 
@@ -149,7 +149,7 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
 
     # Remove extreme raw bi-allelic sample QC outliers
     # These were determined by visual inspection of the metrics in gs://gnomad/sample_qc/  v3_genomes_sample_qc.ipynb
-    bi_allelic_qc_ht = hl.read_table('gs://gnomad/sample_qc/ht/genomes_v3/sample_qc_bi_allelic.ht')[ht.key]
+    bi_allelic_qc_ht = hl.read_table(f'{get_sample_qc().path[:-3]}_bi_allelic.ht')[ht.key]
     hard_filters['bad_qc_metrics'] = (
             (bi_allelic_qc_ht.sample_qc.n_snp > 3.75e6) |
             (bi_allelic_qc_ht.sample_qc.n_snp < 2.4e6) |
@@ -157,17 +157,19 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
             (bi_allelic_qc_ht.sample_qc.r_het_hom_var > 3.3)
     )
 
-    # Remove samples with ambiguous sex assignments
-    sex_ht = sex.ht()[ht.key]
-    hard_filters['ambiguous_sex'] = (sex_ht.sex_karyotype == 'Ambiguous')
-    hard_filters['sex_aneuploidy'] = ~hl.set({'Ambiguous', 'XX', 'XY'}).contains(sex_ht.sex_karyotype)
-
     # Remove samples that fail picard metric thresholds, percents are not divided by 100, e.g. 5% == 5.00, %5 != 0.05
     picard_ht = picard_metrics.ht()[ht.key]
     hard_filters['contamination'] = picard_ht.bam_metrics.freemix > 5.00
     hard_filters['chimera'] = picard_ht.bam_metrics.pct_chimeras > 5.00
-    hard_filters['coverage'] = picard_ht.bam_metrics.mean_coverage < 15
     hard_filters['insert_size'] = picard_ht.bam_metrics.median_insert_size < 250
+    # Removing picard coverage filter in favor of chrom 20 low coverage filter above, these filters were redundant
+    # hard_filters['coverage'] = picard_ht.bam_metrics.mean_coverage < 15
+
+    if include_sex_filter:
+        # Remove samples with ambiguous sex assignments
+        sex_ht = sex.ht()[ht.key]
+        hard_filters['ambiguous_sex'] = (sex_ht.sex_karyotype == 'Ambiguous')
+        hard_filters['sex_aneuploidy'] = ~hl.set({'Ambiguous', 'XX', 'XY'}).contains(sex_ht.sex_karyotype)
 
     ht = ht.annotate(
         hard_filters=add_filters_expr(
@@ -424,15 +426,43 @@ def main(args):
     if args.impute_sex:
         compute_sex().write(sex.path, overwrite=args.overwrite)
     elif args.reannotate_sex:
-        sex_ht = sex.ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True)  # Copy HT to temp location to overwrite annotation
-        x_ploidy_cutoff, y_ploidy_cutoff = get_ploidy_cutoffs(sex_ht, f_stat_cutoff=0.5)
+        # Copy HT to temp location to overwrite annotation
+        sex_ht = sex.ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True)
+        hard_filter_ht = compute_hard_filters(args.min_cov, include_sex_filter=False)
+        # Copy HT to temp location because it uses sex_ht for chr20 coverage
+        hard_filter_ht = hard_filter_ht.checkpoint('gs://gnomad-tmp/hardfilter_checkpoint.ht', overwrite=True)
+        x_ploidy_cutoff, y_ploidy_cutoff = get_ploidy_cutoffs(
+            sex_ht.filter(hl.is_missing(hard_filter_ht[sex_ht.key])),
+            f_stat_cutoff=0.5
+        )
+        upper_x = args.upper_x if args.upper_x else x_ploidy_cutoff[0]
+        lower_xx = args.lower_xx if args.lower_xx else x_ploidy_cutoff[1][0]
+        upper_xx = args.upper_xx if args.upper_xx else x_ploidy_cutoff[1][1]
+        lower_xxx = args.lower_xxx if args.lower_xxx else x_ploidy_cutoff[2]
+        lower_y = args.lower_y if args.lower_y else y_ploidy_cutoff[0][0]
+        upper_y = args.upper_y if args.upper_y else y_ploidy_cutoff[0][1]
+        lower_yy = args.lower_yy if args.lower_yy else y_ploidy_cutoff[1]
+
         sex_ht = sex_ht.annotate(
             **get_sex_expr(
                 sex_ht.chrX_ploidy,
                 sex_ht.chrY_ploidy,
-                x_ploidy_cutoff,
-                y_ploidy_cutoff
+                (upper_x, (lower_xx, upper_xx), lower_xxx),
+                ((lower_y, upper_y), lower_yy)
             )
+        )
+        sex_ht = sex_ht.annotate_globals(
+            x_ploidy_cutoffs=hl.struct(
+                upper_cutoff_X=upper_x,
+                lower_cutoff_XX=lower_xx,
+                upper_cutoff_XX=upper_xx,
+                lower_cutoff_XXX=lower_xxx,
+            ),
+            y_ploidy_cutoffs=hl.struct(
+                lower_cutoff_Y=lower_y,
+                upper_cutoff_Y=upper_y,
+                lower_cutoff_YY=lower_yy,
+            ),
         )
         sex_ht.write(sex.path, overwrite=args.overwrite)
 
@@ -523,8 +553,15 @@ if __name__ == "__main__":
     parser.add_argument('--sample_qc', help='Assigns pops from PCA', action='store_true')
     parser.add_argument('--impute_sex', help='Runs sex imputation. Also runs sex karyotyping annotation.', action='store_true')
     parser.add_argument('--reannotate_sex', help='Runs the sex karyotyping annotations again, without re-computing sex imputation metrics.', action='store_true')
+    parser.add_argument('--upper_x', help="Upper cutoff for single X", type=float)
+    parser.add_argument('--lower_xx', help="Lower cutoff for double X", type=float)
+    parser.add_argument('--upper_xx', help="Upper cutoff for double X", type=float)
+    parser.add_argument('--lower_xxx', help="Lower cutoff for triple X", type=float)
+    parser.add_argument('--lower_y', help="Lower cutoff for single Y", type=float)
+    parser.add_argument('--upper_y', help="Upper cutoff for single Y", type=float)
+    parser.add_argument('--lower_yy', help="Lower cutoff for double Y", type=float)
     parser.add_argument('--compute_hard_filters', help='Computes samples to be hard-filtered', action='store_true')
-    parser.add_argument('--min_cov', help="Minimum coverage for inclusion when computing har-filters", default=18, type=int)
+    parser.add_argument('--min_cov', help="Minimum coverage for inclusion when computing har-filters", default=15, type=int)  # Note: this was 18 in v3
     parser.add_argument('--compute_samples_ranking', help='Computes global samples ranking based on hard-filters, releasable and coverage.', action='store_true')
     parser.add_argument('--compute_qc_mt', help='Creates the QC MT based on liftover of v2 QC and Purcell 5k sites', action='store_true')
     parser.add_argument('--run_pc_relate', help='Run PC-relate', action='store_true')
