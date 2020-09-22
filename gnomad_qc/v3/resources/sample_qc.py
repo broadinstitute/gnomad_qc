@@ -156,6 +156,12 @@ release_related_samples_to_drop = VersionedTableResource(
     {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_related_release_samples_to_drop.ht") for release in RELEASES}
 )
 
+# Sample inbreeding
+sample_inbreeding = VersionedTableResource(
+    CURRENT_RELEASE,
+    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_inbreeding.ht") for release in RELEASES}
+)
+
 # Inferred sample populations	
 pop = VersionedTableResource(
     CURRENT_RELEASE,
