@@ -1,4 +1,7 @@
 import argparse
+import logging
+from typing import List
+
 
 import hail as hl
 
@@ -27,6 +30,13 @@ from gnomad_qc.v3.resources.annotations import (
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import trios
 from gnomad_qc.v3.resources.variant_qc import get_transmitted_singleton_vcf_path
+
+logging.basicConfig(
+    format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
+    datefmt="%m/%d/%Y %I:%M:%S %p",
+)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def compute_info() -> hl.Table:
