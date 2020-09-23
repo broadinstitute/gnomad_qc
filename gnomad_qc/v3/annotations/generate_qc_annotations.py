@@ -8,8 +8,15 @@ from gnomad.utils.sparse_mt import *
 from gnomad.utils.vcf import ht_to_vcf_mt
 from gnomad.utils.vep import vep_or_lookup_vep
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources.annotations import (fam_stats, get_info,
-                                                info_vcf_path, qc_ac, vep)
+from gnomad_qc.v3.resources.annotations import (
+    fam_stats,
+    get_info,
+    info_vcf_path,
+    qc_ac,
+    split_info_annotation,
+    split_lowqual_annotation,
+    vep
+)
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import trios
 from gnomad_qc.v3.resources.variant_qc import get_transmitted_singleton_vcf_path
@@ -101,13 +108,11 @@ def split_info() -> hl.Table:
     # Create split version
     info_ht = hl.split_multi(info_ht)
 
-    # Index AS annotations
     info_ht = info_ht.annotate(
         info=info_ht.info.annotate(
-            **{f: info_ht.info[f][info_ht.a_index - 1] for f in info_ht.info if f.startswith("AC") or (f.startswith("AS_") and not f == 'AS_SB_TABLE')},
-            AS_SB_TABLE=info_ht.info.AS_SB_TABLE[0].extend(info_ht.info.AS_SB_TABLE[info_ht.a_index])
+            **split_info_annotation(info_ht.info, info_ht.a_index),
         ),
-        lowqual=info_ht.lowqual[info_ht.a_index - 1]
+        AS_lowqual=split_lowqual_annotation(info_ht.AS_lowqual, info_ht.a_index),
     )
     return info_ht
 
