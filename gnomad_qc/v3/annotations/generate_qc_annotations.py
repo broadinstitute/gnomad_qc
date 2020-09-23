@@ -31,26 +31,29 @@ def compute_info() -> hl.Table:
     :return: Table with info fields
     :rtype: Table
     """
-    mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, remove_hard_filtered_samples=False)
+    mt = get_gnomad_v3_mt(
+        key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
+    )
+
     mt = mt.filter_rows((hl.len(mt.alleles) > 1))
     mt = mt.transmute_entries(**mt.gvcf_info)
-    mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))  # Reduces memory usage of gnomad_methods 'get_as_info_expr'
+    mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
 
     # Compute AS and site level info expr
     # Note that production defaults have changed:
     # For new releases, the `RAWMQ_andDP` field replaces the `RAW_MQ` and `MQ_DP` fields
     info_expr = get_site_info_expr(
         mt,
-        sum_agg_fields=INFO_SUM_AGG_FIELDS + ['RAW_MQ'],
-        int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ['MQ_DP'],
-        array_sum_agg_fields=['SB']
+        sum_agg_fields=INFO_SUM_AGG_FIELDS + ["RAW_MQ"],
+        int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ["MQ_DP"],
+        array_sum_agg_fields=["SB"],
     )
     info_expr = info_expr.annotate(
         **get_as_info_expr(
             mt,
-            sum_agg_fields=INFO_SUM_AGG_FIELDS + ['RAW_MQ'],
-            int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ['MQ_DP'],
-            array_sum_agg_fields=['SB']
+            sum_agg_fields=INFO_SUM_AGG_FIELDS + ["RAW_MQ"],
+            int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ["MQ_DP"],
+            array_sum_agg_fields=["SB"],
         )
     )
 
@@ -62,11 +65,13 @@ def compute_info() -> hl.Table:
             hl.agg.group_by(
                 get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
                 hl.agg.sum(
-                    mt.LGT.one_hot_alleles(mt.LA.map(lambda x: hl.str(x)))[mt.LA.index(ai)]
-                )
-            )
+                    mt.LGT.one_hot_alleles(mt.LA.map(lambda x: hl.str(x)))[
+                        mt.LA.index(ai)
+                    ]
+                ),
+            ),
         ),
-        mt['alt_alleles_range_array']
+        mt.alt_alleles_range_array,
     )
 
     # Then, for each non-ref allele, compute
@@ -74,12 +79,21 @@ def compute_info() -> hl.Table:
     # AC_raw as the sum of adj and non-adj groups
     info_expr = info_expr.annotate(
         AC_raw=grp_ac_expr.map(lambda i: hl.int32(i.get(True, 0) + i.get(False, 0))),
-        AC=grp_ac_expr.map(lambda i: hl.int32(i.get(True, 0)))
+        AC=grp_ac_expr.map(lambda i: hl.int32(i.get(True, 0))),
     )
 
-    info_ht = mt.select_rows(
-        info=info_expr
-    ).rows()
+    # Annotating raw MT with pab max
+    info_expr = info_expr.annotate(
+        AS_pab_max=hl.agg.array_agg(
+            lambda ai: hl.agg.filter(
+                mt.LA.contains(ai) & mt.LGT.is_het(),
+                hl.agg.max(hl.binom_test(mt.LAD[1], hl.sum(mt.LAD), 0.5, "two-sided")),
+            ),
+            mt.alt_alleles_range_array,
+        )
+    )
+
+    info_ht = mt.select_rows(info=info_expr).rows()
 
     # Add lowqual flag
     info_ht = info_ht.annotate(
@@ -88,11 +102,14 @@ def compute_info() -> hl.Table:
             info_ht.info.QUALapprox,
             # The indel het prior used for gnomad v3 was 1/10k bases (phred=40).
             # This value is usually 1/8k bases (phred=39).
-            indel_phred_het_prior=40
-        )
+            indel_phred_het_prior=40,
+        ),
+        AS_lowqual=get_lowqual_expr(
+            info_ht.alleles, info_ht.info.AS_QUALapprox, indel_phred_het_prior=40
+        ),
     )
 
-    return info_ht.naive_coalesce(5000)
+    return info_ht.naive_coalesce(7500)
 
 
 def split_info() -> hl.Table:
