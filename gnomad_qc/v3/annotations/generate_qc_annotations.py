@@ -1,10 +1,17 @@
 import argparse
 
 from gnomad.sample_qc.relatedness import generate_trio_stats_expr
-from gnomad.utils.annotations import annotate_adj
+from gnomad.utils.annotations import annotate_adj, get_adj_expr, get_lowqual_expr
 from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.sparse_mt import *
+from gnomad.utils.sparse_mt import (
+    get_as_info_expr,
+    get_site_info_expr,
+    INFO_INT32_SUM_AGG_FIELDS,
+    INFO_SUM_AGG_FIELDS,
+    split_info_annotation,
+    split_lowqual_annotation
+)
 from gnomad.utils.vcf import ht_to_vcf_mt
 from gnomad.utils.vep import vep_or_lookup_vep
 from gnomad_qc.slack_creds import slack_token
@@ -13,8 +20,6 @@ from gnomad_qc.v3.resources.annotations import (
     get_info,
     info_vcf_path,
     qc_ac,
-    split_info_annotation,
-    split_lowqual_annotation,
     vep
 )
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
@@ -122,7 +127,7 @@ def split_info() -> hl.Table:
     """
     info_ht = get_info(split=False).ht()
 
-    # Create split version
+    # Create split versiosplit_info_annotationn
     info_ht = hl.split_multi(info_ht)
 
     info_ht = info_ht.annotate(
