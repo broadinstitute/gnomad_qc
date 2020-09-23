@@ -149,12 +149,12 @@ def compute_hard_filters(cov_threshold: int, include_sex_filter: bool = True) ->
 
     # Remove extreme raw bi-allelic sample QC outliers
     # These were determined by visual inspection of the metrics in gs://gnomad/sample_qc/  v3_genomes_sample_qc.ipynb
-    bi_allelic_qc_ht = hl.read_table(f'{get_sample_qc().path[:-3]}_bi_allelic.ht')[ht.key]
+    bi_allelic_qc_struct = get_sample_qc('bi-allelic').ht()[ht.key]
     hard_filters['bad_qc_metrics'] = (
-            (bi_allelic_qc_ht.sample_qc.n_snp > 3.75e6) |
-            (bi_allelic_qc_ht.sample_qc.n_snp < 2.4e6) |
-            (bi_allelic_qc_ht.sample_qc.n_singleton > 1e5) |
-            (bi_allelic_qc_ht.sample_qc.r_het_hom_var > 3.3)
+            (bi_allelic_qc_struct.sample_qc.n_snp > 3.75e6) |
+            (bi_allelic_qc_struct.sample_qc.n_snp < 2.4e6) |
+            (bi_allelic_qc_struct.sample_qc.n_singleton > 1e5) |
+            (bi_allelic_qc_struct.sample_qc.r_het_hom_var > 3.3)
     )
 
     # Remove samples that fail picard metric thresholds, percents are not divided by 100, e.g. 5% == 5.00, %5 != 0.05
