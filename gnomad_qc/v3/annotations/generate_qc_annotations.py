@@ -1,5 +1,7 @@
 import argparse
 
+import hail as hl
+
 from gnomad.sample_qc.relatedness import generate_trio_stats_expr
 from gnomad.utils.annotations import annotate_adj, get_adj_expr, get_lowqual_expr
 from gnomad.utils.filtering import filter_to_autosomes
@@ -127,7 +129,7 @@ def split_info() -> hl.Table:
     """
     info_ht = get_info(split=False).ht()
 
-    # Create split versiosplit_info_annotationn
+    # Create split version
     info_ht = hl.split_multi(info_ht)
 
     info_ht = info_ht.annotate(
