@@ -569,14 +569,32 @@ def main(args):
         clinvar_sample_ht.write(sample_clinvar_count.path, overwrite=args.overwrite)
 
     if args.apply_stratified_filters:
+        filtering_qc_metrics = args.filtering_qc_metrics.split(",")
+        sample_qc_ht = get_sample_qc('bi_allelic').ht()
+
+        if "inbreeding" in filtering_qc_metrics:
+            inbreeding_ht = sample_inbreeding.ht()[sample_qc_ht.key]
+            sample_qc_ht = sample_qc_ht.annotate(sample_qc=sample_qc_ht.sample_qc.annotate(inbreeding=inbreeding_ht.inbreeding.f_stat))
+
         apply_stratified_filters(
-            args.filtering_qc_metrics.split(",")
+            sample_qc_ht,
+            filtering_qc_metrics,
         ).write(stratified_metrics.path, overwrite=args.overwrite)
 
     if args.apply_regressed_filters:
+        n_pcs = 8
+        filtering_qc_metrics = args.filtering_qc_metrics.split(",")
+        sample_qc_ht = get_sample_qc('bi_allelic').ht()
+
+        if "inbreeding" in filtering_qc_metrics:
+            inbreeding_ht = sample_inbreeding.ht()[sample_qc_ht.key]
+            sample_qc_ht = sample_qc_ht.annotate(sample_qc=sample_qc_ht.sample_qc.annotate(inbreeding=inbreeding_ht.inbreeding.f_stat))
+
         apply_regressed_filters(
-            args.filtering_qc_metrics.split(","),
-            args.include_unreleasable_samples
+            sample_qc_ht,
+            filtering_qc_metrics,
+            args.include_unreleasable_samples,
+            n_pcs,
         ).write(regressed_metrics.path, overwrite=args.overwrite)
 
     if args.compute_related_samples_to_drop:
