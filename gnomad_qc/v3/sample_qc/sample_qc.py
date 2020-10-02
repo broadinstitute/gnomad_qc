@@ -517,6 +517,23 @@ def main(args):
         ).cols().select('inbreeding')
         inbreeding_ht.write(sample_inbreeding.path, overwrite=args.overwrite)
 
+    if args.calculate_clinvar:
+        mt = get_gnomad_v3_mt(
+            split=True,
+            key_by_locus_and_alleles=True,
+            remove_hard_filtered_samples=True
+        )
+        clinvar_struct = clinvar.ht()[mt.row_key]
+        mt = mt.filter_rows(hl.is_defined(clinvar_struct))
+        mt = mt.checkpoint("gs://gnomad-tmp/clinvar_variants.mt", overwrite=True)
+        clinvar_path_struct = clinvar_pathogenic.ht()[mt.row_key]
+        mt = mt.annotate_rows(clinvar_path=hl.is_defined(clinvar_path_struct))
+        clinvar_sample_ht = mt.annotate_cols(
+            n_clinvar=hl.agg.count_where(mt.GT.is_non_ref()),
+            n_clinvar_path=hl.agg.count_where(mt.GT.is_non_ref() & mt.clinvar_path),
+        ).cols().select("n_clinvar_path", "n_clinvar")
+        clinvar_sample_ht.write(sample_clinvar_count.path, overwrite=args.overwrite)
+
     if args.apply_stratified_filters:
         apply_stratified_filters(
             args.filtering_qc_metrics.split(",")
@@ -598,6 +615,7 @@ if __name__ == "__main__":
     parser.add_argument('--assign_pops', help='Assigns pops from PCA', action='store_true')
     parser.add_argument('--min_pop_prob', help='Minimum RF prob for pop assignment', default=0.9, type=float)
     parser.add_argument('--calculate_inbreeding', help='Calculate sample level inbreeding', action='store_true')
+    parser.add_argument('--calculate_clinvar', help='Calculate counts of ClinVar and ClinVar P/LP variants per sample', action='store_true')
     parser.add_argument('--filtering_qc_metrics', help="List of QC metrics for filtering.", default=",".join([
         'n_snp', 'n_singleton', 'r_ti_tv', 'r_insertion_deletion', 'n_insertion', 'n_deletion', 'r_het_hom_var',
         'n_het', 'n_hom_var', 'n_transition', 'n_transversion'
