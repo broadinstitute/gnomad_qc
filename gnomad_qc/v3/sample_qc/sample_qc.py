@@ -402,54 +402,290 @@ def apply_regressed_filters(
     return residuals_ht
 
 
-def generate_metadata() -> hl.Table:
-    meta_ht = project_meta.ht()
-    sample_qc_ht = get_sample_qc("bi_allelic").ht()
-    hard_filters_ht = hard_filtered_samples.ht()
-    regressed_metrics_ht = regressed_metrics.ht()
-    pop_ht = pop.ht()
-    release_related_samples_to_drop_ht = release_related_samples_to_drop.ht()
-    pca_related_samples_to_drop_ht = pca_related_samples_to_drop.ht()
-    sex_ht = sex.ht()
-    sex_ht = sex_ht.transmute(
+# Move to gnomad_methods and update UKBB
+def get_relatedness_set_ht(relatedness_ht: hl.Table) -> hl.Table:
+    """
+    Parses relatedness Table to get every relationship (except UNRELATED) per sample.
+    Returns Table keyed by sample with all sample relationships in a set.
+    :param Table relatedness_ht: Table with inferred relationship information output by pc_relate.
+        Keyed by sample pair (i, j).
+    :return: Table keyed by sample (s) with all relationships annotated as a set.
+    :rtype: hl.Table
+    """
+    relatedness_ht = relatedness_ht.filter(relatedness_ht.relationship != UNRELATED)
+    relatedness_ht = relatedness_ht.select("relationship", s=relatedness_ht.i.s).union(
+        relatedness_ht.select("relationship", s=relatedness_ht.j.s)
+    )
+    relatedness_ht = relatedness_ht.group_by(relatedness_ht.s).aggregate(
+        relationships=hl.agg.collect_as_set(relatedness_ht.relationship)
+    )
+    return relatedness_ht
+
+
+def get_relationship_filter_expr(
+    hard_filtered_expr: hl.expr.BooleanExpression,
+    relationship: str,
+    relationship_set: hl.expr.SetExpression,
+) -> hl.expr.builders.CaseBuilder:
+    """
+    Returns case statement to populate relatedness filters in sample_filters struct
+    :param hl.expr.BooleanExpression hard_filtered_expr: Boolean for whether sample was hard filtered.
+    :param str relationship: Relationship to check for. One of DUPLICATE_OR_TWINS, PARENT_CHILD, or SIBLINGS.
+    :param hl.expr.SetExpression relationship_set: Set containing all possible relationship strings for sample.
+    :return: Case statement used to population sample_filters related filter field.
+    :rtype: hl.expr.builders.CaseBuilder
+    """
+    return (
+        hl.case()
+        .when(hard_filtered_expr, hl.null(hl.tbool))
+        .when(hl.is_defined(relationship_set), relationship_set.contains(relationship))
+        .default(False)
+    )
+
+
+def compare_row_counts(ht1: hl.Table, ht2: hl.Table) -> bool:
+    """
+    Checks if row counts in two Tables are the same
+    :param Table ht1: First Table to be checked
+    :param Table ht2: Second Table to be checked
+    :return: Whether the row counts are the same
+    :rtype: bool
+    """
+    r_count1 = ht1.count()
+    r_count2 = ht2.count()
+    logger.info(f"{r_count1} rows in left table; {r_count2} rows in right table")
+    return r_count1 == r_count2
+
+
+def join_tables(
+        left_ht: hl.Table, left_key: str, right_ht: hl.Table, right_key: str, join_type: str
+) -> hl.Table:
+    """
+    Joins left and right tables using specified keys and join types and returns result.
+
+    Also prints warning if sample counts are not the same.
+    :param Table left_ht: Left Table to be joined
+    :param str left_key: Key of left Table
+    :param Table right_ht: Right Table to be joined
+    :param str right_key: Key of right Table
+    :param str join_type: Type of join
+    :return: Table with annotations
+    :rtype: Table
+    """
+    sample_count_match = compare_row_counts(left_ht, right_ht)
+    if not sample_count_match:
+        logger.warning("Sample counts in left and right tables do not match!")
+    return left_ht.key_by(left_key).join(right_ht.key_by(right_key), how=join_type)
+
+
+def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
+    logging_statement = "Reading in {} and joining with meta HT"
+
+    logger.info("Loading metadata file with subset, age, and releasable information to begin creation of the meta HT")
+    left_ht = get_gnomad_v3_mt(remove_hard_filtered_samples=False).cols()
+    right_ht = project_meta.ht()
+    logger.info(f"There are {right_ht.count()} in the project metadata HT and {left_ht.count()} in the callset MT")
+    mt_s_in_meta = left_ht.semi_join(right_ht).count()
+    logger.info(f"There are {mt_s_in_meta} samples in both the project metadata HT and the callset MT")
+    left_ht.anti_join(right_ht).show()
+    right_ht.anti_join(left_ht).show()
+
+    if mt_s_in_meta != left_ht.count():
+        logger.warning("Not all samples in callset MT are found in the project meta HT")
+
+    right_ht = right_ht.annotate(
+        project_meta=hl.struct(**right_ht.row.drop(*(SUBSETS + ["s"]))),
+        subsets=hl.struct(**{x: right_ht[x] for x in SUBSETS})
+    ).select("project_meta", "subsets")  # control subset??
+    left_ht = join_tables(left_ht, "s", right_ht.select_globals(), "s", "right")
+
+    # TODO: Make release and releasable and exclude top level?
+    logger.info(logging_statement.format("picard metric HT"))
+    right_ht = picard_metrics.ht()
+    right_ht = right_ht.select("bam_metrics")
+    left_ht = join_tables(left_ht, "s", right_ht, "s", "right")
+
+    logger.info(logging_statement.format("sex HT"))
+    right_ht = sex.ht()
+    right_ht = right_ht.transmute(
         impute_sex_stats=hl.struct(
-            f_stat=sex_ht.f_stat,
-            n_called=sex_ht.n_called,
-            expected_homs=sex_ht.expected_homs,
-            observed_homs=sex_ht.observed_homs
+            **{x: right_ht[x]
+               for x in ["f_stat", "n_called", "expected_homs", "observed_homs"]
+               }
         )
     )
 
-    meta_ht = meta_ht.annotate_globals(
-        **regressed_metrics_ht.index_globals()
+    # Create struct for join
+    right_ht = right_ht.transmute(
+        sex_imputation=hl.struct(**right_ht.row.drop("s"))
+    ).select("sex_imputation")
+    right_ht = right_ht.select_globals(
+        sex_imputation_ploidy_cutoffs=right_ht.globals
     )
+    left_ht = join_tables(left_ht, "s", right_ht, "s", "right")
 
-    meta_ht = meta_ht.annotate(
-        sample_qc=sample_qc_ht[meta_ht.key].sample_qc,
-        **hard_filters_ht[meta_ht.key],
-        **regressed_metrics_ht[meta_ht.key],
-        **pop_ht[meta_ht.key],
-        **sex_ht[meta_ht.key],
-        release_related=hl.is_defined(release_related_samples_to_drop_ht[meta_ht.key]),
-        all_samples_related=hl.is_defined(pca_related_samples_to_drop_ht[meta_ht.key]),
+    logger.info(logging_statement.format("sample QC HT"))
+    right_ht = get_sample_qc("bi_allelic").ht()
+    left_ht = join_tables(left_ht, "s", right_ht, "s", "right")
+
+    logger.info(logging_statement.format("population PCA HT"))
+    right_ht = pop.ht()
+    right_ht = right_ht.select_globals(
+        population_inference_pca_metrics=right_ht.globals
     )
+    right_ht = right_ht.transmute(population_inference=hl.struct(**right_ht.row.drop("s"))).select('population_inference')
+    left_ht = join_tables(left_ht, "s", right_ht, "s", "outer")
 
-    meta_ht = meta_ht.annotate(
-        hard_filters=hl.or_else(meta_ht.hard_filters, hl.empty_set(hl.tstr)),
-        sample_filters=add_filters_expr(
-            filters={
-                'related': meta_ht.release_related
+    logger.info(
+        "Reading hard filters HT, renaming hard filters struct to sample_filters, and joining with meta HT"
+    )
+    right_ht = hard_filtered_samples.ht()
+    left_ht = join_tables(left_ht, "s", right_ht, "s", "outer")
+
+    # Change sample_filters to a struct
+    ex_right_ht = right_ht.explode(right_ht.hard_filters)
+    hard_filters = ex_right_ht.aggregate(hl.agg.collect_as_set(ex_right_ht.hard_filters))
+    left_ht = left_ht.transmute(
+        sample_filters=hl.struct(
+            **{
+                v: hl.if_else(
+                    hl.is_defined(left_ht.hard_filters),
+                    left_ht.hard_filters.contains(v),
+                    False,
+                )
+                for v in hard_filters
             },
-            current_filters=meta_ht.hard_filters.union(meta_ht.qc_metrics_filters)
+            hard_filters=left_ht.hard_filters,
+            hard_filtered=hl.if_else(hl.is_defined(left_ht.hard_filters) & (hl.len(left_ht.hard_filters) > 0), True, False)
         )
     )
 
-    meta_ht = meta_ht.annotate(
-        high_quality=(hl.len(meta_ht.hard_filters) == 0) & (hl.len(meta_ht.qc_metrics_filters) == 0),
-        release=meta_ht.releasable & (hl.len(meta_ht.sample_filters) == 0)
+    logger.info(
+        "Reading in PCA related samples to drop HT and preparing to annotate meta HT's sample_filter struct with relatedness booleans"
+    )
+    related_samples_to_drop_ht = pca_related_samples_to_drop.ht()
+    release_related_samples_to_drop_ht = release_related_samples_to_drop.ht()
+    relatedness_ht = get_relatedness_set_ht(relatedness.ht())
+    related_samples_to_drop_ht = related_samples_to_drop_ht.annotate(
+        relationships=relatedness_ht[related_samples_to_drop_ht.s].relationships
+    )
+    release_related_samples_to_drop_ht = release_related_samples_to_drop_ht.annotate(
+        relationships=relatedness_ht[release_related_samples_to_drop_ht.s].relationships
     )
 
-    return meta_ht
+    # Annotating meta HT with related filter booleans
+    # Any sample that is hard filtered will have missing values for these bools
+    # Any sample that was filtered for relatedness will have True for sample_filters.related
+    # If a filtered related sample had a relationship with a higher degree than second-degree (duplicate, parent-child, sibling),
+    # that filter will also be True
+    left_ht = left_ht.annotate(
+        sample_filters=left_ht.sample_filters.annotate(
+            release_related=hl.if_else(
+                left_ht.sample_filters.hard_filtered,
+                hl.null(hl.tbool),
+                hl.is_defined(release_related_samples_to_drop_ht[left_ht.key]),
+            ),
+            release_duplicate=get_relationship_filter_expr(
+                left_ht.sample_filters.hard_filtered,
+                DUPLICATE_OR_TWINS,
+                release_related_samples_to_drop_ht[left_ht.key].relationships,
+            ),
+            release_parent_child=get_relationship_filter_expr(
+                left_ht.sample_filters.hard_filtered,
+                PARENT_CHILD,
+                release_related_samples_to_drop_ht[left_ht.key].relationships,
+            ),
+            release_sibling=get_relationship_filter_expr(
+                left_ht.sample_filters.hard_filtered,
+                SIBLINGS,
+                release_related_samples_to_drop_ht[left_ht.key].relationships,
+            ),
+            all_samples_related=hl.if_else(
+                left_ht.sample_filters.hard_filtered,
+                hl.null(hl.tbool),
+                hl.is_defined(related_samples_to_drop_ht[left_ht.key]),
+            ),
+            all_samples_duplicate=get_relationship_filter_expr(
+                left_ht.sample_filters.hard_filtered,
+                DUPLICATE_OR_TWINS,
+                related_samples_to_drop_ht[left_ht.key].relationships,
+            ),
+            all_samples_parent_child=get_relationship_filter_expr(
+                left_ht.sample_filters.hard_filtered,
+                PARENT_CHILD,
+                related_samples_to_drop_ht[left_ht.key].relationships,
+            ),
+            all_samples_sibling=get_relationship_filter_expr(
+                left_ht.sample_filters.hard_filtered,
+                SIBLINGS,
+                related_samples_to_drop_ht[left_ht.key].relationships,
+            ),
+        )
+    )
+    left_ht = left_ht.annotate(
+        relatedness_inference=hl.struct(
+            relationships=relatedness_ht[left_ht.s].relationships,
+        )
+    )
+
+    logger.info("Adding relatedness globals (cutoffs)")
+    left_ht = left_ht.annotate_globals(
+        relatedness_inference_cutoffs=hl.struct(
+            **relatedness_ht.index_globals()
+        )
+    )
+
+    logger.info(logging_statement.format("outlier HT"))
+    if regressed_metrics_outlier:
+        right_ht = regressed_metrics.ht()
+    else:
+        right_ht = stratified_metrics.ht()
+
+    right_ht = right_ht.select_globals(
+        outlier_detection_metrics=hl.struct(
+            **right_ht.index_globals(),
+            used_regressed_metrics=regressed_metrics_outlier
+        )
+    )
+
+    left_ht = join_tables(left_ht, "s", right_ht, "s", "outer")
+    left_ht = left_ht.transmute(
+        sample_filters=left_ht.sample_filters.annotate(
+            **{x: left_ht[x] for x in left_ht.row if x.startswith('fail_')},
+            qc_metrics_filters=left_ht.qc_metrics_filters
+        )
+    )
+    if regressed_metrics_outlier:
+        left_ht = left_ht.transmute(
+            sample_qc=left_ht.sample_qc.annotate(
+                **{x: left_ht[x] for x in left_ht.row if x.endswith('_residual')},
+            )
+        )
+
+    logger.info("Annotating high_quality field")
+    left_ht = left_ht.annotate(
+        sample_filters=left_ht.sample_filters.annotate(
+            high_quality=~left_ht.sample_filters.hard_filtered & (hl.len(left_ht.sample_filters.qc_metrics_filters) == 0)
+        )
+    )
+
+    logger.info("Annotating releasable field")
+    left_ht = left_ht.annotate(
+        sample_filters=left_ht.sample_filters.annotate(
+            release=left_ht.project_meta.releasable & left_ht.sample_filters.high_quality & ~left_ht.project_meta.exclude
+        )
+    ).persist()
+
+    logger.info(
+        "Release sample counts:"
+        f"{left_ht.aggregate(hl.struct(release=hl.agg.count_where(left_ht.sample_filters.release)))}"
+    )
+    left_ht.describe()
+    left_ht.summarize()
+    logger.info(f"Final count: {left_ht.count()}")
+    logger.info("Complete")
+
+    return left_ht
 
 
 def main(args):
@@ -612,15 +848,15 @@ def main(args):
         samples_to_drop.write(release_related_samples_to_drop.path, overwrite=args.overwrite)
 
     if args.generate_metadata:
-        meta_ht = generate_metadata()
+        meta_ht = generate_metadata(args.regressed_metrics_outlier)
         meta_ht.checkpoint(meta.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-        n_pcs = meta_ht.aggregate(hl.agg.min(hl.len(meta_ht.pca_scores)))
+        n_pcs = meta_ht.aggregate(hl.agg.min(hl.len(meta_ht.population_inference.pca_scores)))
         meta_ht = meta_ht.transmute(
-            **{f'PC{i + 1}': meta_ht.pca_scores[i] for i in range(n_pcs)},
-            hard_filters=hl.or_missing(hl.len(meta_ht.hard_filters) > 0, hl.delimit(meta_ht.hard_filters)),
-            qc_metrics_filters=hl.or_missing(hl.len(meta_ht.qc_metrics_filters) > 0, hl.delimit(meta_ht.qc_metrics_filters))
+            **{f'PC{i + 1}': meta_ht.population_inference.pca_scores[i] for i in range(n_pcs)},
+            hard_filters=hl.or_missing(hl.len(meta_ht.sample_filters.hard_filters) > 0, hl.delimit(meta_ht.sample_filters.hard_filters)),
+            qc_metrics_filters=hl.or_missing(hl.len(meta_ht.sample_filters.qc_metrics_filters) > 0, hl.delimit(meta_ht.sample_filters.qc_metrics_filters))
         )
-        meta_ht.flatten().export(meta_tsv_path)
+        meta_ht.flatten().export(meta_tsv_path())
 
 
 if __name__ == "__main__":
@@ -677,5 +913,6 @@ if __name__ == "__main__":
     parser.add_argument('--apply_stratified_filters', help="Compute per pop filtering.", action='store_true')
     parser.add_argument('--apply_regressed_filters', help='Computes qc_metrics adjusted for pop.', action='store_true')
     parser.add_argument('--generate_metadata', help='Generates the metadata HT.', action='store_true')
+    parser.add_argument('--regressed_metrics_outlier', help='Should metadata HT use regression outlier model.', action='store_true')
 
     main(parser.parse_args())
