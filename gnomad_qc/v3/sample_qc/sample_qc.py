@@ -208,6 +208,7 @@ def compute_sample_rankings(use_qc_metrics_filters: bool) -> hl.Table:
     project_ht = project_meta.ht()
     project_ht = project_ht.select(
         'releasable',
+        'exclude',
         chr20_mean_dp=sex.ht()[project_ht.key].chr20_mean_dp,
         filtered=hl.or_else(hl.len(hard_filtered_samples.ht()[project_ht.key].hard_filters) > 0, False)
     )
@@ -226,7 +227,7 @@ def compute_sample_rankings(use_qc_metrics_filters: bool) -> hl.Table:
 
     project_ht = project_ht.order_by(
         project_ht.filtered,
-        hl.desc(project_ht.releasable),
+        hl.desc(project_ht.releasable & ~project_ht.exclude),
         hl.desc(project_ht.chr20_mean_dp)
     ).add_index(name='rank')
 
@@ -245,7 +246,7 @@ def run_pca(
     if not include_unreleasable_samples:
         logger.info("Excluding unreleasable samples for PCA.")
         samples_to_drop = samples_to_drop.union(
-            qc_mt.filter_cols(~project_meta.ht()[qc_mt.col_key].releasable).cols().select()
+            qc_mt.filter_cols(~project_meta.ht()[qc_mt.col_key].releasable | project_meta.ht()[qc_mt.col_key].exclude).cols().select()
         )
     else:
         logger.info("Including unreleasable samples for PCA")
@@ -491,17 +492,18 @@ def main(args):
         pop_pca_eigenvalues, pop_pca_scores_ht, pop_pca_loadings_ht = run_pca(args.include_unreleasable_samples, args.n_pcs, samples_to_drop)
         pop_pca_scores_ht.write(ancestry_pca_scores(args.include_unreleasable_samples).path, overwrite=args.overwrite)
         pop_pca_loadings_ht.write(ancestry_pca_loadings(args.include_unreleasable_samples).path, overwrite=args.overwrite)
-        with hl.utils.hadoop_open(ancestry_pca_eigenvalues_path(args.include_unreleasable_samples), mode='w') as f:
+        with hl.utils.hadoop_open(ancestry_pca_eigenvalues(args.include_unreleasable_samples).path, mode='w') as f:
             f.write(",".join([str(x) for x in pop_pca_eigenvalues]))
 
     if args.assign_pops:
-        pop_ht, pops_rf_model = assign_pops(args.min_pop_prob, args.include_unreleasable_samples)
+        n_pcs = 16
+        pop_ht, pops_rf_model = assign_pops(args.min_pop_prob, args.include_unreleasable_samples, n_pcs=n_pcs, withhold_prob=args.withhold_prob)
         pop_ht = pop_ht.checkpoint(pop.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         pop_ht.transmute(
-            **{f'PC{i + 1}': pop_ht.pca_scores[i] for i in range(0, 10)}
-        ).export(pop_tsv_path)
+            **{f'PC{i + 1}': pop_ht.pca_scores[i] for i in range(0, n_pcs)}
+        ).export(pop_tsv_path())
 
-        with hl.hadoop_open(pop_rf_path, 'wb') as out:
+        with hl.hadoop_open(pop_rf_path(), 'wb') as out:
             pickle.dump(pops_rf_model, out)
 
     if args.calculate_inbreeding:
