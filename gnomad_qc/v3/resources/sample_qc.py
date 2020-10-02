@@ -85,7 +85,7 @@ def ancestry_pca_scores(include_unreleasable_samples: bool = False
     )
 
 
-def ancestry_pca_eigenvalues_path(include_unreleasable_samples: bool = False
+def ancestry_pca_eigenvalues(include_unreleasable_samples: bool = False
 ) -> VersionedTableResource:
     """
     Gets the ancestry PCA eigenvalues VersionedTableResource
@@ -95,7 +95,7 @@ def ancestry_pca_eigenvalues_path(include_unreleasable_samples: bool = False
     """
     return VersionedTableResource(
         CURRENT_RELEASE,
-        {release: TableResource(_get_ancestry_pca_ht_path("eigenvalues", release, include_unreleasable_samples)) for release in RELEASES}
+        {release: _get_ancestry_pca_ht_path("eigenvalues", release, include_unreleasable_samples) for release in RELEASES}
     )
 
 
