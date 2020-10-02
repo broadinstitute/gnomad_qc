@@ -353,7 +353,7 @@ def assign_pops(
     return pop_ht, pops_rf_model
 
 
-def apply_stratified_filters(filtering_qc_metrics: List[str]) -> hl.Table:
+def apply_stratified_filters(sample_qc_ht, filtering_qc_metrics: List[str]) -> hl.Table:
     logger.info("Computing stratified QC metrics filters using metrics: " + ", ".join(filtering_qc_metrics))
     sample_qc_ht = hl.read_table(get_sample_qc('bi_allelic'))
     sample_qc_ht = sample_qc_ht.annotate(
@@ -369,22 +369,23 @@ def apply_stratified_filters(filtering_qc_metrics: List[str]) -> hl.Table:
 
 
 def apply_regressed_filters(
+        sample_qc_ht,
         filtering_qc_metrics: List[str],
         include_unreleasable_samples: bool,
+        n_pcs: int = 16,
 ) -> hl.Table:
-    sample_qc_ht = get_sample_qc('bi_allelic').ht()
     sample_qc_ht = sample_qc_ht.select(
         **sample_qc_ht.sample_qc,
         **ancestry_pca_scores(include_unreleasable_samples).ht()[sample_qc_ht.key],
-        releasable=project_meta.ht()[sample_qc_ht.key].releasable
+        releasable=project_meta.ht()[sample_qc_ht.key].releasable,
+        exclude=project_meta.ht()[sample_qc_ht.key].exclude,
     )
     residuals_ht = compute_qc_metrics_residuals(
         ht=sample_qc_ht,
-        pc_scores=sample_qc_ht.scores,
+        pc_scores=sample_qc_ht.scores[:n_pcs],
         qc_metrics={metric: sample_qc_ht[metric] for metric in filtering_qc_metrics},
-        regression_sample_inclusion_expr=sample_qc_ht.releasable
+        regression_sample_inclusion_expr=sample_qc_ht.releasable & ~sample_qc_ht.exclude
     )
-
     stratified_metrics_ht = compute_stratified_metrics_filter(
         ht=residuals_ht,
         qc_metrics=dict(residuals_ht.row_value),
@@ -392,10 +393,11 @@ def apply_regressed_filters(
     )
 
     residuals_ht = residuals_ht.annotate(
-        **stratified_metrics_ht[sample_qc_ht.key]
+        **stratified_metrics_ht[residuals_ht.key]
     )
     residuals_ht = residuals_ht.annotate_globals(
-        **stratified_metrics_ht.index_globals()
+        **stratified_metrics_ht.index_globals(),
+        n_pcs=n_pcs,
     )
 
     return residuals_ht
