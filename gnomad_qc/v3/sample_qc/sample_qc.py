@@ -445,14 +445,36 @@ def main(args):
     if args.compute_qc_mt:
         compute_qc_mt().write(qc.path, overwrite=args.overwrite)
 
-    if args.run_pc_relate:
-        logger.info('Running PC-Relate')
-        logger.warn("PC-relate requires SSDs and doesn't work with preemptible workers!")
-        qc_mt = qc.mt()
-        eig, scores, _ = hl.hwe_normalized_pca(qc_mt.GT, k=10, compute_loadings=False)
-        scores = scores.checkpoint(pc_relate_pca_scores.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-        relatedness_ht = hl.pc_relate(qc_mt.GT, min_individual_maf=0.01, scores_expr=scores[qc_mt.col_key].scores,
-                                      block_size=4096, min_kinship=0.05, statistics='all')
+    if args.run_pc_relate or args.reannotate_relatedness:
+        if args.run_pc_relate:
+            logger.info('Running PC-Relate')
+            logger.warning("PC-relate requires SSDs and doesn't work with preemptible workers!")
+            qc_mt = qc.mt()
+            eig, scores, _ = hl.hwe_normalized_pca(qc_mt.GT, k=10, compute_loadings=False)
+            scores = scores.checkpoint(pc_relate_pca_scores.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+            relatedness_ht = hl.pc_relate(qc_mt.GT, min_individual_maf=0.01, scores_expr=scores[qc_mt.col_key].scores,
+                                         block_size=4096, min_kinship=0.05, statistics='all')
+
+        else:
+            relatedness_ht = relatedness.ht().checkpoint('gs://gnomad-tmp/relatedness_ht_checkpoint.ht', overwrite=True)  # Copy HT to temp location to overwrite annotation
+        relatedness_ht = relatedness_ht.annotate(
+            relationship=get_relationship_expr(
+                kin_expr=relatedness_ht.kin,
+                ibd0_expr=relatedness_ht.ibd0,
+                ibd1_expr=relatedness_ht.ibd1,
+                ibd2_expr=relatedness_ht.ibd2,
+                first_degree_kin_thresholds=tuple(args.first_degree_kin_thresholds),
+                second_degree_min_kin=args.second_degree_kin_cutoff,
+                ibd0_0_max=args.ibd0_0_max,
+            )
+        )
+        relatedness_ht = relatedness_ht.annotate_globals(
+            min_individual_maf=0.01,
+            min_emission_kinship=0.05,
+            ibd0_0_max=args.ibd0_0_max,
+            second_degree_kin_cutoff=args.second_degree_kin_cutoff,
+            first_degree_kin_thresholds=tuple(args.first_degree_kin_thresholds),
+        )
         relatedness_ht.write(relatedness.path, args.overwrite)
 
     if args.run_pca:
@@ -539,6 +561,31 @@ if __name__ == "__main__":
     parser.add_argument('--compute_samples_ranking', help='Computes global samples ranking based on hard-filters, releasable and coverage.', action='store_true')
     parser.add_argument('--compute_qc_mt', help='Creates the QC MT based on liftover of v2 QC and Purcell 5k sites', action='store_true')
     parser.add_argument('--run_pc_relate', help='Run PC-relate', action='store_true')
+    parser.add_argument('--reannotate_relatedness', help='Runs the relatedness annotation without re-running pc-relate', action='store_true')
+    parser.add_argument(
+        "--first_degree_kin_thresholds",
+        help="First degree kinship threshold for filtering a pair of samples with a first degree relationship. \
+        Default = (0.1767767, 0.4); \
+        Defaults taken from Bycroft et al. (2018)",
+        nargs=2,
+        default=(0.1767767, 0.4),
+        type=float,
+    )
+    parser.add_argument(
+        "--second_degree_kin_cutoff",
+        help="Minimum kinship threshold for filtering a pair of samples with a second degree relationship\
+        in PC relate and filtering related individuals. (Default = 0.08838835) \
+        Default taken from Bycroft et al. (2018)",
+        default=0.08838835,
+        type=float,
+    )
+    parser.add_argument(
+        "--ibd0_0_max",
+        help="IBD0 cutoff to determine parent offspring vs full sibling (Default = 0.05) \
+        Default is adjusted from theoretical values; parent-offspring should have an IBD0 = 0. \
+        Full siblings should have an IBD0 = 0.25.",
+        default=0.05,
+    )
     parser.add_argument('--compute_related_samples_to_drop', help='Flags related samples to drop', action='store_true')
     parser.add_argument('--kin_threshold', help='Maximum kin threshold to be considered unrelated', default=0.1, type=float)
     parser.add_argument('--min_related_hard_filter', help='Minimum number of relateds to have to get hard-filterd', default=50, type=int)
