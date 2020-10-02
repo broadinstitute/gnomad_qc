@@ -4,15 +4,22 @@ import pickle
 from typing import Any, List, Tuple
 
 import hail as hl
-from gnomad.resources.grch38 import (lcr_intervals, purcell_5k_intervals,
-                                     telomeres_and_centromeres)
+from gnomad.resources.grch38 import (clinvar, clinvar_pathogenic, lcr_intervals,
+                                     purcell_5k_intervals, telomeres_and_centromeres)
 from gnomad.sample_qc.ancestry import (assign_population_pcs,
                                        run_pca_with_relateds)
 from gnomad.sample_qc.filtering import (compute_qc_metrics_residuals,
                                         compute_stratified_metrics_filter,
                                         compute_stratified_sample_qc)
 from gnomad.sample_qc.pipeline import annotate_sex, get_qc_mt
-from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
+from gnomad.sample_qc.relatedness import (
+    compute_related_samples_to_drop,
+    DUPLICATE_OR_TWINS,
+    get_relationship_expr,
+    PARENT_CHILD,
+    SIBLINGS,
+    UNRELATED,
+)
 from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
 from gnomad.utils.annotations import bi_allelic_expr, get_adj_expr
 from gnomad.utils.filtering import add_filters_expr, filter_to_autosomes
@@ -22,9 +29,10 @@ from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
 from gnomad_qc.v3.resources.annotations import freq, get_info, last_END_position
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta, meta_tsv_path, project_meta
-from gnomad_qc.v3.resources.sample_qc import (ancestry_pca_eigenvalues_path,
+from gnomad_qc.v3.resources.sample_qc import (ancestry_pca_eigenvalues,
                                               ancestry_pca_loadings,
                                               ancestry_pca_scores,
+                                              sample_clinvar_count,
                                               get_sample_qc,
                                               hard_filtered_samples,
                                               pc_relate_pca_scores,
@@ -38,7 +46,12 @@ from gnomad_qc.v3.resources.sample_qc import (ancestry_pca_eigenvalues_path,
                                               sample_inbreeding, sex,
                                               stratified_metrics)
 
-logger = logging.getLogger("sample_qc")
+
+logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+logger = logging.getLogger("population_pca")
+logger.setLevel(logging.INFO)
+
+SUBSETS = ["topmed", "neuro_cohort", "neuro_subset", "tgp", "hgdp"]
 
 
 def compute_sample_qc() -> hl.Table:
