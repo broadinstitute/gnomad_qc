@@ -839,8 +839,10 @@ def main(args):
         rank_ht = rank_ht.checkpoint(release_samples_rankings.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         filtered_samples = hl.literal(rank_ht.aggregate(hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))))  # TODO: don't localize once hail bug is fixed
         print(filtered_samples)
+        relatedness_ht = relatedness.ht()
+        relatedness_ht = relatedness_ht.key_by(i=relatedness_ht.i.s, j=relatedness_ht.j.s)
         samples_to_drop = compute_related_samples_to_drop(
-            relatedness.ht(),
+            relatedness_ht,
             rank_ht,
             args.kin_threshold,
             filtered_samples=filtered_samples
