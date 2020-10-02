@@ -355,7 +355,6 @@ def assign_pops(
 
 def apply_stratified_filters(sample_qc_ht, filtering_qc_metrics: List[str]) -> hl.Table:
     logger.info("Computing stratified QC metrics filters using metrics: " + ", ".join(filtering_qc_metrics))
-    sample_qc_ht = hl.read_table(get_sample_qc('bi_allelic'))
     sample_qc_ht = sample_qc_ht.annotate(
         qc_pop=pop.ht()[sample_qc_ht.key].pop
     )
