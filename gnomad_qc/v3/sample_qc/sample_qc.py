@@ -261,7 +261,9 @@ def run_pca(
 def assign_pops(
         min_prob: float,
         include_unreleasable_samples: bool,
-        max_mislabeled_training_samples: int = 50  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
+        max_mislabeled_training_samples: int = 50,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
+        n_pcs: int = 16,
+        withhold_prob: float = None,
 ) -> Tuple[hl.Table, Any]:
     logger.info("Assigning global population labels")
     pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples).ht()
@@ -270,10 +272,21 @@ def assign_pops(
         training_pop=(
             hl.case()
                 .when(hl.is_defined(project_meta_ht.project_pop), project_meta_ht.project_pop)
+                #.when(hl.is_defined(meta_new_ht.project_pop) & ((meta_new_ht.project_pop == "mid") | (meta_new_ht.project_pop == "oce")) , meta_new_ht.project_pop)
                 .when(project_meta_ht.v2_pop != 'oth', project_meta_ht.v2_pop)
                 .or_missing()
         )
     )
+    pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+        training_pop_all=pop_pca_scores_ht.training_pop
+    )
+    if withhold_prob is not None:
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+            training_pop=hl.or_missing(
+                hl.is_defined(pop_pca_scores_ht.training_pop) & hl.rand_bool(1.0-withhold_prob),
+                pop_pca_scores_ht.training_pop
+            )
+        )
 
     logger.info("Running RF using {} training examples".format(
         pop_pca_scores_ht.aggregate(
@@ -282,15 +295,21 @@ def assign_pops(
     )
     )
 
+    pcs = list(range(n_pcs))
+    pcs = hl.literal(pcs)
     pop_ht, pops_rf_model = assign_population_pcs(
         pop_pca_scores_ht,
-        pc_cols=pop_pca_scores_ht.scores,
+        pc_cols=pcs.map(lambda x: pop_pca_scores_ht.scores[x]),
         known_col='training_pop',
         min_prob=min_prob
     )
 
     n_mislabeled_samples = pop_ht.aggregate(hl.agg.count_where(pop_ht.training_pop != pop_ht.pop))
+    pop_ht = pop_ht.annotate(training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all)
+    known_pop_removal_iter = 1
     while n_mislabeled_samples > max_mislabeled_training_samples:
+        print(f"Found {n_mislabeled_samples} samples labeled differently from their known pop. Re-running without.")
+        known_pop_removal_iter += 1
         logger.info(f"Found {n_mislabeled_samples} samples labeled differently from their known pop. Re-running without.")
 
         pop_ht = pop_ht[pop_pca_scores_ht.key]
@@ -298,7 +317,11 @@ def assign_pops(
             training_pop=hl.or_missing(
                 (pop_ht.training_pop == pop_ht.pop),
                 pop_pca_scores_ht.training_pop
-            )
+            ),
+            training_pop_all=hl.or_missing(
+                hl.is_missing(pop_ht.training_pop) | (pop_ht.training_pop == pop_ht.pop),
+                pop_pca_scores_ht.training_pop_all,
+            ),
         ).persist()
 
         logger.info("Running RF using {} training examples".format(
@@ -310,11 +333,22 @@ def assign_pops(
 
         pop_ht, pops_rf_model = assign_population_pcs(
             pop_pca_scores_ht,
-            pc_cols=pop_pca_scores_ht.scores,
+            pc_cols=pcs.map(lambda x: pop_pca_scores_ht.scores[x]),
             known_col='training_pop',
             min_prob=min_prob
         )
+        pop_ht = pop_ht.annotate(training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all)
+
         n_mislabeled_samples = pop_ht.aggregate(hl.agg.count_where(pop_ht.training_pop != pop_ht.pop))
+
+    pop_ht = pop_ht.annotate_globals(
+        min_prob=min_prob,
+        include_unreleasable_samples=include_unreleasable_samples,
+        max_mislabeled_training_samples=max_mislabeled_training_samples,
+        known_pop_removal_iterations=known_pop_removal_iter,
+        n_pcs=n_pcs,
+        #withhold_prob=withhold_prob,
+    )
 
     return pop_ht, pops_rf_model
 
@@ -613,7 +647,8 @@ if __name__ == "__main__":
     parser.add_argument('--run_pca', help='Compute PCA', action='store_true')
     parser.add_argument('--include_unreleasable_samples', help='Includes unreleasable samples for computing PCA', action='store_true')
     parser.add_argument('--assign_pops', help='Assigns pops from PCA', action='store_true')
-    parser.add_argument('--min_pop_prob', help='Minimum RF prob for pop assignment', default=0.9, type=float)
+    parser.add_argument('--min_pop_prob', help='Minimum RF prob for pop assignment', default=0.75, type=float)
+    parser.add_argument('--withhold_prob', help='Minimum RF prob for pop assignment', type=float)
     parser.add_argument('--calculate_inbreeding', help='Calculate sample level inbreeding', action='store_true')
     parser.add_argument('--calculate_clinvar', help='Calculate counts of ClinVar and ClinVar P/LP variants per sample', action='store_true')
     parser.add_argument('--filtering_qc_metrics', help="List of QC metrics for filtering.", default=",".join([
