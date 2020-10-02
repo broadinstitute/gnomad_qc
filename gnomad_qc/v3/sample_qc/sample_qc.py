@@ -488,6 +488,7 @@ def main(args):
             args.kin_threshold,
             filtered_samples=filtered_samples
         )
+        samples_to_drop = samples_to_drop.key_by(s=samples_to_drop.s.s)
         samples_to_drop.checkpoint(pca_related_samples_to_drop.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         pop_pca_eigenvalues, pop_pca_scores_ht, pop_pca_loadings_ht = run_pca(args.include_unreleasable_samples, args.n_pcs, samples_to_drop)
         pop_pca_scores_ht.write(ancestry_pca_scores(args.include_unreleasable_samples).path, overwrite=args.overwrite)
