@@ -285,7 +285,6 @@ def assign_pops(
         training_pop=(
             hl.case()
                 .when(hl.is_defined(project_meta_ht.project_pop), project_meta_ht.project_pop)
-                #.when(hl.is_defined(meta_new_ht.project_pop) & ((meta_new_ht.project_pop == "mid") | (meta_new_ht.project_pop == "oce")) , meta_new_ht.project_pop)
                 .when(project_meta_ht.v2_pop != 'oth', project_meta_ht.v2_pop)
                 .or_missing()
         )
@@ -293,7 +292,7 @@ def assign_pops(
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop_all=pop_pca_scores_ht.training_pop
     )
-    if withhold_prob is not None:
+    if withhold_prob:
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=hl.or_missing(
                 hl.is_defined(pop_pca_scores_ht.training_pop) & hl.rand_bool(1.0-withhold_prob),
@@ -359,8 +358,9 @@ def assign_pops(
         max_mislabeled_training_samples=max_mislabeled_training_samples,
         known_pop_removal_iterations=known_pop_removal_iter,
         n_pcs=n_pcs,
-        #withhold_prob=withhold_prob,
     )
+    if withhold_prob:
+        pop_ht = pop_ht.annotate_globals(withhold_prob=withhold_prob)
 
     return pop_ht, pops_rf_model
 
