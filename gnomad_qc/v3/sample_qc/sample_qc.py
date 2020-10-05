@@ -321,7 +321,6 @@ def assign_pops(
     pop_ht = pop_ht.annotate(training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all)
     known_pop_removal_iter = 1
     while n_mislabeled_samples > max_mislabeled_training_samples:
-        print(f"Found {n_mislabeled_samples} samples labeled differently from their known pop. Re-running without.")
         known_pop_removal_iter += 1
         logger.info(f"Found {n_mislabeled_samples} samples labeled differently from their known pop. Re-running without.")
 
