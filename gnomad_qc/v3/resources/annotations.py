@@ -1,6 +1,6 @@
 from gnomad.resources.resource_utils import (TableResource,
                                              VersionedTableResource)
-
+from typing import Optional
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
 
@@ -83,15 +83,26 @@ last_END_position = VersionedTableResource(
     },
 )
 
-freq = VersionedTableResource(
-    CURRENT_RELEASE,
-    {
-        release: TableResource(
-            f"{_annotations_root(release)}/gnomad_genomes_v{release}.frequencies.ht"
+def get_freq(version: str = CURRENT_RELEASE, subset: Optional[str] = None) -> VersionedTableResource:
+    """
+
+    :return:
+    """
+    if version == "3" and subset:
+        raise DataException(
+            f"Subsets of gnomAD v3 do not exist"
         )
-        for release in RELEASES
-    },
-)
+
+    return VersionedTableResource(
+        version,
+        {
+            release: TableResource(
+                f"{_annotations_root(release)}/gnomad_genomes_v{release}.frequencies{'.' + subset if subset else ''}.ht"
+            )
+            for release in RELEASES
+        }
+    )
+
 
 qual_hist = VersionedTableResource(
     CURRENT_RELEASE,
