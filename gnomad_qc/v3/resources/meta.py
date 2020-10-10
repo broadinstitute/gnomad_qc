@@ -35,26 +35,24 @@ def meta_tsv_path(
 
 
 _meta_versions = {
+    "v3.1": TableResource(
+        path="gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_sample_qc_metadata.ht"
+    ),
     "2019-09-27": TableResource(
         path="gs://gnomad/metadata/genomes_v3/gnomad_v3_metadata_2019-09-27.ht"
     ),
     "2019-09-25": TableResource(
         path="gs://gnomad/metadata/genomes_v3/gnomad_v3_metadata_2019-09-25.ht"
     ),
-    "2020-10-02": TableResource(
-        path="gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_metadata_2020-10-02.ht"
-    ),
 }
 _meta_versions["v3"] = _meta_versions["2019-09-27"]
-_meta_versions["v3.1"] = _meta_versions["2020-10-02"]
-
 
 
 _project_meta_versions = {
-    "2020-10-01": TableResource(
-        path="gs://gnomad/metadata/genomes_v3.1/2020-10-01_v3.1_project_meta.ht"
+    "v3.1": TableResource(
+        path="gs://gnomad/metadata/genomes_v3.1/v3.1_project_meta.ht"
     ),
-    "09-09-2019": TableResource(
+    "v3": TableResource(
         path="gs://gnomad/metadata/genomes_v3/09-09-2019_v3_project_meta.ht",
         import_func=hl.import_table,
         import_args={
@@ -65,9 +63,6 @@ _project_meta_versions = {
         },
     ),
 }
-_project_meta_versions["v3"] = _project_meta_versions["09-09-2019"]
-_project_meta_versions["v3.1"] = _project_meta_versions["2020-10-01"]
-
 
 _pedigree_versions = {
     "v3.1": PedigreeResource(

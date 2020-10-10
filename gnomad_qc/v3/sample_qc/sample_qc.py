@@ -51,7 +51,7 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("population_pca")
 logger.setLevel(logging.INFO)
 
-SUBSETS = ["topmed", "neuro_cohort", "neuro_subset", "tgp", "hgdp"]
+SUBSETS = ["topmed", "controls_and_biobanks", "neuro_cohort", "tgp", "hgdp"]
 
 
 def compute_sample_qc() -> hl.Table:
@@ -63,7 +63,7 @@ def compute_sample_qc() -> hl.Table:
             remove_hard_filtered_samples=False
         )
     )
-    mt = mt.filter_rows(hl.len(mt.alleles) > 1)
+    mt = mt.filter_rows(~hl.is_defined(telomeres_and_centromeres.ht()[mt.locus]) & (hl.len(mt.alleles) > 1))
     mt = mt.select_entries('GT')
 
     sample_qc_ht = compute_stratified_sample_qc(
@@ -180,7 +180,7 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     picard_ht = picard_metrics.ht()[ht.key]
     hard_filters['contamination'] = picard_ht.bam_metrics.freemix > 5.00
     hard_filters['chimera'] = picard_ht.bam_metrics.pct_chimeras > 5.00
-    hard_filters['coverage'] = picard_ht.bam_metrics.mean_coverage < 15
+    # hard_filters['coverage'] = picard_ht.bam_metrics.mean_coverage < 15
     hard_filters['insert_size'] = picard_ht.bam_metrics.median_insert_size < 250
 
     ht = ht.annotate(
@@ -219,6 +219,7 @@ def compute_sex(aaf_threshold=0.001, f_stat_cutoff=0.5) -> hl.Table:
 
 def compute_sample_rankings(use_qc_metrics_filters: bool) -> hl.Table:
     project_ht = project_meta.ht()
+    project_ht = project_ht.annotate(exclude=hl.if_else(hl.is_missing(project_ht.exclude), False, project_ht.exclude))
     project_ht = project_ht.select(
         'releasable',
         'exclude',
@@ -385,11 +386,13 @@ def apply_regressed_filters(
         include_unreleasable_samples: bool,
         n_pcs: int = 16,
 ) -> hl.Table:
+    project_ht = project_meta.ht()
+    project_ht = project_ht.annotate(exclude=hl.if_else(hl.is_missing(project_ht.exclude), False, project_ht.exclude))
     sample_qc_ht = sample_qc_ht.select(
         **sample_qc_ht.sample_qc,
         **ancestry_pca_scores(include_unreleasable_samples).ht()[sample_qc_ht.key],
-        releasable=project_meta.ht()[sample_qc_ht.key].releasable,
-        exclude=project_meta.ht()[sample_qc_ht.key].exclude,
+        releasable=project_ht[sample_qc_ht.key].releasable,
+        exclude=project_ht[sample_qc_ht.key].exclude,
     )
     residuals_ht = compute_qc_metrics_residuals(
         ht=sample_qc_ht,
@@ -400,7 +403,7 @@ def apply_regressed_filters(
     stratified_metrics_ht = compute_stratified_metrics_filter(
         ht=residuals_ht,
         qc_metrics=dict(residuals_ht.row_value),
-        metric_threshold={'n_singleton_residual': (4.0, 8.0)}
+        metric_threshold={'n_singleton_residual': (100.0, 8.0), 'r_het_hom_var_residual': (100.0, 4.0)}
     )
 
     residuals_ht = residuals_ht.annotate(
@@ -496,6 +499,8 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     logger.info("Loading metadata file with subset, age, and releasable information to begin creation of the meta HT")
     left_ht = get_gnomad_v3_mt(remove_hard_filtered_samples=False).cols()
     right_ht = project_meta.ht()
+    right_ht = right_ht.annotate(exclude=hl.if_else(hl.is_missing(right_ht.exclude), False, right_ht.exclude))
+
     logger.info(f"There are {right_ht.count()} in the project metadata HT and {left_ht.count()} in the callset MT")
     mt_s_in_meta = left_ht.semi_join(right_ht).count()
     logger.info(f"There are {mt_s_in_meta} samples in both the project metadata HT and the callset MT")
@@ -515,7 +520,7 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     logger.info(logging_statement.format("picard metric HT"))
     right_ht = picard_metrics.ht()
     right_ht = right_ht.select("bam_metrics")
-    left_ht = join_tables(left_ht, "s", right_ht, "s", "right")
+    left_ht = join_tables(left_ht, "s", right_ht, "s", "left")
 
     logger.info(logging_statement.format("sex HT"))
     right_ht = sex.ht()
@@ -538,6 +543,13 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
 
     logger.info(logging_statement.format("sample QC HT"))
     right_ht = get_sample_qc("bi_allelic").ht()
+    # Remove annotations that cannot be computed from the sparse format
+    right_ht = right_ht.annotate(
+        **{
+            x: right_ht[x].drop('n_called', 'n_not_called', 'n_filtered', 'call_rate')
+            for x in right_ht.row_value
+        }
+    )
     left_ht = join_tables(left_ht, "s", right_ht, "s", "right")
 
     logger.info(logging_statement.format("population PCA HT"))
@@ -684,7 +696,7 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     logger.info("Annotating releasable field")
     left_ht = left_ht.annotate(
         sample_filters=left_ht.sample_filters.annotate(
-            release=left_ht.project_meta.releasable & left_ht.sample_filters.high_quality & ~left_ht.project_meta.exclude
+            release=left_ht.project_meta.releasable & left_ht.sample_filters.high_quality & ~left_ht.project_meta.exclude & ~left_ht.sample_filters.release_related
         )
     ).persist()
 
@@ -768,7 +780,7 @@ def main(args):
         samples_to_drop = compute_related_samples_to_drop(
             relatedness.ht(),
             rank_ht,
-            args.kin_threshold,
+            args.second_degree_kin_cutoff,
             filtered_samples=filtered_samples
         )
         samples_to_drop = samples_to_drop.key_by(s=samples_to_drop.s.s)
@@ -780,7 +792,7 @@ def main(args):
             f.write(",".join([str(x) for x in pop_pca_eigenvalues]))
 
     if args.assign_pops:
-        n_pcs = 16
+        n_pcs = args.pop_n_pcs
         pop_ht, pops_rf_model = assign_pops(args.min_pop_prob, args.include_unreleasable_samples, n_pcs=n_pcs, withhold_prob=args.withhold_prob)
         pop_ht = pop_ht.checkpoint(pop.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         pop_ht.transmute(
@@ -831,7 +843,7 @@ def main(args):
         ).write(stratified_metrics.path, overwrite=args.overwrite)
 
     if args.apply_regressed_filters:
-        n_pcs = 8
+        n_pcs = args.regress_n_pcs
         filtering_qc_metrics = args.filtering_qc_metrics.split(",")
         sample_qc_ht = get_sample_qc('bi_allelic').ht()
 
@@ -844,7 +856,7 @@ def main(args):
             filtering_qc_metrics,
             args.include_unreleasable_samples,
             n_pcs,
-        ).write(regressed_metrics.path, overwrite=args.overwrite)
+        ).write(regressed_metrics.path, overwrite=args.overwrite) #  .write(regressed_metrics(n_pcs).path, overwrite=args.overwrite)
 
     if args.compute_related_samples_to_drop:
         rank_ht = compute_sample_rankings(use_qc_metrics_filters=True)
@@ -856,7 +868,7 @@ def main(args):
         samples_to_drop = compute_related_samples_to_drop(
             relatedness_ht,
             rank_ht,
-            args.kin_threshold,
+            args.second_degree_kin_cutoff,
             filtered_samples=filtered_samples
         )
         samples_to_drop.write(release_related_samples_to_drop.path, overwrite=args.overwrite)
@@ -880,7 +892,7 @@ if __name__ == "__main__":
     parser.add_argument('--impute_sex', help='Runs sex imputation. Also runs sex karyotyping annotation.', action='store_true')
     parser.add_argument('--reannotate_sex', help='Runs the sex karyotyping annotations again, without re-computing sex imputation metrics.', action='store_true')
     parser.add_argument('--compute_hard_filters', help='Computes samples to be hard-filtered', action='store_true')
-    parser.add_argument('--min_cov', help="Minimum coverage for inclusion when computing har-filters", default=18, type=int)
+    parser.add_argument('--min_cov', help="Minimum coverage for inclusion when computing hard-filters", default=15, type=int)
     parser.add_argument('--compute_samples_ranking', help='Computes global samples ranking based on hard-filters, releasable and coverage.', action='store_true')
     parser.add_argument('--compute_qc_mt', help='Creates the QC MT based on liftover of v2 QC and Purcell 5k sites', action='store_true')
     parser.add_argument('--run_pc_relate', help='Run PC-relate', action='store_true')
@@ -897,9 +909,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--second_degree_kin_cutoff",
         help="Minimum kinship threshold for filtering a pair of samples with a second degree relationship\
-        in PC relate and filtering related individuals. (Default = 0.08838835) \
-        Default taken from Bycroft et al. (2018)",
-        default=0.08838835,
+        in PC relate and filtering related individuals. (Default = 0.1) \
+        Bycroft et al. (2018) calculates 0.08838835 but from evaluation of the distributions v3 has used 0.1",
+        default=0.1,
         type=float,
     )
     parser.add_argument(
@@ -910,22 +922,23 @@ if __name__ == "__main__":
         default=0.05,
     )
     parser.add_argument('--compute_related_samples_to_drop', help='Flags related samples to drop', action='store_true')
-    parser.add_argument('--kin_threshold', help='Maximum kin threshold to be considered unrelated', default=0.1, type=float)
     parser.add_argument('--min_related_hard_filter', help='Minimum number of relateds to have to get hard-filterd', default=50, type=int)
-    parser.add_argument('--n_pcs', help='Number of PCs to compute for ancestry PCA', default=30, type=int)
     parser.add_argument('--run_pca', help='Compute PCA', action='store_true')
+    parser.add_argument('--n_pcs', help='Number of PCs to compute for ancestry PCA', default=30, type=int)
     parser.add_argument('--include_unreleasable_samples', help='Includes unreleasable samples for computing PCA', action='store_true')
     parser.add_argument('--assign_pops', help='Assigns pops from PCA', action='store_true')
+    parser.add_argument('--pop_n_pcs', help='Number of PCs to use for ancestry assignment', default=16, type=int)
     parser.add_argument('--min_pop_prob', help='Minimum RF prob for pop assignment', default=0.75, type=float)
     parser.add_argument('--withhold_prob', help='Minimum RF prob for pop assignment', type=float)
     parser.add_argument('--calculate_inbreeding', help='Calculate sample level inbreeding', action='store_true')
     parser.add_argument('--calculate_clinvar', help='Calculate counts of ClinVar and ClinVar P/LP variants per sample', action='store_true')
     parser.add_argument('--filtering_qc_metrics', help="List of QC metrics for filtering.", default=",".join([
         'n_snp', 'n_singleton', 'r_ti_tv', 'r_insertion_deletion', 'n_insertion', 'n_deletion', 'r_het_hom_var',
-        'n_het', 'n_hom_var', 'n_transition', 'n_transversion'
-    ]))
+        'n_transition', 'n_transversion',
+    ]))  # used in v3 'n_het', 'n_hom_var',
     parser.add_argument('--apply_stratified_filters', help="Compute per pop filtering.", action='store_true')
     parser.add_argument('--apply_regressed_filters', help='Computes qc_metrics adjusted for pop.', action='store_true')
+    parser.add_argument('--regress_n_pcs', help='Number of PCs to use for qc metric regressions', default=10, type=int)
     parser.add_argument('--generate_metadata', help='Generates the metadata HT.', action='store_true')
     parser.add_argument('--regressed_metrics_outlier', help='Should metadata HT use regression outlier model.', action='store_true')
 
