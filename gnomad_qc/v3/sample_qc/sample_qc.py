@@ -371,8 +371,9 @@ def apply_stratified_filters(sample_qc_ht, filtering_qc_metrics: List[str]) -> h
     sample_qc_ht = sample_qc_ht.annotate(
         qc_pop=pop.ht()[sample_qc_ht.key].pop
     )
+    sample_qc_ht = sample_qc_ht.filter(hl.is_missing(hard_filtered_samples.ht()[sample_qc_ht.key]))
     stratified_metrics_ht = compute_stratified_metrics_filter(
-        sample_qc_ht.filter(hl.is_missing(hard_filtered_samples.ht()[sample_qc_ht.key])),
+        sample_qc_ht,
         qc_metrics={metric: sample_qc_ht.sample_qc[metric] for metric in filtering_qc_metrics},
         strata={'qc_pop': sample_qc_ht.qc_pop},
         metric_threshold={'n_singleton': (4.0, 8.0)}
@@ -400,8 +401,9 @@ def apply_regressed_filters(
         qc_metrics={metric: sample_qc_ht[metric] for metric in filtering_qc_metrics},
         regression_sample_inclusion_expr=sample_qc_ht.releasable & ~sample_qc_ht.exclude
     )
+    residuals_ht = residuals_ht.filter(hl.is_missing(hard_filtered_samples.ht()[residuals_ht.key]))
     stratified_metrics_ht = compute_stratified_metrics_filter(
-        ht=residuals_ht.filter(hl.is_missing(hard_filtered_samples.ht()[residuals_ht.key])),
+        ht=residuals_ht,
         qc_metrics=dict(residuals_ht.row_value),
         metric_threshold={'n_singleton_residual': (100.0, 8.0), 'r_het_hom_var_residual': (100.0, 4.0)}
     )
@@ -790,7 +792,7 @@ def main(args):
         pop_pca_eigenvalues, pop_pca_scores_ht, pop_pca_loadings_ht = run_pca(args.include_unreleasable_samples, args.n_pcs, samples_to_drop)
         pop_pca_scores_ht.write(ancestry_pca_scores(args.include_unreleasable_samples).path, overwrite=args.overwrite)
         pop_pca_loadings_ht.write(ancestry_pca_loadings(args.include_unreleasable_samples).path, overwrite=args.overwrite)
-        with hl.utils.hadoop_open(ancestry_pca_eigenvalues(args.include_unreleasable_samples).path, mode='w') as f:
+        with hl.utils.hadoop_open('gs://gnomad/sample_qc/ht/genomes_v3.1/gnomad_v3.1_eigenvalues.txt', mode='w') as f:  # hl.utils.hadoop_open(ancestry_pca_eigenvalues(args.include_unreleasable_samples).path, mode='w') as f:
             f.write(",".join([str(x) for x in pop_pca_eigenvalues]))
 
     if args.assign_pops:
