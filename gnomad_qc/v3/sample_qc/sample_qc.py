@@ -51,7 +51,7 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("sample_qc")
 logger.setLevel(logging.INFO)
 
-SUBSETS = ["topmed", "controls_and_biobanks", "non_neuro", "non_v2", "non_cancer", "tgp", "hgdp"]
+SUBSETS = ["non_topmed", "controls_and_biobanks", "non_neuro", "non_v2", "non_cancer", "tgp", "hgdp"]
 
 
 def compute_sample_qc() -> hl.Table:
@@ -372,7 +372,7 @@ def apply_stratified_filters(sample_qc_ht, filtering_qc_metrics: List[str]) -> h
         qc_pop=pop.ht()[sample_qc_ht.key].pop
     )
     stratified_metrics_ht = compute_stratified_metrics_filter(
-        sample_qc_ht,
+        sample_qc_ht.filter(hl.is_missing(hard_filtered_samples.ht()[sample_qc_ht.key])),
         qc_metrics={metric: sample_qc_ht.sample_qc[metric] for metric in filtering_qc_metrics},
         strata={'qc_pop': sample_qc_ht.qc_pop},
         metric_threshold={'n_singleton': (4.0, 8.0)}
@@ -401,7 +401,7 @@ def apply_regressed_filters(
         regression_sample_inclusion_expr=sample_qc_ht.releasable & ~sample_qc_ht.exclude
     )
     stratified_metrics_ht = compute_stratified_metrics_filter(
-        ht=residuals_ht.filter(hl.is_missing(hard_filtered_samples.ht()[residuals_ht.col_key])),
+        ht=residuals_ht.filter(hl.is_missing(hard_filtered_samples.ht()[residuals_ht.key])),
         qc_metrics=dict(residuals_ht.row_value),
         metric_threshold={'n_singleton_residual': (100.0, 8.0), 'r_het_hom_var_residual': (100.0, 4.0)}
     )
@@ -514,6 +514,7 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
         non_cancer=~right_ht.s.startswith('TCGA'),
         non_v2=~right_ht.v2_release,
         non_neuro=~right_ht.neuro_case,
+        non_topmed=~right_ht.non_topmed,
     )
     right_ht = right_ht.annotate(
         project_meta=hl.struct(**right_ht.row.drop(*(SUBSETS + ["s"]))),
