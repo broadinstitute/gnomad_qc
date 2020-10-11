@@ -688,21 +688,17 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
 
     logger.info("Annotating high_quality field")
     left_ht = left_ht.annotate(
-        sample_filters=left_ht.sample_filters.annotate(
-            high_quality=~left_ht.sample_filters.hard_filtered & (hl.len(left_ht.sample_filters.qc_metrics_filters) == 0)
-        )
+        high_quality=~left_ht.sample_filters.hard_filtered & (hl.len(left_ht.sample_filters.qc_metrics_filters) == 0)
     )
 
     logger.info("Annotating releasable field")
     left_ht = left_ht.annotate(
-        sample_filters=left_ht.sample_filters.annotate(
-            release=left_ht.project_meta.releasable & left_ht.sample_filters.high_quality & ~left_ht.project_meta.exclude & ~left_ht.sample_filters.release_related
-        )
+        release=left_ht.project_meta.releasable & left_ht.high_quality & ~left_ht.project_meta.exclude & ~left_ht.sample_filters.release_related
     ).persist()
 
     logger.info(
         "Release sample counts:"
-        f"{left_ht.aggregate(hl.struct(release=hl.agg.count_where(left_ht.sample_filters.release)))}"
+        f"{left_ht.aggregate(hl.struct(release=hl.agg.count_where(left_ht.release)))}"
     )
     left_ht.describe()
     left_ht.summarize()
