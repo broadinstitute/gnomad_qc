@@ -516,7 +516,7 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
         non_cancer=~right_ht.s.startswith('TCGA'),
         non_v2=~right_ht.v2_release,
         non_neuro=~right_ht.neuro_case,
-        non_topmed=~right_ht.non_topmed,
+        non_topmed=~right_ht.topmed,
     )
     right_ht = right_ht.annotate(
         project_meta=hl.struct(**right_ht.row.drop(*(SUBSETS + ["s"]))),
