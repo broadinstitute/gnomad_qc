@@ -48,10 +48,10 @@ from gnomad_qc.v3.resources.sample_qc import (ancestry_pca_eigenvalues,
 
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
-logger = logging.getLogger("population_pca")
+logger = logging.getLogger("sample_qc")
 logger.setLevel(logging.INFO)
 
-SUBSETS = ["topmed", "controls_and_biobanks", "neuro_cohort", "tgp", "hgdp"]
+SUBSETS = ["topmed", "controls_and_biobanks", "non_neuro", "non_v2", "non_cancer", "tgp", "hgdp"]
 
 
 def compute_sample_qc() -> hl.Table:
@@ -401,7 +401,7 @@ def apply_regressed_filters(
         regression_sample_inclusion_expr=sample_qc_ht.releasable & ~sample_qc_ht.exclude
     )
     stratified_metrics_ht = compute_stratified_metrics_filter(
-        ht=residuals_ht,
+        ht=residuals_ht.filter(hl.is_missing(hard_filtered_samples.ht()[residuals_ht.col_key])),
         qc_metrics=dict(residuals_ht.row_value),
         metric_threshold={'n_singleton_residual': (100.0, 8.0), 'r_het_hom_var_residual': (100.0, 4.0)}
     )
@@ -510,6 +510,11 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     if mt_s_in_meta != left_ht.count():
         logger.warning("Not all samples in callset MT are found in the project meta HT")
 
+    right_ht = right_ht.annotate(
+        non_cancer=~right_ht.s.startswith('TCGA'),
+        non_v2=~right_ht.v2_release,
+        non_neuro=~right_ht.neuro_case,
+    )
     right_ht = right_ht.annotate(
         project_meta=hl.struct(**right_ht.row.drop(*(SUBSETS + ["s"]))),
         subsets=hl.struct(**{x: right_ht[x] for x in SUBSETS})
