@@ -1,24 +1,20 @@
-<<<<<<< Updated upstream
-=======
 from gnomad.utils.annotations import annotate_freq, qual_hist_expr, pop_max_expr, faf_expr
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.slack import slack_notifications
 from gnomad_qc.slack_creds import slack_token
-
-from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
-from gnomad_qc.v3.resources import get_gnomad_v3_mt, meta, freq
->>>>>>> Stashed changes
-import argparse
-import logging
-
-import hail as hl
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (annotate_freq, bi_allelic_site_inbreeding_expr, faf_expr, get_adj_expr,
                                       pop_max_expr, qual_hist_expr)
-
-from gnomad_qc.v3.resources.annotations import freq
+from gnomad.utils.file_utils import file_exists
+from gnomad_qc.v3.resources.annotations import get_freq
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta
+from gnomad.resources.grch38.gnomad import SUBSETS
+
+from typing import Tuple
+import argparse
+import logging
+import hail as hl
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s: %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 logger = logging.getLogger("gnomAD_frequency_data")
@@ -31,102 +27,164 @@ POPS_TO_REMOVE_FOR_POPMAX = {'asj', 'fin', 'oth', 'ami'}
 # TODO: add in consanguineous frequency data?
 
 
-
-
 def main(args):
     hl.init(log='/generate_frequency_data.log', default_reference='GRCh38')
+    test_mt_path = 'gs://gnomad-tmp/gnomad_freq/chr20_test_freq.mt'
 
-    logger.info("Reading sparse MT and metadata table...")
-    mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, release_only=True, samples_meta=True)
-    # meta_ht = meta.ht().select('pop', 'sex', 'project_id', 'release', 'sample_filters')
+    try:
+        if args.test and file_exists(test_mt_path):
+            logger.info("Reading in densified test MT for chr20...")
+            mt = hl.read_matrix_table(test_mt_path)
 
-    if args.test:
-        logger.info("Filtering to chr20:1-1000000")
-        mt = hl.filter_intervals(mt, [hl.parse_locus_interval('chr20:1-1000000')])
+        else:
+            logger.info("Reading full sparse MT and metadata table...")
+            mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, release_only=True, samples_meta=True)
+            mt.describe()
 
-    samples = mt.count_cols()
-    logger.info(f"Running frequency table prep and generation pipeline on {samples} samples")
+            if args.test:
+                logger.info("Filtering to two partitions on chr20")
+                mt = hl.filter_intervals(mt, [hl.parse_locus_interval('chr20:1-1000000')])
+                mt = mt._filter_partitions(range(2))
 
-    logger.info("Computing adj and sex adjusted genotypes.")
-    mt = mt.annotate_entries(
-        GT=adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.meta.sex),
-        adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD)
-    )
+            mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+            samples = mt.count_cols()
+            logger.info(f"Running frequency table prep and generation pipeline on {samples} samples")
 
-    logger.info("Densify-ing...")
-    mt = hl.experimental.densify(mt)
-    mt = mt.filter_rows(hl.len(mt.alleles) > 1)
+            logger.info("Computing adj and sex adjusted genotypes.")
+            mt = mt.annotate_entries(
+                GT=adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.meta.sex_imputation.sex_karyotype),
+                adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD)
+            )
 
-    logger.info("Setting het genotypes at sites with >1% AF (using v3.0 frequencies) and > 0.9 AB to homalt...")
-    # hotfix for depletion of homozygous alternate genotypes
-    # Using v3.0 AF to avoid an extra frequency calculation
-    # TODO: Using previous callset AF works for small incremental changes to a callset, but we need to revisit for large increments
-    freq_ht = freq.versions["3"].ht()
-    freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
+            logger.info("Densify-ing...")
+            mt = hl.experimental.densify(mt)
+            mt = mt.filter_rows(hl.len(mt.alleles) > 1)
 
-    mt = mt.annotate_entries(
-        GT=hl.cond(
-            (freq_ht[mt.row_key].AF > 0.01)
-            & mt.GT.is_het()
-            & (mt.AD[1] / mt.DP > 0.9),
-            hl.call(1, 1),
-            mt.GT,
-        )
-    )
+            logger.info("Setting het genotypes at sites with >1% AF (using v3.0 frequencies) and > 0.9 AB to homalt...")
+            # hotfix for depletion of homozygous alternate genotypes
+            # Using v3.0 AF to avoid an extra frequency calculation
+            # TODO: Using previous callset AF works for small incremental changes to a callset, but we need to revisit for large increments
+            freq_ht = get_freq(version="3").ht()
+            freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
 
-    logger.info("Calculating InbreedingCoefficient...")
-    # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify
-    mt = mt.annotate_rows(InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT))
+            mt = mt.annotate_entries(
+                GT=hl.cond(
+                    (freq_ht[mt.row_key].AF > 0.01)
+                    & mt.GT.is_het()
+                    & (mt.AD[1] / mt.DP > 0.9),
+                    hl.call(1, 1),
+                    mt.GT,
+                )
+            )
 
-    if args.test:
-        # Checkpoint
-        mt.checkpoint("gs://gnomad-tmp/gnomad_freq/chr20_1_1000000_freq.mt")
+            if args.test:
+                mt = mt.checkpoint(test_mt_path)
 
-    # Insert logic to loop through all subsets and downsamplings:
-    # Full freq with downsamplings, sex, pop -- also 1KG/HGDP project pop
-    # v3-non-v2
-    # non-topmed: all TOPMed samples have a Collaborator Sample ID with prefix NWD
-    # non-cancer - check with Laurent, but likely just anything not TCGA
-    # controls
-    # non-neuro
-    # Print subset id and number of samples included
+        logger.info("Generating frequency data...")
+        if args.make_subsets:
 
-    logger.info("Generating frequency data...")
-    mt = annotate_freq(
-        mt,
-        sex_expr=mt.meta.sex,
-        pop_expr=mt.meta.pop
-    )
+            if not file_exists('gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht' if args.test else get_freq.path):
+                raise DataException(
+                    f"Frequencies on the full callset must be computed first before subset frequencies!"
+                )
 
-    # Select freq, FAF and popmax
-    # TODO Need all these for subsets?
-    # TODO Add in popmax_faf
-    faf, faf_meta = faf_expr(mt.freq, mt.freq_meta, mt.locus, POPS_TO_REMOVE_FOR_POPMAX)
-    mt = mt.select_rows(
-        'InbreedingCoeff',
-        'freq',
-        faf=faf,
-        popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
-    )
-    mt = mt.annotate_globals(faf_meta=faf_meta)
+            # def get_subset_expr(mt: hl.MatrixTable, subset: str) -> Tuple[hl.expr.BooleanExpression, bool]:
+            #     subset_filter_criteria = {
+            #         'non_cancer': (mt.s.contains('TCGA'), False),  # TODO: update
+            #         'non_v2': (mt.meta.project_meta['v2_release'], False),  # TODO: update
+            #         'non_topmed': (mt.meta.subsets['topmed'], False),
+            #         'controls_and_biobanks': (mt.meta.subsets['controls_and_biobanks'], True),
+            #         'non_neuro': (mt.meta.project_meta['neuro_case'], False),  # TODO: update
+            #         'tgp': (mt.meta.subsets['tgp'], True),
+            #         'hgdp': (mt.meta.subsets['hgdp'], True),
+            #     }
+            #     return subset_filter_criteria[subset]
 
-    # Annotate quality metrics histograms, as these also require densifying
-    # NOT needed for subsets
-    mt = mt.annotate_rows(
-        **qual_hist_expr(mt.GT, mt.GQ, mt.DP, mt.AD)
-    )
+            subsets = SUBSETS
 
-    logger.info("Writing out frequency data...")
-    # Adjust for subset file paths
-    if args.test:
-        mt.rows().write("gs://gnomad-tmp/gnomad_freq/chr20_1_1000000_freq.ht", overwrite=True)
-    else:
-        mt.rows().write(freq.path, overwrite=args.overwrite)
+            for subset in subsets:
+                if args.test and file_exists(f"gs://gnomad-tmp/gnomad_freq/chr20_test_freq.{subset}.ht"):
+                    continue
+
+                # subset_expr, keep = get_subset_expr(mt, subset=subset)
+                # subset_mt = mt.filter_cols(subset_expr, keep=keep)
+                subset_mt = mt.filter_cols(mt.meta.subsets[subset], keep=True)
+                logger.info(f"Found {subset_mt.count_cols()} samples in {subset} subset...")
+
+                subset_mt = annotate_freq(
+                    subset_mt,
+                    sex_expr=subset_mt.meta.sex_imputation.sex_karyotype,
+                    pop_expr=subset_mt.meta.population_inference.pop if subset not in ['tgp', 'hgdp'] else subset_mt.meta.project_meta.project_ancestry,  # TODO: change expression for pop if 1KG or HGDP
+                )
+                # Remove all loci where global raw AC=0; requires global frequency to be run first
+                freq_ht = hl.read_table('gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht') if args.test else hl.read_table(get_freq.path)
+                subset_mt = subset_mt.filter_rows(freq_ht[subset_mt.row_key].freq[1].AC > 0, keep=True)
+
+                # Note: no FAFs or popmax needed for subsets
+                subset_mt = subset_mt.select_rows('freq')
+
+                logger.info(f"Writing out frequency data for {subset} subset...")
+                if args.test:
+                    subset_mt.rows().write(f"gs://gnomad-tmp/gnomad_freq/chr20_test_freq.{subset}.ht", overwrite=True)
+                else:
+                    subset_mt.rows().write(get_freq(subset=subset).path, overwrite=args.overwrite)
+
+        else:
+            mt = annotate_freq(
+                mt,
+                sex_expr=mt.meta.sex_imputation.sex_karyotype,
+                pop_expr=mt.meta.population_inference.pop,
+                downsamplings=DOWNSAMPLINGS,
+            )
+            # Remove all loci with raw AC=0
+            mt = mt.filter_rows(mt.freq[1].AC > 0, keep=True)
+
+            logger.info("Calculating InbreedingCoefficient...")
+            # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify
+            mt = mt.annotate_rows(InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT))
+
+            # Select freq, FAF and popmax
+            faf, faf_meta = faf_expr(mt.freq, mt.freq_meta, mt.locus, POPS_TO_REMOVE_FOR_POPMAX)
+            mt = mt.select_rows(
+                'InbreedingCoeff',
+                'freq',
+                faf=faf,
+                popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
+            )
+            mt = mt.annotate_globals(faf_meta=faf_meta)
+            mt = mt.annotate_rows(popmax=mt.popmax.annotate(faf95=mt.faf[mt.faf_meta.index(lambda x: x.values() == ['adj', mt.popmax.pop])].faf95))
+
+            # Annotate quality metrics histograms, as these also require densifying
+            mt = mt.annotate_rows(
+                **qual_hist_expr(mt.GT, mt.GQ, mt.DP, mt.AD, mt.adj)
+            )
+            ht = mt.rows()
+
+            qual_hists = [field for field in ht.row_value if "_hist_" in field]
+            adj_hists = [field for field in qual_hists if "_adj" in field]
+            raw_hists = [field for field in qual_hists if "_adj" not in field]
+            ht = ht.annotate(
+                qual_hists=hl.Struct(**{i.replace("_adj", ""): ht[i] for i in adj_hists}),
+                raw_qual_hists=hl.Struct(**{i: ht[i] for i in raw_hists}),
+            )
+            ht = ht.drop(*qual_hists)
+
+            logger.info("Writing out frequency data...")
+            if args.test:
+                ht.write("gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht", overwrite=True)
+            else:
+                ht.write(get_freq().path, overwrite=args.overwrite)
+
+    finally:
+        logger.info("Copying hail log to logging bucket...")
+        hl.copy_log("gs://gnomad-tmp/logs/")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--test', help='Runs a test on chr20:1-1000000', action='store_true')
+    parser.add_argument('--test', help='Runs a test on two partitions of chr20', action='store_true')
+    parser.add_argument('--make_subsets', help='Generate frequency data on subsets', action='store_true')
+
     parser.add_argument('--overwrite', help='Overwrites existing files', action='store_true')
     parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
     args = parser.parse_args()
