@@ -10,6 +10,7 @@ from gnomad_qc.v3.resources.annotations import get_freq
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta
 from gnomad.resources.grch38.gnomad import SUBSETS
+from gnomad.utils.vcf import make_label_combos
 
 from typing import Tuple
 import argparse
@@ -26,108 +27,100 @@ POPS_TO_REMOVE_FOR_POPMAX = {'asj', 'fin', 'oth', 'ami'}
 
 # TODO: add in consanguineous frequency data?
 
+# TODO: generalize this to look like faf_index_dict
+def make_faf_index_dict(ht):  # NOTE: label groups: assumes 'adj', plus all pops
+    '''
+    Create a look-up Dictionary for entries contained in the filter allele frequency annotation array
+    :param Table ht: Table containing filter allele frequency annotations to be indexed
+    :param bool subset: If True, use alternate logic to access the correct faf annotation
+    :return: Dictionary of faf annotation population groupings, where values are the corresponding 0-based indices for the
+        groupings in the faf array
+    :rtype: Dict of str: int
+    '''
+    combos = make_label_combos(dict(group=['adj'], pop=POPS))
+    combos = combos + ['adj']
+    index_dict = {}
+    faf_meta = hl.eval(hl.map(lambda f: f.meta, ht.take(1)[0].faf))
+
+    for combo in combos:
+        combo_fields = combo.split("_")
+        for i, v in enumerate(faf_meta):
+            if set(v.values()) == set(combo_fields):
+                index_dict.update({f"{combo}": i})
+    return index_dict
+
 
 def main(args):
-    hl.init(log='/generate_frequency_data.log', default_reference='GRCh38')
-    test_mt_path = 'gs://gnomad-tmp/gnomad_freq/chr20_test_freq.mt'
+    subset = args.subset
+    log_tag = "." + subset if subset else ""
+    hl.init(log=f'/generate_frequency_data{log_tag}.log', default_reference='GRCh38')
 
     try:
-        if args.test and file_exists(test_mt_path):
-            logger.info("Reading in densified test MT for chr20...")
-            mt = hl.read_matrix_table(test_mt_path)
+        logger.info("Reading full sparse MT and metadata table...")
+        mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, release_only=True, samples_meta=True)
+        mt.describe()
+
+        if args.test:
+            logger.info("Filtering to two partitions on chr20")
+            mt = hl.filter_intervals(mt, [hl.parse_locus_interval('chr20:1-1000000')])
+            mt = mt._filter_partitions(range(2))
+
+        mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+
+        if subset:
+            mt = mt.filter_cols(mt.meta.subsets[subset], keep=True)
+            logger.info(f"Running frequency generation pipeline on {mt.count_cols()} samples in {subset} subset...")
 
         else:
-            logger.info("Reading full sparse MT and metadata table...")
-            mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, release_only=True, samples_meta=True)
-            mt.describe()
+            logger.info(f"Running frequency generation pipeline on {mt.count_cols()} samples...")
 
-            if args.test:
-                logger.info("Filtering to two partitions on chr20")
-                mt = hl.filter_intervals(mt, [hl.parse_locus_interval('chr20:1-1000000')])
-                mt = mt._filter_partitions(range(2))
+        logger.info("Computing adj and sex adjusted genotypes...")
+        mt = mt.annotate_entries(
+            GT=adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.meta.sex_imputation.sex_karyotype),
+            adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD)
+        )
 
-            mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
-            samples = mt.count_cols()
-            logger.info(f"Running frequency table prep and generation pipeline on {samples} samples")
+        logger.info("Densify-ing...")
+        mt = hl.experimental.densify(mt)
+        mt = mt.filter_rows(hl.len(mt.alleles) > 1)
 
-            logger.info("Computing adj and sex adjusted genotypes.")
-            mt = mt.annotate_entries(
-                GT=adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.meta.sex_imputation.sex_karyotype),
-                adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD)
+        logger.info("Setting het genotypes at sites with >1% AF (using v3.0 frequencies) and > 0.9 AB to homalt...")
+        # hotfix for depletion of homozygous alternate genotypes
+        # Using v3.0 AF to avoid an extra frequency calculation
+        # TODO: Using previous callset AF works for small incremental changes to a callset, but we need to revisit for large increments
+        freq_ht = get_freq(version="3").ht()
+        freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
+
+        mt = mt.annotate_entries(
+            GT=hl.cond(
+                (freq_ht[mt.row_key].AF > 0.01)
+                & mt.GT.is_het()
+                & (mt.AD[1] / mt.DP > 0.9),
+                hl.call(1, 1),
+                mt.GT,
             )
-
-            logger.info("Densify-ing...")
-            mt = hl.experimental.densify(mt)
-            mt = mt.filter_rows(hl.len(mt.alleles) > 1)
-
-            logger.info("Setting het genotypes at sites with >1% AF (using v3.0 frequencies) and > 0.9 AB to homalt...")
-            # hotfix for depletion of homozygous alternate genotypes
-            # Using v3.0 AF to avoid an extra frequency calculation
-            # TODO: Using previous callset AF works for small incremental changes to a callset, but we need to revisit for large increments
-            freq_ht = get_freq(version="3").ht()
-            freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
-
-            mt = mt.annotate_entries(
-                GT=hl.cond(
-                    (freq_ht[mt.row_key].AF > 0.01)
-                    & mt.GT.is_het()
-                    & (mt.AD[1] / mt.DP > 0.9),
-                    hl.call(1, 1),
-                    mt.GT,
-                )
-            )
-
-            if args.test:
-                mt = mt.checkpoint(test_mt_path)
+        )
 
         logger.info("Generating frequency data...")
-        if args.make_subsets:
+        if subset:
+            mt = annotate_freq(
+                mt,
+                sex_expr=mt.meta.sex_imputation.sex_karyotype,
+                pop_expr=mt.meta.population_inference.pop if subset not in ['tgp', 'hgdp'] else mt.meta.project_meta.project_ancestry,  # TODO: change expression for pop if 1KG or HGDP
+            )
 
-            if not file_exists('gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht' if args.test else get_freq.path):
-                raise DataException(
-                    f"Frequencies on the full callset must be computed first before subset frequencies!"
-                )
+            # # Remove all loci where global raw AC=0; requires global frequency to be run first
+            # freq_ht = hl.read_table('gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht') if args.test else hl.read_table(get_freq.path)
+            # subset_mt = subset_mt.filter_rows(freq_ht[subset_mt.row_key].freq[1].AC > 0, keep=True)
 
-            # def get_subset_expr(mt: hl.MatrixTable, subset: str) -> Tuple[hl.expr.BooleanExpression, bool]:
-            #     subset_filter_criteria = {
-            #         'non_cancer': (mt.s.contains('TCGA'), False),  # TODO: update
-            #         'non_v2': (mt.meta.project_meta['v2_release'], False),  # TODO: update
-            #         'non_topmed': (mt.meta.subsets['topmed'], False),
-            #         'controls_and_biobanks': (mt.meta.subsets['controls_and_biobanks'], True),
-            #         'non_neuro': (mt.meta.project_meta['neuro_case'], False),  # TODO: update
-            #         'tgp': (mt.meta.subsets['tgp'], True),
-            #         'hgdp': (mt.meta.subsets['hgdp'], True),
-            #     }
-            #     return subset_filter_criteria[subset]
+            # Note: no FAFs or popmax needed for subsets
+            mt = mt.select_rows('freq')
 
-            subsets = SUBSETS
-
-            for subset in subsets:
-                if args.test and file_exists(f"gs://gnomad-tmp/gnomad_freq/chr20_test_freq.{subset}.ht"):
-                    continue
-
-                # subset_expr, keep = get_subset_expr(mt, subset=subset)
-                # subset_mt = mt.filter_cols(subset_expr, keep=keep)
-                subset_mt = mt.filter_cols(mt.meta.subsets[subset], keep=True)
-                logger.info(f"Found {subset_mt.count_cols()} samples in {subset} subset...")
-
-                subset_mt = annotate_freq(
-                    subset_mt,
-                    sex_expr=subset_mt.meta.sex_imputation.sex_karyotype,
-                    pop_expr=subset_mt.meta.population_inference.pop if subset not in ['tgp', 'hgdp'] else subset_mt.meta.project_meta.project_ancestry,  # TODO: change expression for pop if 1KG or HGDP
-                )
-                # Remove all loci where global raw AC=0; requires global frequency to be run first
-                freq_ht = hl.read_table('gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht') if args.test else hl.read_table(get_freq.path)
-                subset_mt = subset_mt.filter_rows(freq_ht[subset_mt.row_key].freq[1].AC > 0, keep=True)
-
-                # Note: no FAFs or popmax needed for subsets
-                subset_mt = subset_mt.select_rows('freq')
-
-                logger.info(f"Writing out frequency data for {subset} subset...")
-                if args.test:
-                    subset_mt.rows().write(f"gs://gnomad-tmp/gnomad_freq/chr20_test_freq.{subset}.ht", overwrite=True)
-                else:
-                    subset_mt.rows().write(get_freq(subset=subset).path, overwrite=args.overwrite)
+            logger.info(f"Writing out frequency data for {subset} subset...")
+            if args.test:
+                mt.rows().write(f"gs://gnomad-tmp/gnomad_freq/chr20_test_freq.{subset}.ht", overwrite=True)
+            else:
+                mt.rows().write(get_freq(subset=subset).path, overwrite=args.overwrite)
 
         else:
             mt = annotate_freq(
@@ -152,6 +145,7 @@ def main(args):
                 popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
             )
             mt = mt.annotate_globals(faf_meta=faf_meta)
+            mt = mt.annotate_globals(faf_index_dict=make_faf_index_dict(mt))
             mt = mt.annotate_rows(popmax=mt.popmax.annotate(faf95=mt.faf[mt.faf_meta.index(lambda x: x.values() == ['adj', mt.popmax.pop])].faf95))
 
             # Annotate quality metrics histograms, as these also require densifying
@@ -183,7 +177,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--test', help='Runs a test on two partitions of chr20', action='store_true')
-    parser.add_argument('--make_subsets', help='Generate frequency data on subsets', action='store_true')
+    parser.add_argument('--subset', help='Name of subset for which to generate frequency data', choices=SUBSETS)
 
     parser.add_argument('--overwrite', help='Overwrites existing files', action='store_true')
     parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
