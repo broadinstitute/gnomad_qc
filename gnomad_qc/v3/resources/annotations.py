@@ -148,6 +148,7 @@ analyst_annotations = VersionedTableResource(
         release: TableResource(
             f"{_annotations_root(release)}/gnomad_genomes_v{release}_analyst_annotations.ht"
         )
-        for release in RELEASES if release != "3.0"
+        for release in RELEASES
+        if release != "3.0"
     },
 )
