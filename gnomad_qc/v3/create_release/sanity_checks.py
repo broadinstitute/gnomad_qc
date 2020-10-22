@@ -567,6 +567,38 @@ def sex_chr_sanity_checks(
             verbose,
         )
 
+    male_metrics = [x for x in info_metrics if "_male" in x or "_XY" in x]
+
+    if "chrX" in contigs:
+        logger.info("Check values of male metrics for X variants are NA:")
+        ht_x = hl.filter_intervals(ht, [hl.parse_locus_interval("chrX")])
+        metrics_values = {}
+        for metric in male_metrics:
+            metrics_values[metric] = hl.agg.collect_as_set(ht_x.info[metric])
+        output = ht_x.aggregate(hl.struct(**metrics_values))
+        for metric, values in dict(output).items():
+            if values == {None}:
+                logger.info(f"PASSED {metric} = {None} check for X variants")
+            else:
+                logger.info(f"FAILED X check: Found {values} in {metric}")
+
+    ht_y = hl.filter_intervals(ht, [hl.parse_locus_interval("chrY")])
+    ht_ynonpar = ht_y.filter(ht_y.locus.in_y_nonpar())
+    n = ht_ynonpar.count()
+    logger.info(f"Found {n} Y nonpar sites")
+
+    logger.info("Check (nhomalt == nhomalt_male) for Y nonpar variants:")
+    male_metrics = [x for x in male_metrics if "nhomalt" in x]
+    for metric in male_metrics:
+        standard_field = metric.replace("_male", "").replace("_XY", "")
+        generic_field_check(
+            ht_ynonpar,
+            (ht_ynonpar.info[f"{metric}"] != ht_ynonpar.info[f"{standard_field}"]),
+            f"{metric} == {standard_field}",
+            [f"info.{metric}", f"info.{standard_field}"],
+            verbose,
+        )
+
 
 def missingness_sanity_checks(
     ht: hl.Table,
