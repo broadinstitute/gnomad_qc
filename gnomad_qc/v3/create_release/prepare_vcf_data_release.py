@@ -7,12 +7,12 @@ from typing import Dict, List, Union
 
 import hail as hl
 
-from gnomad_methods.gnomad.sample_qc.ancestry import POP_NAMES
-from gnomad_methods.gnomad.sample_qc.sex import adjust_sex_ploidy
-from gnomad_methods.gnomad.utils.reference_genome import get_reference_genome
-from gnomad_methods.gnomad.utils.slack import slack_notifications
-from gnomad_methods.gnomad.utils.vep import vep_struct_to_csq
-from gnomad_methods.gnomad.utils.vcf import (
+from gnomad.sample_qc.ancestry import POP_NAMES
+from gnomad.sample_qc.sex import adjust_sex_ploidy
+from gnomad.utils.reference_genome import get_reference_genome
+from gnomad.utils.slack import slack_notifications
+from gnomad.utils.vep import vep_struct_to_csq
+from gnomad.utils.vcf import (
     add_as_info_dict,
     ALLELE_TYPE_FIELDS,
     AS_FIELDS,
@@ -28,31 +28,13 @@ from gnomad_methods.gnomad.utils.vcf import (
     make_label_combos,
     make_vcf_filter_dict,
     REGION_FLAG_FIELDS,
-    RF_FIELDS,
     SITE_FIELDS,
     set_female_y_metrics_to_na,
-    SEXES,
     VQSR_FIELDS,
 )
 
-from gnomad_qc.gnomad_qc.v3.resources.release import release_ht_path
-
-from ukbb_qc.assessment.sanity_checks import (
-    sanity_check_release_mt,
-    vcf_field_check,
-)
-from ukbb_qc.resources.basics import (
-    get_checkpoint_path,
-    get_ukbb_data,
-    logging_path,
-    release_header_path,
-    release_mt_path,
-    release_vcf_path,
-)
-
-from ukbb_qc.resources.variant_qc import info_ht_path
-from ukbb_qc.slack_creds import slack_token
-
+# from gnomad_qc.gnomad_qc.v3.resources.release import release_ht_path
+from gnomad_qc.v3.create_release.sanity_checks import sanity_check_release_ht
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -64,6 +46,9 @@ logger.setLevel(logging.INFO)
 # Add capture region and sibling singletons to vcf_info_dict
 VCF_INFO_DICT = INFO_DICT
 
+#Remove original alleles for containing non-releasable alleles
+ALLELE_TYPE_FIELDS.remove("original_alleles")
+
 # Remove decoy from region flag field
 REGION_FLAG_FIELDS.remove("decoy")
 
@@ -72,9 +57,26 @@ MISSING_REGION_FIELDS = "decoy"
 
 # Remove BaseQRankSum from site fields (doesn't exist in UKBB 300K)
 SITE_FIELDS.remove("BaseQRankSum")
+SITE_FIELDS.remove("SOR")  # Remove SOR after testing!
+
+# Remove AS_BaseQRankSum from AS fields
+AS_FIELDS.remove("AS_BaseQRankSum")
+AS_FIELDS.remove("AS_SOR")
+
+VEP_CSQ_FIELDS = "Allele|Consequence|IMPACT|SYMBOL|Gene|Feature_type|Feature|BIOTYPE|EXON|INTRON|HGVSc|HGVSp|cDNA_position|CDS_position|Protein_position|Amino_acids|Codons|ALLELE_NUM|DISTANCE|STRAND|VARIANT_CLASS|MINIMISED|SYMBOL_SOURCE|HGNC_ID|CANONICAL|TSL|APPRIS|CCDS|ENSP|SWISSPROT|TREMBL|UNIPARC|GENE_PHENO|SIFT|PolyPhen|DOMAINS|HGVS_OFFSET|MOTIF_NAME|MOTIF_POS|HIGH_INF_POS|MOTIF_SCORE_CHANGE|LoF|LoF_filter|LoF_flags|LoF_info"
+"""
+Constant that defines the order of VEP annotations used in VCF export.
+"""
+
+VEP_CSQ_HEADER = f"Consequence annotations from Ensembl VEP. Format: {VEP_CSQ_FIELDS}"
+"""
+Constant that contains description for VEP used in VCF export.
+"""
+
+SEXES = ["XX", "XY"]
 
 # Make subset list (used in properly filling out VCF header descriptions and naming VCF info fields)
-SUBSET_LIST = [
+SUBSET_LIST = [  
     "controls_and_biobanks",
     "non_cancer",
     "non_neuro",
@@ -84,6 +86,31 @@ SUBSET_LIST = [
     "tgp",
 ]
 
+DOWNSAMPLINGS = [  # Finish this list of groups
+    "10",
+    "20",
+    "50",
+    "100",
+    "200",
+    "449",
+    "500",
+    "1000",
+    "1074",
+    "1523",
+    "1566",
+    "1659",
+    "2000",
+    "5000",
+    "5210",
+    "6816",
+    "10000",
+    "15000",
+    "20000",
+    "21015",
+    "25000",
+    "30000",
+    "32204",
+]
 # Select populations to keep from the list of population names in POP_NAMES
 # This removes pop names we don't want to use
 # (e.g., "uniform", "consanguineous") to reduce clutter
@@ -92,6 +119,10 @@ KEEP_POPS = ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas"]
 # Remove unnecessary pop names from pops dict
 POPS = {pop: POP_NAMES[pop] for pop in KEEP_POPS}
 POPS["mid"] = "Middle Eastern"
+
+
+def release_ht_path():
+    return "gs://gnomad-tmp/release/v3.1/gnomad.genomes.v3.1.sites.ht"
 
 
 def populate_info_dict(
@@ -160,17 +191,28 @@ def populate_info_dict(
         ]
 
     for subset in subset_list:
+        description_text = "" if subset == "" else f" in {subset} subset"
+
         label_groups = _create_label_groups(pops=pops, sexes=sexes)
         for label_group in label_groups:
             vcf_info_dict.update(
-                make_info_dict(prefix=subset, pop_names=pops, label_groups=label_group,)
+                make_info_dict(
+                    prefix=subset,
+                    pop_names=pops,
+                    label_groups=label_group,
+                    description_text=description_text,
+                )
             )
 
         faf_label_groups = _create_label_groups(pops=faf_pops, sexes=sexes)
         for label_group in faf_label_groups:
             vcf_info_dict.update(
                 make_info_dict(
-                    prefix=subset, pop_names=pops, label_groups=label_group, faf=True,
+                    prefix=subset,
+                    pop_names=pops,
+                    label_groups=label_group,
+                    faf=True,
+                    description_text=description_text,
                 )
             )
 
@@ -206,8 +248,6 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
     # Add site-level annotations to vcf_info_dict
     for field in SITE_FIELDS:
         vcf_info_dict[field] = t["info"][f"{field}"]
-    for field in RF_FIELDS:
-        vcf_info_dict[field] = t["rf"][f"{field}"]
     for field in VQSR_FIELDS:
         vcf_info_dict[field] = t["vqsr"][f"{field}"]
 
@@ -235,88 +275,6 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
     return vcf_info_dict
 
 
-def index_globals(
-    freq_meta: List[Dict[str, str]], label_groups: Dict
-) -> Dict[str, int]:
-    """
-    Create a dictionary keyed by the specified label groupings with values describing the corresponding index of each grouping entry in the freq_meta array annotation.
-    e.g., if freq_meta is [{'group': 'adj'}, {'group': 'raw'}, {'group': 'adj', 'pop': 'nfe'}], then this function will return 
-    {'adj': 0, 'raw': 1, 'nfe_adj': 2}.
-    :param List[Dict[str, str]] freq_meta: Ordered list containing dictionaries describing all the grouping combinations contained in the
-        frequency row annotation.
-    param Dict[str, List[str]] label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
-        e.g. "sex" or "pop", and value is a list of all possible values for that grouping (e.g. ["male", "female"] or ["afr", "nfe", "amr"]).
-    :return: Dictionary keyed by specified label grouping combinations, with values describing the corresponding index
-        of each grouping entry in the frequency array.
-    :rtype: Dict[str, int]
-    """
-    combos = make_label_combos(label_groups)
-    index_dict = {}
-    for combo in combos:
-        combo_fields = combo.split("_")
-        for i, v in enumerate(freq_meta):
-            if set(v.values()) == set(combo_fields):
-                # NOTE: this is UKBB specific
-                # This is to avoid updating the dictionary when the subpop is the same as the pop
-                # E.g., this is to avoid updating the index for {'group': 'adj', 'pop': 'nfe'} with the
-                # index for {'group': 'adj', 'pop': 'nfe', 'subpop': 'nfe'},
-                if "subpop" in v and v["subpop"] == v["pop"]:
-                    continue
-                index_dict.update({f"{combo}": i})
-    return index_dict
-
-
-def make_freq_meta_index_dict(
-    freq_meta: List[str],
-    pops: List[str],
-    groups: List[str] = GROUPS,
-    sexes: List[str] = SEXES,
-) -> Dict[str, int]:
-    """
-    Makes a dictionary of the entries in the frequency array annotation, where keys are the grouping combinations and the values
-    are the 0-based integer indices.
-    :param List[str] freq_meta: Ordered list containing string entries describing all the grouping combinations contained in the
-        frequency array annotation.
-    :param bool gnomad: Whether to index a gnomAD sample freq_meta list.
-    :param List[str] pops: List of global populations in frequency array. Used for both gnomAD and UKBB. 
-        Can handle populations to unique to gnomAD/UKBB or a union of all population names.
-    :param List[str] groups: Group names used to generate labels for high quality genotypes and all raw genotypes. Default is GROUPS.
-    :param List[str] sexes: gnomAD sample sexes used in VCF export. Default is SEXES. 
-    :return: Dictionary keyed by grouping combinations in the frequency array, with values describing the corresponding index
-        of each grouping entry in the frequency array
-    :rtype: Dict[str, int]
-    """
-    index_dict = index_globals(freq_meta, dict(group=groups))
-    index_dict.update(index_globals(freq_meta, dict(group=groups, pop=pops)))
-    index_dict.update(index_globals(freq_meta, dict(group=groups, sex=sexes)))
-    index_dict.update(index_globals(freq_meta, dict(group=groups, pop=pops, sex=sexes)))
-
-    return index_dict
-
-
-def make_index_dict(
-    t: Union[hl.MatrixTable, hl.Table], freq_meta_str: str, pops: List[str],
-) -> Dict[str, int]:
-    """
-    Create a look-up Dictionary for entries contained in the frequency annotation array.
-    :param Table ht: Table or MatrixTable containing freq_meta global annotation to be indexed
-    :param str freq_meta: freq_meta global annotation to be indexed (freq_meta, gnomad_exomes_freq_meta, or gnomad_genomes_freq_meta)
-    :param List[str] pops: List of global populations in frequency array. Used for both gnomAD and UKBB. 
-        Can handle populations to unique to gnomAD/UKBB or a union of all population names.
-    :param List[str] subpops: List of subpops in frequency array.
-    :return: Dictionary keyed by grouping combinations in the frequency array, with values describing the corresponding index
-        of each grouping entry in the frequency array
-    :rtype: Dict of str: int
-    """
-    freq_meta = hl.eval(t.globals[freq_meta_str])
-    # check if indexing gnomAD data
-    if "gnomad" in freq_meta_str:
-        index_dict = make_freq_meta_index_dict(freq_meta, pops=pops)
-    else:
-        index_dict = make_freq_meta_index_dict(freq_meta, pops=pops)
-    return index_dict
-
-
 def unfurl_nested_annotations(
     t: Union[hl.MatrixTable, hl.Table], pops: List[str],
 ) -> Dict[str, hl.expr.Expression]:
@@ -333,58 +291,48 @@ def unfurl_nested_annotations(
     """
     expr_dict = dict()
 
-    # Set variables to locate necessary fields, compute freq index dicts, and compute faf index dict for UKBB
-    faf = "faf"
-    freq = "freq"
-    faf_idx = make_index_dict(t=t, freq_meta_str="faf_meta", pops=pops)
+    # Set variables to locate necessary fields, compute freq index dicts, and compute faf index dict
     popmax = "popmax"
-    freq_idx = make_index_dict(t=t, freq_meta_str="freq_meta", pops=pops)
+
+    freq = "freq"
+    freq_idx = hl.eval(t.freq_index_dict)
+
+    faf = "faf"
+    faf_idx = hl.eval(t.faf_index_dict)
 
     # Unfurl freq index dict
     # Cycles through each key and index (e.g., k=adj_afr, i=31)
+    logger.info("Unfurling freq data...")
     for k, i in freq_idx.items():
         # Set combination to key
         # e.g., set entry of 'afr_adj' to combo
         combo = k
         combo_dict = {
-            f"AC_{combo}": t[freq][i].AC,
-            f"AN_{combo}": t[freq][i].AN,
-            f"AF_{combo}": t[freq][i].AF,
-            f"nhomalt_{combo}": t[freq][i].homozygote_count,
+            f"AC-{combo}": t[freq][i].AC,
+            f"AN-{combo}": t[freq][i].AN,
+            f"AF-{combo}": t[freq][i].AF,
+            f"nhomalt-{combo}": t[freq][i].homozygote_count,
         }
         expr_dict.update(combo_dict)
 
     ## Unfurl FAF index dict
+    logger.info("Unfurling faf data...")
     for (
         k,
         i,
     ) in faf_idx.items():  # NOTE: faf annotations are all done on adj-only groupings
-        entry = k.split("_")
-        # Set combo to equal entry
-        combo_fields = entry
-        combo = k
-
-        # NOTE: need to compute UKBB separately because UKBB no longer has faf meta bundled into faf
         combo_dict = {
-            f"faf95_{combo}": hl.or_missing(
-                hl.set(hl.eval(t.faf_meta[i].values())) == set(combo_fields),
-                t[faf][i].faf95,
-            ),
-            f"faf99_{combo}": hl.or_missing(
-                hl.set(hl.eval(t.faf_meta[i].values())) == set(combo_fields),
-                t[faf][i].faf99,
-            ),
+            f"faf95-{k}": t[faf][i].faf95,
+            f"faf99-{k}": t[faf][i].faf99,
         }
         expr_dict.update(combo_dict)
 
-    prefix = ""
-
     combo_dict = {
-        f"{prefix}popmax": t[popmax].pop,
-        f"{prefix}AC_popmax": t[popmax].AC,
-        f"{prefix}AN_popmax": t[popmax].AN,
-        f"{prefix}AF_popmax": t[popmax].AF,
-        f"{prefix}nhomalt_popmax": t[popmax].homozygote_count,
+        "popmax": t[popmax].pop,
+        "AC_popmax": t[popmax].AC,
+        "AN_popmax": t[popmax].AN,
+        "AF_popmax": t[popmax].AF,
+        "nhomalt_popmax": t[popmax].homozygote_count,
     }
     expr_dict.update(combo_dict)
 
@@ -409,7 +357,7 @@ def main(args):
     hl.init(log="/vcf_release.log", default_reference="GRCh38")
     try:
 
-        if args.prepare_vcf_mt:
+        if args.prepare_vcf_ht:
             logger.info("Starting VCF process...")
             logger.info("Reading in release HT...")
             ht = hl.read_table(release_ht_path())
@@ -440,13 +388,8 @@ def main(args):
                 bin_edges=bin_edges, age_hist_data=age_hist_data,
             )
 
-            # Adjust keys to remove adj tags before exporting to VCF
-            new_vcf_info_dict = {
-                i.replace("_adj", ""): j for i, j in vcf_info_dict.items()
-            }
-
             # Add non-PAR annotation
-            ht = ht.annotate_rows(
+            ht = ht.annotate(
                 region_flag=ht.region_flag.annotate(
                     nonpar=(ht.locus.in_x_nonpar() | ht.locus.in_y_nonpar())
                 )
@@ -462,35 +405,34 @@ def main(args):
 
             ht = ht.annotate(info=hl.struct(**make_info_expr(ht)))
 
-
-            # Unfurl nested gnomAD  frequency annotations and add to info field
+            # Unfurl nested gnomAD frequency annotations and add to info field
             ht = ht.annotate(
-                info=ht.info.annotate(
-                    **unfurl_nested_annotations(
-                        ht, pops=POPS
-                    )
-                )
+                info=ht.info.annotate(**unfurl_nested_annotations(ht, pops=POPS))
             )
-            ht = mt.annotate_rows(**set_female_y_metrics_to_na(ht)) #Don't do this
+            ht = ht.annotate(
+                **set_female_y_metrics_to_na(ht)
+            )
 
             # Reformat vep annotation
-            mt = mt.annotate_rows(vep=vep_struct_to_csq(mt.vep))
-            mt = mt.annotate_rows(info=mt.info.annotate(vep=mt.vep))
+            ht = ht.annotate_globals(vep_csq_header=VEP_CSQ_HEADER)
+            ht = ht.annotate(vep=vep_struct_to_csq(ht.vep))
+            ht = ht.annotate(info=ht.info.annotate(vep=ht.vep))
 
             # Select relevant fields for VCF export
-            mt = mt.select_rows("info", "filters", "rsid", "qual")
-            new_vcf_info_dict.update(
-                {"vep": {"Description": hl.eval(mt.vep_csq_header)}}
-            )
+            ht = ht.select("info", "filters", "rsid")
+            ht.describe()
+            vcf_info_dict.update({"vep": {"Description": hl.eval(ht.vep_csq_header)}})
 
             # Make filter dict and add field for MonoAllelic filter
             filter_dict = make_vcf_filter_dict(
-                hl.eval(mt.rf_globals.rf_snv_cutoff.min_score),
-                hl.eval(mt.rf_globals.rf_indel_cutoff.min_score),
-                hl.eval(mt.rf_globals.inbreeding_cutoff),
+                hl.eval(ht.filtering_model.filtering_model.snv_cutoff.min_score),
+                hl.eval(ht.filtering_model.filtering_model.indel_cutoff.min_score),
             )
             filter_dict["MonoAllelic"] = {
                 "Description": "Samples are all homozygous reference or all homozygous alternate for the variant"
+            }
+            new_vcf_info_dict = {  # Adjust keys to remove adj tags before exporting to VCF
+                i.replace("_adj", ""): j for i, j in vcf_info_dict.items()
             }
             header_dict = {
                 "info": new_vcf_info_dict,
@@ -499,158 +441,26 @@ def main(args):
             }
 
             logger.info("Saving header dict to pickle...")
-            with hl.hadoop_open(release_header_path(*tranche_data), "wb") as p:
+            with hl.hadoop_open(
+                "gs://gnomad-mwilson/v3.1/release/vcf_header", "wb"
+            ) as p:
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
-            mt.write(release_mt_path(*tranche_data), args.overwrite)
 
         if args.sanity_check:
-            mt = hl.read_matrix_table(release_mt_path(*tranche_data))
+            # ht = hl.read_table(release_ht_path())
             # NOTE: removing lowqual and star alleles here to avoid having additional failed missingness checks
-            info_ht = hl.read_table(info_ht_path(data_source, freeze))
-            mt = mt.filter_rows(
-                (~info_ht[mt.row_key].AS_lowqual)
-                & ((hl.len(mt.alleles) > 1) & (mt.alleles[1] != "*"))
-            )
-            sanity_check_release_mt(
-                mt, SUBSET_LIST, missingness_threshold=0.5, verbose=args.verbose
-            )
-
-        if args.prepare_release_vcf:
-
-            logger.warning(
-                "VCF export will densify! Make sure you have an autoscaling cluster."
-            )
-            if not args.per_chromosome and not args.parallelize:
-                logger.error("Need to choose how to export the release VCF. Exiting...")
-                sys.exit(1)
-
-            mt = hl.read_matrix_table(release_mt_path(*tranche_data))
-            logger.info("Reading header dict from pickle...")
-            with hl.hadoop_open(release_header_path(*tranche_data), "rb") as p:
-                header_dict = pickle.load(p)
-
-            # Drop unnecessary histograms
-            # TODO: figure out which hists we want to export and only create those for 500K
-            drop_hists = (
-                [x + "_n_smaller" for x in HISTS]
-                + [x + "_bin_edges" for x in HISTS]
-                + [x + "_n_larger" for x in HISTS if "dp_" not in x]
-            )
-            drop_hists.extend(
-                [x + "_raw_n_smaller" for x in HISTS]
-                + [x + "_raw_bin_edges" for x in HISTS]
-                + [x + "_raw_n_larger" for x in HISTS if "dp_" not in x]
-                + ["age_hist_hom_bin_edges", "age_hist_het_bin_edges"]
-            )
-            mt = mt.annotate_rows(info=mt.info.drop(*drop_hists))
-
-            # Reformat names to remove "adj" pre-export
-            # e.g, renaming "AC_adj" to "AC"
-            # All unlabeled frequency information is assumed to be adj
-            row_annots = list(mt.row.info)
-            new_row_annots = []
-            for x in row_annots:
-                x = x.replace("_adj", "")
-                new_row_annots.append(x)
-
-            info_annot_mapping = dict(
-                zip(new_row_annots, [mt.info[f"{x}"] for x in row_annots])
+            # info_ht = hl.read_table(info_ht_path())
+            # ht = mt.filter_rows(
+            #    (~info_ht[mt.row_key].AS_lowqual)
+            #    & ((hl.len(mt.alleles) > 1) & (mt.alleles[1] != "*"))
+            # )
+            sanity_check_release_ht(
+                ht, SUBSET_LIST, missingness_threshold=0.5, verbose=args.verbose
             )
 
-            # Confirm all VCF fields and descriptions are present
-            if not vcf_field_check(mt, header_dict, new_row_annots, list(mt.entry)):
-                logger.error("Did not pass VCF field check.")
-                return
-
-            mt = mt.transmute_rows(info=hl.struct(**info_annot_mapping))
-
-            # Rearrange INFO field in desired ordering
-            mt = mt.annotate_rows(
-                info=mt.info.select(
-                    "AC",
-                    "AN",
-                    "AF",
-                    "rf_tp_probability",
-                    *mt.info.drop("AC", "AN", "AF", "rf_tp_probability"),
-                )
-            )
-
-            # Export VCFs by chromosome
-            if args.per_chromosome:
-                ht = mt.rows().checkpoint(
-                    get_checkpoint_path(*tranche_data, name="flat_vcf_ready", mt=False),
-                    overwrite=args.overwrite,
-                )
-
-                rg = get_reference_genome(mt.locus)
-                contigs = rg.contigs[:24]  # autosomes + X/Y
-                logger.info(f"Contigs: {contigs}")
-
-                for contig in contigs:
-                    # Checked with Hail team about the fastest way to filter to a contig
-                    # This method shouldn't be any faster than `filter_intervals`: the same amount of data is read in both cases
-                    # `_calculate_new_partitions` might give us more parallelism downstream
-                    # Decided to stick with `_calculate_new_partitions` method because it felt much faster on the 300K tranche
-                    mt = hl.read_matrix_table(release_mt_path(*tranche_data))
-                    mt = hl.filter_intervals(mt, [hl.parse_locus_interval(contig)])
-                    intervals = mt._calculate_new_partitions(10000)
-                    mt = hl.read_matrix_table(
-                        release_mt_path(*tranche_data), _intervals=intervals
-                    )
-                    mt = mt.annotate_rows(**ht[mt.row_key])
-
-                    logger.info("Densifying and exporting VCF...")
-                    mt = hl.experimental.densify(mt)
-
-                    logger.info("Removing low QUAL variants and * alleles...")
-                    info_ht = hl.read_table(info_ht_path(data_source, freeze))
-                    mt = mt.filter_rows(
-                        (~info_ht[mt.row_key].AS_lowqual)
-                        & ((hl.len(mt.alleles) > 1) & (mt.alleles[1] != "*"))
-                    )
-
-                    logger.info("Adjusting sex ploidy...")
-                    mt = adjust_sex_ploidy(
-                        mt, mt.sex_karyotype, male_str="XY", female_str="XX"
-                    )
-
-                    hl.export_vcf(
-                        mt.select_cols(),
-                        release_vcf_path(*tranche_data, contig=contig),
-                        metadata=header_dict,
-                    )
-
-            # Export sharded VCF
-            if args.parallelize:
-
-                logger.info("Densifying...")
-                mt = hl.experimental.densify(mt)
-
-                logger.info("Removing low QUAL variants and * alleles...")
-                info_ht = hl.read_table(info_ht_path(data_source, freeze))
-                mt = mt.filter_rows(
-                    (~info_ht[mt.row_key].AS_lowqual)
-                    & ((hl.len(mt.alleles) > 1) & (mt.alleles[1] != "*"))
-                )
-
-                logger.info("Adjusting sex ploidy...")
-                mt = adjust_sex_ploidy(
-                    mt, mt.sex_karyotype, male_str="XY", female_str="XX"
-                )
-                mt = mt.select_cols()
-
-                if args.n_shards:
-                    mt = mt.naive_coalesce(args.n_shards)
-
-                hl.export_vcf(
-                    mt,
-                    release_vcf_path(*tranche_data),
-                    parallel="header_per_shard",
-                    metadata=header_dict,
-                )
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(logging_path(*tranche_data))
+        hl.copy_log("gs://gnomad-mwilson/logs/v3.1/sanity_logs/10202020.log")
 
 
 if __name__ == "__main__":
@@ -658,28 +468,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--key_by_locus_and_alleles",
-        help="Whether to key raw MT by locus and alleles.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--repartition",
-        help="Repartition raw MT on read. Needs to be true for tranche 3/freeze 6/300K.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--raw_partitions",
-        help="Number of desired partitions for the raw MT. Necessary only for tranche 3/freeze 6/300K. Used only if --repartition is also specified",
-        default=30000,
-        type=int,
-    )
-    parser.add_argument(
         "--test",
         help="Create release files using only chr20 and chrX for testing purposes",
         action="store_true",
     )
     parser.add_argument(
-        "--prepare_vcf_mt", help="Use release mt to create vcf mt", action="store_true"
+        "--prepare_vcf_ht", help="Use release mt to create vcf ht", action="store_true"
     )
     parser.add_argument(
         "--sanity_check", help="Run sanity checks function", action="store_true"
@@ -689,33 +483,6 @@ if __name__ == "__main__":
         help="Run sanity checks function with verbose output",
         action="store_true",
     )
-    parser.add_argument(
-        "--prepare_release_vcf", help="Prepare release VCF", action="store_true"
-    )
-    export_opts = parser.add_mutually_exclusive_group()
-    export_opts.add_argument(
-        "--per_chromosome",
-        help="Prepare release VCFs per chromosome",
-        action="store_true",
-    )
-    export_opts.add_argument(
-        "--parallelize",
-        help="Parallelize VCF export by exporting sharded VCF",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--n_shards",
-        help="Desired number of shards for output VCF (if --parallelize is set)",
-        type=int,
-    )
-    parser.add_argument(
-        "--slack_channel", help="Slack channel to post results and notifications to."
-    )
-    parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     args = parser.parse_args()
+    main(args)
 
-    if args.slack_channel:
-        with slack_notifications(slack_token, args.slack_channel):
-            main(args)
-    else:
-        main(args)
