@@ -56,7 +56,8 @@ MISSING_REGION_FIELDS = "decoy"
 
 # Remove BaseQRankSum and SOR from site fields (doesn't exist in v3.1
 SITE_FIELDS.remove("BaseQRankSum")
-SITE_FIELDS.remove("SOR")  
+SITE_FIELDS.remove("SOR")
+SITE_FIELDS.append("monoallelic")
 
 # Remove AS_BaseQRankSum and AS_SOR from AS fields
 AS_FIELDS.remove("AS_BaseQRankSum")
@@ -340,7 +341,7 @@ def main(args):
                 logger.info("Filtering to chr20 and chrX (for tests only)...")
                 # Using chr20 to test a small autosome and chrX to test a sex chromosome
                 # Some annotations (like FAF) are 100% missing on autosomes
-                mt = hl.filter_intervals(
+                ht = hl.filter_intervals(
                     ht,
                     [hl.parse_locus_interval("chr20"), hl.parse_locus_interval("chrX")],
                 )
@@ -413,10 +414,9 @@ def main(args):
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
         if args.sanity_check:
-            # ht = hl.read_table(release_ht_path())
             # NOTE: removing lowqual and star alleles here to avoid having additional failed missingness checks
             # info_ht = hl.read_table(info_ht_path())
-            # ht = mt.filter_rows(
+            # ht = ht.filter(
             #    (~info_ht[mt.row_key].AS_lowqual)
             #    & ((hl.len(mt.alleles) > 1) & (mt.alleles[1] != "*"))
             # )
@@ -439,7 +439,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--prepare_vcf_ht", help="Use release mt to create vcf ht", action="store_true"
+        "--prepare_vcf_ht", help="Use release ht to create vcf ht", action="store_true"
     )
     parser.add_argument(
         "--sanity_check", help="Run sanity checks function", action="store_true"

@@ -100,29 +100,29 @@ LABEL_GROUP_SORT_ORDER = [
     "group",
 ]
 DOWNSAMPLINGS = {
-    "10" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas","mid"],
-    "20" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas","mid"],
-    "50" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas","mid"],
-    "100" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas","mid"],
-    "158" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas","mid"],
-    "200" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas"],
-    "456" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas"],
-    "500" : ["afr","amr","asj","eas","fin","nfe","oth","sas"],
-    "1000" : ["afr","amr","asj","eas","fin","nfe","oth","sas"],
-    "1047" : ["afr","amr","asj","eas","fin","nfe","oth","sas"],
-    "1736" : ["afr","amr","asj","eas","fin","nfe","sas"],
-    "2000" : ["afr","amr","eas","fin","nfe","sas"],
-    "2419" : ["afr","amr","eas","fin","nfe","sas"],
-    "2604" : ["afr","amr","eas","fin","nfe"],
-    "5000" : ["afr","amr","fin","nfe"],
-    "7647" : ["afr","amr","nfe"],
-    "10000" : ["afr","nfe"],
-    "15000" : ["afr","nfe"],
-    "20000" : ["afr","nfe"],
-    "20744" : ["afr","nfe"],
-    "25000" : ["nfe"],
-    "30000" : ["nfe"],
-    "34029" : ["nfe"],
+    "10": ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas", "mid"],
+    "20": ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas", "mid"],
+    "50": ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas", "mid"],
+    "100": ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas", "mid"],
+    "158": ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas", "mid"],
+    "200": ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas"],
+    "456": ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas"],
+    "500": ["afr", "amr", "asj", "eas", "fin", "nfe", "oth", "sas"],
+    "1000": ["afr", "amr", "asj", "eas", "fin", "nfe", "oth", "sas"],
+    "1047": ["afr", "amr", "asj", "eas", "fin", "nfe", "oth", "sas"],
+    "1736": ["afr", "amr", "asj", "eas", "fin", "nfe", "sas"],
+    "2000": ["afr", "amr", "eas", "fin", "nfe", "sas"],
+    "2419": ["afr", "amr", "eas", "fin", "nfe", "sas"],
+    "2604": ["afr", "amr", "eas", "fin", "nfe"],
+    "5000": ["afr", "amr", "fin", "nfe"],
+    "7647": ["afr", "amr", "nfe"],
+    "10000": ["afr", "nfe"],
+    "15000": ["afr", "nfe"],
+    "20000": ["afr", "nfe"],
+    "20744": ["afr", "nfe"],
+    "25000": ["nfe"],
+    "30000": ["nfe"],
+    "34029": ["nfe"],
 }
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -132,17 +132,17 @@ logger = logging.getLogger("sanity_checks")
 logger.setLevel(logging.INFO)
 
 
-# Resources to check raw MT upon loading
-def summarize_mt(mt: hl.MatrixTable) -> hl.Struct:
+# Resources to check raw HT upon loading
+def summarize_ht(ht: hl.Table, monoallelic_check: hl.bool) -> hl.Struct:
     """
     Gets a summary of variants in a MatrixTable.
     Prints number of variants to stdout, and checks that each chromosome has variant calls
-    :param MatrixTable mt: Raw MatrixTable to be checked
+    :param MatrixTable ht: Raw MatrixTable to be checked
     :return: Struct of MatrixTable variant summary
     :rtype: Struct
     """
 
-    var_summary = hl.summarize_variants(mt, show=False)
+    var_summary = hl.summarize_variants(ht, show=False)
     logger.info(f"Dataset has {var_summary.n_variants} variants")
 
     # check that all contigs have variant calls
@@ -150,74 +150,15 @@ def summarize_mt(mt: hl.MatrixTable) -> hl.Struct:
         if var_summary.contigs[contig] == 0:
             logger.warning(f"{contig} has no variants called")
 
+    if monoallelic_check:
+        logger.info(
+            f"There are {ht.filter(ht.info.monoallelic).count()} monoallelic sites in the dataset."
+        )
+
     return var_summary
 
 
-def check_adj(
-    mt: hl.MatrixTable, mt_adj: hl.MatrixTable, gt_expr: hl.expr.CallExpression
-) -> bool:
-    """
-    Checks if MatrixTable has been filtered using adj criteria by checking allele counts pre and post adj filtration
-    :param MatrixTable mt: MatrixTable to be checked
-    :param MatrixTable mt_adj: MatrixTable filtered using adj criteria
-    :param hl.expr.CallExpression gt_expr: Field containing genotype information 
-    :return: Bool of whether MatrixTable has been adj filtered
-    :rtype: bool
-    """
-
-    pre = mt.aggregate_entries(hl.agg.counter(mt[gt_expr].n_alt_alleles()))
-    logger.info(f"\nAllele distribution pre adj filtration: {pre}")
-    post = mt_adj.aggregate_entries(hl.agg.counter(mt_adj[gt_expr].n_alt_alleles()))
-    logger.info(f"\nAllele distribution post adj filtration: {post}")
-
-    adj = False
-    if sum(pre.values()) != sum(post.values()):
-        adj = True
-
-    return adj
-
-
-def sample_check(
-    ht: hl.Table, exp_ht: hl.Table, show_mismatch: bool = True,
-) -> Tuple[bool, bool]:
-    """
-    Checks for sample mismatch between samples in two Tables.
-    If there is a sample mismatch, writes unique samples to logger and stdout
-    Assumes the keys of the two tables match (uses anti_join).
-    :param Table ht: Table containing samples to be checked
-    :param Table exp_ht: Table with one column containing expected samples
-    :param bool show_mismatch: Boolean whether to print sample mismatches to stdout. Default is True
-    :return: Tuple of bools [whether there were missing samples, whether there were extra samples]
-    :rtype: Tuple[bool, bool]
-    """
-    # bool to store whether there are samples missing from ht
-    missing = False
-    # bool to store whether ht contains samples not in exp_ht
-    extra = False
-
-    missing_samples = exp_ht.anti_join(ht).select()
-    n_missing_samples = missing_samples.count()
-    extra_samples = ht.anti_join(exp_ht).select()
-    n_extra_samples = extra_samples.count()
-
-    if n_missing_samples > 0:
-        missing = True
-        logger.info(
-            f"Total number of IDs that are not in the sample HT: {n_missing_samples}..."
-        )
-        if show_mismatch:
-            missing_samples.show(n_missing_samples)
-
-    if n_extra_samples > 0:
-        extra = True
-        logger.info(f"Total number of extra IDs in the sample HT: {n_extra_samples}...")
-        if show_mismatch:
-            extra_samples.show(n_extra_samples)
-
-    return (missing, extra)
-
-
-# Resources to check MT upon VCF export
+# Resources to check HT upon VCF export
 def filters_sanity_check(ht: hl.Table) -> None:
     """
     Summarizes variants filtered under various conditions in input Table.
@@ -228,12 +169,10 @@ def filters_sanity_check(ht: hl.Table) -> None:
             - Inbreeding coefficient filter in combination with any other filter
             - AC0 filter in combination with any other filter
             - Random forest filtering in combination with any other filter
-            - Monoallelic filter in combination with any other filter
             - VQSR filtering in combination with any other filter
             - Only inbreeding coefficient filter
             - Only AC0 filter
             - Only RF filtering
-            - Only monoallelic filter
             - Only VQSR filtering
     :param hl.Table ht: Input Table.
     :return: None
@@ -243,7 +182,7 @@ def filters_sanity_check(ht: hl.Table) -> None:
     logger.info(
         f"hl.agg.counter filters: {ht_explode.aggregate(hl.agg.counter(ht_explode.filters))}"
     )
-    # NOTE: in_problematic_region check will need to be updated if we get hg38 decoy 
+    # NOTE: in_problematic_region check will need to be updated if we get hg38 decoy
     ht = ht.annotate(
         is_filtered=hl.len(ht.filters) > 0,
         in_problematic_region=hl.any(
@@ -274,12 +213,8 @@ def filters_sanity_check(ht: hl.Table) -> None:
     logger.info(
         "Checking distributions of filtered variants amongst variant filters..."
     )
-    
-    new_filters_dict = { 
-        "frac_monoallelic": hl.agg.fraction(ht.filters.contains("MonoAllelic")),  # TODO: Add these to gnomad_methods 
-        "frac_monoallelic_only": hl.agg.fraction(
-            ht.filters.contains("MonoAllelic") & (ht.filters.length() == 1)
-        ),
+
+    new_filters_dict = {
         "frac_vqsr": hl.agg.fraction(ht.filters.contains("AS_VQSR")),
         "frac_vqsr_only": hl.agg.fraction(
             ht.filters.contains("AS_VQSR") & (ht.filters.length() == 1)
@@ -290,7 +225,9 @@ def filters_sanity_check(ht: hl.Table) -> None:
     )
 
     logger.info("Checking distributions of variant type amongst variant filters...")
-    _filter_agg_order(ht, {"allele_type": ht.info.allele_type}, extra_filter_checks=new_filters_dict)
+    _filter_agg_order(
+        ht, {"allele_type": ht.info.allele_type}, extra_filter_checks=new_filters_dict
+    )
 
     logger.info(
         "Checking distributions of variant type and region type amongst variant filters..."
@@ -547,7 +484,6 @@ def sample_sum_sanity_checks(
     verbose: bool,
     pops: List[str] = POPS,
     sexes: List[str] = SEXES,
-    downsamplings: List[str] = DOWNSAMPLINGS
 ) -> None:
     """
     Performs sanity checks on sample sums in input Table.
@@ -581,12 +517,7 @@ def sample_sum_sanity_checks(
             dict(group=["adj"], pop=list(set(pop_names)), sex=sexes),
             verbose,
         )
-    """
-    for downsampling in downsamplings:
-        pop_names = downsamplings[downsampling]
-        downsampling +="-global"
-        sample_sum_check(ht, downsampling, dict(group=["adj"], pop=pop_names), verbose)
-    """
+
 
 def sex_chr_sanity_checks(
     ht: hl.Table, info_metrics: List[str], contigs: List[str], verbose: bool
@@ -690,7 +621,7 @@ def sanity_check_release_ht(
     - Checks on AC, AN, and AF annotations
     - Checks that subgroup annotation values add up to the supergroup annotation values
     - Checks on sex-chromosome annotations; and summaries of % missingness in variant annotations
-    :param MatrixTable mt: MatrixTable containing variant annotations to check.
+    :param MatrixTable ht: MatrixTable containing variant annotations to check.
     :param List[str] subsets: List of subsets to be checked.
     :param float missingness_threshold: Upper cutoff for allowed amount of missingness. Default is 0.5
     :param bool verbose: If True, display top values of relevant annotations being checked, regardless of whether check
@@ -698,12 +629,10 @@ def sanity_check_release_ht(
     :return: None (terminal display of results from the battery of sanity checks).
     :rtype: None
     """
-    
+
     # Perform basic checks -- number of variants, number of contigs, number of samples
     logger.info("BASIC SUMMARY OF INPUT TABLE:")
-    n_sites = ht.count()
-    contigs = ht.aggregate(hl.agg.collect_as_set(ht.locus.contig))
-    logger.info(f"Found {n_sites} sites in contigs {contigs}")
+    summarize_ht(ht, monoallelic_check=True)
 
     logger.info("VARIANT FILTER SUMMARIES:")
     filters_sanity_check(ht)
