@@ -46,7 +46,7 @@ logger.setLevel(logging.INFO)
 # Add capture region and sibling singletons to vcf_info_dict
 VCF_INFO_DICT = INFO_DICT
 
-#Remove original alleles for containing non-releasable alleles
+# Remove original alleles for containing non-releasable alleles
 ALLELE_TYPE_FIELDS.remove("original_alleles")
 
 # Remove decoy from region flag field
@@ -76,7 +76,7 @@ Constant that contains description for VEP used in VCF export.
 SEXES = ["XX", "XY"]
 
 # Make subset list (used in properly filling out VCF header descriptions and naming VCF info fields)
-SUBSET_LIST = [  
+SUBSET_LIST = [
     "controls_and_biobanks",
     "non_cancer",
     "non_neuro",
@@ -409,9 +409,7 @@ def main(args):
             ht = ht.annotate(
                 info=ht.info.annotate(**unfurl_nested_annotations(ht, pops=POPS))
             )
-            ht = ht.annotate(
-                **set_female_y_metrics_to_na(ht)
-            )
+            ht = ht.annotate(**set_female_y_metrics_to_na(ht))
 
             # Reformat vep annotation
             ht = ht.annotate_globals(vep_csq_header=VEP_CSQ_HEADER)
@@ -485,4 +483,3 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     main(args)
-

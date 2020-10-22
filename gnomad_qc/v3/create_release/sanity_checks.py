@@ -259,8 +259,6 @@ def filters_sanity_check(ht: hl.Table) -> None:
         ht, {"is_filtered": ht.is_filtered}, extra_filter_checks=monoallelic_dict
     )
 
-
-
     logger.info("Checking distributions of variant type amongst variant filters...")
     _filter_agg_order(ht, {"allele_type": ht.info.allele_type})
 
@@ -555,7 +553,6 @@ def sample_sum_sanity_checks(
             dict(group=["adj"], pop=list(set(pop_names)), sex=sexes),
             verbose,
         )
-    
 
 
 def sex_chr_sanity_checks(
@@ -699,5 +696,5 @@ def sanity_check_release_ht(
 
     logger.info("MISSINGNESS CHECKS:")
     missingness_sanity_checks(
-       ht, info_metrics, non_info_metrics, n_sites, missingness_threshold
+        ht, info_metrics, non_info_metrics, n_sites, missingness_threshold
     )
