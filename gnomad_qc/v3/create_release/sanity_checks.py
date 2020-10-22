@@ -99,31 +99,31 @@ LABEL_GROUP_SORT_ORDER = [
     "sex",
     "group",
 ]
-DOWNSAMPLINGS = [  # Finish this list of groups
-    "10",
-    "20",
-    "50",
-    "100",
-    "200",
-    "449",
-    "500",
-    "1000",
-    "1074",
-    "1523",
-    "1566",
-    "1659",
-    "2000",
-    "5000",
-    "5210",
-    "6816",
-    "10000",
-    "15000",
-    "20000",
-    "21015",
-    "25000",
-    "30000",
-    "32204",
-]
+DOWNSAMPLINGS = {
+    "10" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas","mid"],
+    "20" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas","mid"],
+    "50" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas","mid"],
+    "100" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas","mid"],
+    "158" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas","mid"],
+    "200" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas"],
+    "456" : ["afr","ami","amr","asj","eas","fin","nfe","oth","sas"],
+    "500" : ["afr","amr","asj","eas","fin","nfe","oth","sas"],
+    "1000" : ["afr","amr","asj","eas","fin","nfe","oth","sas"],
+    "1047" : ["afr","amr","asj","eas","fin","nfe","oth","sas"],
+    "1736" : ["afr","amr","asj","eas","fin","nfe","sas"],
+    "2000" : ["afr","amr","eas","fin","nfe","sas"],
+    "2419" : ["afr","amr","eas","fin","nfe","sas"],
+    "2604" : ["afr","amr","eas","fin","nfe"],
+    "5000" : ["afr","amr","fin","nfe"],
+    "7647" : ["afr","amr","nfe"],
+    "10000" : ["afr","nfe"],
+    "15000" : ["afr","nfe"],
+    "20000" : ["afr","nfe"],
+    "20744" : ["afr","nfe"],
+    "25000" : ["nfe"],
+    "30000" : ["nfe"],
+    "34029" : ["nfe"],
+}
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
@@ -243,7 +243,7 @@ def filters_sanity_check(ht: hl.Table) -> None:
     logger.info(
         f"hl.agg.counter filters: {ht_explode.aggregate(hl.agg.counter(ht_explode.filters))}"
     )
-    # NOTE: in_problematic_region check will need to be updated if we get hg38 decoy and segdup file
+    # NOTE: in_problematic_region check will need to be updated if we get hg38 decoy 
     ht = ht.annotate(
         is_filtered=hl.len(ht.filters) > 0,
         in_problematic_region=hl.any(
@@ -274,9 +274,9 @@ def filters_sanity_check(ht: hl.Table) -> None:
     logger.info(
         "Checking distributions of filtered variants amongst variant filters..."
     )
-    # Add extra check for monoallelic variants to make_filters_sanity_check_expr (currently UKBB-specific filter)
-    new_filters_dict = {
-        "frac_monoallelic": hl.agg.fraction(ht.filters.contains("MonoAllelic")),
+    
+    new_filters_dict = { 
+        "frac_monoallelic": hl.agg.fraction(ht.filters.contains("MonoAllelic")),  # TODO: Add these to gnomad_methods 
         "frac_monoallelic_only": hl.agg.fraction(
             ht.filters.contains("MonoAllelic") & (ht.filters.length() == 1)
         ),
@@ -290,7 +290,7 @@ def filters_sanity_check(ht: hl.Table) -> None:
     )
 
     logger.info("Checking distributions of variant type amongst variant filters...")
-    _filter_agg_order(ht, {"allele_type": ht.info.allele_type})
+    _filter_agg_order(ht, {"allele_type": ht.info.allele_type}, extra_filter_checks=new_filters_dict)
 
     logger.info(
         "Checking distributions of variant type and region type amongst variant filters..."
@@ -303,6 +303,7 @@ def filters_sanity_check(ht: hl.Table) -> None:
         },
         50,
         140,
+        extra_filter_checks=new_filters_dict,
     )
 
     logger.info(
@@ -317,6 +318,7 @@ def filters_sanity_check(ht: hl.Table) -> None:
         },
         50,
         140,
+        extra_filter_checks=new_filters_dict,
     )
 
 
@@ -377,8 +379,7 @@ def raw_and_adj_sanity_checks(ht: hl.Table, subsets: List[str], verbose: bool):
     """
     for subfield in ["AC", "AF"]:
         # Check raw AC, AF > 0
-        # NOTE: some sites should fail the raw AC > 0 for UKBB (but only in the low ten thousands range)
-        # We generate the release MT based on the raw MT, but the frequency HT calculates frequency only on samples that pass QC
+
         generic_field_check(
             ht,
             cond_expr=(ht.info[f"{subfield}-raw"] <= 0),
@@ -444,13 +445,10 @@ def frequency_sanity_checks(ht: hl.Table, subsets: List[str], verbose: bool) -> 
     """
     Performs sanity checks on frequency data in input Table.
     Checks:
-        - Number of sites where gnomAD exome frequency is equal to the gnomAD genome frequency (both raw and adj)
-        - Number of sites where the UKBB exome frequency is equal to the gnomAD exome frequency (both raw and adj)
-        - Number of sites where the UKBB exome frequency is equal to the gnomAD genome frequency (both raw and adj)
+        - Number of sites where gnomAD callset frequency is equal to a gnomAD subset frequency (both raw and adj)
+    
     Also performs small spot checks:
-        - Counts total number of sites where the gnomAD exome allele count annotation is defined (both raw and adj)
-        - Counts total number of sites where the gnomAD genome allele count annotation is defined (both raw and adj)
-        - Counts total number of sites where the UKBB exome allele count annotation is defined (both raw and adj)
+        - Counts total number of sites where the gnomAD allele count annotation is defined (both raw and adj)
         
     :param hl.Table ht: Input Table.
     :param List[str] subsets: List of sample subsets.
@@ -555,7 +553,7 @@ def sample_sum_sanity_checks(
     Performs sanity checks on sample sums in input Table.
     Computes afresh the sum of annotations for a specified group of annotations, and compare to the annotated version;
     displays results from checking the sum of the specified annotations in the terminal.
-    Also checks that annotations for all expected sample populations are present (both for gnomAD and UKBB).
+    Also checks that annotations for all expected sample populations are present.
     :param hl.Table ht: Input Table.
     :param List[str] subsets: List of sample subsets.
     :param List[str] info_metrics: List of metrics in info struct of input Table.
@@ -583,11 +581,12 @@ def sample_sum_sanity_checks(
             dict(group=["adj"], pop=list(set(pop_names)), sex=sexes),
             verbose,
         )
-    
+    """
     for downsampling in downsamplings:
-        pop_names = pops
+        pop_names = downsamplings[downsampling]
+        downsampling +="-global"
         sample_sum_check(ht, downsampling, dict(group=["adj"], pop=pop_names), verbose)
-
+    """
 
 def sex_chr_sanity_checks(
     ht: hl.Table, info_metrics: List[str], contigs: List[str], verbose: bool
@@ -699,6 +698,7 @@ def sanity_check_release_ht(
     :return: None (terminal display of results from the battery of sanity checks).
     :rtype: None
     """
+    
     # Perform basic checks -- number of variants, number of contigs, number of samples
     logger.info("BASIC SUMMARY OF INPUT TABLE:")
     n_sites = ht.count()

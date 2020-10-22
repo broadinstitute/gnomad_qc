@@ -33,7 +33,6 @@ from gnomad.utils.vcf import (
     VQSR_FIELDS,
 )
 
-# from gnomad_qc.gnomad_qc.v3.resources.release import release_ht_path
 from gnomad_qc.v3.create_release.sanity_checks import sanity_check_release_ht
 
 logging.basicConfig(
@@ -55,11 +54,11 @@ REGION_FLAG_FIELDS.remove("decoy")
 # Missing region field flag to remove from vcf info dict
 MISSING_REGION_FIELDS = "decoy"
 
-# Remove BaseQRankSum from site fields (doesn't exist in UKBB 300K)
+# Remove BaseQRankSum and SOR from site fields (doesn't exist in v3.1
 SITE_FIELDS.remove("BaseQRankSum")
-SITE_FIELDS.remove("SOR")  # Remove SOR after testing!
+SITE_FIELDS.remove("SOR")  
 
-# Remove AS_BaseQRankSum from AS fields
+# Remove AS_BaseQRankSum and AS_SOR from AS fields
 AS_FIELDS.remove("AS_BaseQRankSum")
 AS_FIELDS.remove("AS_SOR")
 
@@ -128,7 +127,7 @@ def populate_info_dict(
     :param List[str] groups: List of sample groups [adj, raw]. Default is GROUPS.
     :param Dict[str, str] pops: List of sample global population names for gnomAD genomes. Default is POPS.
     :param List[str] faf_pops: List of faf population names. Default is FAF_POPS.
-    :param List[str] gnomad_sexes: gnomAD sample sexes used in VCF export. Default is SEXES. 
+    :param List[str] sexes: gnomAD sample sexes used in VCF export. Default is SEXES. 
 
     :rtype: Dict[str, Dict[str, str]]
     """
@@ -257,10 +256,7 @@ def unfurl_nested_annotations(
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the values
     of the dictionary are Hail Expressions describing how to access the corresponding values.
     :param Table/MatrixTable t: Table/MatrixTable containing the nested variant annotation arrays to be unfurled.
-    :param bool gnomad: Whether the annotations are from gnomAD.
-    :param bool genome: Whether the annotations are from genome data (relevant only to gnomAD data).
-    :param List[str] pops: List of global populations in frequency array. 
-    :param List[str] subpops: List of all UKBB subpops (possible hybrid population cluster names). 
+    :param List[str] pops: List of global populations in frequency array.  
     :return: Dictionary containing variant annotations and their corresponding values.
     :rtype: Dict[str, hl.expr.Expression]
     """
@@ -342,9 +338,6 @@ def main(args):
 
             if args.test:
                 logger.info("Filtering to chr20 and chrX (for tests only)...")
-                # Using filter intervals to keep all the work done by get_ukbb_data
-                # (removing sample with withdrawn consent/their ref blocks/variants,
-                # also keeping meta col annotations)
                 # Using chr20 to test a small autosome and chrX to test a sex chromosome
                 # Some annotations (like FAF) are 100% missing on autosomes
                 mt = hl.filter_intervals(
