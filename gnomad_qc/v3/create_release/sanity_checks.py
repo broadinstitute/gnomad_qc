@@ -99,7 +99,31 @@ LABEL_GROUP_SORT_ORDER = [
     "sex",
     "group",
 ]
-
+DOWNSAMPLINGS = [  # Finish this list of groups
+    "10",
+    "20",
+    "50",
+    "100",
+    "200",
+    "449",
+    "500",
+    "1000",
+    "1074",
+    "1523",
+    "1566",
+    "1659",
+    "2000",
+    "5000",
+    "5210",
+    "6816",
+    "10000",
+    "15000",
+    "20000",
+    "21015",
+    "25000",
+    "30000",
+    "32204",
+]
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
@@ -205,10 +229,12 @@ def filters_sanity_check(ht: hl.Table) -> None:
             - AC0 filter in combination with any other filter
             - Random forest filtering in combination with any other filter
             - Monoallelic filter in combination with any other filter
+            - VQSR filtering in combination with any other filter
             - Only inbreeding coefficient filter
             - Only AC0 filter
-            - Only random forest filtering
+            - Only RF filtering
             - Only monoallelic filter
+            - Only VQSR filtering
     :param hl.Table ht: Input Table.
     :return: None
     :rtype: None
@@ -249,14 +275,18 @@ def filters_sanity_check(ht: hl.Table) -> None:
         "Checking distributions of filtered variants amongst variant filters..."
     )
     # Add extra check for monoallelic variants to make_filters_sanity_check_expr (currently UKBB-specific filter)
-    monoallelic_dict = {
+    new_filters_dict = {
         "frac_monoallelic": hl.agg.fraction(ht.filters.contains("MonoAllelic")),
         "frac_monoallelic_only": hl.agg.fraction(
             ht.filters.contains("MonoAllelic") & (ht.filters.length() == 1)
         ),
+        "frac_vqsr": hl.agg.fraction(ht.filters.contains("AS_VQSR")),
+        "frac_vqsr_only": hl.agg.fraction(
+            ht.filters.contains("AS_VQSR") & (ht.filters.length() == 1)
+        ),
     }
     _filter_agg_order(
-        ht, {"is_filtered": ht.is_filtered}, extra_filter_checks=monoallelic_dict
+        ht, {"is_filtered": ht.is_filtered}, extra_filter_checks=new_filters_dict
     )
 
     logger.info("Checking distributions of variant type amongst variant filters...")
@@ -519,6 +549,7 @@ def sample_sum_sanity_checks(
     verbose: bool,
     pops: List[str] = POPS,
     sexes: List[str] = SEXES,
+    downsamplings: List[str] = DOWNSAMPLINGS
 ) -> None:
     """
     Performs sanity checks on sample sums in input Table.
@@ -538,7 +569,6 @@ def sample_sum_sanity_checks(
     subsets.append("")
     # Perform sample sum checks per subset
     for subset in subsets:
-        print(f"Subset is {subset}")
         pop_names = pops
         if subset == "hgdp":
             pop_names = HGDP_POPS
@@ -553,6 +583,10 @@ def sample_sum_sanity_checks(
             dict(group=["adj"], pop=list(set(pop_names)), sex=sexes),
             verbose,
         )
+    
+    for downsampling in downsamplings:
+        pop_names = pops
+        sample_sum_check(ht, downsampling, dict(group=["adj"], pop=pop_names), verbose)
 
 
 def sex_chr_sanity_checks(

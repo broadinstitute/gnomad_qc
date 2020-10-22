@@ -86,31 +86,6 @@ SUBSET_LIST = [
     "tgp",
 ]
 
-DOWNSAMPLINGS = [  # Finish this list of groups
-    "10",
-    "20",
-    "50",
-    "100",
-    "200",
-    "449",
-    "500",
-    "1000",
-    "1074",
-    "1523",
-    "1566",
-    "1659",
-    "2000",
-    "5000",
-    "5210",
-    "6816",
-    "10000",
-    "15000",
-    "20000",
-    "21015",
-    "25000",
-    "30000",
-    "32204",
-]
 # Select populations to keep from the list of population names in POP_NAMES
 # This removes pop names we don't want to use
 # (e.g., "uniform", "consanguineous") to reduce clutter
