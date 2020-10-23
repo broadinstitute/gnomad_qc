@@ -545,13 +545,21 @@ def sex_chr_sanity_checks(
         ht_y = hl.filter_intervals(ht, [hl.parse_locus_interval("chrY")])
         metrics_values = {}
         for metric in female_metrics:
-            metrics_values[metric] = hl.agg.collect_as_set(ht_y.info[metric])
+            metrics_values[metric] = hl.agg.any(hl.is_defined(ht_y.info[metric]))
         output = ht_y.aggregate(hl.struct(**metrics_values))
-        for metric, values in dict(output).items():
-            if values == {None}:
-                logger.info(f"PASSED {metric} = {None} check for Y variants")
+        for metric, value in dict(output).items():
+            if value:
+                values_found = ht_y.aggregate(
+                    hl.agg.filter(
+                        hl.is_defined(ht_y.info[metric]),
+                        hl.agg.take(ht_y.info[metric], 1),
+                    )
+                )
+                logger.info(
+                    f"FAILED {metric} = {None} check for Y variants. Values found: {values_found}"
+                )
             else:
-                logger.info(f"FAILED Y check: Found {values} in {metric}")
+                logger.info(f"PASSED {metric} = {None} check for Y variants")
 
     ht_x = hl.filter_intervals(ht, [hl.parse_locus_interval("chrX")])
     ht_xnonpar = ht_x.filter(ht_x.locus.in_x_nonpar())
@@ -632,7 +640,7 @@ def sanity_check_release_ht(
     :return: None (terminal display of results from the battery of sanity checks).
     :rtype: None
     """
-    
+
     # Perform basic checks -- number of variants, number of contigs, number of samples
     logger.info("BASIC SUMMARY OF INPUT TABLE:")
     summarize_ht(ht, monoallelic_check=True)
@@ -648,15 +656,15 @@ def sanity_check_release_ht(
 
     logger.info("FREQUENCY CHECKS:")
     frequency_sanity_checks(ht, subsets, verbose)
-    
+
     # Pull row annotations from HT
     info_metrics = list(ht.row.info)
     non_info_metrics = list(ht.row)
     non_info_metrics.remove("info")
-    
+
     logger.info("SAMPLE SUM CHECKS:")
     sample_sum_sanity_checks(ht, subsets, info_metrics, verbose)
-    
+
     logger.info("SEX CHROMOSOME ANNOTATION CHECKS:")
     contigs = ht.aggregate(hl.agg.collect_as_set(ht.locus.contig))
     sex_chr_sanity_checks(ht, info_metrics, contigs, verbose)
