@@ -143,7 +143,9 @@ def summarize_ht(ht: hl.Table, monoallelic_check: hl.bool) -> hl.Struct:
     """
 
     var_summary = hl.summarize_variants(ht, show=False)
-    logger.info(f"Dataset has {var_summary.n_variants} variants")
+    logger.info(
+        f"Dataset has {var_summary.n_variants} variants in {var_summary.contigs}"
+    )
 
     # check that all contigs have variant calls
     for contig in var_summary.contigs:
@@ -535,8 +537,9 @@ def sex_chr_sanity_checks(
     :return: None
     :rtype: None
     """
-    female_metrics = [x for x in info_metrics if "_female" in x or "_XX" in x]
 
+    female_metrics = [x for x in info_metrics if "-female" in x or "-XX" in x]
+    
     if "chrY" in contigs:
         logger.info("Check values of female metrics for Y variants are NA:")
         ht_y = hl.filter_intervals(ht, [hl.parse_locus_interval("chrY")])
@@ -558,24 +561,12 @@ def sex_chr_sanity_checks(
     logger.info("Check (nhomalt == nhomalt_female) for X nonpar variants:")
     female_metrics = [x for x in female_metrics if "nhomalt" in x]
     for metric in female_metrics:
-        standard_field = metric.replace("_female", "").replace("_XX", "")
+        standard_field = metric.replace("-female", "").replace("-XX", "")
         generic_field_check(
             ht_xnonpar,
             (ht_xnonpar.info[f"{metric}"] != ht_xnonpar.info[f"{standard_field}"]),
             f"{metric} == {standard_field}",
             [f"info.{metric}", f"info.{standard_field}"],
-            verbose,
-        )
-
-    male_metrics = [x for x in info_metrics if "_male" in x or "_XY" in x]
-
-    logger.info("Check male metrics == 0 for X nonpar variants:")
-    for metric in male_metrics:
-        generic_field_check(
-            ht_xnonpar,
-            (ht_xnonpar.info[f"{metric}"] > 0),
-            f"{metric} == 0",
-            [f"info.{metric}", 0],
             verbose,
         )
 
@@ -641,7 +632,7 @@ def sanity_check_release_ht(
     :return: None (terminal display of results from the battery of sanity checks).
     :rtype: None
     """
-
+    
     # Perform basic checks -- number of variants, number of contigs, number of samples
     logger.info("BASIC SUMMARY OF INPUT TABLE:")
     summarize_ht(ht, monoallelic_check=True)
@@ -657,19 +648,21 @@ def sanity_check_release_ht(
 
     logger.info("FREQUENCY CHECKS:")
     frequency_sanity_checks(ht, subsets, verbose)
-
+    
     # Pull row annotations from HT
     info_metrics = list(ht.row.info)
     non_info_metrics = list(ht.row)
     non_info_metrics.remove("info")
-
+    
     logger.info("SAMPLE SUM CHECKS:")
     sample_sum_sanity_checks(ht, subsets, info_metrics, verbose)
-
+    
     logger.info("SEX CHROMOSOME ANNOTATION CHECKS:")
+    contigs = ht.aggregate(hl.agg.collect_as_set(ht.locus.contig))
     sex_chr_sanity_checks(ht, info_metrics, contigs, verbose)
 
     logger.info("MISSINGNESS CHECKS:")
+    n_sites = ht.count()
     missingness_sanity_checks(
         ht, info_metrics, non_info_metrics, n_sites, missingness_threshold
     )

@@ -97,7 +97,7 @@ POPS["mid"] = "Middle Eastern"
 
 
 def release_ht_path():
-    return "gs://gnomad-tmp/release/v3.1/gnomad.genomes.v3.1.sites.ht"
+    return "gs://gnomad/release/v3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht"
 
 
 def populate_info_dict(
