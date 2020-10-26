@@ -45,7 +45,7 @@ _meta_versions = {
         path="gs://gnomad/metadata/genomes_v3/gnomad_v3_metadata_2019-09-25.ht"
     ),
 }
-_meta_versions["v3"] = _meta_versions["2019-09-27"]
+# _meta_versions["v3"] = _meta_versions["2019-09-27"]
 
 
 _project_meta_versions = {
