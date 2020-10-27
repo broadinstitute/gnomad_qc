@@ -11,7 +11,7 @@ from gnomad.sample_qc.ancestry import POP_NAMES
 from gnomad.sample_qc.sex import adjust_sex_ploidy
 from gnomad.utils.reference_genome import get_reference_genome
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vep import vep_struct_to_csq
+from gnomad.utils.vep import vep_struct_to_csq, VEP_CSQ_HEADER
 from gnomad.utils.vcf import (
     add_as_info_dict,
     ALLELE_TYPE_FIELDS,
@@ -75,16 +75,6 @@ MISSING_INFO_FIELDS = (
     + MISSING_SITES_FIELDS
     + RF_FIELDS
 )
-
-VEP_CSQ_FIELDS = "Allele|Consequence|IMPACT|SYMBOL|Gene|Feature_type|Feature|BIOTYPE|EXON|INTRON|HGVSc|HGVSp|cDNA_position|CDS_position|Protein_position|Amino_acids|Codons|ALLELE_NUM|DISTANCE|STRAND|VARIANT_CLASS|MINIMISED|SYMBOL_SOURCE|HGNC_ID|CANONICAL|TSL|APPRIS|CCDS|ENSP|SWISSPROT|TREMBL|UNIPARC|GENE_PHENO|SIFT|PolyPhen|DOMAINS|HGVS_OFFSET|MOTIF_NAME|MOTIF_POS|HIGH_INF_POS|MOTIF_SCORE_CHANGE|LoF|LoF_filter|LoF_flags|LoF_info"
-"""
-Constant that defines the order of VEP annotations used in VCF export.
-"""
-
-VEP_CSQ_HEADER = f"Consequence annotations from Ensembl VEP. Format: {VEP_CSQ_FIELDS}"
-"""
-Constant that contains description for VEP used in VCF export.
-"""
 
 SEXES = ["XX", "XY"]
 
@@ -192,7 +182,7 @@ ANALYST_ANOTATIONS_INFO_DICT = {
 
 
 def release_ht_path():
-    return "gs://gnomad-mwilson/untitled-folder/release_test.ht"  # "gs://gnomad/release/v3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht"
+    return "gs://gnomad-mwilson/untitled-folder/release_test.ht"  # "gs://gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht"
 
 
 def populate_info_dict(
@@ -424,6 +414,7 @@ def unfurl_nested_annotations(
         "AN_popmax": t[popmax].AN,
         "AF_popmax": t[popmax].AF,
         "nhomalt_popmax": t[popmax].homozygote_count,
+        "faf95_popmax": t[popmax].faf95,
     }
     expr_dict.update(combo_dict)
 
@@ -449,6 +440,7 @@ def main(args):
     try:
 
         if args.prepare_vcf_ht:
+            chromosome = args.export_chromosome
             logger.info("Starting VCF process...")
             logger.info("Reading in release HT...")
             ht = hl.read_table(release_ht_path())
@@ -456,9 +448,9 @@ def main(args):
             logger.info("Removing chrM...")
             ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
 
-            if args.export_chromosome:
+            if chromosome:
                 ht = hl.filter_intervals(
-                    ht, [hl.parse_locus_interval(args.export_chromosome)]
+                    ht, [hl.parse_locus_interval(chromosome)]
                 )
 
             if args.test:
@@ -582,18 +574,37 @@ def main(args):
             logger.info("Adjusting VCF incompatiable types...")
             ht = ht_to_vcf_mt(ht)
 
-            logger.info(f"Export chromosome {args.export_chromosome}....")
+            logger.info("Rearranging fields to desired order...")
+            ht = ht.annotate(
+                info=ht.info.select(
+                    "AC",
+                    "AN",
+                    "AF",
+                    "popmax",
+                    "faf95_popmax",
+                    *ht.info.drop(
+                        "AC",
+                        "AN",
+                        "AF",
+                        "popmax",
+                        "faf95_popmax",
+
+                    ),
+                )
+            )
+            ht.describe()
+            logger.info(f"Export chromosome {chromosome}....")
             hl.export_vcf(
                 ht,
-                "gs://gnomad-mwilson/untitled-folder/release_test_w_append.vcf.bgz",
-                append_to_header="gs://gnomad-mwilson/untitled-folder/vcf_header_non_info.tsv",
+                "gs://gnomad-mwilson/untitled-folder/release_test_w_append.vcf.bgz", # f"gs://gnomad/release/3.1/vcf/genomes/gnomad.genomes.v3.1.sites.{chromosome}.vcf.bgz"
+                append_to_header="gs://gnomad-mwilson/untitled-folder/vcf_header_non_info.tsv", #f"gs://gnomad/release/3.1/vcf/genomes/extra_fields_for_header.tsv"
                 metadata=header_dict,
                 tabix=True,
             )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log("gs://gnomad-mwilson/logs/v3.1/sanity_logs/10202020.log")
+        hl.copy_log("gs://gnomad-mwilson/logs/v3.1/vcf_export.log")
 
 
 if __name__ == "__main__":
