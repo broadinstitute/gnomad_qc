@@ -60,7 +60,7 @@ MISSING_SITES_FIELDS = ["BaseQRankSum", "SOR"]
 remove_fields_from_globals(SITE_FIELDS, MISSING_SITES_FIELDS)
 
 # Remove AS_BaseQRankSum and AS_SOR from AS fields
-MISSING_AS_FIELDS = ["AS_BaseQRankSum", "AS_SOR"]
+MISSING_AS_FIELDS = ["AS_BaseQRankSum", "AS_VarDP"]
 remove_fields_from_globals(AS_FIELDS, MISSING_AS_FIELDS)
 
 # All missing fields to remove from vcf info dict
@@ -278,6 +278,7 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
     for field in AS_FIELDS:
         vcf_info_dict[field] = t["info"][f"{field}"]
 
+    # Add histograms to info dict
     for hist in HISTS:
         for prefix in ["qual_hists", "raw_qual_hists"]:
             hist_name = hist
@@ -295,6 +296,18 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
                 f"{hist_name}_n_larger": t[prefix][hist].n_larger,
             }
             vcf_info_dict.update(hist_dict)
+
+    # Add analyst annotations to info dict
+    vcf_info_dict['cadd_raw_score'] = t['cadd']['raw_score']
+    vcf_info_dict['cadd_phred'] = t['cadd']['phred']
+
+    vcf_info_dict['revel_score'] = t['revel']['revel_score']
+
+    vcf_info_dict['splice_ai_max_ds'] = t['splice_ai']['max_ds']
+    vcf_info_dict['splice_ai_consequence'] = t['splice_ai']['splice_consequence']
+
+    vcf_info_dict['primate_ai_score'] = t['primate_ai']['primate_ai_score']
+
     return vcf_info_dict
 
 
@@ -461,7 +474,6 @@ def main(args):
             header_dict = {
                 "info": new_vcf_info_dict,
                 "filter": filter_dict,
-                "format": FORMAT_DICT,
             }
 
             logger.info("Saving header dict to pickle...")
@@ -478,13 +490,14 @@ def main(args):
         if args.export_vcf:
             # Drop unnecessary histograms
             drop_hists = (
-                [x + "_n_smaller" for x in HISTS if "dp_" not in x]
+                [x + "_n_smaller" for x in HISTS if "dp_hist_all" not in x]
                 + [x + "_n_larger" for x in HISTS if "dp_" not in x]
                 + [x + "_raw_n_smaller" for x in HISTS]
                 + [x + "_raw_bin_edges" for x in HISTS]
                 + [x + "_raw_n_larger" for x in HISTS]
                 + [x + "_raw_bin_freq" for x in HISTS]
                 + [x + "_bin_edges" for x in HISTS]
+                + ["age_hist_het_bin_edges", "age_hist_hom_bin_edges"]
             )
 
             ht = ht.annotate(info=ht.info.drop(*drop_hists))
@@ -506,6 +519,7 @@ def main(args):
 
             ht.describe()
             print(header_dict)
+            hl.export_vcf(ht, 'gs://gnomad-mwilson/untitled-folder/release_test.vcf.bgz', metadata=header_dict, tabix=True)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
