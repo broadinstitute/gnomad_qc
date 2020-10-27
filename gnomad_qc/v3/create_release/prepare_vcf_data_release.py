@@ -36,7 +36,10 @@ from gnomad.utils.vcf import (
     remove_fields_from_globals,
 )
 
-from gnomad_qc.v3.create_release.sanity_checks import sanity_check_release_ht, vcf_field_check
+from gnomad_qc.v3.create_release.sanity_checks import (
+    sanity_check_release_ht,
+    vcf_field_check,
+)
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -161,6 +164,33 @@ EXPORT_HISTS = [
 
 INBREEDING_CUTOFF = -0.3
 
+ANALYST_ANOTATIONS_INFO_DICT = {
+    "cadd_raw_score": {
+        "Number": "",
+        "Description": "Raw CADD scores are interpretable as the extent to which the annotation profile for a given variant suggests that the variant is likely to be 'observed' (negative values) vs 'simulated' (positive values).",
+    },
+    "cadd_phred": {
+        "Number": "A",
+        "Description": "Cadd Phred-like scores ('scaled C-scores') ranging from 1 to 99, based on the rank of each variant relative to all possible 8.6 billion substitutions in the human reference genome",
+    },
+    "revel_score": {
+        "Number": "",
+        "Description": "dbNSFP's Revel score from 0 to 1. Variants with higher scores are predicted to be more likely to be pathogenic",
+    },
+    "splice_ai_max_ds": {
+        "Number": "",
+        "Description": "Illumina's SpliceAI max delta score; interpreted as the probability of the variant being splice-altering.",
+    },
+    "splice_ai_consequence": {
+        "Number": "",
+        "Description": "The consequence term associated with the max delta score in 'splice_ai_max_ds'.",
+    },
+    "primate_ai_score": {
+        "Number": "",
+        "Description": "PrimateAI's pathogenicity score from 0 (less pathogenic) to 1 (more pathogenic).",
+    },
+}
+
 
 def release_ht_path():
     return "gs://gnomad-mwilson/untitled-folder/release_test.ht"  # "gs://gnomad/release/v3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht"
@@ -175,6 +205,7 @@ def populate_info_dict(
     pops: Dict[str, str] = POPS,
     faf_pops: List[str] = FAF_POPS,
     sexes: List[str] = SEXES,
+    analyst_dict: Dict[str, Dict[str, str]] = ANALYST_ANOTATIONS_INFO_DICT,
 ) -> Dict[str, Dict[str, str]]:
     """
     Calls `make_info_dict` and `make_hist_dict` to populate INFO dictionary with specific sexes, population names, and filtering allele frequency (faf) pops.
@@ -249,10 +280,7 @@ def populate_info_dict(
     for label_group in faf_label_groups:
         vcf_info_dict.update(
             make_info_dict(
-                prefix="",
-                pop_names=pops,
-                label_groups=label_group,
-                faf=True,
+                prefix="", pop_names=pops, label_groups=label_group, faf=True,
             )
         )
 
@@ -266,9 +294,11 @@ def populate_info_dict(
     )
 
     # Add variant quality histograms to info dict
-    vcf_info_dict.update(
-        make_hist_dict(bin_edges, adj=True)
-    )  # , dict_hists=EXPORT_HISTS)) <-this fails because bins go with the prefix of the hist, not specific bin
+    vcf_info_dict.update(make_hist_dict(bin_edges, adj=True))
+
+    # Add Analyst annotations to info_dict
+    vcf_info_dict.update(analyst_dict)
+
     return vcf_info_dict
 
 
@@ -547,8 +577,6 @@ def main(args):
             if not vcf_field_check(ht, header_dict, new_row_annots):
                 logger.error("Did not pass VCF field check")
 
-            ht.describe()
-            print(header_dict)
             mt = ht_to_vcf_mt(ht)
             hl.export_vcf(
                 mt,
