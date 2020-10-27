@@ -22,6 +22,7 @@ from gnomad.utils.vcf import (
     FORMAT_DICT,
     GROUPS,
     HISTS,
+    ht_to_vcf_mt,
     INFO_DICT,
     make_hist_bin_edges_expr,
     make_hist_dict,
@@ -35,7 +36,7 @@ from gnomad.utils.vcf import (
     remove_fields_from_globals,
 )
 
-from gnomad_qc.v3.create_release.sanity_checks import sanity_check_release_ht
+from gnomad_qc.v3.create_release.sanity_checks import sanity_check_release_ht, vcf_field_check
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -252,7 +253,6 @@ def populate_info_dict(
                 pop_names=pops,
                 label_groups=label_group,
                 faf=True,
-                description_text=description_text,
             )
         )
 
@@ -479,7 +479,6 @@ def main(args):
                     )
                 )
             )
-            # ht = ht.annotate(**set_female_y_metrics_to_na(ht))
 
             # Reformat vep annotation
             ht = ht.annotate_globals(vep_csq_header=VEP_CSQ_HEADER)
@@ -545,10 +544,14 @@ def main(args):
 
             ht = ht.transmute(info=hl.struct(**info_annot_mapping))
 
+            if not vcf_field_check(ht, header_dict, new_row_annots):
+                logger.error("Did not pass VCF field check")
+
             ht.describe()
             print(header_dict)
+            mt = ht_to_vcf_mt(ht)
             hl.export_vcf(
-                ht,
+                mt,
                 "gs://gnomad-mwilson/untitled-folder/release_test_w_append.vcf.bgz",
                 append_to_header="gs://gnomad-mwilson/untitled-folder/vcf_header_non_info.tsv",
                 metadata=header_dict,

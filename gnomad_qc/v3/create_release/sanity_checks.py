@@ -539,7 +539,7 @@ def sex_chr_sanity_checks(
     """
 
     female_metrics = [x for x in info_metrics if "-female" in x or "-XX" in x]
-    
+
     if "chrY" in contigs:
         logger.info("Check values of female metrics for Y variants are NA:")
         ht_y = hl.filter_intervals(ht, [hl.parse_locus_interval("chrY")])
@@ -616,6 +616,81 @@ def missingness_sanity_checks(
         else:
             logger.info(f"Passed {message}")
     logger.info(f"{n_fail} missing metrics checks failed")
+
+
+def vcf_field_check(
+    ht: hl.Table,
+    header_dict: Dict[str, Dict[str, Dict[str, str]]],
+    row_annotations: List[str],
+    hists: List[str] = HISTS,
+) -> bool:
+    """
+    Checks that all VCF fields and descriptions are present in input Table and VCF header dictionary.
+
+    :param hl.MatrixTable ht: Input Table to be exported to VCF.
+    :param Dict[str, Dict[str, Dict[str, str]]] header_dict: VCF header dictionary.
+    :param List[str] row_annotations: List of row annotations in MatrixTable.
+    :param List[str] hists: List of variant histogram annotations. Default is HISTS.
+    :return: Bool with whether all expected fields and descriptions are present.
+    :rtype: bool
+    """
+    # Confirm all VCF fields/descriptions are present before exporting
+    hist_fields = []
+    for hist in hists:
+        hist_fields.extend(
+            [
+                f"{hist}_bin_freq",
+                f"{hist}_n_smaller",
+                f"{hist}_n_larger",
+                f"{hist}_raw_bin_freq",
+                f"{hist}_raw_n_smaller",
+                f"{hist}_raw_n_larger",
+            ]
+        )
+
+    missing_fields = []
+    missing_descriptions = []
+    for item in ["info", "filter"]:
+        if item == "info":
+            annots = row_annotations
+        else:
+            annot_ht = ht.explode(ht.filters)
+            annots = list(
+                annot_ht.aggregate(hl.agg.collect_as_set(annot_ht.filters))
+            )
+
+        temp_missing_fields = []
+        temp_missing_descriptions = []
+        for field in annots:
+            try:
+                description = header_dict[item][field]
+                if len(description) == 0:
+                    logger.warning(
+                        f"{field} in HT info field has empty description in VCF header!"
+                    )
+                    temp_missing_descriptions.append(field)
+            except KeyError:
+                logger.warning(
+                    f"{field} in HT info field does not exist in VCF header!"
+                )
+                # NOTE: some hists are not exported, so ignoring here
+                # END entry is also not exported (removed during densify)
+                if (field not in hist_fields) and (field != "END"):
+                    temp_missing_fields.append(field)
+
+        missing_fields.extend(temp_missing_fields)
+        missing_descriptions.extend(temp_missing_descriptions)
+
+    if len(missing_fields) != 0 or len(missing_descriptions) != 0:
+        logger.error(
+            "Some fields are either missing or missing descriptions in the VCF header! Please reconcile."
+        )
+        logger.error(f"Missing fields: {missing_fields}")
+        logger.error(f"Missing descriptions: {missing_descriptions}")
+        return False
+
+    logger.info("Passed VCF fields check!")
+    return True
 
 
 def sanity_check_release_ht(
