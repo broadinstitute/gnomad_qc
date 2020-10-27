@@ -141,6 +141,16 @@ FREQ_ENTRIES_TO_REMOVE = [
     "tgp",
 ]
 
+EXPORT_HISTS = [
+    "gq_hist_alt_bin_freq",
+"gq_hist_all_bin_freq",
+"dp_hist_alt_bin_freq",
+"dp_hist_alt_n_larger",
+"dp_hist_all_bin_freq",
+"dp_hist_all_n_larger",
+"ab_hist_alt_bin_freq",
+]
+
 
 INBREEDING_CUTOFF = -0.3
 
@@ -227,30 +237,29 @@ def populate_info_dict(
                 )
             )
 
-        faf_label_groups = _create_label_groups(pops=faf_pops, sexes=sexes)
-        for label_group in faf_label_groups:
-            vcf_info_dict.update(
-                make_info_dict(
-                    prefix=subset,
-                    pop_names=pops,
-                    label_groups=label_group,
-                    faf=True,
-                    description_text=description_text,
-                )
-            )
-
+    faf_label_groups = _create_label_groups(pops=faf_pops, sexes=sexes)
+    for label_group in faf_label_groups:
         vcf_info_dict.update(
             make_info_dict(
-                prefix=subset,
-                bin_edges=bin_edges,
-                popmax=True,
-                age_hist_data="|".join(str(x) for x in age_hist_data),
+                prefix="",
+                pop_names=pops,
+                label_groups=label_group,
+                faf=True,
+                description_text=description_text,
             )
         )
 
+    vcf_info_dict.update(
+        make_info_dict(
+            prefix="",
+            bin_edges=bin_edges,
+            popmax=True,
+            age_hist_data="|".join(str(x) for x in age_hist_data),
+        )
+    )
+
     # Add variant quality histograms to info dict
-    vcf_info_dict.update(make_hist_dict(bin_edges, adj=True))
-    vcf_info_dict.update(make_hist_dict(bin_edges, adj=False))
+    vcf_info_dict.update(make_hist_dict(bin_edges, adj=True)) #, dict_hists=EXPORT_HISTS)) <-this fails because bins go with the prefix of the hist, not specific bin
     return vcf_info_dict
 
 
@@ -469,7 +478,7 @@ def main(args):
             )
             
             new_vcf_info_dict = {  # Adjust keys to remove adj tags before exporting to VCF
-                i.replace("_adj", ""): j for i, j in vcf_info_dict.items()
+                i.replace("-adj", ""): j for i, j in vcf_info_dict.items()
             }
             header_dict = {
                 "info": new_vcf_info_dict,
@@ -499,7 +508,6 @@ def main(args):
                 + [x + "_bin_edges" for x in HISTS]
                 + ["age_hist_het_bin_edges", "age_hist_hom_bin_edges"]
             )
-
             ht = ht.annotate(info=ht.info.drop(*drop_hists))
 
             # Reformat names to remove "adj" pre-export
