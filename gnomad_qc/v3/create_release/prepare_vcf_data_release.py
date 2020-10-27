@@ -476,6 +476,34 @@ def main(args):
             )
 
         if args.export_vcf:
+            # Drop unnecessary histograms
+            drop_hists = (
+                [x + "_n_smaller" for x in HISTS if "dp_" not in x]
+                + [x + "_n_larger" for x in HISTS if "dp_" not in x]
+                + [x + "_raw_n_smaller" for x in HISTS]
+                + [x + "_raw_bin_edges" for x in HISTS]
+                + [x + "_raw_n_larger" for x in HISTS]
+                + [x + "_raw_bin_freq" for x in HISTS]
+                + [x + "_bin_edges" for x in HISTS]
+            )
+
+            ht = ht.annotate(info=ht.info.drop(*drop_hists))
+
+            # Reformat names to remove "adj" pre-export
+            # e.g, renaming "AC-adj" to "AC"
+            # All unlabeled frequency information is assumed to be adj
+            row_annots = list(ht.info)
+            new_row_annots = []
+            for x in row_annots:
+                x = x.replace("-adj", "")
+                new_row_annots.append(x)
+
+            info_annot_mapping = dict(
+                zip(new_row_annots, [ht.info[f"{x}"] for x in row_annots])
+            )
+
+            ht = ht.transmute(info=hl.struct(**info_annot_mapping))
+
             ht.describe()
             print(header_dict)
 
