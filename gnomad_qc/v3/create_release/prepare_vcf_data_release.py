@@ -51,7 +51,7 @@ VCF_INFO_DICT = INFO_DICT
 MISSING_ALLELE_TYPE_FIELDS = ["original_alleles", "has_star"]
 remove_fields_from_globals(ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS)
 
-# Remove decoy from region field flag 
+# Remove decoy from region field flag
 MISSING_REGION_FIELDS = ["decoy"]
 remove_fields_from_globals(REGION_FLAG_FIELDS, MISSING_REGION_FIELDS)
 
@@ -64,7 +64,13 @@ MISSING_AS_FIELDS = ["AS_BaseQRankSum", "AS_VarDP"]
 remove_fields_from_globals(AS_FIELDS, MISSING_AS_FIELDS)
 
 # All missing fields to remove from vcf info dict
-MISSING_INFO_FIELDS = MISSING_ALLELE_TYPE_FIELDS + MISSING_AS_FIELDS + MISSING_REGION_FIELDS + MISSING_SITES_FIELDS + RF_FIELDS
+MISSING_INFO_FIELDS = (
+    MISSING_ALLELE_TYPE_FIELDS
+    + MISSING_AS_FIELDS
+    + MISSING_REGION_FIELDS
+    + MISSING_SITES_FIELDS
+    + RF_FIELDS
+)
 
 VEP_CSQ_FIELDS = "Allele|Consequence|IMPACT|SYMBOL|Gene|Feature_type|Feature|BIOTYPE|EXON|INTRON|HGVSc|HGVSp|cDNA_position|CDS_position|Protein_position|Amino_acids|Codons|ALLELE_NUM|DISTANCE|STRAND|VARIANT_CLASS|MINIMISED|SYMBOL_SOURCE|HGNC_ID|CANONICAL|TSL|APPRIS|CCDS|ENSP|SWISSPROT|TREMBL|UNIPARC|GENE_PHENO|SIFT|PolyPhen|DOMAINS|HGVS_OFFSET|MOTIF_NAME|MOTIF_POS|HIGH_INF_POS|MOTIF_SCORE_CHANGE|LoF|LoF_filter|LoF_flags|LoF_info"
 """
@@ -109,7 +115,7 @@ POPS["mid"] = "Middle Eastern"
 
 # downsampling and subset entries to remove from VCF's freq export
 FREQ_ENTRIES_TO_REMOVE = [
-    "10", 
+    "10",
     "20",
     "50",
     "100",
@@ -143,19 +149,20 @@ FREQ_ENTRIES_TO_REMOVE = [
 
 EXPORT_HISTS = [
     "gq_hist_alt_bin_freq",
-"gq_hist_all_bin_freq",
-"dp_hist_alt_bin_freq",
-"dp_hist_alt_n_larger",
-"dp_hist_all_bin_freq",
-"dp_hist_all_n_larger",
-"ab_hist_alt_bin_freq",
+    "gq_hist_all_bin_freq",
+    "dp_hist_alt_bin_freq",
+    "dp_hist_alt_n_larger",
+    "dp_hist_all_bin_freq",
+    "dp_hist_all_n_larger",
+    "ab_hist_alt_bin_freq",
 ]
 
 
 INBREEDING_CUTOFF = -0.3
 
+
 def release_ht_path():
-    return "gs://gnomad-mwilson/untitled-folder/release_test.ht" #"gs://gnomad/release/v3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht"
+    return "gs://gnomad-mwilson/untitled-folder/release_test.ht"  # "gs://gnomad/release/v3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht"
 
 
 def populate_info_dict(
@@ -190,7 +197,7 @@ def populate_info_dict(
 
     :rtype: Dict[str, Dict[str, str]]
     """
-    vcf_info_dict = info_dict
+    vcf_info_dict = info_dict.copy()
 
     # Remove MISSING_REGION_FIELDS from info dict
     for field in MISSING_INFO_FIELDS:
@@ -201,7 +208,7 @@ def populate_info_dict(
     temp_AS_fields = AS_FIELDS.copy()
     temp_AS_fields.extend(["AS_culprit", "AS_VQSLOD"])
     vcf_info_dict.update(
-        add_as_info_dict(info_dict=vcf_info_dict, as_fields=temp_AS_fields)
+        add_as_info_dict(info_dict=info_dict, as_fields=temp_AS_fields)
     )
 
     def _create_label_groups(
@@ -259,7 +266,9 @@ def populate_info_dict(
     )
 
     # Add variant quality histograms to info dict
-    vcf_info_dict.update(make_hist_dict(bin_edges, adj=True)) #, dict_hists=EXPORT_HISTS)) <-this fails because bins go with the prefix of the hist, not specific bin
+    vcf_info_dict.update(
+        make_hist_dict(bin_edges, adj=True)
+    )  # , dict_hists=EXPORT_HISTS)) <-this fails because bins go with the prefix of the hist, not specific bin
     return vcf_info_dict
 
 
@@ -307,15 +316,15 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
             vcf_info_dict.update(hist_dict)
 
     # Add analyst annotations to info dict
-    vcf_info_dict['cadd_raw_score'] = t['cadd']['raw_score']
-    vcf_info_dict['cadd_phred'] = t['cadd']['phred']
+    vcf_info_dict["cadd_raw_score"] = t["cadd"]["raw_score"]
+    vcf_info_dict["cadd_phred"] = t["cadd"]["phred"]
 
-    vcf_info_dict['revel_score'] = t['revel']['revel_score']
+    vcf_info_dict["revel_score"] = t["revel"]["revel_score"]
 
-    vcf_info_dict['splice_ai_max_ds'] = t['splice_ai']['max_ds']
-    vcf_info_dict['splice_ai_consequence'] = t['splice_ai']['splice_consequence']
+    vcf_info_dict["splice_ai_max_ds"] = t["splice_ai"]["max_ds"]
+    vcf_info_dict["splice_ai_consequence"] = t["splice_ai"]["splice_consequence"]
 
-    vcf_info_dict['primate_ai_score'] = t['primate_ai']['primate_ai_score']
+    vcf_info_dict["primate_ai_score"] = t["primate_ai"]["primate_ai_score"]
 
     return vcf_info_dict
 
@@ -343,8 +352,12 @@ def unfurl_nested_annotations(
         # freqs to remove for vcf_export
         new_freq_idx = freq_idx
         for entry in entries_to_remove:
-            new_freq_idx = {key:val for key, val in new_freq_idx.items() if not key.startswith(entry)} 
-        freq_idx = new_freq_idx 
+            new_freq_idx = {
+                key: val
+                for key, val in new_freq_idx.items()
+                if not key.startswith(entry)
+            }
+        freq_idx = new_freq_idx
 
     faf = "faf"
     faf_idx = hl.eval(t.faf_index_dict)
@@ -415,8 +428,10 @@ def main(args):
             ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
 
             if args.export_chromosome:
-                ht = hl.filter_intervals(ht, [hl.parse_locus_interval(args.export_chromosome)])
-            
+                ht = hl.filter_intervals(
+                    ht, [hl.parse_locus_interval(args.export_chromosome)]
+                )
+
             if args.test:
                 logger.info("Filtering to chr20 and chrX (for tests only)...")
                 # Using chr20 to test a small autosome and chrX to test a sex chromosome
@@ -434,9 +449,11 @@ def main(args):
 
             logger.info("Making INFO dict for VCF...")
             vcf_info_dict = populate_info_dict(
-                bin_edges=bin_edges, age_hist_data=age_hist_data, subset_list=SUBSET_LIST_FOR_VCF
+                bin_edges=bin_edges,
+                age_hist_data=age_hist_data,
+                subset_list=SUBSET_LIST_FOR_VCF,
             )
-            
+
             # Add non-PAR annotation
             ht = ht.annotate(
                 region_flag=ht.region_flag.annotate(
@@ -451,32 +468,35 @@ def main(args):
             #   info struct (site and allele-specific annotations),
             #   region_flag struct, and
             #   raw_qual_hists/qual_hists structs.
-            
+
             ht = ht.annotate(info=hl.struct(**make_info_expr(ht)))
 
             # Unfurl nested gnomAD frequency annotations and add to info field
             ht = ht.annotate(
-                info=ht.info.annotate(**unfurl_nested_annotations(ht, pops=POPS, entries_to_remove=FREQ_ENTRIES_TO_REMOVE))
+                info=ht.info.annotate(
+                    **unfurl_nested_annotations(
+                        ht, pops=POPS, entries_to_remove=FREQ_ENTRIES_TO_REMOVE
+                    )
+                )
             )
-            #ht = ht.annotate(**set_female_y_metrics_to_na(ht))
-            
+            # ht = ht.annotate(**set_female_y_metrics_to_na(ht))
+
             # Reformat vep annotation
             ht = ht.annotate_globals(vep_csq_header=VEP_CSQ_HEADER)
             ht = ht.annotate(vep=vep_struct_to_csq(ht.vep))
             ht = ht.annotate(info=ht.info.annotate(vep=ht.vep))
-            
+
             # Select relevant fields for VCF export
             ht = ht.select("info", "filters", "rsid")
-            ht.describe()
             vcf_info_dict.update({"vep": {"Description": hl.eval(ht.vep_csq_header)}})
-            
+
             # Make filter dict
             filter_dict = make_vcf_filter_dict(
                 hl.eval(ht.filtering_model.snv_cutoff.min_score),
                 hl.eval(ht.filtering_model.indel_cutoff.min_score),
-                inbreeding_cutoff=INBREEDING_CUTOFF
+                inbreeding_cutoff=INBREEDING_CUTOFF,
             )
-            
+
             new_vcf_info_dict = {  # Adjust keys to remove adj tags before exporting to VCF
                 i.replace("-adj", ""): j for i, j in vcf_info_dict.items()
             }
@@ -490,7 +510,7 @@ def main(args):
                 "gs://gnomad-mwilson/v3.1/release/vcf_header", "wb"
             ) as p:
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
-            
+
         if args.sanity_check:
             sanity_check_release_ht(
                 ht, SUBSET_LIST, missingness_threshold=0.5, verbose=args.verbose
@@ -527,7 +547,13 @@ def main(args):
 
             ht.describe()
             print(header_dict)
-            hl.export_vcf(ht, 'gs://gnomad-mwilson/untitled-folder/release_test.vcf.bgz', metadata=header_dict, tabix=True)
+            hl.export_vcf(
+                ht,
+                "gs://gnomad-mwilson/untitled-folder/release_test_w_append.vcf.bgz",
+                append_to_header="gs://gnomad-mwilson/untitled-folder/vcf_header_non_info.tsv",
+                metadata=header_dict,
+                tabix=True,
+            )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -549,12 +575,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sanity_check", help="Run sanity checks function", action="store_true"
     )
-    parser.add_argument(
-        "--export_vcf", help="Export VCF", action="store_true"
-    )
-    parser.add_argument(
-        "--export_chromosome", help="Which chromosome to export as VCF"
-    )
+    parser.add_argument("--export_vcf", help="Export VCF", action="store_true")
+    parser.add_argument("--export_chromosome", help="Which chromosome to export as VCF")
     parser.add_argument(
         "--verbose",
         help="Run sanity checks function with verbose output",
