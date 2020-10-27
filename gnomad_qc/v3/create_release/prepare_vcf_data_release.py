@@ -166,28 +166,27 @@ INBREEDING_CUTOFF = -0.3
 
 ANALYST_ANOTATIONS_INFO_DICT = {
     "cadd_raw_score": {
-        "Number": "",
-        "Description": "Raw CADD scores are interpretable as the extent to which the annotation profile for a given variant suggests that the variant is likely to be 'observed' (negative values) vs 'simulated' (positive values).",
+        "Number": "1",
+        "Description": "Raw CADD scores are interpretable as the extent to which the annotation profile for a given variant suggests that the variant is likely to be 'observed' (negative values) vs 'simulated' (positive values). Larger values are more deleterious.",
     },
     "cadd_phred": {
-        "Number": "A",
-        "Description": "Cadd Phred-like scores ('scaled C-scores') ranging from 1 to 99, based on the rank of each variant relative to all possible 8.6 billion substitutions in the human reference genome",
+        "Number": "1",
+        "Description": "Cadd Phred-like scores ('scaled C-scores') ranging from 1 to 99, based on the rank of each variant relative to all possible 8.6 billion substitutions in the human reference genome. Larger values are more deleterious",
     },
     "revel_score": {
-        "Number": "",
-        "Description": "dbNSFP's Revel score from 0 to 1. Variants with higher scores are predicted to be more likely to be pathogenic",
+        "Number": "1",
+        "Description": "dbNSFP's Revel score from 0 to 1. Variants with higher scores are predicted to be more likely to be deleterious.",
     },
     "splice_ai_max_ds": {
-        "Number": "",
+        "Number": "1",
         "Description": "Illumina's SpliceAI max delta score; interpreted as the probability of the variant being splice-altering.",
     },
     "splice_ai_consequence": {
-        "Number": "",
         "Description": "The consequence term associated with the max delta score in 'splice_ai_max_ds'.",
     },
     "primate_ai_score": {
-        "Number": "",
-        "Description": "PrimateAI's pathogenicity score from 0 (less pathogenic) to 1 (more pathogenic).",
+        "Number": "1",
+        "Description": "PrimateAI's deleteriousness score from 0 (less deleterious) to 1 (more deleterious).",
     },
 }
 
@@ -546,6 +545,7 @@ def main(args):
             )
 
         if args.export_vcf:
+            logger.info("Dropping histograms that are not needed in VCF...")
             # Drop unnecessary histograms
             drop_hists = (
                 [x + "_n_smaller" for x in HISTS if "dp_hist_all" not in x]
@@ -562,6 +562,7 @@ def main(args):
             # Reformat names to remove "adj" pre-export
             # e.g, renaming "AC-adj" to "AC"
             # All unlabeled frequency information is assumed to be adj
+            logger.info("Dropping 'adj' from info annotations...")
             row_annots = list(ht.info)
             new_row_annots = []
             for x in row_annots:
@@ -574,12 +575,16 @@ def main(args):
 
             ht = ht.transmute(info=hl.struct(**info_annot_mapping))
 
+            logger.info("Running check on VCF fields and info dict...")
             if not vcf_field_check(ht, header_dict, new_row_annots):
                 logger.error("Did not pass VCF field check")
 
-            mt = ht_to_vcf_mt(ht)
+            logger.info("Adjusting VCF incompatiable types...")
+            ht = ht_to_vcf_mt(ht)
+
+            logger.info(f"Export chromosome {args.export_chromosome}....")
             hl.export_vcf(
-                mt,
+                ht,
                 "gs://gnomad-mwilson/untitled-folder/release_test_w_append.vcf.bgz",
                 append_to_header="gs://gnomad-mwilson/untitled-folder/vcf_header_non_info.tsv",
                 metadata=header_dict,
