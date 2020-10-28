@@ -180,9 +180,31 @@ ANALYST_ANOTATIONS_INFO_DICT = {
     },
 }
 
+def build_export_reference() -> hl.ReferenceGenome:
+    """
+    Creates export reference based on GRCh38. Eliminates all non-standard contigs
+    :return: Reference for VCF export containing chr1-22,X,Y, and M
+    :rtype: hl.ReferenceGenome
+    """
+    ref = hl.get_reference("GRCh38")
+    my_contigs = [f'chr{i}' for i in range(1, 23)] + ['chrX', 'chrY', 'chrM']
+    export_reference = hl.ReferenceGenome(
+        name="export_reference",
+        contigs=my_contigs,
+        lengths={my_contig: ref.lengths[my_contig] for my_contig in my_contigs},
+        x_contigs=ref.x_contigs,
+        y_contigs=ref.y_contigs,
+        par=[(interval.start.contig,
+            interval.start.position,
+            interval.end.position)
+            for interval in ref.par],
+        mt_contigs=ref.mt_contigs
+    )
+    return export_reference
+
 
 def release_ht_path():
-    return "gs://gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht"
+    return "gs://gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.reference_fixed.ht" 
 
 
 def populate_info_dict(
@@ -443,13 +465,11 @@ def main(args):
             logger.info("Starting VCF process...")
             logger.info("Reading in release HT...")
             ht = hl.read_table(release_ht_path())
-
-            logger.info("Removing chrM...")
-            ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
+            export_reference = build_export_reference()
 
             if chromosome:
                 ht = hl.filter_intervals(
-                    ht, [hl.parse_locus_interval(chromosome)]
+                    ht, [hl.parse_locus_interval(chromosome, reference_genome=export_reference)]
                 )
 
             if args.test:
@@ -458,7 +478,7 @@ def main(args):
                 # Some annotations (like FAF) are 100% missing on autosomes
                 ht = hl.filter_intervals(
                     ht,
-                    [hl.parse_locus_interval("chr20"), hl.parse_locus_interval("chrX")],
+                    [hl.parse_locus_interval("chr20", reference_genome=export_reference), hl.parse_locus_interval("chrX", reference_genome=export_reference)],
                 )
 
             logger.info("Making histogram bin edges...")
