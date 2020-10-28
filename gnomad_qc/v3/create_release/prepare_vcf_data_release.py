@@ -298,22 +298,20 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
     :return: Dictionary containing Hail expressions for relevant INFO annotations.
     :rtype: Dict[str, hl.expr.Expression]
     """
-    # Start info dict with region_flag and allele_info fields
     vcf_info_dict = {}
+    # Add site-level annotations to vcf_info_dict
+    for field in SITE_FIELDS:
+        vcf_info_dict[field] = t["release_ht_info"][f"{field}"]
+    # Add AS annotations to info dict
+    for field in AS_FIELDS:
+        vcf_info_dict[field] = t["release_ht_info"][f"{field}"]
+    for field in VQSR_FIELDS:
+        vcf_info_dict[field] = t["vqsr"][f"{field}"]
+    # Add region_flag and allele_info fields to info dict
     for field in ALLELE_TYPE_FIELDS:
         vcf_info_dict[field] = t["allele_info"][f"{field}"]
     for field in REGION_FLAG_FIELDS:
         vcf_info_dict[field] = t["region_flag"][f"{field}"]
-
-    # Add site-level annotations to vcf_info_dict
-    for field in SITE_FIELDS:
-        vcf_info_dict[field] = t["info"][f"{field}"]
-    for field in VQSR_FIELDS:
-        vcf_info_dict[field] = t["vqsr"][f"{field}"]
-
-    # Add AS annotations to info dict
-    for field in AS_FIELDS:
-        vcf_info_dict[field] = t["info"][f"{field}"]
 
     # Add histograms to info dict
     for hist in HISTS:
@@ -396,6 +394,17 @@ def unfurl_nested_annotations(
         }
         expr_dict.update(combo_dict)
 
+    # Add popmax
+    combo_dict = {
+        "popmax": t[popmax].pop,
+        "AC_popmax": t[popmax].AC,
+        "AN_popmax": t[popmax].AN,
+        "AF_popmax": t[popmax].AF,
+        "nhomalt_popmax": t[popmax].homozygote_count,
+        "faf95_popmax": t[popmax].faf95,
+    }
+    expr_dict.update(combo_dict)
+
     ## Unfurl FAF index dict
     logger.info("Unfurling faf data...")
     for (
@@ -407,16 +416,6 @@ def unfurl_nested_annotations(
             f"faf99-{k}": t[faf][i].faf99,
         }
         expr_dict.update(combo_dict)
-
-    combo_dict = {
-        "popmax": t[popmax].pop,
-        "AC_popmax": t[popmax].AC,
-        "AN_popmax": t[popmax].AN,
-        "AF_popmax": t[popmax].AF,
-        "nhomalt_popmax": t[popmax].homozygote_count,
-        "faf95_popmax": t[popmax].faf95,
-    }
-    expr_dict.update(combo_dict)
 
     # Unfurl ages
     age_hist_dict = {
@@ -449,9 +448,7 @@ def main(args):
             ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
 
             if chromosome:
-                ht = hl.filter_intervals(
-                    ht, [hl.parse_locus_interval(chromosome)]
-                )
+                ht = hl.filter_intervals(ht, [hl.parse_locus_interval(chromosome)])
 
             if args.test:
                 logger.info("Filtering to chr20 and chrX (for tests only)...")
@@ -482,6 +479,15 @@ def main(args):
                 )
             )
 
+            # Unfurl nested gnomAD frequency annotations and add to info field
+            ht = ht.annotate(release_ht_info=ht.info)
+            ht = ht.annotate(
+                info=hl.struct(
+                    **unfurl_nested_annotations(
+                        ht, pops=POPS, entries_to_remove=FREQ_ENTRIES_TO_REMOVE
+                    )
+                )
+            )
             logger.info("Constructing INFO field")
             # Add variant annotations to INFO field
             # This adds annotations from:
@@ -490,16 +496,7 @@ def main(args):
             #   region_flag struct, and
             #   raw_qual_hists/qual_hists structs.
 
-            ht = ht.annotate(info=hl.struct(**make_info_expr(ht)))
-
-            # Unfurl nested gnomAD frequency annotations and add to info field
-            ht = ht.annotate(
-                info=ht.info.annotate(
-                    **unfurl_nested_annotations(
-                        ht, pops=POPS, entries_to_remove=FREQ_ENTRIES_TO_REMOVE
-                    )
-                )
-            )
+            ht = ht.annotate(info=ht.info.annotate(**make_info_expr(ht)))
 
             # Reformat vep annotation
             ht = ht.annotate_globals(vep_csq_header=VEP_CSQ_HEADER)
@@ -582,22 +579,15 @@ def main(args):
                     "AF",
                     "popmax",
                     "faf95_popmax",
-                    *ht.info.drop(
-                        "AC",
-                        "AN",
-                        "AF",
-                        "popmax",
-                        "faf95_popmax",
-
-                    ),
+                    *ht.info.drop("AC", "AN", "AF", "popmax", "faf95_popmax",),
                 )
             )
             ht.describe()
             logger.info(f"Export chromosome {chromosome}....")
             hl.export_vcf(
                 ht,
-                "gs://gnomad-mwilson/untitled-folder/release_test_w_append.vcf.bgz", # f"gs://gnomad/release/3.1/vcf/genomes/gnomad.genomes.v3.1.sites.{chromosome}.vcf.bgz"
-                append_to_header="gs://gnomad-mwilson/untitled-folder/vcf_header_non_info.tsv", #f"gs://gnomad/release/3.1/vcf/genomes/extra_fields_for_header.tsv"
+                "gs://gnomad-mwilson/untitled-folder/release_test_w_append.vcf.bgz",  # f"gs://gnomad/release/3.1/vcf/genomes/gnomad.genomes.v3.1.sites.{chromosome}.vcf.bgz"
+                append_to_header="gs://gnomad-mwilson/untitled-folder/vcf_header_non_info.tsv",  # f"gs://gnomad/release/3.1/vcf/genomes/extra_fields_for_header.tsv"
                 metadata=header_dict,
                 tabix=True,
             )
