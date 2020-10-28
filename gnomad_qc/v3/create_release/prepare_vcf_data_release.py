@@ -182,7 +182,7 @@ ANALYST_ANOTATIONS_INFO_DICT = {
 
 
 def release_ht_path():
-    return "gs://gnomad-mwilson/untitled-folder/release_test.ht"  # "gs://gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht"
+    return "gs://gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht"
 
 
 def populate_info_dict(
@@ -394,7 +394,7 @@ def unfurl_nested_annotations(
         }
         expr_dict.update(combo_dict)
 
-    # Add popmax
+    #Add popmax
     combo_dict = {
         "popmax": t[popmax].pop,
         "AC_popmax": t[popmax].AC,
@@ -435,7 +435,7 @@ def unfurl_nested_annotations(
 
 def main(args):
 
-    hl.init(log="/vcf_release.log", default_reference="GRCh38")
+    hl.init(log="/vcf_release.log", default_reference="GRCh38", tmp_dir='hdfs:///vcf_write.tmp/')
     try:
 
         if args.prepare_vcf_ht:
@@ -448,7 +448,9 @@ def main(args):
             ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
 
             if chromosome:
-                ht = hl.filter_intervals(ht, [hl.parse_locus_interval(chromosome)])
+                ht = hl.filter_intervals(
+                    ht, [hl.parse_locus_interval(chromosome)]
+                )
 
             if args.test:
                 logger.info("Filtering to chr20 and chrX (for tests only)...")
@@ -478,7 +480,7 @@ def main(args):
                     nonpar=(ht.locus.in_x_nonpar() | ht.locus.in_y_nonpar())
                 )
             )
-
+            
             # Unfurl nested gnomAD frequency annotations and add to info field
             ht = ht.annotate(release_ht_info=ht.info)
             ht = ht.annotate(
@@ -579,15 +581,22 @@ def main(args):
                     "AF",
                     "popmax",
                     "faf95_popmax",
-                    *ht.info.drop("AC", "AN", "AF", "popmax", "faf95_popmax",),
+                    *ht.info.drop(
+                        "AC",
+                        "AN",
+                        "AF",
+                        "popmax",
+                        "faf95_popmax",
+
+                    ),
                 )
             )
             ht.describe()
             logger.info(f"Export chromosome {chromosome}....")
             hl.export_vcf(
                 ht,
-                "gs://gnomad-mwilson/untitled-folder/release_test_w_append.vcf.bgz",  # f"gs://gnomad/release/3.1/vcf/genomes/gnomad.genomes.v3.1.sites.{chromosome}.vcf.bgz"
-                append_to_header="gs://gnomad-mwilson/untitled-folder/vcf_header_non_info.tsv",  # f"gs://gnomad/release/3.1/vcf/genomes/extra_fields_for_header.tsv"
+                f"gs://gnomad/release/3.1/vcf/genomes/gnomad.genomes.v3.1.sites.{chromosome}.vcf.bgz",
+                append_to_header="gs://gnomad/release/3.1/vcf/genomes/extra_fields_for_header.tsv",
                 metadata=header_dict,
                 tabix=True,
             )
