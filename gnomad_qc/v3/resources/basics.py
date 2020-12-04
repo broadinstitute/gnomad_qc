@@ -24,6 +24,7 @@ def get_gnomad_v3_mt(
     :param samples_meta: Whether to add metadata to MT in 'meta' column
     :return: gnomAD v3 dataset with chosen annotations and filters
     """
+    print(gnomad_v3_genotypes.path)
     mt = gnomad_v3_genotypes.mt()
     if key_by_locus_and_alleles:
         mt = hl.MatrixTable(

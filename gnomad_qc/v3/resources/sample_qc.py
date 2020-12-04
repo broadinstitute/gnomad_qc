@@ -85,7 +85,7 @@ def ancestry_pca_scores(include_unreleasable_samples: bool = False
     )
 
 
-def ancestry_pca_eigenvalues_path(include_unreleasable_samples: bool = False
+def ancestry_pca_eigenvalues(include_unreleasable_samples: bool = False
 ) -> VersionedTableResource:
     """
     Gets the ancestry PCA eigenvalues VersionedTableResource
@@ -95,7 +95,7 @@ def ancestry_pca_eigenvalues_path(include_unreleasable_samples: bool = False
     """
     return VersionedTableResource(
         CURRENT_RELEASE,
-        {release: TableResource(_get_ancestry_pca_ht_path("eigenvalues", release, include_unreleasable_samples)) for release in RELEASES}
+        {release: _get_ancestry_pca_ht_path("eigenvalues", release, include_unreleasable_samples) for release in RELEASES}
     )
 
 
@@ -162,6 +162,12 @@ sample_inbreeding = VersionedTableResource(
     {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_inbreeding.ht") for release in RELEASES}
 )
 
+# Sample clinvar count
+sample_clinvar_count = VersionedTableResource(
+    CURRENT_RELEASE,
+    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_clinvar.ht") for release in RELEASES}
+)
+
 # Inferred sample populations	
 pop = VersionedTableResource(
     CURRENT_RELEASE,
@@ -202,6 +208,14 @@ stratified_metrics = VersionedTableResource(
 )
 
 # Results of running regressed metrics filtering
+#def regressed_metrics(pcs):
+#    return VersionedTableResource(
+#        CURRENT_RELEASE,
+#        {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_regressed_metrics_{pcs}pcs.ht") for release in
+#         RELEASES}
+#    )
+
+
 regressed_metrics = VersionedTableResource(
     CURRENT_RELEASE,
     {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_regressed_metrics.ht") for release in RELEASES}
