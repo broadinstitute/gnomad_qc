@@ -15,7 +15,10 @@ from gnomad_qc.v3.resources.sample_qc import (duplicates,
                                               get_relatedness_annotated_ht,
                                               release_samples_rankings, sex)
 
+hl.stop()
+logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("create_fam")
+logger.setLevel(logging.INFO)
 
 
 def run_mendel_errors() -> hl.Table:
@@ -30,8 +33,7 @@ def run_mendel_errors() -> hl.Table:
                 hl.agg.filter(
                     hl.rand_bool(0.01)
                     & (
-                            (hl.len(meta_ht.qc_metrics_filters) == 0)
-                            & hl.or_else(hl.len(meta_ht.hard_filters) == 0, False)
+                        meta_ht.high_quality
                     ),
                     hl.agg.collect_as_set(meta_ht.s),
                 )
@@ -67,8 +69,7 @@ def run_infer_families() -> hl.Pedigree:
     meta_ht = meta.ht()
     filtered_samples = meta_ht.aggregate(
         hl.agg.filter(
-            (hl.len(meta_ht.qc_metrics_filters) > 0)
-            | hl.or_else(hl.len(meta_ht.hard_filters) > 0, False),
+            ~meta_ht.high_quality,
             hl.agg.collect_as_set(meta_ht.s),
         )
     )
@@ -104,13 +105,13 @@ def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:
 def filter_ped(
         raw_ped: hl.Pedigree, mendel: hl.Table, max_dnm: int, max_mendel: int
 ) -> hl.Pedigree:
-    mendel = mendel.filter(mendel.fam_id.startswith("fake"))
+    mendel = mendel.filter(~mendel.fam_id.startswith("fake"))
     mendel_by_s = (
         mendel.group_by(mendel.s)
             .aggregate(
             fam_id=hl.agg.take(mendel.fam_id, 1)[0],
             n_mendel=hl.agg.count(),
-            n_de_novo=hl.agg.count_where(mendel.mendel_code == 2), # Code 2 is parents are hom ref, child is het
+            n_de_novo=hl.agg.count_where(mendel.mendel_code == 2),  # Code 2 is parents are hom ref, child is het
         )
             .persist()
     )
@@ -146,7 +147,7 @@ def main(args):
 
     if args.finalize_ped:
         final_ped = filter_ped(
-            pedigree.versions["v3.1_raw"].pedigree,
+            pedigree.versions["v3.1_raw"].pedigree(),
             ped_mendel_errors.ht(),
             args.max_dnm,
             args.max_mendel,
@@ -181,13 +182,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_dnm",
         help="Maximum number of raw de novo mutations for real trios",
-        defaut=2200,
+        default=2200,
         type=int,
     )
     parser.add_argument(
         "--max_mendel",
         help="Maximum number of raw Mendel errors for real trios",
-        defaut=3750,
+        default=3750,
         type=int,
     )
 
