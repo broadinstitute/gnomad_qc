@@ -151,15 +151,15 @@ def split_info() -> hl.Table:
     return info_ht
 
 
-def generate_allele_data(mt: hl.MatrixTable) -> hl.Table:
+def generate_allele_data(ht: hl.Table) -> hl.Table:
     """
     Returns bi-allelic sites HT with the following annotations:
      - allele_data (nonsplit_alleles, has_star, variant_type, and n_alt_alleles)
-    :param MatrixTable mt: Full unsplit MT
+    :param Table ht: Full unsplit HT
     :return: Table with allele data annotations
     :rtype: Table
     """
-    ht = mt.rows().select()
+    ht = ht.select()
     allele_data = hl.struct(
         nonsplit_alleles=ht.alleles, has_star=hl.any(lambda a: a == "*", ht.alleles)
     )
@@ -305,7 +305,7 @@ def main(args):
 
     if args.generate_allele_data:
         mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
-        generate_allele_data(mt).write(allele_data.path, overwrite=args.overwrite)
+        generate_allele_data(mt.rows()).write(allele_data.path, overwrite=args.overwrite)
 
     if args.generate_ac:  # TODO: compute AC and qc_AC as part of compute_info
         mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, samples_meta=True)
