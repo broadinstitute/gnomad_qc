@@ -4,13 +4,23 @@ import pickle
 from typing import Any, List, Tuple
 
 import hail as hl
-from gnomad.resources.grch38 import (clinvar, clinvar_pathogenic, lcr_intervals,
-                                     purcell_5k_intervals, telomeres_and_centromeres)
-from gnomad.sample_qc.ancestry import (assign_population_pcs,
-                                       run_pca_with_relateds)
-from gnomad.sample_qc.filtering import (compute_qc_metrics_residuals,
-                                        compute_stratified_metrics_filter,
-                                        compute_stratified_sample_qc)
+
+from gnomad.resources.grch38 import (
+    clinvar,
+    clinvar_pathogenic,
+    lcr_intervals,
+    purcell_5k_intervals,
+    telomeres_and_centromeres
+)
+from gnomad.sample_qc.ancestry import (
+    assign_population_pcs,
+    run_pca_with_relateds
+)
+from gnomad.sample_qc.filtering import (
+    compute_qc_metrics_residuals,
+    compute_stratified_metrics_filter,
+    compute_stratified_sample_qc
+)
 from gnomad.sample_qc.pipeline import annotate_sex, get_qc_mt
 from gnomad.sample_qc.relatedness import (
     compute_related_samples_to_drop,
