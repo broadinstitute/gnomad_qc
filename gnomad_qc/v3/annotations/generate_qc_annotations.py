@@ -2,11 +2,10 @@ import argparse
 import logging
 from typing import List
 
-
 import hail as hl
 
 from gnomad.sample_qc.relatedness import generate_trio_stats_expr
-from gnomad.utils.annotations import annotate_adj, get_adj_expr, get_lowqual_expr
+from gnomad.utils.annotations import add_variant_type, annotate_adj, get_adj_expr, get_lowqual_expr
 from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
@@ -21,6 +20,7 @@ from gnomad.utils.vcf import ht_to_vcf_mt
 from gnomad.utils.vep import vep_or_lookup_vep
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import (
+    allele_data,
     fam_stats,
     get_info,
     info_vcf_path,
@@ -151,21 +151,50 @@ def split_info() -> hl.Table:
     return info_ht
 
 
-def generate_ac(mt: hl.MatrixTable, fam_file: str) -> hl.Table:
+def generate_allele_data(mt: hl.MatrixTable) -> hl.Table:
+    """
+    Writes bi-allelic sites MT with the following annotations:
+     - allele_data (nonsplit_alleles, has_star, variant_type, and n_alt_alleles)
+    :param MatrixTable mt: Full unsplit MT
+    :return: Table with allele data annotations
+    :rtype: Table
+    """
+    ht = mt.rows().select()
+    allele_data = hl.struct(
+        nonsplit_alleles=ht.alleles, has_star=hl.any(lambda a: a == "*", ht.alleles)
+    )
+    ht = ht.annotate(allele_data=allele_data.annotate(**add_variant_type(ht.alleles)))
+
+    ht = hl.split_multi_hts(ht)
+    ht = ht.filter(hl.len(ht.alleles) > 1)
+    allele_type = (
+        hl.case()
+        .when(hl.is_snp(ht.alleles[0], ht.alleles[1]), "snv")
+        .when(hl.is_insertion(ht.alleles[0], ht.alleles[1]), "ins")
+        .when(hl.is_deletion(ht.alleles[0], ht.alleles[1]), "del")
+        .default("complex")
+    )
+    ht = ht.annotate(
+        allele_data=ht.allele_data.annotate(
+            allele_type=allele_type, was_mixed=ht.allele_data.variant_type == "mixed"
+        )
+    )
+    return ht
+
+
+def generate_ac(mt: hl.MatrixTable) -> hl.Table:
     """
     Creates Table with QC samples, QC samples removing children and release samples raw and adj ACs.
     """
     mt = mt.filter_cols(mt.meta.high_quality)
-    fam_ht = hl.import_fam(fam_file, delimiter="\t")
-    mt = mt.annotate_cols(unrelated_sample=hl.is_missing(fam_ht[mt.s]))
     mt = mt.filter_rows(hl.len(mt.alleles) > 1)
     mt = annotate_adj(mt)
     mt = mt.annotate_rows(
         ac_qc_samples_raw=hl.agg.sum(mt.GT.n_alt_alleles()),
-        ac_qc_samples_unrelated_raw=hl.agg.filter(~mt.meta.all_samples_related, hl.agg.sum(mt.GT.n_alt_alleles())),
+        ac_qc_samples_unrelated_raw=hl.agg.filter(~mt.meta.sample_filters.all_samples_related, hl.agg.sum(mt.GT.n_alt_alleles())),
         ac_release_samples_raw=hl.agg.filter(mt.meta.release, hl.agg.sum(mt.GT.n_alt_alleles())),
         ac_qc_samples_adj=hl.agg.filter(mt.adj, hl.agg.sum(mt.GT.n_alt_alleles())),
-        ac_qc_samples_unrelated_adj=hl.agg.filter(~mt.meta.all_samples_related & mt.adj, hl.agg.sum(mt.GT.n_alt_alleles())),
+        ac_qc_samples_unrelated_adj=hl.agg.filter(~mt.meta.sample_filters.all_samples_related & mt.adj, hl.agg.sum(mt.GT.n_alt_alleles())),
         ac_release_samples_adj=hl.agg.filter(mt.meta.release & mt.adj, hl.agg.sum(mt.GT.n_alt_alleles())),
     )
     return mt.rows()
@@ -194,21 +223,17 @@ def generate_fam_stats(
     mt = mt.filter_rows(hl.len(mt.alleles) == 2)
     mt = hl.trio_matrix(mt, pedigree=ped, complete_trios=True)
     trio_adj = (mt.proband_entry.adj & mt.father_entry.adj & mt.mother_entry.adj)
-    parents_no_alt = (mt.mother_entry.AD[1] == 0) & (mt.father_entry.AD[1] == 0)
-    parents_high_depth = (mt.mother_entry.AD[0] + mt.mother_entry.AD[1] > 20) & (mt.father_entry.AD[0] + mt.father_entry.AD[1] > 20)
-    parents_high_gq = (mt.mother_entry.GQ >= 30) & (mt.father_entry.GQ >= 30)
 
     ht = mt.select_rows(
         **generate_trio_stats_expr(
             mt,
             transmitted_strata={
-                'raw': None,
+                'raw': True,
                 'adj': trio_adj
             },
             de_novo_strata={
-                'raw': None,
+                'raw': True,
                 'adj': trio_adj,
-                'hq': trio_adj & parents_high_gq & parents_high_depth & parents_no_alt
             },
             proband_is_female_expr=mt.is_female
         )
@@ -234,7 +259,7 @@ def export_transmitted_singletons_vcf():
 
         ts_mt = ts_ht.to_matrix_table_row_major(columns=['s'], entry_field_name='s')
         ts_mt = ts_mt.filter_cols(False)
-        hl.export_vcf(ts_mt, get_transmitted_singleton_vcf_path(transmission_confidence))
+        hl.export_vcf(ts_mt, get_transmitted_singleton_vcf_path(transmission_confidence), tabix=True)
 
 
 def run_vep() -> hl.Table:
@@ -256,10 +281,13 @@ def run_vep() -> hl.Table:
             intervals_json = json.load(f)['jRangeBounds']
             return hl.tarray(hl.tinterval(hl.tstruct(locus=mt.locus.dtype)))._convert_from_json(intervals_json)
 
-    ht = get_gnomad_v3_mt(key_by_locus_and_alleles=True).rows()
+    ht = get_gnomad_v3_mt(key_by_locus_and_alleles=True, remove_hard_filtered_samples=False).rows()
     ht = ht.filter(hl.len(ht.alleles) > 1)
+    ht = hl.split_multi_hts(ht)
+    ht = hl.vep(ht)
+    ht = ht.annotate_globals(version='v101')
 
-    return vep_or_lookup_vep(ht, reference='GRCh38')
+    return ht
 
 
 def main(args):
@@ -275,18 +303,22 @@ def main(args):
         info_ht = get_info(split=False).ht()
         hl.export_vcf(ht_to_vcf_mt(info_ht), info_vcf_path())
 
-    # if args.generate_ac: # TODO: compute AC and qc_AC as part of compute_info
-    # mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, samples_meta=True)
-    # mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
-    #
-    # ht = generate_ac(mt, ).checkpoint('gs://gnomad-tmp/v3_ac_tmp.ht', overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-    # ht.repartition(10000, shuffle=False).write(ac_ht_path, overwrite=args.overwrite)
+    if args.generate_allele_data:
+        mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
+        generate_allele_data(mt).write(allele_data.path, overwrite=args.overwrite)
+
+    if args.generate_ac:  # TODO: compute AC and qc_AC as part of compute_info
+        mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, samples_meta=True)
+        mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+
+        ht = generate_ac(mt).checkpoint('gs://gnomad-tmp/ac_tmp.ht', overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        ht.repartition(10000, shuffle=False).write(qc_ac.path, overwrite=args.overwrite)
 
     if args.generate_fam_stats:
         mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, samples_meta=True)
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
         fam_stats_ht = generate_fam_stats(mt, trios.path)
-        fam_stats_ht = fam_stats_ht.checkpoint('gs://gnomad-tmp/v3_fam_stats_tmp.ht', overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        fam_stats_ht = fam_stats_ht.checkpoint('gs://gnomad-tmp/fam_stats_tmp.ht', overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         fam_stats_ht = fam_stats_ht.repartition(10000, shuffle=False)
         fam_stats_ht.write(fam_stats.path, overwrite=args.overwrite)
 
@@ -302,6 +334,7 @@ if __name__ == '__main__':
     parser.add_argument('--compute_info', help='Computes info HT', action='store_true')
     parser.add_argument('--split_info', help='Splits info HT', action='store_true')
     parser.add_argument('--export_info_vcf', help='Export info as VCF', action='store_true')
+    parser.add_argument("--generate_allele_data", help="Calculates allele data", action="store_true")
     parser.add_argument('--generate_ac', help='Creates a table with ACs for QC, unrelated QC and release samples (raw and adj)', action='store_true')
     parser.add_argument('--generate_fam_stats', help='Creates a table with transmitted allele counts and de novo counts.', action='store_true')
     parser.add_argument('--vep', help='Generates vep annotations.', action='store_true')
