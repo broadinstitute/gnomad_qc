@@ -153,7 +153,7 @@ def split_info() -> hl.Table:
 
 def generate_allele_data(mt: hl.MatrixTable) -> hl.Table:
     """
-    Returns bi-allelic sites MT with the following annotations:
+    Returns bi-allelic sites HT with the following annotations:
      - allele_data (nonsplit_alleles, has_star, variant_type, and n_alt_alleles)
     :param MatrixTable mt: Full unsplit MT
     :return: Table with allele data annotations
