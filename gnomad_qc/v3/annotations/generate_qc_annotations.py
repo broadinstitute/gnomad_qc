@@ -1,17 +1,42 @@
 import argparse
+import logging
+from typing import List
+
+import hail as hl
 
 from gnomad.sample_qc.relatedness import generate_trio_stats_expr
-from gnomad.utils.annotations import add_variant_type, annotate_adj
+from gnomad.utils.annotations import add_variant_type, annotate_adj, get_adj_expr, get_lowqual_expr
 from gnomad.utils.filtering import filter_to_autosomes
-from gnomad.utils.sparse_mt import *
+from gnomad.utils.slack import slack_notifications
+from gnomad.utils.sparse_mt import (
+    get_as_info_expr,
+    get_site_info_expr,
+    INFO_INT32_SUM_AGG_FIELDS,
+    INFO_SUM_AGG_FIELDS,
+    split_info_annotation,
+    split_lowqual_annotation
+)
 from gnomad.utils.vcf import ht_to_vcf_mt
 from gnomad.utils.vep import vep_or_lookup_vep
-
-from gnomad_qc.v3.resources.annotations import (allele_data, fam_stats, get_info,
-                                                info_vcf_path, qc_ac, vep)
+from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.resources.annotations import (
+    allele_data,
+    fam_stats,
+    get_info,
+    info_vcf_path,
+    qc_ac,
+    vep
+)
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import trios
 from gnomad_qc.v3.resources.variant_qc import get_transmitted_singleton_vcf_path
+
+logging.basicConfig(
+    format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
+    datefmt="%m/%d/%Y %I:%M:%S %p",
+)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def compute_info() -> hl.Table:
@@ -23,26 +48,29 @@ def compute_info() -> hl.Table:
     :return: Table with info fields
     :rtype: Table
     """
-    mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, remove_hard_filtered_samples=False)
+    mt = get_gnomad_v3_mt(
+        key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
+    )
+
     mt = mt.filter_rows((hl.len(mt.alleles) > 1))
     mt = mt.transmute_entries(**mt.gvcf_info)
-    mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))  # Reduces memory usage of gnomad_methods 'get_as_info_expr'
+    mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
 
     # Compute AS and site level info expr
     # Note that production defaults have changed:
     # For new releases, the `RAWMQ_andDP` field replaces the `RAW_MQ` and `MQ_DP` fields
     info_expr = get_site_info_expr(
         mt,
-        sum_agg_fields=INFO_SUM_AGG_FIELDS + ['RAW_MQ'],
-        int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ['MQ_DP'],
-        array_sum_agg_fields=['SB']
+        sum_agg_fields=INFO_SUM_AGG_FIELDS + ["RAW_MQ"],
+        int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ["MQ_DP"],
+        array_sum_agg_fields=["SB"],
     )
     info_expr = info_expr.annotate(
         **get_as_info_expr(
             mt,
-            sum_agg_fields=INFO_SUM_AGG_FIELDS + ['RAW_MQ'],
-            int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ['MQ_DP'],
-            array_sum_agg_fields=['SB']
+            sum_agg_fields=INFO_SUM_AGG_FIELDS + ["RAW_MQ"],
+            int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ["MQ_DP"],
+            array_sum_agg_fields=["SB"],
         )
     )
 
@@ -54,11 +82,13 @@ def compute_info() -> hl.Table:
             hl.agg.group_by(
                 get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
                 hl.agg.sum(
-                    mt.LGT.one_hot_alleles(mt.LA.map(lambda x: hl.str(x)))[mt.LA.index(ai)]
-                )
-            )
+                    mt.LGT.one_hot_alleles(mt.LA.map(lambda x: hl.str(x)))[
+                        mt.LA.index(ai)
+                    ]
+                ),
+            ),
         ),
-        mt['alt_alleles_range_array']
+        mt.alt_alleles_range_array,
     )
 
     # Then, for each non-ref allele, compute
@@ -66,12 +96,21 @@ def compute_info() -> hl.Table:
     # AC_raw as the sum of adj and non-adj groups
     info_expr = info_expr.annotate(
         AC_raw=grp_ac_expr.map(lambda i: hl.int32(i.get(True, 0) + i.get(False, 0))),
-        AC=grp_ac_expr.map(lambda i: hl.int32(i.get(True, 0)))
+        AC=grp_ac_expr.map(lambda i: hl.int32(i.get(True, 0))),
     )
 
-    info_ht = mt.select_rows(
-        info=info_expr
-    ).rows()
+    # Annotating raw MT with pab max
+    info_expr = info_expr.annotate(
+        AS_pab_max=hl.agg.array_agg(
+            lambda ai: hl.agg.filter(
+                mt.LA.contains(ai) & mt.LGT.is_het(),
+                hl.agg.max(hl.binom_test(mt.LAD[1], hl.sum(mt.LAD), 0.5, "two-sided")),
+            ),
+            mt.alt_alleles_range_array,
+        )
+    )
+
+    info_ht = mt.select_rows(info=info_expr).rows()
 
     # Add lowqual flag
     info_ht = info_ht.annotate(
@@ -80,11 +119,14 @@ def compute_info() -> hl.Table:
             info_ht.info.QUALapprox,
             # The indel het prior used for gnomad v3 was 1/10k bases (phred=40).
             # This value is usually 1/8k bases (phred=39).
-            indel_phred_het_prior=40
-        )
+            indel_phred_het_prior=40,
+        ),
+        AS_lowqual=get_lowqual_expr(
+            info_ht.alleles, info_ht.info.AS_QUALapprox, indel_phred_het_prior=40
+        ),
     )
 
-    return info_ht.naive_coalesce(5000)
+    return info_ht.naive_coalesce(7500)
 
 
 def split_info() -> hl.Table:
@@ -100,13 +142,11 @@ def split_info() -> hl.Table:
     # Create split version
     info_ht = hl.split_multi(info_ht)
 
-    # Index AS annotations
     info_ht = info_ht.annotate(
         info=info_ht.info.annotate(
-            **{f: info_ht.info[f][info_ht.a_index - 1] for f in info_ht.info if f.startswith("AC") or (f.startswith("AS_") and not f == 'AS_SB_TABLE')},
-            AS_SB_TABLE=info_ht.info.AS_SB_TABLE[0].extend(info_ht.info.AS_SB_TABLE[info_ht.a_index])
+            **split_info_annotation(info_ht.info, info_ht.a_index),
         ),
-        lowqual=info_ht.lowqual[info_ht.a_index - 1]
+        AS_lowqual=split_lowqual_annotation(info_ht.AS_lowqual, info_ht.a_index),
     )
     return info_ht
 
@@ -249,6 +289,7 @@ def run_vep() -> hl.Table:
 
     return ht
 
+
 def main(args):
     hl.init(default_reference='GRCh38', log='/qc_annotations.log')
 
@@ -302,4 +343,8 @@ if __name__ == '__main__':
     parser.add_argument('--overwrite', help='Overwrite data', action='store_true')
     args = parser.parse_args()
 
-    main(args)
+    if args.slack_channel:
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
+    else:
+        main(args)
