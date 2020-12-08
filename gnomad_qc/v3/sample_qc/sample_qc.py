@@ -47,7 +47,6 @@ from gnomad_qc.v3.resources.sample_qc import (ancestry_pca_eigenvalues,
                                               stratified_metrics)
 
 
-hl.stop()
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("sample_qc")
 logger.setLevel(logging.INFO)
@@ -57,7 +56,6 @@ SUBSETS = ["non_topmed", "controls_and_biobanks", "non_neuro", "non_v2", "non_ca
 
 def compute_sample_qc() -> hl.Table:
     logger.info("Computing sample QC")
-    print(get_sample_qc().path[:-3])
 
     mt = filter_to_autosomes(
         get_gnomad_v3_mt(
@@ -117,7 +115,7 @@ def compute_qc_mt() -> hl.MatrixTable:
     mt = mt.filter_rows(
         (hl.len(mt.alleles) == 2) &
         hl.is_snp(mt.alleles[0], mt.alleles[1]) &
-        (qc_sites[mt.row_key].alleles == mt.alleles)
+        (qc_sites[mt.locus].alleles == mt.alleles)
 
     )
     mt = mt.checkpoint('gs://gnomad-tmp/gnomad_v3_qc_mt_v2_sites_dense.mt', overwrite=True)
@@ -146,7 +144,7 @@ def compute_qc_mt() -> hl.MatrixTable:
     return qc_mt
 
 
-def compute_hard_filters(cov_threshold: int) -> hl.Table:
+def compute_hard_filters(cov_threshold: int, include_sex_filter: bool = True) -> hl.Table:
     ht = get_gnomad_v3_mt(remove_hard_filtered_samples=False).cols()
     hard_filters = dict()
 
@@ -165,25 +163,28 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     hard_filters['low_coverage'] = (cov_ht[ht.key].chr20_mean_dp < cov_threshold)
 
     # Remove extreme raw bi-allelic sample QC outliers
-    # These were determined by visual inspection of the metrics
-    bi_allelic_qc_ht = hl.read_table('gs://gnomad/sample_qc/ht/genomes_v3/sample_qc_bi_allelic.ht')[ht.key]  # TODO: use resouce path
+    # These were determined by visual inspection of the metrics in gs://gnomad/sample_qc/  v3_genomes_sample_qc.ipynb
+    bi_allelic_qc_struct = get_sample_qc('bi-allelic').ht()[ht.key]
     hard_filters['bad_qc_metrics'] = (
-            (bi_allelic_qc_ht.sample_qc.n_snp > 3.75e6) |
-            (bi_allelic_qc_ht.sample_qc.n_snp < 2.4e6) |
-            (bi_allelic_qc_ht.sample_qc.n_singleton > 1e5) |
-            (bi_allelic_qc_ht.sample_qc.r_het_hom_var > 3.3)
+            (bi_allelic_qc_struct.sample_qc.n_snp > 3.75e6) |
+            (bi_allelic_qc_struct.sample_qc.n_snp < 2.4e6) |
+            (bi_allelic_qc_struct.sample_qc.n_singleton > 1e5) |
+            (bi_allelic_qc_struct.sample_qc.r_het_hom_var > 3.3)
     )
-
-    # Remove samples with ambiguous sex assignments
-    sex_ht = sex.ht()[ht.key]
-    hard_filters['ambiguous_sex'] = (sex_ht.sex_karyotype == 'Ambiguous')
-    hard_filters['sex_aneuploidy'] = ~hl.set({'Ambiguous', 'XX', 'XY'}).contains(sex_ht.sex_karyotype)
 
     # Remove samples that fail picard metric thresholds, percents are not divided by 100, e.g. 5% == 5.00, %5 != 0.05
     picard_ht = picard_metrics.ht()[ht.key]
     hard_filters['contamination'] = picard_ht.bam_metrics.freemix > 5.00
     hard_filters['chimera'] = picard_ht.bam_metrics.pct_chimeras > 5.00
     hard_filters['insert_size'] = picard_ht.bam_metrics.median_insert_size < 250
+    # Removing picard coverage filter in favor of chrom 20 low coverage filter above, these filters were redundant
+    # hard_filters['coverage'] = picard_ht.bam_metrics.mean_coverage < 15
+
+    if include_sex_filter:
+        # Remove samples with ambiguous sex assignments
+        sex_ht = sex.ht()[ht.key]
+        hard_filters['ambiguous_sex'] = (sex_ht.sex_karyotype == 'ambiguous')
+        hard_filters['sex_aneuploidy'] = ~hl.set({'ambiguous', 'XX', 'XY'}).contains(sex_ht.sex_karyotype)
 
     ht = ht.annotate(
         hard_filters=add_filters_expr(
@@ -727,15 +728,40 @@ def main(args):
     if args.impute_sex:
         compute_sex().write(sex.path, overwrite=args.overwrite)
     elif args.reannotate_sex:
-        sex_ht = sex.ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True)  # Copy HT to temp location to overwrite annotation
-        x_ploidy_cutoff, y_ploidy_cutoff = get_ploidy_cutoffs(sex_ht, f_stat_cutoff=0.5)
+        # Copy HT to temp location to overwrite annotation
+        sex_ht = sex.ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True)
+        hard_filter_ht = compute_hard_filters(args.min_cov, include_sex_filter=False)
+        # Copy HT to temp location because it uses sex_ht for chr20 coverage
+        hard_filter_ht = hard_filter_ht.checkpoint('gs://gnomad-tmp/hardfilter_checkpoint.ht', overwrite=True)
+        x_ploidy_cutoff, y_ploidy_cutoff = get_ploidy_cutoffs(
+            sex_ht.filter(hl.is_missing(hard_filter_ht[sex_ht.key])),
+            f_stat_cutoff=0.5
+        )
+        x_ploidy_cutoffs = hl.struct(
+            upper_x = args.upper_x if args.upper_x else x_ploidy_cutoff[0],
+            lower_xx = args.lower_xx if args.lower_xx else x_ploidy_cutoff[1][0],
+            upper_xx = args.upper_xx if args.upper_xx else x_ploidy_cutoff[1][1],
+            lower_xxx = args.lower_xxx if args.lower_xxx else x_ploidy_cutoff[2]
+        )
+        y_ploidy_cutoffs=hl.struct(
+            lower_y = args.lower_y if args.lower_y else y_ploidy_cutoff[0][0],
+            upper_y = args.upper_y if args.upper_y else y_ploidy_cutoff[0][1],
+            lower_yy = args.lower_yy if args.lower_yy else y_ploidy_cutoff[1]
+        )
         sex_ht = sex_ht.annotate(
             **get_sex_expr(
                 sex_ht.chrX_ploidy,
                 sex_ht.chrY_ploidy,
-                x_ploidy_cutoff,
-                y_ploidy_cutoff
+                (x_ploidy_cutoffs['upper_x'],
+                (x_ploidy_cutoffs['lower_xx'], x_ploidy_cutoffs['upper_xx']),
+                x_ploidy_cutoffs['lower_xxx']),
+                ((y_ploidy_cutoffs['lower_y'], y_ploidy_cutoffs['upper_y']),
+                y_ploidy_cutoffs['lower_yy'])
             )
+        )
+        sex_ht = sex_ht.annotate_globals(
+            x_ploidy_cutoffs=x_ploidy_cutoffs,
+            y_ploidy_cutoffs=y_ploidy_cutoffs,
         )
         sex_ht.write(sex.path, overwrite=args.overwrite)
 
@@ -898,6 +924,13 @@ if __name__ == "__main__":
     parser.add_argument('--sample_qc', help='Assigns pops from PCA', action='store_true')
     parser.add_argument('--impute_sex', help='Runs sex imputation. Also runs sex karyotyping annotation.', action='store_true')
     parser.add_argument('--reannotate_sex', help='Runs the sex karyotyping annotations again, without re-computing sex imputation metrics.', action='store_true')
+    parser.add_argument('--upper_x', help="Upper cutoff for single X", type=float)
+    parser.add_argument('--lower_xx', help="Lower cutoff for double X", type=float)
+    parser.add_argument('--upper_xx', help="Upper cutoff for double X", type=float)
+    parser.add_argument('--lower_xxx', help="Lower cutoff for triple X", type=float)
+    parser.add_argument('--lower_y', help="Lower cutoff for single Y", type=float)
+    parser.add_argument('--upper_y', help="Upper cutoff for single Y", type=float)
+    parser.add_argument('--lower_yy', help="Lower cutoff for double Y", type=float)
     parser.add_argument('--compute_hard_filters', help='Computes samples to be hard-filtered', action='store_true')
     parser.add_argument('--min_cov', help="Minimum coverage for inclusion when computing hard-filters", default=15, type=int)
     parser.add_argument('--compute_samples_ranking', help='Computes global samples ranking based on hard-filters, releasable and coverage.', action='store_true')
