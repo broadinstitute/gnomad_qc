@@ -114,7 +114,7 @@ def compute_sample_qc() -> hl.Table:
     return sample_qc_ht.repartition(100)
 
 
-def compute_qc_mt(min_af: float = 0.0, min_inbreeding_coeff_threshold: float =- 0.025) -> hl.MatrixTable:
+def compute_qc_mt(min_af: float = 0.0, min_inbreeding_coeff_threshold: float = -0.025) -> hl.MatrixTable:
     """
     Computes the QC MT to be used in downstream sample QC
 
