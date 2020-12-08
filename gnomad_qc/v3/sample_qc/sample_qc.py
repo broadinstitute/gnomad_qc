@@ -350,7 +350,7 @@ def assign_pops(
         include_unreleasable_samples: bool,
         max_mislabeled_training_samples: int = 50,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
         n_pcs: int = 16,
-        withhold_prob: float = None,
+        withhold_prop: float = None,
 ) -> Tuple[hl.Table, Any]:
     """
     This function uses a random forest model to assign global population labels based on the results from `assign_pca`
@@ -383,10 +383,10 @@ def assign_pops(
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop_all=pop_pca_scores_ht.training_pop
     )
-    if withhold_prob:
+    if withhold_prop:
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=hl.or_missing(
-                hl.is_defined(pop_pca_scores_ht.training_pop) & hl.rand_bool(1.0-withhold_prob),
+                hl.is_defined(pop_pca_scores_ht.training_pop) & hl.rand_bool(1.0-withhold_prop),
                 pop_pca_scores_ht.training_pop
             )
         )
@@ -450,8 +450,8 @@ def assign_pops(
         known_pop_removal_iterations=known_pop_removal_iter,
         n_pcs=n_pcs,
     )
-    if withhold_prob:
-        pop_ht = pop_ht.annotate_globals(withhold_prob=withhold_prob)
+    if withhold_prop:
+        pop_ht = pop_ht.annotate_globals(withhold_prop=withhold_prop)
 
     return pop_ht, pops_rf_model
 
