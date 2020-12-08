@@ -204,12 +204,13 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     )
 
     # Remove low-coverage samples
-    cov_ht = sex.ht()  # chrom 20 coverage is computed to infer sex and used here
+    # chrom 20 coverage is computed to infer sex and used here
+    cov_ht = sex.ht()
     hard_filters['low_coverage'] = (cov_ht[ht.key].chr20_mean_dp < cov_threshold)
 
     # Remove extreme raw bi-allelic sample QC outliers
-    # These were determined by visual inspection of the metrics in gs://gnomad/sample_qc/  v3_genomes_sample_qc.ipynb
-    bi_allelic_qc_ht = hl.read_table('gs://gnomad/sample_qc/ht/genomes_v3/sample_qc_bi_allelic.ht')[ht.key]
+    # These were determined by visual inspection of the metrics
+    bi_allelic_qc_ht = get_sample_qc('bi_allelic').ht()[ht.key]
     hard_filters['bad_qc_metrics'] = (
             (bi_allelic_qc_ht.sample_qc.n_snp > 3.75e6) |
             (bi_allelic_qc_ht.sample_qc.n_snp < 2.4e6) |
