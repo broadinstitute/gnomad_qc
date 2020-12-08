@@ -227,7 +227,6 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     picard_ht = picard_metrics.ht()[ht.key]
     hard_filters['contamination'] = picard_ht.bam_metrics.freemix > 5.00
     hard_filters['chimera'] = picard_ht.bam_metrics.pct_chimeras > 5.00
-    # hard_filters['coverage'] = picard_ht.bam_metrics.mean_coverage < 15
     hard_filters['insert_size'] = picard_ht.bam_metrics.median_insert_size < 250
 
     ht = ht.annotate(
@@ -237,6 +236,7 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     )
 
     ht = ht.filter(hl.len(ht.hard_filters) > 0)
+
     return ht
 
 
