@@ -541,7 +541,6 @@ def apply_regressed_filters(
     return residuals_ht
 
 
-# Move to gnomad_methods and update UKBB
 def get_relatedness_set_ht(relatedness_ht: hl.Table) -> hl.Table:
     """
     Parses relatedness Table to get every relationship (except UNRELATED) per sample.
