@@ -85,7 +85,10 @@ def ancestry_pca_scores(include_unreleasable_samples: bool = False
     )
 
 
-def ancestry_pca_eigenvalues(include_unreleasable_samples: bool = False) -> VersionedTableResource:
+def ancestry_pca_eigenvalues(
+        include_unreleasable_samples: bool = False,
+        release=CURRENT_RELEASE
+) -> VersionedTableResource:
     """
     Gets the ancestry PCA eigenvalues VersionedTableResource
 
