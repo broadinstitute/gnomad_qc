@@ -85,18 +85,14 @@ def ancestry_pca_scores(include_unreleasable_samples: bool = False
     )
 
 
-def ancestry_pca_eigenvalues(include_unreleasable_samples: bool = False
-) -> VersionedTableResource:
+def ancestry_pca_eigenvalues(include_unreleasable_samples: bool = False) -> VersionedTableResource:
     """
     Gets the ancestry PCA eigenvalues VersionedTableResource
 
     :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
     :return: Ancestry PCA eigenvalues path
     """
-    return VersionedTableResource(
-        CURRENT_RELEASE,
-        {release: _get_ancestry_pca_ht_path("eigenvalues", release, include_unreleasable_samples) for release in RELEASES}
-    )
+    return _get_ancestry_pca_ht_path("eigenvalues", release, include_unreleasable_samples)
 
 
 def get_relatedness_annotated_ht() -> hl.Table:

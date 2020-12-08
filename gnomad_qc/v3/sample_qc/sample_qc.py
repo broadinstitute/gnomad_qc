@@ -913,7 +913,7 @@ def main(args):
         pop_pca_eigenvalues, pop_pca_scores_ht, pop_pca_loadings_ht = run_pca(args.include_unreleasable_samples, args.n_pcs, samples_to_drop)
         pop_pca_scores_ht.write(ancestry_pca_scores(args.include_unreleasable_samples).path, overwrite=args.overwrite)
         pop_pca_loadings_ht.write(ancestry_pca_loadings(args.include_unreleasable_samples).path, overwrite=args.overwrite)
-        with hl.utils.hadoop_open('gs://gnomad/sample_qc/ht/genomes_v3.1/gnomad_v3.1_eigenvalues.txt', mode='w') as f:  # TODO: add this path to resources
+        with hl.utils.hadoop_open(ancestry_pca_eigenvalues(args.include_unreleasable_samples), mode='w') as f:  # TODO: add this path to resources
             f.write(",".join([str(x) for x in pop_pca_eigenvalues]))
 
     if args.assign_pops:
