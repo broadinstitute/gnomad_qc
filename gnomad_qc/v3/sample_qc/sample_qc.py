@@ -148,6 +148,7 @@ def compute_qc_mt(min_af: float = 0.0, min_inbreeding_coeff_threshold: float =- 
         hl.read_table(last_END_position.path)
     )
 
+    # Filter MT to bi-allelic SNVs that are found in the v2 QC and p5k HT
     mt = mt.filter_rows(
         (hl.len(mt.alleles) == 2) &
         hl.is_snp(mt.alleles[0], mt.alleles[1]) &
