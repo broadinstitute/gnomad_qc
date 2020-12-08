@@ -220,8 +220,8 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
 
     # Remove samples with ambiguous sex assignments
     sex_ht = sex.ht()[ht.key]
-    hard_filters['ambiguous_sex'] = (sex_ht.sex_karyotype == 'Ambiguous')
-    hard_filters['sex_aneuploidy'] = ~hl.set({'Ambiguous', 'XX', 'XY'}).contains(sex_ht.sex_karyotype)
+    hard_filters['ambiguous_sex'] = (sex_ht.sex_karyotype == 'ambiguous')
+    hard_filters['sex_aneuploidy'] = ~hl.set({'ambiguous', 'XX', 'XY'}).contains(sex_ht.sex_karyotype)
 
     # Remove samples that fail picard metric thresholds, percents are not divided by 100, e.g. 5% == 5.00, %5 != 0.05
     picard_ht = picard_metrics.ht()[ht.key]
