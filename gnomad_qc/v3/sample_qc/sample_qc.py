@@ -69,9 +69,17 @@ logger = logging.getLogger("sample_qc")
 logger.setLevel(logging.INFO)
 
 SUBSETS = ["non_topmed", "controls_and_biobanks", "non_neuro", "non_v2", "non_cancer", "tgp", "hgdp"]
+"""
+Default list of subsets to include in the sample QC meta HT from the project meta HT
+"""
 
 
 def compute_sample_qc() -> hl.Table:
+    """
+    Perform sample QC on the raw split matrix table using `compute_stratified_sample_qc`
+
+    :return: Table containing sample QC metrics
+    """
     logger.info("Computing sample QC")
     mt = filter_to_autosomes(
         get_gnomad_v3_mt(
@@ -102,7 +110,16 @@ def compute_sample_qc() -> hl.Table:
     return sample_qc_ht.repartition(100)
 
 
-def compute_qc_mt() -> hl.MatrixTable:
+def compute_qc_mt(min_af: float = 0.0, min_inbreeding_coeff_threshold: float =- 0.025) -> hl.MatrixTable:
+    """
+    Computes the QC MT to be used in downstream sample QC
+
+    Filters MT to only gnomAD v2 QC sites and p5k sites that are bi-allelic SNVs
+
+    :param min_af: Minimum variant allele frequency to retain variant in qc matrix table
+    :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to keep
+    :return: MatrixTable filtered to variants for sample QC
+    """
     # Load v2 and p5k sites for QC
     v2_qc_sites = get_liftover_v2_qc_mt('joint', ld_pruned=True).rows().key_by('locus')
     qc_sites = v2_qc_sites.union(purcell_5k_intervals.ht(), unify=True)
@@ -149,8 +166,8 @@ def compute_qc_mt() -> hl.MatrixTable:
     )
     qc_mt = get_qc_mt(
         mt,
-        min_af=0.0,
-        min_inbreeding_coeff_threshold=-0.025,
+        min_af=min_af,
+        min_inbreeding_coeff_threshold=min_inbreeding_coeff_threshold,
         min_hardy_weinberg_threshold=None,
         ld_r2=None,
         filter_lcr=False,
@@ -161,6 +178,14 @@ def compute_qc_mt() -> hl.MatrixTable:
 
 
 def compute_hard_filters(cov_threshold: int) -> hl.Table:
+    """
+    Applies hard filters to samples and returns Table with samples and the reason for filtering
+
+    This function expects that `impute_sex` was already run
+
+    :param cov_threshold: Filtering threshold to use for chr20 coverage
+    :return: Table of hard filtered samples
+    """
     ht = get_gnomad_v3_mt(remove_hard_filtered_samples=False).cols()
     hard_filters = dict()
 
@@ -210,7 +235,16 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     return ht
 
 
-def compute_sex(aaf_threshold=0.001, f_stat_cutoff=0.5) -> hl.Table:
+def compute_sex(aaf_threshold: float = 0.001, f_stat_cutoff: float = 0.5) -> hl.Table:
+    """
+    Imputes sample sex based on X-chromosome heterozygosity and sex chromosome ploidy.
+
+    Allele frequencies from v3.0 are used to prevent the need to densify
+
+    :param aaf_threshold: Minimum alternate allele frequency to be used in f-stat calculations.
+    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY are above cutoff.
+    :return: Table with inferred sex annotation
+    """
     mt = get_gnomad_v3_mt(
         key_by_locus_and_alleles=True,
         remove_hard_filtered_samples=False,
@@ -235,6 +269,15 @@ def compute_sex(aaf_threshold=0.001, f_stat_cutoff=0.5) -> hl.Table:
 
 
 def compute_sample_rankings(use_qc_metrics_filters: bool) -> hl.Table:
+    """
+    Rank samples by sample filtering and chr20 mean coverage
+
+    Filtered samples are ranked lowest, followed by non-releasable samples, and then by coverage where higher coverage
+    is a higher rank
+
+    :param use_qc_metrics_filters: Should sample QC metric filters be included or only hard filters
+    :return: Table with sample rankings
+    """
     project_ht = project_meta.ht()
     project_ht = project_ht.annotate(exclude=hl.if_else(hl.is_missing(project_ht.exclude), False, project_ht.exclude))
     project_ht = project_ht.select(
@@ -270,6 +313,14 @@ def run_pca(
         n_pcs: int,
         related_samples_to_drop: hl.Table
 ) -> Tuple[List[float], hl.Table, hl.Table]:
+    """
+    Run population PCA using `run_pca_with_relateds`
+
+    :param include_unreleasable_samples: Should unreleasable samples be included in the PCA
+    :param n_pcs: Number of PCs to compute
+    :param related_samples_to_drop: Table of related samples to drop from PCA run
+    :return: eigenvalues, scores and loadings
+    """
     logger.info("Running population PCA")
     qc_mt = qc.mt()
 
@@ -296,6 +347,23 @@ def assign_pops(
         n_pcs: int = 16,
         withhold_prob: float = None,
 ) -> Tuple[hl.Table, Any]:
+    """
+    This function uses a random forest model to assign global population labels based on the results from `assign_pca`
+
+    The training data used is `project_pop` on the project metadata HT where it is defined, otherwise it uses the
+    `v2_pop` if defined and not `oth`.
+
+    The method starts by inferring the pop on all samples, then comparing the training data to the inferred data,
+    removing the truth outliers and re-training. This is repeated until the number of truth samples is less than
+    or equal to `max_mislabeled_training_samples`.
+
+    :param min_prob: Minimum RF probability for pop assignment
+    :param include_unreleasable_samples: Should unreleasable samples be included in the PCA
+    :param max_mislabeled_training_samples: Maximum number of training samples that can be mislabelled
+    :param n_pcs: Number of PCs to use in the RF
+    :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
+    :return: Table of pop assignments and the rf model
+    """
     logger.info("Assigning global population labels")
     pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples).ht()
     project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
@@ -383,7 +451,23 @@ def assign_pops(
     return pop_ht, pops_rf_model
 
 
-def apply_stratified_filters(sample_qc_ht, filtering_qc_metrics: List[str]) -> hl.Table:
+def apply_stratified_filters(sample_qc_ht: hl.Table, filtering_qc_metrics: List[str]) -> hl.Table:
+    """
+    Uses population stratified QC metrics to determine what samples are outliers and should be filtered.
+
+    Uses `compute_stratified_metrics_filter` to run hl.sample_qc and returns the metrics stratified by assigned
+    population with a `qc_metrics_filters` annotation indicating if the sample falls a certain number of MAD
+    outside the distribution.
+
+    .. note::
+
+        Default left and right MAD for `compute_stratified_metrics_filter` is 4, we modify this for n_singleton to be
+        (4.0, 8.0)
+
+    :param sample_qc_ht: Sample QC HT
+    :param filtering_qc_metrics: Specific metrics to compute
+    :return: Table with stratified metrics and filters
+    """
     logger.info("Computing stratified QC metrics filters using metrics: " + ", ".join(filtering_qc_metrics))
     sample_qc_ht = sample_qc_ht.annotate(
         qc_pop=pop.ht()[sample_qc_ht.key].pop
@@ -404,6 +488,21 @@ def apply_regressed_filters(
         include_unreleasable_samples: bool,
         n_pcs: int = 16,
 ) -> hl.Table:
+    """
+    Computes sample QC metrics residuals after regressing out population PCs and determines what samples are outliers
+    that should be filtered.
+
+    .. note::
+
+        Default left and right MAD for `compute_stratified_metrics_filter` is 4. We modify this for n_singleton_residual
+        to be (math.inf, 8.0) and for r_het_hom_var_residual to be (math.inf, 4.0).
+
+    :param sample_qc_ht: Sample QC HT
+    :param filtering_qc_metrics: Specific metrics to compute
+    :param include_unreleasable_samples: Should unreleasable samples be included in the regression
+    :param n_pcs: Number of population PCs to use in regression
+    :return: Table with stratified metrics and filters
+    """
     project_ht = project_meta.ht()
     project_ht = project_ht.annotate(exclude=hl.if_else(hl.is_missing(project_ht.exclude), False, project_ht.exclude))
     sample_qc_ht = sample_qc_ht.select(
@@ -513,6 +612,12 @@ def join_tables(
 
 
 def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
+    """
+    Pulls all sample QC information together in one Table
+
+    :param regressed_metrics_outlier: Should the outlier table be from the residuals instead of pop stratified
+    :return:
+    """
     logging_statement = "Reading in {} and joining with meta HT"
 
     logger.info("Loading metadata file with subset, age, and releasable information to begin creation of the meta HT")
