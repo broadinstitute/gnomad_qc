@@ -88,6 +88,8 @@ def compute_sample_qc() -> hl.Table:
             remove_hard_filtered_samples=False
         )
     )
+
+    # Remove centromeres and telomeres incase they were included and any reference blocks
     mt = mt.filter_rows(~hl.is_defined(telomeres_and_centromeres.ht()[mt.locus]) & (hl.len(mt.alleles) > 1))
     mt = mt.select_entries('GT')
 
@@ -107,6 +109,7 @@ def compute_sample_qc() -> hl.Table:
             for x in sample_qc_ht.row_value
         }
     )
+
     return sample_qc_ht.repartition(100)
 
 
