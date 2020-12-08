@@ -1,5 +1,6 @@
 import argparse
 import logging
+import math
 import pickle
 from typing import Any, List, Tuple
 
@@ -488,7 +489,7 @@ def apply_stratified_filters(sample_qc_ht: hl.Table, filtering_qc_metrics: List[
 
 
 def apply_regressed_filters(
-        sample_qc_ht,
+        sample_qc_ht: hl.Table,
         filtering_qc_metrics: List[str],
         include_unreleasable_samples: bool,
         n_pcs: int = 16,
@@ -526,7 +527,7 @@ def apply_regressed_filters(
     stratified_metrics_ht = compute_stratified_metrics_filter(
         ht=residuals_ht,
         qc_metrics=dict(residuals_ht.row_value),
-        metric_threshold={'n_singleton_residual': (100.0, 8.0), 'r_het_hom_var_residual': (100.0, 4.0)}
+        metric_threshold={'n_singleton_residual': (math.inf, 8.0), 'r_het_hom_var_residual': (math.inf, 4.0)}
     )
 
     residuals_ht = residuals_ht.annotate(
@@ -600,7 +601,6 @@ def join_tables(
 ) -> hl.Table:
     """
     Joins left and right tables using specified keys and join types and returns result.
-
     Also prints warning if sample counts are not the same.
     :param Table left_ht: Left Table to be joined
     :param str left_key: Key of left Table
@@ -640,18 +640,11 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
         logger.warning("Not all samples in callset MT are found in the project meta HT")
 
     right_ht = right_ht.annotate(
-        non_cancer=~right_ht.s.startswith('TCGA'),
-        non_v2=~right_ht.v2_release,
-        non_neuro=~right_ht.neuro_case,
-        non_topmed=~right_ht.topmed,
-    )
-    right_ht = right_ht.annotate(
         project_meta=hl.struct(**right_ht.row.drop(*(SUBSETS + ["s"]))),
         subsets=hl.struct(**{x: right_ht[x] for x in SUBSETS})
-    ).select("project_meta", "subsets")  # control subset??
+    ).select("project_meta", "subsets")
     left_ht = join_tables(left_ht, "s", right_ht.select_globals(), "s", "right")
 
-    # TODO: Make release and releasable and exclude top level?
     logger.info(logging_statement.format("picard metric HT"))
     right_ht = picard_metrics.ht()
     right_ht = right_ht.select("bam_metrics")
@@ -678,6 +671,7 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
 
     logger.info(logging_statement.format("sample QC HT"))
     right_ht = get_sample_qc("bi_allelic").ht()
+
     # Remove annotations that cannot be computed from the sparse format
     right_ht = right_ht.annotate(
         **{
@@ -919,12 +913,12 @@ def main(args):
         pop_pca_eigenvalues, pop_pca_scores_ht, pop_pca_loadings_ht = run_pca(args.include_unreleasable_samples, args.n_pcs, samples_to_drop)
         pop_pca_scores_ht.write(ancestry_pca_scores(args.include_unreleasable_samples).path, overwrite=args.overwrite)
         pop_pca_loadings_ht.write(ancestry_pca_loadings(args.include_unreleasable_samples).path, overwrite=args.overwrite)
-        with hl.utils.hadoop_open('gs://gnomad/sample_qc/ht/genomes_v3.1/gnomad_v3.1_eigenvalues.txt', mode='w') as f:  # hl.utils.hadoop_open(ancestry_pca_eigenvalues(args.include_unreleasable_samples).path, mode='w') as f:
+        with hl.utils.hadoop_open('gs://gnomad/sample_qc/ht/genomes_v3.1/gnomad_v3.1_eigenvalues.txt', mode='w') as f:  # TODO: add this path to resources
             f.write(",".join([str(x) for x in pop_pca_eigenvalues]))
 
     if args.assign_pops:
         n_pcs = args.pop_n_pcs
-        pop_ht, pops_rf_model = assign_pops(args.min_pop_prob, args.include_unreleasable_samples, n_pcs=n_pcs, withhold_prob=args.withhold_prob)
+        pop_ht, pops_rf_model = assign_pops(args.min_pop_prob, args.include_unreleasable_samples, n_pcs=n_pcs, withhold_prop=args.withhold_prop)
         pop_ht = pop_ht.checkpoint(pop.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         pop_ht.transmute(
             **{f'PC{i + 1}': pop_ht.pca_scores[i] for i in range(0, n_pcs)}
@@ -987,7 +981,7 @@ def main(args):
             filtering_qc_metrics,
             args.include_unreleasable_samples,
             n_pcs,
-        ).write(regressed_metrics.path, overwrite=args.overwrite) #  .write(regressed_metrics(n_pcs).path, overwrite=args.overwrite)
+        ).write(regressed_metrics.path, overwrite=args.overwrite)
 
     if args.compute_related_samples_to_drop:
         rank_ht = compute_sample_rankings(use_qc_metrics_filters=True)
@@ -1008,8 +1002,9 @@ def main(args):
         meta_ht = generate_metadata(args.regressed_metrics_outlier)
         meta_ht.checkpoint(meta.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         n_pcs = meta_ht.aggregate(hl.agg.min(hl.len(meta_ht.population_inference.pca_scores)))
-        meta_ht = meta_ht.transmute(
-            **{f'PC{i + 1}': meta_ht.population_inference.pca_scores[i] for i in range(n_pcs)},
+
+        meta_ht = meta_ht.annotate(
+            population_inference=meta_ht.population_inference.transmute(**{f'PC{i + 1}': meta_ht.population_inference.pca_scores[i] for i in range(n_pcs)}),
             hard_filters=hl.or_missing(hl.len(meta_ht.sample_filters.hard_filters) > 0, hl.delimit(meta_ht.sample_filters.hard_filters)),
             qc_metrics_filters=hl.or_missing(hl.len(meta_ht.sample_filters.qc_metrics_filters) > 0, hl.delimit(meta_ht.sample_filters.qc_metrics_filters))
         )
@@ -1060,7 +1055,7 @@ if __name__ == "__main__":
     parser.add_argument('--assign_pops', help='Assigns pops from PCA', action='store_true')
     parser.add_argument('--pop_n_pcs', help='Number of PCs to use for ancestry assignment', default=16, type=int)
     parser.add_argument('--min_pop_prob', help='Minimum RF prob for pop assignment', default=0.75, type=float)
-    parser.add_argument('--withhold_prob', help='Minimum RF prob for pop assignment', type=float)
+    parser.add_argument('--withhold_prop', help='Proportion of training samples to withhold from pop assignment RF training', type=float)
     parser.add_argument('--calculate_inbreeding', help='Calculate sample level inbreeding', action='store_true')
     parser.add_argument('--calculate_clinvar', help='Calculate counts of ClinVar and ClinVar P/LP variants per sample', action='store_true')
     parser.add_argument('--filtering_qc_metrics', help="List of QC metrics for filtering.", default=",".join([
