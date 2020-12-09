@@ -105,21 +105,37 @@ def main(args):
         )
         hists = ht.aggregate(
             hl.array(
-                [hist_expr.annotate(metric=hist_metric) for hist_metric, hist_expr in hist_ranges_expr.items()]
+                [
+                    hist_expr.annotate(metric=hist_metric)
+                    for hist_metric, hist_expr in hist_ranges_expr.items()
+                ]
             ).extend(
                 hl.array(
                     hl.agg.group_by(
                         create_frequency_bins_expr(
-                            AC=ht.freq[1].AC,
-                            AF=ht.freq[1].AF
+                            AC=ht.freq[1].AC, AF=ht.freq[1].AF
                         ),
-                        hl.agg.hist(hl.log10(ht.info.QUALapprox), 1, 10, 36)
+                        # Decided to use QUALapprox because its formula is easier to interpret than QUAL's
+                        hl.agg.hist(
+                            hl.log10(ht.info.QUALapprox),
+                            *ANNOTATIONS_HISTS["QUALapprox"],
+                        ),
                     )
-                ).map(
-                    lambda x: x[1].annotate(metric=x[0])
-                )
+                ).map(lambda x: x[1].annotate(metric="QUALapprox-"+x[0]))
+            ).extend(
+                hl.array(
+                    hl.agg.group_by(
+                        create_frequency_bins_expr(
+                            AC=ht.freq[1].AC, AF=ht.freq[1].AF
+                        ),
+                        hl.agg.hist(
+                            hl.log10(ht.info.AS_QUALapprox),
+                            *ANNOTATIONS_HISTS["AS_QUALapprox"],
+                        ),
+                    )
+                ).map(lambda x: x[1].annotate(metric="AS_QUALapprox-"+x[0]))
             ),
-            _localize=False
+            _localize=False,
         )
 
         with hl.hadoop_open(qual_hists_json_path(CURRENT_RELEASE), 'w') as f:
