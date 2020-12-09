@@ -88,8 +88,15 @@ def main(args):
             "Evaluating minimum and maximum values for each metric of interest, and capping maximum value at 1e10"
         )
         minmax_dict = {}
-        for metric in hist_ranges_expr.keys():
-            minmax_dict[metric] = hl.struct(min=hl.agg.min(ht[metric]), max=hl.if_else(hl.agg.max(ht[metric])<1e10, hl.agg.max(ht[metric]), 1e10))
+        for metric in metrics:
+            minmax_dict[metric] = hl.struct(
+                min=hl.agg.min(ht.info[metric]),
+                max=hl.if_else(
+                    hl.agg.max(ht.info[metric]) < 1e10,
+                    hl.agg.max(ht.info[metric]),
+                    1e10,
+                ),
+            )
         minmax = ht.aggregate(hl.struct(**minmax_dict))
         print(minmax)
     else:
