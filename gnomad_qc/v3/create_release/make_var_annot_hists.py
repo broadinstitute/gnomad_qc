@@ -69,8 +69,7 @@ def main(args):
     # NOTE: histogram aggregations on these metrics are done on the entire callset (not just PASS variants), on raw data
     metrics = list(ANNOTATIONS_HISTS.keys())
 
-
-    ht = hl.read_table('gs://gnomad/release/v3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht')  # TODO: update path to use resources
+    ht = hl.read_table(release_ht_path(public=False))
 
     # NOTE: histogram aggregations are done on the entire callset (not just PASS variants), on raw data
     ht = ht.select(freq=ht.freq, info=ht.info.select(*metrics))
