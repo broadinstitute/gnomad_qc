@@ -15,6 +15,45 @@ from gnomad_qc.v3.resources.release import (annotation_hists_path,
                                             release_ht_path)
 
 
+logging.basicConfig(
+    format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
+    datefmt="%m/%d/%Y %I:%M:%S %p",
+)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
+LOG10_ANNOTATIONS = ["AS_VarDP", "QUALapprox", "AS_QUALapprox"]
+"""
+List of annotations to log scale when creating histograms. 
+"""
+
+
+def create_frequency_bins_expr_inbreeding(
+        AF: hl.expr.NumericExpression
+) -> hl.expr.StringExpression:
+    """
+    Creates bins for frequencies in preparation for aggregating QUAL by frequency bin.
+
+    Uses bins of < 0.0005 and >= 0.0005
+
+    NOTE: Frequencies should be frequencies from raw data.
+    Used when creating site quality distribution json files.
+
+    :param AC: Field in input that contains the allele count information
+    :param AF: Field in input that contains the allele frequency information
+    :return: Expression containing bin name
+    :rtype: hl.expr.StringExpression
+    """
+    bin_expr = (
+        hl.case()
+            .when(AF < 0.0005, "under_0.0005")
+            .when((AF >= 0.0005) & (AF <= 1), "over_0.0005")
+            .default(hl.null(hl.tstr))
+    )
+    return bin_expr
+
+
 def main(args):
     hl.init(default_reference='GRCh38', log='/variant_histograms.log')
 
