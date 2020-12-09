@@ -138,8 +138,23 @@ def main(args):
             _localize=False,
         )
 
-        with hl.hadoop_open(qual_hists_json_path(CURRENT_RELEASE), 'w') as f:
-            f.write(hl.eval(hl.json(hists)))
+        testing = {'under_0.0005': [-0.0005, 0.0005, 50], 'over_0.0005': [-0.25, 1, 50]}
+        ht = ht.annotate(_af_bin=create_frequency_bins_expr_inbreeding(AF=ht.freq[1].AF))
+        inbreeding_hists = [ht.aggregate(hl.agg.filter(ht._af_bin == x,
+                                    hl.agg.hist(
+                                        ht.info.InbreedingCoeff,
+                                        *testing[x],
+                                    ))
+                      ).annotate(metric="InbreedingCoeff" + "-" + x) for x in testing
+                            ]
+
+        hists = hl.eval(hl.json(hists))
+        inbreeding_hists = hl.eval(hl.json(inbreeding_hists))
+        hists = hists[:-1] + "," + inbreeding_hists[1:]
+        print(hists)
+        logger.info("Writing output")
+        with hl.hadoop_open(qual_hists_json_path(), "w") as f:
+            f.write(hists)
 
 
 if __name__ == '__main__':
