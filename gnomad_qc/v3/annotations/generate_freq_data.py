@@ -66,20 +66,21 @@ POPS = ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas", "mid"]
 
 # TODO: add in consanguineous frequency data?
 
+
 def make_faf_index_dict(ht):
-    '''
+    """
     Create a look-up Dictionary for entries contained in the filter allele frequency annotation array
     :param Table ht: Table containing filter allele frequency annotations to be indexed
     :return: Dictionary of faf annotation population groupings, where values are the corresponding 0-based indices for the
         groupings in the faf_meta array
     :rtype: Dict of str: int
-    '''
+    """
     faf_meta = hl.eval(ht.faf_meta)
 
-    index_dict = index_globals(faf_meta, dict(group=['adj']))
-    index_dict.update(index_globals(faf_meta, dict(group=['adj'], pop=POPS)))
-    index_dict.update(index_globals(faf_meta, dict(group=['adj'], sex=SEXES)))
-    index_dict.update(index_globals(faf_meta, dict(group=['adj'], pop=POPS, sex=SEXES)))
+    index_dict = index_globals(faf_meta, dict(group=["adj"]))
+    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS)))
+    index_dict.update(index_globals(faf_meta, dict(group=["adj"], sex=SEXES)))
+    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS, sex=SEXES)))
 
     return index_dict
 
@@ -207,9 +208,7 @@ def main(args):
                 popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX),
             )
             mt = mt.annotate_globals(faf_meta=faf_meta)
-            mt = mt.annotate_globals(
-                faf_index_dict=make_faf_index_dict(mt)
-            )
+            mt = mt.annotate_globals(faf_index_dict=make_faf_index_dict(mt))
             mt = mt.annotate_rows(
                 popmax=mt.popmax.annotate(
                     faf95=mt.faf[
