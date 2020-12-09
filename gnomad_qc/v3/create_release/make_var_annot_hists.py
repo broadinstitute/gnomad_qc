@@ -57,7 +57,21 @@ def create_frequency_bins_expr_inbreeding(
 def main(args):
     hl.init(default_reference='GRCh38', log='/variant_histograms.log')
 
-    ht = hl.read_table(release_ht_path())
+    logger.info("Loading ANNOTATIONS_HISTS dictionary...")
+    if not file_exists(annotation_hists_path('3.1')):
+        raise DataException(
+            "Annotation hists JSON file not found. Need to create this JSON before running script!"
+        )
+
+    with hl.hadoop_open(annotation_hists_path('3.1')) as a:
+        ANNOTATIONS_HISTS = json.loads(a.read())
+
+    # NOTE: histogram aggregations on these metrics are done on the entire callset (not just PASS variants), on raw data
+    metrics = list(ANNOTATIONS_HISTS.keys())
+
+
+    ht = hl.read_table('gs://gnomad/release/v3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht')  # TODO: update path to use resources
+
     # NOTE: histogram aggregations are done on the entire callset (not just PASS variants), on raw data
 
     hist_dict = ANNOTATIONS_HISTS
