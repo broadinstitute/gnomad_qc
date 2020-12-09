@@ -63,8 +63,7 @@ def main(args):
     hist_dict = ANNOTATIONS_HISTS
     hist_dict['MQ'] = (20, 60, 40) # Boundaries changed for v3, but could be a good idea to settle on a standard
     hist_ranges_expr = get_annotations_hists(
-        ht,
-        ANNOTATIONS_HISTS
+        ht, ANNOTATIONS_HISTS, LOG10_ANNOTATIONS
     )
 
     # NOTE: run the following code in a first pass to determine bounds for metrics
