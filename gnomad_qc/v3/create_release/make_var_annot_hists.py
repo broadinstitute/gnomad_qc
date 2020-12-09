@@ -1,13 +1,17 @@
 import argparse
+import json
+import logging
 
 import hail as hl
-from gnomad.utils.annotations import (ANNOTATIONS_HISTS,
-                                      create_frequency_bins_expr,
+from gnomad.resources.resource_utils import DataException
+from gnomad.utils.annotations import (create_frequency_bins_expr,
                                       get_annotations_hists)
-from gnomad.utils.slack import try_slack
-
+from gnomad.utils.file_utils import file_exists
+from gnomad.utils.slack import slack_notifications
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v3.resources.release import (qual_hists_json_path,
+from gnomad_qc.v3.resources.release import (annotation_hists_path,
+                                            qual_hists_json_path,
                                             release_ht_path)
 
 
