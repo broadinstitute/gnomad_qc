@@ -98,9 +98,11 @@ def main(args):
                 ),
             )
         minmax = ht.aggregate(hl.struct(**minmax_dict))
-        print(minmax)
+        logger.info(f"Metrics bounds: {minmax}")
     else:
-        # Aggregate hists over hand-tooled ranges
+        logger.info(
+            "Aggregating hists over ranges determined using first pass run..."
+        )
         hists = ht.aggregate(
             hl.array(
                 [hist_expr.annotate(metric=hist_metric) for hist_metric, hist_expr in hist_ranges_expr.items()]
