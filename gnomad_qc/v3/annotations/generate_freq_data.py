@@ -1,5 +1,5 @@
 from gnomad.utils.slack import slack_notifications
-from gnomad.resources.grch38.gnomad import SUBSETS
+from gnomad.resources.grch38.gnomad import SUBSETS, DOWNSAMPLINGS, POPS, POPS_TO_REMOVE_FOR_POPMAX
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     annotate_freq,
@@ -30,37 +30,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
-
-DOWNSAMPLINGS = [
-    10,
-    20,
-    50,
-    100,
-    200,
-    500,
-    1000,
-    2000,
-    5000,
-    10000,
-    15000,
-    20000,
-    25000,
-    30000,
-    40000,
-    50000,
-    60000,
-    70000,
-    75000,
-    80000,
-    85000,
-    90000,
-    95000,
-    100000,
-    110000,
-    120000,
-]
-POPS_TO_REMOVE_FOR_POPMAX = {"asj", "fin", "oth", "ami", "mid"}
-POPS = ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas", "mid"]
 
 
 def make_faf_index_dict(ht):
