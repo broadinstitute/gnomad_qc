@@ -58,12 +58,12 @@ def main(args):
     hl.init(default_reference='GRCh38', log='/variant_histograms.log')
 
     logger.info("Loading ANNOTATIONS_HISTS dictionary...")
-    if not file_exists(annotation_hists_path('3.1')):
+    if not file_exists(annotation_hists_path()):
         raise DataException(
             "Annotation hists JSON file not found. Need to create this JSON before running script!"
         )
 
-    with hl.hadoop_open(annotation_hists_path('3.1')) as a:
+    with hl.hadoop_open(annotation_hists_path()) as a:
         ANNOTATIONS_HISTS = json.loads(a.read())
 
     # NOTE: histogram aggregations on these metrics are done on the entire callset (not just PASS variants), on raw data
