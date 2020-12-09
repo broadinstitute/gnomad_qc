@@ -13,7 +13,6 @@ from gnomad.utils.annotations import (
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.vcf import make_label_combos, index_globals
 
-
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
@@ -64,9 +63,6 @@ POPS_TO_REMOVE_FOR_POPMAX = {"asj", "fin", "oth", "ami", "mid"}
 POPS = ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas", "mid"]
 
 
-# TODO: add in consanguineous frequency data?
-
-
 def make_faf_index_dict(ht):
     """
     Create a look-up Dictionary for entries contained in the filter allele frequency annotation array
@@ -95,7 +91,6 @@ def main(args):
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True, release_only=True, samples_meta=True
         )
-        mt.describe()
 
         if args.test:
             logger.info("Filtering to two partitions on chr20")
@@ -109,7 +104,6 @@ def main(args):
             logger.info(
                 f"Running frequency generation pipeline on {mt.count_cols()} samples in {subset} subset..."
             )
-
         else:
             logger.info(
                 f"Running frequency generation pipeline on {mt.count_cols()} samples..."
@@ -127,12 +121,12 @@ def main(args):
         mt = hl.experimental.densify(mt)
         mt = mt.filter_rows(hl.len(mt.alleles) > 1)
 
+        # Temporary hotfix for depletion of homozygous alternate genotypes
         logger.info(
             "Setting het genotypes at sites with >1% AF (using v3.0 frequencies) and > 0.9 AB to homalt..."
         )
-        # hotfix for depletion of homozygous alternate genotypes
-        # Using v3.0 AF to avoid an extra frequency calculation
-        # TODO: Using previous callset AF works for small incremental changes to a callset, but we need to revisit for large increments
+        # Load v3.0 allele frequencies to avoid an extra frequency calculation
+        # NOTE: Using previous callset AF works for small incremental changes to a callset, but we will need to revisit for large increments
         freq_ht = get_freq(version="3").ht()
         freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
 
@@ -156,7 +150,7 @@ def main(args):
                 else mt.meta.project_meta.project_subpop,
             )
 
-            # Note: no FAFs or popmax needed for subsets
+            # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
 
             logger.info(f"Writing out frequency data for {subset} subset...")
