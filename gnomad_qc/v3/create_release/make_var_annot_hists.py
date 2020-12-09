@@ -73,6 +73,7 @@ def main(args):
     ht = hl.read_table('gs://gnomad/release/v3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht')  # TODO: update path to use resources
 
     # NOTE: histogram aggregations are done on the entire callset (not just PASS variants), on raw data
+    ht = ht.select(freq=ht.freq, info=ht.info.select(*metrics))
 
     hist_dict = ANNOTATIONS_HISTS
     hist_dict['MQ'] = (20, 60, 40) # Boundaries changed for v3, but could be a good idea to settle on a standard
