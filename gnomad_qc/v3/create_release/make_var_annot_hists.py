@@ -75,8 +75,7 @@ def main(args):
     # NOTE: histogram aggregations are done on the entire callset (not just PASS variants), on raw data
     ht = ht.select(freq=ht.freq, info=ht.info.select(*metrics))
 
-    hist_dict = ANNOTATIONS_HISTS
-    hist_dict['MQ'] = (20, 60, 40) # Boundaries changed for v3, but could be a good idea to settle on a standard
+    logger.info("Getting info annotation histograms...")
     hist_ranges_expr = get_annotations_hists(
         ht, ANNOTATIONS_HISTS, LOG10_ANNOTATIONS
     )
@@ -85,6 +84,9 @@ def main(args):
     # Evaluate minimum and maximum values for each metric of interest
     # This doesn't need to be run unless the defaults do not result in nice-looking histograms.
     if args.first_pass:
+        logger.info(
+            "Evaluating minimum and maximum values for each metric of interest, and capping maximum value at 1e10"
+        )
         minmax_dict = {}
         for metric in hist_ranges_expr.keys():
             minmax_dict[metric] = hl.struct(min=hl.agg.min(ht[metric]), max=hl.if_else(hl.agg.max(ht[metric])<1e10, hl.agg.max(ht[metric]), 1e10))
