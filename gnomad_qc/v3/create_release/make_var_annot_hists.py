@@ -155,7 +155,7 @@ def main(args):
         hists = hl.eval(hl.json(hists))
         inbreeding_hists = hl.eval(hl.json(inbreeding_hists))
         hists = hists[:-1] + "," + inbreeding_hists[1:]
-        print(hists)
+
         logger.info("Writing output")
         with hl.hadoop_open(qual_hists_json_path(), "w") as f:
             f.write(hists)
