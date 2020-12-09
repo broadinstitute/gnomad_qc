@@ -87,20 +87,21 @@ def main(args):
 
 
 if __name__ == "__main__":
-    vqsr.add_argument("--vqsr_vcf_path", help="Path to VQSR VCF")
-    vqsr.add_argument(
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--vqsr_vcf_path", help="Path to VQSR VCF")
+    parser.add_argument(
         "--vqsr_type",
         help="Path to VQSR VCF. Can be specified as Hadoop glob patterns",
         default="alleleSpecificTrans",
         choices=["classic", "alleleSpecific", "alleleSpecificTrans"],
     )
-    vqsr.add_argument(
+    parser.add_argument(
         "--n_partitions",
         help="Number of desired partitions for output Table",
         default=5000,
         type=int,
     )
-    vqsr.add_argument(
+    parser.add_argument(
         "--header_path",
         help="Optional path to a header file to use for importing VQSR VCF",
     )
