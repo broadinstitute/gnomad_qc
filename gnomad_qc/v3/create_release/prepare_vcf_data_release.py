@@ -1,39 +1,32 @@
 import argparse
-import json
+import copy
+import itertools
 import logging
 import pickle
-import sys
 from typing import Dict, List, Union
 
 import hail as hl
 
 from gnomad.sample_qc.ancestry import POP_NAMES
-from gnomad.sample_qc.sex import adjust_sex_ploidy
-from gnomad.utils.reference_genome import get_reference_genome
-from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import vep_struct_to_csq, VEP_CSQ_HEADER
 from gnomad.utils.vcf import (
-    add_as_info_dict,
     ALLELE_TYPE_FIELDS,
     AS_FIELDS,
     RF_FIELDS,
+    SITE_FIELDS,
     ENTRIES,
     FAF_POPS,
     FORMAT_DICT,
     GROUPS,
     HISTS,
-    ht_to_vcf_mt,
     INFO_DICT,
     make_hist_bin_edges_expr,
-    make_hist_dict,
-    make_info_dict,
-    make_label_combos,
-    make_vcf_filter_dict,
+    make_combo_header_text,
     REGION_FLAG_FIELDS,
-    SITE_FIELDS,
     set_female_y_metrics_to_na,
     VQSR_FIELDS,
-    remove_fields_from_globals,
+    INFO_VCF_AS_PIPE_DELIMITED_FIELDS,
+    SORT_ORDER,
 )
 
 from gnomad_qc.v3.create_release.sanity_checks import (
@@ -50,6 +43,21 @@ logger.setLevel(logging.INFO)
 
 # Add capture region and sibling singletons to vcf_info_dict
 VCF_INFO_DICT = INFO_DICT
+INFO_DICT["monoallelic"] = {
+    "Description": "All samples are all homozygous alternate for the variant"
+}
+INFO_DICT["QUALapprox"] = {
+    "Number": "1",
+    "Description": "Sum of PL[0] values; used to approximate the QUAL score",
+}
+
+# Add new site fields
+NEW_SITE_FIELDS = [
+    "monoallelic",
+    "QUALapprox",
+    "transmitted_singleton",
+]
+SITE_FIELDS = SITE_FIELDS.extend(NEW_SITE_FIELDS)
 
 # Remove original alleles for containing non-releasable alleles
 MISSING_ALLELE_TYPE_FIELDS = ["original_alleles", "has_star"]
@@ -151,7 +159,6 @@ EXPORT_HISTS = [
     "ab_hist_alt_bin_freq",
 ]
 
-
 INBREEDING_CUTOFF = -0.3
 
 ANALYST_ANOTATIONS_INFO_DICT = {
@@ -180,6 +187,390 @@ ANALYST_ANOTATIONS_INFO_DICT = {
     },
 }
 
+
+def ht_to_vcf_mt(
+    info_ht: hl.Table,
+    create_mt: hl.bool = False,
+    pipe_delimited_annotations: List[str] = INFO_VCF_AS_PIPE_DELIMITED_FIELDS,
+) -> hl.MatrixTable:
+    """
+    Creates a MT ready for vcf export from a HT. In particular, the following conversions are done:
+    - All int64 are coerced to int32
+    - Fields specified by `pipe_delimited_annotations` will be converted from arrays to pipe-delimited strings
+
+    .. note::
+
+        The MT returned has no cols.
+
+    :param info_ht: Input HT
+    :param pipe_delimited_annotations: List of info fields (they must be fields of the ht.info Struct)
+    :return: MatrixTable ready for VCF export
+    """
+
+    def get_pipe_expr(array_expr: hl.expr.ArrayExpression) -> hl.expr.StringExpression:
+        return hl.delimit(array_expr.map(lambda x: hl.or_else(hl.str(x), "")), "|")
+
+    # Make sure the HT is keyed by locus, alleles
+    info_ht = info_ht.key_by("locus", "alleles")
+
+    # Convert int64 fields to int32 (int64 isn't supported by VCF)
+    for f, ft in info_ht.info.dtype.items():
+        if ft == hl.dtype("int64"):
+            logger.warning(
+                f"Coercing field info.{f} from int64 to int32 for VCF output. Value will be capped at int32 max value."
+            )
+            info_ht = info_ht.annotate(
+                info=info_ht.info.annotate(
+                    **{f: hl.int32(hl.min(2 ** 31 - 1, info_ht.info[f]))}
+                )
+            )
+        elif ft == hl.dtype("array<int64>"):
+            logger.warning(
+                f"Coercing field info.{f} from array<int64> to array<int32> for VCF output. Array values will be capped at int32 max value."
+            )
+            info_ht = info_ht.annotate(
+                info=info_ht.info.annotate(
+                    **{
+                        f: info_ht.info[f].map(
+                            lambda x: hl.int32(hl.min(2 ** 31 - 1, x))
+                        )
+                    }
+                )
+            )
+
+    info_expr = {}
+
+    # Make sure to pipe-delimit fields that need to.
+    # Note: the expr needs to be prefixed by "|" because GATK expect one value for the ref (always empty)
+    # Note2: this doesn't produce the correct annotation for AS_SB_TABLE, but it is overwritten below
+    for f in pipe_delimited_annotations:
+        if f in info_ht.info:
+            info_expr[f] = "|" + get_pipe_expr(info_ht.info[f])
+
+    # Flatten SB if it is an array of arrays
+    if "SB" in info_ht.info and not isinstance(
+        info_ht.info.SB, hl.expr.ArrayNumericExpression
+    ):
+        info_expr["SB"] = info_ht.info.SB[0].extend(info_ht.info.SB[1])
+
+    if "AS_SB_TABLE" in info_ht.info:
+        info_expr["AS_SB_TABLE"] = get_pipe_expr(
+            info_ht.info.AS_SB_TABLE.map(lambda x: hl.delimit(x, ","))
+        )
+
+    info_t = info_ht
+
+    if create_mt:
+        # Annotate with new expression and add 's' empty string field required to cast HT to MT
+        info_t = info_t.annotate(
+            info=info_t.info.annotate(**info_expr), s=hl.null(hl.tstr)
+        )
+        # Create an MT with no cols so that we can export to VCF
+        info_t = info_t.to_matrix_table_row_major(columns=["s"], entry_field_name="s")
+        info_t = info_t.filter_cols(False)
+
+    return info_t
+
+
+def make_hist_dict(
+    bin_edges: Dict[str, Dict[str, str]], adj: bool, dict_hists: List[str] = HISTS
+) -> Dict[str, str]:  # Remove default HIST?
+    """
+    Generate dictionary of Number and Description attributes to be used in the VCF header, specifically for histogram annotations.
+
+    :param bin_edges: Dictionary keyed by histogram annotation name, with corresponding string-reformatted bin edges for values.
+    :param adj: Whether to create a header dict for raw or adj quality histograms.
+    :param dict_hists: List of hists to build hist info dict for
+    :return: Dictionary keyed by VCF INFO annotations, where values are Dictionaries of Number and Description attributes.
+    """
+    header_hist_dict = {}
+    for hist in dict_hists:
+        # Get hists for both raw and adj data
+        # Add "_raw" to quality histograms calculated on raw data
+        if not adj:
+            hist = f"{hist}_raw"
+
+        edges = bin_edges[hist]
+        hist_fields = hist.split("_")
+        hist_text = hist_fields[0].upper()
+
+        if hist_fields[2] == "alt":
+            hist_text = hist_text + " in heterozygous individuals"
+        if adj:
+            hist_text = hist_text + " calculated on high quality genotypes"
+
+        hist_dict = {
+            f"{hist}_bin_freq": {
+                "Number": "A",
+                "Description": f"Histogram for {hist_text}; bin edges are: {edges}",
+            },
+            f"{hist}_n_smaller": {
+                "Number": "A",
+                "Description": f"Count of {hist_fields[0].upper()} values falling below lowest histogram bin edge {hist_text}",
+            },
+            f"{hist}_n_larger": {
+                "Number": "A",
+                "Description": f"Count of {hist_fields[0].upper()} values falling above highest histogram bin edge {hist_text}",
+            },
+        }
+
+        header_hist_dict.update(hist_dict)
+
+    return header_hist_dict
+
+
+def make_info_dict(
+    prefix: str = "",
+    pop_names: Dict[str, str] = POP_NAMES,
+    label_groups: Dict[str, str] = None,
+    bin_edges: Dict[str, str] = None,
+    faf: bool = False,
+    popmax: bool = False,
+    description_text: str = "",
+    age_hist_data: str = None,
+    sort_order: List[str] = SORT_ORDER,
+) -> Dict[str, Dict[str, str]]:
+    """
+    Generate dictionary of Number and Description attributes of VCF INFO fields.
+
+    Used to populate the INFO fields of the VCF header during export.
+
+    Creates:
+        - INFO fields for age histograms (bin freq, n_smaller, and n_larger for heterozygous and homozygous variant carriers)
+        - INFO fields for popmax AC, AN, AF, nhomalt, and popmax population
+        - INFO fields for AC, AN, AF, nhomalt for each combination of sample population, sex, and subpopulation, both for adj and raw data
+        - INFO fields for filtering allele frequency (faf) annotations 
+    
+    :param prefix: Prefix string for data, e.g. "gnomAD". Default is empty string.
+    :param pop_names: Dict with global population names (keys) and population descriptions (values). Default is POP_NAMES.
+    :param label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
+        e.g. "sex" or "pop", and value is a list of all possible values for that grouping (e.g. ["male", "female"] or ["afr", "nfe", "amr"]).
+    :param bin_edges: Dictionary keyed by annotation type, with values that reflect the bin edges corresponding to the annotation.
+    :param faf: If True, use alternate logic to auto-populate dictionary values associated with filter allele frequency annotations.
+    :param popmax: If True, use alternate logic to auto-populate dictionary values associated with popmax annotations.
+    :param description_text: Optional text to append to the end of descriptions. Needs to start with a space if specified.
+    :param str age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
+    :param sort_order: List containing order to sort label group combinations. Default is SORT_ORDER.
+    :return: Dictionary keyed by VCF INFO annotations, where values are dictionaries of Number and Description attributes.
+    """
+    if prefix != "":
+        prefix = f"{prefix}-"
+
+    info_dict = dict()
+
+    if age_hist_data:
+        age_hist_dict = {
+            f"{prefix}age_hist_het_bin_freq": {
+                "Number": "A",
+                "Description": f"Histogram of ages of heterozygous individuals{description_text}; bin edges are: {bin_edges['het']}; total number of individuals of any genotype bin: {age_hist_data}",
+            },
+            f"{prefix}age_hist_het_n_smaller": {
+                "Number": "A",
+                "Description": f"Count of age values falling below lowest histogram bin edge for heterozygous individuals{description_text}",
+            },
+            f"{prefix}age_hist_het_n_larger": {
+                "Number": "A",
+                "Description": f"Count of age values falling above highest histogram bin edge for heterozygous individuals{description_text}",
+            },
+            f"{prefix}age_hist_hom_bin_freq": {
+                "Number": "A",
+                "Description": f"Histogram of ages of homozygous alternate individuals{description_text}; bin edges are: {bin_edges['hom']}; total number of individuals of any genotype bin: {age_hist_data}",
+            },
+            f"{prefix}age_hist_hom_n_smaller": {
+                "Number": "A",
+                "Description": f"Count of age values falling below lowest histogram bin edge for homozygous alternate individuals{description_text}",
+            },
+            f"{prefix}age_hist_hom_n_larger": {
+                "Number": "A",
+                "Description": f"Count of age values falling above highest histogram bin edge for homozygous alternate individuals{description_text}",
+            },
+        }
+        info_dict.update(age_hist_dict)
+
+    if popmax:
+        popmax_dict = {
+            f"{prefix}popmax": {
+                "Number": "A",
+                "Description": f"Population with maximum AF{description_text}",
+            },
+            f"{prefix}AC_popmax": {
+                "Number": "A",
+                "Description": f"Allele count in the population with the maximum AF{description_text}",
+            },
+            f"{prefix}AN_popmax": {
+                "Number": "A",
+                "Description": f"Total number of alleles in the population with the maximum AF{description_text}",
+            },
+            f"{prefix}AF_popmax": {
+                "Number": "A",
+                "Description": f"Maximum allele frequency across populations{description_text}",
+            },
+            f"{prefix}nhomalt_popmax": {
+                "Number": "A",
+                "Description": f"Count of homozygous individuals in the population with the maximum allele frequency{description_text}",
+            },
+            f"{prefix}faf95_popmax": {
+                "Number": "A",
+                "Description": f"Filtering allele frequency (using Poisson 95% CI) for the population with the maximum allele frequency{description_text}",
+            },
+        }
+        info_dict.update(popmax_dict)
+
+    else:
+        group_types = sorted(label_groups.keys(), key=lambda x: sort_order.index(x))
+        combos = make_label_combos(label_groups)
+
+        for combo in combos:
+            loop_description_text = description_text
+            combo_fields = combo.split("-")
+            group_dict = dict(zip(group_types, combo_fields))
+
+            for_combo = make_combo_header_text("for", group_dict, prefix, pop_names)
+            in_combo = make_combo_header_text("in", group_dict, prefix, pop_names)
+
+            if not faf:
+                combo_dict = {
+                    f"AC-{prefix}{combo}": {
+                        "Number": "A",
+                        "Description": f"Alternate allele count{for_combo}{loop_description_text}",
+                    },
+                    f"AN-{prefix}{combo}": {
+                        "Number": "1",
+                        "Description": f"Total number of alleles{in_combo}{loop_description_text}",
+                    },
+                    f"AF-{prefix}{combo}": {
+                        "Number": "A",
+                        "Description": f"Alternate allele frequency{in_combo}{loop_description_text}",
+                    },
+                    f"nhomalt-{prefix}{combo}": {
+                        "Number": "A",
+                        "Description": f"Count of homozygous individuals{in_combo}{loop_description_text}",
+                    },
+                }
+            else:
+                if ("XX" in combo_fields) | ("XY" in combo_fields):
+                    loop_description_text = (
+                        loop_description_text
+                        + " in non-PAR regions of sex chromosomes only"
+                    )
+                combo_dict = {
+                    f"faf95-{prefix}{combo}": {
+                        "Number": "A",
+                        "Description": f"Filtering allele frequency (using Poisson 95% CI){for_combo}{loop_description_text}",
+                    },
+                    f"faf99-{prefix}{combo}": {
+                        "Number": "A",
+                        "Description": f"Filtering allele frequency (using Poisson 99% CI){for_combo}{loop_description_text}",
+                    },
+                }
+            info_dict.update(combo_dict)
+    return info_dict
+
+
+def make_vcf_filter_dict(
+    snp_cutoff: float, indel_cutoff: float, inbreeding_cutoff: float
+) -> Dict[str, str]:
+    """
+    Generates dictionary of Number and Description attributes to be used in the VCF header, specifically for FILTER annotations.
+
+    Generates descriptions for:
+        - AC0 filter
+        - InbreedingCoeff filter
+        - AS_VQSR filter
+
+    :param snp_cutoff: Minimum SNP cutoff score from random forest model.
+    :param indel_cutoff: Minimum indel cutoff score from random forest model.
+    :return: Dictionary keyed by VCF FILTER annotations, where values are Dictionaries of Number and Description attributes.
+    """
+    filter_dict = {
+        "AC0": {
+            "Description": "Allele count is zero after filtering out low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        },
+        "InbreedingCoeff": {
+            "Description": f"GATK InbreedingCoeff < {inbreeding_cutoff}"
+        },
+        "AS_VQSR": {
+            "Description": f"Failed VQSR filtering thresholds of {snp_cutoff} for SNPs and {indel_cutoff} for indels (probabilities of being a true positive variant)"
+        },
+        "PASS": {"Description": "Passed all variant filters"},
+    }
+    return filter_dict
+
+
+def add_as_info_dict(
+    info_dict: Dict[str, Dict[str, str]] = INFO_DICT, as_fields: List[str] = AS_FIELDS
+) -> Dict[str, Dict[str, str]]:
+    """
+    Updates info dictionary with allele-specific terms and their descriptions.
+
+    Used in VCF export.
+
+    :param info_dict: Dictionary containing site-level annotations and their descriptions. Default is INFO_DICT.
+    :param as_fields: List containing allele-specific fields to be added to info_dict. Default is AS_FIELDS.
+    :return: Dictionary with allele specific annotations, their descriptions, and their VCF number field.
+    """
+    as_dict = {}
+    for field in as_fields:
+
+        try:
+            site_field = field[3:]
+            # Get site description from info dictionary and make first letter lower case
+            first_letter = info_dict[site_field]["Description"][0].lower()
+            rest_of_description = info_dict[site_field]["Description"][1:]
+
+            as_dict[field] = {}
+            as_dict[field]["Number"] = "A"
+            as_dict[field][
+                "Description"
+            ] = f"Allele-specific {first_letter}{rest_of_description}"
+
+        except KeyError:
+            logger.warning(f"{field} is not present in input info dictionary!")
+
+    return as_dict
+
+
+def make_label_combos(
+    label_groups: Dict[str, List[str]], sort_order: List[str] = SORT_ORDER,
+) -> List[str]:
+    """
+    Make combinations of all possible labels for a supplied dictionary of label groups.
+
+    For example, if label_groups is `{"sex": ["male", "female"], "pop": ["afr", "nfe", "amr"]}`,
+    this function will return `["afr_male", "afr_female", "nfe_male", "nfe_female", "amr_male", "amr_female']`
+
+    :param label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
+        e.g. "sex" or "pop", and value is a list of all possible values for that grouping (e.g. ["male", "female"] or ["afr", "nfe", "amr"]).
+    :param sort_order: List containing order to sort label group combinations. Default is SORT_ORDER.
+    :return: list of all possible combinations of values for the supplied label groupings.
+    """
+    copy_label_groups = copy.deepcopy(label_groups)
+    if len(copy_label_groups) == 1:
+        return [item for sublist in copy_label_groups.values() for item in sublist]
+    anchor_group = sorted(copy_label_groups.keys(), key=lambda x: sort_order.index(x))[
+        0
+    ]
+    anchor_val = copy_label_groups.pop(anchor_group)
+    combos = []
+    for x, y in itertools.product(anchor_val, make_label_combos(copy_label_groups)):
+        combos.append("{0}-{1}".format(x, y))
+    return combos
+
+
+def remove_fields_from_globals(global_field: List[str], fields_to_remove: List[str]):
+    """
+    Removes fields from the pre-defined global field variables.
+
+    :param global_field: Global list of fields
+    :param fields_to_remove: List of fields to remove from global (they must be in the global list)
+    """
+    for field in fields_to_remove:
+        if field in global_field:
+            global_field.remove(field)
+        else:
+            logger.info(f"'{field}'' missing from {global_field}")
+
+
 def build_export_reference() -> hl.ReferenceGenome:
     """
     Creates export reference based on GRCh38. Eliminates all non-standard contigs
@@ -187,24 +578,24 @@ def build_export_reference() -> hl.ReferenceGenome:
     :rtype: hl.ReferenceGenome
     """
     ref = hl.get_reference("GRCh38")
-    my_contigs = [f'chr{i}' for i in range(1, 23)] + ['chrX', 'chrY', 'chrM']
+    my_contigs = [f"chr{i}" for i in range(1, 23)] + ["chrX", "chrY", "chrM"]
     export_reference = hl.ReferenceGenome(
-        name="export_reference",
+        name="gnomAD_GRCh38",
         contigs=my_contigs,
         lengths={my_contig: ref.lengths[my_contig] for my_contig in my_contigs},
         x_contigs=ref.x_contigs,
         y_contigs=ref.y_contigs,
-        par=[(interval.start.contig,
-            interval.start.position,
-            interval.end.position)
-            for interval in ref.par],
-        mt_contigs=ref.mt_contigs
+        par=[
+            (interval.start.contig, interval.start.position, interval.end.position)
+            for interval in ref.par
+        ],
+        mt_contigs=ref.mt_contigs,
     )
     return export_reference
 
 
 def release_ht_path():
-    return "gs://gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.reference_fixed.ht" 
+    return "gs://gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.reference_fixed.ht"
 
 
 def populate_info_dict(
@@ -267,7 +658,7 @@ def populate_info_dict(
         :rtype: List[Dict[str, List[str]]]
         """
         return [
-            dict(group=groups),  # this is to capture raw fields
+            dict(group=groups),  # this is to capture high level raw fields
             dict(group=group, sex=sexes),
             dict(group=group, pop=pops),
             dict(group=group, pop=pops, sex=sexes),
@@ -416,7 +807,7 @@ def unfurl_nested_annotations(
         }
         expr_dict.update(combo_dict)
 
-    #Add popmax
+    # Add popmax
     combo_dict = {
         "popmax": t[popmax].pop,
         "AC_popmax": t[popmax].AC,
@@ -457,7 +848,11 @@ def unfurl_nested_annotations(
 
 def main(args):
 
-    hl.init(log="/vcf_release.log", default_reference="GRCh38", tmp_dir='hdfs:///vcf_write.tmp/')
+    hl.init(
+        log="/vcf_release.log",
+        default_reference="GRCh38",
+        tmp_dir="hdfs:///vcf_write.tmp/",
+    )
     try:
 
         if args.prepare_vcf_ht:
@@ -469,16 +864,27 @@ def main(args):
 
             if chromosome:
                 ht = hl.filter_intervals(
-                    ht, [hl.parse_locus_interval(chromosome, reference_genome=export_reference)]
+                    ht,
+                    [
+                        hl.parse_locus_interval(
+                            chromosome, reference_genome=export_reference
+                        )
+                    ],
                 )
 
             if args.test:
                 logger.info("Filtering to chr20 and chrX (for tests only)...")
                 # Using chr20 to test a small autosome and chrX to test a sex chromosome
-                # Some annotations (like FAF) are 100% missing on autosomes
                 ht = hl.filter_intervals(
                     ht,
-                    [hl.parse_locus_interval("chr20", reference_genome=export_reference), hl.parse_locus_interval("chrX", reference_genome=export_reference)],
+                    [
+                        hl.parse_locus_interval(
+                            "chr20", reference_genome=export_reference
+                        ),
+                        hl.parse_locus_interval(
+                            "chrX", reference_genome=export_reference
+                        ),
+                    ],
                 )
 
             logger.info("Making histogram bin edges...")
@@ -500,7 +906,7 @@ def main(args):
                     nonpar=(ht.locus.in_x_nonpar() | ht.locus.in_y_nonpar())
                 )
             )
-            
+
             # Unfurl nested gnomAD frequency annotations and add to info field
             ht = ht.annotate(release_ht_info=ht.info)
             ht = ht.annotate(
@@ -578,6 +984,9 @@ def main(args):
             new_row_annots = []
             for x in row_annots:
                 x = x.replace("-adj", "")
+                x = x.replace(
+                    "-", "_"
+                )  # VCF 4.3 specs do not allow hyphens in info fields
                 new_row_annots.append(x)
 
             info_annot_mapping = dict(
@@ -601,14 +1010,7 @@ def main(args):
                     "AF",
                     "popmax",
                     "faf95_popmax",
-                    *ht.info.drop(
-                        "AC",
-                        "AN",
-                        "AF",
-                        "popmax",
-                        "faf95_popmax",
-
-                    ),
+                    *ht.info.drop("AC", "AN", "AF", "popmax", "faf95_popmax",),
                 )
             )
             ht.describe()

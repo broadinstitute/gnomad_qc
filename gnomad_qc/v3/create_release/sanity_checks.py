@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Tuple
 
 import hail as hl
 
-from gnomad.utils.vcf import make_label_combos
+from gnomad_qc.v3.prepare_vcf_data_release import make_label_combos
 from gnomad.assessment.sanity_checks import (
     generic_field_check,
     make_filters_sanity_check_expr,
@@ -655,9 +655,7 @@ def vcf_field_check(
             annots = row_annotations
         else:
             annot_ht = ht.explode(ht.filters)
-            annots = list(
-                annot_ht.aggregate(hl.agg.collect_as_set(annot_ht.filters))
-            )
+            annots = list(annot_ht.aggregate(hl.agg.collect_as_set(annot_ht.filters)))
 
         temp_missing_fields = []
         temp_missing_descriptions = []
