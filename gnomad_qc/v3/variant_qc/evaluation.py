@@ -79,8 +79,18 @@ def create_quantile_bin_ht(
         )
 
     ht = ht.filter(ht.ac_raw > 0)
-
-    bin_ht = create_binned_ht(ht, n_bins)
+    ht = ht.filter(
+        ~info_ht[ht.key].AS_lowqual & ~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus])
+    )
+    ht_lcr = filter_low_conf_regions(
+        ht,
+        filter_lcr=True,
+        # TODO: Uncomment when we have decoy path
+        filter_decoy=False,  # True,
+        filter_segdup=True,
+    )
+    ht = ht.annotate(non_lcr=hl.is_defined(ht_lcr[ht.key]))
+    bin_ht = create_binned_ht(ht, n_bins, add_substrat={"non_lcr": ht.non_lcr})
     bin_ht.write(
         get_score_quantile_bins(model_id, aggregated=False).path, overwrite=overwrite
     )
