@@ -223,8 +223,8 @@ def main(args):
             # remove low quality sites
             info_ht = get_info(split=True).ht()
             mt = mt.filter_rows(
-                ~info_ht[mt.row_key].lowqual
-            )  # TODO: should this switch to AS_lowqual
+                ~info_ht[mt.row_key].AS_lowqual
+            )
 
             ht = create_truth_sample_ht(mt, truth_mt, truth_hc_intervals)
             ht.write(
