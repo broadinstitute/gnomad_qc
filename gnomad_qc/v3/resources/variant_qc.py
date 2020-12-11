@@ -2,11 +2,13 @@ from typing import Optional, Union
 
 import hail as hl
 
-import gnomad.resources.grch38 as grch38
-from gnomad.utils.file_utils import file_exists
-from gnomad.resources.resource_utils import TableResource, MatrixTableResource
+from gnomad.resources.grch38 import na12878_giab, na12878_giab_hc_intervals, syndip, syndip_hc_intervals
+from gnomad.resources.resource_utils import (MatrixTableResource,
+                                             TableResource,
+                                             VersionedTableResource)
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
-VARIANT_QC_ROOT = 'gs://gnomad/variant_qc/genomes_v3'
+VARIANT_QC_ROOT = 'gs://gnomad/variant_qc/genomes_v3.1'
 
 SYNDIP = "CHMI_CHMI3_WGS2"
 """
@@ -21,13 +23,13 @@ String representation for NA12878 truth sample
 TRUTH_SAMPLES = {
     "syndip": {
         "s": SYNDIP,
-        "truth_mt": grch38.syndip.mt(),
-        "hc_intervals": grch38.syndip_hc_intervals.ht(),
+        "truth_mt": syndip,
+        "hc_intervals": syndip_hc_intervals,
     },
     "NA12878": {
         "s": NA12878,
-        "truth_mt": grch38.na12878_giab.mt(),
-        "hc_intervals": grch38.na12878_giab_hc_intervals.ht(),
+        "truth_mt": na12878_giab,
+        "hc_intervals": na12878_giab_hc_intervals,
     },
 }
 """
@@ -35,7 +37,17 @@ Dictionary containing necessary information for truth samples (syndip, NA12878)
 """
 
 
-def get_callset_truth_data(truth_sample: str, mt: bool = True) -> str:
+def get_variant_qc_root(version: str = CURRENT_RELEASE) -> str:
+    """
+    Return path to variant QC root folder
+
+    :param version: Version of variant QC path to return
+    :return: Root to sample QC path
+    """
+    return f"gs://gnomad/variant_qc/genomes_v{version}"
+
+
+def get_callset_truth_data(truth_sample: str, mt: bool = True) -> Union[MatrixTableResource, TableResource]:
     """
     Get resources for the truth sample data that is subset from the full callset
 
@@ -87,7 +99,7 @@ def get_truth_sample_data(
 
 
 def get_transmitted_singleton_vcf_path(confidence: str) -> str:
-    return f'{VARIANT_QC_ROOT}/transmitted_singletons_{confidence}.vcf'
+    return f'{VARIANT_QC_ROOT}/transmitted_singletons_{confidence}.vcf.bgz'
 
 
 def get_score_quantile_bins(model_id: str, aggregated: bool) -> TableResource:
@@ -168,7 +180,7 @@ def get_checkpoint_path(name: str = None, mt: bool = False) -> str:
     return f'gs://gnomad-tmp/{name}.{"mt" if mt else "ht"}'
 
 
-def get_filtering_model(model_id: str, split: bool = True) -> TableResource:
+def get_filtering_model(model_id: str, split: bool = True, finalized: bool = True) -> TableResource:
     """
        Gets the specified filtering annotation resource.
 
@@ -176,5 +188,14 @@ def get_filtering_model(model_id: str, split: bool = True) -> TableResource:
        :param split: Split or multi-allelic version of the filtering file
        :return: Filtering annotation file
        """
-    path = f"{VARIANT_QC_ROOT}/{model_id}{'.split' if split else ''}.ht"
+    path = f"{VARIANT_QC_ROOT}/{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
     return TableResource(path)
+
+
+final_filter = VersionedTableResource(
+    CURRENT_RELEASE,
+    {release: TableResource(f"{get_variant_qc_root(release)}/filter_final.ht") for release in RELEASES}
+)
+
+class DataException(Exception):
+    pass
