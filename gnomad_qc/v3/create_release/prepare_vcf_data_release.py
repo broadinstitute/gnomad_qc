@@ -40,10 +40,10 @@ logger.setLevel(logging.INFO)
 
 # Add capture region and sibling singletons to vcf_info_dict
 VCF_INFO_DICT = INFO_DICT
-INFO_DICT["monoallelic"] = {
+VCF_INFO_DICT["monoallelic"] = {
     "Description": "All samples are all homozygous alternate for the variant"
 }
-INFO_DICT["QUALapprox"] = {
+VCF_INFO_DICT["QUALapprox"] = {
     "Number": "1",
     "Description": "Sum of PL[0] values; used to approximate the QUAL score",
 }
