@@ -174,7 +174,7 @@ def main(args):
             )
         )
 
-    # Note: Use only workers, it typically crashes with premptibles
+    # Note: Use only workers, it typically crashes with preemptibles
     if args.create_aggregated_bin_ht:
         create_grouped_bin_ht(model_id, args.overwrite)
 
