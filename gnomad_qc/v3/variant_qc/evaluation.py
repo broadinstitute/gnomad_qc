@@ -5,13 +5,7 @@ from pprint import pformat
 import hail as hl
 
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
-from gnomad.resources.grch38.reference_data import (
-    clinvar_pathogenic,
-    syndip,
-    syndip_hc_intervals,
-    na12878_giab,
-    na12878_giab_hc_intervals,
-)
+from gnomad.resources.grch38.reference_data import clinvar_pathogenic
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.filtering import filter_low_conf_regions
 from gnomad.variant_qc.evaluation import (
@@ -22,7 +16,6 @@ from gnomad.variant_qc.evaluation import (
 from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg
 
 from gnomad_qc.v3.resources import (
-    allele_data,
     fam_stats,
     get_binned_concordance,
     get_callset_truth_data,
@@ -34,7 +27,6 @@ from gnomad_qc.v3.resources import (
     get_rf_annotated,
     get_score_quantile_bins,
     get_truth_sample_data,
-    qc_ac,
     TRUTH_SAMPLES,
 )
 from gnomad_qc.slack_creds import slack_token
