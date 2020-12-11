@@ -9,7 +9,6 @@ import hail as hl
 
 from gnomad.resources.grch38.reference_data import get_truth_ht, telomeres_and_centromeres
 from gnomad.utils.file_utils import file_exists
-from gnomad.utils.filtering import add_filters_expr
 from gnomad.utils.slack import slack_notifications
 from gnomad.variant_qc.pipeline import train_rf_model
 from gnomad.variant_qc.random_forest import (
@@ -22,7 +21,6 @@ from gnomad.variant_qc.random_forest import (
 from gnomad_qc.v3.resources import (
     allele_data,
     fam_stats,
-    freq,
     get_checkpoint_path,
     get_filters,
     get_info,
