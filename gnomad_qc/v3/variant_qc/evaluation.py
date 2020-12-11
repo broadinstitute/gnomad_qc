@@ -1,31 +1,20 @@
 import argparse
-import json
 import logging
 from pprint import pformat
-import re
-import sys
-from typing import Dict, List, Optional, Union
-import uuid
 
 import hail as hl
 
-from gnomad.resources.grch38.reference_data import clinvar, get_truth_ht
-from gnomad.utils.file_utils import file_exists
-from gnomad.utils.filtering import add_filters_expr
+from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
+from gnomad.resources.grch38.reference_data import clinvar_pathogenic, syndip, syndip_hc_intervals, na12878_giab, na12878_giab_hc_intervals
 from gnomad.utils.slack import slack_notifications
+from gnomad.utils.filtering import filter_low_conf_regions
 from gnomad.variant_qc.evaluation import (
     compute_binned_truth_sample_concordance,
     compute_grouped_binned_ht,
     create_truth_sample_ht,
 )
-from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg, train_rf_model
-from gnomad.variant_qc.random_forest import (
-    apply_rf_model,
-    load_model,
-    median_impute_features,
-    pretty_print_runs,
-    save_model,
-)
+from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg
+
 from gnomad_qc.v3.resources import (
     allele_data,
     fam_stats,
