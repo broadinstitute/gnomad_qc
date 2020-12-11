@@ -146,7 +146,7 @@ def create_rf_ht(
         **allele_data_ht[ht.key].allele_data,
         **allele_counts_ht[ht.key],
     )
-    # Filter to only variants found in high quality samples or controls with no LowQual filter
+    # Filter to only variants found in high quality samples or controls and are not lowqual
     ht = ht.filter(
         (ht[f"ac_qc_samples_{group}"] > 0) & ~ht.AS_lowqual
     )
@@ -163,7 +163,7 @@ def create_rf_ht(
         singleton=ht.ac_release_samples_raw == 1,
         ac_raw=ht.ac_qc_samples_raw,
         ac=ht.ac_release_samples_adj,
-        ac_qc_unrelated_raw=ht.ac_qc_samples_unrelated_raw,
+        ac_qc_samples_unrelated_raw=ht.ac_qc_samples_unrelated_raw
     )
 
     ht = ht.repartition(n_partitions, shuffle=False)
@@ -218,15 +218,15 @@ def train_rf(ht, args):
         rf_ht = ht
 
     rf_ht, rf_model = train_rf_model(
-        ht,
+        rf_ht,
         rf_features=features,
-        tp_expr=ht.tp,
-        fp_expr=ht.fp,
+        tp_expr=rf_ht.tp,
+        fp_expr=rf_ht.fp,
         fp_to_tp=args.fp_to_tp,
         num_trees=args.num_trees,
         max_depth=args.max_depth,
         test_expr=hl.literal(test_intervals).any(
-            lambda interval: interval.contains(ht.locus)
+            lambda interval: interval.contains(rf_ht.locus)
         ),
     )
 
@@ -234,8 +234,6 @@ def train_rf(ht, args):
     ht = ht.join(rf_ht, how="left")
 
     return ht, rf_model
-
-
 
 
 def get_rf_runs(rf_json_fp: str) -> Dict:
@@ -381,9 +379,6 @@ def generate_final_rf_ht(
         ht.InbreedingCoeff < inbreeding_coeff_cutoff, False
     )
     filters["AC0"] = ac0_filter_expr
-    filters[
-        "MonoAllelic"
-    ] = mono_allelic_fiter_expr  # TODO: Do others agree that we should add this to gnomAD like we did for UKBB?
 
     # Fix annotations for release
     annotations_expr = {
@@ -403,7 +398,6 @@ def generate_final_rf_ht(
         )
 
     ht = ht.transmute(filters=add_filters_expr(filters=filters), **annotations_expr)
-
     ht = ht.annotate_globals(
         rf_snv_cutoff=snp_cutoff_global, rf_indel_cutoff=indel_cutoff_global
     )
