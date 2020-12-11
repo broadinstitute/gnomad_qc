@@ -5,7 +5,13 @@ from pprint import pformat
 import hail as hl
 
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
-from gnomad.resources.grch38.reference_data import clinvar_pathogenic, syndip, syndip_hc_intervals, na12878_giab, na12878_giab_hc_intervals
+from gnomad.resources.grch38.reference_data import (
+    clinvar_pathogenic,
+    syndip,
+    syndip_hc_intervals,
+    na12878_giab,
+    na12878_giab_hc_intervals,
+)
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.filtering import filter_low_conf_regions
 from gnomad.variant_qc.evaluation import (

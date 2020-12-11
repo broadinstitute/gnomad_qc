@@ -42,7 +42,7 @@ def generate_final_rf_ht(
 ) -> hl.Table:
     """
     Prepares finalized RF model given an RF result table from `rf.apply_rf_model` and cutoffs for filtering.
-    
+
     If `determine_cutoff_from_bin` is True, `aggregated_bin_ht` must be supplied to determine the SNP and indel RF
     probabilities to use as cutoffs from an aggregated quantile bin Table like one created by
     `compute_grouped_binned_ht` in combination with `score_bin_agg`.
