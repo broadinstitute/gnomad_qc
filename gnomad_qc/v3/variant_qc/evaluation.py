@@ -58,15 +58,15 @@ def create_quantile_bin_ht(
         ht = get_filters(model_id, split=True).ht()
 
         ht = ht.filter(
-            ~info_ht[ht.key].lowqual & ~hl.is_infinite(ht.info.VQSLOD)
-        )  # TODO: switch to use AS_lowqual?
+            ~info_ht[ht.key].AS_lowqual
+        )
         ht = ht.annotate(
             **rf_ht[ht.key],
             info=info_ht[ht.key].info,
-            score=ht.info.VQSLOD,
+            score=ht.info.AS_VQSLOD,
             positive_train_site=ht.info.POSITIVE_TRAIN_SITE,
             negative_train_site=ht.info.NEGATIVE_TRAIN_SITE,
-            culprit=ht.info.culprit,
+            AS_culprit=ht.info.AS_culprit,
         )
 
     else:
