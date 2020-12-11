@@ -1,25 +1,55 @@
-from gnomad.utils.annotations import get_adj_expr, bi_allelic_expr
-from gnomad.utils.filtering import filter_to_autosomes, add_filters_expr
-from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
-from gnomad.sample_qc.filtering import compute_qc_metrics_residuals, compute_stratified_metrics_filter, compute_stratified_sample_qc
-from gnomad.sample_qc.pipeline import get_qc_mt
-from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
-from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
-from gnomad.utils.sparse_mt import impute_sex_ploidy, densify_sites
-from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
-from gnomad_qc.v3.resources import *
-from gnomad.resources.grch38 import purcell_5k_intervals, lcr_intervals, telomeres_and_centromeres
-from typing import List, Tuple, Any
-import pickle
 import argparse
 import logging
+import pickle
+from typing import Any, List, Tuple
+
+import hail as hl
+from gnomad.resources.grch38 import (lcr_intervals, purcell_5k_intervals,
+                                     telomeres_and_centromeres)
+from gnomad.sample_qc.ancestry import (assign_population_pcs,
+                                       run_pca_with_relateds)
+from gnomad.sample_qc.filtering import (compute_qc_metrics_residuals,
+                                        compute_stratified_metrics_filter,
+                                        compute_stratified_sample_qc)
+from gnomad.sample_qc.pipeline import annotate_sex, get_qc_mt
+from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
+from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
+from gnomad.utils.annotations import bi_allelic_expr, get_adj_expr
+from gnomad.utils.filtering import add_filters_expr, filter_to_autosomes
+from gnomad.utils.sparse_mt import densify_sites
+
+from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
+from gnomad_qc.v3.resources.annotations import freq, get_info, last_END_position
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
+from gnomad_qc.v3.resources.meta import meta, meta_tsv_path, project_meta
+from gnomad_qc.v3.resources.sample_qc import (ancestry_pca_eigenvalues_path,
+                                              ancestry_pca_loadings,
+                                              ancestry_pca_scores,
+                                              get_sample_qc,
+                                              hard_filtered_samples,
+                                              pc_relate_pca_scores,
+                                              pca_related_samples_to_drop,
+                                              pca_samples_rankings,
+                                              picard_metrics, pop, pop_rf_path,
+                                              pop_tsv_path, qc,
+                                              regressed_metrics, relatedness,
+                                              release_related_samples_to_drop,
+                                              release_samples_rankings,
+                                              sample_inbreeding, sex,
+                                              stratified_metrics)
 
 logger = logging.getLogger("sample_qc")
 
 
 def compute_sample_qc() -> hl.Table:
     logger.info("Computing sample QC")
-    mt = filter_to_autosomes(get_gnomad_v3_mt(key_by_locus_and_alleles=True))
+    mt = filter_to_autosomes(
+        get_gnomad_v3_mt(
+            split=True,
+            key_by_locus_and_alleles=True,
+            remove_hard_filtered_samples=False
+        )
+    )
     mt = mt.filter_rows(hl.len(mt.alleles) > 1)
     mt = mt.select_entries('GT')
 
@@ -30,7 +60,6 @@ def compute_sample_qc() -> hl.Table:
             'multi_allelic': ~bi_allelic_expr(mt)
         },
         tmp_ht_prefix=get_sample_qc().path[:-3],
-        gt_expr=mt.GT
     )
 
     # Remove annotations that cannot be computed from the sparse format
@@ -116,7 +145,7 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     )
 
     # Remove low-coverage samples
-    cov_ht = v3_sex.ht()  # chrom 20 coverage is computed to infer sex and used here
+    cov_ht = sex.ht()  # chrom 20 coverage is computed to infer sex and used here
     hard_filters['low_coverage'] = (cov_ht[ht.key].chr20_mean_dp < cov_threshold)
 
     # Remove extreme raw bi-allelic sample QC outliers
@@ -130,7 +159,7 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     )
 
     # Remove samples with ambiguous sex assignments
-    sex_ht = v3_sex.ht()[ht.key]
+    sex_ht = sex.ht()[ht.key]
     hard_filters['ambiguous_sex'] = (sex_ht.sex_karyotype == 'Ambiguous')
     hard_filters['sex_aneuploidy'] = ~hl.set({'Ambiguous', 'XX', 'XY'}).contains(sex_ht.sex_karyotype)
 
@@ -151,50 +180,35 @@ def compute_hard_filters(cov_threshold: int) -> hl.Table:
     return ht
 
 
-def compute_sex() -> hl.Table:
-    # Compute sex chrom poloidy
-    ht = impute_sex_ploidy(
-        get_gnomad_v3_mt(remove_hard_filtered_samples=False),
-        excluded_calling_intervals=telomeres_and_centromeres.ht()
-    )
-    ht = ht.checkpoint('gs://gnomad-tmp/sex_depth.ht', overwrite=True)
-
-    # Compute F-stat
-    chrom_x_ht = get_gnomad_v3_mt(key_by_locus_and_alleles=True, remove_hard_filtered_samples=False)
-    n_samples = chrom_x_ht.count_cols()
-    chrom_x_ht = hl.filter_intervals(chrom_x_ht, [hl.parse_locus_interval('chrX')])
-    chrom_x_ht = chrom_x_ht.filter_rows((hl.len(chrom_x_ht.alleles) == 2))
-
-    # Use AC / 2*n_samples for AF. This doesn't take missing into account but avoids densifying
-    # Should be fine for this purpose.
-    info_ht = get_info(split=False).ht()
-    info_ht = hl.filter_intervals(info_ht, [hl.parse_locus_interval('chrX')])
-    chrom_x_ht = chrom_x_ht.annotate_rows(
-        aaf=info_ht[chrom_x_ht.row_key].info.AC[0] / (2 * n_samples)
+def compute_sex(aaf_threshold=0.001, f_stat_cutoff=0.5) -> hl.Table:
+    mt = get_gnomad_v3_mt(
+        key_by_locus_and_alleles=True,
+        remove_hard_filtered_samples=False,
     )
 
-    inbreeding_ht = hl.impute_sex(chrom_x_ht.LGT, aaf_threshold=0.001, aaf='aaf')
-    ht = ht.annotate(
-        **inbreeding_ht[ht.key]
+    # Use AF from v3
+    freq_ht = freq.versions["3"].ht()
+    freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
+    freq_ht = freq_ht.filter(freq_ht.AF > aaf_threshold)
+
+    sex_ht = annotate_sex(
+        mt,
+        excluded_intervals=telomeres_and_centromeres.ht(),
+        aaf_threshold=aaf_threshold,
+        f_stat_cutoff=f_stat_cutoff,
+        sites_ht=freq_ht,
+        aaf_expr="AF",
+        gt_expr="LGT",
     )
 
-    x_ploidy_cutoff, y_ploidy_cutoff = get_ploidy_cutoffs(ht, f_stat_cutoff=0.5)
-
-    return ht.annotate(
-        **get_sex_expr(
-            ht.chrX_ploidy,
-            ht.chrY_ploidy,
-            x_ploidy_cutoff,
-            y_ploidy_cutoff
-        )
-    )
+    return sex_ht
 
 
 def compute_sample_rankings(use_qc_metrics_filters: bool) -> hl.Table:
     project_ht = project_meta.ht()
     project_ht = project_ht.select(
         'releasable',
-        chr20_mean_dp=v3_sex.ht()[project_ht.key].chr20_mean_dp,
+        chr20_mean_dp=sex.ht()[project_ht.key].chr20_mean_dp,
         filtered=hl.or_else(hl.len(hard_filtered_samples.ht()[project_ht.key].hard_filters) > 0, False)
     )
 
@@ -225,7 +239,7 @@ def run_pca(
         related_samples_to_drop: hl.Table
 ) -> Tuple[List[float], hl.Table, hl.Table]:
     logger.info("Running population PCA")
-    qc_mt = v3_qc.mt()
+    qc_mt = qc.mt()
 
     samples_to_drop = related_samples_to_drop.select()
     if not include_unreleasable_samples:
@@ -249,7 +263,7 @@ def assign_pops(
         max_mislabeled_training_samples: int = 50  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
 ) -> Tuple[hl.Table, Any]:
     logger.info("Assigning global population labels")
-    pop_pca_scores_ht = get_ancestry_pca_scores(include_unreleasable_samples).ht()
+    pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples).ht()
     project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop=(
@@ -326,7 +340,7 @@ def apply_regressed_filters(
     sample_qc_ht = get_sample_qc('bi_allelic').ht()
     sample_qc_ht = sample_qc_ht.select(
         **sample_qc_ht.sample_qc,
-        **get_ancestry_pca_scores(include_unreleasable_samples).ht()[sample_qc_ht.key],
+        **ancestry_pca_scores(include_unreleasable_samples).ht()[sample_qc_ht.key],
         releasable=project_meta.ht()[sample_qc_ht.key].releasable
     )
     residuals_ht = compute_qc_metrics_residuals(
@@ -360,7 +374,7 @@ def generate_metadata() -> hl.Table:
     pop_ht = pop.ht()
     release_related_samples_to_drop_ht = release_related_samples_to_drop.ht()
     pca_related_samples_to_drop_ht = pca_related_samples_to_drop.ht()
-    sex_ht = v3_sex.ht()
+    sex_ht = sex.ht()
     sex_ht = sex_ht.transmute(
         impute_sex_stats=hl.struct(
             f_stat=sex_ht.f_stat,
@@ -408,13 +422,10 @@ def main(args):
     if args.sample_qc:
         compute_sample_qc().write(get_sample_qc().path, overwrite=args.overwrite)
 
-    if args.compute_qc_mt:
-        compute_qc_mt().write(v3_qc.path, overwrite=args.overwrite)
-
     if args.impute_sex:
-        compute_sex().write(v3_sex.path, overwrite=args.overwrite)
+        compute_sex().write(sex.path, overwrite=args.overwrite)
     elif args.reannotate_sex:
-        sex_ht = v3_sex.ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True)  # Copy HT to temp location to overwrite annotation
+        sex_ht = sex.ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True)  # Copy HT to temp location to overwrite annotation
         x_ploidy_cutoff, y_ploidy_cutoff = get_ploidy_cutoffs(sex_ht, f_stat_cutoff=0.5)
         sex_ht = sex_ht.annotate(
             **get_sex_expr(
@@ -424,39 +435,42 @@ def main(args):
                 y_ploidy_cutoff
             )
         )
-        sex_ht.write(v3_sex.path, overwrite=args.overwrite)
+        sex_ht.write(sex.path, overwrite=args.overwrite)
 
     if args.compute_hard_filters:
         compute_hard_filters(
             args.min_cov
         ).write(hard_filtered_samples.path, overwrite=args.overwrite)
 
+    if args.compute_qc_mt:
+        compute_qc_mt().write(qc.path, overwrite=args.overwrite)
+
     if args.run_pc_relate:
         logger.info('Running PC-Relate')
         logger.warn("PC-relate requires SSDs and doesn't work with preemptible workers!")
-        qc_mt = v3_qc.mt()
+        qc_mt = qc.mt()
         eig, scores, _ = hl.hwe_normalized_pca(qc_mt.GT, k=10, compute_loadings=False)
-        scores = scores.checkpoint(v3_pc_relate_pca_scores.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        scores = scores.checkpoint(pc_relate_pca_scores.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         relatedness_ht = hl.pc_relate(qc_mt.GT, min_individual_maf=0.01, scores_expr=scores[qc_mt.col_key].scores,
                                       block_size=4096, min_kinship=0.05, statistics='all')
-        relatedness_ht.write(v3_relatedness.path, args.overwrite)
+        relatedness_ht.write(relatedness.path, args.overwrite)
 
     if args.run_pca:
         rank_ht = compute_sample_rankings(use_qc_metrics_filters=False)  # QC metrics filters do not exist at this point
         rank_ht = rank_ht.checkpoint(pca_samples_rankings.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         filtered_samples = hl.literal(rank_ht.aggregate(hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))))  # TODO: don't localize once hail bug is fixed
         samples_to_drop = compute_related_samples_to_drop(
-            v3_relatedness.ht(),
+            relatedness.ht(),
             rank_ht,
             args.kin_threshold,
             filtered_samples=filtered_samples
         )
         samples_to_drop.checkpoint(pca_related_samples_to_drop.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
-        pop_pca_eignevalues, pop_pca_scores_ht, pop_pca_loadings_ht = run_pca(args.include_unreleasable_samples, args.n_pcs, samples_to_drop)
-        pop_pca_scores_ht.write(get_ancestry_pca_scores(args.include_unreleasable_samples).path, overwrite=args.overwrite)
-        pop_pca_loadings_ht.write(get_ancestry_pca_loadings(args.include_unreleasable_samples).path, overwrite=args.overwrite)
-        with hl.utils.hadoop_open(get_ancestry_pca_eigenvalues_path(args.include_unreleasable_samples), mode='w') as f:
-            f.write(",".join([str(x) for x in pop_pca_eignevalues]))
+        pop_pca_eigenvalues, pop_pca_scores_ht, pop_pca_loadings_ht = run_pca(args.include_unreleasable_samples, args.n_pcs, samples_to_drop)
+        pop_pca_scores_ht.write(ancestry_pca_scores(args.include_unreleasable_samples).path, overwrite=args.overwrite)
+        pop_pca_loadings_ht.write(ancestry_pca_loadings(args.include_unreleasable_samples).path, overwrite=args.overwrite)
+        with hl.utils.hadoop_open(ancestry_pca_eigenvalues_path(args.include_unreleasable_samples), mode='w') as f:
+            f.write(",".join([str(x) for x in pop_pca_eigenvalues]))
 
     if args.assign_pops:
         pop_ht, pops_rf_model = assign_pops(args.min_pop_prob, args.include_unreleasable_samples)
@@ -467,6 +481,16 @@ def main(args):
 
         with hl.hadoop_open(pop_rf_path, 'wb') as out:
             pickle.dump(pops_rf_model, out)
+
+    if args.calculate_inbreeding:
+        qc_mt = qc.mt()
+        pop_ht = pop.ht()
+        qc_mt = qc_mt.annotate_cols(pop=pop_ht[qc_mt.col_key].pop)
+        qc_mt = qc_mt.annotate_rows(call_stats_by_pop=hl.agg.group_by(qc_mt.pop, hl.agg.call_stats(qc_mt.GT, qc_mt.alleles)))
+        inbreeding_ht = qc_mt.annotate_cols(
+            inbreeding=hl.agg.inbreeding(qc_mt.GT, qc_mt.call_stats_by_pop[qc_mt.pop].AF[1])
+        ).cols().select('inbreeding')
+        inbreeding_ht.write(sample_inbreeding.path, overwrite=args.overwrite)
 
     if args.apply_stratified_filters:
         apply_stratified_filters(
@@ -485,7 +509,7 @@ def main(args):
         filtered_samples = hl.literal(rank_ht.aggregate(hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))))  # TODO: don't localize once hail bug is fixed
         print(filtered_samples)
         samples_to_drop = compute_related_samples_to_drop(
-            v3_relatedness.ht(),
+            relatedness.ht(),
             rank_ht,
             args.kin_threshold,
             filtered_samples=filtered_samples
@@ -508,10 +532,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--overwrite', help='Overwrite all data from this subset (default: False)', action='store_true')
     parser.add_argument('--sample_qc', help='Assigns pops from PCA', action='store_true')
-    parser.add_argument('--min_cov', help="Minimum coverage for inclusion when computing har-filters", default=18, type=int)
-    parser.add_argument('--compute_hard_filters', help='Computes samples to be hard-filtered', action='store_true')
     parser.add_argument('--impute_sex', help='Runs sex imputation. Also runs sex karyotyping annotation.', action='store_true')
     parser.add_argument('--reannotate_sex', help='Runs the sex karyotyping annotations again, without re-computing sex imputation metrics.', action='store_true')
+    parser.add_argument('--compute_hard_filters', help='Computes samples to be hard-filtered', action='store_true')
+    parser.add_argument('--min_cov', help="Minimum coverage for inclusion when computing har-filters", default=18, type=int)
     parser.add_argument('--compute_samples_ranking', help='Computes global samples ranking based on hard-filters, releasable and coverage.', action='store_true')
     parser.add_argument('--compute_qc_mt', help='Creates the QC MT based on liftover of v2 QC and Purcell 5k sites', action='store_true')
     parser.add_argument('--run_pc_relate', help='Run PC-relate', action='store_true')
@@ -523,6 +547,7 @@ if __name__ == "__main__":
     parser.add_argument('--include_unreleasable_samples', help='Includes unreleasable samples for computing PCA', action='store_true')
     parser.add_argument('--assign_pops', help='Assigns pops from PCA', action='store_true')
     parser.add_argument('--min_pop_prob', help='Minimum RF prob for pop assignment', default=0.9, type=float)
+    parser.add_argument('--calculate_inbreeding', help='Calculate sample level inbreeding', action='store_true')
     parser.add_argument('--filtering_qc_metrics', help="List of QC metrics for filtering.", default=",".join([
         'n_snp', 'n_singleton', 'r_ti_tv', 'r_insertion_deletion', 'n_insertion', 'n_deletion', 'r_het_hom_var',
         'n_het', 'n_hom_var', 'n_transition', 'n_transversion'
