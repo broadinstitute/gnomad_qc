@@ -274,6 +274,7 @@ if __name__ == "__main__":
         help="Train RF without centromeres and telomeres.",
         action="store_true",
     )
+    args = parser.parse_args()
 
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
