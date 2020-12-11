@@ -260,9 +260,9 @@ def main(args):
             metric_ht = get_score_quantile_bins(model_id, aggregated=False).ht()
             ht = ht.filter(hl.is_defined(metric_ht[ht.key]))
 
-            ht = ht.annotate(score=metric_ht[ht.key].score,)
+            ht = ht.annotate(score=metric_ht[ht.key].score)
 
-            ht = compute_binned_truth_sample_concordance(ht, metric_ht, args.n_bins,)
+            ht = compute_binned_truth_sample_concordance(ht, metric_ht, args.n_bins)
             ht = ht.annotate_globals(
                 filter_low_conf_regions=args.filter_low_conf_regions
             )
