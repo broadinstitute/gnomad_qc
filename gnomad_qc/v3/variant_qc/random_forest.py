@@ -122,6 +122,13 @@ def create_rf_ht(
     ht = ht.select(
        "lowqual", "AS_lowqual", "FS", "MQ", "QD", *INFO_FEATURES
     )
+
+    inbreeding_ht = hl.read_table('gs://gnomad/release/3.0/ht/gnomad.genomes.r3.0.nested.no_subsets.sites.ht/') # TODO: change path to resources
+    inbreeding_ht = inbreeding_ht.annotate(
+        InbreedingCoeff=hl.or_missing(
+            ~hl.is_nan(inbreeding_ht.InbreedingCoeff), inbreeding_ht.InbreedingCoeff
+        )
+    )
     trio_stats_ht = fam_stats.ht()
     trio_stats_ht = trio_stats_ht.select(
         f"n_transmitted_{group}", f"ac_children_{group}"
