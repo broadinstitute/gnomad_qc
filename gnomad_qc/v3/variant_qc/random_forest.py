@@ -2,17 +2,18 @@ import argparse
 import json
 import logging
 import sys
-from typing import Dict, List, Optional, Union
+from typing import Optional
 import uuid
 
 import hail as hl
 
 from gnomad.resources.grch38.reference_data import get_truth_ht, telomeres_and_centromeres
-from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 from gnomad.variant_qc.pipeline import train_rf_model
 from gnomad.variant_qc.random_forest import (
     apply_rf_model,
+    get_rf_runs,
+    get_run_data,
     load_model,
     median_impute_features,
     pretty_print_runs,
@@ -235,72 +236,6 @@ def train_rf(ht, args):
     return ht, rf_model
 
 
-def get_rf_runs(rf_json_fp: str) -> Dict:
-    """
-    Loads RF run data from JSON file.
-
-    :param rf_json_fp: File path to rf json file.
-    :return: Dictionary containing the content of the JSON file, or an empty dictionary if the file wasn't found.
-    """
-    if file_exists(rf_json_fp):
-        with hl.hadoop_open(rf_json_fp) as f:
-            return json.load(f)
-    else:
-        logger.warning(
-            f"File {rf_json_fp} could not be found. Returning empty RF run hash dict."
-        )
-        return {}
-
-
-def get_run_data(
-    transmitted_singletons: bool,
-    adj: bool,
-    vqsr_training: bool,
-    filter_centromere_telomere: bool,
-    test_intervals: List[str],
-    features_importance: Dict[str, float],
-    test_results: List[hl.tstruct],
-) -> Dict:
-    """
-    Creates a Dict containing information about the RF input arguments and feature importance
-
-    :param bool transmitted_singletons: True if transmitted singletons were used in training
-    :param bool adj: True if training variants were filtered by adj
-    :param bool vqsr_training: True if VQSR training examples were used for RF training
-    :param List of str test_intervals: Intervals withheld from training to be used in testing
-    :param Dict of float keyed by str features_importance: Feature importance returned by the RF
-    :param List of struct test_results: Accuracy results from applying RF model to the test intervals
-    :return: Dict of RF information
-    """
-    if vqsr_training:
-        transmitted_singletons = None
-
-    run_data = {
-        "input_args": {
-            "transmitted_singletons": transmitted_singletons,
-            "adj": adj,
-            "vqsr_training": vqsr_training,
-            "filter_centromere_telomere": filter_centromere_telomere,
-        },
-        "features_importance": features_importance,
-        "test_intervals": test_intervals,
-    }
-
-    if test_results is not None:
-        tps = 0
-        total = 0
-        for row in test_results:
-            values = list(row.values())
-            # Note: values[0] is the TP/FP label and values[1] is the prediction
-            if values[0] == values[1]:
-                tps += values[2]
-            total += values[2]
-        run_data["test_results"] = [dict(x) for x in test_results]
-        run_data["test_accuracy"] = tps / total
-
-    return run_data
-
-
 def main(args):
     hl.init(log="/variant_qc_random_forest.log")
 
@@ -333,10 +268,12 @@ def main(args):
 
         logger.info("Adding run to RF run list")
         rf_runs[run_hash] = get_run_data(
-            transmitted_singletons=not args.no_transmitted_singletons,
-            adj=args.adj,
-            vqsr_training=args.vqsr_training,
-            filter_centromere_telomere=args.filter_centromere_telomere,
+            input_args={
+                "transmitted_singletons": None if args.vqsr_training else not args.no_transmitted_singletons,
+                "adj": args.adj,
+                "vqsr_training": args.vqsr_training,
+                "filter_centromere_telomere": args.filter_centromere_telomere,
+            },
             test_intervals=args.test_intervals,
             features_importance=hl.eval(ht.features_importance),
             test_results=hl.eval(ht.test_results),
