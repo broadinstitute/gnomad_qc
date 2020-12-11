@@ -1,20 +1,17 @@
 import argparse
 import json
 import logging
-from pprint import pformat
-import re
 import sys
 from typing import Dict, List, Optional, Union
 import uuid
 
 import hail as hl
 
-from gnomad.resources.grch38.reference_data import clinvar, get_truth_ht
+from gnomad.resources.grch38.reference_data import get_truth_ht, telomeres_and_centromeres
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import add_filters_expr
 from gnomad.utils.slack import slack_notifications
-from gnomad.variant_qc.evaluation import compute_grouped_binned_ht
-from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg, train_rf_model
+from gnomad.variant_qc.pipeline import train_rf_model
 from gnomad.variant_qc.random_forest import (
     apply_rf_model,
     load_model,
