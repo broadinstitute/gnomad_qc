@@ -308,7 +308,6 @@ def generate_final_rf_ht(
     ht: hl.Table,
     ac0_filter_expr: hl.expr.BooleanExpression,
     ts_ac_filter_expr: hl.expr.BooleanExpression,
-    mono_allelic_fiter_expr: hl.expr.BooleanExpression,
     snp_cutoff: Union[int, float],
     indel_cutoff: Union[int, float],
     inbreeding_coeff_cutoff: float = INBREEDING_COEFF_HARD_CUTOFF,
