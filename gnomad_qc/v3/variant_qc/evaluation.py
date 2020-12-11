@@ -172,8 +172,8 @@ def main(args):
             )
         )
 
-    # Note: Use only workers, it typically crashes with preemptibles
     if args.create_aggregated_bin_ht:
+        logger.warning("Use only workers, it typically crashes with preemptibles")
         create_grouped_bin_ht(model_id, args.overwrite)
 
     if args.extract_truth_samples:
