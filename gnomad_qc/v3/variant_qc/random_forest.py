@@ -45,14 +45,14 @@ INFO_FEATURES = [
     "AS_ReadPosRankSum",
     "AS_MQRankSum",
     "AS_SOR",
-]  # Note: AS_SOR is currently in VQSR HT and named SOR in the VQSR split HT
+    "AS_pab_max",
+]
 FEATURES = [
     "InbreedingCoeff",
     "variant_type",
     "allele_type",
     "n_alt_alleles",
     "was_mixed",
-    "has_star",
     "AS_QD",
     "AS_pab_max",
     "AS_MQRankSum",
