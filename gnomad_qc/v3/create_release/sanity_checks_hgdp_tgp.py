@@ -722,7 +722,7 @@ def sanity_check_release_mt(
     :rtype: None
     """
 
-    """# Perform basic checks -- number of variants, number of contigs, number of samples
+    # Perform basic checks -- number of variants, number of contigs, number of samples
     logger.info("BASIC SUMMARY OF INPUT TABLE:")
     n_samples = mt.count_cols()
     ht = mt.rows()
@@ -730,12 +730,12 @@ def sanity_check_release_mt(
     contigs = ht.aggregate(hl.agg.collect_as_set(ht.locus.contig))
     logger.info(f"Found {n_sites} sites in contigs {contigs} in {n_samples} samples")
 
-    summarize_ht(ht, monoallelic_check=True)"""
+    summarize_ht(ht, monoallelic_check=True)
 
     logger.info("VARIANT FILTER SUMMARIES:")
     filters_sanity_check(ht)
 
-    """logger.info("HISTOGRAM CHECKS:")
+    logger.info("HISTOGRAM CHECKS:")
     histograms_sanity_check(ht, verbose=verbose)
 
     logger.info("RAW AND ADJ CHECKS:")
@@ -760,4 +760,4 @@ def sanity_check_release_mt(
     n_sites = ht.count()
     missingness_sanity_checks(
         ht, info_metrics, non_info_metrics, n_sites, missingness_threshold
-    )"""
+    )
