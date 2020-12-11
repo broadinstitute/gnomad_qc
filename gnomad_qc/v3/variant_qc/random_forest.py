@@ -28,7 +28,7 @@ from gnomad_qc.v3.resources import (
     get_rf,
     get_rf_annotated,
     qc_ac,
-    rf_run_hash_path,
+    rf_run_path,
 )
 from gnomad_qc.slack_creds import slack_token
 
@@ -241,7 +241,7 @@ def main(args):
 
     if args.list_rf_runs:
         logger.info(f"RF runs:")
-        pretty_print_runs(get_rf_runs(rf_run_hash_path()))
+        pretty_print_runs(get_rf_runs(rf_run_path()))
 
     if args.annotate_for_rf:
         ht = create_rf_ht(
@@ -256,18 +256,18 @@ def main(args):
         logger.info(f"Completed annotation wrangling for random forests model training")
 
     if args.train_rf:
-        run_hash = str(uuid.uuid4())[:8]
-        rf_runs = get_rf_runs(rf_run_hash_path())
-        while run_hash in rf_runs:
-            run_hash = str(uuid.uuid4())[:8]
+        model_id = f"rf_{str(uuid.uuid4())[:8]}"
+        rf_runs = get_rf_runs(rf_run_path())
+        while model_id in rf_runs:
+            model_id = f"rf_{str(uuid.uuid4())[:8]}"
 
         ht, rf_model = train_rf(get_rf_annotated(args.adj).ht(), args)
         ht = ht.checkpoint(
-            get_rf(data="training", run_hash=run_hash).path, overwrite=args.overwrite,
+            get_rf(data="training", model_id=model_id).path, overwrite=args.overwrite,
         )
 
         logger.info("Adding run to RF run list")
-        rf_runs[run_hash] = get_run_data(
+        rf_runs[model_id] = get_run_data(
             input_args={
                 "transmitted_singletons": None if args.vqsr_training else not args.no_transmitted_singletons,
                 "adj": args.adj,
@@ -279,28 +279,28 @@ def main(args):
             test_results=hl.eval(ht.test_results),
         )
 
-        with hl.hadoop_open(rf_run_hash_path(), "w") as f:
+        with hl.hadoop_open(rf_run_path(), "w") as f:
             json.dump(rf_runs, f)
 
         logger.info("Saving RF model")
         save_model(
-            rf_model, get_rf(data="model", run_hash=run_hash), overwrite=args.overwrite,
+            rf_model, get_rf(data="model", model_id=model_id), overwrite=args.overwrite,
         )
 
     else:
-        run_hash = args.run_hash
+        model_id = args.model_id
 
     if args.apply_rf:
-        logger.info(f"Applying RF model {run_hash}...")
-        rf_model = load_model(get_rf(data="model", run_hash=run_hash))
-        ht = get_rf(data="training", run_hash=run_hash).ht()
+        logger.info(f"Applying RF model {model_id}...")
+        rf_model = load_model(get_rf(data="model", model_id=model_id))
+        ht = get_rf(data="training", model_id=model_id).ht()
         features = hl.eval(ht.features)
         ht = apply_rf_model(ht, rf_model, features, label=LABEL_COL)
 
         logger.info("Finished applying RF model")
-        ht = ht.annotate_globals(rf_hash=run_hash)
+        ht = ht.annotate_globals(rf_model_id=model_id)
         ht = ht.checkpoint(
-            get_rf("rf_result", run_hash=run_hash).path, overwrite=args.overwrite,
+            get_rf("rf_result", model_id=model_id).path, overwrite=args.overwrite,
         )
 
         ht_summary = ht.group_by(
@@ -320,15 +320,15 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--run_hash",
-        help="Run hash. Created by --train_rf and only needed for --apply_rf without running --train_rf",
+        "--model_id",
+        help="Model ID. Created by --train_rf and only needed for --apply_rf without running --train_rf",
         required=False,
     )
 
     actions = parser.add_argument_group("Actions")
     actions.add_argument(
         "--list_rf_runs",
-        help="Lists all previous RF runs, along with their hash, parameters and testing results.",
+        help="Lists all previous RF runs, along with their model ID, parameters and testing results.",
         action="store_true",
     )
     actions.add_argument(
@@ -426,14 +426,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if not args.run_hash and not args.train_rf and args.apply_rf:
+    if not args.model_id and not args.train_rf and args.apply_rf:
         sys.exit(
-            "Error: --run_hash is required when running --apply_rf without running --train_rf too."
+            "Error: --model_id is required when running --apply_rf without running --train_rf too."
         )
 
-    if args.run_hash and args.train_rf:
+    if args.model_id and args.train_rf:
         sys.exit(
-            "Error: --run_hash and --train_rf are mutually exclusive. --train_rf will generate a run hash."
+            "Error: --model_id and --train_rf are mutually exclusive. --train_rf will generate a run model ID."
         )
 
     if args.slack_channel:

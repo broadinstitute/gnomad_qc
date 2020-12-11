@@ -124,7 +124,7 @@ def get_rf_annotated(adj: bool = False) -> TableResource:
     return TableResource(f'{VARIANT_QC_ROOT}/annotated_rf{".adj" if adj else ""}.ht')
 
 
-def rf_run_hash_path():
+def rf_run_path():
     """
     Returns the path to the json file containing the RF runs list.
 
@@ -147,7 +147,7 @@ def get_final_rf():
 
 def get_rf(
     data: str = "rf_result",
-    run_hash: Optional[str] = None,
+    model_id: Optional[str] = None,
 ) -> Union[str, TableResource]:
     """
     Gets the path to the desired RF data.
@@ -158,14 +158,14 @@ def get_rf(
         - 'rf_result' (default): path to HT containing result of RF filtering
 
     :param str data: One of 'training', 'model' or 'rf_result' (default)
-    :param str run_hash: Hash of RF run to load
+    :param str model_id: RF run to load
     :return: Path to desired RF data
     """
 
     if data == "model":
-        return f"{VARIANT_QC_ROOT}/models/{run_hash}/{data}.model"
+        return f"{VARIANT_QC_ROOT}/models/{model_id}/{data}.model"
     else:
-        return TableResource(f"{VARIANT_QC_ROOT}/models/{run_hash}/{data}.ht")
+        return TableResource(f"{VARIANT_QC_ROOT}/models/{model_id}/{data}.ht")
 
 
 def get_checkpoint_path(name: str = None, mt: bool = False) -> str:

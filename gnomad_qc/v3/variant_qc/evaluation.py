@@ -43,7 +43,7 @@ def create_quantile_bin_ht(
     Creates a table with quantile bin annotations added for a RF run and writes it to its correct location in
     annotations.
 
-    :param model_id: Which data/run hash is being created
+    :param model_id: Which variant QC model (rf or vqsr model ID) to quantile bin
     :param n_bins: Number of bins to bin the data into
     :param vqsr: Set True is `model_id` refers to a VQSR filtering model
     :param overwrite: Should output files be overwritten if present
@@ -68,7 +68,7 @@ def create_quantile_bin_ht(
         )
 
     else:
-        ht = get_rf("rf_result", run_hash=model_id).ht()
+        ht = get_rf("rf_result", model_id=model_id).ht()
         ht = ht.annotate(
             info=info_ht[ht.key].info,
             positive_train_site=ht.tp,
@@ -99,7 +99,7 @@ def create_grouped_bin_ht(model_id: str, overwrite: bool = False) -> None:
     Creates binned data from a quantile bin annotated Table grouped by bin_id (rank, bi-allelic, etc.), contig, snv,
     bi_allelic and singleton containing the information needed for evaluation plots.
 
-    :param str model_id: Which data/run hash is being created
+    :param str model_id: Which variant QC model (rf or vqsr model ID) to group
     :param bool overwrite: Should output files be overwritten if present
     :return: None
     :rtype: None
@@ -146,16 +146,12 @@ def create_grouped_bin_ht(model_id: str, overwrite: bool = False) -> None:
 def main(args):
     hl.init(log="/variant_qc_evaluation.log")
 
-    if args.vqsr:
-        model_id = f"vqsr_{args.vqsr_type}"
-    else:
-        model_id = args.run_hash
-
+    vqsr = args.model_id.startswith("vqsr_")
     if args.create_quantile_bin_ht:
-        create_quantile_bin_ht(model_id, args.n_bins, args.vqsr, args.overwrite)
+        create_quantile_bin_ht(args.model_id, args.n_bins, vqsr, args.overwrite)
 
     if args.run_sanity_checks:
-        ht = get_score_quantile_bins(model_id, aggregated=False).ht()
+        ht = get_score_quantile_bins(args.model_id, aggregated=False).ht()
         logger.info("Running sanity checks...")
         print(
             ht.aggregate(
@@ -174,7 +170,7 @@ def main(args):
 
     if args.create_aggregated_bin_ht:
         logger.warning("Use only workers, it typically crashes with preemptibles")
-        create_grouped_bin_ht(model_id, args.overwrite)
+        create_grouped_bin_ht(args.model_id, args.overwrite)
 
     if args.extract_truth_samples:
         logger.info(f"Extracting truth samples from MT...")
@@ -254,14 +250,14 @@ def main(args):
             logger.info(
                 "Loading HT containing RF or VQSR scores annotated with a bin based on metric quantiles..."
             )
-            metric_ht = get_score_quantile_bins(model_id, aggregated=False).ht()
+            metric_ht = get_score_quantile_bins(args.model_id, aggregated=False).ht()
             ht = ht.filter(hl.is_defined(metric_ht[ht.key]))
 
             ht = ht.annotate(score=metric_ht[ht.key].score)
 
             ht = compute_binned_truth_sample_concordance(ht, metric_ht, args.n_bins)
             ht.write(
-                get_binned_concordance(model_id, truth_sample).path,
+                get_binned_concordance(args.model_id, truth_sample).path,
                 overwrite=args.overwrite,
             )
 
@@ -277,26 +273,14 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--run_hash",
-        help="Run hash. Created by --train_rf and only needed for --apply_rf without running --train_rf",
+        "--model_id",
+        help="Model ID.",
         required=False,
     )
 
     parser.add_argument(
-        "--vqsr",
-        help="When set, creates the VQSR rank file instead of an RF rank file.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--vqsr_type",
-        help="What type of VQSR was run: allele-specific, or allele-specific with transmitted singletons",
-        type=str,
-        choices=["classic", "alleleSpecific", "alleleSpecificTrans"],
-        default="alleleSpecificTrans",
-    )
-    parser.add_argument(
         "--create_quantile_bin_ht",
-        help="When set, creates file annotated with quantile bin based on vqsr/RF run hash score.",
+        help="When set, creates file annotated with quantile bin based on vqsr/RF score.",
         action="store_true",
     )
     parser.add_argument(
