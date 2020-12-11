@@ -407,6 +407,18 @@ def generate_final_rf_ht(
     ht = ht.annotate_globals(
         rf_snv_cutoff=snp_cutoff_global, rf_indel_cutoff=indel_cutoff_global
     )
+    ht = ht.annotate(info=model_ht[ht.key].info)
+    ht = ht.annotate_globals(
+        filtering_model=hl.struct(
+            model_id=args.model_id,
+            model_name=args.model_name,
+            score_name=args.score_name,
+            snv_cutoff=hl.struct(bin=args.snv_bin_cutoff, min_score=snp_rf_cutoff),
+            indel_cutoff=hl.struct(
+                bin=args.indel_bin_cutoff, min_score=indel_rf_cutoff
+            ),
+        )
+    )
 
     return ht
 
