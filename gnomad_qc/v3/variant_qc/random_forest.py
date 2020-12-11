@@ -92,7 +92,7 @@ def create_rf_ht(
     Numerical features are median-imputed. If impute_features_by_variant_type is set, imputation is done based on the
     median of the variant type.
 
-    :param bool impute_features_by_variant_type: Whether to impute features median by variant type
+    :param bool impute_features_by_variant_type: Whether to impute features using feature medians (this is done by variant type)
     :param str adj: Whether to use adj genotypes
     :param int n_partitions: Number of partitions to use for final annotated table
     :param str checkpoint_path: Optional checkpoint path for the Table before median imputation and/or aggregate summary
