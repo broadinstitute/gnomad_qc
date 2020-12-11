@@ -239,6 +239,11 @@ def main(args):
             )
             ht = get_callset_truth_data(truth_sample, mt=False).ht()
 
+            info_ht = get_info(split=True).ht()
+            ht = ht.filter(
+                ~info_ht[ht.key].AS_lowqual & ~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus])
+            )
+
             if args.filter_low_conf_regions:
                 logger.info("Filtering out low confidence regions and segdups...")
                 ht = filter_low_conf_regions(
