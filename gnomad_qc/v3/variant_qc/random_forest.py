@@ -299,125 +299,6 @@ def get_run_data(
     return run_data
 
 
-# TODO: should we generalize this to make this also allow for an additional set of filters beyond these defualt as
-#  well as allow for VQSR?
-def generate_final_rf_ht(
-    ht: hl.Table,
-    ac0_filter_expr: hl.expr.BooleanExpression,
-    ts_ac_filter_expr: hl.expr.BooleanExpression,
-    mono_allelic_fiter_expr: hl.expr.BooleanExpression,
-    snp_cutoff: Union[int, float],
-    indel_cutoff: Union[int, float],
-    inbreeding_coeff_cutoff: float = INBREEDING_COEFF_HARD_CUTOFF,
-    determine_cutoff_from_bin: bool = False,
-    aggregated_bin_ht: Optional[hl.Table] = None,
-    bin_id: Optional[hl.expr.Int32Expression] = None,
-) -> hl.Table:
-    """
-    Prepares finalized RF model given an RF result table from `rf.apply_rf_model` and cutoffs for filtering.
-    If `determine_cutoff_from_bin` is True, `aggregated_bin_ht` must be supplied to determine the SNP and indel RF
-    probabilities to use as cutoffs from an aggregated quantile bin Table like one created by
-    `compute_grouped_binned_ht` in combination with `score_bin_agg`.
-    :param ht: RF result table from `rf.apply_rf_model` to prepare as the final RF Table
-    :param ac0_filter_expr: Expression that indicates if a variant should be filtered as allele count 0 (AC0)
-    :param ts_ac_filter_expr: Expression in `ht` that indicates if a variant is a transmitted singleton
-    :param mono_allelic_fiter_expr: Expression indicating if a variant is mono-allelic
-    :param snp_cutoff: RF probability or bin (if `determine_cutoff_from_bin` True) to use for SNP variant QC filter
-    :param indel_cutoff: RF probability or bin (if `determine_cutoff_from_bin` True) to use for indel variant QC filter
-    :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter to use for variants
-    :param determine_cutoff_from_bin: If True RF probability will be determined using bin info in `aggregated_bin_ht`
-    :param aggregated_bin_ht: File with aggregate counts of variants based on quantile bins
-    :param bin_id: Name of bin to use in 'bin_id' column of `aggregated_bin_ht` to use to determine probability cutoff
-    :return: Finalized random forest Table annotated with variant filters
-    """
-    # Determine SNP and indel RF cutoffs if given bin instead of RF probability
-    if determine_cutoff_from_bin:
-        snp_rf_cutoff, indel_rf_cutoff = aggregated_bin_ht.aggregate(
-            [
-                hl.agg.filter(
-                    snv
-                    & (aggregated_bin_ht.bin_id == bin_id)
-                    & (aggregated_bin_ht.bin == cutoff),
-                    hl.agg.min(aggregated_bin_ht.min_score),
-                )
-                for snv, cutoff in [
-                    (aggregated_bin_ht.snv, snp_cutoff),
-                    (~aggregated_bin_ht.snv, indel_cutoff),
-                ]
-            ]
-        )
-        snp_cutoff_global = hl.struct(bin=snp_cutoff, min_score=snp_rf_cutoff)
-        indel_cutoff_global = hl.struct(bin=indel_cutoff, min_score=indel_rf_cutoff)
-
-        logger.info(
-            f"Using a SNP RF probability cutoff of {snp_rf_cutoff} and an indel RF probability cutoff of {indel_rf_cutoff}."
-        )
-    else:
-        snp_cutoff_global = hl.struct(min_score=snp_cutoff)
-        indel_cutoff_global = hl.struct(min_score=indel_cutoff)
-
-    # Add filters to RF HT
-    filters = dict()
-
-    if ht.any(hl.is_missing(ht.rf_probability["TP"])):
-        raise ValueError("Missing RF probability!")
-
-    filters["RF"] = (
-        hl.is_snp(ht.alleles[0], ht.alleles[1])
-        & (ht.rf_probability["TP"] < snp_cutoff_global.min_score)
-    ) | (
-        ~hl.is_snp(ht.alleles[0], ht.alleles[1])
-        & (ht.rf_probability["TP"] < indel_cutoff_global.min_score)
-    )
-
-    filters["InbreedingCoeff"] = hl.or_else(
-        ht.InbreedingCoeff < inbreeding_coeff_cutoff, False
-    )
-    filters["AC0"] = ac0_filter_expr
-
-    # Fix annotations for release
-    annotations_expr = {
-        "rf_positive_label": hl.or_else(ht.tp, False),
-        "rf_negative_label": ht.fail_hard_filters,
-        "transmitted_singleton": hl.or_missing(
-            ts_ac_filter_expr, ht.transmitted_singleton
-        ),
-        "rf_probability": ht.rf_probability["TP"],
-    }
-    if "feature_imputed" in ht.row:
-        annotations_expr.update(
-            {
-                x: hl.or_missing(~ht.feature_imputed[x], ht[x])
-                for x in [f for f in ht.row.feature_imputed]
-            }
-        )
-
-    ht = ht.transmute(filters=add_filters_expr(filters=filters), **annotations_expr)
-
-    ht = ht.annotate_globals(
-        rf_snv_cutoff=snp_cutoff_global, rf_indel_cutoff=indel_cutoff_global
-    )
-    
-    ht = ht.annotate(info=model_ht[ht.key].info)
-
-
-
-
-    ht = ht.annotate_globals(
-        filtering_model=hl.struct(
-            model_id=args.model_id,
-            model_name=args.model_name,
-            score_name=args.score_name,
-            snv_cutoff=hl.struct(bin=args.snv_bin_cutoff, min_score=snp_rf_cutoff),
-            indel_cutoff=hl.struct(
-                bin=args.indel_bin_cutoff, min_score=indel_rf_cutoff
-            ),
-        )
-    )
-
-    return ht
-
-
 def main(args):
     hl.init(log="/variant_qc_random_forest.log")
 
@@ -487,35 +368,6 @@ def main(args):
             "tp", "fp", TRAIN_COL, LABEL_COL, PREDICTION_COL
         ).aggregate(n=hl.agg.count())
         ht_summary.show(n=20)
-
-    if args.finalize:
-        ht = get_rf("rf_result", run_hash=args.run_hash).ht()
-        freq_ht = freq.ht()
-        freq = freq_ht[ht.key]
-
-        if not file_exists(
-            get_score_quantile_bins(args.run_hash, aggregated=True).path
-        ):
-            sys.exit(
-                f"Could not find binned HT for RF  run {args.run_hash} ({aggregated_bin_path}). Please run create_ranked_scores.py for that hash."
-            )
-        aggregated_bin_ht = get_score_quantile_bins(args.run_hash, aggregated=True).ht()
-
-        ht = generate_final_rf_ht(
-            ht,
-            ac0_filter_expr=freq.freq[0].AC == 0,
-            ts_ac_filter_expr=freq.freq[1].AC == 1,
-            mono_allelic_fiter_expr=(freq.freq[1].AF == 1) | (freq.freq[1].AF == 0),
-            snp_cutoff=args.snp_cutoff,
-            indel_cutoff=args.indel_cutoff,
-            determine_cutoff_from_bin=not args.treat_cutoff_as_prob,
-            aggregated_bin_ht=aggregated_bin_ht,
-            bin_id=ht.bin,
-            inbreeding_coeff_cutoff=INBREEDING_COEFF_HARD_CUTOFF,
-        )
-        # This column is added by the RF module based on a 0.5 threshold which doesn't correspond to what we use
-        ht = ht.drop(ht[PREDICTION_COL])
-        ht.write(get_final_rf().path, args.overwrite)
 
 
 if __name__ == "__main__":
@@ -621,18 +473,6 @@ if __name__ == "__main__":
         action="store_true",
     )
 
-    finalize_params = parser.add_argument_group("Finalize RF Table parameters")
-    finalize_params.add_argument(
-        "--snp_cutoff", help="Percentile to set RF cutoff", type=float, default=90.0
-    )
-    finalize_params.add_argument(
-        "--indel_cutoff", help="Percentile to set RF cutoff", type=float, default=80.0
-    )
-    finalize_params.add_argument(
-        "--treat_cutoff_as_prob",
-        help="If set snp_cutoff and indel_cutoff will be probability rather than percentile ",
-        action="store_true",
-    )
     args = parser.parse_args()
 
     if not args.run_hash and not args.train_rf and args.apply_rf:
