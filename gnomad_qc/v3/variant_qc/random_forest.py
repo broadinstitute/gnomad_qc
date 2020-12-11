@@ -212,6 +212,11 @@ def train_rf(ht, args):
 
     ht = ht.annotate(tp=tp_expr, fp=fp_expr)
 
+    if args.filter_centromere_telomere:
+        rf_ht = ht.filter(~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]))
+    else:
+        rf_ht = ht
+
     rf_ht, rf_model = train_rf_model(
         ht,
         rf_features=features,
@@ -254,6 +259,7 @@ def get_run_data(
     transmitted_singletons: bool,
     adj: bool,
     vqsr_training: bool,
+    filter_centromere_telomere: bool,
     test_intervals: List[str],
     features_importance: Dict[str, float],
     test_results: List[hl.tstruct],
@@ -277,6 +283,7 @@ def get_run_data(
             "transmitted_singletons": transmitted_singletons,
             "adj": adj,
             "vqsr_training": vqsr_training,
+            "filter_centromere_telomere": filter_centromere_telomere,
         },
         "features_importance": features_importance,
         "test_intervals": test_intervals,
@@ -439,6 +446,7 @@ def main(args):
             transmitted_singletons=not args.no_transmitted_singletons,
             adj=args.adj,
             vqsr_training=args.vqsr_training,
+            filter_centromere_telomere=args.filter_centromere_telomere,
             test_intervals=args.test_intervals,
             features_importance=hl.eval(ht.features_importance),
             test_results=hl.eval(ht.test_results),
@@ -598,6 +606,11 @@ if __name__ == "__main__":
     training_params.add_argument(
         "--no_inbreeding_coeff",
         help="Train RF without inbreeding coefficient as a feature.",
+        action="store_true",
+    )
+    training_params.add_argument(
+        "--filter_centromere_telomere",
+        help="Train RF without centromeres and telomeres.",
         action="store_true",
     )
 
