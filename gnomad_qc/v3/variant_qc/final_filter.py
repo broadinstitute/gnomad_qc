@@ -5,7 +5,7 @@ from typing import Optional, Union
 
 import hail as hl
 
-from gnomad.resources.grch38.reference_data import telomeres_and_centromeres, get_truth_ht
+from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import add_filters_expr
 from gnomad.utils.slack import slack_notifications
