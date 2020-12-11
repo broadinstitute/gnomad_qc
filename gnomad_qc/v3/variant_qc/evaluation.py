@@ -134,7 +134,9 @@ def create_grouped_bin_ht(model_id: str, overwrite: bool = False) -> None:
     )
 
     logger.info(f"Aggregating grouped bin table...")
+    parent_ht = grouped_binned_ht._parent
     agg_ht = grouped_binned_ht.aggregate(
+        n_clinvar_path=hl.agg.count_where(parent_ht.clinvar_path),
         **score_bin_agg(grouped_binned_ht, fam_stats_ht=trio_stats_ht)
     )
 
