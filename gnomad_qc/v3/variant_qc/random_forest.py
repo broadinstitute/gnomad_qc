@@ -63,14 +63,14 @@ INBREEDING_COEFF_HARD_CUTOFF = -0.3
 
 def create_rf_ht(
     impute_features_by_variant_type: bool = True,
-    group: str = "raw",
+    adj: bool = False,
     n_partitions: int = 5000,
     checkpoint_path: Optional[str] = None,
 ) -> hl.Table:
     """
     Creates a Table with all necessary annotations for the random forest model.
 
-    Annotations that are added:
+    Annotations that are included:
 
         Features for RF:
             - InbreedingCoeff
@@ -93,13 +93,14 @@ def create_rf_ht(
     median of the variant type.
 
     :param bool impute_features_by_variant_type: Whether to impute features median by variant type
-    :param str group: Whether to use 'raw' or 'adj' genotypes
+    :param str adj: Whether to use adj genotypes
     :param int n_partitions: Number of partitions to use for final annotated table
     :param str checkpoint_path: Optional checkpoint path for the Table before median imputation and/or aggregate summary
     :return: Hail Table ready for RF
     :rtype: Table
     """
 
+    group = 'adj' if adj else 'raw'
     def calc_SOR(SB):
         refFw = hl.float64(SB[0] + 1)
         refRv = hl.float64(SB[1] + 1)
@@ -144,7 +145,7 @@ def create_rf_ht(
         **allele_data_ht[ht.key].allele_data,
         **allele_counts_ht[ht.key],
     )
-    # Filter to only variants found in high quality samples or controls and are not lowqual
+    # Filter to only variants found in high quality samples and are not lowqual
     ht = ht.filter(
         (ht[f"ac_qc_samples_{group}"] > 0) & ~ht.AS_lowqual
     )
@@ -310,7 +311,7 @@ def main(args):
     if args.annotate_for_rf:
         ht = create_rf_ht(
             impute_features_by_variant_type=not args.impute_features_no_variant_type,
-            group="adj" if args.adj else "raw",
+            adj=args.adj,
             n_partitions=args.n_partitions,
             checkpoint_path=get_checkpoint_path("rf_annotation"),
         )
