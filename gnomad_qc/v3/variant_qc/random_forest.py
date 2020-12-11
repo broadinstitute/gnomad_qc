@@ -120,15 +120,7 @@ def create_rf_ht(
     # TODO: We need to add SOR annotation calculation to info_ht calculation and possibly a new info_ht with bad quality samples removed?
     ht = ht.transmute(**ht.info)
     ht = ht.select(
-        "lowqual", "FS", "MQ", "QD", *INFO_FEATURES
-    )  # TODO: switch to use AS_lowqual?
-
-    # TODO: For v3.1 I need to add InbreedingCoeff to frequency calculations
-    inbreeding_ht = hl.read_table('gs://gnomad/release/3.0/ht/gnomad.genomes.r3.0.nested.no_subsets.sites.ht/')
-    inbreeding_ht = inbreeding_ht.annotate(
-        InbreedingCoeff=hl.or_missing(
-            ~hl.is_nan(inbreeding_ht.InbreedingCoeff), inbreeding_ht.InbreedingCoeff
-        )
+       "lowqual", "AS_lowqual", "FS", "MQ", "QD", *INFO_FEATURES
     )
     trio_stats_ht = fam_stats.ht()
     trio_stats_ht = trio_stats_ht.select(
@@ -149,8 +141,8 @@ def create_rf_ht(
     )
     # Filter to only variants found in high quality samples or controls with no LowQual filter
     ht = ht.filter(
-        (ht[f"ac_qc_samples_{group}"] > 0) & ~ht.lowqual
-    )  # TODO: change to AS_lowqual for v3.1 or leave as is to be more consistent with v3.0? I will need to add this annotation if so
+        (ht[f"ac_qc_samples_{group}"] > 0) & ~ht.AS_lowqual
+    )
     ht = ht.select(
         "a_index",
         "was_split",
