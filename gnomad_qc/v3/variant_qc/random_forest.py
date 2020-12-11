@@ -372,34 +372,6 @@ def main(args):
         ).aggregate(n=hl.agg.count())
         ht_summary.show(n=20)
 
-    if args.finalize:
-        ht = get_rf("rf_result", run_hash=args.run_hash).ht()
-        freq_ht = freq.ht()
-        freq = freq_ht[ht.key]
-
-        if not file_exists(
-            get_score_quantile_bins(args.run_hash, aggregated=True).path
-        ):
-            sys.exit(
-                f"Could not find binned HT for RF  run {args.run_hash} ({aggregated_bin_path}). Please run create_ranked_scores.py for that hash."
-            )
-        aggregated_bin_ht = get_score_quantile_bins(args.run_hash, aggregated=True).ht()
-
-        ht = generate_final_rf_ht(
-            ht,
-            ac0_filter_expr=freq.freq[0].AC == 0,
-            ts_ac_filter_expr=freq.freq[1].AC == 1,
-            snp_cutoff=args.snp_cutoff,
-            indel_cutoff=args.indel_cutoff,
-            determine_cutoff_from_bin=not args.treat_cutoff_as_prob,
-            aggregated_bin_ht=aggregated_bin_ht,
-            bin_id=ht.bin,
-            inbreeding_coeff_cutoff=INBREEDING_COEFF_HARD_CUTOFF,
-        )
-        # This column is added by the RF module based on a 0.5 threshold which doesn't correspond to what we use
-        ht = ht.drop(ht[PREDICTION_COL])
-        ht.write(get_final_rf().path, args.overwrite)
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
