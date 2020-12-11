@@ -124,6 +124,8 @@ def create_grouped_bin_ht(model_id: str, overwrite: bool = False) -> None:
     logger.info(f"Found the following variant counts:\n {pformat(bin_variant_counts)}")
     ht = ht.annotate_globals(bin_variant_counts=bin_variant_counts)
 
+    # Load ClinVar pathogenic data
+    ht = ht.annotate(clinvar_path=hl.is_defined(clinvar_pathogenic.ht()[ht.key]))
     trio_stats_ht = fam_stats.ht()
 
     logger.info(f"Creating grouped bin table...")
