@@ -242,15 +242,14 @@ def main(args):
                 ~info_ht[ht.key].AS_lowqual & ~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus])
             )
 
-            if args.filter_low_conf_regions:
-                logger.info("Filtering out low confidence regions and segdups...")
-                ht = filter_low_conf_regions(
-                    ht,
-                    filter_lcr=True,
-                    # TODO: Uncomment when we have decoy path
-                    filter_decoy=False,  # True,
-                    filter_segdup=True,
-                )
+            logger.info("Filtering out low confidence regions and segdups...")
+            ht = filter_low_conf_regions(
+                ht,
+                filter_lcr=True,
+                # TODO: Uncomment when we have decoy path
+                filter_decoy=False,  # True,
+                filter_segdup=True,
+            )
 
             logger.info(
                 "Loading HT containing RF or VQSR scores annotated with a bin based on metric quantiles..."
@@ -261,9 +260,6 @@ def main(args):
             ht = ht.annotate(score=metric_ht[ht.key].score)
 
             ht = compute_binned_truth_sample_concordance(ht, metric_ht, args.n_bins)
-            ht = ht.annotate_globals(
-                filter_low_conf_regions=args.filter_low_conf_regions
-            )
             ht.write(
                 get_binned_concordance(model_id, truth_sample).path,
                 overwrite=args.overwrite,
@@ -338,11 +334,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--bin_truth_sample_concordance",
         help="Merges individual concordance results with specified metric binned files.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--filter_low_conf_regions",
-        help="Filter low confidence regions and seqdups before calculating variant counts in the bins",
         action="store_true",
     )
 
