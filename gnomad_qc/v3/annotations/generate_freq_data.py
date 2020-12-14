@@ -1,5 +1,10 @@
 from gnomad.utils.slack import slack_notifications
-from gnomad.resources.grch38.gnomad import SUBSETS, DOWNSAMPLINGS, POPS, POPS_TO_REMOVE_FOR_POPMAX
+from gnomad.resources.grch38.gnomad import (
+    SUBSETS,
+    DOWNSAMPLINGS,
+    POPS,
+    POPS_TO_REMOVE_FOR_POPMAX,
+)
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     annotate_freq,
@@ -132,7 +137,7 @@ def main(args):
                 mt.rows().write(get_freq(subset=subset).path, overwrite=args.overwrite)
 
         else:
-            logger.info("Computing age histograms...")
+            logger.info("Computing age histograms for each variant...")
             mt = mt.annotate_rows(
                 **age_hists_expr(
                     mt.adj,
@@ -142,6 +147,24 @@ def main(args):
                         mt.meta.project_meta.age,
                         mt.meta.project_meta.age_alt,
                     ),
+                )
+            )
+
+            # Compute callset-wide age histogram global
+            meta_ht = meta.ht()
+            meta_ht = meta_ht.filter(meta_ht.release)
+            mt = mt.annotate_globals(
+                age_distribution=meta_ht.aggregate(
+                    hl.agg.hist(
+                        hl.if_else(
+                            hl.is_defined(meta_ht.project_meta.age),
+                            meta_ht.project_meta.age,
+                            meta_ht.project_meta.age_alt,
+                        ),
+                        30,
+                        80,
+                        10,
+                    )
                 )
             )
 
