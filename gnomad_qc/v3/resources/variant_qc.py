@@ -180,18 +180,6 @@ def get_checkpoint_path(name: str = None, mt: bool = False) -> str:
     return f'gs://gnomad-tmp/{name}.{"mt" if mt else "ht"}'
 
 
-def get_filtering_model(model_id: str, split: bool = True, finalized: bool = True) -> TableResource:
-    """
-       Gets the specified filtering annotation resource.
-
-       :param model_id: Filtering model id
-       :param split: Split or multi-allelic version of the filtering file
-       :return: Filtering annotation file
-       """
-    path = f"{VARIANT_QC_ROOT}/{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
-    return TableResource(path)
-
-
 final_filter = VersionedTableResource(
     CURRENT_RELEASE,
     {release: TableResource(f"{get_variant_qc_root(release)}/filter_final.ht") for release in RELEASES}
