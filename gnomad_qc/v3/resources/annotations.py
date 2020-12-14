@@ -1,4 +1,7 @@
-from gnomad.resources.resource_utils import TableResource, VersionedTableResource
+from typing import Optional
+
+from gnomad.resources.resource_utils import (TableResource,
+                                             VersionedTableResource)
 
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
@@ -150,3 +153,22 @@ analyst_annotations = VersionedTableResource(
         if release != "3.0"
     },
 )
+
+def get_freq(version: str = CURRENT_RELEASE, subset: Optional[str] = None) -> VersionedTableResource:
+    """
+    :return:
+    """
+    if version == "3" and subset:
+        raise DataException(
+            f"Subsets of gnomAD v3 do not exist"
+        )
+
+    return VersionedTableResource(
+        version,
+        {
+            release: TableResource(
+                f"{_annotations_root(release)}/gnomad_genomes_v{release}.frequencies{'.' + subset if subset else ''}.ht"
+            )
+            for release in RELEASES
+        }
+    )
