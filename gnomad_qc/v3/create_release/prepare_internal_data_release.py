@@ -1,14 +1,3 @@
-import argparse
-import logging
-from typing import Union, Dict, List
-
-import hail as hl
-
-from gnomad.resources.grch38.reference_data import (
-    dbsnp,
-    lcr_intervals,
-    seg_dup_intervals,
-)
 from gnomad.resources.grch38.gnomad import (
     SUBSETS,
     GROUPS,
@@ -18,7 +7,23 @@ from gnomad.resources.grch38.gnomad import (
     HGDP_POPS,
     DOWNSAMPLINGS,
 )
+from gnomad.resources.grch38.reference_data import (
+    dbsnp,
+    lcr_intervals,
+    seg_dup_intervals,
+)
+from gnomad.utils.annotations import region_flag_expr
+from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
+from gnomad.utils.vcf import make_label_combos, index_globals
+from gnomad.utils.vcf import (
+    AS_FIELDS,
+    RF_FIELDS,
+    SITE_FIELDS,
+    VQSR_FIELDS,
+)
+from gnomad.utils.vep import VEP_CSQ_HEADER, VEP_CSQ_FIELDS
+
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq, allele_data
 from gnomad_qc.v3.resources.meta import meta
@@ -28,16 +33,14 @@ from gnomad_qc.v3.resources import (
     vep,
     qual_hist,
     get_vqsr_filters,
-)  # freq, V3_RELEASE_VERSION, release_ht_path,
-from gnomad.utils.file_utils import file_exists
-from gnomad.utils.vcf import make_label_combos, index_globals
-from gnomad.utils.vcf import (
-    AS_FIELDS,
-    RF_FIELDS,
-    SITE_FIELDS,
-    VQSR_FIELDS,
+    release_ht_path,
 )
-from gnomad.utils.vep import VEP_CSQ_HEADER, VEP_CSQ_FIELDS
+
+import argparse
+import logging
+from typing import Union, Dict, List
+
+import hail as hl
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -58,59 +61,27 @@ POPS.extend(HGDP_POPS)
 POPS.extend(["global"])
 
 
-def region_flag_expr(
-    t: Union[hl.Table, hl.MatrixTable],
-    non_par: bool = True,
-    prob_regions: Dict[str, hl.Table] = None,
-) -> hl.expr.StructExpression:
-    """
-    Creates `region_flag` struct.
-    Struct contains flags for problematic regions (i.e., LCR, decoy, segdup, and nonpar regions).
-
-    .. note::
-        No hg38 resources for decoy or self chain available yet.
-    :param Table/MatrixTable t: Input Table/MatrixTable.
-    :return: `region_flag` struct row annotation.
-    :rtype: hl.expr.StructExpression
-    """
-
-    prob_flags_expr = (
-        {"non_par": (t.locus.in_x_nonpar() | t.locus.in_y_nonpar())} if non_par else {}
-    )
-
-    if prob_regions is not None:
-        prob_flags_expr.update(
-            {
-                region_name: hl.is_defined(region_table[t.locus])
-                for region_name, region_table in prob_regions.items()
-            }
-        )
-
-    return hl.struct(**prob_flags_expr)
-
-
 def prepare_annotations(
-    freq_ht: hl.Table, filtering_model_id: str, pcsk9: bool
+    freq_ht: hl.Table, filtering_model_id: str, test: bool
 ) -> hl.Table:
 
     """
     Load and join all Tables with variant annotations.
 
     :param Table freq_ht: Table with frequency annotations.
-    :param str filtering_model_id:
+    :param str filtering_model_id: ID for final filtering model chosen for release
+    :param bool test: If true, filter table to small section of chr20
     :return: Table containing joined annotations.
     :rtype: hl.Table
     """
 
-    if pcsk9:
+    if test:
         freq_ht = hl.filter_intervals(
-            freq_ht, [hl.parse_locus_interval("chr1:55030000-55070000")]
+            freq_ht, [hl.parse_locus_interval("chr20:1-1000000")]
         )
 
     logger.info("Loading annotation tables...")
-    filters_ht = hl.read_table(
-        "gs://gnomad/variant_qc/genomes_v3.1/filter_final.ht"
-    )  # TODO replace path
+    filters_ht = get_filtering_model(model_id=filtering_model_id).ht()
     vep_ht = vep.ht()
     dbsnp_ht = dbsnp.ht().select("rsid")
     info_ht = get_info().ht()
@@ -143,7 +114,7 @@ def prepare_annotations(
     vep_ht = vep_ht.transmute(vep=vep_ht.vep.drop("colocated_variants"))
     filters_ht = filters_ht.annotate(
         allele_data=hl.struct(
-            has_star=filters_ht.has_star,
+            has_star=filters_ht.has_star,  # NOTE: no v3.1 variants contained star alleles; consider dropping
             variant_type=filters_ht.variant_type,
             allele_type=filters_ht.allele_type,
             n_alt_alleles=filters_ht.n_alt_alleles,
@@ -164,7 +135,7 @@ def prepare_annotations(
             ht,
             non_par=False,
             prob_regions={
-                "lcr": lcr_intervals.ht(),  # TODO: Make this dictionary a variable?
+                "lcr": lcr_intervals.ht(),
                 "segdup": seg_dup_intervals.ht(),
             },
         ),
@@ -184,43 +155,43 @@ def prepare_annotations(
 
 
 def pre_process_subset(subset: str, global_ht: hl.Table, test: bool) -> hl.Table:
+    """
+    Prepares individual frequency tables for subsets in the release by adding identifying tags to subset freq_meta globals, filling in missing frequency fields for loci present only in the global cohort
+
+    :param subset: Subset ID
+    :param global_ht: Hail Table containing all variants discovered in the overall release cohort
+    :param test:  If True, read smaller test Hail Table created for specified subset
+    :return: Table containing subset frequencies with subset-tagged freq_meta global values and missing freq structs filled in
+    """
     if test:
         ht = hl.read_table(f"gs://gnomad-tmp/gnomad_freq/chr20_test_freq.{subset}.ht")
     else:
         ht = get_freq(subset=subset).ht()
 
-    # Splice in age hist distribution per
-    # meta_ht = meta.ht()
-    # meta_ht = meta_ht.filter(meta_ht.subsets[subset])
-    # age_hist_data = meta_ht.aggregate(hl.agg.hist(hl.if_else(hl.is_defined(meta_ht.project_meta.age), meta_ht.project_meta.age, meta_ht.project_meta.age_alt), [30, 80, 10]))
-    # age_hist_data.bin_freq.insert(0, age_hist_data.n_smaller)
-    # age_hist_data.bin_freq.append(age_hist_data.n_larger)
-
     ht = ht.annotate_globals(
         freq_meta=[{**x, **{"subset": subset}} for x in hl.eval(ht.freq_meta)]
     )
-    # ht = ht.annotate_globals(freq_meta=[{**x, **{'subset': subset}} for x in hl.eval(ht.freq_meta)],
-    #                          age_distribution=age_hist_data)
 
     # Keep all loci present in the global frequency HT table and fill in any missing frequency fields with an array of structs containing zero/null callstats data
     # This array should be as long as the freq_meta (each array entry corresponds to a freq_meta entry)
     new_ht = ht.join(global_ht.select().select_globals(), how="right")
-    struct = hl.struct(
+    null_struct = hl.struct(
         AC=hl.int32(0),
         AF=hl.float64(0),
         AN=hl.null(hl.tint32),
         homozygote_count=hl.int32(0),
     )
-    y_struct = hl.struct(
+    null_y_struct = hl.struct(
         AC=hl.null(hl.tint32),
         AF=hl.null(hl.tfloat64),
         AN=hl.null(hl.tint32),
         homozygote_count=hl.null(hl.int32),
     )
-    array_struct = hl.map(lambda x: struct, hl.range(hl.len(hl.eval(ht.freq_meta))))
-    array_y_struct = hl.map(lambda x: y_struct, hl.range(hl.len(hl.eval(ht.freq_meta))))
+    null_array_struct = hl.map(
+        lambda x: null_struct, hl.range(hl.len(hl.eval(ht.freq_meta)))
+    )
     new_ht = new_ht.annotate(
-        freq=hl.cond(hl.is_missing(new_ht.freq), array_struct, new_ht.freq)
+        freq=hl.cond(hl.is_missing(new_ht.freq), null_array_struct, new_ht.freq)
     )
 
     return new_ht
@@ -261,38 +232,23 @@ def make_freq_index_dict(ht):
     return index_dict
 
 
-def make_faf_index_dict(ht):
-    """
-    Create a look-up Dictionary for entries contained in the filter allele frequency annotation array
-    :param Table ht: Table containing filter allele frequency annotations to be indexed
-    :return: Dictionary of faf annotation population groupings, where values are the corresponding 0-based indices for the
-        groupings in the faf array
-    :rtype: Dict of str: int
-    """
-    faf_meta = hl.eval(ht.faf_meta)
-
-    index_dict = index_globals(faf_meta, dict(group=["adj"]))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS)))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], sex=SEXES)))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS, sex=SEXES)))
-
-    return index_dict
-
-
 def main(args):
 
     hl.init(log="/prepare_internal_release.log", default_reference="GRCh38")
-    test_freq_ht_path = "gs://gnomad-tmp/gnomad_freq/chr20_test_freq.concatenated.ht"
+    test_freq_ht_path_concat = (
+        "gs://gnomad-tmp/gnomad_freq/chr20_test_freq.concatenated.ht"
+    )
+    test_freq_ht_path_global = "gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht"
 
-    if args.test and file_exists(test_freq_ht_path):
-        freq_ht = hl.read_table(test_freq_ht_path)
-        global_freq_ht = hl.read_table("gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht")
+    if args.test and file_exists(test_freq_ht_path_concat):
+        freq_ht = hl.read_table(test_freq_ht_path_concat)
+        global_freq_ht = hl.read_table(test_freq_ht_path_global)
 
     else:
         logger.info("Concatenating subset frequencies...")
         if args.test:
             global_freq_ht = (
-                hl.read_table("gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht")
+                hl.read_table(test_freq_ht_path_global)
                 .select("freq")
                 .select_globals("freq_meta")
             )
@@ -302,7 +258,6 @@ def main(args):
                 .select("freq")
                 .select_globals("freq_meta")
             )
-            # global_freq_ht = hl.filter_intervals(global_freq_ht, [hl.parse_locus_interval('chr20:1-1000000')])  # TODO: DELETE
 
         subset_freq_hts = [
             pre_process_subset(subset, global_freq_ht, test=args.test)
@@ -318,11 +273,9 @@ def main(args):
         freq_ht = freq_ht.transmute_globals(
             freq_meta=freq_ht.freq_meta.flatmap(lambda x: x.freq_meta)
         )
-        # freq_ht = freq_ht.transmute_globals(freq_meta=freq_ht.freq_meta.flatmap(lambda x: x.freq_meta),
-        #                                     age_distributions=freq_ht.age_distribution.flatmap(lambda x: x.age_distribution))
-        # print(hl.eval(freq_ht.age_distributions))
 
         # Create frequency index dictionary on concatenated array (i.e., including all subsets)
+        # NOTE: non-standard downsampling values are created in the frequency script corresponding to population totals, so new_downsampling values must be evaluated and included in the final freq_index_dict
         freq_meta = hl.eval(freq_ht.freq_meta)
         downsamplings = hl.filter(
             lambda x: x.keys().contains("downsampling"), freq_meta
@@ -339,12 +292,8 @@ def main(args):
             freq_index_dict=make_freq_index_dict(freq_ht)
         )
 
-        # TODO: Create age distribution index dictionary (when age hists are available on all subsets)
-
-        # freq_ht = freq_ht.checkpoint("gs://gnomad-tmp/gnomad_freq/chr20_test_freq.full.ht", overwrite=args.overwrite)  # TODO: DELETE
-
         if args.test:
-            freq_ht = freq_ht.checkpoint(test_freq_ht_path)
+            freq_ht = freq_ht.checkpoint(test_freq_ht_path_concat)
 
         global_freq_ht = hl.read_table(get_freq().path)
 
@@ -368,47 +317,18 @@ def main(args):
         **global_freq_ht.index_globals().select(*global_fields)
     )
 
-    ht = prepare_annotations(
-        freq_ht, args.model_id, pcsk9=False
-    )  # TODO: change test to PCSK9
-
-    ht = ht.annotate_globals(
-        faf_index_dict=make_faf_index_dict(ht)
-    )  # TODO: remove after adjusting code to work on freq
-
-    # Annotate age data -- TODO: delete from final commit; only needed as temporary patch for v3.1 production; add globals age hist calculation to freq script
-    # Should be included in future freq code
-    logger.info("Annotating age hist data...")
-    meta_ht = meta.ht()
-    meta_ht = meta_ht.filter(meta_ht.release)
-    age_hist_data = meta_ht.aggregate(
-        hl.agg.hist(
-            hl.if_else(
-                hl.is_defined(meta_ht.project_meta.age),
-                meta_ht.project_meta.age,
-                meta_ht.project_meta.age_alt,
-            ),
-            30,
-            80,
-            10,
-        )
-    )
-    ht = ht.annotate_globals(age_distribution=age_hist_data)
-
-    age_ht = hl.read_table(
-        "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1/gnomad_genomes_v3.1.age_data.ht"
-    )
-    ht = ht.annotate(**age_ht[ht.key])
+    logger.info("Preparing release Table annotations...")
+    ht = prepare_annotations(freq_ht, args.model_id, test=False)
 
     logger.info("Removing chrM and sites without filter...")
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(~hl.is_missing(ht.filters))
 
     # Add in new annotations for clinical variant interpretation
-    analyst_ht = hl.read_table(
+    in_silico_ht = hl.read_table(
         "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1/gnomad_genomes_v3.1.analyst_annotations.ht"
-    )  # TODO: update path
-    ht = ht.annotate(**analyst_ht[ht.key])
+    )  # TODO: update path with versioned Table resource path when available
+    ht = ht.annotate(**in_silico_ht[ht.key])
 
     # Splice in fix to set female metrics to NA on Y chr
     female_idx = [
@@ -416,8 +336,8 @@ def main(args):
         for x in hl.eval(ht.freq_index_dict)
         if "XX" in x
     ]
-    r = hl.eval(hl.len(hl.eval(ht.freq_meta)))
-    y_struct = hl.struct(
+    freq_idx_range = hl.eval(hl.range(hl.eval(hl.len(hl.eval(ht.freq_meta)))))
+    null_y_struct = hl.struct(
         AC=hl.null(hl.tint32),
         AF=hl.null(hl.tfloat64),
         AN=hl.null(hl.tint32),
@@ -428,9 +348,9 @@ def main(args):
             (ht.locus.in_y_nonpar() | ht.locus.in_y_par()),
             hl.map(
                 lambda x: hl.if_else(
-                    hl.array(female_idx).contains(x), y_struct, ht.freq[x]
+                    hl.array(female_idx).contains(x), null_y_struct, ht.freq[x]
                 ),
-                r,
+                freq_idx_range,
             ),
             ht.freq,
         )
@@ -439,9 +359,9 @@ def main(args):
     ht = ht.checkpoint(
         "gs://gnomad-tmp/release/v3.1/gnomad.genomes.v3.1.sites.ht"
         if args.test
-        else "gs://gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht",
+        else release_ht_path(public=False),
         args.overwrite,
-    )  # release_ht_path(public=False)
+    )
     logger.info(f"Final variant count: {ht.count()}")
     ht.describe()
     ht.show()
@@ -460,7 +380,6 @@ if __name__ == "__main__":
         help="Filtering model ID to use",
         default="vqsr_alleleSpecificTrans",
     )
-
     parser.add_argument(
         "--n_partitions",
         help="Number of desired partitions for output Tables",
