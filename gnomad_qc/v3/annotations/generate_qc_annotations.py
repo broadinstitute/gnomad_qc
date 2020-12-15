@@ -104,7 +104,7 @@ def compute_info() -> hl.Table:
         AS_pab_max=hl.agg.array_agg(
             lambda ai: hl.agg.filter(
                 mt.LA.contains(ai) & mt.LGT.is_het(),
-                hl.agg.max(hl.binom_test(mt.LAD[1], hl.sum(mt.LAD), 0.5, "two-sided")),
+                hl.agg.max(hl.binom_test(mt.LAD[mt.LA.index(ai)], hl.sum(mt.LAD), 0.5, "two-sided")),
             ),
             mt.alt_alleles_range_array,
         )
