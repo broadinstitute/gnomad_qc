@@ -25,7 +25,7 @@ logger.setLevel(logging.INFO)
 INBREEDING_COEFF_HARD_CUTOFF = -0.3
 
 
-def generate_final_rf_ht(
+def generate_final_filter_ht(
     ht: hl.Table,
     model_name: str,
     score_name: str,
@@ -41,27 +41,27 @@ def generate_final_rf_ht(
     vqsr_ht: hl.Table = None,
 ) -> hl.Table:
     """
-    Prepares finalized RF model given an RF result table from `rf.apply_rf_model` and cutoffs for filtering.
+    Prepares finalized filtering model given a filtering HT from `rf.apply_rf_model` or VQSR and cutoffs for filtering.
 
-    If `determine_cutoff_from_bin` is True, `aggregated_bin_ht` must be supplied to determine the SNP and indel RF
-    probabilities to use as cutoffs from an aggregated quantile bin Table like one created by
+    If `determine_cutoff_from_bin` is True, `aggregated_bin_ht` must be supplied to determine the SNP and indel scores
+    to use as cutoffs from an aggregated quantile bin Table like one created by
     `compute_grouped_binned_ht` in combination with `score_bin_agg`.
 
-    :param ht: RF result table from `rf.apply_rf_model` to prepare as the final RF Table
+    :param ht: Filtering Table from `rf.apply_rf_model` or VQSR to prepare as the final filter Table
     :param ac0_filter_expr: Expression that indicates if a variant should be filtered as allele count 0 (AC0)
     :param ts_ac_filter_expr: Expression in `ht` that indicates if a variant is a transmitted singleton
     :param mono_allelic_flag_expr: Expression indicating if a variant is mono-allelic
-    :param snp_cutoff: RF probability or bin (if `determine_cutoff_from_bin` True) to use for SNP variant QC filter
-    :param indel_cutoff: RF probability or bin (if `determine_cutoff_from_bin` True) to use for indel variant QC filter
+    :param snp_cutoff: Score cutoff or bin (if `determine_cutoff_from_bin` True) to use for SNP variant QC filter
+    :param indel_cutoff: Score cutoff or bin (if `determine_cutoff_from_bin` True) to use for indel variant QC filter
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter to use for variants
-    :param determine_cutoff_from_bin: If True RF probability will be determined using bin info in `aggregated_bin_ht`
+    :param determine_cutoff_from_bin: If True score cutoff will be determined using bin info in `aggregated_bin_ht`
     :param aggregated_bin_ht: File with aggregate counts of variants based on quantile bins
     :param bin_id: Name of bin to use in 'bin_id' column of `aggregated_bin_ht` to use to determine probability cutoff
     :return: Finalized random forest Table annotated with variant filters
     """
-    # Determine SNP and indel RF cutoffs if given bin instead of RF probability
+    # Determine SNP and indel score cutoffs if given bin instead of score
     if determine_cutoff_from_bin:
-        snp_rf_cutoff, indel_rf_cutoff = aggregated_bin_ht.aggregate(
+        snp_score_cutoff, indel_score_cutoff = aggregated_bin_ht.aggregate(
             [
                 hl.agg.filter(
                     snv
@@ -75,17 +75,17 @@ def generate_final_rf_ht(
                 ]
             ]
         )
-        snp_cutoff_global = hl.struct(bin=snp_cutoff, min_score=snp_rf_cutoff)
-        indel_cutoff_global = hl.struct(bin=indel_cutoff, min_score=indel_rf_cutoff)
+        snp_cutoff_global = hl.struct(bin=snp_cutoff, min_score=snp_score_cutoff)
+        indel_cutoff_global = hl.struct(bin=indel_cutoff, min_score=indel_score_cutoff)
 
         logger.info(
-            f"Using a SNP RF probability cutoff of {snp_rf_cutoff} and an indel RF probability cutoff of {indel_rf_cutoff}."
+            f"Using a SNP score cutoff of {snp_score_cutoff} and an indel score cutoff of {indel_score_cutoff}."
         )
     else:
         snp_cutoff_global = hl.struct(min_score=snp_cutoff)
         indel_cutoff_global = hl.struct(min_score=indel_cutoff)
 
-    # Add filters to RF HT
+    # Add filters to HT
     filters = dict()
 
     if "VQSR" in model_name:
@@ -188,11 +188,11 @@ def main(args):
     aggregated_bin_path = get_score_quantile_bins(args.model_id, aggregated=True).path
     if not file_exists(aggregated_bin_path):
         sys.exit(
-            f"Could not find binned HT for RF  run {args.model_id} ({aggregated_bin_path}). Please run create_ranked_scores.py for that hash."
+            f"Could not find binned HT for model: {args.model_id} ({aggregated_bin_path}). Please run create_ranked_scores.py for that hash."
         )
     aggregated_bin_ht = get_score_quantile_bins(args.model_id, aggregated=True).ht()
 
-    ht = generate_final_rf_ht(
+    ht = generate_final_filter_ht(
         ht,
         args.model_name,
         args.score_name,
@@ -271,7 +271,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--filter_centromere_telomere",
-        help="Train RF without centromeres and telomeres.",
+        help="Filter centromeres and telomeres from final filter Table.",
         action="store_true",
     )
     args = parser.parse_args()
