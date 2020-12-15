@@ -8,8 +8,6 @@ from gnomad.resources.resource_utils import (MatrixTableResource,
                                              VersionedTableResource)
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
-VARIANT_QC_ROOT = 'gs://gnomad/variant_qc/genomes_v3.1'
-
 SYNDIP = "CHMI_CHMI3_WGS2"
 """
 String representation for syndip truth sample
@@ -103,15 +101,27 @@ def get_transmitted_singleton_vcf_path(confidence: str) -> str:
 
 
 def get_score_quantile_bins(model_id: str, aggregated: bool) -> TableResource:
-    return TableResource('{}/{}.{}.ht'.format(
-        VARIANT_QC_ROOT,
-        model_id,
-        'binned' if aggregated else 'rank'
-    ))
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            release: TableResource(
+                f"{get_variant_qc_root(release)}/score_quantile_bins/{model_id}_{'binned' if aggregated else 'rank'}.ht"
+            )
+            for release in RELEASES
+        }
+    )
 
 
 def get_binned_concordance(model_id: str, truth_sample: str) -> TableResource:
-    return TableResource(f'{VARIANT_QC_ROOT}/models/{model_id}/{truth_sample}_{model_id}_binned_concordance.ht')
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            release: TableResource(
+                f"{get_variant_qc_root(release)}/binned_concordance/{truth_sample}_{model_id}_binned_concordance.ht"
+            )
+            for release in RELEASES
+        }
+    )
 
 
 def get_rf_annotated(adj: bool = False) -> TableResource:
@@ -121,28 +131,27 @@ def get_rf_annotated(adj: bool = False) -> TableResource:
     :param bool adj: Whether to load 'adj' or 'raw'
     :return: Table with RF annotations
     """
-    return TableResource(f'{VARIANT_QC_ROOT}/annotated_rf{".adj" if adj else ""}.ht')
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            release: TableResource(
+                f"{get_variant_qc_root(release)}/rf/annotated_rf{'.adj' if adj else ''}.ht"
+            )
+            for release in RELEASES
+        }
+    )
 
 
-def rf_run_path():
+def rf_run_path(release: str = CURRENT_RELEASE):
     """
     Returns the path to the json file containing the RF runs list.
 
+    :param release: Release RF path to return
     :return: Path to json file
     :rtype: str
     """
 
-    return f"{VARIANT_QC_ROOT}/rf_runs.json"
-
-
-def get_final_rf():
-    """
-
-    :return:
-    :rtype: str
-    """
-
-    return TableResource(f"{VARIANT_QC_ROOT}/rf_final.ht")
+    return f"{get_variant_qc_root(release)}/rf/rf_runs.json"
 
 
 def get_rf(
@@ -163,9 +172,17 @@ def get_rf(
     """
 
     if data == "model":
-        return f"{VARIANT_QC_ROOT}/models/{model_id}/{data}.model"
+        return f"{get_variant_qc_root(release)}/models/{model_id}/{data}.model"
     else:
-        return TableResource(f"{VARIANT_QC_ROOT}/models/{model_id}/{data}.ht")
+        return VersionedTableResource(
+            CURRENT_RELEASE,
+            {
+                release: TableResource(
+                    f"{get_variant_qc_root(release)}/rf/models/{model_id}/{data}.ht"
+                )
+                for release in RELEASES
+            }
+        )
 
 
 def get_checkpoint_path(name: str = None, mt: bool = False) -> str:
