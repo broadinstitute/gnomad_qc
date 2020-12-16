@@ -53,7 +53,6 @@ FEATURES = [
     "variant_type",
     "allele_type",
     "n_alt_alleles",
-    "was_mixed",
     "AS_QD",
     "AS_pab_max",
     "AS_MQRankSum",
@@ -80,7 +79,6 @@ def create_rf_ht(
             - variant_type
             - allele_type
             - n_alt_alleles
-            - was_mixed
             - has_star
             - AS_QD
             - AS_pab_max
