@@ -75,7 +75,7 @@ def info_vcf_path(version: str = CURRENT_RELEASE) -> str:
 
 def get_transmitted_singleton_vcf_path(confidence: str = 'raw', version: str = CURRENT_RELEASE) -> str:
     """
-    Provides ttthe path to the transmitted singleton VCF used as input to VQSR
+    Provides the path to the transmitted singleton VCF used as input to VQSR
 
     :param confidence: Whether to load 'adj' or 'raw'
     :param version: Version of transmitted singleton VCF path to return
