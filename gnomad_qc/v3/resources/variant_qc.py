@@ -87,11 +87,15 @@ def get_callset_truth_data(truth_sample: str, mt: bool = True) -> Union[MatrixTa
         )
 
 
-def get_transmitted_singleton_vcf_path(confidence: str, release: str = CURRENT_RELEASE) -> str:
-    return f'{get_variant_qc_root(release)}/transmitted_singletons_{confidence}.vcf.bgz'
-
-
 def get_score_quantile_bins(model_id: str, aggregated: bool) -> TableResource:
+    """
+    Returns the path to a Table containing RF or VQSR scores and annotated with a bin based on quantiles of the metric scores.
+
+    :param model_id: The score data (RF or VQSR model ID) to return
+    :param bool aggregated: Whether to get the aggregated data.
+         If True, will return the path to Table grouped by quantile bin that contains aggregated variant counts per bin.
+    :return: Path to desired hail Table
+    """
     return VersionedTableResource(
         CURRENT_RELEASE,
         {
@@ -104,6 +108,14 @@ def get_score_quantile_bins(model_id: str, aggregated: bool) -> TableResource:
 
 
 def get_binned_concordance(model_id: str, truth_sample: str) -> TableResource:
+    """
+    Returns the path to a truth sample concordance Table (containing TP, FP, FN) between a truth sample within the
+    callset and the samples truth data grouped by quantile bins of a metric (RF or VQSR scores)
+
+    :param model_id: The score data (RF or VQSR model ID) to return
+    :param truth_sample: Which truth sample concordance to analyze (e.g., "NA12878" or "syndip")
+    :return: Path to binned truth data concordance Hail Table
+    """
     return VersionedTableResource(
         CURRENT_RELEASE,
         {
