@@ -30,6 +30,7 @@ from gnomad_qc.v3.resources import (
     get_rf_result,
     get_rf_annotated,
     qc_ac,
+    release_ht_path,
     rf_run_path,
 )
 from gnomad_qc.slack_creds import slack_token
@@ -123,7 +124,7 @@ def create_rf_ht(
        "lowqual", "AS_lowqual", "FS", "MQ", "QD", *INFO_FEATURES
     )
 
-    inbreeding_ht = hl.read_table('gs://gnomad/release/3.0/ht/gnomad.genomes.r3.0.nested.no_subsets.sites.ht/') # TODO: change path to resources
+    inbreeding_ht = hl.read_table(release_ht_path(public=False))
     inbreeding_ht = inbreeding_ht.annotate(
         InbreedingCoeff=hl.or_missing(
             ~hl.is_nan(inbreeding_ht.InbreedingCoeff), inbreeding_ht.InbreedingCoeff
