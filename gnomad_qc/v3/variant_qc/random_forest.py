@@ -25,7 +25,9 @@ from gnomad_qc.v3.resources import (
     get_checkpoint_path,
     get_filters,
     get_info,
-    get_rf,
+    get_rf_model_path,
+    get_rf_training,
+    get_rf_result,
     get_rf_annotated,
     qc_ac,
     rf_run_path,
@@ -263,7 +265,7 @@ def main(args):
 
         ht, rf_model = train_rf(get_rf_annotated(args.adj).ht(), args)
         ht = ht.checkpoint(
-            get_rf(data="training", model_id=model_id).path, overwrite=args.overwrite,
+            get_rf_training(model_id=model_id).path, overwrite=args.overwrite,
         )
 
         logger.info("Adding run to RF run list")
@@ -284,7 +286,7 @@ def main(args):
 
         logger.info("Saving RF model")
         save_model(
-            rf_model, get_rf(data="model", model_id=model_id), overwrite=args.overwrite,
+            rf_model, get_rf_model_path(model_id=model_id), overwrite=args.overwrite,
         )
 
     else:
@@ -292,15 +294,15 @@ def main(args):
 
     if args.apply_rf:
         logger.info(f"Applying RF model {model_id}...")
-        rf_model = load_model(get_rf(data="model", model_id=model_id))
-        ht = get_rf(data="training", model_id=model_id).ht()
+        rf_model = load_model(get_rf_model_path(model_id=model_id))
+        ht = get_rf_training(model_id=model_id).ht()
         features = hl.eval(ht.features)
         ht = apply_rf_model(ht, rf_model, features, label=LABEL_COL)
 
         logger.info("Finished applying RF model")
         ht = ht.annotate_globals(rf_model_id=model_id)
         ht = ht.checkpoint(
-            get_rf("rf_result", model_id=model_id).path, overwrite=args.overwrite,
+            get_rf_result(model_id=model_id).path, overwrite=args.overwrite,
         )
 
         ht_summary = ht.group_by(

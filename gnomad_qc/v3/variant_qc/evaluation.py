@@ -23,10 +23,9 @@ from gnomad_qc.v3.resources import (
     get_filters,
     get_gnomad_v3_mt,
     get_info,
-    get_rf,
+    get_rf_result,
     get_rf_annotated,
     get_score_quantile_bins,
-    get_truth_sample_data,
     TRUTH_SAMPLES,
 )
 from gnomad_qc.slack_creds import slack_token
@@ -68,7 +67,7 @@ def create_quantile_bin_ht(
         )
 
     else:
-        ht = get_rf("rf_result", model_id=model_id).ht()
+        ht = get_rf_result(model_id=model_id).ht()
         ht = ht.annotate(
             info=info_ht[ht.key].info,
             positive_train_site=ht.tp,
@@ -190,7 +189,7 @@ def main(args):
 
         for truth_sample in TRUTH_SAMPLES:
             truth_sample_mt = mt.filter_cols(
-                mt.s == get_truth_sample_data(truth_sample, "s")
+                mt.s == TRUTH_SAMPLES[truth_sample]["s"]
             )
             # Filter to variants in truth data
             truth_sample_mt = truth_sample_mt.filter_rows(
@@ -208,10 +207,10 @@ def main(args):
 
             # Load truth data
             mt = get_callset_truth_data(truth_sample).mt()
-            truth_hc_intervals = get_truth_sample_data(truth_sample, "hc_intervals").ht()
-            truth_mt = get_truth_sample_data(truth_sample, "truth_mt").mt()
+            truth_hc_intervals = TRUTH_SAMPLES[truth_sample]["hc_intervals"].ht()
+            truth_mt = TRUTH_SAMPLES[truth_sample]["truth_mt"].mt()
             truth_mt = truth_mt.key_cols_by(
-                s=hl.str(get_truth_sample_data(truth_sample, "s"))
+                s=hl.str(TRUTH_SAMPLES[truth_sample]["s"])
             )
 
             # remove low quality sites
