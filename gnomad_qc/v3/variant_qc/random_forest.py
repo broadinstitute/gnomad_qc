@@ -2,7 +2,7 @@ import argparse
 import json
 import logging
 import sys
-from typing import Optional
+from typing import List, Optional, Union
 import uuid
 
 import hail as hl
@@ -182,14 +182,42 @@ def create_rf_ht(
     return ht
 
 
-def train_rf(ht, args):
+def train_rf(
+    ht: hl.Table,
+    fp_to_tp: float = 1.0,
+    num_trees: int = 500,
+    max_depth: int = 5,
+    no_transmitted_singletons: bool = False,
+    no_inbreeding_coeff: bool = False,
+    vqsr_training: bool = False,
+    vqsr_type: str = False,
+    filter_centromere_telomere: bool = False,
+    test_intervals: Union[str, List[str]] = "chr20",
+):
+    """
+    Train random forest model using `train_rf_model`
+
+    :param ht: Table containing annotations needed for RF training, built with `create_rf_ht`
+    :param fp_to_tp: Ratio of FPs to TPs for creating the RF model. If set to 0, all training examples are used.
+    :param num_trees: Number of trees in the RF model.
+    :param max_depth: Maxmimum tree depth in the RF model.
+    :param no_transmitted_singletons: Do not use transmitted singletons for training.
+    :param no_inbreeding_coeff: Do not use inbreeding coefficient as a feature for training.
+    :param vqsr_training: Use VQSR training sites to train the RF.
+    :param vqsr_type: VQSR model to use for vqsr_training. `vqsr_training` must be True for this parameter to be used.
+    :param filter_centromere_telomere: Filter centromeres and telomeres before training.
+    :param test_intervals: Specified interval(s) will be held out for testing and evaluation only. (default to "chr20")
+    :return: `ht` annotated with training information and the RF model
+    """
     features = FEATURES
-    test_intervals = args.test_intervals
-    if args.no_inbreeding_coeff:
+    test_intervals = test_intervals
+    if no_inbreeding_coeff:
+        logger.info("Removing InbreedingCoeff from list of features...")
         features.remove("InbreedingCoeff")
 
-    if args.vqsr_training:
-        vqsr_ht = get_filters(f"vqsr_{args.vqsr_type}", split=True).ht()
+    if vqsr_training:
+        logger.info("Using VQSR training sites for RF training...")
+        vqsr_ht = get_filters(f"vqsr_{vqsr_type}", split=True).ht()
         ht = ht.annotate(
             vqsr_POSITIVE_TRAIN_SITE=vqsr_ht[ht.key].info.POSITIVE_TRAIN_SITE,
             vqsr_NEGATIVE_TRAIN_SITE=vqsr_ht[ht.key].info.NEGATIVE_TRAIN_SITE,
@@ -199,7 +227,7 @@ def train_rf(ht, args):
     else:
         fp_expr = ht.fail_hard_filters
         tp_expr = ht.omni | ht.mills
-        if not args.no_transmitted_singletons:
+        if not no_transmitted_singletons:
             tp_expr = tp_expr | ht.transmitted_singleton
 
     if test_intervals:
@@ -212,7 +240,8 @@ def train_rf(ht, args):
 
     ht = ht.annotate(tp=tp_expr, fp=fp_expr)
 
-    if args.filter_centromere_telomere:
+    if filter_centromere_telomere:
+        logger.info("Filtering centromeres and telomeres from HT...")
         rf_ht = ht.filter(~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]))
     else:
         rf_ht = ht
@@ -222,9 +251,9 @@ def train_rf(ht, args):
         rf_features=features,
         tp_expr=rf_ht.tp,
         fp_expr=rf_ht.fp,
-        fp_to_tp=args.fp_to_tp,
-        num_trees=args.num_trees,
-        max_depth=args.max_depth,
+        fp_to_tp=fp_to_tp,
+        num_trees=num_trees,
+        max_depth=max_depth,
         test_expr=hl.literal(test_intervals).any(
             lambda interval: interval.contains(rf_ht.locus)
         ),
@@ -261,7 +290,19 @@ def main(args):
         while model_id in rf_runs:
             model_id = f"rf_{str(uuid.uuid4())[:8]}"
 
-        ht, rf_model = train_rf(get_rf_annotated(args.adj).ht(), args)
+        ht, rf_model = train_rf(
+            get_rf_annotated(args.adj).ht(),
+            fp_to_tp=args.fp_to_tp,
+            num_trees=args.num_trees,
+            max_depth=args.max_depth,
+            no_transmitted_singletons=args.no_transmitted_singletons,
+            no_inbreeding_coeff=args.no_inbreeding_coeff,
+            vqsr_training=args.vqsr_training,
+            vqsr_type=args.vqsr_type,
+            filter_centromere_telomere=args.filter_centromere_telomere,
+            test_intervals=args.test_intervals,
+        )
+
         ht = ht.checkpoint(
             get_rf_training(model_id=model_id).path, overwrite=args.overwrite,
         )
