@@ -4,6 +4,7 @@ from gnomad.resources.grch38.gnomad import (
     DOWNSAMPLINGS,
     POPS,
     POPS_TO_REMOVE_FOR_POPMAX,
+    SEXES
 )
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (

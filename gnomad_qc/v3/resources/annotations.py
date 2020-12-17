@@ -1,7 +1,8 @@
 from typing import Optional
 
 from gnomad.resources.resource_utils import (TableResource,
-                                             VersionedTableResource)
+                                             VersionedTableResource,
+                                             DataException)
 
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
