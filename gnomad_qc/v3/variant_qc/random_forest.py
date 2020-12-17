@@ -103,22 +103,8 @@ def create_rf_ht(
     """
 
     group = 'adj' if adj else 'raw'
-    def calc_SOR(SB):
-        refFw = hl.float64(SB[0] + 1)
-        refRv = hl.float64(SB[1] + 1)
-        altFw = hl.float64(SB[2] + 1)
-        altRv = hl.float64(SB[3] + 1)
-        symmetricalRatio = ((refFw * altRv) / (altFw * refRv)) + ((altFw * refRv) / (refFw * altRv))
-        refRatio = hl.min(refRv, refFw) / hl.max(refRv, refFw)
-        altRatio = hl.min(altFw, altRv) / hl.max(altFw, altRv)
-        SOR = (hl.log(symmetricalRatio) + hl.log(refRatio) - hl.log(altRatio))
-
-        return SOR
 
     ht = get_info(split=True).ht()
-    ht = ht.annotate(info=ht.info.annotate(AS_SOR=calc_SOR(ht.info.AS_SB_TABLE)))
-
-    # TODO: We need to add SOR annotation calculation to info_ht calculation and possibly a new info_ht with bad quality samples removed?
     ht = ht.transmute(**ht.info)
     ht = ht.select(
        "lowqual", "AS_lowqual", "FS", "MQ", "QD", *INFO_FEATURES
