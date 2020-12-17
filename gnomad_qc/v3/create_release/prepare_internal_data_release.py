@@ -321,7 +321,7 @@ def main(args):
 
     logger.info("Removing chrM and sites without filter...")
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
-    ht = ht.filter(~(hl.is_missing(ht.filters)))
+    ht = ht.filter(hl.is_defined(ht.filters), keep=True)
 
     # Add in new annotations for clinical variant interpretation
     in_silico_ht = hl.read_table(
