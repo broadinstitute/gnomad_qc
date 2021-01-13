@@ -155,6 +155,7 @@ def generate_allele_data(ht: hl.Table) -> hl.Table:
     """
     Returns bi-allelic sites HT with the following annotations:
      - allele_data (nonsplit_alleles, has_star, variant_type, and n_alt_alleles)
+
     :param Table ht: Full unsplit HT
     :return: Table with allele data annotations
     :rtype: Table
@@ -185,6 +186,17 @@ def generate_allele_data(ht: hl.Table) -> hl.Table:
 def generate_ac(mt: hl.MatrixTable) -> hl.Table:
     """
     Creates Table with QC samples, QC samples removing children and release samples raw and adj ACs.
+
+    Returned table contains the following annotations:
+        - `ac_qc_samples_raw`: Allele count of high quality samples
+        - `ac_qc_samples_unrelated_raw`: Allele count of high quality unrelated samples
+        - `ac_release_samples_raw`: Allele count of release samples
+        - `ac_qc_samples_adj`: Allele count of high quality samples after adj filtering
+        - `ac_qc_samples_unrelated_adj`: Allele count of high quality unrelated samples after adj filtering
+        - `ac_release_samples_adj`: Allele count of release samples after adj filtering
+
+    :param mt: Input MatrixTable
+    :return: Table containing allele counts
     """
     mt = mt.filter_cols(mt.meta.high_quality)
     mt = mt.filter_rows(hl.len(mt.alleles) > 1)
@@ -204,6 +216,13 @@ def generate_fam_stats(
         mt: hl.MatrixTable,
         fam_file: str
 ) -> hl.Table:
+    """
+    Calculate transmission and de novo mutation statistics using trios in the dataset
+
+    :param mt: Input MatrixTable
+    :param fam_file: path to text file containing trio pedigree
+    :return: Table containing trio stats
+    """
     # Load Pedigree data and filter MT to samples present in any of the trios
     ped = hl.Pedigree.read(fam_file, delimiter="\t")
     fam_ht = hl.import_fam(fam_file, delimiter="\t")
@@ -245,6 +264,11 @@ def generate_fam_stats(
 
 
 def export_transmitted_singletons_vcf():
+    """
+    Exports the transmitted singleton Table to a VCF
+
+    :return: None
+    """
     qc_ac_ht = qc_ac.ht()
 
     for transmission_confidence in ['raw', 'adj']:
