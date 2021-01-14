@@ -16,7 +16,7 @@ logger.setLevel(logging.INFO)
 
 def import_vqsr(
     vqsr_path: str,
-    vqsr_type: str = "AS",
+    vqsr_type: str = "alleleSpecificTrans",
     num_partitions: int = 5000,
     overwrite: bool = False,
     import_header_path: Optional[str] = None,
@@ -24,7 +24,8 @@ def import_vqsr(
     """
     Imports vqsr site vcf into a HT
     :param vqsr_path: Path to input vqsr site vcf. This can be specified as Hadoop glob patterns
-    :param vqsr_type: One of `AS` (allele specific) or `AS_TS` (allele specific with transmitted singletons)
+    :param vqsr_type: One of `classic`, `alleleSpecific` (allele specific) or `alleleSpecificTrans`
+        (allele specific with transmitted singletons)
     :param num_partitions: Number of partitions to use for the VQSR HT
     :param overwrite: Whether to overwrite imported VQSR HT
     :param import_header_path: Optional path to a header file to use for import
