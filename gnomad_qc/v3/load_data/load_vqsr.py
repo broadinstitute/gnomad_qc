@@ -91,10 +91,10 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vqsr_vcf_path", help="Path to VQSR VCF")
+    parser.add_argument("--vqsr_vcf_path", help="Path to VQSR VCF. Can be specified as Hadoop glob patterns")
     parser.add_argument(
         "--vqsr_type",
-        help="Path to VQSR VCF. Can be specified as Hadoop glob patterns",
+        help="Type of VQSR corresponding to the VQSR VCF being loaded",
         default="alleleSpecificTrans",
         choices=["classic", "alleleSpecific", "alleleSpecificTrans"],
     )
