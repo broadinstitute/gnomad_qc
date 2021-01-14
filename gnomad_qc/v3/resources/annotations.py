@@ -146,7 +146,7 @@ analyst_annotations = VersionedTableResource(
     CURRENT_RELEASE,
     {
         release: TableResource(
-            f"{_annotations_root(release)}/gnomad_genomes_v{release}_analyst_annotations.ht"
+            f"{_annotations_root(release)}/gnomad_genomes_v{release}_in_silico_predictors.ht"
         )
         for release in RELEASES
         if release != "3.0"
