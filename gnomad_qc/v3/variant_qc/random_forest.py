@@ -19,18 +19,20 @@ from gnomad.variant_qc.random_forest import (
     pretty_print_runs,
     save_model,
 )
-from gnomad_qc.v3.resources import (
+from gnomad_qc.v3.resources.annotations import (
     allele_data,
     fam_stats,
-    get_checkpoint_path,
     get_filters,
+    get_freq,
     get_info,
+    qc_ac,
+)
+from gnomad_qc.v3.resources.variant_qc import (
+    get_checkpoint_path,
     get_rf_model_path,
     get_rf_training,
     get_rf_result,
     get_rf_annotated,
-    qc_ac,
-    release_ht_path,
     rf_run_path,
 )
 from gnomad_qc.slack_creds import slack_token
@@ -110,10 +112,12 @@ def create_rf_ht(
        "lowqual", "AS_lowqual", "FS", "MQ", "QD", *INFO_FEATURES
     )
 
-    inbreeding_ht = hl.read_table(release_ht_path(public=False))
-    inbreeding_ht = inbreeding_ht.annotate(
-        InbreedingCoeff=hl.or_missing(
-            ~hl.is_nan(inbreeding_ht.InbreedingCoeff), inbreeding_ht.InbreedingCoeff
+    inbreeding_ht = get_freq.ht()
+    inbreeding_ht = inbreeding_ht.select(
+        InbreedingCoeff=hl.if_else(
+            hl.is_nan(inbreeding_ht.InbreedingCoeff),
+            hl.null(hl.tfloat32),
+            inbreeding_ht.InbreedingCoeff,
         )
     )
     trio_stats_ht = fam_stats.ht()
