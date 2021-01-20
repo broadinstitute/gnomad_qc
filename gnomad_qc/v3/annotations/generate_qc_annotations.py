@@ -3,16 +3,16 @@ import argparse
 from gnomad.sample_qc.relatedness import generate_trio_stats_expr
 from gnomad.utils.annotations import annotate_adj
 from gnomad.utils.filtering import filter_to_autosomes
-from gnomad.utils.slack import try_slack
+from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import *
 from gnomad.utils.vcf import ht_to_vcf_mt
 from gnomad.utils.vep import vep_or_lookup_vep
-
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import (fam_stats, get_info,
                                                 info_vcf_path, qc_ac, vep)
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import trios
-from gnomad_qc.v3.resources.variant_qc import get_transmitted_singleton_vcf_path
+from gnomad_qc.v3.resources.annotations import get_transmitted_singleton_vcf_path
 
 
 def compute_info() -> hl.Table:
@@ -272,6 +272,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)

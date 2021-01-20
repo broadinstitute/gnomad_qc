@@ -111,5 +111,3 @@ ped_mendel_errors = VersionedTableResource(
         for release in RELEASES
     },
 )
-
-ped_mendel_errors = TableResource(f'{META_ROOT}/gnomad_v3_ped_chr20_mendel_errors.ht')

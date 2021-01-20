@@ -227,7 +227,7 @@ def main(args):
     if args.bin_truth_sample_concordance:
         for truth_sample in TRUTH_SAMPLES:
             logger.info(
-                f"Creating binned concordance table for {truth_sample} for metric {model_id}"
+                f"Creating binned concordance table for {truth_sample} for metric {args.model_id}"
             )
             ht = get_callset_truth_data(truth_sample, mt=False).ht()
 
