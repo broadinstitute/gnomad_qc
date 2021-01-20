@@ -8,7 +8,6 @@ import hail as hl
 
 from gnomad.resources.grch38 import (
     clinvar,
-    clinvar_pathogenic,
     lcr_intervals,
     purcell_5k_intervals,
     telomeres_and_centromeres
@@ -33,7 +32,11 @@ from gnomad.sample_qc.relatedness import (
 )
 from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
 from gnomad.utils.annotations import bi_allelic_expr, get_adj_expr
-from gnomad.utils.filtering import add_filters_expr, filter_to_autosomes
+from gnomad.utils.filtering import (
+    add_filters_expr,
+    filter_to_autosomes,
+    filter_to_clinvar_pathogenic,
+)
 from gnomad.utils.sparse_mt import densify_sites
 
 from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
@@ -971,10 +974,11 @@ def main(args):
             key_by_locus_and_alleles=True,
             remove_hard_filtered_samples=True
         )
-        clinvar_struct = clinvar.ht()[mt.row_key]
+        clinvar_ht = clinvar.ht()
+        clinvar_struct = clinvar_ht[mt.row_key]
         mt = mt.filter_rows(hl.is_defined(clinvar_struct))
         mt = mt.checkpoint("gs://gnomad-tmp/clinvar_variants.mt", overwrite=True)
-        clinvar_path_struct = clinvar_pathogenic.ht()[mt.row_key]
+        clinvar_path_struct = filter_to_clinvar_pathogenic(clinvar_ht)[mt.row_key]
         mt = mt.annotate_rows(clinvar_path=hl.is_defined(clinvar_path_struct))
         clinvar_sample_ht = mt.annotate_cols(
             n_clinvar=hl.agg.count_where(mt.GT.is_non_ref()),
