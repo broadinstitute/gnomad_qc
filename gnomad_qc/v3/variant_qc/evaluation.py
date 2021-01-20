@@ -4,17 +4,15 @@ from pprint import pformat
 
 import hail as hl
 
-from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
-from gnomad.resources.grch38.reference_data import clinvar_pathogenic
+from gnomad.resources.grch38.reference_data import clinvar, telomeres_and_centromeres
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.filtering import filter_low_conf_regions
+from gnomad.utils.filtering import filter_low_conf_regions, filter_to_clinvar_pathogenic
 from gnomad.variant_qc.evaluation import (
     compute_binned_truth_sample_concordance,
     compute_grouped_binned_ht,
     create_truth_sample_ht,
 )
 from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg
-
 from gnomad_qc.v3.resources import (
     fam_stats,
     get_binned_concordance,
@@ -122,7 +120,8 @@ def create_grouped_bin_ht(model_id: str, overwrite: bool = False) -> None:
     ht = ht.annotate_globals(bin_variant_counts=bin_variant_counts)
 
     # Load ClinVar pathogenic data
-    ht = ht.annotate(clinvar_path=hl.is_defined(clinvar_pathogenic.ht()[ht.key]))
+    clinvar_pathogenic_ht = filter_to_clinvar_pathogenic(clinvar.ht())
+    ht = ht.annotate(clinvar_path=hl.is_defined(clinvar_pathogenic_ht[ht.key]))
     trio_stats_ht = fam_stats.ht()
 
     logger.info(f"Creating grouped bin table...")
