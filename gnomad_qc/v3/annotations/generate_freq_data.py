@@ -60,7 +60,10 @@ def make_faf_index_dict(faf_meta: List[Dict[str, str]]):
 
 def main(args):
     subset = args.subset
-    hl.init(log=f"/generate_frequency_data{'.' + subset if subset else ''}.log", default_reference="GRCh38")
+    hl.init(
+        log=f"/generate_frequency_data{'.' + subset if subset else ''}.log",
+        default_reference="GRCh38",
+    )
 
     try:
         logger.info("Reading full sparse MT and metadata table...")
@@ -195,7 +198,9 @@ def main(args):
                 popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX),
             )
             mt = mt.annotate_globals(faf_meta=faf_meta)
-            mt = mt.annotate_globals(faf_index_dict=make_faf_index_dict(hl.eval(mt.faf_meta)))
+            mt = mt.annotate_globals(
+                faf_index_dict=make_faf_index_dict(hl.eval(mt.faf_meta))
+            )
             mt = mt.annotate_rows(
                 popmax=mt.popmax.annotate(
                     faf95=mt.faf[
@@ -208,7 +213,9 @@ def main(args):
 
             logger.info("Annotating quality metrics histograms...")
             # NOTE: these are performed here as the quality metrics histograms also require densifying
-            mt = mt.annotate_rows(qual_hists=qual_hist_expr(mt.GT, mt.GQ, mt.DP, mt.AD, mt.adj))
+            mt = mt.annotate_rows(
+                qual_hists=qual_hist_expr(mt.GT, mt.GQ, mt.DP, mt.AD, mt.adj)
+            )
             ht = mt.rows()
             ht = ht.annotate(
                 qual_hists=hl.Struct(
