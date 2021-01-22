@@ -1,8 +1,9 @@
 from typing import Optional
 
-from gnomad.resources.resource_utils import (TableResource,
+from gnomad.resources.resource_utils import (DataException,
+                                             TableResource,
                                              VersionedTableResource,
-                                             DataException)
+                                             )
 
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
@@ -157,6 +158,10 @@ analyst_annotations = VersionedTableResource(
 
 def get_freq(version: str = CURRENT_RELEASE, subset: Optional[str] = None) -> VersionedTableResource:
     """
+    Get the frequency annotation table for a specified release.
+
+    :param version: Version of annotation path to return
+    :param subset: One of the official subsets of the specified release (e.g., non_neuro, non_cancer, controls_and_biobanks)
     :return:
     """
     if version == "3" and subset:

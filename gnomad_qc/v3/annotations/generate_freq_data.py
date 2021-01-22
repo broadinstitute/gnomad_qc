@@ -1,33 +1,35 @@
-from gnomad.utils.slack import slack_notifications
+import argparse
+import logging
+from typing import List, Dict, Tuple
+
+import hail as hl
+
 from gnomad.resources.grch38.gnomad import (
-    SUBSETS,
+    COHORTS_WITH_POP_STORED_AS_SUBPOP,
     DOWNSAMPLINGS,
     POPS,
     POPS_TO_REMOVE_FOR_POPMAX,
-    SEXES
+    SEXES,
+    SUBSETS,
 )
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
+    age_hists_expr,
     annotate_freq,
     bi_allelic_site_inbreeding_expr,
     faf_expr,
     get_adj_expr,
     pop_max_expr,
     qual_hist_expr,
-    age_hists_expr,
 )
 from gnomad.utils.file_utils import file_exists
+from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import make_label_combos, index_globals
-
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta
 
-from typing import Tuple
-import argparse
-import logging
-import hail as hl
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,15 +40,15 @@ logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
 
 
-def make_faf_index_dict(ht):
+def make_faf_index_dict(faf_meta: List[Dict[str, str]]):
     """
     Create a look-up Dictionary for entries contained in the filter allele frequency annotation array
-    :param Table ht: Table containing filter allele frequency annotations to be indexed
+
+    :param List of Dict faf_meta: Global annotation containing the set of groupings for each element of the faf array (e.g., [{'group': 'adj'}, {'group': 'adj', 'pop': 'nfe'}])
     :return: Dictionary of faf annotation population groupings, where values are the corresponding 0-based indices for the
         groupings in the faf_meta array
     :rtype: Dict of str: int
     """
-    faf_meta = hl.eval(ht.faf_meta)
 
     index_dict = index_globals(faf_meta, dict(group=["adj"]))
     index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS)))
@@ -58,8 +60,7 @@ def make_faf_index_dict(ht):
 
 def main(args):
     subset = args.subset
-    log_tag = "." + subset if subset else ""
-    hl.init(log=f"/generate_frequency_data{log_tag}.log", default_reference="GRCh38")
+    hl.init(log=f"/generate_frequency_data{'.' + subset if subset else ''}.log", default_reference="GRCh38")
 
     try:
         logger.info("Reading full sparse MT and metadata table...")
@@ -75,7 +76,7 @@ def main(args):
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
         if subset:
-            mt = mt.filter_cols(mt.meta.subsets[subset], keep=True)
+            mt = mt.filter_cols(mt.meta.subsets[subset])
             logger.info(
                 f"Running frequency generation pipeline on {mt.count_cols()} samples in {subset} subset..."
             )
@@ -121,8 +122,9 @@ def main(args):
                 mt,
                 sex_expr=mt.meta.sex_imputation.sex_karyotype,
                 pop_expr=mt.meta.population_inference.pop
-                if subset not in ["tgp", "hgdp"]
+                if subset not in COHORTS_WITH_POP_STORED_AS_SUBPOP
                 else mt.meta.project_meta.project_subpop,
+                # NOTE: TGP and HGDP labeled populations are highly specific and are stored in the project_subpop meta field
             )
 
             # NOTE: no FAFs or popmax needed for subsets
@@ -139,29 +141,27 @@ def main(args):
 
         else:
             logger.info("Computing age histograms for each variant...")
+            mt = mt.annotate_cols(
+                age=hl.if_else(
+                    hl.is_defined(mt.meta.project_meta.age),
+                    mt.meta.project_meta.age,
+                    mt.meta.project_meta.age_alt,
+                    # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples, age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin
+                )
+            )
             mt = mt.annotate_rows(
                 **age_hists_expr(
                     mt.adj,
                     mt.GT,
-                    hl.if_else(
-                        hl.is_defined(mt.meta.project_meta.age),
-                        mt.meta.project_meta.age,
-                        mt.meta.project_meta.age_alt,
-                    ),
+                    mt.age,
                 )
             )
 
             # Compute callset-wide age histogram global
-            meta_ht = meta.ht()
-            meta_ht = meta_ht.filter(meta_ht.release)
             mt = mt.annotate_globals(
-                age_distribution=meta_ht.aggregate(
+                age_distribution=meta_ht.aggregate_cols(
                     hl.agg.hist(
-                        hl.if_else(
-                            hl.is_defined(meta_ht.project_meta.age),
-                            meta_ht.project_meta.age,
-                            meta_ht.project_meta.age_alt,
-                        ),
+                        mt.age,
                         30,
                         80,
                         10,
@@ -176,7 +176,7 @@ def main(args):
                 downsamplings=DOWNSAMPLINGS,
             )
             # Remove all loci with raw AC=0
-            mt = mt.filter_rows(mt.freq[1].AC > 0, keep=True)
+            mt = mt.filter_rows(mt.freq[1].AC > 0)
 
             logger.info("Calculating InbreedingCoefficient...")
             # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify
@@ -184,7 +184,7 @@ def main(args):
                 InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT)
             )
 
-            # Select freq, FAF and popmax
+            logger.info("Computing filtering allele frequencies and popmax...")
             faf, faf_meta = faf_expr(
                 mt.freq, mt.freq_meta, mt.locus, POPS_TO_REMOVE_FOR_POPMAX
             )
@@ -195,7 +195,7 @@ def main(args):
                 popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX),
             )
             mt = mt.annotate_globals(faf_meta=faf_meta)
-            mt = mt.annotate_globals(faf_index_dict=make_faf_index_dict(mt))
+            mt = mt.annotate_globals(faf_index_dict=make_faf_index_dict(hl.eval(mt.faf_meta)))
             mt = mt.annotate_rows(
                 popmax=mt.popmax.annotate(
                     faf95=mt.faf[
@@ -206,20 +206,22 @@ def main(args):
                 )
             )
 
-            # Annotate quality metrics histograms, as these also require densifying
-            mt = mt.annotate_rows(**qual_hist_expr(mt.GT, mt.GQ, mt.DP, mt.AD, mt.adj))
+            logger.info("Annotating quality metrics histograms...")
+            # NOTE: these are performed here as the quality metrics histograms also require densifying
+            mt = mt.annotate_rows(qual_hists=qual_hist_expr(mt.GT, mt.GQ, mt.DP, mt.AD, mt.adj))
             ht = mt.rows()
-
-            qual_hists = [field for field in ht.row_value if "_hist_" in field]
-            adj_hists = [field for field in qual_hists if "_adj" in field]
-            raw_hists = [field for field in qual_hists if "_adj" not in field]
             ht = ht.annotate(
                 qual_hists=hl.Struct(
-                    **{i.replace("_adj", ""): ht[i] for i in adj_hists}
+                    **{
+                        i.replace("_adj", ""): ht.qual_hists[i]
+                        for i in ht.qual_hists
+                        if "_adj" in i
+                    }
                 ),
-                raw_qual_hists=hl.Struct(**{i: ht[i] for i in raw_hists}),
+                raw_qual_hists=hl.Struct(
+                    **{i: ht.qual_hists[i] for i in ht.qual_hists if "_adj" not in i}
+                ),
             )
-            ht = ht.drop(*qual_hists)
 
             logger.info("Writing out frequency data...")
             if args.test:
