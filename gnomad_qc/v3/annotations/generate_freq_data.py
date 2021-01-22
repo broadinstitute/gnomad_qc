@@ -197,9 +197,8 @@ def main(args):
                 faf=faf,
                 popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX),
             )
-            mt = mt.annotate_globals(faf_meta=faf_meta)
-            mt = mt.annotate_globals(
-                faf_index_dict=make_faf_index_dict(hl.eval(mt.faf_meta))
+            mt = mt.annotate_globals(faf_meta=faf_meta,
+                                     faf_index_dict=make_faf_index_dict(faf_meta)
             )
             mt = mt.annotate_rows(
                 popmax=mt.popmax.annotate(
