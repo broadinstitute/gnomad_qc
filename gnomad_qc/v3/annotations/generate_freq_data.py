@@ -162,7 +162,7 @@ def main(args):
 
             # Compute callset-wide age histogram global
             meta_ht = meta.ht().select('release')
-            meta_ht = met_ht.filter(meta_ht.release)
+            meta_ht = meta_ht.filter(meta_ht.release)
             mt = mt.annotate_globals(
                 age_distribution=meta_ht.aggregate_cols(
                     hl.agg.hist(
