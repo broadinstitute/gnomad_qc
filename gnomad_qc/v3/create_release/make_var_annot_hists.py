@@ -77,7 +77,7 @@ def main(args):
     # NOTE: Run this first, then update values in annotation_hists_path JSON as necessary
     if args.determine_bounds:
         logger.info(
-            "Evaluating minimum and maximum values for each metric of interest, and capping maximum value at 1e10"
+            "Evaluating minimum and maximum values for each metric of interest. Maximum values capped at 1e10."
         )
         minmax_dict = {}
         for metric in ANNOTATIONS_HISTS:
