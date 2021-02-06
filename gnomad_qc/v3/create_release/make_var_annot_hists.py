@@ -84,7 +84,7 @@ def main(args):
     # This doesn't need to be run unless the defaults do not result in nice-looking histograms.
     if args.first_pass:
         logger.info(
-            "Evaluating minimum and maximum values for each metric of interest, and capping maximum value at 1e10"
+            "Evaluating minimum and maximum values for each metric of interest. Maximum values capped at 1e10."
         )
         minmax_dict = {}
         for metric in metrics:
