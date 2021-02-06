@@ -1,4 +1,4 @@
-from gnomad.utils.slack import try_slack
+#from gnomad.utils.slack import try_slack
 from gnomad_qc.v2.resources.variant_qc import *
 import copy
 import itertools
@@ -1057,7 +1057,7 @@ if __name__ == '__main__':
     if int(args.exomes) + int(args.genomes) != 1:
         sys.exit('Error: One and only one of --exomes or --genomes must be specified')
 
-    if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
-    else:
-        main(args)
+    #if args.slack_channel:
+    #    try_slack(args.slack_channel, main, args)
+    #else:
+    main(args)
