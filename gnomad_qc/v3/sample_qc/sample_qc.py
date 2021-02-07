@@ -6,7 +6,7 @@ from typing import Any, List, Tuple
 
 import hail as hl
 
-from gnomad.resources.grch38 import (
+from gnomad.resources.grch38.reference_data import (
     clinvar,
     lcr_intervals,
     purcell_5k_intervals,
@@ -34,10 +34,11 @@ from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
 from gnomad.utils.annotations import bi_allelic_expr, get_adj_expr
 from gnomad.utils.filtering import (
     add_filters_expr,
+    filter_low_conf_regions,
     filter_to_autosomes,
     filter_to_clinvar_pathogenic,
 )
-from gnomad.utils.sparse_mt import densify_sites
+from gnomad.utils.sparse_mt import densify_sites, filter_ref_blocks
 
 from gnomad_qc.v2.resources.sample_qc import get_liftover_v2_qc_mt
 from gnomad_qc.v3.resources.annotations import freq, get_info, last_END_position
@@ -92,10 +93,19 @@ def compute_sample_qc() -> hl.Table:
             remove_hard_filtered_samples=False
         )
     )
+    mt = mt.select_entries('GT')
+
+    # Filter reference blocks
+    mt = filter_ref_blocks(mt)
 
     # Remove centromeres and telomeres incase they were included and any reference blocks
-    mt = mt.filter_rows(~hl.is_defined(telomeres_and_centromeres.ht()[mt.locus]) & (hl.len(mt.alleles) > 1))
-    mt = mt.select_entries('GT')
+    filter_low_conf_regions(
+        mt,
+        filter_lcr=False,
+        filter_decoy=False,
+        filter_segdup=False,
+        filter_telomeres_and_centromeres=True,
+    )
 
     sample_qc_ht = compute_stratified_sample_qc(
         mt,
@@ -185,7 +195,7 @@ def compute_qc_mt(min_af: float = 0.0, min_inbreeding_coeff_threshold: float = -
     return qc_mt
 
 
-def compute_hard_filters(cov_threshold: int, include_sex_filter: bool = True) -> hl.Table:
+def compute_hard_filters(cov_threshold: int = 15, include_sex_filter: bool = True) -> hl.Table:
     """
     Applies hard filters to samples and returns Table with samples and the reason for filtering
 
@@ -215,7 +225,7 @@ def compute_hard_filters(cov_threshold: int, include_sex_filter: bool = True) ->
 
     # Remove extreme raw bi-allelic sample QC outliers
     # These were determined by visual inspection of the metrics
-    bi_allelic_qc_struct = get_sample_qc('bi-allelic').ht()[ht.key]
+    bi_allelic_qc_struct = get_sample_qc('bi_allelic').ht()[ht.key]
     hard_filters['bad_qc_metrics'] = (
             (bi_allelic_qc_struct.sample_qc.n_snp > 3.75e6) |
             (bi_allelic_qc_struct.sample_qc.n_snp < 2.4e6) |
@@ -281,6 +291,59 @@ def compute_sex(aaf_threshold: float = 0.001, f_stat_cutoff: float = 0.5) -> hl.
     return sex_ht
 
 
+def reannotate_sex(
+        cov_threshold: int,
+        x_ploidy_cutoffs: Tuple[float, Tuple[float, float], float],
+        y_ploidy_cutoffs: Tuple[Tuple[float, float], float],
+):
+    """
+    Runs sex karyotyping annotations again, without re-computing sex imputation metrics.
+
+    :param cov_threshold: Filtering threshold to use for chr20 coverage in `compute_hard_filters`
+    :param x_ploidy_cutoffs: Tuple of X chromosome ploidy cutoffs: (upper cutoff for single X, (lower cutoff for double X, upper cutoff for double X), lower cutoff for triple X)
+    :param y_ploidy_cutoffs: Tuple of Y chromosome ploidy cutoffs: ((lower cutoff for single Y, upper cutoff for single Y), lower cutoff for double Y)
+    :return:
+    """
+    # Copy HT to temp location to overwrite annotation
+    sex_ht = sex.ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True)
+    hard_filter_ht = compute_hard_filters(cov_threshold, include_sex_filter=False)
+
+    # Copy HT to temp location because it uses sex_ht for chr20 coverage
+    hard_filter_ht = hard_filter_ht.checkpoint('gs://gnomad-tmp/hardfilter_checkpoint.ht', overwrite=True)
+    new_x_ploidy_cutoffs, new_y_ploidy_cutoffs = get_ploidy_cutoffs(
+        sex_ht.filter(hl.is_missing(hard_filter_ht[sex_ht.key])),
+        f_stat_cutoff=0.5
+    )
+    x_ploidy_cutoffs = hl.struct(
+        upper_x=x_ploidy_cutoffs[0] if x_ploidy_cutoffs[0] else new_x_ploidy_cutoffs[0],
+        lower_xx=x_ploidy_cutoffs[1][0] if x_ploidy_cutoffs[1][0] else new_x_ploidy_cutoffs[1][0],
+        upper_xx=x_ploidy_cutoffs[1][1] if x_ploidy_cutoffs[1][1] else new_x_ploidy_cutoffs[1][1],
+        lower_xxx=x_ploidy_cutoffs[2] if x_ploidy_cutoffs[2] else new_x_ploidy_cutoffs[2]
+    )
+    y_ploidy_cutoffs = hl.struct(
+        lower_y=y_ploidy_cutoffs[0][0] if y_ploidy_cutoffs[0][0] else new_y_ploidy_cutoffs[0][0],
+        upper_y=y_ploidy_cutoffs[0][1] if y_ploidy_cutoffs[0][1] else new_y_ploidy_cutoffs[0][1],
+        lower_yy=y_ploidy_cutoffs[1] if y_ploidy_cutoffs[1] else new_y_ploidy_cutoffs[1]
+    )
+    sex_ht = sex_ht.annotate(
+        **get_sex_expr(
+            sex_ht.chrX_ploidy,
+            sex_ht.chrY_ploidy,
+            (x_ploidy_cutoffs['upper_x'],
+             (x_ploidy_cutoffs['lower_xx'], x_ploidy_cutoffs['upper_xx']),
+             x_ploidy_cutoffs['lower_xxx']),
+            ((y_ploidy_cutoffs['lower_y'], y_ploidy_cutoffs['upper_y']),
+             y_ploidy_cutoffs['lower_yy'])
+        )
+    )
+    sex_ht = sex_ht.annotate_globals(
+        x_ploidy_cutoffs=x_ploidy_cutoffs,
+        y_ploidy_cutoffs=y_ploidy_cutoffs,
+    )
+
+    return sex_ht
+
+
 def compute_sample_rankings(use_qc_metrics_filters: bool) -> hl.Table:
     """
     Rank samples by sample filtering and chr20 mean coverage
@@ -292,7 +355,6 @@ def compute_sample_rankings(use_qc_metrics_filters: bool) -> hl.Table:
     :return: Table with sample rankings
     """
     project_ht = project_meta.ht()
-    project_ht = project_ht.annotate(exclude=hl.if_else(hl.is_missing(project_ht.exclude), False, project_ht.exclude))
     project_ht = project_ht.select(
         'releasable',
         'exclude',
@@ -406,11 +468,9 @@ def assign_pops(
     )
     )
 
-    pcs = list(range(n_pcs))
-    pcs = hl.literal(pcs)
     pop_ht, pops_rf_model = assign_population_pcs(
         pop_pca_scores_ht,
-        pc_cols=pcs.map(lambda x: pop_pca_scores_ht.scores[x]),
+        pc_cols=pop_pca_scores_ht.scores[:n_pcs],
         known_col='training_pop',
         min_prob=min_prob
     )
@@ -443,7 +503,7 @@ def assign_pops(
 
         pop_ht, pops_rf_model = assign_population_pcs(
             pop_pca_scores_ht,
-            pc_cols=pcs.map(lambda x: pop_pca_scores_ht.scores[x]),
+            pc_cols=pop_pca_scores_ht.scores[:n_pcs],
             known_col='training_pop',
             min_prob=min_prob
         )
@@ -517,7 +577,6 @@ def apply_regressed_filters(
     :return: Table with stratified metrics and filters
     """
     project_ht = project_meta.ht()
-    project_ht = project_ht.annotate(exclude=hl.if_else(hl.is_missing(project_ht.exclude), False, project_ht.exclude))
     sample_qc_ht = sample_qc_ht.select(
         **sample_qc_ht.sample_qc,
         **ancestry_pca_scores(include_unreleasable_samples).ht()[sample_qc_ht.key],
@@ -551,7 +610,9 @@ def apply_regressed_filters(
 def get_relatedness_set_ht(relatedness_ht: hl.Table) -> hl.Table:
     """
     Parses relatedness Table to get every relationship (except UNRELATED) per sample.
+
     Returns Table keyed by sample with all sample relationships in a set.
+
     :param Table relatedness_ht: Table with inferred relationship information output by pc_relate.
         Keyed by sample pair (i, j).
     :return: Table keyed by sample (s) with all relationships annotated as a set.
@@ -574,6 +635,7 @@ def get_relationship_filter_expr(
 ) -> hl.expr.builders.CaseBuilder:
     """
     Returns case statement to populate relatedness filters in sample_filters struct
+
     :param hl.expr.BooleanExpression hard_filtered_expr: Boolean for whether sample was hard filtered.
     :param str relationship: Relationship to check for. One of DUPLICATE_OR_TWINS, PARENT_CHILD, or SIBLINGS.
     :param hl.expr.SetExpression relationship_set: Set containing all possible relationship strings for sample.
@@ -591,6 +653,7 @@ def get_relationship_filter_expr(
 def compare_row_counts(ht1: hl.Table, ht2: hl.Table) -> bool:
     """
     Checks if row counts in two Tables are the same
+
     :param Table ht1: First Table to be checked
     :param Table ht2: Second Table to be checked
     :return: Whether the row counts are the same
@@ -607,7 +670,9 @@ def join_tables(
 ) -> hl.Table:
     """
     Joins left and right tables using specified keys and join types and returns result.
+
     Also prints warning if sample counts are not the same.
+
     :param Table left_ht: Left Table to be joined
     :param str left_key: Key of left Table
     :param Table right_ht: Right Table to be joined
@@ -634,21 +699,23 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     logger.info("Loading metadata file with subset, age, and releasable information to begin creation of the meta HT")
     left_ht = get_gnomad_v3_mt(remove_hard_filtered_samples=False).cols()
     right_ht = project_meta.ht()
-    right_ht = right_ht.annotate(exclude=hl.if_else(hl.is_missing(right_ht.exclude), False, right_ht.exclude))
 
-    logger.info(f"There are {right_ht.count()} in the project metadata HT and {left_ht.count()} in the callset MT")
-    mt_s_in_meta = left_ht.semi_join(right_ht).count()
-    logger.info(f"There are {mt_s_in_meta} samples in both the project metadata HT and the callset MT")
-    left_ht.anti_join(right_ht).show()
-    right_ht.anti_join(left_ht).show()
+    logger.info(f"There are {right_ht.count()} samples in the project metadata HT and {left_ht.count()} samples in the callset MT")
 
-    if mt_s_in_meta != left_ht.count():
-        logger.warning("Not all samples in callset MT are found in the project meta HT")
+    in_callset_not_meta = left_ht.anti_join(right_ht)
+    if in_callset_not_meta.count() != 0:
+        logger.warning(f"The following {in_callset_not_meta.count()} samples are found in the callset MT, but are not found in the project meta HT")
+        in_callset_not_meta.select().show(n=-1)
 
-    right_ht = right_ht.annotate(
+    in_meta_not_callset = right_ht.anti_join(left_ht)
+    if in_meta_not_callset.count() != 0:
+        logger.warning(f"The following {in_meta_not_callset.count()} samples are found in the project meta HT, but are not found in the callset MT")
+        in_meta_not_callset.select().show(n=-1)
+
+    right_ht = right_ht.select(
         project_meta=hl.struct(**right_ht.row.drop(*(SUBSETS + ["s"]))),
         subsets=hl.struct(**{x: right_ht[x] for x in SUBSETS})
-    ).select("project_meta", "subsets")
+    )
     left_ht = join_tables(left_ht, "s", right_ht.select_globals(), "s", "right")
 
     logger.info(logging_statement.format("picard metric HT"))
@@ -657,19 +724,18 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     left_ht = join_tables(left_ht, "s", right_ht, "s", "left")
 
     logger.info(logging_statement.format("sex HT"))
+    impute_stats = ["f_stat", "n_called", "expected_homs", "observed_homs"]
     right_ht = sex.ht()
     right_ht = right_ht.transmute(
         impute_sex_stats=hl.struct(
-            **{x: right_ht[x]
-               for x in ["f_stat", "n_called", "expected_homs", "observed_homs"]
-               }
+            **{x: right_ht[x] for x in impute_stats}
         )
     )
 
     # Create struct for join
-    right_ht = right_ht.transmute(
+    right_ht = right_ht.select(
         sex_imputation=hl.struct(**right_ht.row.drop("s"))
-    ).select("sex_imputation")
+    )
     right_ht = right_ht.select_globals(
         sex_imputation_ploidy_cutoffs=right_ht.globals
     )
@@ -679,10 +745,10 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     right_ht = get_sample_qc("bi_allelic").ht()
 
     # Remove annotations that cannot be computed from the sparse format
+    not_in_sparse =['n_called', 'n_not_called', 'n_filtered', 'call_rate']
     right_ht = right_ht.annotate(
         **{
-            x: right_ht[x].drop('n_called', 'n_not_called', 'n_filtered', 'call_rate')
-            for x in right_ht.row_value
+            x: right_ht[x].drop(*not_in_sparse) for x in right_ht.row_value
         }
     )
     left_ht = join_tables(left_ht, "s", right_ht, "s", "right")
@@ -692,7 +758,7 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     right_ht = right_ht.select_globals(
         population_inference_pca_metrics=right_ht.globals
     )
-    right_ht = right_ht.transmute(population_inference=hl.struct(**right_ht.row.drop("s"))).select('population_inference')
+    right_ht = right_ht.select(population_inference=hl.struct(**right_ht.row.drop("s")))
     left_ht = join_tables(left_ht, "s", right_ht, "s", "outer")
 
     logger.info(
@@ -737,6 +803,8 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     # Any sample that was filtered for relatedness will have True for sample_filters.related
     # If a filtered related sample had a relationship with a higher degree than second-degree (duplicate, parent-child, sibling),
     # that filter will also be True
+    release_else_expr = release_related_samples_to_drop_ht[left_ht.key].relationships
+    all_else_expr = related_samples_to_drop_ht[left_ht.key].relationships
     left_ht = left_ht.annotate(
         sample_filters=left_ht.sample_filters.annotate(
             release_related=hl.if_else(
@@ -747,17 +815,17 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
             release_duplicate=get_relationship_filter_expr(
                 left_ht.sample_filters.hard_filtered,
                 DUPLICATE_OR_TWINS,
-                release_related_samples_to_drop_ht[left_ht.key].relationships,
+                release_else_expr,
             ),
             release_parent_child=get_relationship_filter_expr(
                 left_ht.sample_filters.hard_filtered,
                 PARENT_CHILD,
-                release_related_samples_to_drop_ht[left_ht.key].relationships,
+                release_else_expr,
             ),
             release_sibling=get_relationship_filter_expr(
                 left_ht.sample_filters.hard_filtered,
                 SIBLINGS,
-                release_related_samples_to_drop_ht[left_ht.key].relationships,
+                release_else_expr,
             ),
             all_samples_related=hl.if_else(
                 left_ht.sample_filters.hard_filtered,
@@ -767,17 +835,17 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
             all_samples_duplicate=get_relationship_filter_expr(
                 left_ht.sample_filters.hard_filtered,
                 DUPLICATE_OR_TWINS,
-                related_samples_to_drop_ht[left_ht.key].relationships,
+                all_else_expr,
             ),
             all_samples_parent_child=get_relationship_filter_expr(
                 left_ht.sample_filters.hard_filtered,
                 PARENT_CHILD,
-                related_samples_to_drop_ht[left_ht.key].relationships,
+                all_else_expr,
             ),
             all_samples_sibling=get_relationship_filter_expr(
                 left_ht.sample_filters.hard_filtered,
                 SIBLINGS,
-                related_samples_to_drop_ht[left_ht.key].relationships,
+                all_else_expr,
             ),
         )
     )
@@ -852,42 +920,11 @@ def main(args):
     if args.impute_sex:
         compute_sex().write(sex.path, overwrite=args.overwrite)
     elif args.reannotate_sex:
-        # Copy HT to temp location to overwrite annotation
-        sex_ht = sex.ht().checkpoint('gs://gnomad-tmp/sex_ht_checkpoint.ht', overwrite=True)
-        hard_filter_ht = compute_hard_filters(args.min_cov, include_sex_filter=False)
-        # Copy HT to temp location because it uses sex_ht for chr20 coverage
-        hard_filter_ht = hard_filter_ht.checkpoint('gs://gnomad-tmp/hardfilter_checkpoint.ht', overwrite=True)
-        x_ploidy_cutoff, y_ploidy_cutoff = get_ploidy_cutoffs(
-            sex_ht.filter(hl.is_missing(hard_filter_ht[sex_ht.key])),
-            f_stat_cutoff=0.5
-        )
-        x_ploidy_cutoffs = hl.struct(
-            upper_x = args.upper_x if args.upper_x else x_ploidy_cutoff[0],
-            lower_xx = args.lower_xx if args.lower_xx else x_ploidy_cutoff[1][0],
-            upper_xx = args.upper_xx if args.upper_xx else x_ploidy_cutoff[1][1],
-            lower_xxx = args.lower_xxx if args.lower_xxx else x_ploidy_cutoff[2]
-        )
-        y_ploidy_cutoffs=hl.struct(
-            lower_y = args.lower_y if args.lower_y else y_ploidy_cutoff[0][0],
-            upper_y = args.upper_y if args.upper_y else y_ploidy_cutoff[0][1],
-            lower_yy = args.lower_yy if args.lower_yy else y_ploidy_cutoff[1]
-        )
-        sex_ht = sex_ht.annotate(
-            **get_sex_expr(
-                sex_ht.chrX_ploidy,
-                sex_ht.chrY_ploidy,
-                (x_ploidy_cutoffs['upper_x'],
-                (x_ploidy_cutoffs['lower_xx'], x_ploidy_cutoffs['upper_xx']),
-                x_ploidy_cutoffs['lower_xxx']),
-                ((y_ploidy_cutoffs['lower_y'], y_ploidy_cutoffs['upper_y']),
-                y_ploidy_cutoffs['lower_yy'])
-            )
-        )
-        sex_ht = sex_ht.annotate_globals(
-            x_ploidy_cutoffs=x_ploidy_cutoffs,
-            y_ploidy_cutoffs=y_ploidy_cutoffs,
-        )
-        sex_ht.write(sex.path, overwrite=args.overwrite)
+        reannotate_sex(
+            args.min_cov,
+            (args.upper_x, (args.lower_xx, args.upper_xx), args.lower_xxx),
+            ((args.lower_y, args.upper_y), args.lower_yy)
+        ).write(sex.path, overwrite=args.overwrite)
 
     if args.compute_hard_filters:
         compute_hard_filters(
@@ -944,8 +981,19 @@ def main(args):
         pop_pca_eigenvalues, pop_pca_scores_ht, pop_pca_loadings_ht = run_pca(args.include_unreleasable_samples, args.n_pcs, samples_to_drop)
         pop_pca_scores_ht.write(ancestry_pca_scores(args.include_unreleasable_samples).path, overwrite=args.overwrite)
         pop_pca_loadings_ht.write(ancestry_pca_loadings(args.include_unreleasable_samples).path, overwrite=args.overwrite)
-        with hl.utils.hadoop_open(ancestry_pca_eigenvalues(args.include_unreleasable_samples), mode='w') as f:
-            f.write(",".join([str(x) for x in pop_pca_eigenvalues]))
+
+        pop_pca_eigenvalues_ht = hl.Table.parallelize(
+            hl.literal(
+                [{'PC': i + 1, 'eigenvalue': x} 
+                 for i, x in enumerate(pop_pca_eigenvalues)
+                 ],
+                'array<struct{PC: int, eigenvalue: float}>'
+            )
+        )
+        pop_pca_eigenvalues_ht.write(
+            ancestry_pca_eigenvalues(args.include_unreleasable_samples).path,
+            overwrite=args.overwrite
+        )
 
     if args.assign_pops:
         n_pcs = args.pop_n_pcs
@@ -975,15 +1023,13 @@ def main(args):
             remove_hard_filtered_samples=True
         )
         clinvar_ht = clinvar.ht()
-        clinvar_struct = clinvar_ht[mt.row_key]
-        mt = mt.filter_rows(hl.is_defined(clinvar_struct))
+        mt = mt.filter_rows(hl.is_defined(clinvar_ht[mt.row_key]))
         mt = mt.checkpoint("gs://gnomad-tmp/clinvar_variants.mt", overwrite=True)
-        clinvar_path_struct = filter_to_clinvar_pathogenic(clinvar_ht)[mt.row_key]
-        mt = mt.annotate_rows(clinvar_path=hl.is_defined(clinvar_path_struct))
-        clinvar_sample_ht = mt.annotate_cols(
+        mt = mt.annotate_rows(clinvar_path=hl.is_defined(filter_to_clinvar_pathogenic(clinvar_ht)[mt.row_key]))
+        clinvar_sample_ht = mt.select_cols(
             n_clinvar=hl.agg.count_where(mt.GT.is_non_ref()),
             n_clinvar_path=hl.agg.count_where(mt.GT.is_non_ref() & mt.clinvar_path),
-        ).cols().select("n_clinvar_path", "n_clinvar")
+        ).cols()
         clinvar_sample_ht.write(sample_clinvar_count.path, overwrite=args.overwrite)
 
     if args.apply_stratified_filters:

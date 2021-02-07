@@ -36,13 +36,13 @@ def get_info(split: bool = True) -> VersionedTableResource:
     )
 
 
-def get_filters(
+def get_vqsr_filters(
     model_id: str, split: bool = True, finalized: bool = False,
 ) -> VersionedTableResource:
     """
-    Gets the specified filtering annotation resource.
+    Gets the specified VQSR filtering annotation resource.
 
-    :param model_id: Filtering model id
+    :param model_id: VQSR filtering model id
     :param split: Split or multi-allelic version of the filtering file
     :param finalized: Whether to return the raw VQSR table or the finalized VQSR table representing determined cutoffs
     :return: VQSR filtering annotation file
