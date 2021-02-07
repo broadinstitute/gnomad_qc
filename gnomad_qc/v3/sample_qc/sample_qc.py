@@ -568,7 +568,8 @@ def apply_regressed_filters(
     .. note::
 
         Default left and right MAD for `compute_stratified_metrics_filter` is 4. We modify this for n_singleton_residual
-        to be (math.inf, 8.0) and for r_het_hom_var_residual to be (math.inf, 4.0).
+        to be (math.inf, 8.0) and for r_het_hom_var_residual to be (math.inf, 4.0). The math.inf is used to prevent a
+        lower cutoff for these metrics.
 
     :param sample_qc_ht: Sample QC HT
     :param filtering_qc_metrics: Specific metrics to compute
@@ -666,7 +667,12 @@ def compare_row_counts(ht1: hl.Table, ht2: hl.Table) -> bool:
 
 
 def join_tables(
-        left_ht: hl.Table, left_key: str, right_ht: hl.Table, right_key: str, join_type: str
+        left_ht: hl.Table,
+        left_key: str,
+        right_ht: hl.Table,
+        right_key: str,
+        join_type: str,
+        sample_count_match: bool = True,
 ) -> hl.Table:
     """
     Joins left and right tables using specified keys and join types and returns result.
@@ -678,12 +684,28 @@ def join_tables(
     :param Table right_ht: Right Table to be joined
     :param str right_key: Key of right Table
     :param str join_type: Type of join
+    :param bool sample_count_match: Are the sample counts expected to match in the tables
     :return: Table with annotations
     :rtype: Table
     """
-    sample_count_match = compare_row_counts(left_ht, right_ht)
-    if not sample_count_match:
+    if sample_count_match and not compare_row_counts(left_ht, right_ht):
         logger.warning("Sample counts in left and right tables do not match!")
+
+        in_left_not_right = left_ht.anti_join(right_ht)
+        if in_left_not_right.count() != 0:
+            logger.warning(
+                f"The following {in_left_not_right.count()} samples are found in the left HT, but are not found in the right HT")
+            in_left_not_right.select().show(n=-1)
+
+        in_right_not_left = right_ht.anti_join(left_ht)
+        if in_right_not_left.count() != 0:
+            logger.warning(
+                f"The following {in_right_not_left.count()} samples are found in the right HT, but are not found in left HT")
+            in_right_not_left.select().show(n=-1)
+
+        if join_type != "outer":
+            logger.warning("Join type is not an outer join so some samples will be filtered!")
+
     return left_ht.key_by(left_key).join(right_ht.key_by(right_key), how=join_type)
 
 
@@ -698,20 +720,8 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
 
     logger.info("Loading metadata file with subset, age, and releasable information to begin creation of the meta HT")
     left_ht = get_gnomad_v3_mt(remove_hard_filtered_samples=False).cols()
+
     right_ht = project_meta.ht()
-
-    logger.info(f"There are {right_ht.count()} samples in the project metadata HT and {left_ht.count()} samples in the callset MT")
-
-    in_callset_not_meta = left_ht.anti_join(right_ht)
-    if in_callset_not_meta.count() != 0:
-        logger.warning(f"The following {in_callset_not_meta.count()} samples are found in the callset MT, but are not found in the project meta HT")
-        in_callset_not_meta.select().show(n=-1)
-
-    in_meta_not_callset = right_ht.anti_join(left_ht)
-    if in_meta_not_callset.count() != 0:
-        logger.warning(f"The following {in_meta_not_callset.count()} samples are found in the project meta HT, but are not found in the callset MT")
-        in_meta_not_callset.select().show(n=-1)
-
     right_ht = right_ht.select(
         project_meta=hl.struct(**right_ht.row.drop(*(SUBSETS + ["s"]))),
         subsets=hl.struct(**{x: right_ht[x] for x in SUBSETS})
@@ -721,7 +731,7 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     logger.info(logging_statement.format("picard metric HT"))
     right_ht = picard_metrics.ht()
     right_ht = right_ht.select("bam_metrics")
-    left_ht = join_tables(left_ht, "s", right_ht, "s", "left")
+    left_ht = join_tables(left_ht, "s", right_ht, "s", "left", sample_count_match=False)
 
     logger.info(logging_statement.format("sex HT"))
     impute_stats = ["f_stat", "n_called", "expected_homs", "observed_homs"]
@@ -745,7 +755,7 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     right_ht = get_sample_qc("bi_allelic").ht()
 
     # Remove annotations that cannot be computed from the sparse format
-    not_in_sparse =['n_called', 'n_not_called', 'n_filtered', 'call_rate']
+    not_in_sparse = ['n_called', 'n_not_called', 'n_filtered', 'call_rate']
     right_ht = right_ht.annotate(
         **{
             x: right_ht[x].drop(*not_in_sparse) for x in right_ht.row_value
@@ -759,13 +769,13 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
         population_inference_pca_metrics=right_ht.globals
     )
     right_ht = right_ht.select(population_inference=hl.struct(**right_ht.row.drop("s")))
-    left_ht = join_tables(left_ht, "s", right_ht, "s", "outer")
+    left_ht = join_tables(left_ht, "s", right_ht, "s", "outer", sample_count_match=False)
 
     logger.info(
         "Reading hard filters HT, renaming hard filters struct to sample_filters, and joining with meta HT"
     )
     right_ht = hard_filtered_samples.ht()
-    left_ht = join_tables(left_ht, "s", right_ht, "s", "outer")
+    left_ht = join_tables(left_ht, "s", right_ht, "s", "outer", sample_count_match=False)
 
     # Change sample_filters to a struct
     ex_right_ht = right_ht.explode(right_ht.hard_filters)
@@ -781,7 +791,7 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
                 for v in hard_filters
             },
             hard_filters=left_ht.hard_filters,
-            hard_filtered=hl.if_else(hl.is_defined(left_ht.hard_filters) & (hl.len(left_ht.hard_filters) > 0), True, False)
+            hard_filtered=hl.is_defined(left_ht.hard_filters) & (hl.len(left_ht.hard_filters) > 0)
         )
     )
 
@@ -1059,7 +1069,7 @@ def main(args):
             filtering_qc_metrics,
             args.include_unreleasable_samples,
             n_pcs,
-        ).write(regressed_metrics.path, overwrite=args.overwrite)
+        ).write('gs://gnomad-julia/gnomad_v3_1/test_regressed_metrics.ht') #.write(regressed_metrics.path, overwrite=args.overwrite)
 
     if args.compute_related_samples_to_drop:
         rank_ht = compute_sample_rankings(use_qc_metrics_filters=True)
