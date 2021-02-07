@@ -9,13 +9,14 @@ from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import add_filters_expr
 from gnomad.utils.slack import slack_notifications
+
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources import (
-    get_score_quantile_bins,
-    freq,
-    get_filters,
-    get_info,
     final_filter,
+    freq,
+    get_info,
+    get_score_bins,
+    get_vqsr_filters,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -44,7 +45,7 @@ def generate_final_filter_ht(
     Prepares finalized filtering model given a filtering HT from `rf.apply_rf_model` or VQSR and cutoffs for filtering.
 
     If `determine_cutoff_from_bin` is True, `aggregated_bin_ht` must be supplied to determine the SNP and indel scores
-    to use as cutoffs from an aggregated quantile bin Table like one created by
+    to use as cutoffs from an aggregated bin Table like one created by
     `compute_grouped_binned_ht` in combination with `score_bin_agg`.
 
     :param ht: Filtering Table from `rf.apply_rf_model` or VQSR to prepare as the final filter Table
@@ -55,7 +56,7 @@ def generate_final_filter_ht(
     :param indel_cutoff: Score cutoff or bin (if `determine_cutoff_from_bin` True) to use for indel variant QC filter
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter to use for variants
     :param determine_cutoff_from_bin: If True score cutoff will be determined using bin info in `aggregated_bin_ht`
-    :param aggregated_bin_ht: File with aggregate counts of variants based on quantile bins
+    :param aggregated_bin_ht: File with aggregate counts of variants based on bins
     :param bin_id: Name of bin to use in 'bin_id' column of `aggregated_bin_ht` to use to determine probability cutoff
     :return: Finalized random forest Table annotated with variant filters
     """
@@ -153,16 +154,17 @@ def generate_final_filter_ht(
             indel_cutoff=indel_cutoff_global,
         )
     )
-    vqsr = vqsr_ht[ht.key]
-    ht = ht.annotate(
-        vqsr=hl.struct(
-            AS_VQSLOD=vqsr.info.AS_VQSLOD,
-            AS_culprit=vqsr.info.AS_culprit,
-            NEGATIVE_TRAIN_SITE=vqsr.info.NEGATIVE_TRAIN_SITE,
-            POSITIVE_TRAIN_SITE=vqsr.info.POSITIVE_TRAIN_SITE,
-        ),
-        SOR=vqsr.info.SOR,
-    )
+    if vqsr_ht:
+        vqsr = vqsr_ht[ht.key]
+        ht = ht.annotate(
+            vqsr=hl.struct(
+                AS_VQSLOD=vqsr.info.AS_VQSLOD,
+                AS_culprit=vqsr.info.AS_culprit,
+                NEGATIVE_TRAIN_SITE=vqsr.info.NEGATIVE_TRAIN_SITE,
+                POSITIVE_TRAIN_SITE=vqsr.info.POSITIVE_TRAIN_SITE,
+            ),
+            SOR=vqsr.info.SOR,
+        )
 
     ht = ht.drop('AS_culprit')
 
@@ -172,7 +174,7 @@ def generate_final_filter_ht(
 def main(args):
     hl.init(log="/variant_qc_finalize.log")
 
-    ht = get_score_quantile_bins(args.model_id, aggregated=False).ht()
+    ht = get_score_bins(args.model_id, aggregated=False).ht()
     if args.filter_centromere_telomere:
         ht = ht.filter(~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]))
 
@@ -185,12 +187,12 @@ def main(args):
     freq_ht = freq.ht()
     ht = ht.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
     freq_idx = freq_ht[ht.key]
-    aggregated_bin_path = get_score_quantile_bins(args.model_id, aggregated=True).path
+    aggregated_bin_path = get_score_bins(args.model_id, aggregated=True).path
     if not file_exists(aggregated_bin_path):
         sys.exit(
             f"Could not find binned HT for model: {args.model_id} ({aggregated_bin_path}). Please run create_ranked_scores.py for that hash."
         )
-    aggregated_bin_ht = get_score_quantile_bins(args.model_id, aggregated=True).ht()
+    aggregated_bin_ht = get_score_bins(args.model_id, aggregated=True).ht()
 
     ht = generate_final_filter_ht(
         ht,
@@ -205,7 +207,7 @@ def main(args):
         aggregated_bin_ht=aggregated_bin_ht,
         bin_id='bin',
         inbreeding_coeff_cutoff=args.inbreeding_coeff_threshold,
-        vqsr_ht=get_filters('vqsr_alleleSpecificTrans', split=True).ht(),
+        vqsr_ht=get_vqsr_filters('vqsr_alleleSpecificTrans', split=True).ht(),
     )
     ht = ht.annotate_globals(
         filtering_model=ht.filtering_model.annotate(
@@ -240,33 +242,36 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--overwrite",
-        help="Overwrite all data from this subset (default: False)",
+        help="Overwrite all data from this subset (default: False).",
         action="store_true",
     )
-    parser.add_argument("--model_id", help="Filtering model ID to use")
+    parser.add_argument("--model_id", help="Filtering model ID to use.")
     parser.add_argument(
         "--model_name",
-        help="Filtering model name to use in the filters. (e.g. VQSR or RF)",
+        help="Filtering model name to use in the filters. (e.g. VQSR or RF).",
     )
     parser.add_argument(
         "--score_name",
-        help="Name for the score in the info struct in HT / INFO field inVCF (e.g. RF or VQSLOD",
+        help=(
+            "What to rename for the filtering score annotation. This will be used in place of 'score' in the "
+            "release HT info struct and the INFO field of the VCF (e.g. RF or AS_VQSLOD)."
+        ),
     )
     parser.add_argument(
         "--inbreeding_coeff_threshold",
-        help="Name for the score in the info struct in HT / INFO field inVCF (e.g. RF or VQSLOD",
+        help="InbreedingCoeff hard filter to use for variants.",
         type=float,
         default=INBREEDING_COEFF_HARD_CUTOFF,
     )
     parser.add_argument(
-        "--snp_cutoff", help="Percentile to set RF cutoff", type=float, default=90.0
+        "--snp_cutoff", help="Percentile to set RF cutoff.", type=float, default=90.0
     )
     parser.add_argument(
-        "--indel_cutoff", help="Percentile to set RF cutoff", type=float, default=80.0
+        "--indel_cutoff", help="Percentile to set RF cutoff.", type=float, default=80.0
     )
     parser.add_argument(
         "--treat_cutoff_as_prob",
-        help="If set snp_cutoff and indel_cutoff will be probability rather than percentile ",
+        help="If set snp_cutoff and indel_cutoff will be probability rather than percentile.",
         action="store_true",
     )
     parser.add_argument(

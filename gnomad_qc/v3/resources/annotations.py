@@ -36,7 +36,7 @@ def get_info(split: bool = True) -> VersionedTableResource:
     )
 
 
-def get_filters(
+def get_vqsr_filters(
     model_id: str, split: bool = True, finalized: bool = False,
 ) -> VersionedTableResource:
     """
@@ -73,15 +73,15 @@ def info_vcf_path(version: str = CURRENT_RELEASE) -> str:
     return f"{_annotations_root(version)}/gnomad_genomes_v{version}_info.vcf.bgz"
 
 
-def get_transmitted_singleton_vcf_path(confidence: str = 'raw', version: str = CURRENT_RELEASE) -> str:
+def get_transmitted_singleton_vcf_path(adj: bool = False, version: str = CURRENT_RELEASE) -> str:
     """
     Provides the path to the transmitted singleton VCF used as input to VQSR
 
-    :param confidence: Whether to load 'adj' or 'raw'
+    :param bool adj: Whether to use adj genotypes
     :param version: Version of transmitted singleton VCF path to return
     :return:
     """
-    return f'{_annotations_root(version)}/transmitted_singletons_{confidence}.vcf.bgz'
+    return f'{_annotations_root(version)}/transmitted_singletons_{"adj" if adj else "raw"}.vcf.bgz'
 
 
 last_END_position = VersionedTableResource(

@@ -24,13 +24,13 @@ String representation for NA12878 truth sample
 TRUTH_SAMPLES = {
     "syndip": {
         "s": SYNDIP,
-        "truth_mt": syndip,
-        "hc_intervals": syndip_hc_intervals,
+        "truth_mt": syndip.mt(),
+        "hc_intervals": syndip_hc_intervals.ht(),
     },
     "NA12878": {
         "s": NA12878,
-        "truth_mt": na12878_giab,
-        "hc_intervals": na12878_giab_hc_intervals,
+        "truth_mt": na12878_giab.mt(),
+        "hc_intervals": na12878_giab_hc_intervals.ht(),
     },
 }
 """
@@ -57,11 +57,11 @@ def get_callset_truth_data(truth_sample: str, mt: bool = True) -> Union[MatrixTa
     """
     Get resources for the truth sample data that is subset from the full callset
 
-    If `mt` this will return the truth sample MatrixTable (subset from callset) otherwise it returns the
+    If `mt` this will return the truth sample MatrixTable (subset from callset); otherwise it returns the
     merged truth sample Table that includes both the truth data and the data from the callset
 
     :param str truth_sample: Name of the truth sample
-    :param bool mt: Whether path is for a MatrixTable, default is False
+    :param bool mt: Whether path is for a MatrixTable, default is True
     :return: Path to callset truth sample MT
     :rtype: str
     """
@@ -87,32 +87,32 @@ def get_callset_truth_data(truth_sample: str, mt: bool = True) -> Union[MatrixTa
         )
 
 
-def get_score_quantile_bins(model_id: str, aggregated: bool) -> TableResource:
+def get_score_bins(model_id: str, aggregated: bool) -> VersionedTableResource:
     """
-    Returns the path to a Table containing RF or VQSR scores and annotated with a bin based on quantiles of the metric scores.
+    Returns the path to a Table containing RF or VQSR scores and annotated with a bin based on rank of the metric scores.
 
-    :param model_id: The score data (RF or VQSR model ID) to return
+    :param model_id: RF or VQSR model ID for which to return score data.
     :param bool aggregated: Whether to get the aggregated data.
-         If True, will return the path to Table grouped by quantile bin that contains aggregated variant counts per bin.
+         If True, will return the path to Table grouped by bin that contains aggregated variant counts per bin.
     :return: Path to desired hail Table
     """
     return VersionedTableResource(
         CURRENT_RELEASE,
         {
             release: TableResource(
-                f"{get_variant_qc_root(release)}/score_quantile_bins/{model_id}_{'binned' if aggregated else 'rank'}.ht"
+                f"{get_variant_qc_root(release)}/score_bins/{model_id}_{'aggregated' if aggregated else 'bins'}.ht"
             )
             for release in RELEASES
         }
     )
 
 
-def get_binned_concordance(model_id: str, truth_sample: str) -> TableResource:
+def get_binned_concordance(model_id: str, truth_sample: str) -> VersionedTableResource:
     """
     Returns the path to a truth sample concordance Table (containing TP, FP, FN) between a truth sample within the
-    callset and the samples truth data grouped by quantile bins of a metric (RF or VQSR scores)
+    callset and the sample's truth data, grouped by bins of a metric (RF or VQSR scores)
 
-    :param model_id: The score data (RF or VQSR model ID) to return
+    :param model_id: RF or VQSR model ID for which to return score data.
     :param truth_sample: Which truth sample concordance to analyze (e.g., "NA12878" or "syndip")
     :return: Path to binned truth data concordance Hail Table
     """
@@ -127,9 +127,27 @@ def get_binned_concordance(model_id: str, truth_sample: str) -> TableResource:
     )
 
 
-def get_rf_annotated(adj: bool = False) -> TableResource:
+def get_rf_annotations(adj: bool = False) -> VersionedTableResource:
     """
-    Returns the path to the RF-ready annotated HT
+    Returns the VersionedTableResource to the RF-ready annotated Table
+
+    Annotations that are included in the Table:
+
+        Features for RF:
+            - InbreedingCoeff
+            - variant_type
+            - allele_type
+            - n_alt_alleles
+            - has_star
+            - AS_QD
+            - AS_pab_max
+            - AS_MQRankSum
+            - AS_SOR
+            - AS_ReadPosRankSum
+
+        Training sites (bool):
+            - transmitted_singleton
+            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
 
     :param bool adj: Whether to load 'adj' or 'raw'
     :return: Table with RF annotations
@@ -138,7 +156,7 @@ def get_rf_annotated(adj: bool = False) -> TableResource:
         CURRENT_RELEASE,
         {
             release: TableResource(
-                f"{get_variant_qc_root(release)}/rf/annotated_rf{'.adj' if adj else ''}.ht"
+                f"{get_variant_qc_root(release)}/rf/rf_annotations.{'adj' if adj else 'raw'}.ht"
             )
             for release in RELEASES
         }
@@ -153,7 +171,6 @@ def rf_run_path(release: str = CURRENT_RELEASE):
     :return: Path to json file
     :rtype: str
     """
-
     return f"{get_variant_qc_root(release)}/rf/rf_runs.json"
 
 
@@ -163,7 +180,7 @@ def get_rf_model_path(model_id: str, release: str = CURRENT_RELEASE) -> str:
 
     :param model_id: RF run to load
     :param release: Release of model path to return
-    :return: VersionedTableResource for RF training data
+    :return: Path to tne RF model
     """
     return f"{get_variant_qc_root(release)}/rf/models/{model_id}/rf.model"
 
@@ -191,7 +208,7 @@ def get_rf_result(model_id: Optional[str] = None) -> VersionedTableResource:
     Get the results of RF filtering for a given run
 
     :param model_id: RF run to load
-    :return: VersionedTableResource for RF training data
+    :return: VersionedTableResource for RF filtered data
     """
     return VersionedTableResource(
         CURRENT_RELEASE,
@@ -218,7 +235,7 @@ def get_checkpoint_path(name: str, mt: bool = False) -> str:
 
 final_filter = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_variant_qc_root(release)}/filter_final.ht") for release in RELEASES}
+    {release: TableResource(f"{get_variant_qc_root(release)}/final_filter.ht") for release in RELEASES}
 )
 
 class DataException(Exception):

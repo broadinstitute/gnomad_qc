@@ -19,55 +19,56 @@ from gnomad.variant_qc.random_forest import (
     pretty_print_runs,
     save_model,
 )
+
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import (
     allele_data,
     fam_stats,
-    get_filters,
     get_freq,
     get_info,
+    get_vqsr_filters,
     qc_ac,
 )
 from gnomad_qc.v3.resources.variant_qc import (
     get_checkpoint_path,
+    get_rf_annotations,
     get_rf_model_path,
-    get_rf_training,
     get_rf_result,
-    get_rf_annotated,
+    get_rf_training,
     rf_run_path,
 )
-from gnomad_qc.slack_creds import slack_token
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("variant_qc_random_forest")
 logger.setLevel(logging.INFO)
 
-LABEL_COL = "rf_label"
-TRAIN_COL = "rf_train"
-PREDICTION_COL = "rf_prediction"
-INFO_FEATURES = [
-    "AS_QD",
-    "AS_ReadPosRankSum",
-    "AS_MQRankSum",
-    "AS_SOR",
-    "AS_pab_max",
-]
 FEATURES = [
-    "InbreedingCoeff",
-    "variant_type",
     "allele_type",
-    "n_alt_alleles",
-    "AS_QD",
-    "AS_pab_max",
     "AS_MQRankSum",
-    "AS_SOR",
+    "AS_pab_max",
+    "AS_QD",
     "AS_ReadPosRankSum",
+    "AS_SOR",
+    "InbreedingCoeff",
+    "n_alt_alleles",
+    "variant_type",
 ]
-TRUTH_DATA = ["hapmap", "omni", "mills", "kgp_phase1_hc"]
 INBREEDING_COEFF_HARD_CUTOFF = -0.3
+INFO_FEATURES = [
+    "AS_MQRankSum",
+    "AS_pab_max",
+    "AS_QD",
+    "AS_ReadPosRankSum",
+    "AS_SOR",
+]
+LABEL_COL = "rf_label"
+PREDICTION_COL = "rf_prediction"
+TRAIN_COL = "rf_train"
+TRUTH_DATA = ["hapmap", "omni", "mills", "kgp_phase1_hc"]
 
 
 def create_rf_ht(
-    impute_features_by_variant_type: bool = True,
+    impute_features: bool = True,
     adj: bool = False,
     n_partitions: int = 5000,
     checkpoint_path: Optional[str] = None,
@@ -93,10 +94,7 @@ def create_rf_ht(
             - transmitted_singleton
             - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
 
-    Numerical features are median-imputed. If impute_features_by_variant_type is set, imputation is done based on the
-    median of the variant type.
-
-    :param bool impute_features_by_variant_type: Whether to impute features using feature medians (this is done by variant type)
+    :param bool impute_features: Whether to impute features using feature medians (this is done by variant type)
     :param str adj: Whether to use adj genotypes
     :param int n_partitions: Number of partitions to use for final annotated table
     :param str checkpoint_path: Optional checkpoint path for the Table before median imputation and/or aggregate summary
@@ -161,7 +159,7 @@ def create_rf_ht(
     if checkpoint_path:
         ht = ht.checkpoint(checkpoint_path, overwrite=True)
 
-    if impute_features_by_variant_type:
+    if impute_features:
         ht = median_impute_features(ht, {"variant_type": ht.variant_type})
 
     summary = ht.group_by("omni", "mills", "transmitted_singleton",).aggregate(
@@ -208,7 +206,7 @@ def train_rf(
 
     if vqsr_training:
         logger.info("Using VQSR training sites for RF training...")
-        vqsr_ht = get_filters(f"vqsr_{vqsr_type}", split=True).ht()
+        vqsr_ht = get_vqsr_filters(f"vqsr_{vqsr_type}", split=True).ht()
         ht = ht.annotate(
             vqsr_POSITIVE_TRAIN_SITE=vqsr_ht[ht.key].info.POSITIVE_TRAIN_SITE,
             vqsr_NEGATIVE_TRAIN_SITE=vqsr_ht[ht.key].info.NEGATIVE_TRAIN_SITE,
@@ -265,13 +263,13 @@ def main(args):
 
     if args.annotate_for_rf:
         ht = create_rf_ht(
-            impute_features_by_variant_type=not args.impute_features_no_variant_type,
+            impute_features=args.impute_features,
             adj=args.adj,
             n_partitions=args.n_partitions,
             checkpoint_path=get_checkpoint_path("rf_annotation"),
         )
         ht.write(
-            get_rf_annotated(args.adj).path, overwrite=args.overwrite,
+            get_rf_annotations(args.adj).path, overwrite=args.overwrite,
         )
         logger.info(f"Completed annotation wrangling for random forests model training")
 
@@ -282,7 +280,7 @@ def main(args):
             model_id = f"rf_{str(uuid.uuid4())[:8]}"
 
         ht, rf_model = train_rf(
-            get_rf_annotated(args.adj).ht(),
+            get_rf_annotations(args.adj).ht(),
             fp_to_tp=args.fp_to_tp,
             num_trees=args.num_trees,
             max_depth=args.max_depth,
@@ -348,12 +346,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--overwrite",
-        help="Overwrite all data from this subset (default: False)",
+        help="Overwrite all data from this subset. (default: False)",
         action="store_true",
     )
     parser.add_argument(
         "--model_id",
-        help="Model ID. Created by --train_rf and only needed for --apply_rf without running --train_rf",
+        help="Model ID. Created by --train_rf and only needed for --apply_rf without running --train_rf.",
         required=False,
     )
 
@@ -365,24 +363,23 @@ if __name__ == "__main__":
     )
     actions.add_argument(
         "--annotate_for_rf",
-        help="Creates an annotated ht with features for RF",
+        help="Creates an annotated HT with features for RF.",
         action="store_true",
     )
-    actions.add_argument("--train_rf", help="Trains RF model", action="store_true")
+    actions.add_argument("--train_rf", help="Trains RF model.", action="store_true")
     actions.add_argument(
-        "--apply_rf", help="Applies RF model to the data", action="store_true"
+        "--apply_rf", help="Applies RF model to the data.", action="store_true"
     )
-    actions.add_argument("--finalize", help="Write final RF model", action="store_true")
 
     annotate_params = parser.add_argument_group("Annotate features parameters")
     annotate_params.add_argument(
-        "--impute_features_no_variant_type",
-        help="If set, feature imputation is NOT split by variant type.",
+        "--impute_features",
+        help="If set, feature imputation is performed.",
         action="store_true",
     )
     annotate_params.add_argument(
         "--n_partitions",
-        help="Desired number of partitions for annotated RF Table",
+        help="Desired number of partitions for annotated RF Table.",
         type=int,
         default=5000,
     )
@@ -419,7 +416,7 @@ if __name__ == "__main__":
         "--adj", help="Use adj genotypes.", action="store_true"
     )
     training_params.add_argument(
-        "--vqsr_training", help="Use VQSR training examples", action="store_true"
+        "--vqsr_training", help="Use VQSR training examples.", action="store_true"
     )
     training_params.add_argument(
         "--vqsr_type",
@@ -444,18 +441,6 @@ if __name__ == "__main__":
         action="store_true",
     )
 
-    finalize_params = parser.add_argument_group("Finalize RF Table parameters")
-    finalize_params.add_argument(
-        "--snp_cutoff", help="Percentile to set RF cutoff", type=float, default=90.0
-    )
-    finalize_params.add_argument(
-        "--indel_cutoff", help="Percentile to set RF cutoff", type=float, default=80.0
-    )
-    finalize_params.add_argument(
-        "--treat_cutoff_as_prob",
-        help="If set snp_cutoff and indel_cutoff will be probability rather than percentile ",
-        action="store_true",
-    )
     args = parser.parse_args()
 
     if not args.model_id and not args.train_rf and args.apply_rf:
