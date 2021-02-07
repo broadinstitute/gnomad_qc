@@ -1069,7 +1069,7 @@ def main(args):
             filtering_qc_metrics,
             args.include_unreleasable_samples,
             n_pcs,
-        ).write('gs://gnomad-julia/gnomad_v3_1/test_regressed_metrics.ht') #.write(regressed_metrics.path, overwrite=args.overwrite)
+        ).write(regressed_metrics.path, overwrite=args.overwrite)
 
     if args.compute_related_samples_to_drop:
         rank_ht = compute_sample_rankings(use_qc_metrics_filters=True)
