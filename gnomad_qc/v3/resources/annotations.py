@@ -1,5 +1,4 @@
-from gnomad.resources.resource_utils import (TableResource,
-                                             VersionedTableResource)
+from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
@@ -36,7 +35,7 @@ def get_info(split: bool = True) -> VersionedTableResource:
     )
 
 
-def get_vqsr_filters(
+def get_filters(
     model_id: str, split: bool = True, finalized: bool = False,
 ) -> VersionedTableResource:
     """
@@ -54,9 +53,9 @@ def get_vqsr_filters(
                 "{}/filtering/{}{}{}.ht".format(
                     _annotations_root(release),
                     model_id,
-                    '.finalized' if finalized else '',
-                    '.split' if split else ''
-                    )
+                    ".finalized" if finalized else "",
+                    ".split" if split else "",
+                )
             )
             for release in RELEASES
         },
@@ -149,5 +148,16 @@ allele_data = VersionedTableResource(
             f"{_annotations_root(release)}/gnomad_genomes_qc_allele_data.ht"
         )
         for release in RELEASES
+    },
+)
+
+analyst_annotations = VersionedTableResource(
+    CURRENT_RELEASE,
+    {
+        release: TableResource(
+            f"{_annotations_root(release)}/gnomad_genomes_v{release}_in_silico_predictors.ht"
+        )
+        for release in RELEASES
+        if release != "3.0"
     },
 )
