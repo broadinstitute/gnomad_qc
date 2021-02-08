@@ -57,6 +57,10 @@ def create_bin_ht(model_id: str, n_bins: int) -> hl.Table:
             AS_culprit=ht.info.AS_culprit,
         )
 
+        # Remove all samples with an undefined ac_raw Because ac_raw was calculated on the high quality samples only
+        # and VQSR was run before sample filtering
+        ht = ht.filter(hl.is_defined(ht.ac_raw))
+
     else:
         ht = get_rf_result(model_id=model_id).ht()
         ht = ht.annotate(
@@ -66,8 +70,6 @@ def create_bin_ht(model_id: str, n_bins: int) -> hl.Table:
             score=ht.rf_probability["TP"],
         )
 
-
-    ht = ht.filter(ht.ac_raw > 0)
     ht = ht.filter(
         ~info_ht[ht.key].AS_lowqual & ~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus])
     )
