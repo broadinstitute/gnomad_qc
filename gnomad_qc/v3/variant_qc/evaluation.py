@@ -34,20 +34,17 @@ logger = logging.getLogger("variant_qc_evaluation")
 logger.setLevel(logging.INFO)
 
 
-def create_bin_ht(
-    model_id: str, n_bins: int, vqsr: bool = False
-) -> None:
+def create_bin_ht(model_id: str, n_bins: int) -> hl.Table:
     """
-    Creates a table with bin annotations added for a RF run and writes it to its correct location in annotations.
+    Creates a table with bin annotations added for a RF or VQSR run and writes it to its correct location in annotations.
 
     :param model_id: Which variant QC model (RF or VQSR model ID) to annotate with bin
     :param n_bins: Number of bins to bin the data into
-    :param vqsr: Set True is `model_id` refers to a VQSR filtering model
-    :return: Nothing
+    :return: Table with bin annotations
     """
     logger.info(f"Annotating {model_id} HT with bins using {n_bins} bins")
     info_ht = get_info(split=True).ht()
-    if vqsr:
+    if model_id.startswith("vqsr"):
         rf_ht = get_rf_annotations().ht()
         ht = get_vqsr_filters(model_id, split=True).ht()
 
@@ -69,6 +66,7 @@ def create_bin_ht(
             score=ht.rf_probability["TP"],
         )
 
+
     ht = ht.filter(ht.ac_raw > 0)
     ht = ht.filter(
         ~info_ht[ht.key].AS_lowqual & ~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus])
@@ -86,17 +84,15 @@ def create_bin_ht(
     return bin_ht
 
 
-def create_aggregated_bin_ht(model_id: str, overwrite: bool = False) -> None:
+def create_aggregated_bin_ht(model_id: str) -> hl.Table:
     """
     Aggregates variants into bins, grouped by `bin_id` (rank, bi-allelic, etc.), contig, and `snv`, `bi_allelic`,
-    and `singleton` status, using previously annotated quantile bin information.
+    and `singleton` status, using previously annotated bin information.
 
     For each bin, aggregates statistics needed for evaluation plots.
 
     :param str model_id: Which variant QC model (RF or VQSR model ID) to group
-    :param bool overwrite: Should output files be overwritten if present
-    :return: None
-    :rtype: None
+    :return: Table of aggregate statistics by bin
     """
 
     ht = get_score_bins(model_id, aggregated=False).ht()
@@ -133,20 +129,16 @@ def create_aggregated_bin_ht(model_id: str, overwrite: bool = False) -> None:
         **score_bin_agg(grouped_binned_ht, fam_stats_ht=trio_stats_ht)
     )
 
-    agg_ht.write(
-        get_score_bins(model_id, aggregated=True).path, overwrite=overwrite,
-    )
+    return agg_ht
 
 
 def main(args):
     hl.init(log="/variant_qc_evaluation.log")
 
-    vqsr = args.model_id.startswith("vqsr_")
     if args.create_bin_ht:
         create_bin_ht(
             args.model_id,
             args.n_bins,
-            vqsr,
         ).write(
             get_score_bins(args.model_id, aggregated=False).path,
             overwrite=args.overwrite
@@ -172,7 +164,10 @@ def main(args):
 
     if args.create_aggregated_bin_ht:
         logger.warning("Use only workers, it typically crashes with preemptibles")
-        create_aggregated_bin_ht(args.model_id, args.overwrite)
+        create_aggregated_bin_ht(args.model_id).write(
+            get_score_bins(args.model_id, aggregated=True).path,
+            overwrite=args.overwrite,
+        )
 
     if args.extract_truth_samples:
         logger.info(f"Extracting truth samples from MT...")

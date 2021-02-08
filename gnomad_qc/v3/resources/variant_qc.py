@@ -100,7 +100,7 @@ def get_score_bins(model_id: str, aggregated: bool) -> VersionedTableResource:
         CURRENT_RELEASE,
         {
             release: TableResource(
-                f"{get_variant_qc_root(release)}/score_bins/{model_id}_{'aggregated' if aggregated else 'bins'}.ht"
+                f"{get_variant_qc_root(release)}/score_bins/{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
             )
             for release in RELEASES
         }

@@ -179,7 +179,7 @@ def train_rf(
     no_transmitted_singletons: bool = False,
     no_inbreeding_coeff: bool = False,
     vqsr_training: bool = False,
-    vqsr_type: str = False,
+    vqsr_model_id: str = False,
     filter_centromere_telomere: bool = False,
     test_intervals: Union[str, List[str]] = "chr20",
 ):
@@ -193,7 +193,7 @@ def train_rf(
     :param no_transmitted_singletons: Do not use transmitted singletons for training.
     :param no_inbreeding_coeff: Do not use inbreeding coefficient as a feature for training.
     :param vqsr_training: Use VQSR training sites to train the RF.
-    :param vqsr_type: VQSR model to use for vqsr_training. `vqsr_training` must be True for this parameter to be used.
+    :param vqsr_model_id: VQSR model to use for vqsr_training. `vqsr_training` must be True for this parameter to be used.
     :param filter_centromere_telomere: Filter centromeres and telomeres before training.
     :param test_intervals: Specified interval(s) will be held out for testing and evaluation only. (default to "chr20")
     :return: `ht` annotated with training information and the RF model
@@ -206,7 +206,7 @@ def train_rf(
 
     if vqsr_training:
         logger.info("Using VQSR training sites for RF training...")
-        vqsr_ht = get_vqsr_filters(f"vqsr_{vqsr_type}", split=True).ht()
+        vqsr_ht = get_vqsr_filters(vqsr_model_id, split=True).ht()
         ht = ht.annotate(
             vqsr_POSITIVE_TRAIN_SITE=vqsr_ht[ht.key].info.POSITIVE_TRAIN_SITE,
             vqsr_NEGATIVE_TRAIN_SITE=vqsr_ht[ht.key].info.NEGATIVE_TRAIN_SITE,
@@ -287,7 +287,7 @@ def main(args):
             no_transmitted_singletons=args.no_transmitted_singletons,
             no_inbreeding_coeff=args.no_inbreeding_coeff,
             vqsr_training=args.vqsr_training,
-            vqsr_type=args.vqsr_type,
+            vqsr_model_id=args.vqsr_model_id,
             filter_centromere_telomere=args.filter_centromere_telomere,
             test_intervals=args.test_intervals,
         )
@@ -419,10 +419,10 @@ if __name__ == "__main__":
         "--vqsr_training", help="Use VQSR training examples.", action="store_true"
     )
     training_params.add_argument(
-        "--vqsr_type",
-        help="If a string is provided the VQSR training annotations will be used for training.",
-        default="alleleSpecificTrans",
-        choices=["classic", "alleleSpecific", "alleleSpecificTrans"],
+        "--vqsr_model_id",
+        help="If a VQSR model ID is provided the VQSR training annotations will be used for training.",
+        default="vqsr_alleleSpecificTrans",
+        choices=["vqsr_classic", "vqsr_alleleSpecific", "vqsr_alleleSpecificTrans"],
         type=str,
     )
     training_params.add_argument(
