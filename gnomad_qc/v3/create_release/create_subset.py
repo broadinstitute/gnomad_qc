@@ -1,28 +1,27 @@
 import argparse
 import logging
-from typing import Dict, List, Union
+from typing import Dict, List
 
 import hail as hl
 
-from gnomad.resources.grch38.reference_data import (
-    dbsnp,
-    lcr_intervals,
-    seg_dup_intervals,
-    telomeres_and_centromeres,
+from gnomad.resources.grch38.gnomad import (
+    GROUPS,
+    HGDP_POPS,
+    KG_POPS,
+    SEXES,
 )
+from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.utils.vcf import (
     AS_FIELDS,
-    GROUPS,
     index_globals,
-    make_label_combos,
-    SEXES,
     SITE_FIELDS,
     SPARSE_ENTRIES,
 )
 
-from gnomad_qc.v3.resources.annotations import freq, get_info, vep
+from gnomad_qc.v3.resources.annotations import freq, get_info
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta as metadata
+from gnomad_qc.v3.resources.release import release
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("create_subset")
@@ -300,94 +299,22 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
     ),
 )
 
-POPS = ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas", "mid"]
-KG_POPS = [
-    "esn",
-    "pur",
-    "pjl",
-    "clm",
-    "jpt",
-    "chb",
-    "stu",
-    "itu",
-    "tsi",
-    "mxl",
-    "ceu",
-    "msl",
-    "yri",
-    "beb",
-    "fin",
-    "khv",
-    "cdx",
-    "lwk",
-    "acb",
-    "asw",
-    "ibs",
-    "gbr",
-    "pel",
-    "gih",
-    "chs",
-    "gwd",
-]
-HGDP_POPS = [
-    "japanese",
-    "papuan",
-    "adygei",
-    "orcadian",
-    "biakapygmy",
-    "yakut",
-    "han",
-    "uygur",
-    "miaozu",
-    "mongola",
-    "balochi",
-    "bedouin",
-    "russian",
-    "daur",
-    "pima",
-    "hezhen",
-    "sindhi",
-    "yizu",
-    "oroqen",
-    "san",
-    "tuscan",
-    "tu",
-    "palestinian",
-    "tujia",
-    "druze",
-    "pathan",
-    "basque",
-    "makrani",
-    "italian",
-    "naxi",
-    "karitiana",
-    "sardinian",
-    "mbutipygmy",
-    "mozabite",
-    "yoruba",
-    "lahu",
-    "dai",
-    "cambodian",
-    "melanesian",
-    "french",
-    "brahui",
-    "hazara",
-    "bantusafrica",
-    "surui",
-    "mandenka",
-    "kalash",
-    "xibo",
-    "colombian",
-    "bantukenya",
-    "she",
-    "burusho",
-    "maya",
-]
-POPS.extend(KG_POPS)
-POPS.extend(HGDP_POPS)
-POPS.extend(["global"])
+POPS = KG_POPS + HGDP_POPS
 
-SEXES = ["XY", "XX"]
+SAMPLE_QC_METRICS = [
+    "n_deletion",
+    "n_het",
+    "n_hom_ref",
+    "n_hom_var",
+    "n_insertion",
+    "n_non_ref",
+    "n_snp",
+    "n_transition",
+    "n_transversion",
+    "r_het_hom_var",
+    "r_insertion_deletion",
+    "r_ti_tv",
+]
 
 
 def make_freq_index_dict(freq_meta: List[Dict[str, str]]) -> Dict[str, int]:
@@ -410,122 +337,13 @@ def make_freq_index_dict(freq_meta: List[Dict[str, str]]) -> Dict[str, int]:
     }
 
 
-# TODO: I think Grace was going to put a PR in to add this to gnomAD methods, use that when available
-def region_flag_expr(
-    t: Union[hl.Table, hl.MatrixTable],
-    non_par: bool = True,
-    prob_regions: Dict[str, hl.Table] = None,
-) -> hl.expr.StructExpression:
-    """
-    Creates `region_flag` struct.
-
-    Struct contains flags for problematic regions (i.e., LCR, decoy, segdup, and nonpar regions).
-
-    .. note::
-
-        No hg38 resources for decoy or self chain available yet.
-
-    :param Table/MatrixTable t: Input Table/MatrixTable.
-    :return: `region_flag` struct row annotation.
-    :rtype: hl.expr.StructExpression
-    """
-
-    prob_flags_expr = (
-        {"non_par": (t.locus.in_x_nonpar() | t.locus.in_y_nonpar())} if non_par else {}
-    )
-
-    if prob_regions is not None:
-        prob_flags_expr.update(
-            {
-                region_name: hl.is_defined(region_table[t.locus])
-                for region_name, region_table in prob_regions.items()
-            }
-        )
-
-    return hl.struct(**prob_flags_expr)
-
-
-def prepare_annotations(mt, freq_ht: hl.Table) -> hl.Table:
-    """
-    Load and join all Tables with variant annotations.
-    :param Table freq_ht: Table with frequency annotations.
-    :param str filtering_model_id:
-    :return: Table containing joined annotations.
-    :rtype: hl.Table
-    """
-    logger.info("Loading annotation tables...")
-    filters_ht = hl.read_table(
-        "gs://gnomad/variant_qc/genomes_v3.1/filter_final.ht"
-    )  # TODO replace path
-    vep_ht = vep.ht()
-    dbsnp_ht = dbsnp.ht().select("rsid")
-    info_ht = get_info().ht()
-    logger.info("Filtering lowqual variants and assembling 'info' field...")
-    info_fields = SITE_FIELDS + AS_FIELDS
-    missing_info_fields = set(info_fields).difference(
-        set([field for field in info_ht.take(1)[0].info])
-    )
-    select_info_fields = set(info_fields).intersection(
-        set([field for field in info_ht.take(1)[0].info])
-    )
-    logger.info(f"Following fields not found in info HT: {missing_info_fields}")
-    info_ht = info_ht.transmute(info=info_ht.info.select(*select_info_fields))
-    score_name = hl.eval(filters_ht.filtering_model.score_name)
-    filters = filters_ht[info_ht.key]
-    info_ht = info_ht.annotate(
-        info=info_ht.info.annotate(
-            AS_SOR=filters.AS_SOR,
-            SOR=filters.SOR,
-            transmitted_singleton=filters.transmitted_singleton,
-            omni=filters.omni,
-            mills=filters.mills,
-            monoallelic=filters.monoallelic,
-            **{f"{score_name}": filters[f"{score_name}"]},
-        )
-    )
-    logger.info("Adding annotations...")
-    vep_ht = vep_ht.transmute(vep=vep_ht.vep.drop("colocated_variants"))
-    filters_ht = filters_ht.annotate(
-        allele_data=hl.struct(
-            variant_type=filters_ht.variant_type,
-            allele_type=filters_ht.allele_type,
-            n_alt_alleles=filters_ht.n_alt_alleles,
-            was_mixed=filters_ht.was_mixed,
-        )
-    )
-    ht = mt.rows().select()
-    ht = ht.select_globals()
-    ht = ht.filter(
+# TODO: Make sure these are filtered somewhere
+"""    ht = ht.filter(
         info_ht[ht.key].AS_lowqual
         & hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]),
         keep=False,
     )
-    filters = filters_ht[ht.key]
-    ht = ht.annotate(
-        rsid=dbsnp_ht[ht.key].rsid,
-        filters=filters.filters,
-        info=info_ht[ht.key].info,
-        vep=vep_ht[ht.key].vep,
-        vqsr=filters.vqsr,
-        region_flag=region_flag_expr(
-            ht,
-            non_par=False,
-            prob_regions={
-                "lcr": lcr_intervals.ht(),  # TODO: Make this dictionary a variable?
-                "segdup": seg_dup_intervals.ht(),
-            },
-        ),
-        allele_info=filters.allele_data,
-    )
-    ht = ht.annotate(
-        info=ht.info.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
-    )
-    analyst_ht = hl.read_table(
-        "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1/gnomad_genomes_v3.1.analyst_annotations.ht"
-    )  # TODO: update path
-    ht = ht.annotate(**analyst_ht[ht.key])
-
-    return ht
+"""
 
 
 def main(args):
@@ -544,7 +362,7 @@ def main(args):
     mt = mt.select_entries(*SPARSE_ENTRIES)
 
     logger.info(
-        "Subsetting and modifying sample QC metadata to desired globals and annotations"
+        "Sub-setting and modifying sample QC metadata to desired globals and annotations"
     )
     meta_ht = meta_ht.select_globals(
         "sex_imputation_ploidy_cutoffs",
@@ -567,20 +385,7 @@ def main(args):
         "bam_metrics",
         subsets=meta_ht.subsets.select("tgp", "hgdp"),
         sex_imputation=meta_ht.sex_imputation.drop("is_female"),
-        sample_qc=meta_ht.sample_qc.select(
-            "n_hom_ref",
-            "n_het",
-            "n_hom_var",
-            "n_non_ref",
-            "n_snp",
-            "n_insertion",
-            "n_deletion",
-            "n_transition",
-            "n_transversion",
-            "r_ti_tv",
-            "r_het_hom_var",
-            "r_insertion_deletion",
-        ),
+        sample_qc=meta_ht.sample_qc.select(*SAMPLE_QC_METRICS),
         population_inference=meta_ht.population_inference.drop(
             "training_pop", "training_pop_all"
         ),
@@ -589,7 +394,7 @@ def main(args):
     )
 
     logger.info(
-        "Adding sample QC metadata to desired globals and annotations to MT columns"
+        "Adding desired sample QC metadata to MT columns and global annotations to MT globals"
     )
     mt = mt.annotate_cols(**meta_ht[mt.col_key])
     mt = mt.annotate_globals(
@@ -600,7 +405,9 @@ def main(args):
 
     if args.export_meta:
         meta = meta_ht.semi_join(mt.cols())
-        meta.export(f"{args.output_path}/metadata.tsv.bgz")
+        meta.export(
+            f"{args.output_path}/metadata.tsv.bgz"
+        )  # TODO: add path to resources
 
     mt = mt.annotate_rows(
         _site_has_non_ref=hl.agg.any(mt.LGT.is_non_ref()),
@@ -620,9 +427,7 @@ def main(args):
     logger.info("Splitting multi-allelics")
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
-    release_ht = hl.read_table(
-        "gs://gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht"
-    )  # TODO replace path
+    release_ht = release(public=False).ht()
     subset_freq = hl.read_table(
         "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1/gnomad_genomes_v3.1.frequencies.hgdp_tgp.ht"
     )  # TODO replace path
@@ -644,9 +449,13 @@ def main(args):
     logger.info(
         "Setting het genotypes at sites with >1% AF (using precomputed v3.1 frequencies) and > 0.9 AB to homalt..."
     )
+
+    # TODO: Should we put this hotfix into a common function somewhere? I'm not sure the best place to put it,
+    #  but we use it a couple times
     # hotfix for depletion of homozygous alternate genotypes
     # Using v3.1 AF
-    variant_annotation_ht = prepare_annotations(mt, freq.ht())
+    # TODO: Need to figure out what variant annotations we want on the MT if any? I removed the prepare function because
+    #  I think all the info I want is already on the release HT so I can just get it from there
     mt = mt.annotate_entries(
         GT=hl.cond(
             (release_ht[mt.row_key].freq[0].AF > 0.01)
