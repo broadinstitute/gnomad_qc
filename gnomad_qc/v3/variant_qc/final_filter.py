@@ -65,7 +65,7 @@ def generate_final_filter_ht(
     :param indel_bin_cutoff: Bin cutoff to use for indel variant QC filter. Can't be used with `indel_score_cutoff`
     :param snp_score_cutoff: Score cutoff (e.g. RF probability or AS_VQSLOD) to use for SNP variant QC filter. Can't be used with `snp_bin_cutoff`
     :param indel_score_cutoff: Score cutoff (e.g. RF probability or AS_VQSLOD) to use for indel variant QC filter. Can't be used with `indel_bin_cutoff`
-    :param aggregated_bin_ht: File with aggregate counts of variants based on bins
+    :param aggregated_bin_ht: Table with aggregate counts of variants based on bins
     :param bin_id: Name of bin to use in 'bin_id' column of `aggregated_bin_ht` to use to determine probability cutoff
     :param vqsr_ht: If a VQSR HT is supplied a 'vqsr' annotation containing AS_VQSLOD, AS_culprit, NEGATIVE_TRAIN_SITE,
         and POSITIVE_TRAIN_SITE will be included in the returned Table
