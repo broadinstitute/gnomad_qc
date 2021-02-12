@@ -295,7 +295,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--score_name",
         help=(
-            "What to rename for the filtering score annotation. This will be used in place of 'score' in the "
+            "What to rename the filtering score annotation. This will be used in place of 'score' in the "
             "release HT info struct and the INFO field of the VCF (e.g. 'RF', 'AS_VQSLOD')."
         ),
     )
