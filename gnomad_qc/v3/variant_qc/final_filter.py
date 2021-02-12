@@ -9,21 +9,15 @@ from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import add_filters_expr
 from gnomad.utils.slack import slack_notifications
+from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources import (
-    final_filter,
-    freq,
-    get_info,
-    get_score_bins,
-    get_vqsr_filters,
-)
+from gnomad_qc.v3.resources.annotations import get_freq, get_info, get_vqsr_filters
+from gnomad_qc.v3.resources.variant_qc import final_filter, get_score_bins
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("variant_qc_filtering")
 logger.setLevel(logging.INFO)
-
-INBREEDING_COEFF_HARD_CUTOFF = -0.3
 
 
 def generate_final_filter_ht(
@@ -72,20 +66,30 @@ def generate_final_filter_ht(
     :return: Finalized random forest Table annotated with variant filters
     """
     if snp_bin_cutoff is not None and snp_score_cutoff is not None:
-        raise ValueError("snp_bin_cutoff and snp_score_cutoff are mutually exclusive, please only supply one SNP filtering cutoff.")
+        raise ValueError(
+            "snp_bin_cutoff and snp_score_cutoff are mutually exclusive, please only supply one SNP filtering cutoff."
+        )
 
     if indel_bin_cutoff is not None and indel_score_cutoff is not None:
-        raise ValueError("indel_bin_cutoff and indel_score_cutoff are mutually exclusive, please only supply one indel filtering cutoff.")
+        raise ValueError(
+            "indel_bin_cutoff and indel_score_cutoff are mutually exclusive, please only supply one indel filtering cutoff."
+        )
 
     if snp_bin_cutoff is None and snp_score_cutoff is None:
-        raise ValueError("One (and only one) of the parameters snp_bin_cutoff and snp_score_cutoff must be supplied.")
+        raise ValueError(
+            "One (and only one) of the parameters snp_bin_cutoff and snp_score_cutoff must be supplied."
+        )
 
     if indel_bin_cutoff is None and indel_score_cutoff is None:
-        raise ValueError("One (and only one) of the parameters indel_bin_cutoff and indel_score_cutoff must be supplied.")
-
-    if (snp_bin_cutoff is not None or indel_bin_cutoff is not None) and (aggregated_bin_ht is None or bin_id is None):
         raise ValueError(
-                "If using snp_bin_cutoff or indel_bin_cutoff, both aggregated_bin_ht and bin_id must be supplied"
+            "One (and only one) of the parameters indel_bin_cutoff and indel_score_cutoff must be supplied."
+        )
+
+    if (snp_bin_cutoff is not None or indel_bin_cutoff is not None) and (
+        aggregated_bin_ht is None or bin_id is None
+    ):
+        raise ValueError(
+            "If using snp_bin_cutoff or indel_bin_cutoff, both aggregated_bin_ht and bin_id must be supplied"
         )
 
     # Determine SNP and indel score cutoffs if given bin instead of score
@@ -109,7 +113,9 @@ def generate_final_filter_ht(
                 hl.agg.min(aggregated_bin_ht.min_score),
             )
         )
-        indel_cutoff_global = hl.struct(bin=indel_bin_cutoff, min_score=indel_score_cutoff)
+        indel_cutoff_global = hl.struct(
+            bin=indel_bin_cutoff, min_score=indel_score_cutoff
+        )
 
     min_score = ht.aggregate(hl.agg.min(ht.score))
     max_score = ht.aggregate(hl.agg.max(ht.score))
@@ -135,12 +141,16 @@ def generate_final_filter_ht(
         ht.filter(hl.is_missing(ht.score)).show()
         raise ValueError("Missing Score!")
 
-    filters[model_name] = hl.is_missing(ht.score) | (
-        hl.is_snp(ht.alleles[0], ht.alleles[1])
-        & (ht.score < snp_cutoff_global.min_score)
-    ) | (
-        ~hl.is_snp(ht.alleles[0], ht.alleles[1])
-        & (ht.score < indel_cutoff_global.min_score)
+    filters[model_name] = (
+        hl.is_missing(ht.score)
+        | (
+            hl.is_snp(ht.alleles[0], ht.alleles[1])
+            & (ht.score < snp_cutoff_global.min_score)
+        )
+        | (
+            ~hl.is_snp(ht.alleles[0], ht.alleles[1])
+            & (ht.score < indel_cutoff_global.min_score)
+        )
     )
 
     filters["InbreedingCoeff"] = hl.or_else(
@@ -176,14 +186,20 @@ def generate_final_filter_ht(
         filters=add_filters_expr(filters=filters),
         monoallelic=mono_allelic_flag_expr,
         **{score_name: ht.score},
-        **annotations_expr
+        **annotations_expr,
     )
 
     bin_names = [x for x in ht.row if x.endswith("bin")]
-    bin_names = [(x, x.split("adj_")[0] + x.split("adj_")[1] if len(x.split("adj_")) == 2 else "raw_" + x) for x in bin_names]
-    ht = ht.transmute(
-        **{j: ht[i] for i, j in bin_names}
-    )
+    bin_names = [
+        (
+            x,
+            x.split("adj_")[0] + x.split("adj_")[1]
+            if len(x.split("adj_")) == 2
+            else "raw_" + x,
+        )
+        for x in bin_names
+    ]
+    ht = ht.transmute(**{j: ht[i] for i, j in bin_names})
 
     ht = ht.annotate_globals(
         bin_stats=hl.struct(**{j: ht.bin_stats[i] for i, j in bin_names}),
@@ -192,7 +208,7 @@ def generate_final_filter_ht(
             score_name=score_name,
             snv_cutoff=snp_cutoff_global,
             indel_cutoff=indel_cutoff_global,
-        )
+        ),
     )
     if vqsr_ht:
         vqsr = vqsr_ht[ht.key]
@@ -206,7 +222,7 @@ def generate_final_filter_ht(
             SOR=vqsr.info.SOR,  # NOTE: This was required for v3.1, we now compute this in `get_site_info_expr`
         )
 
-    ht = ht.drop('AS_culprit')
+    ht = ht.drop("AS_culprit")
 
     return ht
 
@@ -221,10 +237,10 @@ def main(args):
     info_ht = get_info(split=True).ht()
     ht = ht.filter(~info_ht[ht.key].AS_lowqual)
 
-    if args.model_id.startswith('vqsr_'):
+    if args.model_id.startswith("vqsr_"):
         ht = ht.drop("info")
 
-    freq_ht = freq.ht()
+    freq_ht = get_freq().ht()
     ht = ht.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
     freq_idx = freq_ht[ht.key]
     aggregated_bin_path = get_score_bins(args.model_id, aggregated=True).path
@@ -236,7 +252,7 @@ def main(args):
 
     ht = generate_final_filter_ht(
         ht,
-        args.model_id,
+        args.model_name,
         args.score_name,
         ac0_filter_expr=freq_idx.freq[0].AC == 0,
         ts_ac_filter_expr=freq_idx.freq[1].AC == 1,
@@ -247,27 +263,40 @@ def main(args):
         indel_score_cutoff=args.indel_score_cutoff,
         inbreeding_coeff_cutoff=args.inbreeding_coeff_threshold,
         aggregated_bin_ht=aggregated_bin_ht,
-        bin_id='bin',
-        vqsr_ht=get_vqsr_filters(args.vqsr_model_id, split=True).ht() if args.vqsr_model_id else None,
+        bin_id="bin",
+        vqsr_ht=get_vqsr_filters(args.vqsr_model_id, split=True).ht()
+        if args.vqsr_model_id
+        else None,
     )
     ht = ht.annotate_globals(
-        filtering_model=ht.filtering_model.annotate(
-            model_id=args.model_id,
-        )
+        filtering_model=ht.filtering_model.annotate(model_id=args.model_id,)
     )
-    if args.model_id.startswith('vqsr_'):
+    if args.model_id.startswith("vqsr_"):
         ht = ht.annotate_globals(
             filtering_model=ht.filtering_model.annotate(
-                snv_training_variables=["AS_QD", "AS_MQRankSum", "AS_ReadPosRankSum", "AS_FS", "AS_SOR", "AS_MQ"],
-                indel_training_variables=["AS_QD", "AS_MQRankSum", "AS_ReadPosRankSum", "AS_FS", "AS_SOR"],
-        )
+                snv_training_variables=[
+                    "AS_QD",
+                    "AS_MQRankSum",
+                    "AS_ReadPosRankSum",
+                    "AS_FS",
+                    "AS_SOR",
+                    "AS_MQ",
+                ],
+                indel_training_variables=[
+                    "AS_QD",
+                    "AS_MQRankSum",
+                    "AS_ReadPosRankSum",
+                    "AS_FS",
+                    "AS_SOR",
+                ],
+            )
         )
     else:
         ht = ht.annotate_globals(
             filtering_model=ht.filtering_model.annotate(
                 snv_training_variables=ht.features,
                 indel_training_variables=ht.features,
-        )
+            )
         )
 
     ht.write(final_filter.path, args.overwrite)
@@ -305,26 +334,34 @@ if __name__ == "__main__":
         type=float,
         default=INBREEDING_COEFF_HARD_CUTOFF,
     )
-    snp_cutoff = parser.add_mutually_exclusive_group()#required=True)
+    snp_cutoff = parser.add_mutually_exclusive_group(required=True)
     snp_cutoff.add_argument(
-        "--snp_bin_cutoff", help="RF or VQSR score bin to use as cutoff for SNPs. Value should be between 1 and 100.", type=float,
+        "--snp_bin_cutoff",
+        help="RF or VQSR score bin to use as cutoff for SNPs. Value should be between 1 and 100.",
+        type=float,
     )
     snp_cutoff.add_argument(
-        "--snp_score_cutoff", help="RF or VQSR score to use as cutoff for SNPs.", type=float,
+        "--snp_score_cutoff",
+        help="RF or VQSR score to use as cutoff for SNPs.",
+        type=float,
     )
-    indel_cutoff = parser.add_mutually_exclusive_group()#required=True)
+    indel_cutoff = parser.add_mutually_exclusive_group(required=True)
     indel_cutoff.add_argument(
-        "--indel_bin_cutoff", help="RF or VQSR score bin to use as cutoff for indels. Value should be between 1 and 100.", type=float,
+        "--indel_bin_cutoff",
+        help="RF or VQSR score bin to use as cutoff for indels. Value should be between 1 and 100.",
+        type=float,
     )
     indel_cutoff.add_argument(
-        "--indel_score_cutoff", help="RF or VQSR score to use as cutoff for indels.", type=float,
+        "--indel_score_cutoff",
+        help="RF or VQSR score to use as cutoff for indels.",
+        type=float,
     )
     parser.add_argument(
         "--filter_centromere_telomere",
         help="Filter centromeres and telomeres from final filter Table.",
         action="store_true",
     )
-    parser.add_argument( # NOTE: This was required for v3.1 to grab the SOR annotation, we now compute this in `get_site_info_expr`
+    parser.add_argument(  # NOTE: This was required for v3.1 to grab the SOR annotation, we now compute this in `get_site_info_expr`
         "--vqsr_model_id",
         help=(
             "If a VQSR model ID is provided, a 'vqsr' annotation will be added to the final filter Table containing AS_VQSLOD "

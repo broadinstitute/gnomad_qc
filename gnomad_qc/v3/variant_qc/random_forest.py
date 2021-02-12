@@ -7,7 +7,10 @@ import uuid
 
 import hail as hl
 
-from gnomad.resources.grch38.reference_data import get_truth_ht, telomeres_and_centromeres
+from gnomad.resources.grch38.reference_data import (
+    get_truth_ht,
+    telomeres_and_centromeres,
+)
 from gnomad.utils.slack import slack_notifications
 from gnomad.variant_qc.pipeline import train_rf_model
 from gnomad.variant_qc.random_forest import (
@@ -21,6 +24,7 @@ from gnomad.variant_qc.random_forest import (
 )
 
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.resources.basics import get_checkpoint_path
 from gnomad_qc.v3.resources.annotations import (
     allele_data,
     fam_stats,
@@ -30,7 +34,6 @@ from gnomad_qc.v3.resources.annotations import (
     qc_ac,
 )
 from gnomad_qc.v3.resources.variant_qc import (
-    get_checkpoint_path,
     get_rf_annotations,
     get_rf_model_path,
     get_rf_result,
@@ -102,15 +105,13 @@ def create_rf_ht(
     :rtype: Table
     """
 
-    group = 'adj' if adj else 'raw'
+    group = "adj" if adj else "raw"
 
     ht = get_info(split=True).ht()
     ht = ht.transmute(**ht.info)
-    ht = ht.select(
-       "lowqual", "AS_lowqual", "FS", "MQ", "QD", *INFO_FEATURES
-    )
+    ht = ht.select("lowqual", "AS_lowqual", "FS", "MQ", "QD", *INFO_FEATURES)
 
-    inbreeding_ht = get_freq.ht()
+    inbreeding_ht = get_freq().ht()
     inbreeding_ht = inbreeding_ht.select(
         InbreedingCoeff=hl.if_else(
             hl.is_nan(inbreeding_ht.InbreedingCoeff),
@@ -136,9 +137,7 @@ def create_rf_ht(
         **allele_counts_ht[ht.key],
     )
     # Filter to only variants found in high quality samples and are not lowqual
-    ht = ht.filter(
-        (ht[f"ac_qc_samples_{group}"] > 0) & ~ht.AS_lowqual
-    )
+    ht = ht.filter((ht[f"ac_qc_samples_{group}"] > 0) & ~ht.AS_lowqual)
     ht = ht.select(
         "a_index",
         "was_split",
@@ -152,7 +151,7 @@ def create_rf_ht(
         singleton=ht.ac_release_samples_raw == 1,
         ac_raw=ht.ac_qc_samples_raw,
         ac=ht.ac_release_samples_adj,
-        ac_qc_samples_unrelated_raw=ht.ac_qc_samples_unrelated_raw
+        ac_qc_samples_unrelated_raw=ht.ac_qc_samples_unrelated_raw,
     )
 
     ht = ht.repartition(n_partitions, shuffle=False)
@@ -299,7 +298,9 @@ def main(args):
         logger.info("Adding run to RF run list")
         rf_runs[model_id] = get_run_data(
             input_args={
-                "transmitted_singletons": None if args.vqsr_training else not args.no_transmitted_singletons,
+                "transmitted_singletons": None
+                if args.vqsr_training
+                else not args.no_transmitted_singletons,
                 "adj": args.adj,
                 "vqsr_training": args.vqsr_training,
                 "filter_centromere_telomere": args.filter_centromere_telomere,

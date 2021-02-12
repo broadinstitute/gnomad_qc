@@ -1,6 +1,8 @@
 import hail as hl
-from gnomad.resources.resource_utils import (MatrixTableResource,
-                                             VersionedMatrixTableResource)
+from gnomad.resources.resource_utils import (
+    MatrixTableResource,
+    VersionedMatrixTableResource,
+)
 
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v3.resources.meta import meta
@@ -27,7 +29,9 @@ def get_gnomad_v3_mt(
     mt = gnomad_v3_genotypes.mt()
     if key_by_locus_and_alleles:
         mt = hl.MatrixTable(
-            hl.ir.MatrixKeyRowsBy(mt._mir, ["locus", "alleles"], is_sorted=True)  # Prevents hail from running sort on genotype MT which is already sorted by a unique locus 
+            hl.ir.MatrixKeyRowsBy(
+                mt._mir, ["locus", "alleles"], is_sorted=True
+            )  # Prevents hail from running sort on genotype MT which is already sorted by a unique locus
         )
 
     if remove_hard_filtered_samples:
@@ -65,3 +69,15 @@ gnomad_v3_genotypes = VersionedMatrixTableResource(
         ),
     },
 )
+
+
+def get_checkpoint_path(name: str, mt: bool = False) -> str:
+    """
+    Creates a checkpoint path for Table or MatrixTable
+
+    :param str name: Name of intermediate Table/MatrixTable
+    :param bool mt: Whether path is for a MatrixTable, default is False
+    :return: Output checkpoint path
+    :rtype: str
+    """
+    return f'gs://gnomad-tmp/{name}.{"mt" if mt else "ht"}'

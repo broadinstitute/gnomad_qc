@@ -2,12 +2,17 @@ from typing import Optional, Union
 
 import hail as hl
 
-from gnomad.resources.grch38 import na12878_giab, na12878_giab_hc_intervals, syndip, syndip_hc_intervals
+from gnomad.resources.grch38 import (
+    na12878_giab,
+    na12878_giab_hc_intervals,
+    syndip,
+    syndip_hc_intervals,
+)
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
     TableResource,
     VersionedMatrixTableResource,
-    VersionedTableResource
+    VersionedTableResource,
 )
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
@@ -53,7 +58,9 @@ def get_variant_qc_root(version: str = CURRENT_RELEASE) -> str:
     return f"gs://gnomad/variant_qc/genomes_v{version}"
 
 
-def get_callset_truth_data(truth_sample: str, mt: bool = True) -> Union[MatrixTableResource, TableResource]:
+def get_callset_truth_data(
+    truth_sample: str, mt: bool = True
+) -> Union[MatrixTableResource, TableResource]:
     """
     Get resources for the truth sample data that is subset from the full callset
 
@@ -73,7 +80,7 @@ def get_callset_truth_data(truth_sample: str, mt: bool = True) -> Union[MatrixTa
                     f"{get_variant_qc_root(release)}/truth_samples/{truth_sample}.mt"
                 )
                 for release in RELEASES
-            }
+            },
         )
     else:
         return VersionedTableResource(
@@ -83,7 +90,7 @@ def get_callset_truth_data(truth_sample: str, mt: bool = True) -> Union[MatrixTa
                     f"{get_variant_qc_root(release)}/truth_samples/{truth_sample}.ht"
                 )
                 for release in RELEASES
-            }
+            },
         )
 
 
@@ -103,7 +110,7 @@ def get_score_bins(model_id: str, aggregated: bool) -> VersionedTableResource:
                 f"{get_variant_qc_root(release)}/score_bins/{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
             )
             for release in RELEASES
-        }
+        },
     )
 
 
@@ -123,7 +130,7 @@ def get_binned_concordance(model_id: str, truth_sample: str) -> VersionedTableRe
                 f"{get_variant_qc_root(release)}/binned_concordance/{truth_sample}_{model_id}_binned_concordance.ht"
             )
             for release in RELEASES
-        }
+        },
     )
 
 
@@ -159,7 +166,7 @@ def get_rf_annotations(adj: bool = False) -> VersionedTableResource:
                 f"{get_variant_qc_root(release)}/rf/rf_annotations.{'adj' if adj else 'raw'}.ht"
             )
             for release in RELEASES
-        }
+        },
     )
 
 
@@ -199,7 +206,7 @@ def get_rf_training(model_id: str) -> VersionedTableResource:
                 f"{get_variant_qc_root(release)}/rf/models/{model_id}/training.ht"
             )
             for release in RELEASES
-        }
+        },
     )
 
 
@@ -217,26 +224,14 @@ def get_rf_result(model_id: Optional[str] = None) -> VersionedTableResource:
                 f"{get_variant_qc_root(release)}/rf/models/{model_id}/rf_result.ht"
             )
             for release in RELEASES
-        }
+        },
     )
-
-
-def get_checkpoint_path(name: str, mt: bool = False) -> str:
-    """
-    Creates a checkpoint path for Table or MatrixTable
-
-    :param str name: Name of intermediate Table/MatrixTable
-    :param bool mt: Whether path is for a MatrixTable, default is False
-    :return: Output checkpoint path
-    :rtype: str
-    """
-    return f'gs://gnomad-tmp/{name}.{"mt" if mt else "ht"}'
 
 
 final_filter = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_variant_qc_root(release)}/final_filter.ht") for release in RELEASES}
+    {
+        release: TableResource(f"{get_variant_qc_root(release)}/final_filter.ht")
+        for release in RELEASES
+    },
 )
-
-class DataException(Exception):
-    pass
