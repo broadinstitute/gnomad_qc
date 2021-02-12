@@ -180,7 +180,7 @@ def get_rf_model_path(model_id: str, release: str = CURRENT_RELEASE) -> str:
 
     :param model_id: RF run to load
     :param release: Release of model path to return
-    :return: Path to tne RF model
+    :return: Path to the RF model
     """
     return f"{get_variant_qc_root(release)}/rf/models/{model_id}/rf.model"
 
