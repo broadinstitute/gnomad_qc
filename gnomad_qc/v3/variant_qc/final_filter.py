@@ -270,7 +270,7 @@ def main(args):
         )
         )
 
-    ht.write("gs://gnomad-tmp/test_variant_qc_final_filter.ht")#.write(final_filter.path, args.overwrite)
+    ht.write(final_filter.path, args.overwrite)
 
     final_filter_ht = final_filter.ht()
     final_filter_ht.summarize()
