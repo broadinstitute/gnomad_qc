@@ -1,6 +1,6 @@
 import argparse
 import logging
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import hail as hl
 
@@ -10,7 +10,13 @@ from gnomad.resources.grch38.gnomad import (
     KG_POPS,
     SEXES,
 )
-from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
+from gnomad.resources.grch38.reference_data import (
+    dbsnp,
+    lcr_intervals,
+    telomeres_and_centromeres,
+    seg_dup_intervals,
+)
+from gnomad.utils.filtering import filter_low_conf_regions
 from gnomad.utils.vcf import (
     AS_FIELDS,
     index_globals,
@@ -18,10 +24,16 @@ from gnomad.utils.vcf import (
     SPARSE_ENTRIES,
 )
 
-from gnomad_qc.v3.resources.annotations import freq, get_info
+from gnomad_qc.v3.resources.annotations import (
+    analyst_annotations,
+    get_freq,
+    get_info,
+    vep,
+)
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta as metadata
 from gnomad_qc.v3.resources.release import release
+from gnomad_qc.v3.resources.variant_qc import final_filter
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("create_subset")
@@ -337,11 +349,10 @@ def make_freq_index_dict(freq_meta: List[Dict[str, str]]) -> Dict[str, int]:
     }
 
 
-
 def region_flag_expr(
-        t: Union[hl.Table, hl.MatrixTable],
-        non_par: bool = True,
-        prob_regions: Dict[str, hl.Table] = None
+    t: Union[hl.Table, hl.MatrixTable],
+    non_par: bool = True,
+    prob_regions: Dict[str, hl.Table] = None,
 ) -> hl.expr.StructExpression:
     """
     Creates `region_flag` struct.
@@ -353,103 +364,33 @@ def region_flag_expr(
     :rtype: hl.expr.StructExpression
     """
 
-    prob_flags_expr = {'non_par': (t.locus.in_x_nonpar() | t.locus.in_y_nonpar())} if non_par else {}
+    prob_flags_expr = (
+        {"non_par": (t.locus.in_x_nonpar() | t.locus.in_y_nonpar())} if non_par else {}
+    )
 
     if prob_regions is not None:
-        prob_flags_expr.update({
-            region_name: hl.is_defined(region_table[t.locus])
-            for region_name, region_table in prob_regions.items()
-        })
+        prob_flags_expr.update(
+            {
+                region_name: hl.is_defined(region_table[t.locus])
+                for region_name, region_table in prob_regions.items()
+            }
+        )
 
     return hl.struct(**prob_flags_expr)
 
 
-
-def prepare_annotations(
-    mt, freq_ht: hl.Table) -> hl.Table:
+def prepare_sample_annotations() -> hl.Table:
     """
-    Load and join all Tables with variant annotations.
-    :param Table freq_ht: Table with frequency annotations.
-    :param str filtering_model_id:
-    :return: Table containing joined annotations.
-    :rtype: hl.Table
+
+
+    :return:
     """
-    logger.info("Loading annotation tables...")
-    filters_ht = hl.read_table('gs://gnomad/variant_qc/genomes_v3.1/filter_final.ht')  # TODO replace path
-    vep_ht = vep.ht()
-    dbsnp_ht = dbsnp.ht().select("rsid")
-    info_ht = get_info().ht()
-    logger.info("Filtering lowqual variants and assembling 'info' field...")
-    info_fields = SITE_FIELDS + AS_FIELDS
-    missing_info_fields = set(info_fields).difference(
-        set([field for field in info_ht.take(1)[0].info]))
-    select_info_fields = set(info_fields).intersection(set([field for field in info_ht.take(1)[0].info]))
-    logger.info(f'Following fields not found in info HT: {missing_info_fields}')
-    info_ht = info_ht.transmute(info=info_ht.info.select(*select_info_fields))
-    score_name = hl.eval(filters_ht.filtering_model.score_name)
-    filters = filters_ht[info_ht.key]
-    info_ht = info_ht.annotate(info=info_ht.info.annotate(
-        AS_SOR=filters.AS_SOR,
-        SOR=filters.SOR,
-        transmitted_singleton=filters.transmitted_singleton,
-        omni=filters.omni,
-        mills=filters.mills,
-        monoallelic=filters.monoallelic,
-        **{f'{score_name}': filters[f'{score_name}']}
-    ))
-    logger.info("Adding annotations...")
-    vep_ht = vep_ht.transmute(vep=vep_ht.vep.drop("colocated_variants"))
-    filters_ht = filters_ht.annotate(allele_data=hl.struct(
-        variant_type=filters_ht.variant_type,
-        allele_type=filters_ht.allele_type,
-        n_alt_alleles=filters_ht.n_alt_alleles,
-        was_mixed=filters_ht.was_mixed,
-    )
-    )
-    ht = mt.rows().select()
-    ht = ht.select_globals()
-    ht = ht.filter(info_ht[ht.key].AS_lowqual & hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]), keep=False)
-    filters = filters_ht[ht.key]
-    ht = ht.annotate(
-        rsid=dbsnp_ht[ht.key].rsid,
-        filters=filters.filters,
-        info=info_ht[ht.key].info,
-        vep=vep_ht[ht.key].vep,
-        vqsr=filters.vqsr,
-        region_flag=region_flag_expr(ht, non_par=False,
-                                     prob_regions={'lcr': lcr_intervals.ht(),  # TODO: Make this dictionary a variable?
-                                                   'segdup': seg_dup_intervals.ht()}),
-        allele_info=filters.allele_data,
-    )
-    ht = ht.annotate(
-        info=ht.info.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
-    )
-    analyst_ht = hl.read_table('gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1/gnomad_genomes_v3.1.analyst_annotations.ht')  # TODO: update path
-    ht = ht.annotate(**analyst_ht[ht.key])
-
-    return ht
-
-
-def main(args):
-    hl.init(log="/subset.log", default_reference="GRCh38")
-
-    mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True,)
-    meta_ht = metadata.ht()
-
-    logger.info("Filtering MT columns to high quality and HGDP + TGP samples")
-    mt = mt.filter_cols(
-        meta_ht[mt.col_key].high_quality
-        & (meta_ht[mt.col_key].subsets.hgdp | meta_ht[mt.col_key].subsets.tgp)
-    )
-
-    logger.info("Filtering to desired entries")
-    mt = mt.select_entries(*SPARSE_ENTRIES)
-
     logger.info(
         "Sub-setting and modifying sample QC metadata to desired globals and annotations"
     )
+    meta_ht = metadata.ht()
     meta_ht = meta_ht.select_globals(
-        "sex_imputation_ploidy_cutoffs",
+        sex_imputation_ploidy_cutoffs=meta_ht.sex_imputation_ploidy_cutoffs,
         population_inference_pca_metrics=hl.struct(
             n_pcs=meta_ht.population_inference_pca_metrics.n_pcs,
             min_prob=meta_ht.population_inference_pca_metrics.min_prob,
@@ -466,7 +407,7 @@ def main(args):
         ),
     )
     meta_ht = meta_ht.select(
-        "bam_metrics",
+        bam_metrics=meta_ht.bam_metrics,
         subsets=meta_ht.subsets.select("tgp", "hgdp"),
         sex_imputation=meta_ht.sex_imputation.drop("is_female"),
         sample_qc=meta_ht.sample_qc.select(*SAMPLE_QC_METRICS),
@@ -475,6 +416,128 @@ def main(args):
         ),
         labeled_subpop=meta_ht.project_meta.project_subpop,
         gnomad_release=meta_ht.release,
+        high_quality=meta_ht.high_quality,
+    )
+
+    return meta_ht
+
+
+def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl.Table:
+    """
+    Load and join all Tables with variant annotations.
+
+    :param Table ht:
+    :param bool filter_lowqual: If true the returned Table will filter out lowqual variants.
+    :return: Table containing joined annotations.
+    :rtype: hl.Table
+    """
+    logger.info("Loading annotation tables...")
+    filters_ht = final_filter.ht()
+    vep_ht = vep.ht()
+    dbsnp_ht = dbsnp.ht().select("rsid")
+    info_ht = get_info().ht()
+    analyst_ht = analyst_annotations.ht()
+    freq_ht = get_freq().ht()
+    score_name = hl.eval(filters_ht.filtering_model.score_name)
+
+    if filter_lowqual:
+        logger.info("Filtering lowqual variants...")
+        ht = ht.filter(info_ht[ht.key].AS_lowqual, keep=False)
+
+    logger.info("Assembling 'info' field...")
+    info_fields = SITE_FIELDS + AS_FIELDS
+    missing_info_fields = set(info_fields).difference(info_ht.info.keys())
+    select_info_fields = set(info_fields).intersection(info_ht.info.keys())
+    logger.info(
+        f"The following fields are not found in the info HT: {missing_info_fields}"
+    )
+
+    # NOTE: SOR and AS_SOR annotations are now added to the info HT by default with get_as_info_expr and
+    # get_site_info_expr in gnomad_methods, but they were not for v3 or v3.1
+    filters = filters_ht[info_ht.key]
+    info_ht = info_ht.transmute(
+        info=info_ht.info.select(
+            *select_info_fields,
+            AS_SOR=filters.AS_SOR,
+            SOR=filters.SOR,
+            singleton=filters.singleton,
+            transmitted_singleton=filters.transmitted_singleton,
+            omni=filters.omni,
+            mills=filters.mills,
+            monoallelic=filters.monoallelic,
+            InbreedingCoeff=freq_ht[info_ht.key].InbreedingCoeff,
+            **{f"{score_name}": filters[f"{score_name}"]},
+        )
+    )
+
+    logger.info("Adding annotations...")
+    filters_ht = filters_ht.annotate(
+        allele_info=hl.struct(
+            variant_type=filters_ht.variant_type,
+            allele_type=filters_ht.allele_type,
+            n_alt_alleles=filters_ht.n_alt_alleles,
+            was_mixed=filters_ht.was_mixed,
+        ),
+    )
+
+    filters = filters_ht[ht.key]
+    info = info_ht[ht.key]
+    ht = ht.annotate(
+        a_index=info.a_index,
+        was_split=info.was_split,
+        rsid=dbsnp_ht[ht.key].rsid,
+        filters=filters.filters,
+        info=info.info,
+        vep=vep_ht[ht.key].vep.drop("colocated_variants"),
+        vqsr=filters.vqsr,
+        region_flag=region_flag_expr(
+            ht,
+            non_par=False,
+            prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht(),},
+        ),
+        allele_info=filters.allele_data,
+        **analyst_ht[ht.key],
+    )
+
+    return ht
+
+
+# TODO: Should we put this hotfix into a common function somewhere? I'm not sure the best place to put it,
+#  but we use it a couple times
+def hom_alt_depletion_fix(mt, af_expr, af_cutoff=0.01, ab_cutoff=0.9):
+    """
+    Hotfix for the depletion of homozygous alternate genotypes
+
+    :param mt:
+    :param af_expr:
+    :param af_cutoff:
+    :param ab_cutoff:
+    :return:
+    """
+    return mt.annotate_entries(
+        GT=hl.cond(
+            (af_expr > af_cutoff) & mt.GT.is_het() & ((mt.AD[1] / mt.DP) > ab_cutoff),
+            hl.call(1, 1),
+            mt.GT,
+        )
+    )
+
+
+def main(args):
+    hl.init(log="/subset.log", default_reference="GRCh38")
+
+    mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
+    mt = mt.select_entries(*SPARSE_ENTRIES)
+    meta_ht = prepare_sample_annotations()
+    release_ht = release(public=False).ht()
+    subset_freq = get_freq(subset="hgdp_tgp")
+    info_ht = get_info(split=True).ht()
+    filters_ht = final_filter.ht()
+
+    logger.info("Filtering MT columns to high quality and HGDP + TGP samples")
+    mt = mt.filter_cols(
+        meta_ht[mt.col_key].high_quality
+        & (meta_ht[mt.col_key].subsets.hgdp | meta_ht[mt.col_key].subsets.tgp)
     )
 
     logger.info(
@@ -493,6 +556,8 @@ def main(args):
             f"{args.output_path}/metadata.tsv.bgz"
         )  # TODO: add path to resources
 
+    # TODO: probably checkpoint filtered mt before changing the alleles
+
     mt = mt.annotate_rows(
         _site_has_non_ref=hl.agg.any(mt.LGT.is_non_ref()),
         _site_has_end=hl.agg.any(hl.is_defined(mt.END)),
@@ -500,7 +565,8 @@ def main(args):
 
     mt = mt.filter_rows(mt._site_has_non_ref | mt._site_has_end)
 
-    # For those sites with no non ref variants only END info, remove the alt allele, because it isn't actually present in this subset
+    # For those sites with no non ref variants only END info, remove the alt allele,
+    # because it isn't actually present in this subset
     mt = mt.key_rows_by(
         "locus",
         alleles=hl.if_else(
@@ -510,12 +576,6 @@ def main(args):
 
     logger.info("Splitting multi-allelics")
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
-
-    release_ht = release(public=False).ht()
-    subset_freq = hl.read_table(
-        "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1/gnomad_genomes_v3.1.frequencies.hgdp_tgp.ht"
-    )  # TODO replace path
-    info_ht = get_info(split=True).ht()
 
     logger.info("Add HGDP + TGP subset frequency info")
     mt = mt.annotate_rows(
@@ -529,26 +589,23 @@ def main(args):
     mt = mt.filter_rows(
         mt._site_has_non_ref & hl.is_missing(mt.cohort_freq), keep=False
     )
+    variant_annotation_ht = prepare_variant_annotations(
+        mt.rows().select().select_globals(), release_ht.select("freq")
+    )
+
+    logger.info("Removing centromeres and telomeres")
+    variant_annotation_ht = filter_low_conf_regions(
+        variant_annotation_ht,
+        filter_lcr=False,
+        filter_decoy=False,
+        filter_segdup=False,
+        filter_telomeres_and_centromeres=True,
+    )
 
     logger.info(
         "Setting het genotypes at sites with >1% AF (using precomputed v3.1 frequencies) and > 0.9 AB to homalt..."
     )
-
-    # TODO: Should we put this hotfix into a common function somewhere? I'm not sure the best place to put it,
-    #  but we use it a couple times
-    # hotfix for depletion of homozygous alternate genotypes
-    # Using v3.1 AF
-    # TODO: Need to figure out what variant annotations we want on the MT if any? I removed the prepare function because
-    #  I think all the info I want is already on the release HT so I can just get it from there
-    mt = mt.annotate_entries(
-        GT=hl.cond(
-            (release_ht[mt.row_key].freq[0].AF > 0.01)
-            & mt.GT.is_het()
-            & (mt.AD[1] / mt.DP > 0.9),
-            hl.call(1, 1),
-            mt.GT,
-        )
-    )
+    hom_alt_depletion_fix(mt, af_expr=release_ht[mt.row_key].freq[0].AF)
 
     logger.info(
         "Add gnomad freq from release HT, remove downsampling and subset info from freq, freq_meta, and freq_index_dict"
@@ -566,7 +623,7 @@ def main(args):
     freq_index_dict = release_ht.freq_index_dict.collect()[0]
     freq_index_dict = {k: v for k, v in freq_index_dict.items() if v in index_keep}
 
-    logger.info("Filtering freq HT to only variants found in subset..")
+    logger.info("Filtering freq HT to only variants found in subset...")
     mt = mt.annotate_rows(_is_subset_variant=hl.agg.any(mt.GT.is_non_ref()))
     ht_variants = mt.rows()
     release_ht = release_ht.filter(ht_variants[release_ht.key]._is_subset_variant)
@@ -578,7 +635,7 @@ def main(args):
         cohort_freq=hl.or_missing(
             ~mt.AS_lowqual & ~mt.telomere_or_centromere, mt.cohort_freq
         ),
-        gnomad_freq=release.freq[: len(freq_meta)],
+        gnomad_freq=release.freq[:len(freq_meta)],
         gnomad_raw_qual_hists=release.raw_qual_hists,
         gnomad_popmax=release.popmax,
         gnomad_qual_hists=release.qual_hists,
@@ -595,7 +652,7 @@ def main(args):
         vep_csq_header=release_ht.index_globals().vep_csq_header,
         dbsnp_version=release_ht.index_globals().dbsnp_version,
         filtering_model=release_ht.index_globals().filtering_model.drop("model_id"),
-        inbreeding_coeff_cutoff=-0.3,
+        inbreeding_coeff_cutoff=filters_ht.index_globals().inbreeding_coeff_cutoff,  # TODO: Should have this added onto the final_filter Table
     )
 
     logger.info("Add all other variant annotations from release HT (dropping freq)")
