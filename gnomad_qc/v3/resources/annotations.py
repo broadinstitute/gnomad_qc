@@ -17,7 +17,6 @@ def get_info(split: bool = True) -> VersionedTableResource:
     """
     Gets the gnomAD v3 info TableResource
 
-    :param version: Version of annotation path to return
     :param split: Whether to return the split or multi-allelic version of the resource
     :return: gnomAD v3 info VersionedTableResource
     """
