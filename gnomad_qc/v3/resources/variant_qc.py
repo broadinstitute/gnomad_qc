@@ -1,7 +1,5 @@
 from typing import Optional, Union
 
-import hail as hl
-
 from gnomad.resources.grch38 import (
     na12878_giab,
     na12878_giab_hc_intervals,
