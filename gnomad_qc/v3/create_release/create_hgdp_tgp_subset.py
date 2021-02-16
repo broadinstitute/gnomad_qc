@@ -16,7 +16,6 @@ from gnomad.resources.grch38.reference_data import (
     telomeres_and_centromeres,
     seg_dup_intervals,
 )
-from gnomad.utils.filtering import filter_low_conf_regions
 from gnomad.utils.vcf import (
     AS_FIELDS,
     index_globals,
@@ -358,6 +357,7 @@ def make_freq_index_dict(freq_meta: List[Dict[str, str]]) -> Dict[str, int]:
     }
 
 
+# TODO: I think Grace was planning to put this in gnomad_methods
 def region_flag_expr(
     t: Union[hl.Table, hl.MatrixTable],
     non_par: bool = True,
@@ -365,10 +365,16 @@ def region_flag_expr(
 ) -> hl.expr.StructExpression:
     """
     Creates `region_flag` struct.
+
     Struct contains flags for problematic regions (i.e., LCR, decoy, segdup, and nonpar regions).
+
     .. note::
+
         No hg38 resources for decoy or self chain available yet.
-    :param Table/MatrixTable t: Input Table/MatrixTable.
+
+    :param t: Input Table/MatrixTable.
+    :param non_par:
+    :param prob_regions:
     :return: `region_flag` struct row annotation.
     :rtype: hl.expr.StructExpression
     """
@@ -407,7 +413,7 @@ def prepare_sample_annotations() -> hl.Table:
             n_pcs=meta_ht.population_inference_pca_metrics.n_pcs,
             min_prob=meta_ht.population_inference_pca_metrics.min_prob,
         ),
-        hard_filter_cutoffs=hl.struct(
+        hard_filter_cutoffs=hl.struct(  # TODO: can we get these from the metadata HT rather than hardcode here?
             min_cov=15,
             max_n_snp=3.75e6,
             min_n_snp=2.4e6,
@@ -434,6 +440,7 @@ def prepare_sample_annotations() -> hl.Table:
     return meta_ht
 
 
+# TODO: move to common area for use in release HT code?
 def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl.Table:
     """
     Load and join all Tables with variant annotations.
@@ -514,11 +521,16 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
     return ht
 
 
-# TODO: Should we put this hotfix into a common function somewhere? I'm not sure the best place to put it,
+# TODO: Should we put this hot-fix into a common function somewhere? I'm not sure the best place to put it,
 #  but we use it a couple times
-def hom_alt_depletion_fix(mt, af_expr, af_cutoff=0.01, ab_cutoff=0.9):
+def hom_alt_depletion_fix(
+    mt: hl.MatrixTable,
+    af_expr: hl.expr.Float32Expression,
+    af_cutoff: float = 0.01,
+    ab_cutoff: float = 0.9,
+):
     """
-    Hotfix for the depletion of homozygous alternate genotypes
+    Temparary fix for the depletion of homozygous alternate genotypes.
 
     :param mt:
     :param af_expr:
@@ -635,7 +647,9 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     )
     mt = mt.annotate_globals(
         cohort_freq_meta=subset_freq.index_globals().freq_meta,
-        cohort_freq_index_dict=make_freq_index_dict(subset_freq.index_globals().freq_meta),
+        cohort_freq_index_dict=make_freq_index_dict(
+            subset_freq.index_globals().freq_meta
+        ),
         gnomad_freq_meta=freq_meta,
         gnomad_freq_index_dict=freq_index_dict,
         gnomad_faf_index_dict=release_ht.index_globals().faf_index_dict,
@@ -652,12 +666,13 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     mt = mt.annotate_rows(**variant_annotation_ht[mt.row_key])
     mt = mt.drop("was_split", "a_index")
 
-    # lowqual variants how to handle them on both sparse and dense, dense is easy because I can remove the variants easily, sparse is more difficult, but I think possible?
+    # TODO: lowqual variants how to handle them on both sparse and dense, dense is easy because I can remove the variants easily, sparse is more difficult, but I think possible?
     mt = hl.experimental.densify(mt)
     mt = mt.filter_rows((~info_ht[mt.row_key].AS_lowqual) & (hl.len(mt.alleles) > 1))
 
     return mt
 
+# TODO: did I handle the lowqual variants correctly?
 # TODO: where to adjust sex ploidy?
 def main(args):
     hl.init(log="/subset.log", default_reference="GRCh38")
@@ -673,7 +688,7 @@ def main(args):
         )  # TODO: add path to resources
 
     if args.create_subset_sparse_mt:
-        # NOTE: no longer filtering to high_quality by request from Alicia Martin
+        # NOTE: no longer filtering to high_quality by request from Alicia Martin, but we do filter to variants in high_quality samples, so how to handle that in the future?
         meta_ht = release_subset_annotations(subset="hgdp_1kg").ht()
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
@@ -691,7 +706,8 @@ def main(args):
 
         # Filter to rows with a non ref GT outside of telomeres and centomeres, or if there is END info
         mt = mt.filter_rows(
-            (~mt._telomere_or_centromere & hl.agg.any(mt.LGT.is_non_ref())) | hl.agg.any(hl.is_defined(mt.END))
+            (~mt._telomere_or_centromere & hl.agg.any(mt.LGT.is_non_ref()))
+            | hl.agg.any(hl.is_defined(mt.END))
         )
 
         # On rows with END info that fall in telomeres and centomeres, keep only END info, set other entries to missing
@@ -700,8 +716,7 @@ def main(args):
         )
 
         # Adjust alleles and LA to include only alleles present in the subset
-        mt = adjust_subset_alleles(mt
-                                   )
+        mt = adjust_subset_alleles(mt)
         mt = mt.drop("_telomere_or_centromere")
         mt.write(
             release_subset(subset="hgdp_1kg", dense=False).path,
