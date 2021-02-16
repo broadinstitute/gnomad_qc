@@ -1010,7 +1010,7 @@ def main(args):
         pop_ht, pops_rf_model = assign_pops(args.min_pop_prob, args.include_unreleasable_samples, n_pcs=n_pcs, withhold_prop=args.withhold_prop)
         pop_ht = pop_ht.checkpoint(pop.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         pop_ht.transmute(
-            **{f'PC{i + 1}': pop_ht.pca_scores[i] for i in range(0, n_pcs)}
+            **{f'PC{i + 1}': pop_ht.pca_scores[i] for i in range(n_pcs)}
         ).export(pop_tsv_path())
 
         with hl.hadoop_open(pop_rf_path(), 'wb') as out:
