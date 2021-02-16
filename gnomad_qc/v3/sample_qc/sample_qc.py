@@ -1042,7 +1042,7 @@ def main(args):
         ).cols()
         clinvar_sample_ht.write(sample_clinvar_count.path, overwrite=args.overwrite)
 
-    if args.apply_stratified_filters:
+    if args.apply_stratified_filters or args.apply_regressed_filters:
         filtering_qc_metrics = args.filtering_qc_metrics.split(",")
         sample_qc_ht = get_sample_qc('bi_allelic').ht()
 
