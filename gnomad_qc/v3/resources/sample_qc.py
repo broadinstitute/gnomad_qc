@@ -161,7 +161,7 @@ sample_inbreeding = VersionedTableResource(
     {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_inbreeding.ht") for release in RELEASES}
 )
 
-# Sample clinvar count
+# Number of clinvar variants per sample
 sample_clinvar_count = VersionedTableResource(
     CURRENT_RELEASE,
     {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_clinvar.ht") for release in RELEASES if release != '3'}
