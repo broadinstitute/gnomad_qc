@@ -477,9 +477,9 @@ def assign_pops(
 
     n_mislabeled_samples = pop_ht.aggregate(hl.agg.count_where(pop_ht.training_pop != pop_ht.pop))
     pop_ht = pop_ht.annotate(training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all)
-    known_pop_removal_iter = 1
+    pop_assignment_iter = 1
     while n_mislabeled_samples > max_mislabeled_training_samples:
-        known_pop_removal_iter += 1
+        pop_assignment_iter += 1
         logger.info(f"Found {n_mislabeled_samples} samples labeled differently from their known pop. Re-running without.")
 
         pop_ht = pop_ht[pop_pca_scores_ht.key]
@@ -515,7 +515,7 @@ def assign_pops(
         min_prob=min_prob,
         include_unreleasable_samples=include_unreleasable_samples,
         max_mislabeled_training_samples=max_mislabeled_training_samples,
-        known_pop_removal_iterations=known_pop_removal_iter,
+        pop_assignment_iterations=pop_assignment_iter,
         n_pcs=n_pcs,
     )
     if withhold_prop:
