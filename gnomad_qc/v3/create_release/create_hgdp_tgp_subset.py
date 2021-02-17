@@ -317,6 +317,9 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
             "metrics are retained."
         )
     ),
+    high_quality=hl.struct(
+        Description=("Indicates whether a sample has passed all sample QC metrics except for relatedness.")
+    ),
 )
 
 POPS = KG_POPS + HGDP_POPS
