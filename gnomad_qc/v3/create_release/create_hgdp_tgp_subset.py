@@ -35,6 +35,7 @@ from gnomad_qc.v3.resources.release import (
     release,
     release_subset,
     release_subset_annotations,
+    release_subset_sample_tsv,
 )
 from gnomad_qc.v3.resources.variant_qc import final_filter
 
@@ -318,7 +319,9 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
         )
     ),
     high_quality=hl.struct(
-        Description=("Indicates whether a sample has passed all sample QC metrics except for relatedness.")
+        Description=(
+            "Indicates whether a sample has passed all sample QC metrics except for relatedness."
+        )
     ),
 )
 
@@ -342,7 +345,7 @@ SAMPLE_QC_METRICS = [
 
 def make_freq_index_dict(freq_meta: List[Dict[str, str]]) -> Dict[str, int]:
     """
-    Create a look-up Dictionary for entries contained in the frequency annotation array
+    Create a look-up Dictionary for entries contained in the frequency annotation array.
 
     :param List of Dict freq_meta: Global annotation containing the set of groupings for each element of the freq array
         (e.g., [{'group': 'adj'}, {'group': 'adj', 'pop': 'nfe'}])
@@ -367,7 +370,7 @@ def region_flag_expr(
     prob_regions: Dict[str, hl.Table] = None,
 ) -> hl.expr.StructExpression:
     """
-    Creates `region_flag` struct.
+    Create a `region_flag` struct.
 
     Struct contains flags for problematic regions (i.e., LCR, decoy, segdup, and nonpar regions).
 
@@ -399,10 +402,11 @@ def region_flag_expr(
 
 def prepare_sample_annotations() -> hl.Table:
     """
+    Load meta HT and select row and global annotations for HGDP + TGP subset.
 
-
-    :return:
+    :return: Table containing sample metadata for the subset
     """
+
     logger.info(
         "Sub-setting and modifying sample QC metadata to desired globals and annotations"
     )
@@ -434,13 +438,13 @@ def prepare_sample_annotations() -> hl.Table:
     return meta_ht
 
 
-# TODO: move to common area for use in release HT code?
+# TODO: move to common area for use in release HT code? Current version is a little different than Grace's version
 def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl.Table:
     """
     Load and join all Tables with variant annotations.
 
-    :param Table ht:
-    :param bool filter_lowqual: If true the returned Table will filter out lowqual variants.
+    :param Table ht: Input HT to add variant annotations to.
+    :param bool filter_lowqual: If true the returned Table will filter out lowqual variants using info HT AS_lowqual.
     :return: Table containing joined annotations.
     :rtype: hl.Table
     """
@@ -506,7 +510,7 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
         region_flag=region_flag_expr(
             ht,
             non_par=False,
-            prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht(),},
+            prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         ),
         allele_info=filters.allele_data,
         **analyst_ht[ht.key],
@@ -524,13 +528,13 @@ def hom_alt_depletion_fix(
     ab_cutoff: float = 0.9,
 ):
     """
-    Temparary fix for the depletion of homozygous alternate genotypes.
+    Adjust MT genotypes with temporary fix for the depletion of homozygous alternate genotypes.
 
-    :param mt:
-    :param af_expr:
-    :param af_cutoff:
-    :param ab_cutoff:
-    :return:
+    :param mt: Input MT to add hom alt depletion genotype fix to
+    :param af_expr: Allele frequency expression to determine variants that need the hom alt fix
+    :param af_cutoff: Allele frequency cutoff for variants that need the hom alt fix
+    :param ab_cutoff: Allele balance cuttoff to determine which genotypes need the hom alt fix
+    :return: MatrixTable with genotypes adjusted for the hom alt depletion fix
     """
     return mt.annotate_entries(
         GT=hl.cond(
@@ -580,11 +584,16 @@ def adjust_subset_alleles(mt: hl.MatrixTable):
 
 def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     """
-    Note uses sparse subset MT, assumes centromeres and telomeres already filtered
+    Create the subset dense release MatrixTable with multi-allelic variants and all sample and variant annotations.
 
-    :param mt:
-    :param meta_ht:
-    :return:
+    .. note::
+
+        This function uses the sparse subset MT and assumes that centromeres and telomeres have already been filtered
+        if necessary.
+
+    :param mt: Sparse subset release MatrixTable
+    :param meta_ht: Metadata HT to use for sample (column) annotations
+    :return: Dense release MatrixTable with all row, column, and global annotations
     """
     release_ht = release(public=False).ht()
     subset_freq = get_freq(subset="hgdp_tgp")
@@ -653,7 +662,6 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
         dbsnp_version=release_ht.index_globals().dbsnp_version,
         filtering_model=release_ht.index_globals().filtering_model.drop("model_id"),
         inbreeding_coeff_cutoff=filters_ht.index_globals().inbreeding_coeff_cutoff,
-        # TODO: Should have this added onto the final_filter Table
     )
 
     logger.info("Add all other variant annotations from release HT (dropping freq)")
@@ -666,23 +674,24 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
 
     return mt
 
+
 # TODO: did I handle the lowqual variants correctly?
 # TODO: where to adjust sex ploidy?
 def main(args):
     hl.init(log="/subset.log", default_reference="GRCh38")
 
-    # TODO: TGP dups?
     if args.create_sample_meta:
         meta_ht = prepare_sample_annotations()
         meta_ht.write(release_subset_annotations(subset="hgdp_1kg").path)
 
     if args.export_meta_txt:
         release_subset_annotations(subset="hgdp_1kg").ht().export(
-            f"{args.output_path}/metadata.tsv.bgz"
-        )  # TODO: add path to resources
+            release_subset_sample_tsv(subset="hgdp_1kg")
+        )
 
     if args.create_subset_sparse_mt:
-        # NOTE: no longer filtering to high_quality by request from Alicia Martin, but we do filter to variants in high_quality samples, so how to handle that in the future?
+        # NOTE: no longer filtering to high_quality by request from Alicia Martin, but we do filter to variants in
+        # high_quality samples, so how to handle that in the future?
         meta_ht = release_subset_annotations(subset="hgdp_1kg").ht()
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
@@ -738,10 +747,6 @@ if __name__ == "__main__":
         "--export-meta",
         help="Pull sample subset metadata and export to a .tsv",
         action="store_true",
-    )
-
-    parser.add_argument(
-        "--num-vcf-shards", help="Number of shards in output VCF", type=int
     )
     parser.add_argument(
         "-o",

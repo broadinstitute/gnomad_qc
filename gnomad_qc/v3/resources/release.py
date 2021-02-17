@@ -31,6 +31,7 @@ def release_ht_path(
 ) -> str:
     """
     Fetch filepath for release (variant-only) Hail Tables
+    
     :param data_type: 'exomes' or 'genomes'
     :param release_version: release version
     :param public: Whether to return the desired
@@ -46,6 +47,13 @@ def release_ht_path(
 def release_subset(
     subset: str, dense: bool = False, data_type: str = "genomes",
 ) -> VersionedMatrixTableResource:
+    """
+    
+    :param subset: 
+    :param dense: 
+    :param data_type: 'exomes' or 'genomes'
+    :return: 
+    """
 
     return VersionedMatrixTableResource(
         CURRENT_RELEASE,
@@ -62,7 +70,13 @@ def release_subset(
 def release_subset_annotations(
     subset: str, data_type: str = "genomes", sample: bool = True,
 ) -> VersionedTableResource:
-
+    """
+    
+    :param subset: 
+    :param data_type: 'exomes' or 'genomes'
+    :param sample: 
+    :return: 
+    """
     return VersionedTableResource(
         CURRENT_RELEASE,
         {
@@ -73,3 +87,14 @@ def release_subset_annotations(
             if release != "3"
         },
     )
+
+
+def release_subset_sample_tsv(subset: str, release: str = CURRENT_RELEASE, data_type: str = "genomes") -> str:
+    """
+    
+    :param subset: 
+    :param release: 
+    :param data_type: 'exomes' or 'genomes'
+    :return: 
+    """
+    return f"gs://gnomad/release/{release}/tsv/gnomad.{data_type}.v{release}.{subset}_subset_sample_meta.tsv.bgz"
