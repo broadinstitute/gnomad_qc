@@ -254,7 +254,7 @@ def compute_hard_filters(
         | (bi_allelic_qc_struct.sample_qc.r_het_hom_var > max_r_het_hom_var)
     )
 
-    # Remove samples that fail picard metric thresholds, percents are not divided by 100, e.g. 5% == 5.00, %5 != 0.05
+    # Remove samples that fail picard metric thresholds
     picard_ht = picard_metrics.ht()[ht.key]
     hard_filters["contamination"] = (
         picard_ht.bam_metrics.freemix > max_pct_contamination
