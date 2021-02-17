@@ -205,7 +205,17 @@ def compute_qc_mt(min_af: float = 0.0, min_inbreeding_coeff_threshold: float = -
     return qc_mt
 
 
-def compute_hard_filters(cov_threshold: int = 15, include_sex_filter: bool = True) -> hl.Table:
+def compute_hard_filters(
+    cov_threshold: int = 15,
+    max_n_snp: float = 3.75e6,
+    min_n_snp: float = 2.4e6,
+    max_n_singleton: float = 1e5,
+    max_r_het_hom_var: float = 3.3,
+    max_pct_contamination: float = 5.00,
+    max_pct_chimera: float = 5.00,
+    min_median_insert_size: int = 250,
+    include_sex_filter: bool = True,
+) -> hl.Table:
     """
     Apply hard filters to samples and return Table with samples and the reason for filtering. 
     
@@ -238,19 +248,17 @@ def compute_hard_filters(cov_threshold: int = 15, include_sex_filter: bool = Tru
     # These were determined by visual inspection of the metrics
     bi_allelic_qc_struct = get_sample_qc('bi_allelic').ht()[ht.key]
     hard_filters['bad_qc_metrics'] = (
-            (bi_allelic_qc_struct.sample_qc.n_snp > 3.75e6) |
-            (bi_allelic_qc_struct.sample_qc.n_snp < 2.4e6) |
-            (bi_allelic_qc_struct.sample_qc.n_singleton > 1e5) |
-            (bi_allelic_qc_struct.sample_qc.r_het_hom_var > 3.3)
+            (bi_allelic_qc_struct.sample_qc.n_snp > max_n_snp) |
+            (bi_allelic_qc_struct.sample_qc.n_snp < min_n_snp) |
+            (bi_allelic_qc_struct.sample_qc.n_singleton > max_n_singleton) |
+            (bi_allelic_qc_struct.sample_qc.r_het_hom_var > max_r_het_hom_var)
     )
 
     # Remove samples that fail picard metric thresholds, percents are not divided by 100, e.g. 5% == 5.00, %5 != 0.05
     picard_ht = picard_metrics.ht()[ht.key]
-    hard_filters['contamination'] = picard_ht.bam_metrics.freemix > 5.00
-    hard_filters['chimera'] = picard_ht.bam_metrics.pct_chimeras > 5.00
-    hard_filters['insert_size'] = picard_ht.bam_metrics.median_insert_size < 250
-    # Removing picard coverage filter in favor of chrom 20 low coverage filter above, these filters were redundant
-    # hard_filters['coverage'] = picard_ht.bam_metrics.mean_coverage < 15
+    hard_filters['contamination'] = picard_ht.bam_metrics.freemix > max_pct_contamination
+    hard_filters['chimera'] = picard_ht.bam_metrics.pct_chimeras > max_pct_chimera
+    hard_filters['insert_size'] = picard_ht.bam_metrics.median_insert_size < min_median_insert_size
 
     if include_sex_filter:
         # Remove samples with ambiguous sex assignments
@@ -265,6 +273,19 @@ def compute_hard_filters(cov_threshold: int = 15, include_sex_filter: bool = Tru
     )
 
     ht = ht.filter(hl.len(ht.hard_filters) > 0)
+
+    ht = ht.annotate_globals(
+        hard_filter_cutoffs=hl.struct(
+            min_cov=cov_threshold,
+            max_n_snp=max_n_snp,
+            min_n_snp=min_n_snp,
+            max_n_singleton=max_n_singleton,
+            max_r_het_hom_var=max_r_het_hom_var,
+            max_pct_contamination=max_pct_contamination,
+            max_pct_chimera=max_pct_chimera,
+            min_median_insert_size=min_median_insert_size,
+        ),
+    )
 
     return ht
 
