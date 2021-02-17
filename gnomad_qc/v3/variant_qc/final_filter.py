@@ -209,6 +209,7 @@ def generate_final_filter_ht(
             snv_cutoff=snp_cutoff_global,
             indel_cutoff=indel_cutoff_global,
         ),
+        inbreeding_coeff_cutoff=inbreeding_coeff_cutoff,
     )
     if vqsr_ht:
         vqsr = vqsr_ht[ht.key]
