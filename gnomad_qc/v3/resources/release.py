@@ -48,11 +48,12 @@ def release_subset(
     subset: str, dense: bool = False, data_type: str = "genomes",
 ) -> VersionedMatrixTableResource:
     """
+    Get the subset release MatrixTableResource
     
-    :param subset: 
-    :param dense: 
+    :param subset: One of the possible release subsets (e.g., hgdp_1kg)
+    :param dense: If true resource will be the dense MT otherwise will return the sparse MT
     :param data_type: 'exomes' or 'genomes'
-    :return: 
+    :return: MatrixTableResource for specific subset
     """
 
     return VersionedMatrixTableResource(
@@ -71,11 +72,12 @@ def release_subset_annotations(
     subset: str, data_type: str = "genomes", sample: bool = True,
 ) -> VersionedTableResource:
     """
+    Get the subset release sample/variant TableResource
     
-    :param subset: 
+    :param subset: One of the possible release subsets (e.g., hgdp_1kg)
     :param data_type: 'exomes' or 'genomes'
-    :param sample: 
-    :return: 
+    :param sample: If true, will return the sample annotations, otherwise will return the variant annotations
+    :return: Table resource with sample/variant annotations for the subset
     """
     return VersionedTableResource(
         CURRENT_RELEASE,
@@ -91,9 +93,10 @@ def release_subset_annotations(
 
 def release_subset_sample_tsv(subset: str, release: str = CURRENT_RELEASE, data_type: str = "genomes") -> str:
     """
-    
-    :param subset: 
-    :param release: 
+    Get the path to the subset release sample annotation text file
+
+    :param subset: One of the possible release subsets (e.g., hgdp_1kg)
+    :param release: Version of annotation txt path to return
     :param data_type: 'exomes' or 'genomes'
     :return: 
     """
