@@ -416,16 +416,7 @@ def prepare_sample_annotations() -> hl.Table:
             n_pcs=meta_ht.population_inference_pca_metrics.n_pcs,
             min_prob=meta_ht.population_inference_pca_metrics.min_prob,
         ),
-        hard_filter_cutoffs=hl.struct(  # TODO: can we get these from the metadata HT rather than hardcode here?
-            min_cov=15,
-            max_n_snp=3.75e6,
-            min_n_snp=2.4e6,
-            max_n_singleton=1e5,
-            max_r_het_hom_var=3.3,
-            max_pct_contamination=5.00,
-            max_pct_chimera=5.00,
-            min_median_insert_size=250,
-        ),
+        hard_filter_cutoffs=meta_ht.hard_filter_cutoffs,
     )
     meta_ht = meta_ht.select(
         bam_metrics=meta_ht.bam_metrics,
@@ -437,7 +428,7 @@ def prepare_sample_annotations() -> hl.Table:
         ),
         labeled_subpop=meta_ht.project_meta.project_subpop,
         gnomad_release=meta_ht.release,
-        high_quality=meta_ht.high_quality,  # TODO: add to the global description
+        high_quality=meta_ht.high_quality,
     )
 
     return meta_ht
@@ -618,7 +609,7 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
 
     # TODO: Should this be done on the sparse MT?
     logger.info(
-        "Setting het genotypes at sites with >1% AF (using precomputed v3.1 frequencies) and > 0.9 AB to homalt..."
+        "Setting HET genotypes at sites with >1% AF (using precomputed v3.1 frequencies) and > 0.9 AB to homalt..."
     )
     hom_alt_depletion_fix(mt, af_expr=release_ht[mt.row_key].freq[0].AF)
 
