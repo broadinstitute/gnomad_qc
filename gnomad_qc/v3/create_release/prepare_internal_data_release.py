@@ -109,7 +109,7 @@ def prepare_annotations(
 
     logger.info("Loading annotation tables...")
     filters_ht = hl.read_table(
-        "gs://gnomad/variant_qc/genomes_v3.1/filter_final.ht"
+        "gs://gnomad/variant_qc/genomes_v3.1/final_filter.ht"
     )  # TODO replace path
     vep_ht = vep.ht()
     dbsnp_ht = dbsnp.ht().select("rsid")
@@ -236,25 +236,25 @@ def make_freq_index_dict(ht):
     """
     freq_meta = hl.eval(ht.globals.freq_meta)
 
-    index_dict = index_globals(freq_meta, dict(group=GROUPS))
-    index_dict.update(index_globals(freq_meta, dict(group=GROUPS, pop=POPS)))
-    index_dict.update(index_globals(freq_meta, dict(group=GROUPS, sex=SEXES)))
-    index_dict.update(index_globals(freq_meta, dict(group=GROUPS, pop=POPS, sex=SEXES)))
+    index_dict = index_globals(freq_meta, dict(group=GROUPS), label_delimiter="-")
+    index_dict.update(index_globals(freq_meta, dict(group=GROUPS, pop=POPS), label_delimiter="-"))
+    index_dict.update(index_globals(freq_meta, dict(group=GROUPS, sex=SEXES), label_delimiter="-"))
+    index_dict.update(index_globals(freq_meta, dict(group=GROUPS, pop=POPS, sex=SEXES), label_delimiter="-"))
     index_dict.update(
         index_globals(
-            freq_meta, dict(downsampling=DOWNSAMPLINGS, group=["adj"], pop=POPS)
+            freq_meta, dict(downsampling=DOWNSAMPLINGS, group=["adj"], pop=POPS), label_delimiter="-"
         )
     )
-    index_dict.update(index_globals(freq_meta, dict(group=GROUPS, subset=SUBSETS)))
+    index_dict.update(index_globals(freq_meta, dict(group=GROUPS, subset=SUBSETS), label_delimiter="-"))
     index_dict.update(
-        index_globals(freq_meta, dict(group=GROUPS, subset=SUBSETS, pop=POPS))
+        index_globals(freq_meta, dict(group=GROUPS, subset=SUBSETS, pop=POPS), label_delimiter="-")
     )
     index_dict.update(
-        index_globals(freq_meta, dict(group=GROUPS, subset=SUBSETS, sex=SEXES))
+        index_globals(freq_meta, dict(group=GROUPS, subset=SUBSETS, sex=SEXES), label_delimiter="-")
     )
     index_dict.update(
         index_globals(
-            freq_meta, dict(group=GROUPS, subset=SUBSETS, pop=POPS, sex=SEXES)
+            freq_meta, dict(group=GROUPS, subset=SUBSETS, pop=POPS, sex=SEXES), label_delimiter="-"
         )
     )
 
@@ -271,10 +271,10 @@ def make_faf_index_dict(ht):
     """
     faf_meta = hl.eval(ht.faf_meta)
 
-    index_dict = index_globals(faf_meta, dict(group=["adj"]))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS)))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], sex=SEXES)))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS, sex=SEXES)))
+    index_dict = index_globals(faf_meta, dict(group=["adj"]), label_delimiter="-")
+    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS), label_delimiter="-"))
+    index_dict.update(index_globals(faf_meta, dict(group=["adj"], sex=SEXES), label_delimiter="-"))
+    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS, sex=SEXES), label_delimiter="-"))
 
     return index_dict
 

@@ -47,6 +47,10 @@ VCF_INFO_DICT["QUALapprox"] = {
     "Number": "1",
     "Description": "Sum of PL[0] values; used to approximate the QUAL score",
 }
+VCF_INFO_DICT["AS_SB_TABLE"] = {
+    "Number": "1",
+    "Description": "Allele-specific forward/reverse read counts for strand bias tests",
+}
 
 # Add new site fields
 NEW_SITE_FIELDS = [
@@ -54,7 +58,8 @@ NEW_SITE_FIELDS = [
     "QUALapprox",
     "transmitted_singleton",
 ]
-SITE_FIELDS = SITE_FIELDS.extend(NEW_SITE_FIELDS)
+SITE_FIELDS.extend(NEW_SITE_FIELDS)
+AS_FIELDS.extend(["AS_SB_TABLE"])
 
 # Remove original alleles for containing non-releasable alleles
 MISSING_ALLELE_TYPE_FIELDS = ["original_alleles", "has_star"]
