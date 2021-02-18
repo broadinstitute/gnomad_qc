@@ -16,6 +16,7 @@ from gnomad.resources.grch38.reference_data import (
     telomeres_and_centromeres,
     seg_dup_intervals,
 )
+from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.vcf import (
     AS_FIELDS,
     index_globals,
@@ -25,6 +26,7 @@ from gnomad.utils.vcf import (
 
 from gnomad_qc.v3.resources.annotations import (
     analyst_annotations,
+    get_adj_expr,
     get_freq,
     get_info,
     vep,
@@ -533,7 +535,7 @@ def hom_alt_depletion_fix(
     :param mt: Input MT to add hom alt depletion genotype fix to
     :param af_expr: Allele frequency expression to determine variants that need the hom alt fix
     :param af_cutoff: Allele frequency cutoff for variants that need the hom alt fix
-    :param ab_cutoff: Allele balance cuttoff to determine which genotypes need the hom alt fix
+    :param ab_cutoff: Allele balance cutoff to determine which genotypes need the hom alt fix
     :return: MatrixTable with genotypes adjusted for the hom alt depletion fix
     """
     return mt.annotate_entries(
@@ -616,9 +618,10 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
         mt.rows().select().select_globals(), release_ht.select("freq")
     )
 
-    # TODO: Should this be done on the sparse MT?
+    # TODO: Should this be done on the unsplit sparse MT? If so it's a little more complicated because AF is computed
+    #  on the split MT, maybe add to a support function that users can run after splitting?
     logger.info(
-        "Setting HET genotypes at sites with >1% AF (using precomputed v3.1 frequencies) and > 0.9 AB to homalt..."
+        "Setting het genotypes at sites with >1% AF (using precomputed v3.1 frequencies) and > 0.9 AB to homalt..."
     )
     hom_alt_depletion_fix(mt, af_expr=release_ht[mt.row_key].freq[0].AF)
 
@@ -639,14 +642,14 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     freq_index_dict = {k: v for k, v in freq_index_dict.items() if v in index_keep}
 
     logger.info("...")
-    release = release_ht[mt.row_key]
+    release_struct = release_ht[mt.row_key]
     mt = mt.annotate_rows(
         cohort_freq=subset_freq[mt.row_key].freq,
-        gnomad_freq=release.freq[: len(freq_meta)],
-        gnomad_raw_qual_hists=release.raw_qual_hists,
-        gnomad_popmax=release.popmax,
-        gnomad_qual_hists=release.qual_hists,
-        gnomad_faf=release.faf,
+        gnomad_freq=release_struct.freq[: len(freq_meta)],
+        gnomad_raw_qual_hists=release_struct.raw_qual_hists,
+        gnomad_popmax=release_struct.popmax,
+        gnomad_qual_hists=release_struct.qual_hists,
+        gnomad_faf=release_struct.faf,
     )
     mt = mt.annotate_globals(
         cohort_freq_meta=subset_freq.index_globals().freq_meta,
@@ -668,15 +671,15 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     mt = mt.annotate_rows(**variant_annotation_ht[mt.row_key])
     mt = mt.drop("was_split", "a_index")
 
-    # TODO: lowqual variants how to handle them on both sparse and dense, dense is easy because I can remove the variants easily, sparse is more difficult, but I think possible?
+    # TODO: lowqual variants how to handle them on both sparse and dense, dense is easy because I can
+    #  remove the variants easily, sparse is more difficult, maybe just make sure annotation is on the variant HT.
     mt = hl.experimental.densify(mt)
     mt = mt.filter_rows((~info_ht[mt.row_key].AS_lowqual) & (hl.len(mt.alleles) > 1))
 
     return mt
 
 
-# TODO: did I handle the lowqual variants correctly?
-# TODO: where to adjust sex ploidy?
+# TODO: add relatedness only within subset?
 def main(args):
     hl.init(log="/subset.log", default_reference="GRCh38")
 
@@ -693,6 +696,7 @@ def main(args):
         # NOTE: no longer filtering to high_quality by request from Alicia Martin, but we do filter to variants in
         # high_quality samples, so how to handle that in the future?
         meta_ht = release_subset_annotations(subset="hgdp_1kg").ht()
+        info_ht = get_info(split=True).ht()
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
         )
@@ -706,7 +710,6 @@ def main(args):
                 telomeres_and_centromeres.ht()[mt.locus]
             ),
         )
-
         # Filter to rows with a non ref GT outside of telomeres and centomeres, or if there is END info
         mt = mt.filter_rows(
             (~mt._telomere_or_centromere & hl.agg.any(mt.LGT.is_non_ref()))
@@ -720,6 +723,15 @@ def main(args):
 
         # Adjust alleles and LA to include only alleles present in the subset
         mt = adjust_subset_alleles(mt)
+
+        logger.info("Computing adj and sex adjusted genotypes...")
+        mt = mt.annotate_entries(
+            GT=adjusted_sex_ploidy_expr(
+                mt.locus, mt.LGT, mt.meta.sex_imputation.sex_karyotype
+            ),
+            adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
+        )
+
         mt = mt.drop("_telomere_or_centromere")
         mt.write(
             release_subset(subset="hgdp_1kg", dense=False).path,
