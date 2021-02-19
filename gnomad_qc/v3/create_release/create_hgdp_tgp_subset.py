@@ -17,6 +17,7 @@ from gnomad.resources.grch38.reference_data import (
     seg_dup_intervals,
 )
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
+from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.vcf import (
     AS_FIELDS,
     index_globals,
@@ -26,7 +27,6 @@ from gnomad.utils.vcf import (
 
 from gnomad_qc.v3.resources.annotations import (
     analyst_annotations,
-    get_adj_expr,
     get_freq,
     get_info,
     vep,
@@ -696,7 +696,6 @@ def main(args):
         # NOTE: no longer filtering to high_quality by request from Alicia Martin, but we do filter to variants in
         # high_quality samples, so how to handle that in the future?
         meta_ht = release_subset_annotations(subset="hgdp_1kg").ht()
-        info_ht = get_info(split=True).ht()
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
         )
