@@ -251,6 +251,7 @@ def raw_and_adj_sanity_checks(t: Union[hl.MatrixTable, hl.Table], subsets: List[
     :param List[str] subsets: List of sample subsets.
     :param bool verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks.
+    :param delimiter: String to use as delimiter when making group label combinations.
     :return: None
     :rtype: None
     """
@@ -286,7 +287,6 @@ def raw_and_adj_sanity_checks(t: Union[hl.MatrixTable, hl.Table], subsets: List[
             verbose=verbose,
         )
 
-
     # Check overall gnomad's raw subfields >= adj
     for subfield in ["AC", "AN", "nhomalt"]:
         field = f"{subfield}{delimiter}"
@@ -317,7 +317,7 @@ def raw_and_adj_sanity_checks(t: Union[hl.MatrixTable, hl.Table], subsets: List[
             )
 
 
-def frequency_sanity_checks(t: Union[hl.MatrixTable, hl.Table], subsets: List[str], verbose: bool) -> None:
+def frequency_sanity_checks(t: Union[hl.MatrixTable, hl.Table], subsets: List[str], verbose: bool, delimiter = "-") -> None:
     """
     Performs sanity checks on frequency data in input Table.
     Checks:
@@ -330,6 +330,7 @@ def frequency_sanity_checks(t: Union[hl.MatrixTable, hl.Table], subsets: List[st
     :param List[str] subsets: List of sample subsets.
     :param bool verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks.
+    :param delimiter: String to use as delimiter when making group label combinations.
     :return: None
     :rtype: None
     """
@@ -338,15 +339,18 @@ def frequency_sanity_checks(t: Union[hl.MatrixTable, hl.Table], subsets: List[st
     for subset in subsets:
         for subfield in ["AC", "AN", "nhomalt"]:
             logger.info("adj checks")
+            subfield_label = f"{subfield}{delimiter}adj"
+            subfield_subset_label = f"{subfield}{delimiter}{subset}{delimiter}adj"
+
             generic_field_check(
                 t,
                 cond_expr=(
-                    t.info[f"{subfield}-adj"] == t.info[f"{subfield}-{subset}-adj"]
+                    t.info[{subfield_label}] == t.info[subfield_subset_label]
                 ),
-                check_description=f"{subfield}-adj != {subfield}-{subset}-adj",
+                check_description=f"{subfield_label} != {subfield_subset_label}",
                 display_fields=[
-                    f"info.{subfield}-adj",
-                    f"info.{subfield}-{subset}-adj",
+                    f"info.{subfield_label}",
+                    f"info.{subfield_subset_label}",
                 ],
                 verbose=verbose,
             )
