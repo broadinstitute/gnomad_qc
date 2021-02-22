@@ -30,29 +30,23 @@ def meta_tsv_path(
     :return: String path to the finalized metadata
     """
     return (
-        f"{_meta_root_path(version)}/gnomad_v{version}_metadata_{meta_version}.tsv.gz"
+        f"{_meta_root_path(version)}/gnomad_v{version}_metadata_v{meta_version}.tsv.gz"
     )
 
-
 _meta_versions = {
-    "v3.1": TableResource(
+    "3.1": TableResource(
         path="gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_sample_qc_metadata.ht"
     ),
-    "2019-09-27": TableResource(
+    "3": TableResource(
         path="gs://gnomad/metadata/genomes_v3/gnomad_v3_metadata_2019-09-27.ht"
     ),
-    "2019-09-25": TableResource(
-        path="gs://gnomad/metadata/genomes_v3/gnomad_v3_metadata_2019-09-25.ht"
-    ),
 }
-# _meta_versions["v3"] = _meta_versions["2019-09-27"]
-
 
 _project_meta_versions = {
-    "v3.1": TableResource(
+    "3.1": TableResource(
         path="gs://gnomad/metadata/genomes_v3.1/v3.1_project_meta.ht"
     ),
-    "v3": TableResource(
+    "3": TableResource(
         path="gs://gnomad/metadata/genomes_v3/09-09-2019_v3_project_meta.ht",
         import_func=hl.import_table,
         import_args={
@@ -65,32 +59,32 @@ _project_meta_versions = {
 }
 
 _pedigree_versions = {
-    "v3.1": PedigreeResource(
+    "3.1": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1.fam", delimiter="\t",
     ),
-    "v3.1_raw": PedigreeResource(
+    "3.1_raw": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_raw.fam", delimiter="\t"
     ),
-    "v3": PedigreeResource(
+    "3": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3/gnomad_v3.fam", delimiter="\t",
     ),
-    "v3_raw": PedigreeResource(
+    "3_raw": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3/gnomad_v3_raw.fam", delimiter="\t"
     ),
 }
 
 
 _trios_versions = {
-    "v3.1": PedigreeResource(
+    "3.1": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_trios.fam", delimiter="\t",
     ),
-    "v3.1_raw": PedigreeResource(
+    "3.1_raw": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_trios_raw.fam", delimiter="\t"
     ),
-    "v3": PedigreeResource(
+    "3": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3/gnomad_v3_trios.fam", delimiter="\t",
     ),
-    "v3_raw": PedigreeResource(
+    "3_raw": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3/gnomad_v3_trios_raw.fam", delimiter="\t"
     ),
 }
@@ -100,8 +94,8 @@ meta = VersionedTableResource(CURRENT_META_VERSION, _meta_versions)
 project_meta = VersionedTableResource(
     CURRENT_PROJECT_META_VERSION, _project_meta_versions
 )
-pedigree = VersionedPedigreeResource("v3.1", _pedigree_versions)
-trios = VersionedPedigreeResource("v3.1", _trios_versions)
+pedigree = VersionedPedigreeResource("3.1", _pedigree_versions)
+trios = VersionedPedigreeResource("3.1", _trios_versions)
 ped_mendel_errors = VersionedTableResource(
     CURRENT_RELEASE,
     {

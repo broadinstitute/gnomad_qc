@@ -1,18 +1,22 @@
+import argparse
 import logging
 from typing import Optional
 
 import hail as hl
 
+from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import split_info_annotation
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_filters
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("import_vqsr")
 logger.setLevel(logging.INFO)
 
+
 def import_vqsr(
     vqsr_path: str,
-    vqsr_type: str = "AS",
+    vqsr_type: str = "alleleSpecificTrans",
     num_partitions: int = 5000,
     overwrite: bool = False,
     import_header_path: Optional[str] = None,
@@ -20,7 +24,8 @@ def import_vqsr(
     """
     Imports vqsr site vcf into a HT
     :param vqsr_path: Path to input vqsr site vcf. This can be specified as Hadoop glob patterns
-    :param vqsr_type: One of `AS` (allele specific) or `AS_TS` (allele specific with transmitted singletons)
+    :param vqsr_type: One of `classic`, `alleleSpecific` (allele specific) or `alleleSpecificTrans`
+        (allele specific with transmitted singletons)
     :param num_partitions: Number of partitions to use for the VQSR HT
     :param overwrite: Whether to overwrite imported VQSR HT
     :param import_header_path: Optional path to a header file to use for import
@@ -51,7 +56,7 @@ def import_vqsr(
     )
 
     ht = ht.checkpoint(
-        get_filters('vqsr_alleleSpecificTrans', split=False, finalized=False).path,
+        get_filters(f"vqsr_{vqsr_type}", split=False, finalized=False).path,
         overwrite=overwrite,
     )
 
@@ -63,7 +68,7 @@ def import_vqsr(
     )
 
     ht = ht.checkpoint(
-        get_filters('vqsr_alleleSpecificTrans', split=True, finalized=False).path,
+        get_filters(f"vqsr_{vqsr_type}", split=True, finalized=False).path,
         overwrite=overwrite,
     )
     split_count = ht.count()
@@ -71,12 +76,51 @@ def import_vqsr(
         f"Found {unsplit_count} unsplit and {split_count} split variants with VQSR annotations"
     )
 
-import_vqsr(
-        "gs://gnomad-julia/gnomad_v3.1/VQSR_AS_TS/gnomAD_3.1.filtered.*.vcf.gz",  #TODO: move to gnomad folder and add path to resources
-        "AS_TS",
-        5000,
-        True,
-        import_header_path="gs://gnomad-julia/gnomad_v3.1/VQSR_AS/gnomAD3.1.filtered.header",  # TODO: add to resources
+
+def main(args):
+    hl.init(log="/load_data.log", default_reference="GRCh38")
+
+    import_vqsr(
+        args.vqsr_vcf_path,
+        args.vqsr_type,
+        args.n_partitions,
+        args.overwrite,
+        args.header_path,
     )
 
-# TODO: add agruments
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--vqsr_vcf_path", help="Path to VQSR VCF. Can be specified as Hadoop glob patterns")
+    parser.add_argument(
+        "--vqsr_type",
+        help="Type of VQSR corresponding to the VQSR VCF being loaded",
+        default="alleleSpecificTrans",
+        choices=["classic", "alleleSpecific", "alleleSpecificTrans"],
+    )
+    parser.add_argument(
+        "--n_partitions",
+        help="Number of desired partitions for output Table",
+        default=5000,
+        type=int,
+    )
+    parser.add_argument(
+        "--header_path",
+        help="Optional path to a header file to use for importing VQSR VCF",
+    )
+    parser.add_argument(
+        "-o",
+        "--overwrite",
+        help="Overwrite all data from this subset (default: False)",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--slack_channel", help="Slack channel to post results and notifications to",
+    )
+    args = parser.parse_args()
+
+    if args.slack_channel:
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
+    else:
+        main(args)

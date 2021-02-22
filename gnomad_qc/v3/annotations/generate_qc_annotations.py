@@ -41,8 +41,8 @@ logger.setLevel(logging.INFO)
 
 def compute_info() -> hl.Table:
     """
-    Computes a HT with the typical GATK AS and site-level info fields
-    as well as ACs and lowqual fields.
+    Computes a HT with the typical GATK AS and site-level info fields as well as ACs and lowqual fields.
+
     Note that this table doesn't split multi-allelic sites.
 
     :return: Table with info fields
@@ -104,7 +104,7 @@ def compute_info() -> hl.Table:
         AS_pab_max=hl.agg.array_agg(
             lambda ai: hl.agg.filter(
                 mt.LA.contains(ai) & mt.LGT.is_het(),
-                hl.agg.max(hl.binom_test(mt.LAD[1], hl.sum(mt.LAD), 0.5, "two-sided")),
+                hl.agg.max(hl.binom_test(mt.LAD[mt.LA.index(ai)], hl.sum(mt.LAD), 0.5, "two-sided")),
             ),
             mt.alt_alleles_range_array,
         )
@@ -131,8 +131,7 @@ def compute_info() -> hl.Table:
 
 def split_info() -> hl.Table:
     """
-    Generates an info table that splits multi-allelic sites from
-    the multi-allelic info table.
+    Generates an info table that splits multi-allelic sites from the multi-allelic info table.
 
     :return: Info table with split multi-allelics
     :rtype: Table
@@ -151,15 +150,16 @@ def split_info() -> hl.Table:
     return info_ht
 
 
-def generate_allele_data(mt: hl.MatrixTable) -> hl.Table:
+def generate_allele_data(ht: hl.Table) -> hl.Table:
     """
-    Writes bi-allelic sites MT with the following annotations:
+    Returns bi-allelic sites HT with the following annotations:
      - allele_data (nonsplit_alleles, has_star, variant_type, and n_alt_alleles)
-    :param MatrixTable mt: Full unsplit MT
+
+    :param Table ht: Full unsplit HT
     :return: Table with allele data annotations
     :rtype: Table
     """
-    ht = mt.rows().select()
+    ht = ht.select()
     allele_data = hl.struct(
         nonsplit_alleles=ht.alleles, has_star=hl.any(lambda a: a == "*", ht.alleles)
     )
@@ -184,7 +184,18 @@ def generate_allele_data(mt: hl.MatrixTable) -> hl.Table:
 
 def generate_ac(mt: hl.MatrixTable) -> hl.Table:
     """
-    Creates Table with QC samples, QC samples removing children and release samples raw and adj ACs.
+    Creates Table containing allele counts per variant.
+
+    Returns table containing the following annotations:
+        - `ac_qc_samples_raw`: Allele count of high quality samples
+        - `ac_qc_samples_unrelated_raw`: Allele count of high quality unrelated samples
+        - `ac_release_samples_raw`: Allele count of release samples
+        - `ac_qc_samples_adj`: Allele count of high quality samples after adj filtering
+        - `ac_qc_samples_unrelated_adj`: Allele count of high quality unrelated samples after adj filtering
+        - `ac_release_samples_adj`: Allele count of release samples after adj filtering
+
+    :param mt: Input MatrixTable
+    :return: Table containing allele counts
     """
     mt = mt.filter_cols(mt.meta.high_quality)
     mt = mt.filter_rows(hl.len(mt.alleles) > 1)
@@ -204,6 +215,13 @@ def generate_fam_stats(
         mt: hl.MatrixTable,
         fam_file: str
 ) -> hl.Table:
+    """
+    Calculate transmission and de novo mutation statistics using trios in the dataset.
+
+    :param mt: Input MatrixTable
+    :param fam_file: path to text file containing trio pedigree
+    :return: Table containing trio stats
+    """
     # Load Pedigree data and filter MT to samples present in any of the trios
     ped = hl.Pedigree.read(fam_file, delimiter="\t")
     fam_ht = hl.import_fam(fam_file, delimiter="\t")
@@ -228,7 +246,7 @@ def generate_fam_stats(
         **generate_trio_stats_expr(
             mt,
             transmitted_strata={
-                'raw': True,
+                'raw': None,
                 'adj': trio_adj
             },
             de_novo_strata={
@@ -245,6 +263,11 @@ def generate_fam_stats(
 
 
 def export_transmitted_singletons_vcf():
+    """
+    Exports the transmitted singleton Table to a VCF.
+
+    :return: None
+    """
     qc_ac_ht = qc_ac.ht()
 
     for transmission_confidence in ['raw', 'adj']:
@@ -262,30 +285,18 @@ def export_transmitted_singletons_vcf():
         hl.export_vcf(ts_mt, get_transmitted_singleton_vcf_path(transmission_confidence), tabix=True)
 
 
-def run_vep() -> hl.Table:
-    def get_mt_partitions(mt_path: str) -> List[hl.Interval]:
-        """
-        This function loads the partitioning from a given MT.
-        Note that because it relies on hardcoded paths within the MT that are still in flux,
-        it isn't guaranteed to work on future versions of the MT format.
+def run_vep(vep_version: str = "101") -> hl.Table:
+    """
+    Returns a table with a VEP annotation for each variant in the raw MatrixTable.
 
-        :param str mt_path: MT path
-        :return: MT partitions
-        :rtype: List of Interval
-        """
-        logger.info(f'Reading partitions for {mt_path}')
-        import json
-        from os import path
-        mt = hl.read_matrix_table(mt_path)
-        with hl.hadoop_open(path.join(mt_path, 'rows', 'rows', 'metadata.json.gz')) as f:
-            intervals_json = json.load(f)['jRangeBounds']
-            return hl.tarray(hl.tinterval(hl.tstruct(locus=mt.locus.dtype)))._convert_from_json(intervals_json)
-
+    :param vep_version: Version of VEPed context Table to use in `vep_or_lookup_vep`
+    :return: VEPed Table
+    """
     ht = get_gnomad_v3_mt(key_by_locus_and_alleles=True, remove_hard_filtered_samples=False).rows()
     ht = ht.filter(hl.len(ht.alleles) > 1)
     ht = hl.split_multi_hts(ht)
-    ht = hl.vep(ht)
-    ht = ht.annotate_globals(version='v101')
+    ht = vep_or_lookup_vep(ht, vep_version=vep_version)
+    ht = ht.annotate_globals(version=f'v{vep_version}')
 
     return ht
 
@@ -305,7 +316,7 @@ def main(args):
 
     if args.generate_allele_data:
         mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
-        generate_allele_data(mt).write(allele_data.path, overwrite=args.overwrite)
+        generate_allele_data(mt.rows()).write(allele_data.path, overwrite=args.overwrite)
 
     if args.generate_ac:  # TODO: compute AC and qc_AC as part of compute_info
         mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, samples_meta=True)
@@ -326,7 +337,7 @@ def main(args):
         export_transmitted_singletons_vcf()
 
     if args.vep:
-        run_vep().write(vep.path, overwrite=args.overwrite)
+        run_vep(vep_version=args.vep_version).write(vep.path, overwrite=args.overwrite)
 
 
 if __name__ == '__main__':
@@ -338,6 +349,7 @@ if __name__ == '__main__':
     parser.add_argument('--generate_ac', help='Creates a table with ACs for QC, unrelated QC and release samples (raw and adj)', action='store_true')
     parser.add_argument('--generate_fam_stats', help='Creates a table with transmitted allele counts and de novo counts.', action='store_true')
     parser.add_argument('--vep', help='Generates vep annotations.', action='store_true')
+    parser.add_argument('--vep_version', help='Version of VEPed context Table to use in vep_or_lookup_vep', action='store_true', default="101")
     parser.add_argument('--export_transmitted_singletons_vcf', help='Exports transmitted singletons to VCF files.', action='store_true')
     parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
     parser.add_argument('--overwrite', help='Overwrite data', action='store_true')

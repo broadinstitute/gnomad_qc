@@ -1,3 +1,4 @@
+from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 from typing import Optional
 
 from gnomad.resources.resource_utils import (TableResource,
@@ -38,13 +39,13 @@ def get_info(split: bool = True) -> VersionedTableResource:
     )
 
 
-def get_filters(
+def get_vqsr_filters(
     model_id: str, split: bool = True, finalized: bool = False,
 ) -> VersionedTableResource:
     """
-    Gets the specified filtering annotation resource.
+    Gets the specified VQSR filtering annotation resource.
 
-    :param model_id: Filtering model id
+    :param model_id: VQSR filtering model id
     :param split: Split or multi-allelic version of the filtering file
     :param finalized: Whether to return the raw VQSR table or the finalized VQSR table representing determined cutoffs
     :return: VQSR filtering annotation file
@@ -56,9 +57,9 @@ def get_filters(
                 "{}/filtering/{}{}{}.ht".format(
                     _annotations_root(release),
                     model_id,
-                    '.finalized' if finalized else '',
-                    '.split' if split else ''
-                    )
+                    ".finalized" if finalized else "",
+                    ".split" if split else "",
+                )
             )
             for release in RELEASES
         },
@@ -162,3 +163,13 @@ def get_freq(version: str = CURRENT_RELEASE, subset: Optional[str] = None) -> Ve
         }
     )
 
+analyst_annotations = VersionedTableResource(
+    CURRENT_RELEASE,
+    {
+        release: TableResource(
+            f"{_annotations_root(release)}/gnomad_genomes_v{release}_in_silico_predictors.ht"
+        )
+        for release in RELEASES
+        if release != "3.0"
+    },
+)
