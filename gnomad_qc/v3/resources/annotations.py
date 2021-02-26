@@ -149,6 +149,36 @@ allele_data = VersionedTableResource(
     },
 )
 
+
+def get_freq(
+    version: str = CURRENT_RELEASE, subset: Optional[str] = None
+) -> VersionedTableResource:
+    """
+    Get the frequency annotation table for a specified release.
+
+    :param version: Version of annotation path to return
+    :param subset: One of the official subsets of the specified release (e.g., non_neuro, non_cancer, controls_and_biobanks)
+    :return: Hail Table containing subset or overall cohort frequency annotations
+    """
+    if version == "3" and subset:
+        raise DataException("Subsets of gnomAD v3 do not exist")
+
+    if subset and subset not in SUBSETS:
+        raise DataException(
+            f"{subset} subset is not one of the following official subsets: {SUBSETS}"
+        )
+
+    return VersionedTableResource(
+        version,
+        {
+            release: TableResource(
+                f"{_annotations_root(release)}/gnomad_genomes_v{release}.frequencies{'.' + subset if subset else ''}.ht"
+            )
+            for release in RELEASES
+        },
+    )
+
+
 analyst_annotations = VersionedTableResource(
     CURRENT_RELEASE,
     {
