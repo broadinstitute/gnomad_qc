@@ -8,7 +8,7 @@ from gnomad.assessment.sanity_checks import (
     make_filters_sanity_check_expr,
 )
 from gnomad.utils.vcf import make_label_combos, HISTS, SORT_ORDER
-from gnomad.resources.grch38.gnomad import POPS, SEXES, KG_POPS, HGDP_POPS
+from gnomad.resources.grch38.gnomad import POPS, SEXES, KG_POPS, HGDP_POPS, SUBSETS
 
 DOWNSAMPLINGS = {
     "10": ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas", "mid"],
@@ -45,13 +45,13 @@ logger = logging.getLogger("sanity_checks")
 logger.setLevel(logging.INFO)
 
 
-# Resources to check raw HT/MT upon loading
 def summarize_t(
     t: Union[hl.MatrixTable, hl.Table], monoallelic_check: hl.bool = False
 ) -> hl.Struct:
     """
-    Gets a summary of variants in a MatrixTable or Table.
-    Prints number of variants to stdout, and checks that each chromosome has variant calls
+    Get summary of variants in a MatrixTable or Table.
+
+    Print the number of variants to stdout and check that each chromosome has variant calls.
     :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table to be checked.
     :rtype: Struct
     """
@@ -79,8 +79,9 @@ def summarize_t(
 # Resources to check HT/MT upon VCF export
 def filters_sanity_check(t: Union[hl.MatrixTable, hl.Table]) -> None:
     """
-    Summarizes variants filtered under various conditions in input MatrixTable or Table.
-    Summarizes counts for:
+    Summarize variants filtered under various conditions in input MatrixTable or Table.
+
+    Summarize counts for:
         - Total number of variants
         - Fraction of variants removed due to:
             - Any filter
@@ -124,7 +125,7 @@ def filters_sanity_check(t: Union[hl.MatrixTable, hl.Table]) -> None:
         extra_filter_checks: Optional[Dict[str, hl.expr.Expression]] = None,
     ) -> None:
         """
-        Performs sanity checks to measure percentages of variants filtered under different conditions.
+        Perform sanity checks to measure percentages of variants filtered under different conditions.
         :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table.
         :param hl.expr.Expression group_exprs: Dictionary of expressions to group the table by.
         :param int n_rows: Number of rows to show.
@@ -186,22 +187,11 @@ def filters_sanity_check(t: Union[hl.MatrixTable, hl.Table]) -> None:
     )
 
 
-SUBSETS = [
-    "non_topmed",
-    "controls_and_biobanks",
-    "non_neuro",
-    "non_v2",
-    "non_cancer",
-    "tgp",
-    "hgdp",
-]
-
-
 def histograms_sanity_check(
     t: Union[hl.MatrixTable, hl.Table], verbose: bool, hists: List[str] = HISTS
 ) -> None:
     """
-    Checks the number of variants that have nonzero values in their n_smaller and n_larger bins of quality histograms (both raw and adj).
+    Check the number of variants that have nonzero values in their n_smaller and n_larger bins of quality histograms (both raw and adj).
     :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table.
     :param bool verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks.
@@ -240,10 +230,15 @@ def histograms_sanity_check(
                 )
 
 
-def raw_and_adj_sanity_checks(t: Union[hl.MatrixTable, hl.Table], subsets: List[str], verbose: bool, delimiter: str = "-"):
+def raw_and_adj_sanity_checks(
+    t: Union[hl.MatrixTable, hl.Table],
+    subsets: List[str],
+    verbose: bool,
+    delimiter: str = "-",
+):
     """
-    Performs sanity checks on raw and adj data in input Table.
-    Checks that:
+    Perform sanity checks on raw and adj data in input Table.
+    Check that:
         - Raw AC, AN, AF are not 0
         - Adj AN is not 0 and AC and AF are not negative
         - Raw values for AC, AN, nhomalt in each sample subset are greater than or equal to their corresponding adj values
@@ -255,7 +250,7 @@ def raw_and_adj_sanity_checks(t: Union[hl.MatrixTable, hl.Table], subsets: List[
     :return: None
     :rtype: None
     """
-    t = t.rows() if isinstance(t, hl.MatrixTable) else t   
+    t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
     for subfield in ["AC", "AF"]:
         field = f"{subfield}{delimiter}"
@@ -304,26 +299,23 @@ def raw_and_adj_sanity_checks(t: Union[hl.MatrixTable, hl.Table], subsets: List[
             field = f"{subfield}{delimiter}{subset}{delimiter}"
             generic_field_check(
                 t,
-                cond_expr=(
-                    t.info[f"{field}raw"]
-                    < t.info[f"{field}adj"]
-                ),
+                cond_expr=(t.info[f"{field}raw"] < t.info[f"{field}adj"]),
                 check_description=f"{field}raw >= {field}adj",
-                display_fields=[
-                    f"info.{field}raw",
-                    f"info.{field}adj",
-                ],
+                display_fields=[f"info.{field}raw", f"info.{field}adj",],
                 verbose=verbose,
             )
 
 
-def frequency_sanity_checks(t: Union[hl.MatrixTable, hl.Table], subsets: List[str], verbose: bool, delimiter = "-") -> None:
+def frequency_sanity_checks(
+    t: Union[hl.MatrixTable, hl.Table], subsets: List[str], verbose: bool, delimiter="-"
+) -> None:
     """
-    Performs sanity checks on frequency data in input Table.
-    Checks:
+    Perform sanity checks on frequency data in input Table.
+
+    Check:
         - Number of sites where gnomAD callset frequency is equal to a gnomAD subset frequency (both raw and adj)
     
-    Also performs small spot checks:
+    Also perform small spot checks:
         - Counts total number of sites where the gnomAD allele count annotation is defined (both raw and adj)
         
     :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table.
@@ -334,7 +326,7 @@ def frequency_sanity_checks(t: Union[hl.MatrixTable, hl.Table], subsets: List[st
     :return: None
     :rtype: None
     """
-    t = t.rows() if isinstance(t, hl.MatrixTable) else t  
+    t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
     for subset in subsets:
         for subfield in ["AC", "AN", "nhomalt"]:
@@ -344,9 +336,7 @@ def frequency_sanity_checks(t: Union[hl.MatrixTable, hl.Table], subsets: List[st
 
             generic_field_check(
                 t,
-                cond_expr=(
-                    t.info[{subfield_label}] == t.info[subfield_subset_label]
-                ),
+                cond_expr=(t.info[{subfield_label}] == t.info[subfield_subset_label]),
                 check_description=f"{subfield_label} != {subfield_subset_label}",
                 display_fields=[
                     f"info.{subfield_label}",
@@ -387,7 +377,7 @@ def sample_sum_check(
     :return: None
     """
 
-    t = t.rows() if isinstance(t, hl.MatrixTable) else t  
+    t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
     if prefix != "":
         prefix += "-"
@@ -434,10 +424,9 @@ def sample_sum_sanity_checks(
     sexes: List[str] = SEXES,
 ) -> None:
     """
-    Performs sanity checks on sample sums in input Table.
-    Computes afresh the sum of annotations for a specified group of annotations, and compare to the annotated version;
+    Compute afresh the sum of annotations for a specified group of annotations, and compare to the annotated version;
     displays results from checking the sum of the specified annotations in the terminal.
-    Also checks that annotations for all expected sample populations are present.
+    Also check that annotations for all expected sample populations are present.
     :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table.
     :param List[str] subsets: List of sample subsets.
     :param List[str] info_metrics: List of metrics in info struct of input Table.
@@ -447,7 +436,7 @@ def sample_sum_sanity_checks(
     :return: None
     :rtype: None
     """
-    t = t.rows() if isinstance(t, hl.MatrixTable) else t 
+    t = t.rows() if isinstance(t, hl.MatrixTable) else t
     # Add "" for sum checks on entire callset
     subsets.append("")
     # Perform sample sum checks per subset
@@ -469,11 +458,14 @@ def sample_sum_sanity_checks(
 
 
 def sex_chr_sanity_checks(
-    t: Union[hl.MatrixTable, hl.Table], info_metrics: List[str], contigs: List[str], verbose: bool
+    t: Union[hl.MatrixTable, hl.Table],
+    info_metrics: List[str],
+    contigs: List[str],
+    verbose: bool,
 ) -> None:
     """
     Performs sanity checks for annotations on the sex chromosomes.
-    Checks:
+    Check:
         - That metrics for chrY variants in female samples are NA and not 0
         - That nhomalt counts are equal to female nhomalt counts for all non-PAR chrX variants
     :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table.
@@ -484,7 +476,7 @@ def sex_chr_sanity_checks(
     :return: None
     :rtype: None
     """
-    t = t.rows() if isinstance(t, hl.MatrixTable) else t 
+    t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
     female_metrics = [x for x in info_metrics if "-female" in x or "-XX" in x]
 
@@ -535,7 +527,7 @@ def missingness_sanity_checks(
     missingness_threshold: float,
 ) -> None:
     """
-    Checks amount of missingness in all row annotations.
+    Check amount of missingness in all row annotations.
     Prints metric to terminal if more than missingness_threshold% of annotations for that metric are missing.
     :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table.
     :param List[str] info_metrics: List of metrics in info struct of input Table.
@@ -573,7 +565,7 @@ def vcf_field_check(
     hists: List[str] = HISTS,
 ) -> bool:
     """
-    Checks that all VCF fields and descriptions are present in input Table and VCF header dictionary.
+    Check that all VCF fields and descriptions are present in input Table and VCF header dictionary.
 
     :param hl.MatrixTable, hl.Table t: Input MatrixTable or Tableto be exported to VCF.
     :param Dict[str, Dict[str, Dict[str, str]]] header_dict: VCF header dictionary.
@@ -582,7 +574,7 @@ def vcf_field_check(
     :return: Bool with whether all expected fields and descriptions are present.
     :rtype: bool
     """
-    t = t.rows() if isinstance(t, hl.MatrixTable) else t 
+    t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
     # Confirm all VCF fields/descriptions are present before exporting
     hist_fields = []
@@ -618,9 +610,7 @@ def vcf_field_check(
                     )
                     temp_missing_descriptions.append(field)
             except KeyError:
-                logger.warning(
-                    f"{field} in T info field does not exist in VCF header!"
-                )
+                logger.warning(f"{field} in T info field does not exist in VCF header!")
                 # NOTE: some hists are not exported, so ignoring here
                 # END entry is also not exported (removed during densify)
                 if (field not in hist_fields) and (field != "END"):
