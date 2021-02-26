@@ -1,6 +1,6 @@
 import argparse
 import logging
-from typing import List, Dict, Tuple
+from typing import Dict, List, Tuple
 
 import hail as hl
 
@@ -24,10 +24,10 @@ from gnomad.utils.annotations import (
 )
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vcf import make_label_combos, index_globals
+from gnomad.utils.vcf import index_globals, make_label_combos
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt, qc_temp_prefix
 from gnomad_qc.v3.resources.meta import meta
 
 
@@ -40,7 +40,7 @@ logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
 
 
-def make_faf_index_dict(faf_meta: List[Dict[str, str]]):
+def make_faf_index_dict(faf_meta: List[Dict[str, str]]) -> Dict[str, int]:
     """
     Create a look-up Dictionary for entries contained in the filter allele frequency annotation array
 
@@ -136,7 +136,7 @@ def main(args):
             logger.info(f"Writing out frequency data for {subset} subset...")
             if args.test:
                 mt.rows().write(
-                    f"gs://gnomad-tmp/gnomad_freq/chr20_test_freq.{subset}.ht",
+                    qc_temp_prefix() + f"chr20_test_freq.{subset}.ht",
                     overwrite=True,
                 )
             else:
@@ -161,10 +161,8 @@ def main(args):
             )
 
             # Compute callset-wide age histogram global
-            meta_ht = meta.ht().select('release')
-            meta_ht = meta_ht.filter(meta_ht.release)
             mt = mt.annotate_globals(
-                age_distribution=meta_ht.aggregate_cols(
+                age_distribution=mt.aggregate_cols(
                     hl.agg.hist(
                         mt.age,
                         30,
@@ -183,7 +181,7 @@ def main(args):
             # Remove all loci with raw AC=0
             mt = mt.filter_rows(mt.freq[1].AC > 0)
 
-            logger.info("Calculating InbreedingCoefficient...")
+            logger.info("Calculating InbreedingCoeff...")
             # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify
             mt = mt.annotate_rows(
                 InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT)
