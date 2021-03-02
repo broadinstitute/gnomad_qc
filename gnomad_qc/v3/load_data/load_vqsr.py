@@ -68,7 +68,7 @@ def import_vqsr(
     )
 
     ht = ht.checkpoint(
-        get_filters(f"vqsr_{vqsr_type}", split=True, finalized=False).path,
+        get_vqsr_filters(f"vqsr_{vqsr_type}", split=True, finalized=False).path,
         overwrite=overwrite,
     )
     split_count = ht.count()
