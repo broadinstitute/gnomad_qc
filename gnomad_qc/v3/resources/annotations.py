@@ -42,9 +42,7 @@ def get_info(split: bool = True) -> VersionedTableResource:
 
 
 def get_vqsr_filters(
-    model_id: str,
-    split: bool = True,
-    finalized: bool = False,
+    model_id: str, split: bool = True, finalized: bool = False,
 ) -> VersionedTableResource:
     """
     Gets the specified VQSR filtering annotation resource.

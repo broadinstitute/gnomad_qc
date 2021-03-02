@@ -7,7 +7,7 @@ import hail as hl
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import split_info_annotation
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources.annotations import get_filters
+from gnomad_qc.v3.resources.annotations import get_vqsr_filters
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("import_vqsr")
@@ -56,7 +56,7 @@ def import_vqsr(
     )
 
     ht = ht.checkpoint(
-        get_filters(f"vqsr_{vqsr_type}", split=False, finalized=False).path,
+        get_vqsr_filters(f"vqsr_{vqsr_type}", split=False, finalized=False).path,
         overwrite=overwrite,
     )
 

@@ -71,7 +71,8 @@ def create_bin_ht(model_id: str, n_bins: int) -> hl.Table:
         )
 
     ht = ht.filter(
-        ~info_ht[ht.key].AS_lowqual & ~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus])
+        ~info_ht[ht.key].AS_lowqual
+        & ~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus])
     )
     ht_non_lcr = filter_low_conf_regions(
         ht,
@@ -128,7 +129,7 @@ def create_aggregated_bin_ht(model_id: str) -> hl.Table:
     parent_ht = grouped_binned_ht._parent
     agg_ht = grouped_binned_ht.aggregate(
         n_clinvar_path=hl.agg.count_where(parent_ht.clinvar_path),
-        **score_bin_agg(grouped_binned_ht, fam_stats_ht=trio_stats_ht)
+        **score_bin_agg(grouped_binned_ht, fam_stats_ht=trio_stats_ht),
     )
 
     return agg_ht
@@ -138,12 +139,9 @@ def main(args):
     hl.init(log="/variant_qc_evaluation.log")
 
     if args.create_bin_ht:
-        create_bin_ht(
-            args.model_id,
-            args.n_bins,
-        ).write(
+        create_bin_ht(args.model_id, args.n_bins,).write(
             get_score_bins(args.model_id, aggregated=False).path,
-            overwrite=args.overwrite
+            overwrite=args.overwrite,
         )
 
     if args.run_sanity_checks:
@@ -156,7 +154,9 @@ def main(args):
                     has_biallelic_rank=hl.agg.counter(hl.is_defined(ht.biallelic_bin)),
                     was_singleton=hl.agg.counter(ht.singleton),
                     has_singleton_rank=hl.agg.counter(hl.is_defined(ht.singleton_bin)),
-                    was_biallelic_singleton=hl.agg.counter(ht.singleton & ~ht.was_split),
+                    was_biallelic_singleton=hl.agg.counter(
+                        ht.singleton & ~ht.was_split
+                    ),
                     has_biallelic_singleton_rank=hl.agg.counter(
                         hl.is_defined(ht.biallelic_singleton_bin)
                     ),
@@ -188,9 +188,7 @@ def main(args):
         )
 
         for truth_sample in TRUTH_SAMPLES:
-            truth_sample_mt = mt.filter_cols(
-                mt.s == TRUTH_SAMPLES[truth_sample]["s"]
-            )
+            truth_sample_mt = mt.filter_cols(mt.s == TRUTH_SAMPLES[truth_sample]["s"])
             # Filter to variants in truth data
             truth_sample_mt = truth_sample_mt.filter_rows(
                 hl.agg.any(truth_sample_mt.GT.is_non_ref())
@@ -209,15 +207,11 @@ def main(args):
             mt = get_callset_truth_data(truth_sample).mt()
             truth_hc_intervals = TRUTH_SAMPLES[truth_sample]["hc_intervals"]
             truth_mt = TRUTH_SAMPLES[truth_sample]["truth_mt"]
-            truth_mt = truth_mt.key_cols_by(
-                s=hl.str(TRUTH_SAMPLES[truth_sample]["s"])
-            )
+            truth_mt = truth_mt.key_cols_by(s=hl.str(TRUTH_SAMPLES[truth_sample]["s"]))
 
             # Remove low quality sites
             info_ht = get_info(split=True).ht()
-            mt = mt.filter_rows(
-                ~info_ht[mt.row_key].AS_lowqual
-            )
+            mt = mt.filter_rows(~info_ht[mt.row_key].AS_lowqual)
 
             ht = create_truth_sample_ht(mt, truth_mt, truth_hc_intervals)
             ht.write(
@@ -234,7 +228,8 @@ def main(args):
 
             info_ht = get_info(split=True).ht()
             ht = ht.filter(
-                ~info_ht[ht.key].AS_lowqual & ~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus])
+                ~info_ht[ht.key].AS_lowqual
+                & ~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus])
             )
 
             logger.info("Filtering out low confidence regions and segdups...")
@@ -272,9 +267,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--model_id",
-        help="Model ID.",
-        required=False,
+        "--model_id", help="Model ID.", required=False,
     )
 
     parser.add_argument(

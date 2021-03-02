@@ -1,11 +1,15 @@
 import argparse
 import logging
-from typing import List
 
 import hail as hl
 
 from gnomad.sample_qc.relatedness import generate_trio_stats_expr
-from gnomad.utils.annotations import add_variant_type, annotate_adj, get_adj_expr, get_lowqual_expr
+from gnomad.utils.annotations import (
+    add_variant_type,
+    annotate_adj,
+    get_adj_expr,
+    get_lowqual_expr,
+)
 from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
@@ -14,7 +18,7 @@ from gnomad.utils.sparse_mt import (
     INFO_INT32_SUM_AGG_FIELDS,
     INFO_SUM_AGG_FIELDS,
     split_info_annotation,
-    split_lowqual_annotation
+    split_lowqual_annotation,
 )
 from gnomad.utils.vcf import ht_to_vcf_mt
 from gnomad.utils.vep import vep_or_lookup_vep
@@ -26,7 +30,7 @@ from gnomad_qc.v3.resources.annotations import (
     get_info,
     info_vcf_path,
     qc_ac,
-    vep
+    vep,
 )
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import trios
@@ -105,7 +109,11 @@ def compute_info() -> hl.Table:
         AS_pab_max=hl.agg.array_agg(
             lambda ai: hl.agg.filter(
                 mt.LA.contains(ai) & mt.LGT.is_het(),
-                hl.agg.max(hl.binom_test(mt.LAD[mt.LA.index(ai)], hl.sum(mt.LAD), 0.5, "two-sided")),
+                hl.agg.max(
+                    hl.binom_test(
+                        mt.LAD[mt.LA.index(ai)], hl.sum(mt.LAD), 0.5, "two-sided"
+                    )
+                ),
             ),
             mt.alt_alleles_range_array,
         )
@@ -203,19 +211,26 @@ def generate_ac(mt: hl.MatrixTable) -> hl.Table:
     mt = annotate_adj(mt)
     mt = mt.annotate_rows(
         ac_qc_samples_raw=hl.agg.sum(mt.GT.n_alt_alleles()),
-        ac_qc_samples_unrelated_raw=hl.agg.filter(~mt.meta.sample_filters.all_samples_related, hl.agg.sum(mt.GT.n_alt_alleles())),
-        ac_release_samples_raw=hl.agg.filter(mt.meta.release, hl.agg.sum(mt.GT.n_alt_alleles())),
+        ac_qc_samples_unrelated_raw=hl.agg.filter(
+            ~mt.meta.sample_filters.all_samples_related,
+            hl.agg.sum(mt.GT.n_alt_alleles()),
+        ),
+        ac_release_samples_raw=hl.agg.filter(
+            mt.meta.release, hl.agg.sum(mt.GT.n_alt_alleles())
+        ),
         ac_qc_samples_adj=hl.agg.filter(mt.adj, hl.agg.sum(mt.GT.n_alt_alleles())),
-        ac_qc_samples_unrelated_adj=hl.agg.filter(~mt.meta.sample_filters.all_samples_related & mt.adj, hl.agg.sum(mt.GT.n_alt_alleles())),
-        ac_release_samples_adj=hl.agg.filter(mt.meta.release & mt.adj, hl.agg.sum(mt.GT.n_alt_alleles())),
+        ac_qc_samples_unrelated_adj=hl.agg.filter(
+            ~mt.meta.sample_filters.all_samples_related & mt.adj,
+            hl.agg.sum(mt.GT.n_alt_alleles()),
+        ),
+        ac_release_samples_adj=hl.agg.filter(
+            mt.meta.release & mt.adj, hl.agg.sum(mt.GT.n_alt_alleles())
+        ),
     )
     return mt.rows()
 
 
-def generate_fam_stats(
-        mt: hl.MatrixTable,
-        fam_file: str
-) -> hl.Table:
+def generate_fam_stats(mt: hl.MatrixTable, fam_file: str) -> hl.Table:
     """
     Calculate transmission and de novo mutation statistics using trios in the dataset.
 
@@ -226,35 +241,29 @@ def generate_fam_stats(
     # Load Pedigree data and filter MT to samples present in any of the trios
     ped = hl.Pedigree.read(fam_file, delimiter="\t")
     fam_ht = hl.import_fam(fam_file, delimiter="\t")
-    fam_ht = fam_ht.annotate(
-        fam_members=[fam_ht.id, fam_ht.pat_id, fam_ht.mat_id]
-    )
-    fam_ht = fam_ht.explode('fam_members', name='s')
-    fam_ht = fam_ht.key_by('s').select().distinct()
+    fam_ht = fam_ht.annotate(fam_members=[fam_ht.id, fam_ht.pat_id, fam_ht.mat_id])
+    fam_ht = fam_ht.explode("fam_members", name="s")
+    fam_ht = fam_ht.key_by("s").select().distinct()
 
     mt = mt.filter_cols(hl.is_defined(fam_ht[mt.col_key]))
-    logger.info(f"Generating family stats using {mt.count_cols()} samples from {len(ped.trios)} trios.")
+    logger.info(
+        f"Generating family stats using {mt.count_cols()} samples from {len(ped.trios)} trios."
+    )
 
     mt = filter_to_autosomes(mt)
     mt = annotate_adj(mt)
-    mt = mt.select_entries('GT', 'GQ', 'AD', 'END', 'adj')
+    mt = mt.select_entries("GT", "GQ", "AD", "END", "adj")
     mt = hl.experimental.densify(mt)
     mt = mt.filter_rows(hl.len(mt.alleles) == 2)
     mt = hl.trio_matrix(mt, pedigree=ped, complete_trios=True)
-    trio_adj = (mt.proband_entry.adj & mt.father_entry.adj & mt.mother_entry.adj)
+    trio_adj = mt.proband_entry.adj & mt.father_entry.adj & mt.mother_entry.adj
 
     ht = mt.select_rows(
         **generate_trio_stats_expr(
             mt,
-            transmitted_strata={
-                'raw': True,
-                'adj': trio_adj
-            },
-            de_novo_strata={
-                'raw': True,
-                'adj': trio_adj,
-            },
-            proband_is_female_expr=mt.is_female
+            transmitted_strata={"raw": True, "adj": trio_adj},
+            de_novo_strata={"raw": True, "adj": trio_adj,},
+            proband_is_female_expr=mt.is_female,
         )
     ).rows()
 
@@ -271,19 +280,24 @@ def export_transmitted_singletons_vcf():
     """
     qc_ac_ht = qc_ac.ht()
 
-    for transmission_confidence in ['raw', 'adj']:
+    for transmission_confidence in ["raw", "adj"]:
         ts_ht = qc_ac_ht.filter(
-            (fam_stats.ht()[qc_ac_ht.key][f'n_transmitted_{transmission_confidence}'] == 1) &
-            (qc_ac_ht.ac_qc_samples_raw == 2)
+            (
+                fam_stats.ht()[qc_ac_ht.key][f"n_transmitted_{transmission_confidence}"]
+                == 1
+            )
+            & (qc_ac_ht.ac_qc_samples_raw == 2)
         )
 
-        ts_ht = ts_ht.annotate(
-            s=hl.null(hl.tstr)
-        )
+        ts_ht = ts_ht.annotate(s=hl.null(hl.tstr))
 
-        ts_mt = ts_ht.to_matrix_table_row_major(columns=['s'], entry_field_name='s')
+        ts_mt = ts_ht.to_matrix_table_row_major(columns=["s"], entry_field_name="s")
         ts_mt = ts_mt.filter_cols(False)
-        hl.export_vcf(ts_mt, get_transmitted_singleton_vcf_path(transmission_confidence), tabix=True)
+        hl.export_vcf(
+            ts_mt,
+            get_transmitted_singleton_vcf_path(transmission_confidence),
+            tabix=True,
+        )
 
 
 def run_vep(vep_version: str = "101") -> hl.Table:
@@ -293,17 +307,19 @@ def run_vep(vep_version: str = "101") -> hl.Table:
     :param vep_version: Version of VEPed context Table to use in `vep_or_lookup_vep`
     :return: VEPed Table
     """
-    ht = get_gnomad_v3_mt(key_by_locus_and_alleles=True, remove_hard_filtered_samples=False).rows()
+    ht = get_gnomad_v3_mt(
+        key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
+    ).rows()
     ht = ht.filter(hl.len(ht.alleles) > 1)
     ht = hl.split_multi_hts(ht)
     ht = vep_or_lookup_vep(ht, vep_version=vep_version)
-    ht = ht.annotate_globals(version=f'v{vep_version}')
+    ht = ht.annotate_globals(version=f"v{vep_version}")
 
     return ht
 
 
 def main(args):
-    hl.init(default_reference='GRCh38', log='/qc_annotations.log')
+    hl.init(default_reference="GRCh38", log="/qc_annotations.log")
 
     if args.compute_info:
         compute_info().write(get_info(split=False).path, overwrite=args.overwrite)
@@ -317,20 +333,30 @@ def main(args):
 
     if args.generate_allele_data:
         mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
-        generate_allele_data(mt.rows()).write(allele_data.path, overwrite=args.overwrite)
+        generate_allele_data(mt.rows()).write(
+            allele_data.path, overwrite=args.overwrite
+        )
 
     if args.generate_ac:  # TODO: compute AC and qc_AC as part of compute_info
         mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, samples_meta=True)
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
-        ht = generate_ac(mt).checkpoint('gs://gnomad-tmp/ac_tmp.ht', overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        ht = generate_ac(mt).checkpoint(
+            "gs://gnomad-tmp/ac_tmp.ht",
+            overwrite=args.overwrite,
+            _read_if_exists=not args.overwrite,
+        )
         ht.repartition(10000, shuffle=False).write(qc_ac.path, overwrite=args.overwrite)
 
     if args.generate_fam_stats:
         mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, samples_meta=True)
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
         fam_stats_ht = generate_fam_stats(mt, trios.path)
-        fam_stats_ht = fam_stats_ht.checkpoint('gs://gnomad-tmp/fam_stats_tmp.ht', overwrite=args.overwrite, _read_if_exists=not args.overwrite)
+        fam_stats_ht = fam_stats_ht.checkpoint(
+            "gs://gnomad-tmp/fam_stats_tmp.ht",
+            overwrite=args.overwrite,
+            _read_if_exists=not args.overwrite,
+        )
         fam_stats_ht = fam_stats_ht.repartition(10000, shuffle=False)
         fam_stats_ht.write(fam_stats.path, overwrite=args.overwrite)
 
@@ -341,19 +367,42 @@ def main(args):
         run_vep(vep_version=args.vep_version).write(vep.path, overwrite=args.overwrite)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--compute_info', help='Computes info HT', action='store_true')
-    parser.add_argument('--split_info', help='Splits info HT', action='store_true')
-    parser.add_argument('--export_info_vcf', help='Export info as VCF', action='store_true')
-    parser.add_argument("--generate_allele_data", help="Calculates allele data", action="store_true")
-    parser.add_argument('--generate_ac', help='Creates a table with ACs for QC, unrelated QC and release samples (raw and adj)', action='store_true')
-    parser.add_argument('--generate_fam_stats', help='Creates a table with transmitted allele counts and de novo counts.', action='store_true')
-    parser.add_argument('--vep', help='Generates vep annotations.', action='store_true')
-    parser.add_argument('--vep_version', help='Version of VEPed context Table to use in vep_or_lookup_vep', action='store_true', default="101")
-    parser.add_argument('--export_transmitted_singletons_vcf', help='Exports transmitted singletons to VCF files.', action='store_true')
-    parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
-    parser.add_argument('--overwrite', help='Overwrite data', action='store_true')
+    parser.add_argument("--compute_info", help="Computes info HT", action="store_true")
+    parser.add_argument("--split_info", help="Splits info HT", action="store_true")
+    parser.add_argument(
+        "--export_info_vcf", help="Export info as VCF", action="store_true"
+    )
+    parser.add_argument(
+        "--generate_allele_data", help="Calculates allele data", action="store_true"
+    )
+    parser.add_argument(
+        "--generate_ac",
+        help="Creates a table with ACs for QC, unrelated QC and release samples (raw and adj)",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--generate_fam_stats",
+        help="Creates a table with transmitted allele counts and de novo counts.",
+        action="store_true",
+    )
+    parser.add_argument("--vep", help="Generates vep annotations.", action="store_true")
+    parser.add_argument(
+        "--vep_version",
+        help="Version of VEPed context Table to use in vep_or_lookup_vep",
+        action="store_true",
+        default="101",
+    )
+    parser.add_argument(
+        "--export_transmitted_singletons_vcf",
+        help="Exports transmitted singletons to VCF files.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--slack_channel", help="Slack channel to post results and notifications to."
+    )
+    parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     args = parser.parse_args()
 
     if args.slack_channel:
