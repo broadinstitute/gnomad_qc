@@ -1,14 +1,198 @@
 import logging
 from typing import Dict, List, Optional
 
+import copy
+import itertools
 import hail as hl
 
-from gnomad_qc.v3.prepare_vcf_data_release import make_label_combos
 from gnomad.assessment.sanity_checks import (
     generic_field_check,
     make_filters_sanity_check_expr,
 )
-from gnomad.utils.vcf import HISTS
+
+from gnomad.sample_qc.ancestry import POP_NAMES
+from gnomad.utils.vcf import (
+    ALLELE_TYPE_FIELDS,
+    AS_FIELDS,
+    RF_FIELDS,
+    SITE_FIELDS,
+    HISTS,
+    INFO_DICT,
+    REGION_FLAG_FIELDS,
+    SORT_ORDER,
+)
+
+
+logging.basicConfig(
+    format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
+    datefmt="%m/%d/%Y %I:%M:%S %p",
+)
+logger = logging.getLogger("vcf_release")
+logger.setLevel(logging.INFO)
+
+# Add capture region and sibling singletons to vcf_info_dict
+VCF_INFO_DICT = INFO_DICT
+VCF_INFO_DICT["monoallelic"] = {
+    "Description": "All samples are all homozygous alternate for the variant"
+}
+VCF_INFO_DICT["QUALapprox"] = {
+    "Number": "1",
+    "Description": "Sum of PL[0] values; used to approximate the QUAL score",
+}
+VCF_INFO_DICT["AS_SB_TABLE"] = {
+    "Number": "1",
+    "Description": "Allele-specific forward/reverse read counts for strand bias tests",
+}
+
+# Add new site fields
+NEW_SITE_FIELDS = [
+    "monoallelic",
+    "QUALapprox",
+    "transmitted_singleton",
+]
+SITE_FIELDS.extend(NEW_SITE_FIELDS)
+AS_FIELDS.extend(["AS_SB_TABLE"])
+
+def remove_fields_from_globals(global_field: List[str], fields_to_remove: List[str]):
+    """
+    Removes fields from the pre-defined global field variables.
+
+    :param global_field: Global list of fields
+    :param fields_to_remove: List of fields to remove from global (they must be in the global list)
+    """
+    for field in fields_to_remove:
+        if field in global_field:
+            global_field.remove(field)
+        else:
+            logger.info(f"'{field}'' missing from {global_field}")
+
+
+# Remove original alleles for containing non-releasable alleles
+MISSING_ALLELE_TYPE_FIELDS = ["original_alleles", "has_star"]
+remove_fields_from_globals(ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS)
+
+# Remove decoy from region field flag
+MISSING_REGION_FIELDS = ["decoy"]
+remove_fields_from_globals(REGION_FLAG_FIELDS, MISSING_REGION_FIELDS)
+
+# Remove BaseQRankSum and SOR from site fields (doesn't exist in v3.1)
+MISSING_SITES_FIELDS = ["BaseQRankSum", "SOR"]
+remove_fields_from_globals(SITE_FIELDS, MISSING_SITES_FIELDS)
+
+# Remove AS_BaseQRankSum and AS_SOR from AS fields
+MISSING_AS_FIELDS = ["AS_BaseQRankSum", "AS_VarDP"]
+remove_fields_from_globals(AS_FIELDS, MISSING_AS_FIELDS)
+
+# All missing fields to remove from vcf info dict
+MISSING_INFO_FIELDS = (
+    MISSING_ALLELE_TYPE_FIELDS
+    + MISSING_AS_FIELDS
+    + MISSING_REGION_FIELDS
+    + MISSING_SITES_FIELDS
+    + RF_FIELDS
+)
+
+SEXES = ["XX", "XY"]
+
+# Make subset list (used in properly filling out VCF header descriptions and naming VCF info fields)
+SUBSET_LIST = [
+    "controls_and_biobanks",
+    "non_cancer",
+    "non_neuro",
+    "non_topmed",
+    "non_v2",
+    "hgdp",
+    "tgp",
+]
+
+SUBSET_LIST_FOR_VCF = [
+    "controls_and_biobanks",
+    "non_cancer",
+    "non_neuro",
+    "non_topmed",
+    "non_v2",
+    "",
+]
+
+# Select populations to keep from the list of population names in POP_NAMES
+# This removes pop names we don't want to use
+# (e.g., "uniform", "consanguineous") to reduce clutter
+KEEP_POPS = ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas"]
+
+# Remove unnecessary pop names from pops dict
+POPS = {pop: POP_NAMES[pop] for pop in KEEP_POPS}
+POPS["mid"] = "Middle Eastern"
+
+# downsampling and subset entries to remove from VCF's freq export
+FREQ_ENTRIES_TO_REMOVE = [
+    "10",
+    "20",
+    "50",
+    "100",
+    "158",
+    "200",
+    "456",
+    "500",
+    "1000",
+    "1047",
+    "1736",
+    "2000",
+    "2419",
+    "2604",
+    "5000",
+    "5316",
+    "7647",
+    "10000",
+    "15000",
+    "20000",
+    "20744",
+    "25000",
+    "30000",
+    "34029",
+    "40000",
+    "60000",
+    "70000",
+    "75000",
+    "hgdp",
+    "tgp",
+]
+
+EXPORT_HISTS = [
+    "gq_hist_alt_bin_freq",
+    "gq_hist_all_bin_freq",
+    "dp_hist_alt_bin_freq",
+    "dp_hist_alt_n_larger",
+    "dp_hist_all_bin_freq",
+    "dp_hist_all_n_larger",
+    "ab_hist_alt_bin_freq",
+]
+
+def make_label_combos(
+    label_groups: Dict[str, List[str]], sort_order: List[str] = SORT_ORDER,
+) -> List[str]:
+    """
+    Make combinations of all possible labels for a supplied dictionary of label groups.
+
+    For example, if label_groups is `{"sex": ["male", "female"], "pop": ["afr", "nfe", "amr"]}`,
+    this function will return `["afr_male", "afr_female", "nfe_male", "nfe_female", "amr_male", "amr_female']`
+
+    :param label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
+        e.g. "sex" or "pop", and value is a list of all possible values for that grouping (e.g. ["male", "female"] or ["afr", "nfe", "amr"]).
+    :param sort_order: List containing order to sort label group combinations. Default is SORT_ORDER.
+    :return: list of all possible combinations of values for the supplied label groupings.
+    """
+    copy_label_groups = copy.deepcopy(label_groups)
+    if len(copy_label_groups) == 1:
+        return [item for sublist in copy_label_groups.values() for item in sublist]
+    anchor_group = sorted(copy_label_groups.keys(), key=lambda x: sort_order.index(x))[
+        0
+    ]
+    anchor_val = copy_label_groups.pop(anchor_group)
+    combos = []
+    for x, y in itertools.product(anchor_val, make_label_combos(copy_label_groups)):
+        combos.append("{0}-{1}".format(x, y))
+    return combos
+
 
 
 POPS = ["afr", "ami", "amr", "asj", "eas", "fin", "mid", "nfe", "oth", "sas"]
@@ -522,7 +706,7 @@ def sample_sum_sanity_checks(
 
 
 def sex_chr_sanity_checks(
-    ht: hl.Table, info_metrics: List[str], contigs: List[str], verbose: bool
+    ht: hl.Table, info_metrics: List[str], contigs: List[str], verbose: bool, reference_genome
 ) -> None:
     """
     Performs sanity checks for annotations on the sex chromosomes.
@@ -542,7 +726,7 @@ def sex_chr_sanity_checks(
 
     if "chrY" in contigs:
         logger.info("Check values of female metrics for Y variants are NA:")
-        ht_y = hl.filter_intervals(ht, [hl.parse_locus_interval("chrY")])
+        ht_y = hl.filter_intervals(ht, [hl.parse_locus_interval("chrY", reference_genome=reference_genome)])
         metrics_values = {}
         for metric in female_metrics:
             metrics_values[metric] = hl.agg.any(hl.is_defined(ht_y.info[metric]))
@@ -561,7 +745,7 @@ def sex_chr_sanity_checks(
             else:
                 logger.info(f"PASSED {metric} = {None} check for Y variants")
 
-    ht_x = hl.filter_intervals(ht, [hl.parse_locus_interval("chrX")])
+    ht_x = hl.filter_intervals(ht, [hl.parse_locus_interval("chrX", reference_genome=reference_genome)])
     ht_xnonpar = ht_x.filter(ht_x.locus.in_x_nonpar())
     n = ht_xnonpar.count()
     logger.info(f"Found {n} X nonpar sites")
@@ -597,6 +781,10 @@ def missingness_sanity_checks(
     :return: None
     :rtype: None
     """
+    import math
+
+    ht = ht.checkpoint("gs://gnomad-tmp/v3.1.1_sanity_check_missingness.ht", overwrite=True)
+
     logger.info(
         f"Missingness threshold (upper cutoff for what is allowed for missingness checks): {missingness_threshold}"
     )
@@ -605,16 +793,26 @@ def missingness_sanity_checks(
         metrics_frac_missing[x] = hl.agg.sum(hl.is_missing(ht.info[x])) / n_sites
     for x in non_info_metrics:
         metrics_frac_missing[x] = hl.agg.sum(hl.is_missing(ht[x])) / n_sites
-    output = ht.aggregate(hl.struct(**metrics_frac_missing))
 
-    n_fail = 0
-    for metric, value in dict(output).items():
-        message = f"missingness check for {metric}: {100 * value}% missing"
-        if value > missingness_threshold:
-            logger.info(f"FAILED {message}")
-            n_fail += 1
-        else:
-            logger.info(f"Passed {message}")
+    num_metrics = len(metrics_frac_missing)
+    logger.info(f"There are {num_metrics} metrics to calculate missingness on...")
+
+    if num_metrics > 1000:
+        num_split = math.ceil(num_metrics / 1000.0)
+        num_factor = num_metrics / num_split
+        for i in range(int(num_split)):
+            metrics_frac_missing_split = list(metrics_frac_missing.items())[int(i * num_factor):int((i + 1) * num_factor)]
+            output = ht.aggregate(hl.struct(**dict(metrics_frac_missing_split)))
+
+            n_fail = 0
+            for metric, value in dict(output).items():
+                message = f"missingness check for {metric}: {100 * value}% missing"
+                if value > missingness_threshold:
+                    logger.info(f"FAILED {message}")
+                    n_fail += 1
+                else:
+                    logger.info(f"Passed {message}")
+
     logger.info(f"{n_fail} missing metrics checks failed")
 
 
@@ -696,6 +894,7 @@ def sanity_check_release_ht(
     subsets: List[str],
     missingness_threshold: float = 0.5,
     verbose: bool = True,
+    reference_genome="GRCh38",
 ) -> None:
     """
     Perform a battery of sanity checks on a specified group of subsets in a MatrixTable containing variant annotations.
@@ -715,7 +914,7 @@ def sanity_check_release_ht(
     """
 
     # Perform basic checks -- number of variants, number of contigs, number of samples
-    logger.info("BASIC SUMMARY OF INPUT TABLE:")
+    """logger.info("BASIC SUMMARY OF INPUT TABLE:")
     summarize_ht(ht, monoallelic_check=True)
 
     logger.info("VARIANT FILTER SUMMARIES:")
@@ -729,19 +928,19 @@ def sanity_check_release_ht(
 
     logger.info("FREQUENCY CHECKS:")
     frequency_sanity_checks(ht, subsets, verbose)
-
+    """
     # Pull row annotations from HT
     info_metrics = list(ht.row.info)
     non_info_metrics = list(ht.row)
     non_info_metrics.remove("info")
 
-    logger.info("SAMPLE SUM CHECKS:")
+    """logger.info("SAMPLE SUM CHECKS:")
     sample_sum_sanity_checks(ht, subsets, info_metrics, verbose)
 
     logger.info("SEX CHROMOSOME ANNOTATION CHECKS:")
     contigs = ht.aggregate(hl.agg.collect_as_set(ht.locus.contig))
-    sex_chr_sanity_checks(ht, info_metrics, contigs, verbose)
-
+    sex_chr_sanity_checks(ht, info_metrics, contigs, verbose, reference_genome=reference_genome)
+    """
     logger.info("MISSINGNESS CHECKS:")
     n_sites = ht.count()
     missingness_sanity_checks(

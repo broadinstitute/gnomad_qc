@@ -90,7 +90,7 @@ def region_flag_expr(
 
 
 def prepare_annotations(
-    freq_ht: hl.Table, filtering_model_id: str, pcsk9: bool
+    freq_ht: hl.Table,  pcsk9: bool
 ) -> hl.Table:
 
     """
@@ -206,19 +206,12 @@ def pre_process_subset(subset: str, global_ht: hl.Table, test: bool) -> hl.Table
     # This array should be as long as the freq_meta (each array entry corresponds to a freq_meta entry)
     new_ht = ht.join(global_ht.select().select_globals(), how="right")
     struct = hl.struct(
-        AC=hl.int32(0),
-        AF=hl.float64(0),
-        AN=hl.null(hl.tint32),
-        homozygote_count=hl.int32(0),
-    )
-    y_struct = hl.struct(
         AC=hl.null(hl.tint32),
         AF=hl.null(hl.tfloat64),
         AN=hl.null(hl.tint32),
-        homozygote_count=hl.null(hl.int32),
+        homozygote_count=hl.null(hl.tint32),
     )
     array_struct = hl.map(lambda x: struct, hl.range(hl.len(hl.eval(ht.freq_meta))))
-    array_y_struct = hl.map(lambda x: y_struct, hl.range(hl.len(hl.eval(ht.freq_meta))))
     new_ht = new_ht.annotate(
         freq=hl.cond(hl.is_missing(new_ht.freq), array_struct, new_ht.freq)
     )
@@ -302,6 +295,7 @@ def main(args):
                 .select("freq")
                 .select_globals("freq_meta")
             )
+
             # global_freq_ht = hl.filter_intervals(global_freq_ht, [hl.parse_locus_interval('chr20:1-1000000')])  # TODO: DELETE
 
         subset_freq_hts = [
@@ -314,6 +308,8 @@ def main(args):
             data_field_name="freq",
             global_field_name="freq_meta",
         )
+        # freq_ht = freq_ht._filter_partitions(range(1))
+
         freq_ht = freq_ht.transmute(freq=freq_ht.freq.flatmap(lambda x: x.freq))
         freq_ht = freq_ht.transmute_globals(
             freq_meta=freq_ht.freq_meta.flatmap(lambda x: x.freq_meta)
@@ -339,6 +335,7 @@ def main(args):
             freq_index_dict=make_freq_index_dict(freq_ht)
         )
 
+
         # TODO: Create age distribution index dictionary (when age hists are available on all subsets)
 
         # freq_ht = freq_ht.checkpoint("gs://gnomad-tmp/gnomad_freq/chr20_test_freq.full.ht", overwrite=args.overwrite)  # TODO: DELETE
@@ -349,17 +346,13 @@ def main(args):
         global_freq_ht = hl.read_table(get_freq().path)
 
     # Add back in all global frequency annotations not present in concatenated frequencies HT
-    row_fields = set([field for field in global_freq_ht.row_value]).difference(
-        set([field for field in freq_ht.row_value])
-    )
+    row_fields = global_freq_ht.row_value.keys() - freq_ht.row_value.keys()
     logger.info(
         f"Adding back the following row annotations onto concatenated frequencies: {row_fields}"
     )
     freq_ht = freq_ht.annotate(**global_freq_ht[freq_ht.key].select(*row_fields))
 
-    global_fields = set([field for field in global_freq_ht.globals]).difference(
-        set([field for field in freq_ht.globals])
-    )
+    global_fields = global_freq_ht.globals.keys() - freq_ht.globals.keys()
     global_fields.remove("downsamplings")
     logger.info(
         f"Adding back the following global annotations onto concatenated frequencies: {global_fields}"
@@ -369,7 +362,7 @@ def main(args):
     )
 
     ht = prepare_annotations(
-        freq_ht, args.model_id, pcsk9=False
+        freq_ht, pcsk9=False
     )  # TODO: change test to PCSK9
 
     ht = ht.annotate_globals(
@@ -399,47 +392,74 @@ def main(args):
         "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1/gnomad_genomes_v3.1.age_data.ht"
     )
     ht = ht.annotate(**age_ht[ht.key])
+    logger.info("Age info show...")
 
     logger.info("Removing chrM and sites without filter...")
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(~hl.is_missing(ht.filters))
 
     # Add in new annotations for clinical variant interpretation
+    logger.info("Adding in silico predictors...")
     analyst_ht = hl.read_table(
-        "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1/gnomad_genomes_v3.1.analyst_annotations.ht"
+        "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.1/gnomad_genomes_v3.1.1_insilico_predictors.ht"
     )  # TODO: update path
     ht = ht.annotate(**analyst_ht[ht.key])
 
     # Splice in fix to set female metrics to NA on Y chr
-    female_idx = [
-        hl.eval(ht.freq_index_dict.get(x))
-        for x in hl.eval(ht.freq_index_dict)
-        if "XX" in x
-    ]
-    r = hl.eval(hl.len(hl.eval(ht.freq_meta)))
-    y_struct = hl.struct(
+    female_idx = hl.map(
+        lambda x: ht.freq_index_dict[x],
+        hl.filter(
+            lambda x: x.contains("XX"),
+            ht.freq_index_dict.keys()
+        )
+    )
+    female_faf_idx = hl.map(
+        lambda x: ht.faf_index_dict[x],
+        hl.filter(
+            lambda x: x.contains("XX"),
+            ht.faf_index_dict.keys()
+        )
+    )
+    freq_idx_range = hl.range(hl.len(ht.freq_meta))
+    faf_idx_range = hl.range(hl.len(ht.faf_meta))
+    null_y_struct = hl.struct(
         AC=hl.null(hl.tint32),
         AF=hl.null(hl.tfloat64),
         AN=hl.null(hl.tint32),
         homozygote_count=hl.null(hl.tint32),
     )
+    null_y_faf_struct = hl.struct(
+        faf95=hl.null(hl.tfloat64),
+        faf99=hl.null(hl.tfloat64),
+    )
+
     ht = ht.annotate(
         freq=hl.if_else(
             (ht.locus.in_y_nonpar() | ht.locus.in_y_par()),
             hl.map(
                 lambda x: hl.if_else(
-                    hl.array(female_idx).contains(x), y_struct, ht.freq[x]
+                    female_idx.contains(x), null_y_struct, ht.freq[x]
                 ),
-                r,
+                freq_idx_range,
             ),
             ht.freq,
+        ),
+        faf=hl.if_else(
+            (ht.locus.in_y_nonpar() | ht.locus.in_y_par()),
+            hl.map(
+                lambda x: hl.if_else(
+                    female_faf_idx.contains(x), null_y_faf_struct, ht.faf[x]
+                ),
+                faf_idx_range,
+            ),
+            ht.faf,
         )
     )
 
     ht = ht.checkpoint(
-        "gs://gnomad-tmp/release/v3.1/gnomad.genomes.v3.1.sites.ht"
+        "gs://gnomad-tmp/release/v3.1.1/gnomad.genomes.v3.1.1.sites.ht"
         if args.test
-        else "gs://gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.ht",
+        else "gs://gnomad/release/3.1.1/ht/genomes/gnomad.genomes.v3.1.1.sites.ht",
         args.overwrite,
     )  # release_ht_path(public=False)
     logger.info(f"Final variant count: {ht.count()}")

@@ -48,7 +48,7 @@ VCF_INFO_DICT["QUALapprox"] = {
     "Description": "Sum of PL[0] values; used to approximate the QUAL score",
 }
 VCF_INFO_DICT["AS_SB_TABLE"] = {
-    "Number": "1",
+    "Number": ".",
     "Description": "Allele-specific forward/reverse read counts for strand bias tests",
 }
 
@@ -60,6 +60,21 @@ NEW_SITE_FIELDS = [
 ]
 SITE_FIELDS.extend(NEW_SITE_FIELDS)
 AS_FIELDS.extend(["AS_SB_TABLE"])
+
+def remove_fields_from_globals(global_field: List[str], fields_to_remove: List[str]):
+    """
+    Removes fields from the pre-defined global field variables.
+
+    :param global_field: Global list of fields
+    :param fields_to_remove: List of fields to remove from global (they must be in the global list)
+    """
+    for field in fields_to_remove:
+        if field in global_field:
+            global_field.remove(field)
+        else:
+            logger.info(f"'{field}'' missing from {global_field}")
+
+
 
 # Remove original alleles for containing non-releasable alleles
 MISSING_ALLELE_TYPE_FIELDS = ["original_alleles", "has_star"]
@@ -246,7 +261,7 @@ def ht_to_vcf_mt(
     # Note: the expr needs to be prefixed by "|" because GATK expect one value for the ref (always empty)
     # Note2: this doesn't produce the correct annotation for AS_SB_TABLE, but it is overwritten below
     for f in pipe_delimited_annotations:
-        if f in info_ht.info:
+        if f in info_ht.info and f != "AS_SB_TABLE":
             info_expr[f] = "|" + get_pipe_expr(info_ht.info[f])
 
     # Flatten SB if it is an array of arrays
@@ -256,8 +271,10 @@ def ht_to_vcf_mt(
         info_expr["SB"] = info_ht.info.SB[0].extend(info_ht.info.SB[1])
 
     if "AS_SB_TABLE" in info_ht.info:
+        if info_ht.aggregate(hl.agg.any(hl.len(info_ht.info.AS_SB_TABLE) != 4)):
+            print("OHHHHHHHHH NOOOOOO")
         info_expr["AS_SB_TABLE"] = get_pipe_expr(
-            info_ht.info.AS_SB_TABLE.map(lambda x: hl.delimit(x, ","))
+            hl.array([info_ht.info.AS_SB_TABLE[:2], info_ht.info.AS_SB_TABLE[2:]]).map(lambda x: hl.delimit(x, ","))
         )
 
     info_t = info_ht
@@ -597,7 +614,7 @@ def build_export_reference() -> hl.ReferenceGenome:
 
 
 def release_ht_path():
-    return "gs://gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.reference_fixed.ht"
+    return "gs://gnomad/release/3.1.1/ht/genomes/gnomad.genomes.v3.1.1.sites.ht"
 
 
 def populate_info_dict(
@@ -643,6 +660,7 @@ def populate_info_dict(
     # NOTE: need to think about how to resolve AS VQSR fields to avoid having to make temp_AS_fields variable in the future
     temp_AS_fields = AS_FIELDS.copy()
     temp_AS_fields.extend(["AS_culprit", "AS_VQSLOD"])
+    print(info_dict)
     vcf_info_dict.update(
         add_as_info_dict(info_dict=info_dict, as_fields=temp_AS_fields)
     )
@@ -753,7 +771,7 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
 
     vcf_info_dict["revel_score"] = t["revel"]["revel_score"]
 
-    vcf_info_dict["splice_ai_max_ds"] = t["splice_ai"]["max_ds"]
+    vcf_info_dict["splice_ai_max_ds"] = t["splice_ai"]["splice_ai_score"]
     vcf_info_dict["splice_ai_consequence"] = t["splice_ai"]["splice_consequence"]
 
     vcf_info_dict["primate_ai_score"] = t["primate_ai"]["primate_ai_score"]
@@ -762,7 +780,7 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
 
 
 def unfurl_nested_annotations(
-    t: Union[hl.MatrixTable, hl.Table], pops: List[str], entries_to_remove: List[str]
+    t: Union[hl.MatrixTable, hl.Table], pops: List[str], entries_to_remove: List[str] = None
 ) -> Dict[str, hl.expr.Expression]:
     """
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the values
@@ -862,7 +880,18 @@ def main(args):
             logger.info("Starting VCF process...")
             logger.info("Reading in release HT...")
             ht = hl.read_table(release_ht_path())
+            ht = ht._filter_partitions(range(5))
+            ht = ht.checkpoint("gs://gnomad-tmp/test_vcf_export.ht", overwrite=True)
             export_reference = build_export_reference()
+            ht = ht.rename({"locus": "locus_original"})
+            ht = ht.annotate(
+                locus=hl.locus(
+                    ht.locus_original.contig,
+                    ht.locus_original.position,
+                    reference_genome=export_reference
+                )
+            )
+            ht = ht.key_by("locus", "alleles").drop("locus_original")
 
             if chromosome:
                 ht = hl.filter_intervals(
@@ -873,6 +902,7 @@ def main(args):
                         )
                     ],
                 )
+                #ht = ht._filter_partitions(range(1))
 
             if args.test:
                 logger.info("Filtering to chr20 and chrX (for tests only)...")
@@ -885,6 +915,9 @@ def main(args):
                         ),
                         hl.parse_locus_interval(
                             "chrX", reference_genome=export_reference
+                        ),
+                        hl.parse_locus_interval(
+                            "chrY", reference_genome=export_reference
                         ),
                     ],
                 )
@@ -944,9 +977,15 @@ def main(args):
                 inbreeding_cutoff=INBREEDING_CUTOFF,
             )
 
-            new_vcf_info_dict = {  # Adjust keys to remove adj tags before exporting to VCF
-                i.replace("-adj", ""): j for i, j in vcf_info_dict.items()
-            }
+            # Adjust keys to remove adj tags before exporting to VCF
+            new_vcf_info_dict = {}
+            for i, j in vcf_info_dict.items():
+                i = i.replace("-adj", "")
+                i = i.replace(
+                    "-", "_"
+                )  # VCF 4.3 specs do not allow hyphens in info fields
+                new_vcf_info_dict[i] = j
+
             header_dict = {
                 "info": new_vcf_info_dict,
                 "filter": filter_dict,
@@ -954,13 +993,13 @@ def main(args):
 
             logger.info("Saving header dict to pickle...")
             with hl.hadoop_open(
-                "gs://gnomad-mwilson/v3.1/release/vcf_header", "wb"
+                "gs://gnomad-mwilson/v3.1.1/release/vcf_header", "wb"
             ) as p:
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
         if args.sanity_check:
             sanity_check_release_ht(
-                ht, SUBSET_LIST, missingness_threshold=0.5, verbose=args.verbose
+                ht, SUBSET_LIST, missingness_threshold=0.5, verbose=args.verbose, reference_genome=export_reference
             )
 
         if args.export_vcf:
@@ -1002,10 +1041,10 @@ def main(args):
                 logger.error("Did not pass VCF field check")
 
             logger.info("Adjusting VCF incompatiable types...")
-            ht = ht_to_vcf_mt(ht)
+            ht = ht_to_vcf_mt(ht, create_mt=True)
 
             logger.info("Rearranging fields to desired order...")
-            ht = ht.annotate(
+            ht = ht.annotate_rows(
                 info=ht.info.select(
                     "AC",
                     "AN",
@@ -1019,15 +1058,15 @@ def main(args):
             logger.info(f"Export chromosome {chromosome}....")
             hl.export_vcf(
                 ht,
-                f"gs://gnomad/release/3.1/vcf/genomes/gnomad.genomes.v3.1.sites.{chromosome}.vcf.bgz",
-                append_to_header="gs://gnomad/release/3.1/vcf/genomes/extra_fields_for_header.tsv",
+                f"gs://gnomad/release/3.1.1/vcf/genomes/gnomad.genomes.v3.1.1.sites.{chromosome}.vcf.bgz",
+                append_to_header="gs://gnomad/release/3.1.1/vcf/genomes/extra_fields_for_header.tsv",
                 metadata=header_dict,
                 tabix=True,
             )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log("gs://gnomad-mwilson/logs/v3.1/vcf_export.log")
+        hl.copy_log("gs://gnomad-mwilson/logs/v3.1.1/vcf_export.log")
 
 
 if __name__ == "__main__":
