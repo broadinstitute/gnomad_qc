@@ -238,6 +238,7 @@ def raw_and_adj_sanity_checks(
 ):
     """
     Perform sanity checks on raw and adj data in input Table.
+
     Check that:
         - Raw AC, AN, AF are not 0
         - Adj AN is not 0 and AC and AF are not negative
@@ -271,16 +272,23 @@ def raw_and_adj_sanity_checks(
             verbose=verbose,
         )
 
-    # Check adj and raw AN > 0
-    for an_field_type in ["raw", "adj"]:
-        field = f"AN{delimiter}{an_field_type}"
-        generic_field_check(
-            t,
-            cond_expr=(t.info[field] <= 0),
-            check_description=f"{field} > 0",
-            display_fields=[f"info.{field}"],
-            verbose=verbose,
-        )
+    # Check raw AN > 0
+    generic_field_check(
+        t,
+        cond_expr=(t.info.AN_raw <= 0),
+        check_description="AN_raw > 0",
+        display_fields=["info.AN_raw"],
+        verbose=verbose,
+    )
+
+    # Check adj AN >= 0
+    generic_field_check(
+        t,
+        cond_expr=(t.info.AN_adj < 0),
+        check_description="AN_adj >= 0",
+        display_fields=["info.AN_adj"],
+        verbose=verbose,
+    )
 
     # Check overall gnomad's raw subfields >= adj
     for subfield in ["AC", "AN", "nhomalt"]:
@@ -307,7 +315,7 @@ def raw_and_adj_sanity_checks(
 
 
 def frequency_sanity_checks(
-    t: Union[hl.MatrixTable, hl.Table], subsets: List[str], verbose: bool, delimiter="-"
+    t: Union[hl.MatrixTable, hl.Table], subsets: List[str], verbose: bool, show_percentage_sites: bool = True, delimiter: str = "-"
 ) -> None:
     """
     Perform sanity checks on frequency data in input Table.
@@ -329,10 +337,14 @@ def frequency_sanity_checks(
     t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
     for subset in subsets:
+        if subset != "":
+            subset += delimiter
+        else:
+            continue
         for subfield in ["AC", "AN", "nhomalt"]:
             logger.info("adj checks")
             subfield_label = f"{subfield}{delimiter}adj"
-            subfield_subset_label = f"{subfield}{delimiter}{subset}{delimiter}adj"
+            subfield_subset_label = f"{subfield}{delimiter}{subset}adj"
 
             generic_field_check(
                 t,
@@ -343,6 +355,7 @@ def frequency_sanity_checks(
                     f"info.{subfield_subset_label}",
                 ],
                 verbose=verbose,
+                show_percent_sites=show_percentage_sites
             )
 
     freq_counts = t.aggregate(
@@ -361,11 +374,11 @@ def sample_sum_check(
     verbose: bool,
     subpop: bool = None,
     sort_order: List[str] = SORT_ORDER,
+    delimiter: str = "-"
 ) -> None:
     """
     Compute afresh the sum of annotations for a specified group of annotations, and compare to the annotated version;
     display results from checking the sum of the specified annotations in the terminal.
-
     :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table containing annotations to be summed.
     :param prefix: String indicating sample subset.
     :param label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
@@ -374,42 +387,48 @@ def sample_sum_check(
         show only top values of annotations that fail checks.
     :param subpop: Subpop abbreviation, supplied only if subpopulations are included in the annotation groups being checked.
     :param sort_order: List containing order to sort label group combinations. Default is SORT_ORDER.
+    :param delimiter: String to use as delimiter when making group label combinations.
     :return: None
     """
 
     t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
     if prefix != "":
-        prefix += "-"
+        prefix += delimiter
 
-    label_combos = make_label_combos(label_groups, delimiter="-")
+    label_combos = make_label_combos(label_groups, delimiter=delimiter)
     combo_AC = [t.info[f"AC-{prefix}{x}"] for x in label_combos]
     combo_AN = [t.info[f"AN-{prefix}{x}"] for x in label_combos]
     combo_nhomalt = [t.info[f"nhomalt-{prefix}{x}"] for x in label_combos]
 
     group = label_groups.pop("group")[0]
-    alt_groups = "_".join(
+    alt_groups = delimiter.join(
         sorted(label_groups.keys(), key=lambda x: sort_order.index(x))
     )
+    group_expr = f"{group}{delimiter}{alt_groups}" #check this out
     annot_dict = {
-        f"sum_AC-{group}-{alt_groups}": hl.sum(combo_AC),
-        f"sum_AN-{group}-{alt_groups}": hl.sum(combo_AN),
-        f"sum_nhomalt-{group}-{alt_groups}": hl.sum(combo_nhomalt),
+        f"sum_AC-{group_expr}": hl.sum(combo_AC),
+        f"sum_AN-{group_expr}": hl.sum(combo_AN),
+        f"sum_nhomalt-{group_expr}": hl.sum(combo_nhomalt),
     }
 
     t = t.annotate(**annot_dict)
 
     for subfield in ["AC", "AN", "nhomalt"]:
+        
+        group_expr = f"{subfield}{delimiter}{prefix}{group}"
+        alt_groups_expr = f"{subfield}{delimiter}{group}{delimiter}{alt_groups}"
+
         generic_field_check(
             t,
             (
-                t.info[f"{subfield}-{prefix}{group}"]
-                != t[f"sum_{subfield}-{group}-{alt_groups}"]
+                t.info[f"{group_expr}"]
+                != t[f"sum_{alt_groups_expr}"]
             ),
-            f"{subfield}-{prefix}{group} = sum({subfield}-{group}-{alt_groups})",
+            f"{group_expr} = sum({alt_groups_expr})",
             [
-                f"info.{subfield}-{prefix}{group}",
-                f"sum_{subfield}-{group}-{alt_groups}",
+                f"info.{group_expr}",
+                f"sum_{alt_groups_expr}",
             ],
             verbose,
         )
