@@ -273,20 +273,22 @@ def raw_and_adj_sanity_checks(
         )
 
     # Check raw AN > 0
+    an_raw_expr = f"AN{delimiter}raw"
     generic_field_check(
         t,
-        cond_expr=(t.info.AN_raw <= 0),
-        check_description="AN_raw > 0",
-        display_fields=["info.AN_raw"],
+        cond_expr=(t.info[an_raw_expr] <= 0),
+        check_description=f"{an_raw_expr} > 0",
+        display_fields=[f"info.{an_raw_expr}"],
         verbose=verbose,
     )
 
+    an_adj_expr = f"AN{delimiter}adj"
     # Check adj AN >= 0
     generic_field_check(
         t,
-        cond_expr=(t.info.AN_adj < 0),
-        check_description="AN_adj >= 0",
-        display_fields=["info.AN_adj"],
+        cond_expr=(t.info[an_adj_expr] < 0),
+        check_description=f"{an_adj_expr} >= 0",
+        display_fields=[f"info.{an_adj_expr}"],
         verbose=verbose,
     )
 
@@ -330,6 +332,7 @@ def frequency_sanity_checks(
     :param List[str] subsets: List of sample subsets.
     :param bool verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks.
+    :param bool show_percentage_sites: If true, show the percentage of overall sites that fail; if False, show the number of sites that fail.
     :param delimiter: String to use as delimiter when making group label combinations.
     :return: None
     :rtype: None
@@ -348,7 +351,7 @@ def frequency_sanity_checks(
 
             generic_field_check(
                 t,
-                cond_expr=(t.info[{subfield_label}] == t.info[subfield_subset_label]),
+                cond_expr=(t.info[subfield_label] == t.info[subfield_subset_label]),
                 check_description=f"{subfield_label} != {subfield_subset_label}",
                 display_fields=[
                     f"info.{subfield_label}",
@@ -357,6 +360,7 @@ def frequency_sanity_checks(
                 verbose=verbose,
                 show_percent_sites=show_percentage_sites
             )
+
 
     freq_counts = t.aggregate(
         hl.struct(
@@ -369,7 +373,7 @@ def frequency_sanity_checks(
 
 def sample_sum_check(
     t: Union[hl.MatrixTable, hl.Table],
-    prefix: str,
+    subset: str,
     label_groups: Dict[str, List[str]],
     verbose: bool,
     subpop: bool = None,
@@ -377,10 +381,10 @@ def sample_sum_check(
     delimiter: str = "-"
 ) -> None:
     """
-    Compute afresh the sum of annotations for a specified group of annotations, and compare to the annotated version;
-    display results from checking the sum of the specified annotations in the terminal.
+    Compute afresh the sum of call stats annotations for a specified group of annotations, and compare to the annotated version;
+    show the results from checking the sum of the specified annotations in the terminal.
     :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table containing annotations to be summed.
-    :param prefix: String indicating sample subset.
+    :param subset: String indicating sample subset.
     :param label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
         e.g. "sex" or "pop", and value is a list of all possible values for that grouping (e.g. ["male", "female"] or ["afr", "nfe", "amr"]).
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False,
@@ -393,13 +397,13 @@ def sample_sum_check(
 
     t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
-    if prefix != "":
-        prefix += delimiter
+    if subset != "":
+        subset += delimiter
 
     label_combos = make_label_combos(label_groups, delimiter=delimiter)
-    combo_AC = [t.info[f"AC-{prefix}{x}"] for x in label_combos]
-    combo_AN = [t.info[f"AN-{prefix}{x}"] for x in label_combos]
-    combo_nhomalt = [t.info[f"nhomalt-{prefix}{x}"] for x in label_combos]
+    combo_AC = [t.info[f"AC-{subset}{x}"] for x in label_combos]
+    combo_AN = [t.info[f"AN-{subset}{x}"] for x in label_combos]
+    combo_nhomalt = [t.info[f"nhomalt-{subset}{x}"] for x in label_combos]
 
     group = label_groups.pop("group")[0]
     alt_groups = delimiter.join(
@@ -416,7 +420,7 @@ def sample_sum_check(
 
     for subfield in ["AC", "AN", "nhomalt"]:
         
-        group_expr = f"{subfield}{delimiter}{prefix}{group}"
+        group_expr = f"{subfield}{delimiter}{subset}{group}"
         alt_groups_expr = f"{subfield}{delimiter}{group}{delimiter}{alt_groups}"
 
         generic_field_check(
