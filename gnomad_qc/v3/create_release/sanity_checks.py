@@ -317,7 +317,11 @@ def raw_and_adj_sanity_checks(
 
 
 def frequency_sanity_checks(
-    t: Union[hl.MatrixTable, hl.Table], subsets: List[str], verbose: bool, show_percentage_sites: bool = True, delimiter: str = "-"
+    t: Union[hl.MatrixTable, hl.Table],
+    subsets: List[str],
+    verbose: bool,
+    show_percentage_sites: bool = True,
+    delimiter: str = "-",
 ) -> None:
     """
     Perform sanity checks on frequency data in input Table.
@@ -358,9 +362,8 @@ def frequency_sanity_checks(
                     f"info.{subfield_subset_label}",
                 ],
                 verbose=verbose,
-                show_percent_sites=show_percentage_sites
+                show_percent_sites=show_percentage_sites,
             )
-
 
     freq_counts = t.aggregate(
         hl.struct(
@@ -378,7 +381,7 @@ def sample_sum_check(
     verbose: bool,
     subpop: bool = None,
     sort_order: List[str] = SORT_ORDER,
-    delimiter: str = "-"
+    delimiter: str = "-",
 ) -> None:
     """
     Compute afresh the sum of call stats annotations for a specified group of annotations, and compare to the annotated version;
@@ -409,7 +412,7 @@ def sample_sum_check(
     alt_groups = delimiter.join(
         sorted(label_groups.keys(), key=lambda x: sort_order.index(x))
     )
-    group_expr = f"{subset}{group}{delimiter}{alt_groups}"  
+    group_expr = f"{subset}{group}{delimiter}{alt_groups}"
     annot_dict = {
         f"sum_AC-{group_expr}": hl.sum(combo_AC),
         f"sum_AN-{group_expr}": hl.sum(combo_AN),
@@ -419,21 +422,15 @@ def sample_sum_check(
     t = t.annotate(**annot_dict)
 
     for subfield in ["AC", "AN", "nhomalt"]:
-        
+
         group_expr = f"{subfield}{delimiter}{subset}{group}"
         alt_groups_expr = f"{subfield}{delimiter}{subset}{group}{delimiter}{alt_groups}"
 
         generic_field_check(
             t,
-            (
-                t.info[f"{group_expr}"]
-                != t[f"sum_{alt_groups_expr}"]
-            ),
+            (t.info[f"{group_expr}"] != t[f"sum_{alt_groups_expr}"]),
             f"{group_expr} = sum({alt_groups_expr})",
-            [
-                f"info.{group_expr}",
-                f"sum_{alt_groups_expr}",
-            ],
+            [f"info.{group_expr}", f"sum_{alt_groups_expr}",],
             verbose,
         )
 
