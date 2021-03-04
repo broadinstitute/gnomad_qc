@@ -400,7 +400,7 @@ def sample_sum_check(
     if subset != "":
         subset += delimiter
 
-    label_combos = make_label_combos(label_groups, delimiter=delimiter)
+    label_combos = make_label_combos(label_groups, label_delimiter=delimiter)
     combo_AC = [t.info[f"AC-{subset}{x}"] for x in label_combos]
     combo_AN = [t.info[f"AN-{subset}{x}"] for x in label_combos]
     combo_nhomalt = [t.info[f"nhomalt-{subset}{x}"] for x in label_combos]
