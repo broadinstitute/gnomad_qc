@@ -405,11 +405,11 @@ def sample_sum_check(
     combo_AN = [t.info[f"AN-{subset}{x}"] for x in label_combos]
     combo_nhomalt = [t.info[f"nhomalt-{subset}{x}"] for x in label_combos]
 
-    group = label_groups.pop("group")[0] #Fix this annotation
+    group = label_groups.pop("group")[0]
     alt_groups = delimiter.join(
         sorted(label_groups.keys(), key=lambda x: sort_order.index(x))
     )
-    group_expr = f"{subset}{group}{delimiter}{alt_groups}"  #check this out
+    group_expr = f"{subset}{group}{delimiter}{alt_groups}"  
     annot_dict = {
         f"sum_AC-{group_expr}": hl.sum(combo_AC),
         f"sum_AN-{group_expr}": hl.sum(combo_AN),
@@ -561,7 +561,7 @@ def missingness_sanity_checks(
     :rtype: None
     """
     t = t.rows() if isinstance(t, hl.MatrixTable) else t
-    
+
     logger.info(
         f"Missingness threshold (upper cutoff for what is allowed for missingness checks): {missingness_threshold}"
     )
