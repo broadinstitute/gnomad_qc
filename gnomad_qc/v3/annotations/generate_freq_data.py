@@ -1,6 +1,6 @@
 import argparse
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import hail as hl
 
@@ -22,9 +22,9 @@ from gnomad.utils.annotations import (
     pop_max_expr,
     qual_hist_expr,
 )
-from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vcf import index_globals, make_label_combos
+from gnomad.utils.vcf import index_globals
+
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt, qc_temp_prefix
@@ -59,17 +59,25 @@ def make_faf_index_dict(faf_meta: List[Dict[str, str]]) -> Dict[str, int]:
 
 
 def main(args):
-    subset = args.subset
+    subsets = args.subsets
     hl.init(
-        log=f"/generate_frequency_data{'.' + subset if subset else ''}.log",
+        log=f"/generate_frequency_data{'.' + '_'.join(subset) if subset else ''}.log",
         default_reference="GRCh38",
     )
 
-    try:
+    try:  # TODO: add in args flag for release_only. HGDP + TGP subset doesn't want that
         logger.info("Reading full sparse MT and metadata table...")
         mt = get_gnomad_v3_mt(
-            key_by_locus_and_alleles=True, release_only=True, samples_meta=True
+            key_by_locus_and_alleles=True, release_only=not args.include_non_release, samples_meta=True
         )
+
+        logger.info("Filtering MT columns to high quality and HGDP + TGP samples")
+        mt = mt.filter_cols(
+            mt.meta.high_quality & (mt.meta.subsets.hgdp | mt.meta.subsets.tgp)
+        )
+
+        print("Numcols: ", mt.count_cols())
+        mt.describe()
 
         if args.test:
             logger.info("Filtering to two partitions on chr20")
@@ -78,7 +86,7 @@ def main(args):
 
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
-        if subset:
+        if subset:  # TODO: Need to figure out multiple subset filter
             mt = mt.filter_cols(mt.meta.subsets[subset])
             logger.info(
                 f"Running frequency generation pipeline on {mt.count_cols()} samples in {subset} subset..."
@@ -119,6 +127,8 @@ def main(args):
             )
         )
 
+        # TODO: how to hangle multiple subset? Maybe just new subset annotation?
+        # TODO: HGDP + tgp needs to use mt.meta.project_meta.project_subpop
         logger.info("Generating frequency data...")
         if subset:
             mt = annotate_freq(
@@ -132,7 +142,9 @@ def main(args):
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
+            mt = mt.filter_rows(mt.freq[1].AC > 0, keep=True) # TODO: Not in master do we need?
 
+            # TODO: subset might need to be list or combined list like hgdp_tgp
             logger.info(f"Writing out frequency data for {subset} subset...")
             if args.test:
                 mt.rows().write(
@@ -245,16 +257,18 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--test", help="Runs a test on two partitions of chr20", action="store_true"
+        "--test", help="Runs a test on two partitions of chr20.", action="store_true"
     )
     parser.add_argument(
-        "--subset",
-        help="Name of subset for which to generate frequency data",
+        "--include_non_release", help="Includes un-releasable samples in the frequency calculations.", action="store_true"
+    )
+    parser.add_argument(
+        "--subsets",
+        help="Comma separated list of subsets for which to generate combined frequency data.",
         choices=SUBSETS,
     )
-
     parser.add_argument(
-        "--overwrite", help="Overwrites existing files", action="store_true"
+        "--overwrite", help="Overwrites existing files.", action="store_true"
     )
     parser.add_argument(
         "--slack_channel", help="Slack channel to post results and notifications to."
