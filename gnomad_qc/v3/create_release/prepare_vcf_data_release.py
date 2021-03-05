@@ -1044,7 +1044,7 @@ def main(args):
             ht = ht_to_vcf_mt(ht)
 
             logger.info("Rearranging fields to desired order...")
-            ht = ht.annotate_rows(
+            ht = ht.annotate(
                 info=ht.info.select(
                     "AC",
                     "AN",
