@@ -277,13 +277,13 @@ def ht_to_vcf_mt(
             hl.array([info_ht.info.AS_SB_TABLE[:2], info_ht.info.AS_SB_TABLE[2:]]).map(lambda x: hl.delimit(x, ","))
         )
 
+    # Annotate with new expression
+    info_ht = info_ht.annotate(info=info_ht.info.annotate(**info_expr))
     info_t = info_ht
 
     if create_mt:
-        # Annotate with new expression and add 's' empty string field required to cast HT to MT
-        info_t = info_t.annotate(
-            info=info_t.info.annotate(**info_expr), s=hl.null(hl.tstr)
-        )
+        # Add 's' empty string field required to cast HT to MT
+        info_t = info_t.annotate(s=hl.null(hl.tstr))
         # Create an MT with no cols so that we can export to VCF
         info_t = info_t.to_matrix_table_row_major(columns=["s"], entry_field_name="s")
         info_t = info_t.filter_cols(False)
@@ -1041,7 +1041,7 @@ def main(args):
                 logger.error("Did not pass VCF field check")
 
             logger.info("Adjusting VCF incompatiable types...")
-            ht = ht_to_vcf_mt(ht, create_mt=True)
+            ht = ht_to_vcf_mt(ht)
 
             logger.info("Rearranging fields to desired order...")
             ht = ht.annotate_rows(
