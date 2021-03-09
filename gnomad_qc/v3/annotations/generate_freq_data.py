@@ -61,11 +61,29 @@ def make_faf_index_dict(faf_meta: List[Dict[str, str]]) -> Dict[str, int]:
 def main(args):
     subsets = args.subsets
     hl.init(
-        log=f"/generate_frequency_data{'.' + '_'.join(subset) if subset else ''}.log",
+        log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",
         default_reference="GRCh38",
     )
 
-    try:  # TODO: add in args flag for release_only. HGDP + TGP subset doesn't want that
+    invalid_subsets = []
+    n_subsets_in_use_subpops = 0
+    for s in subsets:
+        if s not in SUBSETS:
+            invalid_subsets.append(s)
+        if s in COHORTS_WITH_POP_STORED_AS_SUBPOP:
+            n_subsets_in_use_subpops += 1
+
+    if len(invalid_subsets) > 0:
+        raise ValueError(
+            f"{', '.join(invalid_subsets)} subset(s) are not one of the following official subsets: {SUBSETS}"
+        )
+    if (n_subsets_in_use_subpops > 0) & (n_subsets_in_use_subpops != len(subsets)):
+        raise ValueError(
+            f"All or none of the supplied subset(s) should be in the list of cohorts that need to use subpops instead "
+            f"of pops in frequency calculations: {COHORTS_WITH_POP_STORED_AS_SUBPOP}"
+        )
+
+    try:
         logger.info("Reading full sparse MT and metadata table...")
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True, release_only=not args.include_non_release, samples_meta=True
@@ -86,10 +104,10 @@ def main(args):
 
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
-        if subset:  # TODO: Need to figure out multiple subset filter
-            mt = mt.filter_cols(mt.meta.subsets[subset])
+        if subsets:
+            mt = mt.filter_cols(hl.any([mt.meta.subsets[s] for s in subsets]))
             logger.info(
-                f"Running frequency generation pipeline on {mt.count_cols()} samples in {subset} subset..."
+                f"Running frequency generation pipeline on {mt.count_cols()} samples in {', '.join(subsets)} subset(s)..."
             )
         else:
             logger.info(
@@ -127,32 +145,29 @@ def main(args):
             )
         )
 
-        # TODO: how to hangle multiple subset? Maybe just new subset annotation?
-        # TODO: HGDP + tgp needs to use mt.meta.project_meta.project_subpop
         logger.info("Generating frequency data...")
-        if subset:
+        if subsets:
             mt = annotate_freq(
                 mt,
                 sex_expr=mt.meta.sex_imputation.sex_karyotype,
                 pop_expr=mt.meta.population_inference.pop
-                if subset not in COHORTS_WITH_POP_STORED_AS_SUBPOP
+                if n_subsets_in_use_subpops == 0
                 else mt.meta.project_meta.project_subpop,
                 # NOTE: TGP and HGDP labeled populations are highly specific and are stored in the project_subpop meta field
             )
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
-            mt = mt.filter_rows(mt.freq[1].AC > 0, keep=True) # TODO: Not in master do we need?
+            mt = mt.filter_rows(mt.freq[1].AC > 0, keep=True)  # TODO: Not in master do we need?
 
-            # TODO: subset might need to be list or combined list like hgdp_tgp
-            logger.info(f"Writing out frequency data for {subset} subset...")
+            logger.info(f"Writing out frequency data for {', '.join(subsets)} subset(s)...")
             if args.test:
                 mt.rows().write(
-                    qc_temp_prefix() + f"chr20_test_freq.{subset}.ht",
+                    qc_temp_prefix() + f"chr20_test_freq.{'_'.join(subsets)}.ht",
                     overwrite=True,
                 )
             else:
-                mt.rows().write(get_freq(subset=subset).path, overwrite=args.overwrite)
+                mt.rows().write(get_freq(subset='_'.join(subsets)).path, overwrite=args.overwrite)
 
         else:
             logger.info("Computing age histograms for each variant...")
@@ -265,7 +280,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--subsets",
         help="Comma separated list of subsets for which to generate combined frequency data.",
-        choices=SUBSETS,
+        nargs="+",
     )
     parser.add_argument(
         "--overwrite", help="Overwrites existing files.", action="store_true"
