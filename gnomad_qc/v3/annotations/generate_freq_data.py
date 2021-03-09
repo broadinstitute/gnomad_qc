@@ -27,9 +27,11 @@ from gnomad.utils.vcf import index_globals
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt, qc_temp_prefix
-from gnomad_qc.v3.resources.meta import meta
-
+from gnomad_qc.v3.resources.basics import (
+    get_checkpoint_path,
+    get_gnomad_v3_mt,
+    qc_temp_prefix,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -86,7 +88,9 @@ def main(args):
     try:
         logger.info("Reading full sparse MT and metadata table...")
         mt = get_gnomad_v3_mt(
-            key_by_locus_and_alleles=True, release_only=not args.include_non_release, samples_meta=True
+            key_by_locus_and_alleles=True,
+            release_only=not args.include_non_release,
+            samples_meta=True,
         )
 
         logger.info("Filtering MT columns to high quality and HGDP + TGP samples")
@@ -158,16 +162,22 @@ def main(args):
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
-            mt = mt.filter_rows(mt.freq[1].AC > 0, keep=True)  # TODO: Not in master do we need?
+            mt = mt.filter_rows(
+                mt.freq[1].AC > 0, keep=True
+            )  # TODO: Not in master do we need?
 
-            logger.info(f"Writing out frequency data for {', '.join(subsets)} subset(s)...")
+            logger.info(
+                f"Writing out frequency data for {', '.join(subsets)} subset(s)..."
+            )
             if args.test:
                 mt.rows().write(
-                    qc_temp_prefix() + f"chr20_test_freq.{'_'.join(subsets)}.ht",
+                    get_checkpoint_path(f"chr20_test_freq.{'_'.join(subsets)}.ht"),
                     overwrite=True,
                 )
             else:
-                mt.rows().write(get_freq(subset='_'.join(subsets)).path, overwrite=args.overwrite)
+                mt.rows().write(
+                    get_freq(subset="_".join(subsets)).path, overwrite=args.overwrite
+                )
 
         else:
             logger.info("Computing age histograms for each variant...")
@@ -179,24 +189,11 @@ def main(args):
                     # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples, age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin
                 )
             )
-            mt = mt.annotate_rows(
-                **age_hists_expr(
-                    mt.adj,
-                    mt.GT,
-                    mt.age,
-                )
-            )
+            mt = mt.annotate_rows(**age_hists_expr(mt.adj, mt.GT, mt.age,))
 
             # Compute callset-wide age histogram global
             mt = mt.annotate_globals(
-                age_distribution=mt.aggregate_cols(
-                    hl.agg.hist(
-                        mt.age,
-                        30,
-                        80,
-                        10,
-                    )
-                )
+                age_distribution=mt.aggregate_cols(hl.agg.hist(mt.age, 30, 80, 10,))
             )
 
             mt = annotate_freq(
@@ -224,8 +221,8 @@ def main(args):
                 faf=faf,
                 popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX),
             )
-            mt = mt.annotate_globals(faf_meta=faf_meta,
-                                     faf_index_dict=make_faf_index_dict(faf_meta)
+            mt = mt.annotate_globals(
+                faf_meta=faf_meta, faf_index_dict=make_faf_index_dict(faf_meta)
             )
             mt = mt.annotate_rows(
                 popmax=mt.popmax.annotate(
@@ -258,15 +255,13 @@ def main(args):
 
             logger.info("Writing out frequency data...")
             if args.test:
-                ht.write(
-                    "gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht", overwrite=True
-                )
+                ht.write(get_checkpoint_path("chr20_test_freq"), overwrite=True)
             else:
                 ht.write(get_freq().path, overwrite=args.overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log("gs://gnomad-tmp/logs/")
+        hl.copy_log(f"gs://{qc_temp_prefix()}/logs/")
 
 
 if __name__ == "__main__":
@@ -275,7 +270,9 @@ if __name__ == "__main__":
         "--test", help="Runs a test on two partitions of chr20.", action="store_true"
     )
     parser.add_argument(
-        "--include_non_release", help="Includes un-releasable samples in the frequency calculations.", action="store_true"
+        "--include_non_release",
+        help="Includes un-releasable samples in the frequency calculations.",
+        action="store_true",
     )
     parser.add_argument(
         "--subsets",
