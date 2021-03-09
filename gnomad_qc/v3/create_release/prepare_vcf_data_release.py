@@ -660,7 +660,6 @@ def populate_info_dict(
     # NOTE: need to think about how to resolve AS VQSR fields to avoid having to make temp_AS_fields variable in the future
     temp_AS_fields = AS_FIELDS.copy()
     temp_AS_fields.extend(["AS_culprit", "AS_VQSLOD"])
-    print(info_dict)
     vcf_info_dict.update(
         add_as_info_dict(info_dict=info_dict, as_fields=temp_AS_fields)
     )
@@ -880,8 +879,6 @@ def main(args):
             logger.info("Starting VCF process...")
             logger.info("Reading in release HT...")
             ht = hl.read_table(release_ht_path())
-            ht = ht._filter_partitions(range(5))
-            ht = ht.checkpoint("gs://gnomad-tmp/test_vcf_export.ht", overwrite=True)
             export_reference = build_export_reference()
             ht = ht.rename({"locus": "locus_original"})
             ht = ht.annotate(
@@ -969,6 +966,7 @@ def main(args):
             # Select relevant fields for VCF export
             ht = ht.select("info", "filters", "rsid")
             vcf_info_dict.update({"vep": {"Description": hl.eval(ht.vep_csq_header)}})
+            ht = ht.checkpoint(f"gs://gnomad-tmp/gnomad_v3.1_vcfs/vcf_ht_checkpoint_chr_all.ht")
 
             # Make filter dict
             filter_dict = make_vcf_filter_dict(
@@ -1003,6 +1001,24 @@ def main(args):
             )
 
         if args.export_vcf:
+            chromosome = args.export_chromosome
+            ht = hl.read_table(f"gs://gnomad-tmp/gnomad_v3.1_vcfs/vcf_ht_checkpoint_chr_all.ht")
+            with hl.hadoop_open(
+                "gs://gnomad-mwilson/v3.1.1/release/vcf_header",
+                "rb",
+            ) as f:
+                header_dict = pickle.load(f)
+            if chromosome:
+                export_reference = build_export_reference()
+                ht = hl.filter_intervals(
+                    ht,
+                    [
+                        hl.parse_locus_interval(
+                            chromosome, reference_genome=export_reference
+                        )
+                    ],
+                )
+
             logger.info("Dropping histograms that are not needed in VCF...")
             # Drop unnecessary histograms
             drop_hists = (
