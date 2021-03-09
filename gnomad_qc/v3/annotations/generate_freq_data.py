@@ -40,6 +40,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
+hl.stop()
 
 
 def make_faf_index_dict(faf_meta: List[Dict[str, str]]) -> Dict[str, int]:
@@ -93,20 +94,16 @@ def main(args):
             samples_meta=True,
         )
 
-        logger.info("Filtering MT columns to high quality and HGDP + TGP samples")
-        mt = mt.filter_cols(
-            mt.meta.high_quality & (mt.meta.subsets.hgdp | mt.meta.subsets.tgp)
-        )
-
-        print("Numcols: ", mt.count_cols())
-        mt.describe()
-
         if args.test:
             logger.info("Filtering to two partitions on chr20")
             mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20:1-1000000")])
             mt = mt._filter_partitions(range(2))
 
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+
+        if args.include_non_release:
+            logger.info("Filtering MT columns to high quality samples")
+            mt = mt.filter_cols(mt.meta.high_quality)
 
         if subsets:
             mt = mt.filter_cols(hl.any([mt.meta.subsets[s] for s in subsets]))
@@ -162,9 +159,6 @@ def main(args):
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
-            mt = mt.filter_rows(
-                mt.freq[1].AC > 0, keep=True
-            )  # TODO: Not in master do we need?
 
             logger.info(
                 f"Writing out frequency data for {', '.join(subsets)} subset(s)..."
@@ -276,8 +270,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--subsets",
-        help="Comma separated list of subsets for which to generate combined frequency data.",
-        nargs="+",
+        help="List of subsets for which to generate combined frequency data.",
+        nargs="*",
+        choices=SUBSETS,
     )
     parser.add_argument(
         "--overwrite", help="Overwrites existing files.", action="store_true"
