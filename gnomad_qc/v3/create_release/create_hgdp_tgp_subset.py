@@ -39,7 +39,9 @@ from gnomad_qc.v3.resources.release import (
     release_subset_annotations,
     release_subset_sample_tsv,
 )
+from gnomad_qc.v3.resources.sample_qc import relatedness
 from gnomad_qc.v3.resources.variant_qc import final_filter
+from gnomad.sample_qc.relatedness import UNRELATED
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("create_subset")
@@ -402,6 +404,43 @@ def region_flag_expr(
     return hl.struct(**prob_flags_expr)
 
 
+def get_relatedness_set_ht(relatedness_ht: hl.Table) -> hl.Table:
+    """
+    Parse relatedness Table to get every relationship (except UNRELATED) per sample.
+
+    Return Table keyed by sample with all sample relationships, kin, ibd0, ibd1, and ibd2 in a struct.
+
+    :param Table relatedness_ht: Table with inferred relationship information output by pc_relate.
+        Keyed by sample pair (i, j).
+    :return: Table keyed by sample (s) with all relationship information annotated as a struct.
+    :rtype: hl.Table
+    """
+    relatedness_ht = relatedness_ht.filter(relatedness_ht.relationship != UNRELATED)
+    relationship_struct = hl.struct(
+        kin=relatedness_ht.kin,
+        ibd0=relatedness_ht.ibd0,
+        ibd1=relatedness_ht.ibd1,
+        ibd2=relatedness_ht.ibd2,
+        relationship=relatedness_ht.relationship,
+    )
+
+    relatedness_ht_i = relatedness_ht.group_by(s=relatedness_ht.i.s).aggregate(
+        relationships=hl.agg.collect_as_set(
+            hl.struct(s=relatedness_ht.j.s, **relationship_struct)
+        )
+    )
+
+    relatedness_ht_j = relatedness_ht.group_by(s=relatedness_ht.j.s).aggregate(
+        relationships=hl.agg.collect_as_set(
+            hl.struct(s=relatedness_ht.i.s, **relationship_struct)
+        )
+    )
+
+    relatedness_ht = relatedness_ht_i.union(relatedness_ht_j)
+
+    return relatedness_ht
+
+
 def prepare_sample_annotations() -> hl.Table:
     """
     Load meta HT and select row and global annotations for HGDP + TGP subset.
@@ -424,11 +463,21 @@ def prepare_sample_annotations() -> hl.Table:
         ),
         hard_filter_cutoffs=meta_ht.hard_filter_cutoffs,
     )
+
+    relatedness_ht = relatedness.ht()
+    subset_samples = meta_ht.s.collect()
+    relatedness_ht = relatedness_ht.filter(
+        subset_samples.contains(relatedness_ht.i.s)
+        & subset_samples.contains(relatedness_ht.j.s)
+    )
+
+    relatedness_ht = get_relatedness_set_ht(relatedness_ht)
     meta_ht = meta_ht.select(
         bam_metrics=meta_ht.bam_metrics,
         subsets=meta_ht.subsets.select("tgp", "hgdp"),
         sex_imputation=meta_ht.sex_imputation.drop("is_female"),
         sample_qc=meta_ht.sample_qc.select(*SAMPLE_QC_METRICS),
+        relatedness_inference=relatedness_ht[meta_ht.key],
         population_inference=meta_ht.population_inference.drop(
             "training_pop", "training_pop_all"
         ),
@@ -521,8 +570,6 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
     return ht
 
 
-# TODO: Should we put this hot-fix into a common function somewhere? I'm not sure the best place to put it,
-#  but we use it a couple times
 def hom_alt_depletion_fix(
     mt: hl.MatrixTable,
     af_expr: hl.expr.Float32Expression,
@@ -618,8 +665,14 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
         mt.rows().select().select_globals(), release_ht.select("freq")
     )
 
-    # TODO: Should this be done on the unsplit sparse MT? If so it's a little more complicated because AF is computed
-    #  on the split MT, maybe add to a support function that users can run after splitting?
+    logger.info("Computing adj and sex adjusted genotypes...")
+    mt = mt.annotate_entries(
+        GT=adjusted_sex_ploidy_expr(
+            mt.locus, mt.GT, mt.meta.sex_imputation.sex_karyotype
+        ),
+        adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
+    )
+
     logger.info(
         "Setting het genotypes at sites with >1% AF (using precomputed v3.1 frequencies) and > 0.9 AB to homalt..."
     )
@@ -672,14 +725,14 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     mt = mt.drop("was_split", "a_index")
 
     # TODO: lowqual variants how to handle them on both sparse and dense, dense is easy because I can
-    #  remove the variants easily, sparse is more difficult, maybe just make sure annotation is on the variant HT.
+    #  remove the variants easily, sparse is more difficult, maybe just make sure annotation is on the variant HT,
+    #  which at the moment is not the case because we just remove them.
     mt = hl.experimental.densify(mt)
     mt = mt.filter_rows((~info_ht[mt.row_key].AS_lowqual) & (hl.len(mt.alleles) > 1))
 
     return mt
 
 
-# TODO: add relatedness only within subset?
 def main(args):
     hl.init(log="/subset.log", default_reference="GRCh38")
 
@@ -723,12 +776,10 @@ def main(args):
         # Adjust alleles and LA to include only alleles present in the subset
         mt = adjust_subset_alleles(mt)
 
-        logger.info("Computing adj and sex adjusted genotypes...")
-        mt = mt.annotate_entries(
-            GT=adjusted_sex_ploidy_expr(
-                mt.locus, mt.LGT, mt.meta.sex_imputation.sex_karyotype
-            ),
-            adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
+        logger.info(
+            "Note: for finalized the HGDP + TGP subset frequency, dense MT, VCFs we adjust the sex genotypes and add "
+            "a fix for older GATK gVCFs with a known depletion of homozygous alternate alleles, and removed standard "
+            "GATK LowQual variants"
         )
 
         mt = mt.drop("_telomere_or_centromere")
