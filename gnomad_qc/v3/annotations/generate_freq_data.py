@@ -40,7 +40,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
-hl.stop()
 
 
 def make_faf_index_dict(faf_meta: List[Dict[str, str]]) -> Dict[str, int]:
