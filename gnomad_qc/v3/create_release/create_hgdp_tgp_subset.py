@@ -645,7 +645,7 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     :return: Dense release MatrixTable with all row, column, and global annotations
     """
     release_ht = release(public=False).ht()
-    subset_freq = get_freq(subset="hgdp_tgp")
+    subset_freq = get_freq(subset="hgdp_tgp").ht()
     info_ht = get_info(split=True).ht()
     filters_ht = final_filter.ht()
 
