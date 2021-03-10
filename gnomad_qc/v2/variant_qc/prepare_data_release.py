@@ -1058,8 +1058,11 @@ if __name__ == '__main__':
     if int(args.exomes) + int(args.genomes) != 1:
         sys.exit('Error: One and only one of --exomes or --genomes must be specified')
 
-    if args.slack_channel and args.slack_token:
-        with slack_notifications(args.slack_token, args.slack_channel):
-            main(args)
+    if args.slack_channel:
+        if not args.slack_token:
+            sys.exit('Error: slack_token must be specified if slack_channel is set')
+        else:
+            with slack_notifications(args.slack_token, args.slack_channel):
+                main(args)
     else:
         main(args)
