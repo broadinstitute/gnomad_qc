@@ -165,7 +165,7 @@ def main(args):
             )
             if args.test:
                 mt.rows().write(
-                    get_checkpoint_path(f"chr20_test_freq.{'_'.join(subsets)}.ht"),
+                    get_checkpoint_path(f"chr20_test_freq.{'_'.join(subsets)}"),
                     overwrite=True,
                 )
             else:
@@ -255,7 +255,7 @@ def main(args):
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(f"gs://{qc_temp_prefix()}/logs/")
+        hl.copy_log(f"{qc_temp_prefix()}logs/")
 
 
 if __name__ == "__main__":
