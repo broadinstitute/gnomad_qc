@@ -68,12 +68,12 @@ def main(args):
     )
 
     invalid_subsets = []
-    n_subsets_in_use_subpops = 0
+    n_subsets_use_subpops = 0
     for s in subsets:
         if s not in SUBSETS:
             invalid_subsets.append(s)
         if s in COHORTS_WITH_POP_STORED_AS_SUBPOP:
-            n_subsets_in_use_subpops += 1
+            n_subsets_use_subpops += 1
 
     if len(invalid_subsets) > 0:
         raise ValueError(
@@ -157,7 +157,7 @@ def main(args):
                 mt,
                 sex_expr=mt.meta.sex_imputation.sex_karyotype,
                 pop_expr=mt.meta.population_inference.pop
-                if n_subsets_in_use_subpops == 0
+                if not n_subsets_use_subpops
                 else mt.meta.project_meta.project_subpop,
                 # NOTE: TGP and HGDP labeled populations are highly specific and are stored in the project_subpop meta field
             )
