@@ -102,7 +102,13 @@ def main(args):
 
         if args.include_non_release:
             logger.info("Filtering MT columns to high quality samples")
+            total_sample_count = mt.count_cols()
             mt = mt.filter_cols(mt.meta.high_quality)
+            high_quality_sample_count = mt.count_cols()
+            logger.info(
+                f"Filtered {total_sample_count - high_quality_sample_count} from the full set of {total_sample_count} "
+                f"samples..."
+            )
 
         if subsets:
             mt = mt.filter_cols(hl.any([mt.meta.subsets[s] for s in subsets]))
