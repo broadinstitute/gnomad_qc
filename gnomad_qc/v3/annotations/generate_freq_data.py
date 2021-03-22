@@ -75,11 +75,11 @@ def main(args):
         if s in COHORTS_WITH_POP_STORED_AS_SUBPOP:
             n_subsets_use_subpops += 1
 
-    if len(invalid_subsets) > 0:
+    if invalid_subsets:
         raise ValueError(
             f"{', '.join(invalid_subsets)} subset(s) are not one of the following official subsets: {SUBSETS}"
         )
-    if (n_subsets_in_use_subpops > 0) & (n_subsets_in_use_subpops != len(subsets)):
+    if n_subsets_use_subpops & (n_subsets_use_subpops != len(subsets)):
         raise ValueError(
             f"All or none of the supplied subset(s) should be in the list of cohorts that need to use subpops instead "
             f"of pops in frequency calculations: {COHORTS_WITH_POP_STORED_AS_SUBPOP}"
