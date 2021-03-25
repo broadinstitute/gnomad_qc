@@ -9,7 +9,6 @@ ancestry=rbind(genomes[,(grep("PC", names(genomes)))])
 # Project PCs onto UMAP with defaults
 ancestry_umap=umap(ancestry[,c(1:6,8:16)], n_neighbors=20, min_dist=0.75)
 save(ancestry_umap, file="/Users/mwilson/gnomad/v3.1/data/gnomad.ancestry.20nn.md0.75.UMAP.RData")
-load(file="/Users/mwilson/gnomad/v3.1/data/gnomad.ancestry.20nn.UMAP.RData" )
 
 # Add coloring labels and plot
 ancestry_umap[is.na(ancestry_umap)] <-"Missing"
