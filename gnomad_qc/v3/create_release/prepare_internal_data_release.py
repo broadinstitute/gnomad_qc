@@ -61,13 +61,6 @@ POPS.extend(KG_POPS)
 POPS.extend(HGDP_POPS)
 POPS.extend(["global"])
 
-null_callstats_struct = hl.struct(
-    AC=hl.null(hl.tint32),
-    AF=hl.null(hl.tfloat64),
-    AN=hl.null(hl.tint32),
-    homozygote_count=hl.null(hl.tint32),
-)
-
 
 def add_release_annotations(
     freq_ht: hl.Table, test: bool
@@ -178,10 +171,6 @@ def pre_process_subset_freq(subset: str, global_ht: hl.Table, test: bool) -> hl.
         ht = hl.read_table(f"gs://gnomad-tmp/gnomad_freq/chr20_test_freq.{subset}.ht")
     else:
         ht = get_freq(subset=subset).ht()
-
-    ht = ht.annotate_globals(
-        freq_meta=[{**x, **{"subset": subset}} for x in hl.eval(ht.freq_meta)]
-    )
 
     # Keep all loci present in the global frequency HT table and fill in any missing frequency fields with an array of structs containing zero/null callstats data
     # This array should be as long as the freq_meta (each array entry corresponds to a freq_meta entry)
@@ -324,30 +313,6 @@ def main(args):
     logger.info("Removing chrM and sites without filter...")
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters))
-
-
-    # Splice in fix to set female metrics to NA on Y chr
-    female_idx = hl.map(
-        lambda x: ht.freq_index_dict[x],
-        hl.filter(
-            lambda x: x.contains("XX"),
-            ht.freq_index_dict.keys()
-        )
-    )
-    freq_idx_range = hl.range(hl.len(ht.freq_meta))
-
-    ht = ht.annotate(
-        freq=hl.if_else(
-            (ht.locus.in_y_nonpar() | ht.locus.in_y_par()),
-            hl.map(
-                lambda x: hl.if_else(
-                    female_idx.contains(x), null_callstats_struct, ht.freq[x]
-                ),
-                freq_idx_range,
-            ),
-            ht.freq,
-        )
-    )
 
     ht = ht.checkpoint(
         "gs://gnomad-tmp/release/v3.1/gnomad.genomes.v3.1.sites.ht"
