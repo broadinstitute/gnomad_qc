@@ -42,7 +42,7 @@ logger.setLevel(logging.INFO)
 
 def make_faf_index_dict(faf_meta: List[Dict[str, str]]) -> Dict[str, int]:
     """
-    Create a look-up Dictionary for entries contained in the filter allele frequency annotation array
+    Creates a look-up Dictionary for entries contained in the filter allele frequency annotation array
 
     :param List of Dict faf_meta: Global annotation containing the set of groupings for each element of the faf array (e.g., [{'group': 'adj'}, {'group': 'adj', 'pop': 'nfe'}])
     :return: Dictionary of faf annotation population groupings, where values are the corresponding 0-based indices for the
@@ -50,12 +50,68 @@ def make_faf_index_dict(faf_meta: List[Dict[str, str]]) -> Dict[str, int]:
     :rtype: Dict of str: int
     """
 
-    index_dict = index_globals(faf_meta, dict(group=["adj"]))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS)))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], sex=SEXES)))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS, sex=SEXES)))
+    index_dict = {
+        **index_globals(faf_meta, dict(group=["adj"])),
+        **index_globals(faf_meta, dict(group=["adj"], pop=POPS)),
+        **index_globals(faf_meta, dict(group=["adj"], sex=SEXES)),
+        **index_globals(faf_meta, dict(group=["adj"], pop=POPS, sex=SEXES))
+    }
 
     return index_dict
+
+
+def make_freq_index_dict(freq_meta: List[Dict[str, str]]) -> Dict[str, int]:
+    """
+    Creates a look-up Dictionary for entries contained in the frequency annotation array
+
+    :param List of Dict freq_meta: Global annotation continaing the set of groupings for each element of the freq array (e.g., [{'group': 'adj'}, {'group': 'adj', 'pop': 'nfe'}])
+    :return: Dictionary keyed by the grouping combinations found in the frequency array, where values are the corresponding 0-based indices for the groupings in the freq_meta array
+    :rtype: Dict of str: int
+    """
+
+    index_dict = {
+        **index_globals(freq_meta, dict(group=GROUPS)),
+        **index_globals(freq_meta, dict(group=GROUPS, pop=POPS)),
+        **index_globals(freq_meta, dict(group=GROUPS, sex=SEXES)),
+        **index_globals(freq_meta, dict(group=GROUPS, pop=POPS, sex=SEXES)),
+    }
+
+    return index_dict
+
+
+def set_female_y_metrics_to_na(mt: hl.MatrixTable) -> hl.MatrixTable:
+    """
+    Sets Y-variant frequency callstats for female-specific metrics to null structs
+
+    .. note:: Requires freq_index_dict annotation to be present in MatrixTable
+
+    :param mt: MatrixTable for which to adjust female metrics
+    :return: MatrixTable with female Y-variant metrics set to null values
+    """
+
+    female_idx = hl.map(
+        lambda x: mt.freq_index_dict[x],
+        hl.filter(
+            lambda x: x.contains("XX"),
+            mt.freq_index_dict.keys()
+        )
+    )
+    freq_idx_range = hl.range(hl.len(ht.freq_meta))
+
+    mt = mt.annotate_rows(
+        freq=hl.if_else(
+            (ht.locus.in_y_nonpar() | ht.locus.in_y_par()),
+            hl.map(
+                lambda x: hl.if_else(
+                    female_idx.contains(x), null_callstats_struct, mt.freq[x]
+                ),
+                freq_idx_range,
+            ),
+            mt.freq,
+        )
+    )
+
+    return mt
 
 
 def main(args):
@@ -129,9 +185,14 @@ def main(args):
                 else mt.meta.project_meta.project_subpop,
                 # NOTE: TGP and HGDP labeled populations are highly specific and are stored in the project_subpop meta field
             )
+            mt = mt.annotate_globals(
+                freq_meta=[{**x, **{"subset": subset}} for x in hl.eval(mt.freq_meta)]
+            )
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
+            mt = mt.annotate_globals(freq_index_dict=make_freq_index_dict(hl.eval(mt.freq_meta)))
+            mt = mt.set_female_y_metrics_to_na(mt)
 
             logger.info(f"Writing out frequency data for {subset} subset...")
             if args.test:
@@ -180,6 +241,9 @@ def main(args):
             )
             # Remove all loci with raw AC=0
             mt = mt.filter_rows(mt.freq[1].AC > 0)
+
+            mt = mt.annotate_globals(freq_index_dict=make_freq_index_dict(hl.eval(mt.freq_meta)))
+            mt = mt.set_female_y_metrics_to_na(mt)
 
             logger.info("Calculating InbreedingCoeff...")
             # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify
