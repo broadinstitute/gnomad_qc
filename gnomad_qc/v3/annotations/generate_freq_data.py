@@ -7,6 +7,7 @@ import hail as hl
 from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     DOWNSAMPLINGS,
+    GROUPS,
     POPS,
     POPS_TO_REMOVE_FOR_POPMAX,
     SEXES,
@@ -94,11 +95,11 @@ def set_female_y_metrics_to_na(mt: hl.MatrixTable) -> hl.MatrixTable:
         lambda x: mt.freq_index_dict[x],
         hl.filter(lambda x: x.contains("XX"), mt.freq_index_dict.keys()),
     )
-    freq_idx_range = hl.range(hl.len(ht.freq_meta))
+    freq_idx_range = hl.range(hl.len(mt.freq_meta))
 
     mt = mt.annotate_rows(
         freq=hl.if_else(
-            (ht.locus.in_y_nonpar() | ht.locus.in_y_par()),
+            (mt.locus.in_y_nonpar() | mt.locus.in_y_par()),
             hl.map(
                 lambda x: hl.if_else(
                     female_idx.contains(x), null_callstats_expr(), mt.freq[x]
