@@ -19,7 +19,7 @@ from gnomad.resources.grch38.reference_data import (
     seg_dup_intervals,
 )
 from gnomad.resources.resource_utils import DataException
-from gnomad.utils.annotations import region_flag_expr
+from gnomad.utils.annotations import null_callstats_expr, region_flag_expr
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import (
@@ -179,7 +179,7 @@ def pre_process_subset_freq(subset: str, global_ht: hl.Table, test: bool) -> hl.
         freq=hl.if_else(
             hl.is_missing(new_ht.freq),
             hl.map(
-                lambda x: null_callstats_struct, hl.range(hl.len(ht.freq_meta))
+                lambda x: null_callstats_expr(), hl.range(hl.len(ht.freq_meta))
             ),
             new_ht.freq,
         )

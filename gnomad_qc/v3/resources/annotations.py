@@ -4,6 +4,7 @@ from gnomad.resources.resource_utils import (TableResource,
                                              DataException,
                                              VersionedTableResource,)
 
+
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
 
@@ -39,7 +40,7 @@ def get_info(split: bool = True) -> VersionedTableResource:
     )
 
 
-def get_vqsr_filters(
+def get_filters(
     model_id: str, split: bool = True, finalized: bool = False,
 ) -> VersionedTableResource:
     """
