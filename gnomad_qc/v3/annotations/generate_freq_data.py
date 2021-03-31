@@ -19,6 +19,7 @@ from gnomad.utils.annotations import (
     bi_allelic_site_inbreeding_expr,
     faf_expr,
     get_adj_expr,
+    null_callstats_expr,
     pop_max_expr,
     qual_hist_expr,
 )
@@ -103,7 +104,7 @@ def set_female_y_metrics_to_na(mt: hl.MatrixTable) -> hl.MatrixTable:
             (ht.locus.in_y_nonpar() | ht.locus.in_y_par()),
             hl.map(
                 lambda x: hl.if_else(
-                    female_idx.contains(x), null_callstats_struct, mt.freq[x]
+                    female_idx.contains(x), null_callstats_expr(), mt.freq[x]
                 ),
                 freq_idx_range,
             ),
