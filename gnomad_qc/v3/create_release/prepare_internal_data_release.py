@@ -34,6 +34,7 @@ from gnomad.utils.vep import VEP_CSQ_HEADER, VEP_CSQ_FIELDS
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import (
     allele_data,
+    analyst_annotations,
     get_freq,
     get_info,
     qual_hist,
@@ -91,6 +92,7 @@ def add_release_annotations(
     vep_ht = vep.ht()
     dbsnp_ht = dbsnp.ht().select("rsid")
     info_ht = get_info().ht()
+    in_silico_ht = analyst_annotations.ht()
 
     logger.info("Filtering lowqual variants and assembling 'info' field...")
     info_fields = SITE_FIELDS + AS_FIELDS
@@ -145,6 +147,7 @@ def add_release_annotations(
             },
         ),
         **filters_ht[ht.key],
+        **in_silico_ht[ht.key],
     )
     ht = ht.transmute(info=ht.info.annotate(InbreedingCoeff=ht.InbreedingCoeff))
 
@@ -187,7 +190,7 @@ def pre_process_subset_freq(subset: str, global_ht: hl.Table, test: bool) -> hl.
         freq=hl.if_else(
             hl.is_missing(new_ht.freq),
             hl.map(
-                lambda x: null_callstats_struct, hl.range(hl.len(hl.eval(ht.freq_meta))) # TODO: check whether hl.eval needed
+                lambda x: null_callstats_struct, hl.range(hl.len(ht.freq_meta))
             ),
             new_ht.freq,
         )
@@ -322,26 +325,23 @@ def main(args):
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters))
 
-    # Add in new annotations for clinical variant interpretation
-    in_silico_ht = hl.read_table(
-        "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1/gnomad_genomes_v3.1.analyst_annotations.ht"
-    )  # TODO: update path with versioned Table resource path when available
-    ht = ht.annotate(**in_silico_ht[ht.key])
 
     # Splice in fix to set female metrics to NA on Y chr
-    female_idx = [
-        hl.eval(ht.freq_index_dict.get(x))
-        for x in hl.eval(ht.freq_index_dict)
-        if "XX" in x
-    ]
-    freq_idx_range = hl.eval(hl.range(hl.eval(hl.len(hl.eval(ht.freq_meta)))))
+    female_idx = hl.map(
+        lambda x: ht.freq_index_dict[x],
+        hl.filter(
+            lambda x: x.contains("XX"),
+            ht.freq_index_dict.keys()
+        )
+    )
+    freq_idx_range = hl.range(hl.len(ht.freq_meta))
 
     ht = ht.annotate(
         freq=hl.if_else(
             (ht.locus.in_y_nonpar() | ht.locus.in_y_par()),
             hl.map(
                 lambda x: hl.if_else(
-                    hl.array(female_idx).contains(x), null_y_struct, ht.freq[x]
+                    female_idx.contains(x), null_callstats_struct, ht.freq[x]
                 ),
                 freq_idx_range,
             ),

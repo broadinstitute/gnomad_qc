@@ -1,8 +1,8 @@
 from typing import Optional
 
 from gnomad.resources.resource_utils import (TableResource,
-                                             VersionedTableResource,
-                                             DataException)
+                                             DataException,
+                                             VersionedTableResource,)
 
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
@@ -39,7 +39,7 @@ def get_info(split: bool = True) -> VersionedTableResource:
     )
 
 
-def get_filters(
+def get_vqsr_filters(
     model_id: str, split: bool = True, finalized: bool = False,
 ) -> VersionedTableResource:
     """
