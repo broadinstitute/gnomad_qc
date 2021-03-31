@@ -1060,4 +1060,4 @@ if __name__ == '__main__':
     if args.slack_channel:
         try_slack(args.slack_channel, main, args)
     else:
-    main(args)
+        main(args)
