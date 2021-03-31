@@ -55,7 +55,7 @@ def make_faf_index_dict(faf_meta: List[Dict[str, str]]) -> Dict[str, int]:
         **index_globals(faf_meta, dict(group=["adj"])),
         **index_globals(faf_meta, dict(group=["adj"], pop=POPS)),
         **index_globals(faf_meta, dict(group=["adj"], sex=SEXES)),
-        **index_globals(faf_meta, dict(group=["adj"], pop=POPS, sex=SEXES))
+        **index_globals(faf_meta, dict(group=["adj"], pop=POPS, sex=SEXES)),
     }
 
     return index_dict
@@ -92,10 +92,7 @@ def set_female_y_metrics_to_na(mt: hl.MatrixTable) -> hl.MatrixTable:
 
     female_idx = hl.map(
         lambda x: mt.freq_index_dict[x],
-        hl.filter(
-            lambda x: x.contains("XX"),
-            mt.freq_index_dict.keys()
-        )
+        hl.filter(lambda x: x.contains("XX"), mt.freq_index_dict.keys()),
     )
     freq_idx_range = hl.range(hl.len(ht.freq_meta))
 
@@ -192,7 +189,9 @@ def main(args):
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
-            mt = mt.annotate_globals(freq_index_dict=make_freq_index_dict(hl.eval(mt.freq_meta)))
+            mt = mt.annotate_globals(
+                freq_index_dict=make_freq_index_dict(hl.eval(mt.freq_meta))
+            )
             mt = mt.set_female_y_metrics_to_na(mt)
 
             logger.info(f"Writing out frequency data for {subset} subset...")
@@ -243,7 +242,9 @@ def main(args):
             # Remove all loci with raw AC=0
             mt = mt.filter_rows(mt.freq[1].AC > 0)
 
-            mt = mt.annotate_globals(freq_index_dict=make_freq_index_dict(hl.eval(mt.freq_meta)))
+            mt = mt.annotate_globals(
+                freq_index_dict=make_freq_index_dict(hl.eval(mt.freq_meta))
+            )
             mt = mt.set_female_y_metrics_to_na(mt)
 
             logger.info("Calculating InbreedingCoeff...")
@@ -262,8 +263,8 @@ def main(args):
                 faf=faf,
                 popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX),
             )
-            mt = mt.annotate_globals(faf_meta=faf_meta,
-                                     faf_index_dict=make_faf_index_dict(faf_meta)
+            mt = mt.annotate_globals(
+                faf_meta=faf_meta, faf_index_dict=make_faf_index_dict(faf_meta)
             )
             mt = mt.annotate_rows(
                 popmax=mt.popmax.annotate(
