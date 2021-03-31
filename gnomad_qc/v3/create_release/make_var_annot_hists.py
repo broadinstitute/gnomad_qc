@@ -70,6 +70,12 @@ def main(args):
     ht = hl.read_table(release_ht_path(public=False))
     ht = ht.select(freq=ht.freq, info=ht.info.select(*ANNOTATIONS_HISTS))
 
+    inbreeding_bin_ranges = ANNOTATIONS_HISTS["InbreedingCoeff"]
+
+    # Remove InbreedingCoeff from ANNOTATIONS_HISTS. It requires different ranges by allele frequency and needs to be
+    # handled differently. It is stored as a dictionary in annotation_hists_path
+    ANNOTATIONS_HISTS.remove("InbreedingCoeff")
+
     logger.info("Getting info annotation histograms...")
     hist_ranges_expr = get_annotations_hists(ht, ANNOTATIONS_HISTS, LOG10_ANNOTATIONS)
 
@@ -129,10 +135,6 @@ def main(args):
         )
 
         # Defining hist range and bins for allele frequency groups because they needed different ranges
-        inbreeding_bin_ranges = {
-            "under_0.0005": [-0.0005, 0.0005, 50],
-            "over_0.0005": [-0.25, 1, 50],
-        }
         ht = ht.annotate(af_bin=create_frequency_bins_expr_inbreeding(AF=ht.freq[1].AF))
         inbreeding_hists = [
             ht.aggregate(
@@ -146,6 +148,9 @@ def main(args):
 
         hists = hl.eval(hl.json(hists))
         inbreeding_hists = hl.eval(hl.json(inbreeding_hists))
+
+        # Note: The following removes '}' from the JSON stored in hists and '{' from the JSON stored in
+        # inbreeding_hists then joins them together to be written out as a single JSON
         hists = hists[:-1] + "," + inbreeding_hists[1:]
 
         logger.info("Writing output")
