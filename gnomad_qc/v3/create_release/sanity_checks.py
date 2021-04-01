@@ -2,13 +2,11 @@ import logging
 from typing import Dict, List, Optional, Union
 
 import hail as hl
-
-from gnomad.assessment.sanity_checks import (
-    generic_field_check,
-    make_filters_sanity_check_expr,
-)
-from gnomad.utils.vcf import make_label_combos, HISTS, SORT_ORDER
-from gnomad.resources.grch38.gnomad import POPS, SEXES, KG_POPS, HGDP_POPS, SUBSETS
+from gnomad.assessment.sanity_checks import (generic_field_check,
+                                             make_filters_sanity_check_expr)
+from gnomad.resources.grch38.gnomad import (HGDP_POPS, KG_POPS, POPS, SEXES,
+                                            SUBSETS)
+from gnomad.utils.vcf import HISTS, SORT_ORDER, make_label_combos
 
 DOWNSAMPLINGS = {
     "10": ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas", "mid"],
