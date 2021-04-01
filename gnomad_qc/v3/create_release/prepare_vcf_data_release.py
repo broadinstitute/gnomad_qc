@@ -990,9 +990,15 @@ def main(args):
                 inbreeding_cutoff=INBREEDING_CUTOFF,
             )
 
-            new_vcf_info_dict = {  # Adjust keys to remove adj tags before exporting to VCF
-                i.replace("-adj", ""): j for i, j in vcf_info_dict.items()
-            }
+            # Adjust keys to remove adj tags before exporting to VCF
+            new_vcf_info_dict = {}
+            for i, j in vcf_info_dict.items():
+                i = i.replace("-adj", "")
+                i = i.replace(
+                    "-", "_"
+                )  # VCF 4.3 specs do not allow hyphens in info fields
+                new_vcf_info_dict[i] = j
+
             header_dict = {
                 "info": new_vcf_info_dict,
                 "filter": filter_dict,
