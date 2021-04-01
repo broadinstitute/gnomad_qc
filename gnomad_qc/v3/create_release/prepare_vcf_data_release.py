@@ -593,6 +593,9 @@ def make_label_combos(
     return combos
 
 
+#TODO:Is this something that should go in gnomad_methods? I am not sure of the standards around globals,
+# I always had this notion that you don’t modify globals, but this is an odd case because it isn’t modifying the
+# global in the file that contains the global and basically making a global for the current file so maybe it is OK
 def remove_fields_from_globals(global_field: List[str], fields_to_remove: List[str]):
     """
     Removes fields from the pre-defined global field variables.
@@ -607,6 +610,7 @@ def remove_fields_from_globals(global_field: List[str], fields_to_remove: List[s
             logger.info(f"'{field}'' missing from {global_field}")
 
 
+#TODO: SHOULD THIS BE IN A MORE COMMON LOCATION?
 def build_export_reference() -> hl.ReferenceGenome:
     """
     Creates export reference based on GRCh38. Eliminates all non-standard contigs
@@ -629,7 +633,7 @@ def build_export_reference() -> hl.ReferenceGenome:
     )
     return export_reference
 
-
+#TODO:USE RESOURCES
 def release_ht_path():
     return "gs://gnomad/release/3.1/ht/genomes/gnomad.genomes.v3.1.sites.reference_fixed.ht"
 
