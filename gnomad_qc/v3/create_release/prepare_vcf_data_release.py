@@ -1086,7 +1086,7 @@ def main(args):
                     "AF",
                     "popmax",
                     "faf95_popmax",
-                    *ht.info.drop("AC", "AN", "AF", "popmax", "faf95_popmax",),
+                    *ht.info.drop("AC", "AN", "AF", "popmax", "faf95_popmax"),
                 )
             )
             ht.describe()
