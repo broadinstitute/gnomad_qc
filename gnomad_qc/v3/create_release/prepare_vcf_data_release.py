@@ -524,6 +524,7 @@ def make_vcf_filter_dict(
     return filter_dict
 
 
+#TODO: THIS LOOKS EXACTLY LIKE COMMON CODE JUST USE THAT AS IS
 def add_as_info_dict(
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT, as_fields: List[str] = AS_FIELDS
 ) -> Dict[str, Dict[str, str]]:
@@ -540,7 +541,9 @@ def add_as_info_dict(
     for field in as_fields:
 
         try:
+            # Strip AS_ from field name
             site_field = field[3:]
+
             # Get site description from info dictionary and make first letter lower case
             first_letter = info_dict[site_field]["Description"][0].lower()
             rest_of_description = info_dict[site_field]["Description"][1:]
