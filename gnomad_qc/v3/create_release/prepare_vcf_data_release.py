@@ -880,6 +880,8 @@ def main(args):
             logger.info("Reading in release HT...")
             ht = hl.read_table(release_ht_path())
             export_reference = build_export_reference()
+
+            #TODO: Confirm that this is needed
             ht = ht.rename({"locus": "locus_original"})
             ht = ht.annotate(
                 locus=hl.locus(
@@ -899,6 +901,8 @@ def main(args):
                         )
                     ],
                 )
+                #TODO: MAKE this smaller test an option!!!
+                # ht = ht._filter_partitions(range(1))
 
             if args.test:
                 logger.info("Filtering to chr20 and chrX (for tests only)...")
@@ -963,6 +967,9 @@ def main(args):
             ht = ht.select("info", "filters", "rsid")
             vcf_info_dict.update({"vep": {"Description": hl.eval(ht.vep_csq_header)}})
 
+            #TODO: ADD TO RESOURCES, but this checkpoint really helps for export!
+            ht = ht.checkpoint(f"gs://gnomad-tmp/gnomad_v3.1_vcfs/vcf_ht_checkpoint_chr_all.ht", overwrite=True)
+
             # Make filter dict
             filter_dict = make_vcf_filter_dict(
                 hl.eval(ht.filtering_model.snv_cutoff.min_score),
@@ -978,18 +985,40 @@ def main(args):
                 "filter": filter_dict,
             }
 
+            # TODO: CHANGE TO RESOUCE LOCATION
             logger.info("Saving header dict to pickle...")
             with hl.hadoop_open(
-                "gs://gnomad-mwilson/v3.1/release/vcf_header", "wb"
+                    "gs://gnomad-mwilson/v3.1.1/release/vcf_header", "wb"
             ) as p:
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
         if args.sanity_check:
+            #TODO: MIGHT NEED TO ADD TO sanity_check_release_ht
             sanity_check_release_ht(
-                ht, SUBSET_LIST, missingness_threshold=0.5, verbose=args.verbose
+                ht, SUBSET_LIST, missingness_threshold=0.5, verbose=args.verbose, reference_genome=export_reference
             )
 
         if args.export_vcf:
+            chromosome = args.export_chromosome
+            #TODO: AGAIN ADD TO RESOURCES FOR BOTH BELOW
+            ht = hl.read_table(f"gs://gnomad-tmp/gnomad_v3.1_vcfs/vcf_ht_checkpoint_chr_all.ht")
+            with hl.hadoop_open(
+                    "gs://gnomad-mwilson/v3.1.1/release/vcf_header",
+                    "rb",
+            ) as f:
+                header_dict = pickle.load(f)
+
+            if chromosome:
+                export_reference = build_export_reference()
+                ht = hl.filter_intervals(
+                    ht,
+                    [
+                        hl.parse_locus_interval(
+                            chromosome, reference_genome=export_reference
+                        )
+                    ],
+                )
+
             logger.info("Dropping histograms that are not needed in VCF...")
             # Drop unnecessary histograms
             drop_hists = (
@@ -1043,17 +1072,19 @@ def main(args):
             )
             ht.describe()
             logger.info(f"Export chromosome {chromosome}....")
+            #TODO: ADD BOTH PATHS BELOW TO RESOURCES!!
             hl.export_vcf(
                 ht,
-                f"gs://gnomad/release/3.1/vcf/genomes/gnomad.genomes.v3.1.sites.{chromosome}.vcf.bgz",
-                append_to_header="gs://gnomad/release/3.1/vcf/genomes/extra_fields_for_header.tsv",
+                f"gs://gnomad/release/3.1.1/vcf/genomes/gnomad.genomes.v3.1.1.sites.{chromosome}.vcf.bgz",
+                append_to_header="gs://gnomad/release/3.1.1/vcf/genomes/extra_fields_for_header.tsv",
                 metadata=header_dict,
                 tabix=True,
             )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log("gs://gnomad-mwilson/logs/v3.1/vcf_export.log")
+        #TODO: ADD TO RESOURCES!
+        hl.copy_log("gs://gnomad-mwilson/logs/v3.1.1/vcf_export.log")
 
 
 if __name__ == "__main__":
