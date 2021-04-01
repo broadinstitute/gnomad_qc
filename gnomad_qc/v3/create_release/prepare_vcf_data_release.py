@@ -905,8 +905,8 @@ def main(args):
                 # ht = ht._filter_partitions(range(1))
 
             if args.test:
-                logger.info("Filtering to chr20 and chrX (for tests only)...")
-                # Using chr20 to test a small autosome and chrX to test a sex chromosome
+                logger.info("Filtering to chr20, chrX, and chrY (for tests only)...")
+                # Using chr20 to test a small autosome and chrX/chrY to test sex chromosomes
                 ht = hl.filter_intervals(
                     ht,
                     [
@@ -915,6 +915,9 @@ def main(args):
                         ),
                         hl.parse_locus_interval(
                             "chrX", reference_genome=export_reference
+                        ),
+                        hl.parse_locus_interval(
+                            "chrY", reference_genome=export_reference
                         ),
                     ],
                 )
