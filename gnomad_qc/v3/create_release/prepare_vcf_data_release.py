@@ -261,7 +261,7 @@ def ht_to_vcf_mt(
     # Note: the expr needs to be prefixed by "|" because GATK expect one value for the ref (always empty)
     # Note2: this doesn't produce the correct annotation for AS_SB_TABLE, but it is overwritten below
     for f in pipe_delimited_annotations:
-        if f in info_ht.info:
+        if f in info_ht.info and f != "AS_SB_TABLE":
             info_expr[f] = "|" + get_pipe_expr(info_ht.info[f])
 
     # Flatten SB if it is an array of arrays
