@@ -778,7 +778,7 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
 
 
 def unfurl_nested_annotations(
-    t: Union[hl.MatrixTable, hl.Table], pops: List[str], entries_to_remove: List[str]
+        t: Union[hl.MatrixTable, hl.Table], pops: List[str], entries_to_remove: List[str] = None
 ) -> Dict[str, hl.expr.Expression]:
     """
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the values
