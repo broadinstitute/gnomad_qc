@@ -2,10 +2,11 @@ import logging
 from typing import Dict, List, Optional, Union
 
 import hail as hl
-from gnomad.assessment.sanity_checks import (generic_field_check,
-                                             make_filters_sanity_check_expr)
-from gnomad.resources.grch38.gnomad import (HGDP_POPS, KG_POPS, POPS, SEXES,
-                                            SUBSETS)
+from gnomad.assessment.sanity_checks import (
+    generic_field_check,
+    make_filters_sanity_check_expr,
+)
+from gnomad.resources.grch38.gnomad import HGDP_POPS, KG_POPS, POPS, SEXES, SUBSETS
 from gnomad.utils.vcf import HISTS, SORT_ORDER, make_label_combos
 
 DOWNSAMPLINGS = {
@@ -50,7 +51,8 @@ def summarize_t(
     Get summary of variants in a MatrixTable or Table.
 
     Print the number of variants to stdout and check that each chromosome has variant calls.
-    :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table to be checked.
+
+    :param t: Input MatrixTable or Table to be checked.
     :rtype: Struct
     """
     if isinstance(t, hl.MatrixTable):
@@ -91,7 +93,8 @@ def filters_sanity_check(t: Union[hl.MatrixTable, hl.Table]) -> None:
             - Only AC0 filter
             - Only RF filtering
             - Only VQSR filtering
-    :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table to be checked.
+
+    :param t: Input MatrixTable or Table to be checked.
     :return: None
     :rtype: None
     """
@@ -124,10 +127,11 @@ def filters_sanity_check(t: Union[hl.MatrixTable, hl.Table]) -> None:
     ) -> None:
         """
         Perform sanity checks to measure percentages of variants filtered under different conditions.
-        :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table.
-        :param hl.expr.Expression group_exprs: Dictionary of expressions to group the table by.
-        :param int n_rows: Number of rows to show.
-        :param int n_cols: Number of columns to show.
+
+        :param t: Input MatrixTable or Table.
+        :param group_exprs: Dictionary of expressions to group the table by.
+        :param n_rows: Number of rows to show.
+        :param n_cols: Number of columns to show.
         :return: None
         """
         t = t.rows() if isinstance(t, hl.MatrixTable) else t
@@ -190,10 +194,11 @@ def histograms_sanity_check(
 ) -> None:
     """
     Check the number of variants that have nonzero values in their n_smaller and n_larger bins of quality histograms (both raw and adj).
-    :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table.
-    :param bool verbose: If True, show top values of annotations being checked, including checks that pass; if False,
+
+    :param t: Input MatrixTable or Table.
+    :param verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks.
-    :param List[str] hists: List of variant annotation histograms.
+    :param hists: List of variant annotation histograms.
     :return: None
     :rtype: None
     """
@@ -233,7 +238,7 @@ def raw_and_adj_sanity_checks(
     subsets: List[str],
     verbose: bool,
     delimiter: str = "-",
-):
+) -> None:
     """
     Perform sanity checks on raw and adj data in input Table.
 
@@ -241,9 +246,10 @@ def raw_and_adj_sanity_checks(
         - Raw AC, AN, AF are not 0
         - Adj AN is not 0 and AC and AF are not negative
         - Raw values for AC, AN, nhomalt in each sample subset are greater than or equal to their corresponding adj values
-    :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table to check.
-    :param List[str] subsets: List of sample subsets.
-    :param bool verbose: If True, show top values of annotations being checked, including checks that pass; if False,
+
+    :param t: Input MatrixTable or Table to check.
+    :param subsets: List of sample subsets.
+    :param verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks.
     :param delimiter: String to use as delimiter when making group label combinations.
     :return: None
@@ -330,11 +336,11 @@ def frequency_sanity_checks(
     Also perform small spot checks:
         - Counts total number of sites where the gnomAD allele count annotation is defined (both raw and adj)
         
-    :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table.
-    :param List[str] subsets: List of sample subsets.
-    :param bool verbose: If True, show top values of annotations being checked, including checks that pass; if False,
+    :param t: Input MatrixTable or Table.
+    :param subsets: List of sample subsets.
+    :param verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks.
-    :param bool show_percentage_sites: If true, show the percentage of overall sites that fail; if False, show the number of sites that fail.
+    :param show_percentage_sites: If true, show the percentage of overall sites that fail; if False, show the number of sites that fail.
     :param delimiter: String to use as delimiter when making group label combinations.
     :return: None
     :rtype: None
@@ -384,7 +390,8 @@ def sample_sum_check(
     """
     Compute afresh the sum of call stats annotations for a specified group of annotations, and compare to the annotated version;
     show the results from checking the sum of the specified annotations in the terminal.
-    :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table containing annotations to be summed.
+
+    :param t: Input MatrixTable or Table containing annotations to be summed.
     :param subset: String indicating sample subset.
     :param label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
         e.g. "sex" or "pop", and value is a list of all possible values for that grouping (e.g. ["male", "female"] or ["afr", "nfe", "amr"]).
@@ -445,10 +452,11 @@ def sample_sum_sanity_checks(
     Compute afresh the sum of annotations for a specified group of annotations, and compare to the annotated version;
     displays results from checking the sum of the specified annotations in the terminal.
     Also check that annotations for all expected sample populations are present.
-    :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table.
-    :param List[str] subsets: List of sample subsets.
-    :param List[str] info_metrics: List of metrics in info struct of input Table.
-    :param bool verbose: If True, show top values of annotations being checked, including checks that pass; if False,
+
+    :param t: Input MatrixTable or Table.
+    :param subsets: List of sample subsets.
+    :param info_metrics: List of metrics in info struct of input Table.
+    :param verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks.
     :param pop_names: Dict with global population names (keys) and population descriptions (values).
     :return: None
@@ -486,10 +494,11 @@ def sex_chr_sanity_checks(
     Check:
         - That metrics for chrY variants in female samples are NA and not 0
         - That nhomalt counts are equal to female nhomalt counts for all non-PAR chrX variants
-    :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table.
-    :param List[str] info_metrics: List of metrics in info struct of input Table.
-    :param List[str] contigs: List of contigs present in input Table.
-    :param bool verbose: If True, show top values of annotations being checked, including checks that pass; if False,
+
+    :param t: Input MatrixTable or Table.
+    :param info_metrics: List of metrics in info struct of input Table.
+    :param contigs: List of contigs present in input Table.
+    :param verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks.
     :return: None
     :rtype: None
@@ -546,12 +555,13 @@ def missingness_sanity_checks(
 ) -> None:
     """
     Check amount of missingness in all row annotations.
-    Prints metric to terminal if more than missingness_threshold% of annotations for that metric are missing.
-    :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table.
-    :param List[str] info_metrics: List of metrics in info struct of input Table.
-    :param List[str] non_info_metrics: List of row annotations minus info struct from input Table.
-    :param int n_sites: Number of sites in input Table.
-    :param float missingness_threshold: Upper cutoff for allowed amount of missingness.
+    Print metric to terminal if more than missingness_threshold% of annotations for that metric are missing.
+
+    :param t: Input MatrixTable or Table.
+    :param info_metrics: List of metrics in info struct of input Table.
+    :param non_info_metrics: List of row annotations minus info struct from input Table.
+    :param n_sites: Number of sites in input Table.
+    :param missingness_threshold: Upper cutoff for allowed amount of missingness.
     :return: None
     :rtype: None
     """
@@ -587,10 +597,10 @@ def vcf_field_check(
     """
     Check that all VCF fields and descriptions are present in input Table and VCF header dictionary.
 
-    :param hl.MatrixTable, hl.Table t: Input MatrixTable or Tableto be exported to VCF.
-    :param Dict[str, Dict[str, Dict[str, str]]] header_dict: VCF header dictionary.
-    :param List[str] row_annotations: List of row annotations in MatrixTable.
-    :param List[str] hists: List of variant histogram annotations. Default is HISTS.
+    :param t: Input MatrixTable or Tableto be exported to VCF.
+    :param header_dict: VCF header dictionary.
+    :param row_annotations: List of row annotations in MatrixTable.
+    :param hists: List of variant histogram annotations. Default is HISTS.
     :return: Bool with whether all expected fields and descriptions are present.
     :rtype: bool
     """
@@ -665,10 +675,11 @@ def sanity_check_release_t(
     - Checks on AC, AN, and AF annotations
     - Checks that subgroup annotation values add up to the supergroup annotation values
     - Checks on sex-chromosome annotations; and summaries of % missingness in variant annotations
-    :param hl.MatrixTable, hl.Table t: Input MatrixTable or Table containing variant annotations to check.
-    :param List[str] subsets: List of subsets to be checked.
-    :param float missingness_threshold: Upper cutoff for allowed amount of missingness. Default is 0.5
-    :param bool verbose: If True, display top values of relevant annotations being checked, regardless of whether check
+
+    :param t: Input MatrixTable or Table containing variant annotations to check.
+    :param subsets: List of subsets to be checked.
+    :param missingness_threshold: Upper cutoff for allowed amount of missingness. Default is 0.5
+    :param verbose: If True, display top values of relevant annotations being checked, regardless of whether check
         conditions are violated; if False, display only top values of relevant annotations if check conditions are violated.
     :return: None (terminal display of results from the battery of sanity checks).
     :rtype: None
