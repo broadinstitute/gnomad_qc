@@ -343,6 +343,7 @@ def make_info_dict(
     prefix: str = "",
     pop_names: Dict[str, str] = POP_NAMES,
     label_groups: Dict[str, str] = None,
+    label_delimiter: str = "_",
     bin_edges: Dict[str, str] = None,
     faf: bool = False,
     popmax: bool = False,
@@ -365,6 +366,7 @@ def make_info_dict(
     :param pop_names: Dict with global population names (keys) and population descriptions (values). Default is POP_NAMES.
     :param label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
         e.g. "sex" or "pop", and value is a list of all possible values for that grouping (e.g. ["male", "female"] or ["afr", "nfe", "amr"]).
+    :param label_delimiter: String to use as delimiter when making group label combinations.
     :param bin_edges: Dictionary keyed by annotation type, with values that reflect the bin edges corresponding to the annotation.
     :param faf: If True, use alternate logic to auto-populate dictionary values associated with filter allele frequency annotations.
     :param popmax: If True, use alternate logic to auto-populate dictionary values associated with popmax annotations.
@@ -374,7 +376,7 @@ def make_info_dict(
     :return: Dictionary keyed by VCF INFO annotations, where values are dictionaries of Number and Description attributes.
     """
     if prefix != "":
-        prefix = f"{prefix}-"
+        prefix = f"{prefix}_" #TODO: DOES THIS NEED TO BE {label_delimiter}?
 
     info_dict = dict()
 
@@ -438,16 +440,17 @@ def make_info_dict(
 
     else:
         group_types = sorted(label_groups.keys(), key=lambda x: sort_order.index(x))
-        combos = make_label_combos(label_groups)
+        combos = make_label_combos(label_groups, label_delimiter=label_delimiter)
 
         for combo in combos:
             loop_description_text = description_text
-            combo_fields = combo.split("-")
+            combo_fields = combo.split(label_delimiter)
             group_dict = dict(zip(group_types, combo_fields))
 
             for_combo = make_combo_header_text("for", group_dict, prefix, pop_names)
             in_combo = make_combo_header_text("in", group_dict, prefix, pop_names)
 
+            #TODO: IN COMPARISON WITH COMMON CODE THERE IS DIFFERENT ORDERING, WHICH DO WE WANT MOVING FORWARD?
             if not faf:
                 combo_dict = {
                     f"AC-{prefix}{combo}": {
@@ -468,6 +471,7 @@ def make_info_dict(
                     },
                 }
             else:
+                # TODO: THE IF STATEMENT BELOW IS NOT IN THE COMMON CODE, WHICH DO WE WANT?
                 if ("XX" in combo_fields) | ("XY" in combo_fields):
                     loop_description_text = (
                         loop_description_text
