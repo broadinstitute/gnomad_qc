@@ -357,8 +357,8 @@ def make_info_dict(
         - INFO fields for age histograms (bin freq, n_smaller, and n_larger for heterozygous and homozygous variant carriers)
         - INFO fields for popmax AC, AN, AF, nhomalt, and popmax population
         - INFO fields for AC, AN, AF, nhomalt for each combination of sample population, sex, and subpopulation, both for adj and raw data
-        - INFO fields for filtering allele frequency (faf) annotations 
-    
+        - INFO fields for filtering allele frequency (faf) annotations
+
     :param prefix: Prefix string for data, e.g. "gnomAD". Default is empty string.
     :param pop_names: Dict with global population names (keys) and population descriptions (values). Default is POP_NAMES.
     :param label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
@@ -634,10 +634,10 @@ def populate_info_dict(
         - INFO fields for age histograms (bin freq, n_smaller, and n_larger for heterozygous and homozygous variant carriers)
         - INFO fields for popmax AC, AN, AF, nhomalt, and popmax population
         - INFO fields for AC, AN, AF, nhomalt for each combination of sample population, sex both for adj and raw data
-        - INFO fields for filtering allele frequency (faf) annotations 
+        - INFO fields for filtering allele frequency (faf) annotations
         - INFO fields for variant histograms (hist_bin_freq, hist_n_smaller, hist_n_larger for each histogram)
     :param Dict[str, List[str]] subpops: Dictionary of global population names (keys)
-        and all hybrid population cluster names associated with that global pop (values). 
+        and all hybrid population cluster names associated with that global pop (values).
     :param Dict[str, str] bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
     :param str age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param Dict[str, Dict[str, str]] info_dict: INFO dict to be populated.
@@ -645,7 +645,7 @@ def populate_info_dict(
     :param List[str] groups: List of sample groups [adj, raw]. Default is GROUPS.
     :param Dict[str, str] pops: List of sample global population names for gnomAD genomes. Default is POPS.
     :param List[str] faf_pops: List of faf population names. Default is FAF_POPS.
-    :param List[str] sexes: gnomAD sample sexes used in VCF export. Default is SEXES. 
+    :param List[str] sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
 
     :rtype: Dict[str, Dict[str, str]]
     """
@@ -783,8 +783,9 @@ def unfurl_nested_annotations(
     """
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the values
     of the dictionary are Hail Expressions describing how to access the corresponding values.
+
     :param Table/MatrixTable t: Table/MatrixTable containing the nested variant annotation arrays to be unfurled.
-    :param List[str] pops: List of global populations in frequency array.  
+    :param List[str] pops: List of global populations in frequency array.
     :return: Dictionary containing variant annotations and their corresponding values.
     :rtype: Dict[str, hl.expr.Expression]
     """
