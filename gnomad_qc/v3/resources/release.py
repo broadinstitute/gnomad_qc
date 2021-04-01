@@ -1,9 +1,22 @@
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
 
-def qual_hists_json_path(release_version: str= CURRENT_RELEASE) -> str:
+
+def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
+    """
+    Returns path to file containing ANNOTATIONS_HISTS dictionary.
+    Dictionary contains histogram values for each metric.
+    For example, "InbreedingCoeff": [-0.25, 0.25, 50].
+
+    :return: Path to file with annotations histograms
+    :rtype: str
+    """
+    return f"gs://gnomad/release/{release_version}/json/annotation_hists.json"
+
+
+def qual_hists_json_path(release_version: str = CURRENT_RELEASE) -> str:
     """Fetch filepath for qual histograms JSON
 
-    :param release_version: Release version. Defualts to CURRENT RELEASE
+    :param release_version: Release version. Defaults to CURRENT RELEASE
     :return: File path for histogram JSON
     :rtype: str
     """
