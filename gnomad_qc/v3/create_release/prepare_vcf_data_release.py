@@ -500,10 +500,12 @@ def make_vcf_filter_dict(
     Generates descriptions for:
         - AC0 filter
         - InbreedingCoeff filter
-        - AS_VQSR filter
+        - RF filter #TODO: GENERALIZE WE USED AS_VQSR FOR V#
+        - PASS (passed all variant filters)
 
     :param snp_cutoff: Minimum SNP cutoff score from random forest model.
     :param indel_cutoff: Minimum indel cutoff score from random forest model.
+    :param inbreeding_cutoff: Inbreeding coefficient hard cutoff.
     :return: Dictionary keyed by VCF FILTER annotations, where values are Dictionaries of Number and Description attributes.
     """
     filter_dict = {
@@ -511,10 +513,11 @@ def make_vcf_filter_dict(
             "Description": "Allele count is zero after filtering out low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
         },
         "InbreedingCoeff": {
-            "Description": f"GATK InbreedingCoeff < {inbreeding_cutoff}"
+            "Description": f"InbreedingCoeff < {inbreeding_cutoff}"
         },
-        "AS_VQSR": {
-            "Description": f"Failed VQSR filtering thresholds of {snp_cutoff} for SNPs and {indel_cutoff} for indels (probabilities of being a true positive variant)"
+        #TODO: CHANGE COMMON CODE TO TAKE DIFFERENT FILTERING METHOD
+        "RF": {
+            "Description": f"Failed random forest filtering thresholds of {snp_cutoff} for SNPs and {indel_cutoff} for indels (probabilities of being a true positive variant)"
         },
         "PASS": {"Description": "Passed all variant filters"},
     }
