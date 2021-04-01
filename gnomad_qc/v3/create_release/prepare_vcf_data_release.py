@@ -966,6 +966,16 @@ def main(args):
             ht = ht.annotate(vep=vep_struct_to_csq(ht.vep))
             ht = ht.annotate(info=ht.info.annotate(vep=ht.vep))
 
+            # NOTE: Merging rsid set into a semi-colon delimited string
+            # dbsnp might have multiple identifiers for one variant
+            # thus, rsid is a set annotation, starting with version b154 for dbsnp resource:
+            # https://github.com/broadinstitute/gnomad_methods/blob/master/gnomad/resources/grch38/reference_data.py#L136
+            # `export_vcf` expects this field to be a string, and vcf specs
+            # say this field may be delimited by a semi-colon:
+            # https://samtools.github.io/hts-specs/VCFv4.2.pdf
+            logger.info("Reformatting rsid...")
+            ht = ht.annotate(rsid=hl.str(";").join(ht.rsid))
+
             # Select relevant fields for VCF export
             ht = ht.select("info", "filters", "rsid")
             vcf_info_dict.update({"vep": {"Description": hl.eval(ht.vep_csq_header)}})
