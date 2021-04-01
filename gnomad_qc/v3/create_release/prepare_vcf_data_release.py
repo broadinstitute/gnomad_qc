@@ -769,7 +769,7 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
 
     vcf_info_dict["revel_score"] = t["revel"]["revel_score"]
 
-    vcf_info_dict["splice_ai_max_ds"] = t["splice_ai"]["max_ds"]
+    vcf_info_dict["splice_ai_max_ds"] = t["splice_ai"]["splice_ai_score"]
     vcf_info_dict["splice_ai_consequence"] = t["splice_ai"]["splice_consequence"]
 
     vcf_info_dict["primate_ai_score"] = t["primate_ai"]["primate_ai_score"]
