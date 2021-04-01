@@ -5,7 +5,6 @@ from typing import Dict, List, Union
 import hail as hl
 
 from gnomad.resources.grch38.gnomad import (
-    DOWNSAMPLINGS,
     GROUPS,
     HGDP_POPS,
     KG_POPS,
@@ -40,6 +39,7 @@ from gnomad_qc.v3.resources.annotations import (
     qual_hist,
     vep,
 )
+from gnomad_qc.v3.resources.basics import qc_temp_prefix
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.release import release_ht_path
 from gnomad_qc.v3.resources.variant_qc import final_filter
@@ -63,22 +63,16 @@ POPS.extend(["global"])
 
 
 def add_release_annotations(
-    freq_ht: hl.Table, test: bool
+    freq_ht: hl.Table,
 ) -> hl.Table:
 
     """
     Loads and joins all Tables with variant annotations.
 
     :param Table freq_ht: Table with frequency annotations
-    :param bool test: If true, filter table to small section of chr20
     :return: Table containing joined annotations
     :rtype: hl.Table
     """
-
-    if test:
-        freq_ht = hl.filter_intervals(
-            freq_ht, [hl.parse_locus_interval("chr20:1-1000000")]
-        )
 
     logger.info("Loading annotation tables...")
     filters_ht = final_filter.ht()
@@ -154,38 +148,51 @@ def add_release_annotations(
     return ht
 
 
-def pre_process_subset_freq(subset: str, global_ht: hl.Table, test: bool) -> hl.Table:
+def pre_process_subset_freq(subset: str, global_ht: hl.Table, test: bool = False) -> hl.Table:
     """
-    Prepares individual frequency tables for subsets in the release.
+    Prepares subset frequency Table by filling in missing frequency fields for loci present only in the global cohort
 
-    This function will:
-    - Add identifying tags to the subset freq_meta globals
-    - Fill in missing frequency fields for loci present only in the global cohort
+    .. note:: The resulting final frequency array will be as long as the subset freq_meta global (i.e., one freq entry for each freq_meta entry)
 
-    :param subset: Subset ID
+    :param subset: subset ID
     :param global_ht: Hail Table containing all variants discovered in the overall release cohort
-    :param test: If True, read smaller test Hail Table created for specified subset
-    :return: Table containing subset frequencies with subset-tagged freq_meta global values and missing freq structs filled in
+    :param test: If True, filter to small region on chr20
+    :return: Table containing subset frequencies with missing freq structs filled in
     """
-    if test:
-        ht = hl.read_table(f"gs://gnomad-tmp/gnomad_freq/chr20_test_freq.{subset}.ht")
-    else:
-        ht = get_freq(subset=subset).ht()
 
-    # Keep all loci present in the global frequency HT table and fill in any missing frequency fields with an array of structs containing zero/null callstats data
-    # This array should be as long as the freq_meta (each array entry corresponds to a freq_meta entry)
-    new_ht = ht.join(global_ht.select().select_globals(), how="right")
-    new_ht = new_ht.annotate(
+    # Read in subset HTs
+    subset_ht_path = get_freq(subset=subset).path
+    subset_chr20_ht_path = qc_temp_prefix() + f"chr20_test_freq.{subset}.ht"
+
+    if test:
+        if file_exists(subset_chr20_ht_path):
+            subset_ht = hl.read_table(subset_chr20_ht_path)
+
+        elif file_exists(subset_ht_path):
+            subset_ht = hl.read_table(subset_ht_path)
+            subset_ht = hl.filter_intervals(subset_ht, [hl.parse_locus_interval("chr20:1-1000000")])
+
+    elif file_exists(subset_ht_path):
+        subset_ht = hl.read_table(subset_ht_path)
+
+    else:
+        raise DataException(
+            f"Hail Table containing {subset} subset frequencies not found. You may need to run the script to generate frequency annotations first."
+        )
+
+    # Fill in missing freq structs
+    ht = subset_ht.join(global_ht.select().select_globals(), how="right")
+    ht = ht.annotate(
         freq=hl.if_else(
-            hl.is_missing(new_ht.freq),
+            hl.is_missing(ht.freq),
             hl.map(
                 lambda x: null_callstats_expr(), hl.range(hl.len(ht.freq_meta))
             ),
-            new_ht.freq,
+            ht.freq,
         )
     )
 
-    return new_ht
+    return ht
 
 
 def make_freq_index_dict(freq_meta: List[Dict[str, str]]) -> Dict[str, int]:
@@ -219,77 +226,58 @@ def main(args):
     # The concatenated HT contains all subset frequency annotations, plus the overall cohort frequency annotations,
     # concatenated together in a single freq annotation ('freq')
 
-    if args.test:
-        test_freq_ht_path_concat = (
-            "gs://gnomad-tmp/gnomad_freq/chr20_test_freq.concatenated.ht"
-        )
-        test_freq_ht_path_global = "gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht"
+    # Load global frequency Table
+    if test:
+        global_freq_chr20_ht_path = 'gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht'
 
-        if file_exists(test_freq_ht_path_concat):
-            freq_ht = hl.read_table(test_freq_ht_path_concat)
+        if file_exists(global_freq_chr20_ht_path):
+            global_freq_ht = hl.read_table(global_freq_chr20_ht_path).select("freq").select_globals("freq_meta")
 
-        else:
-            logger.info("Concatenating subset frequencies on test data...")
-            if file_exists(test_freq_ht_path_global):
-                global_freq_ht = (
-                    hl.read_table(test_freq_ht_path_global)
-                    .select("freq")
-                    .select_globals("freq_meta")
-                )
-            else:
-                global_freq_ht = (
-                    hl.read_table(get_freq().path)
-                    .select("freq")
-                    .select_globals("freq_meta")
-                )
-                global_freq_ht = hl.filter_intervals(
-                    global_freq_ht, [hl.parse_locus_interval("chr20:1-1000000")]
-                )
-                global_freq_ht = global_freq_ht.checkpoint(test_freq_ht_path_global)
+        elif file_exists(get_freq().path):
+            global_freq_ht = hl.read_table(get_freq().path).select("freq").select_globals("freq_meta")
+            global_freq_ht = hl.filter_intervals(global_freq_ht, [hl.parse_locus_interval("chr20:1-1000000")])
 
-            # TODO: Create concatenated subset HT
-            freq_ht = freq_ht.checkpoint(test_freq_ht_path_concat)
+    elif file_exists(get_freq().path):
+        global_freq_ht = hl.read_table(get_freq().path).select("freq").select_globals("freq_meta")
 
     else:
-        logger.info("Concatenating subset frequencies...")
-        global_freq_ht = (
-            hl.read_table(get_freq().path).select("freq").select_globals("freq_meta")
+        raise DataException(
+            "Hail Table containing global callset frequencies not found. You may need to run the script to generate frequency annotations first."
         )
 
+    # Load subset frequency Table(s)
+    if args.test:
+        test_subsets = args.test_subsets
         subset_freq_hts = [
-            pre_process_subset_freq(subset, global_freq_ht, test=args.test)
+            pre_process_subset_freq(subset, global_freq_ht, test=True)
+            for subset in test_subsets
+        ]
+
+    else:
+        subset_freq_hts = [
+            pre_process_subset_freq(subset, global_freq_ht)
             for subset in SUBSETS
         ]
 
-        freq_ht = hl.Table.multi_way_zip_join(
-            [global_freq_ht] + subset_freq_hts,
-            data_field_name="freq",
-            global_field_name="freq_meta",
-        )
-        freq_ht = freq_ht.transmute(freq=freq_ht.freq.flatmap(lambda x: x.freq))
-        freq_ht = freq_ht.transmute_globals(
-            freq_meta=freq_ht.freq_meta.flatmap(lambda x: x.freq_meta)
-        )
+    logger.info("Concatenating subset frequencies...")
+    freq_ht = hl.Table.multi_way_zip_join(
+        [global_freq_ht] + subset_freq_hts,
+        data_field_name="freq",
+        global_field_name="freq_meta",
+    )
+    freq_ht = freq_ht.transmute(freq=freq_ht.freq.flatmap(lambda x: x.freq))
+    freq_ht = freq_ht.transmute_globals(
+        freq_meta=freq_ht.freq_meta.flatmap(lambda x: x.freq_meta)
+    )
 
-        # Create frequency index dictionary on concatenated array (i.e., including all subsets)
-        # NOTE: non-standard downsampling values are created in the frequency script corresponding to population totals, so new_downsampling values must be evaluated and included in the final freq_index_dict
-        freq_meta = hl.eval(freq_ht.freq_meta)
-        downsamplings = hl.filter(
-            lambda x: x.keys().contains("downsampling"), freq_meta
-        )
-        new_downsamplings = hl.set(
-            hl.map(lambda x: hl.int32(x["downsampling"]), downsamplings)
-        )
-        new_downsamplings_values = hl.eval(
-            new_downsamplings.difference(hl.set(DOWNSAMPLINGS))
-        )
-        DOWNSAMPLINGS.extend([x for x in new_downsamplings_values])
+    # Create frequency index dictionary on concatenated array (i.e., including all subsets)
+    # NOTE: non-standard downsampling values are created in the frequency script corresponding to population totals, so callset-specific DOWNSAMPLINGS must be used instead of the generic DOWNSAMPLING values
+    global_freq_ht = hl.read_table(get_freq().path)
+    DOWNSAMPLINGS = hl.eval(global_freq_ht.downsamplings)
 
-        freq_ht = freq_ht.annotate_globals(
-            freq_index_dict=make_freq_index_dict(freq_meta)
-        )
-
-        global_freq_ht = hl.read_table(get_freq().path)
+    freq_ht = freq_ht.annotate_globals(
+        freq_index_dict=make_freq_index_dict(freq_meta)
+    )
 
     # Add back in all global frequency annotations not present in concatenated frequencies HT
     row_fields = global_freq_ht.row_value.keys() - freq_ht.row_value.keys()
@@ -308,14 +296,14 @@ def main(args):
     )
 
     logger.info("Preparing release Table annotations...")
-    ht = add_release_annotations(freq_ht, test=False)
+    ht = add_release_annotations(freq_ht)
 
     logger.info("Removing chrM and sites without filter...")
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters))
 
     ht = ht.checkpoint(
-        "gs://gnomad-tmp/release/v3.1/gnomad.genomes.v3.1.sites.ht"
+        "gs://gnomad-tmp/release/v3.1/gnomad.genomes.v3.1.sites.chr20.ht"
         if args.test
         else release_ht_path(public=False),
         args.overwrite,
@@ -332,6 +320,9 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--test", help="Runs a test on chr20:1-1000000", action="store_true"
+    )
+    parser.add_argument(
+        "--test_subsets", help="Specify which subsets on which to run test, e.g. '--test_subsets non_v2 non_topmed'", default=SUBSETS, nargs='+',
     )
     parser.add_argument(
         "--n_partitions",
