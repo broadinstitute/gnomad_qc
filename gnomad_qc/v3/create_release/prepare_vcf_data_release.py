@@ -880,6 +880,15 @@ def main(args):
             logger.info("Reading in release HT...")
             ht = hl.read_table(release_ht_path())
             export_reference = build_export_reference()
+            ht = ht.rename({"locus": "locus_original"})
+            ht = ht.annotate(
+                locus=hl.locus(
+                    ht.locus_original.contig,
+                    ht.locus_original.position,
+                    reference_genome=export_reference
+                )
+            )
+            ht = ht.key_by("locus", "alleles").drop("locus_original")
 
             if chromosome:
                 ht = hl.filter_intervals(
