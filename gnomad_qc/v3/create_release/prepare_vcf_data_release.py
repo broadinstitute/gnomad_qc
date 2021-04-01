@@ -290,15 +290,17 @@ def ht_to_vcf_mt(
     return info_t
 
 
+#TODO: Modify gnomad_methods to take in a dict_hists
 def make_hist_dict(
-    bin_edges: Dict[str, Dict[str, str]], adj: bool, dict_hists: List[str] = HISTS
-) -> Dict[str, str]:  # Remove default HIST?
+    bin_edges: Dict[str, Dict[str, str]], adj: bool, dict_hists: List[str] = HISTS, label_delimiter: str = "_"
+) -> Dict[str, str]:
     """
     Generate dictionary of Number and Description attributes to be used in the VCF header, specifically for histogram annotations.
 
     :param bin_edges: Dictionary keyed by histogram annotation name, with corresponding string-reformatted bin edges for values.
     :param adj: Whether to create a header dict for raw or adj quality histograms.
     :param dict_hists: List of hists to build hist info dict for
+    :param label_delimiter: String used as delimiter when making group label combinations.
     :return: Dictionary keyed by VCF INFO annotations, where values are Dictionaries of Number and Description attributes.
     """
     header_hist_dict = {}
@@ -309,7 +311,7 @@ def make_hist_dict(
             hist = f"{hist}_raw"
 
         edges = bin_edges[hist]
-        hist_fields = hist.split("_")
+        hist_fields = hist.split(label_delimiter)
         hist_text = hist_fields[0].upper()
 
         if hist_fields[2] == "alt":
