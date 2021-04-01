@@ -47,6 +47,10 @@ VCF_INFO_DICT["QUALapprox"] = {
     "Number": "1",
     "Description": "Sum of PL[0] values; used to approximate the QUAL score",
 }
+VCF_INFO_DICT["AS_SB_TABLE"] = {
+    "Number": ".",
+    "Description": "Allele-specific forward/reverse read counts for strand bias tests",
+}
 
 # Add new site fields
 NEW_SITE_FIELDS = [
@@ -54,7 +58,23 @@ NEW_SITE_FIELDS = [
     "QUALapprox",
     "transmitted_singleton",
 ]
-SITE_FIELDS = SITE_FIELDS.extend(NEW_SITE_FIELDS)
+SITE_FIELDS.extend(NEW_SITE_FIELDS)
+AS_FIELDS.append("AS_SB_TABLE")
+
+
+def remove_fields_from_globals(global_field: List[str], fields_to_remove: List[str]):
+    """
+    Removes fields from the pre-defined global field variables.
+
+    :param global_field: Global list of fields
+    :param fields_to_remove: List of fields to remove from global (they must be in the global list)
+    """
+    for field in fields_to_remove:
+        if field in global_field:
+            global_field.remove(field)
+        else:
+            logger.info(f"'{field}'' missing from {global_field}")
+
 
 # Remove original alleles for containing non-releasable alleles
 MISSING_ALLELE_TYPE_FIELDS = ["original_alleles", "has_star"]
@@ -252,16 +272,17 @@ def ht_to_vcf_mt(
 
     if "AS_SB_TABLE" in info_ht.info:
         info_expr["AS_SB_TABLE"] = get_pipe_expr(
-            info_ht.info.AS_SB_TABLE.map(lambda x: hl.delimit(x, ","))
+            hl.array([info_ht.info.AS_SB_TABLE[:2], info_ht.info.AS_SB_TABLE[2:]]).map(lambda x: hl.delimit(x, ","))
         )
 
+    # Annotate with new expression
+    info_ht = info_ht.annotate(info=info_ht.info.annotate(**info_expr))
     info_t = info_ht
 
     if create_mt:
-        # Annotate with new expression and add 's' empty string field required to cast HT to MT
-        info_t = info_t.annotate(
-            info=info_t.info.annotate(**info_expr), s=hl.null(hl.tstr)
-        )
+        # Add 's' empty string field required to cast HT to MT
+        info_t = info_t.annotate(s=hl.null(hl.tstr))
+
         # Create an MT with no cols so that we can export to VCF
         info_t = info_t.to_matrix_table_row_major(columns=["s"], entry_field_name="s")
         info_t = info_t.filter_cols(False)
