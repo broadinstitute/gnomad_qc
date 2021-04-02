@@ -1,6 +1,4 @@
 import argparse
-import copy
-import itertools
 import logging
 import pickle
 from typing import Dict, List, Union
@@ -12,24 +10,26 @@ from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     DOWNSAMPLINGS,
     POPS,
-    REGION_FLAG_FIELDS,
     SEXES,
     SUBSETS,
 )
 from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
 from gnomad.utils.vcf import (
+    add_as_info_dict,
     ALLELE_TYPE_FIELDS,
     AS_FIELDS,
+    AS_VQSR_FIELDS,
     FAF_POPS,
     GROUPS,
     HISTS,
+    ht_to_vcf_mt,
     INFO_DICT,
-    INFO_VCF_AS_PIPE_DELIMITED_FIELDS,
-    make_combo_header_text,
     make_hist_bin_edges_expr,
     make_hist_dict,
-    make_label_combos,
-    SORT_ORDER,
+    make_info_dict,
+    make_vcf_filter_dict,
+    REGION_FLAG_FIELDS,
+    RF_FIELDS,
     SITE_FIELDS,
     VQSR_FIELDS,
 )
