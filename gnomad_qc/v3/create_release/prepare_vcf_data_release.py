@@ -16,7 +16,7 @@ from gnomad.resources.grch38.gnomad import (
     SEXES,
     SUBSETS,
 )
-from gnomad.utils.vep import vep_struct_to_csq, VEP_CSQ_HEADER
+from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
 from gnomad.utils.vcf import (
     ALLELE_TYPE_FIELDS,
     AS_FIELDS,
@@ -25,11 +25,15 @@ from gnomad.utils.vcf import (
     GROUPS,
     HISTS,
     INFO_DICT,
+    INFO_VCF_AS_PIPE_DELIMITED_FIELDS,
+    make_combo_header_text,
     make_hist_bin_edges_expr,
     make_combo_header_text,
     VQSR_FIELDS,
     INFO_VCF_AS_PIPE_DELIMITED_FIELDS,
     SORT_ORDER,
+    SITE_FIELDS,
+    VQSR_FIELDS,
 )
 from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
