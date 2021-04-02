@@ -8,11 +8,18 @@ from typing import Dict, List, Union
 import hail as hl
 
 from gnomad.sample_qc.ancestry import POP_NAMES
+from gnomad.resources.grch38.gnomad import (
+    COHORTS_WITH_POP_STORED_AS_SUBPOP,
+    DOWNSAMPLINGS,
+    POPS,
+    REGION_FLAG_FIELDS,
+    SEXES,
+    SUBSETS,
+)
 from gnomad.utils.vep import vep_struct_to_csq, VEP_CSQ_HEADER
 from gnomad.utils.vcf import (
     ALLELE_TYPE_FIELDS,
     AS_FIELDS,
-    RF_FIELDS,
     SITE_FIELDS,
     FAF_POPS,
     GROUPS,
@@ -20,11 +27,11 @@ from gnomad.utils.vcf import (
     INFO_DICT,
     make_hist_bin_edges_expr,
     make_combo_header_text,
-    REGION_FLAG_FIELDS,
     VQSR_FIELDS,
     INFO_VCF_AS_PIPE_DELIMITED_FIELDS,
     SORT_ORDER,
 )
+from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
 from gnomad_qc.v3.create_release.sanity_checks import (
     sanity_check_release_ht,
@@ -80,10 +87,6 @@ def remove_fields_from_globals(global_field: List[str], fields_to_remove: List[s
 MISSING_ALLELE_TYPE_FIELDS = ["original_alleles", "has_star"]
 remove_fields_from_globals(ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS)
 
-# Remove decoy from region field flag
-MISSING_REGION_FIELDS = ["decoy"]
-remove_fields_from_globals(REGION_FLAG_FIELDS, MISSING_REGION_FIELDS)
-
 # Remove BaseQRankSum and SOR from site fields (doesn't exist in v3.1)
 MISSING_SITES_FIELDS = ["BaseQRankSum", "SOR"]
 remove_fields_from_globals(SITE_FIELDS, MISSING_SITES_FIELDS)
@@ -92,93 +95,18 @@ remove_fields_from_globals(SITE_FIELDS, MISSING_SITES_FIELDS)
 MISSING_AS_FIELDS = ["AS_BaseQRankSum", "AS_VarDP"]
 remove_fields_from_globals(AS_FIELDS, MISSING_AS_FIELDS)
 
-# All missing fields to remove from vcf info dict
-MISSING_INFO_FIELDS = (
-    MISSING_ALLELE_TYPE_FIELDS
-    + MISSING_AS_FIELDS
-    + MISSING_REGION_FIELDS
-    + MISSING_SITES_FIELDS
-    + RF_FIELDS
-)
-
-SEXES = ["XX", "XY"]
-
 # Make subset list (used in properly filling out VCF header descriptions and naming VCF info fields)
-SUBSET_LIST = [
-    "controls_and_biobanks",
-    "non_cancer",
-    "non_neuro",
-    "non_topmed",
-    "non_v2",
-    "hgdp",
-    "tgp",
-]
-
-SUBSET_LIST_FOR_VCF = [
-    "controls_and_biobanks",
-    "non_cancer",
-    "non_neuro",
-    "non_topmed",
-    "non_v2",
-    "",
-]
-
-# Select populations to keep from the list of population names in POP_NAMES
-# This removes pop names we don't want to use
-# (e.g., "uniform", "consanguineous") to reduce clutter
-KEEP_POPS = ["afr", "ami", "amr", "asj", "eas", "fin", "nfe", "oth", "sas"]
+SUBSET_LIST_FOR_VCF = SUBSETS
+SUBSET_LIST_FOR_VCF.append("")
+remove_fields_from_globals(SUBSET_LIST_FOR_VCF, COHORTS_WITH_POP_STORED_AS_SUBPOP)
 
 # Remove unnecessary pop names from pops dict
-POPS = {pop: POP_NAMES[pop] for pop in KEEP_POPS}
-POPS["mid"] = "Middle Eastern"
+POPS = {pop: POP_NAMES[pop] for pop in POPS}
 
 # downsampling and subset entries to remove from VCF's freq export
-FREQ_ENTRIES_TO_REMOVE = [
-    "10",
-    "20",
-    "50",
-    "100",
-    "158",
-    "200",
-    "456",
-    "500",
-    "1000",
-    "1047",
-    "1736",
-    "2000",
-    "2419",
-    "2604",
-    "5000",
-    "5316",
-    "7647",
-    "10000",
-    "15000",
-    "20000",
-    "20744",
-    "25000",
-    "30000",
-    "34029",
-    "40000",
-    "60000",
-    "70000",
-    "75000",
-    "hgdp",
-    "tgp",
-]
+FREQ_ENTRIES_TO_REMOVE = DOWNSAMPLINGS + COHORTS_WITH_POP_STORED_AS_SUBPOP
 
-EXPORT_HISTS = [
-    "gq_hist_alt_bin_freq",
-    "gq_hist_all_bin_freq",
-    "dp_hist_alt_bin_freq",
-    "dp_hist_alt_n_larger",
-    "dp_hist_all_bin_freq",
-    "dp_hist_all_n_larger",
-    "ab_hist_alt_bin_freq",
-]
-
-INBREEDING_CUTOFF = -0.3
-
-ANALYST_ANOTATIONS_INFO_DICT = {
+ANALYST_ANNOTATIONS_INFO_DICT = {
     "cadd_raw_score": {
         "Number": "1",
         "Description": "Raw CADD scores are interpretable as the extent to which the annotation profile for a given variant suggests that the variant is likely to be 'observed' (negative values) vs 'simulated' (positive values). Larger values are more deleterious.",
@@ -642,12 +570,12 @@ def populate_info_dict(
     bin_edges: Dict[str, str],
     age_hist_data: str,
     info_dict: Dict[str, Dict[str, str]] = VCF_INFO_DICT,
-    subset_list: List[str] = SUBSET_LIST,
+    subset_list: List[str] = SUBSETS,
     groups: List[str] = GROUPS,
     pops: Dict[str, str] = POPS,
     faf_pops: List[str] = FAF_POPS,
     sexes: List[str] = SEXES,
-    analyst_dict: Dict[str, Dict[str, str]] = ANALYST_ANOTATIONS_INFO_DICT,
+    analyst_dict: Dict[str, Dict[str, str]] = ANALYST_ANNOTATIONS_INFO_DICT,
 ) -> Dict[str, Dict[str, str]]:
     """
     Calls `make_info_dict` and `make_hist_dict` to populate INFO dictionary with specific sexes, population names, and filtering allele frequency (faf) pops.
@@ -663,7 +591,7 @@ def populate_info_dict(
     :param Dict[str, str] bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
     :param str age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param Dict[str, Dict[str, str]] info_dict: INFO dict to be populated.
-    :param List[str] subset_list: List of sample subsets in dataset. Default is SUBSET_LIST.
+    :param List[str] subset_list: List of sample subsets in dataset. Default is SUBSETS.
     :param List[str] groups: List of sample groups [adj, raw]. Default is GROUPS.
     :param Dict[str, str] pops: List of sample global population names for gnomAD genomes. Default is POPS.
     :param List[str] faf_pops: List of faf population names. Default is FAF_POPS.
@@ -1009,7 +937,7 @@ def main(args):
             filter_dict = make_vcf_filter_dict(
                 hl.eval(ht.filtering_model.snv_cutoff.min_score),
                 hl.eval(ht.filtering_model.indel_cutoff.min_score),
-                inbreeding_cutoff=INBREEDING_CUTOFF,
+                inbreeding_cutoff=INBREEDING_COEFF_HARD_CUTOFF,
             )
 
             # Adjust keys to remove adj tags before exporting to VCF
@@ -1026,7 +954,7 @@ def main(args):
                 "filter": filter_dict,
             }
 
-            # TODO: CHANGE TO RESOUCE LOCATION
+            # TODO: CHANGE TO RESOURCE LOCATION
             logger.info("Saving header dict to pickle...")
             with hl.hadoop_open(
                     "gs://gnomad-mwilson/v3.1.1/release/vcf_header", "wb"
@@ -1034,9 +962,9 @@ def main(args):
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
         if args.sanity_check:
-            #TODO: MIGHT NEED TO ADD TO sanity_check_release_ht
+            #TODO: MIGHT NEED TO ADD TO sanity_check_release_ht, I think I had trouble with this somethimes, maybe needing to use or not use the reference_genome? will need to test
             sanity_check_release_ht(
-                ht, SUBSET_LIST, missingness_threshold=0.5, verbose=args.verbose, reference_genome=export_reference
+                ht, SUBSETS, missingness_threshold=0.5, verbose=args.verbose, reference_genome=export_reference
             )
 
         if args.export_vcf:
