@@ -941,7 +941,15 @@ def main(args):
                 logger.error("Did not pass VCF field check")
 
             logger.info("Adjusting VCF incompatiable types...")
-            ht = ht_to_vcf_mt(ht)
+            # Reformat AS_SB_TABLE for use in ht_to_vcf_mt
+            ht = ht.annotate(
+                info=ht.info.annotate(
+                    AS_SB_TABLE=hl.array(
+                        [ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]]
+                    )
+                )
+            )
+            ht = ht_to_vcf_mt(ht, create_mt=False)
 
             logger.info("Rearranging fields to desired order...")
             ht = ht.annotate(
