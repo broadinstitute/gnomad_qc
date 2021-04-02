@@ -95,6 +95,18 @@ SUBSET_LIST_FOR_VCF = SUBSETS
 SUBSET_LIST_FOR_VCF.append("")
 remove_fields_from_globals(SUBSET_LIST_FOR_VCF, COHORTS_WITH_POP_STORED_AS_SUBPOP)
 
+# Remove decoy from region field flag
+MISSING_REGION_FIELDS = ["decoy"]
+remove_fields_from_globals(REGION_FLAG_FIELDS, MISSING_REGION_FIELDS)
+
+# All missing fields to remove from vcf info dict
+MISSING_INFO_FIELDS = (
+    MISSING_ALLELE_TYPE_FIELDS
+    + MISSING_AS_FIELDS
+    + MISSING_REGION_FIELDS
+    + MISSING_SITES_FIELDS
+    + RF_FIELDS
+)
 # Remove unnecessary pop names from pops dict
 POPS = {pop: POP_NAMES[pop] for pop in POPS}
 
