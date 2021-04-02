@@ -20,7 +20,6 @@ from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
 from gnomad.utils.vcf import (
     ALLELE_TYPE_FIELDS,
     AS_FIELDS,
-    SITE_FIELDS,
     FAF_POPS,
     GROUPS,
     HISTS,
