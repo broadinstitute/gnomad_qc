@@ -108,7 +108,7 @@ POPS = {pop: POP_NAMES[pop] for pop in POPS}
 # downsampling and subset entries to remove from VCF's freq export
 FREQ_ENTRIES_TO_REMOVE = DOWNSAMPLINGS + COHORTS_WITH_POP_STORED_AS_SUBPOP
 
-ANALYST_ANNOTATIONS_INFO_DICT = {
+IN_SILICO_ANNOTATIONS_INFO_DICT = {
     "cadd_raw_score": {
         "Number": "1",
         "Description": "Raw CADD scores are interpretable as the extent to which the annotation profile for a given variant suggests that the variant is likely to be 'observed' (negative values) vs 'simulated' (positive values). Larger values are more deleterious.",
@@ -495,29 +495,31 @@ def populate_info_dict(
     pops: Dict[str, str] = POPS,
     faf_pops: List[str] = FAF_POPS,
     sexes: List[str] = SEXES,
-    analyst_dict: Dict[str, Dict[str, str]] = ANALYST_ANNOTATIONS_INFO_DICT,
+    in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
+    label_delimiter="-",
 ) -> Dict[str, Dict[str, str]]:
     """
-    Calls `make_info_dict` and `make_hist_dict` to populate INFO dictionary with specific sexes, population names, and filtering allele frequency (faf) pops.
+    Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary with specific sexes, population names, and filtering allele frequency (faf) pops.
+
     Used during VCF export.
+
     Creates:
         - INFO fields for age histograms (bin freq, n_smaller, and n_larger for heterozygous and homozygous variant carriers)
         - INFO fields for popmax AC, AN, AF, nhomalt, and popmax population
         - INFO fields for AC, AN, AF, nhomalt for each combination of sample population, sex both for adj and raw data
         - INFO fields for filtering allele frequency (faf) annotations
         - INFO fields for variant histograms (hist_bin_freq, hist_n_smaller, hist_n_larger for each histogram)
-    :param Dict[str, List[str]] subpops: Dictionary of global population names (keys)
-        and all hybrid population cluster names associated with that global pop (values).
-    :param Dict[str, str] bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
-    :param str age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
-    :param Dict[str, Dict[str, str]] info_dict: INFO dict to be populated.
-    :param List[str] subset_list: List of sample subsets in dataset. Default is SUBSETS.
-    :param List[str] groups: List of sample groups [adj, raw]. Default is GROUPS.
-    :param Dict[str, str] pops: List of sample global population names for gnomAD genomes. Default is POPS.
-    :param List[str] faf_pops: List of faf population names. Default is FAF_POPS.
-    :param List[str] sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
 
-    :rtype: Dict[str, Dict[str, str]]
+    :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
+    :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
+    :param info_dict: INFO dict to be populated.
+    :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
+    :param groups: List of sample groups [adj, raw]. Default is GROUPS.
+    :param pops: List of sample global population names for gnomAD genomes. Default is POPS.
+    :param faf_pops: List of faf population names. Default is FAF_POPS.
+    :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
+    :param in_silico_dict: Dictionary of in silico predictor score descriptions.
+    :return: Updated INFO dictionary for VCF export.
     """
     vcf_info_dict = info_dict.copy()
 
@@ -587,7 +589,7 @@ def populate_info_dict(
     vcf_info_dict.update(make_hist_dict(bin_edges, adj=True, label_delimiter="-"))
 
     # Add Analyst annotations to info_dict
-    vcf_info_dict.update(analyst_dict)
+    vcf_info_dict.update(in_silico_dict)
 
     return vcf_info_dict
 
