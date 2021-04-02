@@ -521,6 +521,7 @@ def main(args):
                 hl.eval(ht.filtering_model.snv_cutoff.min_score),
                 hl.eval(ht.filtering_model.indel_cutoff.min_score),
                 inbreeding_cutoff=INBREEDING_COEFF_HARD_CUTOFF,
+                variant_qc_filter="AS_VQSR",
             )
 
             # Adjust keys to remove adj tags before exporting to VCF
