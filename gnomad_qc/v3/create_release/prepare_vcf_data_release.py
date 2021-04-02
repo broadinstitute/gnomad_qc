@@ -40,6 +40,14 @@ from gnomad_qc.v3.create_release.sanity_checks import (
     vcf_field_check,
 )
 
+# TODO: Uncomment when this resource goes in
+# from gnomad_qc.v3.resources.release import release_sites
+from gnomad_qc.v3.utils import (
+    build_export_reference,
+    rekey_new_reference,
+    remove_fields_from_globals,
+)
+
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
@@ -69,21 +77,6 @@ NEW_SITE_FIELDS = [
 ]
 SITE_FIELDS.extend(NEW_SITE_FIELDS)
 AS_FIELDS.append("AS_SB_TABLE")
-
-
-def remove_fields_from_globals(global_field: List[str], fields_to_remove: List[str]):
-    """
-    Removes fields from the pre-defined global field variables.
-
-    :param global_field: Global list of fields
-    :param fields_to_remove: List of fields to remove from global (they must be in the global list)
-    """
-    for field in fields_to_remove:
-        if field in global_field:
-            global_field.remove(field)
-        else:
-            logger.info(f"'{field}'' missing from {global_field}")
-
 
 # Remove original alleles for containing non-releasable alleles
 MISSING_ALLELE_TYPE_FIELDS = ["original_alleles", "has_star"]
