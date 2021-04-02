@@ -417,10 +417,10 @@ def main(args):
         tmp_dir="hdfs:///vcf_write.tmp/",
     )
     try:
+        chromosome = args.export_chromosome
 
         if args.prepare_vcf_ht:
-            chromosome = args.export_chromosome
-            logger.info("Starting VCF process...")
+            logger.info("Starting preparation of VCF HT...")
             logger.info("Reading in release HT...")
             ht = hl.read_table(
                 release_ht_path()
@@ -437,8 +437,6 @@ def main(args):
                         )
                     ],
                 )
-                #TODO: MAKE this smaller test an option!!!
-                # ht = ht._filter_partitions(range(1))
 
             if args.test:
                 logger.info("Filtering to 5 partitions on chr20, chrX, and chrY (for tests only)...")
