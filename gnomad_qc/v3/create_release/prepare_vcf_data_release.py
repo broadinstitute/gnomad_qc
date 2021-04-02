@@ -27,9 +27,8 @@ from gnomad.utils.vcf import (
     INFO_VCF_AS_PIPE_DELIMITED_FIELDS,
     make_combo_header_text,
     make_hist_bin_edges_expr,
-    make_combo_header_text,
-    VQSR_FIELDS,
-    INFO_VCF_AS_PIPE_DELIMITED_FIELDS,
+    make_hist_dict,
+    make_label_combos,
     SORT_ORDER,
     SITE_FIELDS,
     VQSR_FIELDS,
@@ -219,55 +218,6 @@ def ht_to_vcf_mt(
         info_t = info_t.filter_cols(False)
 
     return info_t
-
-
-#TODO: Modify gnomad_methods to take in a dict_hists
-def make_hist_dict(
-    bin_edges: Dict[str, Dict[str, str]], adj: bool, dict_hists: List[str] = HISTS, label_delimiter: str = "_"
-) -> Dict[str, str]:
-    """
-    Generate dictionary of Number and Description attributes to be used in the VCF header, specifically for histogram annotations.
-
-    :param bin_edges: Dictionary keyed by histogram annotation name, with corresponding string-reformatted bin edges for values.
-    :param adj: Whether to create a header dict for raw or adj quality histograms.
-    :param dict_hists: List of hists to build hist info dict for
-    :param label_delimiter: String used as delimiter when making group label combinations.
-    :return: Dictionary keyed by VCF INFO annotations, where values are Dictionaries of Number and Description attributes.
-    """
-    header_hist_dict = {}
-    for hist in dict_hists:
-        # Get hists for both raw and adj data
-        # Add "_raw" to quality histograms calculated on raw data
-        if not adj:
-            hist = f"{hist}_raw"
-
-        edges = bin_edges[hist]
-        hist_fields = hist.split(label_delimiter)
-        hist_text = hist_fields[0].upper()
-
-        if hist_fields[2] == "alt":
-            hist_text = hist_text + " in heterozygous individuals"
-        if adj:
-            hist_text = hist_text + " calculated on high quality genotypes"
-
-        hist_dict = {
-            f"{hist}_bin_freq": {
-                "Number": "A",
-                "Description": f"Histogram for {hist_text}; bin edges are: {edges}",
-            },
-            f"{hist}_n_smaller": {
-                "Number": "A",
-                "Description": f"Count of {hist_fields[0].upper()} values falling below lowest histogram bin edge {hist_text}",
-            },
-            f"{hist}_n_larger": {
-                "Number": "A",
-                "Description": f"Count of {hist_fields[0].upper()} values falling above highest histogram bin edge {hist_text}",
-            },
-        }
-
-        header_hist_dict.update(hist_dict)
-
-    return header_hist_dict
 
 
 def make_info_dict(
@@ -667,7 +617,7 @@ def populate_info_dict(
     )
 
     # Add variant quality histograms to info dict
-    vcf_info_dict.update(make_hist_dict(bin_edges, adj=True))
+    vcf_info_dict.update(make_hist_dict(bin_edges, adj=True, label_delimiter="-"))
 
     # Add Analyst annotations to info_dict
     vcf_info_dict.update(analyst_dict)
