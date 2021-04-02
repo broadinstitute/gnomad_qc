@@ -180,12 +180,16 @@ def populate_info_dict(
     )
 
     def _create_label_groups(
-        pops: Dict[str, str], sexes: List[str], group: List[str] = ["adj"],
+        pops: Union[Dict[str, str], List[str]],
+        sexes: List[str],
+        group: List[str] = ["adj"],
     ) -> List[Dict[str, List[str]]]:
         """
         Generates list of label group dictionaries needed to populate info dictionary.
+
         Label dictionaries are passed as input to `make_info_dict`.
-        :param Dict[str, str] pops: List of population names.
+
+        :param Union[Dict[str, str], List[str]] pops: Dict or list of population names.
         :param List[str] sexes: List of sample sexes.
         :param List[str] group: List of data types (adj, raw). Default is ["adj"].
         :return: List of label group dictionaries.
@@ -216,7 +220,11 @@ def populate_info_dict(
     for label_group in faf_label_groups:
         vcf_info_dict.update(
             make_info_dict(
-                prefix="", pop_names=pops, label_groups=label_group, faf=True,
+                prefix="",
+                pop_names=pops,
+                label_groups=label_group,
+                label_delimiter=label_delimiter,
+                faf=True,
             )
         )
 
@@ -230,7 +238,9 @@ def populate_info_dict(
     )
 
     # Add variant quality histograms to info dict
-    vcf_info_dict.update(make_hist_dict(bin_edges, adj=True, label_delimiter="-"))
+    vcf_info_dict.update(
+        make_hist_dict(bin_edges, adj=True, label_delimiter=label_delimiter)
+    )
 
     # Add Analyst annotations to info_dict
     vcf_info_dict.update(in_silico_dict)
@@ -240,21 +250,26 @@ def populate_info_dict(
 
 def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expression]:
     """
-    Makes Hail expression for variant annotations to be included in VCF INFO field.
+    Make Hail expression for variant annotations to be included in VCF INFO field.
+
     :param Table/MatrixTable t: Table/MatrixTable containing variant annotations to be reformatted for VCF export.
     :return: Dictionary containing Hail expressions for relevant INFO annotations.
     :rtype: Dict[str, hl.expr.Expression]
     """
     vcf_info_dict = {}
+    # TODO: Why changed to release_ht_info instead of info
     # Add site-level annotations to vcf_info_dict
     for field in SITE_FIELDS:
         vcf_info_dict[field] = t["release_ht_info"][f"{field}"]
+
     # Add AS annotations to info dict
     for field in AS_FIELDS:
         vcf_info_dict[field] = t["release_ht_info"][f"{field}"]
     for field in VQSR_FIELDS:
         vcf_info_dict[field] = t["vqsr"][f"{field}"]
+
     # Add region_flag and allele_info fields to info dict
+    # TODO: Check with Mike to see what the reason is for not having same ordering as UKBB
     for field in ALLELE_TYPE_FIELDS:
         vcf_info_dict[field] = t["allele_info"][f"{field}"]
     for field in REGION_FLAG_FIELDS:
@@ -294,7 +309,7 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
 
 
 def unfurl_nested_annotations(
-        t: Union[hl.MatrixTable, hl.Table], pops: List[str], entries_to_remove: List[str] = None
+    t: Union[hl.MatrixTable, hl.Table], entries_to_remove: List[str] = None,
 ) -> Dict[str, hl.expr.Expression]:
     """
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the values
@@ -474,7 +489,6 @@ def main(args):
             #   info struct (site and allele-specific annotations),
             #   region_flag struct, and
             #   raw_qual_hists/qual_hists structs.
-
             ht = ht.annotate(info=ht.info.annotate(**make_info_expr(ht)))
 
             # Reformat vep annotation
@@ -496,8 +510,11 @@ def main(args):
             ht = ht.select("info", "filters", "rsid")
             vcf_info_dict.update({"vep": {"Description": hl.eval(ht.vep_csq_header)}})
 
-            #TODO: ADD TO RESOURCES, but this checkpoint really helps for export!
-            ht = ht.checkpoint(f"gs://gnomad-tmp/gnomad_v3.1_vcfs/vcf_ht_checkpoint_chr_all.ht", overwrite=True)
+            # TODO: ADD TO RESOURCES, but this checkpoint really helps for export!
+            ht = ht.checkpoint(
+                f"gs://gnomad-tmp/gnomad_v3.1_vcfs/vcf_ht_checkpoint_chr_all.ht",
+                overwrite=True,
+            )
 
             # Make filter dict
             filter_dict = make_vcf_filter_dict(
@@ -523,23 +540,27 @@ def main(args):
             # TODO: CHANGE TO RESOURCE LOCATION
             logger.info("Saving header dict to pickle...")
             with hl.hadoop_open(
-                    "gs://gnomad-mwilson/v3.1.1/release/vcf_header", "wb"
+                "gs://gnomad-mwilson/v3.1.1/release/vcf_header", "wb"
             ) as p:
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
         if args.sanity_check:
-            #TODO: MIGHT NEED TO ADD TO sanity_check_release_ht, I think I had trouble with this somethimes, maybe needing to use or not use the reference_genome? will need to test
+            # TODO: MIGHT NEED TO ADD TO sanity_check_release_ht, I think I had trouble with this somethimes, maybe needing to use or not use the reference_genome? will need to test
             sanity_check_release_ht(
-                ht, SUBSETS, missingness_threshold=0.5, verbose=args.verbose, reference_genome=export_reference
+                ht,
+                SUBSETS,
+                missingness_threshold=0.5,
+                verbose=args.verbose,
+                reference_genome=export_reference,
             )
 
         if args.export_vcf:
-            chromosome = args.export_chromosome
-            #TODO: AGAIN ADD TO RESOURCES FOR BOTH BELOW
-            ht = hl.read_table(f"gs://gnomad-tmp/gnomad_v3.1_vcfs/vcf_ht_checkpoint_chr_all.ht")
+            # TODO: AGAIN ADD TO RESOURCES FOR BOTH BELOW
+            ht = hl.read_table(
+                f"gs://gnomad-tmp/gnomad_v3.1_vcfs/vcf_ht_checkpoint_chr_all.ht"
+            )
             with hl.hadoop_open(
-                    "gs://gnomad-mwilson/v3.1.1/release/vcf_header",
-                    "rb",
+                "gs://gnomad-mwilson/v3.1.1/release/vcf_header", "rb",
             ) as f:
                 header_dict = pickle.load(f)
 
@@ -615,7 +636,7 @@ def main(args):
             )
             ht.describe()
             logger.info(f"Export chromosome {chromosome}....")
-            #TODO: ADD BOTH PATHS BELOW TO RESOURCES!!
+            # TODO: ADD BOTH PATHS BELOW TO RESOURCES!!
             hl.export_vcf(
                 ht,
                 f"gs://gnomad/release/3.1.1/vcf/genomes/gnomad.genomes.v3.1.1.sites.{chromosome}.vcf.bgz",
@@ -626,7 +647,7 @@ def main(args):
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        #TODO: ADD TO RESOURCES!
+        # TODO: ADD TO RESOURCES!
         hl.copy_log("gs://gnomad-mwilson/logs/v3.1.1/vcf_export.log")
 
 
