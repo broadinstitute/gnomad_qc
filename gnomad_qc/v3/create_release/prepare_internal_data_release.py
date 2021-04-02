@@ -195,11 +195,12 @@ def pre_process_subset_freq(subset: str, global_ht: hl.Table, test: bool = False
     return ht
 
 
-def make_freq_index_dict(freq_meta: List[Dict[str, str]]) -> Dict[str, int]:
+def make_freq_index_dict(freq_meta: List[Dict[str, str]], downsamplings: List[int]) -> Dict[str, int]:
     """
     Creates a look-up Dictionary for entries contained in the frequency annotation array.
 
     :param List of Dict freq_meta: Global annotation continaing the set of groupings for each element of the freq array (e.g., [{'group': 'adj'}, {'group': 'adj', 'pop': 'nfe'}])
+    :param downsamplings: List of downsampling cohort sizes present in global frequency array
     :return: Dictionary keyed by the grouping combinations found in the frequency array, where values are the corresponding 0-based indices for the groupings in the freq_meta array
     :rtype: Dict of str: int
     """
@@ -209,7 +210,7 @@ def make_freq_index_dict(freq_meta: List[Dict[str, str]]) -> Dict[str, int]:
         **index_globals(freq_meta, dict(group=GROUPS, pop=POPS)),
         **index_globals(freq_meta, dict(group=GROUPS, sex=SEXES)),
         **index_globals(freq_meta, dict(group=GROUPS, pop=POPS, sex=SEXES)),
-        **index_globals(freq_meta, dict(downsampling=DOWNSAMPLINGS, group=["adj"], pop=POPS)),
+        **index_globals(freq_meta, dict(downsampling=downsamplings, group=["adj"], pop=POPS)),
         **index_globals(freq_meta, dict(group=GROUPS, subset=SUBSETS)),
         **index_globals(freq_meta, dict(group=GROUPS, subset=SUBSETS, pop=POPS)),
         **index_globals(freq_meta, dict(group=GROUPS, subset=SUBSETS, sex=SEXES)),
@@ -227,7 +228,7 @@ def main(args):
     # concatenated together in a single freq annotation ('freq')
 
     # Load global frequency Table
-    if test:
+    if args.test:
         global_freq_chr20_ht_path = 'gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht'
 
         if file_exists(global_freq_chr20_ht_path):
@@ -273,10 +274,8 @@ def main(args):
     # Create frequency index dictionary on concatenated array (i.e., including all subsets)
     # NOTE: non-standard downsampling values are created in the frequency script corresponding to population totals, so callset-specific DOWNSAMPLINGS must be used instead of the generic DOWNSAMPLING values
     global_freq_ht = hl.read_table(get_freq().path)
-    DOWNSAMPLINGS = hl.eval(global_freq_ht.downsamplings)
-
     freq_ht = freq_ht.annotate_globals(
-        freq_index_dict=make_freq_index_dict(freq_meta)
+        freq_index_dict=make_freq_index_dict(hl.eval(freq_ht.freq_meta), hl.eval(global_freq_ht.downsamplings))
     )
 
     # Add back in all global frequency annotations not present in concatenated frequencies HT
