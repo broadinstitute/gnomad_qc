@@ -182,7 +182,7 @@ def populate_info_dict(
     """
     vcf_info_dict = info_dict.copy()
 
-    # Remove MISSING_REGION_FIELDS from info dict
+    # Remove MISSING_INFO_FIELDS from info dict
     for field in MISSING_INFO_FIELDS:
         vcf_info_dict.pop(field, None)
 
@@ -208,7 +208,7 @@ def populate_info_dict(
         :rtype: List[Dict[str, List[str]]]
         """
         return [
-            dict(group=groups),  # this is to capture high level raw fields
+            dict(group=groups),  # this is to capture raw fields
             dict(group=group, sex=sexes),
             dict(group=group, pop=pops),
             dict(group=group, pop=pops, sex=sexes),
@@ -306,7 +306,7 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
             }
             vcf_info_dict.update(hist_dict)
 
-    # Add analyst annotations to info dict
+    # Add in silico annotations to info dict
     vcf_info_dict["cadd_raw_score"] = t["cadd"]["raw_score"]
     vcf_info_dict["cadd_phred"] = t["cadd"]["phred"]
 
@@ -327,10 +327,9 @@ def unfurl_nested_annotations(
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the values
     of the dictionary are Hail Expressions describing how to access the corresponding values.
 
-    :param Table/MatrixTable t: Table/MatrixTable containing the nested variant annotation arrays to be unfurled.
-    :param List[str] pops: List of global populations in frequency array.
+    :param t: Table/MatrixTable containing the nested variant annotation arrays to be unfurled.
+    :param entries_to_remove: Frequency entries to remove for vcf_export.
     :return: Dictionary containing variant annotations and their corresponding values.
-    :rtype: Dict[str, hl.expr.Expression]
     """
     expr_dict = dict()
 
