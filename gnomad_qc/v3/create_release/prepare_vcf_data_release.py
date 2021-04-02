@@ -174,12 +174,9 @@ def populate_info_dict(
     for field in MISSING_INFO_FIELDS:
         vcf_info_dict.pop(field, None)
 
-    # Add allele-specific fields to info dict, including AS_VQSLOD and AS_culprit
-    # NOTE: need to think about how to resolve AS VQSR fields to avoid having to make temp_AS_fields variable in the future
-    temp_AS_fields = AS_FIELDS.copy()
-    temp_AS_fields.extend(["AS_culprit", "AS_VQSLOD"])
+    # Add allele-specific fields to info dict, including AS_VQSR_FIELDS
     vcf_info_dict.update(
-        add_as_info_dict(info_dict=info_dict, as_fields=temp_AS_fields)
+        add_as_info_dict(info_dict=info_dict, as_fields=AS_FIELDS + AS_VQSR_FIELDS)
     )
 
     def _create_label_groups(
