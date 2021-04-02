@@ -439,22 +439,35 @@ def main(args):
                 # ht = ht._filter_partitions(range(1))
 
             if args.test:
-                logger.info("Filtering to chr20, chrX, and chrY (for tests only)...")
-                # Using chr20 to test a small autosome and chrX/chrY to test sex chromosomes
-                ht = hl.filter_intervals(
+                logger.info("Filtering to 5 partitions on chr20, chrX, and chrY (for tests only)...")
+                ht_chr20 = hl.filter_intervals(
                     ht,
                     [
                         hl.parse_locus_interval(
                             "chr20", reference_genome=export_reference
                         ),
+                    ],
+                )
+                ht_chr20 = ht_chr20._filter_partitions(range(5))
+                ht_chrx = hl.filter_intervals(
+                    ht,
+                    [
                         hl.parse_locus_interval(
                             "chrX", reference_genome=export_reference
                         ),
+                    ],
+                )
+                ht_chrx = ht_chrx._filter_partitions(range(5))
+                ht_chry = hl.filter_intervals(
+                    ht,
+                    [
                         hl.parse_locus_interval(
                             "chrY", reference_genome=export_reference
                         ),
                     ],
                 )
+                ht_chry = ht_chry._filter_partitions(range(5))
+                ht = ht_chr20.union(ht_chrx, ht_chry)
 
             logger.info("Making histogram bin edges...")
             bin_edges = make_hist_bin_edges_expr(ht, prefix="")
