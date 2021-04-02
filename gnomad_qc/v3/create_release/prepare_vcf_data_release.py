@@ -224,6 +224,7 @@ def populate_info_dict(
                     prefix=subset,
                     pop_names=pops,
                     label_groups=label_group,
+                    label_delimiter=label_delimiter,
                     description_text=description_text,
                 )
             )
@@ -243,6 +244,7 @@ def populate_info_dict(
     vcf_info_dict.update(
         make_info_dict(
             prefix="",
+            label_delimiter=label_delimiter,
             bin_edges=bin_edges,
             popmax=True,
             age_hist_data="|".join(str(x) for x in age_hist_data),
