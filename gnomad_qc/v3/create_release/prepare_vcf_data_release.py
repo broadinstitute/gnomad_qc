@@ -422,7 +422,9 @@ def main(args):
             chromosome = args.export_chromosome
             logger.info("Starting VCF process...")
             logger.info("Reading in release HT...")
-            ht = hl.read_table(release_ht_path())
+            ht = hl.read_table(
+                release_ht_path()
+            )  # TODO: Change to release_sites().ht()
             export_reference = build_export_reference()
             ht = rekey_new_reference(ht, export_reference)
 
