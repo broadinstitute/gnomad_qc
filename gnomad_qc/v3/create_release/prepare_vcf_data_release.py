@@ -42,6 +42,7 @@ from gnomad_qc.v3.create_release.sanity_checks import (
 
 # TODO: Uncomment when this resource goes in
 # from gnomad_qc.v3.resources.release import release_sites
+from gnomad_qc.v3.resources.release import append_to_vcf_header_path, release_header_path, release_vcf_path
 from gnomad_qc.v3.utils import (
     build_export_reference,
     rekey_new_reference,
@@ -526,11 +527,11 @@ def main(args):
             ht = ht.select("info", "filters", "rsid")
             vcf_info_dict.update({"vep": {"Description": hl.eval(ht.vep_csq_header)}})
 
-            # TODO: ADD TO RESOURCES, but this checkpoint really helps for export!
-            ht = ht.checkpoint(
-                f"gs://gnomad-tmp/gnomad_v3.1_vcfs/vcf_ht_checkpoint_chr_all.ht",
-                overwrite=True,
-            )
+            # Note: This checkpoint helps save time for export
+            if args.test:
+                ht = ht.checkpoint(get_checkpoint_path("vcf_prep_test"), overwrite=True)
+            else:
+                ht = ht.checkpoint(get_checkpoint_path("vcf_prep"), overwrite=True)
 
             # Make filter dict
             filter_dict = make_vcf_filter_dict(
@@ -557,9 +558,21 @@ def main(args):
             # TODO: CHANGE TO RESOURCE LOCATION
             logger.info("Saving header dict to pickle...")
             with hl.hadoop_open(
-                "gs://gnomad-mwilson/v3.1.1/release/vcf_header", "wb"
+                release_header_path(), "wb"
             ) as p:
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
+
+        if args.sanity_check or args.export_vcf:
+            if args.test:
+                cp_file_name = "vcf_prep_test"
+            else:
+                cp_file_name = "vcf_prep"
+
+            if not file_exists(get_checkpoint_path(cp_file_name)):
+                raise DataException(
+                    "The intermediate HT output doesn't exist, 'prepare_vcf_ht' needs to be run to create this file"
+                )
+            ht = hl.read_table(get_checkpoint_path(cp_file_name))
 
         if args.sanity_check:
             # TODO: MIGHT NEED TO ADD TO sanity_check_release_ht, I think I had trouble with this somethimes, maybe needing to use or not use the reference_genome? will need to test
@@ -652,20 +665,24 @@ def main(args):
                 )
             )
             ht.describe()
+
             logger.info(f"Export chromosome {chromosome}....")
-            # TODO: ADD BOTH PATHS BELOW TO RESOURCES!!
+            if args.test:
+                output_path = f"{qc_temp_prefix}/gnomad.genomes_vcf_test.vcf.bgz"
+            else:
+                output_path = release_vcf_path(contig=chromosome)
+
             hl.export_vcf(
                 ht,
-                f"gs://gnomad/release/3.1.1/vcf/genomes/gnomad.genomes.v3.1.1.sites.{chromosome}.vcf.bgz",
-                append_to_header="gs://gnomad/release/3.1.1/vcf/genomes/extra_fields_for_header.tsv",
+                output_path,
+                append_to_header=append_to_vcf_header_path(),
                 metadata=header_dict,
                 tabix=True,
             )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        # TODO: ADD TO RESOURCES!
-        hl.copy_log("gs://gnomad-mwilson/logs/v3.1.1/vcf_export.log")
+        hl.copy_log(f"{qc_temp_prefix}/logs/vcf_export.log")
 
 
 if __name__ == "__main__":
