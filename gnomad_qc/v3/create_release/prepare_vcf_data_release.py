@@ -45,7 +45,11 @@ from gnomad_qc.v3.create_release.sanity_checks import (
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
 # TODO: Uncomment when this resource goes in
 # from gnomad_qc.v3.resources.release import release_sites
-from gnomad_qc.v3.resources.release import append_to_vcf_header_path, release_header_path, release_vcf_path
+from gnomad_qc.v3.resources.release import (
+    append_to_vcf_header_path,
+    release_header_path,
+    release_vcf_path,
+)
 from gnomad_qc.v3.utils import (
     build_export_reference,
     rekey_new_reference,
@@ -428,10 +432,11 @@ def main(args):
             ht = hl.read_table(
                 release_ht_path()
             )  # TODO: Change to release_sites().ht()
-            ht = rekey_new_reference(ht, export_reference)
 
             if args.test:
-                logger.info("Filtering to 5 partitions on chr20, chrX, and chrY (for tests only)...")
+                logger.info(
+                    "Filtering to 5 partitions on chr20, chrX, and chrY (for tests only)..."
+                )
                 ht_chr20 = hl.filter_intervals(
                     ht,
                     [
@@ -460,6 +465,8 @@ def main(args):
                 )
                 ht_chry = ht_chry._filter_partitions(range(5))
                 ht = ht_chr20.union(ht_chrx, ht_chry)
+
+            ht = rekey_new_reference(ht, export_reference)
 
             logger.info("Making histogram bin edges...")
             bin_edges = make_hist_bin_edges_expr(ht, prefix="")
@@ -547,9 +554,7 @@ def main(args):
             }
 
             logger.info("Saving header dict to pickle...")
-            with hl.hadoop_open(
-                release_header_path(), "wb"
-            ) as p:
+            with hl.hadoop_open(release_header_path(), "wb") as p:
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
         if args.sanity_check or args.export_vcf:
@@ -580,7 +585,9 @@ def main(args):
 
             if chromosome:
                 if args.test:
-                    raise ValueError("chromosome argument doesn't work with the test flag.")
+                    raise ValueError(
+                        "chromosome argument doesn't work with the test flag."
+                    )
 
                 ht = hl.filter_intervals(
                     ht,
