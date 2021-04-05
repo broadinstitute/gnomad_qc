@@ -3,7 +3,8 @@ from typing import Dict, List, Optional
 
 import hail as hl
 
-from gnomad_qc.v3.prepare_vcf_data_release import make_label_combos
+from gnomad.utils.vcf import make_label_combos
+#from gnomad_qc.v3.prepare_vcf_data_release import make_label_combos
 from gnomad.assessment.sanity_checks import (
     generic_field_check,
     make_filters_sanity_check_expr,
@@ -446,7 +447,7 @@ def sample_sum_check(
     if prefix != "":
         prefix += "-"
 
-    label_combos = make_label_combos(label_groups)
+    label_combos = make_label_combos(label_groups, label_delimiter="-")
     combo_AC = [ht.info[f"AC-{prefix}{x}"] for x in label_combos]
     combo_AN = [ht.info[f"AN-{prefix}{x}"] for x in label_combos]
     combo_nhomalt = [ht.info[f"nhomalt-{prefix}{x}"] for x in label_combos]
