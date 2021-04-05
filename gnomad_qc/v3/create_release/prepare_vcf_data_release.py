@@ -13,6 +13,8 @@ from gnomad.resources.grch38.gnomad import (
     SEXES,
     SUBSETS,
 )
+from gnomad.resources.resource_utils import DataException
+from gnomad.utils.file_utils import file_exists
 from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
 from gnomad.utils.vcf import (
     add_as_info_dict,
@@ -40,6 +42,7 @@ from gnomad_qc.v3.create_release.sanity_checks import (
     vcf_field_check,
 )
 
+from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
 # TODO: Uncomment when this resource goes in
 # from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v3.resources.release import append_to_vcf_header_path, release_header_path, release_vcf_path
@@ -272,7 +275,6 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
     :rtype: Dict[str, hl.expr.Expression]
     """
     vcf_info_dict = {}
-    # TODO: Why changed to release_ht_info instead of info
     # Add site-level annotations to vcf_info_dict
     for field in SITE_FIELDS:
         vcf_info_dict[field] = t["release_ht_info"][f"{field}"]
@@ -284,7 +286,6 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
         vcf_info_dict[field] = t["vqsr"][f"{field}"]
 
     # Add region_flag and allele_info fields to info dict
-    # TODO: Check with Mike to see what the reason is for not having same ordering as UKBB
     for field in ALLELE_TYPE_FIELDS:
         vcf_info_dict[field] = t["allele_info"][f"{field}"]
     for field in REGION_FLAG_FIELDS:
@@ -419,6 +420,7 @@ def main(args):
     )
     try:
         chromosome = args.export_chromosome
+        export_reference = build_export_reference()
 
         if args.prepare_vcf_ht:
             logger.info("Starting preparation of VCF HT...")
@@ -426,18 +428,7 @@ def main(args):
             ht = hl.read_table(
                 release_ht_path()
             )  # TODO: Change to release_sites().ht()
-            export_reference = build_export_reference()
             ht = rekey_new_reference(ht, export_reference)
-
-            if chromosome:
-                ht = hl.filter_intervals(
-                    ht,
-                    [
-                        hl.parse_locus_interval(
-                            chromosome, reference_genome=export_reference
-                        )
-                    ],
-                )
 
             if args.test:
                 logger.info("Filtering to 5 partitions on chr20, chrX, and chrY (for tests only)...")
@@ -555,7 +546,6 @@ def main(args):
                 "filter": filter_dict,
             }
 
-            # TODO: CHANGE TO RESOURCE LOCATION
             logger.info("Saving header dict to pickle...")
             with hl.hadoop_open(
                 release_header_path(), "wb"
@@ -585,17 +575,13 @@ def main(args):
             )
 
         if args.export_vcf:
-            # TODO: AGAIN ADD TO RESOURCES FOR BOTH BELOW
-            ht = hl.read_table(
-                f"gs://gnomad-tmp/gnomad_v3.1_vcfs/vcf_ht_checkpoint_chr_all.ht"
-            )
-            with hl.hadoop_open(
-                "gs://gnomad-mwilson/v3.1.1/release/vcf_header", "rb",
-            ) as f:
+            with hl.hadoop_open(release_header_path(), "rb") as f:
                 header_dict = pickle.load(f)
 
             if chromosome:
-                export_reference = build_export_reference()
+                if args.test:
+                    raise ValueError("chromosome argument doesn't work with the test flag.")
+
                 ht = hl.filter_intervals(
                     ht,
                     [
@@ -691,7 +677,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--test",
-        help="Create release files using only chr20 and chrX for testing purposes",
+        help="Create release files using only 5 partitions on chr20, chrX, and chrY for testing purposes",
         action="store_true",
     )
     parser.add_argument(
