@@ -333,7 +333,7 @@ def frequency_sanity_checks(
     Perform sanity checks on frequency data in input Table.
 
     Check:
-        - Number of sites where callset frequency is equal to a subset frequency (adj only)
+        - Number of sites where callset frequency is equal to a subset frequency (raw and adj)
         - Total number of sites where the allele count annotation is defined (raw and adj)
         
     :param t: Input MatrixTable or Table.
@@ -348,26 +348,25 @@ def frequency_sanity_checks(
     t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
     for subset in subsets:
-        if subset != "":
+        if subset:
             subset += delimiter
-        else:
-            continue
-        for subfield in ["AC", "AN", "nhomalt"]:
-            logger.info("Frequency adj checks")
-            subfield_label = f"{subfield}{delimiter}adj"
-            subfield_subset_label = f"{subfield}{delimiter}{subset}adj"
+            for subfield in ["AC", "AN", "nhomalt"]:
+                for group in ["adj", "raw"]:
+                    logger.info(f"Comparing subset {group} frequencies to entire callset")
+                    subfield_label = f"{subfield}{delimiter}{group}"
+                    subfield_subset_label = f"{subfield}{delimiter}{subset}{group}"
 
-            generic_field_check(
-                t,
-                cond_expr=(t.info[subfield_label] == t.info[subfield_subset_label]),
-                check_description=f"{subfield_label} != {subfield_subset_label}",
-                display_fields=[
-                    f"info.{subfield_label}",
-                    f"info.{subfield_subset_label}",
-                ],
-                verbose=verbose,
-                show_percent_sites=show_percent_sites,
-            )
+                    generic_field_check(
+                        t,
+                        cond_expr=(t.info[subfield_label] == t.info[subfield_subset_label]),
+                        check_description=f"{subfield_label} != {subfield_subset_label}",
+                        display_fields=[
+                            f"info.{subfield_label}",
+                            f"info.{subfield_subset_label}",
+                        ],
+                        verbose=verbose,
+                        show_percent_sites=show_percent_sites,
+                    )
             
 
     freq_counts = t.aggregate(
