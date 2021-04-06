@@ -404,13 +404,13 @@ def sample_sum_check(
 
     t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
-    if subset != "":
+    if subset:
         subset += delimiter
 
     label_combos = make_label_combos(label_groups, label_delimiter=delimiter)
-    combo_AC = [t.info[f"AC-{subset}{x}"] for x in label_combos]
-    combo_AN = [t.info[f"AN-{subset}{x}"] for x in label_combos]
-    combo_nhomalt = [t.info[f"nhomalt-{subset}{x}"] for x in label_combos]
+    combo_AC = [t.info[f"AC{delimiter}{subset}{x}"] for x in label_combos]
+    combo_AN = [t.info[f"AN{delimiter}{subset}{x}"] for x in label_combos]
+    combo_nhomalt = [t.info[f"nhomalt{delimiter}{subset}{x}"] for x in label_combos]
 
     group = label_groups.pop("group")[0]
     alt_groups = delimiter.join(
@@ -418,9 +418,9 @@ def sample_sum_check(
     )
     group_expr = f"{subset}{group}{delimiter}{alt_groups}"
     annot_dict = {
-        f"sum_AC-{group_expr}": hl.sum(combo_AC),
-        f"sum_AN-{group_expr}": hl.sum(combo_AN),
-        f"sum_nhomalt-{group_expr}": hl.sum(combo_nhomalt),
+        f"sum_AC{delimiter}{group_expr}": hl.sum(combo_AC),
+        f"sum_AN{delimiter}{group_expr}": hl.sum(combo_AN),
+        f"sum_nhomalt{delimiter}{group_expr}": hl.sum(combo_nhomalt),
     }
 
     t = t.annotate(**annot_dict)
