@@ -412,6 +412,7 @@ def sample_sum_check(
     combo_AN = [t.info[f"AN{delimiter}{subset}{x}"] for x in label_combos]
     combo_nhomalt = [t.info[f"nhomalt{delimiter}{subset}{x}"] for x in label_combos]
 
+    # Grab "adj" from the group list
     group = label_groups.pop("group")[0]
     alt_groups = delimiter.join(
         sorted(label_groups.keys(), key=lambda x: sort_order.index(x))
@@ -488,6 +489,7 @@ def sex_chr_sanity_checks(
     info_metrics: List[str],
     contigs: List[str],
     verbose: bool,
+    delimiter: str = "-",
 ) -> None:
     """
     Performs sanity checks for annotations on the sex chromosomes.
@@ -500,12 +502,13 @@ def sex_chr_sanity_checks(
     :param contigs: List of contigs present in input Table.
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks.
+    :param delimiter: String to use as the delimiter in female metrics
     :return: None
     :rtype: None
     """
     t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
-    female_metrics = [x for x in info_metrics if "-female" in x or "-XX" in x]
+    female_metrics = [x for x in info_metrics if f"{delimiter}female" in x or f"{delimiter}XX" in x]
 
     if "chrY" in contigs:
         logger.info("Check values of female metrics for Y variants are NA:")
@@ -513,8 +516,8 @@ def sex_chr_sanity_checks(
         metrics_values = {}
         for metric in female_metrics:
             metrics_values[metric] = hl.agg.any(hl.is_defined(t_y.info[metric]))
-        output = t_y.aggregate(hl.struct(**metrics_values))
-        for metric, value in dict(output).items():
+        output = dict(t_y.aggregate(hl.struct(**metrics_values)))
+        for metric, value in output.items():
             if value:
                 values_found = t_y.aggregate(
                     hl.agg.filter(
@@ -536,7 +539,7 @@ def sex_chr_sanity_checks(
     logger.info("Check (nhomalt == nhomalt_female) for X nonpar variants:")
     female_metrics = [x for x in female_metrics if "nhomalt" in x]
     for metric in female_metrics:
-        standard_field = metric.replace("-female", "").replace("-XX", "")
+        standard_field = metric.replace(f"{delimiter}female", "").replace(f"{delimiter}XX", "")
         generic_field_check(
             t_xnonpar,
             (t_xnonpar.info[f"{metric}"] != t_xnonpar.info[f"{standard_field}"]),
