@@ -53,6 +53,7 @@ def summarize_t(
     Print the number of variants to stdout and check that each chromosome has variant calls.
 
     :param t: Input MatrixTable or Table to be checked.
+    :param monoallelic_check: Log how many monoallelic sites are in the Table; requires a monoallelic annotation within an info struct.
     :rtype: Struct
     """
     if isinstance(t, hl.MatrixTable):
@@ -61,7 +62,7 @@ def summarize_t(
 
     var_summary = hl.summarize_variants(t, show=False)
     logger.info(
-        f"Dataset has {var_summary.n_variants} variants distributed across these contigs: {var_summary.contigs}"
+        f"Dataset has {var_summary.n_variants} variants distributed across the following contigs: {var_summary.contigs}"
     )
 
     # check that all contigs have variant calls
@@ -87,7 +88,6 @@ def filters_sanity_check(t: Union[hl.MatrixTable, hl.Table]) -> None:
             - Any filter
             - Inbreeding coefficient filter in combination with any other filter
             - AC0 filter in combination with any other filter
-            - Random forest filtering in combination with any other filter
             - VQSR filtering in combination with any other filter
             - Only inbreeding coefficient filter
             - Only AC0 filter
@@ -101,7 +101,6 @@ def filters_sanity_check(t: Union[hl.MatrixTable, hl.Table]) -> None:
     t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
     filters = t.aggregate(hl.agg.counter(t.filters))
-
     logger.info(f"hl.agg.counter filters: {filters}")
 
     filtered_expr = hl.len(t.filters) > 0
@@ -129,7 +128,7 @@ def filters_sanity_check(t: Union[hl.MatrixTable, hl.Table]) -> None:
         Perform sanity checks to measure percentages of variants filtered under different conditions.
 
         :param t: Input MatrixTable or Table.
-        :param group_exprs: Dictionary of expressions to group the table by.
+        :param group_exprs: Dictionary of expressions to group the Table by.
         :param n_rows: Number of rows to show.
         :param n_cols: Number of columns to show.
         :return: None
@@ -193,7 +192,9 @@ def histograms_sanity_check(
     t: Union[hl.MatrixTable, hl.Table], verbose: bool, hists: List[str] = HISTS
 ) -> None:
     """
-    Check the number of variants that have nonzero values in their n_smaller and n_larger bins of quality histograms (both raw and adj).
+    Check that variants have nonzero values in their n_smaller and, with the exeption of DP hist, n_larger bins of quality histograms (both raw and adj).
+
+    All n_smaller and n_larger annotations must be within an info struct annotation. 
 
     :param t: Input MatrixTable or Table.
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False,
@@ -240,12 +241,13 @@ def raw_and_adj_sanity_checks(
     delimiter: str = "-",
 ) -> None:
     """
-    Perform sanity checks on raw and adj data in input Table.
+    Perform sanity checks on raw and adj data in input Table/MatrixTable.
 
     Check that:
         - Raw AC, AN, AF are not 0
         - Adj AN is not 0 and AC and AF are not negative
         - Raw values for AC, AN, nhomalt in each sample subset are greater than or equal to their corresponding adj values
+    Raw and adj call stat annotations must be in an info struct annotation on the Table/MatrixTable. 
 
     :param t: Input MatrixTable or Table to check.
     :param subsets: List of sample subsets.
@@ -277,26 +279,26 @@ def raw_and_adj_sanity_checks(
         )
 
     # Check raw AN > 0
-    an_raw_expr = f"AN{delimiter}raw"
+    an_raw_field = f"AN{delimiter}raw"
     generic_field_check(
         t,
-        cond_expr=(t.info[an_raw_expr] <= 0),
-        check_description=f"{an_raw_expr} > 0",
-        display_fields=[f"info.{an_raw_expr}"],
+        cond_expr=(t.info[an_raw_field] <= 0),
+        check_description=f"{an_raw_field} > 0",
+        display_fields=[f"info.{an_raw_field}"],
         verbose=verbose,
     )
 
-    an_adj_expr = f"AN{delimiter}adj"
+    an_adj_field = f"AN{delimiter}adj"
     # Check adj AN >= 0
     generic_field_check(
         t,
-        cond_expr=(t.info[an_adj_expr] < 0),
-        check_description=f"{an_adj_expr} >= 0",
-        display_fields=[f"info.{an_adj_expr}"],
+        cond_expr=(t.info[an_adj_field] < 0),
+        check_description=f"{an_adj_field} >= 0",
+        display_fields=[f"info.{an_adj_field}"],
         verbose=verbose,
     )
 
-    # Check overall gnomad's raw subfields >= adj
+    # Check overall raw subfields >= adj
     for subfield in ["AC", "AN", "nhomalt"]:
         field = f"{subfield}{delimiter}"
         generic_field_check(
@@ -324,23 +326,21 @@ def frequency_sanity_checks(
     t: Union[hl.MatrixTable, hl.Table],
     subsets: List[str],
     verbose: bool,
-    show_percentage_sites: bool = True,
+    show_percent_sites: bool = True,
     delimiter: str = "-",
 ) -> None:
     """
     Perform sanity checks on frequency data in input Table.
 
     Check:
-        - Number of sites where gnomAD callset frequency is equal to a gnomAD subset frequency (both raw and adj)
-    
-    Also perform small spot checks:
-        - Counts total number of sites where the gnomAD allele count annotation is defined (both raw and adj)
+        - Number of sites where callset frequency is equal to a subset frequency (adj only)
+        - Total number of sites where the allele count annotation is defined (raw and adj)
         
     :param t: Input MatrixTable or Table.
     :param subsets: List of sample subsets.
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks.
-    :param show_percentage_sites: If true, show the percentage of overall sites that fail; if False, show the number of sites that fail.
+    :param show_percent_sites: If true, show the percentage and count of overall sites that fail; if False, only show the number of sites that fail.
     :param delimiter: String to use as delimiter when making group label combinations.
     :return: None
     :rtype: None
@@ -353,7 +353,7 @@ def frequency_sanity_checks(
         else:
             continue
         for subfield in ["AC", "AN", "nhomalt"]:
-            logger.info("adj checks")
+            logger.info("Frequency adj checks")
             subfield_label = f"{subfield}{delimiter}adj"
             subfield_subset_label = f"{subfield}{delimiter}{subset}adj"
 
@@ -366,8 +366,9 @@ def frequency_sanity_checks(
                     f"info.{subfield_subset_label}",
                 ],
                 verbose=verbose,
-                show_percent_sites=show_percentage_sites,
+                show_percent_sites=show_percent_sites,
             )
+            
 
     freq_counts = t.aggregate(
         hl.struct(
@@ -388,8 +389,7 @@ def sample_sum_check(
     delimiter: str = "-",
 ) -> None:
     """
-    Compute afresh the sum of call stats annotations for a specified group of annotations, and compare to the annotated version;
-    show the results from checking the sum of the specified annotations in the terminal.
+    Compute the sum of call stats annotations for a specified group of annotations, compare to the annotated version, and display the result in stdout.
 
     :param t: Input MatrixTable or Table containing annotations to be summed.
     :param subset: String indicating sample subset.
@@ -449,8 +449,7 @@ def sample_sum_sanity_checks(
     sexes: List[str] = SEXES,
 ) -> None:
     """
-    Compute afresh the sum of annotations for a specified group of annotations, and compare to the annotated version;
-    displays results from checking the sum of the specified annotations in the terminal.
+    Compute the sum of annotations for a specified group of annotations, compare to the annotated version and display the results in stdout.
     Also check that annotations for all expected sample populations are present.
 
     :param t: Input MatrixTable or Table.
@@ -463,8 +462,10 @@ def sample_sum_sanity_checks(
     :rtype: None
     """
     t = t.rows() if isinstance(t, hl.MatrixTable) else t
-    # Add "" for sum checks on entire callset
+    
+    # Add an empty string for sum checks on entire callset
     subsets.append("")
+
     # Perform sample sum checks per subset
     for subset in subsets:
         pop_names = pops
@@ -555,7 +556,7 @@ def missingness_sanity_checks(
 ) -> None:
     """
     Check amount of missingness in all row annotations.
-    Print metric to terminal if more than missingness_threshold% of annotations for that metric are missing.
+    Print metric to sdout if the metric annotations missingness exceeds the missingness_threshold.
 
     :param t: Input MatrixTable or Table.
     :param info_metrics: List of metrics in info struct of input Table.
