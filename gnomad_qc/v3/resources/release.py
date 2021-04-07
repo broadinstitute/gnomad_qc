@@ -1,5 +1,11 @@
-from gnomad.resources.resource_utils import DataException
-from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
+from typing import Optional
+
+from gnomad.resources.resource_utils import (
+    DataException,
+    MatrixTableResource,
+    VersionedMatrixTableResource,
+)
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
 
 def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
