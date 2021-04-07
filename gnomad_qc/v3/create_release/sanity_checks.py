@@ -91,7 +91,6 @@ def filters_sanity_check(t: Union[hl.MatrixTable, hl.Table]) -> None:
             - VQSR filtering in combination with any other filter
             - Only inbreeding coefficient filter
             - Only AC0 filter
-            - Only RF filtering
             - Only VQSR filtering
 
     :param t: Input MatrixTable or Table to be checked.
@@ -194,7 +193,7 @@ def histograms_sanity_check(
     """
     Check that variants have nonzero values in their n_smaller and, with the exeption of DP hist, n_larger bins of quality histograms (both raw and adj).
 
-    All n_smaller and n_larger annotations must be within an info struct annotation. 
+    For example, check that t.info.dp_hist_all_n_smaller != 0. All n_smaller and n_larger annotations must be within an info struct annotation. 
 
     :param t: Input MatrixTable or Table.
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False,
@@ -247,7 +246,8 @@ def raw_and_adj_sanity_checks(
         - Raw AC, AN, AF are not 0
         - Adj AN is not 0 and AC and AF are not negative
         - Raw values for AC, AN, nhomalt in each sample subset are greater than or equal to their corresponding adj values
-    Raw and adj call stat annotations must be in an info struct annotation on the Table/MatrixTable. 
+
+    Raw and adj call stat annotations must be in an info struct annotation on the Table/MatrixTable, eg. t.info.AC-raw.
 
     :param t: Input MatrixTable or Table to check.
     :param subsets: List of sample subsets.
@@ -322,7 +322,7 @@ def raw_and_adj_sanity_checks(
             )
 
 
-def frequency_sanity_checks(
+def subset_freq_sanity_checks(
     t: Union[hl.MatrixTable, hl.Table],
     subsets: List[str],
     verbose: bool,
@@ -334,6 +334,7 @@ def frequency_sanity_checks(
 
     Check:
         - Number of sites where callset frequency is equal to a subset frequency (raw and adj)
+            - eg. t.info.AC-adj != t.info.AC-subset1-adj 
         - Total number of sites where the allele count annotation is defined (raw and adj)
         
     :param t: Input MatrixTable or Table.
@@ -390,10 +391,12 @@ def sample_sum_check(
     """
     Compute the sum of call stats annotations for a specified group of annotations, compare to the annotated version, and display the result in stdout.
 
+    For example, if pop1 consists of pop1, pop2, and pop3, check that t.info.AC-subset1 == sum(t.info.AC-subset1-pop1, t.info.AC-subset1-pop2, t.info.AC-subset1-pop3).
+
     :param t: Input MatrixTable or Table containing annotations to be summed.
     :param subset: String indicating sample subset.
     :param label_groups: Dictionary containing an entry for each label group, where key is the name of the grouping,
-        e.g. "sex" or "pop", and value is a list of all possible values for that grouping (e.g. ["male", "female"] or ["afr", "nfe", "amr"]).
+        e.g. "sex" or "pop", and value is a list of all possible values for that grouping (e.g. ["XY", "XX"] or ["afr", "nfe", "amr"]).
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks.
     :param subpop: Subpop abbreviation, supplied only if subpopulations are included in the annotation groups being checked.
@@ -494,27 +497,27 @@ def sex_chr_sanity_checks(
     """
     Performs sanity checks for annotations on the sex chromosomes.
     Check:
-        - That metrics for chrY variants in female samples are NA and not 0
-        - That nhomalt counts are equal to female nhomalt counts for all non-PAR chrX variants
+        - That metrics for chrY variants in XX samples are NA and not 0
+        - That nhomalt counts are equal to XX nhomalt counts for all non-PAR chrX variants
 
     :param t: Input MatrixTable or Table.
     :param info_metrics: List of metrics in info struct of input Table.
     :param contigs: List of contigs present in input Table.
     :param verbose: If True, show top values of annotations being checked, including checks that pass; if False,
         show only top values of annotations that fail checks.
-    :param delimiter: String to use as the delimiter in female metrics
+    :param delimiter: String to use as the delimiter in XX metrics
     :return: None
     :rtype: None
     """
     t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
-    female_metrics = [x for x in info_metrics if f"{delimiter}female" in x or f"{delimiter}XX" in x]
+    xx_metrics = [x for x in info_metrics if f"{delimiter}female" in x or f"{delimiter}XX" in x]
 
     if "chrY" in contigs:
-        logger.info("Check values of female metrics for Y variants are NA:")
+        logger.info("Check values of XX metrics for Y variants are NA:")
         t_y = hl.filter_intervals(t, [hl.parse_locus_interval("chrY")])
         metrics_values = {}
-        for metric in female_metrics:
+        for metric in xx_metrics:
             metrics_values[metric] = hl.agg.any(hl.is_defined(t_y.info[metric]))
         output = dict(t_y.aggregate(hl.struct(**metrics_values)))
         for metric, value in output.items():
@@ -536,9 +539,9 @@ def sex_chr_sanity_checks(
     n = t_xnonpar.count()
     logger.info(f"Found {n} X nonpar sites")
 
-    logger.info("Check (nhomalt == nhomalt_female) for X nonpar variants:")
-    female_metrics = [x for x in female_metrics if "nhomalt" in x]
-    for metric in female_metrics:
+    logger.info("Check (nhomalt == nhomalt_xx) for X nonpar variants:")
+    xx_metrics = [x for x in xx_metrics if "nhomalt" in x]
+    for metric in xx_metrics:
         standard_field = metric.replace(f"{delimiter}female", "").replace(f"{delimiter}XX", "")
         generic_field_check(
             t_xnonpar,
@@ -668,10 +671,12 @@ def sanity_check_release_t(
     t: Union[hl.MatrixTable, hl.Table],
     subsets: List[str],
     missingness_threshold: float = 0.5,
+    monoallelic_check: bool = True,
     verbose: bool = True,
 ) -> None:
     """
     Perform a battery of sanity checks on a specified group of subsets in a MatrixTable containing variant annotations.
+
     Includes:
     - Summaries of % filter status for different partitions of variants
     - Histogram outlier bin checks
@@ -679,9 +684,12 @@ def sanity_check_release_t(
     - Checks that subgroup annotation values add up to the supergroup annotation values
     - Checks on sex-chromosome annotations; and summaries of % missingness in variant annotations
 
+    All annotations must be within an info struct, e.g. t.info.AC-raw.
+
     :param t: Input MatrixTable or Table containing variant annotations to check.
     :param subsets: List of subsets to be checked.
-    :param missingness_threshold: Upper cutoff for allowed amount of missingness. Default is 0.5
+    :param missingness_threshold: Upper cutoff for allowed amount of missingness. Default is 0.5.
+    :param monoallelic_check: Log how many monoallelic sites are in the Table; requires a monoallelic annotation within an info struct.
     :param verbose: If True, display top values of relevant annotations being checked, regardless of whether check
         conditions are violated; if False, display only top values of relevant annotations if check conditions are violated.
     :return: None (terminal display of results from the battery of sanity checks).
@@ -690,7 +698,7 @@ def sanity_check_release_t(
 
     # Perform basic checks -- number of variants, number of contigs, number of samples
     logger.info("BASIC SUMMARY OF INPUT TABLE:")
-    summarize_t(t, monoallelic_check=True)
+    summarize_t(t, monoallelic_check)
 
     logger.info("VARIANT FILTER SUMMARIES:")
     filters_sanity_check(t)
@@ -702,7 +710,7 @@ def sanity_check_release_t(
     raw_and_adj_sanity_checks(t, subsets, verbose)
 
     logger.info("FREQUENCY CHECKS:")
-    frequency_sanity_checks(t, subsets, verbose)
+    subset_freq_sanity_checks(t, subsets, verbose)
 
     # Pull row annotations from HT
     info_metrics = list(t.row.info)
