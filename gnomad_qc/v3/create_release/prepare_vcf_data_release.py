@@ -119,8 +119,17 @@ MISSING_INFO_FIELDS = (
 # Remove unnecessary pop names from pops dict
 POPS = {pop: POP_NAMES[pop] for pop in POPS}
 
-# downsampling and subset entries to remove from VCF's freq export
-FREQ_ENTRIES_TO_REMOVE = DOWNSAMPLINGS + COHORTS_WITH_POP_STORED_AS_SUBPOP
+# Histograms to remove from the VCF export
+DROP_HISTS = (
+    [x + "_n_smaller" for x in HISTS if "dp_hist_all" not in x]
+    + [x + "_n_larger" for x in HISTS if "dp_" not in x]
+    + [x + "_raw_n_smaller" for x in HISTS]
+    + [x + "_raw_bin_edges" for x in HISTS]
+    + [x + "_raw_n_larger" for x in HISTS]
+    + [x + "_raw_bin_freq" for x in HISTS]
+    + [x + "_bin_edges" for x in HISTS]
+    + ["age_hist_het_bin_edges", "age_hist_hom_bin_edges"]
+)
 
 IN_SILICO_ANNOTATIONS_INFO_DICT = {
     "cadd_raw_score": {
@@ -584,34 +593,14 @@ def main(args):
             with hl.hadoop_open(release_header_path(), "rb") as f:
                 header_dict = pickle.load(f)
 
-            if chromosome:
-                if args.test:
-                    raise ValueError(
-                        "chromosome argument doesn't work with the test flag."
-                    )
-
-                ht = hl.filter_intervals(
-                    ht,
-                    [
-                        hl.parse_locus_interval(
-                            chromosome, reference_genome=export_reference
-                        )
-                    ],
-                )
-
-            logger.info("Dropping histograms that are not needed in VCF...")
-            # Drop unnecessary histograms
-            drop_hists = (
-                [x + "_n_smaller" for x in HISTS if "dp_hist_all" not in x]
-                + [x + "_n_larger" for x in HISTS if "dp_" not in x]
-                + [x + "_raw_n_smaller" for x in HISTS]
-                + [x + "_raw_bin_edges" for x in HISTS]
-                + [x + "_raw_n_larger" for x in HISTS]
-                + [x + "_raw_bin_freq" for x in HISTS]
-                + [x + "_bin_edges" for x in HISTS]
-                + ["age_hist_het_bin_edges", "age_hist_hom_bin_edges"]
+            logger.info(
+                "Dropping histograms and frequency entries that are not needed in VCF..."
             )
-            ht = ht.annotate(info=ht.info.drop(*drop_hists))
+            prepared_vcf_ht = prepared_vcf_ht.annotate(
+                info=prepared_vcf_ht.info.drop(
+                    *DROP_HISTS, *prepared_vcf_ht.freq_entries_to_remove
+                )
+            )
 
             # Reformat names to remove "adj" pre-export
             # e.g, renaming "AC-adj" to "AC"
