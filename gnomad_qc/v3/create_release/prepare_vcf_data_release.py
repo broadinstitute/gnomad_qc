@@ -678,7 +678,9 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--prepare_vcf_ht", help="Use release ht to create vcf ht", action="store_true"
+        "--prepare_vcf_ht",
+        help="Use release Table or MatrixTable to create vcf HT",
+        action="store_true",
     )
     parser.add_argument(
         "--sanity_check", help="Run sanity checks function", action="store_true"
