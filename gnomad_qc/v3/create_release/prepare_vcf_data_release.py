@@ -99,7 +99,7 @@ MISSING_AS_FIELDS = ["AS_BaseQRankSum", "AS_VarDP"]
 remove_fields_from_globals(AS_FIELDS, MISSING_AS_FIELDS)
 
 # Make subset list (used in properly filling out VCF header descriptions and naming VCF info fields)
-SUBSET_LIST_FOR_VCF = SUBSETS
+SUBSET_LIST_FOR_VCF = SUBSETS.copy()
 SUBSET_LIST_FOR_VCF.append("")
 remove_fields_from_globals(SUBSET_LIST_FOR_VCF, COHORTS_WITH_POP_STORED_AS_SUBPOP)
 
@@ -115,6 +115,7 @@ MISSING_INFO_FIELDS = (
     + MISSING_SITES_FIELDS
     + RF_FIELDS
 )
+
 # Remove unnecessary pop names from pops dict
 POPS = {pop: POP_NAMES[pop] for pop in POPS}
 
