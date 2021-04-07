@@ -353,13 +353,17 @@ def subset_freq_sanity_checks(
             subset += delimiter
             for subfield in ["AC", "AN", "nhomalt"]:
                 for group in ["adj", "raw"]:
-                    logger.info(f"Comparing subset {group} frequencies to entire callset")
+                    logger.info(
+                        f"Comparing subset {group} frequencies to entire callset"
+                    )
                     subfield_label = f"{subfield}{delimiter}{group}"
                     subfield_subset_label = f"{subfield}{delimiter}{subset}{group}"
 
                     generic_field_check(
                         t,
-                        cond_expr=(t.info[subfield_label] == t.info[subfield_subset_label]),
+                        cond_expr=(
+                            t.info[subfield_label] == t.info[subfield_subset_label]
+                        ),
                         check_description=f"{subfield_label} != {subfield_subset_label}",
                         display_fields=[
                             f"info.{subfield_label}",
@@ -368,7 +372,6 @@ def subset_freq_sanity_checks(
                         verbose=verbose,
                         show_percent_sites=show_percent_sites,
                     )
-            
 
     freq_counts = t.aggregate(
         hl.struct(
@@ -465,7 +468,7 @@ def sample_sum_sanity_checks(
     :rtype: None
     """
     t = t.rows() if isinstance(t, hl.MatrixTable) else t
-    
+
     # Add an empty string for sum checks on entire callset
     subsets.append("")
 
@@ -511,7 +514,9 @@ def sex_chr_sanity_checks(
     """
     t = t.rows() if isinstance(t, hl.MatrixTable) else t
 
-    xx_metrics = [x for x in info_metrics if f"{delimiter}female" in x or f"{delimiter}XX" in x]
+    xx_metrics = [
+        x for x in info_metrics if f"{delimiter}female" in x or f"{delimiter}XX" in x
+    ]
 
     if "chrY" in contigs:
         logger.info("Check values of XX metrics for Y variants are NA:")
@@ -542,7 +547,9 @@ def sex_chr_sanity_checks(
     logger.info("Check (nhomalt == nhomalt_xx) for X nonpar variants:")
     xx_metrics = [x for x in xx_metrics if "nhomalt" in x]
     for metric in xx_metrics:
-        standard_field = metric.replace(f"{delimiter}female", "").replace(f"{delimiter}XX", "")
+        standard_field = metric.replace(f"{delimiter}female", "").replace(
+            f"{delimiter}XX", ""
+        )
         generic_field_check(
             t_xnonpar,
             (t_xnonpar.info[f"{metric}"] != t_xnonpar.info[f"{standard_field}"]),
