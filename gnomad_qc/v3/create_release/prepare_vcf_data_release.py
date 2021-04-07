@@ -10,6 +10,7 @@ from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     HGDP_POPS,
     KG_POPS,
+    KG_POP_NAMES,
     POPS,
     SEXES,
     SUBSETS,
@@ -124,42 +125,11 @@ MISSING_INFO_FIELDS = (
 # Remove unnecessary pop names from pops dict
 POPS = {pop: POP_NAMES[pop] for pop in POPS}
 
-# TODO: where to add these specialized subset pops
-TGP_POPS = {
-    "CHB": "Han Chinese",
-    "JPT": "Japanese",
-    "CHS": "Southern Han Chinese",
-    "CDX": "Chinese Dai",
-    "KHV": "Kinh",
-    "CEU": "Utah Residents (European Ancestry)",
-    "TSI": "Toscani",
-    "FIN": "Finnish",
-    "GBR": "British",
-    "IBS": "Iberian",
-    "YRI": "Yoruba",
-    "LWK": "Luhya",
-    "GWD": "Gambian",
-    "MSL": "Mende",
-    "ESN": "Esan",
-    "ASW": "African-American",
-    "ACB": "African Caribbean",
-    "MXL": "Mexican-American",
-    "PUR": "Puerto Rican",
-    "CLM": "Colombian",
-    "PEL": "Peruvian",
-    "GIH": "Gujarati",
-    "PJL": "Punjabi",
-    "BEB": "Bengali",
-    "STU": "Sri Lankan Tamil",
-    "ITU": "Indian Telugu",
-}
-
 HGDP_KG_KEEP_POPS = KG_POPS + HGDP_POPS
-
 HGDP_KG_POPS = {}
 for pop in HGDP_KG_KEEP_POPS:
-    if pop.upper() in TGP_POPS:
-        HGDP_KG_POPS[pop] = TGP_POPS[pop.upper()]
+    if pop in KG_POP_NAMES:
+        HGDP_KG_POPS[pop] = KG_POP_NAMES[pop]
     else:
         HGDP_KG_POPS[pop] = pop.capitalize()
 
