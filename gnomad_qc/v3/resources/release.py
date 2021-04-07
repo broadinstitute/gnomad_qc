@@ -112,3 +112,27 @@ def append_to_vcf_header_path(release_version: str = CURRENT_RELEASE) -> str:
     return (
         f"gs://gnomad/release/{release_version}/vcf/genomes/extra_fields_for_header.tsv"
     )
+
+
+def release_subset(
+    subset: str, dense: bool = False, data_type: str = "genomes",
+) -> VersionedMatrixTableResource:
+    """
+    Get the subset release MatrixTableResource
+
+    :param subset: One of the possible release subsets (e.g., hgdp_1kg)
+    :param dense: If true resource will be the dense MT otherwise will return the sparse MT
+    :param data_type: 'exomes' or 'genomes'
+    :return: MatrixTableResource for specific subset
+    """
+
+    return VersionedMatrixTableResource(
+        CURRENT_RELEASE,
+        {
+            release: MatrixTableResource(
+                f"gs://gnomad/release/{release}/mt/gnomad.{data_type}.v{release}.{subset}_subset{f'_dense' if dense else '_sparse'}.mt"
+            )
+            for release in RELEASES
+            if release != "3"
+        },
+    )
