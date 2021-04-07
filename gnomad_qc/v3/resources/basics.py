@@ -67,6 +67,9 @@ gnomad_v3_genotypes = VersionedMatrixTableResource(
         "3.1": MatrixTableResource(
             "gs://gnomad/raw/genomes/3.1/gnomad_v3.1_sparse_unsplit.repartitioned.mt"
         ),
+        "3.1.1": MatrixTableResource(
+            "gs://gnomad/raw/genomes/3.1/gnomad_v3.1_sparse_unsplit.repartitioned.mt"
+        ),
     },
 )
 
