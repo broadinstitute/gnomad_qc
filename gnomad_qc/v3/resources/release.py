@@ -58,14 +58,20 @@ def release_var_hist_path(data_source: str, freeze: int) -> str:
     return f"{get_release_path(data_source, freeze)}/json/{data_source}.freeze_{freeze}.json"
 
 
-def release_header_path(release_version: str = CURRENT_RELEASE) -> str:
+def release_header_path(
+    subset: Optional[str] = None, release_version: str = CURRENT_RELEASE
+) -> str:
     """
     Fetch path to pickle file containing VCF header dictionary.
 
+    :param subset: Name of the subset (eg: hgdp_tgp).
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :return: Filepath for header dictionary pickle
     """
-    return f"gs://gnomad/release/{release_version}/vcf/genomes/gnomad.genomes.v{release_version}_header_dict.pickle"
+    if subset:
+        subset = f"_{subset}"
+
+    return f"gs://gnomad/release/{release_version}/vcf/genomes/gnomad.genomes.v{release_version}_header_dict{subset}.pickle"
 
 
 def release_vcf_path(release_version: str = CURRENT_RELEASE, contig: str = None) -> str:
