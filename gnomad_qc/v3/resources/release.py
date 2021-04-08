@@ -80,16 +80,22 @@ def release_header_path(
     return f"gs://gnomad/release/{release_version}/vcf/genomes/gnomad.genomes.v{release_version}_header_dict{subset}.pickle"
 
 
-def release_vcf_path(release_version: str = CURRENT_RELEASE, contig: str = None) -> str:
+def release_vcf_path(
+    release_version: str = CURRENT_RELEASE, contig: str = None, subset: str = None
+) -> str:
     """
     Fetch bucket for release (variant-only) VCFs
 
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :param contig: String containing the name of the desired reference contig
+    :param subset: Subset being written out to VCF
     :return: Filepath for the desired VCF
     """
+    if subset is None:
+        subset = "sites"
+
     if contig:
-        return f"gs://gnomad/release/{release_version}/vcf/genomes/gnomad.genomes.v{release_version}.sites.{contig}.vcf.bgz"
+        return f"gs://gnomad/release/{release_version}/vcf/genomes/gnomad.genomes.v{release_version}.{subset}.{contig}.vcf.bgz"
     else:
         # if contig is None, return path to sharded vcf bucket
         # NOTE: need to add .bgz or else hail will not bgzip shards
