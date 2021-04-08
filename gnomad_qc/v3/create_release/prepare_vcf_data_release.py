@@ -757,6 +757,17 @@ def main(args):
             ht = ht.checkpoint(temp_ht_path, overwrite=True)
             ht.describe()
 
+        if args.prepare_vcf_header_dict or args.sanity_check or args.export_vcf:
+            if not file_exists(temp_ht_path):
+                raise DataException(
+                    "The intermediate HT output doesn't exist, 'prepare_vcf_ht' needs to be run to create this file"
+                )
+            prepared_vcf_ht = hl.read_table(temp_ht_path)
+
+        if args.prepare_vcf_header_dict:
+            logger.info("Making histogram bin edges...")
+            bin_edges = make_hist_bin_edges_expr(ht, prefix="")
+
             logger.info("Saving header dict to pickle...")
             with hl.hadoop_open(
                 release_header_path(
