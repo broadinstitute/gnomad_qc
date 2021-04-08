@@ -69,7 +69,7 @@ logging.basicConfig(
 logger = logging.getLogger("vcf_release")
 logger.setLevel(logging.INFO)
 
-# Add capture region and sibling singletons to vcf_info_dict
+# Add monoallelic, QUALapprox, and AS_SB_TABLE to vcf_info_dict
 VCF_INFO_DICT = INFO_DICT
 VCF_INFO_DICT["monoallelic"] = {
     "Description": "All samples are all homozygous alternate for the variant"
@@ -125,6 +125,7 @@ MISSING_INFO_FIELDS = (
 # Remove unnecessary pop names from pops dict
 POPS = {pop: POP_NAMES[pop] for pop in POPS}
 
+# Get HGDP + TGP(KG) subset pop names
 HGDP_KG_KEEP_POPS = KG_POPS + HGDP_POPS
 HGDP_KG_POPS = {}
 for pop in HGDP_KG_KEEP_POPS:
@@ -196,7 +197,21 @@ def populate_subset_info_dict(
     pops: List[str] = POPS,
     faf_pops: List[str] = FAF_POPS,
     sexes: List[str] = SEXES,
+    label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
+    """
+    Call `make_info_dict` to populate INFO dictionary with specific sexes, population names, and filtering allele
+    frequency (faf) pops for the requested subset.
+
+    :param subset: Sample subset in dataset.
+    :param description_text: Text describing the sample subset that should be added to the INFO description.
+    :param groups: List of sample groups [adj, raw]. Default is GROUPS.
+    :param pops: List of sample global population names for gnomAD genomes. Default is POPS.
+    :param faf_pops: List of faf population names. Default is FAF_POPS.
+    :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
+    :param label_delimiter: String to use as delimiter when making group label combinations.
+    :return: Dictionary containing Subset specific INFO header fields.
+    """
     def _create_label_groups(
         pops: Union[Dict[str, str], List[str]],
         sexes: List[str],
@@ -207,11 +222,10 @@ def populate_subset_info_dict(
 
         Label dictionaries are passed as input to `make_info_dict`.
 
-        :param Union[Dict[str, str], List[str]] pops: Dict or list of population names.
-        :param List[str] sexes: List of sample sexes.
-        :param List[str] group: List of data types (adj, raw). Default is ["adj"].
+        :param pops: Dict or list of population names.
+        :param sexes: List of sample sexes.
+        :param group: List of data types (adj, raw). Default is ["adj"].
         :return: List of label group dictionaries.
-        :rtype: List[Dict[str, List[str]]]
         """
         return [
             dict(group=groups),  # this is to capture raw fields
@@ -226,8 +240,10 @@ def populate_subset_info_dict(
         vcf_info_dict.update(
             make_info_dict(
                 prefix=subset,
+                prefix_before_metric=False,
                 pop_names=pops,
                 label_groups=label_group,
+                label_delimiter=label_delimiter,
                 faf=True,
                 description_text=description_text,
             )
@@ -238,8 +254,10 @@ def populate_subset_info_dict(
         vcf_info_dict.update(
             make_info_dict(
                 prefix=subset,
+                prefix_before_metric=False,
                 pop_names=pops,
                 label_groups=label_group,
+                label_delimiter=label_delimiter,
                 description_text=description_text,
             )
         )
@@ -248,6 +266,8 @@ def populate_subset_info_dict(
     vcf_info_dict.update(
         make_info_dict(
             prefix=subset,
+            prefix_before_metric=False,
+            label_delimiter=label_delimiter,
             pop_names=pops,
             popmax=True,
             description_text=description_text,
@@ -268,7 +288,7 @@ def populate_info_dict(
     faf_pops: Dict[str, str] = FAF_POPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
-    label_delimiter="-",
+    label_delimiter="_",
 ) -> Dict[str, Dict[str, str]]:
     """
     Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary with specific sexes, population names, and filtering allele frequency (faf) pops.
@@ -315,7 +335,13 @@ def populate_info_dict(
 
         vcf_info_dict.update(
             populate_subset_info_dict(
-                subset, description_text, groups, pops, faf_pops, sexes,
+                subset=subset,
+                description_text=description_text,
+                groups=groups,
+                pops=pops,
+                faf_pops=faf_pops,
+                sexes=sexes,
+                label_delimiter=label_delimiter,
             )
         )
 
@@ -325,6 +351,7 @@ def populate_info_dict(
     vcf_info_dict.update(
         make_info_dict(
             prefix="",
+            prefix_before_metric=False,
             label_delimiter=label_delimiter,
             bin_edges=bin_edges,
             popmax=True,
@@ -504,17 +531,17 @@ def unfurl_nested_annotations(
 
 
 def filter_to_test(
-    t: Union[hl.Table, hl.MatrixTable], num_partitions: int = 5
+    t: Union[hl.Table, hl.MatrixTable], num_partitions: int = 1
 ) -> Union[hl.Table, hl.MatrixTable]:
     """
-    Filter Table/MatrixTable to 5 partitions on chr20, chrX, and chrY for testing.
+    Filter Table/MatrixTable to `num_partitions` partitions on chr20, chrX, and chrY for testing.
 
     :param t: Input Table/MatrixTable to filter.
     :param num_partitions: Number of partitions to grab from each chromosome.
     :return: Input Table/MatrixTable filtered to `num_partitions` on chr20, chrX, and chrY.
     """
     logger.info(
-        "Filtering to 5 partitions on chr20, chrX, and chrY (for tests only)..."
+        f"Filtering to {num_partitions} partitions on chr20, chrX, and chrY (for tests only)..."
     )
     t_chr20 = hl.filter_intervals(t, [hl.parse_locus_interval("chr20")])
     t_chr20 = t_chr20._filter_partitions(range(num_partitions))
@@ -540,7 +567,8 @@ def prepare_vcf_ht(
     """
     Prepare the Table used for sanity checks and VCF export
 
-    :param ht: Table containing the nested variant annotation arrays to be unfurled.
+    :param ht: Table containing the
+    nested variant annotation arrays to be unfurled.
     :param is_subset: Is this for the release of a subset.
     :param add_gnomad_release: Should the gnomAD release frequencies be unfurled.
     :param freq_entries_to_remove: Frequency entries to remove for vcf_export.
@@ -641,7 +669,7 @@ def prepare_vcf_header_dict(
     # Adjust keys to remove adj tags before exporting to VCF
     new_vcf_info_dict = {}
     for i, j in vcf_info_dict.items():
-        i = i.replace("-adj", "")
+        i = i.replace("_adj", "")
         i = i.replace("-", "_")  # VCF 4.3 specs do not allow hyphens in info fields
         new_vcf_info_dict[i] = j
 
@@ -711,7 +739,7 @@ def main(args):
     # Downsampling and subset entries to remove from VCF's freq export
     # Note: Need to extract the non-standard downsamplings from the freq_meta struct to the FREQ_ENTRIES_TO_REMOVE
     freq_entries_to_remove = {
-        int(x["downsampling"]) for x in hl.eval(ht.freq_meta) if "downsampling" in x
+        str(x["downsampling"]) for x in hl.eval(ht.freq_meta) if "downsampling" in x
     }
     freq_entries_to_remove.update(set(COHORTS_WITH_POP_STORED_AS_SUBPOP))
 
@@ -720,8 +748,6 @@ def main(args):
             ht = filter_to_test(ht)
 
         if args.prepare_vcf_ht:
-            logger.info("Making histogram bin edges...")
-            bin_edges = make_hist_bin_edges_expr(ht, prefix="")
             ht = prepare_vcf_ht(
                 ht, is_subset, add_gnomad_release, freq_entries_to_remove, field_reorder
             )
@@ -740,18 +766,11 @@ def main(args):
             ) as p:
                 pickle.dump(
                     prepare_vcf_header_dict(
-                        ht, bin_edges, age_hist_data, subsets, pops
+                        prepared_vcf_ht, bin_edges, age_hist_data, subsets, pops
                     ),
                     p,
                     protocol=pickle.HIGHEST_PROTOCOL,
                 )
-
-        if args.sanity_check or args.export_vcf:
-            if not file_exists(temp_ht_path):
-                raise DataException(
-                    "The intermediate HT output doesn't exist, 'prepare_vcf_ht' needs to be run to create this file"
-                )
-            prepared_vcf_ht = hl.read_table(temp_ht_path)
 
         if args.sanity_check:
             sanity_check_release_ht(
@@ -769,13 +788,12 @@ def main(args):
                 "rb",
             ) as f:
                 header_dict = pickle.load(f)
-
             logger.info(
                 "Dropping histograms and frequency entries that are not needed in VCF..."
             )
             prepared_vcf_ht = prepared_vcf_ht.annotate(
                 info=prepared_vcf_ht.info.drop(
-                    *DROP_HISTS, *prepared_vcf_ht.freq_entries_to_remove
+                    *DROP_HISTS, *hl.eval(prepared_vcf_ht.freq_entries_to_remove)
                 )
             )
 
@@ -836,9 +854,12 @@ def main(args):
 
             logger.info(f"Export chromosome {chromosome}....")
             if args.test:
-                output_path = f"{qc_temp_prefix}/gnomad.genomes_vcf_test.vcf.bgz"
+                output_path = f"{qc_temp_prefix}/gnomad.genomes_vcf_test{'hgdp_1kg_subset' if args.hgdp_1kg_subset else None}.vcf.bgz"
             else:
-                output_path = release_vcf_path(contig=chromosome)
+                output_path = release_vcf_path(
+                    contig=chromosome,
+                    subset="hgdp_1kg_subset" if args.hgdp_1kg_subset else None,
+                )
 
             hl.export_vcf(
                 rekey_new_reference(t, export_reference),
@@ -870,6 +891,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--prepare_vcf_ht",
         help="Use release Table or MatrixTable to create vcf HT",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--prepare_vcf_header_dict",
+        help="Prepare the VCF header dictionary.",
         action="store_true",
     )
     parser.add_argument(
