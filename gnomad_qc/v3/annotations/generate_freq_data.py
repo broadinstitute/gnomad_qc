@@ -25,6 +25,11 @@ from gnomad.utils.annotations import (
     qual_hist_expr,
 )
 from gnomad.utils.file_utils import file_exists
+from gnomad.utils.release import (
+    make_faf_index_dict,
+    make_freq_index_dict,
+    set_female_y_metrics_to_na_expr,
+)
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import index_globals, make_label_combos
 from gnomad_qc.slack_creds import slack_token
@@ -40,77 +45,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
-
-
-def make_faf_index_dict(faf_meta: List[Dict[str, str]]) -> Dict[str, int]:
-    """
-    Creates a look-up Dictionary for entries contained in the filter allele frequency annotation array
-
-    :param List of Dict faf_meta: Global annotation containing the set of groupings for each element of the faf array (e.g., [{'group': 'adj'}, {'group': 'adj', 'pop': 'nfe'}])
-    :return: Dictionary of faf annotation population groupings, where values are the corresponding 0-based indices for the
-        groupings in the faf_meta array
-    :rtype: Dict of str: int
-    """
-
-    index_dict = {
-        **index_globals(faf_meta, dict(group=["adj"])),
-        **index_globals(faf_meta, dict(group=["adj"], pop=POPS)),
-        **index_globals(faf_meta, dict(group=["adj"], sex=SEXES)),
-        **index_globals(faf_meta, dict(group=["adj"], pop=POPS, sex=SEXES)),
-    }
-
-    return index_dict
-
-
-def make_freq_index_dict(freq_meta: List[Dict[str, str]]) -> Dict[str, int]:
-    """
-    Creates a look-up Dictionary for entries contained in the frequency annotation array
-
-    :param List of Dict freq_meta: Global annotation continaing the set of groupings for each element of the freq array (e.g., [{'group': 'adj'}, {'group': 'adj', 'pop': 'nfe'}])
-    :return: Dictionary keyed by the grouping combinations found in the frequency array, where values are the corresponding 0-based indices for the groupings in the freq_meta array
-    :rtype: Dict of str: int
-    """
-
-    index_dict = {
-        **index_globals(freq_meta, dict(group=GROUPS)),
-        **index_globals(freq_meta, dict(group=GROUPS, pop=POPS)),
-        **index_globals(freq_meta, dict(group=GROUPS, sex=SEXES)),
-        **index_globals(freq_meta, dict(group=GROUPS, pop=POPS, sex=SEXES)),
-    }
-
-    return index_dict
-
-
-def set_female_y_metrics_to_na(mt: hl.MatrixTable) -> hl.MatrixTable:
-    """
-    Sets Y-variant frequency callstats for female-specific metrics to null structs
-
-    .. note:: Requires freq_index_dict annotation to be present in MatrixTable
-
-    :param mt: MatrixTable for which to adjust female metrics
-    :return: MatrixTable with female Y-variant metrics set to null values
-    """
-
-    female_idx = hl.map(
-        lambda x: mt.freq_index_dict[x],
-        hl.filter(lambda x: x.contains("XX"), mt.freq_index_dict.keys()),
-    )
-    freq_idx_range = hl.range(hl.len(mt.freq_meta))
-
-    mt = mt.annotate_rows(
-        freq=hl.if_else(
-            (mt.locus.in_y_nonpar() | mt.locus.in_y_par()),
-            hl.map(
-                lambda x: hl.if_else(
-                    female_idx.contains(x), null_callstats_expr(), mt.freq[x]
-                ),
-                freq_idx_range,
-            ),
-            mt.freq,
-        )
-    )
-
-    return mt
 
 
 def main(args):
@@ -191,9 +125,9 @@ def main(args):
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
             mt = mt.annotate_globals(
-                freq_index_dict=make_freq_index_dict(hl.eval(mt.freq_meta))
+                freq_index_dict=make_freq_index_dict(freq_meta=hl.eval(mt.freq_meta))
             )
-            mt = mt.set_female_y_metrics_to_na(mt)
+            mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
 
             logger.info(f"Writing out frequency data for {subset} subset...")
             if args.test:
@@ -211,7 +145,8 @@ def main(args):
                     hl.is_defined(mt.meta.project_meta.age),
                     mt.meta.project_meta.age,
                     mt.meta.project_meta.age_alt,
-                    # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples, age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin
+                    # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples,
+                    # age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin
                 )
             )
             mt = mt.annotate_rows(
@@ -244,7 +179,10 @@ def main(args):
             mt = mt.filter_rows(mt.freq[1].AC > 0)
 
             mt = mt.annotate_globals(
-                freq_index_dict=make_freq_index_dict(hl.eval(mt.freq_meta))
+                freq_index_dict=make_freq_index_dict(
+                    freq_meta=hl.eval(mt.freq_meta),
+                    downsamplings=hl.eval(mt.downsamplings),
+                )
             )
             mt = mt.set_female_y_metrics_to_na(mt)
 
