@@ -184,7 +184,7 @@ def main(args):
                     downsamplings=hl.eval(mt.downsamplings),
                 )
             )
-            mt = mt.set_female_y_metrics_to_na(mt)
+            mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
 
             logger.info("Calculating InbreedingCoeff...")
             # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify
