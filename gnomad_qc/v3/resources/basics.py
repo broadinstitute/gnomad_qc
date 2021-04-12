@@ -84,7 +84,9 @@ def qc_temp_prefix(version: str = CURRENT_RELEASE) -> str:
     return f"gs://gnomad-tmp/gnomad_v{version}_qc_data/"
 
 
-def get_checkpoint_path(name: str, version: str = CURRENT_RELEASE, mt: bool = False) -> str:
+def get_checkpoint_path(
+    name: str, version: str = CURRENT_RELEASE, mt: bool = False
+) -> str:
     """
     Creates a checkpoint path for Table or MatrixTable
 
