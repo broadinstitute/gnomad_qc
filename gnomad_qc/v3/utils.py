@@ -47,7 +47,9 @@ def build_export_reference() -> hl.ReferenceGenome:
     return export_reference
 
 
-def rekey_new_reference(t: Union[hl.Table, hl.MatrixTable], reference: hl.ReferenceGenome):
+def rekey_new_reference(
+    t: Union[hl.Table, hl.MatrixTable], reference: hl.ReferenceGenome
+):
     """
     Re-key Table or MatrixTable with a new reference genome.
 
