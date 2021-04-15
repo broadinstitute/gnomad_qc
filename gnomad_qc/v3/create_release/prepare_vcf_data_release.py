@@ -138,7 +138,7 @@ for pop in HGDP_KG_KEEP_POPS:
         HGDP_KG_POPS[pop] = pop.capitalize()
 
 
-# Histograms to remove from the VCF export
+# Histograms to exclude from the VCF export
 DROP_HISTS = (
     [x + "_n_smaller" for x in HISTS if "dp_hist_all" not in x]
     + [x + "_n_larger" for x in HISTS if "dp_" not in x]
@@ -147,7 +147,6 @@ DROP_HISTS = (
     + [x + "_raw_n_larger" for x in HISTS]
     + [x + "_raw_bin_freq" for x in HISTS]
     + [x + "_bin_edges" for x in HISTS]
-    + ["age_hist_het_bin_edges", "age_hist_hom_bin_edges"]
 )
 
 IN_SILICO_ANNOTATIONS_INFO_DICT = {
