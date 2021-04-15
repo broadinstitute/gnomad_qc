@@ -216,8 +216,8 @@ def populate_subset_info_dict(
     subset: str,
     description_text: str,
     groups: List[str] = GROUPS,
-    pops: List[str] = POPS,
-    faf_pops: List[str] = FAF_POPS,
+    pops: Dict[str, str] = POPS,
+    faf_pops: Dict[str, str] = FAF_POPS,
     sexes: List[str] = SEXES,
     label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
@@ -228,12 +228,13 @@ def populate_subset_info_dict(
     :param subset: Sample subset in dataset.
     :param description_text: Text describing the sample subset that should be added to the INFO description.
     :param groups: List of sample groups [adj, raw]. Default is GROUPS.
-    :param pops: List of sample global population names for gnomAD genomes. Default is POPS.
-    :param faf_pops: List of faf population names. Default is FAF_POPS.
+    :param pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
+    :param faf_pops: Dict of faf population names. Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param label_delimiter: String to use as delimiter when making group label combinations.
     :return: Dictionary containing Subset specific INFO header fields.
     """
+
     def _create_label_groups(
         pops: Union[Dict[str, str], List[str]],
         sexes: List[str],
