@@ -393,11 +393,14 @@ def populate_info_dict(
     return vcf_info_dict
 
 
-def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expression]:
+def make_info_expr(
+    t: Union[hl.MatrixTable, hl.Table], hist_prefix: str = "",
+) -> Dict[str, hl.expr.Expression]:
     """
     Make Hail expression for variant annotations to be included in VCF INFO field.
 
-    :param Table/MatrixTable t: Table/MatrixTable containing variant annotations to be reformatted for VCF export.
+    :param t: Table/MatrixTable containing variant annotations to be reformatted for VCF export.
+    :param hist_prefix: Prefix to use for histograms.
     :return: Dictionary containing Hail expressions for relevant INFO annotations.
     :rtype: Dict[str, hl.expr.Expression]
     """
@@ -418,22 +421,26 @@ def make_info_expr(t: Union[hl.MatrixTable, hl.Table]) -> Dict[str, hl.expr.Expr
     for field in REGION_FLAG_FIELDS:
         vcf_info_dict[field] = t["region_flag"][f"{field}"]
 
+    # Add underscore to hist_prefix if it isn't empty
+    if hist_prefix != "":
+        hist_prefix += "_"
+
     # Add histograms to info dict
     for hist in HISTS:
-        for prefix in ["qual_hists", "raw_qual_hists"]:
+        for hist_type in [f"{hist_prefix}qual_hists", f"{hist_prefix}raw_qual_hists"]:
             hist_name = hist
-            if "raw" in prefix:
+            if "raw" in hist_type:
                 hist_name = f"{hist}_raw"
 
             hist_dict = {
                 f"{hist_name}_bin_freq": hl.delimit(
-                    t[prefix][hist].bin_freq, delimiter="|"
+                    t[hist_type][hist].bin_freq, delimiter="|"
                 ),
                 f"{hist_name}_bin_edges": hl.delimit(
-                    t[prefix][hist].bin_edges, delimiter="|"
+                    t[hist_type][hist].bin_edges, delimiter="|"
                 ),
-                f"{hist_name}_n_smaller": t[prefix][hist].n_smaller,
-                f"{hist_name}_n_larger": t[prefix][hist].n_larger,
+                f"{hist_name}_n_smaller": t[hist_type][hist].n_smaller,
+                f"{hist_name}_n_larger": t[hist_type][hist].n_larger,
             }
             vcf_info_dict.update(hist_dict)
 
