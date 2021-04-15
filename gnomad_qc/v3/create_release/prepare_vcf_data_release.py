@@ -603,7 +603,6 @@ def prepare_vcf_ht(
     :param ht: Table containing the
     nested variant annotation arrays to be unfurled.
     :param is_subset: Is this for the release of a subset.
-    :param add_gnomad_release: Should the gnomAD release frequencies be unfurled.
     :param freq_entries_to_remove: Frequency entries to remove for vcf_export.
     :param field_reorder: Optional list of INFO fields to reorder, the rest of the fields are added after this list.
     :return: Prepared HT for sanity checks and VCF export
@@ -621,8 +620,18 @@ def prepare_vcf_ht(
         ht,
         entries_to_remove=freq_entries_to_remove,
         is_subset=is_subset,
-        add_gnomad_release=add_gnomad_release,
+        gnomad_release=False,
     )
+
+    if is_subset:
+        logger.info("Adding gnomAD frequency information...")
+        gnomad_info_struct, freq_entries_to_remove = unfurl_nested_annotations(
+            ht,
+            entries_to_remove=freq_entries_to_remove,
+            is_subset=is_subset,
+            gnomad_release=True,
+        )
+        info_struct = info_struct.annotate(**gnomad_info_struct)
 
     # NOTE: Merging rsid set into a semi-colon delimited string
     # dbsnp might have multiple identifiers for one variant
@@ -651,10 +660,23 @@ def prepare_vcf_ht(
         rsid=rsid_expr,
         vep=vep_expr,
     )
-    ht = ht.annotate(info=ht.info.annotate(**make_info_expr(ht), vep=ht.vep))
-    ht = ht.annotate_globals(
-        vep_csq_header=VEP_CSQ_HEADER, freq_entries_to_remove=freq_entries_to_remove,
-    )
+
+    if is_subset:
+        info_expr = make_info_expr(ht, hist_prefix="gnomad")
+    else:
+        info_expr = make_info_expr(ht)
+
+    ht = ht.annotate(info=ht.info.annotate(**info_expr, vep=ht.vep))
+
+    if freq_entries_to_remove:
+        ht = ht.annotate_globals(
+            vep_csq_header=VEP_CSQ_HEADER, freq_entries_to_remove=freq_entries_to_remove
+        )
+    else:
+        ht = ht.annotate_globals(
+            vep_csq_header=VEP_CSQ_HEADER,
+            freq_entries_to_remove=hl.empty_array(hl.tstr),
+        )
 
     # Select relevant fields for VCF export
     ht = ht.select("info", "filters", "rsid")
