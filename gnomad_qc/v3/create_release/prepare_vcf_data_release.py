@@ -897,21 +897,21 @@ def main(args):
                 include_age_hists=parameter_dict["include_age_hists"],
             )
 
+            header_dict = prepare_vcf_header_dict(
+                prepared_vcf_ht,
+                bin_edges=bin_edges,
+                age_hist_data=parameter_dict["age_hist_data"],
+                subset_list=parameter_dict["subsets"],
+                pops=parameter_dict["pops"],
+            )
+            if not hgdp_1kg:
+                header_dict.pop("format")
+
             logger.info("Saving header dict to pickle...")
             with hl.hadoop_open(
                 release_header_path(subset="hgdp_1kg" if hgdp_1kg else None), "wb",
             ) as p:
-                pickle.dump(
-                    prepare_vcf_header_dict(
-                        prepared_vcf_ht,
-                        bin_edges=bin_edges,
-                        age_hist_data=parameter_dict["age_hist_data"],
-                        subset_list=parameter_dict["subsets"],
-                        pops=parameter_dict["pops"],
-                    ),
-                    p,
-                    protocol=pickle.HIGHEST_PROTOCOL,
-                )
+                pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
         if args.sanity_check:
             logger.info("Beginning sanity checks on the prepared VCF HT...")
