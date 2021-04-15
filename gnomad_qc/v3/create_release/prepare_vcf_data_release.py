@@ -306,15 +306,16 @@ def populate_info_dict(
     info_dict: Dict[str, Dict[str, str]] = VCF_INFO_DICT,
     subset_list: List[str] = SUBSETS,
     groups: List[str] = GROUPS,
-    pops: List[str] = POPS,
-    gnomad_pops: List[str] = POPS,
+    pops: Dict[str, str] = POPS,
+    gnomad_pops: Dict[str, str] = POPS,
     faf_pops: Dict[str, str] = FAF_POPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
-    label_delimiter="_",
+    label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
     """
-    Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary with specific sexes, population names, and filtering allele frequency (faf) pops.
+    Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary with specific sexes, population names,
+    and filtering allele frequency (faf) pops.
 
     Used during VCF export.
 
@@ -330,11 +331,12 @@ def populate_info_dict(
     :param info_dict: INFO dict to be populated.
     :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
     :param groups: List of sample groups [adj, raw]. Default is GROUPS.
-    :param pops: List of sample global population names for gnomAD genomes. Default is POPS.
-    :param gnomad_pops: List of sample global population names for gnomAD genomes. Default is POPS.
-    :param faf_pops: List of faf population names. Default is FAF_POPS.
+    :param pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
+    :param gnomad_pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
+    :param faf_pops: Dict of faf population names. Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
+    :param label_delimiter: String to use as delimiter when making group label combinations.
     :return: Updated INFO dictionary for VCF export.
     """
     vcf_info_dict = info_dict.copy()
@@ -583,9 +585,8 @@ def filter_to_test(
 def prepare_vcf_ht(
     ht: hl.Table,
     is_subset: bool,
-    add_gnomad_release: bool,
-    freq_entries_to_remove: List[str],
-    field_reorder: Optional[List[str]] = None,
+    freq_entries_to_remove: Set[str],
+    vcf_info_reorder: Optional[List[str]] = None,
 ) -> hl.Table:
     """
     Prepare the Table used for sanity checks and VCF export
