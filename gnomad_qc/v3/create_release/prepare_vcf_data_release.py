@@ -695,7 +695,7 @@ def prepare_vcf_header_dict(
     bin_edges: Dict[str, str],
     age_hist_data: str,
     subset_list: List[str],
-    pops: List[str],
+    pops: Dict[str, str],
 ) -> Dict[str, Dict[str, str]]:
     """
     Prepare VCF header dictionary.
@@ -734,6 +734,7 @@ def prepare_vcf_header_dict(
     header_dict = {
         "info": new_vcf_info_dict,
         "filter": filter_dict,
+        "format": FORMAT_DICT,
     }
 
     return header_dict
