@@ -58,17 +58,15 @@ def rekey_new_reference(
     :return: Re-keyed Table/MatrixTable
     """
     t = t.rename({"locus": "locus_original"})
-    t = t.annotate(
-        locus=hl.locus(
-            t.locus_original.contig,
-            t.locus_original.position,
-            reference_genome=reference,
-        )
+    locus_expr = hl.locus(
+        t.locus_original.contig, t.locus_original.position, reference_genome=reference,
     )
 
     if isinstance(t, hl.MatrixTable):
+        t = t.annotate_rows(locus=locus_expr)
         t = t.key_rows_by("locus", "alleles").drop("locus_original")
     else:
+        t = t.annotate(locus=locus_expr)
         t = t.key_by("locus", "alleles").drop("locus_original")
 
     return t
