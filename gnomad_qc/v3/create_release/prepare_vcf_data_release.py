@@ -562,7 +562,7 @@ def unfurl_nested_annotations(
 
 
 def filter_to_test(
-    t: Union[hl.Table, hl.MatrixTable], num_partitions: int = 1
+    t: Union[hl.Table, hl.MatrixTable], num_partitions: int = 2
 ) -> Union[hl.Table, hl.MatrixTable]:
     """
     Filter Table/MatrixTable to `num_partitions` partitions on chr20, chrX, and chrY for testing.
