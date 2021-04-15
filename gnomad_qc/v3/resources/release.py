@@ -5,7 +5,11 @@ from gnomad.resources.resource_utils import (
     MatrixTableResource,
     VersionedMatrixTableResource,
 )
-from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
+from gnomad_qc.v3.resources.constants import (
+    CURRENT_RELEASE,
+    CURRENT_HGDP_TGP_RELEASE,
+    HGDP_TGP_RELEASES,
+)
 
 
 def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
@@ -133,12 +137,12 @@ def release_subset(
     """
 
     return VersionedMatrixTableResource(
-        CURRENT_RELEASE,
+        CURRENT_HGDP_TGP_RELEASE,
         {
             release: MatrixTableResource(
-                f"gs://gnomad/release/{release}/mt/gnomad.{data_type}.v{release}.{subset}_subset{f'_dense' if dense else '_sparse'}.mt"
+                f"gs://gnomad/release/{release}/mt/genomes/gnomad.{data_type}.v{release}.{subset}_subset{f'_dense' if dense else '_sparse'}.mt"
             )
-            for release in RELEASES
+            for release in HGDP_TGP_RELEASES
             if release != "3"
         },
     )
