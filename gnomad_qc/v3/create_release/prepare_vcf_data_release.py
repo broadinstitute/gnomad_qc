@@ -149,6 +149,7 @@ DROP_HISTS = (
     + [x + "_bin_edges" for x in HISTS]
 )
 
+# Dictionary with in silico score descriptions to include in the VCF INFO header
 IN_SILICO_ANNOTATIONS_INFO_DICT = {
     "cadd_raw_score": {
         "Number": "1",
@@ -175,7 +176,7 @@ IN_SILICO_ANNOTATIONS_INFO_DICT = {
     },
 }
 
-# Used for subset MT VCF output only
+# Used for HGDP + TGP subset MT VCF output only
 FORMAT_DICT.update(
     {
         "RGQ": {
