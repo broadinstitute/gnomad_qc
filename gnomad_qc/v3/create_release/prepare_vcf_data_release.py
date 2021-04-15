@@ -604,7 +604,7 @@ def prepare_vcf_ht(
     nested variant annotation arrays to be unfurled.
     :param is_subset: Is this for the release of a subset.
     :param freq_entries_to_remove: Frequency entries to remove for vcf_export.
-    :param field_reorder: Optional list of INFO fields to reorder, the rest of the fields are added after this list.
+    :param vcf_info_reorder: Optional list of INFO fields to reorder, the rest of the fields are added after this list.
     :return: Prepared HT for sanity checks and VCF export
     """
     logger.info("Starting preparation of VCF HT...")
@@ -681,8 +681,11 @@ def prepare_vcf_ht(
     # Select relevant fields for VCF export
     ht = ht.select("info", "filters", "rsid")
 
-    logger.info("Rearranging fields to desired order...")
-    ht = ht.annotate(info=ht.info.select(*field_reorder, *ht.info.drop(*field_reorder)))
+    if vcf_info_reorder:
+        logger.info("Rearranging fields to desired order...")
+        ht = ht.annotate(
+            info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
+        )
 
     return ht
 
