@@ -187,6 +187,25 @@ FORMAT_DICT.update(
     }
 )
 
+# VCF INFO field reordering
+VCF_INFO_REORDER = ["AC-adj", "AN-adj", "AF-adj", "popmax", "faf95_popmax"]
+HGDP_KG_VCF_INFO_REORDER = [
+    "AC-adj",
+    "AN-adj",
+    "AF-adj",
+    "AC-raw",
+    "AN-raw",
+    "AF-raw",
+    "gnomad-AC-adj",
+    "gnomad-AN-adj",
+    "gnomad-AF-adj",
+    "gnomad-popmax",
+    "gnomad-faf95_popmax",
+    "gnomad-AC-raw",
+    "gnomad-AN-raw",
+    "gnomad-AF-raw",
+]
+
 
 # TODO: USE RESOURCES once it is in, looks like it will be called release_sites so just remove this
 def release_ht_path():
