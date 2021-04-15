@@ -583,7 +583,10 @@ def filter_to_test(
     t_chry = hl.filter_intervals(t, [hl.parse_locus_interval("chrY")])
     t_chry = t_chry._filter_partitions(range(num_partitions))
 
-    t = t_chr20.union(t_chrx, t_chry)
+    if isinstance(t, hl.MatrixTable):
+        t = t_chr20.union_rows(t_chrx, t_chry)
+    else:
+        t = t_chr20.union(t_chrx, t_chry)
 
     return t
 
