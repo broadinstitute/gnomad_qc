@@ -122,8 +122,11 @@ MISSING_INFO_FIELDS = (
     + RF_FIELDS
 )
 
-# Remove unnecessary pop names from pops dict
+# Remove unnecessary pop names from POPS dict
 POPS = {pop: POP_NAMES[pop] for pop in POPS}
+
+# Remove unnecessary pop names from FAF_POPS dict
+FAF_POPS = {pop: POP_NAMES[pop] for pop in FAF_POPS}
 
 # Get HGDP + TGP(KG) subset pop names
 HGDP_KG_KEEP_POPS = KG_POPS + HGDP_POPS
