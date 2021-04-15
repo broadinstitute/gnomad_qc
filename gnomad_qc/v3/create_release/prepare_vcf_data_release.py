@@ -739,6 +739,111 @@ def prepare_vcf_header_dict(
     return header_dict
 
 
+def cleanup_ht_for_vcf_export(
+    ht: hl.Table, drop_freqs: List, drop_hists: List = DROP_HISTS
+):
+    """
+    Clean up the Table returned by `prepared_vcf_ht` so it is ready for export to a VCF with `hl.export_vcf`.
+
+    Specifically:
+        - Drop histograms and frequency entries that are not wanted in the VCF.
+        - Reformat names to remove "adj" and change '-' in info names to '_'.
+        - Adjust types that are incompatiable with VCFs using `adjust_vcf_incompatible_types`.
+
+    :param ht: Table returned by `prepared_vcf_ht`.
+    :param drop_freqs: List of histograms to drop from the VCF export.
+    :param drop_hists: List of frequencies to drop from the VCF export.
+    :return: Table ready for export to VCF and a list of fixed row annotations needed for the VCF header check.
+    """
+    logger.info(
+        "Dropping histograms and frequency entries that are not needed in VCF..."
+    )
+    ht = ht.annotate(info=ht.info.drop(*drop_hists, *drop_freqs))
+
+    # Reformat names to remove "adj" pre-export
+    # e.g, renaming "AC-adj" to "AC"
+    # All unlabeled frequency information is assumed to be adj
+    logger.info("Dropping 'adj' from info annotations...")
+    row_annots = list(ht.info)
+    new_row_annots = []
+    for x in row_annots:
+        x = x.replace("-adj", "")
+        x = x.replace("-", "_")  # VCF 4.3 specs do not allow hyphens in info fields
+        new_row_annots.append(x)
+
+    info_annot_mapping = dict(
+        zip(new_row_annots, [ht.info[f"{x}"] for x in row_annots])
+    )
+    ht = ht.transmute(info=hl.struct(**info_annot_mapping))
+
+    logger.info("Adjusting VCF incompatiable types...")
+    # Reformat AS_SB_TABLE for use in ht_to_vcf_mt
+    ht = ht.annotate(
+        info=ht.info.annotate(
+            AS_SB_TABLE=hl.array([ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]])
+        )
+    )
+    ht = adjust_vcf_incompatible_types(ht)
+
+    return ht, new_row_annots
+
+
+def build_parameter_dict(
+    hgdp_1kg_subset: bool = False, test: bool = False
+) -> Dict[str, Union[bool, str, List, Dict, Set, hl.Table, None]]:
+    """
+    Build a dictionary of the parameters needed in the script because they differ for the HGDP + TGP subset release
+    compared to the full release.
+
+    :param hgdp_1kg_subset: Build the parameter list specific to the HGDP + TGP subset release.
+    :param test: Uses a checkpoint path for the prepared VCF Table that is specific to testing.
+    :return: Dictionary containing parameters needed for making the release VCF.
+    """
+    if hgdp_1kg_subset:
+        parameter_dict = {
+            "pops": HGDP_KG_POPS,
+            "subsets": ["", "gnomad"],
+            "is_subset": True,
+            "temp_ht_path": get_checkpoint_path(
+                f"vcf_prep_{'test' if test else ''}_hgdp_1kg"
+            ),
+            "include_age_hists": False,
+            "subset_pops": {"gnomad": POPS, "": HGDP_KG_POPS},
+            "vcf_info_reorder": HGDP_KG_VCF_INFO_REORDER,
+            "ht": release_subset(subset="hgdp_1kg", dense=True).mt().rows(),
+            "freq_entries_to_remove": set(),
+            "age_hist_data": None,
+        }
+
+    else:
+        parameter_dict = {
+            "pops": POPS,
+            "subsets": SUBSET_LIST_FOR_VCF,
+            "is_subset": False,
+            "temp_ht_path": get_checkpoint_path(
+                f"vcf_prep_{'test' if args.test else ''}"
+            ),
+            "include_age_hists": True,
+            "subset_pops": {"hgdp": HGDP_POPS, "tgp": KG_POPS},
+            "vcf_info_reorder": VCF_INFO_REORDER,
+            "ht": hl.read_table(
+                release_ht_path()
+            ),  # TODO: Change to release_sites().ht(),
+        }
+        # Downsampling and subset entries to remove from VCF's freq export
+        # Note: Need to extract the non-standard downsamplings from the freq_meta struct to the FREQ_ENTRIES_TO_REMOVE
+        freq_entries_to_remove = {
+            str(x["downsampling"])
+            for x in hl.eval(parameter_dict["ht"].freq_meta)
+            if "downsampling" in x
+        }
+        freq_entries_to_remove.update(set(COHORTS_WITH_POP_STORED_AS_SUBPOP))
+        parameter_dict["freq_entries_to_remove"] = freq_entries_to_remove
+        parameter_dict["age_hist_data"] = hl.eval(parameter_dict["ht"].age_distribution)
+
+    return parameter_dict
+
+
 def main(args):
 
     hl.init(
@@ -746,6 +851,7 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="hdfs:///vcf_write.tmp/",
     )
+    hgdp_1kg = args.hgdp_1kg_subset
     chromosome = args.export_chromosome
     export_reference = build_export_reference()
 
@@ -753,161 +859,95 @@ def main(args):
         raise ValueError("chromosome argument doesn't work with the test flag.")
 
     # Setup of parameters and Table/MatrixTable based on hgdp_1kg_subset flag
-    if args.hgdp_1kg_subset:
-        pops = HGDP_KG_POPS
-        subsets = ["", "gnomad"]
-        is_subset = True
-        add_gnomad_release = True
-        temp_ht_path = get_checkpoint_path(
-            f"vcf_prep_{'test' if args.test else ''}_hgdp_1kg"
-        )
-
-        logger.info("Reading in HGDP + TGP subset release MT, keeping only rows...")
-        ht = release_subset(subset="hgdp_1kg", dense=True).mt().rows()
-        age_hist_data = None
-        field_reorder = [
-            "AC-adj",
-            "AN-adj",
-            "AF-adj",
-            "AC-raw",
-            "AN-raw",
-            "AF-raw",
-            "gnomad-AC-adj",
-            "gnomad-AN-adj",
-            "gnomad-AF-adj",
-            "gnomad-popmax",
-            "gnomad-faf95_popmax",
-            "gnomad-AC-raw",
-            "gnomad-AN-raw",
-            "gnomad-AF-raw",
-        ]
-    else:
-        pops = POPS
-        subsets = SUBSET_LIST_FOR_VCF
-        is_subset = False
-        add_gnomad_release = False
-        temp_ht_path = get_checkpoint_path(f"vcf_prep_{'test' if args.test else ''}")
-
-        logger.info("Reading in release HT...")
-        ht = hl.read_table(release_ht_path())  # TODO: Change to release_sites().ht()
-        logger.info("Getting age hist data...")
-        age_hist_data = hl.eval(ht.age_distribution)
-        field_reorder = ["AC-adj", "AN-adj", "AF-adj", "popmax", "faf95_popmax"]
-
-    # Downsampling and subset entries to remove from VCF's freq export
-    # Note: Need to extract the non-standard downsamplings from the freq_meta struct to the FREQ_ENTRIES_TO_REMOVE
-    freq_entries_to_remove = {
-        str(x["downsampling"]) for x in hl.eval(ht.freq_meta) if "downsampling" in x
-    }
-    freq_entries_to_remove.update(set(COHORTS_WITH_POP_STORED_AS_SUBPOP))
+    parameter_dict = build_parameter_dict(hgdp_1kg, args.test)
+    if not hgdp_1kg:
+        DROP_HISTS.extend(["age_hist_het_bin_edges", "age_hist_hom_bin_edges"])
 
     try:
         if args.test:
-            ht = filter_to_test(ht)
+            parameter_dict["ht"] = filter_to_test(parameter_dict["ht"])
 
         if args.prepare_vcf_ht:
-            ht = prepare_vcf_ht(
-                ht, is_subset, add_gnomad_release, freq_entries_to_remove, field_reorder
+            prepared_vcf_ht = prepare_vcf_ht(
+                parameter_dict["ht"],
+                is_subset=parameter_dict["is_subset"],
+                freq_entries_to_remove=parameter_dict["freq_entries_to_remove"],
+                vcf_info_reorder=parameter_dict["vcf_info_reorder"],
             )
 
             # Note: Checkpoint saves time for the final export by not needing to run the VCF HT prep on each chromosome
             logger.info("Checkpointing prepared VCF HT for sanity checks and export...")
-            ht = ht.checkpoint(temp_ht_path, overwrite=True)
-            ht.describe()
+            prepared_vcf_ht = prepared_vcf_ht.checkpoint(
+                parameter_dict["temp_ht_path"], overwrite=True
+            )
+            prepared_vcf_ht.describe()
 
         if args.prepare_vcf_header_dict or args.sanity_check or args.export_vcf:
-            if not file_exists(temp_ht_path):
+            if not file_exists(parameter_dict["temp_ht_path"]):
                 raise DataException(
                     "The intermediate HT output doesn't exist, 'prepare_vcf_ht' needs to be run to create this file"
                 )
-            prepared_vcf_ht = hl.read_table(temp_ht_path)
+            prepared_vcf_ht = hl.read_table(parameter_dict["temp_ht_path"])
 
         if args.prepare_vcf_header_dict:
             logger.info("Making histogram bin edges...")
-            bin_edges = make_hist_bin_edges_expr(ht, prefix="")
+            bin_edges = make_hist_bin_edges_expr(
+                parameter_dict["ht"],
+                prefix="gnomad" if hgdp_1kg else "",
+                include_age_hists=parameter_dict["include_age_hists"],
+            )
 
             logger.info("Saving header dict to pickle...")
             with hl.hadoop_open(
-                release_header_path(
-                    subset="hgdp_1kg" if args.hgdp_1kg_subset else None
-                ),
-                "wb",
+                release_header_path(subset="hgdp_1kg" if hgdp_1kg else None), "wb",
             ) as p:
                 pickle.dump(
                     prepare_vcf_header_dict(
-                        prepared_vcf_ht, bin_edges, age_hist_data, subsets, pops
+                        prepared_vcf_ht,
+                        bin_edges=bin_edges,
+                        age_hist_data=parameter_dict["age_hist_data"],
+                        subset_list=parameter_dict["subsets"],
+                        pops=parameter_dict["pops"],
                     ),
                     p,
                     protocol=pickle.HIGHEST_PROTOCOL,
                 )
 
         if args.sanity_check:
+            logger.info("Beginning sanity checks on the prepared VCF HT...")
             sanity_check_release_ht(
                 prepared_vcf_ht,
-                SUBSETS,
+                subsets=["gnomad"] if hgdp_1kg else SUBSETS,
+                subset_before_metric=True if hgdp_1kg else False,
+                subset_pops=parameter_dict["subset_pops"],
                 missingness_threshold=0.5,
                 verbose=args.verbose,
             )
 
         if args.export_vcf:
+            logger.info("Loading VCF header dict...")
             with hl.hadoop_open(
-                release_header_path(
-                    subset="hgdp_1kg" if args.hgdp_1kg_subset else None
-                ),
-                "rb",
+                release_header_path(subset="hgdp_1kg" if hgdp_1kg else None), "rb",
             ) as f:
                 header_dict = pickle.load(f)
-            logger.info(
-                "Dropping histograms and frequency entries that are not needed in VCF..."
+
+            logger.info("Cleaning up the VCF HT for final export...")
+            prepared_vcf_ht, new_row_annots = cleanup_ht_for_vcf_export(
+                prepared_vcf_ht,
+                drop_freqs=hl.eval(prepared_vcf_ht.freq_entries_to_remove),
+                drop_hists=DROP_HISTS,
             )
-            prepared_vcf_ht = prepared_vcf_ht.annotate(
-                info=prepared_vcf_ht.info.drop(
-                    *DROP_HISTS, *hl.eval(prepared_vcf_ht.freq_entries_to_remove)
+
+            logger.info("Running check on VCF fields and info dict...")
+            if not vcf_field_check(prepared_vcf_ht, header_dict, new_row_annots):
+                logger.error("Did not pass VCF field check")
+
+            if hgdp_1kg:
+                logger.info(
+                    "Loading the HGDP + TGP subset MT and annotating with the prepared VCF HT for VCF export..."
                 )
-            )
-
-            # Reformat names to remove "adj" pre-export
-            # e.g, renaming "AC-adj" to "AC"
-            # All unlabeled frequency information is assumed to be adj
-            logger.info("Dropping 'adj' from info annotations...")
-            row_annots = list(prepared_vcf_ht.info)
-            new_row_annots = []
-            for x in row_annots:
-                x = x.replace("-adj", "")
-                x = x.replace(
-                    "-", "_"
-                )  # VCF 4.3 specs do not allow hyphens in info fields
-                new_row_annots.append(x)
-
-            info_annot_mapping = dict(
-                zip(new_row_annots, [prepared_vcf_ht.info[f"{x}"] for x in row_annots])
-            )
-            prepared_vcf_ht = prepared_vcf_ht.transmute(
-                info=hl.struct(**info_annot_mapping)
-            )
-
-            logger.info("Adjusting VCF incompatiable types...")
-            # Reformat AS_SB_TABLE for use in ht_to_vcf_mt
-            prepared_vcf_ht = prepared_vcf_ht.annotate(
-                info=prepared_vcf_ht.info.annotate(
-                    AS_SB_TABLE=hl.array(
-                        [
-                            prepared_vcf_ht.info.AS_SB_TABLE[:2],
-                            prepared_vcf_ht.info.AS_SB_TABLE[2:],
-                        ]
-                    )
-                )
-            )
-            prepared_vcf_ht = adjust_vcf_incompatible_types(prepared_vcf_ht)
-
-            logger.info("Rearranging fields to desired order...")
-            if args.hgdp_1kg_subset:
-                t = (
-                    release_subset(subset="hgdp_1kg", dense=True)
-                    .mt()
-                    .select_rows()
-                    .annotate_rows(**prepared_vcf_ht)
-                )
+                t = release_subset(subset="hgdp_1kg", dense=True).mt().select_rows()
+                t = t.annotate_rows(**prepared_vcf_ht[t.row_key])
             else:
                 t = prepared_vcf_ht
 
@@ -917,30 +957,27 @@ def main(args):
             if chromosome:
                 t = hl.filter_intervals(t, [hl.parse_locus_interval(chromosome)])
 
-            logger.info("Running check on VCF fields and info dict...")
-            if not vcf_field_check(prepared_vcf_ht, header_dict, new_row_annots):
-                logger.error("Did not pass VCF field check")
-
-            logger.info(f"Export chromosome {chromosome}....")
+            logger.info(f"Exporting chromosome {chromosome}....")
             if args.test:
-                output_path = f"{qc_temp_prefix}/gnomad.genomes_vcf_test{'hgdp_1kg_subset' if args.hgdp_1kg_subset else None}.vcf.bgz"
+                output_path = f"{qc_temp_prefix()}gnomad.genomes_vcf_test{'hgdp_1kg_subset' if hgdp_1kg else ''}.vcf.bgz"
             else:
                 output_path = release_vcf_path(
-                    contig=chromosome,
-                    subset="hgdp_1kg_subset" if args.hgdp_1kg_subset else None,
+                    contig=chromosome, subset="hgdp_1kg_subset" if hgdp_1kg else None,
                 )
 
             hl.export_vcf(
                 rekey_new_reference(t, export_reference),
                 output_path,
-                append_to_header=append_to_vcf_header_path(),
+                append_to_header=append_to_vcf_header_path(
+                    "hgdp_1kg" if hgdp_1kg else ""
+                ),
                 metadata=header_dict,
                 tabix=True,
             )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(f"{qc_temp_prefix}/logs/vcf_export.log")
+        hl.copy_log(f"{qc_temp_prefix()}logs/vcf_export.log")
 
 
 if __name__ == "__main__":
