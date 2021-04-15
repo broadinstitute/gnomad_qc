@@ -461,49 +461,45 @@ def make_info_expr(
 def unfurl_nested_annotations(
     t: Union[hl.MatrixTable, hl.Table],
     is_subset: bool = False,
-    add_gnomad_release: bool = False,
+    gnomad_release: bool = False,
     entries_to_remove: Set[str] = None,
 ) -> [hl.struct, List]:
     """
-    Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the values
-    of the dictionary are Hail Expressions describing how to access the corresponding values.
+    Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the
+    values of the dictionary are Hail Expressions describing how to access the corresponding values.
 
     :param t: Table/MatrixTable containing the nested variant annotation arrays to be unfurled.
-    :param add_gnomad_release: Should the gnomAD release frequencies be unfurled.
+    :param gnomad_release: Should the gnomAD release frequencies be unfurled.
     :param is_subset: Is this for the release of a subset.
     :param entries_to_remove: Frequency entries to remove for vcf_export.
     :return: Dictionary containing variant annotations and their corresponding values.
     """
-    expr_dict = dict()
+    freq_entries_to_remove_vcf = set()
+    expr_dict = {}
+
+    prefix = ""
+    if is_subset and gnomad_release:
+        prefix = f"gnomad_"
 
     # Set variables to locate necessary fields, compute freq index dicts, and compute faf index dict
-    if is_subset & add_gnomad_release:
-        gnomad_prefix = f"gnomad"
-        popmax = f"{gnomad_prefix}_popmax"
-        faf = f"{gnomad_prefix}_faf"
-        freq = f"{gnomad_prefix}_freq"
-        faf_idx = hl.eval(t.globals[f"{gnomad_prefix}_faf_index_dict"])
-        freq_idx = hl.eval(t.globals[f"{gnomad_prefix}_freq_index_dict"])
-    elif is_subset:
+    if is_subset and not gnomad_release:
         freq = "cohort_freq"
         freq_idx = hl.eval(t.globals[f"cohort_freq_index_dict"])
     else:
-        popmax = "popmax"
-        freq = "freq"
-        freq_idx = hl.eval(t.freq_index_dict)
-        faf = "faf"
-        faf_idx = hl.eval(t.faf_index_dict)
+        popmax = f"{prefix}popmax"
+        faf = f"{prefix}faf"
+        freq = f"{prefix}freq"
+        faf_idx = hl.eval(t.globals[f"{prefix}faf_index_dict"])
+        freq_idx = hl.eval(t.globals[f"{prefix}freq_index_dict"])
 
-    # freqs to remove for vcf_export
-    freq_entries_to_remove_vcf = []
     # Unfurl freq index dict
     # Cycles through each key and index (e.g., k=adj_afr, i=31)
     logger.info("Unfurling freq data...")
-    for k, i in freq_idx.items():
-        prefix = ""
-        if add_gnomad_release:
-            prefix = f"{gnomad_prefix}-"
 
+    if is_subset and gnomad_release:
+        prefix = f"gnomad-"
+
+    for k, i in freq_idx.items():
         # Set combination to key
         # e.g., set entry of 'afr_adj' to combo
         combo = k
@@ -516,48 +512,51 @@ def unfurl_nested_annotations(
         expr_dict.update(combo_dict)
 
         if k.split("-")[0] in entries_to_remove:
-            freq_entries_to_remove_vcf.extend(combo_dict.keys())
+            freq_entries_to_remove_vcf.update(combo_dict.keys())
 
     # Add popmax
-    if is_subset & add_gnomad_release:
-        prefix = f"{gnomad_prefix}-"
-    else:
-        prefix = ""
-
-    combo_dict = {
-        f"{prefix}popmax": t[popmax].pop,
-        f"{prefix}AC_popmax": t[popmax].AC,
-        f"{prefix}AN_popmax": t[popmax].AN,
-        f"{prefix}AF_popmax": t[popmax].AF,
-        f"{prefix}nhomalt_popmax": t[popmax].homozygote_count,
-        f"{prefix}faf95_popmax": t[popmax].faf95,
-    }
-    expr_dict.update(combo_dict)
-
-    ## Unfurl FAF index dict
-    logger.info("Unfurling faf data...")
-    for (
-        k,
-        i,
-    ) in faf_idx.items():  # NOTE: faf annotations are all done on adj-only groupings
+    if not is_subset or (is_subset and gnomad_release):
         combo_dict = {
-            f"{prefix}faf95-{k}": t[faf][i].faf95,
-            f"{prefix}faf99-{k}": t[faf][i].faf99,
+            f"{prefix}popmax": t[popmax].pop,
+            f"{prefix}AC_popmax": t[popmax].AC,
+            f"{prefix}AN_popmax": t[popmax].AN,
+            f"{prefix}AF_popmax": t[popmax].AF,
+            f"{prefix}nhomalt_popmax": t[popmax].homozygote_count,
+            f"{prefix}faf95_popmax": t[popmax].faf95,
         }
         expr_dict.update(combo_dict)
 
-    # Unfurl ages
-    age_hist_dict = {
-        "age_hist_het_bin_freq": hl.delimit(t.age_hist_het.bin_freq, delimiter="|"),
-        "age_hist_het_bin_edges": hl.delimit(t.age_hist_het.bin_edges, delimiter="|"),
-        "age_hist_het_n_smaller": t.age_hist_het.n_smaller,
-        "age_hist_het_n_larger": t.age_hist_het.n_larger,
-        "age_hist_hom_bin_freq": hl.delimit(t.age_hist_hom.bin_freq, delimiter="|"),
-        "age_hist_hom_bin_edges": hl.delimit(t.age_hist_hom.bin_edges, delimiter="|"),
-        "age_hist_hom_n_smaller": t.age_hist_hom.n_smaller,
-        "age_hist_hom_n_larger": t.age_hist_hom.n_larger,
-    }
-    expr_dict.update(age_hist_dict)
+        # Unfurl FAF index dict
+        logger.info("Unfurling faf data...")
+        for (
+            k,
+            i,
+        ) in (
+            faf_idx.items()
+        ):  # NOTE: faf annotations are all done on adj-only groupings
+            combo_dict = {
+                f"{prefix}faf95-{k}": t[faf][i].faf95,
+                f"{prefix}faf99-{k}": t[faf][i].faf99,
+            }
+            expr_dict.update(combo_dict)
+
+    if not is_subset:
+        # Unfurl ages
+        age_hist_dict = {
+            "age_hist_het_bin_freq": hl.delimit(t.age_hist_het.bin_freq, delimiter="|"),
+            "age_hist_het_bin_edges": hl.delimit(
+                t.age_hist_het.bin_edges, delimiter="|"
+            ),
+            "age_hist_het_n_smaller": t.age_hist_het.n_smaller,
+            "age_hist_het_n_larger": t.age_hist_het.n_larger,
+            "age_hist_hom_bin_freq": hl.delimit(t.age_hist_hom.bin_freq, delimiter="|"),
+            "age_hist_hom_bin_edges": hl.delimit(
+                t.age_hist_hom.bin_edges, delimiter="|"
+            ),
+            "age_hist_hom_n_smaller": t.age_hist_hom.n_smaller,
+            "age_hist_hom_n_larger": t.age_hist_hom.n_larger,
+        }
+        expr_dict.update(age_hist_dict)
 
     return hl.struct(**expr_dict), freq_entries_to_remove_vcf
 
