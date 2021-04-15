@@ -263,8 +263,8 @@ def populate_subset_info_dict(
         vcf_info_dict.update(
             make_info_dict(
                 prefix=subset,
-                prefix_before_metric=False,
-                pop_names=pops,
+                prefix_before_metric=True if "gnomad" in subset else False,
+                pop_names=faf_pops,
                 label_groups=label_group,
                 label_delimiter=label_delimiter,
                 faf=True,
@@ -277,7 +277,7 @@ def populate_subset_info_dict(
         vcf_info_dict.update(
             make_info_dict(
                 prefix=subset,
-                prefix_before_metric=False,
+                prefix_before_metric=True if "gnomad" in subset else False,
                 pop_names=pops,
                 label_groups=label_group,
                 label_delimiter=label_delimiter,
