@@ -106,12 +106,15 @@ def release_vcf_path(
         return f"gs://gnomad/release/{release_version}/vcf/genomes/gnomad.genomes.v{release_version}.sites.vcf.bgz"
 
 
-def append_to_vcf_header_path(release_version: str = CURRENT_RELEASE) -> str:
+def append_to_vcf_header_path(
+    subset: str, release_version: str = CURRENT_RELEASE
+) -> str:
     """
     Fetch path to TSV file containing extra fields to append to VCF header.
 
     Extra fields are VEP and dbSNP versions.
 
+    :param subset: One of the possible release subsets (e.g., hgdp_1kg)
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :return: Filepath for extra fields TSV file
     """
@@ -119,9 +122,7 @@ def append_to_vcf_header_path(release_version: str = CURRENT_RELEASE) -> str:
         raise DataException(
             "Extra fields to append to VCF header TSV only exists for 3.1 and 3.1.1!"
         )
-    return (
-        f"gs://gnomad/release/{release_version}/vcf/genomes/extra_fields_for_header.tsv"
-    )
+    return f"gs://gnomad/release/{release_version}/vcf/genomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
 
 
 def release_subset(
