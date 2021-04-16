@@ -1,4 +1,4 @@
-from gnomad.utils.slack import try_slack
+from gnomad.utils.slack import slack_notifications
 from gnomad_qc.v2.resources.variant_qc import *
 import copy
 import itertools
@@ -1051,6 +1051,7 @@ if __name__ == '__main__':
     parser.add_argument('--liftover', help='Liftover final sites file', action='store_true')
     parser.add_argument('--verbose', help='Run sanity checks function with verbose output', action='store_true')
     parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
+    parser.add_argument('--slack_token', help='Slack token to enable slack notifications. Must be set if slack_channel is provided')
     parser.add_argument('--overwrite', help='Overwrite data', action='store_true')
     args = parser.parse_args()
 
@@ -1058,6 +1059,10 @@ if __name__ == '__main__':
         sys.exit('Error: One and only one of --exomes or --genomes must be specified')
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        if not args.slack_token:
+            sys.exit('Error: slack_token must be specified if slack_channel is set')
+        else:
+            with slack_notifications(args.slack_token, args.slack_channel):
+                main(args)
     else:
         main(args)
