@@ -124,7 +124,7 @@ def main(args):
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
             mt = mt.annotate_globals(
-                freq_index_dict=make_freq_index_dict(freq_meta=hl.eval(mt.freq_meta))
+                freq_index_dict=make_freq_index_dict(freq_meta=freq_meta, label_delimiter="-")
             )
             mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
 
