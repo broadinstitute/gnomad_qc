@@ -118,9 +118,8 @@ def main(args):
                 else mt.meta.project_meta.project_subpop,
                 # NOTE: TGP and HGDP labeled populations are highly specific and are stored in the project_subpop meta field
             )
-            mt = mt.annotate_globals(
-                freq_meta=[{**x, **{"subset": subset}} for x in hl.eval(mt.freq_meta)]
-            )
+            freq_meta=[{**x, **{"subset": subset}} for x in hl.eval(mt.freq_meta)]
+            mt = mt.annotate_globals(freq_meta=freq_meta)
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
