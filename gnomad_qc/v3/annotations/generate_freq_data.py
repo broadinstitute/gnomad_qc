@@ -181,6 +181,7 @@ def main(args):
                 freq_index_dict=make_freq_index_dict(
                     freq_meta=hl.eval(mt.freq_meta),
                     downsamplings=hl.eval(mt.downsamplings),
+                    label_delimiter="-",
                 )
             )
             mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
