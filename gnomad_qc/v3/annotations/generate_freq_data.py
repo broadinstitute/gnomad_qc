@@ -28,10 +28,10 @@ from gnomad.utils.file_utils import file_exists
 from gnomad.utils.release import (
     make_faf_index_dict,
     make_freq_index_dict,
-    set_female_y_metrics_to_na_expr,
 )
+from gnomad.utils.annotations import set_female_y_metrics_to_na_expr
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vcf import index_globals, make_label_combos
+from gnomad.utils.vcf import index_globals
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt, qc_temp_prefix
