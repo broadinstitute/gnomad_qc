@@ -7,10 +7,7 @@ import hail as hl
 from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     DOWNSAMPLINGS,
-    GROUPS,
-    POPS,
     POPS_TO_REMOVE_FOR_POPMAX,
-    SEXES,
     SUBSETS,
 )
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
@@ -20,11 +17,9 @@ from gnomad.utils.annotations import (
     bi_allelic_site_inbreeding_expr,
     faf_expr,
     get_adj_expr,
-    null_callstats_expr,
     pop_max_expr,
     qual_hist_expr,
 )
-from gnomad.utils.file_utils import file_exists
 from gnomad.utils.release import (
     make_faf_index_dict,
     make_freq_index_dict,
