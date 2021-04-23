@@ -139,7 +139,7 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
 
 def pre_process_subset_freq(subset: str, global_ht: hl.Table, test: bool = False) -> hl.Table:
     """
-    Prepares subset frequency Table by filling in missing frequency fields for loci present only in the global cohort
+    Prepare subset frequency Table by filling in missing frequency fields for loci present only in the global cohort.
 
     .. note:: The resulting final frequency array will be as long as the subset freq_meta global (i.e., one freq entry for each freq_meta entry)
 
