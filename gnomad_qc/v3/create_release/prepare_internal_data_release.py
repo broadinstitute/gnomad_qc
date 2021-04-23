@@ -26,7 +26,6 @@ from gnomad.utils.vcf import (
     AS_FIELDS,
     RF_FIELDS,
     SITE_FIELDS,
-    VQSR_FIELDS,
 )
 from gnomad.utils.vep import VEP_CSQ_HEADER, VEP_CSQ_FIELDS
 from gnomad_qc.slack_creds import slack_token
