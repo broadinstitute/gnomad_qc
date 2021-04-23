@@ -56,6 +56,6 @@ def release_sites(public: bool = False) -> VersionedTableResource:
             release: TableResource(
                 path=release_ht_path(release_version=release, public=public)
             )
-            for release in releases
+            for release in GENOME_RELEASES
         },
     )
