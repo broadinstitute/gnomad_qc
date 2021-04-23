@@ -24,7 +24,6 @@ from gnomad.utils.release import make_freq_index_dict
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import (
     AS_FIELDS,
-    RF_FIELDS,
     SITE_FIELDS,
 )
 from gnomad.utils.vep import VEP_CSQ_HEADER, VEP_CSQ_FIELDS
