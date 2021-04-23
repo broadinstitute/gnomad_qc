@@ -56,9 +56,7 @@ POPS.extend(HGDP_POPS)
 POPS.extend(["global"])
 
 
-def add_release_annotations(
-    freq_ht: hl.Table,
-) -> hl.Table:
+def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
     """
     Load and joins all Tables with variant annotations.
 
