@@ -271,7 +271,7 @@ def main(args):
     ht = ht.filter(hl.is_defined(ht.filters))
 
     ht = ht.checkpoint(
-        "gs://gnomad-tmp/release/v3.1/gnomad.genomes.v3.1.sites.chr20.ht"
+        qc_temp_prefix() + "release/gnomad.genomes.v3.1.sites.chr20.ht"
         if args.test
         else release_ht_path(public=False),
         args.overwrite,
