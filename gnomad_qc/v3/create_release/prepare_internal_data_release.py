@@ -62,7 +62,7 @@ def add_release_annotations(
     """
     Load and joins all Tables with variant annotations.
 
-    :param Table freq_ht: Table with frequency annotations
+    :param freq_ht: Table with frequency annotations
     :return: Table containing joined annotations
     """
     logger.info("Loading annotation tables...")
