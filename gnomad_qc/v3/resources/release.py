@@ -47,9 +47,6 @@ def release_sites(public: bool = False) -> VersionedTableResource:
     :param public: Determines whether release sites Table is read from public or private bucket. Defaults to private
     :return: Sites-only release Table
     """
-    current_release = CURRENT_GENOME_RELEASE
-    releases = GENOME_RELEASES
-
     return VersionedTableResource(
         CURRENT_GENOME_RELEASE,
         {
