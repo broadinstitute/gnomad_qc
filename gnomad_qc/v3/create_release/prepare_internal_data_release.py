@@ -66,7 +66,6 @@ def add_release_annotations(
     :return: Table containing joined annotations
     :rtype: hl.Table
     """
-
     logger.info("Loading annotation tables...")
     filters_ht = final_filter.ht()
     vep_ht = vep.ht()
