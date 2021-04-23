@@ -24,8 +24,6 @@ from gnomad.utils.release import make_freq_index_dict
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import (
     AS_FIELDS,
-    index_globals,
-    make_label_combos,
     RF_FIELDS,
     SITE_FIELDS,
     VQSR_FIELDS,
