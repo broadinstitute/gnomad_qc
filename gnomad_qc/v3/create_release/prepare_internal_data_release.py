@@ -187,7 +187,6 @@ def pre_process_subset_freq(subset: str, global_ht: hl.Table, test: bool = False
 
 
 def main(args):
-
     hl.init(log="/create_release_ht.log", default_reference="GRCh38")
 
     # The concatenated HT contains all subset frequency annotations, plus the overall cohort frequency annotations,
