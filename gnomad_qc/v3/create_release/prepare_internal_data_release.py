@@ -289,7 +289,7 @@ if __name__ == "__main__":
         "--test", help="Runs a test on chr20:1-1000000", action="store_true"
     )
     parser.add_argument(
-        "--test_subsets", help="Specify which subsets on which to run test, e.g. '--test_subsets non_v2 non_topmed'", default=SUBSETS, nargs='+',
+        "--test_subsets", help="Specify subsets on which to run test, e.g. '--test_subsets non_v2 non_topmed'", default=SUBSETS, nargs='+'
     )
     parser.add_argument(
         "--n_partitions",
