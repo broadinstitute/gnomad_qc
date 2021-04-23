@@ -51,7 +51,7 @@ def release_sites(public: bool = False) -> VersionedTableResource:
     releases = GENOME_RELEASES
 
     return VersionedTableResource(
-        current_release,
+        CURRENT_GENOME_RELEASE,
         {
             release: TableResource(
                 path=release_ht_path(release_version=release, public=public)
