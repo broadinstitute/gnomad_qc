@@ -201,6 +201,7 @@ def main(args):
             global_freq_ht = hl.read_table(global_freq_chr20_ht_path).select("freq").select_globals("freq_meta")
 
         elif file_exists(get_freq().path):
+            logger.info("Loading global frequency data for use in testing...")
             global_freq_ht = hl.read_table(get_freq().path).select("freq").select_globals("freq_meta")
             global_freq_ht = hl.filter_intervals(global_freq_ht, [hl.parse_locus_interval("chr20:1-1000000")])
 
