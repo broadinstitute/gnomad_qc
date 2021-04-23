@@ -177,7 +177,7 @@ def pre_process_subset_freq(subset: str, global_ht: hl.Table, test: bool = False
         freq=hl.if_else(
             hl.is_missing(ht.freq),
             hl.map(
-                lambda x: null_callstats_expr(), hl.range(hl.len(ht.freq_meta))
+                lambda x: missing_callstats_expr(), hl.range(hl.len(ht.freq_meta))
             ),
             ht.freq,
         )
