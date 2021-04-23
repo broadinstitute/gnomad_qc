@@ -33,7 +33,6 @@ from gnomad_qc.v3.resources.annotations import (
     analyst_annotations,
     get_freq,
     get_info,
-    qual_hist,
     vep,
 )
 from gnomad_qc.v3.resources.basics import qc_temp_prefix
