@@ -64,7 +64,6 @@ def add_release_annotations(
 
     :param Table freq_ht: Table with frequency annotations
     :return: Table containing joined annotations
-    :rtype: hl.Table
     """
     logger.info("Loading annotation tables...")
     filters_ht = final_filter.ht()
