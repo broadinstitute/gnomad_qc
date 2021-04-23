@@ -36,7 +36,6 @@ from gnomad_qc.v3.resources.annotations import (
     vep,
 )
 from gnomad_qc.v3.resources.basics import qc_temp_prefix
-from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.release import release_ht_path
 from gnomad_qc.v3.resources.variant_qc import final_filter
 
