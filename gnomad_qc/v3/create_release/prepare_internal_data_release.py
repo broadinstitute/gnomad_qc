@@ -141,7 +141,9 @@ def pre_process_subset_freq(subset: str, global_ht: hl.Table, test: bool = False
     """
     Prepare subset frequency Table by filling in missing frequency fields for loci present only in the global cohort.
 
-    .. note:: The resulting final frequency array will be as long as the subset freq_meta global (i.e., one freq entry for each freq_meta entry)
+    .. note:: 
+    
+        The resulting final `freq` array will be as long as the subset `freq_meta` global (i.e., one `freq` entry for each `freq_meta` entry)
 
     :param subset: subset ID
     :param global_ht: Hail Table containing all variants discovered in the overall release cohort
