@@ -18,7 +18,7 @@ from gnomad.resources.grch38.reference_data import (
     seg_dup_intervals,
 )
 from gnomad.resources.resource_utils import DataException
-from gnomad.utils.annotations import null_callstats_expr, region_flag_expr
+from gnomad.utils.annotations import missing_callstats_expr, region_flag_expr
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.release import make_freq_index_dict
 from gnomad.utils.slack import slack_notifications
