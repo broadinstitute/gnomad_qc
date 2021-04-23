@@ -43,7 +43,7 @@ logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
 )
-logger = logging.getLogger("data_release")
+logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
 # Remove InbreedingCoeff from allele-specific fields (processed separately from other fields)
