@@ -27,6 +27,7 @@ from gnomad.utils.vcf import (
     SITE_FIELDS,
 )
 from gnomad.utils.vep import VEP_CSQ_HEADER
+
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import (
     allele_data,
