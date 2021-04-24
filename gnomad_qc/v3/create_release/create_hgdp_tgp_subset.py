@@ -13,8 +13,8 @@ from gnomad.resources.grch38.gnomad import (
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
     lcr_intervals,
-    telomeres_and_centromeres,
     seg_dup_intervals,
+    telomeres_and_centromeres,
 )
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import get_adj_expr
@@ -69,10 +69,10 @@ GLOBAL_SAMPLE_ANNOTATION_DICT = hl.struct(
     hard_filter_cutoffs=hl.struct(
         Description=(
             "Contains the cutoffs used for hard-filtering of samples prior to sample QC. Sample QC metrics are "
-            "computed using the Hail sample_qc module on all autosomal bi-allelic SNVs and samples are removed if "
-            "they are clear outliers for number of snps (n_snp), ratio of heterozygous variants to homozygous "
+            "computed using the Hail sample_qc module on all autosomal bi-allelic SNVs. Samples are removed if "
+            "they are clear outliers for any of the following metrics: number of snps (n_snp), ratio of heterozygous variants to homozygous "
             "variants (r_het_hom_var), number of singletons (n_singleton), and mean coverage on chromosome 20 (cov). "
-            "Additionally, we filter based on outliers of some Picard metrics: % contamination (freemix), % chimera, "
+            "Additionally, we filter based on outliers of the following Picard metrics: % contamination (freemix), % chimera, "
             "and median insert size."
         )
     ),
@@ -80,66 +80,66 @@ GLOBAL_SAMPLE_ANNOTATION_DICT = hl.struct(
 GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
     cohort_freq_meta=hl.struct(
         Description=(
-            "HGDP and 1KG frequency metadata. Contains the information about what frequency aggregation is in each "
-            "element of the cohort_freq array row annotation."
+            "HGDP and 1KG frequency metadata. An ordered list containing the frequency aggregation group"
+            "for each element of the cohort_freq array row annotation."
         )
     ),
     gnomad_freq_meta=hl.struct(
         Description=(
-            "gnomAD release frequency metadata. Contains the information about what frequency aggregation is in each "
-            "element of the gnomad_freq array row annotation."
+            "gnomAD frequency metadata. An ordered list containing the frequency aggregation group"
+            "for each element of the gnomad_freq array row annotation."
         )
     ),
     cohort_freq_index_dict=hl.struct(
         Description=(
-            "Dictionary where keys are combinations of all possible groupings used in the HGDP + 1KG frequency "
-            "aggregations (group: adj/raw, pop: HGDP or 1KG subpopulation, sex: sex karyotype) and values are the "
-            "index into the cohort_freq array row annotation."
+            "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: HGDP or 1KG "
+            "subpopulation, sex: sex karyotype), with values describing the corresponding index of each grouping "
+            "entry in the HGDP + 1KG frequency array annotation."
         )
     ),
     gnomad_freq_index_dict=hl.struct(
         Description=(
-            "Dictionary where keys are combinations of all possible groupings used in gnomAD frequency aggregations "
-            "(group: adj/raw, pop: gnomAD inferred global population, sex: sex karyotype) and values are the index "
-            "into the gnomad_freq array row annotation."
+            "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: gnomAD "
+            "inferred global population sex: sex karyotype), with values describing the corresponding index "
+            "of each grouping entry in the gnomAD frequency array annotation."
         )
     ),
     gnomad_faf_index_dict=hl.struct(
         Description=(
-            "Dictionary where keys are combinations of all possible groupings used in gnomAD filtering allele "
-            "frequency (using Poisson 99% CI) aggregations (group: adj/raw, pop: gnomAD inferred global population, "
-            "sex: sex karyotype) and values are the index into the gnomad_faf array row annotation."
+            "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: gnomAD "
+            "inferred global population sex: sex karyotype), with values describing the corresponding index "
+            "of each grouping entry in the filtering allele frequency (using Poisson 99% CI) annotation."
         )
     ),
     gnomad_faf_meta=hl.struct(
         Description=(
-            "gnomAD release filtering allele frequency (using Poisson 99% CI) metadata. Contains the information "
-            "about what faf aggregation is in each element of the gnomad_faf array row annotation."
+            "gnomAD filtering allele frequency (using Poisson 99% CI) metadata. An ordered list "
+            "containing the frequency aggregation group for each element of the gnomad_faf array row annotation."
         )
     ),
     vep_version=hl.struct(Description="VEP version."),
     vep_csq_header=hl.struct(Description="VEP header for VCF export."),
     dbsnp_version=hl.struct(Description="dbSNP version."),
     filtering_model=hl.struct(
-        Description="Contains information about the filtering model used and specific cutoffs.",
+        Description="The variant filtering model used and its specific cutoffs.",
         sub_globals=hl.struct(
             model_name=hl.struct(
                 Description=(
-                    "Variant filtering model name. This is used as the filter in the filters row annotation to "
-                    "indicate the variant was filtered during variant QC."
+                    "Variant filtering model name used in the 'filters'  row annotation to indicate"
+                    "the variant was filtered by the model during variant QC."
                 )
             ),
             score_name=hl.struct(
                 Description="Name of score used for variant filtering."
             ),
             snv_cutoff=hl.struct(
-                Description="Information about cutoff used for SNV filtering.",
+                Description="SNV filtering cutoff information.",
                 sub_globals=hl.struct(
                     bin=hl.struct(
-                        Description="Percentile cutoff for SNVs for filtering."
+                        Description="Filtering percentile cutoff for SNVs."
                     ),
                     min_score=hl.struct(
-                        Description="Min score (score_name) at percentile cutoff for SNV filtering."
+                        Description="Minimum score (score_name) at SNV filtering percentile cutoff."
                     ),
                 ),
             ),
@@ -147,10 +147,10 @@ GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
                 Description="Information about cutoff used for indel filtering.",
                 sub_globals=hl.struct(
                     bin=hl.struct(
-                        Description="Percentile cutoff for indels for filtering."
+                        Description="Filtering percentile cutoff for indels."
                     ),
                     min_score=hl.struct(
-                        Description="Min score (score_name) at percentile cutoff for indel filtering."
+                        Description=""Minimum score (score_name) at indel filtering percentile cutoff."
                     ),
                 ),
             ),
@@ -163,7 +163,7 @@ GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
         ),
     ),
     inbreeding_coeff_cutoff=hl.struct(
-        Description="Hard-filter cutoff for InbreedingCoeff on variants (rows)."
+        Description="Hard-filter cutoff for InbreedingCoeff on variants."
     ),
 )
 GLOBAL_ANNOTATION_DICT = hl.struct(
@@ -200,7 +200,7 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
                 )
             ),
             median_insert_size=hl.struct(
-                Description="The MEDIAN insert size of all paired end reads where both ends mapped to the same chromosome."
+                Description="The median insert size of all paired end reads where both ends mapped to the same chromosome."
             ),
             pct_bases_10x=hl.struct(
                 Description="The fraction of bases that attained at least 10X sequence coverage in post-filtering bases."
@@ -208,7 +208,7 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
         ),
     ),
     subsets=hl.struct(
-        Description="Contains information about the specific cohort the sample is from: HGDP or 1KG (tgp).",
+        Description="Struct containing information from the sample's cohort: HGDP or 1KG (tgp).",
         sub_annotations=hl.struct(
             tgp=hl.struct(Description="True if sample is from the 1KG dataset."),
             hgdp=hl.struct(Description="True if the sample is from the HGDP dataset."),
@@ -270,14 +270,14 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
     ),
     population_inference=hl.struct(
         Description=(
-            "Struct containing ancestry information assigned by applying a Principal component analysis (PCA) on "
+            "Struct containing ancestry information assigned by applying a principal component analysis (PCA) on "
             "gnomAD samples and using those PCs in a random forest classifier trained on known gnomAD ancestry labels."
         ),
         sub_annotations=hl.struct(
             pca_scores=hl.struct(
                 Description="Sample's scores for each gnomAD population PC."
             ),
-            pop=hl.struct(Description="Sample's gnomAD PC project population label."),
+            pop=hl.struct(Description="Sample's inferred gnomAD population label."),
             prob_afr=hl.struct(
                 Description="Random forest probability that the sample is of African/African-American ancestry."
             ),
@@ -318,7 +318,7 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
             "Indicates whether the sample was included in the gnomAD release dataset. For the full gnomAD release, "
             "relatedness inference is performed on the full dataset, and release samples are chosen in a way that "
             "maximizes the number of samples retained while filtering the dataset to include only samples with less "
-            "than second-degree relatedness. For the HGDP + 1KG subset, all samples passing all other sample QC "
+            "than second-degree relatedness. For the HGDP + 1KG subset, samples passing all other sample QC "
             "metrics are retained."
         )
     ),
@@ -351,11 +351,10 @@ def make_freq_index_dict(freq_meta: List[Dict[str, str]]) -> Dict[str, int]:
     """
     Create a look-up Dictionary for entries contained in the frequency annotation array.
 
-    :param List of Dict freq_meta: Global annotation containing the set of groupings for each element of the freq array
+    :param freq_meta: Global annotation containing the set of groupings for each element of the freq array
         (e.g., [{'group': 'adj'}, {'group': 'adj', 'pop': 'nfe'}])
     :return: Dictionary keyed by grouping combinations in the frequency array, with values describing the corresponding index
         of each grouping entry in the frequency array
-    :rtype: Dict of str: int
     """
     return {
         **index_globals(freq_meta, dict(group=GROUPS), label_delimiter="-"),
@@ -410,10 +409,9 @@ def get_relatedness_set_ht(relatedness_ht: hl.Table) -> hl.Table:
 
     Return Table keyed by sample with all sample relationships, kin, ibd0, ibd1, and ibd2 in a struct.
 
-    :param Table relatedness_ht: Table with inferred relationship information output by pc_relate.
+    :param relatedness_ht: Table with inferred relationship information output by pc_relate.
         Keyed by sample pair (i, j).
     :return: Table keyed by sample (s) with all relationship information annotated as a struct.
-    :rtype: hl.Table
     """
     relatedness_ht = relatedness_ht.filter(relatedness_ht.relationship != UNRELATED)
     relationship_struct = hl.struct(
@@ -449,7 +447,7 @@ def prepare_sample_annotations() -> hl.Table:
     """
 
     logger.info(
-        "Sub-setting and modifying sample QC metadata to desired globals and annotations"
+        "Subsetting and modifying sample QC metadata to desired globals and annotations"
     )
     meta_ht = meta.ht()
     meta_ht = meta_ht.filter(meta_ht.subsets.hgdp | meta_ht.subsets.tgp)
@@ -494,10 +492,9 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
     """
     Load and join all Tables with variant annotations.
 
-    :param Table ht: Input HT to add variant annotations to.
-    :param bool filter_lowqual: If true the returned Table will filter out lowqual variants using info HT AS_lowqual.
+    :param ht: Input HT to add variant annotations to.
+    :param filter_lowqual: If True, filter out lowqual variants using the info HT's AS_lowqual.
     :return: Table containing joined annotations.
-    :rtype: hl.Table
     """
     logger.info("Loading annotation tables...")
     filters_ht = final_filter.ht()
@@ -575,7 +572,7 @@ def hom_alt_depletion_fix(
     af_expr: hl.expr.Float32Expression,
     af_cutoff: float = 0.01,
     ab_cutoff: float = 0.9,
-):
+)-> hl.MatrixTable:
     """
     Adjust MT genotypes with temporary fix for the depletion of homozygous alternate genotypes.
 
@@ -650,7 +647,7 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     filters_ht = final_filter.ht()
 
     logger.info(
-        "Adding desired sample QC metadata to MT columns and global annotations to MT globals"
+        "Adding subset's sample QC metadata to MT columns and global annotations to MT globals"
     )
     mt = mt.annotate_cols(**meta_ht[mt.col_key])
     mt = mt.annotate_globals(
@@ -777,8 +774,8 @@ def main(args):
         mt = adjust_subset_alleles(mt)
 
         logger.info(
-            "Note: for finalized the HGDP + TGP subset frequency, dense MT, VCFs we adjust the sex genotypes and add "
-            "a fix for older GATK gVCFs with a known depletion of homozygous alternate alleles, and removed standard "
+            "Note: for the finalized HGDP + TGP subset frequency, dense MT, VCFs we adjust the sex genotypes and add "
+            "a fix for older GATK gVCFs with a known depletion of homozygous alternate alleles, and remove standard "
             "GATK LowQual variants"
         )
 

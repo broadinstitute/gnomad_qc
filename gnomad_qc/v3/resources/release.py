@@ -11,7 +11,8 @@ from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
 
 def qual_hists_json_path(release_version: str = CURRENT_RELEASE) -> str:
-    """Fetch filepath for qual histograms JSON
+    """
+    Fetch filepath for qual histograms JSON.
 
     :param release_version: Release version. Defualts to CURRENT RELEASE
     :return: File path for histogram JSON
@@ -48,10 +49,10 @@ def release_subset(
     subset: str, dense: bool = False, data_type: str = "genomes",
 ) -> VersionedMatrixTableResource:
     """
-    Get the subset release MatrixTableResource
+    Get a subset release MatrixTableResource.
     
     :param subset: One of the possible release subsets (e.g., hgdp_1kg)
-    :param dense: If true resource will be the dense MT otherwise will return the sparse MT
+    :param dense: If True, return the dense MT; if False, return the sparse MT
     :param data_type: 'exomes' or 'genomes'
     :return: MatrixTableResource for specific subset
     """
@@ -72,7 +73,7 @@ def release_subset_annotations(
     subset: str, data_type: str = "genomes", sample: bool = True,
 ) -> VersionedTableResource:
     """
-    Get the subset release sample/variant TableResource
+    Get the subset release sample or variant TableResource.
     
     :param subset: One of the possible release subsets (e.g., hgdp_1kg)
     :param data_type: 'exomes' or 'genomes'
@@ -93,11 +94,11 @@ def release_subset_annotations(
 
 def release_subset_sample_tsv(subset: str, release: str = CURRENT_RELEASE, data_type: str = "genomes") -> str:
     """
-    Get the path to the subset release sample annotation text file
+    Get the path to the subset release sample annotation text file.
 
     :param subset: One of the possible release subsets (e.g., hgdp_1kg)
-    :param release: Version of annotation txt path to return
+    :param release: Version of annotation tsv path to return
     :param data_type: 'exomes' or 'genomes'
-    :return: 
+    :return: Path to file
     """
     return f"gs://gnomad/release/{release}/tsv/gnomad.{data_type}.v{release}.{subset}_subset_sample_meta.tsv.bgz"
