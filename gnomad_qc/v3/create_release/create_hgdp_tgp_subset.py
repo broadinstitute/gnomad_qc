@@ -150,7 +150,7 @@ GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
                         Description="Filtering percentile cutoff for indels."
                     ),
                     min_score=hl.struct(
-                        Description=""Minimum score (score_name) at indel filtering percentile cutoff."
+                        Description="Minimum score (score_name) at indel filtering percentile cutoff."
                     ),
                 ),
             ),
