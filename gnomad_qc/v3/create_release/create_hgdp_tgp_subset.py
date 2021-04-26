@@ -1,6 +1,6 @@
 import argparse
 import logging
-from typing import Dict, List, Union
+from typing import Dict, List
 
 import hail as hl
 
