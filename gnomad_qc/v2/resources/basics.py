@@ -87,14 +87,14 @@ def get_release_file(file_path: str, version: str = CURRENT_RELEASE) -> str:
 
 def public_exomes_ht_path(split=True, version=CURRENT_RELEASE):
     if int(version[0]) > 1 and int(version[2]) > 0:
-        return get_release_file('gs://gnomad-public/release/{0}/ht/exomes/gnomad.exomes.r{0}.sites.ht')
+        return get_release_file('gs://gcp-public-data--gnomad/release/{0}/ht/exomes/gnomad.exomes.r{0}.sites.ht')
     else:
         return get_release_file('gs://gnomad-public/release/{{0}}/vds/exomes/gnomad.exomes.r{{0}}.sites{0}.vds'.format(".split" if split else ""))
 
 
 def public_genomes_ht_path(split=True, version=CURRENT_RELEASE):
     if int(version[0]) > 1 and int(version[2]) > 0:
-        return get_release_file('gs://gnomad-public/release/{0}/ht/genomes/gnomad.genomes.r{0}.sites.ht')
+        return get_release_file('gs://gcp-public-data--gnomad/release/{0}/ht/genomes/gnomad.genomes.r{0}.sites.ht')
     else:
         return get_release_file('gs://gnomad-public/release/{{0}}/vds/genomes/gnomad.genomes.r{{0}}.sites{0}.vds'.format(".split" if split else ""))
 
