@@ -1,4 +1,4 @@
-from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 from gnomad.resources.resource_utils import (
     TableResource,
     VersionedTableResource,
@@ -48,11 +48,11 @@ def release_sites(public: bool = False) -> VersionedTableResource:
     :return: Sites-only release Table
     """
     return VersionedTableResource(
-        CURRENT_GENOME_RELEASE,
+        CURRENT_RELEASE,
         {
             release: TableResource(
                 path=release_ht_path(release_version=release, public=public)
             )
-            for release in GENOME_RELEASES
+            for release in RELEASES
         },
     )
