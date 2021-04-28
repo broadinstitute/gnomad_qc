@@ -5,9 +5,8 @@ from typing import Dict, List, Union
 import hail as hl
 
 from gnomad.resources.grch38.gnomad import (
-    HGDP_POPS,
-    KG_POPS,
     POPS,
+    POPS_STORED_AS_SUBPOPS,
     SUBSETS,
 )
 from gnomad.resources.grch38.reference_data import (
@@ -49,10 +48,8 @@ AS_FIELDS.remove("InbreedingCoeff")
 # Remove BaseQRankSum, as we are keeping the allele-specific version of this annotation instead
 SITE_FIELDS.remove("BaseQRankSum")
 
-# Add fine-resolution populations specific to 1KG to standard gnomAD pops, used to create frequency index dictionary
-POPS.extend(KG_POPS)
-# Add fine-resolution populations specific to HGDP to standard gnomAD pops, used to create frequency index dictionary
-POPS.extend(HGDP_POPS)
+# Add fine-resolution populations specific to 1KG and HGDP to standard gnomAD pops; used to create frequency index dictionary
+POPS.extend(POPS_STORED_AS_SUBPOPS)
 # Add 'global' tag used to distinguish cohort-wide vs. subset annotations in frequency index dictionary
 POPS.extend(["global"])
 
