@@ -169,7 +169,7 @@ def pre_process_subset_freq(
 
         elif file_exists(subset_ht_path):
             logger.info(
-                "Loading subset %s subset frequency data for testing: %s",
+                "Loading %s subset frequency data for testing: %s",
                 subset,
                 subset_ht_path,
             )
@@ -179,7 +179,7 @@ def pre_process_subset_freq(
             )
 
     elif file_exists(subset_ht_path):
-        logger.info("Loading subset %s frequency data: %s", subset, subset_ht_path)
+        logger.info("Loading %s subset frequency data: %s", subset, subset_ht_path)
         subset_ht = hl.read_table(subset_ht_path)
 
     else:
