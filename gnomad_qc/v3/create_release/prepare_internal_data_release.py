@@ -5,11 +5,9 @@ from typing import Dict, List, Union
 import hail as hl
 
 from gnomad.resources.grch38.gnomad import (
-    GROUPS,
     HGDP_POPS,
     KG_POPS,
     POPS,
-    SEXES,
     SUBSETS,
 )
 from gnomad.resources.grch38.reference_data import (
@@ -51,8 +49,11 @@ AS_FIELDS.remove("InbreedingCoeff")
 # Remove BaseQRankSum, as we are keeping the allele-specific version of this annotation instead
 SITE_FIELDS.remove("BaseQRankSum")
 
+# Add fine-resolution populations specific to 1KG to standard gnomAD pops, used to create frequency index dictionary
 POPS.extend(KG_POPS)
+# Add fine-resolution populations specific to HGDP to standard gnomAD pops, used to create frequency index dictionary
 POPS.extend(HGDP_POPS)
+# Add 'global' tag used to distinguish cohort-wide vs. subset annotations in frequency index dictionary
 POPS.extend(["global"])
 
 
@@ -137,12 +138,14 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
     return ht
 
 
-def pre_process_subset_freq(subset: str, global_ht: hl.Table, test: bool = False) -> hl.Table:
+def pre_process_subset_freq(
+    subset: str, global_ht: hl.Table, test: bool = False
+) -> hl.Table:
     """
     Prepare subset frequency Table by filling in missing frequency fields for loci present only in the global cohort.
 
-    .. note:: 
-    
+    .. note::
+
         The resulting final `freq` array will be as long as the subset `freq_meta` global (i.e., one `freq` entry for each `freq_meta` entry)
 
     :param subset: subset ID
@@ -157,18 +160,31 @@ def pre_process_subset_freq(subset: str, global_ht: hl.Table, test: bool = False
 
     if test:
         if file_exists(subset_chr20_ht_path):
+            logger.info(
+                "Loading chr20 %s subset frequency data for testing: %s",
+                subset,
+                subset_chr20_ht_path,
+            )
             subset_ht = hl.read_table(subset_chr20_ht_path)
 
         elif file_exists(subset_ht_path):
+            logger.info(
+                "Loading subset %s subset frequency data for testing: %s",
+                subset,
+                subset_ht_path,
+            )
             subset_ht = hl.read_table(subset_ht_path)
-            subset_ht = hl.filter_intervals(subset_ht, [hl.parse_locus_interval("chr20:1-1000000")])
+            subset_ht = hl.filter_intervals(
+                subset_ht, [hl.parse_locus_interval("chr20:1-1000000")]
+            )
 
     elif file_exists(subset_ht_path):
+        logger.info("Loading subset %s frequency data: %s", subset, subset_ht_path)
         subset_ht = hl.read_table(subset_ht_path)
 
     else:
         raise DataException(
-            f"Hail Table containing {subset} subset frequencies not found. You may need to run the script to generate frequency annotations first."
+            f"Hail Table containing {subset} subset frequencies not found. You may need to run the script generate_freq_data.py to generate frequency annotations first."
         )
 
     # Fill in missing freq structs
@@ -176,9 +192,7 @@ def pre_process_subset_freq(subset: str, global_ht: hl.Table, test: bool = False
     ht = ht.annotate(
         freq=hl.if_else(
             hl.is_missing(ht.freq),
-            hl.map(
-                lambda x: missing_callstats_expr(), hl.range(hl.len(ht.freq_meta))
-            ),
+            hl.map(lambda x: missing_callstats_expr(), hl.range(hl.len(ht.freq_meta))),
             ht.freq,
         )
     )
@@ -194,19 +208,37 @@ def main(args):
 
     # Load global frequency Table
     if args.test:
-        global_freq_chr20_ht_path = 'gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht'
+        global_freq_chr20_ht_path = "gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht"
 
         if file_exists(global_freq_chr20_ht_path):
-            global_freq_ht = hl.read_table(global_freq_chr20_ht_path).select("freq").select_globals("freq_meta")
+            logger.info(
+                "Loading chr20 global frequency data for testing: %s",
+                global_freq_chr20_ht_path,
+            )
+            global_freq_ht = (
+                hl.read_table(global_freq_chr20_ht_path)
+                .select("freq")
+                .select_globals("freq_meta")
+            )
 
         elif file_exists(get_freq().path):
-            logger.info("Loading global frequency data for use in testing...")
-            global_freq_ht = hl.read_table(get_freq().path).select("freq").select_globals("freq_meta")
-            global_freq_ht = hl.filter_intervals(global_freq_ht, [hl.parse_locus_interval("chr20:1-1000000")])
+            logger.info(
+                "Loading global frequency data for testing: %s", get_freq().path
+            )
+            global_freq_ht = (
+                hl.read_table(get_freq().path)
+                .select("freq")
+                .select_globals("freq_meta")
+            )
+            global_freq_ht = hl.filter_intervals(
+                global_freq_ht, [hl.parse_locus_interval("chr20:1-1000000")]
+            )
 
     elif file_exists(get_freq().path):
-        logger.info("Loading global frequency data...")
-        global_freq_ht = hl.read_table(get_freq().path).select("freq").select_globals("freq_meta")
+        logger.info("Loading global frequency data: %s", get_freq().path)
+        global_freq_ht = (
+            hl.read_table(get_freq().path).select("freq").select_globals("freq_meta")
+        )
 
     else:
         raise DataException(
@@ -223,8 +255,7 @@ def main(args):
 
     else:
         subset_freq_hts = [
-            pre_process_subset_freq(subset, global_freq_ht)
-            for subset in SUBSETS
+            pre_process_subset_freq(subset, global_freq_ht) for subset in SUBSETS
         ]
 
     logger.info("Concatenating subset frequencies...")
@@ -243,7 +274,11 @@ def main(args):
     # callset-specific DOWNSAMPLINGS must be used instead of the generic DOWNSAMPLING values
     global_freq_ht = hl.read_table(get_freq().path)
     freq_ht = freq_ht.annotate_globals(
-        freq_index_dict=make_freq_index_dict(freq_meta=hl.eval(freq_ht.freq_meta), downsamplings=hl.eval(global_freq_ht.downsamplings))
+        freq_index_dict=make_freq_index_dict(
+            freq_meta=hl.eval(freq_ht.freq_meta),
+            pops=POPS,
+            downsamplings=hl.eval(global_freq_ht.downsamplings),
+        )
     )
 
     # Add back in all global frequency annotations not present in concatenated frequencies HT
@@ -288,7 +323,10 @@ if __name__ == "__main__":
         "--test", help="Runs a test on chr20:1-1000000", action="store_true"
     )
     parser.add_argument(
-        "--test_subsets", help="Specify subsets on which to run test, e.g. '--test_subsets non_v2 non_topmed'", default=SUBSETS, nargs='+'
+        "--test_subsets",
+        help="Specify subsets on which to run test, e.g. '--test_subsets non_v2 non_topmed'",
+        default=SUBSETS,
+        nargs="+",
     )
     parser.add_argument(
         "--n_partitions",
