@@ -66,8 +66,8 @@ def main(args):
         )
     if n_subsets_use_subpops & (n_subsets_use_subpops != len(subsets)):
         raise ValueError(
-            f"All or none of the supplied subset(s) should be in the list of cohorts that need to use subpops instead "
-            f"of pops in frequency calculations: {COHORTS_WITH_POP_STORED_AS_SUBPOP}"
+            f"Cannot combine cohorts that use subpops in frequency calculations {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
+            f"with cohorts that use pops in frequency calculations {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
         )
 
     try:
@@ -146,7 +146,7 @@ def main(args):
                 else mt.meta.project_meta.project_subpop,
                 # NOTE: TGP and HGDP labeled populations are highly specific and are stored in the project_subpop meta field
             )
-            freq_meta=[{**x, **{"subset": subset}} for x in hl.eval(mt.freq_meta)]
+            freq_meta=[{**x, **{"subset": "|".join(subsets)}} for x in hl.eval(mt.freq_meta)]
             mt = mt.annotate_globals(freq_meta=freq_meta)
 
             # NOTE: no FAFs or popmax needed for subsets
