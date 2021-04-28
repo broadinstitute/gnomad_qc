@@ -272,7 +272,7 @@ def main(args):
     ht = ht.checkpoint(
         qc_temp_prefix() + "release/gnomad.genomes.v3.1.sites.chr20.ht"
         if args.test
-        else release_ht_path(public=False),
+        else release_sites().path,
         args.overwrite,
     )
     logger.info(f"Final variant count: {ht.count()}")
