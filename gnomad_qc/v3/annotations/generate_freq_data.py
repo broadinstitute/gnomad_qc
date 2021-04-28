@@ -7,6 +7,8 @@ import hail as hl
 from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     DOWNSAMPLINGS,
+    POPS,
+    POPS_STORED_AS_SUBPOPS,
     POPS_TO_REMOVE_FOR_POPMAX,
     SUBSETS,
 )
@@ -151,8 +153,10 @@ def main(args):
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
+            if n_subsets_use_subpops:
+                POPS = POPS_STORED_AS_SUBPOPS
             mt = mt.annotate_globals(
-                freq_index_dict=make_freq_index_dict(freq_meta=freq_meta, label_delimiter="-")
+                freq_index_dict=make_freq_index_dict(freq_meta=freq_meta, pops=POPS, label_delimiter="-")
             )
             mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
 
