@@ -280,7 +280,7 @@ def main(args):
     # Add back in all global frequency annotations not present in concatenated frequencies HT
     row_fields = global_freq_ht.row_value.keys() - freq_ht.row_value.keys()
     logger.info(
-        f"Adding back the following row annotations onto concatenated frequencies: {row_fields}"
+        "Adding back the following row annotations onto concatenated frequencies: %s", row_fields
     )
     freq_ht = freq_ht.annotate(**global_freq_ht[freq_ht.key].select(*row_fields))
 
