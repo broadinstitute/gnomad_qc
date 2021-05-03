@@ -325,12 +325,6 @@ if __name__ == "__main__":
         nargs="+",
     )
     parser.add_argument(
-        "--n_partitions",
-        help="Number of desired partitions for output Tables",
-        default=10000,
-        type=int,
-    )
-    parser.add_argument(
         "--slack_channel", help="Slack channel to post results and notifications to."
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
