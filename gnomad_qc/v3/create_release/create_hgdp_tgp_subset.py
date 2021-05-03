@@ -10,6 +10,7 @@ from gnomad.resources.grch38.reference_data import (
     seg_dup_intervals,
     telomeres_and_centromeres,
 )
+from gnomad.sample_qc.relatedness import UNRELATED
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import get_adj_expr, region_flag_expr
 from gnomad.utils.release import make_freq_index_dict
@@ -37,7 +38,6 @@ from gnomad_qc.v3.resources.release import (
 )
 from gnomad_qc.v3.resources.sample_qc import relatedness
 from gnomad_qc.v3.resources.variant_qc import final_filter
-from gnomad.sample_qc.relatedness import UNRELATED
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("create_subset")
