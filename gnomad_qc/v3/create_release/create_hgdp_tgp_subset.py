@@ -13,12 +13,14 @@ from gnomad.resources.grch38.reference_data import (
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import get_adj_expr, region_flag_expr
 from gnomad.utils.release import make_freq_index_dict
+from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import (
     AS_FIELDS,
     SITE_FIELDS,
     SPARSE_ENTRIES,
 )
 
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import (
     analyst_annotations,
     get_freq,
@@ -745,6 +747,13 @@ if __name__ == "__main__":
         help="Overwrite all data from this subset (default: False)",
         action="store_true",
     )
+    parser.add_argument(
+        "--slack_channel", help="Slack channel to post results and notifications to."
+    )
     args = parser.parse_args()
 
-    main(args)
+    if args.slack_channel:
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
+    else:
+        main(args)
