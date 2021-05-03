@@ -55,7 +55,7 @@ POPS.extend(["global"])
 
 def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
     """
-    Load and joins all Tables with variant annotations.
+    Load and join all Tables with variant annotations.
 
     :param freq_ht: Table with frequency annotations
     :return: Table containing joined annotations
