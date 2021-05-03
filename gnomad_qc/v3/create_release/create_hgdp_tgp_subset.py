@@ -641,7 +641,7 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
         cohort_freq_index_dict=make_freq_index_dict(
             subset_freq.index_globals().freq_meta,
             pops=POPS_STORED_AS_SUBPOPS,
-            subsets="hgdp|tgp",
+            subsets=["hgdp|tgp"],
             label_delimiter="-",
         ),
         gnomad_freq_meta=freq_meta,
