@@ -306,7 +306,7 @@ def main(args):
         else release_sites().path,
         args.overwrite,
     )
-    logger.info(f"Final variant count: {ht.count()}")
+    logger.info("Final variant count: %d", ht.count())
     ht.describe()
     ht.show()
     ht.summarize()
