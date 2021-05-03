@@ -287,7 +287,7 @@ def main(args):
     global_fields = global_freq_ht.globals.keys() - freq_ht.globals.keys()
     global_fields.remove("downsamplings")
     logger.info(
-        f"Adding back the following global annotations onto concatenated frequencies: {global_fields}"
+        "Adding back the following global annotations onto concatenated frequencies: %s", global_fields
     )
     freq_ht = freq_ht.annotate_globals(
         **global_freq_ht.index_globals().select(*global_fields)
