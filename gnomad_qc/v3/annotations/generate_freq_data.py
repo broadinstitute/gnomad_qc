@@ -1,6 +1,6 @@
 import argparse
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import hail as hl
 
@@ -8,8 +8,8 @@ from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     DOWNSAMPLINGS,
     POPS,
+    POPS_STORED_AS_SUBPOPS,
     POPS_TO_REMOVE_FOR_POPMAX,
-    SEXES,
     SUBSETS,
 )
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
@@ -22,14 +22,21 @@ from gnomad.utils.annotations import (
     pop_max_expr,
     qual_hist_expr,
 )
-from gnomad.utils.file_utils import file_exists
+from gnomad.utils.release import (
+    make_faf_index_dict,
+    make_freq_index_dict,
+)
+from gnomad.utils.annotations import set_female_y_metrics_to_na_expr
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vcf import index_globals, make_label_combos
+from gnomad.utils.vcf import index_globals
+
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt, qc_temp_prefix
-from gnomad_qc.v3.resources.meta import meta
-
+from gnomad_qc.v3.resources.basics import (
+    get_checkpoint_path,
+    get_gnomad_v3_mt,
+    qc_temp_prefix,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,35 +47,37 @@ logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
 
 
-def make_faf_index_dict(faf_meta: List[Dict[str, str]]) -> Dict[str, int]:
-    """
-    Create a look-up Dictionary for entries contained in the filter allele frequency annotation array
-
-    :param List of Dict faf_meta: Global annotation containing the set of groupings for each element of the faf array (e.g., [{'group': 'adj'}, {'group': 'adj', 'pop': 'nfe'}])
-    :return: Dictionary of faf annotation population groupings, where values are the corresponding 0-based indices for the
-        groupings in the faf_meta array
-    :rtype: Dict of str: int
-    """
-
-    index_dict = index_globals(faf_meta, dict(group=["adj"]))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS)))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], sex=SEXES)))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS, sex=SEXES)))
-
-    return index_dict
-
-
 def main(args):
-    subset = args.subset
+    subsets = args.subsets
     hl.init(
-        log=f"/generate_frequency_data{'.' + subset if subset else ''}.log",
+        log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",
         default_reference="GRCh38",
     )
+
+    invalid_subsets = []
+    n_subsets_use_subpops = 0
+    for s in subsets:
+        if s not in SUBSETS:
+            invalid_subsets.append(s)
+        if s in COHORTS_WITH_POP_STORED_AS_SUBPOP:
+            n_subsets_use_subpops += 1
+
+    if invalid_subsets:
+        raise ValueError(
+            f"{', '.join(invalid_subsets)} subset(s) are not one of the following official subsets: {SUBSETS}"
+        )
+    if n_subsets_use_subpops & (n_subsets_use_subpops != len(subsets)):
+        raise ValueError(
+            f"Cannot combine cohorts that use subpops in frequency calculations {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
+            f"with cohorts that use pops in frequency calculations {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
+        )
 
     try:
         logger.info("Reading full sparse MT and metadata table...")
         mt = get_gnomad_v3_mt(
-            key_by_locus_and_alleles=True, release_only=True, samples_meta=True
+            key_by_locus_and_alleles=True,
+            release_only=not args.include_non_release,
+            samples_meta=True,
         )
 
         if args.test:
@@ -78,10 +87,20 @@ def main(args):
 
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
-        if subset:
-            mt = mt.filter_cols(mt.meta.subsets[subset])
+        if args.include_non_release:
+            logger.info("Filtering MT columns to high quality samples")
+            total_sample_count = mt.count_cols()
+            mt = mt.filter_cols(mt.meta.high_quality)
+            high_quality_sample_count = mt.count_cols()
             logger.info(
-                f"Running frequency generation pipeline on {mt.count_cols()} samples in {subset} subset..."
+                f"Filtered {total_sample_count - high_quality_sample_count} from the full set of {total_sample_count} "
+                f"samples..."
+            )
+
+        if subsets:
+            mt = mt.filter_cols(hl.any([mt.meta.subsets[s] for s in subsets]))
+            logger.info(
+                f"Running frequency generation pipeline on {mt.count_cols()} samples in {', '.join(subsets)} subset(s)..."
             )
         else:
             logger.info(
@@ -120,27 +139,39 @@ def main(args):
         )
 
         logger.info("Generating frequency data...")
-        if subset:
+        if subsets:
             mt = annotate_freq(
                 mt,
                 sex_expr=mt.meta.sex_imputation.sex_karyotype,
                 pop_expr=mt.meta.population_inference.pop
-                if subset not in COHORTS_WITH_POP_STORED_AS_SUBPOP
+                if not n_subsets_use_subpops
                 else mt.meta.project_meta.project_subpop,
                 # NOTE: TGP and HGDP labeled populations are highly specific and are stored in the project_subpop meta field
             )
+            freq_meta=[{**x, **{"subset": "|".join(subsets)}} for x in hl.eval(mt.freq_meta)]
+            mt = mt.annotate_globals(freq_meta=freq_meta)
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
+            if n_subsets_use_subpops:
+                POPS = POPS_STORED_AS_SUBPOPS
+            mt = mt.annotate_globals(
+                freq_index_dict=make_freq_index_dict(freq_meta=freq_meta, pops=POPS, label_delimiter="-")
+            )
+            mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
 
-            logger.info(f"Writing out frequency data for {subset} subset...")
+            logger.info(
+                f"Writing out frequency data for {', '.join(subsets)} subset(s)..."
+            )
             if args.test:
                 mt.rows().write(
-                    qc_temp_prefix() + f"chr20_test_freq.{subset}.ht",
+                    get_checkpoint_path(f"chr20_test_freq.{'_'.join(subsets)}"),
                     overwrite=True,
                 )
             else:
-                mt.rows().write(get_freq(subset=subset).path, overwrite=args.overwrite)
+                mt.rows().write(
+                    get_freq(subset="_".join(subsets)).path, overwrite=args.overwrite
+                )
 
         else:
             logger.info("Computing age histograms for each variant...")
@@ -149,27 +180,15 @@ def main(args):
                     hl.is_defined(mt.meta.project_meta.age),
                     mt.meta.project_meta.age,
                     mt.meta.project_meta.age_alt,
-                    # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples, age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin
+                    # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples,
+                    # age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin
                 )
             )
-            mt = mt.annotate_rows(
-                **age_hists_expr(
-                    mt.adj,
-                    mt.GT,
-                    mt.age,
-                )
-            )
+            mt = mt.annotate_rows(**age_hists_expr(mt.adj, mt.GT, mt.age))
 
             # Compute callset-wide age histogram global
             mt = mt.annotate_globals(
-                age_distribution=mt.aggregate_cols(
-                    hl.agg.hist(
-                        mt.age,
-                        30,
-                        80,
-                        10,
-                    )
-                )
+                age_distribution=mt.aggregate_cols(hl.agg.hist(mt.age, 30, 80, 10))
             )
 
             mt = annotate_freq(
@@ -180,6 +199,15 @@ def main(args):
             )
             # Remove all loci with raw AC=0
             mt = mt.filter_rows(mt.freq[1].AC > 0)
+
+            mt = mt.annotate_globals(
+                freq_index_dict=make_freq_index_dict(
+                    freq_meta=hl.eval(mt.freq_meta),
+                    downsamplings=hl.eval(mt.downsamplings),
+                    label_delimiter="-",
+                )
+            )
+            mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
 
             logger.info("Calculating InbreedingCoeff...")
             # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify
@@ -197,8 +225,8 @@ def main(args):
                 faf=faf,
                 popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX),
             )
-            mt = mt.annotate_globals(faf_meta=faf_meta,
-                                     faf_index_dict=make_faf_index_dict(faf_meta)
+            mt = mt.annotate_globals(
+                faf_meta=faf_meta, faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-")
             )
             mt = mt.annotate_rows(
                 popmax=mt.popmax.annotate(
@@ -231,30 +259,33 @@ def main(args):
 
             logger.info("Writing out frequency data...")
             if args.test:
-                ht.write(
-                    "gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht", overwrite=True
-                )
+                ht.write(get_checkpoint_path("chr20_test_freq"), overwrite=True)
             else:
                 ht.write(get_freq().path, overwrite=args.overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log("gs://gnomad-tmp/logs/")
+        hl.copy_log(f"{qc_temp_prefix()}logs/")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--test", help="Runs a test on two partitions of chr20", action="store_true"
+        "--test", help="Runs a test on two partitions of chr20.", action="store_true"
     )
     parser.add_argument(
-        "--subset",
-        help="Name of subset for which to generate frequency data",
+        "--include_non_release",
+        help="Includes un-releasable samples in the frequency calculations.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--subsets",
+        help="List of subsets for which to generate combined frequency data.",
+        nargs="*",
         choices=SUBSETS,
     )
-
     parser.add_argument(
-        "--overwrite", help="Overwrites existing files", action="store_true"
+        "--overwrite", help="Overwrites existing files.", action="store_true"
     )
     parser.add_argument(
         "--slack_channel", help="Slack channel to post results and notifications to."

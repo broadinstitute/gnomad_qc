@@ -9,12 +9,30 @@ from gnomad.resources.resource_utils import (
 
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
 
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
+from gnomad.resources.resource_utils import (
+    TableResource,
+    VersionedTableResource,
+)
+
+
+def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
+    """
+    Returns path to file containing ANNOTATIONS_HISTS dictionary.
+    Dictionary contains histogram values for each metric.
+    For example, "InbreedingCoeff": [-0.25, 0.25, 50].
+
+    :return: Path to file with annotations histograms
+    :rtype: str
+    """
+    return f"gs://gnomad/release/{release_version}/json/annotation_hists.json"
+
 
 def qual_hists_json_path(release_version: str = CURRENT_RELEASE) -> str:
     """
     Fetch filepath for qual histograms JSON.
 
-    :param release_version: Release version. Defualts to CURRENT RELEASE
+    :param release_version: Release version. Defaults to CURRENT RELEASE
     :return: File path for histogram JSON
     :rtype: str
     """
@@ -31,8 +49,8 @@ def release_ht_path(
     public: bool = True,
 ) -> str:
     """
-    Fetch filepath for release (variant-only) Hail Tables
-    
+    Fetch filepath for release (variant-only) Hail Tables.
+
     :param data_type: 'exomes' or 'genomes'
     :param release_version: release version
     :param public: Whether to return the desired
@@ -92,3 +110,21 @@ def hgdp_1kg_subset_sample_tsv(release: str = CURRENT_RELEASE) -> str:
     :return: Path to file
     """
     return f"gs://gnomad/release/{release}/tsv/gnomad.genomes.v{release}.hgdp_1kg_subset_sample_meta.tsv.bgz"
+
+
+def release_sites(public: bool = False) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for sites-only release Table.
+
+    :param public: Determines whether release sites Table is read from public or private bucket. Defaults to private
+    :return: Sites-only release Table
+    """
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            release: TableResource(
+                path=release_ht_path(release_version=release, public=public)
+            )
+            for release in RELEASES
+        },
+    )
