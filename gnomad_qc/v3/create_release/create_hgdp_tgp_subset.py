@@ -1,15 +1,9 @@
 import argparse
 import logging
-from typing import Dict, List
 
 import hail as hl
 
-from gnomad.resources.grch38.gnomad import (
-    GROUPS,
-    HGDP_POPS,
-    KG_POPS,
-    SEXES,
-)
+from gnomad.resources.grch38.gnomad import POPS_STORED_AS_SUBPOPS
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
     lcr_intervals,
@@ -18,9 +12,9 @@ from gnomad.resources.grch38.reference_data import (
 )
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import get_adj_expr, region_flag_expr
+from gnomad.utils.release import make_freq_index_dict
 from gnomad.utils.vcf import (
     AS_FIELDS,
-    index_globals,
     SITE_FIELDS,
     SPARSE_ENTRIES,
 )
@@ -34,7 +28,7 @@ from gnomad_qc.v3.resources.annotations import (
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.release import (
-    release,
+    release_sites,
     hgdp_1kg_subset,
     hgdp_1kg_subset_annotations,
     hgdp_1kg_subset_sample_tsv,
@@ -315,8 +309,6 @@ SAMPLE_ANNOTATION_DICT = {
     },
 }
 
-POPS = KG_POPS + HGDP_POPS
-
 SAMPLE_QC_METRICS = [
     "n_deletion",
     "n_het",
@@ -331,25 +323,6 @@ SAMPLE_QC_METRICS = [
     "r_insertion_deletion",
     "r_ti_tv",
 ]
-
-
-def make_freq_index_dict(freq_meta: List[Dict[str, str]]) -> Dict[str, int]:
-    """
-    Create a look-up Dictionary for entries contained in the frequency annotation array.
-
-    :param freq_meta: Global annotation containing the set of groupings for each element of the freq array
-        (e.g., [{'group': 'adj'}, {'group': 'adj', 'pop': 'nfe'}])
-    :return: Dictionary keyed by grouping combinations in the frequency array, with values describing the corresponding index
-        of each grouping entry in the frequency array
-    """
-    return {
-        **index_globals(freq_meta, dict(group=GROUPS), label_delimiter="-"),
-        **index_globals(freq_meta, dict(group=GROUPS, pop=POPS), label_delimiter="-"),
-        **index_globals(freq_meta, dict(group=GROUPS, sex=SEXES), label_delimiter="-"),
-        **index_globals(
-            freq_meta, dict(group=GROUPS, pop=POPS, sex=SEXES), label_delimiter="-"
-        ),
-    }
 
 
 def get_relatedness_set_ht(relatedness_ht: hl.Table) -> hl.Table:
@@ -602,7 +575,7 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     :param meta_ht: Metadata HT to use for sample (column) annotations
     :return: Dense release MatrixTable with all row, column, and global annotations
     """
-    release_ht = release(public=False).ht()
+    release_ht = release_sites().ht()
     subset_freq = get_freq(subset="hgdp_tgp").ht()
     info_ht = get_info(split=True).ht()
     filters_ht = final_filter.ht()
@@ -665,7 +638,10 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     mt = mt.annotate_globals(
         cohort_freq_meta=subset_freq.index_globals().freq_meta,
         cohort_freq_index_dict=make_freq_index_dict(
-            subset_freq.index_globals().freq_meta
+            subset_freq.index_globals().freq_meta,
+            pops=POPS_STORED_AS_SUBPOPS,
+            subsets="hgdp|tgp",
+            label_delimiter="-",
         ),
         gnomad_freq_meta=freq_meta,
         gnomad_freq_index_dict=freq_index_dict,
