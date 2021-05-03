@@ -71,7 +71,7 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
     info_fields = SITE_FIELDS + AS_FIELDS
     missing_info_fields = set(info_fields).difference(info_ht.info.keys())
     logger.info(
-        f"The following fields are not found in the info HT: {missing_info_fields}"
+        "The following fields are not found in the info HT: %s", missing_info_fields
     )
 
     select_info_fields = set(info_fields).intersection(info_ht.info.keys())
