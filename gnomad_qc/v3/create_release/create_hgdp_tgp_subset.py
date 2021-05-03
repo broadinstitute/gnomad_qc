@@ -38,6 +38,7 @@ from gnomad_qc.v3.resources.release import (
 )
 from gnomad_qc.v3.resources.sample_qc import relatedness
 from gnomad_qc.v3.resources.variant_qc import final_filter
+from gnomad_qc.v3.utils import hom_alt_depletion_fix
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("create_subset")
