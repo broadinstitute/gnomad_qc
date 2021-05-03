@@ -1,4 +1,8 @@
-from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
+from gnomad.resources.resource_utils import (
+    TableResource,
+    VersionedTableResource,
+)
 
 
 def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
@@ -33,7 +37,8 @@ def release_ht_path(
     public: bool = True,
 ) -> str:
     """
-    Fetch filepath for release (variant-only) Hail Tables
+    Fetch filepath for release (variant-only) Hail Tables.
+
     :param data_type: 'exomes' or 'genomes'
     :param release_version: release version
     :param public: Whether to return the desired
@@ -44,3 +49,21 @@ def release_ht_path(
         return f"gs://gnomad-public/release/{release_version}/ht/{data_type}/gnomad.{data_type}.r{release_version}.sites.ht"
     else:
         return f"gs://gnomad/release/{release_version}/ht/gnomad.{data_type}.r{release_version}.sites.ht"
+
+
+def release_sites(public: bool = False) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for sites-only release Table.
+
+    :param public: Determines whether release sites Table is read from public or private bucket. Defaults to private
+    :return: Sites-only release Table
+    """
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            release: TableResource(
+                path=release_ht_path(release_version=release, public=public)
+            )
+            for release in RELEASES
+        },
+    )
