@@ -8,8 +8,8 @@ from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     DOWNSAMPLINGS,
     POPS,
+    POPS_STORED_AS_SUBPOPS,
     POPS_TO_REMOVE_FOR_POPMAX,
-    SEXES,
     SUBSETS,
 )
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
@@ -22,6 +22,11 @@ from gnomad.utils.annotations import (
     pop_max_expr,
     qual_hist_expr,
 )
+from gnomad.utils.release import (
+    make_faf_index_dict,
+    make_freq_index_dict,
+)
+from gnomad.utils.annotations import set_female_y_metrics_to_na_expr
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import index_globals
 
@@ -40,24 +45,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
-
-
-def make_faf_index_dict(faf_meta: List[Dict[str, str]]) -> Dict[str, int]:
-    """
-    Create a look-up Dictionary for entries contained in the filter allele frequency annotation array
-
-    :param List of Dict faf_meta: Global annotation containing the set of groupings for each element of the faf array (e.g., [{'group': 'adj'}, {'group': 'adj', 'pop': 'nfe'}])
-    :return: Dictionary of faf annotation population groupings, where values are the corresponding 0-based indices for the
-        groupings in the faf_meta array
-    :rtype: Dict of str: int
-    """
-
-    index_dict = index_globals(faf_meta, dict(group=["adj"]))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS)))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], sex=SEXES)))
-    index_dict.update(index_globals(faf_meta, dict(group=["adj"], pop=POPS, sex=SEXES)))
-
-    return index_dict
 
 
 def main(args):
@@ -81,8 +68,8 @@ def main(args):
         )
     if n_subsets_use_subpops & (n_subsets_use_subpops != len(subsets)):
         raise ValueError(
-            f"All or none of the supplied subset(s) should be in the list of cohorts that need to use subpops instead "
-            f"of pops in frequency calculations: {COHORTS_WITH_POP_STORED_AS_SUBPOP}"
+            f"Cannot combine cohorts that use subpops in frequency calculations {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
+            f"with cohorts that use pops in frequency calculations {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
         )
 
     try:
@@ -161,9 +148,17 @@ def main(args):
                 else mt.meta.project_meta.project_subpop,
                 # NOTE: TGP and HGDP labeled populations are highly specific and are stored in the project_subpop meta field
             )
+            freq_meta=[{**x, **{"subset": "|".join(subsets)}} for x in hl.eval(mt.freq_meta)]
+            mt = mt.annotate_globals(freq_meta=freq_meta)
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
+            if n_subsets_use_subpops:
+                POPS = POPS_STORED_AS_SUBPOPS
+            mt = mt.annotate_globals(
+                freq_index_dict=make_freq_index_dict(freq_meta=freq_meta, pops=POPS, label_delimiter="-")
+            )
+            mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
 
             logger.info(
                 f"Writing out frequency data for {', '.join(subsets)} subset(s)..."
@@ -185,7 +180,8 @@ def main(args):
                     hl.is_defined(mt.meta.project_meta.age),
                     mt.meta.project_meta.age,
                     mt.meta.project_meta.age_alt,
-                    # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples, age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin
+                    # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples,
+                    # age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin
                 )
             )
             mt = mt.annotate_rows(**age_hists_expr(mt.adj, mt.GT, mt.age))
@@ -204,6 +200,15 @@ def main(args):
             # Remove all loci with raw AC=0
             mt = mt.filter_rows(mt.freq[1].AC > 0)
 
+            mt = mt.annotate_globals(
+                freq_index_dict=make_freq_index_dict(
+                    freq_meta=hl.eval(mt.freq_meta),
+                    downsamplings=hl.eval(mt.downsamplings),
+                    label_delimiter="-",
+                )
+            )
+            mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
+
             logger.info("Calculating InbreedingCoeff...")
             # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify
             mt = mt.annotate_rows(
@@ -221,7 +226,7 @@ def main(args):
                 popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX),
             )
             mt = mt.annotate_globals(
-                faf_meta=faf_meta, faf_index_dict=make_faf_index_dict(faf_meta)
+                faf_meta=faf_meta, faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-")
             )
             mt = mt.annotate_rows(
                 popmax=mt.popmax.annotate(
