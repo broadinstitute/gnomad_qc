@@ -441,7 +441,8 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
     missing_info_fields = set(info_fields).difference(info_ht.info.keys())
     select_info_fields = set(info_fields).intersection(info_ht.info.keys())
     logger.info(
-        f"The following fields are not found in the info HT: {missing_info_fields}"
+        "The following fields are not found in the info HT: %s",
+        missing_info_fields,
     )
 
     # NOTE: SOR and AS_SOR annotations are now added to the info HT by default with get_as_info_expr and
