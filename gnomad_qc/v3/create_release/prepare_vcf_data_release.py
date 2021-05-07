@@ -60,8 +60,6 @@ from gnomad_qc.v3.utils import (
     remove_fields_from_globals,
 )
 
-hl.stop()
-
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
