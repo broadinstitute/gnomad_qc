@@ -22,6 +22,7 @@ def remove_fields_from_globals(global_field: List[str], fields_to_remove: List[s
             logger.info(f"'{field}'' missing from {global_field}")
 
 
+# TODO: maybe list one of the non-standard contigs?
 def build_export_reference() -> hl.ReferenceGenome:
     """
     Create export reference based on GRCh38. Eliminates all non-standard contigs
@@ -29,12 +30,12 @@ def build_export_reference() -> hl.ReferenceGenome:
     :return: Reference for VCF export containing chr1-22,X,Y, and M
     """
     ref = hl.get_reference("GRCh38")
-    my_contigs = [f"chr{i}" for i in range(1, 23)] + ["chrX", "chrY", "chrM"]
+    standard_contigs = [f"chr{i}" for i in range(1, 23)] + ["chrX", "chrY", "chrM"]
 
     export_reference = hl.ReferenceGenome(
         name="gnomAD_GRCh38",
-        contigs=my_contigs,
-        lengths={my_contig: ref.lengths[my_contig] for my_contig in my_contigs},
+        contigs=standard_contigs,
+        lengths={contig: ref.lengths[contig] for contig in standard_contigs},
         x_contigs=ref.x_contigs,
         y_contigs=ref.y_contigs,
         par=[
