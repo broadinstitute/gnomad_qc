@@ -9,8 +9,8 @@ from gnomad.sample_qc.ancestry import POP_NAMES
 from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     HGDP_POPS,
-    KG_POPS,
-    KG_POP_NAMES,
+    TGP_POPS,
+    TGP_POP_NAMES,
     POPS,
     SEXES,
     SUBSETS,
@@ -129,13 +129,13 @@ POPS = {pop: POP_NAMES[pop] for pop in POPS}
 FAF_POPS = {pop: POP_NAMES[pop] for pop in FAF_POPS}
 
 # Get HGDP + TGP(KG) subset pop names
-HGDP_KG_KEEP_POPS = KG_POPS + HGDP_POPS
-HGDP_KG_POPS = {}
-for pop in HGDP_KG_KEEP_POPS:
-    if pop in KG_POP_NAMES:
-        HGDP_KG_POPS[pop] = KG_POP_NAMES[pop]
+HGDP_TGP_KEEP_POPS = TGP_POPS + HGDP_POPS
+HGDP_TGP_POPS = {}
+for pop in HGDP_TGP_KEEP_POPS:
+    if pop in TGP_POP_NAMES:
+        HGDP_TGP_POPS[pop] = TGP_POP_NAMES[pop]
     else:
-        HGDP_KG_POPS[pop] = pop.capitalize()
+        HGDP_TGP_POPS[pop] = pop.capitalize()
 
 
 # Histograms to exclude from the VCF export
@@ -189,7 +189,7 @@ FORMAT_DICT.update(
 
 # VCF INFO field reordering
 VCF_INFO_REORDER = ["AC-adj", "AN-adj", "AF-adj", "popmax", "faf95_popmax"]
-HGDP_KG_VCF_INFO_REORDER = [
+HGDP_TGP_VCF_INFO_REORDER = [
     "AC-adj",
     "AN-adj",
     "AF-adj",
@@ -802,15 +802,15 @@ def build_parameter_dict(
     """
     if hgdp_1kg_subset:
         parameter_dict = {
-            "pops": HGDP_KG_POPS,
+            "pops": HGDP_TGP_POPS,
             "subsets": ["", "gnomad"],
             "is_subset": True,
             "temp_ht_path": get_checkpoint_path(
                 f"vcf_prep_{'test' if test else ''}_hgdp_1kg"
             ),
             "include_age_hists": False,
-            "subset_pops": {"gnomad": POPS, "": HGDP_KG_POPS},
-            "vcf_info_reorder": HGDP_KG_VCF_INFO_REORDER,
+            "subset_pops": {"gnomad": POPS, "": HGDP_TGP_POPS},
+            "vcf_info_reorder": HGDP_TGP_VCF_INFO_REORDER,
             "ht": release_subset(subset="hgdp_1kg", dense=True).mt().rows(),
             "freq_entries_to_remove": set(),
             "age_hist_data": None,
@@ -825,7 +825,7 @@ def build_parameter_dict(
                 f"vcf_prep_{'test' if args.test else ''}"
             ),
             "include_age_hists": True,
-            "subset_pops": {"hgdp": HGDP_POPS, "tgp": KG_POPS},
+            "subset_pops": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
             "vcf_info_reorder": VCF_INFO_REORDER,
             "ht": hl.read_table(
                 release_ht_path()
