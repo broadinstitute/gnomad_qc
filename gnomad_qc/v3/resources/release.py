@@ -57,18 +57,6 @@ def release_ht_path(
         return f"gs://gnomad/release/{release_version}/ht/gnomad.{data_type}.r{release_version}.sites.ht"
 
 
-def release_var_hist_path(data_source: str, freeze: int) -> str:
-    """
-    Fetch bucket for release variant histograms (json files).
-    
-    :param str data_source: One of 'regeneron' or 'broad'
-    :param int freeze: One of the data freezes
-    :return: Filepath for release jsons
-    :rtype: str
-    """
-    return f"{get_release_path(data_source, freeze)}/json/{data_source}.freeze_{freeze}.json"
-
-
 def release_header_path(
     subset: Optional[str] = None, release_version: str = CURRENT_RELEASE
 ) -> str:
