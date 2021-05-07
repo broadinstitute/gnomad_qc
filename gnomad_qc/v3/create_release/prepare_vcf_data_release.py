@@ -231,7 +231,7 @@ def populate_subset_info_dict(
     :param pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
     :param faf_pops: Dict of faf population names. Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
-    :param label_delimiter: String to use as delimiter when making group label combinations.
+    :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
     :return: Dictionary containing Subset specific INFO header fields.
     """
 
@@ -387,7 +387,7 @@ def populate_info_dict(
     # Add variant quality histograms to info dict
     vcf_info_dict.update(make_hist_dict(bin_edges, adj=True))
 
-    # Add Analyst annotations to info_dict
+    # Add in silico prediction annotations to info_dict
     vcf_info_dict.update(in_silico_dict)
 
     return vcf_info_dict
@@ -463,14 +463,14 @@ def unfurl_nested_annotations(
     is_subset: bool = False,
     gnomad_release: bool = False,
     entries_to_remove: Set[str] = None,
-) -> [hl.struct, List]:
+) -> [hl.struct, Set[str]]:
     """
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the
     values of the dictionary are Hail Expressions describing how to access the corresponding values.
 
     :param t: Table/MatrixTable containing the nested variant annotation arrays to be unfurled.
     :param gnomad_release: Should the gnomAD release frequencies be unfurled.
-    :param is_subset: Is this for the release of a subset.
+    :param is_subset: Whether the annotations are from a subset of gnomAD.
     :param entries_to_remove: Frequency entries to remove for vcf_export.
     :return: Dictionary containing variant annotations and their corresponding values.
     """
@@ -600,8 +600,7 @@ def prepare_vcf_ht(
     """
     Prepare the Table used for sanity checks and VCF export
 
-    :param ht: Table containing the
-    nested variant annotation arrays to be unfurled.
+    :param ht: Table containing the nested variant annotation arrays to be unfurled.
     :param is_subset: Is this for the release of a subset.
     :param freq_entries_to_remove: Frequency entries to remove for vcf_export.
     :param vcf_info_reorder: Optional list of INFO fields to reorder, the rest of the fields are added after this list.
@@ -742,18 +741,18 @@ def prepare_vcf_header_dict(
 
 def cleanup_ht_for_vcf_export(
     ht: hl.Table, drop_freqs: List, drop_hists: List = DROP_HISTS
-):
+) -> [hl.Table, List[str]]:
     """
-    Clean up the Table returned by `prepared_vcf_ht` so it is ready for export to a VCF with `hl.export_vcf`.
+    Clean up the Table returned by `prepare_vcf_ht` so it is ready to export to VCF with `hl.export_vcf`.
 
     Specifically:
         - Drop histograms and frequency entries that are not wanted in the VCF.
         - Reformat names to remove "adj" and change '-' in info names to '_'.
-        - Adjust types that are incompatiable with VCFs using `adjust_vcf_incompatible_types`.
+        - Adjust types that are incompatible with VCFs using `adjust_vcf_incompatible_types`.
 
-    :param ht: Table returned by `prepared_vcf_ht`.
-    :param drop_freqs: List of histograms to drop from the VCF export.
-    :param drop_hists: List of frequencies to drop from the VCF export.
+    :param ht: Table returned by `prepare_vcf_ht`.
+    :param drop_freqs: List of frequencies to drop from the VCF export.
+    :param drop_hists: List of histograms to drop from the VCF export.
     :return: Table ready for export to VCF and a list of fixed row annotations needed for the VCF header check.
     """
     logger.info(
@@ -777,7 +776,7 @@ def cleanup_ht_for_vcf_export(
     )
     ht = ht.transmute(info=hl.struct(**info_annot_mapping))
 
-    logger.info("Adjusting VCF incompatiable types...")
+    logger.info("Adjusting VCF incompatible types...")
     # Reformat AS_SB_TABLE for use in ht_to_vcf_mt
     ht = ht.annotate(
         info=ht.info.annotate(
@@ -798,7 +797,7 @@ def build_parameter_dict(
 
     :param hgdp_1kg_subset: Build the parameter list specific to the HGDP + TGP subset release.
     :param test: Uses a checkpoint path for the prepared VCF Table that is specific to testing.
-    :return: Dictionary containing parameters needed for making the release VCF.
+    :return: Dictionary containing parameters needed to make the release VCF.
     """
     if hgdp_1kg_subset:
         parameter_dict = {
@@ -857,7 +856,7 @@ def main(args):
     export_reference = build_export_reference()
 
     if chromosome and args.test:
-        raise ValueError("chromosome argument doesn't work with the test flag.")
+        raise ValueError("Chromosome argument doesn't work with the test flag.")
 
     # Setup of parameters and Table/MatrixTable based on hgdp_1kg_subset flag
     parameter_dict = build_parameter_dict(hgdp_1kg, args.test)
@@ -992,7 +991,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--test",
-        help="Create release files using only 5 partitions on chr20, chrX, and chrY for testing purposes",
+        help="Create release files using only 2 partitions on chr20, chrX, and chrY for testing purposes",
         action="store_true",
     )
     parser.add_argument(
