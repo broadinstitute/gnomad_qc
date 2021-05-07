@@ -59,7 +59,8 @@ def release_ht_path(
 
 def release_var_hist_path(data_source: str, freeze: int) -> str:
     """
-    Fetch bucket for release variant histograms (json files)
+    Fetch bucket for release variant histograms (json files).
+    
     :param str data_source: One of 'regeneron' or 'broad'
     :param int freeze: One of the data freezes
     :return: Filepath for release jsons
@@ -88,7 +89,7 @@ def release_vcf_path(
     release_version: str = CURRENT_RELEASE, contig: str = None, subset: str = None
 ) -> str:
     """
-    Fetch bucket for release (variant-only) VCFs
+    Fetch bucket for release (sites-only) VCFs.
 
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :param contig: String containing the name of the desired reference contig
@@ -129,10 +130,10 @@ def release_subset(
     subset: str, dense: bool = False, data_type: str = "genomes",
 ) -> VersionedMatrixTableResource:
     """
-    Get the subset release MatrixTableResource
+    Get the subset release MatrixTableResource.
 
     :param subset: One of the possible release subsets (e.g., hgdp_1kg)
-    :param dense: If true resource will be the dense MT otherwise will return the sparse MT
+    :param dense: If True, will return the dense MatrixTableResource, otherwise will return the sparse MatrixTableResource
     :param data_type: 'exomes' or 'genomes'
     :return: MatrixTableResource for specific subset
     """

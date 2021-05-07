@@ -25,9 +25,11 @@ def remove_fields_from_globals(global_field: List[str], fields_to_remove: List[s
 # TODO: maybe list one of the non-standard contigs?
 def build_export_reference() -> hl.ReferenceGenome:
     """
-    Create export reference based on GRCh38. Eliminates all non-standard contigs
+    Create export reference based on GRCh38. 
+    
+    Eliminates all non-standard contigs.
 
-    :return: Reference for VCF export containing chr1-22,X,Y, and M
+    :return: Reference genome for VCF export containing only chr1-22, X, Y, and M
     """
     ref = hl.get_reference("GRCh38")
     standard_contigs = [f"chr{i}" for i in range(1, 23)] + ["chrX", "chrY", "chrM"]
