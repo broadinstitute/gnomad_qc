@@ -104,7 +104,7 @@ MISSING_INFO_FIELDS = (
     + RF_FIELDS
 )
 
-# Remove unnecessary pop names from POPS dict
+# Remove unnecessary pop names from POP_NAMES dict
 POPS = {pop: POP_NAMES[pop] for pop in POPS}
 
 # Remove unnecessary pop names from FAF_POPS dict
