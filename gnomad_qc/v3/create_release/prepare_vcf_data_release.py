@@ -29,6 +29,7 @@ from gnomad.utils.vcf import (
     GROUPS,
     HISTS,
     INFO_DICT,
+    IN_SILICO_ANNOTATIONS_INFO_DICT,
     make_hist_bin_edges_expr,
     make_hist_dict,
     make_info_dict,
@@ -46,8 +47,7 @@ from gnomad_qc.v3.create_release.sanity_checks import (
 )
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
 
-# TODO: Uncomment when this resource goes in
-# from gnomad_qc.v3.resources.release import release_sites
+from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v3.resources.release import (
     append_to_vcf_header_path,
     release_header_path,
@@ -67,39 +67,23 @@ logging.basicConfig(
 logger = logging.getLogger("vcf_release")
 logger.setLevel(logging.INFO)
 
-# Add monoallelic, QUALapprox, and AS_SB_TABLE to vcf_info_dict
-VCF_INFO_DICT = INFO_DICT
-VCF_INFO_DICT["monoallelic"] = {
-    "Description": "All samples are all homozygous alternate for the variant"
-}
-VCF_INFO_DICT["QUALapprox"] = {
-    "Number": "1",
-    "Description": "Sum of PL[0] values; used to approximate the QUAL score",
-}
-VCF_INFO_DICT["AS_SB_TABLE"] = {
-    "Number": ".",
-    "Description": "Allele-specific forward/reverse read counts for strand bias tests",
-}
-
 # Add new site fields
 NEW_SITE_FIELDS = [
     "monoallelic",
-    "QUALapprox",
     "transmitted_singleton",
 ]
 SITE_FIELDS.extend(NEW_SITE_FIELDS)
-AS_FIELDS.append("AS_SB_TABLE")
 
 # Remove original alleles for containing non-releasable alleles
 MISSING_ALLELE_TYPE_FIELDS = ["original_alleles", "has_star"]
 remove_fields_from_globals(ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS)
 
-# Remove BaseQRankSum and SOR from site fields (doesn't exist in v3.1)
-MISSING_SITES_FIELDS = ["BaseQRankSum", "SOR"]
+# Remove SOR from site fields (doesn't exist in v3.1)
+MISSING_SITES_FIELDS = ["SOR"]
 remove_fields_from_globals(SITE_FIELDS, MISSING_SITES_FIELDS)
 
-# Remove AS_BaseQRankSum and AS_SOR from AS fields
-MISSING_AS_FIELDS = ["AS_BaseQRankSum", "AS_VarDP"]
+# Remove AS_VarDP from AS fields
+MISSING_AS_FIELDS = ["AS_VarDP"]
 remove_fields_from_globals(AS_FIELDS, MISSING_AS_FIELDS)
 
 # Make subset list (used in properly filling out VCF header descriptions and naming VCF info fields)
@@ -147,33 +131,6 @@ DROP_HISTS = (
     + [x + "_bin_edges" for x in HISTS]
 )
 
-# Dictionary with in silico score descriptions to include in the VCF INFO header
-IN_SILICO_ANNOTATIONS_INFO_DICT = {
-    "cadd_raw_score": {
-        "Number": "1",
-        "Description": "Raw CADD scores are interpretable as the extent to which the annotation profile for a given variant suggests that the variant is likely to be 'observed' (negative values) vs 'simulated' (positive values). Larger values are more deleterious.",
-    },
-    "cadd_phred": {
-        "Number": "1",
-        "Description": "Cadd Phred-like scores ('scaled C-scores') ranging from 1 to 99, based on the rank of each variant relative to all possible 8.6 billion substitutions in the human reference genome. Larger values are more deleterious",
-    },
-    "revel_score": {
-        "Number": "1",
-        "Description": "dbNSFP's Revel score from 0 to 1. Variants with higher scores are predicted to be more likely to be deleterious.",
-    },
-    "splice_ai_max_ds": {
-        "Number": "1",
-        "Description": "Illumina's SpliceAI max delta score; interpreted as the probability of the variant being splice-altering.",
-    },
-    "splice_ai_consequence": {
-        "Description": "The consequence term associated with the max delta score in 'splice_ai_max_ds'.",
-    },
-    "primate_ai_score": {
-        "Number": "1",
-        "Description": "PrimateAI's deleteriousness score from 0 (less deleterious) to 1 (more deleterious).",
-    },
-}
-
 # Used for HGDP + TGP subset MT VCF output only
 FORMAT_DICT.update(
     {
@@ -203,11 +160,6 @@ HGDP_TGP_VCF_INFO_REORDER = [
     "gnomad-AN-raw",
     "gnomad-AF-raw",
 ]
-
-
-# TODO: USE RESOURCES once it is in, looks like it will be called release_sites so just remove this
-def release_ht_path():
-    return "gs://gnomad/release/3.1.1/ht/genomes/gnomad.genomes.v3.1.1.sites.ht"
 
 
 def populate_subset_info_dict(
@@ -301,7 +253,7 @@ def populate_subset_info_dict(
 def populate_info_dict(
     bin_edges: Dict[str, str],
     age_hist_data: str = None,
-    info_dict: Dict[str, Dict[str, str]] = VCF_INFO_DICT,
+    info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS,
     groups: List[str] = GROUPS,
     pops: Dict[str, str] = POPS,
@@ -410,7 +362,7 @@ def make_info_expr(
     # Add AS annotations to info dict
     for field in AS_FIELDS:
         vcf_info_dict[field] = t["release_ht_info"][f"{field}"]
-    for field in VQSR_FIELDS + AS_VQSR_FIELDS:
+    for field in VQSR_FIELDS:
         vcf_info_dict[field] = t["vqsr"][f"{field}"]
 
     # Add region_flag and allele_info fields to info dict
@@ -458,19 +410,20 @@ def make_info_expr(
 
 def unfurl_nested_annotations(
     t: Union[hl.MatrixTable, hl.Table],
-    is_subset: bool = False,
+    is_subset: bool = False,  # TODO: might be helpful to document which situations require both gnomad_release and is_subset to be True (vs just gnomad_release=True or is_subset=True)
     gnomad_release: bool = False,
     entries_to_remove: Set[str] = None,
-) -> [hl.struct, List]:
+) -> [hl.expr.StructExpression, List]:
     """
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the
     values of the dictionary are Hail Expressions describing how to access the corresponding values.
 
     :param t: Table/MatrixTable containing the nested variant annotation arrays to be unfurled.
-    :param gnomad_release: Should the gnomAD release frequencies be unfurled.
     :param is_subset: Is this for the release of a subset.
+    :param gnomad_release: Whether to unfurl all gnomAD frequencies.
     :param entries_to_remove: Frequency entries to remove for vcf_export.
-    :return: Dictionary containing variant annotations and their corresponding values.
+    :return: Struct Expression containing variant annotations and their corresponding expressions and updated entries
+        to remove from the VCF.
     """
     freq_entries_to_remove_vcf = set()
     expr_dict = {}
@@ -825,9 +778,7 @@ def build_parameter_dict(
             "include_age_hists": True,
             "subset_pops": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
             "vcf_info_reorder": VCF_INFO_REORDER,
-            "ht": hl.read_table(
-                release_ht_path()
-            ),  # TODO: Change to release_sites().ht(),
+            "ht": hl.read_table(release_sites().ht()),
         }
         # Downsampling and subset entries to remove from VCF's freq export
         # Note: Need to extract the non-standard downsamplings from the freq_meta struct to the FREQ_ENTRIES_TO_REMOVE
