@@ -523,7 +523,8 @@ def filter_to_test(
     :return: Input Table/MatrixTable filtered to `num_partitions` on chr20, chrX, and chrY.
     """
     logger.info(
-        f"Filtering to {num_partitions} partitions on chr20, chrX, and chrY (for tests only)..."
+        "Filtering to %d partitions on chr20, chrX, and chrY (for tests only)...",
+        num_partitions,
     )
     t_chr20 = hl.filter_intervals(t, [hl.parse_locus_interval("chr20")])
     t_chr20 = t_chr20._filter_partitions(range(num_partitions))
