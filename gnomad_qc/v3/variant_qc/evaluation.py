@@ -205,8 +205,8 @@ def main(args):
 
             # Load truth data
             mt = get_callset_truth_data(truth_sample).mt()
-            truth_hc_intervals = TRUTH_SAMPLES[truth_sample]["hc_intervals"]
-            truth_mt = TRUTH_SAMPLES[truth_sample]["truth_mt"]
+            truth_hc_intervals = TRUTH_SAMPLES[truth_sample]["hc_intervals"].ht()
+            truth_mt = TRUTH_SAMPLES[truth_sample]["truth_mt"].mt()
             truth_mt = truth_mt.key_cols_by(s=hl.str(TRUTH_SAMPLES[truth_sample]["s"]))
 
             # Remove low quality sites
