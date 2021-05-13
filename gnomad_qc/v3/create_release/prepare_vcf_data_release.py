@@ -649,6 +649,7 @@ def prepare_vcf_header_dict(
     age_hist_data: str,
     subset_list: List[str],
     pops: Dict[str, str],
+    inbreeding_cutoff=INBREEDING_COEFF_HARD_CUTOFF, #TODO: is this actuall already on a table I can grab from?
 ) -> Dict[str, Dict[str, str]]:
     """
     Prepare VCF header dictionary.
@@ -658,13 +659,14 @@ def prepare_vcf_header_dict(
     :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param subset_list: List of sample subsets in dataset.
     :param pops: List of sample global population names for gnomAD genomes.
+    :param inbreeding_cutoff: InbreedingCoeff hard filter used for variants
     :return: Prepared VCF header dictionary
     """
     logger.info("Making FILTER dict for VCF...")
     filter_dict = make_vcf_filter_dict(
         hl.eval(t.filtering_model.snv_cutoff.min_score),
         hl.eval(t.filtering_model.indel_cutoff.min_score),
-        inbreeding_cutoff=INBREEDING_COEFF_HARD_CUTOFF,
+        inbreeding_cutoff=inbreeding_coeff_cutoff.,
         variant_qc_filter="AS_VQSR",
     )
 
@@ -746,11 +748,12 @@ def build_parameter_dict(
     hgdp_1kg_subset: bool = False, test: bool = False
 ) -> Dict[str, Union[bool, str, List, Dict, Set, hl.Table, None]]:
     """
-    Build a dictionary of the parameters needed in the script because they differ for the HGDP + TGP subset release
-    compared to the full release.
+    Build a dictionary of parameters to export.
+
+    Parameters differ from subset releases (e.g., HGDP + TGP) vs full gnomAD release.
 
     :param hgdp_1kg_subset: Build the parameter list specific to the HGDP + TGP subset release.
-    :param test: Uses a checkpoint path for the prepared VCF Table that is specific to testing.
+    :param test: Uses a checkpoint path for the prepared VCF Table that adds the string "test" to the checkpoint path.
     :return: Dictionary containing parameters needed to make the release VCF.
     """
     if hgdp_1kg_subset:
@@ -893,6 +896,7 @@ def main(args):
             logger.info("Running check on VCF fields and info dict...")
             if not vcf_field_check(prepared_vcf_ht, header_dict, new_row_annots):
                 logger.error("Did not pass VCF field check")
+                return
 
             if hgdp_1kg:
                 logger.info(
