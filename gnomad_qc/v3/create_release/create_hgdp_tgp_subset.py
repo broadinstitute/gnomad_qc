@@ -417,7 +417,7 @@ def prepare_sample_annotations() -> hl.Table:
     return meta_ht
 
 
-# TODO: move to common area for use in release HT code? Current version is a little different than Grace's version
+# TODO: Might be good to generalize this because a similar function is used in creating the release sites HT.
 def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl.Table:
     """
     Load and join all Tables with variant annotations.
