@@ -476,22 +476,22 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
         ),
     )
 
-    filters = filters_ht[ht.key]
+    keyed_filters = filters_ht[ht.key]
     info = info_ht[ht.key]
     ht = ht.annotate(
         a_index=info.a_index,
         was_split=info.was_split,
         rsid=dbsnp_ht[ht.key].rsid,
-        filters=filters.filters,
+        filters=keyed_filters.filters,
         info=info.info,
         vep=vep_ht[ht.key].vep.drop("colocated_variants"),
-        vqsr=filters.vqsr,
+        vqsr=keyed_filters.vqsr,
         region_flag=region_flag_expr(
             ht,
             non_par=False,
             prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         ),
-        allele_info=filters.allele_data,
+        allele_info=keyed_filters.allele_data,
         **analyst_ht[ht.key],
     )
 
@@ -509,7 +509,7 @@ def adjust_subset_alleles(mt: hl.MatrixTable) -> hl.MatrixTable:
     Uses `hl.agg.any` to determine if an allele if found in the MT. The alleles annotations will only include reference
     alleles and alternate alleles that are in MT. `mt.LA` will be adjusted to the new alleles annotation.
 
-    :param mt: Input MatrixTable to subset locus alleles
+    :param mt: MatrixTable to subset locus alleles
     :return: MatrixTable with alleles adjusted to only those with a sample containing a non reference allele
     """
     mt = mt.annotate_rows(

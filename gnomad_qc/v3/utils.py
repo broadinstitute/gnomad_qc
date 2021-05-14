@@ -1,6 +1,7 @@
 import hail as hl
 
 
+# TODO: Needs to be modified to fix the problem of the alt het correction on a split MT
 def hom_alt_depletion_fix(
         mt: hl.MatrixTable,
         af_expr: hl.expr.Float32Expression,
