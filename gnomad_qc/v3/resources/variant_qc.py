@@ -27,13 +27,13 @@ String representation for NA12878 truth sample
 TRUTH_SAMPLES = {
     "syndip": {
         "s": SYNDIP,
-        "truth_mt": syndip.mt(),
-        "hc_intervals": syndip_hc_intervals.ht(),
+        "truth_mt": syndip,
+        "hc_intervals": syndip_hc_intervals,
     },
     "NA12878": {
         "s": NA12878,
-        "truth_mt": na12878_giab.mt(),
-        "hc_intervals": na12878_giab_hc_intervals.ht(),
+        "truth_mt": na12878_giab,
+        "hc_intervals": na12878_giab_hc_intervals,
     },
 }
 """
@@ -41,8 +41,8 @@ Dictionary containing necessary information for truth samples
 
 Current truth samples available are syndip and NA12878. Available data for each are the following:
     - s: sample name in the callset
-    - truth_mt: truth sample MatrixTable
-    - hc_intervals: high confidence interval Table in truth sample
+    - truth_mt: truth sample MatrixTable resource
+    - hc_intervals: high confidence interval Table resource in truth sample
 """
 
 
