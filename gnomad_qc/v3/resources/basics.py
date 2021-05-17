@@ -96,4 +96,4 @@ def get_checkpoint_path(
     :return: Output checkpoint path
     :rtype: str
     """
-    return f'{qc_temp_prefix(version)}/{name}.{"mt" if mt else "ht"}'
+    return f'{qc_temp_prefix(version)}{name}.{"mt" if mt else "ht"}'
