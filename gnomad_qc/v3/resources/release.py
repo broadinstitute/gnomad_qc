@@ -97,14 +97,14 @@ def release_header_path(
 
 
 def release_vcf_path(
-    release_version: str = CURRENT_RELEASE, contig: str = None, subset: str = None
+    release_version: str = CURRENT_RELEASE, contig: Optional[str] = None, subset: Optional[str] = None
 ) -> str:
     """
     Fetch bucket for release (sites-only) VCFs.
 
     :param release_version: Release version. Defaults to CURRENT RELEASE
-    :param contig: String containing the name of the desired reference contig
-    :param subset: Subset being written out to VCF
+    :param contig: String containing the name of the desired reference contig. Defaults to the full (all contigs) sites VCF path
+    :param subset: Subset being written out to VCF. Defaults to the full callset (metrics on all samples) sites VCF path
     :return: Filepath for the desired VCF
     """
     if subset is None:
