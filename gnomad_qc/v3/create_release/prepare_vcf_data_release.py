@@ -50,8 +50,8 @@ from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v3.resources.release import (
     append_to_vcf_header_path,
+    hgdp_1kg_subset,
     release_header_path,
-    release_subset,
     release_vcf_path,
 )
 from gnomad_qc.v3.utils import (
@@ -767,7 +767,7 @@ def build_parameter_dict(
             "include_age_hists": False,
             "subset_pops": {"gnomad": POPS, "": HGDP_TGP_POPS},
             "vcf_info_reorder": HGDP_TGP_VCF_INFO_REORDER,
-            "ht": release_subset(subset="hgdp_1kg", dense=True).mt().rows(),
+            "ht": hgdp_1kg_subset(dense=True).mt().rows(),
             "freq_entries_to_remove": set(),
             "age_hist_data": None,
         }
@@ -902,7 +902,7 @@ def main(args):
                 logger.info(
                     "Loading the HGDP + TGP subset MT and annotating with the prepared VCF HT for VCF export..."
                 )
-                t = release_subset(subset="hgdp_1kg", dense=True).mt().select_rows()
+                t = hgdp_1kg_subset(dense=True).mt().select_rows()
                 t = t.annotate_rows(**prepared_vcf_ht[t.row_key])
             else:
                 t = prepared_vcf_ht

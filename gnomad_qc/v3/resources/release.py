@@ -3,8 +3,11 @@ from typing import Optional
 from gnomad.resources.resource_utils import (
     DataException,
     MatrixTableResource,
+    TableResource,
     VersionedMatrixTableResource,
+    VersionedTableResource,
 )
+
 from gnomad_qc.v3.resources.constants import (
     CURRENT_RELEASE,
     CURRENT_HGDP_TGP_RELEASE,
@@ -57,55 +60,6 @@ def release_ht_path(
         return f"gs://gnomad-public/release/{release_version}/ht/{data_type}/gnomad.{data_type}.r{release_version}.sites.ht"
     else:
         return f"gs://gnomad/release/{release_version}/ht/gnomad.{data_type}.r{release_version}.sites.ht"
-
-
-def hgdp_1kg_subset(dense: bool = False) -> VersionedMatrixTableResource:
-    """
-    Get the HGDP + 1KG subset release MatrixTableResource.
-
-    :param dense: If True, return the dense MT; if False, return the sparse MT
-    :return: MatrixTableResource for specific subset
-    """
-
-    return VersionedMatrixTableResource(
-        CURRENT_RELEASE,
-        {
-            release: MatrixTableResource(
-                f"gs://gnomad/release/{release}/mt/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_dense' if dense else '_sparse'}.mt"
-            )
-            for release in RELEASES
-            if release != "3"
-        },
-    )
-
-
-def hgdp_1kg_subset_annotations(sample: bool = True) -> VersionedTableResource:
-    """
-    Get the HGDP + 1KG subset release sample or variant TableResource.
-
-    :param sample: If true, will return the sample annotations, otherwise will return the variant annotations
-    :return: Table resource with sample/variant annotations for the subset
-    """
-    return VersionedTableResource(
-        CURRENT_RELEASE,
-        {
-            release: TableResource(
-                f"gs://gnomad/release/{release}/ht/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_sample_meta' if sample else '_variant_annotations'}.ht"
-            )
-            for release in RELEASES
-            if release != "3"
-        },
-    )
-
-
-def hgdp_1kg_subset_sample_tsv(release: str = CURRENT_RELEASE) -> str:
-    """
-    Get the path to the HGDP + 1KG subset release sample annotation text file.
-
-    :param release: Version of annotation tsv path to return
-    :return: Path to file
-    """
-    return f"gs://gnomad/release/{release}/tsv/gnomad.genomes.v{release}.hgdp_1kg_subset_sample_meta.tsv.bgz"
 
 
 def release_sites(public: bool = False) -> VersionedTableResource:
@@ -183,15 +137,11 @@ def append_to_vcf_header_path(
     return f"gs://gnomad/release/{release_version}/vcf/genomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
 
 
-def release_subset(
-    subset: str, dense: bool = False, data_type: str = "genomes",
-) -> VersionedMatrixTableResource:
+def hgdp_1kg_subset(dense: bool = False) -> VersionedMatrixTableResource:
     """
-    Get the subset release MatrixTableResource.
+    Get the HGDP + 1KG subset release MatrixTableResource.
 
-    :param subset: One of the possible release subsets (e.g., hgdp_1kg)
-    :param dense: If True, will return the dense MatrixTableResource, otherwise will return the sparse MatrixTableResource
-    :param data_type: 'exomes' or 'genomes'
+    :param dense: If True, return the dense MT; if False, return the sparse MT
     :return: MatrixTableResource for specific subset
     """
 
@@ -199,9 +149,38 @@ def release_subset(
         CURRENT_HGDP_TGP_RELEASE,
         {
             release: MatrixTableResource(
-                f"gs://gnomad/release/{release}/mt/genomes/gnomad.{data_type}.v{release}.{subset}_subset{f'_dense' if dense else '_sparse'}.mt"
+                f"gs://gnomad/release/{release}/mt/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_dense' if dense else '_sparse'}.mt"
             )
             for release in HGDP_TGP_RELEASES
             if release != "3"
         },
     )
+
+
+def hgdp_1kg_subset_annotations(sample: bool = True) -> VersionedTableResource:
+    """
+    Get the HGDP + 1KG subset release sample or variant TableResource.
+
+    :param sample: If true, will return the sample annotations, otherwise will return the variant annotations
+    :return: Table resource with sample/variant annotations for the subset
+    """
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            release: TableResource(
+                f"gs://gnomad/release/{release}/ht/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_sample_meta' if sample else '_variant_annotations'}.ht"
+            )
+            for release in RELEASES
+            if release != "3"
+        },
+    )
+
+
+def hgdp_1kg_subset_sample_tsv(release: str = CURRENT_RELEASE) -> str:
+    """
+    Get the path to the HGDP + 1KG subset release sample annotation text file.
+
+    :param release: Version of annotation tsv path to return
+    :return: Path to file
+    """
+    return f"gs://gnomad/release/{release}/tsv/gnomad.genomes.v{release}.hgdp_1kg_subset_sample_meta.tsv.bgz"
