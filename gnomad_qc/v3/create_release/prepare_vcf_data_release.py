@@ -174,9 +174,7 @@ def populate_subset_info_dict(
     """
 
     def _create_label_groups(
-        pops: List[str],
-        sexes: List[str],
-        group: List[str] = ["adj"],
+        pops: List[str], sexes: List[str], group: List[str] = ["adj"],
     ) -> List[Dict[str, List[str]]]:
         """
         Generates list of label group dictionaries needed to populate info dictionary.
@@ -371,16 +369,12 @@ def make_info_expr(
     for hist in HISTS:
         hist_type = f"{hist_prefix}qual_hists"
         hist_dict = {
-            f"{hist}_bin_freq": hl.delimit(
-                t[hist_type][hist].bin_freq, delimiter="|"
-            ),
+            f"{hist}_bin_freq": hl.delimit(t[hist_type][hist].bin_freq, delimiter="|"),
         }
         vcf_info_dict.update(hist_dict)
 
         if "dp" in hist:
-            vcf_info_dict.update(
-                {f"{hist}_n_larger": t[hist_type][hist].n_larger},
-            )
+            vcf_info_dict.update({f"{hist}_n_larger": t[hist_type][hist].n_larger},)
 
     # Add in silico annotations to info dict
     vcf_info_dict["cadd_raw_score"] = t["cadd"]["raw_score"]
@@ -637,8 +631,8 @@ def prepare_vcf_header_dict(
     age_hist_data: str,
     subset_list: List[str],
     pops: Dict[str, str],
-    format_dict: Dict[str, dict[str, str]]=FORMAT_DICT,
-    inbreeding_coeff_cutoff: float=INBREEDING_COEFF_HARD_CUTOFF,
+    format_dict: Dict[str, dict[str, str]] = FORMAT_DICT,
+    inbreeding_coeff_cutoff: float = INBREEDING_COEFF_HARD_CUTOFF,
 ) -> Dict[str, Dict[str, str]]:
     """
     Prepare VCF header dictionary.
@@ -656,7 +650,7 @@ def prepare_vcf_header_dict(
     filter_dict = make_vcf_filter_dict(
         hl.eval(t.filtering_model.snv_cutoff.min_score),
         hl.eval(t.filtering_model.indel_cutoff.min_score),
-        inbreeding_cutoff=inbreeding_coeff_cutoff.,
+        inbreeding_cutoff=inbreeding_coeff_cutoff,
         variant_qc_filter="AS_VQSR",
     )
 
@@ -686,7 +680,7 @@ def prepare_vcf_header_dict(
 
 
 def cleanup_ht_for_vcf_export(
-    ht: hl.Table, drop_freqs: List, drop_hists: List = DROP_HISTS
+    ht: hl.Table, drop_freqs: List, drop_hists: Optional[List] = None
 ) -> [hl.Table, List[str]]:
     """
     Clean up the Table returned by `prepare_vcf_ht` so it is ready to export to VCF with `hl.export_vcf`.
@@ -698,13 +692,17 @@ def cleanup_ht_for_vcf_export(
 
     :param ht: Table returned by `prepare_vcf_ht`.
     :param drop_freqs: List of frequencies to drop from the VCF export.
-    :param drop_hists: List of histograms to drop from the VCF export.
+    :param drop_hists: Optional list of histograms to drop from the VCF export.
     :return: Table ready for export to VCF and a list of fixed row annotations needed for the VCF header check.
     """
     logger.info(
         "Dropping histograms and frequency entries that are not needed in VCF..."
     )
-    ht = ht.annotate(info=ht.info.drop(*drop_hists, *drop_freqs))
+    to_drop = drop_freqs
+    if drop_hists is not None:
+        to_drop.extend(drop_hists)
+
+    ht = ht.annotate(info=ht.info.drop(*to_drop))
 
     # Reformat names to remove "adj" pre-export
     # e.g, renaming "AC-adj" to "AC"
@@ -754,6 +752,7 @@ def build_parameter_dict(
             "temp_ht_path": get_checkpoint_path(
                 f"vcf_prep_{'test' if test else ''}_hgdp_1kg"
             ),
+            "drop_hists": None,
             "include_age_hists": False,
             "subset_pops": {"gnomad": POPS, "": HGDP_TGP_POPS},
             "vcf_info_reorder": HGDP_TGP_VCF_INFO_REORDER,
@@ -770,6 +769,7 @@ def build_parameter_dict(
             "temp_ht_path": get_checkpoint_path(
                 f"vcf_prep_{'test' if args.test else ''}"
             ),
+            "drop_hists": ["age_hist_het_bin_edges", "age_hist_hom_bin_edges"],
             "include_age_hists": True,
             "subset_pops": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
             "vcf_info_reorder": VCF_INFO_REORDER,
@@ -792,8 +792,7 @@ def build_parameter_dict(
 def main(args):
 
     hl.init(
-        log="/vcf_release.log",
-        default_reference="GRCh38",
+        log="/vcf_release.log", default_reference="GRCh38",
     )
     hgdp_1kg = args.hgdp_1kg_subset
     chromosome = args.export_chromosome
@@ -804,9 +803,6 @@ def main(args):
 
     # Setup of parameters and Table/MatrixTable based on hgdp_1kg_subset flag
     parameter_dict = build_parameter_dict(hgdp_1kg, args.test)
-    if not hgdp_1kg:
-        DROP_HISTS.extend(["age_hist_het_bin_edges", "age_hist_hom_bin_edges"])
-
     try:
         if args.test:
             parameter_dict["ht"] = filter_to_test(parameter_dict["ht"])
@@ -880,7 +876,7 @@ def main(args):
             prepared_vcf_ht, new_row_annots = cleanup_ht_for_vcf_export(
                 prepared_vcf_ht,
                 drop_freqs=hl.eval(prepared_vcf_ht.freq_entries_to_remove),
-                drop_hists=DROP_HISTS,
+                drop_hists=parameter_dict["drop_hists"],
             )
 
             logger.info("Running check on VCF fields and info dict...")
