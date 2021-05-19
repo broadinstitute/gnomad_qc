@@ -12,6 +12,7 @@ from gnomad_qc.v3.resources.constants import (
     CURRENT_RELEASE,
     CURRENT_HGDP_TGP_RELEASE,
     HGDP_TGP_RELEASES,
+    RELEASES,
 )
 
 
@@ -70,8 +71,8 @@ def release_sites(public: bool = False) -> VersionedTableResource:
     :return: Sites-only release Table
     """
     return VersionedTableResource(
-        CURRENT_RELEASE,
-        {
+        default_version=CURRENT_RELEASE,
+        versions={
             release: TableResource(
                 path=release_ht_path(release_version=release, public=public)
             )
@@ -97,7 +98,9 @@ def release_header_path(
 
 
 def release_vcf_path(
-    release_version: str = CURRENT_RELEASE, contig: Optional[str] = None, subset: Optional[str] = None
+    release_version: str = CURRENT_RELEASE,
+    contig: Optional[str] = None,
+    subset: Optional[str] = None,
 ) -> str:
     """
     Fetch bucket for release (sites-only) VCFs.
@@ -146,8 +149,8 @@ def hgdp_1kg_subset(dense: bool = False) -> VersionedMatrixTableResource:
     """
 
     return VersionedMatrixTableResource(
-        CURRENT_HGDP_TGP_RELEASE,
-        {
+        default_version=CURRENT_HGDP_TGP_RELEASE,
+        versions={
             release: MatrixTableResource(
                 f"gs://gnomad/release/{release}/mt/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_dense' if dense else '_sparse'}.mt"
             )
@@ -165,8 +168,8 @@ def hgdp_1kg_subset_annotations(sample: bool = True) -> VersionedTableResource:
     :return: Table resource with sample/variant annotations for the subset
     """
     return VersionedTableResource(
-        CURRENT_RELEASE,
-        {
+        default_version=CURRENT_RELEASE,
+        versions={
             release: TableResource(
                 f"gs://gnomad/release/{release}/ht/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_sample_meta' if sample else '_variant_annotations'}.ht"
             )
