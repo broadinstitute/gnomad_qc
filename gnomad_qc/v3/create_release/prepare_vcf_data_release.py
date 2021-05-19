@@ -638,7 +638,7 @@ def prepare_vcf_header_dict(
     subset_list: List[str],
     pops: Dict[str, str],
     format_dict: Dict[str, dict[str, str]]=FORMAT_DICT,
-    inbreeding_coeff_cutoff: float=INBREEDING_COEFF_HARD_CUTOFF, #TODO: is this actually already on a table I can grab from?
+    inbreeding_coeff_cutoff: float=INBREEDING_COEFF_HARD_CUTOFF,
 ) -> Dict[str, Dict[str, str]]:
     """
     Prepare VCF header dictionary.
@@ -847,6 +847,7 @@ def main(args):
                 age_hist_data=parameter_dict["age_hist_data"],
                 subset_list=parameter_dict["subsets"],
                 pops=parameter_dict["pops"],
+                inbreeding_coeff_cutoff=parameter_dict["ht"].inbreeding_coeff_cutoff,
             )
             if not hgdp_1kg:
                 header_dict.pop("format")
