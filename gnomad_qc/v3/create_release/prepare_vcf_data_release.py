@@ -89,6 +89,9 @@ remove_fields_from_globals(AS_FIELDS, MISSING_AS_FIELDS)
 # Make subset list (used in properly filling out VCF header descriptions and naming VCF info fields)
 SUBSET_LIST_FOR_VCF = SUBSETS.copy()
 SUBSET_LIST_FOR_VCF.append("")
+
+# Remove cohorts that have subpop frequencies stored as pop frequencies
+# Inclusion of these subsets significantly increases the size of storage in the VCFs because of the many subpops
 remove_fields_from_globals(SUBSET_LIST_FOR_VCF, COHORTS_WITH_POP_STORED_AS_SUBPOP)
 
 # Remove decoy from region field flag
@@ -107,9 +110,6 @@ MISSING_INFO_FIELDS = (
 # Remove unnecessary pop names from POP_NAMES dict
 POPS = {pop: POP_NAMES[pop] for pop in POPS}
 
-# Remove unnecessary pop names from FAF_POPS dict
-FAF_POPS = {pop: POP_NAMES[pop] for pop in FAF_POPS}
-
 # Get HGDP + TGP(KG) subset pop names
 HGDP_TGP_KEEP_POPS = TGP_POPS + HGDP_POPS
 HGDP_TGP_POPS = {}
@@ -118,18 +118,6 @@ for pop in HGDP_TGP_KEEP_POPS:
         HGDP_TGP_POPS[pop] = TGP_POP_NAMES[pop]
     else:
         HGDP_TGP_POPS[pop] = pop.capitalize()
-
-
-# Histograms to exclude from the VCF export
-DROP_HISTS = (
-    [x + "_n_smaller" for x in HISTS if "dp_hist_all" not in x]
-    + [x + "_n_larger" for x in HISTS if "dp_" not in x]
-    + [x + "_raw_n_smaller" for x in HISTS]
-    + [x + "_raw_bin_edges" for x in HISTS]
-    + [x + "_raw_n_larger" for x in HISTS]
-    + [x + "_raw_bin_freq" for x in HISTS]
-    + [x + "_bin_edges" for x in HISTS]
-)
 
 # Used for HGDP + TGP subset MT VCF output only
 FORMAT_DICT.update(
@@ -167,7 +155,7 @@ def populate_subset_info_dict(
     description_text: str,
     groups: List[str] = GROUPS,
     pops: Dict[str, str] = POPS,
-    faf_pops: Dict[str, str] = FAF_POPS,
+    faf_pops: List[str] = FAF_POPS,
     sexes: List[str] = SEXES,
     label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
@@ -179,14 +167,14 @@ def populate_subset_info_dict(
     :param description_text: Text describing the sample subset that should be added to the INFO description.
     :param groups: List of sample groups [adj, raw]. Default is GROUPS.
     :param pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
-    :param faf_pops: Dict of faf population names. Default is FAF_POPS.
+    :param faf_pops: List of faf population names. Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
     :return: Dictionary containing Subset specific INFO header fields.
     """
 
     def _create_label_groups(
-        pops: Union[Dict[str, str], List[str]],
+        pops: List[str],
         sexes: List[str],
         group: List[str] = ["adj"],
     ) -> List[Dict[str, List[str]]]:
@@ -195,7 +183,7 @@ def populate_subset_info_dict(
 
         Label dictionaries are passed as input to `make_info_dict`.
 
-        :param pops: Dict or list of population names.
+        :param pops: List of population names.
         :param sexes: List of sample sexes.
         :param group: List of data types (adj, raw). Default is ["adj"].
         :return: List of label group dictionaries.
@@ -214,7 +202,7 @@ def populate_subset_info_dict(
             make_info_dict(
                 prefix=subset,
                 prefix_before_metric=True if "gnomad" in subset else False,
-                pop_names=faf_pops,
+                pop_names=pops,
                 label_groups=label_group,
                 label_delimiter=label_delimiter,
                 faf=True,
@@ -239,7 +227,6 @@ def populate_subset_info_dict(
     vcf_info_dict.update(
         make_info_dict(
             prefix=subset,
-            prefix_before_metric=False,
             label_delimiter=label_delimiter,
             pop_names=pops,
             popmax=True,
@@ -258,7 +245,7 @@ def populate_info_dict(
     groups: List[str] = GROUPS,
     pops: Dict[str, str] = POPS,
     gnomad_pops: Dict[str, str] = POPS,
-    faf_pops: Dict[str, str] = FAF_POPS,
+    faf_pops: List[str] = FAF_POPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
     label_delimiter: str = "_",
@@ -274,7 +261,7 @@ def populate_info_dict(
         - INFO fields for popmax AC, AN, AF, nhomalt, and popmax population
         - INFO fields for AC, AN, AF, nhomalt for each combination of sample population, sex both for adj and raw data
         - INFO fields for filtering allele frequency (faf) annotations
-        - INFO fields for variant histograms (hist_bin_freq, hist_n_smaller, hist_n_larger for each histogram)
+        - INFO fields for variant histograms (hist_bin_freq for each histogram and hist_n_larger for DP histograms)
 
     :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
     :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
@@ -283,7 +270,7 @@ def populate_info_dict(
     :param groups: List of sample groups [adj, raw]. Default is GROUPS.
     :param pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
     :param gnomad_pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
-    :param faf_pops: Dict of faf population names. Default is FAF_POPS.
+    :param faf_pops: List of faf population names. Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
     :param label_delimiter: String to use as delimiter when making group label combinations.
@@ -375,24 +362,25 @@ def make_info_expr(
     if hist_prefix != "":
         hist_prefix += "_"
 
-    # Add histograms to info dict
+    # Histograms to export are:
+    # gq_hist_alt, gq_hist_all, dp_hist_alt, dp_hist_all, ab_hist_alt
+    # We previously dropped:
+    # _n_smaller for all hists
+    # _bin_edges for all hists
+    # _n_larger for all hists EXCEPT DP hists
     for hist in HISTS:
-        for hist_type in [f"{hist_prefix}qual_hists", f"{hist_prefix}raw_qual_hists"]:
-            hist_name = hist
-            if "raw" in hist_type:
-                hist_name = f"{hist}_raw"
+        hist_type = f"{hist_prefix}qual_hists"
+        hist_dict = {
+            f"{hist}_bin_freq": hl.delimit(
+                t[hist_type][hist].bin_freq, delimiter="|"
+            ),
+        }
+        vcf_info_dict.update(hist_dict)
 
-            hist_dict = {
-                f"{hist_name}_bin_freq": hl.delimit(
-                    t[hist_type][hist].bin_freq, delimiter="|"
-                ),
-                f"{hist_name}_bin_edges": hl.delimit(
-                    t[hist_type][hist].bin_edges, delimiter="|"
-                ),
-                f"{hist_name}_n_smaller": t[hist_type][hist].n_smaller,
-                f"{hist_name}_n_larger": t[hist_type][hist].n_larger,
-            }
-            vcf_info_dict.update(hist_dict)
+        if "dp" in hist:
+            vcf_info_dict.update(
+                {f"{hist}_n_larger": t[hist_type][hist].n_larger},
+            )
 
     # Add in silico annotations to info dict
     vcf_info_dict["cadd_raw_score"] = t["cadd"]["raw_score"]
@@ -649,7 +637,8 @@ def prepare_vcf_header_dict(
     age_hist_data: str,
     subset_list: List[str],
     pops: Dict[str, str],
-    inbreeding_cutoff=INBREEDING_COEFF_HARD_CUTOFF, #TODO: is this actuall already on a table I can grab from?
+    format_dict: Dict[str, dict[str, str]]=FORMAT_DICT,
+    inbreeding_coeff_cutoff: float=INBREEDING_COEFF_HARD_CUTOFF, #TODO: is this actually already on a table I can grab from?
 ) -> Dict[str, Dict[str, str]]:
     """
     Prepare VCF header dictionary.
@@ -659,8 +648,9 @@ def prepare_vcf_header_dict(
     :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param subset_list: List of sample subsets in dataset.
     :param pops: List of sample global population names for gnomAD genomes.
-    :param inbreeding_cutoff: InbreedingCoeff hard filter used for variants
-    :return: Prepared VCF header dictionary
+    :param format_dict: Dictionary describing MatrixTable entries. Used in header for VCF export.
+    :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter used for variants.
+    :return: Prepared VCF header dictionary.
     """
     logger.info("Making FILTER dict for VCF...")
     filter_dict = make_vcf_filter_dict(
@@ -689,7 +679,7 @@ def prepare_vcf_header_dict(
     header_dict = {
         "info": new_vcf_info_dict,
         "filter": filter_dict,
-        "format": FORMAT_DICT,
+        "format": format_dict,
     }
 
     return header_dict
@@ -804,7 +794,6 @@ def main(args):
     hl.init(
         log="/vcf_release.log",
         default_reference="GRCh38",
-        tmp_dir="hdfs:///vcf_write.tmp/",
     )
     hgdp_1kg = args.hgdp_1kg_subset
     chromosome = args.export_chromosome
