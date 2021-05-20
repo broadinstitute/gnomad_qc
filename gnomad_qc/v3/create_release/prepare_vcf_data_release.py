@@ -241,7 +241,7 @@ def populate_info_dict(
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS,
     groups: List[str] = GROUPS,
-    pops: Dict[str, str] = POPS,
+    subset_pops: Dict[str, str] = POPS,
     gnomad_pops: Dict[str, str] = POPS,
     faf_pops: List[str] = FAF_POPS,
     sexes: List[str] = SEXES,
@@ -266,7 +266,8 @@ def populate_info_dict(
     :param info_dict: INFO dict to be populated.
     :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
     :param groups: List of sample groups [adj, raw]. Default is GROUPS.
-    :param pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
+    :param subset_pops: Dict of sample global population names to use for all subsets in `subset_list` unless the subset
+        is 'gnomad', in that case `gnomad_pops` is used. Default is POPS.
     :param gnomad_pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
     :param faf_pops: List of faf population names. Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
@@ -286,12 +287,12 @@ def populate_info_dict(
     )
 
     for subset in subset_list:
-        if "gnomad" in subset:
+        if subset == "gnomad":
             description_text = " in gnomAD"
             pops = gnomad_pops
         else:
             description_text = "" if subset == "" else f" in {subset} subset"
-            pops = pops
+            pops = subset_pops
 
         vcf_info_dict.update(
             populate_subset_info_dict(
@@ -311,7 +312,6 @@ def populate_info_dict(
     vcf_info_dict.update(
         make_info_dict(
             prefix="",
-            prefix_before_metric=False,
             label_delimiter=label_delimiter,
             bin_edges=bin_edges,
             popmax=True,
@@ -392,32 +392,59 @@ def make_info_expr(
 
 def unfurl_nested_annotations(
     t: Union[hl.MatrixTable, hl.Table],
-    is_subset: bool = False,  # TODO: might be helpful to document which situations require both gnomad_release and is_subset to be True (vs just gnomad_release=True or is_subset=True)
-    gnomad_release: bool = False,
+    gnomad_full_release: bool = True,
+    subset_release: bool = False,
+    gnomad_full_for_subset: bool = False,
     entries_to_remove: Set[str] = None,
 ) -> [hl.expr.StructExpression, Set[str]]:
     """
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the
     values of the dictionary are Hail Expressions describing how to access the corresponding values.
 
+    .. note::
+
+       One and only one of `gnomad_full_release`, `subset_release`, or `gnomad_full_for_subset` must be True.
+
+    If `gnomad_full_release` is True the following will be unfurled:
+        - frequencies
+        - popmax
+        - faf
+        - age histograms
+
+    If `subset_release` is True the following will be unfurled (`cohort_freq` prefix on the freq annotation):
+       - frequencies
+
+    If `gnomad_full_for_subset` is True the following will be unfurled (expects 'gnomad' prefix on these annotations):
+        - frequencies
+        - popmax
+        - faf
+
     :param t: Table/MatrixTable containing the nested variant annotation arrays to be unfurled.
-    :param is_subset: Is this for the release of a subset.
-    :param gnomad_release: Whether to unfurl all gnomAD frequencies.
-    :param gnomad_release: Should the gnomAD release frequencies be unfurled.
-    :param is_subset: Whether the annotations are from a subset of gnomAD.
-    :param entries_to_remove: Frequency entries to remove for vcf_export.
+    :param gnomad_full_release: Whether to unfurl gnomAD frequencies, popmax, faf, and age histograms for the full
+        gnomAD release. Default is True.
+    :param subset_release: Whether to unfurl frequencies for a gnomAD subset. Default is False.
+    :param gnomad_full_for_subset: Whether to unfurl full gnomAD release frequencies, popmax, and faf for addition to a
+        gnomAD subset release. Default is False.
+    :param entries_to_remove: Obtional Set of frequency entries to remove for vcf_export.
     :return: Struct Expression containing variant annotations and their corresponding expressions and updated entries
         to remove from the VCF.
     """
     freq_entries_to_remove_vcf = set()
     expr_dict = {}
 
+    if (gnomad_full_release + subset_release + gnomad_full_for_subset) != 1:
+        raise ValueError(
+            "One and only one of gnomad_full_release, subset_release, or gnomad_full_for_subset must be set to True"
+        )
+
     prefix = ""
-    if is_subset and gnomad_release:
+
+    # Setting prefix with '_' as delimiter for obtaining globals
+    if gnomad_full_for_subset:
         prefix = f"gnomad_"
 
     # Set variables to locate necessary fields, compute freq index dicts, and compute faf index dict
-    if is_subset and not gnomad_release:
+    if subset_release:
         freq = "cohort_freq"
         freq_idx = hl.eval(t.globals[f"cohort_freq_index_dict"])
     else:
@@ -431,7 +458,8 @@ def unfurl_nested_annotations(
     # Cycles through each key and index (e.g., k=adj_afr, i=31)
     logger.info("Unfurling freq data...")
 
-    if is_subset and gnomad_release:
+    # Resetting prefix with '-' as delimiter to match values in freq_idx and faf_idx
+    if gnomad_full_for_subset:
         prefix = f"gnomad-"
 
     for k, i in freq_idx.items():
@@ -449,8 +477,8 @@ def unfurl_nested_annotations(
         if k.split("-")[0] in entries_to_remove:
             freq_entries_to_remove_vcf.update(combo_dict.keys())
 
-    # Add popmax
-    if not is_subset or (is_subset and gnomad_release):
+    if gnomad_full_release or gnomad_full_for_subset:
+        logger.info("Adding popmax data...")
         combo_dict = {
             f"{prefix}popmax": t[popmax].pop,
             f"{prefix}AC_popmax": t[popmax].AC,
@@ -461,7 +489,6 @@ def unfurl_nested_annotations(
         }
         expr_dict.update(combo_dict)
 
-        # Unfurl FAF index dict
         logger.info("Unfurling faf data...")
         for (
             k,
@@ -475,8 +502,8 @@ def unfurl_nested_annotations(
             }
             expr_dict.update(combo_dict)
 
-    if not is_subset:
-        # Unfurl ages
+    if gnomad_full_release:
+        logger.info("Unfurling age hists...")
         age_hist_dict = {
             "age_hist_het_bin_freq": hl.delimit(t.age_hist_het.bin_freq, delimiter="|"),
             "age_hist_het_bin_edges": hl.delimit(
@@ -537,7 +564,7 @@ def prepare_vcf_ht(
     Prepare the Table used for sanity checks and VCF export
 
     :param ht: Table containing the nested variant annotation arrays to be unfurled.
-    :param is_subset: Is this for the release of a subset.
+    :param is_subset: Whether this is for the release of a subset.
     :param freq_entries_to_remove: Frequency entries to remove for vcf_export.
     :param vcf_info_reorder: Optional list of INFO fields to reorder, the rest of the fields are added after this list.
     :return: Prepared HT for sanity checks and VCF export
@@ -548,23 +575,30 @@ def prepare_vcf_ht(
         nonpar=(ht.locus.in_x_nonpar() | ht.locus.in_y_nonpar())
     )
 
-    logger.info(
-        "Unfurling nested gnomAD frequency annotations and add to INFO field..."
-    )
-    info_struct, freq_entries_to_remove = unfurl_nested_annotations(
-        ht,
-        entries_to_remove=freq_entries_to_remove,
-        is_subset=is_subset,
-        gnomad_release=False,
-    )
+    if not is_subset:
+        logger.info(
+            "Unfurling nested gnomAD frequency annotations and add to INFO field..."
+        )
+        info_struct, freq_entries_to_remove = unfurl_nested_annotations(
+            ht, entries_to_remove=freq_entries_to_remove,
+        )
+    else:
+        logger.info(
+            "Unfurling nested gnomAD subset frequency annotations and add to INFO field..."
+        )
+        info_struct, freq_entries_to_remove = unfurl_nested_annotations(
+            ht,
+            entries_to_remove=freq_entries_to_remove,
+            gnomad_full_release=False,
+            subset_release=True,
+        )
 
-    if is_subset:
-        logger.info("Adding gnomAD frequency information...")
+        logger.info("Adding full gnomAD callset frequency annotations to INFO field...")
         gnomad_info_struct, freq_entries_to_remove = unfurl_nested_annotations(
             ht,
             entries_to_remove=freq_entries_to_remove,
-            is_subset=is_subset,
-            gnomad_release=True,
+            gnomad_full_release=False,
+            gnomad_full_for_subset=True,
         )
         info_struct = info_struct.annotate(**gnomad_info_struct)
 
