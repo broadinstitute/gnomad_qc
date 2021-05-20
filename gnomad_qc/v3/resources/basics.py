@@ -71,8 +71,7 @@ _gnomad_v3_genotypes = {
 _gnomad_v3_genotypes["3.1.1"] = _gnomad_v3_genotypes["3.1"]
 
 gnomad_v3_genotypes = VersionedMatrixTableResource(
-    CURRENT_RELEASE,
-    _gnomad_v3_genotypes,
+    CURRENT_RELEASE, _gnomad_v3_genotypes,
 )
 
 

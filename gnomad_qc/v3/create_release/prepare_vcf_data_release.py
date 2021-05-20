@@ -17,6 +17,7 @@ from gnomad.resources.grch38.gnomad import (
 )
 from gnomad.resources.resource_utils import DataException
 from gnomad.utils.file_utils import file_exists
+from gnomad.utils.filtering import remove_fields_from_globals
 from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
 from gnomad.utils.vcf import (
     add_as_info_dict,
@@ -24,6 +25,7 @@ from gnomad.utils.vcf import (
     ALLELE_TYPE_FIELDS,
     AS_FIELDS,
     AS_VQSR_FIELDS,
+    build_vcf_export_reference,
     create_label_groups,
     FAF_POPS,
     FORMAT_DICT,
@@ -31,6 +33,7 @@ from gnomad.utils.vcf import (
     HISTS,
     INFO_DICT,
     IN_SILICO_ANNOTATIONS_INFO_DICT,
+    rekey_new_reference,
     make_hist_bin_edges_expr,
     make_hist_dict,
     make_info_dict,
@@ -54,11 +57,6 @@ from gnomad_qc.v3.resources.release import (
     hgdp_1kg_subset,
     release_header_path,
     release_vcf_path,
-)
-from gnomad_qc.v3.utils import (
-    build_export_reference,
-    rekey_new_reference,
-    remove_fields_from_globals,
 )
 
 logging.basicConfig(
@@ -807,13 +805,12 @@ def build_parameter_dict(
 
 
 def main(args):
-
     hl.init(
         log="/vcf_release.log", default_reference="GRCh38",
     )
     hgdp_1kg = args.hgdp_1kg_subset
     chromosome = args.export_chromosome
-    export_reference = build_export_reference()
+    export_reference = build_vcf_export_reference("gnomAD_GRCh38")
 
     if chromosome and args.test:
         raise ValueError("Chromosome argument doesn't work with the test flag.")

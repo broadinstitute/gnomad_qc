@@ -81,7 +81,9 @@ def release_sites(public: bool = False) -> VersionedTableResource:
     )
 
 
-def release_header_path(release_version: str = CURRENT_RELEASE, hgdp_tgp_subset: bool = False) -> str:
+def release_header_path(
+    release_version: str = CURRENT_RELEASE, hgdp_tgp_subset: bool = False
+) -> str:
     """
     Fetch path to pickle file containing VCF header dictionary.
 
