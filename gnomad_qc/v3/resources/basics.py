@@ -58,19 +58,21 @@ def get_gnomad_v3_mt(
     return mt
 
 
+_gnomad_v3_genotypes = {
+    "3": MatrixTableResource(
+        "gs://gnomad/raw/hail-0.2/mt/genomes_v3/gnomad_genomes_v3.repartitioned.mt"
+    ),
+    "3.1": MatrixTableResource(
+        "gs://gnomad/raw/genomes/3.1/gnomad_v3.1_sparse_unsplit.repartitioned.mt"
+    ),
+}
+
+# The same raw MT is used for v3.1.1 and v3.1
+_gnomad_v3_genotypes["3.1.1"] = _gnomad_v3_genotypes["3.1"]
+
 gnomad_v3_genotypes = VersionedMatrixTableResource(
     CURRENT_RELEASE,
-    {
-        "3": MatrixTableResource(
-            "gs://gnomad/raw/hail-0.2/mt/genomes_v3/gnomad_genomes_v3.repartitioned.mt"
-        ),
-        "3.1": MatrixTableResource(
-            "gs://gnomad/raw/genomes/3.1/gnomad_v3.1_sparse_unsplit.repartitioned.mt"
-        ),
-        "3.1.1": MatrixTableResource(
-            "gs://gnomad/raw/genomes/3.1/gnomad_v3.1_sparse_unsplit.repartitioned.mt"
-        ),
-    },
+    _gnomad_v3_genotypes,
 )
 
 

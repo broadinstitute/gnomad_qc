@@ -24,6 +24,7 @@ from gnomad.utils.vcf import (
     ALLELE_TYPE_FIELDS,
     AS_FIELDS,
     AS_VQSR_FIELDS,
+    create_label_groups,
     FAF_POPS,
     FORMAT_DICT,
     GROUPS,
@@ -173,28 +174,8 @@ def populate_subset_info_dict(
     :return: Dictionary containing Subset specific INFO header fields.
     """
 
-    def _create_label_groups(
-        pops: List[str], sexes: List[str], group: List[str] = ["adj"],
-    ) -> List[Dict[str, List[str]]]:
-        """
-        Generates list of label group dictionaries needed to populate info dictionary.
-
-        Label dictionaries are passed as input to `make_info_dict`.
-
-        :param pops: List of population names.
-        :param sexes: List of sample sexes.
-        :param group: List of data types (adj, raw). Default is ["adj"].
-        :return: List of label group dictionaries.
-        """
-        return [
-            dict(group=groups),  # this is to capture raw fields
-            dict(group=group, sex=sexes),
-            dict(group=group, pop=pops),
-            dict(group=group, pop=pops, sex=sexes),
-        ]
-
     vcf_info_dict = {}
-    faf_label_groups = _create_label_groups(pops=faf_pops, sexes=sexes)
+    faf_label_groups = create_label_groups(pops=faf_pops, sexes=sexes)
     for label_group in faf_label_groups:
         vcf_info_dict.update(
             make_info_dict(
@@ -208,7 +189,7 @@ def populate_subset_info_dict(
             )
         )
 
-    label_groups = _create_label_groups(pops=pops, sexes=sexes)
+    label_groups = create_label_groups(pops=pops, sexes=sexes)
     for label_group in label_groups:
         vcf_info_dict.update(
             make_info_dict(
@@ -615,12 +596,6 @@ def prepare_vcf_ht(
     logger.info("Reformatting VEP annotation...")
     vep_expr = vep_struct_to_csq(ht.vep)
 
-    # Add variant annotations to INFO field
-    # This adds annotations from:
-    #   RF struct, VQSR struct, allele_info struct,
-    #   info struct (site and allele-specific annotations),
-    #   region_flag struct, and
-    #   raw_qual_hists/qual_hists structs.
     logger.info("Constructing INFO field")
     ht = ht.annotate(
         region_flag=region_flag_expr,
@@ -635,6 +610,13 @@ def prepare_vcf_ht(
     else:
         info_expr = make_info_expr(ht)
 
+    # Add variant annotations to INFO field
+    # This adds the following:
+    #   region flag for problematic regions
+    #   annotations in ht.release_ht_info (site and allele-specific annotations),
+    #   info struct (unfurled data obtained above),
+    #   dbSNP rsIDs
+    #   all VEP annotations
     ht = ht.annotate(info=ht.info.annotate(**info_expr, vep=ht.vep))
 
     if freq_entries_to_remove:
@@ -693,7 +675,7 @@ def prepare_vcf_header_dict(
         bin_edges=bin_edges,
         age_hist_data=age_hist_data,
         subset_list=subset_list,
-        pops=pops,
+        subset_pops=pops,
     )
     vcf_info_dict.update({"vep": {"Description": hl.eval(t.vep_csq_header)}})
 
@@ -729,6 +711,7 @@ def cleanup_ht_for_vcf_export(
     :param drop_hists: Optional list of histograms to drop from the VCF export.
     :return: Table ready for export to VCF and a list of fixed row annotations needed for the VCF header check.
     """
+    # NOTE: For v4 we should just avoid generating any histograms that we will not need rather than dropping them
     logger.info(
         "Dropping histograms and frequency entries that are not needed in VCF..."
     )
@@ -767,18 +750,18 @@ def cleanup_ht_for_vcf_export(
 
 
 def build_parameter_dict(
-    hgdp_1kg_subset: bool = False, test: bool = False
+    hgdp_1kg: bool = False, test: bool = False
 ) -> Dict[str, Union[bool, str, List, Dict, Set, hl.Table, None]]:
     """
     Build a dictionary of parameters to export.
 
     Parameters differ from subset releases (e.g., HGDP + TGP) vs full gnomAD release.
 
-    :param hgdp_1kg_subset: Build the parameter list specific to the HGDP + TGP subset release.
+    :param hgdp_1kg: Build the parameter list specific to the HGDP + TGP subset release.
     :param test: Uses a checkpoint path for the prepared VCF Table that adds the string "test" to the checkpoint path.
     :return: Dictionary containing parameters needed to make the release VCF.
     """
-    if hgdp_1kg_subset:
+    if hgdp_1kg:
         parameter_dict = {
             "pops": HGDP_TGP_POPS,
             "subsets": ["", "gnomad"],
@@ -884,7 +867,7 @@ def main(args):
 
             logger.info("Saving header dict to pickle...")
             with hl.hadoop_open(
-                release_header_path(subset="hgdp_1kg" if hgdp_1kg else None), "wb",
+                release_header_path(hgdp_tgp_subset=hgdp_1kg), "wb",
             ) as p:
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -902,7 +885,7 @@ def main(args):
         if args.export_vcf:
             logger.info("Loading VCF header dict...")
             with hl.hadoop_open(
-                release_header_path(subset="hgdp_1kg" if hgdp_1kg else None), "rb",
+                release_header_path(hgdp_tgp_subset=hgdp_1kg), "rb",
             ) as f:
                 header_dict = pickle.load(f)
 
@@ -938,7 +921,7 @@ def main(args):
                 output_path = f"{qc_temp_prefix()}gnomad.genomes_vcf_test{'hgdp_1kg_subset' if hgdp_1kg else ''}.vcf.bgz"
             else:
                 output_path = release_vcf_path(
-                    contig=chromosome, subset="hgdp_1kg_subset" if hgdp_1kg else None,
+                    contig=chromosome, hgdp_tgp_subset=hgdp_1kg,
                 )
 
             hl.export_vcf(

@@ -81,36 +81,43 @@ def release_sites(public: bool = False) -> VersionedTableResource:
     )
 
 
-def release_header_path(
-    subset: Optional[str] = None, release_version: str = CURRENT_RELEASE
-) -> str:
+def release_header_path(release_version: str = CURRENT_RELEASE, hgdp_tgp_subset: bool = False) -> str:
     """
     Fetch path to pickle file containing VCF header dictionary.
 
-    :param subset: Name of the subset (eg: hgdp_tgp).
     :param release_version: Release version. Defaults to CURRENT RELEASE
+    :param hgdp_tgp_subset: Whether to return the header for the HGDP + 1KG subset. Default will return the header
+        path for the full release.
     :return: Filepath for header dictionary pickle
     """
-    if subset:
-        subset = f"_{subset}"
+    subset = ""
+    if hgdp_tgp_subset:
+        if release_version not in HGDP_TGP_RELEASES:
+            raise DataException(
+                f"{release_version} is not one of the available releases for the HGP + 1KG subset: {HGDP_TGP_RELEASES}"
+            )
+        subset = f"_hgdp_tgp"
 
     return f"gs://gnomad/release/{release_version}/vcf/genomes/gnomad.genomes.v{release_version}_header_dict{subset}.pickle"
 
 
 def release_vcf_path(
     release_version: str = CURRENT_RELEASE,
+    hgdp_tgp_subset: bool = False,
     contig: Optional[str] = None,
-    subset: Optional[str] = None,
 ) -> str:
     """
     Fetch bucket for release (sites-only) VCFs.
 
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :param contig: String containing the name of the desired reference contig. Defaults to the full (all contigs) sites VCF path
-    :param subset: Subset being written out to VCF. Defaults to the full callset (metrics on all samples) sites VCF path
+    :param hgdp_tgp_subset: Whether to get path for HGDP + 1KG VCF. Defaults to the full callset (metrics on all samples)
+        sites VCF path
     :return: Filepath for the desired VCF
     """
-    if subset is None:
+    if hgdp_tgp_subset:
+        subset = "hgdp_tgp"
+    else:
         subset = "sites"
 
     if contig:
