@@ -17,7 +17,7 @@ from gnomad.resources.grch38.gnomad import (
 )
 from gnomad.resources.resource_utils import DataException
 from gnomad.utils.file_utils import file_exists
-from gnomad.utils.filtering import remove_fields_from_globals
+from gnomad.utils.filtering import remove_fields_from_constant
 from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
 from gnomad.utils.vcf import (
     add_as_info_dict,
@@ -75,15 +75,15 @@ SITE_FIELDS.extend(NEW_SITE_FIELDS)
 
 # Remove original alleles for containing non-releasable alleles
 MISSING_ALLELE_TYPE_FIELDS = ["original_alleles", "has_star"]
-remove_fields_from_globals(ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS)
+ALLELE_TYPE_FIELDS = remove_fields_from_constant(ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS)
 
 # Remove SOR from site fields (doesn't exist in v3.1)
 MISSING_SITES_FIELDS = ["SOR"]
-remove_fields_from_globals(SITE_FIELDS, MISSING_SITES_FIELDS)
+SITE_FIELDS = remove_fields_from_constant(SITE_FIELDS, MISSING_SITES_FIELDS)
 
 # Remove AS_VarDP from AS fields
 MISSING_AS_FIELDS = ["AS_VarDP"]
-remove_fields_from_globals(AS_FIELDS, MISSING_AS_FIELDS)
+AS_FIELDS = remove_fields_from_constant(AS_FIELDS, MISSING_AS_FIELDS)
 
 # Make subset list (used in properly filling out VCF header descriptions and naming VCF info fields)
 SUBSET_LIST_FOR_VCF = SUBSETS.copy()
@@ -91,11 +91,11 @@ SUBSET_LIST_FOR_VCF.append("")
 
 # Remove cohorts that have subpop frequencies stored as pop frequencies
 # Inclusion of these subsets significantly increases the size of storage in the VCFs because of the many subpops
-remove_fields_from_globals(SUBSET_LIST_FOR_VCF, COHORTS_WITH_POP_STORED_AS_SUBPOP)
+SUBSET_LIST_FOR_VCF = remove_fields_from_constant(SUBSET_LIST_FOR_VCF, COHORTS_WITH_POP_STORED_AS_SUBPOP)
 
 # Remove decoy from region field flag
 MISSING_REGION_FIELDS = ["decoy"]
-remove_fields_from_globals(REGION_FLAG_FIELDS, MISSING_REGION_FIELDS)
+REGION_FLAG_FIELDS = remove_fields_from_constant(REGION_FLAG_FIELDS, MISSING_REGION_FIELDS)
 
 # All missing fields to remove from vcf info dict
 MISSING_INFO_FIELDS = (
