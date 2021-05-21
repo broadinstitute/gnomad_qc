@@ -582,6 +582,8 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
             mt.locus, mt.GT, mt.meta.sex_imputation.sex_karyotype
         ),
         adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
+        # Annotate entries with het non ref status for use in the homozygous alternate depletion fix
+        _het_non_ref=mt.LGT.is_het_non_ref(),
     )
 
     logger.info(
