@@ -20,7 +20,7 @@ from gnomad.utils.sparse_mt import (
     split_info_annotation,
     split_lowqual_annotation,
 )
-from gnomad.utils.vcf import ht_to_vcf_mt
+from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from gnomad.utils.vep import vep_or_lookup_vep
 
 from gnomad_qc.slack_creds import slack_token
@@ -329,7 +329,7 @@ def main(args):
 
     if args.export_info_vcf:
         info_ht = get_info(split=False).ht()
-        hl.export_vcf(ht_to_vcf_mt(info_ht), info_vcf_path())
+        hl.export_vcf(adjust_vcf_incompatible_types(info_ht), info_vcf_path())
 
     if args.generate_allele_data:
         mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)

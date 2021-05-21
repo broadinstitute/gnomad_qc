@@ -37,7 +37,7 @@ from gnomad_qc.v3.resources.release import (
     hgdp_1kg_subset_sample_tsv,
 )
 from gnomad_qc.v3.resources.sample_qc import relatedness
-from gnomad_qc.v3.resources.variant_qc import final_filter
+from gnomad_qc.v3.resources.variant_qc import final_filter, SYNDIP
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -380,7 +380,7 @@ def prepare_sample_annotations() -> hl.Table:
         "Subsetting and modifying sample QC metadata to desired globals and annotations"
     )
     meta_ht = meta.ht()
-    meta_ht = meta_ht.filter(meta_ht.subsets.hgdp | meta_ht.subsets.tgp)
+    meta_ht = meta_ht.filter(meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP))
     meta_ht = meta_ht.select_globals(
         global_annotation_descriptions=hl.literal(GLOBAL_SAMPLE_ANNOTATION_DICT),
         sample_annotation_descriptions=hl.literal(SAMPLE_ANNOTATION_DICT),
@@ -665,9 +665,9 @@ def main(args):
             key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
         )
 
-        logger.info("Filtering MT columns to HGDP + TGP samples")
+        logger.info("Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)")
         mt = mt.filter_cols(
-            (meta_ht[mt.col_key].subsets.hgdp | meta_ht[mt.col_key].subsets.tgp)
+            (meta_ht[mt.col_key].subsets.hgdp | meta_ht[mt.col_key].subsets.tgp | (mt.s == SYNDIP))
         )
         mt = mt.annotate_rows(
             _telomere_or_centromere=hl.is_defined(
