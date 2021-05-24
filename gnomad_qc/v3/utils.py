@@ -1,25 +1,30 @@
 import hail as hl
 
 
-# TODO: Needs to be modified to fix the problem of the alt het correction on a split MT
 def hom_alt_depletion_fix(
-        mt: hl.MatrixTable,
-        af_expr: hl.expr.Float32Expression,
-        af_cutoff: float = 0.01,
-        ab_cutoff: float = 0.9,
+    mt: hl.MatrixTable,
+    het_non_ref_expr: hl.expr.BooleanExpression,
+    af_expr: hl.expr.Float32Expression,
+    af_cutoff: float = 0.01,
+    ab_cutoff: float = 0.9,
 ) -> hl.MatrixTable:
     """
     Adjust MT genotypes with temporary fix for the depletion of homozygous alternate genotypes.
-
-    :param mt: Input MT to add hom alt depletion genotype fix to
-    :param af_expr: Allele frequency expression to determine variants that need the hom alt fix
+    
+    More details about the problem can be found on the gnomAD blog:
+    https://gnomad.broadinstitute.org/blog/2020-10-gnomad-v3-1-new-content-methods-annotations-and-data-availability/#tweaks-and-updates
+    
+    :param mt: Input MT that needs hom alt genotype fix
+    :param het_non_ref_expr: Expression indicating whether the genotype is het non ref
+    :param af_expr: Allele frequency expression to determine which variants need the hom alt fix
     :param af_cutoff: Allele frequency cutoff for variants that need the hom alt fix
     :param ab_cutoff: Allele balance cutoff to determine which genotypes need the hom alt fix
     :return: MatrixTable with genotypes adjusted for the hom alt depletion fix
     """
     return mt.annotate_entries(
         GT=hl.cond(
-            (af_expr > af_cutoff) & mt.GT.is_het() & ((mt.AD[1] / mt.DP) > ab_cutoff),
+            (mt.GT.is_het() & ~het_non_ref_expr & af_expr > af_cutoff)
+            & ((mt.AD[1] / mt.DP) > ab_cutoff),
             hl.call(1, 1),
             mt.GT,
         )
