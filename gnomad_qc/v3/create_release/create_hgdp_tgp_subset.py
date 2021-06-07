@@ -570,6 +570,11 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
         **meta_ht.drop("global_annotation_descriptions").index_globals(),
     )
 
+    logger.info(
+        "Annotate entries with het non ref status for use in the homozygous alternate depletion fix..."
+    )
+    mt = mt.annotate_entries(_het_non_ref=mt.LGT.is_het_non_ref())
+
     logger.info("Splitting multi-allelics")
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
@@ -583,8 +588,6 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
             mt.locus, mt.GT, mt.meta.sex_imputation.sex_karyotype
         ),
         adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
-        # Annotate entries with het non ref status for use in the homozygous alternate depletion fix
-        _het_non_ref=mt.LGT.is_het_non_ref(),
     )
 
     logger.info(
