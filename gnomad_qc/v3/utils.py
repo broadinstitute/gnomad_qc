@@ -22,9 +22,12 @@ def hom_alt_depletion_fix(
     :return: MatrixTable with genotypes adjusted for the hom alt depletion fix
     """
     return mt.annotate_entries(
-        GT=hl.cond(
-            (mt.GT.is_het() & ~het_non_ref_expr & af_expr > af_cutoff)
-            & ((mt.AD[1] / mt.DP) > ab_cutoff),
+        GT=hl.if_else(
+            mt.GT.is_het()
+            # Skip adjusting genotypes if sample originally had a het nonref genotype
+            & ~het_non_ref_expr
+            & (af_expr > af_cutoff)
+            & (mt.AD[1] / mt.DP > ab_cutoff),
             hl.call(1, 1),
             mt.GT,
         )
