@@ -15,10 +15,10 @@ def hom_alt_depletion_fix(
     https://gnomad.broadinstitute.org/blog/2020-10-gnomad-v3-1-new-content-methods-annotations-and-data-availability/#tweaks-and-updates
     
     :param mt: Input MT that needs hom alt genotype fix
-    :param het_non_ref_expr: Expression indicating whether the genotype is het non ref
+    :param het_non_ref_expr: Expression indicating whether the original genotype (pre split multi) is het non ref
     :param af_expr: Allele frequency expression to determine which variants need the hom alt fix
-    :param af_cutoff: Allele frequency cutoff for variants that need the hom alt fix
-    :param ab_cutoff: Allele balance cutoff to determine which genotypes need the hom alt fix
+    :param af_cutoff: Allele frequency cutoff for variants that need the hom alt fix. Default is 0.01
+    :param ab_cutoff: Allele balance cutoff to determine which genotypes need the hom alt fix. Default is 0.9
     :return: MatrixTable with genotypes adjusted for the hom alt depletion fix
     """
     return mt.annotate_entries(
