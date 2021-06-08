@@ -4,7 +4,7 @@ import hail as hl
 def hom_alt_depletion_fix(
     mt: hl.MatrixTable,
     het_non_ref_expr: hl.expr.BooleanExpression,
-    af_expr: hl.expr.Float32Expression,
+    af_expr: hl.expr.Float64Expression,
     af_cutoff: float = 0.01,
     ab_cutoff: float = 0.9,
 ) -> hl.MatrixTable:
