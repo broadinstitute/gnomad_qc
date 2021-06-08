@@ -380,7 +380,9 @@ def prepare_sample_annotations() -> hl.Table:
         "Subsetting and modifying sample QC metadata to desired globals and annotations"
     )
     meta_ht = meta.ht()
-    meta_ht = meta_ht.filter(meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP))
+    meta_ht = meta_ht.filter(
+        meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP)
+    )
     meta_ht = meta_ht.select_globals(
         global_annotation_descriptions=hl.literal(GLOBAL_SAMPLE_ANNOTATION_DICT),
         sample_annotation_descriptions=hl.literal(SAMPLE_ANNOTATION_DICT),
@@ -444,8 +446,7 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
     missing_info_fields = set(info_fields).difference(info_ht.info.keys())
     select_info_fields = set(info_fields).intersection(info_ht.info.keys())
     logger.info(
-        "The following fields are not found in the info HT: %s",
-        missing_info_fields,
+        "The following fields are not found in the info HT: %s", missing_info_fields,
     )
 
     # NOTE: SOR and AS_SOR annotations are now added to the info HT by default with get_as_info_expr and
@@ -569,6 +570,11 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
         **meta_ht.drop("global_annotation_descriptions").index_globals(),
     )
 
+    logger.info(
+        "Annotate entries with het non ref status for use in the homozygous alternate depletion fix..."
+    )
+    mt = mt.annotate_entries(_het_non_ref=mt.LGT.is_het_non_ref())
+
     logger.info("Splitting multi-allelics")
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
@@ -585,9 +591,18 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     )
 
     logger.info(
-        "Setting het genotypes at sites with >1% AF (using precomputed v3.1 frequencies) and > 0.9 AB to homalt..."
+        "Setting het genotypes at sites with > 1% AF (using precomputed v3.0 frequencies) and > 0.9 AB to homalt..."
     )
-    mt = hom_alt_depletion_fix(mt, af_expr=release_ht[mt.row_key].freq[0].AF)
+    # NOTE: Using v3.0 frequencies here and not v3.1 frequencies because 
+    # the frequency code adjusted genotypes (homalt depletion fix) using v3.0 frequencies
+    # https://github.com/broadinstitute/gnomad_qc/blob/efea6851a421f4bc66b73db588c0eeeb7cd27539/gnomad_qc/v3/annotations/generate_freq_data_hgdp_tgp.py#L129
+    freq_ht = get_freq(version="3").ht()
+    freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
+
+    mt = hom_alt_depletion_fix(
+        mt, het_non_ref_expr=mt._het_non_ref, af_expr=freq_ht[mt.row_key].freq[0].AF
+    )
+    mt = mt.drop("_het_non_ref")
 
     logger.info(
         "Add gnomad freq from release HT, remove downsampling and subset info from freq, freq_meta, and freq_index_dict"
@@ -665,9 +680,15 @@ def main(args):
             key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
         )
 
-        logger.info("Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)")
+        logger.info(
+            "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
+        )
         mt = mt.filter_cols(
-            (meta_ht[mt.col_key].subsets.hgdp | meta_ht[mt.col_key].subsets.tgp | (mt.s == SYNDIP))
+            (
+                meta_ht[mt.col_key].subsets.hgdp
+                | meta_ht[mt.col_key].subsets.tgp
+                | (mt.s == SYNDIP)
+            )
         )
         mt = mt.annotate_rows(
             _telomere_or_centromere=hl.is_defined(
