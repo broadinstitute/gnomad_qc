@@ -591,7 +591,7 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     )
 
     logger.info(
-        "Setting het genotypes at sites with >1% AF (using precomputed v3.0 frequencies) and > 0.9 AB to homalt..."
+        "Setting het genotypes at sites with > 1% AF (using precomputed v3.0 frequencies) and > 0.9 AB to homalt..."
     )
     freq_ht = get_freq(version="3").ht()
     freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
