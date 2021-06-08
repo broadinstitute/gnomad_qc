@@ -593,6 +593,9 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     logger.info(
         "Setting het genotypes at sites with > 1% AF (using precomputed v3.0 frequencies) and > 0.9 AB to homalt..."
     )
+    # NOTE: Using v3.0 frequencies here and not v3.1 frequencies because 
+    # the frequency code adjusted genotypes (homalt depletion fix) using v3.0 frequencies
+    # https://github.com/broadinstitute/gnomad_qc/blob/efea6851a421f4bc66b73db588c0eeeb7cd27539/gnomad_qc/v3/annotations/generate_freq_data_hgdp_tgp.py#L129
     freq_ht = get_freq(version="3").ht()
     freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
 
