@@ -10,9 +10,11 @@ from gnomad.resources.grch38.reference_data import (
     seg_dup_intervals,
     telomeres_and_centromeres,
 )
+from gnomad.resources.resource_utils import DataException
 from gnomad.sample_qc.relatedness import UNRELATED
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import get_adj_expr, region_flag_expr
+from gnomad.utils.file_utils import file_exists
 from gnomad.utils.release import make_freq_index_dict
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import (
@@ -28,8 +30,8 @@ from gnomad_qc.v3.resources.annotations import (
     get_info,
     vep,
 )
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
-from gnomad_qc.v3.resources.meta import meta
+from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_gnomad_v3_mt
+from gnomad_qc.v3.resources.meta import hgdp_tgp_meta, hgdp_tgp_pop_outliers, meta
 from gnomad_qc.v3.resources.release import (
     release_sites,
     hgdp_1kg_subset,
@@ -328,6 +330,32 @@ SAMPLE_QC_METRICS = [
 ]
 
 
+def get_sample_qc_filter_struct_expr(ht):
+    """
+
+    :param ht:
+    :return:
+    """
+    logger.info(
+        "Read in population specific PCA outliers (list includes one duplicate sample)..."
+    )
+    hgdp_tgp_pop_outliers_ht = hgdp_tgp_pop_outliers.ht()
+    set_to_remove = hgdp_tgp_pop_outliers_ht.s.collect(_localize=False)
+
+    num_outliers = hl.eval(hl.len(set_to_remove))
+    num_outliers_found = ht.filter(set_to_remove.contains(ht["s"])).count()
+    if hl.eval(hl.len(set_to_remove)) != num_outliers:
+        raise ValueError(
+            f"Expected {num_outliers} samples to be labeled as population PCA outliers, but found {num_outliers_found}"
+        )
+
+    return hl.struct(
+        hard_filters=ht.sample_filters.hard_filters,
+        hard_filtered=ht.sample_filters.hard_filtered,
+        pop_outlier=set_to_remove.contains(ht["s"]),
+    )
+
+
 def get_relatedness_set_ht(relatedness_ht: hl.Table) -> hl.Table:
     """
     Parse relatedness Table to get every relationship (except UNRELATED) per sample.
@@ -404,16 +432,46 @@ def prepare_sample_annotations() -> hl.Table:
     relatedness_ht = get_relatedness_set_ht(relatedness_ht)
     meta_ht = meta_ht.select(
         bam_metrics=meta_ht.bam_metrics,
-        subsets=meta_ht.subsets.select("tgp", "hgdp"),
+        subsets=meta_ht.subsets.select(
+            "tgp", "hgdp"
+        ),  # Maybe remove if we use projects annotation below
         sex_imputation=meta_ht.sex_imputation.drop("is_female"),
-        sample_qc=meta_ht.sample_qc.select(*SAMPLE_QC_METRICS),
         relatedness_inference=relatedness_ht[meta_ht.key],
-        population_inference=meta_ht.population_inference.drop(
+        sample_qc=meta_ht.sample_qc.select(*SAMPLE_QC_METRICS),
+        gnomad_population_inference=meta_ht.population_inference.drop(
             "training_pop", "training_pop_all"
         ),
-        labeled_subpop=meta_ht.project_meta.project_subpop,
+        gnomad_sample_filters=meta_ht.sample_filters.select(
+            "hard_filters", "hard_filtered", "release_related", "qc_metrics_filters"
+        ),
         gnomad_release=meta_ht.release,
-        high_quality=meta_ht.high_quality,
+        gnomad_high_quality=meta_ht.high_quality,
+    )
+
+    logger.info("Loading additional sample metadata from Martin group...")
+    hgdp_tgp_meta_ht = hgdp_tgp_meta.ht()
+    hgdp_tgp_meta_ht = hgdp_tgp_meta_ht.select(
+        project=hgdp_tgp_meta_ht.hgdp_tgp_meta.Project,  # Name project or subset or something else?
+        latitute=hgdp_tgp_meta_ht.hgdp_tgp_meta.Latitute,
+        longitute=hgdp_tgp_meta_ht.hgdp_tgp_meta.Longitute,
+    )
+
+    logger.info(
+        "Removing 'v3.1::' from the sample names, these were added because there are duplicates of some 1KG samples"
+        " in the full gnomAD dataset..."
+    )
+    meta_ht = meta_ht.key_by(s=meta_ht.s.replace("v3.1::", ""))
+
+    logger.info("Adding sample QC struct and sample metadata from Martin group...")
+    meta_ht = meta_ht.annotate(sample_filters=get_sample_qc_filter_struct_expr(meta_ht))
+    meta_ht = meta_ht.annotate(
+        project_meta=hl.struct(
+            labeled_pop=meta_ht.project_meta.project_pop,  # Should we change the oce back from oth on this subset release?
+            labeled_subpop=meta_ht.project_meta.project_subpop,
+            **hgdp_tgp_meta_ht[meta_ht.key],
+        ),
+        high_quality=~meta_ht.sample_filters.hard_filtered
+        & ~meta_ht.sample_filters.pop_outlier,
     )
 
     return meta_ht
@@ -593,7 +651,7 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     logger.info(
         "Setting het genotypes at sites with > 1% AF (using precomputed v3.0 frequencies) and > 0.9 AB to homalt..."
     )
-    # NOTE: Using v3.0 frequencies here and not v3.1 frequencies because 
+    # NOTE: Using v3.0 frequencies here and not v3.1 frequencies because
     # the frequency code adjusted genotypes (homalt depletion fix) using v3.0 frequencies
     # https://github.com/broadinstitute/gnomad_qc/blob/efea6851a421f4bc66b73db588c0eeeb7cd27539/gnomad_qc/v3/annotations/generate_freq_data_hgdp_tgp.py#L129
     freq_ht = get_freq(version="3").ht()
@@ -679,6 +737,12 @@ def main(args):
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
         )
+        if args.test:
+            logger.info(
+                "Filtering MT to first %d partitions for testing",
+                args.test_n_partitions,
+            )
+            mt = mt._filter_partitions(range(args.test_n_partitions))
 
         logger.info(
             "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
@@ -690,6 +754,12 @@ def main(args):
                 | (mt.s == SYNDIP)
             )
         )
+        logger.info(
+            "Removing 'v3.1::' from the column names, these were added because there are duplicates of some 1KG samples"
+            " in the full gnomAD dataset..."
+        )
+        mt = mt.key_cols_by(s=mt.s.replace("v3.1::", ""))
+
         mt = mt.annotate_rows(
             _telomere_or_centromere=hl.is_defined(
                 telomeres_and_centromeres.ht()[mt.locus]
