@@ -130,7 +130,7 @@ FORMAT_DICT.update(
 )
 
 # VCF INFO field reordering
-VCF_INFO_REORDER = ["AC-adj", "AN-adj", "AF-adj", "popmax", "faf95_popmax"]
+VCF_INFO_REORDER = ["AC-adj", "AN-adj", "AF-adj", "popmax", "faf95-popmax"]
 HGDP_TGP_VCF_INFO_REORDER = [
     "AC-adj",
     "AN-adj",
@@ -142,7 +142,7 @@ HGDP_TGP_VCF_INFO_REORDER = [
     "gnomad-AN-adj",
     "gnomad-AF-adj",
     "gnomad-popmax",
-    "gnomad-faf95_popmax",
+    "gnomad-faf95-popmax",
     "gnomad-AC-raw",
     "gnomad-AN-raw",
     "gnomad-AF-raw",
@@ -152,7 +152,6 @@ HGDP_TGP_VCF_INFO_REORDER = [
 def populate_subset_info_dict(
     subset: str,
     description_text: str,
-    groups: List[str] = GROUPS,
     pops: Dict[str, str] = POPS,
     faf_pops: List[str] = FAF_POPS,
     sexes: List[str] = SEXES,
@@ -164,7 +163,6 @@ def populate_subset_info_dict(
 
     :param subset: Sample subset in dataset.
     :param description_text: Text describing the sample subset that should be added to the INFO description.
-    :param groups: List of sample groups [adj, raw]. Default is GROUPS.
     :param pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
     :param faf_pops: List of faf population names. Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
@@ -277,7 +275,6 @@ def populate_info_dict(
             populate_subset_info_dict(
                 subset=subset,
                 description_text=description_text,
-                groups=groups,
                 pops=pops,
                 faf_pops=faf_pops,
                 sexes=sexes,
@@ -460,11 +457,11 @@ def unfurl_nested_annotations(
         logger.info("Adding popmax data...")
         combo_dict = {
             f"{prefix}popmax": t[popmax].pop,
-            f"{prefix}AC_popmax": t[popmax].AC,
-            f"{prefix}AN_popmax": t[popmax].AN,
-            f"{prefix}AF_popmax": t[popmax].AF,
-            f"{prefix}nhomalt_popmax": t[popmax].homozygote_count,
-            f"{prefix}faf95_popmax": t[popmax].faf95,
+            f"{prefix}AC-popmax": t[popmax].AC,
+            f"{prefix}AN-popmax": t[popmax].AN,
+            f"{prefix}AF-popmax": t[popmax].AF,
+            f"{prefix}nhomalt-popmax": t[popmax].homozygote_count,
+            f"{prefix}faf95-popmax": t[popmax].faf95,
         }
         expr_dict.update(combo_dict)
 
