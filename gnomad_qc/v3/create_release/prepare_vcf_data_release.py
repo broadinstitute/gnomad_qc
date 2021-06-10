@@ -534,6 +534,7 @@ def prepare_vcf_ht(
     ht: hl.Table,
     is_subset: bool,
     freq_entries_to_remove: Set[str],
+    vep_csq_header: str = VEP_CSQ_HEADER,
     vcf_info_reorder: Optional[List[str]] = None,
 ) -> hl.Table:
     """
@@ -542,6 +543,7 @@ def prepare_vcf_ht(
     :param ht: Table containing the nested variant annotation arrays to be unfurled.
     :param is_subset: Whether this is for the release of a subset.
     :param freq_entries_to_remove: Frequency entries to remove for vcf_export.
+    :param vep_csq_header: Description for VEP used in VCF export.
     :param vcf_info_reorder: Optional list of INFO fields to reorder, the rest of the fields are added after this list.
     :return: Prepared HT for sanity checks and VCF export
     """
@@ -616,11 +618,11 @@ def prepare_vcf_ht(
 
     if freq_entries_to_remove:
         ht = ht.annotate_globals(
-            vep_csq_header=VEP_CSQ_HEADER, freq_entries_to_remove=freq_entries_to_remove
+            vep_csq_header=vep_csq_header, freq_entries_to_remove=freq_entries_to_remove
         )
     else:
         ht = ht.annotate_globals(
-            vep_csq_header=VEP_CSQ_HEADER,
+            vep_csq_header=vep_csq_header,
             freq_entries_to_remove=hl.empty_array(hl.tstr),
         )
 
