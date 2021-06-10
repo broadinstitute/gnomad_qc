@@ -727,11 +727,7 @@ def cleanup_ht_for_vcf_export(
     # All unlabeled frequency information is assumed to be adj
     logger.info("Dropping 'adj' from info annotations...")
     row_annots = list(ht.info)
-    new_row_annots = []
-    for x in row_annots:
-        x = x.replace("-adj", "")
-        x = x.replace("-", "_")  # VCF 4.3 specs do not allow hyphens in info fields
-        new_row_annots.append(x)
+    new_row_annots = [x.replace("-adj", "").replace("-", "_") for x in row_annots]
 
     info_annot_mapping = dict(
         zip(new_row_annots, [ht.info[f"{x}"] for x in row_annots])
@@ -946,7 +942,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--hgdp_1kg_subset",
-        help="Use HGDP + TGP subset Matrix table instead of the gnomAD release HT",
+        help="Use HGDP + TGP subset Matrix table instead of the gnomAD release Table",
         action="store_true",
     )
     parser.add_argument(
