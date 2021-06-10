@@ -29,7 +29,6 @@ from gnomad.utils.vcf import (
     create_label_groups,
     FAF_POPS,
     FORMAT_DICT,
-    GROUPS,
     HISTS,
     INFO_DICT,
     IN_SILICO_ANNOTATIONS_INFO_DICT,
@@ -223,7 +222,6 @@ def populate_info_dict(
     age_hist_data: str = None,
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS,
-    groups: List[str] = GROUPS,
     subset_pops: Dict[str, str] = POPS,
     gnomad_pops: Dict[str, str] = POPS,
     faf_pops: List[str] = FAF_POPS,
@@ -248,7 +246,6 @@ def populate_info_dict(
     :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param info_dict: INFO dict to be populated.
     :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
-    :param groups: List of sample groups [adj, raw]. Default is GROUPS.
     :param subset_pops: Dict of sample global population names to use for all subsets in `subset_list` unless the subset
         is 'gnomad', in that case `gnomad_pops` is used. Default is POPS.
     :param gnomad_pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
