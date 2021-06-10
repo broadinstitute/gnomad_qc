@@ -75,7 +75,9 @@ SITE_FIELDS.extend(NEW_SITE_FIELDS)
 
 # Remove original alleles for containing non-releasable alleles
 MISSING_ALLELE_TYPE_FIELDS = ["original_alleles", "has_star"]
-ALLELE_TYPE_FIELDS = remove_fields_from_constant(ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS)
+ALLELE_TYPE_FIELDS = remove_fields_from_constant(
+    ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS
+)
 
 # Remove SOR from site fields (doesn't exist in v3.1)
 MISSING_SITES_FIELDS = ["SOR"]
@@ -91,11 +93,15 @@ SUBSET_LIST_FOR_VCF.append("")
 
 # Remove cohorts that have subpop frequencies stored as pop frequencies
 # Inclusion of these subsets significantly increases the size of storage in the VCFs because of the many subpops
-SUBSET_LIST_FOR_VCF = remove_fields_from_constant(SUBSET_LIST_FOR_VCF, COHORTS_WITH_POP_STORED_AS_SUBPOP)
+SUBSET_LIST_FOR_VCF = remove_fields_from_constant(
+    SUBSET_LIST_FOR_VCF, COHORTS_WITH_POP_STORED_AS_SUBPOP
+)
 
 # Remove decoy from region field flag
 MISSING_REGION_FIELDS = ["decoy"]
-REGION_FLAG_FIELDS = remove_fields_from_constant(REGION_FLAG_FIELDS, MISSING_REGION_FIELDS)
+REGION_FLAG_FIELDS = remove_fields_from_constant(
+    REGION_FLAG_FIELDS, MISSING_REGION_FIELDS
+)
 
 # All missing fields to remove from vcf info dict
 MISSING_INFO_FIELDS = (
@@ -523,7 +529,11 @@ def filter_to_test(
     t_chry = t_chry._filter_partitions(range(num_partitions))
 
     if isinstance(t, hl.MatrixTable):
-        return t_chr20.union_rows(t_chrx, t_chry) if isinstance(t, hl.MatrixTable) else t_chr20.union(t_chrx, t_chry)
+        return (
+            t_chr20.union_rows(t_chrx, t_chry)
+            if isinstance(t, hl.MatrixTable)
+            else t_chr20.union(t_chrx, t_chry)
+        )
     else:
         t = t_chr20.union(t_chrx, t_chry)
 
@@ -622,8 +632,7 @@ def prepare_vcf_ht(
         )
     else:
         ht = ht.annotate_globals(
-            vep_csq_header=vep_csq_header,
-            freq_entries_to_remove=hl.empty_set(hl.tstr),
+            vep_csq_header=vep_csq_header, freq_entries_to_remove=hl.empty_set(hl.tstr),
         )
 
     # Select relevant fields for VCF export
@@ -677,11 +686,10 @@ def prepare_vcf_header_dict(
     vcf_info_dict.update({"vep": {"Description": hl.eval(t.vep_csq_header)}})
 
     # Adjust keys to remove adj tags before exporting to VCF
-    new_vcf_info_dict = {}
-    for i, j in vcf_info_dict.items():
-        i = i.replace("_adj", "")
-        i = i.replace("-", "_")  # VCF 4.3 specs do not allow hyphens in info fields
-        new_vcf_info_dict[i] = j
+    # VCF 4.3 specs do not allow hyphens in info fields
+    new_vcf_info_dict = {
+        i.replace("_adj", "").replace("-", "_"): j for i, j in vcf_info_dict.items()
+    }
 
     header_dict = {
         "info": new_vcf_info_dict,
