@@ -744,6 +744,7 @@ def cleanup_ht_for_vcf_export(
 
     logger.info("Adjusting VCF incompatible types...")
     # Reformat AS_SB_TABLE for use in adjust_vcf_incompatible_types
+    # TODO: Leaving for v3, but should reformat the original AS_SB_TABLE annotation when it's written for v4
     ht = ht.annotate(
         info=ht.info.annotate(
             AS_SB_TABLE=hl.array([ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]])
