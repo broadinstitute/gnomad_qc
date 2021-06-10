@@ -623,7 +623,7 @@ def prepare_vcf_ht(
     else:
         ht = ht.annotate_globals(
             vep_csq_header=vep_csq_header,
-            freq_entries_to_remove=hl.empty_array(hl.tstr),
+            freq_entries_to_remove=hl.empty_set(hl.tstr),
         )
 
     # Select relevant fields for VCF export
