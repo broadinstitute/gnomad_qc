@@ -405,7 +405,7 @@ def unfurl_nested_annotations(
     :param gnomad_full_for_subset: Whether to unfurl full gnomAD release frequencies, popmax, and faf for addition to a
         gnomAD subset release. Default is False.
     :param entries_to_remove: Obtional Set of frequency entries to remove for vcf_export.
-    :return: Struct Expression containing variant annotations and their corresponding expressions and updated entries
+    :return: StructExpression containing variant annotations and their corresponding expressions and updated entries and set of frequency entries to remove
         to remove from the VCF.
     """
     freq_entries_to_remove_vcf = set()
@@ -420,12 +420,12 @@ def unfurl_nested_annotations(
 
     # Setting prefix with '_' as delimiter for obtaining globals
     if gnomad_full_for_subset:
-        prefix = f"gnomad_"
+        prefix = "gnomad_"
 
     # Set variables to locate necessary fields, compute freq index dicts, and compute faf index dict
     if subset_release:
         freq = "cohort_freq"
-        freq_idx = hl.eval(t.globals[f"cohort_freq_index_dict"])
+        freq_idx = hl.eval(t.globals["cohort_freq_index_dict"])
     else:
         popmax = f"{prefix}popmax"
         faf = f"{prefix}faf"
@@ -526,7 +526,7 @@ def filter_to_test(
     t_chry = t_chry._filter_partitions(range(num_partitions))
 
     if isinstance(t, hl.MatrixTable):
-        t = t_chr20.union_rows(t_chrx, t_chry)
+        return t_chr20.union_rows(t_chrx, t_chry) if isinstance(t, hl.MatrixTable) else t_chr20.union(t_chrx, t_chry)
     else:
         t = t_chr20.union(t_chrx, t_chry)
 
@@ -540,7 +540,7 @@ def prepare_vcf_ht(
     vcf_info_reorder: Optional[List[str]] = None,
 ) -> hl.Table:
     """
-    Prepare the Table used for sanity checks and VCF export
+    Prepare the Table used for sanity checks and VCF export.
 
     :param ht: Table containing the nested variant annotation arrays to be unfurled.
     :param is_subset: Whether this is for the release of a subset.
@@ -645,7 +645,7 @@ def prepare_vcf_header_dict(
     age_hist_data: str,
     subset_list: List[str],
     pops: Dict[str, str],
-    format_dict: Dict[str, dict[str, str]] = FORMAT_DICT,
+    format_dict: Dict[str, Dict[str, str]] = FORMAT_DICT,
     inbreeding_coeff_cutoff: float = INBREEDING_COEFF_HARD_CUTOFF,
 ) -> Dict[str, Dict[str, str]]:
     """
@@ -736,7 +736,7 @@ def cleanup_ht_for_vcf_export(
     ht = ht.transmute(info=hl.struct(**info_annot_mapping))
 
     logger.info("Adjusting VCF incompatible types...")
-    # Reformat AS_SB_TABLE for use in ht_to_vcf_mt
+    # Reformat AS_SB_TABLE for use in adjust_vcf_incompatible_types
     ht = ht.annotate(
         info=ht.info.annotate(
             AS_SB_TABLE=hl.array([ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]])

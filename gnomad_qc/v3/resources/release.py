@@ -112,8 +112,8 @@ def release_vcf_path(
     Fetch bucket for release (sites-only) VCFs.
 
     :param release_version: Release version. Defaults to CURRENT RELEASE
+    :param hgdp_tgp_subset: Whether to get path for HGDP + 1KG VCF. Defaults to the full callset (metrics on all samples)        sites VCF path
     :param contig: String containing the name of the desired reference contig. Defaults to the full (all contigs) sites VCF path
-    :param hgdp_tgp_subset: Whether to get path for HGDP + 1KG VCF. Defaults to the full callset (metrics on all samples)
         sites VCF path
     :return: Filepath for the desired VCF
     """
