@@ -725,10 +725,16 @@ def main(args):
 
     if args.create_sample_meta:
         meta_ht = prepare_sample_annotations()
-        meta_ht.write(hgdp_1kg_subset_annotations().path)
+        if args.test:
+            meta_ht.write(get_checkpoint_path("test_hgdp_tgp_subset_meta"), overwrite=args.overwrite)
+        else:
+            meta_ht.write(hgdp_1kg_subset_annotations().path, overwrite=args.overwrite)
 
     if args.export_meta_txt:
-        hgdp_1kg_subset_annotations().ht().export(hgdp_1kg_subset_sample_tsv())
+        if args.test:
+            hgdp_1kg_subset_annotations().ht().export(qc_temp_prefix() + "test_hgdp_tgp_subset_meta.tsv")
+        else:
+            hgdp_1kg_subset_annotations().ht().export(hgdp_1kg_subset_sample_tsv())
 
     if args.create_subset_sparse_mt:
         # NOTE: no longer filtering to high_quality by request from Alicia Martin, but we do filter to variants in
@@ -786,28 +792,70 @@ def main(args):
         )
 
         mt = mt.drop("_telomere_or_centromere")
-        mt.write(
-            hgdp_1kg_subset(dense=False).path, overwrite=args.overwrite,
-        )
+
+        if args.test:
+            mt.write(get_checkpoint_path(f"test_hgdp_tgp_subset", mt=True), overwrite=args.overwrite)
+        else:
+            mt.write(
+                hgdp_1kg_subset(dense=False).path, overwrite=args.overwrite,
+            )
 
     if args.create_subset_dense_mt:
-        mt = hgdp_1kg_subset(dense=False).mt()
+        if args.test:
+            test_mt_path = get_checkpoint_path(f"test_hgdp_tgp_subset")
+            if file_exists(test_mt_path):
+                mt = hl.read_matrix_table(test_mt_path)
+            else:
+                raise DataException(
+                    "There is currently no sparse test MT for the HGDP + TGP subset. Run '--create_subset_sparse_mt' with '--test' to create one."
+                )
+        else:
+            mt = hgdp_1kg_subset(dense=False).mt()
         mt = mt.select_entries(*SPARSE_ENTRIES)
         meta_ht = hgdp_1kg_subset_annotations().ht()
         mt = create_full_subset_dense_mt(mt, meta_ht)
 
         logger.info("Writing HGDP + TGP MT")
-        mt.write(hgdp_1kg_subset(dense=True).path, overwrite=args.overwrite)
+        if args.test:
+            mt.write(get_checkpoint_path(f"test_hgdp_tgp_subset.dense", mt=True), overwrite=args.overwrite)
+        else:
+            mt.write(hgdp_1kg_subset(dense=True).path, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="This script subsets the gnomAD v3.1 release to only HGDP and 1KG samples"
+        description="This script subsets the gnomAD v3.1 release to only HGDP and 1KG samples."
+    )
+    parser.add_argument(
+        "--create_sample_meta",
+        help="Create the HGDP + 1KG subset sample metadata Hail Table.",
+        action="store_true",
     )
     parser.add_argument(
         "--export-meta",
-        help="Pull sample subset metadata and export to a .tsv",
+        help="Pull sample subset metadata and export to a .tsv.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--create_subset_sparse_mt",
+        help="Create the HGDP + 1KG subset sparse MT.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--create_subset_dense_mt",
+        help="Create the HGDP + 1KG subset dense MT.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test",
+        help="Run small test export on a subset of partitions of the MT.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test_n_partitions",
+        default=5,
+        type=int,
+        help="Number of partitions to use for testing.",
     )
     parser.add_argument(
         "-o",
