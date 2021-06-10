@@ -30,7 +30,11 @@ from gnomad_qc.v3.resources.annotations import (
     get_info,
     vep,
 )
-from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_gnomad_v3_mt
+from gnomad_qc.v3.resources.basics import (
+    get_checkpoint_path,
+    get_gnomad_v3_mt,
+    qc_temp_prefix,
+)
 from gnomad_qc.v3.resources.meta import hgdp_tgp_meta, hgdp_tgp_pop_outliers, meta
 from gnomad_qc.v3.resources.release import (
     release_sites,
@@ -722,19 +726,33 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
 
 def main(args):
     hl.init(log="/hgdp_1kg_subset.log", default_reference="GRCh38")
+    temp_meta_path = get_checkpoint_path("test_hgdp_tgp_subset_meta")
 
     if args.create_sample_meta:
         meta_ht = prepare_sample_annotations()
         if args.test:
-            meta_ht.write(get_checkpoint_path("test_hgdp_tgp_subset_meta"), overwrite=args.overwrite)
+            meta_ht.write(temp_meta_path, overwrite=args.overwrite)
         else:
             meta_ht.write(hgdp_1kg_subset_annotations().path, overwrite=args.overwrite)
 
+    if args.test & (args.export_meta_txt or args.create_subset_sparse_mt or args.create_subset_dense_mt):
+        if file_exists(temp_meta_path):
+            meta_ht = hl.read_table(temp_meta_path)
+        else:
+            raise DataException(
+                "There is currently no sample meta HT for the HGDP + TGP subset written to temp for testing. "
+                "Run '--create_sample_meta' with '--test' to create one."
+            )
+    else:
+        meta_ht = hgdp_1kg_subset_annotations().ht()
+
     if args.export_meta_txt:
         if args.test:
-            hgdp_1kg_subset_annotations().ht().export(qc_temp_prefix() + "test_hgdp_tgp_subset_meta.tsv")
+            meta_ht.export(
+                    qc_temp_prefix() + "test_hgdp_tgp_subset_meta.tsv"
+                )
         else:
-            hgdp_1kg_subset_annotations().ht().export(hgdp_1kg_subset_sample_tsv())
+            meta_ht.export(hgdp_1kg_subset_sample_tsv())
 
     if args.create_subset_sparse_mt:
         # NOTE: no longer filtering to high_quality by request from Alicia Martin, but we do filter to variants in
@@ -794,7 +812,10 @@ def main(args):
         mt = mt.drop("_telomere_or_centromere")
 
         if args.test:
-            mt.write(get_checkpoint_path(f"test_hgdp_tgp_subset", mt=True), overwrite=args.overwrite)
+            mt.write(
+                get_checkpoint_path(f"test_hgdp_tgp_subset", mt=True),
+                overwrite=args.overwrite,
+            )
         else:
             mt.write(
                 hgdp_1kg_subset(dense=False).path, overwrite=args.overwrite,
@@ -807,7 +828,8 @@ def main(args):
                 mt = hl.read_matrix_table(test_mt_path)
             else:
                 raise DataException(
-                    "There is currently no sparse test MT for the HGDP + TGP subset. Run '--create_subset_sparse_mt' with '--test' to create one."
+                    "There is currently no sparse test MT for the HGDP + TGP subset. Run '--create_subset_sparse_mt' "
+                    "with '--test' to create one."
                 )
         else:
             mt = hgdp_1kg_subset(dense=False).mt()
@@ -817,7 +839,10 @@ def main(args):
 
         logger.info("Writing HGDP + TGP MT")
         if args.test:
-            mt.write(get_checkpoint_path(f"test_hgdp_tgp_subset.dense", mt=True), overwrite=args.overwrite)
+            mt.write(
+                get_checkpoint_path(f"test_hgdp_tgp_subset.dense", mt=True),
+                overwrite=args.overwrite,
+            )
         else:
             mt.write(hgdp_1kg_subset(dense=True).path, overwrite=args.overwrite)
 
@@ -848,7 +873,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--test",
-        help="Run small test export on a subset of partitions of the MT.",
+        help=(
+            "Run small test export on a subset of partitions of the MT. Writes to temp rather than writing to the "
+            "main bucket."
+        ),
         action="store_true",
     )
     parser.add_argument(
