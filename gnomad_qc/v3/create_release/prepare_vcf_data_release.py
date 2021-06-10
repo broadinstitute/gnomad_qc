@@ -49,12 +49,11 @@ from gnomad_qc.v3.create_release.sanity_checks import (
     vcf_field_check,
 )
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
-
-from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v3.resources.release import (
     append_to_vcf_header_path,
     hgdp_1kg_subset,
     release_header_path,
+    release_sites,
     release_vcf_path,
 )
 
