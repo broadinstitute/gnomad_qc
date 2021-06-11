@@ -165,12 +165,12 @@ def main(args):
             )
             if args.test:
                 mt.rows().write(
-                    get_checkpoint_path(f"chr20_test_freq.{'_'.join(subsets)}"),
+                    get_checkpoint_path(f"chr20_test_freq.{'-'.join(subsets)}"),
                     overwrite=True,
                 )
             else:
                 mt.rows().write(
-                    get_freq(subset="_".join(subsets)).path, overwrite=args.overwrite
+                    get_freq(subset="-".join(subsets)).path, overwrite=args.overwrite
                 )
 
         else:

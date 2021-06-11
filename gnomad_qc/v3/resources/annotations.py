@@ -167,16 +167,18 @@ def get_freq(
     Get the frequency annotation table for a specified release.
 
     :param version: Version of annotation path to return
-    :param subset: One of the official subsets of the specified release (e.g., non_neuro, non_cancer, controls_and_biobanks)
+    :param subset: One of the official subsets of the specified release (e.g., non_neuro, non_cancer,
+        controls_and_biobanks) or a combination of them split by '-'
     :return: Hail Table containing subset or overall cohort frequency annotations
     """
     if version == "3" and subset:
         raise DataException("Subsets of gnomAD v3 do not exist")
 
-    if subset and subset not in SUBSETS:
-        raise DataException(
-            f"{subset} subset is not one of the following official subsets: {SUBSETS}"
-        )
+    for s in subset.split("-"):
+        if s not in SUBSETS:
+            raise DataException(
+                f"{subset} subset is not one of the following official subsets: {SUBSETS}"
+            )
 
     return VersionedTableResource(
         version,
