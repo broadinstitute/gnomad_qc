@@ -704,7 +704,7 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     mt = mt.annotate_globals(
         cohort_freq_meta=subset_freq.index_globals().freq_meta,
         cohort_freq_index_dict=make_freq_index_dict(
-            subset_freq.index_globals().freq_meta,
+            hl.eval(subset_freq.index_globals().freq_meta),
             pops=POPS_STORED_AS_SUBPOPS,
             subsets=["hgdp|tgp"],
             label_delimiter="-",
