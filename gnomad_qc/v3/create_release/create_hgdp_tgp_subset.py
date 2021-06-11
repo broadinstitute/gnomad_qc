@@ -565,7 +565,7 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
             non_par=False,
             prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         ),
-        allele_info=keyed_filters.allele_data,
+        allele_info=keyed_filters.allele_info,
         **analyst_ht[ht.key],
     )
 
