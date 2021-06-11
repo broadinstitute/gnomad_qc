@@ -844,7 +844,7 @@ def main(args):
         mt = mt.select_entries(*SPARSE_ENTRIES)
         mt = create_full_subset_dense_mt(mt, meta_ht)
 
-        logger.info("Writing HGDP + TGP MT")
+        logger.info("Writing dense HGDP + TGP MT with all sample and variant annotations")
         if args.test:
             mt.write(
                 get_checkpoint_path(f"test_hgdp_tgp_subset.dense", mt=True),
