@@ -363,8 +363,8 @@ def get_sample_qc_filter_struct_expr(ht):
         )
 
     return hl.struct(
-        hard_filters=ht.sample_filters.hard_filters,
-        hard_filtered=ht.sample_filters.hard_filtered,
+        hard_filters=ht.gnomad_sample_filters.hard_filters,
+        hard_filtered=ht.gnomad_sample_filters.hard_filtered,
         pop_outlier=set_to_remove.contains(ht["s"]),
     )
 
@@ -436,7 +436,7 @@ def prepare_sample_annotations() -> hl.Table:
     )
 
     relatedness_ht = relatedness.ht()
-    subset_samples = meta_ht.s.collect()
+    subset_samples = meta_ht.s.collect(_localize=False)
     relatedness_ht = relatedness_ht.filter(
         subset_samples.contains(relatedness_ht.i.s)
         & subset_samples.contains(relatedness_ht.j.s)
@@ -459,14 +459,16 @@ def prepare_sample_annotations() -> hl.Table:
         ),
         gnomad_release=meta_ht.release,
         gnomad_high_quality=meta_ht.high_quality,
+        labeled_pop=meta_ht.project_meta.project_pop,  # Should we change the oce back from oth on this subset release?
+        labeled_subpop=meta_ht.project_meta.project_subpop,
     )
 
     logger.info("Loading additional sample metadata from Martin group...")
     hgdp_tgp_meta_ht = hgdp_tgp_meta.ht()
     hgdp_tgp_meta_ht = hgdp_tgp_meta_ht.select(
         project=hgdp_tgp_meta_ht.hgdp_tgp_meta.Project,  # Name project or subset or something else?
-        latitute=hgdp_tgp_meta_ht.hgdp_tgp_meta.Latitute,
-        longitute=hgdp_tgp_meta_ht.hgdp_tgp_meta.Longitute,
+        atitude=hgdp_tgp_meta_ht.hgdp_tgp_meta.Latitude,
+        longitude=hgdp_tgp_meta_ht.hgdp_tgp_meta.Longitude,
     )
 
     logger.info(
@@ -477,10 +479,10 @@ def prepare_sample_annotations() -> hl.Table:
 
     logger.info("Adding sample QC struct and sample metadata from Martin group...")
     meta_ht = meta_ht.annotate(sample_filters=get_sample_qc_filter_struct_expr(meta_ht))
-    meta_ht = meta_ht.annotate(
-        project_meta=hl.struct(
-            labeled_pop=meta_ht.project_meta.project_pop,  # Should we change the oce back from oth on this subset release?
-            labeled_subpop=meta_ht.project_meta.project_subpop,
+    meta_ht = meta_ht.transmute(
+        subset_meta=hl.struct(
+            labeled_pop=meta_ht.labeled_pop,  # Should we change the oce back from oth on this subset release?
+            labeled_subpop=meta_ht.labeled_subpop,
             **hgdp_tgp_meta_ht[meta_ht.key],
         ),
         high_quality=~meta_ht.sample_filters.hard_filtered
@@ -744,22 +746,21 @@ def main(args):
         else:
             meta_ht.write(hgdp_1kg_subset_annotations().path, overwrite=args.overwrite)
 
-    if args.test & (args.export_meta_txt or args.create_subset_sparse_mt or args.create_subset_dense_mt):
-        if file_exists(temp_meta_path):
-            meta_ht = hl.read_table(temp_meta_path)
-        else:
-            raise DataException(
-                "There is currently no sample meta HT for the HGDP + TGP subset written to temp for testing. "
-                "Run '--create_sample_meta' with '--test' to create one."
-            )
+    if args.test:
+        if args.export_meta_txt or args.create_subset_sparse_mt or args.create_subset_dense_mt:
+            if file_exists(temp_meta_path):
+                meta_ht = hl.read_table(temp_meta_path)
+            else:
+                raise DataException(
+                    "There is currently no sample meta HT for the HGDP + TGP subset written to temp for testing. "
+                    "Run '--create_sample_meta' with '--test' to create one."
+                )
     else:
         meta_ht = hgdp_1kg_subset_annotations().ht()
 
     if args.export_meta_txt:
         if args.test:
-            meta_ht.export(
-                    qc_temp_prefix() + "test_hgdp_tgp_subset_meta.tsv"
-                )
+            meta_ht.export(qc_temp_prefix() + "test_hgdp_tgp_subset_meta.tsv")
         else:
             meta_ht.export(hgdp_1kg_subset_sample_tsv())
 
@@ -831,7 +832,7 @@ def main(args):
 
     if args.create_subset_dense_mt:
         if args.test:
-            test_mt_path = get_checkpoint_path(f"test_hgdp_tgp_subset")
+            test_mt_path = get_checkpoint_path(f"test_hgdp_tgp_subset", mt=True)
             if file_exists(test_mt_path):
                 mt = hl.read_matrix_table(test_mt_path)
             else:
@@ -865,7 +866,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--export-meta",
+        "--export_meta_txt",
         help="Pull sample subset metadata and export to a .tsv.",
         action="store_true",
     )
