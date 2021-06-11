@@ -658,7 +658,7 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     logger.info("Computing adj and sex adjusted genotypes...")
     mt = mt.annotate_entries(
         GT=adjusted_sex_ploidy_expr(
-            mt.locus, mt.GT, mt.meta.sex_imputation.sex_karyotype
+            mt.locus, mt.GT, mt.sex_imputation.sex_karyotype
         ),
         adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
     )
