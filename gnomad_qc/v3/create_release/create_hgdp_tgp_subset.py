@@ -51,7 +51,6 @@ logger = logging.getLogger("create_subset")
 logger.setLevel(logging.INFO)
 
 AS_FIELDS.remove("InbreedingCoeff")
-SITE_FIELDS.remove("BaseQRankSum")
 
 GLOBAL_SAMPLE_ANNOTATION_DICT = {
     "sex_imputation_ploidy_cutoffs": {
@@ -757,7 +756,6 @@ def main(args):
     if args.create_subset_sparse_mt:
         # NOTE: no longer filtering to high_quality by request from Alicia Martin, but we do filter to variants in
         # high_quality samples, so how to handle that in the future?
-        meta_ht = hgdp_1kg_subset_annotations().ht()
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
         )
@@ -833,8 +831,8 @@ def main(args):
                 )
         else:
             mt = hgdp_1kg_subset(dense=False).mt()
+
         mt = mt.select_entries(*SPARSE_ENTRIES)
-        meta_ht = hgdp_1kg_subset_annotations().ht()
         mt = create_full_subset_dense_mt(mt, meta_ht)
 
         logger.info("Writing HGDP + TGP MT")
