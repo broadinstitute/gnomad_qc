@@ -174,11 +174,12 @@ def get_freq(
     if version == "3" and subset:
         raise DataException("Subsets of gnomAD v3 do not exist")
 
-    for s in subset.split("-"):
-        if s not in SUBSETS:
-            raise DataException(
-                f"{subset} subset is not one of the following official subsets: {SUBSETS}"
-            )
+    if subset is not None:
+        for s in subset.split("-"):
+            if s not in SUBSETS:
+                raise DataException(
+                    f"{subset} subset is not one of the following official subsets: {SUBSETS}"
+                )
 
     return VersionedTableResource(
         version,
