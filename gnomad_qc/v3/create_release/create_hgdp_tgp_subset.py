@@ -52,22 +52,22 @@ logger.setLevel(logging.INFO)
 
 AS_FIELDS.remove("InbreedingCoeff")
 
-GLOBAL_SAMPLE_ANNOTATION_DICT = {
-    "sex_imputation_ploidy_cutoffs": {
-        "Description": (
+GLOBAL_SAMPLE_ANNOTATION_DICT = hl.struct(
+    sex_imputation_ploidy_cutoffs=hl.struct(
+        Description=(
             "Contains sex chromosome ploidy cutoffs used when determining sex chromosome karyotypes. Format: "
             "(upper cutoff for single X, (lower cutoff for double X, upper cutoff for double X), lower cutoff for "
             "triple X) and (lower cutoff for single Y, upper cutoff for single Y), lower cutoff for double Y)."
         )
-    },
-    "population_inference_pca_metrics": {
-        "Description": (
+    ),
+    population_inference_pca_metrics=hl.struct(
+        Description=(
             "Contains the number of principal components (PCs) used when running PC-project and the minimum cutoff "
             "probability of belonging to a given population."
         )
-    },
-    "hard_filter_cutoffs": {
-        "Description": (
+    ),
+    hard_filter_cutoffs=hl.struct(
+        Description=(
             "Contains the cutoffs used for hard-filtering samples prior to sample QC. Sample QC metrics are "
             "computed using the Hail sample_qc module on all autosomal bi-allelic SNVs. Samples are removed if "
             "they are clear outliers for any of the following metrics: number of snps (n_snp), ratio of heterozygous "
@@ -75,247 +75,257 @@ GLOBAL_SAMPLE_ANNOTATION_DICT = {
             "chromosome 20 (cov). Additionally, we filter based on outliers of the following Picard metrics: % "
             "contamination (freemix), % chimera, and median insert size."
         )
-    },
-}
-GLOBAL_VARIANT_ANNOTATION_DICT = {
-    "cohort_freq_meta": {
-        "Description": (
+    ),
+)
+GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
+    cohort_freq_meta=hl.struct(
+        Description=(
             "HGDP and 1KG frequency metadata. An ordered list containing the frequency aggregation group"
             "for each element of the cohort_freq array row annotation."
         )
-    },
-    "gnomad_freq_meta": {
-        "Description": (
+    ),
+    gnomad_freq_meta=hl.struct(
+        Description=(
             "gnomAD frequency metadata. An ordered list containing the frequency aggregation group"
             "for each element of the gnomad_freq array row annotation."
         )
-    },
-    "cohort_freq_index_dict": {
-        "Description": (
+    ),
+    cohort_freq_index_dict=hl.struct(
+        Description=(
             "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: HGDP or 1KG "
             "subpopulation, sex: sex karyotype), with values describing the corresponding index of each grouping "
             "entry in the HGDP + 1KG frequency array annotation."
         )
-    },
-    "gnomad_freq_index_dict": {
-        "Description": (
+    ),
+    gnomad_freq_index_dict=hl.struct(
+        Description=(
             "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: gnomAD "
             "inferred global population sex: sex karyotype), with values describing the corresponding index "
             "of each grouping entry in the gnomAD frequency array annotation."
         )
-    },
-    "gnomad_faf_index_dict": {
-        "Description": (
+    ),
+    gnomad_faf_index_dict=hl.struct(
+        Description=(
             "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: gnomAD "
             "inferred global population sex: sex karyotype), with values describing the corresponding index "
             "of each grouping entry in the filtering allele frequency (using Poisson 99% CI) annotation."
         )
-    },
-    "gnomad_faf_meta": {
-        "Description": (
+    ),
+    gnomad_faf_meta=hl.struct(
+        Description=(
             "gnomAD filtering allele frequency (using Poisson 99% CI) metadata. An ordered list "
             "containing the frequency aggregation group for each element of the gnomad_faf array row annotation."
         )
-    },
-    "vep_version": {"Description": "VEP version."},
-    "vep_csq_header": {"Description": "VEP header for VCF export."},
-    "dbsnp_version": {"Description": "dbSNP version."},
-    "filtering_model": {
-        "Description": "The variant filtering model used and its specific cutoffs.",
-        "sub_globals": {
-            "model_name": {
-                "Description": (
+    ),
+    vep_version=hl.struct(Description="VEP version."),
+    vep_csq_header=hl.struct(Description="VEP header for VCF export."),
+    dbsnp_version=hl.struct(Description="dbSNP version."),
+    filtering_model=hl.struct(
+        Description="The variant filtering model used and its specific cutoffs.",
+        sub_globals=hl.struct(
+            model_name=hl.struct(
+                Description=(
                     "Variant filtering model name used in the 'filters'  row annotation to indicate"
                     "the variant was filtered by the model during variant QC."
                 )
-            },
-            "score_name": {"Description": "Name of score used for variant filtering."},
-            "snv_cutoff": {
-                "Description": "SNV filtering cutoff information.",
-                "sub_globals": {
-                    "bin": {"Description": "Filtering percentile cutoff for SNVs."},
-                    "min_score": {
-                        "Description": "Minimum score (score_name) at SNV filtering percentile cutoff."
-                    },
-                },
-            },
-            "indel_cutoff": {
-                "Description": "Information about cutoff used for indel filtering.",
-                "sub_globals": {
-                    "bin": {"Description": "Filtering percentile cutoff for indels."},
-                    "min_score": {
-                        "Description": "Minimum score (score_name) at indel filtering percentile cutoff."
-                    },
-                },
-            },
-            "snv_training_variables": {
-                "Description": "Variant annotations used as features in SNV filtering model."
-            },
-            "indel_training_variables": {
-                "Description": "Variant annotations used as features in indel filtering model."
-            },
-        },
-    },
-    "inbreeding_coeff_cutoff": {
-        "Description": "Hard-filter cutoff for InbreedingCoeff on variants."
-    },
-}
+            ),
+            score_name=hl.struct(
+                Description="Name of score used for variant filtering."
+            ),
+            snv_cutoff=hl.struct(
+                Description="SNV filtering cutoff information.",
+                sub_globals=hl.struct(
+                    bin=hl.struct(Description="Filtering percentile cutoff for SNVs."),
+                    min_score=hl.struct(
+                        Description="Minimum score (score_name) at SNV filtering percentile cutoff."
+                    ),
+                ),
+            ),
+            indel_cutoff=hl.struct(
+                Description="Information about cutoff used for indel filtering.",
+                sub_globals=hl.struct(
+                    bin=hl.struct(
+                        Description="Filtering percentile cutoff for indels."
+                    ),
+                    min_score=hl.struct(
+                        Description="Minimum score (score_name) at indel filtering percentile cutoff."
+                    ),
+                ),
+            ),
+            snv_training_variables=hl.struct(
+                Description="Variant annotations used as features in SNV filtering model."
+            ),
+            indel_training_variables=hl.struct(
+                Description="Variant annotations used as features in indel filtering model."
+            ),
+        ),
+    ),
+    inbreeding_coeff_cutoff=hl.struct(
+        Description="Hard-filter cutoff for InbreedingCoeff on variants."
+    ),
+)
 GLOBAL_ANNOTATION_DICT = hl.struct(
     **GLOBAL_SAMPLE_ANNOTATION_DICT, **GLOBAL_VARIANT_ANNOTATION_DICT
 )
 
-SAMPLE_ANNOTATION_DICT = {
-    "s": {"Description": "Sample ID."},
-    "bam_metrics": {
-        "Description": "Sample level metrics obtained from BAMs/CRAMs.",
-        "sub_annotations": {
-            "pct_bases_20x": {
-                "Description": "The fraction of bases that attained at least 20X sequence coverage in post-filtering bases."
-            },
-            "pct_chimeras": {
-                "Description": (
+SAMPLE_ANNOTATION_DICT = hl.struct(
+    s=hl.struct(Description="Sample ID."),
+    bam_metrics=hl.struct(
+        Description="Sample level metrics obtained from BAMs/CRAMs.",
+        sub_annotations=hl.struct(
+            pct_bases_20x=hl.struct(
+                Description="The fraction of bases that attained at least 20X sequence coverage in post-filtering bases."
+            ),
+            pct_chimeras=hl.struct(
+                Description=(
                     "The fraction of reads that map outside of a maximum insert size (usually 100kb) or that have the "
                     "two ends mapping to different chromosomes."
                 )
-            },
-            "freemix": {"Description": "Estimate of contamination (0-100 scale)."},
-            "mean_coverage": {
-                "Description": "The mean coverage in bases of the genome territory, after all filters are applied, https://broadinstitute.github.io/picard/picard-metric-definitions.html."
-            },
-            "median_coverage": {
-                "Description": "The median coverage in bases of the genome territory, after all filters are applied, https://broadinstitute.github.io/picard/picard-metric-definitions.html."
-            },
-            "mean_insert_size": {
-                "Description": (
+            ),
+            freemix=hl.struct(Description="Estimate of contamination (0-100 scale)."),
+            mean_coverage=hl.struct(
+                Description="The mean coverage in bases of the genome territory, after all filters are applied, https://broadinstitute.github.io/picard/picard-metric-definitions.html."
+            ),
+            median_coverage=hl.struct(
+                Description="The median coverage in bases of the genome territory, after all filters are applied, https://broadinstitute.github.io/picard/picard-metric-definitions.html."
+            ),
+            mean_insert_size=hl.struct(
+                Description=(
                     "The mean insert size of the 'core' of the distribution. Artefactual outliers in the distribution "
                     "often cause calculation of nonsensical mean and stdev values. To avoid this the distribution is "
                     "first trimmed to a 'core' distribution of +/- N median absolute deviations around the median "
                     "insert size."
                 )
-            },
-            "median_insert_size": {
-                "Description": "The median insert size of all paired end reads where both ends mapped to the same chromosome."
-            },
-            "pct_bases_10x": {
-                "Description": "The fraction of bases that attained at least 10X sequence coverage in post-filtering bases."
-            },
-        },
-    },
-    "subsets": {
-        "Description": "Struct containing information from the sample's cohort: HGDP or 1KG (tgp).",
-        "sub_annotations": {
-            "tgp": {"Description": "True if sample is from the 1KG dataset."},
-            "hgdp": {"Description": "True if the sample is from the HGDP dataset."},
-        },
-    },
-    "sex_imputation": {
-        "Description": "Struct containing sex imputation information.",
-        "sub_annotations": {
-            "f_stat": {
-                "Description": "Inbreeding coefficient (excess heterozygosity) on chromosome X."
-            },
-            "n_called": {"Description": "Number of variants with a genotype call."},
-            "expected_homs": {"Description": "Expected number of homozygotes."},
-            "observed_homs": {"Description": "Observed number of homozygotes."},
-            "chr20_mean_dp": {
-                "Description": "Sample's mean depth across chromosome 20."
-            },
-            "chrX_mean_dp": {"Description": "Sample's mean depth across chromosome X."},
-            "chrY_mean_dp": {"Description": "Sample's mean depth across chromosome Y."},
-            "chrX_ploidy": {
-                "Description": "Sample's chromosome X ploidy (chrX_mean_dp normalized using chr20_mean_dp)."
-            },
-            "chrY_ploidy": {
-                "Description": "Sample's chromosome Y ploidy (chrY_mean_dp normalized using chr20_mean_dp)."
-            },
-            "X_karyotype": {"Description": "Sample's chromosome X karyotype."},
-            "Y_karyotype": {"Description": "Sample's chromosome Y karyotype."},
-            "sex_karyotype": {
-                "Description": "Sample's sex karyotype (combined X and Y karyotype)."
-            },
-        },
-    },
-    "sample_qc": {
-        "Description": "Struct containing sample QC metrics calculated using hl.sample_qc().",
-        "sub_annotations": {
-            "n_hom_ref": {"Description": "Number of homozygous reference calls."},
-            "n_het": {"Description": "Number of heterozygous calls."},
-            "n_hom_var": {"Description": "Number of homozygous alternate calls."},
-            "n_non_ref": {"Description": "Sum of n_het and n_hom_var."},
-            "n_snp": {"Description": "Number of SNP alternate alleles."},
-            "n_insertion": {"Description": "Number of insertion alternate alleles."},
-            "n_deletion": {"Description": "Number of deletion alternate alleles."},
-            "n_transition": {
-                "Description": "Number of transition (A-G, C-T) alternate alleles."
-            },
-            "n_transversion": {
-                "Description": "Number of transversion alternate alleles."
-            },
-            "r_ti_tv": {"Description": "Transition/Transversion ratio."},
-            "r_het_hom_var": {"Description": "Het/HomVar call ratio."},
-            "r_insertion_deletion": {"Description": "Insertion/Deletion allele ratio."},
-        },
-    },
-    "population_inference": {
-        "Description": (
+            ),
+            median_insert_size=hl.struct(
+                Description="The median insert size of all paired end reads where both ends mapped to the same chromosome."
+            ),
+            pct_bases_10x=hl.struct(
+                Description="The fraction of bases that attained at least 10X sequence coverage in post-filtering bases."
+            ),
+        ),
+    ),
+    subsets=hl.struct(
+        Description="Struct containing information from the sample's cohort: HGDP or 1KG (tgp).",
+        sub_annotations=hl.struct(
+            tgp=hl.struct(Description="True if sample is from the 1KG dataset."),
+            hgdp=hl.struct(Description="True if the sample is from the HGDP dataset."),
+        ),
+    ),
+    sex_imputation=hl.struct(
+        Description="Struct containing sex imputation information.",
+        sub_annotations=hl.struct(
+            f_stat=hl.struct(
+                Description="Inbreeding coefficient (excess heterozygosity) on chromosome X."
+            ),
+            n_called=hl.struct(Description="Number of variants with a genotype call."),
+            expected_homs=hl.struct(Description="Expected number of homozygotes."),
+            observed_homs=hl.struct(Description="Observed number of homozygotes."),
+            chr20_mean_dp=hl.struct(
+                Description="Sample's mean depth across chromosome 20."
+            ),
+            chrX_mean_dp=hl.struct(
+                Description="Sample's mean depth across chromosome X."
+            ),
+            chrY_mean_dp=hl.struct(
+                Description="Sample's mean depth across chromosome Y."
+            ),
+            chrX_ploidy=hl.struct(
+                Description="Sample's chromosome X ploidy (chrX_mean_dp normalized using chr20_mean_dp)."
+            ),
+            chrY_ploidy=hl.struct(
+                Description="Sample's chromosome Y ploidy (chrY_mean_dp normalized using chr20_mean_dp)."
+            ),
+            X_karyotype=hl.struct(Description="Sample's chromosome X karyotype."),
+            Y_karyotype=hl.struct(Description="Sample's chromosome Y karyotype."),
+            sex_karyotype=hl.struct(
+                Description="Sample's sex karyotype (combined X and Y karyotype)."
+            ),
+        ),
+    ),
+    sample_qc=hl.struct(
+        Description="Struct containing sample QC metrics calculated using hl.sample_qc().",
+        sub_annotations=hl.struct(
+            n_hom_ref=hl.struct(Description="Number of homozygous reference calls."),
+            n_het=hl.struct(Description="Number of heterozygous calls."),
+            n_hom_var=hl.struct(Description="Number of homozygous alternate calls."),
+            n_non_ref=hl.struct(Description="Sum of n_het and n_hom_var."),
+            n_snp=hl.struct(Description="Number of SNP alternate alleles."),
+            n_insertion=hl.struct(Description="Number of insertion alternate alleles."),
+            n_deletion=hl.struct(Description="Number of deletion alternate alleles."),
+            n_transition=hl.struct(
+                Description="Number of transition (A-G, C-T) alternate alleles."
+            ),
+            n_transversion=hl.struct(
+                Description="Number of transversion alternate alleles."
+            ),
+            r_ti_tv=hl.struct(Description="Transition/Transversion ratio."),
+            r_het_hom_var=hl.struct(Description="Het/HomVar call ratio."),
+            r_insertion_deletion=hl.struct(
+                Description="Insertion/Deletion allele ratio."
+            ),
+        ),
+    ),
+    population_inference=hl.struct(
+        Description=(
             "Struct containing ancestry information assigned by applying a principal component analysis (PCA) on "
             "gnomAD samples and using those PCs in a random forest classifier trained on known gnomAD ancestry labels."
         ),
-        "sub_annotations": {
-            "pca_scores": {
-                "Description": "Sample's scores for each gnomAD population PC."
-            },
-            "pop": {"Description": "Sample's inferred gnomAD population label."},
-            "prob_afr": {
-                "Description": "Random forest probability that the sample is of African/African-American ancestry."
-            },
-            "prob_ami": {
-                "Description": "Random forest probability that the sample is of Amish ancestry."
-            },
-            "prob_amr": {
-                "Description": "Random forest probability that the sample is of Latino ancestry."
-            },
-            "prob_asj": {
-                "Description": "Random forest probability that the sample is of Ashkenazi Jewish ancestry."
-            },
-            "prob_eas": {
-                "Description": "Random forest probability that the sample is of East Asian ancestry."
-            },
-            "prob_fin": {
-                "Description": "Random forest probability that the sample is of Finnish ancestry."
-            },
-            "prob_mid": {
-                "Description": "Random forest probability that the sample is of Middle Eastern ancestry."
-            },
-            "prob_nfe": {
-                "Description": "Random forest probability that the sample is of Non-Finnish European ancestry."
-            },
-            "prob_oth": {
-                "Description": "Random forest probability that the sample is of Other ancestry."
-            },
-            "prob_sas": {
-                "Description": "Random forest probability that the sample is of South Asian ancestry."
-            },
-        },
-    },
-    "labeled_subpop": {
-        "Description": "The sample's population label supplied by HGDP or 1KG."
-    },
-    "gnomad_release": {
-        "Description": (
+        sub_annotations=hl.struct(
+            pca_scores=hl.struct(
+                Description="Sample's scores for each gnomAD population PC."
+            ),
+            pop=hl.struct(Description="Sample's inferred gnomAD population label."),
+            prob_afr=hl.struct(
+                Description="Random forest probability that the sample is of African/African-American ancestry."
+            ),
+            prob_ami=hl.struct(
+                Description="Random forest probability that the sample is of Amish ancestry."
+            ),
+            prob_amr=hl.struct(
+                Description="Random forest probability that the sample is of Latino ancestry."
+            ),
+            prob_asj=hl.struct(
+                Description="Random forest probability that the sample is of Ashkenazi Jewish ancestry."
+            ),
+            prob_eas=hl.struct(
+                Description="Random forest probability that the sample is of East Asian ancestry."
+            ),
+            prob_fin=hl.struct(
+                Description="Random forest probability that the sample is of Finnish ancestry."
+            ),
+            prob_mid=hl.struct(
+                Description="Random forest probability that the sample is of Middle Eastern ancestry."
+            ),
+            prob_nfe=hl.struct(
+                Description="Random forest probability that the sample is of Non-Finnish European ancestry."
+            ),
+            prob_oth=hl.struct(
+                Description="Random forest probability that the sample is of Other ancestry."
+            ),
+            prob_sas=hl.struct(
+                Description="Random forest probability that the sample is of South Asian ancestry."
+            ),
+        ),
+    ),
+    labeled_subpop=hl.struct(
+        Description="The sample's population label supplied by HGDP or 1KG."
+    ),
+    gnomad_release=hl.struct(
+        Description=(
             "Indicates whether the sample was included in the gnomAD release dataset. For the full gnomAD release, "
             "relatedness inference is performed on the full dataset, and release samples are chosen in a way that "
             "maximizes the number of samples retained while filtering the dataset to include only samples with less "
             "than second-degree relatedness. For the HGDP + 1KG subset, samples passing all other sample QC "
             "metrics are retained."
         )
-    },
-    "high_quality": {
-        "Description": (
+    ),
+    high_quality=hl.struct(
+        Description=(
             "Indicates whether a sample has passed all sample QC metrics except for relatedness."
         )
-    },
-}
+    ),
+)
 
 SAMPLE_QC_METRICS = [
     "n_deletion",
@@ -415,8 +425,8 @@ def prepare_sample_annotations() -> hl.Table:
         meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP)
     )
     meta_ht = meta_ht.select_globals(
-        global_annotation_descriptions=hl.literal(GLOBAL_SAMPLE_ANNOTATION_DICT),
-        sample_annotation_descriptions=hl.literal(SAMPLE_ANNOTATION_DICT),
+        global_annotation_descriptions=GLOBAL_SAMPLE_ANNOTATION_DICT,
+        sample_annotation_descriptions=SAMPLE_ANNOTATION_DICT,
         sex_imputation_ploidy_cutoffs=meta_ht.sex_imputation_ploidy_cutoffs,
         population_inference_pca_metrics=hl.struct(
             n_pcs=meta_ht.population_inference_pca_metrics.n_pcs,

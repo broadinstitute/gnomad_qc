@@ -1,5 +1,3 @@
-from typing import Optional
-
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
     TableResource,
@@ -8,12 +6,6 @@ from gnomad.resources.resource_utils import (
 )
 
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
-
-from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
-from gnomad.resources.resource_utils import (
-    TableResource,
-    VersionedTableResource,
-)
 
 
 def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
@@ -58,9 +50,9 @@ def release_ht_path(
     :rtype: str
     """
     if public:
-        return f"gs://gnomad-public/release/{release_version}/ht/{data_type}/gnomad.{data_type}.r{release_version}.sites.ht"
+        return f"gs://gnomad-public/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
     else:
-        return f"gs://gnomad/release/{release_version}/ht/gnomad.{data_type}.r{release_version}.sites.ht"
+        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
 
 
 def hgdp_1kg_subset(dense: bool = False) -> VersionedMatrixTableResource:
