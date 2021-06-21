@@ -118,6 +118,10 @@ def release_vcf_path(
     :return: Filepath for the desired VCF
     """
     if hgdp_tgp_subset:
+        if release_version not in HGDP_TGP_RELEASES:
+            raise DataException(
+                f"{release_version} is not one of the available releases for the HGP + 1KG subset: {HGDP_TGP_RELEASES}"
+            )
         subset = "hgdp_tgp"
     else:
         subset = "sites"
@@ -177,12 +181,12 @@ def hgdp_1kg_subset_annotations(sample: bool = True) -> VersionedTableResource:
     :return: Table resource with sample/variant annotations for the subset
     """
     return VersionedTableResource(
-        default_version=CURRENT_RELEASE,
+        default_version=CURRENT_HGDP_TGP_RELEASE,
         versions={
             release: TableResource(
                 f"gs://gnomad/release/{release}/ht/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_sample_meta' if sample else '_variant_annotations'}.ht"
             )
-            for release in RELEASES
+            for release in HGDP_TGP_RELEASES
             if release != "3"
         },
     )
