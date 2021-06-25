@@ -76,7 +76,7 @@ def main(args):
         logger.info("Reading full sparse MT and metadata table...")
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True,
-            release_only=not args.include_non_release,
+            release_only=not args.include_non_release,  # NOTE: For v3.1.2 tgp_hgdp subset we are changing the way this is done to use the Martin group high_quality so frequency calculation is done in the subset creation
             samples_meta=True,
         )
 
@@ -84,8 +84,6 @@ def main(args):
             logger.info("Filtering to two partitions on chr20")
             mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20:1-1000000")])
             mt = mt._filter_partitions(range(2))
-
-        mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
         if args.include_non_release:
             logger.info("Filtering MT columns to high quality samples")
@@ -115,10 +113,6 @@ def main(args):
             adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
         )
 
-        logger.info("Densify-ing...")
-        mt = hl.experimental.densify(mt)
-        mt = mt.filter_rows(hl.len(mt.alleles) > 1)
-
         # Temporary hotfix for depletion of homozygous alternate genotypes
         logger.info(
             "Setting het genotypes at sites with >1% AF (using v3.0 frequencies) and > 0.9 AB to homalt..."
@@ -128,15 +122,29 @@ def main(args):
         freq_ht = get_freq(version="3").ht()
         freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
 
-        mt = mt.annotate_entries(
-            GT=hl.cond(
-                (freq_ht[mt.row_key].AF > 0.01)
-                & mt.GT.is_het()
-                & (mt.AD[1] / mt.DP > 0.9),
-                hl.call(1, 1),
-                mt.GT,
+        if args.het_nonref_fix_only:
+            logger.info("Loading het non ref sites to fix...")
+            sites_ht = hl.read_matrix_table("gs://gnomad/release/3.1.2/mt/het_nonref_fix_sites.mt").rows()
+            logger.info("Densifying to het non ref sites only...")
+            mt = densify_sites(
+                mt,
+                sites_ht,
+                hl.read_table(last_END_position.ht()),
+                semi_join_rows=False,
             )
-        )
+        else:
+            logger.info("Densify-ing...")
+            mt = hl.experimental.densify(mt)
+
+        logger.info("Adding het_non_ref annotation...")
+        # Adding a Boolean for whether a sample had a heterozygous non-reference genotype
+        # Need to add this prior to splitting MT to make sure these genotypes
+        # are not adjusted by the homalt hotfix downstream
+        mt = mt.annotate_entries(het_non_ref=mt.LGT.is_het_non_ref())
+        mt = mt.filter_rows(hl.len(mt.alleles) > 1)
+        mt = hom_alt_depletion_fix(mt, het_non_ref_expr=mt.het_non_ref, af_expr=freq_ht[mt.row_key].freq[0].AF)
+
+        mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
         logger.info("Generating frequency data...")
         if subsets:
@@ -164,14 +172,24 @@ def main(args):
                 f"Writing out frequency data for {', '.join(subsets)} subset(s)..."
             )
             if args.test:
+                if args.het_nonref_fix_only:
+                    mt.rows().write(
+                        get_checkpoint_path(f"chr20_test_gnomad_genomes_v3.1.2.frequencies.{'_'.join(subsets)}"),
+                        overwrite=True,
+                    )
                 mt.rows().write(
                     get_checkpoint_path(f"chr20_test_freq.{'_'.join(subsets)}"),
                     overwrite=True,
                 )
             else:
-                mt.rows().write(
-                    get_freq(subset="_".join(subsets)).path, overwrite=args.overwrite
-                )
+                if args.het_nonref_fix_only:
+                    mt.rows().write(
+                        f"gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.2/gnomad_genomes_v3.1.2.frequencies.{'_'.join(subsets)}.ht", overwrite=args.overwrite
+                    )
+                else:
+                    mt.rows().write(
+                        get_freq(subset="_".join(subsets)).path, overwrite=args.overwrite
+                    )
 
         else:
             logger.info("Computing age histograms for each variant...")
