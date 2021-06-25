@@ -1,6 +1,5 @@
 import argparse
 import logging
-from typing import Dict, List
 
 import hail as hl
 
@@ -28,15 +27,16 @@ from gnomad.utils.release import (
 )
 from gnomad.utils.annotations import set_female_y_metrics_to_na_expr
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vcf import index_globals
+from gnomad.utils.sparse_mt import densify_sites
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources.annotations import get_freq
+from gnomad_qc.v3.resources.annotations import get_freq, last_END_position
 from gnomad_qc.v3.resources.basics import (
     get_checkpoint_path,
     get_gnomad_v3_mt,
     qc_temp_prefix,
 )
+from gnomad_qc.v3.utils import hom_alt_depletion_fix
 
 logging.basicConfig(
     level=logging.INFO,
