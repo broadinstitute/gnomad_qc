@@ -53,17 +53,18 @@ logger.setLevel(logging.INFO)
 AS_FIELDS.remove("InbreedingCoeff")
 
 GLOBAL_SAMPLE_ANNOTATION_DICT = hl.struct(
-    sex_imputation_ploidy_cutoffs=hl.struct(
+    gnomad_sex_imputation_ploidy_cutoffs=hl.struct(
         Description=(
-            "Contains sex chromosome ploidy cutoffs used when determining sex chromosome karyotypes. Format: "
-            "(upper cutoff for single X, (lower cutoff for double X, upper cutoff for double X), lower cutoff for "
-            "triple X) and (lower cutoff for single Y, upper cutoff for single Y), lower cutoff for double Y)."
+            "Contains sex chromosome ploidy cutoffs used when determining sex chromosome karyotypes for the gnomAD "
+            "sex imputation. Format: (upper cutoff for single X, (lower cutoff for double X, upper cutoff for double X)"
+            ", lower cutoff for triple X) and (lower cutoff for single Y, upper cutoff for single Y), lower cutoff for "
+            "double Y)."
         )
     ),
-    population_inference_pca_metrics=hl.struct(
+    gnomad_population_inference_pca_metrics=hl.struct(
         Description=(
             "Contains the number of principal components (PCs) used when running PC-project and the minimum cutoff "
-            "probability of belonging to a given population."
+            "probability of belonging to a given population for the gnomAD population inference."
         )
     ),
     hard_filter_cutoffs=hl.struct(
@@ -76,12 +77,24 @@ GLOBAL_SAMPLE_ANNOTATION_DICT = hl.struct(
             "contamination (freemix), % chimera, and median insert size."
         )
     ),
+    gnomad_qc_metric_outlier_cutoffs=hl.struct(
+        Description=(
+            "Contains the cutoffs used for filtering outlier samples based on QC metrics (reported in the "
+            "sample_qc and gnomad_sample_qc_residuals annotations). The first eight PCs computed during the gnomAD "
+            "ancestry assignment were regressed out and the sample filter cutoffs were determined based on the "
+            "residuals for each of the sample QC metrics. Samples were filtered if they fell outside four median "
+            "absolute deviations (MADs) from the median for the following sample QC metrics: n_snp, r_ti_tv,"
+            " r_insertion_deletion, n_insertion, n_deletion, n_het, n_hom_var, n_transition, and n_transversion. "
+            "Samples over 8 MADs above the median n_singleton metric and over 4 MADs above the median "
+            "r_het_hom_var metric were also filtered."
+        )
+    ),
 )
 GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
-    cohort_freq_meta=hl.struct(
+    hgdp_tgp_freq_meta=hl.struct(
         Description=(
             "HGDP and 1KG frequency metadata. An ordered list containing the frequency aggregation group"
-            "for each element of the cohort_freq array row annotation."
+            "for each element of the hgdp_tgp_freq array row annotation."
         )
     ),
     gnomad_freq_meta=hl.struct(
@@ -90,7 +103,7 @@ GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
             "for each element of the gnomad_freq array row annotation."
         )
     ),
-    cohort_freq_index_dict=hl.struct(
+    hgdp_tgp_freq_index_dict=hl.struct(
         Description=(
             "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: HGDP or 1KG "
             "subpopulation, sex: sex karyotype), with values describing the corresponding index of each grouping "
@@ -120,7 +133,7 @@ GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
     vep_version=hl.struct(Description="VEP version."),
     vep_csq_header=hl.struct(Description="VEP header for VCF export."),
     dbsnp_version=hl.struct(Description="dbSNP version."),
-    filtering_model=hl.struct(
+    variant_filtering_model=hl.struct(
         Description="The variant filtering model used and its specific cutoffs.",
         sub_globals=hl.struct(
             model_name=hl.struct(
@@ -160,7 +173,7 @@ GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
             ),
         ),
     ),
-    inbreeding_coeff_cutoff=hl.struct(
+    variant_inbreeding_coeff_cutoff=hl.struct(
         Description="Hard-filter cutoff for InbreedingCoeff on variants."
     ),
 )
@@ -205,22 +218,9 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
             ),
         ),
     ),
-    subsets=hl.struct(
-        Description="Struct containing information from the sample's cohort: HGDP or 1KG (tgp).",
-        sub_annotations=hl.struct(
-            tgp=hl.struct(Description="True if sample is from the 1KG dataset."),
-            hgdp=hl.struct(Description="True if the sample is from the HGDP dataset."),
-        ),
-    ),
-    sex_imputation=hl.struct(
+    gnomad_sex_imputation=hl.struct(
         Description="Struct containing sex imputation information.",
         sub_annotations=hl.struct(
-            f_stat=hl.struct(
-                Description="Inbreeding coefficient (excess heterozygosity) on chromosome X."
-            ),
-            n_called=hl.struct(Description="Number of variants with a genotype call."),
-            expected_homs=hl.struct(Description="Expected number of homozygotes."),
-            observed_homs=hl.struct(Description="Observed number of homozygotes."),
             chr20_mean_dp=hl.struct(
                 Description="Sample's mean depth across chromosome 20."
             ),
@@ -241,32 +241,93 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
             sex_karyotype=hl.struct(
                 Description="Sample's sex karyotype (combined X and Y karyotype)."
             ),
+            f_stat=hl.struct(
+                Description="Inbreeding coefficient (excess heterozygosity) on chromosome X."
+            ),
+            n_called=hl.struct(Description="Number of variants with a genotype call."),
+            expected_homs=hl.struct(Description="Expected number of homozygotes."),
+            observed_homs=hl.struct(Description="Observed number of homozygotes."),
         ),
     ),
     sample_qc=hl.struct(
         Description="Struct containing sample QC metrics calculated using hl.sample_qc().",
         sub_annotations=hl.struct(
-            n_hom_ref=hl.struct(Description="Number of homozygous reference calls."),
+            n_deletion=hl.struct(Description="Number of deletion alternate alleles."),
             n_het=hl.struct(Description="Number of heterozygous calls."),
+            n_hom_ref=hl.struct(Description="Number of homozygous reference calls."),
             n_hom_var=hl.struct(Description="Number of homozygous alternate calls."),
+            n_insertion=hl.struct(Description="Number of insertion alternate alleles."),
             n_non_ref=hl.struct(Description="Sum of n_het and n_hom_var."),
             n_snp=hl.struct(Description="Number of SNP alternate alleles."),
-            n_insertion=hl.struct(Description="Number of insertion alternate alleles."),
-            n_deletion=hl.struct(Description="Number of deletion alternate alleles."),
             n_transition=hl.struct(
                 Description="Number of transition (A-G, C-T) alternate alleles."
             ),
             n_transversion=hl.struct(
                 Description="Number of transversion alternate alleles."
             ),
-            r_ti_tv=hl.struct(Description="Transition/Transversion ratio."),
             r_het_hom_var=hl.struct(Description="Het/HomVar call ratio."),
             r_insertion_deletion=hl.struct(
                 Description="Insertion/Deletion allele ratio."
             ),
+            r_ti_tv=hl.struct(Description="Transition/Transversion ratio."),
         ),
     ),
-    population_inference=hl.struct(
+    gnomad_sample_qc_residuals=hl.struct(
+        Description=(
+            "Struct containing the residuals after regressing out the first eight PCs computed during the gnomAD "
+            "ancestry assignment from each sample QC metric calculated using hl.sample_qc()."
+        ),
+        sub_annotations=hl.struct(
+            n_deletion_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the number of deletion "
+                    "alternate alleles."
+                )
+            ),
+            n_insertion_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the number of insertion "
+                    "alternate alleles."
+                ),
+            ),
+            n_snp_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the number of SNP alternate "
+                    "alleles."
+                ),
+            ),
+            n_transition_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the number of transition "
+                    "(A-G, C-T) alternate alleles."
+                )
+            ),
+            n_transversion_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the number of transversion "
+                    "alternate alleles."
+                )
+            ),
+            r_het_hom_var_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the Het/HomVar call ratio."
+                ),
+            ),
+            r_insertion_deletion_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the Insertion/Deletion allele "
+                    "ratio."
+                )
+            ),
+            r_ti_tv_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the Transition/Transversion "
+                    "ratio."
+                )
+            ),
+        ),
+    ),
+    gnomad_population_inference=hl.struct(
         Description=(
             "Struct containing ancestry information assigned by applying a principal component analysis (PCA) on "
             "gnomAD samples and using those PCs in a random forest classifier trained on known gnomAD ancestry labels."
@@ -308,24 +369,85 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
             ),
         ),
     ),
-    labeled_subpop=hl.struct(
-        Description="The sample's population label supplied by HGDP or 1KG."
+    gnomad_sample_filters=hl.struct(
+        Description="Sample QC filter annotations used for the gnomAD release.",
+        sub_annotations=hl.struct(
+            hard_filters=hl.struct(
+                Description=(
+                    "Set of hard filters applied to each sample samples prior to additional sample QC. Samples are hard "
+                    "filtered if they are extreme outliers for any of the following metrics: number of snps (n_snp), "
+                    "ratio of heterozygous variants to homozygous variants (r_het_hom_var), number of singletons "
+                    "(n_singleton), and mean coverage on chromosome 20 (cov). Additionally, we filter based on outliers "
+                    "of the following Picard metrics: %c ontamination (freemix), % chimera, and median insert size."
+                )
+            ),
+            hard_filtered=hl.struct(
+                Description=(
+                    "Whether a sample was hard filtered, the gnomad_sample_filters.hard_filters set is empty if this "
+                    "annotation is True."
+                )
+            ),
+            release_related=hl.struct(
+                Description=(
+                    "Whether a sample had a second-degree or greater relatedness to another sample in the gnomAD "
+                    "release."
+                )
+            ),
+            qc_metrics_filters=hl.struct(
+                Description=(
+                    "Set of all sample QC metrics that each sample was found to be an outlier after computing sample QC "
+                    "metrics using the Hail sample_qc() module and regressing out the first 8 gnomAD ancestry assignment PCs."
+                )
+            ),
+        ),
+    ),
+    gnomad_high_quality=hl.struct(
+        Description=(
+            "Whether a sample has passed gnomAD sample QC metrics except for relatedness "
+            "(gnomad_sample_filters.hard_filters and gnomad_sample_filters.qc_metrics_filters)."
+        )
     ),
     gnomad_release=hl.struct(
         Description=(
-            "Indicates whether the sample was included in the gnomAD release dataset. For the full gnomAD release, "
-            "relatedness inference is performed on the full dataset, and release samples are chosen in a way that "
-            "maximizes the number of samples retained while filtering the dataset to include only samples with less "
-            "than second-degree relatedness. For the HGDP + 1KG subset, samples passing all other sample QC "
-            "metrics are retained."
+            "Whether the sample was included in the gnomAD release dataset. For the full gnomAD release, relatedness "
+            "inference is performed on the full dataset, and release samples are chosen in a way that maximizes the "
+            "number of samples retained while filtering the dataset to include only samples with less than "
+            "second-degree relatedness. For the HGDP + 1KG subset, samples passing all other sample QC metrics are "
+            "retained."
         )
     ),
-    high_quality=hl.struct(
+    hgdp_tgp_meta=hl.struct(
+        Description="",
+        sub_annotations=hl.struct(
+            project=hl.struct(Description=""),
+            gnomad_labeled_pop=hl.struct(
+                Description="The sample's population label supplied by HGDP or 1KG."
+            ),  # Change oth to oce?
+            gnomad_labeled_subpop=hl.struct(
+                Description=""
+            ),
+            ######## Add Study.region
+            ######## Population: str?
+            ######## Genetic.region
+            latitude=hl.struct(Description=""),
+            longitude=hl.struct(Description=""),
+        ),
+    ),
+    bergstrom_meta=hl.struct(
         Description=(
-            "Indicates whether a sample has passed all sample QC metrics except for relatedness."
+            "Technical considerations for HGDP detailed in https://science.sciencemag.org/content/367/6484/eaay5012/"
+        ),
+        sub_annotations=hl.struct(
+            source=hl.struct(
+                Description="Which batch/project these HGDP samples were sequenced as part of (sanger vs sgdp)."
+            ),
+            library_type=hl.struct(
+                Description="Whether samples were PCRfree or used PCR."
+            ),
         )
     ),
-)
+    high_quality=hl.struct(Description=""),
+) ###### Add population PC outlier annotation?
 
 SAMPLE_QC_METRICS = [
     "n_deletion",
@@ -445,20 +567,20 @@ def prepare_sample_annotations() -> hl.Table:
     relatedness_ht = get_relatedness_set_ht(relatedness_ht)
     meta_ht = meta_ht.select(
         bam_metrics=meta_ht.bam_metrics,
-        subsets=meta_ht.subsets.select(
-            "tgp", "hgdp"
-        ),  # Maybe remove if we use projects annotation below
-        sex_imputation=meta_ht.sex_imputation.drop("is_female"),
-        relatedness_inference=relatedness_ht[meta_ht.key],
         sample_qc=meta_ht.sample_qc.select(*SAMPLE_QC_METRICS),
+        gnomad_sex_imputation=meta_ht.sex_imputation.drop("is_female"),
         gnomad_population_inference=meta_ht.population_inference.drop(
             "training_pop", "training_pop_all"
+        ),
+        gnomad_sample_qc_residual=meta_ht.sample_qc.select(
+            *[k for k in meta_ht.sample_qc.keys() if "_residual" in k]
         ),
         gnomad_sample_filters=meta_ht.sample_filters.select(
             "hard_filters", "hard_filtered", "release_related", "qc_metrics_filters"
         ),
         gnomad_release=meta_ht.release,
         gnomad_high_quality=meta_ht.high_quality,
+        relatedness_inference=relatedness_ht[meta_ht.key],
         labeled_pop=meta_ht.project_meta.project_pop,  # Should we change the oce back from oth on this subset release?
         labeled_subpop=meta_ht.project_meta.project_subpop,
     )
@@ -466,9 +588,10 @@ def prepare_sample_annotations() -> hl.Table:
     logger.info("Loading additional sample metadata from Martin group...")
     hgdp_tgp_meta_ht = hgdp_tgp_meta.ht()
     hgdp_tgp_meta_ht = hgdp_tgp_meta_ht.select(
-        project=hgdp_tgp_meta_ht.hgdp_tgp_meta.Project,  # Name project or subset or something else?
-        atitude=hgdp_tgp_meta_ht.hgdp_tgp_meta.Latitude,
+        project=hgdp_tgp_meta_ht.hgdp_tgp_meta.Project,
+        latitude=hgdp_tgp_meta_ht.hgdp_tgp_meta.Latitude,
         longitude=hgdp_tgp_meta_ht.hgdp_tgp_meta.Longitude,
+        bergstrom_meta=hgdp_tgp_meta_ht.bergstrom.select("source", "library")
     )
 
     logger.info(
@@ -481,13 +604,18 @@ def prepare_sample_annotations() -> hl.Table:
     meta_ht = meta_ht.annotate(sample_filters=get_sample_qc_filter_struct_expr(meta_ht))
     meta_ht = meta_ht.transmute(
         subset_meta=hl.struct(
-            labeled_pop=meta_ht.labeled_pop,  # Should we change the oce back from oth on this subset release?
-            labeled_subpop=meta_ht.labeled_subpop,
+            gnomad_labeled_pop=meta_ht.labeled_pop,  # Should we change the oce back from oth on this subset release?
+            gnomad_labeled_subpop=meta_ht.labeled_subpop,
             **hgdp_tgp_meta_ht[meta_ht.key],
         ),
         high_quality=~meta_ht.sample_filters.hard_filtered
         & ~meta_ht.sample_filters.pop_outlier,
     )
+
+    ####### Add Study.region
+    ####### Population: str?
+    ####### Genetic.region
+    ###### Add population PC outlier annotation?
 
     return meta_ht
 
