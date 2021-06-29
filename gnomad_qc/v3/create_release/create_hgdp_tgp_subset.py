@@ -785,9 +785,7 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
 
     logger.info("Computing adj and sex adjusted genotypes...")
     mt = mt.annotate_entries(
-        GT=adjusted_sex_ploidy_expr(
-            mt.locus, mt.GT, mt.sex_imputation.sex_karyotype
-        ),
+        GT=adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.sex_imputation.sex_karyotype),
         adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
     )
 
@@ -822,7 +820,7 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
 
     release_struct = release_ht[mt.row_key]
     mt = mt.annotate_rows(
-        cohort_freq=subset_freq[mt.row_key].freq,
+        hgdp_tgp_freq=subset_freq[mt.row_key].freq,
         gnomad_freq=release_struct.freq[: len(freq_meta)],
         gnomad_raw_qual_hists=release_struct.raw_qual_hists,
         gnomad_popmax=release_struct.popmax,
@@ -830,8 +828,8 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
         gnomad_faf=release_struct.faf,
     )
     mt = mt.annotate_globals(
-        cohort_freq_meta=subset_freq.index_globals().freq_meta,
-        cohort_freq_index_dict=make_freq_index_dict(
+        hgdp_tgp_freq_meta=subset_freq.index_globals().freq_meta,
+        hgdp_tgp_freq_index_dict=make_freq_index_dict(
             hl.eval(subset_freq.index_globals().freq_meta),
             pops=POPS_STORED_AS_SUBPOPS,
             subsets=["hgdp|tgp"],
@@ -844,8 +842,8 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
         vep_version=release_ht.index_globals().vep_version,
         vep_csq_header=release_ht.index_globals().vep_csq_header,
         dbsnp_version=release_ht.index_globals().dbsnp_version,
-        filtering_model=release_ht.index_globals().filtering_model.drop("model_id"),
-        inbreeding_coeff_cutoff=filters_ht.index_globals().inbreeding_coeff_cutoff,
+        variant_filtering_model=release_ht.index_globals().filtering_model.drop("model_id"),
+        variant_inbreeding_coeff_cutoff=filters_ht.index_globals().inbreeding_coeff_cutoff,
     )
 
     logger.info("Add all other variant annotations from release HT...")
@@ -873,7 +871,11 @@ def main(args):
             meta_ht.write(hgdp_1kg_subset_annotations().path, overwrite=args.overwrite)
 
     if args.test:
-        if args.export_meta_txt or args.create_subset_sparse_mt or args.create_subset_dense_mt:
+        if (
+            args.export_meta_txt
+            or args.create_subset_sparse_mt
+            or args.create_subset_dense_mt
+        ):
             if file_exists(temp_meta_path):
                 meta_ht = hl.read_table(temp_meta_path)
             else:
@@ -972,7 +974,9 @@ def main(args):
         mt = mt.select_entries(*SPARSE_ENTRIES)
         mt = create_full_subset_dense_mt(mt, meta_ht)
 
-        logger.info("Writing dense HGDP + TGP MT with all sample and variant annotations")
+        logger.info(
+            "Writing dense HGDP + TGP MT with all sample and variant annotations"
+        )
         if args.test:
             mt.write(
                 get_checkpoint_path(f"test_hgdp_tgp_subset.dense", mt=True),
