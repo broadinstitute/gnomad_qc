@@ -44,8 +44,8 @@ from gnomad.utils.vcf import (
 )
 from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
-from gnomad_qc.v3.create_release.sanity_checks import (
-    sanity_check_release_ht,
+from gnomad.assessment.sanity_checks import (
+    sanity_check_release_t,
     vcf_field_check,
 )
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
@@ -769,7 +769,7 @@ def build_parameter_dict(
             ),
             "drop_hists": None,
             "include_age_hists": False,
-            "subset_pops": {"gnomad": POPS, "": HGDP_TGP_POPS},
+            "sample_sum_sets_and_pops": {"gnomad": POPS, "": HGDP_TGP_POPS},
             "vcf_info_reorder": HGDP_TGP_VCF_INFO_REORDER,
             "ht": hgdp_1kg_subset(dense=True).mt().rows(),
             "freq_entries_to_remove": set(),
@@ -786,9 +786,9 @@ def build_parameter_dict(
             ),
             "drop_hists": ["age_hist_het_bin_edges", "age_hist_hom_bin_edges"],
             "include_age_hists": True,
-            "subset_pops": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
+            "sample_sum_sets_and_pops": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
             "vcf_info_reorder": VCF_INFO_REORDER,
-            "ht": hl.read_table(release_sites().ht()),
+            "ht": release_sites().ht(),
         }
         # Downsampling and subset entries to remove from VCF's freq export
         # Note: Need to extract the non-standard downsamplings from the freq_meta struct to the FREQ_ENTRIES_TO_REMOVE
@@ -850,14 +850,15 @@ def main(args):
                 prefix="gnomad" if hgdp_1kg else "",
                 include_age_hists=parameter_dict["include_age_hists"],
             )
-
+            parameter_dict["ht"].describe()
             header_dict = prepare_vcf_header_dict(
                 prepared_vcf_ht,
                 bin_edges=bin_edges,
                 age_hist_data=parameter_dict["age_hist_data"],
                 subset_list=parameter_dict["subsets"],
                 pops=parameter_dict["pops"],
-                inbreeding_coeff_cutoff=parameter_dict["ht"].inbreeding_coeff_cutoff,
+                # NOTE: This is not currently on the 3.1.1 (or earlier) Table, but will be on the 3.1.2 Table
+                inbreeding_coeff_cutoff=INBREEDING_COEFF_HARD_CUTOFF,  # parameter_dict["ht"].inbreeding_coeff_cutoff,
             )
             if not hgdp_1kg:
                 header_dict.pop("format")
@@ -870,11 +871,11 @@ def main(args):
 
         if args.sanity_check:
             logger.info("Beginning sanity checks on the prepared VCF HT...")
-            sanity_check_release_ht(
+            sanity_check_release_t(
                 prepared_vcf_ht,
                 subsets=["gnomad"] if hgdp_1kg else SUBSETS,
-                subset_before_metric=True if hgdp_1kg else False,
-                subset_pops=parameter_dict["subset_pops"],
+                metric_first_label=False if hgdp_1kg else True,
+                sample_sum_sets_and_pops=parameter_dict["sample_sum_sets_and_pops"],
                 missingness_threshold=0.5,
                 verbose=args.verbose,
             )

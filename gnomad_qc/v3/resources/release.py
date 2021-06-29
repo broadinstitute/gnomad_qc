@@ -42,7 +42,7 @@ def qual_hists_json_path(release_version: str = CURRENT_RELEASE) -> str:
 # TODO: Remove if not used after all python files are in
 # internal_ht_path = 'gs://gnomad/release/3.0/ht/gnomad.genomes.r3.0.nested.no_subsets.sites.ht'
 
-
+# TODO: Need to fix this to work for 3.0, 3.1, and 3.1.1
 def release_ht_path(
     data_type: str = "genomes",
     release_version: str = CURRENT_RELEASE,
@@ -58,9 +58,9 @@ def release_ht_path(
     :rtype: str
     """
     if public:
-        return f"gs://gnomad-public/release/{release_version}/ht/{data_type}/gnomad.{data_type}.r{release_version}.sites.ht"
+        return f"gs://gnomad-public/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
     else:
-        return f"gs://gnomad/release/{release_version}/ht/gnomad.{data_type}.r{release_version}.sites.ht"
+        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
 
 
 def release_sites(public: bool = False) -> VersionedTableResource:
