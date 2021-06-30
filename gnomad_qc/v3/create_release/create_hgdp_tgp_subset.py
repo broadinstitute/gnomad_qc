@@ -197,10 +197,12 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
             ),
             freemix=hl.struct(Description="Estimate of contamination (0-100 scale)."),
             mean_coverage=hl.struct(
-                Description="The mean coverage in bases of the genome territory, after all filters are applied, https://broadinstitute.github.io/picard/picard-metric-definitions.html."
+                Description="The mean coverage in bases of the genome territory, after all filters are applied, "
+                "https://broadinstitute.github.io/picard/picard-metric-definitions.html."
             ),
             median_coverage=hl.struct(
-                Description="The median coverage in bases of the genome territory, after all filters are applied, https://broadinstitute.github.io/picard/picard-metric-definitions.html."
+                Description="The median coverage in bases of the genome territory, after all filters are applied, "
+                "https://broadinstitute.github.io/picard/picard-metric-definitions.html."
             ),
             mean_insert_size=hl.struct(
                 Description=(
@@ -419,13 +421,13 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
     hgdp_tgp_meta=hl.struct(
         Description="",
         sub_annotations=hl.struct(
-            project=hl.struct(Description=""),
-            gnomad_labeled_pop=hl.struct(
-                Description="The sample's population label supplied by HGDP or 1KG."
-            ),  # Change oth to oce?
-            gnomad_labeled_subpop=hl.struct(
-                Description=""
+            project=hl.struct(
+                Description=(
+                    "Indicates if the sample is part of the Human Genome Diversity Project (‘HGDP’) or the "
+                    "‘1000 Genomes’ project."
+                )
             ),
+            gnomad_labeled_subpop=hl.struct(Description=""),
             ######## Add Study.region
             ######## Population: str?
             ######## Genetic.region
@@ -444,10 +446,10 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
             library_type=hl.struct(
                 Description="Whether samples were PCRfree or used PCR."
             ),
-        )
+        ),
     ),
     high_quality=hl.struct(Description=""),
-) ###### Add population PC outlier annotation?
+)  ###### Add population PC outlier annotation?
 
 SAMPLE_QC_METRICS = [
     "n_deletion",
