@@ -695,6 +695,8 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
             prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         ),
         allele_info=keyed_filters.allele_info,
+        AS_lowqual=info.AS_lowqual,
+        telomere_or_centromere=hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]),
         **analyst_ht[ht.key],
     )
 
@@ -860,9 +862,7 @@ def create_full_subset_dense_mt(
         "regions..."
     )
     mt = mt.filter_rows(
-        (~info_ht[mt.row_key].AS_lowqual)
-        & hl.is_defined(telomeres_and_centromeres.ht()[mt.locus])
-        & (hl.len(mt.alleles) > 1)
+        ~mt.AS_lowqual & ~mt.telomere_or_centromere & (hl.len(mt.alleles) > 1)
     )
 
     return mt
