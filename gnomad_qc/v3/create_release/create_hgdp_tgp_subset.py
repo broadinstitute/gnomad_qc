@@ -753,8 +753,7 @@ def create_full_subset_dense_mt(
 
     .. note::
 
-        This function uses the sparse subset MT and assumes that centromeres and telomeres have already been filtered
-        if necessary.
+        This function uses the sparse subset MT and filters out LowQual variants and centromeres and telomeres.
 
     :param mt: Sparse subset release MatrixTable
     :param meta_ht: Metadata HT to use for sample (column) annotations
@@ -767,7 +766,7 @@ def create_full_subset_dense_mt(
     filters_ht = final_filter.ht()
 
     logger.info(
-        "Adding subset's sample QC metadata to MT columns and global annotations to MT globals"
+        "Adding subset's sample QC metadata to MT columns and global annotations to MT globals..."
     )
     mt = mt.annotate_cols(**meta_ht[mt.col_key])
     mt = mt.annotate_globals(
@@ -780,7 +779,7 @@ def create_full_subset_dense_mt(
     )
     mt = mt.annotate_entries(_het_non_ref=mt.LGT.is_het_non_ref())
 
-    logger.info("Splitting multi-allelics")
+    logger.info("Splitting multi-allelics...")
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
     logger.info("Computing adj and sex adjusted genotypes...")
@@ -855,7 +854,16 @@ def create_full_subset_dense_mt(
     mt = mt.drop("was_split", "a_index")
 
     mt = hl.experimental.densify(mt)
-    mt = mt.filter_rows((~info_ht[mt.row_key].AS_lowqual) & (hl.len(mt.alleles) > 1))
+
+    logger.info(
+        "Filter out LowQual variants (using allele-specific annotation) and variants within centromere and telomere "
+        "regions..."
+    )
+    mt = mt.filter_rows(
+        (~info_ht[mt.row_key].AS_lowqual)
+        & hl.is_defined(telomeres_and_centromeres.ht()[mt.locus])
+        & (hl.len(mt.alleles) > 1)
+    )
 
     return mt
 
@@ -873,11 +881,15 @@ def main(args):
         meta_ht = prepare_sample_annotations()
         meta_ht.write(sample_annotation_resource.path, overwrite=args.overwrite)
 
-    if test and (
+    if (
+        test
+        and (
             args.export_sample_annotation_tsv
             or args.create_subset_sparse_mt
             or args.create_subset_dense_mt
-    ) and not file_exists(sample_annotation_resource.path):
+        )
+        and not file_exists(sample_annotation_resource.path)
+    ):
         raise DataException(
             "There is currently no sample meta HT for the HGDP + TGP subset written to temp for testing. "
             "Run '--create_sample_meta' with '--test' to create one."
@@ -912,46 +924,37 @@ def main(args):
         )
         mt = mt.key_cols_by(s=mt.s.replace("v3.1::", ""))
 
-        mt = mt.annotate_rows(
-            _telomere_or_centromere=hl.is_defined(
-                telomeres_and_centromeres.ht()[mt.locus]
-            ),
-        )
-        # Filter to rows with a non ref GT outside of telomeres and centomeres, or if there is END info
-        mt = mt.filter_rows(
-            (~mt._telomere_or_centromere & hl.agg.any(mt.LGT.is_non_ref()))
-            | hl.agg.any(hl.is_defined(mt.END))
-        )
-
-        # On rows with END info that fall in telomeres and centomeres, keep only END info, set other entries to missing
-        mt = mt.filter_entries(
-            mt._telomere_or_centromere & hl.is_missing(mt.END), keep=False
-        )
-
         # Adjust alleles and LA to include only alleles present in the subset
         mt = adjust_subset_alleles(mt)
 
         logger.info(
             "Note: for the finalized HGDP + TGP subset frequency, dense MT, VCFs we adjust the sex genotypes and add "
             "a fix for older GATK gVCFs with a known depletion of homozygous alternate alleles, and remove standard "
-            "GATK LowQual variants"
+            "GATK LowQual variants and variants in centromeres and telomeres."
         )
 
-        mt = mt.drop("_telomere_or_centromere")
         mt.write(sparse_mt_resource.path, overwrite=args.overwrite)
 
-    if test and args.create_variant_annotation_ht or args.create_subset_dense_mt and not file_exists(sparse_mt_resource.path.path):
+    if (
+        test
+        and args.create_variant_annotation_ht
+        or args.create_subset_dense_mt
+        and not file_exists(sparse_mt_resource.path.path)
+    ):
         raise DataException(
-                    "There is currently no sparse test MT for the HGDP + TGP subset. Run '--create_subset_sparse_mt' "
-                    "with '--test' to create one."
-                )
+            "There is currently no sparse test MT for the HGDP + TGP subset. Run '--create_subset_sparse_mt' "
+            "with '--test' to create one."
+        )
 
     if args.create_variant_annotation_ht:
         logger.info("Creating variant annotation Hail Table")
-        mt = hgdp_1kg_subset(dense=False).mt()
-        ht = prepare_variant_annotations(
-            mt.rows().select().select_globals(), filter_lowqual=False
-        )
+        ht = hgdp_1kg_subset(dense=False).mt().rows().select().select_globals()
+
+        logger.info("Splitting multi-allelics and filtering out ref block variants...")
+        ht = hl.experimental.sparse_split_multi(ht, filter_changed_loci=True)
+        ht = ht.filter(hl.len(ht.alleles) > 1)
+
+        ht = prepare_variant_annotations(ht, filter_lowqual=False)
         ht.write(variant_annotation_resource.path, overwrite=args.overwrite)
 
     if args.create_subset_dense_mt:
