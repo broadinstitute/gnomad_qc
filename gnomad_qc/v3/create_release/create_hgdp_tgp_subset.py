@@ -591,9 +591,12 @@ def prepare_sample_annotations() -> hl.Table:
     hgdp_tgp_meta_ht = hgdp_tgp_meta.ht()
     hgdp_tgp_meta_ht = hgdp_tgp_meta_ht.select(
         project=hgdp_tgp_meta_ht.hgdp_tgp_meta.Project,
+        study_region=hgdp_tgp_meta_ht.hgdp_tgp_meta.Study.region,
+        population=hgdp_tgp_meta_ht.hgdp_tgp_meta.Population,
+        genetic_region=hgdp_tgp_meta_ht.hgdp_tgp_meta.Genetic.region,
         latitude=hgdp_tgp_meta_ht.hgdp_tgp_meta.Latitude,
         longitude=hgdp_tgp_meta_ht.hgdp_tgp_meta.Longitude,
-        bergstrom_meta=hgdp_tgp_meta_ht.bergstrom.select("source", "library")
+        bergstrom_meta=hgdp_tgp_meta_ht.bergstrom.select("source", "library_type"),
     )
 
     logger.info(
@@ -605,8 +608,7 @@ def prepare_sample_annotations() -> hl.Table:
     logger.info("Adding sample QC struct and sample metadata from Martin group...")
     meta_ht = meta_ht.annotate(sample_filters=get_sample_qc_filter_struct_expr(meta_ht))
     meta_ht = meta_ht.transmute(
-        subset_meta=hl.struct(
-            gnomad_labeled_pop=meta_ht.labeled_pop,  # Should we change the oce back from oth on this subset release?
+        hgdp_tgp_meta=hl.struct(
             gnomad_labeled_subpop=meta_ht.labeled_subpop,
             **hgdp_tgp_meta_ht[meta_ht.key],
         ),
@@ -614,9 +616,6 @@ def prepare_sample_annotations() -> hl.Table:
         & ~meta_ht.sample_filters.pop_outlier,
     )
 
-    ####### Add Study.region
-    ####### Population: str?
-    ####### Genetic.region
     ###### Add population PC outlier annotation?
 
     return meta_ht
