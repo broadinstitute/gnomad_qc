@@ -745,7 +745,9 @@ def adjust_subset_alleles(mt: hl.MatrixTable) -> hl.MatrixTable:
     return mt.drop("_keep_allele", "_new_to_old", "_old_to_new")
 
 
-def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
+def create_full_subset_dense_mt(
+    mt: hl.MatrixTable, meta_ht: hl.Table, variant_annotation_ht: hl.Table
+):
     """
     Create the subset dense release MatrixTable with multi-allelic variants and all sample and variant annotations.
 
@@ -756,6 +758,7 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
 
     :param mt: Sparse subset release MatrixTable
     :param meta_ht: Metadata HT to use for sample (column) annotations
+    :param variant_annotation_ht: Metadata HT to use for variant (row) annotations
     :return: Dense release MatrixTable with all row, column, and global annotations
     """
     release_ht = release_sites().ht()
@@ -780,13 +783,11 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     logger.info("Splitting multi-allelics")
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
-    variant_annotation_ht = prepare_variant_annotations(
-        mt.rows().select().select_globals()
-    )
-
     logger.info("Computing adj and sex adjusted genotypes...")
     mt = mt.annotate_entries(
-        GT=adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.sex_imputation.sex_karyotype),
+        GT=adjusted_sex_ploidy_expr(
+            mt.locus, mt.GT, mt.gnomad_sex_imputation.sex_karyotype
+        ),
         adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
     )
 
@@ -843,7 +844,9 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
         vep_version=release_ht.index_globals().vep_version,
         vep_csq_header=release_ht.index_globals().vep_csq_header,
         dbsnp_version=release_ht.index_globals().dbsnp_version,
-        variant_filtering_model=release_ht.index_globals().filtering_model.drop("model_id"),
+        variant_filtering_model=release_ht.index_globals().filtering_model.drop(
+            "model_id"
+        ),
         variant_inbreeding_coeff_cutoff=filters_ht.index_globals().inbreeding_coeff_cutoff,
     )
 
@@ -851,9 +854,6 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
     mt = mt.annotate_rows(**variant_annotation_ht[mt.row_key])
     mt = mt.drop("was_split", "a_index")
 
-    # TODO: lowqual variants how to handle them on both sparse and dense, dense is easy because I can
-    #  remove the variants easily, sparse is more difficult, maybe just make sure annotation is on the variant HT,
-    #  which at the moment is not the case because we just remove them.
     mt = hl.experimental.densify(mt)
     mt = mt.filter_rows((~info_ht[mt.row_key].AS_lowqual) & (hl.len(mt.alleles) > 1))
 
@@ -862,44 +862,39 @@ def create_full_subset_dense_mt(mt: hl.MatrixTable, meta_ht: hl.Table):
 
 def main(args):
     hl.init(log="/hgdp_1kg_subset.log", default_reference="GRCh38")
-    temp_meta_path = get_checkpoint_path("test_hgdp_tgp_subset_meta")
 
-    if args.create_sample_meta:
+    test = args.test
+    sample_annotation_resource = hgdp_1kg_subset_annotations(test=test)
+    variant_annotation_resource = hgdp_1kg_subset_annotations(sample=False, test=test)
+    sparse_mt_resource = hgdp_1kg_subset(test=test)
+    dense_mt_resource = hgdp_1kg_subset(dense=False, test=test)
+
+    if args.create_sample_annotation_ht:
         meta_ht = prepare_sample_annotations()
-        if args.test:
-            meta_ht.write(temp_meta_path, overwrite=args.overwrite)
-        else:
-            meta_ht.write(hgdp_1kg_subset_annotations().path, overwrite=args.overwrite)
+        meta_ht.write(sample_annotation_resource.path, overwrite=args.overwrite)
 
-    if args.test:
-        if (
-            args.export_meta_txt
+    if test and (
+            args.export_sample_annotation_tsv
             or args.create_subset_sparse_mt
             or args.create_subset_dense_mt
-        ):
-            if file_exists(temp_meta_path):
-                meta_ht = hl.read_table(temp_meta_path)
-            else:
-                raise DataException(
-                    "There is currently no sample meta HT for the HGDP + TGP subset written to temp for testing. "
-                    "Run '--create_sample_meta' with '--test' to create one."
-                )
-    else:
-        meta_ht = hgdp_1kg_subset_annotations().ht()
+    ) and not file_exists(sample_annotation_resource.path):
+        raise DataException(
+            "There is currently no sample meta HT for the HGDP + TGP subset written to temp for testing. "
+            "Run '--create_sample_meta' with '--test' to create one."
+        )
 
-    if args.export_meta_txt:
-        if args.test:
-            meta_ht.export(qc_temp_prefix() + "test_hgdp_tgp_subset_meta.tsv")
-        else:
-            meta_ht.export(hgdp_1kg_subset_sample_tsv())
+    if args.export_sample_annotation_tsv:
+        meta_ht = sample_annotation_resource.ht()
+        meta_ht.export(hgdp_1kg_subset_sample_tsv(test=test))
 
     if args.create_subset_sparse_mt:
         # NOTE: no longer filtering to high_quality by request from Alicia Martin, but we do filter to variants in
-        # high_quality samples, so how to handle that in the future?
+        # high_quality samples in the frequency code, so how to handle that, just filter to martin high_quality? Can we maybe justt apply the frequency code to tthe dense dataaset after that filter instead?
+        meta_ht = sample_annotation_resource.ht()
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
         )
-        if args.test:
+        if test:
             logger.info(
                 "Filtering MT to first %d partitions for testing",
                 args.test_n_partitions,
@@ -909,13 +904,8 @@ def main(args):
         logger.info(
             "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
         )
-        mt = mt.filter_cols(
-            (
-                meta_ht[mt.col_key].subsets.hgdp
-                | meta_ht[mt.col_key].subsets.tgp
-                | (mt.s == SYNDIP)
-            )
-        )
+        mt = mt.filter_cols(hl.is_defined(meta_ht[mt.col_key]))
+
         logger.info(
             "Removing 'v3.1::' from the column names, these were added because there are duplicates of some 1KG samples"
             " in the full gnomAD dataset..."
@@ -948,43 +938,40 @@ def main(args):
         )
 
         mt = mt.drop("_telomere_or_centromere")
+        mt.write(sparse_mt_resource.path, overwrite=args.overwrite)
 
-        if args.test:
-            mt.write(
-                get_checkpoint_path(f"test_hgdp_tgp_subset", mt=True),
-                overwrite=args.overwrite,
-            )
-        else:
-            mt.write(
-                hgdp_1kg_subset(dense=False).path, overwrite=args.overwrite,
-            )
-
-    if args.create_subset_dense_mt:
-        if args.test:
-            test_mt_path = get_checkpoint_path(f"test_hgdp_tgp_subset", mt=True)
-            if file_exists(test_mt_path):
-                mt = hl.read_matrix_table(test_mt_path)
-            else:
-                raise DataException(
+    if test and args.create_variant_annotation_ht or args.create_subset_dense_mt and not file_exists(sparse_mt_resource.path.path):
+        raise DataException(
                     "There is currently no sparse test MT for the HGDP + TGP subset. Run '--create_subset_sparse_mt' "
                     "with '--test' to create one."
                 )
-        else:
-            mt = hgdp_1kg_subset(dense=False).mt()
 
+    if args.create_variant_annotation_ht:
+        logger.info("Creating variant annotation Hail Table")
+        mt = hgdp_1kg_subset(dense=False).mt()
+        ht = prepare_variant_annotations(
+            mt.rows().select().select_globals(), filter_lowqual=False
+        )
+        ht.write(variant_annotation_resource.path, overwrite=args.overwrite)
+
+    if args.create_subset_dense_mt:
+        meta_ht = sample_annotation_resource.ht()
+        if test and not file_exists(variant_annotation_resource.path):
+            raise DataException(
+                "There is currently no variant annotation HT for the HGDP + TGP subset written to temp for testing. "
+                "Run '--create_variant_annotation_ht' with '--test' to create one."
+            )
+        variant_annotation_ht = variant_annotation_resource.ht()
+
+        mt = sparse_mt_resource.mt()
         mt = mt.select_entries(*SPARSE_ENTRIES)
-        mt = create_full_subset_dense_mt(mt, meta_ht)
+        mt = create_full_subset_dense_mt(mt, meta_ht, variant_annotation_ht)
 
+        mt.describe()
         logger.info(
             "Writing dense HGDP + TGP MT with all sample and variant annotations"
         )
-        if args.test:
-            mt.write(
-                get_checkpoint_path(f"test_hgdp_tgp_subset.dense", mt=True),
-                overwrite=args.overwrite,
-            )
-        else:
-            mt.write(hgdp_1kg_subset(dense=True).path, overwrite=args.overwrite)
+        mt.write(dense_mt_resource.path, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":
@@ -992,18 +979,23 @@ if __name__ == "__main__":
         description="This script subsets the gnomAD v3.1 release to only HGDP and 1KG samples."
     )
     parser.add_argument(
-        "--create_sample_meta",
+        "--create_sample_annotation_ht",
         help="Create the HGDP + 1KG subset sample metadata Hail Table.",
         action="store_true",
     )
     parser.add_argument(
-        "--export_meta_txt",
+        "--export_sample_annotation_tsv",
         help="Pull sample subset metadata and export to a .tsv.",
         action="store_true",
     )
     parser.add_argument(
         "--create_subset_sparse_mt",
         help="Create the HGDP + 1KG subset sparse MT.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--create_variant_annotation_ht",
+        help="Create the HGDP + 1KG subset variant annotation Hail Table.",
         action="store_true",
     )
     parser.add_argument(
