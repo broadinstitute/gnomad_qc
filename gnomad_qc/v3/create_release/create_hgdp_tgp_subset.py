@@ -933,7 +933,7 @@ def main(args):
         mt = adjust_subset_alleles(mt)
 
         logger.info(
-            "Note: for the finalized HGDP + TGP subset frequency, dense MT, VCFs we adjust the sex genotypes and add "
+            "Note: for the finalized HGDP + TGP subset frequency, dense MT, and VCFs we adjust the sex genotypes and add "
             "a fix for older GATK gVCFs with a known depletion of homozygous alternate alleles, and remove standard "
             "GATK LowQual variants and variants in centromeres and telomeres."
         )
