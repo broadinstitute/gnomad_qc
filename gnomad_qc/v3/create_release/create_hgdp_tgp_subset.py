@@ -861,6 +861,7 @@ def create_full_subset_dense_mt(
     mt = mt.filter_rows(
         ~mt.AS_lowqual & ~mt.telomere_or_centromere & (hl.len(mt.alleles) > 1)
     )
+    mt = mt.drop("AS_lowqual", "telomere_or_centromere")
 
     return mt
 
