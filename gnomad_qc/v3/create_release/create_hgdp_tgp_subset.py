@@ -634,6 +634,8 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
     analyst_ht = analyst_annotations.ht()
     freq_ht = get_freq().ht()
     score_name = hl.eval(filters_ht.filtering_model.score_name)
+    subset_freq = get_freq(subset="hgdp-tgp").ht()
+    release_ht = release_sites().ht()
 
     if filter_lowqual:
         logger.info("Filtering lowqual variants...")
@@ -665,7 +667,25 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
         )
     )
 
-    logger.info("Adding annotations...")
+    logger.info(
+        "Preparing gnomad freq information from the release HT, remove downsampling and subset info from freq, "
+        "freq_meta, and freq_index_dict"
+    )
+    full_release_freq_meta = release_ht.freq_meta.collect()[0]
+    freq_meta = [
+        x
+        for x in full_release_freq_meta
+        if "downsampling" not in x and "subset" not in x
+    ]
+    index_keep = [
+        i
+        for i, x in enumerate(full_release_freq_meta)
+        if "downsampling" not in x and "subset" not in x
+    ]
+    freq_index_dict = release_ht.freq_index_dict.collect()[0]
+    freq_index_dict = {k: v for k, v in freq_index_dict.items() if v in index_keep}
+
+    logger.info("Assembling all variant annotations...")
     filters_ht = filters_ht.annotate(
         allele_info=hl.struct(
             variant_type=filters_ht.variant_type,
@@ -676,13 +696,14 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
     )
 
     keyed_filters = filters_ht[ht.key]
-    info = info_ht[ht.key]
+    keyed_release = release_ht[ht.key]
+    keyed_info = info_ht[ht.key]
     ht = ht.annotate(
-        a_index=info.a_index,
-        was_split=info.was_split,
+        a_index=keyed_info.a_index,
+        was_split=keyed_info.was_split,
         rsid=dbsnp_ht[ht.key].rsid,
         filters=keyed_filters.filters,
-        info=info.info,
+        info=keyed_info.info,
         vep=vep_ht[ht.key].vep.drop("colocated_variants"),
         vqsr=keyed_filters.vqsr,
         region_flag=region_flag_expr(
@@ -691,9 +712,40 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
             prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         ),
         allele_info=keyed_filters.allele_info,
-        AS_lowqual=info.AS_lowqual,
-        telomere_or_centromere=hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]),
         **analyst_ht[ht.key],
+        hgdp_tgp_freq=subset_freq[ht.key].freq,
+        gnomad_freq=keyed_release.freq[: len(freq_meta)],
+        gnomad_raw_qual_hists=keyed_release.raw_qual_hists,
+        gnomad_popmax=keyed_release.popmax,
+        gnomad_qual_hists=keyed_release.qual_hists,
+        gnomad_faf=keyed_release.faf,
+        AS_lowqual=keyed_info.AS_lowqual,
+        telomere_or_centromere=hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]),
+    )
+
+    logger.info("Adding global variant annotations...")
+    ht = ht.annotate_globals(
+        global_annotation_descriptions=GLOBAL_VARIANT_ANNOTATION_DICT,
+        # TODO: uncomment when annotation descriptions are complete
+        # variant_annotation_descriptions=VARIANT_ANNOTATION_DICT,
+        hgdp_tgp_freq_meta=subset_freq.index_globals().freq_meta,
+        hgdp_tgp_freq_index_dict=make_freq_index_dict(
+            hl.eval(subset_freq.index_globals().freq_meta),
+            pops=POPS_STORED_AS_SUBPOPS,
+            subsets=["hgdp|tgp"],
+            label_delimiter="-",
+        ),
+        gnomad_freq_meta=freq_meta,
+        gnomad_freq_index_dict=freq_index_dict,
+        gnomad_faf_index_dict=release_ht.index_globals().faf_index_dict,
+        gnomad_faf_meta=release_ht.index_globals().faf_meta,
+        vep_version=release_ht.index_globals().vep_version,
+        vep_csq_header=release_ht.index_globals().vep_csq_header,
+        dbsnp_version=release_ht.index_globals().dbsnp_version,
+        variant_filtering_model=release_ht.index_globals().filtering_model.drop(
+            "model_id"
+        ),
+        variant_inbreeding_coeff_cutoff=filters_ht.index_globals().inbreeding_coeff_cutoff,
     )
 
     return ht
@@ -758,11 +810,6 @@ def create_full_subset_dense_mt(
     :param variant_annotation_ht: Metadata HT to use for variant (row) annotations
     :return: Dense release MatrixTable with all row, column, and global annotations
     """
-    release_ht = release_sites().ht()
-    subset_freq = get_freq(subset="hgdp-tgp").ht()
-    info_ht = get_info(split=True).ht()
-    filters_ht = final_filter.ht()
-
     logger.info(
         "Adding subset's sample QC metadata to MT columns and global annotations to MT globals..."
     )
@@ -800,57 +847,11 @@ def create_full_subset_dense_mt(
     )
     mt = mt.drop("_het_non_ref")
 
-    logger.info(
-        "Add gnomad freq from release HT, remove downsampling and subset info from freq, freq_meta, and freq_index_dict"
-    )
-    full_release_freq_meta = release_ht.freq_meta.collect()[0]
-    freq_meta = [
-        x
-        for x in full_release_freq_meta
-        if "downsampling" not in x and "subset" not in x
-    ]
-    index_keep = [
-        i
-        for i, x in enumerate(full_release_freq_meta)
-        if "downsampling" not in x and "subset" not in x
-    ]
-    freq_index_dict = release_ht.freq_index_dict.collect()[0]
-    freq_index_dict = {k: v for k, v in freq_index_dict.items() if v in index_keep}
-
-    release_struct = release_ht[mt.row_key]
-    mt = mt.annotate_rows(
-        hgdp_tgp_freq=subset_freq[mt.row_key].freq,
-        gnomad_freq=release_struct.freq[: len(freq_meta)],
-        gnomad_raw_qual_hists=release_struct.raw_qual_hists,
-        gnomad_popmax=release_struct.popmax,
-        gnomad_qual_hists=release_struct.qual_hists,
-        gnomad_faf=release_struct.faf,
-    )
-    mt = mt.annotate_globals(
-        hgdp_tgp_freq_meta=subset_freq.index_globals().freq_meta,
-        hgdp_tgp_freq_index_dict=make_freq_index_dict(
-            hl.eval(subset_freq.index_globals().freq_meta),
-            pops=POPS_STORED_AS_SUBPOPS,
-            subsets=["hgdp|tgp"],
-            label_delimiter="-",
-        ),
-        gnomad_freq_meta=freq_meta,
-        gnomad_freq_index_dict=freq_index_dict,
-        gnomad_faf_index_dict=release_ht.index_globals().faf_index_dict,
-        gnomad_faf_meta=release_ht.index_globals().faf_meta,
-        vep_version=release_ht.index_globals().vep_version,
-        vep_csq_header=release_ht.index_globals().vep_csq_header,
-        dbsnp_version=release_ht.index_globals().dbsnp_version,
-        variant_filtering_model=release_ht.index_globals().filtering_model.drop(
-            "model_id"
-        ),
-        variant_inbreeding_coeff_cutoff=filters_ht.index_globals().inbreeding_coeff_cutoff,
-    )
-
-    logger.info("Add all other variant annotations from release HT...")
+    logger.info("Add all variant annotations and variant global annotations...")
     mt = mt.annotate_rows(**variant_annotation_ht[mt.row_key])
-    mt = mt.drop("was_split", "a_index")
+    mt = mt.annotate_globals(**variant_annotation_ht.index_globals())
 
+    logger.info("Densify MT...")
     mt = hl.experimental.densify(mt)
 
     logger.info(
