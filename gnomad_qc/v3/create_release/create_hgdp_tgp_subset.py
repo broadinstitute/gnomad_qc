@@ -875,7 +875,7 @@ def main(args):
     sample_annotation_resource = hgdp_1kg_subset_annotations(test=test)
     variant_annotation_resource = hgdp_1kg_subset_annotations(sample=False, test=test)
     sparse_mt_resource = hgdp_1kg_subset(test=test)
-    dense_mt_resource = hgdp_1kg_subset(dense=False, test=test)
+    dense_mt_resource = hgdp_1kg_subset(dense=True, test=test)
 
     if args.create_sample_annotation_ht:
         meta_ht = prepare_sample_annotations()
@@ -937,9 +937,8 @@ def main(args):
 
     if (
         test
-        and args.create_variant_annotation_ht
-        or args.create_subset_dense_mt
-        and not file_exists(sparse_mt_resource.path.path)
+        and (args.create_variant_annotation_ht or args.create_subset_dense_mt)
+        and not file_exists(sparse_mt_resource.path)
     ):
         raise DataException(
             "There is currently no sparse test MT for the HGDP + TGP subset. Run '--create_subset_sparse_mt' "
@@ -948,10 +947,10 @@ def main(args):
 
     if args.create_variant_annotation_ht:
         logger.info("Creating variant annotation Hail Table")
-        ht = hgdp_1kg_subset(dense=False).mt().rows().select().select_globals()
+        ht = sparse_mt_resource.mt().rows().select().select_globals()
 
         logger.info("Splitting multi-allelics and filtering out ref block variants...")
-        ht = hl.experimental.sparse_split_multi(ht, filter_changed_loci=True)
+        ht = hl.split_multi(ht)
         ht = ht.filter(hl.len(ht.alleles) > 1)
 
         ht = prepare_variant_annotations(ht, filter_lowqual=False)
@@ -970,7 +969,6 @@ def main(args):
         mt = mt.select_entries(*SPARSE_ENTRIES)
         mt = create_full_subset_dense_mt(mt, meta_ht, variant_annotation_ht)
 
-        mt.describe()
         logger.info(
             "Writing dense HGDP + TGP MT with all sample and variant annotations"
         )
