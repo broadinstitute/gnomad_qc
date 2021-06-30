@@ -916,7 +916,12 @@ def main(args):
         logger.info(
             "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
         )
-        mt = mt.filter_cols(hl.is_defined(meta_ht[mt.col_key]))
+        keyed_full_meta = meta.ht()[mt.col_key]
+        mt = mt.filter_cols(
+            keyed_full_meta.subsets.hgdp
+            | keyed_full_meta.subsets.tgp
+            | (keyed_full_meta.s == SYNDIP)
+        )
 
         logger.info(
             "Removing 'v3.1::' from the column names, these were added because there are duplicates of some 1KG samples"
