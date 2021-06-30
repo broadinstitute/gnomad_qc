@@ -653,19 +653,19 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
 
     # NOTE: SOR and AS_SOR annotations are now added to the info HT by default with get_as_info_expr and
     # get_site_info_expr in gnomad_methods, but they were not for v3 or v3.1
-    filters = filters_ht[info_ht.key]
+    keyed_filters = filters_ht[info_ht.key]
     info_ht = info_ht.transmute(
         info=info_ht.info.select(
             *select_info_fields,
-            AS_SOR=filters.AS_SOR,
-            SOR=filters.SOR,
-            singleton=filters.singleton,
-            transmitted_singleton=filters.transmitted_singleton,
-            omni=filters.omni,
-            mills=filters.mills,
-            monoallelic=filters.monoallelic,
+            AS_SOR=keyed_filters.AS_SOR,
+            SOR=keyed_filters.SOR,
+            singleton=keyed_filters.singleton,
+            transmitted_singleton=keyed_filters.transmitted_singleton,
+            omni=keyed_filters.omni,
+            mills=keyed_filters.mills,
+            monoallelic=keyed_filters.monoallelic,
             InbreedingCoeff=freq_ht[info_ht.key].InbreedingCoeff,
-            **{f"{score_name}": filters[f"{score_name}"]},
+            **{f"{score_name}": keyed_filters[f"{score_name}"]},
         )
     )
 
