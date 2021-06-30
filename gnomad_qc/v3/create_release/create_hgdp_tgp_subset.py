@@ -593,7 +593,7 @@ def prepare_sample_annotations() -> hl.Table:
         project=hgdp_tgp_meta_ht.hgdp_tgp_meta.Project,
         study_region=hgdp_tgp_meta_ht.hgdp_tgp_meta.Study.region,
         population=hgdp_tgp_meta_ht.hgdp_tgp_meta.Population,
-        genetic_region=hgdp_tgp_meta_ht.hgdp_tgp_meta.Genetic.region,
+        geographic_region=hgdp_tgp_meta_ht.hgdp_tgp_meta.Genetic.region,
         latitude=hgdp_tgp_meta_ht.hgdp_tgp_meta.Latitude,
         longitude=hgdp_tgp_meta_ht.hgdp_tgp_meta.Longitude,
         bergstrom_meta=hgdp_tgp_meta_ht.bergstrom.select("source", "library_type"),
