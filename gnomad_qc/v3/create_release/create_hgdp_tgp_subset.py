@@ -30,11 +30,7 @@ from gnomad_qc.v3.resources.annotations import (
     get_info,
     vep,
 )
-from gnomad_qc.v3.resources.basics import (
-    get_checkpoint_path,
-    get_gnomad_v3_mt,
-    qc_temp_prefix,
-)
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import hgdp_tgp_meta, hgdp_tgp_pop_outliers, meta
 from gnomad_qc.v3.resources.release import (
     release_sites,
