@@ -920,7 +920,7 @@ def main(args):
         mt = mt.filter_cols(
             keyed_full_meta.subsets.hgdp
             | keyed_full_meta.subsets.tgp
-            | (keyed_full_meta.s == SYNDIP)
+            | (mt.s == SYNDIP)
         )
 
         logger.info(
