@@ -36,11 +36,9 @@ def qual_hists_json_path(release_version: str = CURRENT_RELEASE) -> str:
     :return: File path for histogram JSON
     :rtype: str
     """
-    return f"gs://gnomad/release/{release_version}/json/gnomad.genomes.r{release_version}.json"
+    version_prefix = "r" if release_version.startswith("3.0") else "v"
 
-
-# TODO: Remove if not used after all python files are in
-# internal_ht_path = 'gs://gnomad/release/3.0/ht/gnomad.genomes.r3.0.nested.no_subsets.sites.ht'
+    return f"gs://gnomad/release/{release_version}/json/gnomad.genomes.{version_prefix}{release_version}.json"
 
 
 def release_ht_path(
@@ -57,10 +55,13 @@ def release_ht_path(
     :return: File path for desired Hail Table
     :rtype: str
     """
+    version_prefix = "r" if release_version == "3" else "v"
+    release_version = "3.0" if release_version == "3" else release_version
+
     if public:
-        return f"gs://gnomad-public/release/{release_version}/ht/{data_type}/gnomad.{data_type}.r{release_version}.sites.ht"
+        return f"gs://gnomad-public/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
     else:
-        return f"gs://gnomad/release/{release_version}/ht/gnomad.{data_type}.r{release_version}.sites.ht"
+        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
 
 
 def release_sites(public: bool = False) -> VersionedTableResource:
