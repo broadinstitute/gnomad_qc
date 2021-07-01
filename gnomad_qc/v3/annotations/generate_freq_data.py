@@ -77,9 +77,9 @@ def main(args):
             "This dense MT only contains release samples and has already been split"
         )
         mt = hl.read_matrix_table(
-            "gs://gnomad-tmp/het_nonref_fix_sites_3.1.2_test.mt"
+            "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites_3.1.2_test.mt"
             if args.test
-            else "gs://gnomad/release/3.1.2/mt/het_nonref_fix_sites.mt"
+            else "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites.mt"
         )
 
         if args.test:
