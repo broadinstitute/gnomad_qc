@@ -29,11 +29,7 @@ from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq
-from gnomad_qc.v3.resources.basics import (
-    get_checkpoint_path,
-    get_gnomad_v3_mt,
-    qc_temp_prefix,
-)
+from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 
 logging.basicConfig(
@@ -141,22 +137,10 @@ def main(args):
                 )
             )
             mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
-
-            logger.info(
-                f"Applying v3.1.2 patch to v3.1 frequencies for {', '.join(subsets)} subset(s)..."
-            )
-
-            # Using v3.1 allele frequency HT
-            ht = get_freq(subset="_".join(subsets)).versions["3.1"].ht()
             freq_ht = mt.rows()
-            ht = ht.annotate(
-                freq=hl.if_else(
-                    hl.is_defined(freq_ht[ht.key]), freq_ht[ht.key].freq, ht.freq
-                )
-            )
 
             logger.info(
-                f"Writing out frequency data for {', '.join(subsets)} subset(s)..."
+                f"Writing out patch frequency data for {', '.join(subsets)} subset(s)..."
             )
             if args.test:
                 freq_ht.write(
@@ -165,19 +149,9 @@ def main(args):
                     ),
                     overwrite=True,
                 )
-                ht.write(
-                    get_checkpoint_path(
-                        f"chr20_test_gnomad_genomes_v3.1.2.frequencies.{'_'.join(subsets)}"
-                    ),
-                    overwrite=True,
-                )
             else:
                 freq_ht.write(
                     f"gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.2/gnomad_genomes_v3.1.2.patch.frequencies.{'_'.join(subsets)}.ht",
-                    overwrite=args.overwrite,
-                )
-                ht.write(
-                    f"gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.2/gnomad_genomes_v3.1.2.frequencies.{'_'.join(subsets)}.ht",
                     overwrite=args.overwrite,
                 )
 
@@ -268,49 +242,15 @@ def main(args):
 
             logger.info("Writing out frequency data for the patch...")
             if args.test:
-                ht = ht.checkpoint(
+                ht.write(
                     get_checkpoint_path(
                         "chr20_test_gnomad_genomes_v3.1.2.patch.frequencies"
                     ),
                     overwrite=True,
                 )
             else:
-                ht = ht.checkpoint(
+                ht.write(
                     "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.2/gnomad_genomes_v3.1.2.patch.frequencies.ht",
-                    overwrite=args.overwrite,
-                )
-
-            logger.info(f"Applying v3.1.2 patch to v3.1 frequencies...")
-
-            # Using v3.1 allele frequency HT
-            v3_1_freq_ht = get_freq().versions["3.1"].ht()
-            ht = v3_1_freq_ht.annotate(
-                **{
-                    x: hl.if_else(
-                        hl.is_defined(ht[v3_1_freq_ht.key]),
-                        ht[v3_1_freq_ht.key][x],
-                        v3_1_freq_ht[x],
-                    )
-                    for x in [
-                        "freq",
-                        "InbreedingCoeff",
-                        "faf",
-                        "popmax",
-                        "qual_hists",
-                        "raw_qual_hists",
-                    ]
-                }
-            )
-
-            logger.info("Writing out frequency data...")
-            if args.test:
-                ht.write(
-                    get_checkpoint_path("chr20_test_gnomad_genomes_v3.1.2.frequencies"),
-                    overwrite=True,
-                )
-            else:
-                ht.write(
-                    "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.2/gnomad_genomes_v3.1.2.frequencies.ht",
                     overwrite=args.overwrite,
                 )
 

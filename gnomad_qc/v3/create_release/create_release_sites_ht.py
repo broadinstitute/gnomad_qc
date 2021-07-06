@@ -31,7 +31,7 @@ from gnomad_qc.v3.resources.annotations import (
     get_info,
     vep,
 )
-from gnomad_qc.v3.resources.basics import qc_temp_prefix
+from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v3.resources.variant_qc import final_filter
 
@@ -114,10 +114,7 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
         region_flag=region_flag_expr(
             ht,
             non_par=False,
-            prob_regions={
-                "lcr": lcr_intervals.ht(),
-                "segdup": seg_dup_intervals.ht(),
-            },
+            prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht(),},
         ),
         **filters_ht[ht.key],
         **in_silico_ht[ht.key],
@@ -151,8 +148,10 @@ def pre_process_subset_freq(
     """
 
     # Read in subset HTs
-    subset_ht_path = get_freq(subset=subset).path
-    subset_chr20_ht_path = qc_temp_prefix() + f"chr20_test_freq.{subset}.ht"
+    subset_ht_path = f"gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.2/gnomad_genomes_v3.1.2.patch.frequencies.{subset}.ht"
+    subset_chr20_ht_path = get_checkpoint_path(
+        f"chr20_test_gnomad_genomes_v3.1.2.patch.frequencies.{subset}"
+    )
 
     if test:
         if file_exists(subset_chr20_ht_path):
@@ -198,13 +197,14 @@ def pre_process_subset_freq(
 
 def main(args):
     hl.init(log="/create_release_ht.log", default_reference="GRCh38")
+    global_freq_path = "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.2/gnomad_genomes_v3.1.2.patch.frequencies.ht"
 
     # The concatenated HT contains all subset frequency annotations, plus the overall cohort frequency annotations,
     # concatenated together in a single freq annotation ('freq')
 
     # Load global frequency Table
     if args.test:
-        global_freq_chr20_ht_path = "gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht"
+        global_freq_chr20_ht_path = get_checkpoint_path("chr20_test_gnomad_genomes_v3.1.2.patch.frequencies")
 
         if file_exists(global_freq_chr20_ht_path):
             logger.info(
@@ -217,12 +217,12 @@ def main(args):
                 .select_globals("freq_meta")
             )
 
-        elif file_exists(get_freq().path):
+        elif file_exists(global_freq_path):
             logger.info(
-                "Loading global frequency data for testing: %s", get_freq().path
+                "Loading global frequency data for testing: %s", global_freq_path
             )
             global_freq_ht = (
-                hl.read_table(get_freq().path)
+                hl.read_table(global_freq_path)
                 .select("freq")
                 .select_globals("freq_meta")
             )
@@ -230,10 +230,10 @@ def main(args):
                 global_freq_ht, [hl.parse_locus_interval("chr20:1-1000000")]
             )
 
-    elif file_exists(get_freq().path):
-        logger.info("Loading global frequency data: %s", get_freq().path)
+    elif file_exists(global_freq_path):
+        logger.info("Loading global frequency data: %s", global_freq_path)
         global_freq_ht = (
-            hl.read_table(get_freq().path).select("freq").select_globals("freq_meta")
+            hl.read_table(global_freq_path).select("freq").select_globals("freq_meta")
         )
 
     else:
@@ -280,14 +280,16 @@ def main(args):
     # Add back in all global frequency annotations not present in concatenated frequencies HT
     row_fields = global_freq_ht.row_value.keys() - freq_ht.row_value.keys()
     logger.info(
-        "Adding back the following row annotations onto concatenated frequencies: %s", row_fields
+        "Adding back the following row annotations onto concatenated frequencies: %s",
+        row_fields,
     )
     freq_ht = freq_ht.annotate(**global_freq_ht[freq_ht.key].select(*row_fields))
 
     global_fields = global_freq_ht.globals.keys() - freq_ht.globals.keys()
     global_fields.remove("downsamplings")
     logger.info(
-        "Adding back the following global annotations onto concatenated frequencies: %s", global_fields
+        "Adding back the following global annotations onto concatenated frequencies: %s",
+        global_fields,
     )
     freq_ht = freq_ht.annotate_globals(
         **global_freq_ht.index_globals().select(*global_fields)
@@ -301,11 +303,38 @@ def main(args):
     ht = ht.filter(hl.is_defined(ht.filters))
 
     ht = ht.checkpoint(
-        qc_temp_prefix() + "release/gnomad.genomes.v3.1.sites.chr20.ht"
+        qc_temp_prefix(version="3.1.2") + "release/gnomad.genomes.v3.1.sites.patch.chr20.ht"
         if args.test
-        else release_sites().path,
+        else "gs://gnomad/release/3.1.2/ht/genomes/gnomad.genomes.v3.1.1.sites.patch.ht",
         args.overwrite,
     )
+
+    logger.info(f"Applying v3.1.2 patch to v3.1.1 release HT...")
+
+    # Using v3.1 allele frequency HT
+    v3_1_1_release_ht = release_sites().versions["3.1.1"].ht()
+    ht = v3_1_1_release_ht.transmute(
+        **{
+            x: hl.coalesce(ht[v3_1_1_release_ht.key][x], v3_1_1_release_ht[x])
+            for x in [
+                "freq",
+                "InbreedingCoeff",
+                "faf",
+                "popmax",
+                "qual_hists",
+                "raw_qual_hists",
+            ]
+        }
+    )
+
+    logger.info("Writing out v3.1.2 release HT...")
+    ht = ht.checkpoint(
+        qc_temp_prefix(version="3.1.2") + "release/gnomad.genomes.v3.1.sites.chr20.ht"
+        if args.test
+        else "gs://gnomad/release/3.1.2/ht/genomes/gnomad.genomes.v3.1.1.sites.ht",
+        args.overwrite,
+    )
+
     logger.info("Final variant count: %d", ht.count())
     ht.describe()
     ht.show()
