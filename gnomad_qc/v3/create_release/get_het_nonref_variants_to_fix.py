@@ -132,7 +132,9 @@ def main(args):
     mt = densify_sites(
         mt, sites_ht, last_END_position.versions["3.1"].ht(), semi_join_rows=False,
     )
-    mt = mt.filter_rows(hl.len(mt.alleles) > 1 & (hl.is_defined(sites_ht[mt.row_key])))
+    mt = mt.filter_rows(
+        (hl.len(mt.alleles) > 1) & (hl.is_defined(sites_ht[mt.row_key]))
+    )
 
     logger.info(
         "Writing out dense MT with only het nonref calls that may have been incorrectly adjusted with the homalt hotfix..."
