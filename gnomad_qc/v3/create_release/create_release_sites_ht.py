@@ -44,8 +44,6 @@ logger.setLevel(logging.INFO)
 
 # Remove InbreedingCoeff from allele-specific fields (processed separately from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
-# Remove BaseQRankSum, as we are keeping the allele-specific version of this annotation instead
-SITE_FIELDS.remove("BaseQRankSum")
 
 # Add fine-resolution populations specific to 1KG and HGDP to standard gnomAD pops; used to create frequency index dictionary
 POPS.extend(POPS_STORED_AS_SUBPOPS)
@@ -110,7 +108,6 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
         rsid=dbsnp_ht[ht.key].rsid,
         info=info_ht[ht.key].info,
         vep=vep_ht[ht.key].vep.drop("colocated_variants"),
-        vqsr=filters_ht[ht.key].vqsr,
         region_flag=region_flag_expr(
             ht,
             non_par=False,
@@ -191,6 +188,7 @@ def pre_process_subset_freq(
             ht.freq,
         )
     )
+    ht = ht.select("freq").select_globals("freq_meta")
 
     return ht
 
@@ -204,7 +202,9 @@ def main(args):
 
     # Load global frequency Table
     if args.test:
-        global_freq_chr20_ht_path = get_checkpoint_path("chr20_test_gnomad_genomes_v3.1.2.patch.frequencies")
+        global_freq_chr20_ht_path = get_checkpoint_path(
+            "chr20_test_gnomad_genomes_v3.1.2.patch.frequencies"
+        )
 
         if file_exists(global_freq_chr20_ht_path):
             logger.info(
@@ -256,7 +256,7 @@ def main(args):
 
     logger.info("Concatenating subset frequencies...")
     freq_ht = hl.Table.multi_way_zip_join(
-        [global_freq_ht] + subset_freq_hts,
+        [global_freq_ht.select("freq").select_globals("freq_meta")] + subset_freq_hts,
         data_field_name="freq",
         global_field_name="freq_meta",
     )
@@ -303,7 +303,8 @@ def main(args):
     ht = ht.filter(hl.is_defined(ht.filters))
 
     ht = ht.checkpoint(
-        qc_temp_prefix(version="3.1.2") + "release/gnomad.genomes.v3.1.sites.patch.chr20.ht"
+        qc_temp_prefix(version="3.1.2")
+        + "release/gnomad.genomes.v3.1.sites.patch.chr20.ht"
         if args.test
         else "gs://gnomad/release/3.1.2/ht/genomes/gnomad.genomes.v3.1.1.sites.patch.ht",
         args.overwrite,
@@ -313,18 +314,30 @@ def main(args):
 
     # Using v3.1 allele frequency HT
     v3_1_1_release_ht = release_sites().versions["3.1.1"].ht()
+    if args.test:
+        logger.info("Filtering to two partitions on chr20")
+        v3_1_1_release_ht = hl.filter_intervals(
+            v3_1_1_release_ht, [hl.parse_locus_interval("chr20:1-1000000")]
+        )
+        v3_1_1_release_ht = v3_1_1_release_ht._filter_partitions(range(2))
+
     ht = v3_1_1_release_ht.transmute(
         **{
             x: hl.coalesce(ht[v3_1_1_release_ht.key][x], v3_1_1_release_ht[x])
             for x in [
                 "freq",
-                "InbreedingCoeff",
                 "faf",
                 "popmax",
                 "qual_hists",
                 "raw_qual_hists",
             ]
-        }
+        },
+        info=v3_1_1_release_ht.info.annotate(
+            InbreedingCoeff=hl.coalesce(
+                ht[v3_1_1_release_ht.key].info.InbreedingCoeff,
+                v3_1_1_release_ht.info.InbreedingCoeff,
+            )
+        ),
     )
 
     logger.info("Writing out v3.1.2 release HT...")

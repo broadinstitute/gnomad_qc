@@ -6,6 +6,7 @@ import hail as hl
 from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     DOWNSAMPLINGS,
+    POPS,
     POPS_STORED_AS_SUBPOPS,
     POPS_TO_REMOVE_FOR_POPMAX,
     SUBSETS,
@@ -47,7 +48,6 @@ def main(args):
         log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",
         default_reference="GRCh38",
     )
-
     if subsets:
         invalid_subsets = []
         n_subsets_use_subpops = 0
@@ -131,6 +131,7 @@ def main(args):
             mt = mt.select_rows("freq")
             if n_subsets_use_subpops:
                 POPS = POPS_STORED_AS_SUBPOPS
+
             mt = mt.annotate_globals(
                 freq_index_dict=make_freq_index_dict(
                     freq_meta=freq_meta, pops=POPS, label_delimiter="-"
