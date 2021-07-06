@@ -132,23 +132,28 @@ def main(args):
     mt = densify_sites(
         mt, sites_ht, last_END_position.versions["3.1"].ht(), semi_join_rows=False,
     )
-    mt = mt.filter_rows(hl.len(mt.alleles) > 1)
+    mt = mt.filter_rows(hl.len(mt.alleles) > 1 & (hl.is_defined(sites_ht[mt.row_key])))
 
     logger.info(
         "Writing out dense MT with only het nonref calls that may have been incorrectly adjusted with the homalt hotfix..."
     )
     if args.test:
-        mt = mt.checkpoint("gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites_3.1.2_test.mt", overwrite=True)
+        mt = mt.checkpoint(
+            "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites_3.1.2_test.mt",
+            overwrite=True,
+        )
     else:
-        mt = mt.checkpoint("gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites.mt", overwrite=True)
-
+        mt = mt.checkpoint(
+            "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites.mt", overwrite=True
+        )
 
     logger.info(
         "Writing out variants with het nonref calls that may have been incorrectly adjusted with the homalt hotfix..."
     )
     if args.test:
         mt.rows().write(
-            "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites_3.1.2_test.ht", overwrite=True
+            "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites_3.1.2_test.ht",
+            overwrite=True,
         )
     else:
         mt.rows().write(
