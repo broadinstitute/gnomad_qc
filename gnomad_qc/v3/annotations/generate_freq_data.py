@@ -43,6 +43,7 @@ logger.setLevel(logging.INFO)
 
 
 def main(args):
+    from gnomad.resources.grch38.gnomad import POPS
     subsets = args.subsets
     hl.init(
         log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",
