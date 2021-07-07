@@ -877,6 +877,8 @@ def main(args):
                 metric_first_label=False if hgdp_1kg else True,
                 sample_sum_sets_and_pops=parameter_dict["sample_sum_sets_and_pops"],
                 missingness_threshold=0.5,
+                variant_filter_field="AS_VQSR",
+                monoallelic_expr=prepared_vcf_ht.info.monoallelic,
                 verbose=args.verbose,
             )
 
