@@ -892,7 +892,7 @@ def main(args):
             logger.info("Cleaning up the VCF HT for final export...")
             prepared_vcf_ht, new_row_annots = cleanup_ht_for_vcf_export(
                 prepared_vcf_ht,
-                drop_freqs=hl.eval(prepared_vcf_ht.freq_entries_to_remove),
+                drop_freqs=list(hl.eval(prepared_vcf_ht.freq_entries_to_remove)),
                 drop_hists=parameter_dict["drop_hists"],
             )
 
