@@ -7,7 +7,6 @@ from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import densify_sites
 from gnomad.utils.vcf import SPARSE_ENTRIES
 
-
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v3.resources.annotations import get_info, last_END_position
@@ -30,7 +29,7 @@ def get_het_non_ref_impacted_var(
 
     :param hl.MatrixTable mt: Raw, split MatrixTable annotated with original genotype het nonref status.
     :param hl.Table info_ht: Info Hail Table containing AS_lowqual information.
-    :param hl.Table freq_ht: Hail Table containing 455K frequency information.
+    :param hl.Table freq_ht: Hail Table containing gnomAD v3.0 frequency information.
     :return: None
     """
 
@@ -90,7 +89,6 @@ def get_het_non_ref_impacted_var(
 def main(args):
     """
     Script used to get variants impacted by homalt hotfix.
-    Most of the work was done in notebooks, and any results created in notebooks are noted with comments.
     """
 
     hl.init(log="/get_impacted_variants.log", default_reference="GRCh38")
@@ -129,6 +127,10 @@ def main(args):
     sites_ht = get_het_non_ref_impacted_var(mt, info_ht, freq_ht)
 
     logger.info("Densifying MT to het non ref sites only...")
+    # NOTE: densify_sites operates on locus only (doesn't check alleles)
+    # https://github.com/broadinstitute/gnomad_methods/blob/master/gnomad/utils/sparse_mt.py#L102
+    # Thus, it doesn't matter that `sites_ht` has already been split 
+    # NOTE: set semi_join_rows to False here because the sites_HT is small
     mt = densify_sites(
         mt, sites_ht, last_END_position.versions["3.1"].ht(), semi_join_rows=False,
     )

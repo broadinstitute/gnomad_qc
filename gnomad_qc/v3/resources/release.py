@@ -99,7 +99,7 @@ def release_header_path(
             raise DataException(
                 f"{release_version} is not one of the available releases for the HGP + 1KG subset: {HGDP_TGP_RELEASES}"
             )
-        subset = f"_hgdp_tgp"
+        subset = "_hgdp_tgp"
 
     return f"gs://gnomad/release/{release_version}/vcf/genomes/gnomad.genomes.v{release_version}_header_dict{subset}.pickle"
 

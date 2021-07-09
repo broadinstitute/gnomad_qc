@@ -69,7 +69,7 @@ def main(args):
 
     try:
         logger.info(
-            "Reading dense MT containing only sites that may require frequency recalculation due to het non ref site error. "
+            "Reading dense MT containing only sites that may require frequency recalculation due to het non ref site error."
             "This dense MT only contains release samples and has already been split"
         )
         mt = hl.read_matrix_table(
