@@ -643,6 +643,7 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
 
     logger.info("Assembling 'info' field...")
     info_fields = SITE_FIELDS + AS_FIELDS
+    info_fields.remove("AS_VQSLOD")
     missing_info_fields = set(info_fields).difference(info_ht.info.keys())
     select_info_fields = set(info_fields).intersection(info_ht.info.keys())
     logger.info(
