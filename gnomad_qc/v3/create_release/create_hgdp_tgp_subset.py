@@ -716,10 +716,10 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
         **analyst_ht[ht.key],
         hgdp_tgp_freq=subset_freq[ht.key].freq,
         gnomad_freq=keyed_release.freq[: len(freq_meta)],
-        gnomad_raw_qual_hists=keyed_release.raw_qual_hists,
         gnomad_popmax=keyed_release.popmax,
-        gnomad_qual_hists=keyed_release.qual_hists,
         gnomad_faf=keyed_release.faf,
+        gnomad_raw_qual_hists=keyed_release.raw_qual_hists,
+        gnomad_qual_hists=keyed_release.qual_hists,
         AS_lowqual=keyed_info.AS_lowqual,
         telomere_or_centromere=hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]),
     )
