@@ -880,6 +880,7 @@ def main(args):
                 variant_filter_field="AS_VQSR",
                 monoallelic_expr=prepared_vcf_ht.info.monoallelic,
                 verbose=args.verbose,
+                single_filter_count=True,
             )
 
         if args.export_vcf:
