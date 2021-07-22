@@ -7,8 +7,8 @@ NB: The scripts make reference to gnomAD-related metadata files (not public) and
 We therefore encourage users to browse through the code and identify modules and functions that will be useful in their own pipelines, and to edit and reconfigure the gnomAD pipeline to suit their particular analysis and QC needs.
 
 A more extensive overview and explanation of the gnomAD QC process is available on the [gnomAD browser](https://gnomad.broadinstitute.org/news/) and may help inform users’ design decisions for other pipelines.
-    - [v2.1](https://gnomad.broadinstitute.org/news/2018-10-gnomad-v2-1/)
-    - [v3](https://gnomad.broadinstitute.org/news/2019-10-gnomad-v3-0/)
-    - [v3.1](https://gnomad.broadinstitute.org/news/2020-10-gnomad-v3-1-new-content-methods-annotations-and-data-availability/)
+  * [v2.1](https://gnomad.broadinstitute.org/news/2018-10-gnomad-v2-1/)
+  * [v3](https://gnomad.broadinstitute.org/news/2019-10-gnomad-v3-0/)
+  * [v3.1](https://gnomad.broadinstitute.org/news/2020-10-gnomad-v3-1-new-content-methods-annotations-and-data-availability/)
 
 Note also that many basic functions and file paths used in the code are imported from a separate repo, [gnomad_methods](https://github.com/broadinstitute/gnomad_methods).
