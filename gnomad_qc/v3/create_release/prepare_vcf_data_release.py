@@ -44,7 +44,7 @@ from gnomad.utils.vcf import (
 )
 from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
-from gnomad.assessment.sanity_checks import (
+from gnomad.assessment.validity_checks import (
     validate_release_t,
     vcf_field_check,
 )
