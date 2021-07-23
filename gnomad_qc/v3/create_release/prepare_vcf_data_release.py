@@ -45,7 +45,7 @@ from gnomad.utils.vcf import (
 from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
 from gnomad.assessment.sanity_checks import (
-    sanity_check_release_t,
+    validate_release_t,
     vcf_field_check,
 )
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
@@ -544,14 +544,14 @@ def prepare_vcf_ht(
     vcf_info_reorder: Optional[List[str]] = None,
 ) -> hl.Table:
     """
-    Prepare the Table used for sanity checks and VCF export.
+    Prepare the Table used for validity checks and VCF export.
 
     :param ht: Table containing the nested variant annotation arrays to be unfurled.
     :param is_subset: Whether this is for the release of a subset.
     :param freq_entries_to_remove: Frequency entries to remove for vcf_export.
     :param vep_csq_header: Description for VEP used in VCF export.
     :param vcf_info_reorder: Optional list of INFO fields to reorder, the rest of the fields are added after this list.
-    :return: Prepared HT for sanity checks and VCF export
+    :return: Prepared HT for validity checks and VCF export
     """
     logger.info("Starting preparation of VCF HT...")
     logger.info("Adding non-PAR annotation...")
@@ -830,13 +830,13 @@ def main(args):
             )
 
             # Note: Checkpoint saves time for the final export by not needing to run the VCF HT prep on each chromosome
-            logger.info("Checkpointing prepared VCF HT for sanity checks and export...")
+            logger.info("Checkpointing prepared VCF HT for validity checks and export...")
             prepared_vcf_ht = prepared_vcf_ht.checkpoint(
                 parameter_dict["temp_ht_path"], overwrite=True
             )
             prepared_vcf_ht.describe()
 
-        if args.prepare_vcf_header_dict or args.sanity_check or args.export_vcf:
+        if args.prepare_vcf_header_dict or args.validity_check or args.export_vcf:
             if not file_exists(parameter_dict["temp_ht_path"]):
                 raise DataException(
                     "The intermediate HT output doesn't exist, 'prepare_vcf_ht' needs to be run to create this file"
@@ -869,12 +869,12 @@ def main(args):
             ) as p:
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
-        if args.sanity_check:
-            logger.info("Beginning sanity checks on the prepared VCF HT...")
-            sanity_check_release_t(
+        if args.validity_check:
+            logger.info("Beginning validity checks on the prepared VCF HT...")
+            validate_release_t(
                 prepared_vcf_ht,
                 subsets=["gnomad"] if hgdp_1kg else SUBSETS,
-                metric_first_label=False if hgdp_1kg else True,
+                metric_first_field=False if hgdp_1kg else True,
                 sample_sum_sets_and_pops=parameter_dict["sample_sum_sets_and_pops"],
                 missingness_threshold=0.5,
                 variant_filter_field="AS_VQSR",
@@ -965,13 +965,13 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--sanity_check", help="Run sanity checks function", action="store_true"
+        "--validity_check", help="Run validity checks function", action="store_true"
     )
     parser.add_argument("--export_vcf", help="Export VCF", action="store_true")
     parser.add_argument("--export_chromosome", help="Which chromosome to export as VCF")
     parser.add_argument(
         "--verbose",
-        help="Run sanity checks function with verbose output",
+        help="Run validity checks function with verbose output",
         action="store_true",
     )
     args = parser.parse_args()
