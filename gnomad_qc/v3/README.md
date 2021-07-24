@@ -42,7 +42,11 @@ The scripts below are run approximately in the order they are listed. We begin q
   * `--train_rf` - Select variants for training examples and train random forests model using specified parameters for depth and number of trees. If specified, test resulting model on a pre-selected region. Save the training data with metadata describing random forest parameters used.
   * `--apply_rf` - Apply random forest model to full variant set.
 
-* `evaluation.py` -annotate results with binned scores (dependent on `create_ranked_scores.py`) and 
+* `evaluation.py`
+  * `--create_bin_ht` - Create Table with bin annotations based on the ranking of random forest and/or VQSR variant quality scores, with SNPs and indels handled separately. Additional bin annotations are added for the following stratifications: bi-allelic variants, singletons, and bi-allelic singletons.
+  * `--create_aggregated_bin_ht` - Compute aggregated metrics for each bin that are useful for comparison of variant filtering performance across multiple random forest models and VQSR.
+  * `--bin_truth_sample_concordance` - Create a concordance Table of the filtering model (e.g., VQSR, random forest) against truth data (NA12878 and synthetic diploid sample) binned by rank (both absolute and relative. Used for evaluating the variant filtering models.
+
 * `final_filter.py` - Create Table containing the variant filter status based on SNP and indel quality cutoffs and an inbreeding coefficient threshold.
 
 ### Making the Release
@@ -56,32 +60,23 @@ The scripts below are run approximately in the order they are listed. We begin q
   * `--export_transmitted_singletons_vcf` - Export transmitted singletons (`--generate_fam_stats`) to VCF files, used for running VQSR with transmitted singletons in the training.
 
 **create_release/**
-* `create_release_sites_ht.py` - combine frequency, filtering alelle frequency, variant QC, VEP, dbSNP, and variant QC metric histogram annotations into unified table; add frequency annotations for each sample subset (e.g., controls, non-neuro, non-cancer, non-TOPMED); select and reformat release annotations for VCF export; create VCF header text; perform sanity check on release annotations.
-* `create_hgdp_tgp_subset.py` -
-* `prepare_vcf_data_release.py` -
-* `make_var_annot_hists.py` - aggregate background distributions of specified variant QC metrics into histograms; first-pass run determines minimum and maximum values per metric; second-pass run aggregates QUAL metrics binned by allele frequency and aggregates other metrics over manually set bins/ranges, writes results out to json files (primarily for browser loading purposes).
+* `create_release_sites_ht.py` - Combine frequency, filtering allele frequency, variant QC, VEP, dbSNP, in silico scores, and variant QC metric histogram annotations into unified table. Add frequency annotations for each sample subset (e.g., controls, non-neuro, non-cancer, non-TOPMED, non-v2, tgp, hgdp).
+* `create_hgdp_tgp_subset.py` - Subset raw sparse MatrixTable to only samples in the Human Genome Diversity Project (HGDP) and 1000 genomes project (1KG/TGP) to create an unsplit sparse MatrixTable and split dense MatrixTable (with full sample and variant annotations) that can be made publicly available.
+* `prepare_vcf_data_release.py` - Select and reformat release annotations for VCF export, create VCF header text, and perform sanity check on release annotations.
+* `make_var_annot_hists.py` - Aggregate background distributions of specified variant QC metrics into histograms. The first-pass run determines minimum and maximum values per metric and the second-pass run aggregates QUAL metrics binned by allele frequency and aggregates other metrics over manually set bins/ranges. Writes results out to json files (primarily for browser loading purposes).
 
-### Resources -- 
+### Resources
 **load_data/resources/**
-* `dbsnp.header.fixed` -
-* `vqsr.alleleSpecific.header.fixed` -
-* `vqsr.header.fixed` -
+* `vqsr.alleleSpecific.header.fixed` - Header supplied to `load_vqsr.py --header_path` to fix incorrect Number on AS_SOR description.
 
-**resources/**
-* `annotations.py` -
-* `basics.py` -
-* `constants.py` -
-* `meta.py` -
-* `release.py` -
-* `sample_qc.py` -
-* `variant_qc.py` -
+**resources/** - Resources for all gnomAD input and output files at each step of the QC and release pipeline.
+
 
 ## Others
 **load_data/**
-* `compute_coverage.py` — 
-* `compute_ref_block_stats.py` — 
-* `split_multi.py` - 
+* `compute_coverage.py` — Compute coverage statistics for every base of the GRCh38 reference excluding centromeres and telomeres. The following coverage stats are calculated: mean, median, total DP, and fraction of samples with coverage above X, for each x in [1, 5, 10, 15, 20, 25, 30, 50, 100].
+* `compute_ref_block_stats.py` — Compute stats on the length of reference blocks in the raw MatrixTable.
+* `split_multi.py` - Script used in v3 to split the raw MatrixTable. v3.1 switched to split the raw MatrixTable on the fly where needed after determining that storage costs were more than rerunning the split when needed.
 
 **sample_qc/**
-* `v2_pc_relate.py` - 
-* `utils.py` - 
+* `v2_pc_relate.py` - Join the liftover v2 exomes QC MatrixTable (release samples) and the v3 QC MatrixTable then run Hail's [PC-relate](https://hail.is/docs/0.2/methods/relatedness.html#hail.methods.pc_relate) on the v2 exomes/v3 combined QC MatrixTable to obtain relatedness estimates for all pairs of samples in the combined MatrixTable.
