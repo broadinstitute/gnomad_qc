@@ -14,13 +14,13 @@ The scripts below are run approximately in the order they are listed. We begin q
   * `--compute_qc_mt` - Filter the full sparse MatrixTable to a smaller dense QC MatrixTable based on liftover of gnomAD v2 QC sites and Purcell 5k sites.
   * `--run_pc_relate` - Run Hail's implementation of [PC-relate](https://hail.is/docs/0.2/methods/relatedness.html#hail.methods.pc_relate) to compute relatedness estimates among pairs of samples in the callset.
   * `--compute_related_samples_to_drop` - Determines related samples to drop using the ranking computed with `--compute_samples_ranking` and Hail's [maximal_independent_set](https://hail.is/docs/0.2/methods/misc.html#hail.methods.maximal_independent_set).
-  * `--run_pca` - Perform genotype PCA on unrelated samples; project related samples onto PCs.
+  * `--run_pca` - Perform genotype PCA on unrelated samples and project related samples onto PCs.
   * `--assign_pops` - Fit random forest (RF) model on PCs for samples with known ancestry labels and apply that RF model to assign ancestry to remaining samples.
   * `--calculate_inbreeding` Calculate sample level inbreeding coefficient. This is not currently recommended for use because of ancestral differences that will impact this calculation.
   * `--calculate_clinvar` Calculate counts of ClinVar and ClinVar Pathogenic/Likely Pathogenic variants per sample. Used to investigate potential project specific differences.
   * `--apply_stratified_filters` - Evaluate sample quality metrics by population and flag outlier samples.
   * `--apply_regressed_filters` - Regress out the PCs used for the ancestry assignment (`--run_pca`) and flag samples that are outliers based on the residuals for each of the QC metrics.
-  * `--generate_metadata` - Combine project specific metadata, sample_qc (`--sample_qc`), sex imputation (`--impute_sex`), hard filter (`--compute_hard_filters`), relatedness (`--run_pc_relate` and `--compute_related_samples_to_drop`), ancestry inference (`--run_pca` and `--assign_pops`), into a unified metadata Table. Define the release sample set.
+  * `--generate_metadata` - Combine project specific metadata, sample_qc (`--sample_qc`), sex imputation (`--impute_sex`), hard filter (`--compute_hard_filters`), relatedness (`--run_pc_relate` and `--compute_related_samples_to_drop`) and ancestry inference (`--run_pca` and `--assign_pops`) into a unified metadata Table. Define the release sample set.
 
 * `create_fam.py`
   * `--infer_families` - Infer all complete trios from kinship coefficients (`sample_qc.py --run_pc_relate`) and sex imputation annotations (`--impute_sex`), including duplicates.
@@ -34,7 +34,7 @@ The scripts below are run approximately in the order they are listed. We begin q
   * `--export_info_vcf` - Export the split info Table (`--split_info`) as a VCF.
 
 **load_data/**
-* `load_vqsr.py` - Import the VQSR VCF output.
+* `load_vqsr.py` - Import VQSR VCF output.
 
 **variant_qc/**
 * `random_forest.py`
