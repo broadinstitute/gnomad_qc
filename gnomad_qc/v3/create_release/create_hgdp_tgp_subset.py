@@ -595,6 +595,12 @@ def prepare_sample_annotations() -> hl.Table:
         longitude=hgdp_tgp_meta_ht.hgdp_tgp_meta.Longitude,
         bergstrom_meta=hgdp_tgp_meta_ht.bergstrom.select("source", "library_type"),
     )
+    hgdp_tgp_meta_ht = hgdp_tgp_meta_ht.union(
+        hl.Table.parallelize(
+            [hl.struct(s=SYNDIP, project="synthetic_diploid_truth_sample")]
+        ).key_by("s"),
+        unify=True,
+    )
 
     logger.info(
         "Removing 'v3.1::' from the sample names, these were added because there are duplicates of some 1KG samples"
@@ -612,7 +618,6 @@ def prepare_sample_annotations() -> hl.Table:
         high_quality=~meta_ht.sample_filters.hard_filtered
         & ~meta_ht.sample_filters.pop_outlier,
     )
-
     ###### Add population PC outlier annotation?
 
     return meta_ht
