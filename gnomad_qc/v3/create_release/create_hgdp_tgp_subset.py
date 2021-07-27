@@ -510,13 +510,13 @@ def get_relatedness_set_ht(relatedness_ht: hl.Table) -> hl.Table:
 
     relatedness_ht_i = relatedness_ht.group_by(s=relatedness_ht.i.s).aggregate(
         relationships=hl.agg.collect_as_set(
-            hl.struct(s=relatedness_ht.j.s, **relationship_struct)
+            hl.struct(s=relatedness_ht.j.s.replace("v3.1::", ""), **relationship_struct)
         )
     )
 
     relatedness_ht_j = relatedness_ht.group_by(s=relatedness_ht.j.s).aggregate(
         relationships=hl.agg.collect_as_set(
-            hl.struct(s=relatedness_ht.i.s, **relationship_struct)
+            hl.struct(s=relatedness_ht.i.s.replace("v3.1::", ""), **relationship_struct)
         )
     )
 
