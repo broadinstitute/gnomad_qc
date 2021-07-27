@@ -553,6 +553,7 @@ def prepare_sample_annotations() -> hl.Table:
             min_prob=meta_ht.population_inference_pca_metrics.min_prob,
         ),
         hard_filter_cutoffs=meta_ht.hard_filter_cutoffs,
+        age_distribution=release_sites().ht().index_globals().age_distribution,
     )
 
     relatedness_ht = relatedness.ht()
@@ -720,6 +721,8 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
         gnomad_faf=keyed_release.faf,
         gnomad_raw_qual_hists=keyed_release.raw_qual_hists,
         gnomad_qual_hists=keyed_release.qual_hists,
+        gnomad_age_hist_het=keyed_release.age_hist_het,
+        gnomad_age_hist_hom=keyed_release.age_hist_hom,
         AS_lowqual=keyed_info.AS_lowqual,
         telomere_or_centromere=hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]),
     )
