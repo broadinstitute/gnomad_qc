@@ -579,7 +579,7 @@ def prepare_sample_annotations() -> hl.Table:
         ),
         gnomad_release=meta_ht.release,
         gnomad_high_quality=meta_ht.high_quality,
-        relatedness_inference=relatedness_ht[meta_ht.key],
+        relatedness_inference_relationships=relatedness_ht[meta_ht.key].relationships,
         labeled_pop=meta_ht.project_meta.project_pop,  # Should we change the oce back from oth on this subset release?
         labeled_subpop=meta_ht.project_meta.project_subpop,
     )
