@@ -106,7 +106,7 @@ def compute_sample_qc() -> hl.Table:
     mt = filter_ref_blocks(mt)
 
     # Remove centromeres and telomeres incase they were included
-    filter_low_conf_regions(
+    mt = filter_low_conf_regions(
         mt,
         filter_lcr=False,
         filter_decoy=False,
