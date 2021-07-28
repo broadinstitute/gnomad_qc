@@ -830,7 +830,9 @@ def main(args):
             )
 
             # Note: Checkpoint saves time for the final export by not needing to run the VCF HT prep on each chromosome
-            logger.info("Checkpointing prepared VCF HT for validity checks and export...")
+            logger.info(
+                "Checkpointing prepared VCF HT for validity checks and export..."
+            )
             prepared_vcf_ht = prepared_vcf_ht.checkpoint(
                 parameter_dict["temp_ht_path"], overwrite=True
             )
