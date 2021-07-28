@@ -6,7 +6,7 @@ from typing import Any, List, Tuple
 
 import hail as hl
 
-from gnomad.assessment.sanity_checks import compare_row_counts
+from gnomad.assessment.validity_checks import compare_row_counts
 from gnomad.resources.grch38.reference_data import (
     clinvar,
     lcr_intervals,
