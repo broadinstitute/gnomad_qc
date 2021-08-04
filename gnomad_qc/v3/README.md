@@ -23,13 +23,13 @@ The scripts below are run approximately in the order they are listed. We begin q
   * `--generate_metadata` - Combine project specific metadata, sample_qc (`--sample_qc`), sex imputation (`--impute_sex`), hard filter (`--compute_hard_filters`), relatedness (`--run_pc_relate` and `--compute_related_samples_to_drop`) and ancestry inference (`--run_pca` and `--assign_pops`) into a unified metadata Table. Define the release sample set.
 
 * `create_fam.py`
-  * `--infer_families` - Infer all complete trios from kinship coefficients (`sample_qc.py --run_pc_relate`) and sex imputation annotations (`--impute_sex`), including duplicates.
+  * `--infer_families` - Infer all complete trios from kinship coefficients (`sample_qc.py --run_pc_relate`) and sex imputation annotations (`sample_qc.py --impute_sex`), including duplicates.
   * `-run_mendel_errors` - Calculate Mendelian violations on the inferred complete trios (`--infer_families`) and a random set of trios.
   * `--finalize_ped` - Create a final ped file by excluding families where the number of Mendel errors or de novos are higher than those specified in `--max_dnm` and `--max_mendel`.
 
 **annotations/**
 * `generate_qc_annotations.py`
-  * `--compute_info` - Compute a Table with the typical GATK AS and site-level info fields as well as ACs and lowqual fields.
+  * `--compute_info` - Compute a Table with the typical GATK allele-specific (AS) and site-level info fields as well as ACs and lowqual fields.
   * `--split_info` - Split the alleles of the info Table (`--compute_info`).
   * `--export_info_vcf` - Export the split info Table (`--split_info`) as a VCF.
 
@@ -60,8 +60,8 @@ The scripts below are run approximately in the order they are listed. We begin q
   * `--export_transmitted_singletons_vcf` - Export transmitted singletons (`--generate_fam_stats`) to VCF files, used for running VQSR with transmitted singletons in the training.
 
 **create_release/**
-* `create_release_sites_ht.py` - Combine frequency, filtering allele frequency, variant QC, VEP, dbSNP, in silico scores, and variant QC metric histogram annotations into unified table. Add frequency annotations for each sample subset (e.g., controls, non-neuro, non-cancer, non-TOPMED, non-v2, tgp, hgdp).
-* `create_hgdp_tgp_subset.py` - Subset raw sparse MatrixTable to only samples in the Human Genome Diversity Project (HGDP) and 1000 genomes project (1KG/TGP) to create an unsplit sparse MatrixTable and split dense MatrixTable (with full sample and variant annotations) that can be made publicly available.
+* `create_release_sites_ht.py` - Combine frequency, filtering allele frequency, variant QC, VEP, dbSNP, in silico scores, and variant QC metric histogram annotations into unified table. Add frequency annotations for each sample subset (e.g., controls/biobanks, non-neuro, non-cancer, non-TOPMed, non-v2, 1KG, HGDP).
+* `create_hgdp_tgp_subset.py` - Subset raw sparse MatrixTable to only samples in the Human Genome Diversity Project (HGDP) and 1000 Genomes Project (1KG/TGP) to create an unsplit sparse MatrixTable and split dense MatrixTable (with full sample and variant annotations) that can be made publicly available.
 * `prepare_vcf_data_release.py` - Select and reformat release annotations for VCF export, create VCF header text, and perform sanity check on release annotations.
 * `make_var_annot_hists.py` - Aggregate background distributions of specified variant QC metrics into histograms. The first-pass run determines minimum and maximum values per metric and the second-pass run aggregates QUAL metrics binned by allele frequency and aggregates other metrics over manually set bins/ranges. Writes results out to json files (primarily for browser loading purposes).
 
@@ -74,7 +74,7 @@ The scripts below are run approximately in the order they are listed. We begin q
 
 ## Others
 **load_data/**
-* `compute_coverage.py` — Compute coverage statistics for every base of the GRCh38 reference excluding centromeres and telomeres. The following coverage stats are calculated: mean, median, total DP, and fraction of samples with coverage above X, for each x in [1, 5, 10, 15, 20, 25, 30, 50, 100].
+* `compute_coverage.py` — Compute coverage statistics for every base of the GRCh38 reference excluding centromeres and telomeres. The following coverage stats are calculated: mean, median, total DP, and fraction of samples with coverage above x, for each x in [1, 5, 10, 15, 20, 25, 30, 50, 100].
 * `compute_ref_block_stats.py` — Compute stats on the length of reference blocks in the raw MatrixTable.
 * `split_multi.py` - Script used in v3 to split the raw MatrixTable. v3.1 switched to split the raw MatrixTable on the fly where needed after determining that storage costs were more than rerunning the split when needed.
 
