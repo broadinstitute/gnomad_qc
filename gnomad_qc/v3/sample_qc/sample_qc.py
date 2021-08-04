@@ -1282,11 +1282,6 @@ if __name__ == "__main__":
         type=int,
     )
     parser.add_argument(
-        "--compute_samples_ranking",
-        help="Computes global samples ranking based on hard-filters, releasable and coverage.",
-        action="store_true",
-    )
-    parser.add_argument(
         "--compute_qc_mt",
         help="Creates the QC MT based on liftover of v2 QC and Purcell 5k sites",
         action="store_true",

@@ -6,6 +6,7 @@ The scripts below are run approximately in the order they are listed.
 * `import_vcf.py` — import raw VCF files into Hail, left-align indel representation, and write to MatrixTable format 
 * `import_resources.py` — import reference datasets (e.g., Clinvar annotations, methylation and CpG annotations, ExAC site annotations, truth sets) into Hail and write to MatrixTable or Table format
 * `load_coverage.py` — import individual-level coverage files, write to MatrixTable and Table formats, compute summary metrics, and export summary data for release
+* `import_gnomad_sv.py` - import the gnomAD SV VCF and write it as a MT; merge gnomAD SVs and short variants into a single MT using an allele frequency cutoff for short variants; generate age and GQ histograms
 
 **sample_qc/**
 * `apply_hard_filters.py` — filter dataset to bi-allelic, high-call rate, common SNPs; import and annotate relevant metadata; infer chromosomal sex; annotate samples failing hard filtering thresholds; export relevant annotations for ranking samples for removal due to relatedness (see `joint_sample_qc.py`)
@@ -26,8 +27,19 @@ The scripts below are run approximately in the order they are listed.
 **annotations/**
 * `generate_qc_annotations.py` — compute and collate all variant- and allele-level annotations used for variant QC, including VEP; allele type; variant type; call stats (AC, AN, AF, homozygote count) for high-quality, release, and all samples; histograms of GQ, DP, and AB  metric distributions; and trio statistics (Mendelian errors and transmission disequilibrium test results)
 * `generate_frequency_data.py` — compute frequencies of variants in gnomAD for various sample groupings (e.g., ancestry, sex, and subpopulation) and for downsampled sets; add filtering allele frequency annotations for ancestry sample groupings
+* `generate_ld_data.py` - generate an linkage disequilibrium (LD) pruned set of variants using Hail's [ld_prune](https://hail.is/docs/0.2/methods/genetics.html#hail.methods.ld_prune) method; calculate LD matrices by population using Hail's [ld_matrix](https://hail.is/docs/0.2/methods/genetics.html#hail.methods.ld_matrix) method; calculate LD scores for each population from the LD matrices; calculate cross-pop LD scores from the LD matricies; compute LD between SNVs and SVs
 
 **variant_qc/**
 * `correct_fafs.py` — temporary fix to address 2.1 bug; filter allele frequency annotations so that populations in which AC=1 have filtering allele frequencies set to 0
-* `prepare_data_release.py` — combine frequency, filtering alelle frequency, variant QC, VEP, dbSNP, and variant QC metric histogram annotations into unified table; add frequency annotations for each sample subset (e.g., controls, non-neuro, non-cancer, non-TOPMED); select and reformat release annotations for VCF export; create VCF header text; perform sanity check on release annotations
 * `make_var_annot_hists.py` — aggregate background distributions of specified variant QC metrics into histograms; first-pass run determines minimum and maximum values per metric; second-pass run aggregates QUAL metrics binned by allele frequency and aggregates other metrics over manually set bins/ranges, writes results out to json files (primarily for browser loading purposes)
+* `prepare_data_release.py` — combine frequency, filtering alelle frequency, variant QC, VEP, dbSNP, and variant QC metric histogram annotations into unified table; add frequency annotations for each sample subset (e.g., controls, non-neuro, non-cancer, non-TOPMED); select and reformat release annotations for VCF export; create VCF header text; perform sanity check on release annotations
+* `exomes_genomes_coverage.py` needs a description and probably should be moved as well. It looks like it primarily creates coverage files for the flagship LOF paper, but maybe we also used these for the browser?
+
+
+### Others
+**load_data/**
+* `import_exomes_vcf_on_prem.py` - kept only for archival purposes. It has no practical utility and is outdated
+
+**variant_qc/**
+* `select_qc_set.py` - kept only for archival purposes. This script was used for a one-off analysis to assess variant QC, but isn't used as part of gnomAD production
+* `variant_qc_plots.py` - helper functions to create Bokeh plots for assessment of variant QC results in a Jupyter notebook
