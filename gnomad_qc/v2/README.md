@@ -33,7 +33,7 @@ The scripts below are run approximately in the order they are listed.
 * `correct_fafs.py` — temporary fix to address 2.1 bug; filter allele frequency annotations so that populations in which AC=1 have filtering allele frequencies set to 0
 * `make_var_annot_hists.py` — aggregate background distributions of specified variant QC metrics into histograms; first-pass run determines minimum and maximum values per metric; second-pass run aggregates QUAL metrics binned by allele frequency and aggregates other metrics over manually set bins/ranges, writes results out to json files (primarily for browser loading purposes)
 * `prepare_data_release.py` — combine frequency, filtering alelle frequency, variant QC, VEP, dbSNP, and variant QC metric histogram annotations into unified table; add frequency annotations for each sample subset (e.g., controls, non-neuro, non-cancer, non-TOPMED); select and reformat release annotations for VCF export; create VCF header text; perform sanity check on release annotations
-* `exomes_genomes_coverage.py` needs a description and probably should be moved as well. It looks like it primarily creates coverage files for the flagship LOF paper, but maybe we also used these for the browser?
+* `exomes_genomes_coverage.py` - kept only for archival purposes. This script was used to creates coverage files for the [gnomAD v2 flagship LOF paper](https://www.nature.com/articles/s41586-020-2308-7), but is not used as a regular part of gnomAD production
 
 
 ### Others
@@ -41,5 +41,5 @@ The scripts below are run approximately in the order they are listed.
 * `import_exomes_vcf_on_prem.py` - kept only for archival purposes. It has no practical utility and is outdated
 
 **variant_qc/**
-* `select_qc_set.py` - kept only for archival purposes. This script was used for a one-time analysis to assess variant QC, but isn't used as a regular part of gnomAD production
+* `select_qc_set.py` - kept only for archival purposes. This script was used for a one-time analysis to assess variant QC, but is not used as a regular part of gnomAD production
 * `variant_qc_plots.py` - helper functions to create Bokeh plots for assessment of variant QC results in a Jupyter notebook

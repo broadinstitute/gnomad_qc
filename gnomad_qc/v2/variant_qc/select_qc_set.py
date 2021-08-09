@@ -1,6 +1,6 @@
 # NOTE
 # This script is kept here only for archiving purpose.
-# It was used for a one-time analysis to assess variant QC, but isn't used as a regular part of gnnomAD production
+# It was used for a one-time analysis to assess variant QC, but is not used as a regular part of gnomAD production
 
 from gnomad.utils.slack import try_slack
 from gnomad.variant_qc.evaluation import add_rank
