@@ -742,7 +742,9 @@ def cleanup_ht_for_vcf_export(
             AS_SB_TABLE=hl.array([ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]])
         )
     )
-    ht = adjust_vcf_incompatible_types(ht)
+
+    # The Table is already split so there are no annotations that need to be pipe delimited
+    ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
 
     return ht, new_row_annots
 
