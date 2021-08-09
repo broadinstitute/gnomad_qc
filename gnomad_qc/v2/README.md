@@ -27,7 +27,7 @@ The scripts below are run approximately in the order they are listed.
 **annotations/**
 * `generate_qc_annotations.py` — compute and collate all variant- and allele-level annotations used for variant QC, including VEP; allele type; variant type; call stats (AC, AN, AF, homozygote count) for high-quality, release, and all samples; histograms of GQ, DP, and AB  metric distributions; and trio statistics (Mendelian errors and transmission disequilibrium test results)
 * `generate_frequency_data.py` — compute frequencies of variants in gnomAD for various sample groupings (e.g., ancestry, sex, and subpopulation) and for downsampled sets; add filtering allele frequency annotations for ancestry sample groupings
-* `generate_ld_data.py` - generate an linkage disequilibrium (LD) pruned set of variants using Hail's [ld_prune](https://hail.is/docs/0.2/methods/genetics.html#hail.methods.ld_prune) method; calculate LD matrices by population using Hail's [ld_matrix](https://hail.is/docs/0.2/methods/genetics.html#hail.methods.ld_matrix) method; calculate LD scores for each population from the LD matrices; calculate cross-pop LD scores from the LD matricies; compute LD between SNVs and SVs
+* `generate_ld_data.py` - generate a linkage disequilibrium (LD) pruned set of variants using Hail's [ld_prune](https://hail.is/docs/0.2/methods/genetics.html#hail.methods.ld_prune) method; calculate LD matrices by population using Hail's [ld_matrix](https://hail.is/docs/0.2/methods/genetics.html#hail.methods.ld_matrix) method; calculate LD scores for each population from the LD matrices; calculate cross-pop LD scores from the LD matricies; compute LD between SNVs and SVs
 
 **variant_qc/**
 * `correct_fafs.py` — temporary fix to address 2.1 bug; filter allele frequency annotations so that populations in which AC=1 have filtering allele frequencies set to 0
@@ -41,5 +41,5 @@ The scripts below are run approximately in the order they are listed.
 * `import_exomes_vcf_on_prem.py` - kept only for archival purposes. It has no practical utility and is outdated
 
 **variant_qc/**
-* `select_qc_set.py` - kept only for archival purposes. This script was used for a one-off analysis to assess variant QC, but isn't used as part of gnomAD production
+* `select_qc_set.py` - kept only for archival purposes. This script was used for a one-time analysis to assess variant QC, but isn't used as a regular part of gnomAD production
 * `variant_qc_plots.py` - helper functions to create Bokeh plots for assessment of variant QC results in a Jupyter notebook

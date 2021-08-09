@@ -46,7 +46,7 @@ The scripts below are run approximately in the order they are listed. We begin q
   * `--create_bin_ht` - Create Table with bin annotations based on the ranking of random forest and/or VQSR variant quality scores, with SNPs and indels handled separately. Additional bin annotations are added for the following stratifications: bi-allelic variants, singletons, and bi-allelic singletons.
   * `--create_aggregated_bin_ht` - Compute aggregated metrics for each bin that are useful for comparison of variant filtering performance across multiple random forest models and VQSR.
   * `--extract_truth_samples` - Extract truth samples (NA12878 and synthetic diploid sample) from the full callset MatrixTable for comparison to their truth data.
-  * `--merge_with_truth_data` - Computes a table for each truth sample (NA12878 and synthetic diploid sample) comparing the truth sample in the callset to the truth data.
+  * `--merge_with_truth_data` - Compute a table for each truth sample (NA12878 and synthetic diploid sample) comparing the truth sample in the callset to the truth data.
   * `--bin_truth_sample_concordance` - Create a concordance Table of the filtering model (e.g., VQSR, random forest) against truth data (NA12878 and synthetic diploid sample) binned by rank (both absolute and relative. Used for evaluating the variant filtering models.
 
 * `final_filter.py` - Create Table containing the variant filter status based on SNP and indel quality cutoffs and an inbreeding coefficient threshold.
@@ -65,7 +65,7 @@ The scripts below are run approximately in the order they are listed. We begin q
 * `create_release_sites_ht.py` - Combine frequency, filtering allele frequency, variant QC, VEP, dbSNP, in silico scores, and variant QC metric histogram annotations into unified table. Add frequency annotations for each sample subset (e.g., controls/biobanks, non-neuro, non-cancer, non-TOPMed, non-v2, 1KG, HGDP).
 * `create_hgdp_tgp_subset.py` - Subset raw sparse MatrixTable to only samples in the Human Genome Diversity Project (HGDP) and 1000 Genomes Project (1KG/TGP) to create an unsplit sparse MatrixTable and split dense MatrixTable (with full sample and variant annotations) that can be made publicly available.
 * `make_var_annot_hists.py` - Aggregate background distributions of specified variant QC metrics into histograms. The first-pass run determines minimum and maximum values per metric and the second-pass run aggregates QUAL metrics binned by allele frequency and aggregates other metrics over manually set bins/ranges. Writes results out to json files (primarily for browser loading purposes).
-* `prepare_vcf_data_release.py` - Select and reformat release annotations for VCF export, create VCF header text, and perform sanity check on release annotations.
+* `prepare_vcf_data_release.py` - Select and reformat release annotations for VCF export, create VCF header text, and perform validity checks on release annotations.
 
 ### Resources
 **load_data/resources/**
