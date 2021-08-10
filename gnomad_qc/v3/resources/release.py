@@ -82,17 +82,23 @@ def release_sites(public: bool = False) -> VersionedTableResource:
 
 
 def release_header_path(
-    release_version: str = CURRENT_RELEASE, hgdp_tgp_subset: bool = False
+    release_version: Optional[str] = None, hgdp_tgp_subset: bool = False
 ) -> str:
     """
     Fetch path to pickle file containing VCF header dictionary.
 
-    :param release_version: Release version. Defaults to CURRENT RELEASE
+    :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used unless
+        hgdp_tgp_subset is True in which case CURRENT_HGDP_TGP_RELEASE is used.
     :param hgdp_tgp_subset: Whether to return the header for the HGDP + 1KG subset. Default will return the header
         path for the full release.
     :return: Filepath for header dictionary pickle
     """
     subset = ""
+    if release_version is None:
+        release_version = (
+            CURRENT_HGDP_TGP_RELEASE if hgdp_tgp_subset else CURRENT_RELEASE
+        )
+
     if hgdp_tgp_subset:
         if release_version not in HGDP_TGP_RELEASES:
             raise DataException(
@@ -104,19 +110,26 @@ def release_header_path(
 
 
 def release_vcf_path(
-    release_version: str = CURRENT_RELEASE,
+    release_version: Optional[str] = None,
     hgdp_tgp_subset: bool = False,
     contig: Optional[str] = None,
 ) -> str:
     """
     Fetch bucket for release (sites-only) VCFs.
 
-    :param release_version: Release version. Defaults to CURRENT RELEASE
+    :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used unless
+        hgdp_tgp_subset is True in which case CURRENT_HGDP_TGP_RELEASE is used.
     :param hgdp_tgp_subset: Whether to get path for HGDP + 1KG VCF. Defaults to the full callset (metrics on all samples)        sites VCF path
     :param contig: String containing the name of the desired reference contig. Defaults to the full (all contigs) sites VCF path
         sites VCF path
     :return: Filepath for the desired VCF
     """
+
+    if release_version is None:
+        release_version = (
+            CURRENT_HGDP_TGP_RELEASE if hgdp_tgp_subset else CURRENT_RELEASE
+        )
+
     if hgdp_tgp_subset:
         if release_version not in HGDP_TGP_RELEASES:
             raise DataException(
