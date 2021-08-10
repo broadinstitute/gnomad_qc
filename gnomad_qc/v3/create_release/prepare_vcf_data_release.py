@@ -364,6 +364,7 @@ def make_info_expr(
 
     vcf_info_dict["revel_score"] = t["revel"]["revel_score"]
 
+    # In the v3.1 in silico files this was max_ds, but changed to splice_ai_score in releases after v3.1
     vcf_info_dict["splice_ai_max_ds"] = t["splice_ai"]["splice_ai_score"]
     vcf_info_dict["splice_ai_consequence"] = t["splice_ai"]["splice_consequence"]
 
@@ -407,7 +408,7 @@ def unfurl_nested_annotations(
     :param subset_release: Whether to unfurl frequencies for a gnomAD subset. Default is False.
     :param gnomad_full_for_subset: Whether to unfurl full gnomAD release frequencies, popmax, and faf for addition to a
         gnomAD subset release. Default is False.
-    :param entries_to_remove: Obtional Set of frequency entries to remove for vcf_export.
+    :param entries_to_remove: Optional Set of frequency entries to remove for vcf_export.
     :return: StructExpression containing variant annotations and their corresponding expressions and updated entries and set of frequency entries to remove
         to remove from the VCF.
     """
