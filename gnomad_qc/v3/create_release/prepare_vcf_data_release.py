@@ -48,6 +48,7 @@ from gnomad.assessment.validity_checks import (
     validate_release_t,
     vcf_field_check,
 )
+
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v3.resources.release import (
     append_to_vcf_header_path,
@@ -596,8 +597,13 @@ def prepare_vcf_ht(
     # `export_vcf` expects this field to be a string, and vcf specs
     # say this field may be delimited by a semi-colon:
     # https://samtools.github.io/hts-specs/VCFv4.2.pdf
+    # The v3.1 release chose only one of the rsids to keep so this also handles the case where rsid is a str.
+    # Releases after v3.1 use the set format.
     logger.info("Reformatting rsid...")
-    rsid_expr = hl.str(";").join(ht.rsid)
+    if isinstance(ht.rsid, hl.expr.SetExpression):
+        rsid_expr = hl.str(";").join(ht.rsid)
+    else:
+        rsid_expr = ht.rsid
 
     logger.info("Reformatting VEP annotation...")
     vep_expr = vep_struct_to_csq(ht.vep)
