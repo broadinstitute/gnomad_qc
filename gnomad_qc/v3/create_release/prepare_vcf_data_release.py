@@ -113,6 +113,9 @@ MISSING_INFO_FIELDS = (
 # Remove unnecessary pop names from POP_NAMES dict
 POPS = {pop: POP_NAMES[pop] for pop in POPS}
 
+# Remove unnecessary pop names from FAF_POPS dict
+FAF_POPS = {pop: POP_NAMES[pop] for pop in FAF_POPS}
+
 # Get HGDP + TGP(KG) subset pop names
 HGDP_TGP_KEEP_POPS = TGP_POPS + HGDP_POPS
 HGDP_TGP_POPS = {}
@@ -157,7 +160,7 @@ def populate_subset_info_dict(
     subset: str,
     description_text: str,
     pops: Dict[str, str] = POPS,
-    faf_pops: List[str] = FAF_POPS,
+    faf_pops: Dict[str, str] = FAF_POPS,
     sexes: List[str] = SEXES,
     label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
@@ -168,7 +171,7 @@ def populate_subset_info_dict(
     :param subset: Sample subset in dataset.
     :param description_text: Text describing the sample subset that should be added to the INFO description.
     :param pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
-    :param faf_pops: List of faf population names. Default is FAF_POPS.
+    :param faf_pops: Dict of faf population names. Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
     :return: Dictionary containing Subset specific INFO header fields.
@@ -181,7 +184,7 @@ def populate_subset_info_dict(
             make_info_dict(
                 prefix=subset,
                 prefix_before_metric=True if "gnomad" in subset else False,
-                pop_names=pops,
+                pop_names=faf_pops,
                 label_groups=label_group,
                 label_delimiter=label_delimiter,
                 faf=True,
@@ -223,7 +226,7 @@ def populate_info_dict(
     subset_list: List[str] = SUBSETS,
     subset_pops: Dict[str, str] = POPS,
     gnomad_pops: Dict[str, str] = POPS,
-    faf_pops: List[str] = FAF_POPS,
+    faf_pops: Dict[str, str] = FAF_POPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
     label_delimiter: str = "_",
@@ -248,7 +251,7 @@ def populate_info_dict(
     :param subset_pops: Dict of sample global population names to use for all subsets in `subset_list` unless the subset
         is 'gnomad', in that case `gnomad_pops` is used. Default is POPS.
     :param gnomad_pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
-    :param faf_pops: List of faf population names. Default is FAF_POPS.
+    :param faf_pops: Dict of faf population names. Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
     :param label_delimiter: String to use as delimiter when making group label combinations.
