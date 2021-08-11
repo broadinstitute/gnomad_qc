@@ -172,7 +172,7 @@ def populate_subset_info_dict(
     :param subset: Sample subset in dataset.
     :param description_text: Text describing the sample subset that should be added to the INFO description.
     :param pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
-    :param faf_pops: Dict of faf population names. Default is FAF_POPS.
+    :param faf_pops: Dict with faf pop names (keys) and descriptions (values).  Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
     :return: Dictionary containing Subset specific INFO header fields.
@@ -252,7 +252,7 @@ def populate_info_dict(
     :param subset_pops: Dict of sample global population names to use for all subsets in `subset_list` unless the subset
         is 'gnomad', in that case `gnomad_pops` is used. Default is POPS.
     :param gnomad_pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
-    :param faf_pops: Dict of faf population names. Default is FAF_POPS.
+    :param faf_pops: Dict with faf pop names (keys) and descriptions (values).  Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
     :param label_delimiter: String to use as delimiter when making group label combinations.
@@ -364,7 +364,7 @@ def make_info_expr(
 
     vcf_info_dict["revel_score"] = t["revel"]["revel_score"]
 
-    # In the v3.1 in silico files this was max_ds, but changed to splice_ai_score in releases after v3.1
+    # In the v3.1 release in silico files this was max_ds, but changed to splice_ai_score in releases after v3.1
     vcf_info_dict["splice_ai_max_ds"] = t["splice_ai"]["splice_ai_score"]
     vcf_info_dict["splice_ai_consequence"] = t["splice_ai"]["splice_consequence"]
 
