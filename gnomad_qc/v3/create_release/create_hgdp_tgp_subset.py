@@ -31,14 +31,14 @@ from gnomad_qc.v3.resources.annotations import (
     vep,
 )
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
-from gnomad_qc.v3.resources.meta import hgdp_tgp_meta, hgdp_tgp_pop_outliers, meta
+from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.release import (
     release_sites,
     hgdp_1kg_subset,
     hgdp_1kg_subset_annotations,
     hgdp_1kg_subset_sample_tsv,
 )
-from gnomad_qc.v3.resources.sample_qc import relatedness
+from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_meta, hgdp_tgp_pop_outliers, hgdp_tgp_relatedness
 from gnomad_qc.v3.resources.variant_qc import final_filter, SYNDIP
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 
@@ -491,32 +491,31 @@ def get_sample_qc_filter_struct_expr(ht):
 
 def get_relatedness_set_ht(relatedness_ht: hl.Table) -> hl.Table:
     """
-    Parse relatedness Table to get every relationship (except UNRELATED) per sample.
+    Create Table of all related samples and the relatedness information for all samples they are related to.
 
-    Return Table keyed by sample with all sample relationships, kin, ibd0, ibd1, and ibd2 in a struct.
+    Return Table keyed by sample with a `related_samples` annotation that is a set containing a struct of relatedness
+    information for each sample it is related to. Each struct has the following: kin, ibd0, ibd1, and ibd2.
 
     :param relatedness_ht: Table with inferred relationship information output by pc_relate.
         Keyed by sample pair (i, j).
     :return: Table keyed by sample (s) with all relationship information annotated as a struct.
     """
-    relatedness_ht = relatedness_ht.filter(relatedness_ht.relationship != UNRELATED)
     relationship_struct = hl.struct(
         kin=relatedness_ht.kin,
         ibd0=relatedness_ht.ibd0,
         ibd1=relatedness_ht.ibd1,
         ibd2=relatedness_ht.ibd2,
-        relationship=relatedness_ht.relationship,
     )
 
     relatedness_ht_i = relatedness_ht.group_by(s=relatedness_ht.i.s).aggregate(
-        relationships=hl.agg.collect_as_set(
-            hl.struct(s=relatedness_ht.j.s.replace("v3.1::", ""), **relationship_struct)
+        related_samples=hl.agg.collect_as_set(
+            hl.struct(s=relatedness_ht.j.s, **relationship_struct)
         )
     )
 
     relatedness_ht_j = relatedness_ht.group_by(s=relatedness_ht.j.s).aggregate(
-        relationships=hl.agg.collect_as_set(
-            hl.struct(s=relatedness_ht.i.s.replace("v3.1::", ""), **relationship_struct)
+        related_samples=hl.agg.collect_as_set(
+            hl.struct(s=relatedness_ht.i.s, **relationship_struct)
         )
     )
 
@@ -556,7 +555,9 @@ def prepare_sample_annotations() -> hl.Table:
         age_distribution=release_sites().ht().index_globals().age_distribution,
     )
 
-    relatedness_ht = relatedness.ht()
+    # Use a pre-computed relatedness HT from the Martin group - details of it's creation are
+    # here: https://github.com/atgu/hgdp_tgp/blob/master/pca_subcont.ipynb
+    relatedness_ht = hgdp_tgp_relatedness.ht()
     subset_samples = meta_ht.s.collect(_localize=False)
     relatedness_ht = relatedness_ht.filter(
         subset_samples.contains(relatedness_ht.i.s)

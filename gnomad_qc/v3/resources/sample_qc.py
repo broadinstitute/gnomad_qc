@@ -247,3 +247,25 @@ v2_v3_relatedness = VersionedTableResource(
     CURRENT_RELEASE,
     {release: TableResource(f"{get_sample_qc_root(release)}/gnomad__v2_v{release}_release_relatedness.ht") for release in RELEASES}
 )
+
+# Table with HGDP + 1KG metadata from Alicia Martin's group sample QC
+hgdp_tgp_meta = TableResource(
+    path="gs://gnomad/sample_qc/ht/hgdp_tgp_additional_sample_metadata.ht"
+)
+
+# Table with the set of outliers found by Alicia Martin group during pop specific PCA analyses as well as one duplicate sample
+hgdp_tgp_pop_outliers = TableResource(
+    path="gs://gnomad/sample_qc/ht/gnomad.genomes.v3.1.hgdp_tgp_pop_outlier.ht",
+    import_func=hl.import_table,
+    import_args={
+        "paths": "gs://gnomad/sample_qc/tsv/gnomad.genomes.v3.1.hgdp_tgp_pop_outlier.tsv",
+        "impute": True,
+        "key": "s",
+        "min_partitions": 100,
+    },
+)
+
+# Table with HGDP + 1KG relatedness information from Alicia Martin's group sample QC
+hgdp_tgp_relatedness = TableResource(
+    path="gs://gnomad/sample_qc/ht/hgdp_tgp_relatedness.ht"
+)

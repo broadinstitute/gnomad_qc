@@ -110,20 +110,3 @@ ped_mendel_errors = VersionedTableResource(
         for release in RELEASES
     },
 )
-
-# Table with HGDP + 1KG metadata from Alicia Martin group sample QC
-hgdp_tgp_meta = TableResource(
-    path="gs://gnomad/sample_qc/ht/hgdp_tgp_additional_sample_metadata.ht"
-)
-
-# Table with the set of outliers found by Alicia Martin group during pop specific PCA analyses as well as one duplicate sample
-hgdp_tgp_pop_outliers = TableResource(
-    path="gs://gnomad/sample_qc/ht/gnomad.genomes.v3.1.hgdp_tgp_pop_outlier.ht",
-    import_func=hl.import_table,
-    import_args={
-        "paths": "gs://gnomad/sample_qc/tsv/gnomad.genomes.v3.1.hgdp_tgp_pop_outlier.tsv",
-        "impute": True,
-        "key": "s",
-        "min_partitions": 100,
-    },
-)
