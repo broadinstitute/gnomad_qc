@@ -195,15 +195,15 @@ def get_gnomad_meta(data_type: str, version: str = None, full_meta: bool = False
     if not full_meta:
         columns = ['age', 'sex',
                    'hard_filters', 'perm_filters', 'pop_platform_filters', 'related',
-                   'data_type', 'product', 'product_simplified', 'qc_platform',
+                   'product', 'product_simplified', 'qc_platform',
                    'project_id', 'project_description', 'internal', 'investigator',
                    'known_pop', 'known_subpop', 'pop', 'subpop',
                    'neuro', 'control', 'topmed',
                    'high_quality', 'release']
         if data_type == 'genomes':
-            columns.extend(['pcr_free', 'project_name', 'release_2_0_2'])
+            columns.extend(['pcr_free', 'project_name', 'release_2_0_2', 'data_type'])
         elif data_type == 'exomes':
-            columns.extend(['diabetes', 'exac_joint', 'tcga'])
+            columns.extend(['diabetes', 'exac_joint', 'tcga', 'data_type'])
 
         ht = ht.select(*columns)
     return ht

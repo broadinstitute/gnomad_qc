@@ -242,8 +242,20 @@ v2_v3_pc_relate_pca_scores = VersionedTableResource(
     {release: TableResource(f"{get_sample_qc_root(release)}/gnomad__v2_v{release}_release_pca_scores.ht") for release in RELEASES}
 )
 
+#PC relate scores for the sample set that overlaps with v2 samples -- filtered to only new v3.1 genomes
+v2_v3_1_new_pc_relate_pca_scores = VersionedTableResource(
+    CURRENT_RELEASE,
+    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad__v2_v{release}_new_samples_only_release_pca_scores.ht") for release in RELEASES}
+)
+
 #Relatedness information for the sample set that overlaps with v2 samples
 v2_v3_relatedness = VersionedTableResource(
     CURRENT_RELEASE,
     {release: TableResource(f"{get_sample_qc_root(release)}/gnomad__v2_v{release}_release_relatedness.ht") for release in RELEASES}
+)
+
+#Relatedness information for the sample set that overlaps with v2 samples -- filtered to only new v3.1 genomes
+v2_v3_1_new_relatedness = VersionedTableResource(
+    CURRENT_RELEASE,
+    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad__v2_v{release}_new_samples_only_release_relatedness.ht") for release in RELEASES}
 )
