@@ -56,66 +56,61 @@ AS_FIELDS.remove("InbreedingCoeff")
 GLOBAL_SAMPLE_ANNOTATION_DICT = hl.struct(
     gnomad_sex_imputation_ploidy_cutoffs=hl.struct(
         Description=(
-            "Contains sex chromosome ploidy cutoffs used when determining sex chromosome karyotypes for the gnomAD "
-            "sex imputation. Format: (upper cutoff for single X, (lower cutoff for double X, upper cutoff for double X)"
-            ", lower cutoff for triple X) and (lower cutoff for single Y, upper cutoff for single Y), lower cutoff for "
-            "double Y)."
+            "Contains sex chromosome ploidy cutoffs used when determining sex chromosome karyotypes for the gnomAD sex imputation. Format: (upper cutoff for single X, (lower cutoff for double X, upper cutoff for double X), lower cutoff for triple X) and (lower cutoff for single Y, upper cutoff for single Y), lower cutoff for double Y)."
         )
     ),
     gnomad_population_inference_pca_metrics=hl.struct(
         Description=(
-            "Contains the number of principal components (PCs) used when running PC-project and the minimum cutoff "
-            "probability of belonging to a given population for the gnomAD population inference."
+            "Contains the number of principal components (PCs) used when running PC-project and the minimum cutoff probability of belonging to a given population for the gnomAD population inference."
         )
     ),
     sample_hard_filter_cutoffs=hl.struct(
         Description=(
-            "Contains the cutoffs used for hard-filtering samples prior to sample QC. Sample QC metrics are "
-            "computed using the Hail sample_qc module on all autosomal bi-allelic SNVs. Samples are removed if "
-            "they are clear outliers for any of the following metrics: number of snps (n_snp), ratio of heterozygous "
-            "variants to homozygous variants (r_het_hom_var), number of singletons (n_singleton), and mean coverage on "
-            "chromosome 20 (cov). Additionally, we filter based on outliers of the following Picard metrics: % "
-            "contamination (freemix), % chimera, and median insert size."
+            "Contains the cutoffs used for hard-filtering samples prior to sample QC. Sample QC metrics are computed using the Hail sample_qc module on all autosomal bi-allelic SNVs. Samples are removed if they are clear outliers for any of the following metrics: number of snps (n_snp), ratio of heterozygous variants to homozygous variants (r_het_hom_var), number of singletons (n_singleton), and mean coverage on chromosome 20 (cov). Additionally, we filter based on outliers of the following BAM/CRAM-derived metrics: % contamination (freemix), % chimera, and median insert size."
         )
     ),
     gnomad_sample_qc_metric_outlier_cutoffs=hl.struct(
         Description=(
-            "Contains the cutoffs used for filtering outlier samples based on QC metrics (reported in the "
-            "sample_qc and gnomad_sample_qc_residuals annotations). The first eight PCs computed during the gnomAD "
-            "ancestry assignment were regressed out and the sample filter cutoffs were determined based on the "
-            "residuals for each of the sample QC metrics. Samples were filtered if they fell outside four median "
-            "absolute deviations (MADs) from the median for the following sample QC metrics: n_snp, r_ti_tv,"
-            " r_insertion_deletion, n_insertion, n_deletion, n_het, n_hom_var, n_transition, and n_transversion. "
-            "Samples over 8 MADs above the median n_singleton metric and over 4 MADs above the median "
-            "r_het_hom_var metric were also filtered."
+            "Contains the cutoffs used for filtering outlier samples based on QC metrics (reported in the sample_qc and gnomad_sample_qc_residuals annotations). The first eight PCs computed during the gnomAD ancestry assignment were regressed out and the sample filter cutoffs were determined based on the residuals for each of the sample QC metrics. Samples were filtered if they fell outside four median absolute deviations (MADs) from the median for the following sample QC metrics: n_snp, r_ti_tv, r_insertion_deletion, n_insertion, n_deletion, n_het, n_hom_var, n_transition, and n_transversion. Samples over 8 MADs above the median n_singleton metric and over 4 MADs above the median r_het_hom_var metric were also filtered."
         )
+    ),
+    gnomad_age_distribution=hl.struct(
+        Description="GnomAD callset-wide age histogram calculated on release samples.",
+        sub_globals=hl.struct(
+            bin_edges = hl.struct(
+                Description="Bin edges for the age histogram."
+            ),
+            bin_freq = hl.struct(
+                Description="Bin frequencies for the age histogram. This is the number of records found in each bin."
+            ),
+            n_smaller = hl.struct(
+                Description="Count of age values falling below lowest histogram bin edge."
+            ),
+            n_larger = hl.struct(
+                Description="Count of age values falling above highest histogram bin edge."
+            )
+        ),
     ),
 )
 GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
     hgdp_tgp_freq_meta=hl.struct(
         Description=(
-            "HGDP and 1KG frequency metadata. An ordered list containing the frequency aggregation group"
-            "for each element of the hgdp_tgp_freq array row annotation."
+            "HGDP and 1KG frequency metadata. An ordered list containing the frequency aggregation group for each element of the hgdp_tgp_freq array row annotation."
         )
     ),
     gnomad_freq_meta=hl.struct(
         Description=(
-            "gnomAD frequency metadata. An ordered list containing the frequency aggregation group"
-            "for each element of the gnomad_freq array row annotation."
+            "gnomAD frequency metadata. An ordered list containing the frequency aggregation group for each element of the gnomad_freq array row annotation."
         )
     ),
     hgdp_tgp_freq_index_dict=hl.struct(
         Description=(
-            "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: HGDP or 1KG "
-            "subpopulation, sex: sex karyotype), with values describing the corresponding index of each grouping "
-            "entry in the HGDP + 1KG frequency array annotation."
+            "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: HGDP or 1KG subpopulation, sex: sex karyotype), with values describing the corresponding index of each grouping entry in the HGDP + 1KG frequency array annotation."
         )
     ),
     gnomad_freq_index_dict=hl.struct(
         Description=(
-            "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: gnomAD "
-            "inferred global population sex: sex karyotype), with values describing the corresponding index "
-            "of each grouping entry in the gnomAD frequency array annotation."
+            "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: gnomAD inferred global population sex: sex karyotype), with values describing the corresponding index of each grouping entry in the gnomAD frequency array annotation."
         )
     ),
     gnomad_faf_index_dict=hl.struct(
