@@ -1,8 +1,10 @@
 import hail as hl
-from gnomad.resources.resource_utils import (MatrixTableResource,
-                                             TableResource,
-                                             VersionedMatrixTableResource,
-                                             VersionedTableResource)
+from gnomad.resources.resource_utils import (
+    MatrixTableResource,
+    TableResource,
+    VersionedMatrixTableResource,
+    VersionedTableResource,
+)
 from gnomad.sample_qc.relatedness import get_relationship_expr
 
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
@@ -31,7 +33,13 @@ def get_sample_qc(strat: str = "all") -> VersionedTableResource:
     """
     return VersionedTableResource(
         CURRENT_RELEASE,
-        {release: TableResource(f"{get_sample_qc_root(release)}/sample_qc_{strat}.ht") for release in RELEASES})
+        {
+            release: TableResource(
+                f"{get_sample_qc_root(release)}/sample_qc_{strat}.ht"
+            )
+            for release in RELEASES
+        },
+    )
 
 
 def _get_ancestry_pca_ht_path(
@@ -55,7 +63,8 @@ def _get_ancestry_pca_ht_path(
     )
 
 
-def ancestry_pca_loadings(include_unreleasable_samples: bool = False
+def ancestry_pca_loadings(
+    include_unreleasable_samples: bool = False,
 ) -> VersionedTableResource:
     """
     Gets the ancestry PCA loadings VersionedTableResource
@@ -65,11 +74,19 @@ def ancestry_pca_loadings(include_unreleasable_samples: bool = False
     """
     return VersionedTableResource(
         CURRENT_RELEASE,
-        {release: TableResource(_get_ancestry_pca_ht_path("loadings", release, include_unreleasable_samples)) for release in RELEASES}
+        {
+            release: TableResource(
+                _get_ancestry_pca_ht_path(
+                    "loadings", release, include_unreleasable_samples
+                )
+            )
+            for release in RELEASES
+        },
     )
 
 
-def ancestry_pca_scores(include_unreleasable_samples: bool = False
+def ancestry_pca_scores(
+    include_unreleasable_samples: bool = False,
 ) -> VersionedTableResource:
     """
     Gets the ancestry PCA scores VersionedTableResource
@@ -79,12 +96,19 @@ def ancestry_pca_scores(include_unreleasable_samples: bool = False
     """
     return VersionedTableResource(
         CURRENT_RELEASE,
-        {release: TableResource(_get_ancestry_pca_ht_path("scores", release, include_unreleasable_samples)) for release in RELEASES}
+        {
+            release: TableResource(
+                _get_ancestry_pca_ht_path(
+                    "scores", release, include_unreleasable_samples
+                )
+            )
+            for release in RELEASES
+        },
     )
 
 
 def ancestry_pca_eigenvalues(
-        include_unreleasable_samples: bool = False,
+    include_unreleasable_samples: bool = False,
 ) -> VersionedTableResource:
     """
     Gets the ancestry PCA eigenvalues VersionedTableResource
@@ -94,7 +118,14 @@ def ancestry_pca_eigenvalues(
     """
     return VersionedTableResource(
         CURRENT_RELEASE,
-        {release: TableResource(_get_ancestry_pca_ht_path("eigenvalues", release, include_unreleasable_samples)) for release in RELEASES}
+        {
+            release: TableResource(
+                _get_ancestry_pca_ht_path(
+                    "eigenvalues", release, include_unreleasable_samples
+                )
+            )
+            for release in RELEASES
+        },
     )
 
 
@@ -114,6 +145,7 @@ def get_relatedness_annotated_ht() -> hl.Table:
         )
     )
 
+
 # QC Sites (gnomAD v2 QC sites, lifted over)
 gnomad_v2_qc_sites = TableResource(
     "gs://gnomad-public/resources/grch38/gnomad_v2_qc_sites_b38.ht"
@@ -122,55 +154,101 @@ gnomad_v2_qc_sites = TableResource(
 # Dense MT of samples at QC sites
 qc = VersionedMatrixTableResource(
     CURRENT_RELEASE,
-    {release: MatrixTableResource(f"gs://gnomad/sample_qc/mt/genomes_v{release}/gnomad_v{release}_qc_mt_v2_sites_dense.mt") for release in RELEASES}
+    {
+        release: MatrixTableResource(
+            f"gs://gnomad/sample_qc/mt/genomes_v{release}/gnomad_v{release}_qc_mt_v2_sites_dense.mt"
+        )
+        for release in RELEASES
+    },
 )
 
 # PC relate PCA scores
 pc_relate_pca_scores = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_qc_mt_v2_sites_pc_scores.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_qc_mt_v2_sites_pc_scores.ht"
+        )
+        for release in RELEASES
+    },
 )
 
 # PC relate results
 relatedness = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_qc_mt_v2_sites_relatedness.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_qc_mt_v2_sites_relatedness.ht"
+        )
+        for release in RELEASES
+    },
 )
 
-# Sex imputation results	
+# Sex imputation results
 sex = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_sex.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_sex.ht"
+        )
+        for release in RELEASES
+    },
 )
 
 # Samples to drop for PCA due to them being related
 pca_related_samples_to_drop = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_related_samples_to_drop_for_pca.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_related_samples_to_drop_for_pca.ht"
+        )
+        for release in RELEASES
+    },
 )
 
-# Related samples to drop for release	
+# Related samples to drop for release
 release_related_samples_to_drop = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_related_release_samples_to_drop.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_related_release_samples_to_drop.ht"
+        )
+        for release in RELEASES
+    },
 )
 
 # Sample inbreeding
 sample_inbreeding = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_inbreeding.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_inbreeding.ht"
+        )
+        for release in RELEASES
+    },
 )
 
 # Number of clinvar variants per sample
 sample_clinvar_count = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_clinvar.ht") for release in RELEASES if release != '3'}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_clinvar.ht"
+        )
+        for release in RELEASES
+        if release != "3"
+    },
 )
 
-# Inferred sample populations	
+# Inferred sample populations
 pop = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_pop.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_pop.ht"
+        )
+        for release in RELEASES
+    },
 )
 
 
@@ -193,79 +271,193 @@ def pop_rf_path(version: str = CURRENT_RELEASE) -> str:
     """
     return f"gs://gnomad/sample_qc/temp/genomes_v{version}/gnomad_v{version}_pop.RF_fit.pickle"
 
+
+def _import_all_hgdp_tgp_pc_scores():
+    pca_preoutlier_global_ht = hl.import_table(
+        "gs://hgdp-1kg/pca_preoutlier/global*_scores.txt.bgz"
+    ).key_by("s")
+    pca_postoutlier_global_ht = hl.import_table(
+        "gs://hgdp-1kg/pca_postoutlier/global*_scores.txt.bgz"
+    ).key_by("s")
+    n_pcs = max(
+        [int(r.strip("PC")) for r in pca_preoutlier_global_ht.row.keys() if "PC" in r]
+    )
+
+    pca_preoutlier_subcont_ht = hl.import_table(
+        f"gs://hgdp-1kg/pca_preoutlier/subcont_pca/subcont_pca_*_*scores.txt.bgz",
+        impute=True,
+    ).key_by("s")
+    pca_postoutlier_subcont_ht = hl.import_table(
+        f"gs://hgdp-1kg/pca_postoutlier/subcont_pca/subcont_pca_*_*scores.txt.bgz",
+        impute=True,
+    ).key_by("s")
+    hgdp_tgp_pca_ht = pca_preoutlier_subcont_ht.select(
+        pca_scores=[pca_preoutlier_subcont_ht[f"PC{pc + 1}"] for pc in range(n_pcs)],
+        pca_scores_outliers_removed=[
+            pca_postoutlier_subcont_ht[pca_preoutlier_subcont_ht.key][f"PC{pc + 1}"]
+            for pc in range(n_pcs)
+        ],
+        pca_preoutlier_global_scores=[
+            hl.float(
+                pca_preoutlier_global_ht[pca_preoutlier_subcont_ht.key][f"PC{pc + 1}"]
+            )
+            for pc in range(n_pcs)
+        ],
+        pca_postoutlier_global_scores=[
+            hl.float(
+                pca_postoutlier_global_ht[pca_preoutlier_subcont_ht.key][f"PC{pc + 1}"]
+            )
+            for pc in range(n_pcs)
+        ],
+    )
+
+    return hgdp_tgp_pca_ht
+
+
+def _import_related_samples_to_drop(**kwargs):
+    ht = hl.import_table(**kwargs)
+    ht = ht.key_by(s=ht.f0)
+
+    return ht
+
+
 # Hard-filtered samples
 hard_filtered_samples = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_hard_filtered_samples.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_hard_filtered_samples.ht"
+        )
+        for release in RELEASES
+    },
 )
 
 # Results of running population-based metrics filtering
 # Not used for v3 release (regresed metrics used instead)
 stratified_metrics = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_stratified_metrics.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_stratified_metrics.ht"
+        )
+        for release in RELEASES
+    },
 )
 
 # Results of running regressed metrics filtering
 regressed_metrics = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_regressed_metrics.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_regressed_metrics.ht"
+        )
+        for release in RELEASES
+    },
 )
 
 # Ranking of all samples based on quality metrics. Used to remove relateds for PCA.
 pca_samples_rankings = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_pca_samples_ranking.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_pca_samples_ranking.ht"
+        )
+        for release in RELEASES
+    },
 )
 
-# Ranking of all release samples based on quality metrics. Used to remove relateds for release.	
+# Ranking of all release samples based on quality metrics. Used to remove relateds for release.
 release_samples_rankings = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_release_samples_ranking.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_release_samples_ranking.ht"
+        )
+        for release in RELEASES
+    },
 )
 
-# Picard metrics 	
+# Picard metrics
 picard_metrics = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_picard_metrics.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_picard_metrics.ht"
+        )
+        for release in RELEASES
+    },
 )
 
 # Duplicated (or twin) samples
 duplicates = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad_v{release}_duplicates.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_duplicates.ht"
+        )
+        for release in RELEASES
+    },
 )
 
-#PC relate scores for the sample set that overlaps with v2 samples
+# PC relate scores for the sample set that overlaps with v2 samples
 v2_v3_pc_relate_pca_scores = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad__v2_v{release}_release_pca_scores.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad__v2_v{release}_release_pca_scores.ht"
+        )
+        for release in RELEASES
+    },
 )
 
-#Relatedness information for the sample set that overlaps with v2 samples
+# Relatedness information for the sample set that overlaps with v2 samples
 v2_v3_relatedness = VersionedTableResource(
     CURRENT_RELEASE,
-    {release: TableResource(f"{get_sample_qc_root(release)}/gnomad__v2_v{release}_release_relatedness.ht") for release in RELEASES}
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad__v2_v{release}_release_relatedness.ht"
+        )
+        for release in RELEASES
+    },
 )
 
 # Table with HGDP + 1KG metadata from Alicia Martin's group sample QC
 hgdp_tgp_meta = TableResource(
-    path="gs://gnomad/sample_qc/ht/hgdp_tgp_additional_sample_metadata.ht"
+    path="gs://gnomad/sample_qc/ht/genomes_v3.1/hgdp_tgp_additional_sample_metadata.ht"
 )
 
-# Table with the set of outliers found by Alicia Martin group during pop specific PCA analyses as well as one duplicate sample
+# Table with the set of outliers found by Alicia Martin's group during pop specific PCA analyses as well as one duplicate sample
 hgdp_tgp_pop_outliers = TableResource(
     path="gs://gnomad/sample_qc/ht/gnomad.genomes.v3.1.hgdp_tgp_pop_outlier.ht",
     import_func=hl.import_table,
     import_args={
-        "paths": "gs://gnomad/sample_qc/tsv/gnomad.genomes.v3.1.hgdp_tgp_pop_outlier.tsv",
+        "paths": "gs://hgdp-1kg/pca_outliers.tsv",
         "impute": True,
         "key": "s",
-        "min_partitions": 100,
     },
 )
 
 # Table with HGDP + 1KG relatedness information from Alicia Martin's group sample QC
-hgdp_tgp_relatedness = TableResource(
-    path="gs://gnomad/sample_qc/ht/hgdp_tgp_relatedness.ht"
+hgdp_tgp_relatedness = TableResource(path="gs://hgdp-1kg/relatedness_all_metrics.ht")
+
+# Table with HGDP + 1KG related samples to drop from Alicia Martin's group sample QC
+hgdp_tgp_related_samples_to_drop = TableResource(
+    path="gs://gnomad/sample_qc/ht/hgdp_tgp_related_samples_to_drop.ht",
+    import_func=_import_related_samples_to_drop,
+    import_args={
+        "paths": "gs://hgdp-1kg/related_sample_ids.txt",
+        "impute": True,
+        "no_header": True,
+    },
+)
+
+# Table with HGDP + 1KG global and subcontinental PCA scores before and after removing outliers
+hgdp_tgp_pcs = VersionedTableResource(
+    default_version="3.1",
+    versions={
+        "3.1": TableResource(
+            path="gs://gnomad/sample_qc/ht/hgdp_tgp_pca_scores.ht",
+            import_func=_import_all_hgdp_tgp_pc_scores,
+        )
+    },
 )
