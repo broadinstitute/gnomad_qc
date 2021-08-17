@@ -11,7 +11,6 @@ from gnomad.resources.grch38.reference_data import (
     telomeres_and_centromeres,
 )
 from gnomad.resources.resource_utils import DataException
-from gnomad.sample_qc.relatedness import UNRELATED
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import get_adj_expr, region_flag_expr
 from gnomad.utils.file_utils import file_exists
@@ -38,7 +37,13 @@ from gnomad_qc.v3.resources.release import (
     hgdp_1kg_subset_annotations,
     hgdp_1kg_subset_sample_tsv,
 )
-from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_meta, hgdp_tgp_pop_outliers, hgdp_tgp_relatedness
+from gnomad_qc.v3.resources.sample_qc import (
+    hgdp_tgp_meta,
+    hgdp_tgp_pcs,
+    hgdp_tgp_pop_outliers,
+    hgdp_tgp_relatedness,
+    hgdp_tgp_related_samples_to_drop,
+)
 from gnomad_qc.v3.resources.variant_qc import final_filter, SYNDIP
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 
@@ -63,7 +68,7 @@ GLOBAL_SAMPLE_ANNOTATION_DICT = hl.struct(
             "probability of belonging to a given population for the gnomAD population inference."
         )
     ),
-    hard_filter_cutoffs=hl.struct(
+    sample_hard_filter_cutoffs=hl.struct(
         Description=(
             "Contains the cutoffs used for hard-filtering samples prior to sample QC. Sample QC metrics are "
             "computed using the Hail sample_qc module on all autosomal bi-allelic SNVs. Samples are removed if "
@@ -73,7 +78,7 @@ GLOBAL_SAMPLE_ANNOTATION_DICT = hl.struct(
             "contamination (freemix), % chimera, and median insert size."
         )
     ),
-    gnomad_qc_metric_outlier_cutoffs=hl.struct(
+    gnomad_sample_qc_metric_outlier_cutoffs=hl.struct(
         Description=(
             "Contains the cutoffs used for filtering outlier samples based on QC metrics (reported in the "
             "sample_qc and gnomad_sample_qc_residuals annotations). The first eight PCs computed during the gnomAD "
@@ -551,7 +556,7 @@ def prepare_sample_annotations() -> hl.Table:
             n_pcs=meta_ht.population_inference_pca_metrics.n_pcs,
             min_prob=meta_ht.population_inference_pca_metrics.min_prob,
         ),
-        hard_filter_cutoffs=meta_ht.hard_filter_cutoffs,
+        sample_hard_filter_cutoffs=meta_ht.hard_filter_cutoffs,
         age_distribution=release_sites().ht().index_globals().age_distribution,
     )
 
@@ -568,25 +573,30 @@ def prepare_sample_annotations() -> hl.Table:
     meta_ht = meta_ht.select(
         bam_metrics=meta_ht.bam_metrics,
         sample_qc=meta_ht.sample_qc.select(*SAMPLE_QC_METRICS),
-        gnomad_sex_imputation=meta_ht.sex_imputation.drop("is_female"),
+        gnomad_sex_imputation=meta_ht.sex_imputation.annotate(
+            **meta_ht.sex_imputation.impute_sex_stats
+        ).drop("is_female", "impute_sex_stats"),
         gnomad_population_inference=meta_ht.population_inference.drop(
             "training_pop", "training_pop_all"
         ),
-        gnomad_sample_qc_residual=meta_ht.sample_qc.select(
+        gnomad_sample_qc_residuals=meta_ht.sample_qc.select(
             *[k for k in meta_ht.sample_qc.keys() if "_residual" in k]
         ),
         gnomad_sample_filters=meta_ht.sample_filters.select(
             "hard_filters", "hard_filtered", "release_related", "qc_metrics_filters"
         ),
-        gnomad_release=meta_ht.release,
         gnomad_high_quality=meta_ht.high_quality,
-        relatedness_inference_relationships=hl.coalesce(
-            relatedness_ht[meta_ht.key].relationships,
-            hl.empty_set(
-                hl.dtype(
-                    "struct{s: str, kin: float64, ibd0: float64, ibd1: float64, ibd2: float64, relationship: str}"
-                )
+        gnomad_release=meta_ht.release,
+        relatedness_inference=hl.struct(
+            related_samples=hl.coalesce(
+                relatedness_ht[meta_ht.key].related_samples,
+                hl.empty_set(
+                    hl.dtype(
+                        "struct{s: str, kin: float64, ibd0: float64, ibd1: float64, ibd2: float64}"
+                    )
+                ),
             ),
+            related=hl.is_defined(hgdp_tgp_related_samples_to_drop.ht()[meta_ht.key]),
         ),
         gnomad_labeled_subpop=meta_ht.project_meta.project_subpop,
     )
@@ -600,7 +610,7 @@ def prepare_sample_annotations() -> hl.Table:
         geographic_region=hgdp_tgp_meta_ht.hgdp_tgp_meta.Genetic.region,
         latitude=hgdp_tgp_meta_ht.hgdp_tgp_meta.Latitude,
         longitude=hgdp_tgp_meta_ht.hgdp_tgp_meta.Longitude,
-        bergstrom_meta=hgdp_tgp_meta_ht.bergstrom.select("source", "library_type"),
+        hgdp_technical_meta=hgdp_tgp_meta_ht.bergstrom.select("source", "library_type"),
     )
     hgdp_tgp_meta_ht = hgdp_tgp_meta_ht.union(
         hl.Table.parallelize(
@@ -617,15 +627,23 @@ def prepare_sample_annotations() -> hl.Table:
 
     logger.info("Adding sample QC struct and sample metadata from Martin group...")
     meta_ht = meta_ht.annotate(sample_filters=get_sample_qc_filter_struct_expr(meta_ht))
+    hgdp_tgp_pcs_indexed = hgdp_tgp_pcs.ht()[meta_ht.key]
+
     meta_ht = meta_ht.transmute(
         hgdp_tgp_meta=hl.struct(
-            gnomad_labeled_subpop=meta_ht.labeled_subpop,
             **hgdp_tgp_meta_ht[meta_ht.key],
+            global_pca_scores=hgdp_tgp_pcs_indexed.pca_preoutlier_global_scores,
+            subcontinental_pca=hl.struct(
+                pca_scores=hgdp_tgp_pcs_indexed.pca_scores,
+                pca_scores_outliers_removed=hgdp_tgp_pcs_indexed.pca_scores_outliers_removed,
+                outlier=meta_ht.sample_filters.pop_outlier,
+            ),
+            gnomad_labeled_subpop=meta_ht.gnomad_labeled_subpop,
         ),
         high_quality=~meta_ht.sample_filters.hard_filtered
         & ~meta_ht.sample_filters.pop_outlier,
     )
-    ###### Add population PC outlier annotation?
+    meta_ht.show(50)
 
     return meta_ht
 
