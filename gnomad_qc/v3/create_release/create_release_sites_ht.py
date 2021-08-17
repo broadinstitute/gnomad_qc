@@ -129,6 +129,7 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
         vep_csq_header=VEP_CSQ_HEADER,
         dbsnp_version=dbsnp.default_version,
         filtering_model=filters_ht.index_globals().filtering_model,
+        inbreeding_coeff_cutoff=filters_ht.index_globals().inbreeding_coeff_cutoff,
     )
 
     return ht

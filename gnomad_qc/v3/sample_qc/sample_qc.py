@@ -6,7 +6,7 @@ from typing import Any, List, Tuple
 
 import hail as hl
 
-from gnomad.assessment.sanity_checks import compare_row_counts
+from gnomad.assessment.validity_checks import compare_row_counts
 from gnomad.resources.grch38.reference_data import (
     clinvar,
     lcr_intervals,
@@ -106,7 +106,7 @@ def compute_sample_qc() -> hl.Table:
     mt = filter_ref_blocks(mt)
 
     # Remove centromeres and telomeres incase they were included
-    filter_low_conf_regions(
+    mt = filter_low_conf_regions(
         mt,
         filter_lcr=False,
         filter_decoy=False,
@@ -1280,11 +1280,6 @@ if __name__ == "__main__":
         help="Minimum coverage for inclusion when computing hard-filters",
         default=15,
         type=int,
-    )
-    parser.add_argument(
-        "--compute_samples_ranking",
-        help="Computes global samples ranking based on hard-filters, releasable and coverage.",
-        action="store_true",
     )
     parser.add_argument(
         "--compute_qc_mt",
