@@ -347,7 +347,7 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
                 )
             ),
         ),
-    )
+    ),
     gnomad_sample_filters=hl.struct(
         Description="Sample QC filter annotations used for the gnomAD release.",
         sub_annotations=hl.struct(
