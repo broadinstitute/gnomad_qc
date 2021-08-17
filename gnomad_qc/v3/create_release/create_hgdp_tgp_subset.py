@@ -75,7 +75,7 @@ GLOBAL_SAMPLE_ANNOTATION_DICT = hl.struct(
         )
     ),
     gnomad_age_distribution=hl.struct(
-        Description="GnomAD callset-wide age histogram calculated on release samples.",
+        Description="gnomAD callset-wide age histogram calculated on release samples.",
         sub_globals=hl.struct(
             bin_edges = hl.struct(
                 Description="Bin edges for the age histogram."
@@ -113,29 +113,22 @@ GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
             "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: gnomAD inferred global population sex: sex karyotype), with values describing the corresponding index of each grouping entry in the gnomAD frequency array annotation."
         )
     ),
-    gnomad_faf_index_dict=hl.struct(
-        Description=(
-            "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: gnomAD "
-            "inferred global population sex: sex karyotype), with values describing the corresponding index "
-            "of each grouping entry in the filtering allele frequency (using Poisson 99% CI) annotation."
-        )
-    ),
     gnomad_faf_meta=hl.struct(
         Description=(
-            "gnomAD filtering allele frequency (using Poisson 99% CI) metadata. An ordered list "
-            "containing the frequency aggregation group for each element of the gnomad_faf array row annotation."
+            "gnomAD filtering allele frequency metadata. An ordered list containing the frequency aggregation group for each element of the gnomad_faf array row annotation."
         )
     ),
-    vep_version=hl.struct(Description="VEP version."),
-    vep_csq_header=hl.struct(Description="VEP header for VCF export."),
-    dbsnp_version=hl.struct(Description="dbSNP version."),
+    gnomad_faf_index_dict=hl.struct(
+        Description=(
+            "Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: gnomAD inferred global population sex: sex karyotype), with values describing the corresponding index of each grouping entry in the filtering allele frequency (using Poisson 99% CI) annotation."
+        )
+    ),
     variant_filtering_model=hl.struct(
         Description="The variant filtering model used and its specific cutoffs.",
         sub_globals=hl.struct(
             model_name=hl.struct(
                 Description=(
-                    "Variant filtering model name used in the 'filters'  row annotation to indicate"
-                    "the variant was filtered by the model during variant QC."
+                    "Variant filtering model name used in the 'filters' row annotation to indicate the variant was filtered by the model during variant QC."
                 )
             ),
             score_name=hl.struct(
@@ -146,7 +139,7 @@ GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
                 sub_globals=hl.struct(
                     bin=hl.struct(Description="Filtering percentile cutoff for SNVs."),
                     min_score=hl.struct(
-                        Description="Minimum score (score_name) at SNV filtering percentile cutoff."
+                        Description="Minimum score at SNV filtering percentile cutoff."
                     ),
                 ),
             ),
@@ -157,7 +150,7 @@ GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
                         Description="Filtering percentile cutoff for indels."
                     ),
                     min_score=hl.struct(
-                        Description="Minimum score (score_name) at indel filtering percentile cutoff."
+                        Description="Minimum score at indel filtering percentile cutoff."
                     ),
                 ),
             ),
@@ -172,6 +165,9 @@ GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
     variant_inbreeding_coeff_cutoff=hl.struct(
         Description="Hard-filter cutoff for InbreedingCoeff on variants."
     ),
+    vep_version=hl.struct(Description="VEP version."),
+    vep_csq_header=hl.struct(Description="VEP header for VCF export."),
+    dbsnp_version=hl.struct(Description="dbSNP version."),
 )
 GLOBAL_ANNOTATION_DICT = hl.struct(
     **GLOBAL_SAMPLE_ANNOTATION_DICT, **GLOBAL_VARIANT_ANNOTATION_DICT
@@ -187,25 +183,19 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
             ),
             pct_chimeras=hl.struct(
                 Description=(
-                    "The fraction of reads that map outside of a maximum insert size (usually 100kb) or that have the "
-                    "two ends mapping to different chromosomes."
+                    "The fraction of reads that map outside of a maximum insert size (usually 100kb) or that have the two ends mapping to different chromosomes."
                 )
             ),
             freemix=hl.struct(Description="Estimate of contamination (0-100 scale)."),
             mean_coverage=hl.struct(
-                Description="The mean coverage in bases of the genome territory, after all filters are applied, "
-                "https://broadinstitute.github.io/picard/picard-metric-definitions.html."
+                Description="The mean coverage in bases of the genome territory after all filters are applied; see: https://broadinstitute.github.io/picard/picard-metric-definitions.html."
             ),
             median_coverage=hl.struct(
-                Description="The median coverage in bases of the genome territory, after all filters are applied, "
-                "https://broadinstitute.github.io/picard/picard-metric-definitions.html."
+                Description="The median coverage in bases of the genome territory after all filters are applied; see: https://broadinstitute.github.io/picard/picard-metric-definitions.html."
             ),
             mean_insert_size=hl.struct(
                 Description=(
-                    "The mean insert size of the 'core' of the distribution. Artefactual outliers in the distribution "
-                    "often cause calculation of nonsensical mean and stdev values. To avoid this the distribution is "
-                    "first trimmed to a 'core' distribution of +/- N median absolute deviations around the median "
-                    "insert size."
+                    "The mean insert size of the 'core' of the distribution. Artefactual outliers in the distribution often cause calculation of nonsensical mean and stdev values. To avoid this, the distribution is first trimmed to a 'core' distribution of +/- N median absolute deviations around the median insert size."
                 )
             ),
             median_insert_size=hl.struct(
@@ -214,6 +204,29 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
             pct_bases_10x=hl.struct(
                 Description="The fraction of bases that attained at least 10X sequence coverage in post-filtering bases."
             ),
+        ),
+    ),
+    sample_qc=hl.struct(
+        Description="Struct containing sample QC metrics calculated using hl.sample_qc().",
+        sub_annotations=hl.struct(
+            n_deletion=hl.struct(Description="Number of deletion alternate alleles."),
+            n_het=hl.struct(Description="Number of heterozygous calls."),
+            n_hom_ref=hl.struct(Description="Number of homozygous reference calls."),
+            n_hom_var=hl.struct(Description="Number of homozygous alternate calls."),
+            n_insertion=hl.struct(Description="Number of insertion alternate alleles."),
+            n_non_ref=hl.struct(Description="Sum of n_het and n_hom_var."),
+            n_snp=hl.struct(Description="Number of SNP alternate alleles."),
+            n_transition=hl.struct(
+                Description="Number of transition (A-G, C-T) alternate alleles."
+            ),
+            n_transversion=hl.struct(
+                Description="Number of transversion alternate alleles."
+            ),
+            r_het_hom_var=hl.struct(Description="Het/HomVar call ratio."),
+            r_insertion_deletion=hl.struct(
+                Description="Insertion/Deletion allele ratio."
+            ),
+            r_ti_tv=hl.struct(Description="Transition/Transversion ratio."),
         ),
     ),
     gnomad_sex_imputation=hl.struct(
@@ -247,88 +260,9 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
             observed_homs=hl.struct(Description="Observed number of homozygotes."),
         ),
     ),
-    sample_qc=hl.struct(
-        Description="Struct containing sample QC metrics calculated using hl.sample_qc().",
-        sub_annotations=hl.struct(
-            n_deletion=hl.struct(Description="Number of deletion alternate alleles."),
-            n_het=hl.struct(Description="Number of heterozygous calls."),
-            n_hom_ref=hl.struct(Description="Number of homozygous reference calls."),
-            n_hom_var=hl.struct(Description="Number of homozygous alternate calls."),
-            n_insertion=hl.struct(Description="Number of insertion alternate alleles."),
-            n_non_ref=hl.struct(Description="Sum of n_het and n_hom_var."),
-            n_snp=hl.struct(Description="Number of SNP alternate alleles."),
-            n_transition=hl.struct(
-                Description="Number of transition (A-G, C-T) alternate alleles."
-            ),
-            n_transversion=hl.struct(
-                Description="Number of transversion alternate alleles."
-            ),
-            r_het_hom_var=hl.struct(Description="Het/HomVar call ratio."),
-            r_insertion_deletion=hl.struct(
-                Description="Insertion/Deletion allele ratio."
-            ),
-            r_ti_tv=hl.struct(Description="Transition/Transversion ratio."),
-        ),
-    ),
-    gnomad_sample_qc_residuals=hl.struct(
-        Description=(
-            "Struct containing the residuals after regressing out the first eight PCs computed during the gnomAD "
-            "ancestry assignment from each sample QC metric calculated using hl.sample_qc()."
-        ),
-        sub_annotations=hl.struct(
-            n_deletion_residual=hl.struct(
-                Description=(
-                    "Residuals after regressing out the first eight ancestry PCs from the number of deletion "
-                    "alternate alleles."
-                )
-            ),
-            n_insertion_residual=hl.struct(
-                Description=(
-                    "Residuals after regressing out the first eight ancestry PCs from the number of insertion "
-                    "alternate alleles."
-                ),
-            ),
-            n_snp_residual=hl.struct(
-                Description=(
-                    "Residuals after regressing out the first eight ancestry PCs from the number of SNP alternate "
-                    "alleles."
-                ),
-            ),
-            n_transition_residual=hl.struct(
-                Description=(
-                    "Residuals after regressing out the first eight ancestry PCs from the number of transition "
-                    "(A-G, C-T) alternate alleles."
-                )
-            ),
-            n_transversion_residual=hl.struct(
-                Description=(
-                    "Residuals after regressing out the first eight ancestry PCs from the number of transversion "
-                    "alternate alleles."
-                )
-            ),
-            r_het_hom_var_residual=hl.struct(
-                Description=(
-                    "Residuals after regressing out the first eight ancestry PCs from the Het/HomVar call ratio."
-                ),
-            ),
-            r_insertion_deletion_residual=hl.struct(
-                Description=(
-                    "Residuals after regressing out the first eight ancestry PCs from the Insertion/Deletion allele "
-                    "ratio."
-                )
-            ),
-            r_ti_tv_residual=hl.struct(
-                Description=(
-                    "Residuals after regressing out the first eight ancestry PCs from the Transition/Transversion "
-                    "ratio."
-                )
-            ),
-        ),
-    ),
     gnomad_population_inference=hl.struct(
         Description=(
-            "Struct containing ancestry information assigned by applying a principal component analysis (PCA) on "
-            "gnomAD samples and using those PCs in a random forest classifier trained on known gnomAD ancestry labels."
+            "Struct containing ancestry information assigned by applying a principal components analysis (PCA) on gnomAD samples and using those PCs in a random forest classifier trained on known gnomAD ancestry labels."
         ),
         sub_annotations=hl.struct(
             pca_scores=hl.struct(
@@ -367,85 +301,635 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
             ),
         ),
     ),
+    gnomad_sample_qc_residuals=hl.struct(
+        Description=(
+            "Struct containing the residuals after regressing out the first eight PCs computed during the gnomAD ancestry assignment from each sample QC metric calculated using hl.sample_qc()."
+        ),
+        sub_annotations=hl.struct(
+            n_deletion_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the number of deletion alternate alleles."
+                )
+            ),
+            n_insertion_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the number of insertion alternate alleles."
+                ),
+            ),
+            n_snp_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the number of SNP alternate alleles."
+                ),
+            ),
+            n_transition_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the number of transition (A-G, C-T) alternate alleles."
+                )
+            ),
+            n_transversion_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the number of transversion alternate alleles."
+                )
+            ),
+            r_het_hom_var_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the Het/HomVar call ratio."
+                ),
+            ),
+            r_insertion_deletion_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the Insertion/Deletion allele ratio."
+                )
+            ),
+            r_ti_tv_residual=hl.struct(
+                Description=(
+                    "Residuals after regressing out the first eight ancestry PCs from the Transition/Transversion ratio."
+                )
+            ),
+        ),
+    )
     gnomad_sample_filters=hl.struct(
         Description="Sample QC filter annotations used for the gnomAD release.",
         sub_annotations=hl.struct(
             hard_filters=hl.struct(
                 Description=(
-                    "Set of hard filters applied to each sample samples prior to additional sample QC. Samples are hard "
-                    "filtered if they are extreme outliers for any of the following metrics: number of snps (n_snp), "
-                    "ratio of heterozygous variants to homozygous variants (r_het_hom_var), number of singletons "
-                    "(n_singleton), and mean coverage on chromosome 20 (cov). Additionally, we filter based on outliers "
-                    "of the following Picard metrics: %c ontamination (freemix), % chimera, and median insert size."
+                    "Set of hard filters applied to each sample prior to additional sample QC. Samples are hard filtered if they are extreme outliers for any of the following metrics: number of snps (n_snp), ratio of heterozygous variants to homozygous variants (r_het_hom_var), number of singletons (n_singleton), and mean coverage on chromosome 20 (cov). Additionally, we filter based on outliers of the following Picard metrics: % contamination (freemix), % chimera, and median insert size."
                 )
             ),
             hard_filtered=hl.struct(
                 Description=(
-                    "Whether a sample was hard filtered, the gnomad_sample_filters.hard_filters set is empty if this "
-                    "annotation is True."
+                    "Whether a sample was hard filtered. The gnomad_sample_filters.hard_filters set is empty if this annotation is True."
                 )
             ),
             release_related=hl.struct(
                 Description=(
-                    "Whether a sample had a second-degree or greater relatedness to another sample in the gnomAD "
-                    "release."
+                    "Whether a sample had a second-degree or greater relatedness to another sample in the gnomAD release."
                 )
             ),
             qc_metrics_filters=hl.struct(
                 Description=(
-                    "Set of all sample QC metrics that each sample was found to be an outlier after computing sample QC "
-                    "metrics using the Hail sample_qc() module and regressing out the first 8 gnomAD ancestry assignment PCs."
+                    "Set of all sample QC metrics for which each sample was found to be an outlier after computing sample QC metrics using the Hail sample_qc() module and regressing out the first 8 gnomAD ancestry assignment PCs."
                 )
             ),
         ),
     ),
     gnomad_high_quality=hl.struct(
         Description=(
-            "Whether a sample has passed gnomAD sample QC metrics except for relatedness "
-            "(gnomad_sample_filters.hard_filters and gnomad_sample_filters.qc_metrics_filters)."
+            "Whether a sample has passed gnomAD sample QC metrics except for relatedness (i.e., gnomad_sample_filters.hard_filters and gnomad_sample_filters.qc_metrics_filters are empty sets)."
         )
     ),
     gnomad_release=hl.struct(
         Description=(
-            "Whether the sample was included in the gnomAD release dataset. For the full gnomAD release, relatedness "
-            "inference is performed on the full dataset, and release samples are chosen in a way that maximizes the "
-            "number of samples retained while filtering the dataset to include only samples with less than "
-            "second-degree relatedness. For the HGDP + 1KG subset, samples passing all other sample QC metrics are "
-            "retained."
+            "Whether the sample was included in the gnomAD release dataset. For the full gnomAD release, relatedness inference is performed on the full dataset, and release samples are chosen in a way that maximizes the number of samples retained while filtering the dataset to include only samples with less than second-degree relatedness. For the HGDP + 1KG subset, samples passing all other sample QC metrics are retained."
         )
+    ),
+    relatedness_inference=hl.struct(
+        Description="",
+        sub_annotations=hl.struct(
+            related_samples=hl.struct(
+                Description="",
+                sub_annotations=hl.struct(
+                    s="Sample ID.",
+                    kin="Kinship estimate.",
+                    ibd0="IBD0 estimate.",
+                    ibd1="IBD1 estimate.",
+                    ibd2="IBD2 estimate.",
+                ),
+            ),
+            related=hl.struct(Description=""),
+        ),
     ),
     hgdp_tgp_meta=hl.struct(
         Description="",
         sub_annotations=hl.struct(
             project=hl.struct(
-                Description=(
-                    "Indicates if the sample is part of the Human Genome Diversity Project (‘HGDP’) or the "
-                    "‘1000 Genomes’ project."
-                )
+                Description=""
             ),
-            gnomad_labeled_subpop=hl.struct(Description=""),
-            ######## Add Study.region
-            ######## Population: str?
-            ######## Genetic.region
+            study_region=hl.struct(
+                Description=""
+            ),
+            population=hl.struct(
+                Description=""
+            ),
+            geographic_region=hl.struct(
+                Description=""
+            ),
             latitude=hl.struct(Description=""),
             longitude=hl.struct(Description=""),
+            hgdp_technical_meta=hl.struct(
+                Description=(
+                    "Technical considerations for HGDP detailed in https://science.sciencemag.org/content/367/6484/eaay5012/"
+                ),
+                sub_annotations=hl.struct(
+                    source=hl.struct(
+                        Description="Which batch/project these HGDP samples were sequenced as part of (sanger vs sgdp)."
+                    ),
+                    library_type=hl.struct(
+                        Description="Whether samples were PCRfree or used PCR."
+                    ),
+                ),
+            ),
+            global_pca_scores=hl.struct(Description=""),
+            subcontinental_pca=hl.struct(
+                Description="",
+                sub_annotations=hl.struct(
+                    pca_scores=hl.struct(
+                        Description=""
+                    ),
+                    pca_scores_outliers_removed=hl.struct(
+                        Description=""
+                    ),
+                    outlier=hl.struct(
+                        Description=""
+                    ),
+                ),
+            ),
+            gnomad_labeled_subpop=hl.struct(Description=""),
         ),
     ),
-    bergstrom_meta=hl.struct(
-        Description=(
-            "Technical considerations for HGDP detailed in https://science.sciencemag.org/content/367/6484/eaay5012/"
+    high_quality=hl.struct(
+        Description="Samples that pass all ‘gnomad_sample_filters.hard_filters’ and were not found to be outliers in global population-specific principal component analysis hgdp_tgp_meta.subcontinental_pca.outlier"
+    ),
+)
+
+VARIANT_ANNOTATION_DICT = hl.struct(
+    locus=hl.struct(
+        Description="Variant locus. Contains contig and position information.",
+    ),
+    alleles=hl.struct(
+        Description="Variant alleles.",
+    ),
+    rsid=hl.struct(
+        Description="dbSNP reference SNP identification (rsID) numbers.",
+    ),
+    a_index=hl.struct(
+        Description="The original index of this alternate allele in the multiallelic representation (1 is the first alternate allele or the only alternate allele in a biallelic variant)."
+    ),
+    was_split=hl.struct(
+        Description="True if this variant was originally multiallelic, otherwise False."
+    ),
+    hgdp_tgp_freq=hl.struct(
+        Description="Allele frequency information (AC, AN, AF, homozygote count) in HGDP + 1KG samples that pass the high_quality sample annotation and are inferred as unrelated (False in relatedness_inference.related annotation).",
+        sub_annotations = hl.struct(
+            AC=hl.struct(
+                Description="Alternate allele count  in HGDP + 1KG samples that pass the high_quality sample annotation."
+            ),
+            AF=hl.struct(
+                Description="Alternate allele frequency  in HGDP + 1KG samples that pass the high_quality sample annotation."
+            ),
+            AN=hl.struct(
+                Description="Total number of alleles in HGDP + 1KG samples that pass the high_quality sample annotation."
+            ),
+            homozygote_count=hl.struct(
+                Description="Count of homozygous individuals in HGDP + 1KG samples that pass the high_quality sample annotation."
+            ),
         ),
+    ),
+    gnomad_freq=hl.struct(
+        Description="Allele frequency information (AC, AN, AF, homozygote count) in gnomAD release.",
+        sub_annotations = hl.struct(
+            AC=hl.struct(
+                Description="Alternate allele count in gnomAD release."
+            ),
+            AF=hl.struct(
+                Description="Alternate allele frequency in gnomAD release."
+            ),
+            AN=hl.struct(
+                Description="Total number of alleles in gnomAD release."
+            ),
+            homozygote_count=hl.struct(
+                Description="Count of homozygous individuals in gnomAD release."
+            ),
+        ),
+    ),
+    gnomad_popmax=hl.struct(
+        Description="Allele frequency information (AC, AN, AF, homozygote count) for the population with maximum AF in gnomAD.",
         sub_annotations=hl.struct(
-            source=hl.struct(
-                Description="Which batch/project these HGDP samples were sequenced as part of (sanger vs sgdp)."
+            AC=hl.struct(
+                Description="Allele count in the population with the maximum AF in gnomAD."
             ),
-            library_type=hl.struct(
-                Description="Whether samples were PCRfree or used PCR."
+            AF=hl.struct(
+                Description="Maximum allele frequency across populations in gnomAD."
+            ),
+            AN=hl.struct(
+                Description="Total number of alleles in the population with the maximum AF in gnomAD."
+            ),
+            homozygote_count=hl.struct(
+                Description="Count of homozygous individuals in the population with the maximum allele frequency in gnomAD."
+            ),
+            pop=hl.struct(
+                Description="Population with maximum AF in gnomAD."
+            ),
+            faf95=hl.struct(
+                Description="Filtering allele frequency (using Poisson 95% CI) for the population with the maximum allele frequency in gnomAD."
             ),
         ),
     ),
-    high_quality=hl.struct(Description=""),
-)  ###### Add population PC outlier annotation?
+    gnomad_faf=hl.struct(
+        Description="Filtering allele frequency in gnomAD release.",
+        sub_annotations = hl.struct(
+            faf95=hl.struct(
+                Description="Filtering allele frequency in gnomAD release (using Poisson 95% CI)."
+            ),
+            faf99=hl.struct(
+                Description="Filtering allele frequency in gnomAD release (using Poisson 99% CI)."
+            ),
+        ),
+    ),
+    gnomad_qual_hists=hl.struct(
+        Description="gnomAD genotype quality metric histograms for high quality genotypes.",
+        sub_annotations=hl.struct(
+            gq_hist_all=hl.struct(
+                Description="Histogram for GQ calculated on high quality genotypes.",
+                sub_annotations=hl.struct(
+                    bin_edges=hl.struct(
+                        Description="Bin edges for the GQ histogram calculated on high quality genotypes are: 0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100",
+                    ),
+                    bin_freq=hl.struct(
+                        Description="Bin frequencies for the GQ histogram calculated on high quality genotypes. The number of records found in each bin."
+                    ),
+                    n_smaller=hl.struct(
+                        Description="Count of GQ values falling below lowest histogram bin edge, for GQ calculated on high quality genotypes",
+                    ),
+                    n_larger=hl.struct(
+                        Description="Count of GQ values falling above highest histogram bin edge, for GQ calculated on high quality genotypes",
+                    ),
+                ),
+            ),
+            dp_hist_all=hl.struct(
+                Description="Histogram for DP calculated on high quality genotypes.",
+                sub_annotations=hl.struct(
+                    bin_edges=hl.struct(
+                        Description="Bin edges for the DP histogram calculated on high quality genotypes are: 0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100."
+                    ),
+                    bin_freq=hl.struct(
+                        Description="Bin frequencies for the DP histogram calculated on high quality genotypes. The number of records found in each bin."
+                    ),
+                    n_smaller=hl.struct(
+                        Description="Count of DP values falling below lowest histogram bin edge, for DP calculated on high quality genotypes."
+                    ),
+                    n_larger=hl.struct(
+                        Description="Count of DP values falling above highest histogram bin edge, for DP calculated on high quality genotypes."
+                    ),
+                ),
+            ),
+            gq_hist_alt=hl.struct(
+                Description="Histogram for GQ in heterozygous individuals calculated on high quality genotypes.",
+                sub_annotations=hl.struct(
+                    bin_edges=hl.struct(
+                        Description="Bin edges for the histogram of GQ in heterozygous individuals calculated on high quality genotypes are: 0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100.",
+                    ),
+                    bin_freq=hl.struct(
+                        Description="Bin frequencies for the histogram of GQ in heterozygous individuals calculated on high quality genotypes. The number of records found in each bin."
+                    ),
+                    n_smaller=hl.struct(
+                        Description="Count of GQ values falling below lowest histogram bin edge, for GQ in heterozygous individuals calculated on high quality genotypes."
+                    ),
+                    n_larger=hl.struct(
+                        Description="Count of GQ values falling above highest histogram bin edge, for GQ in heterozygous individuals calculated on high quality genotypes."
+                    ),
+                ),
+            ),
+            dp_hist_alt=hl.struct(
+                Description="Histogram for DP in heterozygous individuals calculated on high quality genotypes.",
+                sub_annotations=hl.struct(
+                    bin_edges=hl.struct(
+                        Description="Bin edges for the histogram of DP in heterozygous individuals calculated on high quality genotypes are: 0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100."
+                    ),
+                    bin_freq=hl.struct(
+                        Description="Bin frequencies for the histogram of DP in heterozygous individuals calculated on high quality genotypes. The number of records found in each bin."
+                    ),
+                    n_smaller=hl.struct(
+                        Description="Count of DP values falling below lowest histogram bin edge, for DP in heterozygous individuals calculated on high quality genotypes."
+                    ),
+                    n_larger=hl.struct(
+                        Description="Count of DP values falling above highest histogram bin edge, for DP in heterozygous individuals calculated on high quality genotypes."
+                    ),
+                ),
+            ),
+            ab_hist_alt=hl.struct(
+                Description="Histogram for AB in heterozygous individuals calculated on high quality genotypes.",
+                sub_annotations=hl.struct(
+                    bin_edges=hl.struct(
+                        Description="Bin edges for the histogram of AB in heterozygous individuals calculated on high quality genotypes are: 0.00|0.05|0.10|0.15|0.20|0.25|0.30|0.35|0.40|0.45|0.50|0.55|0.60|0.65|0.70|0.75|0.80|0.85|0.90|0.95|1.00."
+                    ),
+                    bin_freq=hl.struct(
+                        Description="Bin frequencies for the histogram of AB in heterozygous individuals calculated on high quality genotypes. The number of records found in each bin."
+                    ),
+                    n_smaller=hl.struct(
+                        Description="Count of AB values falling below lowest histogram bin edge, for AB in heterozygous individuals calculated on high quality genotypes."
+                    ),
+                    n_larger=hl.struct(
+                        Description="Count of AB values falling above highest histogram bin edge, for AB in heterozygous individuals calculated on high quality genotypes."
+                    ),
+                ),
+            ),
+        ),
+    gnomad_raw_qual_hists=hl.struct(
+        Description="gnomAD genotype quality metric histograms.",
+        sub_annotations=hl.struct(
+            gq_hist_all=hl.struct(
+                Description="Histogram for GQ calculated on all genotypes.",
+                sub_annotations=hl.struct(
+                    bin_edges=hl.struct(
+                        Description="Bin edges for the GQ histogram calculated on all genotypes are: 0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100."
+                    ),
+                    bin_freq=hl.struct(
+                        Description="Bin frequencies for the GQ histogram calculated on all genotypes. The number of records found in each bin."
+                    ),
+                    n_smaller=hl.struct(
+                        Description="Count of GQ values falling below lowest histogram bin edge, for GQ calculated on all genotypes."
+                    ),
+                    n_larger=hl.struct(
+                        Description="Count of GQ values falling above highest histogram bin edge, for GQ calculated on all genotypes."
+                    ),
+                ),
+            ),
+            dp_hist_all=hl.struct(
+                Description="Histogram for DP calculated on all genotypes.",
+                sub_annotations=hl.struct(
+                    bin_edges=hl.struct(
+                        Description="Bin edges for the DP histogram calculated on all genotypes are: 0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100"
+                    ),
+                    bin_freq=hl.struct(
+                        Description="Bin frequencies for the DP histogram calculated on all genotypes. The number of records found in each bin."
+                    ),
+                    n_smaller=hl.struct(
+                        Description="Count of DP values falling below lowest histogram bin edge, for DP calculated on all genotypes."
+                    ),
+                    n_larger=hl.struct(
+                        Description="Count of DP values falling above highest histogram bin edge, for DP calculated on all genotypes."
+                    ),
+                ),
+            ),
+            gq_hist_alt=hl.struct(
+                Description="Histogram for GQ in heterozygous individuals calculated on all genotypes.",
+                sub_annotations=hl.struct(
+                    bin_edges=hl.struct(
+                        Description="Bin edges for the histogram of GQ in heterozygous individuals calculated on all genotypes are: 0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100."
+                    ),
+                    bin_freq=hl.struct(
+                        Description="Bin frequencies for the histogram of GQ in heterozygous individuals calculated on all genotypes. The number of records found in each bin."
+                    ),
+                    n_smaller=hl.struct(
+                        Description="Count of GQ values falling below lowest histogram bin edge, for GQ in heterozygous individuals calculated on all genotypes."
+                    ),
+                    n_larger=hl.struct(
+                        Description="Count of GQ values falling above highest histogram bin edge, for GQ in heterozygous individuals calculated on all genotypes."
+                    ),
+                ),
+            ),
+            dp_hist_alt=hl.struct(
+                Description="Histogram for DP in heterozygous individuals calculated on all genotypes.",
+                sub_annotations=hl.struct(
+                    bin_edges=hl.struct(
+                        Description="Bin edges for the histogram of DP in heterozygous individuals calculated on all genotypes are: 0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100."
+                    ),
+                    bin_freq=hl.struct(
+                        Description="Bin frequencies for the histogram of DP in heterozygous individuals calculated on all genotypes. The number of records found in each bin."
+                    ),
+                    n_smaller=hl.struct(
+                        Description="Count of DP values falling below lowest histogram bin edge, for DP in heterozygous individuals calculated on all genotypes."
+                    ),
+                    n_larger=hl.struct(
+                        Description="Count of DP values falling above highest histogram bin edge, for DP in heterozygous individuals calculated on all genotypes."
+                    ),
+                ),
+            ),
+            ab_hist_alt=hl.struct(
+                Description="Histogram for AB in heterozygous individuals calculated on all genotypes.",
+                sub_annotations=hl.struct(
+                    bin_edges=hl.struct(
+                        Description="Bin edges for the histogram of AB in heterozygous individuals calculated on all genotypes are: 0.00|0.05|0.10|0.15|0.20|0.25|0.30|0.35|0.40|0.45|0.50|0.55|0.60|0.65|0.70|0.75|0.80|0.85|0.90|0.95|1.00."
+                    ),
+                    bin_freq=hl.struct(
+                        Description="Bin frequencies for the histogram of AB in heterozygous individuals calculated on all genotypes. The number of records found in each bin."
+                    ),
+                    n_smaller=hl.struct(
+                        Description="Count of AB values falling below lowest histogram bin edge, for AB in heterozygous individuals calculated on all genotypes."
+                    ),
+                    n_larger=hl.struct(
+                        Description="Count of AB values falling above highest histogram bin edge, for AB in heterozygous individuals calculated on all genotypes."
+                    ),
+                ),
+            ),
+        ),
+    ),
+    gnomad_age_hist_het=hl.struct(
+        Description="Histogram for age in all heterozygous gnomAD release samples calculated on high quality genotypes.",
+        sub_annotations=hl.struct(
+            bin_edges=hl.struct(
+                Description="Bin edges for the age histogram."
+            ),
+            bin_freq=hl.struct(
+                Description="Bin frequencies for the age histogram. This is the number of records found in each bin."
+            ),
+            n_smaller=hl.struct(
+                Description="Count of age values falling below lowest histogram bin edge."
+            ),
+            n_larger=hl.struct(
+                Description="Count of age values falling above highest histogram bin edge."
+            ),
+        ),
+    ),
+    gnomad_age_hist_hom=hl.struct(
+        Description="Histogram for age in all homozygous gnomAD release samples calculated on high quality genotypes.",
+        sub_annotations=hl.struct(
+            bin_edges=hl.struct(
+                Description="Bin edges for the age histogram."
+            ),
+            bin_freq=hl.struct(
+                Description="Bin frequencies for the age histogram. This is the number of records found in each bin."
+            ),
+            n_smaller=hl.struct(
+                Description="Count of age values falling below lowest histogram bin edge."
+            ),
+            n_larger=hl.struct(
+                Description="Count of age values falling above highest histogram bin edge."
+            ),
+        ),
+    ),
+    filters=hl.struct(
+        Description="Variant filters; AC0: Allele count is zero after filtering out low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls), AS_VQSR: Failed VQSR filtering thresholds of -2.7739 for SNPs and -1.0606 for indels, InbreedingCoeff: GATK InbreedingCoeff < -0.3, PASS: Passed all variant filters."
+    ),
+    info=hl.struct(
+        Description="Struct containing typical GATK allele-specific (AS) info fields and additional variant QC fields.",
+        sub_annotations=hl.struct(
+            QUALapprox=hl.struct(
+                Description="Sum of PL[0] values; used to approximate the QUAL score."
+            ),
+            SB=hl.struct(
+                Description="Per-sample component statistics which comprise the Fisher's exact test to detect strand bias. Values are: depth of reference allele on forward strand, depth of reference allele on reverse strand, depth of alternate allele on forward strand, depth of alternate allele on reverse strand."
+            ),
+            MQ=hl.struct(
+                Description="Root mean square of the mapping quality of reads across all samples."
+            ),
+            MQRankSum=hl.struct(
+                Description="Z-score from Wilcoxon rank sum test of alternate vs. reference read mapping qualities."
+            ),
+            VarDP=hl.struct(
+                Description="Depth over variant genotypes (does not include depth of reference samples)."
+            ),
+            AS_ReadPosRankSum=hl.struct(
+                Description="Allele-specific z-score from Wilcoxon rank sum test of alternate vs. reference read position bias."
+            ),
+            AS_pab_max=hl.struct(
+                Description="Maximum p-value over callset for binomial test of observed allele balance for a heterozygous genotype, given expectation of 0.5."
+            ),
+            AS_QD=hl.struct(
+                Description="Allele-specific variant call confidence normalized by depth of sample reads supporting a variant."
+            ),
+            AS_MQ=hl.struct(
+                Description="Allele-specific root mean square of the mapping quality of reads across all samples."
+            ),
+            QD=hl.struct(
+                Description="Variant call confidence normalized by depth of sample reads supporting a variant."
+            ),
+            AS_MQRankSum=hl.struct(
+                Description="Allele-specific z-score from Wilcoxon rank sum test of alternate vs. reference read mapping qualities."
+            ),
+            FS=hl.struct(
+                Description="Phred-scaled p-value of Fisher's exact test for strand bias."
+            ),
+            AS_FS=hl.struct(
+                Description="Allele-specific phred-scaled p-value of Fisher's exact test for strand bias."
+            ),
+            ReadPosRankSum=hl.struct(
+                Description="Z-score from Wilcoxon rank sum test of alternate vs. reference read position bias."
+            ),
+            AS_QUALapprox=hl.struct(
+                Description="Allele-specific sum of PL[0] values; used to approximate the QUAL score."
+            ),
+            AS_SB_TABLE=hl.struct(
+                Description="Allele-specific forward/reverse read counts for strand bias tests."
+            ),
+            AS_VarDP=hl.struct(
+                Description="Allele-specific depth over variant genotypes (does not include depth of reference samples)."
+            ),
+            AS_SOR=hl.struct(
+                Description="Allele-specific strand bias estimated by the symmetric odds ratio test."
+            ),
+            SOR=hl.struct(
+                Description="Strand bias estimated by the symmetric odds ratio test."
+            ),
+            transmitted_singleton=hl.struct(
+                Description="Variant was a callset-wide doubleton that was transmitted within a family from a parent to a child (i.e., a singleton amongst unrelated samples in cohort)."
+            ),
+            omni=hl.struct(
+                Description="Variant is present on the Omni 2.5 genotyping array and found in 1000 Genomes data."
+            ),
+            mills=hl.struct(
+                Description="Indel is present in the Mills and Devine data."
+            ),
+            monoallelic=hl.struct(
+                Description="All samples are all homozygous alternate for the variant."
+            ),
+            InbreedingCoeff=hl.struct(
+                Description="Inbreeding coefficient, the excess heterozygosity at a variant site, computed as 1 - (the number of heterozygous genotypes)/(the number of heterozygous genotypes expected under Hardy-Weinberg equilibrium)."
+            ),
+        ),
+    ),
+    vep=hl.struct(
+        Description="Consequence annotations from Ensembl VEP. More details about VEP output is described here: https://uswest.ensembl.org/info/docs/tools/vep/vep_formats.html#output. VEP was run using the LOFTEE plugin and information about the additional LOFTEE annotations can be found here: https://github.com/konradjk/loftee."
+        ),
+    ),
+    vqsr=hl.struct(
+        Description="VQSR related variant annotations.",
+        sub_annotations=hl.struct(
+            AS_VQSLOD=hl.struct(
+                Description="Allele-specific log-odds ratio of being a true variant versus being a false positive under the trained VQSR Gaussian mixture model."
+            ),
+            AS_culprit=hl.struct(
+                Description="Allele-specific worst-performing annotation in the VQSR Gaussian mixture model."
+            ),
+            NEGATIVE_TRAIN_SITE=hl.struct(
+                Description="Variant was used to build the negative training set of low-quality variants for VQSR."
+            ),
+            POSITIVE_TRAIN_SITE=hl.struct(
+                Description="Variant was used to build the positive training set of high-quality variants for VQSR."
+            ),
+        ),
+    ),
+    region_flag=hl.struct(
+        Description="Struct containing flags for problematic regions.",
+        sub_annotations=hl.struct(
+            lcr=hl.struct(
+                Description="Variant falls within a low complexity region.",
+            ),
+            segdup=hl.struct(
+                Description="Variant falls within a segmental duplication region."
+            ),
+        ),
+    ),
+    allele_info=hl.struct(
+        Description="Allele information.",
+    ),
+    variant_type=hl.struct(
+        Description="Variant type (snv, indel, multi-snv, multi-indel, or mixed).",
+    ),
+    allele_type=hl.struct(
+        Description="Allele type (snv, insertion, deletion, or mixed).",
+    ),
+    n_alt_alleles=hl.struct(
+        Description="Total number of alternate alleles observed at variant locus.",
+    ),
+    was_mixed=hl.struct(
+        Description="Variant type was mixed.",
+    ),
+    cadd=hl.struct(
+        sub_annotations=hl.struct(
+            raw_score=hl.struct(
+                Description="Raw CADD scores are interpretable as the extent to which the annotation profile for a given variant suggests that the variant is likely to be 'observed' (negative values) vs 'simulated' (positive values); higher values indicate that a variant is more likely to be simulated (or 'not observed') and therefore more likely to have deleterious effects. More information can be found on the CADD website: https://cadd.gs.washington.edu/info."
+            ),
+            phred=hl.struct(
+                Description="CADD Phred-like scores ('scaled C-scores') ranging from 1 to 99, based on the rank of each variant relative to all possible 8.6 billion substitutions in the human reference genome. Larger values are more deleterious. More information can be found on the CADD website: https://cadd.gs.washington.edu/info."
+            ),
+            has_duplicate=hl.struct(
+                Description="a True/False flag that indicates whether the variant has more than one CADD score associated with it*."
+            ),
+        ),
+    ),
+    revel=hl.struct(
+        Description="dbNSFP's Revel score, ranging from 0 to 1. Variants with higher scores are predicted to be more likely to be deleterious.",
+        sub_annotations=hl.struct(
+            revel_score=hl.struct(
+                Description="Revel’s numerical score from 0 to 1."
+            ),
+            has_duplicate=hl.struct(
+                Description="a True/False flag that indicates whether the variant has more than one revel_score associated with it*."
+            ),
+        ),
+    ),
+    splice_ai=hl.struct(
+        sub_annotations=hl.struct(
+            splice_ai=hl.struct(
+                Description="The maximum delta score, interpreted as the probability of the variant being splice-altering."
+            ),
+            splice_consequence=hl.struct(
+                Description="The consequence term associated with the max delta score in 'splice_ai’."
+            ),
+            has_duplicate=hl.struct(
+                Description="a True/False flag that indicates whether the variant has more than one splice_ai score associated with it*."
+            ),
+        ),
+    ),
+    primate_ai=hl.struct(
+        sub_annotations=hl.struct(
+            primate_ai_score=hl.struct(
+                Description="PrimateAI's deleteriousness score from 0 (less deleterious) to 1 (more deleterious)."
+            ),
+            has_duplicate=hl.struct(
+                Description="a True/False flag that indicates whether the variant has more than one primate_ai_score associated with it*."
+            ),
+        ),
+    ),
+    AS_lowqual=hl.struct(
+        Description="Whether the variant falls below a low quality threshold and was excluded from the gnomAD dataset. We recommend filtering all such variants. This is similar to the GATK LowQual filter, but is allele-specific. GATK computes this annotation at the site level, which uses the least stringent prior for mixed sites."
+    ),
+    telomere_or_centromere=hl.struct(
+        Description="Whether the variant falls within a telomere or centromere region. These variants were excluded from the gnomAD dataset. We recommend filtering all such variants."
+    ),
+)
 
 SAMPLE_QC_METRICS = [
     "n_deletion",
@@ -755,8 +1239,7 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
     logger.info("Adding global variant annotations...")
     ht = ht.annotate_globals(
         global_annotation_descriptions=GLOBAL_VARIANT_ANNOTATION_DICT,
-        # TODO: uncomment when annotation descriptions are complete
-        # variant_annotation_descriptions=VARIANT_ANNOTATION_DICT,
+        variant_annotation_descriptions=VARIANT_ANNOTATION_DICT,
         hgdp_tgp_freq_meta=subset_freq.index_globals().freq_meta,
         hgdp_tgp_freq_index_dict=make_freq_index_dict(
             hl.eval(subset_freq.index_globals().freq_meta),
