@@ -53,12 +53,13 @@ def main(args):
             joint_qc_mt = hl.read_matrix_table("gs://gnomad-tmp/v2_exomes_v3.1_new_samples_joint_qc.mt")
         else:
             joint_qc_mt = hl.read_matrix_table("gs://gnomad-tmp/v2_exomes_v3_joint_qc.mt")
-        #joint_qc_mt = joint_qc_mt.sample_rows(0.1)
+        joint_qc_mt = joint_qc_mt.sample_rows(0.1)
         eig, scores, _ = hl.hwe_normalized_pca(joint_qc_mt.GT, k=10, compute_loadings=False)
         scores = scores.checkpoint(scores_path, overwrite=args.overwrite, _read_if_exists=not args.overwrite)
         relatedness_ht = hl.pc_relate(joint_qc_mt.GT, min_individual_maf=0.01, scores_expr=scores[joint_qc_mt.col_key].scores,
                                       block_size=4096, min_kinship=0.1, statistics='all')
-        relatedness_ht.write(relatedness_path, args.overwrite)
+        #relatedness_ht.write(relatedness_path, args.overwrite)
+        relatedness_ht.write("gs://gnomad-tmp/v2_exomes_v3.1_new_samples_relatedness.ht", args.overwrite)
 
 
 
