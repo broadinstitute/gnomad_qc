@@ -384,10 +384,10 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
         )
     ),
     relatedness_inference=hl.struct(
-        Description="",
+        Description="Information about the sample’s relatedness to other samples within the callset. ",
         sub_annotations=hl.struct(
             related_samples=hl.struct(
-                Description="",
+                Description="Set of all HGDP or 1KG samples that have a kinship estimate (kin) > 0.05 determined using Hail’s pc_relate module (https://hail.is/docs/0.2/methods/relatedness.html#hail.methods.pc_relate) with this sample. More details on the relatedness inference can be found here: https://github.com/atgu/hgdp_tgp/blob/master/pca_subcont.ipynb. This set is empty if the sample has no such relationships within this HGDP + 1KG subset. Each entry of the set consists of a struct containing the following information about this relationship:",
                 sub_annotations=hl.struct(
                     s="Sample ID.",
                     kin="Kinship estimate.",
@@ -396,55 +396,55 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
                     ibd2="IBD2 estimate.",
                 ),
             ),
-            related=hl.struct(Description=""),
+            related=hl.struct(Description="Indicates whether this sample is excluded from variant frequency calculations (hgdp_tgp_freq) because of relatedness to other samples. Closely related individuals are pruned from the dataset to enhance the accuracy of population frequency estimates. Pruning using Hail’s maximal_independent_set module (https://hail.is/docs/0.2/methods/misc.html#hail.methods.maximal_independent_set) maintains the maximal number of individuals in the dataset."),
         ),
     ),
     hgdp_tgp_meta=hl.struct(
-        Description="",
+        Description="Sample metadata specific to the HGDP + 1KG subset.",
         sub_annotations=hl.struct(
             project=hl.struct(
-                Description=""
+                Description="Indicates if the sample is part of the Human Genome Diversity Project (‘HGDP’), the ‘1000 Genomes’ project, or is the synthetic-diploid sample (a mixture of DNA from two haploid CHM cell lines; https://www.nature.com/articles/s41592-018-0054-7?WT.feed_name=subjects_standards; https://github.com/lh3/CHM-eval)."
             ),
             study_region=hl.struct(
-                Description=""
+                Description="Study-specific global population labels."
             ),
             population=hl.struct(
-                Description=""
+                Description="Population label for HGDP or 1KG. The HGDP populations are detailed in https://science.sciencemag.org/content/367/6484/eaay5012. 1KG populations are described here: https://www.internationalgenome.org/category/population."
             ),
             geographic_region=hl.struct(
-                Description=""
+                Description="Global population labels harmonized across both studies."
             ),
-            latitude=hl.struct(Description=""),
-            longitude=hl.struct(Description=""),
+            latitude=hl.struct(Description="Approximate latitude of the geographical place of origin of the population."),
+            longitude=hl.struct(Description="Approximate longitude of the geographical place of origin of the population."),
             hgdp_technical_meta=hl.struct(
                 Description=(
-                    "Technical considerations for HGDP detailed in https://science.sciencemag.org/content/367/6484/eaay5012/"
+                    "Technical considerations for HGDP detailed in https://science.sciencemag.org/content/367/6484/eaay5012. This struct will be missing for 1KG samples and syndip."
                 ),
                 sub_annotations=hl.struct(
                     source=hl.struct(
-                        Description="Which batch/project these HGDP samples were sequenced as part of (sanger vs sgdp)."
+                        Description="Which batch/project these HGDP samples were sequenced in (Sanger vs Simons Genome Diversity Project)."
                     ),
                     library_type=hl.struct(
-                        Description="Whether samples were PCRfree or used PCR."
+                        Description="Whether library prep was PCR-free or used PCR."
                     ),
                 ),
             ),
-            global_pca_scores=hl.struct(Description=""),
+            global_pca_scores=hl.struct(Description="Array of the first 20 principal components analysis (PCA) scores on the full HGDP + 1KG subset. Obtained by first dividing the sample set into relateds and unrelateds (using relatedness_inference.related). PCA was run on the unrelated samples using Hail’s hwe_normalized_pca module (https://hail.is/docs/0.2/methods/genetics.html#hail.methods.hwe_normalized_pca), producing a global PCA score for each of the unrelated samples and loadings for each variant. The related samples were then projected (https://hail.is/docs/0.2/experimental/index.html#hail.experimental.pc_project) onto the predefined PCA space using the variant loadings from the unrelated sample PCA to produce the PC scores for the related samples. Code used to obtain these scores can be found under 'global pca' here: https://github.com/atgu/hgdp_tgp/blob/master/pca_subcont.ipynb "),
             subcontinental_pca=hl.struct(
-                Description="",
+                Description="The subcontinental PCAs were obtained in a similar manner as the global PCA scores (hgdp_tgp_meta.global_pca_scores). The full HGDP + 1KG subset was split by geographic region (hgdp_tgp_meta.geographic_region) prior to performing the same PCA and PC projection steps described for the global PCA scores. The code used to obtain these scores can be found under subcontinental pca here: https://github.com/atgu/hgdp_tgp/blob/master/pca_subcont.ipynb ",
                 sub_annotations=hl.struct(
                     pca_scores=hl.struct(
-                        Description=""
+                        Description="Array of the first 20 subcontinental PCA scores for the sample based on its value in the hgdp_tgp_meta.geographic_region annotation (one of: AFR, AMR, CSA, EAS, EUR, MID, or OCE)."
                     ),
                     pca_scores_outliers_removed=hl.struct(
-                        Description=""
+                        Description="Array of the first 20 subcontinental PCA scores following the removal of samples labeled as subcontinental PCA outliers (hgdp_tgp_meta.subcontinental_pca.outlier)."
                     ),
                     outlier=hl.struct(
-                        Description=""
+                        Description="Whether the sample was an outlier in the global population specific PCAs."
                     ),
                 ),
             ),
-            gnomad_labeled_subpop=hl.struct(Description=""),
+            gnomad_labeled_subpop=hl.struct(Description="Similar to the 'hgdp_tgp_meta.population' annotation, this is the sample's population label supplied by HGDP or 1KG with slight modifications that were used to harmonize labels with other gnomAD samples."),
         ),
     ),
     high_quality=hl.struct(
@@ -885,7 +885,7 @@ VARIANT_ANNOTATION_DICT = hl.struct(
                 Description="CADD Phred-like scores ('scaled C-scores') ranging from 1 to 99, based on the rank of each variant relative to all possible 8.6 billion substitutions in the human reference genome. Larger values are more deleterious. More information can be found on the CADD website: https://cadd.gs.washington.edu/info."
             ),
             has_duplicate=hl.struct(
-                Description="a True/False flag that indicates whether the variant has more than one CADD score associated with it*."
+                Description="A True/False flag that indicates whether the variant has more than one CADD score associated with it. For a small set of variants, the in silico predictors calculated multiple scores per variant based on additional information. For example, if a variant is found in multiple transcripts or if it has multiple trinucleotide contexts, an in silico predictor may report scores for multiple scenarios. The highest score was taken for each variant in the cases where the in silico predictor calculates multiple scores, and we flag variants with multiple scores."
             ),
         ),
     ),
@@ -896,7 +896,7 @@ VARIANT_ANNOTATION_DICT = hl.struct(
                 Description="Revel’s numerical score from 0 to 1."
             ),
             has_duplicate=hl.struct(
-                Description="a True/False flag that indicates whether the variant has more than one revel_score associated with it*."
+                Description="A True/False flag that indicates whether the variant has more than one revel_score associated with it. For a small set of variants, the in silico predictors calculated multiple scores per variant based on additional information. For example, if a variant is found in multiple transcripts or if it has multiple trinucleotide contexts, an in silico predictor may report scores for multiple scenarios. The highest score was taken for each variant in the cases where the in silico predictor calculates multiple scores, and we flag variants with multiple scores."
             ),
         ),
     ),
@@ -909,7 +909,7 @@ VARIANT_ANNOTATION_DICT = hl.struct(
                 Description="The consequence term associated with the max delta score in 'splice_ai’."
             ),
             has_duplicate=hl.struct(
-                Description="a True/False flag that indicates whether the variant has more than one splice_ai score associated with it*."
+                Description="A True/False flag that indicates whether the variant has more than one splice_ai score associated with it. For a small set of variants, the in silico predictors calculated multiple scores per variant based on additional information. For example, if a variant is found in multiple transcripts or if it has multiple trinucleotide contexts, an in silico predictor may report scores for multiple scenarios. The highest score was taken for each variant in the cases where the in silico predictor calculates multiple scores, and we flag variants with multiple scores."
             ),
         ),
     ),
@@ -919,7 +919,7 @@ VARIANT_ANNOTATION_DICT = hl.struct(
                 Description="PrimateAI's deleteriousness score from 0 (less deleterious) to 1 (more deleterious)."
             ),
             has_duplicate=hl.struct(
-                Description="a True/False flag that indicates whether the variant has more than one primate_ai_score associated with it*."
+                Description="A True/False flag that indicates whether the variant has more than one primate_ai_score associated with it. For a small set of variants, the in silico predictors calculated multiple scores per variant based on additional information. For example, if a variant is found in multiple transcripts or if it has multiple trinucleotide contexts, an in silico predictor may report scores for multiple scenarios. The highest score was taken for each variant in the cases where the in silico predictor calculates multiple scores, and we flag variants with multiple scores."
             ),
         ),
     ),
