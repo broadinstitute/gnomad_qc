@@ -625,6 +625,7 @@ VARIANT_ANNOTATION_DICT = hl.struct(
                 ),
             ),
         ),
+    ),
     gnomad_raw_qual_hists=hl.struct(
         Description="gnomAD genotype quality metric histograms.",
         sub_annotations=hl.struct(
@@ -831,7 +832,6 @@ VARIANT_ANNOTATION_DICT = hl.struct(
     ),
     vep=hl.struct(
         Description="Consequence annotations from Ensembl VEP. More details about VEP output is described here: https://uswest.ensembl.org/info/docs/tools/vep/vep_formats.html#output. VEP was run using the LOFTEE plugin and information about the additional LOFTEE annotations can be found here: https://github.com/konradjk/loftee."
-        ),
     ),
     vqsr=hl.struct(
         Description="VQSR related variant annotations.",
