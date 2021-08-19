@@ -53,7 +53,7 @@ logger.setLevel(logging.INFO)
 
 AS_FIELDS.remove("InbreedingCoeff")
 
-GLOBAL_SAMPLE_ANNOTATION_DICT = hl.struct(
+GLOBAL_SAMPLE_ANNOTATIONS = hl.struct(
     gnomad_sex_imputation_ploidy_cutoffs=hl.struct(
         Description=(
             "Contains sex chromosome ploidy cutoffs used when determining sex chromosome karyotypes for the gnomAD sex imputation. Format: (upper cutoff for single X, (lower cutoff for double X, upper cutoff for double X), lower cutoff for triple X) and (lower cutoff for single Y, upper cutoff for single Y), lower cutoff for double Y)."
@@ -92,7 +92,7 @@ GLOBAL_SAMPLE_ANNOTATION_DICT = hl.struct(
         ),
     ),
 )
-GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
+GLOBAL_VARIANT_ANNOTATIONS = hl.struct(
     hgdp_tgp_freq_meta=hl.struct(
         Description=(
             "HGDP and 1KG frequency metadata. An ordered list containing the frequency aggregation group for each element of the hgdp_tgp_freq array row annotation."
@@ -169,11 +169,11 @@ GLOBAL_VARIANT_ANNOTATION_DICT = hl.struct(
     vep_csq_header=hl.struct(Description="VEP header for VCF export."),
     dbsnp_version=hl.struct(Description="dbSNP version."),
 )
-GLOBAL_ANNOTATION_DICT = hl.struct(
-    **GLOBAL_SAMPLE_ANNOTATION_DICT, **GLOBAL_VARIANT_ANNOTATION_DICT
+GLOBAL_ANNOTATIONS = hl.struct(
+    **GLOBAL_SAMPLE_ANNOTATIONS, **GLOBAL_VARIANT_ANNOTATIONS
 )
 
-SAMPLE_ANNOTATION_DICT = hl.struct(
+SAMPLE_ANNOTATIONS = hl.struct(
     s=hl.struct(Description="Sample ID."),
     bam_metrics=hl.struct(
         Description="Sample level metrics obtained from BAMs/CRAMs.",
@@ -452,7 +452,7 @@ SAMPLE_ANNOTATION_DICT = hl.struct(
     ),
 )
 
-VARIANT_ANNOTATION_DICT = hl.struct(
+VARIANT_ANNOTATIONS = hl.struct(
     locus=hl.struct(
         Description="Variant locus. Contains contig and position information.",
     ),
@@ -1028,8 +1028,8 @@ def prepare_sample_annotations() -> hl.Table:
         meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP)
     )
     meta_ht = meta_ht.select_globals(
-        global_annotation_descriptions=GLOBAL_SAMPLE_ANNOTATION_DICT,
-        sample_annotation_descriptions=SAMPLE_ANNOTATION_DICT,
+        global_annotation_descriptions=GLOBAL_SAMPLE_ANNOTATIONS,
+        sample_annotation_descriptions=SAMPLE_ANNOTATIONS,
         sex_imputation_ploidy_cutoffs=meta_ht.sex_imputation_ploidy_cutoffs,
         population_inference_pca_metrics=hl.struct(
             n_pcs=meta_ht.population_inference_pca_metrics.n_pcs,
@@ -1238,8 +1238,8 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
 
     logger.info("Adding global variant annotations...")
     ht = ht.annotate_globals(
-        global_annotation_descriptions=GLOBAL_VARIANT_ANNOTATION_DICT,
-        variant_annotation_descriptions=VARIANT_ANNOTATION_DICT,
+        global_annotation_descriptions=GLOBAL_VARIANT_ANNOTATIONS,
+        variant_annotation_descriptions=VARIANT_ANNOTATIONS,
         hgdp_tgp_freq_meta=subset_freq.index_globals().freq_meta,
         hgdp_tgp_freq_index_dict=make_freq_index_dict(
             hl.eval(subset_freq.index_globals().freq_meta),
@@ -1327,7 +1327,7 @@ def create_full_subset_dense_mt(
     )
     mt = mt.annotate_cols(**meta_ht[mt.col_key])
     mt = mt.annotate_globals(
-        global_annotation_descriptions=hl.literal(GLOBAL_ANNOTATION_DICT),
+        global_annotation_descriptions=hl.literal(GLOBAL_ANNOTATIONS),
         **meta_ht.drop("global_annotation_descriptions").index_globals(),
     )
 
