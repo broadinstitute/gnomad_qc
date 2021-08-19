@@ -68,5 +68,4 @@ if __name__ == "__main__":
     parser.add_argument('--run_pc_relate', help='Run PC-relate on v2 exomes/v3 combined release QC MT', action='store_true')
     parser.add_argument('--filter_to_new_3_1_samples', help='Only run the join/PC_relate on v2 exomes combined with v3.1 new samples.', action='store_true')
 
-
     main(parser.parse_args())
