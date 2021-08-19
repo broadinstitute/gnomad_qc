@@ -1,5 +1,6 @@
 import argparse
 import logging
+from typing import Dict
 
 import hail as hl
 
@@ -1223,11 +1224,30 @@ SAMPLE_QC_METRICS = [
 ]
 
 
-def get_sample_qc_filter_struct_expr(ht):
+def convert_heterogeneous_dict_to_struct(global_dict: Dict) -> hl.struct:
     """
+    Convert heterogeneous dictionary to multilevel Hail struct.
 
-    :param ht:
-    :return:
+    :param global_dict: Heterogeneous dictionary to convert into a Hail struct.
+    :return: Global dictionary converted to struct.
+    """
+    if isinstance(global_dict, dict):
+        return hl.struct(
+            **{
+                k: convert_heterogeneous_dict_to_struct(global_dict[k])
+                for k in global_dict
+            }
+        )
+    else:
+        return global_dict
+
+
+def get_sample_qc_filter_struct_expr(ht: hl.Table) -> hl.struct:
+    """
+    Create expression for the final filter struct indicating hard filtered samples and subcontinental PCA outliers.
+
+    :param ht: Input Table containing hard filter information.
+    :return: Struct expression for sample QC filters.
     """
     logger.info(
         "Read in population specific PCA outliers (list includes one duplicate sample)..."
@@ -1303,9 +1323,14 @@ def prepare_sample_annotations() -> hl.Table:
     meta_ht = meta_ht.filter(
         meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP)
     )
+
     meta_ht = meta_ht.select_globals(
-        global_annotation_descriptions=GLOBAL_SAMPLE_ANNOTATIONS,
-        sample_annotation_descriptions=SAMPLE_ANNOTATIONS,
+        global_annotation_descriptions=convert_heterogeneous_dict_to_struct(
+            GLOBAL_SAMPLE_ANNOTATIONS
+        ),
+        sample_annotation_descriptions=convert_heterogeneous_dict_to_struct(
+            SAMPLE_ANNOTATIONS
+        ),
         sex_imputation_ploidy_cutoffs=meta_ht.sex_imputation_ploidy_cutoffs,
         population_inference_pca_metrics=hl.struct(
             n_pcs=meta_ht.population_inference_pca_metrics.n_pcs,
@@ -1398,7 +1423,6 @@ def prepare_sample_annotations() -> hl.Table:
         high_quality=~meta_ht.sample_filters.hard_filtered
         & ~meta_ht.sample_filters.pop_outlier,
     )
-    meta_ht.show(50)
 
     return meta_ht
 
@@ -1514,8 +1538,12 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
 
     logger.info("Adding global variant annotations...")
     ht = ht.annotate_globals(
-        global_annotation_descriptions=GLOBAL_VARIANT_ANNOTATIONS,
-        variant_annotation_descriptions=VARIANT_ANNOTATIONS,
+        global_annotation_descriptions=convert_heterogeneous_dict_to_struct(
+            GLOBAL_VARIANT_ANNOTATIONS
+        ),
+        variant_annotation_descriptions=convert_heterogeneous_dict_to_struct(
+            VARIANT_ANNOTATIONS
+        ),
         hgdp_tgp_freq_meta=subset_freq.index_globals().freq_meta,
         hgdp_tgp_freq_index_dict=make_freq_index_dict(
             hl.eval(subset_freq.index_globals().freq_meta),
@@ -1603,7 +1631,9 @@ def create_full_subset_dense_mt(
     )
     mt = mt.annotate_cols(**meta_ht[mt.col_key])
     mt = mt.annotate_globals(
-        global_annotation_descriptions=hl.literal(GLOBAL_ANNOTATIONS),
+        global_annotation_descriptions=convert_heterogeneous_dict_to_struct(
+            GLOBAL_ANNOTATIONS
+        ),
         **meta_ht.drop("global_annotation_descriptions").index_globals(),
     )
 
