@@ -1411,8 +1411,6 @@ def main(args):
 
     if args.create_subset_sparse_mt:
         # NOTE: no longer filtering to high_quality by request from Alicia Martin, but we do filter to variants in
-        # high_quality samples in the frequency code, so how to handle that, just filter to martin high_quality? Can we maybe justt apply the frequency code to tthe dense dataaset after that filter instead?
-        meta_ht = sample_annotation_resource.ht()
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
         )
@@ -1460,7 +1458,7 @@ def main(args):
             "with '--test' to create one."
         )
 
-    if args.create_variant_annotation_ht:
+    if args.create_variant_annotation_ht:  # TODO: Need to change this to do frequency calculation on new sample QC
         logger.info("Creating variant annotation Hail Table")
         ht = sparse_mt_resource.mt().rows().select().select_globals()
 
