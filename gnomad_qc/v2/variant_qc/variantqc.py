@@ -1,6 +1,7 @@
 from gnomad.variant_qc.evaluation import add_rank
-from gnomad.utils.slack import try_slack
+from gnomad.utils.slack import slack_notifications
 from gnomad.variant_qc import random_forest
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v2.resources.variant_qc import *
 from pprint import pformat
 import json
@@ -659,6 +660,7 @@ if __name__ == '__main__':
         sys.exit('Error: --run_hash and --train_rf are mutually exclusive. --train_rf will generate a run hash.')
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)

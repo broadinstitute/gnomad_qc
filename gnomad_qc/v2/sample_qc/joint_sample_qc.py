@@ -16,9 +16,10 @@ from sklearn.ensemble import RandomForestClassifier
 import pandas as pd
 import pickle
 import hail as hl
-from gnomad.utils.slack import try_slack
+from gnomad.utils.slack import slack_notifications
 from gnomad.utils.filtering import filter_to_autosomes, filter_low_conf_regions
 from gnomad.sample_qc.ancestry import pc_project, assign_population_pcs
+from gnomad_qc.slack_creds import slack_token
 import logging
 from typing import List, Tuple
 import argparse
@@ -417,6 +418,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)
