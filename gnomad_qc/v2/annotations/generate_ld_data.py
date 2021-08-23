@@ -1,11 +1,12 @@
 import gnomad.resources.grch37.gnomad_ld as ld_resources
+from gnomad.utils.slack import slack_notifications
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v2.resources import *
 from hail.utils import new_temp_file
 from hail.utils.java import Env
 from hail.linalg import BlockMatrix
 import sys
 import argparse
-from gnomad.utils.slack import try_slack
 
 COMMON_FREQ = 0.005
 RARE_FREQ = 0.0005
@@ -257,6 +258,7 @@ if __name__ == '__main__':
         sys.exit('Error: One and only one of --exomes or --genomes must be specified')
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)

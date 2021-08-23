@@ -2,8 +2,9 @@ import argparse
 import sys
 from gnomad.utils.annotations import unphase_call_expr, add_variant_type
 from gnomad.utils.filtering import filter_to_adj
-from gnomad.utils.slack import try_slack
+from gnomad.utils.slack import slack_notifications
 from gnomad.utils.file_utils import write_temp_gcs
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v2.resources import *
 
 
@@ -300,6 +301,7 @@ if __name__ == '__main__':
         sys.exit('Error: One and only one of --exomes or --genomes must be specified')
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)
