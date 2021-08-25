@@ -1428,7 +1428,9 @@ def prepare_sample_annotations() -> hl.Table:
 
 
 # TODO: Might be good to generalize this because a similar function is used in creating the release sites HT.
-def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl.Table:
+def prepare_variant_annotations(
+    ht: hl.Table, filter_lowqual: bool = True, vep_version: str = "101"
+) -> hl.Table:
     """
     Load and join all Tables with variant annotations.
 
@@ -1438,7 +1440,7 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
     """
     logger.info("Loading annotation tables...")
     filters_ht = final_filter.ht()
-    vep_ht = vep.ht()
+    # vep_ht = vep.ht() # Can't use because it was removed and not a full duplicate of variants in the release HT
     dbsnp_ht = dbsnp.ht().select("rsid")
     info_ht = get_info().ht()
     analyst_ht = analyst_annotations.ht()
@@ -1446,6 +1448,9 @@ def prepare_variant_annotations(ht: hl.Table, filter_lowqual: bool = True) -> hl
     score_name = hl.eval(filters_ht.filtering_model.score_name)
     subset_freq = get_freq(subset="hgdp-tgp").ht()
     release_ht = release_sites().ht()
+
+    vep_ht = vep_or_lookup_vep(ht, vep_version=vep_version)
+    vep_ht = vep_ht.annotate_globals(version=f"v{vep_version}")
 
     if filter_lowqual:
         logger.info("Filtering lowqual variants...")
@@ -1774,7 +1779,9 @@ def main(args):
         ht = hl.split_multi(ht)
         ht = ht.filter(hl.len(ht.alleles) > 1)
 
-        ht = prepare_variant_annotations(ht, filter_lowqual=False)
+        ht = prepare_variant_annotations(
+            ht, filter_lowqual=False, vep_version=args.vep_version
+        )
         ht.write(variant_annotation_resource.path, overwrite=args.overwrite)
 
     if args.create_subset_dense_mt:
@@ -1819,6 +1826,12 @@ if __name__ == "__main__":
         "--create_variant_annotation_ht",
         help="Create the HGDP + 1KG subset variant annotation Hail Table.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--vep_version",
+        help="Version of VEPed context Table to use in vep_or_lookup_vep",
+        action="store_true",
+        default="101",
     )
     parser.add_argument(
         "--create_subset_dense_mt",
