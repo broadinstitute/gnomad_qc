@@ -17,6 +17,7 @@ from gnomad.utils.annotations import get_adj_expr, region_flag_expr
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.release import make_freq_index_dict
 from gnomad.utils.slack import slack_notifications
+from gnomad.utils.vep import vep_or_lookup_vep
 from gnomad.utils.vcf import (
     AS_FIELDS,
     SITE_FIELDS,
@@ -1440,7 +1441,7 @@ def prepare_variant_annotations(
     """
     logger.info("Loading annotation tables...")
     filters_ht = final_filter.ht()
-    # vep_ht = vep.ht() # Can't use because it was removed and not a full duplicate of variants in the release HT
+    # vep_ht = vep.ht()  # Commented out because annotation file has been removed see comment below
     dbsnp_ht = dbsnp.ht().select("rsid")
     info_ht = get_info().ht()
     analyst_ht = analyst_annotations.ht()
@@ -1449,6 +1450,7 @@ def prepare_variant_annotations(
     subset_freq = get_freq(subset="hgdp-tgp").ht()
     release_ht = release_sites().ht()
 
+    # NOTE: Added for testing and v3.1.2 release because this annotation was removed and not a full duplicate of variants in the release HT
     vep_ht = vep_or_lookup_vep(ht, vep_version=vep_version)
     vep_ht = vep_ht.annotate_globals(version=f"v{vep_version}")
 
