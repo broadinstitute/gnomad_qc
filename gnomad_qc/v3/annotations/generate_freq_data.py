@@ -309,7 +309,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--hgdp_1kg_subset",
-        help="Calculate HGDP + 1KG frequencies with specialized sample QC. Note: create_hgdp_tgp_subset.py --create_sample_annotation_ht must be run prior to using this option.",
+        help="Calculate HGDP + 1KG frequencies with specialized sample QC. Note: create_hgdp_tgp_subset.py --create_sample_annotation_ht must be run prior to using this option. Subsets option does not need to be used.",
         action="store_true",
     )
     parser.add_argument(
