@@ -54,6 +54,9 @@ def main(args):
         default_reference="GRCh38",
     )
 
+    if args.hgdp_1kg_subset:
+        subsets = ["hgdp", "tgp"]
+
     invalid_subsets = []
     n_subsets_use_subpops = 0
     for s in subsets:
