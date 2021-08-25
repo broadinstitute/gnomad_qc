@@ -76,7 +76,7 @@ def main(args):
         )
     if args.hgdp_1kg_subset and not file_exists(hgdp_1kg_subset_annotations().path):
         raise DataException(
-            "There is currently no sample meta HT for the HGDP + TGP subset. "
+            "There is currently no sample meta HT for the HGDP + TGP subset."
             "Run create_hgdp_tgp_subset.py --create_sample_annotation_ht to use this option."
         )
 
