@@ -184,9 +184,13 @@ def main(args):
             mt = mt.select_rows("freq")
             if n_subsets_use_subpops:
                 POPS = POPS_STORED_AS_SUBPOPS
+
             mt = mt.annotate_globals(
                 freq_index_dict=make_freq_index_dict(
-                    freq_meta=freq_meta, pops=POPS, label_delimiter="-"
+                    freq_meta=freq_meta,
+                    pops=POPS,
+                    label_delimiter="-",
+                    subsets=["|".join(subsets)],
                 )
             )
             mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
