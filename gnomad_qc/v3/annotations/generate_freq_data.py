@@ -3,11 +3,16 @@ import logging
 
 import hail as hl
 
+from gnomad.resources.config import (
+    gnomad_public_resource_configuration,
+    GnomadPublicResourceSource,
+)
 from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     DOWNSAMPLINGS,
     POPS_STORED_AS_SUBPOPS,
     POPS_TO_REMOVE_FOR_POPMAX,
+    public_release,
     SUBSETS,
 )
 from gnomad.resources.resource_utils import DataException
@@ -52,6 +57,9 @@ def main(args):
     hl.init(
         log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",
         default_reference="GRCh38",
+    )
+    gnomad_public_resource_configuration.source = (
+        GnomadPublicResourceSource.GOOGLE_CLOUD_PUBLIC_DATASETS
     )
 
     if args.hgdp_1kg_subset:
@@ -143,11 +151,12 @@ def main(args):
         )
         # Load v3.0 allele frequencies to avoid an extra frequency calculation
         # NOTE: Using previous callset AF works for small incremental changes to a callset, but we will need to revisit for large increments
-        freq_ht = get_freq(version="3").ht()
+        freq_ht = public_release("genomes").versions["3.0"].ht()
         freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
 
+        # TODO: Change to use hom_alt_depletion_fix need to think about addition of het_non_ref_expr though
         mt = mt.annotate_entries(
-            GT=hl.cond(
+            GT=hl.if_else(
                 (freq_ht[mt.row_key].AF > 0.01)
                 & mt.GT.is_het()
                 & (mt.AD[1] / mt.DP > 0.9),
