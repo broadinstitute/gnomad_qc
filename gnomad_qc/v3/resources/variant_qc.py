@@ -12,7 +12,10 @@ from gnomad.resources.resource_utils import (
     VersionedMatrixTableResource,
     VersionedTableResource,
 )
-from gnomad_qc.v3.resources.constants import CURRENT_VARIANT_QC_VERSION, VARIANT_QC_VERSIONS
+from gnomad_qc.v3.resources.constants import (
+    CURRENT_VARIANT_QC_VERSION,
+    VARIANT_QC_VERSIONS,
+)
 
 SYNDIP = "CHMI_CHMI3_WGS2"
 """
@@ -25,11 +28,7 @@ String representation for NA12878 truth sample
 """
 
 TRUTH_SAMPLES = {
-    "syndip": {
-        "s": SYNDIP,
-        "truth_mt": syndip,
-        "hc_intervals": syndip_hc_intervals,
-    },
+    "syndip": {"s": SYNDIP, "truth_mt": syndip, "hc_intervals": syndip_hc_intervals,},
     "NA12878": {
         "s": NA12878,
         "truth_mt": na12878_giab,
