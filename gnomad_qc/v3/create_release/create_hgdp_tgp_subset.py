@@ -1372,7 +1372,11 @@ def prepare_sample_annotations() -> hl.Table:
             "training_pop", "training_pop_all"
         ),
         gnomad_sample_qc_residuals=meta_ht.sample_qc.select(
-            *[k for k in meta_ht.sample_qc.keys() if "_residual" in k]
+            *[
+                k
+                for k in meta_ht.sample_qc.keys()
+                if "_residual" in k and k.replace("_residual", "") in SAMPLE_QC_METRICS
+            ]
         ),
         gnomad_sample_filters=meta_ht.sample_filters.select(
             "hard_filters", "hard_filtered", "release_related", "qc_metrics_filters"
