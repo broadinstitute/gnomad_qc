@@ -1456,18 +1456,22 @@ def prepare_variant_annotations(
     """
     logger.info("Loading annotation tables...")
     filters_ht = final_filter.ht()
-    # vep_ht = vep.ht()  # Commented out because annotation file has been removed see comment below
+    # vep_ht = vep.ht()  # Commented out for v3.1.2 release because annotation file has been removed
     dbsnp_ht = dbsnp.ht().select("rsid")
-    info_ht = get_info().ht()
-    analyst_ht = analyst_annotations.ht()
-    freq_ht = get_freq().ht()
     score_name = hl.eval(filters_ht.filtering_model.score_name)
-    subset_freq = get_freq(subset="hgdp-tgp").ht()
-    release_ht = release_sites().ht()
+    # subset_freq = get_freq(subset="hgdp-tgp").ht()
+    subset_freq = hl.read_table(
+        "gs://gnomad-tmp/gnomad_v3.1.1_qc_data/test_freq.hgdp-tgp.ht"
+    )
+    release_ht = release_sites(public=True).versions["3.1.1"].ht()
 
-    # NOTE: Added for testing and v3.1.2 release because this annotation was removed and not a full duplicate of variants in the release HT
+    # NOTE: Added for v3.1.2 release because this annotation was removed and not a full duplicate of variants in the release HT
     vep_ht = vep_or_lookup_vep(ht, vep_version=vep_version)
     vep_ht = vep_ht.annotate_globals(version=f"v{vep_version}")
+
+    if not file_exists(get_info().path) and file_exists(get_info(split=False).path):
+        from gnomad_qc.v3.annotations.generate_qc_annotations import split_info
+        info_ht = split_info().drop("old_locus", "old_alleles")
 
     if filter_lowqual:
         logger.info("Filtering lowqual variants...")
@@ -1495,7 +1499,9 @@ def prepare_variant_annotations(
             omni=keyed_filters.omni,
             mills=keyed_filters.mills,
             monoallelic=keyed_filters.monoallelic,
-            InbreedingCoeff=freq_ht[info_ht.key].InbreedingCoeff,
+            InbreedingCoeff=release_ht[
+                info_ht.key
+            ].info.InbreedingCoeff,  # NOTE: Changed to use release HT instead of freq
             **{f"{score_name}": keyed_filters[f"{score_name}"]},
         )
     )
@@ -1545,7 +1551,6 @@ def prepare_variant_annotations(
             prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         ),
         allele_info=keyed_filters.allele_info,
-        **analyst_ht[ht.key],
         hgdp_tgp_freq=subset_freq[ht.key].freq,
         gnomad_freq=keyed_release.freq[: len(freq_meta)],
         gnomad_popmax=keyed_release.popmax,
@@ -1554,6 +1559,10 @@ def prepare_variant_annotations(
         gnomad_qual_hists=keyed_release.qual_hists,
         gnomad_age_hist_het=keyed_release.age_hist_het,
         gnomad_age_hist_hom=keyed_release.age_hist_hom,
+        cadd=keyed_release.cadd,
+        revel=keyed_release.revel,
+        splice_ai=keyed_release.splice_ai,
+        primate_ai=keyed_release.primate_ai,
         AS_lowqual=keyed_info.AS_lowqual,
         telomere_or_centromere=hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]),
     )
