@@ -1270,7 +1270,9 @@ def get_sample_qc_filter_struct_expr(ht: hl.Table) -> hl.struct:
     return hl.struct(
         hard_filters=ht.gnomad_sample_filters.hard_filters,
         hard_filtered=ht.gnomad_sample_filters.hard_filtered,
-        pop_outlier=set_to_remove.contains(ht["s"]),
+        pop_outlier=hl.if_else(
+            ht.s == SYNDIP, hl.missing(hl.tbool), set_to_remove.contains(ht["s"])
+        ),
     )
 
 
