@@ -1479,7 +1479,6 @@ def prepare_variant_annotations(
 
     logger.info("Assembling 'info' field...")
     info_fields = SITE_FIELDS + AS_FIELDS
-    info_fields.remove("AS_VQSLOD")
     missing_info_fields = set(info_fields).difference(info_ht.info.keys())
     select_info_fields = set(info_fields).intersection(info_ht.info.keys())
     logger.info(
@@ -1494,7 +1493,6 @@ def prepare_variant_annotations(
             *select_info_fields,
             AS_SOR=keyed_filters.AS_SOR,
             SOR=keyed_filters.SOR,
-            singleton=keyed_filters.singleton,
             transmitted_singleton=keyed_filters.transmitted_singleton,
             omni=keyed_filters.omni,
             mills=keyed_filters.mills,
