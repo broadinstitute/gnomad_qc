@@ -70,7 +70,7 @@ GLOBAL_SAMPLE_ANNOTATIONS = {
             "probability of belonging to a given population for the gnomAD population inference."
         )
     },
-    "sample_hard_filter_cutoffs=": {
+    "sample_hard_filter_cutoffs": {
         "Description": (
             "Contains the cutoffs used for hard-filtering samples prior to sample QC. Sample QC metrics are computed "
             "using the Hail sample_qc module on all autosomal bi-allelic SNVs. Samples are removed if they are clear "
@@ -188,7 +188,7 @@ GLOBAL_VARIANT_ANNOTATIONS = {
     },
     "vep_version": {"Description": "VEP version."},
     "vep_csq_header": {"Description": "VEP header for VCF export."},
-    "dbsnp_version=": {"Description": "dbSNP version."},
+    "dbsnp_version": {"Description": "dbSNP version."},
 }
 GLOBAL_ANNOTATIONS = {**GLOBAL_SAMPLE_ANNOTATIONS, **GLOBAL_VARIANT_ANNOTATIONS}
 
@@ -270,9 +270,9 @@ SAMPLE_ANNOTATIONS = {
             "chrY_ploidy": {
                 "Description": "Sample's chromosome Y ploidy (chrY_mean_dp normalized using chr20_mean_dp)."
             },
-            "X_karyotype=": {"Description": "Sample's chromosome X karyotype."},
-            "Y_karyotype=": {"Description": "Sample's chromosome Y karyotype."},
-            "sex_karyotype=": {
+            "X_karyotype": {"Description": "Sample's chromosome X karyotype."},
+            "Y_karyotype": {"Description": "Sample's chromosome Y karyotype."},
+            "sex_karyotype": {
                 "Description": "Sample's sex karyotype (combined X and Y karyotype)."
             },
             "f_stat": {
@@ -331,10 +331,20 @@ SAMPLE_ANNOTATIONS = {
             "ancestry assignment from each sample QC metric calculated using hl.sample_qc().",
         ),
         "sub_annotations": {
-            "n_deletion_residual": {
+            "n_snp_residual": {
                 "Description": (
-                    "Residuals after regressing out the first eight ancestry PCs from the number of deletion alternate "
+                    "Residuals after regressing out the first eight ancestry PCs from the number of SNP alternate "
                     "alleles."
+                ),
+            },
+            "r_ti_tv_residual": {
+                "Description": (
+                    "Residuals after regressing out the first eight ancestry PCs from the Transition/Transversion ratio."
+                )
+            },
+            "r_insertion_deletion_residual": {
+                "Description": (
+                    "Residuals after regressing out the first eight ancestry PCs from the Insertion/Deletion allele ratio."
                 )
             },
             "n_insertion_residual": {
@@ -343,10 +353,15 @@ SAMPLE_ANNOTATIONS = {
                     "alleles."
                 ),
             },
-            "n_snp_residual": {
+            "n_deletion_residual": {
                 "Description": (
-                    "Residuals after regressing out the first eight ancestry PCs from the number of SNP alternate "
+                    "Residuals after regressing out the first eight ancestry PCs from the number of deletion alternate "
                     "alleles."
+                )
+            },
+            "r_het_hom_var_residual": {
+                "Description": (
+                    "Residuals after regressing out the first eight ancestry PCs from the Het/HomVar call ratio."
                 ),
             },
             "n_transition_residual": {
@@ -359,21 +374,6 @@ SAMPLE_ANNOTATIONS = {
                 "Description": (
                     "Residuals after regressing out the first eight ancestry PCs from the number of transversion "
                     "alternate alleles."
-                )
-            },
-            "r_het_hom_var_residual": {
-                "Description": (
-                    "Residuals after regressing out the first eight ancestry PCs from the Het/HomVar call ratio."
-                ),
-            },
-            "r_insertion_deletion_residual": {
-                "Description": (
-                    "Residuals after regressing out the first eight ancestry PCs from the Insertion/Deletion allele ratio."
-                )
-            },
-            "r_ti_tv_residual": {
-                "Description": (
-                    "Residuals after regressing out the first eight ancestry PCs from the Transition/Transversion ratio."
                 )
             },
         },
@@ -438,11 +438,11 @@ SAMPLE_ANNOTATIONS = {
                     "struct containing the following information about this relationship:"
                 ),
                 "sub_annotations": {
-                    "s": "Sample ID.",
-                    "kin": "Kinship estimate.",
-                    "ibd0": "IBD0 estimate.",
-                    "ibd1": "IBD1 estimate.",
-                    "ibd2": "IBD2 estimate.",
+                    "s": {"Description": "Sample ID."},
+                    "kin": {"Description": "Kinship estimate."},
+                    "ibd0": {"Description": "IBD0 estimate."},
+                    "ibd1": {"Description": "IBD1 estimate."},
+                    "ibd2": {"Description": "IBD2 estimate."},
                 },
             },
             "related": {
@@ -1059,7 +1059,7 @@ VARIANT_ANNOTATIONS = {
             },
         },
     },
-    "vep=": {
+    "vep": {
         "Description": (
             "Consequence annotations from Ensembl VEP. More details about VEP output is described here: "
             "https://uswest.ensembl.org/info/docs/tools/vep/vep_formats.html#output. VEP was run using the LOFTEE "
@@ -1090,23 +1090,27 @@ VARIANT_ANNOTATIONS = {
     "region_flag": {
         "Description": "Struct containing flags for problematic regions.",
         "sub_annotations": {
-            "lcr": {"Description": "Variant falls within a low complexity region.",},
+            "lcr": {"Description": "Variant falls within a low complexity region."},
             "segdup": {
                 "Description": "Variant falls within a segmental duplication region."
             },
         },
     },
-    "allele_info": {"Description": "Allele information.",},
-    "variant_type": {
-        "Description": "Variant type (snv, indel, multi-snv, multi-indel, or mixed).",
+    "allele_info": {
+        "Description": "Allele information.",
+        "sub_annotations": {
+            "variant_type": {
+                "Description": "Variant type (snv, indel, multi-snv, multi-indel, or mixed).",
+            },
+            "allele_type": {
+                "Description": "Allele type (snv, insertion, deletion, or mixed).",
+            },
+            "n_alt_alleles": {
+                "Description": "Total number of alternate alleles observed at variant locus.",
+            },
+        },
     },
-    "allele_type": {
-        "Description": "Allele type (snv, insertion, deletion, or mixed).",
-    },
-    "n_alt_alleles": {
-        "Description": "Total number of alternate alleles observed at variant locus.",
-    },
-    "was_mixed": {"Description": "Variant type was mixed.",},
+    "was_mixed": {"Description": "Variant type was mixed."},
     "cadd": {
         "sub_annotations": {
             "raw_score": {
