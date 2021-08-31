@@ -1681,7 +1681,7 @@ def create_full_subset_dense_mt(
     # NOTE: Using v3.0 frequencies here and not v3.1 frequencies because
     # the frequency code adjusted genotypes (homalt depletion fix) using v3.0 frequencies
     # https://github.com/broadinstitute/gnomad_qc/blob/efea6851a421f4bc66b73db588c0eeeb7cd27539/gnomad_qc/v3/annotations/generate_freq_data_hgdp_tgp.py#L129
-    freq_ht = get_freq(version="3").ht()
+    freq_ht = release_sites(public=True).versions["3.0"].ht().select("freq")
     mt = hom_alt_depletion_fix(
         mt, het_non_ref_expr=mt._het_non_ref, af_expr=freq_ht[mt.row_key].freq[0].AF
     )
