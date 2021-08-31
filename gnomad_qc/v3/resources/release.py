@@ -40,7 +40,6 @@ def qual_hists_json_path(release_version: str = CURRENT_RELEASE) -> str:
     return f"gs://gnomad/release/{release_version}/json/gnomad.genomes.r{release_version}.json"
 
 
-# TODO: Need to fix this to work for 3.0, 3.1, and 3.1.1
 def release_ht_path(
     data_type: str = "genomes",
     release_version: str = CURRENT_RELEASE,
