@@ -1338,13 +1338,18 @@ def prepare_sample_annotations() -> hl.Table:
         sample_annotation_descriptions=convert_heterogeneous_dict_to_struct(
             SAMPLE_ANNOTATIONS
         ),
-        sex_imputation_ploidy_cutoffs=meta_ht.sex_imputation_ploidy_cutoffs,
-        population_inference_pca_metrics=hl.struct(
+        gnomad_sex_imputation_ploidy_cutoffs=meta_ht.sex_imputation_ploidy_cutoffs,
+        gnomad_population_inference_pca_metrics=hl.struct(
             n_pcs=meta_ht.population_inference_pca_metrics.n_pcs,
             min_prob=meta_ht.population_inference_pca_metrics.min_prob,
         ),
         sample_hard_filter_cutoffs=meta_ht.hard_filter_cutoffs,
-        age_distribution=release_sites().ht().index_globals().age_distribution,
+        gnomad_sample_qc_metric_outlier_cutoffs=meta_ht.outlier_detection_metrics,
+        gnomad_age_distribution=release_sites(public=True)
+        .versions["3.1.1"]
+        .ht()
+        .index_globals()
+        .age_distribution,
     )
 
     # Use a pre-computed relatedness HT from the Martin group - details of it's creation are
