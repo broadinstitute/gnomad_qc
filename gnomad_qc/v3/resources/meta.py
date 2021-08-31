@@ -1,11 +1,17 @@
 import hail as hl
-from gnomad.resources.resource_utils import (PedigreeResource, TableResource,
-                                             VersionedPedigreeResource,
-                                             VersionedTableResource)
+from gnomad.resources.resource_utils import (
+    PedigreeResource,
+    TableResource,
+    VersionedPedigreeResource,
+    VersionedTableResource,
+)
 
-from gnomad_qc.v3.resources.constants import (CURRENT_META_VERSION,
-                                              CURRENT_PROJECT_META_VERSION,
-                                              CURRENT_RELEASE, RELEASES)
+from gnomad_qc.v3.resources.constants import (
+    CURRENT_META_VERSION,
+    CURRENT_PROJECT_META_VERSION,
+    CURRENT_RELEASE,
+    RELEASES,
+)
 
 
 # Samples metadata
@@ -33,6 +39,7 @@ def meta_tsv_path(
         f"{_meta_root_path(version)}/gnomad_v{version}_metadata_v{meta_version}.tsv.gz"
     )
 
+
 _meta_versions = {
     "3.1": TableResource(
         path="gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_sample_qc_metadata.ht"
@@ -43,9 +50,7 @@ _meta_versions = {
 }
 
 _project_meta_versions = {
-    "3.1": TableResource(
-        path="gs://gnomad/metadata/genomes_v3.1/v3.1_project_meta.ht"
-    ),
+    "3.1": TableResource(path="gs://gnomad/metadata/genomes_v3.1/v3.1_project_meta.ht"),
     "3": TableResource(
         path="gs://gnomad/metadata/genomes_v3/09-09-2019_v3_project_meta.ht",
         import_func=hl.import_table,
