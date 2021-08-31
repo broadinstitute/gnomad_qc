@@ -90,8 +90,7 @@ def main(args):
         )
 
         if args.test:
-            logger.info("Filtering to two partitions on chr20")
-            mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20:1-1000000")])
+            logger.info("Filtering to the first two partitions")
             mt = mt._filter_partitions(range(2))
 
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
@@ -193,7 +192,7 @@ def main(args):
             )
             if args.test:
                 mt.rows().write(
-                    get_checkpoint_path(f"chr20_test_freq.{'-'.join(subsets)}"),
+                    get_checkpoint_path(f"test_freq.{'-'.join(subsets)}"),
                     overwrite=True,
                 )
             else:
@@ -288,7 +287,7 @@ def main(args):
 
             logger.info("Writing out frequency data...")
             if args.test:
-                ht.write(get_checkpoint_path("chr20_test_freq"), overwrite=True)
+                ht.write(get_checkpoint_path("test_freq"), overwrite=True)
             else:
                 ht.write(get_freq().path, overwrite=args.overwrite)
 
@@ -300,7 +299,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--test", help="Runs a test on two partitions of chr20.", action="store_true"
+        "--test", help="Runs a test on two partitions of the MT.", action="store_true"
     )
     parser.add_argument(
         "--include_non_release",
