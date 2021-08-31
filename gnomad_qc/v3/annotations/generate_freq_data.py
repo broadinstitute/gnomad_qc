@@ -93,6 +93,10 @@ def main(args):
             logger.info("Filtering to the first two partitions")
             mt = mt._filter_partitions(range(2))
 
+        logger.info(
+            "Annotate entries with het non ref status for use in the homozygous alternate depletion fix..."
+        )
+        mt = mt.annotate_entries(_het_non_ref=mt.LGT.is_het_non_ref())
         mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
         if args.include_non_release:
@@ -143,19 +147,11 @@ def main(args):
         )
         # Load v3.0 allele frequencies to avoid an extra frequency calculation
         # NOTE: Using previous callset AF works for small incremental changes to a callset, but we will need to revisit for large increments
-        freq_ht = public_release("genomes").versions["3.0"].ht()
-        freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
-
-        # TODO: Change to use hom_alt_depletion_fix need to think about addition of het_non_ref_expr though
-        mt = mt.annotate_entries(
-            GT=hl.if_else(
-                (freq_ht[mt.row_key].AF > 0.01)
-                & mt.GT.is_het()
-                & (mt.AD[1] / mt.DP > 0.9),
-                hl.call(1, 1),
-                mt.GT,
-            )
+        freq_ht = release_sites(public=True).versions["3.0"].ht().select("freq")
+        mt = hom_alt_depletion_fix(
+            mt, het_non_ref_expr=mt._het_non_ref, af_expr=freq_ht[mt.row_key].freq[0].AF
         )
+        mt = mt.drop("_het_non_ref")
 
         logger.info("Generating frequency data...")
         if subsets:
