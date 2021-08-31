@@ -1459,10 +1459,7 @@ def prepare_variant_annotations(
     # vep_ht = vep.ht()  # Commented out for v3.1.2 release because annotation file has been removed
     dbsnp_ht = dbsnp.ht().select("rsid")
     score_name = hl.eval(filters_ht.filtering_model.score_name)
-    # subset_freq = get_freq(subset="hgdp-tgp").ht()
-    subset_freq = hl.read_table(
-        "gs://gnomad-tmp/gnomad_v3.1.1_qc_data/test_freq.hgdp-tgp.ht"
-    )
+    subset_freq = get_freq(subset="hgdp-tgp").ht()
     release_ht = release_sites(public=True).versions["3.1.1"].ht()
 
     # NOTE: Added for v3.1.2 release because this annotation was removed and not a full duplicate of variants in the release HT
