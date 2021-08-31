@@ -8,8 +8,10 @@ from gnomad.resources.resource_utils import (
 )
 
 from gnomad_qc.v3.resources.constants import (
-    CURRENT_ANNOTATION_VERSION,
     ANNOTATION_VERSIONS,
+    CURRENT_ANNOTATION_VERSION,
+    CURRENT_INSILICO_ANNOTATION_VERSION,
+    INSILICO_ANNOTATION_VERSIONS,
 )
 
 
@@ -196,12 +198,11 @@ def get_freq(
 
 
 analyst_annotations = VersionedTableResource(
-    CURRENT_ANNOTATION_VERSION,
+    CURRENT_INSILICO_ANNOTATION_VERSION,
     {
         release: TableResource(
             f"{_annotations_root(release)}/gnomad_genomes_v{release}_in_silico_predictors.ht"
         )
-        for release in ANNOTATION_VERSIONS
-        if release != "3.0"
+        for release in INSILICO_ANNOTATION_VERSIONS
     },
 )

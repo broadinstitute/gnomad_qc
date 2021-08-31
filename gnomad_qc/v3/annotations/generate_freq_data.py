@@ -3,16 +3,11 @@ import logging
 
 import hail as hl
 
-from gnomad.resources.config import (
-    gnomad_public_resource_configuration,
-    GnomadPublicResourceSource,
-)
 from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     DOWNSAMPLINGS,
     POPS_STORED_AS_SUBPOPS,
     POPS_TO_REMOVE_FOR_POPMAX,
-    public_release,
     SUBSETS,
 )
 from gnomad.resources.resource_utils import DataException
@@ -41,7 +36,8 @@ from gnomad_qc.v3.resources.basics import (
     get_gnomad_v3_mt,
     qc_temp_prefix,
 )
-from gnomad_qc.v3.resources.release import hgdp_1kg_subset_annotations
+from gnomad_qc.v3.resources.release import hgdp_1kg_subset_annotations, release_sites
+from gnomad_qc.v3.utils import hom_alt_depletion_fix
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,9 +53,6 @@ def main(args):
     hl.init(
         log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",
         default_reference="GRCh38",
-    )
-    gnomad_public_resource_configuration.source = (
-        GnomadPublicResourceSource.GOOGLE_CLOUD_PUBLIC_DATASETS
     )
 
     if args.hgdp_1kg_subset:
