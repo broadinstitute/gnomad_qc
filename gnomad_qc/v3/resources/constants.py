@@ -4,6 +4,7 @@ DEFAULT_CURRENT_VERSION = "3.1"
 RELEASES = ["3.0", "3.1", "3.1.1"]
 CURRENT_RELEASE = "3.1.1"
 
+# NOTE: There were updates to the in silico annotations for v3.1.1
 INSILICO_ANNOTATION_VERSIONS = ["3.1", "3.1.1"]
 CURRENT_INSILICO_ANNOTATION_VERSION = "3.1.1"
 
