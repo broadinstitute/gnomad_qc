@@ -26,10 +26,8 @@ from gnomad.utils.vcf import (
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import (
-    analyst_annotations,
     get_freq,
     get_info,
-    vep,
 )
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta
