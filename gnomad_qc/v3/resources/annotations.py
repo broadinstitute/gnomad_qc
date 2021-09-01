@@ -7,10 +7,15 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, RELEASES
+from gnomad_qc.v3.resources.constants import (
+    CURRENT_INSILICO_ANNOTATION_VERSION,
+    CURRENT_VERSION,
+    VERSIONS,
+    INSILICO_ANNOTATION_VERSIONS,
+)
 
 
-def _annotations_root(version: str = CURRENT_RELEASE) -> str:
+def _annotations_root(version: str = CURRENT_VERSION) -> str:
     """
     Get root path to the variant annotation files
 
@@ -29,14 +34,14 @@ def get_info(split: bool = True) -> VersionedTableResource:
     """
 
     return VersionedTableResource(
-        CURRENT_RELEASE,
+        CURRENT_VERSION,
         {
             release: TableResource(
                 path="{}/gnomad_genomes_v{}_info{}.ht".format(
                     _annotations_root(release), release, ".split" if split else ""
                 )
             )
-            for release in RELEASES
+            for release in VERSIONS
         },
     )
 
@@ -53,7 +58,7 @@ def get_vqsr_filters(
     :return: VQSR filtering annotation file
     """
     return VersionedTableResource(
-        CURRENT_RELEASE,
+        CURRENT_VERSION,
         {
             release: TableResource(
                 "{}/filtering/{}{}{}.ht".format(
@@ -63,12 +68,12 @@ def get_vqsr_filters(
                     ".split" if split else "",
                 )
             )
-            for release in RELEASES
+            for release in VERSIONS
         },
     )
 
 
-def info_vcf_path(version: str = CURRENT_RELEASE) -> str:
+def info_vcf_path(version: str = CURRENT_VERSION) -> str:
     """
     Path to sites VCF (input information for running VQSR)
 
@@ -79,7 +84,7 @@ def info_vcf_path(version: str = CURRENT_RELEASE) -> str:
 
 
 def get_transmitted_singleton_vcf_path(
-    adj: bool = False, version: str = CURRENT_RELEASE
+    adj: bool = False, version: str = CURRENT_VERSION
 ) -> str:
     """
     Provides the path to the transmitted singleton VCF used as input to VQSR
@@ -92,91 +97,94 @@ def get_transmitted_singleton_vcf_path(
 
 
 last_END_position = VersionedTableResource(
-    CURRENT_RELEASE,
+    CURRENT_VERSION,
     {
         release: TableResource(
             f"{_annotations_root(release)}/gnomad_genomes_v{release}_last_END_positions.ht"
         )
-        for release in RELEASES
+        for release in VERSIONS
     },
 )
 
 freq = VersionedTableResource(
-    CURRENT_RELEASE,
+    CURRENT_VERSION,
     {
         release: TableResource(
             f"{_annotations_root(release)}/gnomad_genomes_v{release}.frequencies.ht"
         )
-        for release in RELEASES
+        for release in VERSIONS
     },
 )
 
 qual_hist = VersionedTableResource(
-    CURRENT_RELEASE,
+    CURRENT_VERSION,
     {
         release: TableResource(
             f"{_annotations_root(release)}/gnomad_genomes_v{release}.qual_hists.ht"
         )
-        for release in RELEASES
+        for release in VERSIONS
     },
 )
 
 vep = VersionedTableResource(
-    CURRENT_RELEASE,
+    CURRENT_VERSION,
     {
         release: TableResource(
             f"{_annotations_root(release)}/gnomad_genomes_v{release}_vep.ht"
         )
-        for release in RELEASES
+        for release in VERSIONS
     },
 )
 
 qc_ac = VersionedTableResource(
-    CURRENT_RELEASE,
+    CURRENT_VERSION,
     {
         release: TableResource(f"{_annotations_root(release)}/gnomad_genomes_qc_ac.ht")
-        for release in RELEASES
+        for release in VERSIONS
     },
 )
 
 fam_stats = VersionedTableResource(
-    CURRENT_RELEASE,
+    CURRENT_VERSION,
     {
         release: TableResource(
             f"{_annotations_root(release)}/gnomad_genomes_qc_fam_stats.ht"
         )
-        for release in RELEASES
+        for release in VERSIONS
     },
 )
 
 allele_data = VersionedTableResource(
-    CURRENT_RELEASE,
+    CURRENT_VERSION,
     {
         release: TableResource(
             f"{_annotations_root(release)}/gnomad_genomes_qc_allele_data.ht"
         )
-        for release in RELEASES
+        for release in VERSIONS
     },
 )
 
 
 def get_freq(
-    version: str = CURRENT_RELEASE, subset: Optional[str] = None
+    version: str = CURRENT_VERSION, subset: Optional[str] = None
 ) -> VersionedTableResource:
     """
     Get the frequency annotation table for a specified release.
 
     :param version: Version of annotation path to return
-    :param subset: One of the official subsets of the specified release (e.g., non_neuro, non_cancer, controls_and_biobanks)
+    :param subset: One of the official subsets of the specified release (e.g., non_neuro, non_cancer,
+        controls_and_biobanks) or a combination of them split by '-'
     :return: Hail Table containing subset or overall cohort frequency annotations
     """
     if version == "3" and subset:
         raise DataException("Subsets of gnomAD v3 do not exist")
 
-    if subset and subset not in SUBSETS:
-        raise DataException(
-            f"{subset} subset is not one of the following official subsets: {SUBSETS}"
-        )
+    if subset is not None:
+        for s in subset.split("-"):
+            if s not in SUBSETS:
+                raise DataException(
+                    f"{subset} subset is not one of the following official subsets: {SUBSETS}"
+                )
 
     return VersionedTableResource(
         version,
@@ -184,18 +192,17 @@ def get_freq(
             release: TableResource(
                 f"{_annotations_root(release)}/gnomad_genomes_v{release}.frequencies{'.' + subset if subset else ''}.ht"
             )
-            for release in RELEASES
+            for release in VERSIONS
         },
     )
 
 
 analyst_annotations = VersionedTableResource(
-    CURRENT_RELEASE,
+    CURRENT_INSILICO_ANNOTATION_VERSION,
     {
         release: TableResource(
             f"{_annotations_root(release)}/gnomad_genomes_v{release}_in_silico_predictors.ht"
         )
-        for release in RELEASES
-        if release != "3.0"
+        for release in INSILICO_ANNOTATION_VERSIONS
     },
 )

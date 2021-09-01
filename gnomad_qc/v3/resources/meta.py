@@ -1,11 +1,16 @@
 import hail as hl
-from gnomad.resources.resource_utils import (PedigreeResource, TableResource,
-                                             VersionedPedigreeResource,
-                                             VersionedTableResource)
+from gnomad.resources.resource_utils import (
+    PedigreeResource,
+    TableResource,
+    VersionedPedigreeResource,
+    VersionedTableResource,
+)
 
-from gnomad_qc.v3.resources.constants import (CURRENT_META_VERSION,
-                                              CURRENT_PROJECT_META_VERSION,
-                                              CURRENT_RELEASE, RELEASES)
+from gnomad_qc.v3.resources.constants import (
+    CURRENT_VERSION,
+    CURRENT_RELEASE,
+    RELEASES,
+)
 
 
 # Samples metadata
@@ -20,7 +25,7 @@ def _meta_root_path(version: str = CURRENT_RELEASE) -> str:
 
 
 def meta_tsv_path(
-    version: str = CURRENT_RELEASE, meta_version: str = CURRENT_META_VERSION
+    version: str = CURRENT_RELEASE, meta_version: str = CURRENT_VERSION
 ) -> str:
     """
     Gets the path to the finalized sample metadata information after sample QC
@@ -33,6 +38,7 @@ def meta_tsv_path(
         f"{_meta_root_path(version)}/gnomad_v{version}_metadata_v{meta_version}.tsv.gz"
     )
 
+
 _meta_versions = {
     "3.1": TableResource(
         path="gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_sample_qc_metadata.ht"
@@ -43,9 +49,7 @@ _meta_versions = {
 }
 
 _project_meta_versions = {
-    "3.1": TableResource(
-        path="gs://gnomad/metadata/genomes_v3.1/v3.1_project_meta.ht"
-    ),
+    "3.1": TableResource(path="gs://gnomad/metadata/genomes_v3.1/v3.1_project_meta.ht"),
     "3": TableResource(
         path="gs://gnomad/metadata/genomes_v3/09-09-2019_v3_project_meta.ht",
         import_func=hl.import_table,
@@ -90,10 +94,8 @@ _trios_versions = {
 }
 
 
-meta = VersionedTableResource(CURRENT_META_VERSION, _meta_versions)
-project_meta = VersionedTableResource(
-    CURRENT_PROJECT_META_VERSION, _project_meta_versions
-)
+meta = VersionedTableResource(CURRENT_VERSION, _meta_versions)
+project_meta = VersionedTableResource(CURRENT_VERSION, _project_meta_versions)
 pedigree = VersionedPedigreeResource("3.1", _pedigree_versions)
 trios = VersionedPedigreeResource("3.1", _trios_versions)
 ped_mendel_errors = VersionedTableResource(
