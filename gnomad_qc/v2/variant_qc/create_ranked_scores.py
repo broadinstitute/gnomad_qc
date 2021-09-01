@@ -1,6 +1,7 @@
 from gnomad.variant_qc.evaluation import add_rank
 from gnomad.utils.annotations import add_variant_type
-from gnomad.utils.slack import try_slack
+from gnomad.utils.slack import slack_notifications
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v2.resources.variant_qc import *
 import argparse
 import sys
@@ -420,6 +421,7 @@ if __name__ == '__main__':
         sys.exit('Error: At least one of --create_rank_file, --run_sanity_checks or --create_binned_file must be specified.')
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)
