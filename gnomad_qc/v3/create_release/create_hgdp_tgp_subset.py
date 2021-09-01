@@ -536,7 +536,7 @@ SAMPLE_ANNOTATIONS = {
                         )
                     },
                     "outlier": {
-                        "Description": "Whether the sample was an outlier in the global population specific PCAs."
+                        "Description": "Whether the sample was an outlier in the subcontinental PCAs."
                     },
                 },
             },
