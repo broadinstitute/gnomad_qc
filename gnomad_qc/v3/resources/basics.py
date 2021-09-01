@@ -5,9 +5,8 @@ from gnomad.resources.resource_utils import (
 )
 
 from gnomad_qc.v3.resources.constants import (
-    CURRENT_META_VERSION,
     CURRENT_RELEASE,
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
 )
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.sample_qc import hard_filtered_samples
@@ -41,21 +40,21 @@ def get_gnomad_v3_mt(
     if remove_hard_filtered_samples:
         mt = mt.filter_cols(
             hl.is_missing(
-                hard_filtered_samples.versions[CURRENT_SAMPLE_QC_VERSION].ht()[
+                hard_filtered_samples.versions[DEFAULT_CURRENT_VERSION].ht()[
                     mt.col_key
                 ]
             )
         )
 
     if samples_meta:
-        mt = mt.annotate_cols(meta=meta.versions[CURRENT_META_VERSION].ht()[mt.col_key])
+        mt = mt.annotate_cols(meta=meta.versions[DEFAULT_CURRENT_VERSION].ht()[mt.col_key])
 
         if release_only:
             mt = mt.filter_cols(mt.meta.release)
 
     elif release_only:
         mt = mt.filter_cols(
-            meta.versions[CURRENT_META_VERSION].ht()[mt.col_key].release
+            meta.versions[DEFAULT_CURRENT_VERSION].ht()[mt.col_key].release
         )
 
     if split:

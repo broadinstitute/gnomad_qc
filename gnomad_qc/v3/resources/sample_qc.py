@@ -8,13 +8,13 @@ from gnomad.resources.resource_utils import (
 from gnomad.sample_qc.relatedness import get_relationship_expr
 
 from gnomad_qc.v3.resources.constants import (
-    CURRENT_SAMPLE_QC_VERSION,
-    SAMPLE_QC_VERSIONS,
+    DEFAULT_CURRENT_VERSION,
+    DEFAULT_VERSIONS,
 )
 
 
 def get_sample_qc_root(
-    version: str = CURRENT_SAMPLE_QC_VERSION, mt: bool = False
+    version: str = DEFAULT_CURRENT_VERSION, mt: bool = False
 ) -> str:
     """
     Return path to sample QC root folder
@@ -37,19 +37,19 @@ def get_sample_qc(strat: str = "all") -> VersionedTableResource:
     :return: Sample QC table
     """
     return VersionedTableResource(
-        CURRENT_SAMPLE_QC_VERSION,
+        DEFAULT_CURRENT_VERSION,
         {
             release: TableResource(
                 f"{get_sample_qc_root(release)}/sample_qc_{strat}.ht"
             )
-            for release in SAMPLE_QC_VERSIONS
+            for release in DEFAULT_VERSIONS
         },
     )
 
 
 def _get_ancestry_pca_ht_path(
     part: str,
-    version: str = CURRENT_SAMPLE_QC_VERSION,
+    version: str = DEFAULT_CURRENT_VERSION,
     include_unreleasable_samples: bool = False,
 ) -> str:
     """
@@ -78,14 +78,14 @@ def ancestry_pca_loadings(
     :return: Ancestry PCA loadings
     """
     return VersionedTableResource(
-        CURRENT_SAMPLE_QC_VERSION,
+        DEFAULT_CURRENT_VERSION,
         {
             release: TableResource(
                 _get_ancestry_pca_ht_path(
                     "loadings", release, include_unreleasable_samples
                 )
             )
-            for release in SAMPLE_QC_VERSIONS
+            for release in DEFAULT_VERSIONS
         },
     )
 
@@ -100,14 +100,14 @@ def ancestry_pca_scores(
     :return: Ancestry PCA scores
     """
     return VersionedTableResource(
-        CURRENT_SAMPLE_QC_VERSION,
+        DEFAULT_CURRENT_VERSION,
         {
             release: TableResource(
                 _get_ancestry_pca_ht_path(
                     "scores", release, include_unreleasable_samples
                 )
             )
-            for release in SAMPLE_QC_VERSIONS
+            for release in DEFAULT_VERSIONS
         },
     )
 
@@ -122,14 +122,14 @@ def ancestry_pca_eigenvalues(
     :return: Ancestry PCA eigenvalues
     """
     return VersionedTableResource(
-        CURRENT_SAMPLE_QC_VERSION,
+        DEFAULT_CURRENT_VERSION,
         {
             release: TableResource(
                 _get_ancestry_pca_ht_path(
                     "eigenvalues", release, include_unreleasable_samples
                 )
             )
-            for release in SAMPLE_QC_VERSIONS
+            for release in DEFAULT_VERSIONS
         },
     )
 
@@ -158,106 +158,106 @@ gnomad_v2_qc_sites = TableResource(
 
 # Dense MT of samples at QC sites
 qc = VersionedMatrixTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: MatrixTableResource(
             f"gs://gnomad/sample_qc/mt/genomes_v{release}/gnomad_v{release}_qc_mt_v2_sites_dense.mt"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # PC relate PCA scores
 pc_relate_pca_scores = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_qc_mt_v2_sites_pc_scores.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # PC relate results
 relatedness = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_qc_mt_v2_sites_relatedness.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # Sex imputation results
 sex = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_sex.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # Samples to drop for PCA due to them being related
 pca_related_samples_to_drop = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_related_samples_to_drop_for_pca.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # Related samples to drop for release
 release_related_samples_to_drop = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_related_release_samples_to_drop.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # Sample inbreeding
 sample_inbreeding = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_inbreeding.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # Number of clinvar variants per sample
 sample_clinvar_count = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_clinvar.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
         if release != "3"
     },
 )
 
 # Inferred sample populations
 pop = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_pop.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 
-def pop_tsv_path(version: str = CURRENT_SAMPLE_QC_VERSION) -> str:
+def pop_tsv_path(version: str = DEFAULT_CURRENT_VERSION) -> str:
     """
     Path to tab delimited file indicating inferred sample populations
 
@@ -267,7 +267,7 @@ def pop_tsv_path(version: str = CURRENT_SAMPLE_QC_VERSION) -> str:
     return f"gs://gnomad/sample_qc/temp/genomes_v{version}/gnomad_v{version}_RF_pop_assignments.txt.gz"
 
 
-def pop_rf_path(version: str = CURRENT_SAMPLE_QC_VERSION) -> str:
+def pop_rf_path(version: str = DEFAULT_CURRENT_VERSION) -> str:
     """
     Path to RF model used for inferring sample populations
 
@@ -328,101 +328,101 @@ def _import_related_samples_to_drop(**kwargs):
 
 # Hard-filtered samples
 hard_filtered_samples = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_hard_filtered_samples.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # Results of running population-based metrics filtering
 # Not used for v3 release (regresed metrics used instead)
 stratified_metrics = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_stratified_metrics.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # Results of running regressed metrics filtering
 regressed_metrics = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_regressed_metrics.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # Ranking of all samples based on quality metrics. Used to remove relateds for PCA.
 pca_samples_rankings = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_pca_samples_ranking.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # Ranking of all release samples based on quality metrics. Used to remove relateds for release.
 release_samples_rankings = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_release_samples_ranking.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # Picard metrics
 picard_metrics = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_picard_metrics.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # Duplicated (or twin) samples
 duplicates = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_duplicates.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # PC relate scores for the sample set that overlaps with v2 samples
 v2_v3_pc_relate_pca_scores = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad__v2_v{release}_release_pca_scores.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 
 # Relatedness information for the sample set that overlaps with v2 samples
 v2_v3_relatedness = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
+    DEFAULT_CURRENT_VERSION,
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad__v2_v{release}_release_relatedness.ht"
         )
-        for release in SAMPLE_QC_VERSIONS
+        for release in DEFAULT_VERSIONS
     },
 )
 

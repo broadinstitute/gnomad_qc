@@ -182,7 +182,6 @@ def hgdp_1kg_subset(
                 f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/mt/'}/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_dense' if dense else '_sparse'}.mt"
             )
             for release in HGDP_TGP_RELEASES
-            if release != "3"
         },
     )
 

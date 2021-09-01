@@ -7,8 +7,7 @@ from gnomad.resources.resource_utils import (
 )
 
 from gnomad_qc.v3.resources.constants import (
-    CURRENT_META_VERSION,
-    CURRENT_PROJECT_META_VERSION,
+    DEFAULT_CURRENT_VERSION,
     CURRENT_RELEASE,
     RELEASES,
 )
@@ -26,7 +25,7 @@ def _meta_root_path(version: str = CURRENT_RELEASE) -> str:
 
 
 def meta_tsv_path(
-    version: str = CURRENT_RELEASE, meta_version: str = CURRENT_META_VERSION
+    version: str = CURRENT_RELEASE, meta_version: str = DEFAULT_CURRENT_VERSION
 ) -> str:
     """
     Gets the path to the finalized sample metadata information after sample QC
@@ -95,9 +94,9 @@ _trios_versions = {
 }
 
 
-meta = VersionedTableResource(CURRENT_META_VERSION, _meta_versions)
+meta = VersionedTableResource(DEFAULT_CURRENT_VERSION, _meta_versions)
 project_meta = VersionedTableResource(
-    CURRENT_PROJECT_META_VERSION, _project_meta_versions
+    DEFAULT_CURRENT_VERSION, _project_meta_versions
 )
 pedigree = VersionedPedigreeResource("3.1", _pedigree_versions)
 trios = VersionedPedigreeResource("3.1", _trios_versions)
