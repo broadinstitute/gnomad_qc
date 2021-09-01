@@ -40,14 +40,14 @@ def get_gnomad_v3_mt(
     if remove_hard_filtered_samples:
         mt = mt.filter_cols(
             hl.is_missing(
-                hard_filtered_samples.versions[DEFAULT_CURRENT_VERSION].ht()[
-                    mt.col_key
-                ]
+                hard_filtered_samples.versions[DEFAULT_CURRENT_VERSION].ht()[mt.col_key]
             )
         )
 
     if samples_meta:
-        mt = mt.annotate_cols(meta=meta.versions[DEFAULT_CURRENT_VERSION].ht()[mt.col_key])
+        mt = mt.annotate_cols(
+            meta=meta.versions[DEFAULT_CURRENT_VERSION].ht()[mt.col_key]
+        )
 
         if release_only:
             mt = mt.filter_cols(mt.meta.release)

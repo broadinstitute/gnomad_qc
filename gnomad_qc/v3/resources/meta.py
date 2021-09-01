@@ -95,9 +95,7 @@ _trios_versions = {
 
 
 meta = VersionedTableResource(DEFAULT_CURRENT_VERSION, _meta_versions)
-project_meta = VersionedTableResource(
-    DEFAULT_CURRENT_VERSION, _project_meta_versions
-)
+project_meta = VersionedTableResource(DEFAULT_CURRENT_VERSION, _project_meta_versions)
 pedigree = VersionedPedigreeResource("3.1", _pedigree_versions)
 trios = VersionedPedigreeResource("3.1", _trios_versions)
 ped_mendel_errors = VersionedTableResource(
