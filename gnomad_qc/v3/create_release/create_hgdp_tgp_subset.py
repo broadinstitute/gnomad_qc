@@ -1327,8 +1327,9 @@ def prepare_sample_annotations() -> hl.Table:
         "Subsetting and modifying sample QC metadata to desired globals and annotations"
     )
     meta_ht = meta.ht()
+    # NOTE: NA06985 is a known duplicate that should be excluded from the dataset
     meta_ht = meta_ht.filter(
-        meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP)
+        (meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP)) & (meta_ht.s != "NA06985")
     )
 
     meta_ht = meta_ht.select_globals(
@@ -1754,20 +1755,16 @@ def main(args):
             mt = mt._filter_partitions(range(args.test_n_partitions))
 
         logger.info(
-            "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
-        )
-        keyed_full_meta = meta.ht()[mt.col_key]
-        mt = mt.filter_cols(
-            keyed_full_meta.subsets.hgdp
-            | keyed_full_meta.subsets.tgp
-            | (mt.s == SYNDIP)
-        )
-
-        logger.info(
             "Removing 'v3.1::' from the column names, these were added because there are duplicates of some 1KG samples"
             " in the full gnomAD dataset..."
         )
         mt = mt.key_cols_by(s=mt.s.replace("v3.1::", ""))
+        
+        logger.info(
+            "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
+        )
+        meta_ht = sample_annotation_resource.ht()
+        mt = mt.filter_cols(hl.is_defined(meta_ht[mt.col_key]))
 
         # Adjust alleles and LA to include only alleles present in the subset
         mt = adjust_subset_alleles(mt)
