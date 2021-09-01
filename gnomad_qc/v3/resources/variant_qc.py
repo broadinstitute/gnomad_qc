@@ -13,8 +13,8 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 from gnomad_qc.v3.resources.constants import (
-    DEFAULT_CURRENT_VERSION,
-    DEFAULT_VERSIONS,
+    CURRENT_VERSION,
+    VERSIONS,
 )
 
 SYNDIP = "CHMI_CHMI3_WGS2"
@@ -45,7 +45,7 @@ Current truth samples available are syndip and NA12878. Available data for each 
 """
 
 
-def get_variant_qc_root(version: str = DEFAULT_CURRENT_VERSION) -> str:
+def get_variant_qc_root(version: str = CURRENT_VERSION) -> str:
     """
     Return path to variant QC root folder
 
@@ -71,22 +71,22 @@ def get_callset_truth_data(
     """
     if mt:
         return VersionedMatrixTableResource(
-            DEFAULT_CURRENT_VERSION,
+            CURRENT_VERSION,
             {
                 release: MatrixTableResource(
                     f"{get_variant_qc_root(release)}/truth_samples/{truth_sample}.mt"
                 )
-                for release in DEFAULT_VERSIONS
+                for release in VERSIONS
             },
         )
     else:
         return VersionedTableResource(
-            DEFAULT_CURRENT_VERSION,
+            CURRENT_VERSION,
             {
                 release: TableResource(
                     f"{get_variant_qc_root(release)}/truth_samples/{truth_sample}.ht"
                 )
-                for release in DEFAULT_VERSIONS
+                for release in VERSIONS
             },
         )
 
@@ -101,12 +101,12 @@ def get_score_bins(model_id: str, aggregated: bool) -> VersionedTableResource:
     :return: Path to desired hail Table
     """
     return VersionedTableResource(
-        DEFAULT_CURRENT_VERSION,
+        CURRENT_VERSION,
         {
             release: TableResource(
                 f"{get_variant_qc_root(release)}/score_bins/{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
             )
-            for release in DEFAULT_VERSIONS
+            for release in VERSIONS
         },
     )
 
@@ -121,12 +121,12 @@ def get_binned_concordance(model_id: str, truth_sample: str) -> VersionedTableRe
     :return: Path to binned truth data concordance Hail Table
     """
     return VersionedTableResource(
-        DEFAULT_CURRENT_VERSION,
+        CURRENT_VERSION,
         {
             release: TableResource(
                 f"{get_variant_qc_root(release)}/binned_concordance/{truth_sample}_{model_id}_binned_concordance.ht"
             )
-            for release in DEFAULT_VERSIONS
+            for release in VERSIONS
         },
     )
 
@@ -157,17 +157,17 @@ def get_rf_annotations(adj: bool = False) -> VersionedTableResource:
     :return: Table with RF annotations
     """
     return VersionedTableResource(
-        DEFAULT_CURRENT_VERSION,
+        CURRENT_VERSION,
         {
             release: TableResource(
                 f"{get_variant_qc_root(release)}/rf/rf_annotations.{'adj' if adj else 'raw'}.ht"
             )
-            for release in DEFAULT_VERSIONS
+            for release in VERSIONS
         },
     )
 
 
-def rf_run_path(release: str = DEFAULT_CURRENT_VERSION):
+def rf_run_path(release: str = CURRENT_VERSION):
     """
     Returns the path to the json file containing the RF runs list.
 
@@ -178,7 +178,7 @@ def rf_run_path(release: str = DEFAULT_CURRENT_VERSION):
     return f"{get_variant_qc_root(release)}/rf/rf_runs.json"
 
 
-def get_rf_model_path(model_id: str, release: str = DEFAULT_CURRENT_VERSION) -> str:
+def get_rf_model_path(model_id: str, release: str = CURRENT_VERSION) -> str:
     """
     Get the path to the RF model for a given run
 
@@ -197,12 +197,12 @@ def get_rf_training(model_id: str) -> VersionedTableResource:
     :return: VersionedTableResource for RF training data
     """
     return VersionedTableResource(
-        DEFAULT_CURRENT_VERSION,
+        CURRENT_VERSION,
         {
             release: TableResource(
                 f"{get_variant_qc_root(release)}/rf/models/{model_id}/training.ht"
             )
-            for release in DEFAULT_VERSIONS
+            for release in VERSIONS
         },
     )
 
@@ -215,20 +215,20 @@ def get_rf_result(model_id: Optional[str] = None) -> VersionedTableResource:
     :return: VersionedTableResource for RF filtered data
     """
     return VersionedTableResource(
-        DEFAULT_CURRENT_VERSION,
+        CURRENT_VERSION,
         {
             release: TableResource(
                 f"{get_variant_qc_root(release)}/rf/models/{model_id}/rf_result.ht"
             )
-            for release in DEFAULT_VERSIONS
+            for release in VERSIONS
         },
     )
 
 
 final_filter = VersionedTableResource(
-    DEFAULT_CURRENT_VERSION,
+    CURRENT_VERSION,
     {
         release: TableResource(f"{get_variant_qc_root(release)}/final_filter.ht")
-        for release in DEFAULT_VERSIONS
+        for release in VERSIONS
     },
 )
