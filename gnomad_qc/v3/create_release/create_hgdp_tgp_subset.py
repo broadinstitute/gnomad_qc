@@ -99,7 +99,7 @@ def get_sample_qc_filter_struct_expr(ht: hl.Table) -> hl.struct:
 
     .. note::
 
-        This assumes that the input Hail Table contains the the a `gnomad_sample_filters` annotation with
+        This assumes that the input Hail Table contains a `gnomad_sample_filters` annotation with
         `hard_filters` and `hard_filtered` as sub-annotations.
 
     :param ht: Input Table containing hard filter information.
@@ -601,7 +601,7 @@ def main(args):
         meta_ht.export(hgdp_1kg_subset_sample_tsv(test=test))
 
     if args.create_subset_sparse_mt:
-        # NOTE: we no longer filter to gnomAD-wide sample QC high_quality. However, for frequency calculations we still filter hard-filtered samples and subcontinental PCA outliers.
+        # NOTE: We no longer remove samples that fail the gnomAD-wide sample QC high_quality filter. However, for frequency calculations we still remove samples failing hard filters and subcontinental PCA outliers.
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
         )
@@ -628,7 +628,7 @@ def main(args):
         mt = adjust_subset_alleles(mt)
 
         logger.info(
-            "Note: this sparse MT is the raw subset MT and therefore it does not have adjusted sex genotypes and "
+            "NOTE: This sparse MT is the raw subset MT and therefore it does not have adjusted sex genotypes and "
             "the fix for older GATK gVCFs with a known depletion of homozygous alternate alleles. This also does not "
             "remove standard GATK LowQual variants and variants in centromeres and telomeres (to preserve the ref "
             "block END annotation), which we recommend ultimately removing (and is removed for the dense MT release)."
