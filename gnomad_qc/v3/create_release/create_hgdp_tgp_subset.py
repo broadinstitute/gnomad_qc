@@ -25,6 +25,13 @@ from gnomad.utils.vcf import (
 )
 
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.create_release.hgdp_tgp_constants import (
+    GLOBAL_ANNOTATIONS,
+    GLOBAL_SAMPLE_ANNOTATIONS,
+    GLOBAL_VARIANT_ANNOTATIONS,
+    SAMPLE_ANNOTATIONS,
+    VARIANT_ANNOTATIONS,
+)
 from gnomad_qc.v3.resources.annotations import (
     get_freq,
     get_info,
@@ -173,7 +180,8 @@ def prepare_sample_annotations() -> hl.Table:
     meta_ht = meta.ht()
     # NOTE: NA06985 is a known duplicate that should be excluded from the dataset
     meta_ht = meta_ht.filter(
-        (meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP)) & (meta_ht.s != "NA06985")
+        (meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP))
+        & (meta_ht.s != "NA06985")
     )
 
     meta_ht = meta_ht.select_globals(
@@ -316,6 +324,7 @@ def prepare_variant_annotations(
         info_ht = get_info().ht()
     elif not file_exists(get_info().path) and file_exists(get_info(split=False).path):
         from gnomad_qc.v3.annotations.generate_qc_annotations import split_info
+
         info_ht = split_info().drop("old_locus", "old_alleles")
     else:
         raise DataException("There is no available split or unsplit info HT for use!")
@@ -608,7 +617,7 @@ def main(args):
             " in the full gnomAD dataset..."
         )
         mt = mt.key_cols_by(s=mt.s.replace("v3.1::", ""))
-        
+
         logger.info(
             "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
         )

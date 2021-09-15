@@ -82,7 +82,9 @@ def main(args):
             "Run create_hgdp_tgp_subset.py --create_sample_annotation_ht to use this option."
         )
     if args.hgdp_1kg_subset and args.include_non_release:
-        raise ValueError("The hgdp_1kg_subset flag can't be used with the include_non_release flag because of differences in sample filtering.")
+        raise ValueError(
+            "The hgdp_1kg_subset flag can't be used with the include_non_release flag because of differences in sample filtering."
+        )
 
     try:
         logger.info("Reading full sparse MT and metadata table...")
