@@ -1247,13 +1247,13 @@ def convert_heterogeneous_dict_to_struct(global_dict: Dict) -> hl.struct:
 
 def get_sample_qc_filter_struct_expr(ht: hl.Table) -> hl.struct:
     """
-    Create expression for the final filter struct indicating hard filtered samples and subcontinental PCA outliers.
+    Create expression for the final filter struct indicating gnomAD hard filtered samples and HGDP/1KG-specific subcontinental PCA outliers.
 
     :param ht: Input Table containing hard filter information.
     :return: Struct expression for sample QC filters.
     """
     logger.info(
-        "Read in population specific PCA outliers (list includes one duplicate sample)..."
+        "Read in population-specific PCA outliers (list includes one duplicate sample)..."
     )
     hgdp_tgp_pop_outliers_ht = hgdp_tgp_pop_outliers.ht()
     set_to_remove = hgdp_tgp_pop_outliers_ht.s.collect(_localize=False)
@@ -1351,7 +1351,7 @@ def prepare_sample_annotations() -> hl.Table:
         .age_distribution,
     )
 
-    # Use a pre-computed relatedness HT from the Martin group - details of it's creation are
+    # Use a pre-computed relatedness HT from the Martin group - details of its creation are
     # here: https://github.com/atgu/hgdp_tgp/blob/master/pca_subcont.ipynb
     relatedness_ht = hgdp_tgp_relatedness.ht()
     subset_samples = meta_ht.s.collect(_localize=False)
@@ -1501,7 +1501,7 @@ def prepare_variant_annotations(
     )
 
     logger.info(
-        "Preparing gnomad freq information from the release HT, remove downsampling and subset info from freq, "
+        "Preparing gnomad freq information from the release HT: removing downsampling and subset info from freq, "
         "freq_meta, and freq_index_dict"
     )
     full_release_freq_meta = release_ht.freq_meta.collect()[0]
@@ -1733,7 +1733,7 @@ def main(args):
     ):
         raise DataException(
             "There is currently no sample meta HT for the HGDP + TGP subset written to temp for testing. "
-            "Run '--create_sample_meta' with '--test' to create one."
+            "Run '--create_sample_annotation_ht' with '--test' to create one."
         )
 
     if args.export_sample_annotation_tsv:
