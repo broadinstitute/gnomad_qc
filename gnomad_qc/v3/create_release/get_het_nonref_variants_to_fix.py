@@ -129,7 +129,7 @@ def main(args):
     logger.info("Densifying MT to het non ref sites only...")
     # NOTE: densify_sites operates on locus only (doesn't check alleles)
     # https://github.com/broadinstitute/gnomad_methods/blob/master/gnomad/utils/sparse_mt.py#L102
-    # Thus, it doesn't matter that `sites_ht` has already been split 
+    # Thus, it doesn't matter that `sites_ht` has already been split
     # NOTE: set semi_join_rows to False here because the sites_HT is small
     mt = densify_sites(
         mt, sites_ht, last_END_position.versions["3.1"].ht(), semi_join_rows=False,

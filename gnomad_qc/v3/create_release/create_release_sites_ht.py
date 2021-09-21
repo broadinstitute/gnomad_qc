@@ -325,13 +325,7 @@ def main(args):
     ht = v3_1_1_release_ht.transmute(
         **{
             x: hl.coalesce(ht[v3_1_1_release_ht.key][x], v3_1_1_release_ht[x])
-            for x in [
-                "freq",
-                "faf",
-                "popmax",
-                "qual_hists",
-                "raw_qual_hists",
-            ]
+            for x in ["freq", "faf", "popmax", "qual_hists", "raw_qual_hists",]
         },
         info=v3_1_1_release_ht.info.annotate(
             InbreedingCoeff=hl.coalesce(

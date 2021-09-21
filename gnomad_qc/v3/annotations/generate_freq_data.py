@@ -295,13 +295,15 @@ def main(args):
 
             logger.info("Writing out frequency data for the patch...")
             if args.test:
-                ht.write(get_checkpoint_path("test_freq_v3.1.2.patch.frequencies"), overwrite=True)
+                ht.write(
+                    get_checkpoint_path("test_freq_v3.1.2.patch.frequencies"),
+                    overwrite=True,
+                )
             else:
                 ht.write(
                     "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.2/gnomad_genomes_v3.1.2.patch.frequencies.ht",
                     overwrite=args.overwrite,
                 )
-
 
     finally:
         logger.info("Copying hail log to logging bucket...")
