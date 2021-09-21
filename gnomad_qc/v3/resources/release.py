@@ -145,42 +145,6 @@ def release_vcf_path(
         return f"gs://gnomad/release/{release_version}/vcf/genomes/gnomad.genomes.v{release_version}.{subset}.vcf.bgz"
 
 
-def release_sites(public: bool = False) -> VersionedTableResource:
-    """
-    Retrieve versioned resource for sites-only release Table.
-
-    :param public: Determines whether release sites Table is read from public or private bucket. Defaults to private
-    :return: Sites-only release Table
-    """
-    return VersionedTableResource(
-        default_version=CURRENT_RELEASE,
-        versions={
-            release: TableResource(
-                path=release_ht_path(release_version=release, public=public)
-            )
-            for release in RELEASES
-        },
-    )
-
-
-def release_sites(public: bool = False) -> VersionedTableResource:
-    """
-    Retrieve versioned resource for sites-only release Table.
-
-    :param public: Determines whether release sites Table is read from public or private bucket. Defaults to private
-    :return: Sites-only release Table
-    """
-    return VersionedTableResource(
-        default_version=CURRENT_RELEASE,
-        versions={
-            release: TableResource(
-                path=release_ht_path(release_version=release, public=public)
-            )
-            for release in RELEASES
-        },
-    )
-
-
 def release_header_path(
     release_version: Optional[str] = None, hgdp_tgp_subset: bool = False
 ) -> str:
