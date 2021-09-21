@@ -87,11 +87,14 @@ def main(args):
         )
 
     try:
-        logger.info("Reading full sparse MT and metadata table...")
-        mt = get_gnomad_v3_mt(
-            key_by_locus_and_alleles=True,
-            release_only=not args.include_non_release | args.hgdp_1kg_subset,
-            samples_meta=True,
+        logger.info(
+            "Reading dense MT containing only sites that may require frequency recalculation due to het non ref site error."
+            "This dense MT only contains release samples and has already been split"
+        )
+        mt = hl.read_matrix_table(
+            "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites_3.1.2_test.mt"
+            if args.test
+            else "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites.mt"
         )
 
         if args.test:

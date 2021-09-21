@@ -111,7 +111,7 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
         region_flag=region_flag_expr(
             ht,
             non_par=False,
-            prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht(),},
+            prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         ),
         **filters_ht[ht.key],
         **in_silico_ht[ht.key],
@@ -311,7 +311,7 @@ def main(args):
         args.overwrite,
     )
 
-    logger.info(f"Applying v3.1.2 patch to v3.1.1 release HT...")
+    logger.info("Applying v3.1.2 patch to v3.1.1 release HT...")
 
     # Using v3.1 allele frequency HT
     v3_1_1_release_ht = release_sites().versions["3.1.1"].ht()
