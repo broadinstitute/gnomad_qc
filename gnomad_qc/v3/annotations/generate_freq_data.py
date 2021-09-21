@@ -71,7 +71,7 @@ def main(args):
         raise ValueError(
             f"{', '.join(invalid_subsets)} subset(s) are not one of the following official subsets: {SUBSETS}"
         )
-    if n_subsets_use_subpops and (n_subsets_use_subpops != len(subsets)):
+    if n_subsets_use_subpops & (n_subsets_use_subpops != len(subsets)):
         raise ValueError(
             f"Cannot combine cohorts that use subpops in frequency calculations {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
             f"with cohorts that use pops in frequency calculations {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
