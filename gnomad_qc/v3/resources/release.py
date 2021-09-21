@@ -8,6 +8,7 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
+from gnomad_qc.v3.resources.basics import qc_temp_prefix
 from gnomad_qc.v3.resources.constants import (
     CURRENT_RELEASE,
     CURRENT_HGDP_TGP_RELEASE,
@@ -36,9 +37,7 @@ def qual_hists_json_path(release_version: str = CURRENT_RELEASE) -> str:
     :return: File path for histogram JSON
     :rtype: str
     """
-    version_prefix = "r" if release_version.startswith("3.0") else "v"
-
-    return f"gs://gnomad/release/{release_version}/json/gnomad.genomes.{version_prefix}{release_version}.json"
+    return f"gs://gnomad/release/{release_version}/json/gnomad.genomes.r{release_version}.json"
 
 
 def release_ht_path(
@@ -55,11 +54,9 @@ def release_ht_path(
     :return: File path for desired Hail Table
     :rtype: str
     """
-    version_prefix = "r" if release_version == "3" else "v"
-    release_version = "3.0" if release_version == "3" else release_version
-
+    version_prefix = "r" if release_version.startswith("3.0") else "v"
     if public:
-        return f"gs://gnomad-public/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
+        return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
     else:
         return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
 
@@ -83,17 +80,23 @@ def release_sites(public: bool = False) -> VersionedTableResource:
 
 
 def release_header_path(
-    release_version: str = CURRENT_RELEASE, hgdp_tgp_subset: bool = False
+    release_version: Optional[str] = None, hgdp_tgp_subset: bool = False
 ) -> str:
     """
     Fetch path to pickle file containing VCF header dictionary.
 
-    :param release_version: Release version. Defaults to CURRENT RELEASE
+    :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used unless
+        hgdp_tgp_subset is True in which case CURRENT_HGDP_TGP_RELEASE is used.
     :param hgdp_tgp_subset: Whether to return the header for the HGDP + 1KG subset. Default will return the header
         path for the full release.
     :return: Filepath for header dictionary pickle
     """
     subset = ""
+    if release_version is None:
+        release_version = (
+            CURRENT_HGDP_TGP_RELEASE if hgdp_tgp_subset else CURRENT_RELEASE
+        )
+
     if hgdp_tgp_subset:
         if release_version not in HGDP_TGP_RELEASES:
             raise DataException(
@@ -105,19 +108,26 @@ def release_header_path(
 
 
 def release_vcf_path(
-    release_version: str = CURRENT_RELEASE,
+    release_version: Optional[str] = None,
     hgdp_tgp_subset: bool = False,
     contig: Optional[str] = None,
 ) -> str:
     """
     Fetch bucket for release (sites-only) VCFs.
 
-    :param release_version: Release version. Defaults to CURRENT RELEASE
-    :param hgdp_tgp_subset: Whether to get path for HGDP + 1KG VCF. Defaults to the full callset (metrics on all samples)        sites VCF path
+    :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used unless
+        hgdp_tgp_subset is True in which case CURRENT_HGDP_TGP_RELEASE is used.
+    :param hgdp_tgp_subset: Whether to get path for HGDP + 1KG VCF. Defaults to the full callset (metrics on all samples) sites VCF path
     :param contig: String containing the name of the desired reference contig. Defaults to the full (all contigs) sites VCF path
         sites VCF path
     :return: Filepath for the desired VCF
     """
+
+    if release_version is None:
+        release_version = (
+            CURRENT_HGDP_TGP_RELEASE if hgdp_tgp_subset else CURRENT_RELEASE
+        )
+
     if hgdp_tgp_subset:
         if release_version not in HGDP_TGP_RELEASES:
             raise DataException(
@@ -147,18 +157,21 @@ def append_to_vcf_header_path(
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :return: Filepath for extra fields TSV file
     """
-    if release_version not in {"3.1", "3.1.1"}:
+    if release_version == "3.0":
         raise DataException(
-            "Extra fields to append to VCF header TSV only exists for 3.1 and 3.1.1!"
+            "Extra fields to append to VCF header TSV does not exist for v3.0!"
         )
     return f"gs://gnomad/release/{release_version}/vcf/genomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
 
 
-def hgdp_1kg_subset(dense: bool = False) -> VersionedMatrixTableResource:
+def hgdp_1kg_subset(
+    dense: bool = False, test: bool = False
+) -> VersionedMatrixTableResource:
     """
     Get the HGDP + 1KG subset release MatrixTableResource.
 
     :param dense: If True, return the dense MT; if False, return the sparse MT
+    :param test: If true, will return the annotation resource for testing purposes
     :return: MatrixTableResource for specific subset
     """
 
@@ -166,26 +179,28 @@ def hgdp_1kg_subset(dense: bool = False) -> VersionedMatrixTableResource:
         default_version=CURRENT_HGDP_TGP_RELEASE,
         versions={
             release: MatrixTableResource(
-                f"gs://gnomad/release/{release}/mt/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_dense' if dense else '_sparse'}.mt"
+                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/mt/'}/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_dense' if dense else '_sparse'}.mt"
             )
             for release in HGDP_TGP_RELEASES
-            if release != "3"
         },
     )
 
 
-def hgdp_1kg_subset_annotations(sample: bool = True) -> VersionedTableResource:
+def hgdp_1kg_subset_annotations(
+    sample: bool = True, test: bool = False
+) -> VersionedTableResource:
     """
     Get the HGDP + 1KG subset release sample or variant TableResource.
 
     :param sample: If true, will return the sample annotations, otherwise will return the variant annotations
+    :param test: If true, will return the annotation resource for testing purposes
     :return: Table resource with sample/variant annotations for the subset
     """
     return VersionedTableResource(
         default_version=CURRENT_HGDP_TGP_RELEASE,
         versions={
             release: TableResource(
-                f"gs://gnomad/release/{release}/ht/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_sample_meta' if sample else '_variant_annotations'}.ht"
+                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/ht/'}gnomad.genomes.v{release}.hgdp_1kg_subset{f'_sample_meta' if sample else '_variant_annotations'}.ht"
             )
             for release in HGDP_TGP_RELEASES
             if release != "3"
@@ -193,11 +208,14 @@ def hgdp_1kg_subset_annotations(sample: bool = True) -> VersionedTableResource:
     )
 
 
-def hgdp_1kg_subset_sample_tsv(release: str = CURRENT_RELEASE) -> str:
+def hgdp_1kg_subset_sample_tsv(
+    release: str = CURRENT_HGDP_TGP_RELEASE, test: bool = False
+) -> str:
     """
     Get the path to the HGDP + 1KG subset release sample annotation text file.
 
     :param release: Version of annotation tsv path to return
+    :param test: If true, will return the sample tsv path for testing purposes
     :return: Path to file
     """
-    return f"gs://gnomad/release/{release}/tsv/gnomad.genomes.v{release}.hgdp_1kg_subset_sample_meta.tsv.bgz"
+    return f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/tsv/'}gnomad.genomes.v{release}.hgdp_1kg_subset_sample_meta.tsv.bgz"
