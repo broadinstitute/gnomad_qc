@@ -163,34 +163,6 @@ def release_sites(public: bool = False) -> VersionedTableResource:
     )
 
 
-def release_header_path(
-    release_version: Optional[str] = None, hgdp_tgp_subset: bool = False
-) -> str:
-    """
-    Fetch path to pickle file containing VCF header dictionary.
-
-    :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used unless
-        hgdp_tgp_subset is True in which case CURRENT_HGDP_TGP_RELEASE is used.
-    :param hgdp_tgp_subset: Whether to return the header for the HGDP + 1KG subset. Default will return the header
-        path for the full release.
-    :return: Filepath for header dictionary pickle
-    """
-    subset = ""
-    if release_version is None:
-        release_version = (
-            CURRENT_HGDP_TGP_RELEASE if hgdp_tgp_subset else CURRENT_RELEASE
-        )
-
-    if hgdp_tgp_subset:
-        if release_version not in HGDP_TGP_RELEASES:
-            raise DataException(
-                f"{release_version} is not one of the available releases for the HGP + 1KG subset: {HGDP_TGP_RELEASES}"
-            )
-        subset = f"_hgdp_tgp"
-
-    return f"gs://gnomad/release/{release_version}/vcf/genomes/gnomad.genomes.v{release_version}_header_dict{subset}.pickle"
-
-
 def release_sites(public: bool = False) -> VersionedTableResource:
     """
     Retrieve versioned resource for sites-only release Table.
