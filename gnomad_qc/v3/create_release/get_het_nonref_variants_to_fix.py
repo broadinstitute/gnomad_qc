@@ -110,7 +110,6 @@ def main(args):
     # Need to add this prior to splitting MT to make sure these genotypes
     # are not adjusted by the homalt hotfix downstream
     mt = mt.annotate_entries(het_non_ref=mt.LGT.is_het_non_ref())
-    # TODO: Need to fix main code to add this annotation and use it also, where to add?
 
     logger.info("Splitting multiallelics...")
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
