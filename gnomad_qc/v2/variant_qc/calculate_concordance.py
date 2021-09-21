@@ -2,7 +2,8 @@ from gnomad.sample_qc.relatedness import get_duplicated_samples
 from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.annotations import unphase_call_expr
 from gnomad.variant_qc.evaluation import add_rank
-from gnomad.utils.slack import try_slack
+from gnomad.utils.slack import slack_notifications
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v2.resources import sample_qc
 from gnomad_qc.v2.resources.variant_qc import *
 import pandas as pd
@@ -361,6 +362,7 @@ if __name__ == '__main__':
         sys.exit("Error: Computing --omes_by_platform requires computing --omes first. Please run --omes first (you can run with both options in a single run)")
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)

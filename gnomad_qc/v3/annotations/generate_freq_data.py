@@ -11,6 +11,7 @@ from gnomad.resources.grch38.gnomad import (
     POPS_TO_REMOVE_FOR_POPMAX,
     SUBSETS,
 )
+from gnomad.resources.resource_utils import DataException
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
@@ -21,6 +22,7 @@ from gnomad.utils.annotations import (
     pop_max_expr,
     qual_hist_expr,
 )
+from gnomad.utils.file_utils import file_exists
 from gnomad.utils.release import (
     make_faf_index_dict,
     make_freq_index_dict,
@@ -30,7 +32,12 @@ from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq
-from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
+from gnomad_qc.v3.resources.basics import (
+    get_checkpoint_path,
+    get_gnomad_v3_mt,
+    qc_temp_prefix,
+)
+from gnomad_qc.v3.resources.release import hgdp_1kg_subset_annotations, release_sites
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 
 logging.basicConfig(
@@ -43,46 +50,79 @@ logger.setLevel(logging.INFO)
 
 
 def main(args):
-    from gnomad.resources.grch38.gnomad import POPS
     subsets = args.subsets
     hl.init(
         log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",
         default_reference="GRCh38",
     )
-    if subsets:
-        invalid_subsets = []
-        n_subsets_use_subpops = 0
-        for s in subsets:
-            if s not in SUBSETS:
-                invalid_subsets.append(s)
-            if s in COHORTS_WITH_POP_STORED_AS_SUBPOP:
-                n_subsets_use_subpops += 1
 
-        if invalid_subsets:
-            raise ValueError(
-                f"{', '.join(invalid_subsets)} subset(s) are not one of the following official subsets: {SUBSETS}"
-            )
-        if n_subsets_use_subpops & (n_subsets_use_subpops != len(subsets)):
-            raise ValueError(
-                f"Cannot combine cohorts that use subpops in frequency calculations {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
-                f"with cohorts that use pops in frequency calculations {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
-            )
+    if args.hgdp_1kg_subset:
+        subsets = ["hgdp", "tgp"]
+
+    invalid_subsets = []
+    n_subsets_use_subpops = 0
+    for s in subsets:
+        if s not in SUBSETS:
+            invalid_subsets.append(s)
+        if s in COHORTS_WITH_POP_STORED_AS_SUBPOP:
+            n_subsets_use_subpops += 1
+
+    if invalid_subsets:
+        raise ValueError(
+            f"{', '.join(invalid_subsets)} subset(s) are not one of the following official subsets: {SUBSETS}"
+        )
+    if n_subsets_use_subpops and (n_subsets_use_subpops != len(subsets)):
+        raise ValueError(
+            f"Cannot combine cohorts that use subpops in frequency calculations {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
+            f"with cohorts that use pops in frequency calculations {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
+        )
+    if args.hgdp_1kg_subset and not file_exists(hgdp_1kg_subset_annotations().path):
+        raise DataException(
+            "There is currently no sample meta HT for the HGDP + TGP subset."
+            "Run create_hgdp_tgp_subset.py --create_sample_annotation_ht to use this option."
+        )
+    if args.hgdp_1kg_subset and args.include_non_release:
+        raise ValueError(
+            "The hgdp_1kg_subset flag can't be used with the include_non_release flag because of differences in sample filtering."
+        )
 
     try:
-        logger.info(
-            "Reading dense MT containing only sites that may require frequency recalculation due to het non ref site error. "
-            "This dense MT only contains release samples and has already been split"
-        )
-        mt = hl.read_matrix_table(
-            "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites_3.1.2_test.mt"
-            if args.test
-            else "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites.mt"
+        logger.info("Reading full sparse MT and metadata table...")
+        mt = get_gnomad_v3_mt(
+            key_by_locus_and_alleles=True,
+            release_only=not args.include_non_release | args.hgdp_1kg_subset,
+            samples_meta=True,
         )
 
         if args.test:
-            logger.info("Filtering to two partitions on chr20")
-            mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20:1-1000000")])
+            logger.info("Filtering to the first two partitions")
             mt = mt._filter_partitions(range(2))
+
+        logger.info(
+            "Annotate entries with het non ref status for use in the homozygous alternate depletion fix..."
+        )
+        mt = mt.annotate_entries(_het_non_ref=mt.LGT.is_het_non_ref())
+        mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+
+        if args.include_non_release:
+            logger.info("Filtering MT columns to high quality samples")
+            total_sample_count = mt.count_cols()
+            mt = mt.filter_cols(mt.meta.high_quality)
+            high_quality_sample_count = mt.count_cols()
+            logger.info(
+                f"Filtered {total_sample_count - high_quality_sample_count} from the full set of {total_sample_count} "
+                f"samples..."
+            )
+
+        if args.hgdp_1kg_subset:
+            logger.info(
+                "Filtering MT columns to HGDP + 1KG samples that pass specialized sample QC"
+            )
+            hgdp_1kg_meta = hgdp_1kg_subset_annotations().ht()
+            mt = mt.filter_cols(
+                hgdp_1kg_meta[mt.col_key].high_quality
+                & ~hgdp_1kg_meta[mt.col_key].relatedness_inference.related
+            )
 
         if subsets:
             mt = mt.filter_cols(hl.any([mt.meta.subsets[s] for s in subsets]))
@@ -102,16 +142,21 @@ def main(args):
             adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
         )
 
+        logger.info("Densify-ing...")
+        mt = hl.experimental.densify(mt)
+        mt = mt.filter_rows(hl.len(mt.alleles) > 1)
+
         # Temporary hotfix for depletion of homozygous alternate genotypes
         logger.info(
             "Setting het genotypes at sites with >1% AF (using v3.0 frequencies) and > 0.9 AB to homalt..."
         )
         # Load v3.0 allele frequencies to avoid an extra frequency calculation
         # NOTE: Using previous callset AF works for small incremental changes to a callset, but we will need to revisit for large increments
-        freq_ht = get_freq(version="3").ht()
+        freq_ht = release_sites(public=True).versions["3.0"].ht().select("freq")
         mt = hom_alt_depletion_fix(
-            mt, het_non_ref_expr=mt.het_non_ref, af_expr=freq_ht[mt.row_key].freq[0].AF
+            mt, het_non_ref_expr=mt._het_non_ref, af_expr=freq_ht[mt.row_key].freq[0].AF
         )
+        mt = mt.drop("_het_non_ref")
 
         logger.info("Generating frequency data...")
         if subsets:
@@ -135,7 +180,10 @@ def main(args):
 
             mt = mt.annotate_globals(
                 freq_index_dict=make_freq_index_dict(
-                    freq_meta=freq_meta, pops=POPS, label_delimiter="-"
+                    freq_meta=freq_meta,
+                    pops=POPS,
+                    label_delimiter="-",
+                    subsets=["|".join(subsets)],
                 )
             )
             mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
@@ -147,7 +195,7 @@ def main(args):
             if args.test:
                 freq_ht.write(
                     get_checkpoint_path(
-                        f"chr20_test_gnomad_genomes_v3.1.2.patch.frequencies.{'_'.join(subsets)}"
+                        f"test_gnomad_genomes_v3.1.2.patch.frequencies.{'_'.join(subsets)}"
                     ),
                     overwrite=True,
                 )
@@ -244,33 +292,39 @@ def main(args):
 
             logger.info("Writing out frequency data for the patch...")
             if args.test:
-                ht.write(
-                    get_checkpoint_path(
-                        "chr20_test_gnomad_genomes_v3.1.2.patch.frequencies"
-                    ),
-                    overwrite=True,
-                )
+                ht.write(get_checkpoint_path("test_freq_v3.1.2.patch.frequencies"), overwrite=True)
             else:
                 ht.write(
                     "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.2/gnomad_genomes_v3.1.2.patch.frequencies.ht",
                     overwrite=args.overwrite,
                 )
 
+
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(f"{qc_temp_prefix(version='3.1.2')}logs/")
+        hl.copy_log(f"{qc_temp_prefix()}logs/")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--test", help="Runs a test on two partitions of chr20.", action="store_true"
+        "--test", help="Runs a test on two partitions of the MT.", action="store_true"
+    )
+    parser.add_argument(
+        "--include_non_release",
+        help="Includes un-releasable samples in the frequency calculations.",
+        action="store_true",
     )
     parser.add_argument(
         "--subsets",
         help="List of subsets for which to generate combined frequency data.",
         nargs="*",
         choices=SUBSETS,
+    )
+    parser.add_argument(
+        "--hgdp_1kg_subset",
+        help="Calculate HGDP + 1KG frequencies with specialized sample QC. Note: create_hgdp_tgp_subset.py --create_sample_annotation_ht must be run prior to using this option. Subsets option does not need to be used.",
+        action="store_true",
     )
     parser.add_argument(
         "--overwrite", help="Overwrites existing files.", action="store_true"

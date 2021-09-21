@@ -1,5 +1,10 @@
-from gnomad.utils.slack import try_slack
+# NOTE
+# This script is kept here only for archiving purpose.
+# It was used for a one-time analysis to assess variant QC, but is not used as a regular part of gnomAD production
+
+from gnomad.utils.slack import slack_notifications
 from gnomad.variant_qc.evaluation import add_rank
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v2.resources.variant_qc import *
 import argparse
 import logging
@@ -116,6 +121,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)
