@@ -694,7 +694,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--create_subset_sparse_mt",
-        help="Create the HGDP + 1KG subset sparse MT.",
+        help="Create the HGDP + 1KG subset sparse MT. NOTE: This needs to be run without preemptibles because the allele adjustment requires a shuffle!",
         action="store_true",
     )
     parser.add_argument(
