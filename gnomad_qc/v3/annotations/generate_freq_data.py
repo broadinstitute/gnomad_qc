@@ -213,7 +213,10 @@ def main(args):
                 )
             else:
                 freq_ht.write(
-                    get_freq(subset="-".join(subsets), het_nonref_patch=args.het_nonref_patch).path, overwrite=args.overwrite
+                    get_freq(
+                        subset="-".join(subsets), het_nonref_patch=args.het_nonref_patch
+                    ).path,
+                    overwrite=args.overwrite,
                 )
 
         else:
@@ -301,10 +304,14 @@ def main(args):
                 ),
             )
 
-            logger.info(f"Writing out frequency data {'for patch' if args.het_nonref_patch else ''}...")
+            logger.info(
+                f"Writing out frequency data {'for patch' if args.het_nonref_patch else ''}..."
+            )
             if args.test:
                 ht.write(
-                    get_checkpoint_path(f"test_freq{'_patch' if args.het_nonref_patch else ''}.{'-'.join(subsets)}"),
+                    get_checkpoint_path(
+                        f"test_freq{'_patch' if args.het_nonref_patch else ''}"
+                    ),
                     overwrite=True,
                 )
             else:

@@ -130,7 +130,10 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
 
 
 def pre_process_subset_freq(
-    subset: str, global_ht: hl.Table, test: bool = False
+    subset: str,
+    global_ht: hl.Table,
+    test: bool = False,
+    het_nonref_patch: bool = False,
 ) -> hl.Table:
     """
     Prepare subset frequency Table by filling in missing frequency fields for loci present only in the global cohort.
@@ -142,23 +145,24 @@ def pre_process_subset_freq(
     :param subset: subset ID
     :param global_ht: Hail Table containing all variants discovered in the overall release cohort
     :param test: If True, filter to small region on chr20
+    :param het_nonref_patch: Whether this is frequency information for only variants that need the het nonref patch applied
     :return: Table containing subset frequencies with missing freq structs filled in
     """
 
     # Read in subset HTs
-    subset_ht_path = f"gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.2/gnomad_genomes_v3.1.2.patch.frequencies.{subset}.ht"
-    subset_chr20_ht_path = get_checkpoint_path(
-        f"chr20_test_gnomad_genomes_v3.1.2.patch.frequencies.{subset}"
+    subset_ht_path = get_freq(subset=subset, het_nonref_patch=het_nonref_patch)
+    subset_test_ht_path = get_checkpoint_path(
+        f"test_freq{'_patch' if het_nonref_patch else ''}.{subset}"
     )
 
     if test:
-        if file_exists(subset_chr20_ht_path):
+        if file_exists(subset_test_ht_path):
             logger.info(
-                "Loading chr20 %s subset frequency data for testing: %s",
+                "Loading %s subset frequency data for testing: %s",
                 subset,
-                subset_chr20_ht_path,
+                subset_test_ht_path,
             )
-            subset_ht = hl.read_table(subset_chr20_ht_path)
+            subset_ht = hl.read_table(subset_test_ht_path)
 
         elif file_exists(subset_ht_path):
             logger.info(
@@ -196,24 +200,24 @@ def pre_process_subset_freq(
 
 def main(args):
     hl.init(log="/create_release_ht.log", default_reference="GRCh38")
-    global_freq_path = "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.2/gnomad_genomes_v3.1.2.patch.frequencies.ht"
+    global_freq_path = get_freq(het_nonref_patch=args.het_nonref_patch).path
 
     # The concatenated HT contains all subset frequency annotations, plus the overall cohort frequency annotations,
     # concatenated together in a single freq annotation ('freq')
 
     # Load global frequency Table
     if args.test:
-        global_freq_chr20_ht_path = get_checkpoint_path(
-            "chr20_test_gnomad_genomes_v3.1.2.patch.frequencies"
+        global_freq_test_ht_path = get_checkpoint_path(
+            f"test_freq{'_patch' if args.het_nonref_patch else ''}"
         )
 
-        if file_exists(global_freq_chr20_ht_path):
+        if file_exists(global_freq_test_ht_path):
             logger.info(
-                "Loading chr20 global frequency data for testing: %s",
-                global_freq_chr20_ht_path,
+                "Loading global test frequency data for sites HT testing: %s",
+                global_freq_test_ht_path,
             )
             global_freq_ht = (
-                hl.read_table(global_freq_chr20_ht_path)
+                hl.read_table(global_freq_test_ht_path)
                 .select("freq")
                 .select_globals("freq_meta")
             )
@@ -246,13 +250,21 @@ def main(args):
     if args.test:
         test_subsets = args.test_subsets
         subset_freq_hts = [
-            pre_process_subset_freq(subset, global_freq_ht, test=True)
+            pre_process_subset_freq(
+                subset,
+                global_freq_ht,
+                test=True,
+                het_nonref_patch=args.het_nonref_patch,
+            )
             for subset in test_subsets
         ]
 
     else:
         subset_freq_hts = [
-            pre_process_subset_freq(subset, global_freq_ht) for subset in SUBSETS
+            pre_process_subset_freq(
+                subset, global_freq_ht, het_nonref_patch=args.het_nonref_patch
+            )
+            for subset in SUBSETS
         ]
 
     logger.info("Concatenating subset frequencies...")
@@ -304,44 +316,40 @@ def main(args):
     ht = ht.filter(hl.is_defined(ht.filters))
 
     ht = ht.checkpoint(
-        qc_temp_prefix(version="3.1.2")
-        + "release/gnomad.genomes.v3.1.sites.patch.chr20.ht"
+        qc_temp_prefix() + f"release/gnomad.genomes.sites.test{'.patch' if args.het_nonref_patch else ''}.ht"
         if args.test
-        else "gs://gnomad/release/3.1.2/ht/genomes/gnomad.genomes.v3.1.1.sites.patch.ht",
+        else release_sites(het_nonref_patch=args.het_nonref_patch).path,
         args.overwrite,
     )
 
-    logger.info("Applying v3.1.2 patch to v3.1.1 release HT...")
+    if args.het_nonref_patch:
+        logger.info("Applying het non ref patch to the v3.1.1 release HT...")
 
-    # Using v3.1 allele frequency HT
-    v3_1_1_release_ht = release_sites().versions["3.1.1"].ht()
-    if args.test:
-        logger.info("Filtering to two partitions on chr20")
-        v3_1_1_release_ht = hl.filter_intervals(
-            v3_1_1_release_ht, [hl.parse_locus_interval("chr20:1-1000000")]
+        v3_1_1_release_ht = release_sites().versions["3.1.1"].ht()
+        if args.test:
+            logger.info("Filtering to the first two partitions in the HT")
+            v3_1_1_release_ht = v3_1_1_release_ht._filter_partitions(range(2))
+
+        ht = v3_1_1_release_ht.transmute(
+            **{
+                x: hl.coalesce(ht[v3_1_1_release_ht.key][x], v3_1_1_release_ht[x])
+                for x in ["freq", "faf", "popmax", "qual_hists", "raw_qual_hists",]
+            },
+            info=v3_1_1_release_ht.info.annotate(
+                InbreedingCoeff=hl.coalesce(
+                    ht[v3_1_1_release_ht.key].info.InbreedingCoeff,
+                    v3_1_1_release_ht.info.InbreedingCoeff,
+                )
+            ),
         )
-        v3_1_1_release_ht = v3_1_1_release_ht._filter_partitions(range(2))
 
-    ht = v3_1_1_release_ht.transmute(
-        **{
-            x: hl.coalesce(ht[v3_1_1_release_ht.key][x], v3_1_1_release_ht[x])
-            for x in ["freq", "faf", "popmax", "qual_hists", "raw_qual_hists",]
-        },
-        info=v3_1_1_release_ht.info.annotate(
-            InbreedingCoeff=hl.coalesce(
-                ht[v3_1_1_release_ht.key].info.InbreedingCoeff,
-                v3_1_1_release_ht.info.InbreedingCoeff,
-            )
-        ),
-    )
-
-    logger.info("Writing out v3.1.2 release HT...")
-    ht = ht.checkpoint(
-        qc_temp_prefix(version="3.1.2") + "release/gnomad.genomes.v3.1.sites.chr20.ht"
-        if args.test
-        else "gs://gnomad/release/3.1.2/ht/genomes/gnomad.genomes.v3.1.1.sites.ht",
-        args.overwrite,
-    )
+        logger.info("Writing out release HT...")
+        ht = ht.checkpoint(
+            qc_temp_prefix() + "release/gnomad.genomes.sites.test.ht"
+            if args.test
+            else release_sites().path,
+            args.overwrite,
+        )
 
     logger.info("Final variant count: %d", ht.count())
     ht.describe()
@@ -353,13 +361,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--test", help="Runs a test on chr20:1-1000000", action="store_true"
+        "--test", help="Runs a test on the first two partitions in the HTt", action="store_true"
     )
     parser.add_argument(
         "--test_subsets",
         help="Specify subsets on which to run test, e.g. '--test_subsets non_v2 non_topmed'",
         default=SUBSETS,
         nargs="+",
+    )
+    parser.add_argument(
+        "--het_nonref_patch",
+        help="Fix release using frequency information from only variants where the v3.1 homalt hotfix incorrectly adjusted het nonref genotype calls.",
+        action="store_true",
     )
     parser.add_argument(
         "--slack_channel", help="Slack channel to post results and notifications to."

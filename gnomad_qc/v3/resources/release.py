@@ -44,6 +44,7 @@ def release_ht_path(
     data_type: str = "genomes",
     release_version: str = CURRENT_RELEASE,
     public: bool = True,
+    het_nonref_patch: bool = False,
 ) -> str:
     """
     Fetch filepath for release (variant-only) Hail Tables.
@@ -51,28 +52,38 @@ def release_ht_path(
     :param data_type: 'exomes' or 'genomes'
     :param release_version: release version
     :param public: Whether to return the desired
+    :param het_nonref_patch: Whether this is frequency information for only variants that need the het nonref patch applied
     :return: File path for desired Hail Table
     :rtype: str
     """
     version_prefix = "r" if release_version.startswith("3.0") else "v"
     if public:
+        if het_nonref_patch:
+            DataException("The patch HT will not be made public")
         return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
     else:
-        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
+        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}{'.public' if het_nonref_patch else ''}.sites.ht"
 
 
-def release_sites(public: bool = False) -> VersionedTableResource:
+def release_sites(
+    public: bool = False, het_nonref_patch: bool = False
+) -> VersionedTableResource:
     """
     Retrieve versioned resource for sites-only release Table.
 
     :param public: Determines whether release sites Table is read from public or private bucket. Defaults to private
+    :param het_nonref_patch: Whether this is frequency information for only variants that need the het nonref patch applied
     :return: Sites-only release Table
     """
     return VersionedTableResource(
         default_version=CURRENT_RELEASE,
         versions={
             release: TableResource(
-                path=release_ht_path(release_version=release, public=public)
+                path=release_ht_path(
+                    release_version=release,
+                    public=public,
+                    het_nonref_patch=het_nonref_patch,
+                )
             )
             for release in RELEASES
         },
