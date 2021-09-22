@@ -361,7 +361,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--test", help="Runs a test on the first two partitions in the HTt", action="store_true"
+        "--test", help="Runs a test on the first two partitions in the HT", action="store_true"
     )
     parser.add_argument(
         "--test_subsets",

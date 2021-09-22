@@ -32,13 +32,6 @@ def get_het_non_ref_impacted_var(
     :param hl.Table freq_ht: Hail Table containing gnomAD v3.0 frequency information.
     :return: None
     """
-
-    logger.info("Removing low qual variants and star alleles...")
-    mt = mt.filter_rows(
-        (~info_ht[mt.row_key].AS_lowqual)
-        & ((hl.len(mt.alleles) > 1) & (mt.alleles[1] != "*"))
-    )
-
     logger.info("Filtering to common (AF > 0.01) variants...")
     mt = mt.annotate_rows(AF=freq_ht[mt.row_key].freq[0].AF)
     mt = mt.filter_rows(mt.AF > 0.01)
