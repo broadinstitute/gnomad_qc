@@ -87,15 +87,23 @@ def main(args):
         )
 
     try:
-        logger.info(
-            "Reading dense MT containing only sites that may require frequency recalculation due to het non ref site error."
-            "This dense MT only contains release samples and has already been split"
-        )
-        mt = hl.read_matrix_table(
-            "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites_3.1.2_test.mt"
-            if args.test
-            else "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites.mt"
-        )
+        if args.het_nonref_patch:
+            logger.info(
+                "Reading dense MT containing only sites that may require frequency recalculation due to het non ref site error."
+                "This dense MT only contains release samples and has already been split"
+            )
+            mt = hl.read_matrix_table(
+                "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites_3.1.2_test.mt"
+                if args.test
+                else "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites.mt"
+            )
+        else:
+            logger.info("Reading full sparse MT and metadata table...")
+            mt = get_gnomad_v3_mt(
+                key_by_locus_and_alleles=True,
+                release_only=not args.include_non_release | args.hgdp_1kg_subset,
+                samples_meta=True,
+            )
 
         if args.test:
             logger.info("Filtering to the first two partitions")
@@ -145,9 +153,10 @@ def main(args):
             adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
         )
 
-        logger.info("Densify-ing...")
-        mt = hl.experimental.densify(mt)
-        mt = mt.filter_rows(hl.len(mt.alleles) > 1)
+        if not args.het_nonref_patch:
+            logger.info("Densify-ing...")
+            mt = hl.experimental.densify(mt)
+            mt = mt.filter_rows(hl.len(mt.alleles) > 1)
 
         # Temporary hotfix for depletion of homozygous alternate genotypes
         logger.info(
@@ -193,19 +202,18 @@ def main(args):
             freq_ht = mt.rows()
 
             logger.info(
-                f"Writing out patch frequency data for {', '.join(subsets)} subset(s)..."
+                f"Writing out {'patch' if args.het_nonref_patch else ''} frequency data for {', '.join(subsets)} subset(s)..."
             )
             if args.test:
                 freq_ht.write(
                     get_checkpoint_path(
-                        f"test_gnomad_genomes_v3.1.2.patch.frequencies.{'_'.join(subsets)}"
+                        f"test_freq{'_patch' if args.het_nonref_patch else ''}.{'_'.join(subsets)}"
                     ),
                     overwrite=True,
                 )
             else:
                 freq_ht.write(
-                    f"gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.2/gnomad_genomes_v3.1.2.patch.frequencies.{'_'.join(subsets)}.ht",
-                    overwrite=args.overwrite,
+                    get_freq(subset="-".join(subsets), het_nonref_patch=args.het_nonref_patch).path, overwrite=args.overwrite
                 )
 
         else:
@@ -293,15 +301,15 @@ def main(args):
                 ),
             )
 
-            logger.info("Writing out frequency data for the patch...")
+            logger.info(f"Writing out frequency data {'for patch' if args.het_nonref_patch else ''}...")
             if args.test:
                 ht.write(
-                    get_checkpoint_path("test_freq_v3.1.2.patch.frequencies"),
+                    get_checkpoint_path(f"test_freq{'_patch' if args.het_nonref_patch else ''}.{'-'.join(subsets)}"),
                     overwrite=True,
                 )
             else:
                 ht.write(
-                    "gs://gnomad/annotations/hail-0.2/ht/genomes_v3.1.2/gnomad_genomes_v3.1.2.patch.frequencies.ht",
+                    get_freq(het_nonref_patch=args.het_nonref_patch).path,
                     overwrite=args.overwrite,
                 )
 
@@ -329,6 +337,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--hgdp_1kg_subset",
         help="Calculate HGDP + 1KG frequencies with specialized sample QC. Note: create_hgdp_tgp_subset.py --create_sample_annotation_ht must be run prior to using this option. Subsets option does not need to be used.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--het_nonref_patch",
+        help="Perform frequency calculations on only variants where the v3.1 homalt hotfix incorrectly adjusted het nonref genotype calls.",
         action="store_true",
     )
     parser.add_argument(
