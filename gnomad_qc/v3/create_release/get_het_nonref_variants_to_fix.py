@@ -151,26 +151,13 @@ def main(args):
         "Writing out dense MT with only het nonref calls that may have been incorrectly adjusted with the homalt hotfix..."
     )
     if args.test:
-        mt = mt.checkpoint(
+        mt.write(
             "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites_3.1.2_test.mt",
             overwrite=True,
         )
     else:
-        mt = mt.checkpoint(
+        mt.write(
             "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites.mt", overwrite=True
-        )
-
-    logger.info(
-        "Writing out variants with het nonref calls that may have been incorrectly adjusted with the homalt hotfix..."
-    )
-    if args.test:
-        mt.rows().write(
-            "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites_3.1.2_test.ht",
-            overwrite=True,
-        )
-    else:
-        mt.rows().write(
-            "gs://gnomad/release/3.1.2/ht/het_nonref_fix_sites.ht", overwrite=True
         )
 
 
