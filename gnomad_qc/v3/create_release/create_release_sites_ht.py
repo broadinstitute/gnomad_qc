@@ -316,7 +316,8 @@ def main(args):
     ht = ht.filter(hl.is_defined(ht.filters))
 
     ht = ht.checkpoint(
-        qc_temp_prefix() + f"release/gnomad.genomes.sites.test{'.patch' if args.het_nonref_patch else ''}.ht"
+        qc_temp_prefix()
+        + f"release/gnomad.genomes.sites.test{'.patch' if args.het_nonref_patch else ''}.ht"
         if args.test
         else release_sites(het_nonref_patch=args.het_nonref_patch).path,
         args.overwrite,
@@ -361,7 +362,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--test", help="Runs a test on the first two partitions in the HT", action="store_true"
+        "--test",
+        help="Runs a test on the first two partitions in the HT",
+        action="store_true",
     )
     parser.add_argument(
         "--test_subsets",

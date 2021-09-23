@@ -466,6 +466,7 @@ def adjust_subset_alleles(mt: hl.MatrixTable) -> hl.MatrixTable:
     :param mt: MatrixTable to subset locus alleles
     :return: MatrixTable with alleles adjusted to only those with a sample containing a non reference allele
     """
+
     def split_shuffle(mt: hl.MatrixTable) -> hl.MatrixTable:
         """
         Split rows that do and do not have the same new and old locus (which will be most) prior to the row rekey.
@@ -512,7 +513,9 @@ def adjust_subset_alleles(mt: hl.MatrixTable) -> hl.MatrixTable:
     mt = split_shuffle(mt)
     mt = mt.annotate_entries(LA=mt.LA.map(lambda x: mt._old_to_new[x]))
 
-    return mt.drop("_keep_allele", "_new_to_old", "_old_to_new", "new_locus", "new_alleles")
+    return mt.drop(
+        "_keep_allele", "_new_to_old", "_old_to_new", "new_locus", "new_alleles"
+    )
 
 
 def create_full_subset_dense_mt(
