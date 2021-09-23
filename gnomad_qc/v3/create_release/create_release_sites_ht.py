@@ -32,6 +32,7 @@ from gnomad_qc.v3.resources.annotations import (
     vep,
 )
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v3.resources.variant_qc import final_filter
 
@@ -60,10 +61,35 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
     """
     logger.info("Loading annotation tables...")
     filters_ht = final_filter.ht()
-    vep_ht = vep.ht()
+
+    # NOTE: Added for v3.1.2 release because the VEP annotation and in silico annotation HTs were removed,
+    # but all info can be pulled from the v3.1.1 release HT
+    if CURRENT_RELEASE == "3.1.2":
+        vep_ht = release_sites(public=True).versions["3.1.1"].ht()
+        vep_ht = vep_ht.select("vep")
+        vep_ht = vep_ht.select_globals(version=vep_ht.vep_version)
+        in_silico_ht = (
+            release_sites(public=True)
+            .versions["3.1.1"]
+            .ht()
+            .select("cadd", "revel", "splice_ai", "primate_ai")
+        )
+    else:
+        vep_ht = vep.ht()
+        vep_ht = vep_ht.annotate(vep=vep_ht.vep.drop("colocated_variants"))
+        in_silico_ht = analyst_annotations.ht()
+
     dbsnp_ht = dbsnp.ht().select("rsid")
-    info_ht = get_info().ht()
-    in_silico_ht = analyst_annotations.ht()
+
+    logger.info("Reading in info HT...")
+    if file_exists(get_info().path):
+        info_ht = get_info().ht()
+    elif not file_exists(get_info().path) and file_exists(get_info(split=False).path):
+        from gnomad_qc.v3.annotations.generate_qc_annotations import split_info
+
+        info_ht = split_info().drop("old_locus", "old_alleles")
+    else:
+        raise DataException("There is no available split or unsplit info HT for use!")
 
     logger.info("Filtering lowqual variants and assembling 'info' field...")
     info_fields = SITE_FIELDS + AS_FIELDS
@@ -107,7 +133,7 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
         was_split=info_ht[ht.key].was_split,
         rsid=dbsnp_ht[ht.key].rsid,
         info=info_ht[ht.key].info,
-        vep=vep_ht[ht.key].vep.drop("colocated_variants"),
+        vep=vep_ht[ht.key].vep,
         region_flag=region_flag_expr(
             ht,
             non_par=False,
@@ -116,6 +142,7 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
         **filters_ht[ht.key],
         **in_silico_ht[ht.key],
     )
+
     ht = ht.transmute(info=ht.info.annotate(InbreedingCoeff=ht.InbreedingCoeff))
 
     ht = ht.annotate_globals(
@@ -218,8 +245,8 @@ def main(args):
             )
             global_freq_ht = (
                 hl.read_table(global_freq_test_ht_path)
-                .select("freq")
-                .select_globals("freq_meta")
+                .select("freq", "InbreedingCoeff")
+                .select_globals("freq_meta", "downsamplings")
             )
 
         elif file_exists(global_freq_path):
@@ -228,17 +255,19 @@ def main(args):
             )
             global_freq_ht = (
                 hl.read_table(global_freq_path)
-                .select("freq")
-                .select_globals("freq_meta")
+                .select("freq", "InbreedingCoeff")
+                .select_globals("freq_meta", "downsamplings")
             )
             global_freq_ht = hl.filter_intervals(
-                global_freq_ht, [hl.parse_locus_interval("chr20:1-1000000")]
+                global_freq_ht, [hl.parse_locus_interval("chr1:1-1000000")]
             )
 
     elif file_exists(global_freq_path):
         logger.info("Loading global frequency data: %s", global_freq_path)
         global_freq_ht = (
-            hl.read_table(global_freq_path).select("freq").select_globals("freq_meta")
+            hl.read_table(global_freq_path)
+            .select("freq", "InbreedingCoeff")
+            .select_globals("freq_meta", "downsamplings")
         )
 
     else:
@@ -281,7 +310,6 @@ def main(args):
     # Create frequency index dictionary on concatenated array (i.e., including all subsets)
     # NOTE: non-standard downsampling values are created in the frequency script corresponding to population totals, so
     # callset-specific DOWNSAMPLINGS must be used instead of the generic DOWNSAMPLING values
-    global_freq_ht = hl.read_table(get_freq().path)
     freq_ht = freq_ht.annotate_globals(
         freq_index_dict=make_freq_index_dict(
             freq_meta=hl.eval(freq_ht.freq_meta),

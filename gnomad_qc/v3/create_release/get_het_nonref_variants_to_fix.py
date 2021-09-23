@@ -1,8 +1,16 @@
+# NOTE:
+# This script is needed for the v3.1.2 release to correct a a problem discovered in the gnomAD v3.1 release.
+# The fix we implemented to correct a technical artifact creating the depletion of homozygous alternate genotypes
+# was not performed correctly in situations where samples that were individually heterozygous non-reference had both
+# a heterozygous and homozygous alternate call at the same locus.
+
 import argparse
 import logging
 
 import hail as hl
 
+from gnomad.resources.resource_utils import DataException
+from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import densify_sites
 from gnomad.utils.vcf import SPARSE_ENTRIES
@@ -39,7 +47,7 @@ def get_het_non_ref_impacted_var(
     logger.info(
         "Filtering to variants with at least one het nonref call and checkpointing..."
     )
-    mt = mt.filter_rows(hl.agg.sum(mt.het_non_ref) >= 1)
+    mt = mt.filter_rows(hl.agg.sum(mt._het_non_ref) >= 1)
 
     logger.info(
         "Adding new genotype entries with original homalt hotfix and het nonref-aware hotfix..."
@@ -52,7 +60,7 @@ def get_het_non_ref_impacted_var(
         ),
         GT_hetnonref_fix=hl.if_else(
             mt.GT.is_het()
-            & ~mt.het_non_ref
+            & ~mt._het_non_ref
             & (mt.AF > 0.01)
             & (mt.AD[1] / mt.DP > 0.9),
             hl.call(1, 1),
@@ -102,23 +110,32 @@ def main(args):
     # Adding a Boolean for whether a sample had a heterozygous non-reference genotype
     # Need to add this prior to splitting MT to make sure these genotypes
     # are not adjusted by the homalt hotfix downstream
-    mt = mt.annotate_entries(het_non_ref=mt.LGT.is_het_non_ref())
+    mt = mt.annotate_entries(_het_non_ref=mt.LGT.is_het_non_ref())
 
     logger.info("Splitting multiallelics...")
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
     logger.info("Reading in v3.0 release HT (to get frequency information)...")
-    freq_ht = release_sites().versions["3"].ht().select_globals().select("freq")
+    freq_ht = (
+        release_sites(public=True).versions["3.0"].ht().select_globals().select("freq")
+    )
 
     logger.info("Reading in info HT...")
-    info_ht = get_info().ht()
+    if file_exists(get_info().path):
+        info_ht = get_info().ht()
+    elif not file_exists(get_info().path) and file_exists(get_info(split=False).path):
+        from gnomad_qc.v3.annotations.generate_qc_annotations import split_info
+
+        info_ht = split_info().drop("old_locus", "old_alleles")
+    else:
+        raise DataException("There is no available split or unsplit info HT for use!")
 
     logger.info(
         "Checking for variants with het nonref calls that were incorrectly adjusted with homalt hotfix..."
     )
     sites_ht = get_het_non_ref_impacted_var(mt, info_ht, freq_ht)
 
-    logger.info("Densifying MT to het non ref sites only...")
+    logger.info("Densifying MT to het nonref sites only...")
     # NOTE: densify_sites operates on locus only (doesn't check alleles)
     # https://github.com/broadinstitute/gnomad_methods/blob/master/gnomad/utils/sparse_mt.py#L102
     # Thus, it doesn't matter that `sites_ht` has already been split

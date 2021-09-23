@@ -50,6 +50,8 @@ logger.setLevel(logging.INFO)
 
 
 def main(args):
+    from gnomad.resources.grch38.gnomad import POPS
+
     subsets = args.subsets
     hl.init(
         log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",
@@ -59,23 +61,24 @@ def main(args):
     if args.hgdp_1kg_subset:
         subsets = ["hgdp", "tgp"]
 
-    invalid_subsets = []
-    n_subsets_use_subpops = 0
-    for s in subsets:
-        if s not in SUBSETS:
-            invalid_subsets.append(s)
-        if s in COHORTS_WITH_POP_STORED_AS_SUBPOP:
-            n_subsets_use_subpops += 1
+    if subsets:
+        invalid_subsets = []
+        n_subsets_use_subpops = 0
+        for s in subsets:
+            if s not in SUBSETS:
+                invalid_subsets.append(s)
+            if s in COHORTS_WITH_POP_STORED_AS_SUBPOP:
+                n_subsets_use_subpops += 1
 
-    if invalid_subsets:
-        raise ValueError(
-            f"{', '.join(invalid_subsets)} subset(s) are not one of the following official subsets: {SUBSETS}"
-        )
-    if n_subsets_use_subpops & (n_subsets_use_subpops != len(subsets)):
-        raise ValueError(
-            f"Cannot combine cohorts that use subpops in frequency calculations {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
-            f"with cohorts that use pops in frequency calculations {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
-        )
+        if invalid_subsets:
+            raise ValueError(
+                f"{', '.join(invalid_subsets)} subset(s) are not one of the following official subsets: {SUBSETS}"
+            )
+        if n_subsets_use_subpops & (n_subsets_use_subpops != len(subsets)):
+            raise ValueError(
+                f"Cannot combine cohorts that use subpops in frequency calculations {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
+                f"with cohorts that use pops in frequency calculations {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
+            )
     if args.hgdp_1kg_subset and not file_exists(hgdp_1kg_subset_annotations().path):
         raise DataException(
             "There is currently no sample meta HT for the HGDP + TGP subset."
@@ -89,7 +92,7 @@ def main(args):
     try:
         if args.het_nonref_patch:
             logger.info(
-                "Reading dense MT containing only sites that may require frequency recalculation due to het non ref site error."
+                "Reading dense MT containing only sites that may require frequency recalculation due to het non ref site error. "
                 "This dense MT only contains release samples and has already been split"
             )
             mt = hl.read_matrix_table(
@@ -109,11 +112,12 @@ def main(args):
             logger.info("Filtering to the first two partitions")
             mt = mt._filter_partitions(range(2))
 
-        logger.info(
-            "Annotate entries with het non ref status for use in the homozygous alternate depletion fix..."
-        )
-        mt = mt.annotate_entries(_het_non_ref=mt.LGT.is_het_non_ref())
-        mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+        if not args.het_nonref_patch:
+            logger.info(
+                "Annotate entries with het non ref status for use in the homozygous alternate depletion fix..."
+            )
+            mt = mt.annotate_entries(_het_non_ref=mt.LGT.is_het_non_ref())
+            mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
         if args.include_non_release:
             logger.info("Filtering MT columns to high quality samples")
