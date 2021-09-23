@@ -466,6 +466,23 @@ def adjust_subset_alleles(mt: hl.MatrixTable) -> hl.MatrixTable:
     :param mt: MatrixTable to subset locus alleles
     :return: MatrixTable with alleles adjusted to only those with a sample containing a non reference allele
     """
+    def split_shuffle(mt: hl.MatrixTable) -> hl.MatrixTable:
+        """
+        Split rows that do and do not have the same new and old locus (which will be most) prior to the row rekey.
+
+        This is needed to force the shuffle to only happen on the small number of rows that have a different new and
+        old locus. Fixing a problem discussed in more detail here: https://discuss.hail.is/t/preventing-a-shuffle-error/2261/6
+
+        :param mt: MatrixTable to rekey
+        :return: Rekeyed MatrixTable
+        """
+        mt1 = mt.filter_rows(mt.locus == mt.new_locus)
+        mt1 = mt1.key_rows_by(locus=mt1.new_locus, alleles=mt1.new_alleles)
+        mt2 = mt.filter_rows(mt.locus != mt.new_locus)
+        mt2 = mt2.key_rows_by(locus=mt2.new_locus, alleles=mt2.new_alleles)
+
+        return mt1.union_rows(mt2)
+
     mt = mt.annotate_rows(
         _keep_allele=hl.agg.array_agg(
             lambda i: hl.agg.any(mt.LA.contains(i[0])), hl.enumerate(mt.alleles)
@@ -488,12 +505,14 @@ def adjust_subset_alleles(mt: hl.MatrixTable) -> hl.MatrixTable:
     new_locus_alleles = hl.min_rep(
         mt.locus, mt._new_to_old.map(lambda i: mt.alleles[i])
     )
-    mt = mt.key_rows_by(
-        locus=new_locus_alleles.locus, alleles=new_locus_alleles.alleles
+    mt = mt.annotate_rows(
+        new_locus=new_locus_alleles.locus, new_alleles=new_locus_alleles.alleles
     )
+
+    mt = split_shuffle(mt)
     mt = mt.annotate_entries(LA=mt.LA.map(lambda x: mt._old_to_new[x]))
 
-    return mt.drop("_keep_allele", "_new_to_old", "_old_to_new")
+    return mt.drop("_keep_allele", "_new_to_old", "_old_to_new", "new_locus", "new_alleles")
 
 
 def create_full_subset_dense_mt(
