@@ -243,32 +243,20 @@ def main(args):
                 "Loading global test frequency data for sites HT testing: %s",
                 global_freq_test_ht_path,
             )
-            global_freq_ht = (
-                hl.read_table(global_freq_test_ht_path)
-                .select("freq", "InbreedingCoeff")
-                .select_globals("freq_meta", "downsamplings")
-            )
+            global_freq_ht = hl.read_table(global_freq_test_ht_path)
 
         elif file_exists(global_freq_path):
             logger.info(
                 "Loading global frequency data for testing: %s", global_freq_path
             )
-            global_freq_ht = (
-                hl.read_table(global_freq_path)
-                .select("freq", "InbreedingCoeff")
-                .select_globals("freq_meta", "downsamplings")
-            )
+            global_freq_ht = hl.read_table(global_freq_path)
             global_freq_ht = hl.filter_intervals(
                 global_freq_ht, [hl.parse_locus_interval("chr1:1-1000000")]
             )
 
     elif file_exists(global_freq_path):
         logger.info("Loading global frequency data: %s", global_freq_path)
-        global_freq_ht = (
-            hl.read_table(global_freq_path)
-            .select("freq", "InbreedingCoeff")
-            .select_globals("freq_meta", "downsamplings")
-        )
+        global_freq_ht = hl.read_table(global_freq_path)
 
     else:
         raise DataException(
@@ -354,7 +342,7 @@ def main(args):
     if args.het_nonref_patch:
         logger.info("Applying het non ref patch to the v3.1.1 release HT...")
 
-        v3_1_1_release_ht = release_sites().versions["3.1.1"].ht()
+        v3_1_1_release_ht = release_sites(public=True).versions["3.1.1"].ht()
         if args.test:
             logger.info("Filtering to the first two partitions in the HT")
             v3_1_1_release_ht = v3_1_1_release_ht._filter_partitions(range(2))
@@ -362,7 +350,7 @@ def main(args):
         ht = v3_1_1_release_ht.transmute(
             **{
                 x: hl.coalesce(ht[v3_1_1_release_ht.key][x], v3_1_1_release_ht[x])
-                for x in ["freq", "faf", "popmax", "qual_hists", "raw_qual_hists",]
+                for x in ["freq", "faf", "popmax", "qual_hists", "raw_qual_hists"]
             },
             info=v3_1_1_release_ht.info.annotate(
                 InbreedingCoeff=hl.coalesce(
