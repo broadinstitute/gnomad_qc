@@ -371,7 +371,6 @@ def main(args):
     logger.info("Final variant count: %d", ht.count())
     ht.describe()
     ht.show()
-    ht.summarize()
 
 
 if __name__ == "__main__":
