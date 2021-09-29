@@ -31,7 +31,8 @@ from gnomad_qc.v3.resources.annotations import (
     get_info,
     vep,
 )
-from gnomad_qc.v3.resources.basics import qc_temp_prefix
+from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v3.resources.variant_qc import final_filter
 
@@ -44,8 +45,6 @@ logger.setLevel(logging.INFO)
 
 # Remove InbreedingCoeff from allele-specific fields (processed separately from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
-# Remove BaseQRankSum, as we are keeping the allele-specific version of this annotation instead
-SITE_FIELDS.remove("BaseQRankSum")
 
 # Add fine-resolution populations specific to 1KG and HGDP to standard gnomAD pops; used to create frequency index dictionary
 POPS.extend(POPS_STORED_AS_SUBPOPS)
@@ -62,10 +61,35 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
     """
     logger.info("Loading annotation tables...")
     filters_ht = final_filter.ht()
-    vep_ht = vep.ht()
+
+    # NOTE: Added for v3.1.2 release because the VEP annotation and in silico annotation HTs were removed,
+    # but all info can be pulled from the v3.1.1 release HT
+    if CURRENT_RELEASE == "3.1.2":
+        vep_ht = release_sites(public=True).versions["3.1.1"].ht()
+        vep_ht = vep_ht.select("vep")
+        vep_ht = vep_ht.select_globals(version=vep_ht.vep_version)
+        in_silico_ht = (
+            release_sites(public=True)
+            .versions["3.1.1"]
+            .ht()
+            .select("cadd", "revel", "splice_ai", "primate_ai")
+        )
+    else:
+        vep_ht = vep.ht()
+        vep_ht = vep_ht.annotate(vep=vep_ht.vep.drop("colocated_variants"))
+        in_silico_ht = analyst_annotations.ht()
+
     dbsnp_ht = dbsnp.ht().select("rsid")
-    info_ht = get_info().ht()
-    in_silico_ht = analyst_annotations.ht()
+
+    logger.info("Reading in info HT...")
+    if file_exists(get_info().path):
+        info_ht = get_info().ht()
+    elif not file_exists(get_info().path) and file_exists(get_info(split=False).path):
+        from gnomad_qc.v3.annotations.generate_qc_annotations import split_info
+
+        info_ht = split_info().drop("old_locus", "old_alleles")
+    else:
+        raise DataException("There is no available split or unsplit info HT for use!")
 
     logger.info("Filtering lowqual variants and assembling 'info' field...")
     info_fields = SITE_FIELDS + AS_FIELDS
@@ -109,19 +133,16 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
         was_split=info_ht[ht.key].was_split,
         rsid=dbsnp_ht[ht.key].rsid,
         info=info_ht[ht.key].info,
-        vep=vep_ht[ht.key].vep.drop("colocated_variants"),
-        vqsr=filters_ht[ht.key].vqsr,
+        vep=vep_ht[ht.key].vep,
         region_flag=region_flag_expr(
             ht,
             non_par=False,
-            prob_regions={
-                "lcr": lcr_intervals.ht(),
-                "segdup": seg_dup_intervals.ht(),
-            },
+            prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         ),
         **filters_ht[ht.key],
         **in_silico_ht[ht.key],
     )
+
     ht = ht.transmute(info=ht.info.annotate(InbreedingCoeff=ht.InbreedingCoeff))
 
     ht = ht.annotate_globals(
@@ -136,7 +157,10 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
 
 
 def pre_process_subset_freq(
-    subset: str, global_ht: hl.Table, test: bool = False
+    subset: str,
+    global_ht: hl.Table,
+    test: bool = False,
+    het_nonref_patch: bool = False,
 ) -> hl.Table:
     """
     Prepare subset frequency Table by filling in missing frequency fields for loci present only in the global cohort.
@@ -147,22 +171,25 @@ def pre_process_subset_freq(
 
     :param subset: subset ID
     :param global_ht: Hail Table containing all variants discovered in the overall release cohort
-    :param test: If True, filter to small region on chr20
+    :param test: If True, filter to small region on chr1
+    :param het_nonref_patch: Whether this is frequency information for only variants that need the het nonref patch applied
     :return: Table containing subset frequencies with missing freq structs filled in
     """
 
     # Read in subset HTs
-    subset_ht_path = get_freq(subset=subset).path
-    subset_chr20_ht_path = qc_temp_prefix() + f"chr20_test_freq.{subset}.ht"
+    subset_ht_path = get_freq(subset=subset, het_nonref_patch=het_nonref_patch)
+    subset_test_ht_path = get_checkpoint_path(
+        f"test_freq{'_patch' if het_nonref_patch else ''}.{subset}"
+    )
 
     if test:
-        if file_exists(subset_chr20_ht_path):
+        if file_exists(subset_test_ht_path):
             logger.info(
-                "Loading chr20 %s subset frequency data for testing: %s",
+                "Loading %s subset frequency data for testing: %s",
                 subset,
-                subset_chr20_ht_path,
+                subset_test_ht_path,
             )
-            subset_ht = hl.read_table(subset_chr20_ht_path)
+            subset_ht = hl.read_table(subset_test_ht_path)
 
         elif file_exists(subset_ht_path):
             logger.info(
@@ -172,7 +199,7 @@ def pre_process_subset_freq(
             )
             subset_ht = hl.read_table(subset_ht_path)
             subset_ht = hl.filter_intervals(
-                subset_ht, [hl.parse_locus_interval("chr20:1-1000000")]
+                subset_ht, [hl.parse_locus_interval("chr1:1-1000000")]
             )
 
     elif file_exists(subset_ht_path):
@@ -193,49 +220,43 @@ def pre_process_subset_freq(
             ht.freq,
         )
     )
+    ht = ht.select("freq").select_globals("freq_meta")
 
     return ht
 
 
 def main(args):
     hl.init(log="/create_release_ht.log", default_reference="GRCh38")
+    global_freq_path = get_freq(het_nonref_patch=args.het_nonref_patch).path
 
     # The concatenated HT contains all subset frequency annotations, plus the overall cohort frequency annotations,
     # concatenated together in a single freq annotation ('freq')
 
     # Load global frequency Table
     if args.test:
-        global_freq_chr20_ht_path = "gs://gnomad-tmp/gnomad_freq/chr20_test_freq.ht"
-
-        if file_exists(global_freq_chr20_ht_path):
-            logger.info(
-                "Loading chr20 global frequency data for testing: %s",
-                global_freq_chr20_ht_path,
-            )
-            global_freq_ht = (
-                hl.read_table(global_freq_chr20_ht_path)
-                .select("freq")
-                .select_globals("freq_meta")
-            )
-
-        elif file_exists(get_freq().path):
-            logger.info(
-                "Loading global frequency data for testing: %s", get_freq().path
-            )
-            global_freq_ht = (
-                hl.read_table(get_freq().path)
-                .select("freq")
-                .select_globals("freq_meta")
-            )
-            global_freq_ht = hl.filter_intervals(
-                global_freq_ht, [hl.parse_locus_interval("chr20:1-1000000")]
-            )
-
-    elif file_exists(get_freq().path):
-        logger.info("Loading global frequency data: %s", get_freq().path)
-        global_freq_ht = (
-            hl.read_table(get_freq().path).select("freq").select_globals("freq_meta")
+        global_freq_test_ht_path = get_checkpoint_path(
+            f"test_freq{'_patch' if args.het_nonref_patch else ''}"
         )
+
+        if file_exists(global_freq_test_ht_path):
+            logger.info(
+                "Loading global test frequency data for sites HT testing: %s",
+                global_freq_test_ht_path,
+            )
+            global_freq_ht = hl.read_table(global_freq_test_ht_path)
+
+        elif file_exists(global_freq_path):
+            logger.info(
+                "Loading global frequency data for testing: %s", global_freq_path
+            )
+            global_freq_ht = hl.read_table(global_freq_path)
+            global_freq_ht = hl.filter_intervals(
+                global_freq_ht, [hl.parse_locus_interval("chr1:1-1000000")]
+            )
+
+    elif file_exists(global_freq_path):
+        logger.info("Loading global frequency data: %s", global_freq_path)
+        global_freq_ht = hl.read_table(global_freq_path)
 
     else:
         raise DataException(
@@ -246,18 +267,26 @@ def main(args):
     if args.test:
         test_subsets = args.test_subsets
         subset_freq_hts = [
-            pre_process_subset_freq(subset, global_freq_ht, test=True)
+            pre_process_subset_freq(
+                subset,
+                global_freq_ht,
+                test=True,
+                het_nonref_patch=args.het_nonref_patch,
+            )
             for subset in test_subsets
         ]
 
     else:
         subset_freq_hts = [
-            pre_process_subset_freq(subset, global_freq_ht) for subset in SUBSETS
+            pre_process_subset_freq(
+                subset, global_freq_ht, het_nonref_patch=args.het_nonref_patch
+            )
+            for subset in SUBSETS
         ]
 
     logger.info("Concatenating subset frequencies...")
     freq_ht = hl.Table.multi_way_zip_join(
-        [global_freq_ht] + subset_freq_hts,
+        [global_freq_ht.select("freq").select_globals("freq_meta")] + subset_freq_hts,
         data_field_name="freq",
         global_field_name="freq_meta",
     )
@@ -269,7 +298,6 @@ def main(args):
     # Create frequency index dictionary on concatenated array (i.e., including all subsets)
     # NOTE: non-standard downsampling values are created in the frequency script corresponding to population totals, so
     # callset-specific DOWNSAMPLINGS must be used instead of the generic DOWNSAMPLING values
-    global_freq_ht = hl.read_table(get_freq().path)
     freq_ht = freq_ht.annotate_globals(
         freq_index_dict=make_freq_index_dict(
             freq_meta=hl.eval(freq_ht.freq_meta),
@@ -281,14 +309,16 @@ def main(args):
     # Add back in all global frequency annotations not present in concatenated frequencies HT
     row_fields = global_freq_ht.row_value.keys() - freq_ht.row_value.keys()
     logger.info(
-        "Adding back the following row annotations onto concatenated frequencies: %s", row_fields
+        "Adding back the following row annotations onto concatenated frequencies: %s",
+        row_fields,
     )
     freq_ht = freq_ht.annotate(**global_freq_ht[freq_ht.key].select(*row_fields))
 
     global_fields = global_freq_ht.globals.keys() - freq_ht.globals.keys()
     global_fields.remove("downsamplings")
     logger.info(
-        "Adding back the following global annotations onto concatenated frequencies: %s", global_fields
+        "Adding back the following global annotations onto concatenated frequencies: %s",
+        global_fields,
     )
     freq_ht = freq_ht.annotate_globals(
         **global_freq_ht.index_globals().select(*global_fields)
@@ -302,28 +332,65 @@ def main(args):
     ht = ht.filter(hl.is_defined(ht.filters))
 
     ht = ht.checkpoint(
-        qc_temp_prefix() + "release/gnomad.genomes.v3.1.sites.chr20.ht"
+        qc_temp_prefix()
+        + f"release/gnomad.genomes.sites.test{'.patch' if args.het_nonref_patch else ''}.ht"
         if args.test
-        else release_sites().path,
+        else release_sites(het_nonref_patch=args.het_nonref_patch).path,
         args.overwrite,
     )
+
+    if args.het_nonref_patch:
+        logger.info("Applying het non ref patch to the v3.1.1 release HT...")
+
+        v3_1_1_release_ht = release_sites(public=True).versions["3.1.1"].ht()
+        if args.test:
+            logger.info("Filtering to the first two partitions in the HT")
+            v3_1_1_release_ht = v3_1_1_release_ht._filter_partitions(range(2))
+
+        ht = v3_1_1_release_ht.transmute(
+            **{
+                x: hl.coalesce(ht[v3_1_1_release_ht.key][x], v3_1_1_release_ht[x])
+                for x in ["freq", "faf", "popmax", "qual_hists", "raw_qual_hists"]
+            },
+            info=v3_1_1_release_ht.info.annotate(
+                InbreedingCoeff=hl.coalesce(
+                    ht[v3_1_1_release_ht.key].info.InbreedingCoeff,
+                    v3_1_1_release_ht.info.InbreedingCoeff,
+                )
+            ),
+        )
+
+        logger.info("Writing out release HT...")
+        ht = ht.checkpoint(
+            qc_temp_prefix() + "release/gnomad.genomes.sites.test.ht"
+            if args.test
+            else release_sites().path,
+            args.overwrite,
+        )
+
     logger.info("Final variant count: %d", ht.count())
     ht.describe()
     ht.show()
-    ht.summarize()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--test", help="Runs a test on chr20:1-1000000", action="store_true"
+        "--test",
+        help="Runs a test on the first two partitions in the HT",
+        action="store_true",
     )
     parser.add_argument(
         "--test_subsets",
         help="Specify subsets on which to run test, e.g. '--test_subsets non_v2 non_topmed'",
         default=SUBSETS,
         nargs="+",
+    )
+    parser.add_argument(
+        "--het_nonref_patch",
+        help="Fix release using frequency information from only variants where the v3.1 homalt hotfix incorrectly adjusted het nonref genotype calls.",
+        action="store_true",
     )
     parser.add_argument(
         "--slack_channel", help="Slack channel to post results and notifications to."

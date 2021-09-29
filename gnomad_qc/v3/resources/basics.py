@@ -74,11 +74,9 @@ _gnomad_v3_genotypes = {
     ),
 }
 
-# The same raw MT is used for v3.1.1 and v3.1
-_gnomad_v3_genotypes["3.1.1"] = _gnomad_v3_genotypes["3.1"]
-
+# The same raw MT is used for v3.1.1, v3.1.2, and v3.1
 gnomad_v3_genotypes = VersionedMatrixTableResource(
-    CURRENT_RELEASE, _gnomad_v3_genotypes,
+    CURRENT_VERSION, _gnomad_v3_genotypes,
 )
 
 

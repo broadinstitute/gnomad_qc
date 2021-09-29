@@ -59,23 +59,24 @@ def main(args):
     if args.hgdp_1kg_subset:
         subsets = ["hgdp", "tgp"]
 
-    invalid_subsets = []
-    n_subsets_use_subpops = 0
-    for s in subsets:
-        if s not in SUBSETS:
-            invalid_subsets.append(s)
-        if s in COHORTS_WITH_POP_STORED_AS_SUBPOP:
-            n_subsets_use_subpops += 1
+    if subsets:
+        invalid_subsets = []
+        n_subsets_use_subpops = 0
+        for s in subsets:
+            if s not in SUBSETS:
+                invalid_subsets.append(s)
+            if s in COHORTS_WITH_POP_STORED_AS_SUBPOP:
+                n_subsets_use_subpops += 1
 
-    if invalid_subsets:
-        raise ValueError(
-            f"{', '.join(invalid_subsets)} subset(s) are not one of the following official subsets: {SUBSETS}"
-        )
-    if n_subsets_use_subpops and (n_subsets_use_subpops != len(subsets)):
-        raise ValueError(
-            f"Cannot combine cohorts that use subpops in frequency calculations {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
-            f"with cohorts that use pops in frequency calculations {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
-        )
+        if invalid_subsets:
+            raise ValueError(
+                f"{', '.join(invalid_subsets)} subset(s) are not one of the following official subsets: {SUBSETS}"
+            )
+        if n_subsets_use_subpops & (n_subsets_use_subpops != len(subsets)):
+            raise ValueError(
+                f"Cannot combine cohorts that use subpops in frequency calculations {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
+                f"with cohorts that use pops in frequency calculations {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
+            )
     if args.hgdp_1kg_subset and not file_exists(hgdp_1kg_subset_annotations().path):
         raise DataException(
             "There is currently no sample meta HT for the HGDP + TGP subset."
@@ -87,22 +88,34 @@ def main(args):
         )
 
     try:
-        logger.info("Reading full sparse MT and metadata table...")
-        mt = get_gnomad_v3_mt(
-            key_by_locus_and_alleles=True,
-            release_only=not args.include_non_release | args.hgdp_1kg_subset,
-            samples_meta=True,
-        )
+        if args.het_nonref_patch:
+            logger.info(
+                "Reading dense MT containing only sites that may require frequency recalculation due to het non ref site error. "
+                "This dense MT only contains release samples and has already been split"
+            )
+            mt = hl.read_matrix_table(
+                "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites_3.1.2_test.mt"
+                if args.test
+                else "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites.mt"
+            )
+        else:
+            logger.info("Reading full sparse MT and metadata table...")
+            mt = get_gnomad_v3_mt(
+                key_by_locus_and_alleles=True,
+                release_only=not args.include_non_release | args.hgdp_1kg_subset,
+                samples_meta=True,
+            )
 
         if args.test:
             logger.info("Filtering to the first two partitions")
             mt = mt._filter_partitions(range(2))
 
-        logger.info(
-            "Annotate entries with het non ref status for use in the homozygous alternate depletion fix..."
-        )
-        mt = mt.annotate_entries(_het_non_ref=mt.LGT.is_het_non_ref())
-        mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+        if not args.het_nonref_patch:
+            logger.info(
+                "Annotate entries with het non ref status for use in the homozygous alternate depletion fix..."
+            )
+            mt = mt.annotate_entries(_het_non_ref=mt.LGT.is_het_non_ref())
+            mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
         if args.include_non_release:
             logger.info("Filtering MT columns to high quality samples")
@@ -142,9 +155,10 @@ def main(args):
             adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
         )
 
-        logger.info("Densify-ing...")
-        mt = hl.experimental.densify(mt)
-        mt = mt.filter_rows(hl.len(mt.alleles) > 1)
+        if not args.het_nonref_patch:
+            logger.info("Densifying...")
+            mt = hl.experimental.densify(mt)
+            mt = mt.filter_rows(hl.len(mt.alleles) > 1)
 
         # Temporary hotfix for depletion of homozygous alternate genotypes
         logger.info(
@@ -175,30 +189,37 @@ def main(args):
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
+            pops = POPS
             if n_subsets_use_subpops:
-                POPS = POPS_STORED_AS_SUBPOPS
+                pops = POPS_STORED_AS_SUBPOPS
 
             mt = mt.annotate_globals(
                 freq_index_dict=make_freq_index_dict(
                     freq_meta=freq_meta,
-                    pops=POPS,
+                    pops=pops,
                     label_delimiter="-",
                     subsets=["|".join(subsets)],
                 )
             )
             mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
+            freq_ht = mt.rows()
 
             logger.info(
-                f"Writing out frequency data for {', '.join(subsets)} subset(s)..."
+                f"Writing out {'patch' if args.het_nonref_patch else ''} frequency data for {', '.join(subsets)} subset(s)..."
             )
             if args.test:
-                mt.rows().write(
-                    get_checkpoint_path(f"test_freq.{'-'.join(subsets)}"),
+                freq_ht.write(
+                    get_checkpoint_path(
+                        f"test_freq{'_patch' if args.het_nonref_patch else ''}.{'_'.join(subsets)}"
+                    ),
                     overwrite=True,
                 )
             else:
-                mt.rows().write(
-                    get_freq(subset="-".join(subsets)).path, overwrite=args.overwrite
+                freq_ht.write(
+                    get_freq(
+                        subset="-".join(subsets), het_nonref_patch=args.het_nonref_patch
+                    ).path,
+                    overwrite=args.overwrite,
                 )
 
         else:
@@ -286,11 +307,21 @@ def main(args):
                 ),
             )
 
-            logger.info("Writing out frequency data...")
+            logger.info(
+                f"Writing out frequency data {'for patch' if args.het_nonref_patch else ''}..."
+            )
             if args.test:
-                ht.write(get_checkpoint_path("test_freq"), overwrite=True)
+                ht.write(
+                    get_checkpoint_path(
+                        f"test_freq{'_patch' if args.het_nonref_patch else ''}"
+                    ),
+                    overwrite=True,
+                )
             else:
-                ht.write(get_freq().path, overwrite=args.overwrite)
+                ht.write(
+                    get_freq(het_nonref_patch=args.het_nonref_patch).path,
+                    overwrite=args.overwrite,
+                )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -316,6 +347,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--hgdp_1kg_subset",
         help="Calculate HGDP + 1KG frequencies with specialized sample QC. Note: create_hgdp_tgp_subset.py --create_sample_annotation_ht must be run prior to using this option. Subsets option does not need to be used.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--het_nonref_patch",
+        help="Perform frequency calculations on only variants where the v3.1 homalt hotfix incorrectly adjusted het nonref genotype calls.",
         action="store_true",
     )
     parser.add_argument(

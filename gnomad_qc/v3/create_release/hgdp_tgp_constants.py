@@ -418,7 +418,7 @@ SAMPLE_ANNOTATIONS = {
                     "https://www.internationalgenome.org/category/population."
                 )
             },
-            "geographic_region": {
+            "genetic_region": {
                 "Description": "Global population labels harmonized across both studies."
             },
             "latitude": {
@@ -460,8 +460,8 @@ SAMPLE_ANNOTATIONS = {
             "subcontinental_pca": {
                 "Description": (
                     "The subcontinental PCAs were obtained in a similar manner as the global PCA scores "
-                    "(hgdp_tgp_meta.global_pca_scores). The full HGDP + 1KG subset was split by geographic region "
-                    "(hgdp_tgp_meta.geographic_region) prior to performing the same PCA and PC projection steps "
+                    "(hgdp_tgp_meta.global_pca_scores). The full HGDP + 1KG subset was split by genetic region "
+                    "(hgdp_tgp_meta.genetic_region) prior to performing the same PCA and PC projection steps "
                     "described for the global PCA scores. The code used to obtain these scores can be found under "
                     "subcontinental pca here: https://github.com/atgu/hgdp_tgp/blob/master/pca_subcont.ipynb "
                 ),
@@ -469,7 +469,7 @@ SAMPLE_ANNOTATIONS = {
                     "pca_scores": {
                         "Description": (
                             "Array of the first 20 subcontinental PCA scores for the sample based on its value in the "
-                            "hgdp_tgp_meta.geographic_region annotation (one of: AFR, AMR, CSA, EAS, EUR, MID, or OCE)."
+                            "hgdp_tgp_meta.genetic_region annotation (one of: AFR, AMR, CSA, EAS, EUR, MID, or OCE)."
                         )
                     },
                     "pca_scores_outliers_removed": {

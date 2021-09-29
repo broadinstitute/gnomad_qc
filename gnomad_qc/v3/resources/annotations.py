@@ -8,8 +8,10 @@ from gnomad.resources.resource_utils import (
 )
 
 from gnomad_qc.v3.resources.constants import (
+    CURRENT_HGDP_TGP_RELEASE,
     CURRENT_INSILICO_ANNOTATION_VERSION,
     CURRENT_VERSION,
+    HGDP_TGP_RELEASES,
     VERSIONS,
     INSILICO_ANNOTATION_VERSIONS,
 )
@@ -166,7 +168,7 @@ allele_data = VersionedTableResource(
 
 
 def get_freq(
-    version: str = CURRENT_VERSION, subset: Optional[str] = None
+    version: str = None, subset: Optional[str] = None, het_nonref_patch: bool = False,
 ) -> VersionedTableResource:
     """
     Get the frequency annotation table for a specified release.
@@ -174,8 +176,20 @@ def get_freq(
     :param version: Version of annotation path to return
     :param subset: One of the official subsets of the specified release (e.g., non_neuro, non_cancer,
         controls_and_biobanks) or a combination of them split by '-'
+    :param het_nonref_patch: Whether this is frequency information for only variants that need the het nonref patch applied
     :return: Hail Table containing subset or overall cohort frequency annotations
     """
+    if version is None:
+        if subset == "hgdp-tgp":
+            version = CURRENT_HGDP_TGP_RELEASE
+        else:
+            version = CURRENT_VERSION
+
+    if subset == "hgdp-tgp":
+        all_versions = HGDP_TGP_RELEASES
+    else:
+        all_versions = VERSIONS
+
     if version == "3" and subset:
         raise DataException("Subsets of gnomAD v3 do not exist")
 
@@ -190,9 +204,9 @@ def get_freq(
         version,
         {
             release: TableResource(
-                f"{_annotations_root(release)}/gnomad_genomes_v{release}.frequencies{'.' + subset if subset else ''}.ht"
+                f"{_annotations_root(release)}/gnomad_genomes_v{release}{'_patch' if het_nonref_patch else ''}.frequencies{'.' + subset if subset else ''}.ht"
             )
-            for release in VERSIONS
+            for release in all_versions
         },
     )
 
