@@ -158,7 +158,7 @@ def main(args):
         )
 
         if not args.het_nonref_patch:
-            logger.info("Densify-ing...")
+            logger.info("Densifying...")
             mt = hl.experimental.densify(mt)
             mt = mt.filter_rows(hl.len(mt.alleles) > 1)
 

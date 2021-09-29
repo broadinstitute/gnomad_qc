@@ -469,16 +469,23 @@ def adjust_subset_alleles(mt: hl.MatrixTable) -> hl.MatrixTable:
 
     def split_shuffle(mt: hl.MatrixTable) -> hl.MatrixTable:
         """
-        Split rows that do and do not have the same new and old locus (which will be most) prior to the row rekey.
+        Split rows that do and do not have the same new and old locus prior to the row rekey.
+        
+        Most rows will have the same new and old locus annotations.
 
-        This is needed to force the shuffle to only happen on the small number of rows that have a different new and
+        Re-keying rows triggers a shuffle in hail.
+        This function is needed to force the shuffle to only happen on the small number of rows that have a different new and
         old locus. Fixing a problem discussed in more detail here: https://discuss.hail.is/t/preventing-a-shuffle-error/2261/6
 
         :param mt: MatrixTable to rekey
         :return: Rekeyed MatrixTable
         """
+        # Filter to rows that have the same old and new locus annotations
+        # These rows do not trigger a shuffle when re-keyed
         mt1 = mt.filter_rows(mt.locus == mt.new_locus)
         mt1 = mt1.key_rows_by(locus=mt1.new_locus, alleles=mt1.new_alleles)
+        # Filter to row with different old and new locus annotations
+        # These rows will trigger a shuffle when re-keyed
         mt2 = mt.filter_rows(mt.locus != mt.new_locus)
         mt2 = mt2.key_rows_by(locus=mt2.new_locus, alleles=mt2.new_alleles)
 

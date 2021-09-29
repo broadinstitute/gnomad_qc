@@ -100,7 +100,7 @@ def main(args):
     ).select_entries(*SPARSE_ENTRIES)
 
     if args.test:
-        logger.info("Filtering to two partitions on chr20")
+        logger.info("Filtering to two partitions on chr20...")
         mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20:1-1000000")])
         mt = mt._filter_partitions(range(2))
 
