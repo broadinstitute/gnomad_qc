@@ -30,13 +30,12 @@ logger.setLevel(logging.INFO)
 
 
 def get_het_non_ref_impacted_var(
-    mt: hl.MatrixTable, info_ht: hl.Table, freq_ht: hl.Table
+    mt: hl.MatrixTable, freq_ht: hl.Table
 ) -> None:
     """
     Filter to variants where homalt hotfix incorrectly adjusts het nonref genotype calls.
 
     :param hl.MatrixTable mt: Raw, split MatrixTable annotated with original genotype het nonref status.
-    :param hl.Table info_ht: Info Hail Table containing AS_lowqual information.
     :param hl.Table freq_ht: Hail Table containing gnomAD v3.0 frequency information.
     :return: None
     """
@@ -120,20 +119,10 @@ def main(args):
         release_sites(public=True).versions["3.0"].ht().select_globals().select("freq")
     )
 
-    logger.info("Reading in info HT...")
-    if file_exists(get_info().path):
-        info_ht = get_info().ht()
-    elif not file_exists(get_info().path) and file_exists(get_info(split=False).path):
-        from gnomad_qc.v3.annotations.generate_qc_annotations import split_info
-
-        info_ht = split_info().drop("old_locus", "old_alleles")
-    else:
-        raise DataException("There is no available split or unsplit info HT for use!")
-
     logger.info(
         "Checking for variants with het nonref calls that were incorrectly adjusted with homalt hotfix..."
     )
-    sites_ht = get_het_non_ref_impacted_var(mt, info_ht, freq_ht)
+    sites_ht = get_het_non_ref_impacted_var(mt, freq_ht)
 
     logger.info("Densifying MT to het nonref sites only...")
     # NOTE: densify_sites operates on locus only (doesn't check alleles)
