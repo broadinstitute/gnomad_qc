@@ -27,7 +27,7 @@ logger = logging.getLogger("get_impacted_variants")
 logger.setLevel(logging.INFO)
 
 
-def get_het_non_ref_impacted_var(mt: hl.MatrixTable, freq_ht: hl.Table) -> None:
+def get_het_non_ref_impacted_var(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table:
     """
     Filter to variants where homalt hotfix incorrectly adjusts het nonref genotype calls.
 
