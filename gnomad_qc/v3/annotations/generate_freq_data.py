@@ -50,8 +50,6 @@ logger.setLevel(logging.INFO)
 
 
 def main(args):
-    from gnomad.resources.grch38.gnomad import POPS
-
     subsets = args.subsets
     hl.init(
         log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",
@@ -191,13 +189,14 @@ def main(args):
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
+            pops = POPS
             if n_subsets_use_subpops:
-                POPS = POPS_STORED_AS_SUBPOPS
+                pops = POPS_STORED_AS_SUBPOPS
 
             mt = mt.annotate_globals(
                 freq_index_dict=make_freq_index_dict(
                     freq_meta=freq_meta,
-                    pops=POPS,
+                    pops=pops,
                     label_delimiter="-",
                     subsets=["|".join(subsets)],
                 )
