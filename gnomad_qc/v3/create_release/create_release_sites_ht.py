@@ -171,7 +171,7 @@ def pre_process_subset_freq(
 
     :param subset: subset ID
     :param global_ht: Hail Table containing all variants discovered in the overall release cohort
-    :param test: If True, filter to small region on chr20
+    :param test: If True, filter to small region on chr1
     :param het_nonref_patch: Whether this is frequency information for only variants that need the het nonref patch applied
     :return: Table containing subset frequencies with missing freq structs filled in
     """
@@ -199,7 +199,7 @@ def pre_process_subset_freq(
             )
             subset_ht = hl.read_table(subset_ht_path)
             subset_ht = hl.filter_intervals(
-                subset_ht, [hl.parse_locus_interval("chr20:1-1000000")]
+                subset_ht, [hl.parse_locus_interval("chr1:1-1000000")]
             )
 
     elif file_exists(subset_ht_path):

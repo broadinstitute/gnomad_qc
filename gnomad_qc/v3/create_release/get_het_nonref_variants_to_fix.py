@@ -62,8 +62,8 @@ def main(args):
     ).select_entries(*SPARSE_ENTRIES)
 
     if args.test:
-        logger.info("Filtering to two partitions on chr20...")
-        mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20:1-1000000")])
+        logger.info("Filtering to two partitions on chr1...")
+        mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr1:1-1000000")])
         mt = mt._filter_partitions(range(2))
 
     logger.info(
@@ -121,7 +121,7 @@ if __name__ == "__main__":
         "--slack_channel", help="Slack channel to post results and notifications to."
     )
     parser.add_argument(
-        "--test", help="Runs a test on two partitions of chr20.", action="store_true"
+        "--test", help="Runs a test on two partitions of chr1.", action="store_true"
     )
 
     args = parser.parse_args()
