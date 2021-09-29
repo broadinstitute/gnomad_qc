@@ -41,7 +41,7 @@ def get_het_non_ref_impacted_var(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Ta
 
     logger.info("Filtering to variants with at least one het nonref call...")
     return mt.filter_rows(
-        hl.agg.any(mt.het_non_ref & ((mt.AD[1] / mt.DP) > 0.9))
+        hl.agg.any(mt._het_non_ref & ((mt.AD[1] / mt.DP) > 0.9))
     ).rows()
 
 
