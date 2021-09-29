@@ -9,15 +9,13 @@ import logging
 
 import hail as hl
 
-from gnomad.resources.resource_utils import DataException
-from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import densify_sites
 from gnomad.utils.vcf import SPARSE_ENTRIES
 
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.release import release_sites
-from gnomad_qc.v3.resources.annotations import get_info, last_END_position
+from gnomad_qc.v3.resources.annotations import last_END_position
 from gnomad_qc.slack_creds import slack_token
 
 
