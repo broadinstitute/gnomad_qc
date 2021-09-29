@@ -51,7 +51,7 @@ def release_ht_path(
 
     :param data_type: 'exomes' or 'genomes'
     :param release_version: release version
-    :param public: Whether to return the desired
+    :param public: Determines whether release sites Table is read from public or private bucket. Defaults to private
     :param het_nonref_patch: Whether this is frequency information for only variants that need the het nonref patch applied
     :return: File path for desired Hail Table
     :rtype: str
