@@ -46,42 +46,7 @@ def get_het_non_ref_impacted_var(
     logger.info(
         "Filtering to variants with at least one het nonref call and checkpointing..."
     )
-    mt = mt.filter_rows(hl.agg.sum(mt._het_non_ref) >= 1)
-
-    logger.info(
-        "Adding new genotype entries with original homalt hotfix and het nonref-aware hotfix..."
-    )
-    mt = mt.annotate_entries(
-        GT_hotfix=hl.if_else(
-            mt.GT.is_het() & (mt.AF > 0.01) & (mt.AD[1] / mt.DP > 0.9),
-            hl.call(1, 1),
-            mt.GT,
-        ),
-        GT_hetnonref_fix=hl.if_else(
-            mt.GT.is_het()
-            & ~mt._het_non_ref
-            & (mt.AF > 0.01)
-            & (mt.AD[1] / mt.DP > 0.9),
-            hl.call(1, 1),
-            mt.GT,
-        ),
-    )
-    logger.info("Checking homozygote counts using the different genotypes...")
-    # Taking index 1 of gt_stats because it contains an entry for the reference allele at index 0
-    # homozygote_count (tarray of tint32) -
-    # Homozygote genotype counts for each allele, including the reference. Only diploid genotype calls are counted.
-    # (from hail docs, https://hail.is/docs/0.2/aggregators.html#hail.expr.aggregators.call_stats)
-
-    mt = mt.annotate_rows(gt_stats=hl.agg.call_stats(mt.GT_hotfix, mt.alleles))
-    mt = mt.transmute_rows(hom_count_hotfix=mt.gt_stats.homozygote_count[1])
-
-    mt = mt.annotate_rows(gt_stats=hl.agg.call_stats(mt.GT_hetnonref_fix, mt.alleles))
-    mt = mt.transmute_rows(hom_count_hetnonref_fix=mt.gt_stats.homozygote_count[1])
-
-    logger.info(
-        "Filtering to rows where homalt hotfix erroneously adjusts het nonref calls..."
-    )
-    mt = mt.filter_rows(mt.hom_count_hotfix != mt.hom_count_hetnonref_fix)
+    mt = mt.filter_rows(hl.agg.any(mt.het_non_ref & ((mt.AD[1] / mt.DP) > 0.9)))
 
     return mt.rows()
 
