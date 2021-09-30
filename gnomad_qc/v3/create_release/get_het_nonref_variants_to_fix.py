@@ -27,24 +27,6 @@ logger = logging.getLogger("get_impacted_variants")
 logger.setLevel(logging.INFO)
 
 
-def get_het_non_ref_impacted_var(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table:
-    """
-    Filter to variants where homalt hotfix incorrectly adjusts het nonref genotype calls.
-
-    :param hl.MatrixTable mt: Raw, split MatrixTable annotated with original genotype het nonref status.
-    :param hl.Table freq_ht: Hail Table containing gnomAD v3.0 frequency information.
-    :return: None
-    """
-    logger.info("Filtering to common (AF > 0.01) variants...")
-    mt = mt.annotate_rows(AF=freq_ht[mt.row_key].freq[0].AF)
-    mt = mt.filter_rows(mt.AF > 0.01)
-
-    logger.info("Filtering to variants with at least one het nonref call...")
-    return mt.filter_rows(
-        hl.agg.any(mt._het_non_ref & ((mt.AD[1] / mt.DP) > 0.9))
-    ).rows()
-
-
 def main(args):
     """
     Script used to get variants impacted by homalt hotfix.
@@ -58,8 +40,7 @@ def main(args):
     ).select_entries(*SPARSE_ENTRIES)
 
     if args.test:
-        logger.info("Filtering to two partitions on chr1...")
-        mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr1:1-1000000")])
+        logger.info("Filtering to two partitions...")
         mt = mt._filter_partitions(range(2))
 
     logger.info(
@@ -77,11 +58,14 @@ def main(args):
     freq_ht = (
         release_sites(public=True).versions["3.0"].ht().select_globals().select("freq")
     )
+    mt = mt.annotate_rows(AF=freq_ht[mt.row_key].freq[0].AF)
 
     logger.info(
-        "Checking for variants with het nonref calls that were incorrectly adjusted with homalt hotfix..."
+        "Filtering to common (AF > 0.01) variants with at least one het nonref call..."
     )
-    sites_ht = get_het_non_ref_impacted_var(mt, freq_ht)
+    sites_ht = mt.filter_rows(
+        (mt.AF > 0.01) & hl.agg.any(mt._het_non_ref & ((mt.AD[1] / mt.DP) > 0.9))
+    ).rows()
 
     logger.info("Densifying MT to het nonref sites only...")
     # NOTE: densify_sites operates on locus only (doesn't check alleles)
@@ -117,7 +101,7 @@ if __name__ == "__main__":
         "--slack_channel", help="Slack channel to post results and notifications to."
     )
     parser.add_argument(
-        "--test", help="Runs a test on two partitions of chr1.", action="store_true"
+        "--test", help="Runs a test on two partitions.", action="store_true"
     )
 
     args = parser.parse_args()
