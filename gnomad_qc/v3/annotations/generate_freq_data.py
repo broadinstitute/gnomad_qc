@@ -37,7 +37,9 @@ from gnomad_qc.v3.resources.basics import (
     get_gnomad_v3_mt,
     qc_temp_prefix,
 )
+from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.release import hgdp_1kg_subset_annotations, release_sites
+from gnomad_qc.v3.resources.variant_qc import SYNDIP
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 
 logging.basicConfig(
@@ -132,9 +134,24 @@ def main(args):
                 "Filtering MT columns to HGDP + 1KG samples that pass specialized sample QC"
             )
             hgdp_1kg_meta = hgdp_1kg_subset_annotations().ht()
+
+            # Note: Need to use sample names with the v3.1:: prefix
+            meta_ht = meta.ht()
+            meta_ht = meta_ht.filter(
+                (meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP))
+            )
+            meta_ht = meta_ht.annotate(s_prefixed=meta_ht.s)
+            meta_ht = meta_ht.key_by(s=meta_ht.s.replace("v3.1::", ""))
+            hgdp_1kg_meta = hgdp_1kg_meta.key_by(
+                s=meta_ht[hgdp_1kg_meta.key].s_prefixed
+            )
+
             mt = mt.filter_cols(
                 hgdp_1kg_meta[mt.col_key].high_quality
                 & ~hgdp_1kg_meta[mt.col_key].relatedness_inference.related
+            )
+            logger.info(
+                "Number of high quality unrelated samples in MT: %d", mt.count_cols()
             )
 
         if subsets:
