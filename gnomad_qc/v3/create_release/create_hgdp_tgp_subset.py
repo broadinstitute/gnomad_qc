@@ -213,6 +213,13 @@ def prepare_sample_annotations() -> hl.Table:
     )
 
     relatedness_ht = get_relatedness_set_ht(relatedness_ht)
+
+    # Note: Needs to be done before adding the relatedness info because the relatedness HT doesn't have the prefix
+    logger.info(
+        "Removing 'v3.1::' from the sample names, these were added because there are duplicates of some 1KG samples"
+        " in the full gnomAD dataset..."
+    )
+    meta_ht = meta_ht.key_by(s=meta_ht.s.replace("v3.1::", ""))
     meta_ht = meta_ht.select(
         bam_metrics=meta_ht.bam_metrics,
         sample_qc=meta_ht.sample_qc.select(*SAMPLE_QC_METRICS),
@@ -265,12 +272,6 @@ def prepare_sample_annotations() -> hl.Table:
         ).key_by("s"),
         unify=True,
     )
-
-    logger.info(
-        "Removing 'v3.1::' from the sample names, these were added because there are duplicates of some 1KG samples"
-        " in the full gnomAD dataset..."
-    )
-    meta_ht = meta_ht.key_by(s=meta_ht.s.replace("v3.1::", ""))
 
     logger.info("Adding sample QC struct and sample metadata from Martin group...")
     meta_ht = meta_ht.annotate(sample_filters=get_sample_qc_filter_struct_expr(meta_ht))
