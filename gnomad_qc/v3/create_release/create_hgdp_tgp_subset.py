@@ -652,16 +652,21 @@ def main(args):
             mt = mt._filter_partitions(range(args.test_n_partitions))
 
         logger.info(
+            "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
+        )
+        # Note: Need to use sample names with the v3.1:: prefix
+        meta_ht = meta.ht()
+        meta_ht = meta_ht.filter(
+            (meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP))
+        )
+        mt = mt.filter_cols(hl.is_defined(meta_ht[mt.col_key]))
+        logger.info("Number of samples in sparse MT: %d", mt.count_cols())
+
+        logger.info(
             "Removing 'v3.1::' from the column names, these were added because there are duplicates of some 1KG samples"
             " in the full gnomAD dataset..."
         )
         mt = mt.key_cols_by(s=mt.s.replace("v3.1::", ""))
-
-        logger.info(
-            "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
-        )
-        meta_ht = sample_annotation_resource.ht()
-        mt = mt.filter_cols(hl.is_defined(meta_ht[mt.col_key]))
 
         # Adjust alleles and LA to include only alleles present in the subset
         mt = adjust_subset_alleles(mt)
