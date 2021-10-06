@@ -135,7 +135,8 @@ def main(args):
             )
             hgdp_1kg_meta = hgdp_1kg_subset_annotations().ht()
 
-            # Note: Need to use sample names with the v3.1:: prefix
+            # Note: Sample IDs in MT have v3.1:: prefix, but sample IDs in hgdp tgp meta do not
+            # Need to add prefix to hgdp tgp meta IDs to filter samples in MT correctly
             meta_ht = meta.ht()
             meta_ht = meta_ht.filter(
                 (meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP))
