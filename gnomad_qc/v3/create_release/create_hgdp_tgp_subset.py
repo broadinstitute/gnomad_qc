@@ -106,7 +106,7 @@ def get_sample_qc_filter_struct_expr(ht: hl.Table) -> hl.struct:
     :return: Struct expression for sample QC filters.
     """
     logger.info(
-        "Read in population-specific PCA outliers (list includes one duplicate sample)..."
+        "Read in population-specific PCA outliers..."
     )
     hgdp_tgp_pop_outliers_ht = hgdp_tgp_pop_outliers.ht()
     set_to_remove = hgdp_tgp_pop_outliers_ht.s.collect(_localize=False)
@@ -178,10 +178,8 @@ def prepare_sample_annotations() -> hl.Table:
         "Subsetting and modifying sample QC metadata to desired globals and annotations"
     )
     meta_ht = meta.ht()
-    # NOTE: NA06985 is a known duplicate that should be excluded from the dataset
     meta_ht = meta_ht.filter(
         (meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP))
-        & (meta_ht.s != "NA06985")
     )
 
     meta_ht = meta_ht.select_globals(
@@ -215,6 +213,13 @@ def prepare_sample_annotations() -> hl.Table:
     )
 
     relatedness_ht = get_relatedness_set_ht(relatedness_ht)
+
+    # Note: Needs to be done before adding the relatedness info because the relatedness HT doesn't have the prefix
+    logger.info(
+        "Removing 'v3.1::' from the sample names, these were added because there are duplicates of some 1KG samples"
+        " in the full gnomAD dataset..."
+    )
+    meta_ht = meta_ht.key_by(s=meta_ht.s.replace("v3.1::", ""))
     meta_ht = meta_ht.select(
         bam_metrics=meta_ht.bam_metrics,
         sample_qc=meta_ht.sample_qc.select(*SAMPLE_QC_METRICS),
@@ -267,12 +272,6 @@ def prepare_sample_annotations() -> hl.Table:
         ).key_by("s"),
         unify=True,
     )
-
-    logger.info(
-        "Removing 'v3.1::' from the sample names, these were added because there are duplicates of some 1KG samples"
-        " in the full gnomAD dataset..."
-    )
-    meta_ht = meta_ht.key_by(s=meta_ht.s.replace("v3.1::", ""))
 
     logger.info("Adding sample QC struct and sample metadata from Martin group...")
     meta_ht = meta_ht.annotate(sample_filters=get_sample_qc_filter_struct_expr(meta_ht))
@@ -609,7 +608,18 @@ def main(args):
 
     if args.create_sample_annotation_ht:
         meta_ht = prepare_sample_annotations()
-        meta_ht.write(sample_annotation_resource.path, overwrite=args.overwrite)
+        meta_ht = meta_ht.checkpoint(
+            sample_annotation_resource.path, overwrite=args.overwrite
+        )
+
+        meta_ht.relatedness_inference.summarize()
+        logger.info("Number of samples in meta HT: %d", meta_ht.count())
+        meta_ht = meta_ht.filter(
+            meta_ht.high_quality & ~meta_ht.relatedness_inference.related
+        )
+        logger.info(
+            "Number of high quality unrelated samples in meta HT: %d", meta_ht.count()
+        )
 
     if (
         test
@@ -642,16 +652,21 @@ def main(args):
             mt = mt._filter_partitions(range(args.test_n_partitions))
 
         logger.info(
+            "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
+        )
+        # Note: Need to use sample names with the v3.1:: prefix
+        meta_ht = meta.ht()
+        meta_ht = meta_ht.filter(
+            (meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP))
+        )
+        mt = mt.filter_cols(hl.is_defined(meta_ht[mt.col_key]))
+        logger.info("Number of samples in sparse MT: %d", mt.count_cols())
+
+        logger.info(
             "Removing 'v3.1::' from the column names, these were added because there are duplicates of some 1KG samples"
             " in the full gnomAD dataset..."
         )
         mt = mt.key_cols_by(s=mt.s.replace("v3.1::", ""))
-
-        logger.info(
-            "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
-        )
-        meta_ht = sample_annotation_resource.ht()
-        mt = mt.filter_cols(hl.is_defined(meta_ht[mt.col_key]))
 
         # Adjust alleles and LA to include only alleles present in the subset
         mt = adjust_subset_alleles(mt)
