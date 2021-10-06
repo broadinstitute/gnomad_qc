@@ -178,10 +178,8 @@ def prepare_sample_annotations() -> hl.Table:
         "Subsetting and modifying sample QC metadata to desired globals and annotations"
     )
     meta_ht = meta.ht()
-    # NOTE: NA06985 is a known duplicate that should be excluded from the dataset
     meta_ht = meta_ht.filter(
         (meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP))
-        & (meta_ht.s != "NA06985")
     )
 
     meta_ht = meta_ht.select_globals(
