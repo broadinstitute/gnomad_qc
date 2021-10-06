@@ -608,7 +608,18 @@ def main(args):
 
     if args.create_sample_annotation_ht:
         meta_ht = prepare_sample_annotations()
-        meta_ht.write(sample_annotation_resource.path, overwrite=args.overwrite)
+        meta_ht = meta_ht.checkpoint(
+            sample_annotation_resource.path, overwrite=args.overwrite
+        )
+
+        meta_ht.relatedness_inference.summarize()
+        logger.info("Number of samples in meta HT: %d", meta_ht.count())
+        meta_ht = meta_ht.filter(
+            meta_ht.high_quality & ~meta_ht.relatedness_inference.related
+        )
+        logger.info(
+            "Number of high quality unrelated samples in meta HT: %d", meta_ht.count()
+        )
 
     if (
         test
