@@ -106,7 +106,7 @@ def get_sample_qc_filter_struct_expr(ht: hl.Table) -> hl.struct:
     :return: Struct expression for sample QC filters.
     """
     logger.info(
-        "Read in population-specific PCA outliers (list includes one duplicate sample)..."
+        "Read in population-specific PCA outliers..."
     )
     hgdp_tgp_pop_outliers_ht = hgdp_tgp_pop_outliers.ht()
     set_to_remove = hgdp_tgp_pop_outliers_ht.s.collect(_localize=False)
