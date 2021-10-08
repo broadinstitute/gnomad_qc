@@ -343,6 +343,20 @@ def main(args):
         logger.info("Applying het non ref patch to the v3.1.1 release HT...")
 
         v3_1_1_release_ht = release_sites(public=True).versions["3.1.1"].ht()
+        v3_1_1_freq_meta = v3_1_1_release_ht.freq_meta.collect()
+        freq_meta = ht.freq_meta.collect()
+        if v3_1_1_freq_meta != freq_meta:
+            ValueError("Patch freq_meta is not the same as v3.1.1 freq_meta!!!!")
+        else:
+            logger.info("freq_meta match")
+
+        v3_1_1_faf_meta = v3_1_1_release_ht.faf_meta.collect()
+        faf_meta = ht.faf_meta.collect()
+        if v3_1_1_faf_meta != faf_meta:
+            ValueError("Patch faf_meta is not the same as v3.1.1 faf_meta!!!!")
+        else:
+            logger.info("faf_meta match")
+
         if args.test:
             logger.info("Filtering to the first two partitions in the HT")
             v3_1_1_release_ht = v3_1_1_release_ht._filter_partitions(range(2))
