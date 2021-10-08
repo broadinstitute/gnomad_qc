@@ -777,7 +777,7 @@ def build_parameter_dict(
             "subsets": ["", "gnomad"],
             "is_subset": True,
             "temp_ht_path": get_checkpoint_path(
-                f"vcf_prep_{'test' if test else ''}_hgdp_1kg"
+                f"vcf_prep{'_test' if test else ''}_hgdp_1kg"
             ),
             "drop_hists": None,
             "include_age_hists": False,
@@ -794,7 +794,7 @@ def build_parameter_dict(
             "subsets": SUBSET_LIST_FOR_VCF,
             "is_subset": False,
             "temp_ht_path": get_checkpoint_path(
-                f"vcf_prep_{'test' if args.test else ''}"
+                f"vcf_prep{'_test' if args.test else ''}"
             ),
             "drop_hists": ["age_hist_het_bin_edges", "age_hist_hom_bin_edges"],
             "include_age_hists": True,
