@@ -1,5 +1,5 @@
 # NOTE:
-# This script is needed for the v3.1.2 release to correct a a problem discovered in the gnomAD v3.1 release.
+# This script is needed for the v3.1.2 release to correct a problem discovered in the gnomAD v3.1 release.
 # The fix we implemented to correct a technical artifact creating the depletion of homozygous alternate genotypes
 # was not performed correctly in situations where samples that were individually heterozygous non-reference had both
 # a heterozygous and homozygous alternate call at the same locus.
