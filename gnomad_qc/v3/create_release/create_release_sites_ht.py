@@ -177,7 +177,7 @@ def pre_process_subset_freq(
     """
 
     # Read in subset HTs
-    subset_ht_path = get_freq(subset=subset, het_nonref_patch=het_nonref_patch)
+    subset_ht_path = get_freq(subset=subset, het_nonref_patch=het_nonref_patch).path
     subset_test_ht_path = get_checkpoint_path(
         f"test_freq{'_patch' if het_nonref_patch else ''}.{subset}"
     )
