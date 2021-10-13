@@ -581,7 +581,9 @@ def create_full_subset_dense_mt(
 
     logger.info("Add all variant annotations and variant global annotations...")
     mt = mt.annotate_rows(**variant_annotation_ht[mt.row_key])
-    mt = mt.annotate_globals(**variant_annotation_ht.index_globals())
+    mt = mt.annotate_globals(
+        **variant_annotation_ht.drop("global_annotation_descriptions").index_globals()
+    )
 
     logger.info("Densify MT...")
     mt = hl.experimental.densify(mt)
