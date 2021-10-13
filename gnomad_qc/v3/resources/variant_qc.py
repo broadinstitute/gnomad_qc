@@ -234,10 +234,19 @@ def get_rf_result(model_id: Optional[str] = None) -> VersionedTableResource:
     )
 
 
-final_filter = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        release: TableResource(f"{get_variant_qc_root(release)}/final_filter.ht")
-        for release in VERSIONS
-    },
-)
+def final_filter(hgdp_1kg_subset: bool = False):
+    """
+    Get finalized variant QC filtering Table.
+
+    :param hgdp_1kg_subset: Whether this is the Table for the HGDP + 1KG subset variant filtering.
+    :return:
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            release: TableResource(
+                f"{get_variant_qc_root(release)}/final_filter{'.hgdp_tgp_subset' if hgdp_1kg_subset else ''}.ht"
+            )
+            for release in VERSIONS
+        },
+    )
