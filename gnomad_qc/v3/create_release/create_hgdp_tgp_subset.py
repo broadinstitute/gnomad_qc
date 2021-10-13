@@ -447,6 +447,7 @@ def prepare_variant_annotations(
         ),
         variant_inbreeding_coeff_cutoff=filters_ht.index_globals().inbreeding_coeff_cutoff,
     )
+    ht = ht.drop("old_locus", "old_alleles")
 
     return ht
 
