@@ -926,6 +926,14 @@ def main(args):
                     "Loading the HGDP + TGP subset MT and annotating with the prepared VCF HT for VCF export..."
                 )
                 t = hgdp_1kg_subset(dense=True).mt().select_rows()
+                logger.info(
+                    "Number of rows and columns in dense MT: %d, %d",
+                    t.count_rows(),
+                    t.count_cols(),
+                )
+                logger.info(
+                    "Number of rows in prepared_vcf_ht: %d", prepared_vcf_ht.count()
+                )
                 t = t.annotate_rows(**prepared_vcf_ht[t.row_key])
             else:
                 t = prepared_vcf_ht
