@@ -78,8 +78,8 @@ ALLELE_TYPE_FIELDS = remove_fields_from_constant(
     ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS
 )
 
-# Remove SOR from site fields (doesn't exist in v3.1)
-MISSING_SITES_FIELDS = ["SOR"]
+# Remove SB (not included in VCF) and SOR (doesn't exist in v3.1) from site fields
+MISSING_SITES_FIELDS = ["SOR", "SB"]
 SITE_FIELDS = remove_fields_from_constant(SITE_FIELDS, MISSING_SITES_FIELDS)
 
 # Remove AS_VarDP from AS fields
