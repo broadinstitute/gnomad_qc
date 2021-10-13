@@ -394,7 +394,7 @@ def unfurl_nested_annotations(
         - faf
         - age histograms
 
-    If `subset_release` is True the following will be unfurled (`cohort_freq` prefix on the freq annotation):
+    If `subset_release` is True the following will be unfurled (`hgdp_tgp_freq` prefix on the freq annotation):
        - frequencies
 
     If `gnomad_full_for_subset` is True the following will be unfurled (expects 'gnomad' prefix on these annotations):
@@ -428,8 +428,8 @@ def unfurl_nested_annotations(
 
     # Set variables to locate necessary fields, compute freq index dicts, and compute faf index dict
     if subset_release:
-        freq = "cohort_freq"
-        freq_idx = hl.eval(t.globals["cohort_freq_index_dict"])
+        freq = "hgdp_tgp_freq"
+        freq_idx = hl.eval(t.globals["hgdp_tgp_freq_index_dict"])
     else:
         popmax = f"{prefix}popmax"
         faf = f"{prefix}faf"
