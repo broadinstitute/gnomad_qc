@@ -788,7 +788,7 @@ def build_parameter_dict(
             "ht": hgdp_1kg_subset(dense=True).mt().rows(),
             "freq_entries_to_remove": set(),
             "age_hist_data": None,
-            "filtering_model_field": "variant_filtering_model"
+            "filtering_model_field": "variant_filtering_model",
         }
 
     else:
