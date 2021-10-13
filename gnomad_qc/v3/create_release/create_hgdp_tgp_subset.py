@@ -105,9 +105,7 @@ def get_sample_qc_filter_struct_expr(ht: hl.Table) -> hl.struct:
     :param ht: Input Table containing hard filter information.
     :return: Struct expression for sample QC filters.
     """
-    logger.info(
-        "Read in population-specific PCA outliers..."
-    )
+    logger.info("Read in population-specific PCA outliers...")
     hgdp_tgp_pop_outliers_ht = hgdp_tgp_pop_outliers.ht()
     set_to_remove = hgdp_tgp_pop_outliers_ht.s.collect(_localize=False)
 
@@ -421,6 +419,11 @@ def prepare_variant_annotations(
     )
 
     logger.info("Adding global variant annotations...")
+    hgdp_tgp_freq_meta = [
+        {k: v for k, v in x.items() if k != "subset"}
+        for x in hl.eval(subset_freq.freq_meta)
+    ]
+
     ht = ht.annotate_globals(
         global_annotation_descriptions=convert_heterogeneous_dict_to_struct(
             GLOBAL_VARIANT_ANNOTATIONS
@@ -428,12 +431,9 @@ def prepare_variant_annotations(
         variant_annotation_descriptions=convert_heterogeneous_dict_to_struct(
             VARIANT_ANNOTATIONS
         ),
-        hgdp_tgp_freq_meta=subset_freq.index_globals().freq_meta,
+        hgdp_tgp_freq_meta=hgdp_tgp_freq_meta,
         hgdp_tgp_freq_index_dict=make_freq_index_dict(
-            hl.eval(subset_freq.index_globals().freq_meta),
-            pops=POPS_STORED_AS_SUBPOPS,
-            subsets=["hgdp|tgp"],
-            label_delimiter="-",
+            hgdp_tgp_freq_meta, pops=POPS_STORED_AS_SUBPOPS, label_delimiter="-",
         ),
         gnomad_freq_meta=freq_meta,
         gnomad_freq_index_dict=freq_index_dict,
@@ -594,6 +594,9 @@ def create_full_subset_dense_mt(
     )
     mt = mt.drop("AS_lowqual", "telomere_or_centromere")
 
+    logger.info("Removing chrM...")
+    mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chrM")], keep=False)
+
     return mt
 
 
@@ -651,6 +654,7 @@ def main(args):
             )
             mt = mt._filter_partitions(range(args.test_n_partitions))
 
+        logger.info(f"Number of variants in MT before: %d", mt.count_rows())
         logger.info(
             "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
         )
@@ -677,7 +681,12 @@ def main(args):
             "remove standard GATK LowQual variants and variants in centromeres and telomeres (to preserve the ref "
             "block END annotation), which we recommend ultimately removing (and is removed for the dense MT release)."
         )
-
+        mt.write(
+            "gs://gnomad-tmp/hgdp_tgp_sparse_temp_test.mt", overwrite=args.overwrite
+        )
+        mt = hl.read_matrix_table(
+            "gs://gnomad-tmp/hgdp_tgp_sparse_temp.mt", _n_partitions=50000
+        )
         mt.write(sparse_mt_resource.path, overwrite=args.overwrite)
 
     if (
