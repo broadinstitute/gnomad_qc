@@ -659,6 +659,7 @@ def prepare_vcf_header_dict(
     age_hist_data: str,
     subset_list: List[str],
     pops: Dict[str, str],
+    filtering_model_field: str = "filtering_model",
     format_dict: Dict[str, Dict[str, str]] = FORMAT_DICT,
     inbreeding_coeff_cutoff: float = INBREEDING_COEFF_HARD_CUTOFF,
 ) -> Dict[str, Dict[str, str]]:
@@ -670,14 +671,15 @@ def prepare_vcf_header_dict(
     :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param subset_list: List of sample subsets in dataset.
     :param pops: List of sample global population names for gnomAD genomes.
+    :param filtering_model_field: String indicating the filtering model global annotation.
     :param format_dict: Dictionary describing MatrixTable entries. Used in header for VCF export.
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter used for variants.
     :return: Prepared VCF header dictionary.
     """
     logger.info("Making FILTER dict for VCF...")
     filter_dict = make_vcf_filter_dict(
-        hl.eval(t.filtering_model.snv_cutoff.min_score),
-        hl.eval(t.filtering_model.indel_cutoff.min_score),
+        hl.eval(t[filtering_model_field].snv_cutoff.min_score),
+        hl.eval(t[filtering_model_field].indel_cutoff.min_score),
         inbreeding_cutoff=inbreeding_coeff_cutoff,
         variant_qc_filter="AS_VQSR",
     )
@@ -786,6 +788,7 @@ def build_parameter_dict(
             "ht": hgdp_1kg_subset(dense=True).mt().rows(),
             "freq_entries_to_remove": set(),
             "age_hist_data": None,
+            "filtering_model_field": "variant_filtering_model"
         }
 
     else:
@@ -812,6 +815,7 @@ def build_parameter_dict(
         freq_entries_to_remove.update(set(COHORTS_WITH_POP_STORED_AS_SUBPOP))
         parameter_dict["freq_entries_to_remove"] = freq_entries_to_remove
         parameter_dict["age_hist_data"] = hl.eval(parameter_dict["ht"].age_distribution)
+        parameter_dict["filtering_model_field"] = "filtering_model"
 
     return parameter_dict
 
@@ -871,6 +875,7 @@ def main(args):
                 age_hist_data=parameter_dict["age_hist_data"],
                 subset_list=parameter_dict["subsets"],
                 pops=parameter_dict["pops"],
+                filtering_model_field=parameter_dict["filtering_model_field"],
                 # NOTE: This is not currently on the 3.1.1 (or earlier) Table, but will be on the 3.1.2 Table
                 inbreeding_coeff_cutoff=INBREEDING_COEFF_HARD_CUTOFF,  # parameter_dict["ht"].inbreeding_coeff_cutoff,
             )
