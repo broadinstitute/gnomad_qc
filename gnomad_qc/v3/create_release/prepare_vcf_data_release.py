@@ -732,6 +732,7 @@ def cleanup_ht_for_vcf_export(
     if drop_hists is not None:
         to_drop.extend(drop_hists)
 
+    to_drop.append("SB")
     ht = ht.annotate(info=ht.info.drop(*to_drop))
 
     # Reformat names to remove "adj" pre-export
