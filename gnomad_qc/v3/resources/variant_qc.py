@@ -7,6 +7,7 @@ from gnomad.resources.grch38 import (
     syndip_hc_intervals,
 )
 from gnomad.resources.resource_utils import (
+    DataException,
     MatrixTableResource,
     TableResource,
     VersionedMatrixTableResource,
@@ -91,20 +92,28 @@ def get_callset_truth_data(
         )
 
 
-def get_score_bins(model_id: str, aggregated: bool) -> VersionedTableResource:
+def get_score_bins(
+    model_id: str, aggregated: bool, hgdp_1kg_subset: bool = False
+) -> VersionedTableResource:
     """
     Returns the path to a Table containing RF or VQSR scores and annotated with a bin based on rank of the metric scores.
 
     :param model_id: RF or VQSR model ID for which to return score data.
     :param bool aggregated: Whether to get the aggregated data.
          If True, will return the path to Table grouped by bin that contains aggregated variant counts per bin.
+    :param hgdp_1kg_subset: Whether this is the Table for the HGDP + 1KG subset filtering.
     :return: Path to desired hail Table
     """
+    if aggregated and hgdp_1kg_subset:
+        raise DataException(
+            "The aggregated score bins Table is not available for the HGDP + 1KG subset."
+        )
+
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             release: TableResource(
-                f"{get_variant_qc_root(release)}/score_bins/{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
+                f"{get_variant_qc_root(release)}/score_bins/{model_id}{'.hgdp_tgp_subset' if hgdp_1kg_subset else ''}.{'aggregated' if aggregated else 'bins'}.ht"
             )
             for release in VERSIONS
         },
