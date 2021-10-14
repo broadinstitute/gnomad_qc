@@ -246,14 +246,15 @@ def main(args):
         ht = ht.drop("info")
 
     if CURRENT_RELEASE == "3.1.2":
-        freq_ht = release_sites().versions["3.1.2"].ht().select("freq", "InbreedingCoeff")
+        freq_ht = release_sites().versions["3.1.2"].ht()
+        freq_ht = freq_ht.select("freq", InbreedingCoeff=freq_ht.info.InbreedingCoeff)
     else:
         freq_ht = get_freq().ht()
 
-    ht = ht.annotate(InbreedingCoeff=hl.or_else(freq_ht[ht.key].InbreedingCoeff))
+    ht = ht.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
     freq_idx = freq_ht[ht.key]
     if args.hgdp_1kg_subset:
-        hgdp_tgp_freq_ht = get_freq(subset="hgdp-tgp")
+        hgdp_tgp_freq_ht = get_freq(subset="hgdp-tgp").ht()
         hgdp_tgp_freq_idx = hgdp_tgp_freq_ht[ht.key]
         # If this is AC0 in full gnomAD and AC0 in HGDP + 1KG mark it as AC0
         # If missing in full gnomAD only check HGDP + 1KG,
@@ -351,8 +352,8 @@ if __name__ == "__main__":
     parser.add_argument("--model_id", help="Filtering model ID to use.")
     parser.add_argument(
         "--model_name",
-        help="Filtering model name to use in the filters field. Either 'VQSR' or 'RF'.",
-        choices=["VQSR", "RF"],
+        help="Filtering model name to use in the filters field. Either 'VQSR', 'AS_VQSR', or 'RF'.",
+        choices=["AS_VQSR", "VQSR", "RF"],
     )
     parser.add_argument(
         "--score_name",
