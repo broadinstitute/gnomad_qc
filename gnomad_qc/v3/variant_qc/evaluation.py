@@ -21,7 +21,6 @@ from gnomad_qc.v3.resources import (
     get_binned_concordance,
     get_callset_truth_data,
     get_checkpoint_path,
-    get_freq,
     get_gnomad_v3_mt,
     get_info,
     get_rf_annotations,
@@ -61,8 +60,6 @@ def create_bin_ht(model_id: str, n_bins: int, hgdp_1kg_subset: bool) -> hl.Table
         )
 
         if hgdp_1kg_subset:
-            subset_freq_ht = get_freq(subset="hgdp-tgp").ht()
-            ht = ht.filter(subset_freq_ht[ht.key].freq[1].AC > 0)
             allele_data_ht = allele_data.ht()
             ht = ht.annotate(**allele_data_ht[ht.key].allele_data)
         else:
