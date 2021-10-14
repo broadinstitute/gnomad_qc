@@ -16,6 +16,7 @@ from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources import (
+    allele_data,
     fam_stats,
     get_binned_concordance,
     get_callset_truth_data,
@@ -61,7 +62,9 @@ def create_bin_ht(model_id: str, n_bins: int, hgdp_1kg_subset: bool) -> hl.Table
 
         if hgdp_1kg_subset:
             subset_freq_ht = get_freq(subset="hgdp-tgp").ht()
-            ht = ht.filter(subset_freq_ht[ht.key].freq[1] > 0)
+            ht = ht.filter(subset_freq_ht[ht.key].freq[1].AC > 0)
+            allele_data_ht = allele_data.ht()
+            ht = ht.annotate(**allele_data_ht[ht.key].allele_data)
         else:
             # Remove all variants with an undefined ac_raw because ac_raw was calculated on the high quality samples only
             # and VQSR was run before sample filtering
