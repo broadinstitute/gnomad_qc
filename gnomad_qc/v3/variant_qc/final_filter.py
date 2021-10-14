@@ -264,15 +264,10 @@ def main(args):
             hgdp_tgp_freq_idx.freq[0].AC == 0,
             freq_idx.freq[0].AC == 0,
         )
-        # Note: (freq_idx.freq[1].AF == 0) is actually already filtered out
-        # If this is monoallelic in gnomAD and monoallelic in HGDP + 1KG mark it as monoallelic (in same direction)
-        # If missing in full gnomAD it is raw AF == 0, so mark as monoallelic if HGDP + 1KG raw AF == 0 (these are ultimately filtered from the subset)
-        # Should be none missing from hgdp + 1kg freq because subset freqs do not have a row filter
-        mono_allelic_flag_expr = hl.or_else(
-            ((freq_idx.freq[1].AF == 1) & (hgdp_tgp_freq_idx.freq[1].AF == 1))
-            | ((freq_idx.freq[1].AF == 0) & (hgdp_tgp_freq_idx.freq[1].AF == 0)),
-            (hgdp_tgp_freq_idx.freq[1].AF == 0),
-        )
+        # Note: (freq_idx.freq[1].AF == 0) is actually already filtered out, only focus on variants where all samples
+        # are homozygous alternate for the variant.
+        # If this is monoallelic in gnomAD and monoallelic in HGDP + 1KG mark it as monoallelic
+        mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) & (hgdp_tgp_freq_idx.freq[1].AF == 1)
     else:
         ac0_filter_expr = freq_idx.freq[0].AC == 0
         mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0)
