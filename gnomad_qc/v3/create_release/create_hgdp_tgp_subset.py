@@ -308,7 +308,7 @@ def prepare_variant_annotations(
     :return: Table containing joined annotations.
     """
     logger.info("Loading annotation tables...")
-    filters_ht = final_filter.ht()
+    filters_ht = final_filter(hgdp_1kg_subset=True).ht()
     # vep_ht = vep.ht()  # Commented out for v3.1.2 release because annotation file has been removed
     dbsnp_ht = dbsnp.ht().select("rsid")
     score_name = hl.eval(filters_ht.filtering_model.score_name)

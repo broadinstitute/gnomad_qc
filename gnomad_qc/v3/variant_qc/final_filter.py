@@ -13,6 +13,8 @@ from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq, get_info, get_vqsr_filters
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
+from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v3.resources.variant_qc import final_filter, get_score_bins
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -231,7 +233,9 @@ def generate_final_filter_ht(
 def main(args):
     hl.init(log="/variant_qc_finalize.log")
 
-    ht = get_score_bins(args.model_id, aggregated=False).ht()
+    ht = get_score_bins(
+        args.model_id, aggregated=False, hgdp_1kg_subset=args.hgdp_1kg_subset
+    ).ht()
     if args.filter_centromere_telomere:
         ht = ht.filter(~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]))
 
@@ -241,9 +245,37 @@ def main(args):
     if args.model_id.startswith("vqsr_"):
         ht = ht.drop("info")
 
-    freq_ht = get_freq().ht()
-    ht = ht.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
+    if CURRENT_RELEASE == "3.1.2":
+        freq_ht = release_sites().versions["3.1.2"].ht().select("freq", "InbreedingCoeff")
+    else:
+        freq_ht = get_freq().ht()
+
+    ht = ht.annotate(InbreedingCoeff=hl.or_else(freq_ht[ht.key].InbreedingCoeff))
     freq_idx = freq_ht[ht.key]
+    if args.hgdp_1kg_subset:
+        hgdp_tgp_freq_ht = get_freq(subset="hgdp-tgp")
+        hgdp_tgp_freq_idx = hgdp_tgp_freq_ht[ht.key]
+        # If this is AC0 in full gnomAD and AC0 in HGDP + 1KG mark it as AC0
+        # If missing in full gnomAD only check HGDP + 1KG,
+        # If missing in HGDP + 1KG only check full gnomAD
+        ac0_filter_expr = hl.coalesce(
+            (freq_idx.freq[0].AC == 0) & (hgdp_tgp_freq_idx.freq[0].AC == 0),
+            hgdp_tgp_freq_idx.freq[0].AC == 0,
+            freq_idx.freq[0].AC == 0,
+        )
+        # Note: (freq_idx.freq[1].AF == 0) is actually already filtered out
+        # If this is monoallelic in gnomAD and monoallelic in HGDP + 1KG mark it as monoallelic (in same direction)
+        # If missing in full gnomAD it is raw AF == 0, so mark as monoallelic if HGDP + 1KG raw AF == 0 (these are ultimately filtered from the subset)
+        # Should be none missing from hgdp + 1kg freq because subset freqs do not have a row filter
+        mono_allelic_flag_expr = hl.or_else(
+            ((freq_idx.freq[1].AF == 1) & (hgdp_tgp_freq_idx.freq[1].AF == 1))
+            | ((freq_idx.freq[1].AF == 0) & (hgdp_tgp_freq_idx.freq[1].AF == 0)),
+            (hgdp_tgp_freq_idx.freq[1].AF == 0),
+        )
+    else:
+        ac0_filter_expr = freq_idx.freq[0].AC == 0
+        mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0)
+
     aggregated_bin_path = get_score_bins(args.model_id, aggregated=True).path
     if not file_exists(aggregated_bin_path):
         sys.exit(
@@ -255,9 +287,9 @@ def main(args):
         ht,
         args.model_name,
         args.score_name,
-        ac0_filter_expr=freq_idx.freq[0].AC == 0,
+        ac0_filter_expr=ac0_filter_expr,
         ts_ac_filter_expr=freq_idx.freq[1].AC == 1,
-        mono_allelic_flag_expr=(freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0),
+        mono_allelic_flag_expr=mono_allelic_flag_expr,
         snp_bin_cutoff=args.snp_bin_cutoff,
         indel_bin_cutoff=args.indel_bin_cutoff,
         snp_score_cutoff=args.snp_score_cutoff,
@@ -270,7 +302,7 @@ def main(args):
         else None,
     )
     ht = ht.annotate_globals(
-        filtering_model=ht.filtering_model.annotate(model_id=args.model_id,)
+        filtering_model=ht.filtering_model.annotate(model_id=args.model_id)
     )
     if args.model_id.startswith("vqsr_"):
         ht = ht.annotate_globals(
@@ -300,9 +332,9 @@ def main(args):
             )
         )
 
-    ht.write(final_filter.path, args.overwrite)
+    ht.write(final_filter(hgdp_1kg_subset=args.hgdp_1kg_subset).path, args.overwrite)
 
-    final_filter_ht = final_filter.ht()
+    final_filter_ht = final_filter(hgdp_1kg_subset=args.hgdp_1kg_subset).ht()
     final_filter_ht.summarize()
 
 
@@ -371,6 +403,11 @@ if __name__ == "__main__":
         default="vqsr_alleleSpecificTrans",
         choices=["vqsr_classic", "vqsr_alleleSpecific", "vqsr_alleleSpecificTrans"],
         type=str,
+    )
+    parser.add_argument(
+        "--hgdp_1kg_subset",
+        help="Use HGDP + TGP score binned filter Table instead of the full gnomAD Table.",
+        action="store_true",
     )
     args = parser.parse_args()
 

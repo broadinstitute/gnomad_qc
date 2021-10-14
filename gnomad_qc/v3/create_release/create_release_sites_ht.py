@@ -60,7 +60,7 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
     :return: Table containing joined annotations
     """
     logger.info("Loading annotation tables...")
-    filters_ht = final_filter.ht()
+    filters_ht = final_filter().ht()
 
     # NOTE: Added for v3.1.2 release because the VEP annotation and in silico annotation HTs were removed,
     # but all info can be pulled from the v3.1.1 release HT
