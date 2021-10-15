@@ -6,6 +6,7 @@ from typing import Optional
 import hail as hl
 
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
+from gnomad.resources.resource_utils import DataException
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import add_filters_expr
 from gnomad.utils.slack import slack_notifications
@@ -13,7 +14,6 @@ from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq, get_info, get_vqsr_filters
-from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v3.resources.variant_qc import final_filter, get_score_bins
 
@@ -245,11 +245,15 @@ def main(args):
     if args.model_id.startswith("vqsr_"):
         ht = ht.drop("info")
 
-    if CURRENT_RELEASE == "3.1.2":
-        freq_ht = release_sites().versions["3.1.2"].ht()
+    # NOTE: Added for the v3.1.2 HGDP + 1KG/TGP subset release because the frequency annotation Table was removed after
+    # the release sites HT was finalized
+    if file_exists(get_freq().path):
+        freq_ht = get_freq().ht()
+    elif file_exists(release_sites().path):
+        freq_ht = release_sites().ht()
         freq_ht = freq_ht.select("freq", InbreedingCoeff=freq_ht.info.InbreedingCoeff)
     else:
-        freq_ht = get_freq().ht()
+        raise DataException("There is no frequency HT or release sites HT available for the current release!")
 
     ht = ht.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
     freq_idx = freq_ht[ht.key]
