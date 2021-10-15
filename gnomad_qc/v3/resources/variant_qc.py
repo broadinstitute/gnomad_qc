@@ -234,12 +234,12 @@ def get_rf_result(model_id: Optional[str] = None) -> VersionedTableResource:
     )
 
 
-def final_filter(hgdp_tgp_subset: bool = False):
+def final_filter(hgdp_tgp_subset: bool = False) -> VersionedTableResource:
     """
     Get finalized variant QC filtering Table.
 
     :param hgdp_tgp_subset: Whether this is the Table for the HGDP + 1KG/TGP subset variant filtering.
-    :return:
+    :return: VersionedTableResource for final variant QC data
     """
     return VersionedTableResource(
         CURRENT_VERSION,
