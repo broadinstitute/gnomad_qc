@@ -424,7 +424,7 @@ v2_v3_relatedness = VersionedTableResource(
     },
 )
 
-# Table with HGDP + 1KG metadata from Alicia Martin's group sample QC
+# Table with HGDP + 1KG/TGP metadata from Alicia Martin's group sample QC
 hgdp_tgp_meta = TableResource(
     path="gs://gnomad/sample_qc/ht/genomes_v3.1/hgdp_tgp_additional_sample_metadata.ht"
 )
@@ -440,10 +440,10 @@ hgdp_tgp_pop_outliers = TableResource(
     },
 )
 
-# Table with HGDP + 1KG relatedness information from Alicia Martin's group sample QC
+# Table with HGDP + 1KG/TGP relatedness information from Alicia Martin's group sample QC
 hgdp_tgp_relatedness = TableResource(path="gs://hgdp-1kg/relatedness_all_metrics.ht")
 
-# Table with HGDP + 1KG related samples to drop from Alicia Martin's group sample QC
+# Table with HGDP + 1KG/TGP related samples to drop from Alicia Martin's group sample QC
 hgdp_tgp_related_samples_to_drop = TableResource(
     path="gs://gnomad/sample_qc/ht/hgdp_tgp_related_samples_to_drop.ht",
     import_func=_import_related_samples_to_drop,
@@ -454,7 +454,7 @@ hgdp_tgp_related_samples_to_drop = TableResource(
     },
 )
 
-# Table with HGDP + 1KG global and subcontinental PCA scores before and after removing outliers
+# Table with HGDP + 1KG/TGP global and subcontinental PCA scores before and after removing outliers
 hgdp_tgp_pcs = VersionedTableResource(
     default_version="3.1",
     versions={

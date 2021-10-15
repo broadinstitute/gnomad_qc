@@ -40,9 +40,9 @@ from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.release import (
     release_sites,
-    hgdp_1kg_subset,
-    hgdp_1kg_subset_annotations,
-    hgdp_1kg_subset_sample_tsv,
+    hgdp_tgp_subset,
+    hgdp_tgp_subset_annotations,
+    hgdp_tgp_subset_sample_tsv,
 )
 from gnomad_qc.v3.resources.sample_qc import (
     hgdp_tgp_meta,
@@ -95,7 +95,7 @@ def convert_heterogeneous_dict_to_struct(global_dict: Dict) -> hl.struct:
 
 def get_sample_qc_filter_struct_expr(ht: hl.Table) -> hl.struct:
     """
-    Create expression for the final filter struct indicating gnomAD hard filtered samples and HGDP/1KG-specific subcontinental PCA outliers.
+    Create expression for the final filter struct indicating gnomAD hard filtered samples and HGDP + 1KG/TGP subcontinental PCA outliers.
 
     .. note::
 
@@ -216,7 +216,7 @@ def prepare_sample_annotations() -> hl.Table:
 
     # Note: Needs to be done before adding the relatedness info because the relatedness HT doesn't have the prefix
     logger.info(
-        "Removing 'v3.1::' from the sample names, these were added because there are duplicates of some 1KG samples"
+        "Removing 'v3.1::' from the sample names, these were added because there are duplicates of some 1KG/TGP samples"
         " in the full gnomAD dataset..."
     )
     meta_ht = meta_ht.key_by(s=meta_ht.s.replace("v3.1::", ""))
@@ -308,7 +308,7 @@ def prepare_variant_annotations(
     :return: Table containing joined annotations.
     """
     logger.info("Loading annotation tables...")
-    filters_ht = final_filter(hgdp_1kg_subset=True).ht()
+    filters_ht = final_filter(hgdp_tgp_subset=True).ht()
     # vep_ht = vep.ht()  # Commented out for v3.1.2 release because annotation file has been removed
     dbsnp_ht = dbsnp.ht().select("rsid")
     score_name = hl.eval(filters_ht.filtering_model.score_name)
@@ -598,13 +598,13 @@ def create_full_subset_dense_mt(
 
 
 def main(args):
-    hl.init(log="/hgdp_1kg_subset.log", default_reference="GRCh38")
+    hl.init(log="/hgdp_tgp_subset.log", default_reference="GRCh38")
 
     test = args.test
-    sample_annotation_resource = hgdp_1kg_subset_annotations(test=test)
-    variant_annotation_resource = hgdp_1kg_subset_annotations(sample=False, test=test)
-    sparse_mt_resource = hgdp_1kg_subset(test=test)
-    dense_mt_resource = hgdp_1kg_subset(dense=True, test=test)
+    sample_annotation_resource = hgdp_tgp_subset_annotations(test=test)
+    variant_annotation_resource = hgdp_tgp_subset_annotations(sample=False, test=test)
+    sparse_mt_resource = hgdp_tgp_subset(test=test)
+    dense_mt_resource = hgdp_tgp_subset(dense=True, test=test)
 
     if args.create_sample_annotation_ht:
         meta_ht = prepare_sample_annotations()
@@ -637,7 +637,7 @@ def main(args):
 
     if args.export_sample_annotation_tsv:
         meta_ht = sample_annotation_resource.ht()
-        meta_ht.export(hgdp_1kg_subset_sample_tsv(test=test))
+        meta_ht.export(hgdp_tgp_subset_sample_tsv(test=test))
 
     if args.create_subset_sparse_mt:
         # NOTE: We no longer remove samples that fail the gnomAD-wide sample QC high_quality filter. However, for frequency calculations we still remove samples failing hard filters and subcontinental PCA outliers.
@@ -663,7 +663,7 @@ def main(args):
         logger.info("Number of samples in sparse MT: %d", mt.count_cols())
 
         logger.info(
-            "Removing 'v3.1::' from the column names, these were added because there are duplicates of some 1KG samples"
+            "Removing 'v3.1::' from the column names, these were added because there are duplicates of some 1KG/TGP samples"
             " in the full gnomAD dataset..."
         )
         mt = mt.key_cols_by(s=mt.s.replace("v3.1::", ""))
@@ -724,11 +724,11 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="This script subsets the gnomAD v3.1 release to only HGDP and 1KG samples."
+        description="This script subsets the gnomAD v3.1 release to only HGDP and 1KG/TGP samples."
     )
     parser.add_argument(
         "--create_sample_annotation_ht",
-        help="Create the HGDP + 1KG subset sample metadata Hail Table.",
+        help="Create the HGDP + 1KG/TGP subset sample metadata Hail Table.",
         action="store_true",
     )
     parser.add_argument(
@@ -738,12 +738,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--create_subset_sparse_mt",
-        help="Create the HGDP + 1KG subset sparse MT. NOTE: This needs to be run without preemptibles because the allele adjustment requires a shuffle!",
+        help="Create the HGDP + 1KG/TGP subset sparse MT. NOTE: This needs to be run without preemptibles because the allele adjustment requires a shuffle!",
         action="store_true",
     )
     parser.add_argument(
         "--create_variant_annotation_ht",
-        help="Create the HGDP + 1KG subset variant annotation Hail Table.",
+        help="Create the HGDP + 1KG/TGP subset variant annotation Hail Table.",
         action="store_true",
     )
     parser.add_argument(
@@ -754,7 +754,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--create_subset_dense_mt",
-        help="Create the HGDP + 1KG subset dense MT.",
+        help="Create the HGDP + 1KG/TGP subset dense MT.",
         action="store_true",
     )
     parser.add_argument(

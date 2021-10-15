@@ -93,7 +93,7 @@ def get_callset_truth_data(
 
 
 def get_score_bins(
-    model_id: str, aggregated: bool, hgdp_1kg_subset: bool = False
+    model_id: str, aggregated: bool, hgdp_tgp_subset: bool = False
 ) -> VersionedTableResource:
     """
     Returns the path to a Table containing RF or VQSR scores and annotated with a bin based on rank of the metric scores.
@@ -101,19 +101,19 @@ def get_score_bins(
     :param model_id: RF or VQSR model ID for which to return score data.
     :param bool aggregated: Whether to get the aggregated data.
          If True, will return the path to Table grouped by bin that contains aggregated variant counts per bin.
-    :param hgdp_1kg_subset: Whether this is the Table for the HGDP + 1KG subset filtering.
+    :param hgdp_tgp_subset: Whether this is the Table for the HGDP + 1KG/TGP subset filtering.
     :return: Path to desired hail Table
     """
-    if aggregated and hgdp_1kg_subset:
+    if aggregated and hgdp_tgp_subset:
         raise DataException(
-            "The aggregated score bins Table is not available for the HGDP + 1KG subset."
+            "The aggregated score bins Table is not available for the HGDP + 1KG/TGP subset."
         )
 
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             release: TableResource(
-                f"{get_variant_qc_root(release)}/score_bins/{model_id}{'.hgdp_tgp_subset' if hgdp_1kg_subset else ''}.{'aggregated' if aggregated else 'bins'}.ht"
+                f"{get_variant_qc_root(release)}/score_bins/{model_id}{'.hgdp_tgp_subset' if hgdp_tgp_subset else ''}.{'aggregated' if aggregated else 'bins'}.ht"
             )
             for release in VERSIONS
         },
@@ -234,18 +234,18 @@ def get_rf_result(model_id: Optional[str] = None) -> VersionedTableResource:
     )
 
 
-def final_filter(hgdp_1kg_subset: bool = False):
+def final_filter(hgdp_tgp_subset: bool = False):
     """
     Get finalized variant QC filtering Table.
 
-    :param hgdp_1kg_subset: Whether this is the Table for the HGDP + 1KG subset variant filtering.
+    :param hgdp_tgp_subset: Whether this is the Table for the HGDP + 1KG/TGP subset variant filtering.
     :return:
     """
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             release: TableResource(
-                f"{get_variant_qc_root(release)}/final_filter{'.hgdp_tgp_subset' if hgdp_1kg_subset else ''}.ht"
+                f"{get_variant_qc_root(release)}/final_filter{'.hgdp_tgp_subset' if hgdp_tgp_subset else ''}.ht"
             )
             for release in VERSIONS
         },

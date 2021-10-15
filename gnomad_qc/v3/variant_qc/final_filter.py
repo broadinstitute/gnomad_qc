@@ -234,7 +234,7 @@ def main(args):
     hl.init(log="/variant_qc_finalize.log")
 
     ht = get_score_bins(
-        args.model_id, aggregated=False, hgdp_1kg_subset=args.hgdp_1kg_subset
+        args.model_id, aggregated=False, hgdp_tgp_subset=args.hgdp_tgp_subset
     ).ht()
     if args.filter_centromere_telomere:
         ht = ht.filter(~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]))
@@ -253,12 +253,12 @@ def main(args):
 
     ht = ht.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
     freq_idx = freq_ht[ht.key]
-    if args.hgdp_1kg_subset:
+    if args.hgdp_tgp_subset:
         hgdp_tgp_freq_ht = get_freq(subset="hgdp-tgp").ht()
         hgdp_tgp_freq_idx = hgdp_tgp_freq_ht[ht.key]
-        # If this is AC0 in full gnomAD and AC0 in HGDP + 1KG mark it as AC0
-        # If missing in full gnomAD only check HGDP + 1KG,
-        # If missing in HGDP + 1KG only check full gnomAD
+        # If this is AC0 in full gnomAD and AC0 in HGDP + 1KG/TGP mark it as AC0
+        # If missing in full gnomAD only check HGDP + 1KG/TGP,
+        # If missing in HGDP + 1KG/TGP only check full gnomAD
         ac0_filter_expr = hl.coalesce(
             (freq_idx.freq[0].AC == 0) & (hgdp_tgp_freq_idx.freq[0].AC == 0),
             hgdp_tgp_freq_idx.freq[0].AC == 0,
@@ -266,7 +266,7 @@ def main(args):
         )
         # Note: (freq_idx.freq[1].AF == 0) is actually already filtered out, only focus on variants where all samples
         # are homozygous alternate for the variant.
-        # If this is monoallelic in gnomAD and monoallelic in HGDP + 1KG mark it as monoallelic
+        # If this is monoallelic in gnomAD and monoallelic in HGDP + 1KG/TGP mark it as monoallelic
         mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) & (hgdp_tgp_freq_idx.freq[1].AF == 1)
     else:
         ac0_filter_expr = freq_idx.freq[0].AC == 0
@@ -328,9 +328,9 @@ def main(args):
             )
         )
 
-    ht.write(final_filter(hgdp_1kg_subset=args.hgdp_1kg_subset).path, args.overwrite)
+    ht.write(final_filter(hgdp_tgp_subset=args.hgdp_tgp_subset).path, args.overwrite)
 
-    final_filter_ht = final_filter(hgdp_1kg_subset=args.hgdp_1kg_subset).ht()
+    final_filter_ht = final_filter(hgdp_tgp_subset=args.hgdp_tgp_subset).ht()
     final_filter_ht.summarize()
 
 
@@ -401,8 +401,8 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "--hgdp_1kg_subset",
-        help="Use HGDP + TGP score binned filter Table instead of the full gnomAD Table.",
+        "--hgdp_tgp_subset",
+        help="Use HGDP + 1KG/TGP score binned filter Table instead of the full gnomAD Table.",
         action="store_true",
     )
     args = parser.parse_args()
