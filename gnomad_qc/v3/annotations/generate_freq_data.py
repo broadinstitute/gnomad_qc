@@ -38,7 +38,7 @@ from gnomad_qc.v3.resources.basics import (
     qc_temp_prefix,
 )
 from gnomad_qc.v3.resources.meta import meta
-from gnomad_qc.v3.resources.release import hgdp_1kg_subset_annotations, release_sites
+from gnomad_qc.v3.resources.release import hgdp_tgp_subset_annotations, release_sites
 from gnomad_qc.v3.resources.variant_qc import SYNDIP
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 
@@ -58,7 +58,7 @@ def main(args):
         default_reference="GRCh38",
     )
 
-    if args.hgdp_1kg_subset:
+    if args.hgdp_tgp_subset:
         subsets = ["hgdp", "tgp"]
 
     if subsets:
@@ -79,14 +79,14 @@ def main(args):
                 f"Cannot combine cohorts that use subpops in frequency calculations {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
                 f"with cohorts that use pops in frequency calculations {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
             )
-    if args.hgdp_1kg_subset and not file_exists(hgdp_1kg_subset_annotations().path):
+    if args.hgdp_tgp_subset and not file_exists(hgdp_tgp_subset_annotations().path):
         raise DataException(
             "There is currently no sample meta HT for the HGDP + TGP subset."
             "Run create_hgdp_tgp_subset.py --create_sample_annotation_ht to use this option."
         )
-    if args.hgdp_1kg_subset and args.include_non_release:
+    if args.hgdp_tgp_subset and args.include_non_release:
         raise ValueError(
-            "The hgdp_1kg_subset flag can't be used with the include_non_release flag because of differences in sample filtering."
+            "The hgdp_tgp_subset flag can't be used with the include_non_release flag because of differences in sample filtering."
         )
 
     try:
@@ -104,7 +104,7 @@ def main(args):
             logger.info("Reading full sparse MT and metadata table...")
             mt = get_gnomad_v3_mt(
                 key_by_locus_and_alleles=True,
-                release_only=not args.include_non_release | args.hgdp_1kg_subset,
+                release_only=not args.include_non_release | args.hgdp_tgp_subset,
                 samples_meta=True,
             )
 
@@ -129,27 +129,27 @@ def main(args):
                 f"samples..."
             )
 
-        if args.hgdp_1kg_subset:
+        if args.hgdp_tgp_subset:
             logger.info(
-                "Filtering MT columns to HGDP + 1KG samples that pass specialized sample QC"
+                "Filtering MT columns to HGDP + 1KG/TGP samples that pass specialized sample QC"
             )
-            hgdp_1kg_meta = hgdp_1kg_subset_annotations().ht()
+            hgdp_tgp_meta = hgdp_tgp_subset_annotations().ht()
 
-            # Note: Sample IDs in MT have v3.1:: prefix, but sample IDs in hgdp tgp meta do not
-            # Need to add prefix to hgdp tgp meta IDs to filter samples in MT correctly
+            # Note: Sample IDs in MT have v3.1:: prefix, but sample IDs in HGDP + 1KG/TGP meta do not
+            # Need to add prefix to HGDP + 1KG/TGP meta IDs to filter samples in MT correctly
             meta_ht = meta.ht()
             meta_ht = meta_ht.filter(
                 (meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP))
             )
             meta_ht = meta_ht.annotate(s_prefixed=meta_ht.s)
             meta_ht = meta_ht.key_by(s=meta_ht.s.replace("v3.1::", ""))
-            hgdp_1kg_meta = hgdp_1kg_meta.key_by(
-                s=meta_ht[hgdp_1kg_meta.key].s_prefixed
+            hgdp_tgp_meta = hgdp_tgp_meta.key_by(
+                s=meta_ht[hgdp_tgp_meta.key].s_prefixed
             )
 
             mt = mt.filter_cols(
-                hgdp_1kg_meta[mt.col_key].high_quality
-                & ~hgdp_1kg_meta[mt.col_key].relatedness_inference.related
+                hgdp_tgp_meta[mt.col_key].high_quality
+                & ~hgdp_tgp_meta[mt.col_key].relatedness_inference.related
             )
             logger.info(
                 "Number of high quality unrelated samples in MT: %d", mt.count_cols()
@@ -363,8 +363,8 @@ if __name__ == "__main__":
         choices=SUBSETS,
     )
     parser.add_argument(
-        "--hgdp_1kg_subset",
-        help="Calculate HGDP + 1KG frequencies with specialized sample QC. Note: create_hgdp_tgp_subset.py --create_sample_annotation_ht must be run prior to using this option. Subsets option does not need to be used.",
+        "--hgdp_tgp_subset",
+        help="Calculate HGDP + 1KG/TGP frequencies with specialized sample QC. Note: create_hgdp_tgp_subset.py --create_sample_annotation_ht must be run prior to using this option. Subsets option does not need to be used.",
         action="store_true",
     )
     parser.add_argument(

@@ -138,7 +138,7 @@ def generate_family_stats(mt: hl.MatrixTable, fam_file: str, calculate_adj: bool
     """
     Writes bi-allelic sites MT with the following annotations:
      - family_stats (TDT, Mendel Errors, AC_unrelated_qc)
-     - truth_data (presence in Omni, HapMap, 1KG high conf SNVs, Mills)
+     - truth_data (presence in Omni, HapMap, 1KG/TGP high conf SNVs, Mills)
 
     :param MatrixTable mt: Full MT
     :param str fam_file: Fam pedigree file location
@@ -208,7 +208,7 @@ def generate_de_novos(mt: hl.MatrixTable, fam_file: str, freq_data: hl.Table) ->
 def annotate_truth_data(mt: hl.MatrixTable) -> hl.Table:
     """
     Writes bi-allelic sites MT with the following annotations:
-     - truth_data (presence in Omni, HapMap, 1KG high conf SNVs, Mills)
+     - truth_data (presence in Omni, HapMap, 1KG/TGP high conf SNVs, Mills)
 
     :param MatrixTable mt: Full MT
     :return: Table with qc annotations
