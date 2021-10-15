@@ -347,7 +347,7 @@ if __name__ == "__main__":
     parser.add_argument("--model_id", help="Filtering model ID to use.")
     parser.add_argument(
         "--model_name",
-        help="Filtering model name to use in the filters field. Either 'VQSR', 'AS_VQSR', or 'RF'.",
+        help="Filtering model name to use in the filters field ('VQSR', 'AS_VQSR', or 'RF').",
         choices=["AS_VQSR", "VQSR", "RF"],
     )
     parser.add_argument(
