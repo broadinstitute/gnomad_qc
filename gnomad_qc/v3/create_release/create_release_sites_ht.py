@@ -46,7 +46,7 @@ logger.setLevel(logging.INFO)
 # Remove InbreedingCoeff from allele-specific fields (processed separately from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
 
-# Add fine-resolution populations specific to 1KG and HGDP to standard gnomAD pops; used to create frequency index dictionary
+# Add fine-resolution populations specific to 1KG/TGP and HGDP to standard gnomAD pops; used to create frequency index dictionary
 POPS.extend(POPS_STORED_AS_SUBPOPS)
 # Add 'global' tag used to distinguish cohort-wide vs. subset annotations in frequency index dictionary
 POPS.extend(["global"])
@@ -60,7 +60,7 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
     :return: Table containing joined annotations
     """
     logger.info("Loading annotation tables...")
-    filters_ht = final_filter.ht()
+    filters_ht = final_filter().ht()
 
     # NOTE: Added for v3.1.2 release because the VEP annotation and in silico annotation HTs were removed,
     # but all info can be pulled from the v3.1.1 release HT

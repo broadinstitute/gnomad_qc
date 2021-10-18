@@ -100,7 +100,7 @@ def release_vcf_path(
 
     :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used unless
         hgdp_tgp_subset is True in which case CURRENT_HGDP_TGP_RELEASE is used.
-    :param hgdp_tgp_subset: Whether to get path for HGDP + 1KG VCF. Defaults to the full callset (metrics on all samples) sites VCF path
+    :param hgdp_tgp_subset: Whether to get path for HGDP + 1KG/TGP VCF. Defaults to the full callset (metrics on all samples) sites VCF path
     :param contig: String containing the name of the desired reference contig. Defaults to the full (all contigs) sites VCF path
         sites VCF path
     :return: Filepath for the desired VCF
@@ -114,7 +114,7 @@ def release_vcf_path(
     if hgdp_tgp_subset:
         if release_version not in HGDP_TGP_RELEASES:
             raise DataException(
-                f"{release_version} is not one of the available releases for the HGP + 1KG subset: {HGDP_TGP_RELEASES}"
+                f"{release_version} is not one of the available releases for the HGP + 1KG/TGP subset: {HGDP_TGP_RELEASES}"
             )
         subset = "hgdp_tgp"
     else:
@@ -136,7 +136,7 @@ def release_header_path(
 
     :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used unless
         hgdp_tgp_subset is True in which case CURRENT_HGDP_TGP_RELEASE is used.
-    :param hgdp_tgp_subset: Whether to return the header for the HGDP + 1KG subset. Default will return the header
+    :param hgdp_tgp_subset: Whether to return the header for the HGDP + 1KG/TGP subset. Default will return the header
         path for the full release.
     :return: Filepath for header dictionary pickle
     """
@@ -149,7 +149,7 @@ def release_header_path(
     if hgdp_tgp_subset:
         if release_version not in HGDP_TGP_RELEASES:
             raise DataException(
-                f"{release_version} is not one of the available releases for the HGP + 1KG subset: {HGDP_TGP_RELEASES}"
+                f"{release_version} is not one of the available releases for the HGP + 1KG/TGP subset: {HGDP_TGP_RELEASES}"
             )
         subset = "_hgdp_tgp"
 
@@ -175,11 +175,11 @@ def append_to_vcf_header_path(
     return f"gs://gnomad/release/{release_version}/vcf/genomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
 
 
-def hgdp_1kg_subset(
+def hgdp_tgp_subset(
     dense: bool = False, test: bool = False
 ) -> VersionedMatrixTableResource:
     """
-    Get the HGDP + 1KG subset release MatrixTableResource.
+    Get the HGDP + 1KG/TGP subset release MatrixTableResource.
 
     :param dense: If True, return the dense MT; if False, return the sparse MT
     :param test: If true, will return the annotation resource for testing purposes
@@ -197,11 +197,11 @@ def hgdp_1kg_subset(
     )
 
 
-def hgdp_1kg_subset_annotations(
+def hgdp_tgp_subset_annotations(
     sample: bool = True, test: bool = False
 ) -> VersionedTableResource:
     """
-    Get the HGDP + 1KG subset release sample or variant TableResource.
+    Get the HGDP + 1KG/TGP subset release sample or variant TableResource.
 
     :param sample: If true, will return the sample annotations, otherwise will return the variant annotations
     :param test: If true, will return the annotation resource for testing purposes
@@ -219,11 +219,11 @@ def hgdp_1kg_subset_annotations(
     )
 
 
-def hgdp_1kg_subset_sample_tsv(
+def hgdp_tgp_subset_sample_tsv(
     release: str = CURRENT_HGDP_TGP_RELEASE, test: bool = False
 ) -> str:
     """
-    Get the path to the HGDP + 1KG subset release sample annotation text file.
+    Get the path to the HGDP + 1KG/TGP subset release sample annotation text file.
 
     :param release: Version of annotation tsv path to return
     :param test: If true, will return the sample tsv path for testing purposes

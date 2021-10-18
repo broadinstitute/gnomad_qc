@@ -16,16 +16,17 @@ from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources import (
+    allele_data,
     fam_stats,
     get_binned_concordance,
     get_callset_truth_data,
     get_checkpoint_path,
-    get_vqsr_filters,
     get_gnomad_v3_mt,
     get_info,
     get_rf_annotations,
     get_rf_result,
     get_score_bins,
+    get_vqsr_filters,
     TRUTH_SAMPLES,
 )
 
@@ -34,12 +35,13 @@ logger = logging.getLogger("variant_qc_evaluation")
 logger.setLevel(logging.INFO)
 
 
-def create_bin_ht(model_id: str, n_bins: int) -> hl.Table:
+def create_bin_ht(model_id: str, n_bins: int, hgdp_tgp_subset: bool) -> hl.Table:
     """
     Creates a table with bin annotations added for a RF or VQSR run and writes it to its correct location in annotations.
 
     :param model_id: Which variant QC model (RF or VQSR model ID) to annotate with bin
     :param n_bins: Number of bins to bin the data into
+    :param hgdp_tgp_subset: Whether this is for the HGDP + 1KG/TGP subset, if True this will filter the HT using the subset's raw allele count instead of gnomAD's high quality raw allele count
     :return: Table with bin annotations
     """
     logger.info(f"Annotating {model_id} HT with bins using {n_bins} bins")
@@ -57,11 +59,20 @@ def create_bin_ht(model_id: str, n_bins: int) -> hl.Table:
             AS_culprit=ht.info.AS_culprit,
         )
 
-        # Remove all samples with an undefined ac_raw Because ac_raw was calculated on the high quality samples only
-        # and VQSR was run before sample filtering
-        ht = ht.filter(hl.is_defined(ht.ac_raw))
+        if hgdp_tgp_subset:
+            allele_data_ht = allele_data.ht()
+            ht = ht.annotate(**allele_data_ht[ht.key].allele_data)
+        else:
+            # Remove all variants with an undefined ac_raw because ac_raw was calculated on the high quality samples only
+            # and VQSR was run before sample filtering
+            ht = ht.filter(hl.is_defined(ht.ac_raw))
 
     else:
+        if hgdp_tgp_subset:
+            raise ValueError(
+                "The hgdp_tgp_subset option is only relevant for VQSR models in all v3 releases."
+            )
+
         ht = get_rf_result(model_id=model_id).ht()
         ht = ht.annotate(
             info=info_ht[ht.key].info,
@@ -139,8 +150,10 @@ def main(args):
     hl.init(log="/variant_qc_evaluation.log")
 
     if args.create_bin_ht:
-        create_bin_ht(args.model_id, args.n_bins,).write(
-            get_score_bins(args.model_id, aggregated=False).path,
+        create_bin_ht(args.model_id, args.n_bins, args.hgdp_tgp_subset).write(
+            get_score_bins(
+                args.model_id, aggregated=False, hgdp_tgp_subset=args.hgdp_tgp_subset
+            ).path,
             overwrite=args.overwrite,
         )
 
@@ -269,7 +282,15 @@ if __name__ == "__main__":
     parser.add_argument(
         "--model_id", help="Model ID.", required=False,
     )
-
+    parser.add_argument(
+        "--hgdp_tgp_subset",
+        help=(
+            "Use HGDP + 1KG/TGP subset raw allele count as a filter in `create_bin_ht` instead of the full gnomAD raw "
+            "allele count. Only relevant to VQSR because VQSR was used for filtering in all v3 releases. This is needed"
+            "only for the HGDP + 1KG/TGP subset release and is not used in evaluation."
+        ),
+        action="store_true",
+    )
     parser.add_argument(
         "--create_bin_ht",
         help="When set, creates file annotated with bin based on rank of VQSR/RF score.",

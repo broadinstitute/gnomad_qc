@@ -52,7 +52,7 @@ from gnomad.assessment.validity_checks import (
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v3.resources.release import (
     append_to_vcf_header_path,
-    hgdp_1kg_subset,
+    hgdp_tgp_subset,
     release_header_path,
     release_sites,
     release_vcf_path,
@@ -762,30 +762,30 @@ def cleanup_ht_for_vcf_export(
 
 
 def build_parameter_dict(
-    hgdp_1kg: bool = False, test: bool = False
+    hgdp_tgp: bool = False, test: bool = False
 ) -> Dict[str, Union[bool, str, List, Dict, Set, hl.Table, None]]:
     """
     Build a dictionary of parameters to export.
 
     Parameters differ from subset releases (e.g., HGDP + TGP) vs full gnomAD release.
 
-    :param hgdp_1kg: Build the parameter list specific to the HGDP + TGP subset release.
+    :param hgdp_tgp: Build the parameter list specific to the HGDP + TGP subset release.
     :param test: Uses a checkpoint path for the prepared VCF Table that adds the string "test" to the checkpoint path.
     :return: Dictionary containing parameters needed to make the release VCF.
     """
-    if hgdp_1kg:
+    if hgdp_tgp:
         parameter_dict = {
             "pops": HGDP_TGP_POPS,
             "subsets": ["", "gnomad"],
             "is_subset": True,
             "temp_ht_path": get_checkpoint_path(
-                f"vcf_prep{'_test' if test else ''}_hgdp_1kg"
+                f"vcf_prep{'_test' if test else ''}_hgdp_tgp"
             ),
             "drop_hists": None,
             "include_age_hists": False,
             "sample_sum_sets_and_pops": {"gnomad": POPS, "": HGDP_TGP_POPS},
             "vcf_info_reorder": HGDP_TGP_VCF_INFO_REORDER,
-            "ht": hgdp_1kg_subset(dense=True).mt().rows(),
+            "ht": hgdp_tgp_subset(dense=True).mt().rows(),
             "freq_entries_to_remove": set(),
             "age_hist_data": None,
             "filtering_model_field": "variant_filtering_model",
@@ -824,15 +824,15 @@ def main(args):
     hl.init(
         log="/vcf_release.log", default_reference="GRCh38",
     )
-    hgdp_1kg = args.hgdp_1kg_subset
+    hgdp_tgp = args.hgdp_tgp_subset
     chromosome = args.export_chromosome
     export_reference = build_vcf_export_reference("gnomAD_GRCh38")
 
     if chromosome and args.test:
         raise ValueError("Chromosome argument doesn't work with the test flag.")
 
-    # Setup of parameters and Table/MatrixTable based on hgdp_1kg_subset flag
-    parameter_dict = build_parameter_dict(hgdp_1kg, args.test)
+    # Setup of parameters and Table/MatrixTable based on hgdp_tgp_subset flag
+    parameter_dict = build_parameter_dict(hgdp_tgp, args.test)
     try:
         if args.test:
             parameter_dict["ht"] = filter_to_test(parameter_dict["ht"])
@@ -865,7 +865,7 @@ def main(args):
             logger.info("Making histogram bin edges...")
             bin_edges = make_hist_bin_edges_expr(
                 parameter_dict["ht"],
-                prefix="gnomad" if hgdp_1kg else "",
+                prefix="gnomad" if hgdp_tgp else "",
                 include_age_hists=parameter_dict["include_age_hists"],
             )
             parameter_dict["ht"].describe()
@@ -879,12 +879,12 @@ def main(args):
                 # NOTE: This is not currently on the 3.1.1 (or earlier) Table, but will be on the 3.1.2 Table
                 inbreeding_coeff_cutoff=INBREEDING_COEFF_HARD_CUTOFF,  # parameter_dict["ht"].inbreeding_coeff_cutoff,
             )
-            if not hgdp_1kg:
+            if not hgdp_tgp:
                 header_dict.pop("format")
 
             logger.info("Saving header dict to pickle...")
             with hl.hadoop_open(
-                release_header_path(hgdp_tgp_subset=hgdp_1kg), "wb",
+                release_header_path(hgdp_tgp_subset=hgdp_tgp), "wb",
             ) as p:
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -892,8 +892,8 @@ def main(args):
             logger.info("Beginning validity checks on the prepared VCF HT...")
             validate_release_t(
                 prepared_vcf_ht,
-                subsets=["gnomad"] if hgdp_1kg else SUBSETS,
-                metric_first_field=False if hgdp_1kg else True,
+                subsets=["gnomad"] if hgdp_tgp else SUBSETS,
+                metric_first_field=False if hgdp_tgp else True,
                 sample_sum_sets_and_pops=parameter_dict["sample_sum_sets_and_pops"],
                 missingness_threshold=0.5,
                 variant_filter_field="AS_VQSR",
@@ -905,7 +905,7 @@ def main(args):
         if args.export_vcf:
             logger.info("Loading VCF header dict...")
             with hl.hadoop_open(
-                release_header_path(hgdp_tgp_subset=hgdp_1kg), "rb",
+                release_header_path(hgdp_tgp_subset=hgdp_tgp), "rb",
             ) as f:
                 header_dict = pickle.load(f)
 
@@ -921,11 +921,11 @@ def main(args):
                 logger.error("Did not pass VCF field check")
                 return
 
-            if hgdp_1kg:
+            if hgdp_tgp:
                 logger.info(
                     "Loading the HGDP + TGP subset MT and annotating with the prepared VCF HT for VCF export..."
                 )
-                t = hgdp_1kg_subset(dense=True).mt().select_rows()
+                t = hgdp_tgp_subset(dense=True).mt().select_rows()
                 logger.info(
                     "Number of rows and columns in dense MT: %d, %d",
                     t.count_rows(),
@@ -946,17 +946,17 @@ def main(args):
 
             logger.info(f"Exporting chromosome {chromosome}....")
             if args.test:
-                output_path = f"{qc_temp_prefix()}gnomad.genomes_vcf_test{'hgdp_1kg_subset' if hgdp_1kg else ''}.vcf.bgz"
+                output_path = f"{qc_temp_prefix()}gnomad.genomes_vcf_test{'hgdp_tgp_subset' if hgdp_tgp else ''}.vcf.bgz"
             else:
                 output_path = release_vcf_path(
-                    contig=chromosome, hgdp_tgp_subset=hgdp_1kg,
+                    contig=chromosome, hgdp_tgp_subset=hgdp_tgp,
                 )
 
             hl.export_vcf(
                 rekey_new_reference(t, export_reference),
                 output_path,
                 append_to_header=append_to_vcf_header_path(
-                    "hgdp_1kg" if hgdp_1kg else ""
+                    "hgdp_tgp" if hgdp_tgp else ""
                 ),
                 metadata=header_dict,
                 tabix=True,
@@ -972,8 +972,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--hgdp_1kg_subset",
-        help="Use HGDP + TGP subset Matrix table instead of the gnomAD release Table",
+        "--hgdp_tgp_subset",
+        help="Use HGDP + 1KG/TGP subset Matrix table instead of the gnomAD release Table",
         action="store_true",
     )
     parser.add_argument(

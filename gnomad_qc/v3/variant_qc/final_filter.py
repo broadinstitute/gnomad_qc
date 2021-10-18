@@ -6,6 +6,7 @@ from typing import Optional
 import hail as hl
 
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
+from gnomad.resources.resource_utils import DataException
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import add_filters_expr
 from gnomad.utils.slack import slack_notifications
@@ -13,6 +14,7 @@ from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq, get_info, get_vqsr_filters
+from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v3.resources.variant_qc import final_filter, get_score_bins
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -231,7 +233,9 @@ def generate_final_filter_ht(
 def main(args):
     hl.init(log="/variant_qc_finalize.log")
 
-    ht = get_score_bins(args.model_id, aggregated=False).ht()
+    ht = get_score_bins(
+        args.model_id, aggregated=False, hgdp_tgp_subset=args.hgdp_tgp_subset
+    ).ht()
     if args.filter_centromere_telomere:
         ht = ht.filter(~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]))
 
@@ -241,9 +245,37 @@ def main(args):
     if args.model_id.startswith("vqsr_"):
         ht = ht.drop("info")
 
-    freq_ht = get_freq().ht()
+    # NOTE: Added for the v3.1.2 HGDP + 1KG/TGP subset release because the frequency annotation Table was removed after
+    # the release sites HT was finalized
+    if file_exists(get_freq().path):
+        freq_ht = get_freq().ht()
+    elif file_exists(release_sites().path):
+        freq_ht = release_sites().ht()
+        freq_ht = freq_ht.select("freq", InbreedingCoeff=freq_ht.info.InbreedingCoeff)
+    else:
+        raise DataException("There is no frequency HT or release sites HT available for the current release!")
+
     ht = ht.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
     freq_idx = freq_ht[ht.key]
+    if args.hgdp_tgp_subset:
+        hgdp_tgp_freq_ht = get_freq(subset="hgdp-tgp").ht()
+        hgdp_tgp_freq_idx = hgdp_tgp_freq_ht[ht.key]
+        # If this is AC0 in full gnomAD and AC0 in HGDP + 1KG/TGP mark it as AC0
+        # If missing in full gnomAD only check HGDP + 1KG/TGP,
+        # If missing in HGDP + 1KG/TGP only check full gnomAD
+        ac0_filter_expr = hl.coalesce(
+            (freq_idx.freq[0].AC == 0) & (hgdp_tgp_freq_idx.freq[0].AC == 0),
+            hgdp_tgp_freq_idx.freq[0].AC == 0,
+            freq_idx.freq[0].AC == 0,
+        )
+        # Note: (freq_idx.freq[1].AF == 0) is actually already filtered out, only focus on variants where all samples
+        # are homozygous alternate for the variant.
+        # If this is monoallelic in gnomAD and monoallelic in HGDP + 1KG/TGP mark it as monoallelic
+        mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) & (hgdp_tgp_freq_idx.freq[1].AF == 1)
+    else:
+        ac0_filter_expr = freq_idx.freq[0].AC == 0
+        mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0)
+
     aggregated_bin_path = get_score_bins(args.model_id, aggregated=True).path
     if not file_exists(aggregated_bin_path):
         sys.exit(
@@ -255,9 +287,9 @@ def main(args):
         ht,
         args.model_name,
         args.score_name,
-        ac0_filter_expr=freq_idx.freq[0].AC == 0,
+        ac0_filter_expr=ac0_filter_expr,
         ts_ac_filter_expr=freq_idx.freq[1].AC == 1,
-        mono_allelic_flag_expr=(freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0),
+        mono_allelic_flag_expr=mono_allelic_flag_expr,
         snp_bin_cutoff=args.snp_bin_cutoff,
         indel_bin_cutoff=args.indel_bin_cutoff,
         snp_score_cutoff=args.snp_score_cutoff,
@@ -270,7 +302,7 @@ def main(args):
         else None,
     )
     ht = ht.annotate_globals(
-        filtering_model=ht.filtering_model.annotate(model_id=args.model_id,)
+        filtering_model=ht.filtering_model.annotate(model_id=args.model_id)
     )
     if args.model_id.startswith("vqsr_"):
         ht = ht.annotate_globals(
@@ -300,9 +332,9 @@ def main(args):
             )
         )
 
-    ht.write(final_filter.path, args.overwrite)
+    ht.write(final_filter(hgdp_tgp_subset=args.hgdp_tgp_subset).path, args.overwrite)
 
-    final_filter_ht = final_filter.ht()
+    final_filter_ht = final_filter(hgdp_tgp_subset=args.hgdp_tgp_subset).ht()
     final_filter_ht.summarize()
 
 
@@ -319,8 +351,8 @@ if __name__ == "__main__":
     parser.add_argument("--model_id", help="Filtering model ID to use.")
     parser.add_argument(
         "--model_name",
-        help="Filtering model name to use in the filters field. Either 'VQSR' or 'RF'.",
-        choices=["VQSR", "RF"],
+        help="Filtering model name to use in the filters field ('VQSR', 'AS_VQSR', or 'RF').",
+        choices=["AS_VQSR", "VQSR", "RF"],
     )
     parser.add_argument(
         "--score_name",
@@ -371,6 +403,11 @@ if __name__ == "__main__":
         default="vqsr_alleleSpecificTrans",
         choices=["vqsr_classic", "vqsr_alleleSpecific", "vqsr_alleleSpecificTrans"],
         type=str,
+    )
+    parser.add_argument(
+        "--hgdp_tgp_subset",
+        help="Use HGDP + 1KG/TGP score binned filter Table instead of the full gnomAD Table.",
+        action="store_true",
     )
     args = parser.parse_args()
 
