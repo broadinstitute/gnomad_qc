@@ -419,6 +419,8 @@ def prepare_variant_annotations(
     )
 
     logger.info("Adding global variant annotations...")
+    # The `freq_meta` global annotation on subset frequency Tables include a "subset" key in each element. This needs
+    # to be removed for the HGDP + 1KG variant annotations
     hgdp_tgp_freq_meta = [
         {k: v for k, v in x.items() if k != "subset"}
         for x in hl.eval(subset_freq.freq_meta)
@@ -657,7 +659,6 @@ def main(args):
             )
             mt = mt._filter_partitions(range(args.test_n_partitions))
 
-        logger.info(f"Number of variants in MT before: %d", mt.count_rows())
         logger.info(
             "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
         )
@@ -683,12 +684,6 @@ def main(args):
             "the fix for older GATK gVCFs with a known depletion of homozygous alternate alleles. This also does not "
             "remove standard GATK LowQual variants and variants in centromeres and telomeres (to preserve the ref "
             "block END annotation), which we recommend ultimately removing (and is removed for the dense MT release)."
-        )
-        mt.write(
-            "gs://gnomad-tmp/hgdp_tgp_sparse_temp_test.mt", overwrite=args.overwrite
-        )
-        mt = hl.read_matrix_table(
-            "gs://gnomad-tmp/hgdp_tgp_sparse_temp.mt", _n_partitions=50000
         )
         mt.write(sparse_mt_resource.path, overwrite=args.overwrite)
 
