@@ -27,6 +27,7 @@ from gnomad.utils.vcf import (
     AS_VQSR_FIELDS,
     build_vcf_export_reference,
     create_label_groups,
+    ENTRIES,
     FAF_POPS,
     FORMAT_DICT,
     HISTS,
@@ -925,7 +926,7 @@ def main(args):
                 logger.info(
                     "Loading the HGDP + TGP subset MT and annotating with the prepared VCF HT for VCF export..."
                 )
-                t = hgdp_tgp_subset(dense=True).mt().select_rows()
+                t = hgdp_tgp_subset(dense=True).mt().select_rows().select_entries(*ENTRIES)
                 logger.info(
                     "Number of rows and columns in dense MT: %d, %d",
                     t.count_rows(),
