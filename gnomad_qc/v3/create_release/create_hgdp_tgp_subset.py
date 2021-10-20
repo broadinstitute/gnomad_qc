@@ -322,9 +322,10 @@ def prepare_variant_annotations(
     elif not file_exists(get_info().path) and file_exists(get_info(split=False).path):
         from gnomad_qc.v3.annotations.generate_qc_annotations import split_info
 
-        info_ht = split_info().drop("old_locus", "old_alleles")
+        info_ht = split_info()
     else:
         raise DataException("There is no available split or unsplit info HT for use!")
+    info_ht = info_ht.drop("old_locus", "old_alleles")
 
     if filter_lowqual:
         logger.info("Filtering lowqual variants...")
@@ -449,7 +450,6 @@ def prepare_variant_annotations(
         ),
         variant_inbreeding_coeff_cutoff=filters_ht.index_globals().inbreeding_coeff_cutoff,
     )
-    ht = ht.drop("old_locus", "old_alleles")
 
     return ht
 
