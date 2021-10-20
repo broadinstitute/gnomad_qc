@@ -587,6 +587,9 @@ def create_full_subset_dense_mt(
         **variant_annotation_ht.drop("global_annotation_descriptions").index_globals()
     )
 
+    logger.info("Removing chrM...")
+    mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chrM")], keep=False)
+
     logger.info("Densify MT...")
     mt = hl.experimental.densify(mt)
 
@@ -598,9 +601,6 @@ def create_full_subset_dense_mt(
         ~mt.AS_lowqual & ~mt.telomere_or_centromere & (hl.len(mt.alleles) > 1)
     )
     mt = mt.drop("AS_lowqual", "telomere_or_centromere")
-
-    logger.info("Removing chrM...")
-    mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chrM")], keep=False)
 
     return mt
 
