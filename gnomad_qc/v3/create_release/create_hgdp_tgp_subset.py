@@ -420,8 +420,9 @@ def prepare_variant_annotations(
     )
 
     logger.info("Adding global variant annotations...")
-    # The `freq_meta` global annotation on subset frequency Tables include a "subset" key in each element. This needs
-    # to be removed for the HGDP + 1KG variant annotations
+    # The `freq_meta` global annotation on subset frequency Tables include a "subset" key in each element. 
+    # E.g., `{'group': 'adj', 'pop': 'cdx', 'subset': 'hgdp|tgp'}`
+    # This needs to be removed for the HGDP + 1KG variant annotations
     hgdp_tgp_freq_meta = [
         {k: v for k, v in x.items() if k != "subset"}
         for x in hl.eval(subset_freq.freq_meta)
