@@ -27,6 +27,7 @@ from gnomad.utils.vcf import (
     AS_VQSR_FIELDS,
     build_vcf_export_reference,
     create_label_groups,
+    ENTRIES,
     FAF_POPS,
     FORMAT_DICT,
     HISTS,
@@ -78,8 +79,8 @@ ALLELE_TYPE_FIELDS = remove_fields_from_constant(
     ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS
 )
 
-# Remove SOR from site fields (doesn't exist in v3.1)
-MISSING_SITES_FIELDS = ["SOR"]
+# Remove SB (not included in VCF) and SOR (doesn't exist in v3.1) from site fields
+MISSING_SITES_FIELDS = ["SOR", "SB"]
 SITE_FIELDS = remove_fields_from_constant(SITE_FIELDS, MISSING_SITES_FIELDS)
 
 # Remove AS_VarDP from AS fields
@@ -394,7 +395,7 @@ def unfurl_nested_annotations(
         - faf
         - age histograms
 
-    If `subset_release` is True the following will be unfurled (`cohort_freq` prefix on the freq annotation):
+    If `subset_release` is True the following will be unfurled (`hgdp_tgp_freq` prefix on the freq annotation):
        - frequencies
 
     If `gnomad_full_for_subset` is True the following will be unfurled (expects 'gnomad' prefix on these annotations):
@@ -428,8 +429,8 @@ def unfurl_nested_annotations(
 
     # Set variables to locate necessary fields, compute freq index dicts, and compute faf index dict
     if subset_release:
-        freq = "cohort_freq"
-        freq_idx = hl.eval(t.globals["cohort_freq_index_dict"])
+        freq = "hgdp_tgp_freq"
+        freq_idx = hl.eval(t.globals["hgdp_tgp_freq_index_dict"])
     else:
         popmax = f"{prefix}popmax"
         faf = f"{prefix}faf"
@@ -659,6 +660,7 @@ def prepare_vcf_header_dict(
     age_hist_data: str,
     subset_list: List[str],
     pops: Dict[str, str],
+    filtering_model_field: str = "filtering_model",
     format_dict: Dict[str, Dict[str, str]] = FORMAT_DICT,
     inbreeding_coeff_cutoff: float = INBREEDING_COEFF_HARD_CUTOFF,
 ) -> Dict[str, Dict[str, str]]:
@@ -670,14 +672,15 @@ def prepare_vcf_header_dict(
     :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param subset_list: List of sample subsets in dataset.
     :param pops: List of sample global population names for gnomAD genomes.
+    :param filtering_model_field: String indicating the filtering model global annotation.
     :param format_dict: Dictionary describing MatrixTable entries. Used in header for VCF export.
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter used for variants.
     :return: Prepared VCF header dictionary.
     """
     logger.info("Making FILTER dict for VCF...")
     filter_dict = make_vcf_filter_dict(
-        hl.eval(t.filtering_model.snv_cutoff.min_score),
-        hl.eval(t.filtering_model.indel_cutoff.min_score),
+        hl.eval(t[filtering_model_field].snv_cutoff.min_score),
+        hl.eval(t[filtering_model_field].indel_cutoff.min_score),
         inbreeding_cutoff=inbreeding_coeff_cutoff,
         variant_qc_filter="AS_VQSR",
     )
@@ -777,7 +780,7 @@ def build_parameter_dict(
             "subsets": ["", "gnomad"],
             "is_subset": True,
             "temp_ht_path": get_checkpoint_path(
-                f"vcf_prep_{'test' if test else ''}_hgdp_tgp"
+                f"vcf_prep{'_test' if test else ''}_hgdp_tgp"
             ),
             "drop_hists": None,
             "include_age_hists": False,
@@ -786,6 +789,7 @@ def build_parameter_dict(
             "ht": hgdp_tgp_subset(dense=True).mt().rows(),
             "freq_entries_to_remove": set(),
             "age_hist_data": None,
+            "filtering_model_field": "variant_filtering_model",
         }
 
     else:
@@ -794,7 +798,7 @@ def build_parameter_dict(
             "subsets": SUBSET_LIST_FOR_VCF,
             "is_subset": False,
             "temp_ht_path": get_checkpoint_path(
-                f"vcf_prep_{'test' if args.test else ''}"
+                f"vcf_prep{'_test' if args.test else ''}"
             ),
             "drop_hists": ["age_hist_het_bin_edges", "age_hist_hom_bin_edges"],
             "include_age_hists": True,
@@ -812,6 +816,7 @@ def build_parameter_dict(
         freq_entries_to_remove.update(set(COHORTS_WITH_POP_STORED_AS_SUBPOP))
         parameter_dict["freq_entries_to_remove"] = freq_entries_to_remove
         parameter_dict["age_hist_data"] = hl.eval(parameter_dict["ht"].age_distribution)
+        parameter_dict["filtering_model_field"] = "filtering_model"
 
     return parameter_dict
 
@@ -871,6 +876,7 @@ def main(args):
                 age_hist_data=parameter_dict["age_hist_data"],
                 subset_list=parameter_dict["subsets"],
                 pops=parameter_dict["pops"],
+                filtering_model_field=parameter_dict["filtering_model_field"],
                 # NOTE: This is not currently on the 3.1.1 (or earlier) Table, but will be on the 3.1.2 Table
                 inbreeding_coeff_cutoff=INBREEDING_COEFF_HARD_CUTOFF,  # parameter_dict["ht"].inbreeding_coeff_cutoff,
             )
@@ -920,7 +926,7 @@ def main(args):
                 logger.info(
                     "Loading the HGDP + TGP subset MT and annotating with the prepared VCF HT for VCF export..."
                 )
-                t = hgdp_tgp_subset(dense=True).mt().select_rows()
+                t = hgdp_tgp_subset(dense=True).mt().select_rows().select_entries(*ENTRIES)
                 t = t.annotate_rows(**prepared_vcf_ht[t.row_key])
             else:
                 t = prepared_vcf_ht

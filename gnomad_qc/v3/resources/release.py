@@ -168,9 +168,9 @@ def append_to_vcf_header_path(
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :return: Filepath for extra fields TSV file
     """
-    if release_version not in {"3.1", "3.1.1"}:
+    if release_version == "3.0":
         raise DataException(
-            "Extra fields to append to VCF header TSV only exists for 3.1 and 3.1.1!"
+            "Extra fields to append to VCF header TSV only exists for releases after v3!"
         )
     return f"gs://gnomad/release/{release_version}/vcf/genomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
 

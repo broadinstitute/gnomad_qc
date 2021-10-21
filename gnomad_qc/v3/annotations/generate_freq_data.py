@@ -223,7 +223,7 @@ def main(args):
             freq_ht = mt.rows()
 
             logger.info(
-                f"Writing out {'patch' if args.het_nonref_patch else ''} frequency data for {', '.join(subsets)} subset(s)..."
+                f"Writing out {'patch ' if args.het_nonref_patch else ''}frequency data for {', '.join(subsets)} subset(s)..."
             )
             if args.test:
                 freq_ht.write(
