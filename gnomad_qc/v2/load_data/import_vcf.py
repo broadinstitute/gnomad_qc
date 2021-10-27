@@ -1,4 +1,5 @@
-from gnomad.utils.slack import try_slack
+from gnomad.utils.slack import slack_notifications
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v2.resources import *
 import argparse
 import sys
@@ -8,8 +9,8 @@ def main(args):
     data_type = 'exomes' if args.exomes else 'genomes'
     hl.init(min_block_size=args.min_block_size)
 
-    mt = hl.import_vcf(args.vcf, force_bgz=args.force_bgz, call_fields=['GT','PGT'],
-                        header_file=args.header if args.header else None)
+    mt = hl.import_vcf(args.vcf, force_bgz=args.force_bgz, call_fields=['GT', 'PGT'],
+                       header_file=args.header if args.header else None)
 
     mt = mt.key_rows_by(
         **hl.min_rep(mt.locus, mt.alleles)
@@ -42,6 +43,7 @@ if __name__ == '__main__':
         sys.exit("Exome VCFs aren't cloudable :(")
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)

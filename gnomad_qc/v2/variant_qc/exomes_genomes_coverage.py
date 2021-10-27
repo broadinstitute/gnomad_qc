@@ -1,3 +1,7 @@
+# NOTE
+# This script is kept here only for archiving purpose.
+# It was used in the gnomAD v2 flagship LOF paper (https://www.nature.com/articles/s41586-020-2308-7), but is not used as a regular part of gnomAD production
+
 from gnomad_qc.v2.resources import *
 from gnomad_qc.v2.resources.variant_qc import get_ucsc_mappability
 import argparse

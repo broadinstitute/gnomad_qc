@@ -1,10 +1,12 @@
 from bokeh.palettes import d3  # pylint: disable=no-name-in-module
+from bokeh.models import Plot, Row, Span, NumeralTickFormatter, LabelSet
 
 from gnomad_qc.v2.resources.variant_qc import score_ranking_path, rf_path, binned_concordance_path
 from gnomad.utils.plotting import *
 import pandas as pd
 import numpy as np
 import hail as hl
+from typing import Set, Tuple
 
 qc_plots_settings = {
     'mean_point_size': 4.0,

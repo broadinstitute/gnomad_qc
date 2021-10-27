@@ -1,6 +1,6 @@
 import hail as hl
 from typing import *
-from gnomad.utils.generic import file_exists
+from gnomad.utils.file_utils import file_exists
 
 CURRENT_HAIL_VERSION = "0.2"
 CURRENT_RELEASE = "2.1.1"
@@ -87,14 +87,14 @@ def get_release_file(file_path: str, version: str = CURRENT_RELEASE) -> str:
 
 def public_exomes_ht_path(split=True, version=CURRENT_RELEASE):
     if int(version[0]) > 1 and int(version[2]) > 0:
-        return get_release_file('gs://gnomad-public/release/{0}/ht/exomes/gnomad.exomes.r{0}.sites.ht')
+        return get_release_file('gs://gcp-public-data--gnomad/release/{0}/ht/exomes/gnomad.exomes.r{0}.sites.ht')
     else:
         return get_release_file('gs://gnomad-public/release/{{0}}/vds/exomes/gnomad.exomes.r{{0}}.sites{0}.vds'.format(".split" if split else ""))
 
 
 def public_genomes_ht_path(split=True, version=CURRENT_RELEASE):
     if int(version[0]) > 1 and int(version[2]) > 0:
-        return get_release_file('gs://gnomad-public/release/{0}/ht/genomes/gnomad.genomes.r{0}.sites.ht')
+        return get_release_file('gs://gcp-public-data--gnomad/release/{0}/ht/genomes/gnomad.genomes.r{0}.sites.ht')
     else:
         return get_release_file('gs://gnomad-public/release/{{0}}/vds/genomes/gnomad.genomes.r{{0}}.sites{0}.vds'.format(".split" if split else ""))
 
@@ -137,7 +137,7 @@ def get_gnomad_data(data_type: str, adj: bool = False, split: bool = True, raw: 
     :return: gnomAD hardcalls dataset with chosen annotations
     :rtype: MatrixTable
     """
-    from gnomad.utils import filter_to_adj
+    from gnomad.utils.filtering import filter_to_adj
 
     if raw and split:
         raise DataException('No split raw data. Use of hardcalls is recommended.')
@@ -178,13 +178,20 @@ def get_gnomad_meta(data_type: str, version: str = None, full_meta: bool = False
     """
     Wrapper function to get gnomAD metadata as Table
 
-    :param str data_type: One of `exomes` or `genomes`
+    :param str data_type: One of `exomes`, `genomes` or `joint`
     :param str version: Metadata version (None for current)
     :param bool full_meta: Whether to annotate full metadata (rather than just summarized version)
     :return: Metadata Table
     :rtype: Table
     """
-    ht = hl.read_table(get_gnomad_meta_path(data_type, version)).key_by('s')
+    if data_type == 'joint':
+        exomes_ht = hl.read_table(get_gnomad_meta_path('exomes', version)).key_by('s', data_type='exomes')
+        exomes_ht = exomes_ht.annotate(qc_platform=hl.str(exomes_ht.qc_platform))
+        genomes_ht = hl.read_table(get_gnomad_meta_path('genomes', version)).key_by('s', data_type='genomes')
+        ht = exomes_ht.union(genomes_ht, unify=True)
+    else:
+        ht = hl.read_table(get_gnomad_meta_path(data_type, version)).key_by('s')
+
     if not full_meta:
         columns = ['age', 'sex',
                    'hard_filters', 'perm_filters', 'pop_platform_filters', 'related',
@@ -195,8 +202,9 @@ def get_gnomad_meta(data_type: str, version: str = None, full_meta: bool = False
                    'high_quality', 'release']
         if data_type == 'genomes':
             columns.extend(['pcr_free', 'project_name', 'release_2_0_2'])
-        else:
+        elif data_type == 'exomes':
             columns.extend(['diabetes', 'exac_joint', 'tcga'])
+
         ht = ht.select(*columns)
     return ht
 
@@ -507,10 +515,6 @@ constraint_ht_path = 'gs://gnomad-public/papers/2019-flagship-lof/v1.0/gnomad.v2
 
 
 # Sample QC files
-def qc_mt_path(data_type: str):
-    return 'gs://gnomad/sample_qc/mt/gnomad.{}.high_callrate_common_biallelic_snps.mt'.format(data_type)
-
-
 def qc_ht_path(data_type: str):
     return 'gs://gnomad/sample_qc/ht/gnomad.{}.high_callrate_common_biallelic_snps.ht'.format(data_type)
 

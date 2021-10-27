@@ -1,4 +1,7 @@
-from gnomad.utils import annotate_adj, adjust_sex_ploidy, try_slack
+from gnomad.utils.annotations import annotate_adj
+from gnomad.sample_qc.sex import adjust_sex_ploidy
+from gnomad.utils.slack import slack_notifications
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v2.resources.sample_qc import *
 from gnomad_qc.v2.resources import get_gnomad_data, get_gnomad_data_path
 import sys
@@ -60,6 +63,7 @@ if __name__ == '__main__':
         sys.exit('Error: One and only one of --exomes or --genomes must be specified')
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)

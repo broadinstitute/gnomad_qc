@@ -1,5 +1,6 @@
-from gnomad.utils.slack import try_slack
-from gnomad.utils.generic import pc_project
+from gnomad.utils.slack import slack_notifications
+from gnomad.sample_qc.ancestry import pc_project
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v2.resources.sample_qc import *
 from gnomad_qc.v2.sample_qc.joint_sample_qc import split_mt_by_relatedness, run_assign_population_pcs
 import argparse
@@ -181,6 +182,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)

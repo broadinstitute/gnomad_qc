@@ -1,6 +1,10 @@
-from gnomad.utils import try_slack, logger
+from gnomad.utils.slack import slack_notifications
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v2.resources import *
 import argparse
+import logging
+
+logger = logging.getLogger('import_gnomad_sv')
 
 
 def import_vcf():
@@ -179,6 +183,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)

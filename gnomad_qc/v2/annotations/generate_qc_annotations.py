@@ -1,6 +1,10 @@
 import argparse
 import sys
-from gnomad.utils import unphase_mt, filter_to_adj, add_variant_type, write_temp_gcs, try_slack
+from gnomad.utils.annotations import unphase_call_expr, add_variant_type
+from gnomad.utils.filtering import filter_to_adj
+from gnomad.utils.slack import slack_notifications
+from gnomad.utils.file_utils import write_temp_gcs
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v2.resources import *
 
 
@@ -40,7 +44,8 @@ def generate_call_stats(mt: hl.MatrixTable) -> hl.Table:
         "all_samples_raw": True
     }
     mt = mt.select_cols(**sample_group_filters)
-    mt = unphase_mt(mt.select_rows())
+    mt = mt.annotate_entries(GT=unphase_call_expr(mt.GT))
+    mt = mt.select_rows()
     call_stats_expression = []
     for group in sample_group_filters.keys():
         callstats = hl.agg.filter(mt[group], hl.agg.call_stats(mt.GT, mt.alleles))
@@ -133,7 +138,7 @@ def generate_family_stats(mt: hl.MatrixTable, fam_file: str, calculate_adj: bool
     """
     Writes bi-allelic sites MT with the following annotations:
      - family_stats (TDT, Mendel Errors, AC_unrelated_qc)
-     - truth_data (presence in Omni, HapMap, 1KG high conf SNVs, Mills)
+     - truth_data (presence in Omni, HapMap, 1KG/TGP high conf SNVs, Mills)
 
     :param MatrixTable mt: Full MT
     :param str fam_file: Fam pedigree file location
@@ -146,7 +151,7 @@ def generate_family_stats(mt: hl.MatrixTable, fam_file: str, calculate_adj: bool
     mt = annotate_unrelated_sample(mt, fam_file)
 
     # Unphased for now, since mendel_errors does not support phased alleles
-    mt = unphase_mt(mt)
+    mt = mt.annotate_entries(GT=unphase_call_expr(mt.GT))
     ped = hl.Pedigree.read(fam_file, delimiter='\\t')
     family_stats_struct, family_stats_sample_ht = family_stats(mt, ped, 'raw')
     mt = mt.annotate_rows(family_stats=[family_stats_struct])
@@ -203,7 +208,7 @@ def generate_de_novos(mt: hl.MatrixTable, fam_file: str, freq_data: hl.Table) ->
 def annotate_truth_data(mt: hl.MatrixTable) -> hl.Table:
     """
     Writes bi-allelic sites MT with the following annotations:
-     - truth_data (presence in Omni, HapMap, 1KG high conf SNVs, Mills)
+     - truth_data (presence in Omni, HapMap, 1KG/TGP high conf SNVs, Mills)
 
     :param MatrixTable mt: Full MT
     :return: Table with qc annotations
@@ -296,6 +301,7 @@ if __name__ == '__main__':
         sys.exit('Error: One and only one of --exomes or --genomes must be specified')
 
     if args.slack_channel:
-        try_slack(args.slack_channel, main, args)
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
     else:
         main(args)
