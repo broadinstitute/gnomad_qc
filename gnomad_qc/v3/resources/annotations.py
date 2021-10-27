@@ -11,7 +11,6 @@ from gnomad.resources.resource_utils import (
 from gnomad_qc.v3.resources.constants import (
     CURRENT_HGDP_TGP_RELEASE,
     CURRENT_INSILICO_ANNOTATION_VERSION,
-    CURRENT_RELEASE,
     CURRENT_VERSION,
     HGDP_TGP_RELEASES,
     INSILICO_ANNOTATION_VERSIONS,
