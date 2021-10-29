@@ -5,8 +5,9 @@ import sys
 import hail as hl
 
 from gnomad_qc.v3.resources.meta import meta as metadata
-from gnomad_qc.v3.resources.annotations import freq, get_info
-from gnomad_qc.v3.resources.raw import get_gnomad_v3_mt
+from gnomad_qc.v3.resources.annotations import get_info
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
+from gnomad_qc.v3.resources.release import release_sites
 from gnomad.resources.grch38.gnomad import GENOME_POPS
 from gnomad.utils.filtering import subset_samples_and_variants
 from gnomad.utils.annotations import annotate_adj
@@ -161,7 +162,7 @@ def format_info_for_vcf(ht) -> hl.Table:
     return ht
 
 
-def compute_partitions(mt, entry_size=3.5, partition_size=128000000, min_partitions=20) -> int: #TODO: move to gnomad_methods
+def compute_partitions(mt, entry_size=3.5, partition_size=128000000, min_partitions=20) -> int:  # TODO: move to gnomad_methods
     """
     Computes a very rough estimate for the optimal number of partitions in a MT
      using a the hail recommended partition size of 128MB and the rough estimate
@@ -271,7 +272,7 @@ def main(args):
     
     if args.add_gnomad_freqs:
         logger.info("Adding gnomAD callstats")
-        freq_ht = freq.ht()
+        freq_ht = release_sites().ht().select("freq")
         mt = mt.annotate_rows(info=mt.info.annotate(gnomAD_AC=freq_ht[mt.row_key].freq[0].AC, 
                                                     gnomAD_AN=freq_ht[mt.row_key].freq[0].AN,
                                                     gnomAD_AF=hl.float32(freq_ht[mt.row_key].freq[0].AF),
@@ -306,6 +307,7 @@ def main(args):
             }
         )
 
+    mt = mt.checkpoint("gs://gnomad-tmp/gnomad_subsetting_checkpoint.mt", overwrite=True)
     partitions = (
         compute_partitions(mt) if not args.num_vcf_shards else args.num_vcf_shards
     )
