@@ -1,3 +1,13 @@
+"""
+Compare frequencies for two gnomAD versions.
+
+Generate a Hail Table containing frequencies for two gnomAD versions (specified using `args.versions_to_compare`),
+and the following tests comparing the two frequencies:
+    - Chi squared test
+    - Fisher's exact test
+
+The Table is written out to the location of the more recent of the two gnomAD versions being compared.
+"""
 import argparse
 import logging
 
@@ -67,6 +77,10 @@ def main(args):
             )
             ht = release_resource_map[v](d).ht()
         except ResourceNotAvailable:
+            logger.warning(
+                "Using data in the gnomAD requester-pays bucket because the current datasets are not available from "
+                "the Google Cloud Public Datasets. If the current machine is outside the US, egress charges will apply!"
+            )
             gnomad_public_resource_configuration.source = (
                 GnomadPublicResourceSource.GNOMAD
             )
@@ -75,6 +89,7 @@ def main(args):
         logger.info("Filtering %s to only variants that are PASS...", version)
         ht = ht.filter(hl.len(ht.filters) == 0)
         freq_index_dict = hl.eval(ht.freq_index_dict)
+        # Keep full gnomAD callset adj [0], raw [1], and ancestry-specific adj frequencies
         freq_idx = [0, 1] + [
             freq_index_dict[POP_FORMAT[version].format(pop)] for pop in pops
         ]
