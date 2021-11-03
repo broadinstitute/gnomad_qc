@@ -1,5 +1,6 @@
 from typing import Optional
 
+from gnomad.resources.grch37.gnomad import EXOME_RELEASES, GENOME_RELEASES
 from gnomad.resources.grch38.gnomad import SUBSETS
 from gnomad.resources.resource_utils import (
     DataException,
@@ -12,8 +13,9 @@ from gnomad_qc.v3.resources.constants import (
     CURRENT_INSILICO_ANNOTATION_VERSION,
     CURRENT_VERSION,
     HGDP_TGP_RELEASES,
-    VERSIONS,
     INSILICO_ANNOTATION_VERSIONS,
+    RELEASES,
+    VERSIONS,
 )
 
 
@@ -220,3 +222,38 @@ analyst_annotations = VersionedTableResource(
         for release in INSILICO_ANNOTATION_VERSIONS
     },
 )
+
+
+def get_freq_comparison(version1, data_type1, version2, data_type2):
+    """
+    Get Table resource for a frequency comparison between two gnomAD versions.
+
+    Table contains results from a chi squared test and fishers exact test comparing the variant frequencies of two
+    gnomAD versions/data types.
+
+    :param version1: First gnomAD version in the frequency comparison. Table will be in the root annotation path for this gnomAD version.
+    :param data_type1: Data type of first version in the frequency comparison. One of "exomes" or "genomes". Table will be in the root annotation path for this gnomAD data type.
+    :param version2: Second gnomAD version in the frequency comparison.
+    :param data_type2: Data type of first version in the frequency comparison. One of "exomes" or "genomes".
+    :return: Hail Table containing results from chi squared test and fishers exact test
+    """
+    versions = [r + "_exomes" for r in EXOME_RELEASES] + [
+        r + "_genomes" for r in GENOME_RELEASES + RELEASES
+    ]
+    if (
+        f"{version1}_{data_type1}" not in versions
+        or f"{version2}_{data_type2}" not in versions
+    ):
+        raise DataException(
+            f"One of the versions/datatypes supplied doesn't exist. Possible options are: {versions}"
+        )
+
+    ht_path = (
+        f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq.ht"
+    )
+    if version1 in RELEASES:
+        ht_path = f"{_annotations_root(version1)}/{ht_path}"
+    else:
+        ht_path = f"gs://gnomad/annotations/hail-0.2/ht/{data_type1}/{ht_path}"
+
+    return TableResource(ht_path)
