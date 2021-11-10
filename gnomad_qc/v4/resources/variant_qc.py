@@ -19,7 +19,7 @@ from gnomad_qc.v4.resources.constants import (
 )
 
 # TODO: Confirm syndip name for v4 (copied current name from UKBB)
-SYNDIP = "CHMI_CHMI3_Nex1"  
+SYNDIP = "CHMI_CHMI3_Nex1"
 """
 String representation for syndip truth sample
 """
@@ -92,9 +92,7 @@ def get_callset_truth_data(
         )
 
 
-def get_score_bins(
-    model_id: str, aggregated: bool
-) -> VersionedTableResource:
+def get_score_bins(model_id: str, aggregated: bool) -> VersionedTableResource:
     """
     Return the path to a Table containing RF or VQSR scores and annotated with a bin based on rank of the metric scores.
 
@@ -236,9 +234,7 @@ def final_filter() -> VersionedTableResource:
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            release: TableResource(
-                f"{get_variant_qc_root(release)}/final_filter.ht"
-            )
+            release: TableResource(f"{get_variant_qc_root(release)}/final_filter.ht")
             for release in VERSIONS
         },
     )

@@ -50,16 +50,14 @@ def release_ht_path(
     :return: File path for desired Hail Table
     """
     # TODO: are using v or r for v4?
-    version_prefix = "r" if release_version.startswith("3.0") else "v" 
+    version_prefix = "r" if release_version.startswith("3.0") else "v"
     if public:
         return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
     else:
         return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
 
 
-def release_sites(
-    public: bool = False
-) -> VersionedTableResource:
+def release_sites(public: bool = False) -> VersionedTableResource:
     """
     Retrieve versioned resource for sites-only release Table.
 
@@ -70,10 +68,7 @@ def release_sites(
         default_version=CURRENT_RELEASE,
         versions={
             release: TableResource(
-                path=release_ht_path(
-                    release_version=release,
-                    public=public,
-                )
+                path=release_ht_path(release_version=release, public=public,)
             )
             for release in RELEASES
         },
@@ -81,8 +76,7 @@ def release_sites(
 
 
 def release_vcf_path(
-    release_version: Optional[str] = None,
-    contig: Optional[str] = None,
+    release_version: Optional[str] = None, contig: Optional[str] = None,
 ) -> str:
     """
     Fetch bucket for release (sites-only) VCFs.
@@ -103,9 +97,7 @@ def release_vcf_path(
         return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}.sites.vcf.bgz"
 
 
-def release_header_path(
-    release_version: Optional[str] = None
-) -> str:
+def release_header_path(release_version: Optional[str] = None) -> str:
     """
     Fetch path to pickle file containing VCF header dictionary.
 
@@ -132,6 +124,3 @@ def append_to_vcf_header_path(
     :return: Filepath for extra fields TSV file
     """
     return f"gs://gnomad/release/{release_version}/vcf/exomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
-
-
-

@@ -252,7 +252,10 @@ def pop_tsv_path(version: str = CURRENT_VERSION) -> str:
     :return: String path to sample populations
     """
     return f"gs://gnomad/v{version}/sample_qc/temp/exomes/gnomad_v{version}_RF_pop_assignments.txt.gz"
+
+
 # TODO: Should this still be a "temp" directory?
+
 
 def pop_rf_path(version: str = CURRENT_VERSION) -> str:
     """
