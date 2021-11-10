@@ -188,17 +188,6 @@ def get_freq(
     )
 
 
-analyst_annotations = VersionedTableResource(
-    CURRENT_INSILICO_ANNOTATION_VERSION,
-    {
-        release: TableResource(
-            f"{_annotations_root(release)}/gnomad_exomes_v{release}_in_silico_predictors.ht"
-        )
-        for release in INSILICO_ANNOTATION_VERSIONS
-    },
-)
-
-
 def get_freq_comparison(version1, data_type1, version2, data_type2):
     """
     Get Table resource for a frequency comparison between two gnomAD versions.
