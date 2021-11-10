@@ -90,7 +90,7 @@ def release_vcf_path(
         release_version = CURRENT_RELEASE
 
     if contig:
-        return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}.{subset}.{contig}.vcf.bgz"
+        return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}.sites.{contig}.vcf.bgz"
     else:
         # if contig is None, return path to sharded vcf bucket
         # NOTE: need to add .bgz or else hail will not bgzip shards
@@ -104,11 +104,10 @@ def release_header_path(release_version: Optional[str] = None) -> str:
     :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used
     :return: Filepath for header dictionary pickle
     """
-    subset = ""
     if release_version is None:
         release_version = CURRENT_RELEASE
 
-    return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}_header_dict{subset}.pickle"
+    return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}_header_dict.pickle"
 
 
 def append_to_vcf_header_path(
