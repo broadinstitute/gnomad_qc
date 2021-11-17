@@ -35,7 +35,7 @@ def meta_tsv_path(
     :return: String path to the finalized metadata
     """
     return (
-        f"{_meta_root_path(version)}/gnomad_v{version}_metadata_v{meta_version}.tsv.gz"
+        f"{_meta_root_path(version)}/gnomad_exomes_v{version}_metadata_v{meta_version}.tsv.gz"
     )
 
 
@@ -46,25 +46,21 @@ _meta_versions = {
 }
 
 _project_meta_versions = {
-    "4": TableResource(path="gs://gnomad/v4/metadata/exomes/gnomad_v4_project_meta.ht"),
+    "4": TableResource(path="gs://gnomad/v4/metadata/exomes/gnomad_v4_project_meta.ht")
 }
 
 _pedigree_versions = {
-    "4": PedigreeResource(
-        "gs://gnomad/v4/metadata/exomes/gnomad_v4.fam", delimiter="\t",
+    f"4{x}": PedigreeResource(
+        f"gs://gnomad/v4/metadata/exomes/gnomad_exomes_v4{x}.fam", delimiter="\t",
     ),
-    "4_raw": PedigreeResource(
-        "gs://gnomad/v4/metadata/exomes/gnomad_v4_raw.fam", delimiter="\t"
-    ),
+    for x in ["", "_raw"]
 }
 
 
 _trios_versions = {
-    "4": PedigreeResource(
-        "gs://gnomad/v4/metadata/exomes/gnomad_v4_trios.fam", delimiter="\t",
-    ),
-    "4_raw": PedigreeResource(
-        "gs://gnomad/v4/metadata/exomes/gnomad_v4_trios_raw.fam", delimiter="\t"
+    f"4{x}": PedigreeResource(
+        f"gs://gnomad/v4/metadata/exomes/gnomad_exomes_v4_trios{x}.fam", delimiter="\t",
+        for x in ["", "_raw"]
     ),
 }
 
@@ -77,7 +73,7 @@ ped_mendel_errors = VersionedTableResource(
     CURRENT_RELEASE,
     {
         release: TableResource(
-            path=f"{_meta_root_path(release)}/gnomad_v{release}_ped_chr20_mendel_errors.ht"
+            path=f"{_meta_root_path(release)}/gnomad_exomes_v{release}_ped_chr20_mendel_errors.ht"
         )
         for release in RELEASES
     },

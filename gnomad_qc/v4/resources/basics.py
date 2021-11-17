@@ -12,69 +12,56 @@ from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.sample_qc import hard_filtered_samples
 
 
-def get_gnomad_v4_mt(
+def get_gnomad_v4_vds(
     split=False,
-    key_by_locus_and_alleles: bool = False,
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
     samples_meta: bool = False,
-) -> hl.MatrixTable:
+) -> hl.VariantDataset:
     """
-    Wrapper function to get gnomAD data with desired filtering and metadata annotations.
+    Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
 
     :param split: Perform split on MT - Note: this will perform a split on the MT rather than grab an already split MT
-    :param key_by_locus_and_alleles: Whether to key the MatrixTable by locus and alleles
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after sample QC)
     :param release_only: Whether to filter the MT to only samples available for release (can only be used if metadata is present)
     :param samples_meta: Whether to add metadata to MT in 'meta' column
     :return: gnomAD v4 dataset with chosen annotations and filters
     """
-    mt = gnomad_v4_genotypes.mt()
-    if key_by_locus_and_alleles:
-        mt = hl.MatrixTable(
-            hl.ir.MatrixKeyRowsBy(
-                mt._mir, ["locus", "alleles"], is_sorted=True
-            )  # Prevents hail from running sort on genotype MT which is already sorted by a unique locus
-        )
-
+   vds = gnomad_v4_genotypes.vds()
     if remove_hard_filtered_samples:
-        mt = mt.filter_cols(
-            hl.is_missing(
-                hard_filtered_samples.versions[CURRENT_VERSION].ht()[mt.col_key]
+        vds = hl.vds.filter_samples(vds, hard_filtered_samples.versions[CURRENT_VERSION].ht(), keep=False)
             )
         )
 
-    if samples_meta:
-        mt = mt.annotate_cols(meta=meta.versions[CURRENT_VERSION].ht()[mt.col_key])
 
-        if release_only:
-            mt = mt.filter_cols(mt.meta.release)
-
-    elif release_only:
-        mt = mt.filter_cols(meta.versions[CURRENT_VERSION].ht()[mt.col_key].release)
+    if release_only:
+        meta_ht = meta.versions[CURRENT_VERSION].ht()
+        meta_ht = meta_ht.filter(meta_ht.release)
+        vds = hl.vds.filter_samples(vds, meta_ht)
 
     if split:
-        mt = mt.annotate_rows(
-            n_unsplit_alleles=hl.len(mt.alleles),
-            mixed_site=(hl.len(mt.alleles) > 2)
-            & hl.any(lambda a: hl.is_indel(mt.alleles[0], a), mt.alleles[1:])
-            & hl.any(lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:]),
+        vmt = vds.variant_data
+        vmt = vmt.annotate_rows(
+            n_unsplit_alleles=hl.len(vmt.alleles),
+            mixed_site=(hl.len(vmt.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(vmt.alleles[0], a), vmt.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(vmt.alleles[0], a), vmt.alleles[1:]),
         )
-        mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+        vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
+        vds = VariantDataset(vds.reference_data, vmt)
 
-    return mt
+    return vds
 
 
-# TODO: Will sparse_split_multi still work in v4?
 
 _gnomad_v4_genotypes = {
     "4": MatrixTableResource(
-        "gs://gnomad/v4/raw/exomes/gnomad_v4_sparse_unsplit.repartitioned.mt"
+        "gs://gnomad/raw/exomes/4.0/gnomad_v4.0.vds"
     ),
 }
 
 
-gnomad_v4_genotypes = VersionedMatrixTableResource(
+gnomad_v4_genotypes = VersionedVariantDatasetResource(
     CURRENT_VERSION, _gnomad_v4_genotypes,
 )
 

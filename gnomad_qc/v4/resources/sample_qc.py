@@ -38,9 +38,9 @@ def get_sample_qc(strat: str = "all") -> VersionedTableResource:
         CURRENT_VERSION,
         {
             release: TableResource(
-                f"{get_sample_qc_root(release)}/sample_qc_{strat}.ht"
+                f"{get_sample_qc_root(version)}/sample_qc_{strat}.ht"
             )
-            for release in VERSIONS
+            for version in VERSIONS
         },
     )
 
@@ -58,12 +58,7 @@ def _get_ancestry_pca_ht_path(
     :param include_unreleasable_samples: Whether the file includes PCA info for unreleasable samples
     :return: Path to requested ancestry PCA file
     """
-    return "{}/gnomad_v{}_pca_{}{}.ht".format(
-        get_sample_qc_root(version),
-        version,
-        part,
-        "_with_unreleasable_samples" if include_unreleasable_samples else "",
-    )
+    return "{get_sample_qc_root(version)}/gnomad_v{version}_pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
 
 
 def ancestry_pca_loadings(
@@ -78,12 +73,12 @@ def ancestry_pca_loadings(
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            release: TableResource(
+            version: TableResource(
                 _get_ancestry_pca_ht_path(
-                    "loadings", release, include_unreleasable_samples
+                    "loadings", version, include_unreleasable_samples
                 )
             )
-            for release in VERSIONS
+            for version in VERSIONS
         },
     )
 
@@ -100,12 +95,12 @@ def ancestry_pca_scores(
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            release: TableResource(
+            version: TableResource(
                 _get_ancestry_pca_ht_path(
-                    "scores", release, include_unreleasable_samples
+                    "scores", version, include_unreleasable_samples
                 )
             )
-            for release in VERSIONS
+            for version in VERSIONS
         },
     )
 
@@ -122,12 +117,12 @@ def ancestry_pca_eigenvalues(
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            release: TableResource(
+            version: TableResource(
                 _get_ancestry_pca_ht_path(
-                    "eigenvalues", release, include_unreleasable_samples
+                    "eigenvalues", version, include_unreleasable_samples
                 )
             )
-            for release in VERSIONS
+            for version in VERSIONS
         },
     )
 
@@ -158,11 +153,11 @@ gnomad_v2_qc_sites = TableResource(
 qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
-        release: MatrixTableResource(
+        version: MatrixTableResource(
             # TODO: What set this path to?
-            f"gs://gnomad/sample_qc/mt/genomes_v{release}/gnomad_v{release}_qc_mt_v3_sites_dense.mt"
+            f"{get_sample_qc_root(release, mt=True)}/gnomad_v{version}_qc.mt"
         )
-        for release in VERSIONS
+        for version in VERSIONS
     },
 )
 
@@ -170,10 +165,10 @@ qc = VersionedMatrixTableResource(
 pc_relate_pca_scores = VersionedTableResource(
     CURRENT_VERSION,
     {
-        release: TableResource(
-            f"{get_sample_qc_root(release)}/gnomad_v{release}_qc_mt_v3_sites_pc_scores.ht"
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad_v{version}_pc_scores.ht"
         )
-        for release in VERSIONS
+        for version in VERSIONS
     },
 )
 
@@ -181,10 +176,10 @@ pc_relate_pca_scores = VersionedTableResource(
 relatedness = VersionedTableResource(
     CURRENT_VERSION,
     {
-        release: TableResource(
-            f"{get_sample_qc_root(release)}/gnomad_v{release}_qc_mt_v3_sites_relatedness.ht"
+        version: TableResource(
+           f"{get_sample_qc_root(version)}/gnomad_v{version}_relatedness.ht"
         )
-        for release in VERSIONS
+        for version in VERSIONS
     },
 )
 
@@ -251,7 +246,7 @@ def pop_tsv_path(version: str = CURRENT_VERSION) -> str:
     :param version: gnomAD Version
     :return: String path to sample populations
     """
-    return f"gs://gnomad/v{version}/sample_qc/temp/exomes/gnomad_v{version}_RF_pop_assignments.txt.gz"
+    return f"gs://gnomad/v{version}/sample_qc/exomes/gnomad_v{version}_RF_pop_assignments.txt.gz"
 
 
 # TODO: Should this still be a "temp" directory?
@@ -264,7 +259,7 @@ def pop_rf_path(version: str = CURRENT_VERSION) -> str:
     :param version: gnomAD Version
     :return: String path to sample pop RF model
     """
-    return f"gs://gnomad/v{version}/sample_qc/temp/exomes/gnomad_v{version}_pop.RF_fit.pickle"
+    return f"gs://gnomad/v{version}/sample_qc/exomes/gnomad_v{version}_pop.RF_fit.pickle"
 
 
 def _import_related_samples_to_drop(**kwargs):

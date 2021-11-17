@@ -33,7 +33,7 @@ def qual_hists_json_path(release_version: str = CURRENT_RELEASE) -> str:
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :return: File path for histogram JSON
     """
-    return f"gs://gnomad/release/{release_version}/json/gnomad.exomes.r{release_version}.json"
+    return f"gs://gnomad/release/{release_version}/json/gnomad.exomes.v{release_version}.json"
 
 
 def release_ht_path(
@@ -49,12 +49,10 @@ def release_ht_path(
     :param public: Determines whether release sites Table is read from public or private bucket. Defaults to private
     :return: File path for desired Hail Table
     """
-    # TODO: are using v or r for v4?
-    version_prefix = "r" if release_version.startswith("3.0") else "v"
     if public:
-        return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
+        return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
     else:
-        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
+        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
 
 
 def release_sites(public: bool = False) -> VersionedTableResource:
@@ -68,7 +66,7 @@ def release_sites(public: bool = False) -> VersionedTableResource:
         default_version=CURRENT_RELEASE,
         versions={
             release: TableResource(
-                path=release_ht_path(release_version=release, public=public,)
+                path=release_ht_path(release_version=release, public=public)
             )
             for release in RELEASES
         },

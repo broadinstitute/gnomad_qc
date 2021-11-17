@@ -35,12 +35,10 @@ def get_info(split: bool = True) -> VersionedTableResource:
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            release: TableResource(
-                path="{}/gnomad_exomes_v{}_info{}.ht".format(
-                    _annotations_root(release), release, ".split" if split else ""
-                )
+            version: TableResource(
+                path=f"{_annotations_root(version)}/gnomad_exomes_v{version}_info{'.split' if split else ''}.ht"
             )
-            for release in VERSIONS
+            for version in VERSIONS
         },
     )
 
@@ -59,15 +57,10 @@ def get_vqsr_filters(
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            release: TableResource(
-                "{}/filtering/{}{}{}.ht".format(
-                    _annotations_root(release),
-                    model_id,
-                    ".finalized" if finalized else "",
-                    ".split" if split else "",
-                )
+            version: TableResource(
+                "{_annotations_root(version)}/vqsr/gnomad_exomes_v{version}_{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
             )
-            for release in VERSIONS
+            for version in VERSIONS
         },
     )
 
@@ -92,26 +85,26 @@ def get_transmitted_singleton_vcf_path(
     :param version: Version of transmitted singleton VCF path to return
     :return: String for the path to the transmitted singleton VCF
     """
-    return f'{_annotations_root(version)}/transmitted_singletons_{"adj" if adj else "raw"}.vcf.bgz'
+    return f'{_annotations_root(version)}/gnomad_exomes_v{version}_transmitted_singletons_{"adj" if adj else "raw"}.vcf.bgz'
 
 
 freq = VersionedTableResource(
     CURRENT_VERSION,
     {
         release: TableResource(
-            f"{_annotations_root(release)}/gnomad_exomes_v{release}.frequencies.ht"
+            f"{_annotations_root(version)}/gnomad_exomes_v{version}.frequencies.ht"
         )
-        for release in VERSIONS
+        for version in VERSIONS
     },
 )
 
 qual_hist = VersionedTableResource(
     CURRENT_VERSION,
     {
-        release: TableResource(
+        version: TableResource(
             f"{_annotations_root(release)}/gnomad_exomes_v{release}.qual_hists.ht"
         )
-        for release in VERSIONS
+        for version in VERSIONS
     },
 )
 
@@ -119,43 +112,43 @@ vep = VersionedTableResource(
     CURRENT_VERSION,
     {
         release: TableResource(
-            f"{_annotations_root(release)}/gnomad_exomes_v{release}_vep.ht"
+            f"{_annotations_root(version)}/gnomad_exomes_v{version}_vep.ht"
         )
-        for release in VERSIONS
+        for version in VERSIONS
     },
 )
 
 qc_ac = VersionedTableResource(
     CURRENT_VERSION,
     {
-        release: TableResource(f"{_annotations_root(release)}/gnomad_exomes_qc_ac.ht")
-        for release in VERSIONS
+        version: TableResource(f"{_annotations_root(version)}/gnomad_exomes_v{version}_qc_ac.ht")
+        for version in VERSIONS
     },
 )
 
 fam_stats = VersionedTableResource(
     CURRENT_VERSION,
     {
-        release: TableResource(
-            f"{_annotations_root(release)}/gnomad_exomes_qc_fam_stats.ht"
+        version: TableResource(
+            f"{_annotations_root(version)}/gnomad_exomes_v{version}_qc_fam_stats.ht"
         )
-        for release in VERSIONS
+        for version in VERSIONS
     },
 )
 
 allele_data = VersionedTableResource(
     CURRENT_VERSION,
     {
-        release: TableResource(
-            f"{_annotations_root(release)}/gnomad_exomes_qc_allele_data.ht"
+        version: TableResource(
+            f"{_annotations_root(version)}/gnomad_exomes_v{version}_qc_allele_data.ht"
         )
-        for release in VERSIONS
+        for version in VERSIONS
     },
 )
 
 
 def get_freq(
-    version: str = None, subset: Optional[str] = None
+    version: str = CURRENT_VERSION, subset: Optional[str] = None
 ) -> VersionedTableResource:
     """
     Get the frequency annotation table for a specified release.
@@ -165,11 +158,6 @@ def get_freq(
         controls_and_biobanks) or a combination of them split by '-'
     :return: Hail Table containing subset or overall cohort frequency annotations
     """
-    if version is None:
-        version = CURRENT_VERSION
-
-    all_versions = VERSIONS
-
     if subset is not None:
         for s in subset.split("-"):
             if s not in SUBSETS:
@@ -181,9 +169,9 @@ def get_freq(
         version,
         {
             release: TableResource(
-                f"{_annotations_root(release)}/gnomad_exomes_v{release}.frequencies{'.' + subset if subset else ''}.ht"
+                f"{_annotations_root(version)}/gnomad_exomes_v{version}.frequencies{'.' + subset if subset else ''}.ht"
             )
-            for release in all_versions
+            for version in VERSIONS
         },
     )
 
