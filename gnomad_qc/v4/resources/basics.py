@@ -1,7 +1,7 @@
 import hail as hl
 from gnomad.resources.resource_utils import (
-    MatrixTableResource,
-    VersionedMatrixTableResource,
+    VariantDatasetResource
+    VersionedVariantDatasetResource
 )
 
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION
