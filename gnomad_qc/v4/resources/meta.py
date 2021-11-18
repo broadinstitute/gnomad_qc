@@ -6,10 +6,7 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v4.resources.constants import (
-    CURRENT_VERSION,
-    VERSIONS
-)
+from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
 
 # Samples metadata
@@ -33,23 +30,25 @@ def meta_tsv_path(
     :param meta_version: Metadata version to return
     :return: String path to the finalized metadata
     """
-    return (
-        f"{_meta_root_path(version)}/gnomad_exomes_v{version}_metadata_v{meta_version}.tsv.gz"
-    )
+    return f"{_meta_root_path(version)}/gnomad_exomes_v{version}_metadata_v{meta_version}.tsv.gz"
 
 
 _meta_versions = {
-    "4": TableResource(
+    "4.0": TableResource(
         path="gs://gnomad/v4/metadata/exomes/gnomad_v4_sample_qc_metadata.ht"
     ),
 }
 
 _project_meta_versions = {
-    "4": TableResource(path="gs://gnomad/v4/metadata/exomes/gnomad_v4_project_meta.ht")
+    "4.0": TableResource(
+        path="gs://gnomad/v4/metadata/exomes/gnomad_v4_project_meta.ht"
+    )
 }
 
 _picard_metric_versions = {
-    "4": TableResource(path="gs://gnomad/v4/metadata/exomes/gnomad_v4_picard_metrics.ht")
+    "4.0": TableResource(
+        path="gs://gnomad/v4/metadata/exomes/gnomad_v4_picard_metrics.ht"
+    )
 }
 
 _pedigree_versions = {
@@ -63,8 +62,8 @@ _pedigree_versions = {
 _trios_versions = {
     f"4{x}": PedigreeResource(
         f"gs://gnomad/v4/metadata/exomes/gnomad_exomes_v4_trios{x}.fam", delimiter="\t",
-        for x in ["", "_raw"]
-    ),
+    )
+    for x in ["", "_raw"]
 }
 
 

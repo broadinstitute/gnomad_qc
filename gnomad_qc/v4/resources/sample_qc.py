@@ -143,6 +143,7 @@ def get_relatedness_annotated_ht() -> hl.Table:
         )
     )
 
+
 gnomad_v4_qc_sites = TableResource(
     "gs://gnomad-public/resources/grch38/gnomad_v4_qc_sites_b38.ht"
 )
@@ -175,7 +176,7 @@ relatedness = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-           f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_relatedness.ht"
+            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_relatedness.ht"
         )
         for version in VERSIONS
     },

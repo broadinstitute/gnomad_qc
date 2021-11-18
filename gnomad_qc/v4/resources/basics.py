@@ -4,9 +4,7 @@ from gnomad.resources.resource_utils import (
     VersionedMatrixTableResource,
 )
 
-from gnomad_qc.v4.resources.constants import (
-    CURRENT_VERSION,
-)
+from gnomad_qc.v4.resources.constants import CURRENT_VERSION
 from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.sample_qc import hard_filtered_samples
 
@@ -30,7 +28,9 @@ def get_gnomad_v4_vds(
     """
     vds = gnomad_v4_genotypes.vds()
     if remove_hard_filtered_samples:
-        vds = hl.vds.filter_samples(vds, hard_filtered_samples.versions[CURRENT_VERSION].ht(), keep=False)
+        vds = hl.vds.filter_samples(
+            vds, hard_filtered_samples.versions[CURRENT_VERSION].ht(), keep=False
+        )
 
     if release_only:
         meta_ht = meta.versions[CURRENT_VERSION].ht()
@@ -49,16 +49,16 @@ def get_gnomad_v4_vds(
         vds = VariantDataset(vds.reference_data, vmt)
 
     # Remove withdrawn UKBB samples
-    excluded_ukbb_samples_ht = hl.import_table(excluded_samples_path(CURRENT_UKBB_FREEZE))
+    excluded_ukbb_samples_ht = hl.import_table(
+        excluded_samples_path(CURRENT_UKBB_FREEZE)
+    )
     vds = hl.vds.filter_samples(vds, excluded_ukbb_samples_ht)
 
     return vds
 
 
 _gnomad_v4_genotypes = {
-    "4": VariantDatasetResource(
-        "gs://gnomad/raw/exomes/4.0/gnomad_v4.0.vds"
-    ),
+    "4": VariantDatasetResource("gs://gnomad/raw/exomes/4.0/gnomad_v4.0.vds"),
 }
 
 
@@ -98,9 +98,9 @@ def testset_vds(version: str = CURRENT_VERSION) -> str:
     :param version: Version of annotation path to return
     :return: Path to VDS with testset
     """
-    vds = hl.vds.read_vds("gs://gnomad/raw/exomes/{version}/testing/gnomad_v{version}_test.vds")
+    vds = hl.vds.read_vds(
+        "gs://gnomad/raw/exomes/{version}/testing/gnomad_v{version}_test.vds"
+    )
     # Will there only be one version of this?
 
     return vds
-
-

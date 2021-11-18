@@ -120,7 +120,9 @@ vep = VersionedTableResource(
 qc_ac = VersionedTableResource(
     CURRENT_VERSION,
     {
-        version: TableResource(f"{_annotations_root(version)}/gnomad_exomes_v{version}_qc_ac.ht")
+        version: TableResource(
+            f"{_annotations_root(version)}/gnomad_exomes_v{version}_qc_ac.ht"
+        )
         for version in VERSIONS
     },
 )
