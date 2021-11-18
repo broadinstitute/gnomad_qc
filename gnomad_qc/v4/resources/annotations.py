@@ -10,7 +10,6 @@ from gnomad.resources.resource_utils import (
 
 from gnomad_qc.v4.resources.constants import (
     CURRENT_VERSION,
-    RELEASES,
     VERSIONS,
 )
 
@@ -58,7 +57,7 @@ def get_vqsr_filters(
         CURRENT_VERSION,
         {
             version: TableResource(
-                "{_annotations_root(version)}/vqsr/gnomad_exomes_v{version}_{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
+                f"{_annotations_root(version)}/vqsr/gnomad_exomes_v{version}_{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
             )
             for version in VERSIONS
         },
@@ -190,7 +189,7 @@ def get_freq_comparison(version1, data_type1, version2, data_type2):
     :return: Hail Table containing results from chi squared test and fishers exact test
     """
     versions = [r + "_exomes" for r in EXOME_RELEASES] + [
-        r + "_genomes" for r in GENOME_RELEASES + RELEASES
+        r + "_genomes" for r in GENOME_RELEASES + VERSIONS
     ]
     if (
         f"{version1}_{data_type1}" not in versions
@@ -203,7 +202,7 @@ def get_freq_comparison(version1, data_type1, version2, data_type2):
     ht_path = (
         f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq.ht"
     )
-    if version1 in RELEASES:
+    if version1 in VERSIONS:
         ht_path = f"{_annotations_root(version1)}/{ht_path}"
     else:
         ht_path = f"gs://gnomad/annotations/hail-0.2/ht/{data_type1}/{ht_path}"

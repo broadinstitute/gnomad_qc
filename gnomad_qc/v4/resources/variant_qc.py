@@ -74,20 +74,20 @@ def get_callset_truth_data(
         return VersionedMatrixTableResource(
             CURRENT_VERSION,
             {
-                release: MatrixTableResource(
-                    f"{get_variant_qc_root(release)}/truth_samples/{truth_sample}.mt"
+                version: MatrixTableResource(
+                    f"{get_variant_qc_root(version)}/truth_samples/{truth_sample}.mt"
                 )
-                for release in VERSIONS
+                for version in VERSIONS
             },
         )
     else:
         return VersionedTableResource(
             CURRENT_VERSION,
             {
-                release: TableResource(
-                    f"{get_variant_qc_root(release)}/truth_samples/{truth_sample}.ht"
+                version: TableResource(
+                    f"{get_variant_qc_root(version)}/truth_samples/{truth_sample}.ht"
                 )
-                for release in VERSIONS
+                for version in VERSIONS
             },
         )
 
@@ -104,10 +104,10 @@ def get_score_bins(model_id: str, aggregated: bool) -> VersionedTableResource:
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            release: TableResource(
-                f"{get_variant_qc_root(release)}/score_bins/{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
+            version: TableResource(
+                f"{get_variant_qc_root(version)}/score_bins/{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
             )
-            for release in VERSIONS
+            for version in VERSIONS
         },
     )
 
@@ -124,10 +124,10 @@ def get_binned_concordance(model_id: str, truth_sample: str) -> VersionedTableRe
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            release: TableResource(
-                f"{get_variant_qc_root(release)}/binned_concordance/{truth_sample}_{model_id}_binned_concordance.ht"
+            version: TableResource(
+                f"{get_variant_qc_root(version)}/binned_concordance/{truth_sample}_{model_id}_binned_concordance.ht"
             )
-            for release in VERSIONS
+            for version in VERSIONS
         },
     )
 
@@ -160,33 +160,33 @@ def get_rf_annotations(adj: bool = False) -> VersionedTableResource:
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            release: TableResource(
-                f"{get_variant_qc_root(release)}/rf/rf_annotations.{'adj' if adj else 'raw'}.ht"
+            version: TableResource(
+                f"{get_variant_qc_root(version)}/rf/rf_annotations.{'adj' if adj else 'raw'}.ht"
             )
-            for release in VERSIONS
+            for version in VERSIONS
         },
     )
 
 
-def rf_run_path(release: str = CURRENT_VERSION) -> str:
+def rf_run_path(version: str = CURRENT_VERSION) -> str:
     """
     Return the path to the json file containing the RF runs list.
 
-    :param release: Release RF path to return
+    :param version: Version of RF path to return
     :return: Path to json file
     """
-    return f"{get_variant_qc_root(release)}/rf/rf_runs.json"
+    return f"{get_variant_qc_root(version)}/rf/rf_runs.json"
 
 
-def get_rf_model_path(model_id: str, release: str = CURRENT_VERSION) -> str:
+def get_rf_model_path(model_id: str, version: str = CURRENT_VERSION) -> str:
     """
     Get the path to the RF model for a given run.
 
     :param model_id: RF run to load
-    :param release: Release of model path to return
+    :param version: Version of model path to return
     :return: Path to the RF model
     """
-    return f"{get_variant_qc_root(release)}/rf/models/{model_id}/rf.model"
+    return f"{get_variant_qc_root(version)}/rf/models/{model_id}/rf.model"
 
 
 def get_rf_training(model_id: str) -> VersionedTableResource:
@@ -199,10 +199,10 @@ def get_rf_training(model_id: str) -> VersionedTableResource:
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            release: TableResource(
-                f"{get_variant_qc_root(release)}/rf/models/{model_id}/training.ht"
+            version: TableResource(
+                f"{get_variant_qc_root(version)}/rf/models/{model_id}/training.ht"
             )
-            for release in VERSIONS
+            for version in VERSIONS
         },
     )
 
@@ -217,10 +217,10 @@ def get_rf_result(model_id: Optional[str] = None) -> VersionedTableResource:
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            release: TableResource(
-                f"{get_variant_qc_root(release)}/rf/models/{model_id}/rf_result.ht"
+            version: TableResource(
+                f"{get_variant_qc_root(version)}/rf/models/{model_id}/rf_result.ht"
             )
-            for release in VERSIONS
+            for version in VERSIONS
         },
     )
 
@@ -234,7 +234,7 @@ def final_filter() -> VersionedTableResource:
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            release: TableResource(f"{get_variant_qc_root(release)}/final_filter.ht")
-            for release in VERSIONS
+            version: TableResource(f"{get_variant_qc_root(version)}/final_filter.ht")
+            for version in VERSIONS
         },
     )

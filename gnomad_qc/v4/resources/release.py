@@ -21,7 +21,7 @@ def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
     Dictionary contains histogram values for each metric.
     For example, "InbreedingCoeff": [-0.25, 0.25, 50].
 
-    :return: Path to file with annotations histograms
+    :return: Path to file with annotation histograms
     """
     return f"gs://gnomad/release/{release_version}/json/annotation_hists.json"
 

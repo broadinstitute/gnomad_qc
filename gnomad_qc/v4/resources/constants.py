@@ -1,4 +1,4 @@
-VERSIONS = ["4"]
+VERSIONS = ["4.0"]
 CURRENT_VERSION = "4.0"
 
 RELEASES = ["4.0"]
