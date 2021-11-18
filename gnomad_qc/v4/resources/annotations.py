@@ -90,7 +90,7 @@ def get_transmitted_singleton_vcf_path(
 freq = VersionedTableResource(
     CURRENT_VERSION,
     {
-        release: TableResource(
+        version: TableResource(
             f"{_annotations_root(version)}/gnomad_exomes_v{version}.frequencies.ht"
         )
         for version in VERSIONS
@@ -101,7 +101,7 @@ qual_hist = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{_annotations_root(release)}/gnomad_exomes_v{release}.qual_hists.ht"
+            f"{_annotations_root(version)}/gnomad_exomes_v{version}.qual_hists.ht"
         )
         for version in VERSIONS
     },
@@ -110,7 +110,7 @@ qual_hist = VersionedTableResource(
 vep = VersionedTableResource(
     CURRENT_VERSION,
     {
-        release: TableResource(
+        version: TableResource(
             f"{_annotations_root(version)}/gnomad_exomes_v{version}_vep.ht"
         )
         for version in VERSIONS
@@ -169,7 +169,7 @@ def get_freq(
     return VersionedTableResource(
         version,
         {
-            release: TableResource(
+            version: TableResource(
                 f"{_annotations_root(version)}/gnomad_exomes_v{version}.frequencies{'.' + subset if subset else ''}.ht"
             )
             for version in VERSIONS
