@@ -17,7 +17,7 @@ def get_gnomad_v4_vds(
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
     samples_meta: bool = False,
-) -> hl.VariantDataset:
+) -> hl.vds.VariantDataset:
     """
     Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
 
