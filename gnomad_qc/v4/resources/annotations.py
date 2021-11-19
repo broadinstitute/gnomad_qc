@@ -21,7 +21,7 @@ def _annotations_root(version: str = CURRENT_VERSION) -> str:
     :param version: Version of annotation path to return
     :return: Root path of the variant annotation files
     """
-    return f"gs://gnomad/v{version}/annotations/exomes/ht"
+    return f"gs://gnomad/v{version}/annotations/exomes"
 
 
 def get_info(split: bool = True) -> VersionedTableResource:

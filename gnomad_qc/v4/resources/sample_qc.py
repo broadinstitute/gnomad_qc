@@ -13,15 +13,14 @@ from gnomad_qc.v4.resources.constants import (
 )
 
 # Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4/<module>/<exomes_or_genomes>/
-def get_sample_qc_root(version: str = CURRENT_VERSION, mt: bool = False) -> str:
+def get_sample_qc_root(version: str = CURRENT_VERSION) -> str:
     """
     Return path to sample QC root folder.
 
     :param version: Version of sample QC path to return
-    :param mt: Whether path is for a MatrixTable, default is False
     :return: Root to sample QC path
     """
-    return f"gs://gnomad/v{version}/sample_qc/exomes/{'mt' if mt else 'ht'}"
+    return f"gs://gnomad/v{version}/sample_qc/exomes"
 
 
 def get_sample_qc(strat: str = "all") -> VersionedTableResource:
@@ -154,7 +153,7 @@ qc = VersionedMatrixTableResource(
     {
         version: MatrixTableResource(
             # TODO: What set this path to?
-            f"{get_sample_qc_root(version, mt=True)}/gnomad_exomes_v{version}_qc.mt"
+            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_qc.mt"
         )
         for version in VERSIONS
     },

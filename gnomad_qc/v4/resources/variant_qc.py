@@ -54,7 +54,7 @@ def get_variant_qc_root(version: str = CURRENT_VERSION) -> str:
     :param version: Version of variant QC path to return
     :return: Root to sample QC path
     """
-    return f"gs://gnomad/v{version}/variant_qc/exomes/"
+    return f"gs://gnomad/v{version}/variant_qc/exomes"
 
 
 def get_callset_truth_data(
