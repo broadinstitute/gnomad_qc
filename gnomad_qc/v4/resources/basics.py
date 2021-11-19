@@ -16,7 +16,6 @@ def get_gnomad_v4_vds(
     split=False,
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
-    samples_meta: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
@@ -104,3 +103,16 @@ def testset_vds(version: str = CURRENT_VERSION) -> str:
     # Will there only be one version of this?
 
     return vds
+
+
+def add_meta(mt: hl.MatrixTable, version: str = CURRENT_VERSION) -> hl.MatrixTable:
+    """
+    Add metadata to MT in 'meta' column.
+
+    :param mt: MatrixTable to which 'meta' annotation should be added
+    :param version: Version of metadata ht to use for annotations
+    :return: MatrixTable with metadata added in a 'meta' column
+    """
+    mt = mt.annotate_cols(meta=meta.versions[version].ht()[mt.col_key])
+
+    return mt
