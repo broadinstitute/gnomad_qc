@@ -35,7 +35,7 @@ def get_info(split: bool = True) -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                path=f"{_annotations_root(version)}/gnomad_exomes_v{version}_info{'.split' if split else ''}.ht"
+                path=f"{_annotations_root(version)}/gnomad.exomes.v{version}.info{'.split' if split else ''}.ht"
             )
             for version in VERSIONS
         },
@@ -57,7 +57,7 @@ def get_vqsr_filters(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version)}/vqsr/gnomad_exomes_v{version}_{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
+                f"{_annotations_root(version)}/vqsr/gnomad.exomes.v{version}.{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
             )
             for version in VERSIONS
         },
@@ -71,7 +71,7 @@ def info_vcf_path(version: str = CURRENT_VERSION) -> str:
     :param version: Version of annotation path to return
     :return: String for the path to the info VCF
     """
-    return f"{_annotations_root(version)}/gnomad_exomes_v{version}_info.vcf.bgz"
+    return f"{_annotations_root(version)}/gnomad.exomes.v{version}.info.vcf.bgz"
 
 
 def get_transmitted_singleton_vcf_path(
@@ -84,14 +84,14 @@ def get_transmitted_singleton_vcf_path(
     :param version: Version of transmitted singleton VCF path to return
     :return: String for the path to the transmitted singleton VCF
     """
-    return f'{_annotations_root(version)}/gnomad_exomes_v{version}_transmitted_singletons_{"adj" if adj else "raw"}.vcf.bgz'
+    return f'{_annotations_root(version)}/gnomad.exomes.v{version}.transmitted_singletons.{"adj" if adj else "raw"}.vcf.bgz'
 
 
 freq = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{_annotations_root(version)}/gnomad_exomes_v{version}.frequencies.ht"
+            f"{_annotations_root(version)}/gnomad.exomes.v{version}.frequencies.ht"
         )
         for version in VERSIONS
     },
@@ -101,7 +101,7 @@ qual_hist = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{_annotations_root(version)}/gnomad_exomes_v{version}.qual_hists.ht"
+            f"{_annotations_root(version)}/gnomad.exomes.v{version}.qual_hists.ht"
         )
         for version in VERSIONS
     },
@@ -111,7 +111,7 @@ vep = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{_annotations_root(version)}/gnomad_exomes_v{version}_vep.ht"
+            f"{_annotations_root(version)}/gnomad.exomes.v{version}.vep.ht"
         )
         for version in VERSIONS
     },
@@ -121,7 +121,7 @@ qc_ac = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{_annotations_root(version)}/gnomad_exomes_v{version}_qc_ac.ht"
+            f"{_annotations_root(version)}/gnomad.exomes.v{version}.qc_ac.ht"
         )
         for version in VERSIONS
     },
@@ -131,7 +131,7 @@ fam_stats = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{_annotations_root(version)}/gnomad_exomes_v{version}_qc_fam_stats.ht"
+            f"{_annotations_root(version)}/gnomad.exomes.v{version}.qc_fam_stats.ht"
         )
         for version in VERSIONS
     },
@@ -141,7 +141,7 @@ allele_data = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{_annotations_root(version)}/gnomad_exomes_v{version}_qc_allele_data.ht"
+            f"{_annotations_root(version)}/gnomad.exomes.v{version}.qc_allele_data.ht"
         )
         for version in VERSIONS
     },
@@ -170,7 +170,7 @@ def get_freq(
         version,
         {
             version: TableResource(
-                f"{_annotations_root(version)}/gnomad_exomes_v{version}.frequencies{'.' + subset if subset else ''}.ht"
+                f"{_annotations_root(version)}/gnomad.exomes.v{version}.frequencies{'.' + subset if subset else ''}.ht"
             )
             for version in VERSIONS
         },

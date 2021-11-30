@@ -37,7 +37,7 @@ def get_sample_qc(strat: str = "all") -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_sample_qc_{strat}.ht"
+                f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sample_qc_{strat}.ht"
             )
             for version in VERSIONS
         },
@@ -57,7 +57,7 @@ def _get_ancestry_pca_ht_path(
     :param include_unreleasable_samples: Whether the file includes PCA info for unreleasable samples
     :return: Path to requested ancestry PCA file
     """
-    return f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
+    return f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
 
 
 def ancestry_pca_loadings(
@@ -153,7 +153,7 @@ qc = VersionedMatrixTableResource(
     {
         version: MatrixTableResource(
             # TODO: What set this path to?
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_qc.mt"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.qc.mt"
         )
         for version in VERSIONS
     },
@@ -164,7 +164,7 @@ pc_relate_pca_scores = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_pc_scores.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.pc_scores.ht"
         )
         for version in VERSIONS
     },
@@ -175,7 +175,7 @@ relatedness = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_relatedness.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.relatedness.ht"
         )
         for version in VERSIONS
     },
@@ -186,7 +186,7 @@ sex = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_sex.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sex.ht"
         )
         for version in VERSIONS
     },
@@ -197,7 +197,7 @@ pca_related_samples_to_drop = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_related_samples_to_drop_for_pca.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.related_samples_to_drop_for_pca.ht"
         )
         for version in VERSIONS
     },
@@ -208,7 +208,7 @@ release_related_samples_to_drop = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_related_release_samples_to_drop.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.related_release_samples_to_drop.ht"
         )
         for version in VERSIONS
     },
@@ -219,7 +219,7 @@ sample_clinvar_count = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_clinvar.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.clinvar.ht"
         )
         for version in VERSIONS
     },
@@ -254,7 +254,7 @@ def pop_rf_path(version: str = CURRENT_VERSION) -> str:
     :param version: gnomAD Version
     :return: String path to sample pop RF model
     """
-    return f"gs://gnomad/v{version}/sample_qc/exomes/gnomad_exomes_v{version}_pop.RF_fit.pickle"
+    return f"gs://gnomad/v{version}/sample_qc/exomes/gnomad.exomes.v{version}.pop.RF_fit.pickle"
 
 
 def _import_related_samples_to_drop(**kwargs):
@@ -269,7 +269,7 @@ hard_filtered_samples = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_hard_filtered_samples.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered_samples.ht"
         )
         for version in VERSIONS
     },
@@ -281,7 +281,7 @@ stratified_metrics = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_stratified_metrics.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.stratified_metrics.ht"
         )
         for version in VERSIONS
     },
@@ -292,7 +292,7 @@ regressed_metrics = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_regressed_metrics.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.regressed_metrics.ht"
         )
         for version in VERSIONS
     },
@@ -303,7 +303,7 @@ pca_samples_rankings = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_pca_samples_ranking.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.pca_samples_ranking.ht"
         )
         for version in VERSIONS
     },
@@ -314,7 +314,7 @@ release_samples_rankings = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_release_samples_ranking.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.release_samples_ranking.ht"
         )
         for version in VERSIONS
     },
@@ -325,7 +325,7 @@ duplicates = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_duplicates.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.duplicates.ht"
         )
         for version in VERSIONS
     },
@@ -336,7 +336,7 @@ v3_v4_pc_relate_pca_scores = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_v3_v{version}_release_pca_scores.ht"
+            f"{get_sample_qc_root(version)}/gnomad.v3_v{version}.release_pca_scores.ht"
         )
         for version in VERSIONS
     },
@@ -347,7 +347,7 @@ v3_v4_relatedness = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_v3_v{version}_release_relatedness.ht"
+            f"{get_sample_qc_root(version)}/gnomad.v3_v{version}.release_relatedness.ht"
         )
         for version in VERSIONS
     },

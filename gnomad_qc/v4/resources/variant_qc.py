@@ -75,7 +75,7 @@ def get_callset_truth_data(
             CURRENT_VERSION,
             {
                 version: MatrixTableResource(
-                    f"{get_variant_qc_root(version)}/truth_samples/{truth_sample}.mt"
+                    f"{get_variant_qc_root(version)}/truth_samples/gnomad.exomes.v{version}.{truth_sample}.mt"
                 )
                 for version in VERSIONS
             },
@@ -85,7 +85,7 @@ def get_callset_truth_data(
             CURRENT_VERSION,
             {
                 version: TableResource(
-                    f"{get_variant_qc_root(version)}/truth_samples/{truth_sample}.ht"
+                    f"{get_variant_qc_root(version)}/truth_samples/gnomad.exomes.v{version}.{truth_sample}.ht"
                 )
                 for version in VERSIONS
             },
@@ -105,7 +105,7 @@ def get_score_bins(model_id: str, aggregated: bool) -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_variant_qc_root(version)}/score_bins/{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
+                f"{get_variant_qc_root(version)}/score_bins/gnomad.exomes.v{version}.{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
             )
             for version in VERSIONS
         },
@@ -125,7 +125,7 @@ def get_binned_concordance(model_id: str, truth_sample: str) -> VersionedTableRe
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_variant_qc_root(version)}/binned_concordance/{truth_sample}_{model_id}_binned_concordance.ht"
+                f"{get_variant_qc_root(version)}/binned_concordance/gnomad.exomes.v{version}.{truth_sample}.{model_id}.binned_concordance.ht"
             )
             for version in VERSIONS
         },
@@ -161,7 +161,7 @@ def get_rf_annotations(adj: bool = False) -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_variant_qc_root(version)}/rf/rf_annotations.{'adj' if adj else 'raw'}.ht"
+                f"{get_variant_qc_root(version)}/rf/gnomad.exomes.v{version}.rf_annotations.{'adj' if adj else 'raw'}.ht"
             )
             for version in VERSIONS
         },
@@ -175,7 +175,7 @@ def rf_run_path(version: str = CURRENT_VERSION) -> str:
     :param version: Version of RF path to return
     :return: Path to json file
     """
-    return f"{get_variant_qc_root(version)}/rf/rf_runs.json"
+    return f"{get_variant_qc_root(version)}/rf/gnomad.exomes.v{version}.rf_runs.json"
 
 
 def get_rf_model_path(model_id: str, version: str = CURRENT_VERSION) -> str:
@@ -186,7 +186,7 @@ def get_rf_model_path(model_id: str, version: str = CURRENT_VERSION) -> str:
     :param version: Version of model path to return
     :return: Path to the RF model
     """
-    return f"{get_variant_qc_root(version)}/rf/models/{model_id}/rf.model"
+    return f"{get_variant_qc_root(version)}/rf/models/{model_id}/gnomad.exomes.v{version}.rf.model"
 
 
 def get_rf_training(model_id: str) -> VersionedTableResource:
@@ -200,7 +200,7 @@ def get_rf_training(model_id: str) -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_variant_qc_root(version)}/rf/models/{model_id}/training.ht"
+                f"{get_variant_qc_root(version)}/rf/models/{model_id}/gnomad.exomes.v{version}.training.ht"
             )
             for version in VERSIONS
         },
@@ -218,7 +218,7 @@ def get_rf_result(model_id: Optional[str] = None) -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_variant_qc_root(version)}/rf/models/{model_id}/rf_result.ht"
+                f"{get_variant_qc_root(version)}/rf/models/{model_id}/gnomad.exomes.v{version}.rf_result.ht"
             )
             for version in VERSIONS
         },
@@ -234,7 +234,7 @@ def final_filter() -> VersionedTableResource:
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            version: TableResource(f"{get_variant_qc_root(version)}/final_filter.ht")
+            version: TableResource(f"{get_variant_qc_root(version)}/gnomad.exomes.v{version}.final_filter.ht")
             for version in VERSIONS
         },
     )
