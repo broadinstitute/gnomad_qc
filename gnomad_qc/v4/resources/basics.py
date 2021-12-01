@@ -12,10 +12,9 @@ from ukbb_qc.resources.basics import excluded_samples_path
 from ukbb_qc.resources.resource_utils import CURRENT_FREEZE as CURRENT_UKBB_FREEZE
 
 
+# Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4/<module>/<exomes_or_genomes>/
 def get_gnomad_v4_vds(
-    split=False,
-    remove_hard_filtered_samples: bool = True,
-    release_only: bool = False,
+    split=False, remove_hard_filtered_samples: bool = True, release_only: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
@@ -47,17 +46,40 @@ def get_gnomad_v4_vds(
         vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
         vds = VariantDataset(vds.reference_data, vmt)
 
-    # Remove withdrawn UKBB samples
+    # Obtain withdrawn UKBB samples
     excluded_ukbb_samples_ht = hl.import_table(
         excluded_samples_path(CURRENT_UKBB_FREEZE)
     )
+
+    # Count number of samples that should be excluded in the UKBB ht
+    excluded_ukbb_samples = hl.literal(
+        excluded_ukbb_samples_ht.aggregate(
+            hl.agg.collect_as_set(excluded_ukbb_samples_ht.f0)
+        )
+    )
+    logger.info(
+        "Total number of UKBB samples to exclude: %d",
+        hl.eval(hl.len(excluded_ukbb_samples)),
+    )
+    # Count current number of samples in the VDS
+    n_samples = vds.variant_data.count_cols()
+
+    # Remove excluded UKBB samples from the VDS
     vds = hl.vds.filter_samples(vds, excluded_ukbb_samples_ht)
+
+    # Log number of UKBB samples removed from the VDS
+    n_samples_after_exclusion = vds.variant_data.count_cols()
+    n_samples_removed = n_samples - n_samples_after_exclusion
+
+    logger.info(
+        "Total number of UKBB samples removed from the VDS: %d", n_samples_removed
+    )
 
     return vds
 
 
 _gnomad_v4_genotypes = {
-    "4": VariantDatasetResource("gs://gnomad/raw/exomes/4.0/gnomad_v4.0.vds"),
+    "4.0": VariantDatasetResource("gs://gnomad/raw/exomes/4.0/gnomad_v4.0.vds"),
 }
 
 
@@ -73,7 +95,7 @@ def qc_temp_prefix(version: str = CURRENT_VERSION) -> str:
     :param version: Version of annotation path to return
     :return: Path to bucket with temporary QC data
     """
-    return f"gs://gnomad-tmp/gnomad_v{version}_qc_data/"
+    return f"gs://gnomad-tmp/gnomad.exomes.v{version}.qc_data/"
 
 
 def get_checkpoint_path(
@@ -100,19 +122,20 @@ def testset_vds(version: str = CURRENT_VERSION) -> str:
     vds = hl.vds.read_vds(
         "gs://gnomad/raw/exomes/{version}/testing/gnomad_v{version}_test.vds"
     )
-    # Will there only be one version of this?
 
     return vds
 
 
-def add_meta(mt: hl.MatrixTable, version: str = CURRENT_VERSION) -> hl.MatrixTable:
+def add_meta(
+    mt: hl.MatrixTable, version: str = CURRENT_VERSION, meta_name: str = "meta"
+) -> hl.MatrixTable:
     """
-    Add metadata to MT in 'meta' column.
+    Add metadata to MT in 'meta_name' column.
 
-    :param mt: MatrixTable to which 'meta' annotation should be added
+    :param mt: MatrixTable to which 'meta_name' annotation should be added
     :param version: Version of metadata ht to use for annotations
     :return: MatrixTable with metadata added in a 'meta' column
     """
-    mt = mt.annotate_cols(meta=meta.versions[version].ht()[mt.col_key])
+    mt = mt.annotate_cols(meta_name=meta.versions[version].ht()[mt.col_key])
 
     return mt

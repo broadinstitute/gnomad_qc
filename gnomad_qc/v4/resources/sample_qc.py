@@ -12,7 +12,7 @@ from gnomad_qc.v4.resources.constants import (
     VERSIONS,
 )
 
-# Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4/<module>/<exomes_or_genomes>/
+
 def get_sample_qc_root(version: str = CURRENT_VERSION) -> str:
     """
     Return path to sample QC root folder.
@@ -230,7 +230,7 @@ pop = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_exomes_v{version}_pop.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.pop.ht"
         )
         for version in VERSIONS
     },
@@ -244,7 +244,7 @@ def pop_tsv_path(version: str = CURRENT_VERSION) -> str:
     :param version: gnomAD Version
     :return: String path to sample populations
     """
-    return f"gs://gnomad/v{version}/sample_qc/exomes/gnomad_exomes_v{version}_RF_pop_assignments.txt.gz"
+    return f"gs://gnomad/v{version}/sample_qc/exomes/gnomad.exomes.v{version}.RF_pop_assignments.txt.gz"
 
 
 def pop_rf_path(version: str = CURRENT_VERSION) -> str:

@@ -20,40 +20,37 @@ def _meta_root_path(version: str = CURRENT_VERSION) -> str:
     return f"gs://gnomad/v{version}/metadata/exomes"
 
 
-def meta_tsv_path(
-    version: str = CURRENT_VERSION, meta_version: str = CURRENT_VERSION
-) -> str:
+def meta_tsv_path(version: str = CURRENT_VERSION) -> str:
     """
     Get the path to the finalized sample metadata information after sample QC.
 
     :param version: gnomAD version
-    :param meta_version: Metadata version to return
     :return: String path to the finalized metadata
     """
-    return f"{_meta_root_path(version)}/gnomad.exomes.v{version}.metadata_v{meta_version}.tsv.gz"
+    return f"{_meta_root_path(version)}/gnomad.exomes.v{version}.metadata.tsv.gz"
 
 
 _meta_versions = {
     "4.0": TableResource(
-        path="gs://gnomad/v4/metadata/exomes/gnomad.exomes.v4.0.sample_qc_metadata.ht"
+        path="gs://gnomad/v4.0/metadata/exomes/gnomad.exomes.v4.0.sample_qc_metadata.ht"
     ),
 }
 
 _project_meta_versions = {
     "4.0": TableResource(
-        path="gs://gnomad/v4/metadata/exomes/gnomad.exomes.v4.0.project_meta.ht"
+        path="gs://gnomad/v4.0/metadata/exomes/gnomad.exomes.v4.0.project_meta.ht"
     )
 }
 
 _picard_metric_versions = {
     "4.0": TableResource(
-        path="gs://gnomad/v4/metadata/exomes/gnomad.exomes.v4.0.picard_metrics.ht"
+        path="gs://gnomad/v4.0/metadata/exomes/gnomad.exomes.v4.0.picard_metrics.ht"
     )
 }
 
 _pedigree_versions = {
     f"4{x}": PedigreeResource(
-        f"gs://gnomad/v4/metadata/exomes/gnomad.exomes.v4.0{x}.fam", delimiter="\t",
+        f"gs://gnomad/v4.0/metadata/exomes/gnomad.exomes.v4.0{x}.fam", delimiter="\t",
     )
     for x in ["", "_raw"]
 }
@@ -61,7 +58,8 @@ _pedigree_versions = {
 
 _trios_versions = {
     f"4{x}": PedigreeResource(
-        f"gs://gnomad/v4/metadata/exomes/gnomad.exomes.v4.0.trios{x}.fam", delimiter="\t",
+        f"gs://gnomad/v4.0/metadata/exomes/gnomad.exomes.v4.0.trios{x}.fam",
+        delimiter="\t",
     )
     for x in ["", "_raw"]
 }

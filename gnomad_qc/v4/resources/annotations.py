@@ -2,6 +2,8 @@ from typing import Optional
 
 from gnomad.resources.grch37.gnomad import EXOME_RELEASES, GENOME_RELEASES
 from gnomad.resources.grch38.gnomad import SUBSETS
+
+# TODO: Add a V4_SUBSETS to replace SUBSETS (currently includes tgp and hgdp which are not relevant for v4)
 from gnomad.resources.resource_utils import (
     DataException,
     TableResource,

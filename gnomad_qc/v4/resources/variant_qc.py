@@ -234,7 +234,9 @@ def final_filter() -> VersionedTableResource:
     return VersionedTableResource(
         CURRENT_VERSION,
         {
-            version: TableResource(f"{get_variant_qc_root(version)}/gnomad.exomes.v{version}.final_filter.ht")
+            version: TableResource(
+                f"{get_variant_qc_root(version)}/gnomad.exomes.v{version}.final_filter.ht"
+            )
             for version in VERSIONS
         },
     )
