@@ -1,3 +1,5 @@
+import logging
+
 import hail as hl
 from gnomad.resources.resource_utils import (
     VariantDatasetResource,
@@ -10,6 +12,9 @@ from gnomad_qc.v4.resources.sample_qc import hard_filtered_samples
 
 from ukbb_qc.resources.basics import excluded_samples_path
 from ukbb_qc.resources.resource_utils import CURRENT_FREEZE as CURRENT_UKBB_FREEZE
+
+logger = logging.getLogger("basic_resources")
+logger.setLevel(logging.INFO)
 
 
 # Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4.0/<module>/<exomes_or_genomes>/
