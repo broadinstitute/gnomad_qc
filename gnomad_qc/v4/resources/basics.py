@@ -12,7 +12,7 @@ from ukbb_qc.resources.basics import excluded_samples_path
 from ukbb_qc.resources.resource_utils import CURRENT_FREEZE as CURRENT_UKBB_FREEZE
 
 
-# Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4/<module>/<exomes_or_genomes>/
+# Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4.0/<module>/<exomes_or_genomes>/
 def get_gnomad_v4_vds(
     split=False, remove_hard_filtered_samples: bool = True, release_only: bool = False,
 ) -> hl.vds.VariantDataset:
