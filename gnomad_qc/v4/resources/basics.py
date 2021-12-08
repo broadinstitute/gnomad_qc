@@ -46,7 +46,7 @@ def get_gnomad_v4_vds(
             & hl.any(lambda a: hl.is_snp(vmt.alleles[0], a), vmt.alleles[1:]),
         )
         vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
-        vds = VariantDataset(vds.reference_data, vmt)
+        vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
     # Obtain withdrawn UKBB samples
     excluded_ukbb_samples_ht = hl.import_table(
