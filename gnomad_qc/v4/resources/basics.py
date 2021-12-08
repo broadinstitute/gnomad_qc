@@ -10,9 +10,6 @@ from gnomad_qc.v4.resources.constants import CURRENT_VERSION
 from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.sample_qc import hard_filtered_samples
 
-from ukbb_qc.resources.basics import excluded_samples_path
-from ukbb_qc.resources.resource_utils import CURRENT_FREEZE as CURRENT_UKBB_FREEZE
-
 logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
 
@@ -53,7 +50,7 @@ def get_gnomad_v4_vds(
 
     # Obtain withdrawn UKBB samples
     excluded_ukbb_samples_ht = hl.import_table(
-        excluded_samples_path(CURRENT_UKBB_FREEZE)
+        "gs://gnomad/v4.0/ukbb/w26041_20200820.csv"
     )
 
     # Count number of samples that should be excluded in the UKBB ht
