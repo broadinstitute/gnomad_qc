@@ -97,6 +97,9 @@ def run_pop_pca(
         )
     )
 
+    relateds = pca_related_samples_to_drop.ht()
+    hard_filtered_ht = hard_filtered_samples.ht()
+
     # Add info to the MT
     info_ht = get_info(split=False).ht()
     info_ht = info_ht.annotate(
@@ -111,7 +114,7 @@ def run_pop_pca(
     mt = mt.annotate_cols(**meta_ht[mt.col_key])
 
     # Filter the  QC MT to the specified pop
-    pop_mt = qc_mt.filter_cols(mt.pop == pop)
+    pop_mt = mt.filter_cols(mt.pop == pop)
 
     # Apply specified filters
     if remove_hard_filtered_samples:
@@ -144,8 +147,6 @@ def run_pop_pca(
         get_sample_qc_root()
         + f"/subpop_analysis/{pop}/{pop}_scores{release_string}{high_quality_string}{outlier_string}.ht"
     )
-
-    relateds = pca_related_samples_to_drop.ht()
 
     if not (ht_read_if_exists and file_exists(ht_path)):
         pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
