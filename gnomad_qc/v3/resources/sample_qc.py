@@ -88,7 +88,7 @@ def ancestry_pca_loadings(
     )
 
 
-def ancestry_pca_scores(version: str = CURRENT_VERSION,
+def ancestry_pca_scores(
     include_unreleasable_samples: bool = False,
 ) -> VersionedTableResource:
     """
