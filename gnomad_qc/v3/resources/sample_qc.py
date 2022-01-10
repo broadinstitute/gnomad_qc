@@ -88,7 +88,7 @@ def ancestry_pca_loadings(
     )
 
 
-def ancestry_pca_scores(
+def ancestry_pca_scores(version: str = CURRENT_VERSION,
     include_unreleasable_samples: bool = False,
 ) -> VersionedTableResource:
     """
@@ -146,6 +146,33 @@ def get_relatedness_annotated_ht() -> hl.Table:
             ibd1_expr=relatedness_ht.ibd1,
             ibd2_expr=relatedness_ht.ibd2,
         )
+    )
+
+
+def get_pop_pca_ht_for_suppop_analysis(
+    version: str = CURRENT_VERSION,
+    pop: str,
+    release: str,
+    high_quality: str,
+    outlier_string: str = "",
+) -> str:
+    """
+    Helper function to get path to files related to population PCA for subpop analysis
+
+    :param version: Version of sample QC path to return
+    :param pop: String indicating the population for the PCA file to return
+    :param release: Whether or not only release samples were used for generating the PCA data
+    :param high_quality: Whether or not only high quality samples were used for generating the PCA data
+    :param outlier_string: String indicating outlier samples that were removed before generating the PCA data (empty string if was not set)
+    :return: Path to requested pop PCA file to use for subpop analyses
+    """
+    return "{}/subpop_analysis/{}/{}_scores{}{}{}.ht".format(
+        get_sample_qc_root(version),
+        pop,
+        pop,
+        "_release" if release else "",
+        "_high_quality" if high_quality else "",
+        outlier_string
     )
 
 
@@ -249,6 +276,17 @@ pop = VersionedTableResource(
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_pop.ht"
+        )
+        for release in VERSIONS
+    },
+)
+
+# Dense QC MT to use for subpop analyses
+subpop_qc = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/subpop_analysis/gnomad_v{release}_qc_mt_subpop_analysis.mt"
         )
         for release in VERSIONS
     },

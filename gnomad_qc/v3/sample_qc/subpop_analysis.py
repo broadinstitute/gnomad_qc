@@ -2,10 +2,7 @@ import argparse
 import hail as hl
 import logging
 
-from gnomad.sample_qc.ancestry import (
-    assign_population_pcs,
-    run_pca_with_relateds,
-)
+from gnomad.sample_qc.ancestry import run_pca_with_relateds
 
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.sample_qc import (
@@ -20,6 +17,7 @@ from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad_qc.v3.resources import release_sites
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.annotations import get_info, last_END_position
+from gnomad_qc.v3.resources.constants import CURRENT_VERSION
 from gnomad_qc.v3.resources.sample_qc import get_sample_qc_root
 
 logging.basicConfig(
@@ -67,22 +65,26 @@ def run_pop_pca(
     min_af: float = 0.001,
     min_inbreeding_coeff_threshold: float = -0.25,
     remove_hard_filtered_samples: bool = True,
-    release=False,
-    high_quality=False,
+    release: bool = False,
+    high_quality: bool = False,
     outliers=None,
-    mt_read_if_exists=True,
-    ht_read_if_exists=True,
+    ht_read_if_exists: bool = True,
     outlier_string="",
 ) -> hl.MatrixTable:
     """
     Generate the QC MT per specified population and generate PCA info.
 
     :param mt: The QC MT output by the 'compute_subpop_qc_mt' function
+    :param pop: Population to which the Matrix Table should be filtered
     :param min_af: Minimum population variant allele frequency to retain variant in QC MT
-    :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to keep
-    :return: MatrixTable filtered to specific population to use for subpop analysis
+    :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to retain variant in QC MT
+    :param release: Whether or not to filter to only release samples
+    :param high_quality: Whether or not to filter to only high quality samples
+    :param outliers: Table keyed by column containing outliers to remove
+    :param ht_read_if_exists: Whether or not to read an existing Table of PCA data if it exists
+    :param outlier_string: String used to describe which outliers(if any) were removed
+    :return: Table with sample metadata and PCA scores for the specified population to use for subpop analysis
     """
-    # Adjust names for different project subpops that should actually be the same
     meta_ht = meta.ht()
     relateds = pca_related_samples_to_drop.ht()
     hard_filtered_ht = hard_filtered_samples.ht()
@@ -149,7 +151,7 @@ def run_pop_pca(
             project_id=pop_ht.project_meta.project_id,
             project_pop=pop_ht.project_meta.project_pop,
         )
-        pop_ht = pop_ht.checkpoint(ht_path, overwrite=True)
+        pop_ht = pop_ht.checkpoint(ht_path, overwrite=args.overwrite)
     else:
         pop_ht = hl.read_table(ht_path)
 
@@ -170,14 +172,14 @@ def main(args):
     output_path = (
         get_sample_qc_root()
         + "/subpop_analysis/"
-        + "gnomad_v3_qc_mt_subpop_analysis.mt"
+        + f"gnomad_v{CURRENT_VERSION}_qc_mt_subpop_analysis.mt"
     )
 
     if args.make_full_subpop_qc_mt:
         logger.info("Generating densified MT to use for all subpop analyses...")
         mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
         mt = mt.naive_coalesce(5000)
-        mt = mt.checkpoint(output_path, overwrite=True)
+        mt = mt.checkpoint(output_path, overwrite=args.overwrite)
 
     logger.info("Generating PCs for subpops...")
     # TODO: Add code for AMR using currently unused `run_pop_pca` function
@@ -185,7 +187,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="This script generates a QC MT to use for subpop analyses"
+        description="This script generates a QC MT and PCA scores to use for subpop analyses"
     )
     parser.add_argument(
         "--min-popmax-af",
@@ -194,10 +196,63 @@ if __name__ == "__main__":
         default=0.001,
     )
     parser.add_argument(
+        "--pop",
+        help="Population to which the subpop QC MT should be filtered when generating the PCA data",
+        type=str,
+    )
+    parser.add_argument(
+        "--min-af",
+        help="Minimum population variant allele frequency to retain variant in QC MT when generating the PCA data",
+        type=float,
+        default=0.001,
+    )
+    parser.add_argument(
+        "--min-inbreeding-coeff-threshold",
+        help="Minimum site inbreeding coefficient to keep a variant when generating the PCA data",
+        type=float,
+        default=-0.25,
+    )
+    parser.add_argument(
+        "--outlier-ht-path",
+        help="Path to Table keyed by column containing outliers to remove when generating the PCA data",
+        type=str,
+    )
+    parser.add_argument(
+        "--outlier-string",
+        help="String used to describe which outliers(if any were set by 'outlier-ht-path') were removed when generating the PCA data",
+        type=str,
+        default="",
+    )
+    parser.add_argument(
         "--make-full-subpop-qc-mt",
         help="Runs function to create dense MT to use as QC MT for all subpop analyses. This uses --min-popmax-af to determine variants that need to be retained",
         action="store_true",
     )
     parser.add_argument(
-        "--test", help="Runs a test of the code on only two partitions of the raw gnomAD v3 MT", action="store_true"
+        "--test",
+        help="Runs a test of the code on only two partitions of the raw gnomAD v3 MT",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--overwrite", help="Overwrites existing files", action="store_true"
+    )
+    parser.add_argument(
+        "--release",
+        help="Filter to only release samples when generating the PCA data",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--high-quality",
+        help="Filter to only high-quality samples when generating the PCA data",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--remove-hard-filtered-samples",
+        help="Remove hard-filtered samples when generating the PCA data",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--ht-read-if-exists",
+        help="Read an existing Table of PCA data if it exists",
+        action="store_true",
     )
