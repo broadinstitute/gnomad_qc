@@ -4,7 +4,6 @@ import logging
 
 from gnomad.sample_qc.ancestry import (
     assign_population_pcs,
-    POP_COLORS,
     run_pca_with_relateds,
 )
 
@@ -23,7 +22,6 @@ from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.annotations import get_info, last_END_position
 from gnomad_qc.v3.resources.sample_qc import get_sample_qc_root
 
-
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
@@ -36,7 +34,7 @@ def compute_subpop_qc_mt(
     mt: hl.MatrixTable, min_popmax_af: float = 0.001,
 ) -> hl.MatrixTable:
     """
-    Generate the subpop QC MT to be used for the subpop analyses.
+    Generate the subpop QC MT to be used for all subpop analyses.
     
     Filter MT to bi-allelic SNVs at sites with popmax allele frequency greater than `min_popmax_af`, densify, and write MT.
 
@@ -54,7 +52,7 @@ def compute_subpop_qc_mt(
         & hl.is_missing(lcr_intervals.ht()[release_ht.locus])
     ).key_by("locus")
 
-    # Densify the MT and include only sites defined in the qc_sites ht
+    # Densify the MT and include only sites defined in the qc_sites HT
     mt = mt.select_entries(
         "END", GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
     )
@@ -80,23 +78,12 @@ def run_pop_pca(
     Generate the QC MT per specified population and generate PCA info.
 
     :param mt: The QC MT output by the 'compute_subpop_qc_mt' function
-    :param min_af: Minimum variant allele frequency to retain variant in QC matrix table
+    :param min_af: Minimum population variant allele frequency to retain variant in QC MT
     :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to keep
     :return: MatrixTable filtered to specific population to use for subpop analysis
     """
     # Adjust names for different project subpops that should actually be the same
     meta_ht = meta.ht()
-    meta_ht = meta_ht.annotate(
-        project_meta=meta_ht.project_meta.annotate(
-            project_subpop=(
-                hl.switch(meta_ht.project_meta.project_subpop.lower())
-                .when("peru", "pel")
-                .when("colombian", "clm")
-                .default(meta_ht.project_meta.project_subpop)
-            )
-        )
-    )
-
     relateds = pca_related_samples_to_drop.ht()
     hard_filtered_ht = hard_filtered_samples.ht()
 
@@ -155,7 +142,6 @@ def run_pop_pca(
 
         pop_ht = pop_pca_scores.annotate(**meta_ht[pop_pca_scores.key])
         pop_ht = pop_ht.annotate(
-            project_subpop=pop_ht.project_meta.project_subpop,
             subpop_description=pop_ht.project_meta.subpop_description,
             v2_pop=pop_ht.project_meta.v2_pop,
             v2_subpop=pop_ht.project_meta.v2_subpop,
@@ -187,31 +173,31 @@ def main(args):
         + "gnomad_v3_qc_mt_subpop_analysis.mt"
     )
 
-    if args.make_subpop_mt:
-        logger.info("Generating densified MT to use for subpop analysis...")
+    if args.make_full_subpop_qc_mt:
+        logger.info("Generating densified MT to use for all subpop analyses...")
         mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
         mt = mt.naive_coalesce(5000)
-        mt = mt.checkpoint(output_path, overwrite=True,)
+        mt = mt.checkpoint(output_path, overwrite=True)
 
     logger.info("Generating PCs for subpops...")
-    # TODO: Add code for AMR
+    # TODO: Add code for AMR using currently unused `run_pop_pca` function
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="This script generate a qc mt to use for the subpop analysis"
+        description="This script generates a QC MT to use for subpop analyses"
     )
     parser.add_argument(
         "--min-popmax-af",
-        help="Minimum population max variant allele frequency to retain variant for the subpop QC matrix table",
+        help="Minimum population max variant allele frequency to retain a variant for the subpop QC MT",
         type=float,
         default=0.001,
     )
     parser.add_argument(
-        "--make-subpop-mt",
-        help="Runs function to create dense MT to use as QC MT for subpop analysis",
+        "--make-full-subpop-qc-mt",
+        help="Runs function to create dense MT to use as QC MT for all subpop analyses. This uses --min-popmax-af to determine variants that need to be retained",
         action="store_true",
     )
     parser.add_argument(
-        "--test", help="Runs a test on two partitions of the MT", action="store_true"
+        "--test", help="Runs a test of the code on only two partitions of the raw gnomAD v3 MT", action="store_true"
     )
