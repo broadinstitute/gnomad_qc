@@ -150,10 +150,10 @@ def get_relatedness_annotated_ht() -> hl.Table:
 
 
 def get_pop_pca_ht_for_suppop_analysis(
-    version: str = CURRENT_VERSION,
     pop: str,
     release: str,
     high_quality: str,
+    version: str = CURRENT_VERSION,
     outlier_string: str = "",
 ) -> str:
     """
