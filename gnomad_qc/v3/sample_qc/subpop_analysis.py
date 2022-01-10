@@ -256,3 +256,5 @@ if __name__ == "__main__":
         help="Read an existing Table of PCA data if it exists",
         action="store_true",
     )
+
+    args = parser.parse_args()
