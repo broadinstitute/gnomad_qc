@@ -48,26 +48,61 @@ def get_gnomad_v4_vds(
         vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
         vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
-    # Obtain withdrawn UKBB samples
-    excluded_ukbb_samples_ht = hl.import_table(
-        "gs://gnomad/v4.0/ukbb/w26041_20200820.csv"
-    )
-
-    # Count number of samples that should be excluded in the UKBB ht
-    excluded_ukbb_samples = hl.literal(
-        excluded_ukbb_samples_ht.aggregate(
-            hl.agg.collect_as_set(excluded_ukbb_samples_ht.f0)
-        )
-    )
-    logger.info(
-        "Total number of UKBB samples to exclude: %d",
-        hl.eval(hl.len(excluded_ukbb_samples)),
-    )
     # Count current number of samples in the VDS
     n_samples = vds.variant_data.count_cols()
 
-    # Remove excluded UKBB samples from the VDS
-    vds = hl.vds.filter_samples(vds, excluded_ukbb_samples_ht)
+    # Obtain withdrawn UKBB samples
+    excluded_ukbb_samples_ht = hl.import_table(
+        "gs://gnomad/v4.0/ukbb/w26041_20200820.csv", no_header=True,
+    ).key_by("f0")
+
+    sample_map_ht = hl.read_table("gs://gnomad/v4.0/ukbb/array_sample_map_freeze_7.ht")
+    sample_map_ht = sample_map_ht.annotate(
+        withdrawn_consent=hl.is_defined(
+            excluded_ukbb_samples_ht[sample_map_ht.ukbb_app_26041_id]
+        )
+    )
+    withdrawn_ids = sample_map_ht.filter(sample_map_ht.withdrawn_consent).s.collect()
+
+    # Remove samples that are known to be on the pharma's sample remove list
+    # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308
+    dups_ht = hl.read_table("gs://gnomad/v4.0/ukbb/pharma_known_dups_7.ht")
+
+    ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
+
+    # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS)
+    # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286
+    renamed_vd = hl.rename_duplicates(vds.variant_data)
+    renamed_rd = hl.rename_duplicates(vds.reference_data)
+
+    duplicate_samples_to_remove = renamed_vd.filter_cols(
+        renamed_vd.s != renamed_vd.unique_id
+    ).unique_id.collect()
+
+    renamed_rd = renamed_rd.filter_cols(
+        ~hl.literal(duplicate_samples_to_remove).contains(renamed_rd.unique_id)
+    ).drop("unique_id")
+    renamed_vd = renamed_vd.filter_cols(
+        ~hl.literal(duplicate_samples_to_remove).contains(renamed_vd.unique_id)
+    ).drop("unique_id")
+    vds = hl.vds.VariantDataset(renamed_rd, renamed_vd)
+
+    # Filter withdrawn samples from the VDS
+    withdrawn_ids = withdrawn_ids + ids_to_remove + duplicate_samples_to_remove
+
+    logger.info("Total number of UKBB samples to exclude: %d", len(withdrawn_ids))
+
+    with hl.hadoop_open(
+        "gs://gnomad/v4.0/ukbb/all_ukbb_samples_to_remove.txt", "w"
+    ) as d:
+        for sample in withdrawn_ids:
+            d.write(sample + "\n")
+
+    withdrawn_ht = hl.import_table(
+        "gs://gnomad/v4.0/ukbb/all_ukbb_samples_to_remove.txt", no_header=True
+    ).key_by("f0")
+
+    vds = hl.vds.filter_samples(vds, withdrawn_ht, keep=False, remove_dead_alleles=True)
 
     # Log number of UKBB samples removed from the VDS
     n_samples_after_exclusion = vds.variant_data.count_cols()
