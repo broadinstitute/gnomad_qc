@@ -154,7 +154,7 @@ def get_pop_pca_ht_for_suppop_analysis(
     release: str,
     high_quality: str,
     version: str = CURRENT_VERSION,
-    outlier_string: str = "",
+    outlier_description: str = "",
 ) -> str:
     """
     Helper function to get path to files related to population PCA for subpop analysis
@@ -163,7 +163,7 @@ def get_pop_pca_ht_for_suppop_analysis(
     :param pop: String indicating the population for the PCA file to return
     :param release: Whether or not only release samples were used for generating the PCA data
     :param high_quality: Whether or not only high quality samples were used for generating the PCA data
-    :param outlier_string: String indicating outlier samples that were removed before generating the PCA data (empty string if was not set)
+    :param outlier_description: String indicating outlier samples that were removed before generating the PCA data (empty string if was not set)
     :return: Path to requested pop PCA file to use for subpop analyses
     """
     return "{}/subpop_analysis/{}/{}_scores{}{}{}.ht".format(
@@ -172,7 +172,7 @@ def get_pop_pca_ht_for_suppop_analysis(
         pop,
         "_release" if release else "",
         "_high_quality" if high_quality else "",
-        outlier_string
+        outlier_description
     )
 
 

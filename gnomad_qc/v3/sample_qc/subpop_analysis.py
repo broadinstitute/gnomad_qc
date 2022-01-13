@@ -67,22 +67,22 @@ def run_pop_pca(
     remove_hard_filtered_samples: bool = True,
     release: bool = False,
     high_quality: bool = False,
-    outliers=None,
+    outliers: hl.Table = None,
     ht_read_if_exists: bool = True,
-    outlier_string="",
+    outlier_description: str = "",
 ) -> hl.MatrixTable:
     """
     Generate the QC MT per specified population and generate PCA info.
 
     :param mt: The QC MT output by the 'compute_subpop_qc_mt' function
-    :param pop: Population to which the Matrix Table should be filtered
+    :param pop: Population to which the QC MT should be filtered
     :param min_af: Minimum population variant allele frequency to retain variant in QC MT
     :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to retain variant in QC MT
     :param release: Whether or not to filter to only release samples
     :param high_quality: Whether or not to filter to only high quality samples
-    :param outliers: Table keyed by column containing outliers to remove
-    :param ht_read_if_exists: Whether or not to read an existing Table of PCA data if it exists
-    :param outlier_string: String used to describe which outliers(if any) were removed
+    :param outliers: Optional Table keyed by column containing outliers to remove
+    :param pca_ht_read_if_exists: Whether or not to read an existing Table of PCA data if it exists
+    :param outlier_description: String used to describe which outliers(if any) were removed
     :return: Table with sample metadata and PCA scores for the specified population to use for subpop analysis
     """
     meta_ht = meta.ht()
@@ -107,7 +107,7 @@ def run_pop_pca(
 
     # Apply specified filters
     if remove_hard_filtered_samples:
-        pop_mt = pop_mt.filter_cols(hl.is_missing(hard_filtered_ht[pop_mt.col_key]))
+        pop_mt = pop_mt.filter_cols(pop_mt.sample_filters.hard_filtered)
     if release:
         pop_mt = pop_mt.filter_cols(pop_mt.release)
     if high_quality:
@@ -134,10 +134,10 @@ def run_pop_pca(
     high_quality_string = "_high_quality" if high_quality else ""
     ht_path = (
         get_sample_qc_root()
-        + f"/subpop_analysis/{pop}/{pop}_scores{release_string}{high_quality_string}{outlier_string}.ht"
+        + f"/subpop_analysis/{pop}/{pop}_scores{release_string}{high_quality_string}{outlier_description}.ht"
     )
 
-    if not (ht_read_if_exists and file_exists(ht_path)):
+    if not (pca_ht_read_if_exists and file_exists(ht_path)):
         pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
             pop_qc_mt, relateds
         )
@@ -151,7 +151,7 @@ def run_pop_pca(
             project_id=pop_ht.project_meta.project_id,
             project_pop=pop_ht.project_meta.project_pop,
         )
-        pop_ht = pop_ht.checkpoint(ht_path, overwrite=args.overwrite)
+        pop_ht = pop_ht.checkpoint(ht_path, overwrite=True)
     else:
         pop_ht = hl.read_table(ht_path)
 
