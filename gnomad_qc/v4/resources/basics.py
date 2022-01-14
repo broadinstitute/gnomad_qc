@@ -51,12 +51,12 @@ def get_gnomad_v4_vds(
     # Count current number of samples in the VDS
     n_samples = vds.variant_data.count_cols()
 
-    # Obtain withdrawn UKBB samples
+    # Obtain withdrawn UKBB samples (includes 5 samples that should be removed from the VDS)
     excluded_ukbb_samples_ht = hl.import_table(
-        "gs://gnomad/v4.0/ukbb/w26041_20200820.csv", no_header=True,
+        ukbb_excluded_samples_path, no_header=True,
     ).key_by("f0")
 
-    sample_map_ht = hl.read_table("gs://gnomad/v4.0/ukbb/array_sample_map_freeze_7.ht")
+    sample_map_ht = hl.read_table(ukbb_array_sample_map.path)
     sample_map_ht = sample_map_ht.annotate(
         withdrawn_consent=hl.is_defined(
             excluded_ukbb_samples_ht[sample_map_ht.ukbb_app_26041_id]
@@ -64,9 +64,9 @@ def get_gnomad_v4_vds(
     )
     withdrawn_ids = sample_map_ht.filter(sample_map_ht.withdrawn_consent).s.collect()
 
-    # Remove samples that are known to be on the pharma's sample remove list
+    # Remove 43 samples that are known to be on the pharma's sample remove list
     # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308
-    dups_ht = hl.read_table("gs://gnomad/v4.0/ukbb/pharma_known_dups_7.ht")
+    dups_ht = hl.read_table(ukbb_known_dups.path)
 
     ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
 
@@ -93,7 +93,7 @@ def get_gnomad_v4_vds(
     logger.info("Total number of UKBB samples to exclude: %d", len(withdrawn_ids))
 
     with hl.hadoop_open(
-        "gs://gnomad/v4.0/ukbb/all_ukbb_samples_to_remove.txt", "w"
+        all_ukbb_samples_to_remove, "w"
     ) as d:
         for sample in withdrawn_ids:
             d.write(sample + "\n")
@@ -123,6 +123,29 @@ _gnomad_v4_genotypes = {
 gnomad_v4_genotypes = VersionedVariantDatasetResource(
     CURRENT_VERSION, _gnomad_v4_genotypes,
 )
+
+# UKBB data resources
+def _ukbb_root_path() -> str:
+    """
+    Retrieve the path to the UKBB data directory.
+
+    :return: String representation of the path to the UKBB data directory
+    """
+    return "gs://gnomad/v4.0/ukbb"
+
+# List of samples to exclude from QC due to withdrawn consents
+# This is the file with the most up to date sample withdrawals we were sent. File downloaded on 8/16/21
+ukbb_excluded_samples_path = f"{_ukbb_root_path()}/w26041_20210809.csv"
+
+# UKBB map of exome IDs to array sample IDs (application ID: 26041)
+ukbb_array_sample_map = TableResource(f"{_ukbb_root_path()}/array_sample_map_freeze_7.ht")
+
+# Samples known to be on the pharma partners' remove lists.
+# All 44 samples are marked as "unresolved duplicates" by the pharma partners.
+ukbb_known_dups = TableResource(f"{_ukbb_root_path()}/pharma_known_dups_7.ht")
+
+# Final list of UKBB samples to remove
+all_ukbb_samples_to_remove = f"{_ukbb_root_path()}/all_ukbb_samples_to_remove.txt"
 
 
 def qc_temp_prefix(version: str = CURRENT_VERSION) -> str:
