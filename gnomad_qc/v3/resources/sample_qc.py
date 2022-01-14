@@ -254,33 +254,6 @@ def get_relatedness_annotated_ht() -> hl.Table:
     )
 
 
-def get_pop_pca_ht_for_suppop_analysis(
-    pop: str,
-    release: str,
-    high_quality: str,
-    version: str = CURRENT_VERSION,
-    outlier_description: str = "",
-) -> str:
-    """
-    Helper function to get path to files related to population PCA for subpop analysis
-
-    :param version: Version of sample QC path to return
-    :param pop: String indicating the population for the PCA file to return
-    :param release: Whether or not only release samples were used for generating the PCA data
-    :param high_quality: Whether or not only high quality samples were used for generating the PCA data
-    :param outlier_description: String indicating outlier samples that were removed before generating the PCA data (empty string if was not set)
-    :return: Path to requested pop PCA file to use for subpop analyses
-    """
-    return "{}/subpop_analysis/{}/{}_scores{}{}{}.ht".format(
-        get_sample_qc_root(version),
-        pop,
-        pop,
-        "_release" if release else "",
-        "_high_quality" if high_quality else "",
-        outlier_description
-    )
-
-
 # QC Sites (gnomAD v2 QC sites, lifted over)
 gnomad_v2_qc_sites = TableResource(
     "gs://gnomad-public/resources/grch38/gnomad_v2_qc_sites_b38.ht"

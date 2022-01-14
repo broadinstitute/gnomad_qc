@@ -6,9 +6,11 @@ from gnomad.sample_qc.ancestry import run_pca_with_relateds
 
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.sample_qc import (
-    get_pop_pca_ht_for_suppop_analysis,
     pca_related_samples_to_drop,
-    subpop_qc
+    subpop_pca_eigenvalues,
+    subpop_pca_loadings,
+    subpop_pca_scores
+    subpop_qc,
 )
 
 from gnomad.resources.grch38.reference_data import lcr_intervals
@@ -184,27 +186,6 @@ def main(args):  # noqa: D103
         pop_pca_loadings = pop_pca_loadings.checkpoint(subpop_pca_loadings(pop, not release, high_quality).versions[CURRENT_VERSION].path)
 
 # Annotate_subpop_meta for if args.assign_subpops
-
-
-def _get_subpop_pca_ht_path(
-    part: str,
-    version: str = CURRENT_VERSION,
-    include_unreleasable_samples: bool = False,
-) -> str:
-    """
-    Helper function to get path to files related to ancestry PCA
-
-    :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores)
-    :param version: Version of sample QC path to return
-    :param include_unreleasable_samples: Whether the file includes PCA info for unreleasable samples
-    :return: Path to requested ancestry PCA file
-    """
-    return "{}//subpop_analysis/gnomad_v{}_pca_{}{}.ht".format(
-        get_sample_qc_root(version),
-        version,
-        part,
-        "_with_unreleasable_samples" if include_unreleasable_samples else "",
-    )
 
 
 if __name__ == "__main__":
