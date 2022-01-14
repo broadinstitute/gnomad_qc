@@ -71,8 +71,6 @@ def make_subpop_qc(
     release: bool = False,
     high_quality: bool = False,
     outliers: hl.Table = None,
-    pca_ht_read_if_exists: bool = False,
-    outlier_description: str = "",
 ) -> hl.MatrixTable:
     """
     Generate the QC MT per specified population and generate PCA info.
@@ -85,12 +83,9 @@ def make_subpop_qc(
     :param release: Whether or not to filter to only release samples
     :param high_quality: Whether or not to filter to only high quality samples
     :param outliers: Optional Table keyed by column containing outliers to remove
-    :param pca_ht_read_if_exists: Whether or not to read an existing Table of PCA data if it exists
-    :param outlier_description: String used to describe which outliers(if any) were removed
     :return: Table with sample metadata and PCA scores for the specified population to use for subpop analysis
     """
     meta_ht = meta.ht()
-    relateds = pca_related_samples_to_drop.ht()
 
     # Add info to the MT
     info_ht = get_info(split=False).ht()
@@ -135,29 +130,19 @@ def make_subpop_qc(
     return pop_qc_mt
 
 
-    # Generate PCA data
-    release_string = "_release" if release else "" #remove
-    high_quality_string = "_high_quality" if high_quality else "" #remove
-    ht_path = get_pop_pca_ht_for_suppop_analysis(pop, release, high_quality, outlier_description=outlier_description)
+def annotate_subpop_meta(ht):
+    meta_ht = meta.ht()
+    ht = ht.annotate(**meta_ht[ht.key])
+    ht = ht.annotate(
+        subpop_description=ht.project_meta.subpop_description,
+        v2_pop=ht.project_meta.v2_pop,
+        v2_subpop=ht.project_meta.v2_subpop,
+        pop=ht.population_inference.pop,
+        project_id=ht.project_meta.project_id,
+        project_pop=ht.project_meta.project_pop,
+    )
 
-    # move to main, args.oversrite
-    if not (pca_ht_read_if_exists and file_exists(ht_path)): #remove
-        
-
-        pop_ht = pop_pca_scores.annotate(**meta_ht[pop_pca_scores.key])
-        pop_ht = pop_ht.annotate( # move to function rather than saving on ht
-            subpop_description=pop_ht.project_meta.subpop_description,
-            v2_pop=pop_ht.project_meta.v2_pop,
-            v2_subpop=pop_ht.project_meta.v2_subpop,
-            pop=pop_ht.population_inference.pop,
-            project_id=pop_ht.project_meta.project_id,
-            project_pop=pop_ht.project_meta.project_pop,
-        )
-        pop_ht = pop_ht.checkpoint(ht_path, overwrite=True)
-    else:
-        pop_ht = hl.read_table(ht_path)
-
-    return pop_ht
+    return ht
 
 
 def main(args):  # noqa: D103
@@ -173,19 +158,12 @@ def main(args):  # noqa: D103
     if args.make_full_subpop_qc_mt:
         logger.info("Generating densified MT to use for all subpop analyses...")
         mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
-        mt = mt.naive_coalesce(5000)
         mt = mt.checkpoint(subpop_qc.versions[CURRENT_VERSION], overwrite=args.overwrite)
-
 
     if args.run_subpop_pca:
         logger.info("Generating PCs for subpops...")
         mt = hl.read_matrix_table(subpop_qc.versions[CURRENT_VERSION])
-
-        pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
-            mt, relateds
-        )
-
-        run_pop_pca(
+        mt = make_subpop_qc(
             mt,
             args.pop,
             args.min_af,
@@ -193,10 +171,15 @@ def main(args):  # noqa: D103
             args.release,
             args.high_quality,
             args.outliers,
-            args.ht_read_if_exists,
-            args.pca_ht_read_if_exists,
-            args.outlier_description)
+        )
 
+        relateds = pca_related_samples_to_drop.ht()
+        pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
+            mt, relateds
+        )
+        # Add three PCA outputs to resources with all args in name
+
+    # Annotate_subpop_meta for if args.assign_subpops
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
