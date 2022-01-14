@@ -282,10 +282,10 @@ pop = VersionedTableResource(
 )
 
 # Dense QC MT to use for subpop analyses
-subpop_qc = VersionedTableResource(
+subpop_qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
-        release: TableResource(
+        release: MatrixTableResource(
             f"{get_sample_qc_root(release)}/subpop_analysis/gnomad_v{release}_qc_mt_subpop_analysis.mt"
         )
         for release in VERSIONS

@@ -6,19 +6,22 @@ from gnomad.sample_qc.ancestry import run_pca_with_relateds
 
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.sample_qc import (
-    hard_filtered_samples,
+    get_pop_pca_ht_for_suppop_analysis,
     pca_related_samples_to_drop,
+    subpop_qc
 )
+
 from gnomad.resources.grch38.reference_data import lcr_intervals
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.file_utils import file_exists
+from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import densify_sites
 from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad_qc.v3.resources import release_sites
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.annotations import get_info, last_END_position
 from gnomad_qc.v3.resources.constants import CURRENT_VERSION
-from gnomad_qc.v3.resources.sample_qc import get_sample_qc_root
+
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -64,7 +67,6 @@ def run_pop_pca(
     pop: str,
     min_af: float = 0.001,
     min_inbreeding_coeff_threshold: float = -0.25,
-    remove_hard_filtered_samples: bool = True,
     release: bool = False,
     high_quality: bool = False,
     outliers: hl.Table = None,
@@ -87,7 +89,6 @@ def run_pop_pca(
     """
     meta_ht = meta.ht()
     relateds = pca_related_samples_to_drop.ht()
-    hard_filtered_ht = hard_filtered_samples.ht()
 
     # Add info to the MT
     info_ht = get_info(split=False).ht()
@@ -132,10 +133,7 @@ def run_pop_pca(
     # Generate PCA data
     release_string = "_release" if release else ""
     high_quality_string = "_high_quality" if high_quality else ""
-    ht_path = (
-        get_sample_qc_root()
-        + f"/subpop_analysis/{pop}/{pop}_scores{release_string}{high_quality_string}{outlier_description}.ht"
-    )
+    ht_path = get_pop_pca_ht_for_suppop_analysis(pop, release, high_quality, outlier_description=outlier_description)
 
     if not (pca_ht_read_if_exists and file_exists(ht_path)):
         pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
@@ -158,8 +156,7 @@ def run_pop_pca(
     return pop_ht
 
 
-def main(args):
-
+def main(args):  # noqa: D103
     # Read in the raw mt
     mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
 
@@ -169,20 +166,27 @@ def main(args):
         mt = mt._filter_partitions(range(2))
 
     # Write out the densified MT
-    output_path = (
-        get_sample_qc_root()
-        + "/subpop_analysis/"
-        + f"gnomad_v{CURRENT_VERSION}_qc_mt_subpop_analysis.mt"
-    )
-
     if args.make_full_subpop_qc_mt:
         logger.info("Generating densified MT to use for all subpop analyses...")
         mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
         mt = mt.naive_coalesce(5000)
-        mt = mt.checkpoint(output_path, overwrite=args.overwrite)
+        mt = mt.checkpoint(subpop_qc.versions[CURRENT_VERSION], overwrite=args.overwrite)
 
-    logger.info("Generating PCs for subpops...")
-    # TODO: Add code for AMR using currently unused `run_pop_pca` function
+
+    if args.run_subpop_pca:
+        logger.info("Generating PCs for subpops...")
+        mt = hl.read_table(subpop_qc.versions[CURRENT_VERSION])
+
+        run_pop_pca(
+            mt,
+            args.pop,
+            args.min_af,
+            args.min_inbreeding_coeff_threshold,
+            args.release,
+            args.high_quality,
+            args.outliers,
+            args.ht_read_if_exists,
+            args.outlier_description)
 
 
 if __name__ == "__main__":
@@ -190,10 +194,34 @@ if __name__ == "__main__":
         description="This script generates a QC MT and PCA scores to use for subpop analyses"
     )
     parser.add_argument(
+        "--slack-token", help="Slack token that allows integration with slack",
+    )
+    parser.add_argument(
+        "--slack-channel", help="Slack channel to post results and notifications to",
+    )
+    parser.add_argument(
+        "--overwrite", help="Overwrites existing files", action="store_true"
+    )
+    parser.add_argument(
+        "--test",
+        help="Runs a test of the code on only two partitions of the raw gnomAD v3 MT",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--make-full-subpop-qc-mt",
+        help="Runs function to create dense MT to use as QC MT for all subpop analyses. This uses --min-popmax-af to determine variants that need to be retained",
+        action="store_true",
+    )
+    parser.add_argument(
         "--min-popmax-af",
         help="Minimum population max variant allele frequency to retain a variant for the subpop QC MT",
         type=float,
         default=0.001,
+    )
+    parser.add_argument(
+        "--run-subpop-pca",
+        help="Runs function to generate PCA data for a certain population specified by --pop argument",
+        action="store_true",
     )
     parser.add_argument(
         "--pop",
@@ -224,19 +252,6 @@ if __name__ == "__main__":
         default="",
     )
     parser.add_argument(
-        "--make-full-subpop-qc-mt",
-        help="Runs function to create dense MT to use as QC MT for all subpop analyses. This uses --min-popmax-af to determine variants that need to be retained",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--test",
-        help="Runs a test of the code on only two partitions of the raw gnomAD v3 MT",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--overwrite", help="Overwrites existing files", action="store_true"
-    )
-    parser.add_argument(
         "--release",
         help="Filter to only release samples when generating the PCA data",
         action="store_true",
@@ -258,3 +273,11 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    # Both a slack token and slack channel must be supplied to receive notifications on slack
+    if args.slack_channel and args.slack_token:
+        with slack_notifications(args.slack_token, args.slack_channel):
+            main(args)
+    else:
+        main(args)
+
