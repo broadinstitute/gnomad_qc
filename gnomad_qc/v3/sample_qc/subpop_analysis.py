@@ -13,7 +13,6 @@ from gnomad_qc.v3.resources.sample_qc import (
 
 from gnomad.resources.grch38.reference_data import lcr_intervals
 from gnomad.utils.annotations import get_adj_expr
-from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import densify_sites
 from gnomad.sample_qc.pipeline import get_qc_mt
@@ -129,7 +128,6 @@ def make_subpop_qc(
 
     return pop_qc_mt
 
-
 def annotate_subpop_meta(ht):
     meta_ht = meta.ht()
     ht = ht.annotate(**meta_ht[ht.key])
@@ -146,6 +144,9 @@ def annotate_subpop_meta(ht):
 
 
 def main(args):  # noqa: D103
+    pop = args.pop
+    release = args.release
+    high_quality = args.high_quality
     # Read in the raw mt
     mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
 
@@ -158,18 +159,18 @@ def main(args):  # noqa: D103
     if args.make_full_subpop_qc_mt:
         logger.info("Generating densified MT to use for all subpop analyses...")
         mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
-        mt = mt.checkpoint(subpop_qc.versions[CURRENT_VERSION], overwrite=args.overwrite)
+        mt = mt.checkpoint(subpop_qc.versions[CURRENT_VERSION].path, overwrite=args.overwrite)
 
     if args.run_subpop_pca:
         logger.info("Generating PCs for subpops...")
         mt = hl.read_matrix_table(subpop_qc.versions[CURRENT_VERSION])
         mt = make_subpop_qc(
             mt,
-            args.pop,
+            pop,
             args.min_af,
             args.min_inbreeding_coeff_threshold,
-            args.release,
-            args.high_quality,
+            release,
+            high_quality,
             args.outliers,
         )
 
@@ -177,9 +178,34 @@ def main(args):  # noqa: D103
         pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
             mt, relateds
         )
-        # Add three PCA outputs to resources with all args in name
 
-    # Annotate_subpop_meta for if args.assign_subpops
+        pop_pca_evals = pop_pca_evals.checkpoint(subpop_pca_eigenvalues(pop, not release, high_quality).versions[CURRENT_VERSION].path)
+        pop_pca_scores = pop_pca_scores.checkpoint(subpop_pca_scores(pop, not release, high_quality).versions[CURRENT_VERSION].path)
+        pop_pca_loadings = pop_pca_loadings.checkpoint(subpop_pca_loadings(pop, not release, high_quality).versions[CURRENT_VERSION].path)
+
+# Annotate_subpop_meta for if args.assign_subpops
+
+
+def _get_subpop_pca_ht_path(
+    part: str,
+    version: str = CURRENT_VERSION,
+    include_unreleasable_samples: bool = False,
+) -> str:
+    """
+    Helper function to get path to files related to ancestry PCA
+
+    :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores)
+    :param version: Version of sample QC path to return
+    :param include_unreleasable_samples: Whether the file includes PCA info for unreleasable samples
+    :return: Path to requested ancestry PCA file
+    """
+    return "{}//subpop_analysis/gnomad_v{}_pca_{}{}.ht".format(
+        get_sample_qc_root(version),
+        version,
+        part,
+        "_with_unreleasable_samples" if include_unreleasable_samples else "",
+    )
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -238,12 +264,6 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "--outlier-string",
-        help="String used to describe which outliers(if any were set by 'outlier-ht-path') were removed when generating the PCA data",
-        type=str,
-        default="",
-    )
-    parser.add_argument(
         "--release",
         help="Filter to only release samples when generating the PCA data",
         action="store_true",
@@ -259,8 +279,8 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--pca-ht-read-if-exists",
-        help="Read an existing Table of PCA data if it exists",
+        "--assign_subpops",
+        help="Runs function to generate PCA data for a certain population specified by --pop argument",
         action="store_true",
     )
 
