@@ -67,10 +67,11 @@ def run_pop_pca(
     pop: str,
     min_af: float = 0.001,
     min_inbreeding_coeff_threshold: float = -0.25,
+    remove_hard_filtered_samples: bool = False,
     release: bool = False,
     high_quality: bool = False,
     outliers: hl.Table = None,
-    ht_read_if_exists: bool = True,
+    pca_ht_read_if_exists: bool = False,
     outlier_description: str = "",
 ) -> hl.MatrixTable:
     """
@@ -80,6 +81,7 @@ def run_pop_pca(
     :param pop: Population to which the QC MT should be filtered
     :param min_af: Minimum population variant allele frequency to retain variant in QC MT
     :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to retain variant in QC MT
+    :param remove_hard_filtered_samples: Whether or not to remove hard filtered samples
     :param release: Whether or not to filter to only release samples
     :param high_quality: Whether or not to filter to only high quality samples
     :param outliers: Optional Table keyed by column containing outliers to remove
@@ -186,6 +188,7 @@ def main(args):  # noqa: D103
             args.high_quality,
             args.outliers,
             args.ht_read_if_exists,
+            args.pca_ht_read_if_exists,
             args.outlier_description)
 
 
@@ -267,7 +270,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--ht-read-if-exists",
+        "--pca-ht-read-if-exists",
         help="Read an existing Table of PCA data if it exists",
         action="store_true",
     )
