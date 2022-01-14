@@ -187,17 +187,20 @@ def main(args):  # noqa: D103
         pop_pca_evals = pop_pca_evals.checkpoint(
             subpop_pca_eigenvalues(pop, not release, high_quality)
             .versions[CURRENT_VERSION]
-            .path
+            .path, 
+            overwrite=args.overwrite,
         )
         pop_pca_scores = pop_pca_scores.checkpoint(
             subpop_pca_scores(pop, not release, high_quality)
             .versions[CURRENT_VERSION]
-            .path
+            .path, 
+            overwrite=args.overwrite
         )
         pop_pca_loadings = pop_pca_loadings.checkpoint(
             subpop_pca_loadings(pop, not release, high_quality)
             .versions[CURRENT_VERSION]
-            .path
+            .path,
+            overwrite=args.overwrite,
         )
 
 
