@@ -62,7 +62,7 @@ def compute_subpop_qc_mt(
     return mt
 
 
-def run_pop_pca(
+def make_subpop_qc(
     mt: hl.MatrixTable,
     pop: str,
     min_af: float = 0.001,
@@ -132,18 +132,20 @@ def run_pop_pca(
         filter_segdup=False,
     )
 
+    return pop_qc_mt
+
+
     # Generate PCA data
-    release_string = "_release" if release else ""
-    high_quality_string = "_high_quality" if high_quality else ""
+    release_string = "_release" if release else "" #remove
+    high_quality_string = "_high_quality" if high_quality else "" #remove
     ht_path = get_pop_pca_ht_for_suppop_analysis(pop, release, high_quality, outlier_description=outlier_description)
 
-    if not (pca_ht_read_if_exists and file_exists(ht_path)):
-        pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
-            pop_qc_mt, relateds
-        )
+    # move to main, args.oversrite
+    if not (pca_ht_read_if_exists and file_exists(ht_path)): #remove
+        
 
         pop_ht = pop_pca_scores.annotate(**meta_ht[pop_pca_scores.key])
-        pop_ht = pop_ht.annotate(
+        pop_ht = pop_ht.annotate( # move to function rather than saving on ht
             subpop_description=pop_ht.project_meta.subpop_description,
             v2_pop=pop_ht.project_meta.v2_pop,
             v2_subpop=pop_ht.project_meta.v2_subpop,
@@ -177,7 +179,11 @@ def main(args):  # noqa: D103
 
     if args.run_subpop_pca:
         logger.info("Generating PCs for subpops...")
-        mt = hl.read_table(subpop_qc.versions[CURRENT_VERSION])
+        mt = hl.read_matrix_table(subpop_qc.versions[CURRENT_VERSION])
+
+        pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
+            mt, relateds
+        )
 
         run_pop_pca(
             mt,
