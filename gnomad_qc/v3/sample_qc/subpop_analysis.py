@@ -9,7 +9,7 @@ from gnomad_qc.v3.resources.sample_qc import (
     pca_related_samples_to_drop,
     subpop_pca_eigenvalues,
     subpop_pca_loadings,
-    subpop_pca_scores
+    subpop_pca_scores,
     subpop_qc,
 )
 
