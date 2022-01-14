@@ -130,6 +130,7 @@ def make_subpop_qc(
 
     return pop_qc_mt
 
+
 def annotate_subpop_meta(ht):
     meta_ht = meta.ht()
     ht = ht.annotate(**meta_ht[ht.key])
@@ -161,7 +162,9 @@ def main(args):  # noqa: D103
     if args.make_full_subpop_qc_mt:
         logger.info("Generating densified MT to use for all subpop analyses...")
         mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
-        mt = mt.checkpoint(subpop_qc.versions[CURRENT_VERSION].path, overwrite=args.overwrite)
+        mt = mt.checkpoint(
+            subpop_qc.versions[CURRENT_VERSION].path, overwrite=args.overwrite
+        )
 
     if args.run_subpop_pca:
         logger.info("Generating PCs for subpops...")
@@ -181,9 +184,22 @@ def main(args):  # noqa: D103
             mt, relateds
         )
 
-        pop_pca_evals = pop_pca_evals.checkpoint(subpop_pca_eigenvalues(pop, not release, high_quality).versions[CURRENT_VERSION].path)
-        pop_pca_scores = pop_pca_scores.checkpoint(subpop_pca_scores(pop, not release, high_quality).versions[CURRENT_VERSION].path)
-        pop_pca_loadings = pop_pca_loadings.checkpoint(subpop_pca_loadings(pop, not release, high_quality).versions[CURRENT_VERSION].path)
+        pop_pca_evals = pop_pca_evals.checkpoint(
+            subpop_pca_eigenvalues(pop, not release, high_quality)
+            .versions[CURRENT_VERSION]
+            .path
+        )
+        pop_pca_scores = pop_pca_scores.checkpoint(
+            subpop_pca_scores(pop, not release, high_quality)
+            .versions[CURRENT_VERSION]
+            .path
+        )
+        pop_pca_loadings = pop_pca_loadings.checkpoint(
+            subpop_pca_loadings(pop, not release, high_quality)
+            .versions[CURRENT_VERSION]
+            .path
+        )
+
 
 # Annotate_subpop_meta for if args.assign_subpops
 
@@ -273,4 +289,3 @@ if __name__ == "__main__":
             main(args)
     else:
         main(args)
-

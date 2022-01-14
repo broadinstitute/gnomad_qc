@@ -160,9 +160,7 @@ def _get_subpop_pca_ht_path(
 
 
 def subpop_pca_loadings(
-    pop: str,
-    include_unreleasable_samples: bool = False,
-    high_quality: bool = False,
+    pop: str, include_unreleasable_samples: bool = False, high_quality: bool = False,
 ) -> VersionedTableResource:
     """
     Gets the subpop PCA loadings VersionedTableResource
@@ -186,9 +184,7 @@ def subpop_pca_loadings(
 
 
 def subpop_pca_scores(
-    pop: str,
-    include_unreleasable_samples: bool = False,
-    high_quality: bool = False,
+    pop: str, include_unreleasable_samples: bool = False, high_quality: bool = False,
 ) -> VersionedTableResource:
     """
     Gets the subpop PCA scores VersionedTableResource
@@ -212,9 +208,7 @@ def subpop_pca_scores(
 
 
 def subpop_pca_eigenvalues(
-    pop: str,
-    include_unreleasable_samples: bool = False,
-    high_quality: bool = False,
+    pop: str, include_unreleasable_samples: bool = False, high_quality: bool = False,
 ) -> VersionedTableResource:
     """
     Gets the subpop PCA eigenvalues VersionedTableResource
@@ -229,7 +223,11 @@ def subpop_pca_eigenvalues(
         {
             release: TableResource(
                 _get_subpop_pca_ht_path(
-                    "eigenvalues", pop, release, include_unreleasable_samples, high_quality
+                    "eigenvalues",
+                    pop,
+                    release,
+                    include_unreleasable_samples,
+                    high_quality,
                 )
             )
             for release in VERSIONS
