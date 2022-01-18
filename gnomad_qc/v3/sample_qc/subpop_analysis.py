@@ -63,25 +63,31 @@ def compute_subpop_qc_mt(
     return mt
 
 
-def make_subpop_qc(
+def filter_subpop_qc_mt(
     mt: hl.MatrixTable,
     pop: str,
     min_af: float = 0.001,
     min_inbreeding_coeff_threshold: float = -0.25,
-    remove_hard_filtered_samples: bool = False,
-    release: bool = False,
+    min_hardy_weinberg_threshold: float = 1e-8,
+    ld_r2: float = 0.1,
+    include_unreleasable_samples: bool = False,
     high_quality: bool = False,
     outliers: hl.Table = None,
 ) -> hl.MatrixTable:
     """
-    Generate the QC MT per specified population and generate PCA info.
+    Generate the QC MT per specified population.
+    
+    .. note::
+
+        Hard filtered samples are removed before running `get_qc_mt`
 
     :param mt: The QC MT output by the 'compute_subpop_qc_mt' function
     :param pop: Population to which the QC MT should be filtered
     :param min_af: Minimum population variant allele frequency to retain variant in QC MT
     :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to retain variant in QC MT
-    :param remove_hard_filtered_samples: Whether or not to remove hard filtered samples
-    :param release: Whether or not to filter to only release samples
+    :param min_hardy_weinberg_threshold: Minimum site HW test p-value to keep
+    :param ld_r2: Minimum r2 to keep when LD-pruning (set to `None` for no LD pruning)
+    :param include_unreleasable_samples: Whether to include unreleasable samples
     :param high_quality: Whether or not to filter to only high quality samples
     :param outliers: Optional Table keyed by column containing outliers to remove
     :return: Table with sample metadata and PCA scores for the specified population to use for subpop analysis
@@ -102,17 +108,10 @@ def make_subpop_qc(
     mt = mt.annotate_cols(**meta_ht[mt.col_key])
 
     # Filter the  QC MT to the specified pop
-    pop_mt = mt.filter_cols(mt.pop == pop)
+    pop_mt = mt.filter_cols(mt.population_inference.pop == pop)
 
-    # Apply specified filters
-    if remove_hard_filtered_samples:
-        pop_mt = pop_mt.filter_cols(pop_mt.sample_filters.hard_filtered)
-    if release:
-        pop_mt = pop_mt.filter_cols(pop_mt.release)
-    if high_quality:
-        pop_mt = pop_mt.filter_cols(pop_mt.high_quality)
-    if outliers is not None:
-        pop_mt = pop_mt.filter_cols(hl.is_missing(outliers[pop_mt.col_key]))
+    # Remove hard filtered samples
+    pop_mt = pop_mt.filter_cols(~pop_mt.sample_filters.hard_filtered)
 
     pop_mt = pop_mt.filter_rows(hl.agg.any(pop_mt.GT.is_non_ref()))
 
@@ -121,8 +120,8 @@ def make_subpop_qc(
         pop_mt,
         min_af=min_af,
         min_inbreeding_coeff_threshold=min_inbreeding_coeff_threshold,
-        min_hardy_weinberg_threshold=None,
-        ld_r2=None,
+        min_hardy_weinberg_threshold=min_hardy_weinberg_threshold,
+        ld_r2=ld_r2,
         filter_lcr=False,
         filter_decoy=False,
         filter_segdup=False,
@@ -148,7 +147,7 @@ def annotate_subpop_meta(ht):
 
 def main(args):  # noqa: D103
     pop = args.pop
-    release = args.release
+    include_unreleasable_samples = args.include_unreleasable_samples
     high_quality = args.high_quality
     # Read in the raw mt
     mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
@@ -163,43 +162,42 @@ def main(args):  # noqa: D103
         logger.info("Generating densified MT to use for all subpop analyses...")
         mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
         mt = mt.checkpoint(
-            subpop_qc.versions[CURRENT_VERSION].path, overwrite=args.overwrite
+            subpop_qc.path, overwrite=args.overwrite
         )
 
     if args.run_subpop_pca:
         logger.info("Generating PCs for subpops...")
-        mt = hl.read_matrix_table(subpop_qc.versions[CURRENT_VERSION])
-        mt = make_subpop_qc(
+        mt = subpop_qc.mt()
+        mt = filter_subpop_qc(
             mt,
             pop,
             args.min_af,
             args.min_inbreeding_coeff_threshold,
-            release,
-            high_quality,
-            args.outliers,
+            args.min_hardy_weinberg_threshold,
+            args.ld_r2,
+            args.include_unreleasable_samples,
         )
-
+        if not args.include_unreleasable_samples:
+            mt = mt.filter_cols(~mt.project_meta.releasable | mt.project_meta.exclude)
+        if args.high_quality:
+            mt = mt.filter_cols(mt.high_quality)
+        if args.outliers is not None:
+            mt = mt.filter_cols(hl.is_missing(outliers[mt.col_key]))
         relateds = pca_related_samples_to_drop.ht()
         pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
             mt, relateds
         )
 
         pop_pca_evals = pop_pca_evals.checkpoint(
-            subpop_pca_eigenvalues(pop, not release, high_quality)
-            .versions[CURRENT_VERSION]
-            .path, 
+            subpop_pca_eigenvalues(pop, include_unreleasable_samples, high_quality).path, 
             overwrite=args.overwrite,
         )
         pop_pca_scores = pop_pca_scores.checkpoint(
-            subpop_pca_scores(pop, not release, high_quality)
-            .versions[CURRENT_VERSION]
-            .path, 
+            subpop_pca_scores(pop, include_unreleasable_samples, high_quality).path, 
             overwrite=args.overwrite
         )
         pop_pca_loadings = pop_pca_loadings.checkpoint(
-            subpop_pca_loadings(pop, not release, high_quality)
-            .versions[CURRENT_VERSION]
-            .path,
+            subpop_pca_loadings(pop, include_unreleasable_samples, high_quality).path,
             overwrite=args.overwrite,
         )
 
@@ -264,18 +262,13 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "--release",
-        help="Filter to only release samples when generating the PCA data",
+        "--include_unreleasable_samples",
+        help="Includes unreleasable samples for computing PCA",
         action="store_true",
     )
     parser.add_argument(
         "--high-quality",
         help="Filter to only high-quality samples when generating the PCA data",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--remove-hard-filtered-samples",
-        help="Remove hard-filtered samples when generating the PCA data",
         action="store_true",
     )
     parser.add_argument(
