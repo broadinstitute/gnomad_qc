@@ -2,7 +2,6 @@ import logging
 
 import hail as hl
 from gnomad.resources.resource_utils import (
-    TableResource,
     VariantDatasetResource,
     VersionedVariantDatasetResource,
 )
