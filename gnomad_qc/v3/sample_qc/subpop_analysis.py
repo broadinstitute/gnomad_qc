@@ -207,7 +207,7 @@ def main(args):  # noqa: D103
             ).path,
             overwrite=args.overwrite,
         )
-        pop_pca_scores_ht.write(
+        pop_pca_scores.write(
             get_checkpoint_path("test_pop_pca_scores_ht")
             if args.test
             else ancestry_pca_scores(
@@ -215,7 +215,7 @@ def main(args):  # noqa: D103
             ).path,
             overwrite=args.overwrite,
         )
-        pop_pca_loadings_ht.write(
+        pop_pca_loadings.write(
             get_checkpoint_path("test_pop_pca_loadings_ht")
             if args.test
             else ancestry_pca_loadings(
