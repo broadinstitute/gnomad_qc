@@ -313,13 +313,13 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--run-subpop-pca",
-        help="Runs function to generate PCA data for a certain population specified by --pop argument",
+        "--checkpoint-filtered-subpop-qc",
+        help="Checkpoint the filtered subpop QC MT",
         action="store_true",
     )
     parser.add_argument(
-        "--checkpoint-filtered-subpop-qc",
-        help="Checkpoint the filtered subpop QC MT",
+        "--assign-subpops",
+        help="Runs function to assign subpops",
         action="store_true",
     )
 
