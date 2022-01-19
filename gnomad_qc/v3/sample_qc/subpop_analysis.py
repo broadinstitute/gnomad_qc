@@ -4,6 +4,7 @@ import logging
 
 from gnomad.sample_qc.ancestry import run_pca_with_relateds
 
+from gnomad_qc.v3.resources.basics import get_checkpoint_path
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.sample_qc import (
     ancestry_pca_eigenvalues,
@@ -151,7 +152,12 @@ def main(args):  # noqa: D103
     if args.make_full_subpop_qc_mt:
         logger.info("Generating densified MT to use for all subpop analyses...")
         mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
-        mt.write(subpop_qc.path, overwrite=args.overwrite)
+        mt = mt.write(
+            get_checkpoint_path("test_make_full_subpop_qc", mt=True)
+            if args.test
+            else subpop_qc.path,
+            overwrite=args.overwrite,
+        )
 
     if args.run_subpop_pca:
         logger.info("Filtering subpop QC MT...")
@@ -166,7 +172,12 @@ def main(args):  # noqa: D103
         )
 
         if args.checkpoint_filtered_subpop_qc:
-            mt = mt.checkpoint(filtered_subpop_qc_mt(pop), overwrite=args.overwrite)
+            mt = mt.checkpoint(
+                get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
+                if args.test
+                else filtered_subpop_qc_mt(pop),
+                overwrite=args.overwrite,
+            )
 
         if not include_unreleasable_samples:
             mt = mt.filter_cols(~mt.project_meta.releasable | mt.project_meta.exclude)
@@ -184,31 +195,40 @@ def main(args):  # noqa: D103
 
         pop_pca_evals_ht = hl.Table.parallelize(
             hl.literal(
-                [
-                    {"PC": i + 1, "eigenvalue": x}
-                    for i, x in enumerate(pop_pca_evals)
-                ],
+                [{"PC": i + 1, "eigenvalue": x} for i, x in enumerate(pop_pca_evals)],
                 "array<struct{PC: int, eigenvalue: float}>",
             )
         )
         pop_pca_evals_ht.write(
-            ancestry_pca_eigenvalues(
+            get_checkpoint_path("test_pop_pca_evals_ht")
+            if args.test
+            else ancestry_pca_eigenvalues(
                 include_unreleasable_samples, high_quality, pop
             ).path,
             overwrite=args.overwrite,
         )
-        pop_pca_scores.write(
-            ancestry_pca_scores(include_unreleasable_samples, high_quality, pop).path,
+        pop_pca_scores_ht.write(
+            get_checkpoint_path("test_pop_pca_scores_ht")
+            if args.test
+            else ancestry_pca_scores(
+                include_unreleasable_samples, high_quality, pop
+            ).path,
             overwrite=args.overwrite,
         )
-        pop_pca_loadings.write(
-            ancestry_pca_loadings(include_unreleasable_samples, high_quality, pop).path,
+        pop_pca_loadings_ht.write(
+            get_checkpoint_path("test_pop_pca_loadings_ht")
+            if args.test
+            else ancestry_pca_loadings(
+                include_unreleasable_samples, high_quality, pop
+            ).path,
             overwrite=args.overwrite,
         )
 
     # TODO: Need to use annotate_subpop_meta before subpop assignment
     if args.assign_subpops:
-        raise NotImplementedError("Sub-population assignment is not currently implemented.")
+        raise NotImplementedError(
+            "Sub-population assignment is not currently implemented."
+        )
 
 
 if __name__ == "__main__":
