@@ -162,7 +162,9 @@ def main(args):  # noqa: D103
     if args.run_subpop_pca:
         logger.info("Filtering subpop QC MT...")
         if args.test:
-            mt = hl.read_matrix_table(get_checkpoint_path("test_make_full_subpop_qc", mt=True))
+            mt = hl.read_matrix_table(
+                get_checkpoint_path("test_make_full_subpop_qc", mt=True)
+            )
         else:
             mt = subpop_qc.mt()
         mt = filter_subpop_qc(
