@@ -67,7 +67,6 @@ def get_gnomad_v4_vds(
     # Remove 43 samples that are known to be on the pharma's sample remove list
     # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308
     dups_ht = hl.read_table(ukbb_known_dups.path)
-
     ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
 
     # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS)
