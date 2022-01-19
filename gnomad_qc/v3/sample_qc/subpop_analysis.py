@@ -155,9 +155,7 @@ def main(args):  # noqa: D103
     if args.make_full_subpop_qc_mt:
         logger.info("Generating densified MT to use for all subpop analyses...")
         mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
-        mt = mt.checkpoint(
-            subpop_qc.path, overwrite=args.overwrite
-        )
+        mt = mt.checkpoint(subpop_qc.path, overwrite=args.overwrite)
 
     if args.run_subpop_pca:
         logger.info("Filtering subpop QC MT...")
@@ -173,9 +171,7 @@ def main(args):  # noqa: D103
         )
 
         if args.checkpoint_filtered_subpop_qc:
-            mt = mt.checkpoint(
-            filtered_subpop_qc_mt(pop), overwrite=args.overwrite
-            )
+            mt = mt.checkpoint(filtered_subpop_qc_mt(pop), overwrite=args.overwrite)
 
         if not include_unreleasable_samples:
             mt = mt.filter_cols(~mt.project_meta.releasable | mt.project_meta.exclude)
@@ -192,12 +188,14 @@ def main(args):  # noqa: D103
         )
 
         pop_pca_evals = pop_pca_evals.checkpoint(
-            ancestry_pca_eigenvalues(include_unreleasable_samples, high_quality, pop).path, 
+            ancestry_pca_eigenvalues(
+                include_unreleasable_samples, high_quality, pop
+            ).path,
             overwrite=args.overwrite,
         )
         pop_pca_scores = pop_pca_scores.checkpoint(
-            ancestry_pca_scores(include_unreleasable_samples, high_quality, pop).path, 
-            overwrite=args.overwrite
+            ancestry_pca_scores(include_unreleasable_samples, high_quality, pop).path,
+            overwrite=args.overwrite,
         )
         pop_pca_loadings = pop_pca_loadings.checkpoint(
             ancestry_pca_loadings(include_unreleasable_samples, high_quality, pop).path,
@@ -266,10 +264,7 @@ if __name__ == "__main__":
         default=1e-8,
     )
     parser.add_argument(
-        "--ld-r2",
-        help="Minimum r2 to keep when LD-pruning",
-        type=float,
-        default=0.1,
+        "--ld-r2", help="Minimum r2 to keep when LD-pruning", type=float, default=0.1,
     )
     parser.add_argument(
         "--outlier-ht-path",
