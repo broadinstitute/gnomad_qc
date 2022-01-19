@@ -151,7 +151,7 @@ def main(args):  # noqa: D103
     if args.make_full_subpop_qc_mt:
         logger.info("Generating densified MT to use for all subpop analyses...")
         mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
-        mt = mt.checkpoint(subpop_qc.path, overwrite=args.overwrite)
+        mt.write(subpop_qc.path, overwrite=args.overwrite)
 
     if args.run_subpop_pca:
         logger.info("Filtering subpop QC MT...")
