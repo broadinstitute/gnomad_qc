@@ -152,7 +152,7 @@ def main(args):  # noqa: D103
     if args.make_full_subpop_qc_mt:
         logger.info("Generating densified MT to use for all subpop analyses...")
         mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
-        mt = mt.write(
+        mt.write(
             get_checkpoint_path("test_make_full_subpop_qc", mt=True)
             if args.test
             else subpop_qc.path,
@@ -161,7 +161,10 @@ def main(args):  # noqa: D103
 
     if args.run_subpop_pca:
         logger.info("Filtering subpop QC MT...")
-        mt = subpop_qc.mt()
+        if args.test:
+            mt = hl.read_matrix_table(get_checkpoint_path("test_make_full_subpop_qc", mt=True))
+        else:
+            mt = subpop_qc.mt()
         mt = filter_subpop_qc(
             mt,
             pop,
@@ -180,7 +183,7 @@ def main(args):  # noqa: D103
             )
 
         if not include_unreleasable_samples:
-            mt = mt.filter_cols(~mt.project_meta.releasable | mt.project_meta.exclude)
+            mt = mt.filter_cols(mt.project_meta.releasable & ~mt.project_meta.exclude)
         if high_quality:
             mt = mt.filter_cols(mt.high_quality)
         if args.outlier_ht_path is not None:
