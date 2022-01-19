@@ -61,7 +61,7 @@ def _get_ancestry_pca_ht_path(
     :param high_quality: Whether the file includes PCA info for only high-quality samples
     :param pop: Population specific PCA to return. When set to None, the PCA on the full dataset is returned
     :return: Path to requested ancestry PCA file
-    """    
+    """
     return "{}/{}gnomad_v{}_pca_{}{}{}{}.ht".format(
         get_sample_qc_root(version),
         "subpop_analysis/" if pop else "",
@@ -143,7 +143,11 @@ def ancestry_pca_eigenvalues(
         {
             release: TableResource(
                 _get_ancestry_pca_ht_path(
-                    "eigenvalues", release, include_unreleasable_samples, high_quality, pop
+                    "eigenvalues",
+                    release,
+                    include_unreleasable_samples,
+                    high_quality,
+                    pop,
                 )
             )
             for release in VERSIONS
@@ -151,10 +155,7 @@ def ancestry_pca_eigenvalues(
     )
 
 
-def filtered_subpop_qc_mt(
-    pop: str,
-    version: str = CURRENT_VERSION,
-) -> str:
+def filtered_subpop_qc_mt(pop: str, version: str = CURRENT_VERSION,) -> str:
     """
     Helper function to get path to the filtered subpop QC MT for a specified population.
 
@@ -163,9 +164,7 @@ def filtered_subpop_qc_mt(
     :return: Path to requested filtered subpop QC MT
     """
     return "{}/subpop_analysis/gnomad_v{}_filtered_subpop_qc_mt.{}.mt".format(
-        get_sample_qc_root(version),
-        version,
-        pop,
+        get_sample_qc_root(version), version, pop,
     )
 
 
