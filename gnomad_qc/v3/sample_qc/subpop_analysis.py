@@ -22,7 +22,6 @@ from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad_qc.v3.resources import release_sites
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.annotations import get_info, last_END_position
-from gnomad_qc.v3.resources.constants import CURRENT_VERSION
 
 
 logging.basicConfig(
@@ -71,7 +70,6 @@ def filter_subpop_qc(
     min_inbreeding_coeff_threshold: float = -0.25,
     min_hardy_weinberg_threshold: float = 1e-8,
     ld_r2: float = 0.1,
-    include_unreleasable_samples: bool = False,
 ) -> hl.MatrixTable:
     """
     Generate the QC MT per specified population.
@@ -86,7 +84,6 @@ def filter_subpop_qc(
     :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to retain variant in QC MT
     :param min_hardy_weinberg_threshold: Minimum site HW test p-value to keep
     :param ld_r2: Minimum r2 to keep when LD-pruning (set to `None` for no LD pruning)
-    :param include_unreleasable_samples: Whether to include unreleasable samples
     :return: Filtered QC MT with sample metadata for the specified population to use for subpop analysis
     """
     meta_ht = meta.ht()
@@ -109,7 +106,6 @@ def filter_subpop_qc(
 
     # Remove hard filtered samples
     pop_mt = pop_mt.filter_cols(~pop_mt.sample_filters.hard_filtered)
-
     pop_mt = pop_mt.filter_rows(hl.agg.any(pop_mt.GT.is_non_ref()))
 
     # Generate a QC MT for the given pop
@@ -178,7 +174,7 @@ def main(args):  # noqa: D103
         if high_quality:
             mt = mt.filter_cols(mt.high_quality)
         if args.outlier_ht_path is not None:
-            outliers = hl.read_table(outlier_ht_path)
+            outliers = hl.read_table(args.outlier_ht_path)
             mt = mt.filter_cols(hl.is_missing(outliers[mt.col_key]))
 
         logger.info("Generating PCs for subpops...")
@@ -187,23 +183,33 @@ def main(args):  # noqa: D103
             mt, relateds
         )
 
-        pop_pca_evals = pop_pca_evals.checkpoint(
+        pop_pca_evals_ht = hl.Table.parallelize(
+            hl.literal(
+                [
+                    {"PC": i + 1, "eigenvalue": x}
+                    for i, x in enumerate(pop_pca_evals)
+                ],
+                "array<struct{PC: int, eigenvalue: float}>",
+            )
+        )
+        pop_pca_evals_ht.write(
             ancestry_pca_eigenvalues(
                 include_unreleasable_samples, high_quality, pop
             ).path,
             overwrite=args.overwrite,
         )
-        pop_pca_scores = pop_pca_scores.checkpoint(
+        pop_pca_scores.write(
             ancestry_pca_scores(include_unreleasable_samples, high_quality, pop).path,
             overwrite=args.overwrite,
         )
-        pop_pca_loadings = pop_pca_loadings.checkpoint(
+        pop_pca_loadings.write(
             ancestry_pca_loadings(include_unreleasable_samples, high_quality, pop).path,
             overwrite=args.overwrite,
         )
 
-
-# Annotate_subpop_meta for if args.assign_subpops
+    # TODO: Need to use annotate_subpop_meta before subpop assignment
+    if args.assign_subpops:
+        raise NotImplementedError("Sub-population assignment is not currently implemented.")
 
 
 if __name__ == "__main__":

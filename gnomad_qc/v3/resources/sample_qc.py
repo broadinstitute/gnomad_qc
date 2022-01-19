@@ -155,7 +155,7 @@ def ancestry_pca_eigenvalues(
     )
 
 
-def filtered_subpop_qc_mt(pop: str, version: str = CURRENT_VERSION,) -> str:
+def filtered_subpop_qc_mt(pop: str, version: str = CURRENT_VERSION) -> str:
     """
     Helper function to get path to the filtered subpop QC MT for a specified population.
 
@@ -163,9 +163,7 @@ def filtered_subpop_qc_mt(pop: str, version: str = CURRENT_VERSION,) -> str:
     :param version: Version of sample QC path to return
     :return: Path to requested filtered subpop QC MT
     """
-    return "{}/subpop_analysis/gnomad_v{}_filtered_subpop_qc_mt.{}.mt".format(
-        get_sample_qc_root(version), version, pop,
-    )
+    return f"{get_sample_qc_root(version)}/subpop_analysis/gnomad_v{version}_filtered_subpop_qc_mt.{pop}.mt"
 
 
 def get_relatedness_annotated_ht() -> hl.Table:
