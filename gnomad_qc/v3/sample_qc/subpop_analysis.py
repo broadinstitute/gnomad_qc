@@ -163,7 +163,6 @@ def main(args):  # noqa: D103
             args.min_inbreeding_coeff_threshold,
             args.min_hardy_weinberg_threshold,
             args.ld_r2,
-            args.include_unreleasable_samples,
         )
 
         if args.checkpoint_filtered_subpop_qc:
