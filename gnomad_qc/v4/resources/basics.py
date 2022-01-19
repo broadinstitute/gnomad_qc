@@ -72,23 +72,32 @@ def get_gnomad_v4_vds(
 
     # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS)
     # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286
-    renamed_vd = hl.rename_duplicates(vds.variant_data)
-    renamed_rd = hl.rename_duplicates(vds.reference_data)
+    # Have confirmed that the col_idx in the original UKBB MT matchthe col_idx of the UKBB samples in the VDS
+    dup_ids = []
+    with hl.hadoop_open(ukbb_dups_idx, "r") as d:
+        for line in d:
+            line = line.strip().split("\t")
+            dup_ids.append(f"{line[0]}_{line[1]}")
 
-    duplicate_samples_to_remove = renamed_vd.filter_cols(
-        renamed_vd.s != renamed_vd.unique_id
-    ).unique_id.collect()
+    def _remove_ukbb_dup_by_index(mt: hl.MatrixTable, dup_ids: list) -> hl.MatrixTable:
+        """
+        Remove UKBB samples with exact duplicate names based on column index.
+        
+        :param meta_ht: Matrix Table of either the variant data or refernce data of a VDS
+        :param list: List of UKBB samples to remove in format of <sample_name>_<col_idx>
+        :return: MatrixTable of UKBB samples with exact duplicate names removed based on column index
+        """
+        mt = mt.add_col_index()
+        mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
+        mt = mt.filter_cols(~hl.literal(dup_ids).contains(mt.new_s)).drop("new_s", "col_idx")
+        return mt
 
-    renamed_rd = renamed_rd.filter_cols(
-        ~hl.literal(duplicate_samples_to_remove).contains(renamed_rd.unique_id)
-    ).drop("unique_id")
-    renamed_vd = renamed_vd.filter_cols(
-        ~hl.literal(duplicate_samples_to_remove).contains(renamed_vd.unique_id)
-    ).drop("unique_id")
-    vds = hl.vds.VariantDataset(renamed_rd, renamed_vd)
+    vd = _remove_ukbb_dup_by_index(vds.variant_data, dup_ids)
+    rd = _remove_ukbb_dup_by_index(vds.reference_data, dup_ids)
+    vds = hl.vds.VariantDataset(rd, vd)
 
     # Filter withdrawn samples from the VDS
-    withdrawn_ids = withdrawn_ids + ids_to_remove + duplicate_samples_to_remove
+    withdrawn_ids = withdrawn_ids + ids_to_remove + dup_ids
 
     logger.info("Total number of UKBB samples to exclude: %d", len(withdrawn_ids))
 
@@ -143,6 +152,10 @@ ukbb_array_sample_map = TableResource(f"{_ukbb_root_path()}/array_sample_map_fre
 # Samples known to be on the pharma partners' remove lists.
 # All 44 samples are marked as "unresolved duplicates" by the pharma partners.
 ukbb_known_dups = TableResource(f"{_ukbb_root_path()}/pharma_known_dups_7.ht")
+
+# Samples with duplicate names in the VDS and their column index
+# 27 samples to remove based on column index
+ukbb_dups_idx = TableResource(f"{_ukbb_root_path()}/dup_remove_idx_7.tsv")
 
 # Final list of UKBB samples to remove
 all_ukbb_samples_to_remove = f"{_ukbb_root_path()}/all_ukbb_samples_to_remove.txt"
