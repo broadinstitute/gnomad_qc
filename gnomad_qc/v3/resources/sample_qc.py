@@ -70,7 +70,6 @@ def _get_ancestry_pca_ht_path(
         f".{pop}" if pop else "",
         "_with_unreleasable_samples" if include_unreleasable_samples else "",
         ".high_quality" if high_quality else "",
-        f".{pop}" if pop else "",
     )
 
 

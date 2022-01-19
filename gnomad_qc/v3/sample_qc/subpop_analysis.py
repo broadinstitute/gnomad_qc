@@ -64,7 +64,7 @@ def compute_subpop_qc_mt(
     return mt
 
 
-def filter_subpop_qc_mt(
+def filter_subpop_qc(
     mt: hl.MatrixTable,
     pop: str,
     min_af: float = 0.001,
@@ -181,9 +181,9 @@ def main(args):  # noqa: D103
             mt = mt.filter_cols(~mt.project_meta.releasable | mt.project_meta.exclude)
         if high_quality:
             mt = mt.filter_cols(mt.high_quality)
-        if args.outliers is not None:
+        if args.outlier_ht_path is not None:
+            outliers = hl.read_table(outlier_ht_path)
             mt = mt.filter_cols(hl.is_missing(outliers[mt.col_key]))
-
 
         logger.info("Generating PCs for subpops...")
         relateds = pca_related_samples_to_drop.ht()
@@ -287,7 +287,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--assign-subpops",
+        "--run-subpop-pca",
         help="Runs function to generate PCA data for a certain population specified by --pop argument",
         action="store_true",
     )
