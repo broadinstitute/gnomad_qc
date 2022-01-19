@@ -6,10 +6,11 @@ from gnomad.sample_qc.ancestry import run_pca_with_relateds
 
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.sample_qc import (
+    ancestry_pca_eigenvalues,
+    ancestry_pca_loadings,
+    ancestry_pca_scores,
+    filtered_subpop_qc_mt,
     pca_related_samples_to_drop,
-    subpop_pca_eigenvalues,
-    subpop_pca_loadings,
-    subpop_pca_scores,
     subpop_qc,
 )
 
@@ -71,8 +72,6 @@ def filter_subpop_qc_mt(
     min_hardy_weinberg_threshold: float = 1e-8,
     ld_r2: float = 0.1,
     include_unreleasable_samples: bool = False,
-    high_quality: bool = False,
-    outliers: hl.Table = None,
 ) -> hl.MatrixTable:
     """
     Generate the QC MT per specified population.
@@ -88,9 +87,7 @@ def filter_subpop_qc_mt(
     :param min_hardy_weinberg_threshold: Minimum site HW test p-value to keep
     :param ld_r2: Minimum r2 to keep when LD-pruning (set to `None` for no LD pruning)
     :param include_unreleasable_samples: Whether to include unreleasable samples
-    :param high_quality: Whether or not to filter to only high quality samples
-    :param outliers: Optional Table keyed by column containing outliers to remove
-    :return: Table with sample metadata and PCA scores for the specified population to use for subpop analysis
+    :return: Filtered QC MT with sample metadata for the specified population to use for subpop analysis
     """
     meta_ht = meta.ht()
 
@@ -122,15 +119,12 @@ def filter_subpop_qc_mt(
         min_inbreeding_coeff_threshold=min_inbreeding_coeff_threshold,
         min_hardy_weinberg_threshold=min_hardy_weinberg_threshold,
         ld_r2=ld_r2,
-        filter_lcr=False,
-        filter_decoy=False,
-        filter_segdup=False,
     )
 
     return pop_qc_mt
 
 
-def annotate_subpop_meta(ht):
+def annotate_subpop_meta(ht: hl.Table) -> hl.Table:
     meta_ht = meta.ht()
     ht = ht.annotate(**meta_ht[ht.key])
     ht = ht.annotate(
@@ -166,7 +160,7 @@ def main(args):  # noqa: D103
         )
 
     if args.run_subpop_pca:
-        logger.info("Generating PCs for subpops...")
+        logger.info("Filtering subpop QC MT...")
         mt = subpop_qc.mt()
         mt = filter_subpop_qc(
             mt,
@@ -177,27 +171,36 @@ def main(args):  # noqa: D103
             args.ld_r2,
             args.include_unreleasable_samples,
         )
-        if not args.include_unreleasable_samples:
+
+        if args.checkpoint_filtered_subpop_qc:
+            mt = mt.checkpoint(
+            filtered_subpop_qc_mt(pop), overwrite=args.overwrite
+            )
+
+        if not include_unreleasable_samples:
             mt = mt.filter_cols(~mt.project_meta.releasable | mt.project_meta.exclude)
-        if args.high_quality:
+        if high_quality:
             mt = mt.filter_cols(mt.high_quality)
         if args.outliers is not None:
             mt = mt.filter_cols(hl.is_missing(outliers[mt.col_key]))
+
+
+        logger.info("Generating PCs for subpops...")
         relateds = pca_related_samples_to_drop.ht()
         pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
             mt, relateds
         )
 
         pop_pca_evals = pop_pca_evals.checkpoint(
-            subpop_pca_eigenvalues(pop, include_unreleasable_samples, high_quality).path, 
+            ancestry_pca_eigenvalues(include_unreleasable_samples, high_quality, pop).path, 
             overwrite=args.overwrite,
         )
         pop_pca_scores = pop_pca_scores.checkpoint(
-            subpop_pca_scores(pop, include_unreleasable_samples, high_quality).path, 
+            ancestry_pca_scores(include_unreleasable_samples, high_quality, pop).path, 
             overwrite=args.overwrite
         )
         pop_pca_loadings = pop_pca_loadings.checkpoint(
-            subpop_pca_loadings(pop, include_unreleasable_samples, high_quality).path,
+            ancestry_pca_loadings(include_unreleasable_samples, high_quality, pop).path,
             overwrite=args.overwrite,
         )
 
@@ -257,12 +260,24 @@ if __name__ == "__main__":
         default=-0.25,
     )
     parser.add_argument(
+        "--min-hardy-weinberg-threshold",
+        help="Minimum site HW test p-value to keep when generating the PCA data",
+        type=float,
+        default=1e-8,
+    )
+    parser.add_argument(
+        "--ld-r2",
+        help="Minimum r2 to keep when LD-pruning",
+        type=float,
+        default=0.1,
+    )
+    parser.add_argument(
         "--outlier-ht-path",
         help="Path to Table keyed by column containing outliers to remove when generating the PCA data",
         type=str,
     )
     parser.add_argument(
-        "--include_unreleasable_samples",
+        "--include-unreleasable-samples",
         help="Includes unreleasable samples for computing PCA",
         action="store_true",
     )
@@ -272,8 +287,13 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--assign_subpops",
+        "--assign-subpops",
         help="Runs function to generate PCA data for a certain population specified by --pop argument",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--checkpoint-filtered-subpop-qc",
+        help="Checkpoint the filtered subpop QC MT",
         action="store_true",
     )
 

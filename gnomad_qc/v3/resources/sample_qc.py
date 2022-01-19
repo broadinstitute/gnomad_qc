@@ -49,6 +49,8 @@ def _get_ancestry_pca_ht_path(
     part: str,
     version: str = CURRENT_VERSION,
     include_unreleasable_samples: bool = False,
+    high_quality: bool = False,
+    pop: str = None,
 ) -> str:
     """
     Helper function to get path to files related to ancestry PCA
@@ -56,23 +58,33 @@ def _get_ancestry_pca_ht_path(
     :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores)
     :param version: Version of sample QC path to return
     :param include_unreleasable_samples: Whether the file includes PCA info for unreleasable samples
+    :param high_quality: Whether the file includes PCA info for only high-quality samples
+    :param pop: Population specific PCA to return. When set to None, the PCA on the full dataset is returned
     :return: Path to requested ancestry PCA file
-    """
-    return "{}/gnomad_v{}_pca_{}{}.ht".format(
+    """    
+    return "{}/{}gnomad_v{}_pca_{}{}{}{}.ht".format(
         get_sample_qc_root(version),
+        "subpop_analysis/" if pop else "",
         version,
         part,
+        f".{pop}" if pop else "",
         "_with_unreleasable_samples" if include_unreleasable_samples else "",
+        ".high_quality" if high_quality else "",
+        f".{pop}" if pop else "",
     )
 
 
 def ancestry_pca_loadings(
     include_unreleasable_samples: bool = False,
+    high_quality: bool = False,
+    pop: str = None,
 ) -> VersionedTableResource:
     """
     Gets the ancestry PCA loadings VersionedTableResource
 
     :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
+    :param high_quality: Whether the file includes PCA info for only high-quality samples
+    :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
     :return: Ancestry PCA loadings
     """
     return VersionedTableResource(
@@ -80,7 +92,7 @@ def ancestry_pca_loadings(
         {
             release: TableResource(
                 _get_ancestry_pca_ht_path(
-                    "loadings", release, include_unreleasable_samples
+                    "loadings", release, include_unreleasable_samples, high_quality, pop
                 )
             )
             for release in VERSIONS
@@ -90,11 +102,15 @@ def ancestry_pca_loadings(
 
 def ancestry_pca_scores(
     include_unreleasable_samples: bool = False,
+    high_quality: bool = False,
+    pop: str = None,
 ) -> VersionedTableResource:
     """
     Gets the ancestry PCA scores VersionedTableResource
 
     :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
+    :param high_quality: Whether the file includes PCA info for only high-quality samples
+    :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
     :return: Ancestry PCA scores
     """
     return VersionedTableResource(
@@ -102,7 +118,7 @@ def ancestry_pca_scores(
         {
             release: TableResource(
                 _get_ancestry_pca_ht_path(
-                    "scores", release, include_unreleasable_samples
+                    "scores", release, include_unreleasable_samples, high_quality, pop
                 )
             )
             for release in VERSIONS
@@ -112,11 +128,15 @@ def ancestry_pca_scores(
 
 def ancestry_pca_eigenvalues(
     include_unreleasable_samples: bool = False,
+    high_quality: bool = False,
+    pop: str = None,
 ) -> VersionedTableResource:
     """
     Gets the ancestry PCA eigenvalues VersionedTableResource
 
     :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
+    :param high_quality: Whether the file includes PCA info for only high-quality samples
+    :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
     :return: Ancestry PCA eigenvalues
     """
     return VersionedTableResource(
@@ -124,7 +144,7 @@ def ancestry_pca_eigenvalues(
         {
             release: TableResource(
                 _get_ancestry_pca_ht_path(
-                    "eigenvalues", release, include_unreleasable_samples
+                    "eigenvalues", release, include_unreleasable_samples, high_quality, pop
                 )
             )
             for release in VERSIONS
@@ -132,106 +152,21 @@ def ancestry_pca_eigenvalues(
     )
 
 
-def _get_subpop_pca_ht_path(
-    part: str,
+def filtered_subpop_qc_mt(
     pop: str,
     version: str = CURRENT_VERSION,
-    include_unreleasable_samples: bool = False,
-    high_quality: bool = False,
 ) -> str:
     """
-    Helper function to get path to files related to ancestry PCA
+    Helper function to get path to the filtered subpop QC MT for a specified population.
 
-    :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores)
-    :param pop: Population that was used for the PCA
+    :param pop: Population to which the subpop QC MT was filtered
     :param version: Version of sample QC path to return
-    :param include_unreleasable_samples: Whether the file includes PCA info for unreleasable samples
-    :param high_quality: Whether the file includes PCA info for only high-quality samples
-    :return: Path to requested ancestry PCA file
+    :return: Path to requested filtered subpop QC MT
     """
-    return "{}/subpop_analysis/gnomad_v{}_{}_pca_{}{}{}.ht".format(
+    return "{}/subpop_analysis/gnomad_v{}_filtered_subpop_qc_mt.{}.mt".format(
         get_sample_qc_root(version),
         version,
         pop,
-        part,
-        "_with_unreleasable_samples" if include_unreleasable_samples else "",
-        "_high_quality" if high_quality else "",
-    )
-
-
-def subpop_pca_loadings(
-    pop: str, include_unreleasable_samples: bool = False, high_quality: bool = False,
-) -> VersionedTableResource:
-    """
-    Gets the subpop PCA loadings VersionedTableResource
-
-    :param pop: Population that was used for the PCA
-    :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
-    :param high_quality: Whether the file includes PCA info for only high-quality samples
-    :return: Subpop PCA loadings
-    """
-    return VersionedTableResource(
-        CURRENT_VERSION,
-        {
-            release: TableResource(
-                _get_subpop_pca_ht_path(
-                    "loadings", pop, release, include_unreleasable_samples, high_quality
-                )
-            )
-            for release in VERSIONS
-        },
-    )
-
-
-def subpop_pca_scores(
-    pop: str, include_unreleasable_samples: bool = False, high_quality: bool = False,
-) -> VersionedTableResource:
-    """
-    Gets the subpop PCA scores VersionedTableResource
-
-    :param pop: Population that was used for the PCA
-    :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
-    :param high_quality: Whether the file includes PCA info for only high-quality samples
-    :return: Subpop PCA scores
-    """
-    return VersionedTableResource(
-        CURRENT_VERSION,
-        {
-            release: TableResource(
-                _get_subpop_pca_ht_path(
-                    "scores", pop, release, include_unreleasable_samples, high_quality
-                )
-            )
-            for release in VERSIONS
-        },
-    )
-
-
-def subpop_pca_eigenvalues(
-    pop: str, include_unreleasable_samples: bool = False, high_quality: bool = False,
-) -> VersionedTableResource:
-    """
-    Gets the subpop PCA eigenvalues VersionedTableResource
-
-    :param pop: Population that was used for the PCA
-    :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
-    :param high_quality: Whether the file includes PCA info for only high-quality samples
-    :return: Subpop PCA eigenvalues
-    """
-    return VersionedTableResource(
-        CURRENT_VERSION,
-        {
-            release: TableResource(
-                _get_subpop_pca_ht_path(
-                    "eigenvalues",
-                    pop,
-                    release,
-                    include_unreleasable_samples,
-                    high_quality,
-                )
-            )
-            for release in VERSIONS
-        },
     )
 
 
