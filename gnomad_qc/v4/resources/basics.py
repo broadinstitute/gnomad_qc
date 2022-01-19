@@ -72,7 +72,7 @@ def get_gnomad_v4_vds(
 
     # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS)
     # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286
-    # Have confirmed that the col_idx in the original UKBB MT matchthe col_idx of the UKBB samples in the VDS
+    # Have confirmed that the col_idx of the 27 dup samples in the original UKBB MT match the col_idx of the dup UKBB samples in the VDS
     dup_ids = []
     with hl.hadoop_open(ukbb_dups_idx, "r") as d:
         for line in d:
@@ -89,7 +89,9 @@ def get_gnomad_v4_vds(
         """
         mt = mt.add_col_index()
         mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
-        mt = mt.filter_cols(~hl.literal(dup_ids).contains(mt.new_s)).drop("new_s", "col_idx")
+        mt = mt.filter_cols(~hl.literal(dup_ids).contains(mt.new_s)).drop(
+            "new_s", "col_idx"
+        )
         return mt
 
     vd = _remove_ukbb_dup_by_index(vds.variant_data, dup_ids)
@@ -101,9 +103,7 @@ def get_gnomad_v4_vds(
 
     logger.info("Total number of UKBB samples to exclude: %d", len(withdrawn_ids))
 
-    with hl.hadoop_open(
-        all_ukbb_samples_to_remove, "w"
-    ) as d:
+    with hl.hadoop_open(all_ukbb_samples_to_remove, "w") as d:
         for sample in withdrawn_ids:
             d.write(sample + "\n")
 
@@ -142,12 +142,15 @@ def _ukbb_root_path() -> str:
     """
     return "gs://gnomad/v4.0/ukbb"
 
+
 # List of samples to exclude from QC due to withdrawn consents
 # This is the file with the most up to date sample withdrawals we were sent. File downloaded on 8/16/21
 ukbb_excluded_samples_path = f"{_ukbb_root_path()}/w26041_20210809.csv"
 
 # UKBB map of exome IDs to array sample IDs (application ID: 26041)
-ukbb_array_sample_map = TableResource(f"{_ukbb_root_path()}/array_sample_map_freeze_7.ht")
+ukbb_array_sample_map = TableResource(
+    f"{_ukbb_root_path()}/array_sample_map_freeze_7.ht"
+)
 
 # Samples known to be on the pharma partners' remove lists.
 # All 44 samples are marked as "unresolved duplicates" by the pharma partners.
