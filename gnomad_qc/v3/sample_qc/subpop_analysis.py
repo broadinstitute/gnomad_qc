@@ -146,8 +146,8 @@ def main(args):  # noqa: D103
 
     # Filter to test partitions if specified
     if args.test:
-        logger.info("Filtering to the first two partitions of the MT")
-        mt = mt._filter_partitions(range(2))
+        logger.info("Filtering MT to chromosome 20")
+        mt = mt.filter_rows(mt.locus.contig=="chr20")
 
     # Write out the densified MT
     if args.make_full_subpop_qc_mt:
@@ -253,7 +253,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--test",
-        help="Runs a test of the code on only two partitions of the raw gnomAD v3 MT",
+        help="Runs a test of the code on only chr20 of the raw gnomAD v3 MT",
         action="store_true",
     )
     parser.add_argument(
