@@ -116,6 +116,7 @@ def filter_subpop_qc(
         min_inbreeding_coeff_threshold=min_inbreeding_coeff_threshold,
         min_hardy_weinberg_threshold=min_hardy_weinberg_threshold,
         ld_r2=ld_r2,
+        filter_decoy=False,
     )
 
     return pop_qc_mt
