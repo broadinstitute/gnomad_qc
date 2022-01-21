@@ -57,7 +57,7 @@ def get_gnomad_v4_vds(
         ukbb_excluded_samples_path, no_header=True,
     ).key_by("f0")
 
-    sample_map_ht = hl.read_table(ukbb_array_sample_map.path)
+    sample_map_ht = ukbb_array_sample_map.ht()
     sample_map_ht = sample_map_ht.annotate(
         withdrawn_consent=hl.is_defined(
             excluded_ukbb_samples_ht[sample_map_ht.ukbb_app_26041_id]
@@ -67,33 +67,34 @@ def get_gnomad_v4_vds(
 
     # Remove 43 samples that are known to be on the pharma's sample remove list
     # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308
-    dups_ht = hl.read_table(ukbb_known_dups.path)
+    dups_ht = ukbb_known_dups.ht()
     ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
 
     # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS)
     # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286
-    # Have confirmed that the col_idx of the 27 dup samples in the original UKBB MT match the col_idx of the dup UKBB samples in the VDS
+    # Confirmed that the col_idx of the 27 dup samples in the original UKBB MT match the col_idx of the dup UKBB samples in the VDS
     dup_ids = []
-    with hl.hadoop_open(ukbb_dups_idx, "r") as d:
+    with hl.hadoop_open(ukbb_dups_idx_path, "r") as d:
         for line in d:
             line = line.strip().split("\t")
             dup_ids.append(f"{line[0]}_{line[1]}")
 
-    def _remove_ukbb_dup_by_index(mt: hl.MatrixTable, dup_ids: list) -> hl.MatrixTable:
+    def _remove_ukbb_dup_by_index(mt: hl.MatrixTable, dup_ids: hl.expr.ArrayExpression) -> hl.MatrixTable:
         """
         Remove UKBB samples with exact duplicate names based on column index.
         
-        :param meta_ht: Matrix Table of either the variant data or refernce data of a VDS
-        :param list: List of UKBB samples to remove in format of <sample_name>_<col_idx>
+        :param mt: MatrixTable of either the variant data or reference data of a VDS
+        :param dup_ids: ArrayExpression of UKBB samples to remove in format of <sample_name>_<col_idx>
         :return: MatrixTable of UKBB samples with exact duplicate names removed based on column index
         """
         mt = mt.add_col_index()
         mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
-        mt = mt.filter_cols(~hl.literal(dup_ids).contains(mt.new_s)).drop(
+        mt = mt.filter_cols(~dup_ids.contains(mt.new_s)).drop(
             "new_s", "col_idx"
         )
         return mt
 
+    dup_ids = hl.literal(dup_ids)
     vd = _remove_ukbb_dup_by_index(vds.variant_data, dup_ids)
     rd = _remove_ukbb_dup_by_index(vds.reference_data, dup_ids)
     vds = hl.vds.VariantDataset(rd, vd)
@@ -108,7 +109,7 @@ def get_gnomad_v4_vds(
             d.write(sample + "\n")
 
     withdrawn_ht = hl.import_table(
-        "gs://gnomad/v4.0/ukbb/all_ukbb_samples_to_remove.txt", no_header=True
+        all_ukbb_samples_to_remove, no_header=True
     ).key_by("f0")
 
     vds = hl.vds.filter_samples(vds, withdrawn_ht, keep=False, remove_dead_alleles=True)
@@ -158,7 +159,7 @@ ukbb_known_dups = TableResource(f"{_ukbb_root_path()}/pharma_known_dups_7.ht")
 
 # Samples with duplicate names in the VDS and their column index
 # 27 samples to remove based on column index
-ukbb_dups_idx = TableResource(f"{_ukbb_root_path()}/dup_remove_idx_7.tsv")
+ukbb_dups_idx_path = f"{_ukbb_root_path()}/dup_remove_idx_7.tsv"
 
 # Final list of UKBB samples to remove
 all_ukbb_samples_to_remove = f"{_ukbb_root_path()}/all_ukbb_samples_to_remove.txt"
