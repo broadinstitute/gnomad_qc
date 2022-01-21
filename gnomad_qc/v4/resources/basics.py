@@ -100,7 +100,7 @@ def get_gnomad_v4_vds(
     vds = hl.vds.VariantDataset(rd, vd)
 
     # Filter withdrawn samples from the VDS
-    withdrawn_ids = withdrawn_ids + ids_to_remove + dup_ids
+    withdrawn_ids = withdrawn_ids + ids_to_remove + hl.eval(dup_ids)
 
     logger.info("Total number of UKBB samples to exclude: %d", len(withdrawn_ids))
 
@@ -189,7 +189,7 @@ def get_checkpoint_path(
     return f'{qc_temp_prefix(version)}{name}.{"mt" if mt else "ht"}'
 
 
-def testset_vds(version: str = CURRENT_VERSION) -> str:
+def testset_vds(version: str = CURRENT_VERSION) -> hl.vds.VariantDataset:
     """
     Return path to the testset VDS.
 
