@@ -108,8 +108,7 @@ def filter_subpop_qc(
     # Remove hard filtered samples
     pop_mt = pop_mt.filter_cols(~pop_mt.sample_filters.hard_filtered)
     pop_mt = pop_mt.filter_rows(hl.agg.any(pop_mt.GT.is_non_ref()))
-    pop_mt = pop_mt.checkpoint(
-                get_checkpoint_path("pop_mt", mt=True))
+    pop_mt = pop_mt.checkpoint(get_checkpoint_path("pop_mt", mt=True))
 
     # Generate a QC MT for the given pop
     pop_qc_mt = get_qc_mt(
@@ -119,6 +118,7 @@ def filter_subpop_qc(
         min_hardy_weinberg_threshold=min_hardy_weinberg_threshold,
         ld_r2=ld_r2,
         filter_decoy=False,
+        checkpoint_path=get_checkpoint_path("intermediate_qc_mt", mt=True),
     )
 
     return pop_qc_mt
@@ -149,7 +149,7 @@ def main(args):  # noqa: D103
     # Filter to test partitions if specified
     if args.test:
         logger.info("Filtering MT to chromosome 20")
-        mt = mt.filter_rows(mt.locus.contig=="chr20")
+        mt = mt.filter_rows(mt.locus.contig == "chr20")
 
     # Write out the densified MT
     if args.make_full_subpop_qc_mt:
@@ -321,9 +321,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--assign-subpops",
-        help="Runs function to assign subpops",
-        action="store_true",
+        "--assign-subpops", help="Runs function to assign subpops", action="store_true",
     )
 
     args = parser.parse_args()
