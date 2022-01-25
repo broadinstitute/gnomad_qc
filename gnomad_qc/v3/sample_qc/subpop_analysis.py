@@ -108,6 +108,8 @@ def filter_subpop_qc(
     # Remove hard filtered samples
     pop_mt = pop_mt.filter_cols(~pop_mt.sample_filters.hard_filtered)
     pop_mt = pop_mt.filter_rows(hl.agg.any(pop_mt.GT.is_non_ref()))
+    pop_mt = pop_mt.checkpoint(
+                get_checkpoint_path("pop_mt", mt=True))
 
     # Generate a QC MT for the given pop
     pop_qc_mt = get_qc_mt(
