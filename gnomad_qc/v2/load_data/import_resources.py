@@ -46,11 +46,12 @@ def import_exac_data(overwrite: bool = False):
 
 
 def import_cpgs(overwrite: bool = False):
-    hl.import_vcf('gs://gnomad-public/resources/cpg.vcf.bgz', min_partitions=20).rows().write(cpg_sites_ht_path(), overwrite)
+    hl.import_vcf('gs://gcp-public-data--gnomad/resources/methylation/cpg.vcf.bgz', min_partitions=20).rows().write(cpg_sites_ht_path(), overwrite)
 
 
 def import_truth_sets(overwrite: bool = False):
-    root = 'gs://gnomad-public/truth-sets'
+    root = 'gs://gcp-public-data--gnomad/truth-sets'
+    root_out = 'gs://gnomad-public-requester-pays/truth-sets'
     truth_sets = [
         '1000G_omni2.5.b37.vcf.bgz',
         'hapmap_3.3.b37.vcf.bgz',
@@ -62,7 +63,7 @@ def import_truth_sets(overwrite: bool = False):
     for truth_vcf in truth_sets:
         vds_path = truth_vcf.replace('.vcf.bgz', '.mt')
         vds = hl.import_vcf('{}/source/{}'.format(root, truth_vcf), min_partitions=10)
-        hl.split_multi_hts(vds).write('{}/hail-{}/{}'.format(root, CURRENT_HAIL_VERSION, vds_path), overwrite)
+        hl.split_multi_hts(vds).write('{}/hail-{}/{}'.format(root_out, CURRENT_HAIL_VERSION, vds_path), overwrite)
 
 
 def main(args):

@@ -93,7 +93,7 @@ def compute_per_base_cds_coverage(overwrite: bool):
         **genomes_cov[gtf.locus],
         mappability=ucsc_mappability[gtf.locus].duke_35_map
     )
-    gene_by_base_cov_ht.write('gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37.gene_by_base.cov.ht', overwrite=overwrite)
+    gene_by_base_cov_ht.write('gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37.gene_by_base.cov.ht', overwrite=overwrite)
 
 
 def export_gene_coverage(overwrite: bool):
@@ -138,11 +138,11 @@ def export_gene_coverage(overwrite: bool):
         min_good_coverage_dp=min_good_coverage_dp
     )
 
-    cov = cov.checkpoint('gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.ht', overwrite=overwrite, _read_if_exists=not overwrite)
-    if not overwrite and hl.hadoop_is_file('gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz'):
-        logger.warn("gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz not exported as it already exists and --overwrite is not set.")
+    cov = cov.checkpoint('gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.ht', overwrite=overwrite, _read_if_exists=not overwrite)
+    if not overwrite and hl.hadoop_is_file('gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz'):
+        logger.warn("gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz not exported as it already exists and --overwrite is not set.")
     else:
-        cov.export('gs://gnomad-public/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz')
+        cov.export('gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz')
 
 
 def main(args):
