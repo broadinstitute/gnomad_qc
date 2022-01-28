@@ -60,6 +60,7 @@ def compute_subpop_qc_mt(
         "END", GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
     )
 
+    logger.info(f"Checkpointing the QC sites HT of biallelic SNVs that are not in low-confidence regions and have a popmax above the specified minimum allele frequency of {min_popmax_af}.")
     qc_sites = qc_sites.checkpoint(
         get_checkpoint_path("qc_sites"),
         overwrite=args.overwrite,
