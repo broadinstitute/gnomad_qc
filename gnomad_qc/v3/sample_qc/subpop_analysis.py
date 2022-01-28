@@ -60,8 +60,8 @@ def compute_subpop_qc_mt(
         "END", GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
     )
 
-    mt = mt.checkpoint(
-        get_checkpoint_path("mt_to_densify", mt=True),
+    qc_sites = qc_sites.checkpoint(
+        get_checkpoint_path("qc_sites"),
         overwrite=args.overwrite,
         _read_if_exists=not args.overwrite,
     )
