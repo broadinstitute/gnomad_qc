@@ -59,6 +59,13 @@ def compute_subpop_qc_mt(
     mt = mt.select_entries(
         "END", GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
     )
+
+    mt = mt.checkpoint(
+        get_checkpoint_path("mt_to_densify", mt=True),
+        overwrite=args.overwrite,
+        _read_if_exists=not args.overwrite,
+    )
+
     mt = densify_sites(mt, qc_sites, hl.read_table(last_END_position.path))
 
     return mt
