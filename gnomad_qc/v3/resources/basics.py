@@ -20,7 +20,7 @@ def get_gnomad_v3_mt(
     samples_meta: bool = False,
 ) -> hl.MatrixTable:
     """
-    Wrapper function to get gnomAD data with desired filtering and metadata annotations
+    Wrapper function to get gnomAD data with desired filtering and metadata annotations.
 
     :param split: Perform split on MT - Note: this will perform a split on the MT rather than grab an already split MT
     :param key_by_locus_and_alleles: Whether to key the MatrixTable by locus and alleles (only needed for v3)
@@ -82,7 +82,7 @@ gnomad_v3_genotypes = VersionedMatrixTableResource(
 
 def qc_temp_prefix(version: str = CURRENT_RELEASE) -> str:
     """
-    Returns path to temporary QC bucket.
+    Return path to temporary QC bucket.
 
     :param version: Version of annotation path to return
     :return: Path to bucket with temporary QC data
@@ -94,12 +94,22 @@ def get_checkpoint_path(
     name: str, version: str = CURRENT_RELEASE, mt: bool = False
 ) -> str:
     """
-    Creates a checkpoint path for Table or MatrixTable
+    Create a checkpoint path for Table or MatrixTable.
 
     :param str name: Name of intermediate Table/MatrixTable
     :param version: Version of annotation path to return
     :param bool mt: Whether path is for a MatrixTable, default is False
     :return: Output checkpoint path
-    :rtype: str
     """
     return f'{qc_temp_prefix(version)}{name}.{"mt" if mt else "ht"}'
+
+
+def get_logging_path(name: str, version: str = CURRENT_RELEASE) -> str:
+    """
+    Create a path for Hail log files.
+
+    :param str name: Name of log file
+    :param version: Version of annotation path to return
+    :return: Output log path
+    """
+    return f"{qc_temp_prefix(version)}{name}.log"
