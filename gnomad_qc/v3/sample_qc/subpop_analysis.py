@@ -4,7 +4,7 @@ import logging
 
 from gnomad.sample_qc.ancestry import run_pca_with_relateds
 
-from gnomad_qc.v3.resources.basics import get_checkpoint_path
+from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.sample_qc import (
     ancestry_pca_eigenvalues,
@@ -59,6 +59,14 @@ def compute_subpop_qc_mt(
     mt = mt.select_entries(
         "END", GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
     )
+
+    logger.info(f"Checkpointing the QC sites HT of biallelic SNVs that are not in low-confidence regions and have a popmax above the specified minimum allele frequency of {min_popmax_af}.")
+    qc_sites = qc_sites.checkpoint(
+        get_checkpoint_path("qc_sites"),
+        overwrite=args.overwrite,
+        _read_if_exists=not args.overwrite,
+    )
+
     mt = densify_sites(mt, qc_sites, hl.read_table(last_END_position.path))
 
     return mt
@@ -147,101 +155,106 @@ def main(args):  # noqa: D103
     pop = args.pop
     include_unreleasable_samples = args.include_unreleasable_samples
     high_quality = args.high_quality
-    # Read in the raw mt
-    mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
 
-    # Filter to test partitions if specified
-    if args.test:
-        logger.info("Filtering MT to chromosome 20")
-        mt = mt.filter_rows(mt.locus.contig == "chr20")
+    try:
+        # Read in the raw mt
+        mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
 
-    # Write out the densified MT
-    if args.make_full_subpop_qc_mt:
-        logger.info("Generating densified MT to use for all subpop analyses...")
-        mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
-        mt.write(
-            get_checkpoint_path("test_make_full_subpop_qc", mt=True)
-            if args.test
-            else subpop_qc.path,
-            overwrite=args.overwrite,
-        )
-
-    if args.run_subpop_pca:
-        logger.info("Filtering subpop QC MT...")
+        # Filter to test partitions if specified
         if args.test:
-            mt = hl.read_matrix_table(
+            logger.info("Filtering MT to chromosome 20")
+            mt = mt.filter_rows(mt.locus.contig == "chr20")
+
+        # Write out the densified MT
+        if args.make_full_subpop_qc_mt:
+            logger.info("Generating densified MT to use for all subpop analyses...")
+            mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
+            mt.write(
                 get_checkpoint_path("test_make_full_subpop_qc", mt=True)
-            )
-        else:
-            mt = subpop_qc.mt()
-        mt = filter_subpop_qc(
-            mt,
-            pop,
-            args.min_af,
-            args.min_inbreeding_coeff_threshold,
-            args.min_hardy_weinberg_threshold,
-            args.ld_r2,
-        )
-
-        if args.checkpoint_filtered_subpop_qc:
-            mt = mt.checkpoint(
-                get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
                 if args.test
-                else filtered_subpop_qc_mt(pop),
+                else subpop_qc.path,
                 overwrite=args.overwrite,
-                _read_if_exists=not args.overwrite,
             )
 
-        if not include_unreleasable_samples:
-            mt = mt.filter_cols(mt.project_meta.releasable & ~mt.project_meta.exclude)
-        if high_quality:
-            mt = mt.filter_cols(mt.high_quality)
-        if args.outlier_ht_path is not None:
-            outliers = hl.read_table(args.outlier_ht_path)
-            mt = mt.filter_cols(hl.is_missing(outliers[mt.col_key]))
-
-        logger.info("Generating PCs for subpops...")
-        relateds = pca_related_samples_to_drop.ht()
-        pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
-            mt, relateds
-        )
-
-        pop_pca_evals_ht = hl.Table.parallelize(
-            hl.literal(
-                [{"PC": i + 1, "eigenvalue": x} for i, x in enumerate(pop_pca_evals)],
-                "array<struct{PC: int, eigenvalue: float}>",
+        if args.run_subpop_pca:
+            logger.info("Filtering subpop QC MT...")
+            if args.test:
+                mt = hl.read_matrix_table(
+                    get_checkpoint_path("test_make_full_subpop_qc", mt=True)
+                )
+            else:
+                mt = subpop_qc.mt()
+            mt = filter_subpop_qc(
+                mt,
+                pop,
+                args.min_af,
+                args.min_inbreeding_coeff_threshold,
+                args.min_hardy_weinberg_threshold,
+                args.ld_r2,
             )
-        )
-        pop_pca_evals_ht.write(
-            get_checkpoint_path("test_pop_pca_evals_ht")
-            if args.test
-            else ancestry_pca_eigenvalues(
-                include_unreleasable_samples, high_quality, pop
-            ).path,
-            overwrite=args.overwrite,
-        )
-        pop_pca_scores.write(
-            get_checkpoint_path("test_pop_pca_scores_ht")
-            if args.test
-            else ancestry_pca_scores(
-                include_unreleasable_samples, high_quality, pop
-            ).path,
-            overwrite=args.overwrite,
-        )
-        pop_pca_loadings.write(
-            get_checkpoint_path("test_pop_pca_loadings_ht")
-            if args.test
-            else ancestry_pca_loadings(
-                include_unreleasable_samples, high_quality, pop
-            ).path,
-            overwrite=args.overwrite,
-        )
 
-    # TODO: Need to use annotate_subpop_meta before subpop assignment
-    if args.assign_subpops:
-        raise NotImplementedError(
-            "Sub-population assignment is not currently implemented."
-        )
+            if args.checkpoint_filtered_subpop_qc:
+                mt = mt.checkpoint(
+                    get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
+                    if args.test
+                    else filtered_subpop_qc_mt(pop),
+                    overwrite=args.overwrite,
+                    _read_if_exists=not args.overwrite,
+                )
+
+            if not include_unreleasable_samples:
+                mt = mt.filter_cols(mt.project_meta.releasable & ~mt.project_meta.exclude)
+            if high_quality:
+                mt = mt.filter_cols(mt.high_quality)
+            if args.outlier_ht_path is not None:
+                outliers = hl.read_table(args.outlier_ht_path)
+                mt = mt.filter_cols(hl.is_missing(outliers[mt.col_key]))
+
+            logger.info("Generating PCs for subpops...")
+            relateds = pca_related_samples_to_drop.ht()
+            pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
+                mt, relateds
+            )
+
+            pop_pca_evals_ht = hl.Table.parallelize(
+                hl.literal(
+                    [{"PC": i + 1, "eigenvalue": x} for i, x in enumerate(pop_pca_evals)],
+                    "array<struct{PC: int, eigenvalue: float}>",
+                )
+            )
+            pop_pca_evals_ht.write(
+                get_checkpoint_path("test_pop_pca_evals_ht")
+                if args.test
+                else ancestry_pca_eigenvalues(
+                    include_unreleasable_samples, high_quality, pop
+                ).path,
+                overwrite=args.overwrite,
+            )
+            pop_pca_scores.write(
+                get_checkpoint_path("test_pop_pca_scores_ht")
+                if args.test
+                else ancestry_pca_scores(
+                    include_unreleasable_samples, high_quality, pop
+                ).path,
+                overwrite=args.overwrite,
+            )
+            pop_pca_loadings.write(
+                get_checkpoint_path("test_pop_pca_loadings_ht")
+                if args.test
+                else ancestry_pca_loadings(
+                    include_unreleasable_samples, high_quality, pop
+                ).path,
+                overwrite=args.overwrite,
+            )
+
+        # TODO: Need to use annotate_subpop_meta before subpop assignment
+        if args.assign_subpops:
+            raise NotImplementedError(
+                "Sub-population assignment is not currently implemented."
+            )
+    finally:
+        logger.info("Copying hail log to logging bucket...")
+        hl.copy_log(get_logging_path("subpop"))
 
 
 if __name__ == "__main__":
