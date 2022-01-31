@@ -63,7 +63,7 @@ def import_truth_sets(overwrite: bool = False):
     for truth_vcf in truth_sets:
         mt_path = truth_vcf.replace('.vcf.bgz', '.mt')
         mt = hl.import_vcf('{}/source/{}'.format(root, truth_vcf), min_partitions=10)
-        hl.split_multi_hts(vds).write('{}/hail-{}/{}'.format(root_out, CURRENT_HAIL_VERSION, vds_path), overwrite)
+        hl.split_multi_hts(mt).write('{}/hail-{}/{}'.format(root_out, CURRENT_HAIL_VERSION, mt_path), overwrite)
 
 
 def main(args):
