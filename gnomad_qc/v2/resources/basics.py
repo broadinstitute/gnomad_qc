@@ -428,7 +428,7 @@ def kgp_phase3_genotypes_mt_path(split: bool = True, hail_version=CURRENT_HAIL_V
     """
     1000 Genomes Phase 3 with genotypes (b37)
     Imported from: gs://genomics-public-data/1000-genomes-phase-3/vcf-20150220/ALL.chr*.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf
-    Samples populations from: gs://gnomad-public/truth-sets/hail-0.2/1000G.GRCh38.20130502.phase3.sequence.index
+    Samples populations from: gs://gcp-public-data--gnomad/truth-sets/hail-0.2/1000G.GRCh38.20130502.phase3.sequence.index
 
     :param bool split: Whether to load to split or non-split version
     :param str hail_version: Hail version

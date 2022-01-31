@@ -12,7 +12,8 @@ logger = logging.getLogger("topmed_dups")
 
 def create_shared_sites_table(data_type: str, overwrite: bool):
     freq_ht = hl.read_table(annotations_ht_path(data_type, 'frequencies'))
-    topmed_ht = hl.read_matrix_table('gs://gcp-public-data--gnomad/resources/hail-0.2/topmed.b37.mt').rows()
+    # NOTE: the following TOPMed filepath is now broken; preserving for archival purposes
+    topmed_ht = hl.read_matrix_table('gs://gnomad-public/resources/hail-0.2/topmed.b37.mt').rows()
 
     methyation_ht = hl.read_table(methylation_sites_ht_path())
 
