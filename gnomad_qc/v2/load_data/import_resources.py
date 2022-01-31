@@ -61,8 +61,8 @@ def import_truth_sets(overwrite: bool = False):
         '1000G_phase1.snps.high_confidence.b37.vcf.bgz'
     ]
     for truth_vcf in truth_sets:
-        vds_path = truth_vcf.replace('.vcf.bgz', '.mt')
-        vds = hl.import_vcf('{}/source/{}'.format(root, truth_vcf), min_partitions=10)
+        mt_path = truth_vcf.replace('.vcf.bgz', '.mt')
+        mt = hl.import_vcf('{}/source/{}'.format(root, truth_vcf), min_partitions=10)
         hl.split_multi_hts(vds).write('{}/hail-{}/{}'.format(root_out, CURRENT_HAIL_VERSION, vds_path), overwrite)
 
 
