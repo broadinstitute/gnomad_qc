@@ -89,14 +89,14 @@ def public_exomes_ht_path(split=True, version=CURRENT_RELEASE):
     if int(version[0]) > 1 and int(version[2]) > 0:
         return get_release_file('gs://gcp-public-data--gnomad/release/{0}/ht/exomes/gnomad.exomes.r{0}.sites.ht')
     else:
-        return get_release_file('gs://gnomad-public/release/{{0}}/vds/exomes/gnomad.exomes.r{{0}}.sites{0}.vds'.format(".split" if split else ""))
+        raise FileNotFoundError(f"Public release files are no longer available for versions under 2.1.")
 
 
 def public_genomes_ht_path(split=True, version=CURRENT_RELEASE):
     if int(version[0]) > 1 and int(version[2]) > 0:
         return get_release_file('gs://gcp-public-data--gnomad/release/{0}/ht/genomes/gnomad.genomes.r{0}.sites.ht')
     else:
-        return get_release_file('gs://gnomad-public/release/{{0}}/vds/genomes/gnomad.genomes.r{{0}}.sites{0}.vds'.format(".split" if split else ""))
+        raise FileNotFoundError(f"Public release files are no longer available for versions under 2.1.")
 
 
 def get_gnomad_public_data(data_type, split=True, version=CURRENT_RELEASE):
@@ -348,7 +348,7 @@ def gnomad_public_pca_loadings_ht_path(version: str = CURRENT_RELEASE, subpop: s
     :return: path to gnomAD public PCA loadings HT
     :rtype: str
     """
-    return get_release_file("gs://gnomad-public/release/{{0}}/pca/gnomad.r{{0}}.pca_loadings{0}.ht".format(f'.{subpop}' if subpop else ""),
+    return get_release_file("gs://gcp-public-data--gnomad/release/{{0}}/pca/gnomad.r{{0}}.pca_loadings{0}.ht".format(f'.{subpop}' if subpop else ""),
                             version)
 
 
@@ -385,7 +385,7 @@ def coverage_mt_path(data_type, grouped: bool = False) -> str:
 
 
 def coverage_ht_path(data_type) -> str:
-    return f'gs://gnomad-public/release/2.1/coverage/{data_type}/gnomad.{data_type}.r2.1.coverage.ht'
+    return f'gs://gcp-public-data--gnomad/release/2.1/coverage/{data_type}/gnomad.{data_type}.r2.1.coverage.ht'
 
 
 def fam_path(data_type: str, version: str = CURRENT_FAM, true_trios: bool = False) -> str:
@@ -409,52 +409,52 @@ def genomes_exomes_duplicate_ids_tsv_path(version: str = CURRENT_DUPS) -> str:
 
 
 def omni_mt_path(hail_version=CURRENT_HAIL_VERSION):
-    return 'gs://gnomad-public/truth-sets/hail-{0}/1000G_omni2.5.b37.mt'.format(hail_version)
+    return 'gs://gcp-public-data--gnomad/truth-sets/hail-{0}/1000G_omni2.5.b37.mt'.format(hail_version)
 
 
 def mills_mt_path(hail_version=CURRENT_HAIL_VERSION):
-    return 'gs://gnomad-public/truth-sets/hail-{0}/Mills_and_1000G_gold_standard.indels.b37.mt'.format(hail_version)
+    return 'gs://gcp-public-data--gnomad/truth-sets/hail-{0}/Mills_and_1000G_gold_standard.indels.b37.mt'.format(hail_version)
 
 
 def hapmap_mt_path(hail_version=CURRENT_HAIL_VERSION):
-    return 'gs://gnomad-public/truth-sets/hail-{0}/hapmap_3.3.b37.mt'.format(hail_version)
+    return 'gs://gcp-public-data--gnomad/truth-sets/hail-{0}/hapmap_3.3.b37.mt'.format(hail_version)
 
 
 def kgp_high_conf_snvs_mt_path(hail_version=CURRENT_HAIL_VERSION):
-    return 'gs://gnomad-public/truth-sets/hail-{0}/1000G_phase1.snps.high_confidence.b37.mt'.format(hail_version)
+    return 'gs://gcp-public-data--gnomad/truth-sets/hail-{0}/1000G_phase1.snps.high_confidence.b37.mt'.format(hail_version)
 
 
 def kgp_phase3_genotypes_mt_path(split: bool = True, hail_version=CURRENT_HAIL_VERSION) -> str:
     """
     1000 Genomes Phase 3 with genotypes (b37)
     Imported from: gs://genomics-public-data/1000-genomes-phase-3/vcf-20150220/ALL.chr*.phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes.vcf
-    Samples populations from: gs://gnomad-public/truth-sets/hail-0.2/1000G.GRCh38.20130502.phase3.sequence.index
+    Samples populations from: gs://gcp-public-data--gnomad/truth-sets/hail-0.2/1000G.GRCh38.20130502.phase3.sequence.index
 
     :param bool split: Whether to load to split or non-split version
     :param str hail_version: Hail version
     :return: Path to 1000 Genomes MT
     :rtype: str
     """
-    return 'gs://gnomad-public/truth-sets/hail-{0}/1000Genomes_phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes{1}.mt'.format(hail_version, '.split' if split else '')
+    return 'gs://gcp-public-data--gnomad/truth-sets/hail-{0}/1000Genomes_phase3_shapeit2_mvncall_integrated_v5a.20130502.genotypes{1}.mt'.format(hail_version, '.split' if split else '')
 
 
 def NA12878_mt_path(hail_version=CURRENT_HAIL_VERSION):
-    return 'gs://gnomad-public/truth-sets/hail-{0}/NA12878_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-Solid-10X_CHROM1-X_v3.3_highconf.mt'.format(hail_version)
+    return 'gs://gcp-public-data--gnomad/truth-sets/hail-{0}/NA12878_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-Solid-10X_CHROM1-X_v3.3_highconf.mt'.format(hail_version)
 
 
 def syndip_mt_path(hail_version=CURRENT_HAIL_VERSION):
-    return 'gs://gnomad-public/truth-sets/hail-{0}/hybrid.m37m.mt'.format(hail_version)
+    return 'gs://gcp-public-data--gnomad/truth-sets/hail-{0}/hybrid.m37m.mt'.format(hail_version)
 
 
 def cpg_sites_ht_path():
-    return 'gs://gnomad-public/resources/methylation/cpg.ht'
+    return 'gs://gcp-public-data--gnomad/resources/methylation/cpg.ht'
 
 
 REFERENCE_DATA = {
     'GRCh37': {
         'vep_config': 'gs://hail-common/vep/vep/vep85-loftee-gcloud.json',
-        'all_possible': 'gs://gnomad-public/papers/2019-flagship-lof/v1.0/context/Homo_sapiens_assembly19.fasta.snps_only.vep_20181129.ht',
-        'methylation': 'gs://gnomad-public/resources/methylation/methylation.ht',
+        'all_possible': 'gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.0/context/Homo_sapiens_assembly19.fasta.snps_only.vep_20181129.ht',
+        'methylation': 'gs://gcp-public-data--gnomad/resources/methylation/methylation.ht',
     },
     'GRCh38': {
         'vep_config': 'gs://hail-common/vep/vep/vep95-GRCh38-loftee-gcloud.json',
@@ -483,35 +483,35 @@ def vep_config_path(ref: str = 'GRCh37'):
 vep_config = vep_config_path()  # For backwards-compatibility
 
 
-dbsnp_vcf_path = "gs://gnomad-public/truth-sets/source/All_20180423.vcf.bgz"
-dbsnp_ht_path = "gs://gnomad-public/truth-sets/source/All_20180423.ht"
+dbsnp_vcf_path = "gs://gcp-public-data--gnomad/truth-sets/source/All_20180423.vcf.bgz"
+dbsnp_ht_path = "gs://gcp-public-data--gnomad/truth-sets/source/All_20180423.ht"
 
-NA12878_high_conf_regions_bed_path = "gs://gnomad-public/truth-sets/source/NA12878_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-Solid-10X_CHROM1-X_v3.3_highconf.bed"
-NA12878_high_conf_exome_regions_bed_path = "gs://gnomad-public/truth-sets/source/union13callableMQonlymerged_addcert_nouncert_excludesimplerep_excludesegdups_excludedecoy_excludeRepSeqSTRs_noCNVs_v2.18_2mindatasets_5minYesNoRatio.bed"
-syndip_high_conf_regions_bed_path = "gs://gnomad-public/truth-sets/source/hybrid.m37m.bed"
+NA12878_high_conf_regions_bed_path = "gs://gcp-public-data--gnomad/truth-sets/source/NA12878_GIAB_highconf_CG-IllFB-IllGATKHC-Ion-Solid-10X_CHROM1-X_v3.3_highconf.bed"
+NA12878_high_conf_exome_regions_bed_path = "gs://gcp-public-data--gnomad/truth-sets/source/union13callableMQonlymerged_addcert_nouncert_excludesimplerep_excludesegdups_excludedecoy_excludeRepSeqSTRs_noCNVs_v2.18_2mindatasets_5minYesNoRatio.bed"
+syndip_high_conf_regions_bed_path = "gs://gcp-public-data--gnomad/truth-sets/source/hybrid.m37m.bed"
 clinvar_vcf_path = "gs://gnomad-resources/clinvar/source/clinvar_20181028.vcf.bgz"
 clinvar_ht_path = "gs://gnomad-resources/clinvar/hail-0.2/clinvar_20181028.vep.ht"
 
 # Useful intervals
-lcr_intervals_path = "gs://gnomad-public/intervals/LCR.GRCh37_compliant.interval_list"  # "gs://gnomad-public/intervals/LCR.interval_list"
-decoy_intervals_path = "gs://gnomad-public/intervals/mm-2-merged.GRCh37_compliant.bed"  # "gs://gnomad-public/intervals/mm-2-merged.bed.gz"
-purcell5k_intervals_path = "gs://gnomad-public/intervals/purcell5k.interval_list"
-segdup_intervals_path = "gs://gnomad-public/intervals/hg19_self_chain_split_both.bed"
+lcr_intervals_path = "gs://gcp-public-data--gnomad/intervals/LCR.GRCh37_compliant.interval_list"  # "gs://gnomad-public/intervals/LCR.interval_list"
+decoy_intervals_path = "gs://gcp-public-data--gnomad/intervals/mm-2-merged.GRCh37_compliant.bed"  # "gs://gnomad-public/intervals/mm-2-merged.bed.gz"
+purcell5k_intervals_path = "gs://gcp-public-data--gnomad/intervals/purcell5k.interval_list"
+segdup_intervals_path = "gs://gcp-public-data--gnomad/intervals/hg19_self_chain_split_both.bed"
 
 # Exome intervals
-exomes_high_conf_regions_intervals_path = "gs://gnomad-public/intervals/exomes_high_coverage.auto.interval_list"
-exome_calling_intervals_path = 'gs://gnomad-public/intervals/exome_calling_regions.v1.interval_list'
-evaluation_intervals_path = 'gs://gnomad-public/intervals/exome_evaluation_regions.v1.noheader.interval_list'
-high_coverage_intervals_path = 'gs://gnomad-public/intervals/high_coverage.auto.interval_list'
+exomes_high_conf_regions_intervals_path = "gs://gcp-public-data--gnomad/intervals/exomes_high_coverage.auto.interval_list"
+exome_calling_intervals_path = 'gs://gcp-public-data--gnomad/intervals/exome_calling_regions.v1.interval_list'
+evaluation_intervals_path = 'gs://gcp-public-data--gnomad/intervals/exome_evaluation_regions.v1.noheader.interval_list'
+high_coverage_intervals_path = 'gs://gcp-public-data--gnomad/intervals/high_coverage.auto.interval_list'
 
 # Genome intervals
-genome_evaluation_intervals_path = "gs://gnomad-public/intervals/hg19-v0-wgs_evaluation_regions.v1.interval_list"  # from Broad GP
-genome_evaluation_intervals_path_hg38 = "gs://gnomad-public/intervals/hg38-v0-wgs_evaluation_regions.hg38.interval_list"
+genome_evaluation_intervals_path = "gs://gcp-public-data--gnomad/intervals/hg19-v0-wgs_evaluation_regions.v1.interval_list"  # from Broad GP
+genome_evaluation_intervals_path_hg38 = "gs://gcp-public-data--gnomad/intervals/hg38-v0-wgs_evaluation_regions.hg38.interval_list"
 # More can be found at gs://broad-references/hg19
 
 
 # constraint_ht_path = 'gs://gnomad-public/release/2.1/ht/constraint/constraint.ht'
-constraint_ht_path = 'gs://gnomad-public/papers/2019-flagship-lof/v1.0/gnomad.v2.1.1.lof_metrics.by_gene.ht'
+constraint_ht_path = 'gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.0/gnomad.v2.1.1.lof_metrics.by_gene.ht'
 
 
 # Sample QC files
@@ -545,13 +545,13 @@ def get_gnomad_liftover_data_path(data_type, version=CURRENT_RELEASE) -> str:
     if data_type != 'exomes' and data_type != 'genomes': 
         raise DataException("Select data_type as one of 'genomes' or 'exomes'")
 
-    return f'gs://gnomad-public/release/{version}/liftover_grch38/ht/{data_type}/gnomad.{data_type}.r{version}.sites.liftover_grch38.ht'
+    return f'gs://gcp-public-data--gnomad/release/{version}/liftover_grch38/ht/{data_type}/gnomad.{data_type}.r{version}.sites.liftover_grch38.ht'
 
 
 gnomad_sv_mt_path = 'gs://gnomad/sv/gnomAD-SV_v2_rev1.polished.mt'
 gnomad_sv_vcf_path = 'gs://gnomad/sv/gnomAD-SV_v2_rev1.polished.vcf.gz'
-gnomad_sv_public_sites_vcf_path = 'gs://gnomad-public/papers/2019-sv/gnomad_v2.1_sv.sites.vcf.gz'
-gnomad_sv_public_hists_ht_path = 'gs://gnomad-public/papers/2019-sv/gnomad_sv_hists.ht'
+gnomad_sv_public_sites_vcf_path = 'gs://gcp-public-data--gnomad/papers/2019-sv/gnomad_v2.1_sv.sites.vcf.gz'
+gnomad_sv_public_hists_ht_path = 'gs://gcp-public-data--gnomad/papers/2019-sv/gnomad_sv_hists.ht'
 gnomad_sv_release_samples_list_path = 'gs://gnomad/sv/gnomAD-SV_v2_rev1_releasable.samples.list'
 
 class DataException(Exception):

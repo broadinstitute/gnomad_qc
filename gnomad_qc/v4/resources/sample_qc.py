@@ -144,7 +144,7 @@ def get_relatedness_annotated_ht() -> hl.Table:
 
 
 gnomad_v4_qc_sites = TableResource(
-    "gs://gnomad-public/resources/grch38/gnomad_v4_qc_sites_b38.ht"
+    "gs://gcp-public-data--gnomad/resources/grch38/gnomad_v4_qc_sites_b38.ht"
 )
 
 # Dense MT of samples at QC sites

@@ -169,7 +169,7 @@ def main(args):
 
     if args.generate_hists:
         hists_ht = generate_hists()
-        hists_ht.write('gs://gnomad-public/papers/2019-sv/gnomad_sv_hists.ht', overwrite=args.overwrite)
+        hists_ht.write('gs://gnomad-public-requester-pays/papers/2019-sv/gnomad_sv_hists.ht', overwrite=args.overwrite)
 
 
 if __name__ == '__main__':
