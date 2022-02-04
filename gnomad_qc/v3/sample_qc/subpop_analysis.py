@@ -55,19 +55,41 @@ def compute_subpop_qc_mt(
         & hl.is_missing(lcr_intervals.ht()[release_ht.locus])
     ).key_by("locus")
 
-    # Densify the MT and include only sites defined in the qc_sites HT
+    # Filter to only sites defined in the qc_sites HT
     mt = mt.select_entries(
-        "END", GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
+        "END", "LA", GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
     )
 
-    logger.info(f"Checkpointing the QC sites HT of biallelic SNVs that are not in low-confidence regions and have a popmax above the specified minimum allele frequency of {min_popmax_af}.")
+    # Filter to QC sites
+    last_END_positions_ht = hl.read_table(last_END_position.path)
+    qc_sites = qc_sites.key_by("locus")
+    qc_sites = qc_sites.annotate(
+        interval=hl.locus_interval(
+            qc_sites.locus.contig,
+            last_END_positions_ht[qc_sites.key].last_END_position,
+            end=qc_sites.locus.position,
+            includes_end=True,
+            reference_genome=qc_sites.locus.dtype.reference_genome,
+        )
+    )
+    qc_sites = qc_sites.filter(hl.is_defined(qc_sites.interval))
+
+    logger.info(
+        f"Checkpointing the QC sites HT of biallelic SNVs that are not in low-confidence regions and have a popmax above the specified minimum allele frequency of {min_popmax_af}."
+    )
     qc_sites = qc_sites.checkpoint(
         get_checkpoint_path("qc_sites"),
         overwrite=args.overwrite,
         _read_if_exists=not args.overwrite,
     )
 
-    mt = densify_sites(mt, qc_sites, hl.read_table(last_END_position.path))
+    mt = mt.filter_rows(hl.is_defined(qc_sites.key_by("interval")[mt.locus]))
+
+    logger.info("Converting MT to VDS...")
+    vds = hl.vds.VariantDataset.from_merged_representation(mt)
+
+    logger.info("Densifying data...")
+    mt = hl.vds.to_dense_mt(vds)
 
     return mt
 
@@ -203,7 +225,9 @@ def main(args):  # noqa: D103
                 )
 
             if not include_unreleasable_samples:
-                mt = mt.filter_cols(mt.project_meta.releasable & ~mt.project_meta.exclude)
+                mt = mt.filter_cols(
+                    mt.project_meta.releasable & ~mt.project_meta.exclude
+                )
             if high_quality:
                 mt = mt.filter_cols(mt.high_quality)
             if args.outlier_ht_path is not None:
@@ -218,7 +242,10 @@ def main(args):  # noqa: D103
 
             pop_pca_evals_ht = hl.Table.parallelize(
                 hl.literal(
-                    [{"PC": i + 1, "eigenvalue": x} for i, x in enumerate(pop_pca_evals)],
+                    [
+                        {"PC": i + 1, "eigenvalue": x}
+                        for i, x in enumerate(pop_pca_evals)
+                    ],
                     "array<struct{PC: int, eigenvalue: float}>",
                 )
             )
