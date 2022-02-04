@@ -50,7 +50,7 @@ def release_ht_path(
     :return: File path for desired Hail Table
     """
     if public:
-        return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
+        return f"gs://gcp-public-data--gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
     else:
         return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
 

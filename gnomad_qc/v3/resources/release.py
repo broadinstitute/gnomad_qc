@@ -60,7 +60,7 @@ def release_ht_path(
     if public:
         if het_nonref_patch:
             DataException("The patch HT will not be made public")
-        return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
+        return f"gs://gcp-public-data--gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
     else:
         return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}{'.patch' if het_nonref_patch else ''}.sites.ht"
 
