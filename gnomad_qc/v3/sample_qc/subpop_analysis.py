@@ -22,7 +22,7 @@ from gnomad.utils.sparse_mt import densify_sites
 from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad_qc.v3.resources import release_sites
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
-from gnomad_qc.v3.resources.annotations import get_info, last_END_position
+from gnomad_qc.v3.resources.annotations import get_info
 
 
 logging.basicConfig(
@@ -73,7 +73,7 @@ def compute_subpop_qc_mt(
     vds = hl.vds.VariantDataset.from_merged_representation(mt)
 
     logger.info("Filtering to QC sites...")
-    vds = filter_variants(vds, qc_sites)
+    vds = hl.vds.filter_variants(vds, qc_sites)
 
     logger.info("Densifying data...")
     mt = hl.vds.to_dense_mt(vds)
