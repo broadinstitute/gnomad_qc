@@ -34,11 +34,12 @@ logger.setLevel(logging.INFO)
 
 
 def compute_subpop_qc_mt(
-    mt: hl.MatrixTable, min_popmax_af: float = 0.001,
+    mt: hl.MatrixTable,
+    min_popmax_af: float = 0.001,
 ) -> hl.MatrixTable:
     """
     Generate the subpop QC MT to be used for all subpop analyses.
-    
+
     Filter MT to bi-allelic SNVs at sites with popmax allele frequency greater than `min_popmax_af`, densify, and write MT.
 
     :param mt: Raw MatrixTable to use for the subpop analysis
@@ -55,25 +56,6 @@ def compute_subpop_qc_mt(
         & hl.is_missing(lcr_intervals.ht()[release_ht.locus])
     ).key_by("locus")
 
-    # Filter to only sites defined in the qc_sites HT
-    mt = mt.select_entries(
-        "END", "LA", GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
-    )
-
-    # Filter to QC sites
-    last_END_positions_ht = hl.read_table(last_END_position.path)
-    qc_sites = qc_sites.key_by("locus")
-    qc_sites = qc_sites.annotate(
-        interval=hl.locus_interval(
-            qc_sites.locus.contig,
-            last_END_positions_ht[qc_sites.key].last_END_position,
-            end=qc_sites.locus.position,
-            includes_end=True,
-            reference_genome=qc_sites.locus.dtype.reference_genome,
-        )
-    )
-    qc_sites = qc_sites.filter(hl.is_defined(qc_sites.interval))
-
     logger.info(
         f"Checkpointing the QC sites HT of biallelic SNVs that are not in low-confidence regions and have a popmax above the specified minimum allele frequency of {min_popmax_af}."
     )
@@ -83,10 +65,15 @@ def compute_subpop_qc_mt(
         _read_if_exists=not args.overwrite,
     )
 
-    mt = mt.filter_rows(hl.is_defined(qc_sites.key_by("interval")[mt.locus]))
-
     logger.info("Converting MT to VDS...")
+    mt = mt.select_entries(
+        "END", "LA", GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
+    )
+
     vds = hl.vds.VariantDataset.from_merged_representation(mt)
+
+    logger.info("Filtering to QC sites...")
+    vds = filter_variants(vds, qc_sites)
 
     logger.info("Densifying data...")
     mt = hl.vds.to_dense_mt(vds)
@@ -104,7 +91,7 @@ def filter_subpop_qc(
 ) -> hl.MatrixTable:
     """
     Generate the QC MT per specified population.
-    
+
     .. note::
 
         Hard filtered samples are removed before running `get_qc_mt`
@@ -289,10 +276,12 @@ if __name__ == "__main__":
         description="This script generates a QC MT and PCA scores to use for subpop analyses"
     )
     parser.add_argument(
-        "--slack-token", help="Slack token that allows integration with slack",
+        "--slack-token",
+        help="Slack token that allows integration with slack",
     )
     parser.add_argument(
-        "--slack-channel", help="Slack channel to post results and notifications to",
+        "--slack-channel",
+        help="Slack channel to post results and notifications to",
     )
     parser.add_argument(
         "--overwrite", help="Overwrites existing files", action="store_true"
@@ -342,7 +331,10 @@ if __name__ == "__main__":
         default=1e-8,
     )
     parser.add_argument(
-        "--ld-r2", help="Minimum r2 to keep when LD-pruning", type=float, default=0.1,
+        "--ld-r2",
+        help="Minimum r2 to keep when LD-pruning",
+        type=float,
+        default=0.1,
     )
     parser.add_argument(
         "--outlier-ht-path",
@@ -365,7 +357,9 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--assign-subpops", help="Runs function to assign subpops", action="store_true",
+        "--assign-subpops",
+        help="Runs function to assign subpops",
+        action="store_true",
     )
 
     args = parser.parse_args()
