@@ -54,7 +54,7 @@ def compute_subpop_qc_mt(
         & ~release_ht.was_split
         & hl.is_snp(release_ht.alleles[0], release_ht.alleles[1])
         & hl.is_missing(lcr_intervals.ht()[release_ht.locus])
-    ).key_by("locus")
+    )
 
     logger.info(
         f"Checkpointing the QC sites HT of biallelic SNVs that are not in low-confidence regions and have a popmax above the specified minimum allele frequency of {min_popmax_af}."
@@ -67,10 +67,11 @@ def compute_subpop_qc_mt(
 
     logger.info("Converting MT to VDS...")
     mt = mt.select_entries(
-        "END", "LA", GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
+        "END", "LA", "LGT", adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
     )
 
     vds = hl.vds.VariantDataset.from_merged_representation(mt)
+    vds = hl.vds.split_multi(vds)
 
     logger.info("Filtering to QC sites...")
     vds = hl.vds.filter_variants(vds, qc_sites)
