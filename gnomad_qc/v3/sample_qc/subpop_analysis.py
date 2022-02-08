@@ -71,7 +71,6 @@ def compute_subpop_qc_mt(
     )
 
     vds = hl.vds.VariantDataset.from_merged_representation(mt)
-    vds = hl.vds.split_multi(vds)
 
     logger.info("Filtering to QC sites...")
     vds = hl.vds.filter_variants(vds, qc_sites)
