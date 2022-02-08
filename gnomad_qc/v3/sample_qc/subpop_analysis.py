@@ -22,7 +22,7 @@ from gnomad.utils.sparse_mt import densify_sites
 from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad_qc.v3.resources import release_sites
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
-from gnomad_qc.v3.resources.annotations import get_info, last_END_position
+from gnomad_qc.v3.resources.annotations import get_info
 
 
 logging.basicConfig(
@@ -34,11 +34,12 @@ logger.setLevel(logging.INFO)
 
 
 def compute_subpop_qc_mt(
-    mt: hl.MatrixTable, min_popmax_af: float = 0.001,
+    mt: hl.MatrixTable,
+    min_popmax_af: float = 0.001,
 ) -> hl.MatrixTable:
     """
     Generate the subpop QC MT to be used for all subpop analyses.
-    
+
     Filter MT to bi-allelic SNVs at sites with popmax allele frequency greater than `min_popmax_af`, densify, and write MT.
 
     :param mt: Raw MatrixTable to use for the subpop analysis
@@ -53,21 +54,29 @@ def compute_subpop_qc_mt(
         & ~release_ht.was_split
         & hl.is_snp(release_ht.alleles[0], release_ht.alleles[1])
         & hl.is_missing(lcr_intervals.ht()[release_ht.locus])
-    ).key_by("locus")
-
-    # Densify the MT and include only sites defined in the qc_sites HT
-    mt = mt.select_entries(
-        "END", GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
     )
 
-    logger.info(f"Checkpointing the QC sites HT of biallelic SNVs that are not in low-confidence regions and have a popmax above the specified minimum allele frequency of {min_popmax_af}.")
+    logger.info(
+        f"Checkpointing the QC sites HT of biallelic SNVs that are not in low-confidence regions and have a popmax above the specified minimum allele frequency of {min_popmax_af}."
+    )
     qc_sites = qc_sites.checkpoint(
         get_checkpoint_path("qc_sites"),
         overwrite=args.overwrite,
         _read_if_exists=not args.overwrite,
     )
 
-    mt = densify_sites(mt, qc_sites, hl.read_table(last_END_position.path))
+    logger.info("Converting MT to VDS...")
+    mt = mt.select_entries(
+        "END", "LA", "LGT", adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
+    )
+
+    vds = hl.vds.VariantDataset.from_merged_representation(mt)
+
+    logger.info("Filtering to QC sites...")
+    vds = hl.vds.filter_variants(vds, qc_sites)
+
+    logger.info("Densifying data...")
+    mt = hl.vds.to_dense_mt(vds)
 
     return mt
 
@@ -82,7 +91,7 @@ def filter_subpop_qc(
 ) -> hl.MatrixTable:
     """
     Generate the QC MT per specified population.
-    
+
     .. note::
 
         Hard filtered samples are removed before running `get_qc_mt`
@@ -203,7 +212,9 @@ def main(args):  # noqa: D103
                 )
 
             if not include_unreleasable_samples:
-                mt = mt.filter_cols(mt.project_meta.releasable & ~mt.project_meta.exclude)
+                mt = mt.filter_cols(
+                    mt.project_meta.releasable & ~mt.project_meta.exclude
+                )
             if high_quality:
                 mt = mt.filter_cols(mt.high_quality)
             if args.outlier_ht_path is not None:
@@ -218,7 +229,10 @@ def main(args):  # noqa: D103
 
             pop_pca_evals_ht = hl.Table.parallelize(
                 hl.literal(
-                    [{"PC": i + 1, "eigenvalue": x} for i, x in enumerate(pop_pca_evals)],
+                    [
+                        {"PC": i + 1, "eigenvalue": x}
+                        for i, x in enumerate(pop_pca_evals)
+                    ],
                     "array<struct{PC: int, eigenvalue: float}>",
                 )
             )
@@ -262,10 +276,12 @@ if __name__ == "__main__":
         description="This script generates a QC MT and PCA scores to use for subpop analyses"
     )
     parser.add_argument(
-        "--slack-token", help="Slack token that allows integration with slack",
+        "--slack-token",
+        help="Slack token that allows integration with slack",
     )
     parser.add_argument(
-        "--slack-channel", help="Slack channel to post results and notifications to",
+        "--slack-channel",
+        help="Slack channel to post results and notifications to",
     )
     parser.add_argument(
         "--overwrite", help="Overwrites existing files", action="store_true"
@@ -315,7 +331,10 @@ if __name__ == "__main__":
         default=1e-8,
     )
     parser.add_argument(
-        "--ld-r2", help="Minimum r2 to keep when LD-pruning", type=float, default=0.1,
+        "--ld-r2",
+        help="Minimum r2 to keep when LD-pruning",
+        type=float,
+        default=0.1,
     )
     parser.add_argument(
         "--outlier-ht-path",
@@ -338,7 +357,9 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--assign-subpops", help="Runs function to assign subpops", action="store_true",
+        "--assign-subpops",
+        help="Runs function to assign subpops",
+        action="store_true",
     )
 
     args = parser.parse_args()
