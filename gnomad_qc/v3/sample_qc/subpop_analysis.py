@@ -115,6 +115,7 @@ def filter_subpop_qc(
         )
     )
     mt = mt.annotate_rows(info=info_ht[mt.row_key].info)
+    mt = mt.transmute_entries(GT=mt.LGT)
 
     # Add sample metadata to the QC MT
     mt = mt.annotate_cols(**meta_ht[mt.col_key])
