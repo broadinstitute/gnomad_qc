@@ -30,7 +30,7 @@ The gnomAD release HT annotations are defined below:
     * **n_larger**: Count of age values falling above highest histogram bin edge.
 * **freq_sample_count**: A sample count per sample grouping defined in the 'freq_meta' global annotation.
 
-**Row fields**
+**Row fields**:
 
 * **locus**: Variant locus. Contains contig and position information.
 * **alleles**: Variant alleles.
