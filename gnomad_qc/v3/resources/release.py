@@ -7,6 +7,9 @@ from gnomad.resources.resource_utils import (
     VersionedMatrixTableResource,
     VersionedTableResource,
 )
+from gnomad.resources.grch38.gnomad import public_release
+from gnomad.utils.file_utils import file_exists
+
 
 from gnomad_qc.v3.resources.basics import qc_temp_prefix
 from gnomad_qc.v3.resources.constants import (
@@ -60,7 +63,10 @@ def release_ht_path(
     if public:
         if het_nonref_patch:
             DataException("The patch HT will not be made public")
-        return f"gs://gcp-public-data--gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
+        if file_exists(public_release(data_type).versions[release_version].path):
+            return public_release(data_type).versions[release_version].path
+        else:
+            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
     else:
         return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}{'.patch' if het_nonref_patch else ''}.sites.ht"
 
