@@ -255,7 +255,7 @@ def get_freq_comparison(
             f"One of the versions/datatypes supplied doesn't exist. Possible options are: {versions}"
         )
 
-    ht_path = f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq{'.logistic_regression'}.ht"
+    ht_path = f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq{'.logistic_regression' if logistic_regression else ''}.ht"
     if version1 in RELEASES:
         ht_path = f"{_annotations_root(version1)}/{ht_path}"
     else:
