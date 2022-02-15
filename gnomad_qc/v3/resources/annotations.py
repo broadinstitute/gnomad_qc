@@ -224,17 +224,24 @@ analyst_annotations = VersionedTableResource(
 )
 
 
-def get_freq_comparison(version1, data_type1, version2, data_type2):
+def get_freq_comparison(
+    version1: str,
+    data_type1: str,
+    version2: str,
+    data_type2: str,
+    logistic_regression: bool = False,
+):
     """
     Get Table resource for a frequency comparison between two gnomAD versions.
 
     Table contains results from a chi squared test and fishers exact test comparing the variant frequencies of two
     gnomAD versions/data types.
 
-    :param version1: First gnomAD version in the frequency comparison. Table will be in the root annotation path for this gnomAD version.
-    :param data_type1: Data type of first version in the frequency comparison. One of "exomes" or "genomes". Table will be in the root annotation path for this gnomAD data type.
-    :param version2: Second gnomAD version in the frequency comparison.
-    :param data_type2: Data type of first version in the frequency comparison. One of "exomes" or "genomes".
+    :param version1: First gnomAD version in the frequency comparison. Table will be in the root annotation path for this gnomAD version
+    :param data_type1: Data type of first version in the frequency comparison. One of "exomes" or "genomes". Table will be in the root annotation path for this gnomAD data type
+    :param version2: Second gnomAD version in the frequency comparison
+    :param data_type2: Data type of first version in the frequency comparison. One of "exomes" or "genomes"
+    :param logistic_regression: Whether the resource is for the logistic_regression comparison that takes into account ancestry. Defualt is the contingency table test
     :return: Hail Table containing results from chi squared test and fishers exact test
     """
     versions = [r + "_exomes" for r in EXOME_RELEASES] + [
@@ -248,9 +255,7 @@ def get_freq_comparison(version1, data_type1, version2, data_type2):
             f"One of the versions/datatypes supplied doesn't exist. Possible options are: {versions}"
         )
 
-    ht_path = (
-        f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq.ht"
-    )
+    ht_path = f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq{'.logistic_regression'}.ht"
     if version1 in RELEASES:
         ht_path = f"{_annotations_root(version1)}/{ht_path}"
     else:
