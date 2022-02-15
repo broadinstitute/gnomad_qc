@@ -1,5 +1,6 @@
 from typing import Optional
 
+from gnomad.resources.grch38.gnomad import public_release
 from gnomad.resources.resource_utils import (
     DataException,
     MatrixTableResource,
@@ -7,9 +8,7 @@ from gnomad.resources.resource_utils import (
     VersionedMatrixTableResource,
     VersionedTableResource,
 )
-from gnomad.resources.grch38.gnomad import public_release
 from gnomad.utils.file_utils import file_exists
-
 
 from gnomad_qc.v3.resources.basics import qc_temp_prefix
 from gnomad_qc.v3.resources.constants import (
