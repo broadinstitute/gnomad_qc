@@ -165,7 +165,7 @@ def release_ht_path(data_type: str, release_tag=RELEASE_VERSION, nested=True, wi
     tag = tag + '.temp' if temp else tag
     release = RELEASE_VERSION[1:] if release_tag==RELEASE_VERSION else release_tag
     if nested and with_subsets:
-        return f'gs://gnomad-public/release/{release}/ht/{data_type}/gnomad.{data_type}.{release_tag}.sites.ht'
+        return f'gs://gcp-public-data--gnomad/release/{release}/ht/{data_type}/gnomad.{data_type}.{release_tag}.sites.ht'
     else:
         return f'gs://gnomad/release/{release}/ht/gnomad.{data_type}.{release_tag}.{tag}.sites.ht'
 
@@ -182,11 +182,11 @@ def release_vcf_path(data_type: str, release_tag=RELEASE_VERSION, contig=None, c
     '''
     release = release_tag.lstrip('r')
     if contig:
-        return f'gs://gnomad-public/release/{release}/vcf/{data_type}/gnomad.{data_type}.{release_tag}.sites.{contig}.vcf.bgz'
+        return f'gs://gcp-public-data--gnomad/release/{release}/vcf/{data_type}/gnomad.{data_type}.{release_tag}.sites.{contig}.vcf.bgz'
     elif data_type == 'genomes' and coding_only:
-        return f'gs://gnomad-public/release/{release}/vcf/{data_type}/gnomad.{data_type}.{release_tag}.exome_calling_intervals.sites.vcf.bgz'
+        return f'gs://gcp-public-data--gnomad/release/{release}/vcf/{data_type}/gnomad.{data_type}.{release_tag}.exome_calling_intervals.sites.vcf.bgz'
     else:
-        return f'gs://gnomad-public/release/{release}/vcf/{data_type}/gnomad.{data_type}.{release_tag}.sites.vcf.bgz'
+        return f'gs://gcp-public-data--gnomad/release/{release}/vcf/{data_type}/gnomad.{data_type}.{release_tag}.sites.vcf.bgz'
 
 
 def release_var_hist_path(data_type: str, release_tag=RELEASE_VERSION):
@@ -195,7 +195,7 @@ def release_var_hist_path(data_type: str, release_tag=RELEASE_VERSION):
 
 
 def get_ucsc_mappability():
-    ucsc_mappability = hl.import_table('gs://gnomad-public/resources/ucsc/wgEncodeDukeMapabilityUniqueness35bp.bedGraph', impute=True, no_header=True)
+    ucsc_mappability = hl.import_table('gs://gcp-public-data--gnomad/resources/ucsc/wgEncodeDukeMapabilityUniqueness35bp.bedGraph', impute=True, no_header=True)
     return ucsc_mappability.select(
         interval=hl.interval(
             hl.locus(ucsc_mappability.f0[3:], ucsc_mappability.f1 + 1),
