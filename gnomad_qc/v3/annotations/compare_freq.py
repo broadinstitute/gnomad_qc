@@ -2,9 +2,11 @@
 Compare frequencies for two gnomAD versions.
 
 Generate a Hail Table containing frequencies for two gnomAD versions (specified using `args.versions_to_compare`),
-and the following tests comparing the two frequencies:
-    - Chi squared test
-    - Fisher's exact test
+and one of the following tests comparing the two frequencies:
+    - Hail's contingency table test -- chi-squared or Fisher’s exact test of independence depending on min cell count
+    - A logistic regression on the rows of a unified MatrixTable: version ~ genotype + [ancestry_pcs]. This second test
+    is currently only implemented for the comparison of v3 genomes to v2 exomes and is therefore this:
+    genome_vs_exome_status ~ genotype + [ancestry_pcs].
 
 The Table is written out to the location of the more recent of the two gnomAD versions being compared.
 """
@@ -35,8 +37,13 @@ from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.liftover import default_lift_data
 from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v2.resources.basics import get_gnomad_data, get_gnomad_meta
-from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_gnomad_v3_mt, get_logging_path
+from gnomad_qc.v3.resources.basics import (
+    get_checkpoint_path,
+    get_gnomad_v3_mt,
+    get_logging_path,
+)
 from gnomad_qc.v3.resources.annotations import get_freq_comparison
 from gnomad_qc.v3.resources.sample_qc import (
     v2_v3_pc_project_pca_scores,
@@ -75,7 +82,6 @@ def extract_freq_info(version1: str, version2: str, pops: List[str]) -> hl.Table
     :param pops: List of populations in the order of the frequency lists, excluding the first 2 entries (adj, raw)
     :return: Table with combined and filtered frequency information from two gnomAD versions
     """
-
     versions = [version1, version2]
     release_resource_map = {"v2": v2_public_release, "v3": v3_public_release}
 
@@ -134,10 +140,10 @@ def perform_contingency_table_test(
     min_cell_count: int = 1000,
 ) -> hl.Table:
     """
-    Perform Hail's `contingency_table_test` on the alleles between two gnomAD versions in `ht`.
+    Perform Hail's `contingency_table_test` on the alleles counts between two gnomAD versions in `ht`.
 
-    This is done on the 2x2 matrix of reference and alternate alleles. The chi-squared test is used for any case where
-    all cells of the 2x2 matrix are greater than `min_cell_count`. Otherwise Fisher’s exact test is used.
+    This is done on the 2x2 matrix of reference and alternate allele counts. The chi-squared test is used for any case
+    where all cells of the 2x2 matrix are greater than `min_cell_count`. Otherwise Fisher’s exact test is used.
 
     Table must include two struct annotations with AN and AC counts for versions of gnomAD labeled `freq_version`.
 
@@ -186,12 +192,50 @@ def perform_contingency_table_test(
     return ht
 
 
+def filter_and_densify_v3_mt(filter_ht: hl.Table, test: bool = False):
+    """
+    Load, filter (to variants in `filter_ht`), and densify the gnomAD v3.1 MatrixTable.
+
+    :param filter_ht: Table including variants the v3.1 MatrixTable should be filtered to
+    :param test: Whether to filter the v3.1 MatrixTable to the first 5 partitions for testing
+    :return: Dense gnomAD v3.1 MatrixTable containing only variants in `filter_ht`
+    """
+    # Loading unsplit v3 because this is needed for the conversion to VDS before the necessary densify
+    logger.info("Loading v3.1 gnomAD MatrixTable...")
+    mt = get_gnomad_v3_mt(
+        key_by_locus_and_alleles=True,
+        remove_hard_filtered_samples=False,
+        samples_meta=True,
+        release_only=True,
+    )
+
+    if test:
+        mt = mt._filter_partitions(range(5))
+
+    logger.info("Converting MatrixTable to VDS...")
+    mt = mt.select_entries(
+        "END", "LA", "LGT", adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
+    )
+    vds = hl.vds.VariantDataset.from_merged_representation(mt)
+
+    logger.info(
+        "Performing split-multi and filtering variants..."
+    )
+    vds = hl.vds.split_multi(vds, filter_changed_loci=True)
+    vds = hl.vds.filter_variants(vds, filter_ht)
+
+    logger.info("Densifying data...")
+    mt = hl.vds.to_dense_mt(vds)
+
+    return mt
+
+
 def project_on_exome_pop_pcs(test: bool = False) -> hl.Table:
     """
     Performs `pc_project` on gnomAD v3.1 using gnomAD v2 population PCA loadings.
 
-    :param test: Whether to filter both MTs to the first 5 partitions for testing
-    :return: Table with PC project scores of gnomAD v3.1 onto v2 PCs combined with v2 PCs
+    :param test: Whether to filter the v3.1 MatrixTable to the first 5 partitions for testing
+    :return: Table with PC project scores of gnomAD v3.1 projected onto v2 PCs combined with the v2 PCs
     """
     # Load gnomAD metadata and population pc loadings
     v2_exome_meta_ht = get_gnomad_meta("exomes", full_meta=True)
@@ -213,31 +257,8 @@ def project_on_exome_pop_pcs(test: bool = False) -> hl.Table:
     )
 
     # Need to densify before running pc project
-    logger.info("Loading v3.1 gnomAD MT...")
-    mt = get_gnomad_v3_mt(
-        key_by_locus_and_alleles=True,
-        remove_hard_filtered_samples=False,
-        samples_meta=True,
-        release_only=True,
-    )
-
-    if test:
-        mt = mt._filter_partitions(range(5))
-
-    logger.info("Converting MT to VDS...")
-    mt = mt.select_entries(
-        "END", "LA", "LGT", adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
-    )
-    vds = hl.vds.VariantDataset.from_merged_representation(mt)
-
-    logger.info(
-        "Performing split-multi and filtering to gnomAD v2 PCA loading sites..."
-    )
-    vds = hl.vds.split_multi(vds, filter_changed_loci=True)
-    vds = hl.vds.filter_variants(vds, v2_exome_loadings_ht)
-
-    logger.info("Densifying data...")
-    mt = hl.vds.to_dense_mt(vds)
+    logger.info("Loading v3.1 gnomAD MatrixTable...")
+    mt = filter_and_densify_v3_mt(v2_exome_loadings_ht, test)
 
     logger.info(
         "Performing PC projection of gnomAD v3 samples into gnomAD v2 PC space..."
@@ -261,9 +282,9 @@ def perform_logistic_regression(
     use_pc_project: bool,
     use_v3_qc_pc_scores: bool,
     read_checkpoint_if_exists: bool = False,
-):
+) -> hl.Table:
     """
-    Perform Hail's `logistic_regression_rows` on the unified MT of two gnomAD version MTs including ancestry PCs.
+    Perform Hail's `logistic_regression_rows` on the unified MatrixTable of two gnomAD versions including ancestry PCs.
 
     .. warning::
 
@@ -274,31 +295,17 @@ def perform_logistic_regression(
     :param ht: Table containing frequency information
     :param version1: First gnomAD version to extract frequency information from (v3_genomes, v2_exomes)
     :param version2: Second gnomAD version to extract frequency information from (v3_genomes, v2_exomes)
-    :param test: Whether to filter both MTs to the first 5 partitions for testing
+    :param test: Whether to filter both MatrixTables to the first 5 partitions for testing
     :param use_pc_project: Whether to use PC project ancestry PCs
-    :param use_v3_qc_pc_scores: Whether to use precomputed v2/v3 ancestry PCs (doesn't included v3.1 samples and uses 10% of v3 ancestry PCA variants)
-    :param read_checkpoint_if_exists: Whether to read the checkpointed v2/v3 unified MT if it exists
+    :param use_v3_qc_pc_scores: Whether to use precomputed v2/v3 ancestry PCs (included relateds, doesn't include v3.1 samples and uses 10% of v3 ancestry PCA variants)
+    :param read_checkpoint_if_exists: Whether to read the checkpointed v2/v3 unified MatrixTable if it exists
     :return: Table with logistic regression results
     """
     if version1 != "v3_genomes" and version2 != "v2_exomes":
         raise NotImplementedError(
-            "Ancestry inclusion is currently only implemented for the comparison between gnomAD v3 genomes and "
-            "v2 exomes."
+            "Logistic regression with ancestry pca inclusion is currently only implemented for the comparison between "
+            "gnomAD v3 genomes and v2 exomes."
         )
-
-    logger.info("Loading v3 gnomAD and v2 gnomAD exomes MTs...")
-    # Loading unsplit v3 because this is needed for the conversion to VDS before the necessary densify
-    v3_mt = get_gnomad_v3_mt(
-        key_by_locus_and_alleles=True,
-        remove_hard_filtered_samples=False,
-        samples_meta=True,
-        release_only=True,
-    )
-    v2_mt = get_gnomad_data(data_type="exomes", split=True, release_samples=True)
-
-    if test:
-        v3_mt = v3_mt._filter_partitions(range(5))
-        v2_mt = v2_mt._filter_partitions(range(5))
 
     if use_pc_project and not use_v3_qc_pc_scores:
         pc_ht = v2_v3_pc_project_pca_scores.ht()
@@ -309,37 +316,30 @@ def perform_logistic_regression(
             "One and only one of use_pc_project or use_v3_qc_pc_scores must be True!"
         )
 
-    logger.info("Converting v3 MT to VDS...")
-    v3_mt = v3_mt.select_entries(
-        "END", "LA", "LGT", adj=get_adj_expr(v3_mt.LGT, v3_mt.GQ, v3_mt.DP, v3_mt.LAD)
-    )
-    vds = hl.vds.VariantDataset.from_merged_representation(v3_mt)
+    logger.info("Loading v3 gnomAD and v2 gnomAD exomes MatrixTables...")
+    v2_mt = get_gnomad_data(data_type="exomes", split=True, release_samples=True)
 
-    logger.info(
-        "Performing split-multi and filtering the gnomAD v3 MT to the variants found in the joined frequency HT..."
-    )
-    vds = hl.vds.split_multi(vds, filter_changed_loci=True)
-    vds = hl.vds.filter_variants(vds, ht)
+    if test:
+        v2_mt = v2_mt._filter_partitions(range(5))
 
-    logger.info("Densifying v3 MT...")
-    v3_mt = hl.vds.to_dense_mt(vds)
+    v3_mt = filter_and_densify_v3_mt(ht, test)
 
-    logger.info("Adding is_genome annotation to the v3 MT...")
+    logger.info("Adding is_genome annotation to the v3 MatrixTable...")
     v3_mt = v3_mt.annotate_cols(is_genome=True)
     v3_mt = v3_mt.select_entries("GT")
 
     logger.info(
-        "Loading v2 exomes liftover HT for annotation onto the gnomAD v2 exome MT..."
+        "Loading v2 exomes liftover HT for annotation onto the gnomAD v2 exome MatrixTable..."
     )
     v2_liftover_ht = liftover("exomes").ht()
     v2_liftover_ht = v2_liftover_ht.key_by("original_locus", "original_alleles")
     v2_liftover = v2_liftover_ht[v2_mt.row_key]
 
-    logger.info("Rekeying the gnomAD v2 exome MT with liftover locus and alleles...")
+    logger.info("Rekeying the gnomAD v2 exome MatrixTable with liftover locus and alleles...")
     v2_mt = v2_mt.key_rows_by(locus=v2_liftover.locus, alleles=v2_liftover.alleles)
 
     logger.info(
-        "Filtering gnomAD v2 MT to the variants found in the joined frequency HT and adding"
+        "Filtering gnomAD v2 MatrixTable to the variants found in the joined frequency HT and adding "
         "is_genome annotation..."
     )
     v2_mt = v2_mt.filter_rows(hl.is_defined(ht[v2_mt.row_key]))
@@ -347,9 +347,9 @@ def perform_logistic_regression(
     v2_mt = v2_mt.select_entries("GT")
 
     logger.info(
-        "Performing a union of the gnomAD v2 exomes MT and gnomAD v3 MT columns..."
+        "Performing a union of the gnomAD v2 exomes MatrixTable and gnomAD v3 MatrixTable columns..."
     )
-    # Selecting only needed info in order to do the union on MTs
+    # Selecting only needed info in order to do the union on MatrixTables
     v3_mt = v3_mt.select_rows().select_cols("is_genome")
     v2_mt = v2_mt.select_rows().select_cols("is_genome")
     mt = v2_mt.union_cols(v3_mt)
@@ -380,7 +380,7 @@ def main(args):
     hl.init(log="/compare_freq.log")
 
     try:
-        # Reorder so that v3_genomes is first in version. Forces the output location to be in more recent release location
+        # Reorder so that v3_genomes is version1. Forces the output location to be in the more recent release location
         version1, version2 = [
             v
             for v in ["v3_genomes", "v2_genomes", "v2_exomes"]
@@ -415,7 +415,7 @@ def main(args):
                 get_checkpoint_path(f"v3_pc_project_on_v2.test")
                 if args.test
                 else v2_v3_pc_project_pca_scores.versions["3.1"].path,
-                overwrite=args.ovewrite,
+                overwrite=args.overwrite,
             )
 
         if args.logistic_regression:
@@ -424,7 +424,7 @@ def main(args):
                 version1,
                 version2,
                 args.test,
-                args.run_pc_project,
+                args.use_pc_project,
                 args.use_v3_qc_pc_scores,
                 args.read_checkpoint_if_exists,
             )
@@ -454,12 +454,10 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--slack_channel", help="Slack channel to post results and notifications to."
+        "--slack-channel", help="Slack channel to post results and notifications to."
     )
     parser.add_argument(
-        "--overwrite",
-        help="Overwrite all data from this subset. (default: False).",
-        action="store_true",
+        "--overwrite", help="Overwrite output files.", action="store_true",
     )
     parser.add_argument(
         "--test",
@@ -474,7 +472,7 @@ if __name__ == "__main__":
         default=["v3_genomes", "v2_exomes"],
     )
     parser.add_argument(
-        "--contingency_table_test",
+        "--contingency-table-test",
         help=(
             "Perform chi-squared or Fisher’s exact test of independence on the allele frequencies based "
             "on `min_cell_count`."
@@ -482,25 +480,44 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--min_cell_count",
+        "--min-cell-count",
         help="Minimum count in every cell to use the chi-squared test.",
         type=int,
         default=1000,
     )
     parser.add_argument(
-        "--run_pc_project_v3_on_v2", help="", action="store_true",
+        "--run-pc-project-v3-on-v2",
+        help=(
+            "Run the projection of v3.1 samples onto v2 PCs using v2 loadings. This is needed for '--logistic-regression' "
+            "if '--use-pc-project' is wanted."
+        ),
+        action="store_true",
     )
     parser.add_argument(
-        "--logistic_regression", help="", action="store_true",
+        "--logistic-regression",
+        help=(
+            "Perform a logistic regression of the rows: genome_vs_exome_status ~ genotype + [ancestry_pcs]. Only "
+            "implemented for the comparison of v3 genomes to v2 exomes."
+        ),
+        action="store_true",
     )
     parser.add_argument(
-        "--use_pc_project", help="", action="store_true",
+        "--use-pc-project",
+        help="Use PC project scores as the ancestry PCs in the logistic regression '--logistic-regression'.",
+        action="store_true",
     )
     parser.add_argument(
-        "--use_v3_qc_pc_scores", help="", action="store_true",
+        "--use-v3-qc-pc-scores",
+        help=(
+            "Use the joint v3/v2_exome PC scores from an old run of PC relate (includes relateds and only used 10% of "
+            "QC variants)."
+        ),
+        action="store_true",
     )
     parser.add_argument(
-        "--read_checkpoint_if_exists", help="", action="store_true",
+        "--read-checkpoint-if-exists",
+        help="Whether to read the checkpointed v2/v3 unified MatrixTable if it exists. Used in '--logistic-regression'.",
+        action="store_true",
     )
 
     args = parser.parse_args()
