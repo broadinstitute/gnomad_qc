@@ -16,11 +16,6 @@ from typing import List
 
 import hail as hl
 
-from gnomad.resources.config import (
-    gnomad_public_resource_configuration,
-    GnomadPublicResourceSource,
-)
-from gnomad.resources.resource_utils import ResourceNotAvailable
 from gnomad.resources.grch37.gnomad import (
     CURRENT_EXOME_RELEASE,
     CURRENT_GENOME_RELEASE,
