@@ -92,20 +92,7 @@ def extract_freq_info(version1: str, version2: str, pops: List[str]) -> hl.Table
     hts = []
     for version in versions:
         v, d = version.split("_")
-        try:
-            gnomad_public_resource_configuration.source = (
-                GnomadPublicResourceSource.GOOGLE_CLOUD_PUBLIC_DATASETS
-            )
-            ht = release_resource_map[v](d).ht()
-        except ResourceNotAvailable:
-            logger.warning(
-                "Using data in the gnomAD requester-pays bucket because the current datasets are not available from "
-                "the Google Cloud Public Datasets. If the current machine is outside the US, egress charges will apply!"
-            )
-            gnomad_public_resource_configuration.source = (
-                GnomadPublicResourceSource.GNOMAD
-            )
-            ht = release_resource_map[v](d).ht()
+        ht = release_resource_map[v](d).ht()
 
         logger.info("Filtering %s to only variants that are PASS...", version)
         ht = ht.filter(hl.len(ht.filters) == 0)
@@ -173,20 +160,18 @@ def perform_contingency_table_test(
         "Computing chi squared and fisher exact tests on per population frequencies..."
     )
     ht = ht.transmute(
-        **{
-            "contingency_table_test": hl.struct(
-                **{
-                    pop: hl.contingency_table_test(
-                        ht.n_alt[version1][i],
-                        ht.n_ref[version1][i],
-                        ht.n_alt[version2][i],
-                        ht.n_ref[version2][i],
-                        min_cell_count,
-                    )
-                    for i, pop in enumerate(pops)
-                }
-            ),
-        }
+        contingency_table_test=hl.struct(
+            **{
+                pop: hl.contingency_table_test(
+                    ht.n_alt[version1][i],
+                    ht.n_ref[version1][i],
+                    ht.n_alt[version2][i],
+                    ht.n_ref[version2][i],
+                    min_cell_count,
+                )
+                for i, pop in enumerate(pops)
+            }
+        ),
     )
 
     return ht
@@ -218,9 +203,7 @@ def filter_and_densify_v3_mt(filter_ht: hl.Table, test: bool = False):
     )
     vds = hl.vds.VariantDataset.from_merged_representation(mt)
 
-    logger.info(
-        "Performing split-multi and filtering variants..."
-    )
+    logger.info("Performing split-multi and filtering variants...")
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
     vds = hl.vds.filter_variants(vds, filter_ht)
 
@@ -335,7 +318,9 @@ def perform_logistic_regression(
     v2_liftover_ht = v2_liftover_ht.key_by("original_locus", "original_alleles")
     v2_liftover = v2_liftover_ht[v2_mt.row_key]
 
-    logger.info("Rekeying the gnomAD v2 exome MatrixTable with liftover locus and alleles...")
+    logger.info(
+        "Rekeying the gnomAD v2 exome MatrixTable with liftover locus and alleles..."
+    )
     v2_mt = v2_mt.key_rows_by(locus=v2_liftover.locus, alleles=v2_liftover.alleles)
 
     logger.info(
