@@ -193,7 +193,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
 **Row annotations**:
 
 * **s**: Unique sample ID
-* **project_meta**: Metadata collected from collaborators or previous versions of gnomAD. The description of annotations in this struct can be found in the [gnomad_meta repo](https://github.com/broadinstitute/gnomad_meta/v3.1/README.md) (for internal use only).
+* **project_meta**: Metadata collected from collaborators or previous versions of gnomAD. The description of annotations in this struct can be found in the [gnomad_meta repo](https://github.com/broadinstitute/gnomad_meta/blob/master/v3.1/README.md) (for internal use only).
 
 * **subsets**: Subsets of the gnomAD release HT that the sample belongs to.
     * **non_topmed**: Whether the sample was included in the ‘non_topmed’ subset. Subset contains variants from samples that are not the TOPMED cohort. Generated using the negation of the ‘project_meta.topmed’ annotation.
