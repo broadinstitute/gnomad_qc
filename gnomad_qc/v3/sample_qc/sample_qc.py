@@ -268,7 +268,9 @@ def compute_hard_filters(
         # Remove samples with ambiguous sex assignments
         sex_ht = sex.ht()[ht.key]
         hard_filters["ambiguous_sex"] = sex_ht.sex_karyotype == "ambiguous"
-        hard_filters["sex_aneuploidy"] = ~hl.set({"ambiguous", "XX", "XY"}).contains(  # pylint: disable=invalid-unary-operand-type
+        hard_filters["sex_aneuploidy"] = ~hl.set(
+            {"ambiguous", "XX", "XY"}
+        ).contains(  # pylint: disable=invalid-unary-operand-type
             sex_ht.sex_karyotype
         )
 
@@ -474,6 +476,8 @@ def assign_pops(
     max_mislabeled_training_samples: int = 50,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
     n_pcs: int = 16,
     withhold_prop: float = None,
+    subpops: bool = False,
+    subpops_pca_scores: hl.Table = None,
 ) -> Tuple[hl.Table, Any]:
     """
     Use a random forest model to assign global population labels based on the results from `assign_pca`.
@@ -490,22 +494,46 @@ def assign_pops(
     :param max_mislabeled_training_samples: Maximum number of training samples that can be mislabelled
     :param n_pcs: Number of PCs to use in the RF
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
-    :return: Table of pop assignments and the rf model
+    :param subpops: True if subpops should be assigned rather than pops
+    :param subpops_pca_scores: Table with PCA scores for subpops, needed if `subpops` parameter is True
+    :return: Table of pop or subpop assignments and the rf model
     :rtype: hl.Table
     """
     logger.info("Assigning global population labels")
-    pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples).ht()
-    project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
-    pop_pca_scores_ht = pop_pca_scores_ht.annotate(
-        training_pop=(
-            hl.case()
-            .when(
-                hl.is_defined(project_meta_ht.project_pop), project_meta_ht.project_pop
+
+    if subpops:
+        if subpops_pca_scores is None:
+            raise ValueError(
+                "A subpops_pca_scores must be supplied when setting subpops to True"
             )
-            .when(project_meta_ht.v2_pop != "oth", project_meta_ht.v2_pop)
-            .or_missing()
+        pop_pca_scores_ht = subpops_pca_scores
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+            training_pop=(
+                hl.case()
+                .when(
+                    hl.is_defined(pop_pca_scores_ht.project_meta.subpop_description),
+                    pop_pca_scores_ht.project_meta.subpop_description,
+                )
+                .or_missing()
+            )
         )
-    )
+        pop_field = "subpop_description"
+    else:
+        pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples).ht()
+        project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+            training_pop=(
+                hl.case()
+                .when(
+                    hl.is_defined(project_meta_ht.project_pop),
+                    project_meta_ht.project_pop,
+                )
+                .when(project_meta_ht.v2_pop != "oth", project_meta_ht.v2_pop)
+                .or_missing()
+            )
+        )
+        pop_field = "pop"
+
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop_all=pop_pca_scores_ht.training_pop
     )
@@ -530,11 +558,17 @@ def assign_pops(
         pop_pca_scores_ht,
         pc_cols=pop_pca_scores_ht.scores[:n_pcs],
         known_col="training_pop",
+        output_col=pop_field,
         min_prob=min_prob,
     )
 
+    # Set "<NA>" string to missing
+    pop_ht = pop_ht.annotate(
+        training_pop=hl.or_missing(pop_ht.training_pop != "<NA>", pop_ht.training_pop)
+    )
+
     n_mislabeled_samples = pop_ht.aggregate(
-        hl.agg.count_where(pop_ht.training_pop != pop_ht.pop)
+        hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
     )
     pop_ht = pop_ht.annotate(
         training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all
@@ -549,11 +583,12 @@ def assign_pops(
         pop_ht = pop_ht[pop_pca_scores_ht.key]
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=hl.or_missing(
-                (pop_ht.training_pop == pop_ht.pop), pop_pca_scores_ht.training_pop
+                (pop_ht.training_pop == pop_ht[pop_field]),
+                pop_pca_scores_ht.training_pop,
             ),
             training_pop_all=hl.or_missing(
                 hl.is_missing(pop_ht.training_pop)
-                | (pop_ht.training_pop == pop_ht.pop),
+                | (pop_ht.training_pop == pop_ht[pop_field]),
                 pop_pca_scores_ht.training_pop_all,
             ),
         ).persist()
@@ -571,13 +606,22 @@ def assign_pops(
             pc_cols=pop_pca_scores_ht.scores[:n_pcs],
             known_col="training_pop",
             min_prob=min_prob,
+            output_col=pop_field,
         )
+
+        # Set "<NA>" string to missing
+        pop_ht = pop_ht.annotate(
+            training_pop=hl.or_missing(
+                pop_ht.training_pop != "<NA>", pop_ht.training_pop
+            )
+        )
+
         pop_ht = pop_ht.annotate(
             training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all
         )
 
         n_mislabeled_samples = pop_ht.aggregate(
-            hl.agg.count_where(pop_ht.training_pop != pop_ht.pop)
+            hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
         )
 
     pop_ht = pop_ht.annotate_globals(

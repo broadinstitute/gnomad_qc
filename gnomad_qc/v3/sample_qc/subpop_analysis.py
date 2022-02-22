@@ -2,6 +2,9 @@ import argparse
 import hail as hl
 import logging
 
+# import pandas as pd
+
+
 from gnomad.sample_qc.ancestry import run_pca_with_relateds
 
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
@@ -34,8 +37,7 @@ logger.setLevel(logging.INFO)
 
 
 def compute_subpop_qc_mt(
-    mt: hl.MatrixTable,
-    min_popmax_af: float = 0.001,
+    mt: hl.MatrixTable, min_popmax_af: float = 0.001,
 ) -> hl.MatrixTable:
     """
     Generate the subpop QC MT to be used for all subpop analyses.
@@ -262,11 +264,21 @@ def main(args):  # noqa: D103
                 overwrite=args.overwrite,
             )
 
-        # TODO: Need to use annotate_subpop_meta before subpop assignment
         if args.assign_subpops:
-            raise NotImplementedError(
-                "Sub-population assignment is not currently implemented."
+            logger.info("Assigning subpops...")
+            pop_pca_scores_ht = ancestry_pca_scores(
+                include_unreleasable_samples, high_quality, pop
+            ).ht()
+            pop_pca_scores_ht = annotate_subpop_meta(pop_pca_scores_ht)
+            joint_pca_ht, joint_pca_fit = assign_pops(
+                min_prob=0.9,  # How to decide on this number?
+                include_unreleasable_samples=False,
+                max_mislabeled_training_samples=50,  # How to decide on this number?
+                n_pcs=4,
+                subpops=True,
+                subpops_pca_scores=pop_pca_scores_ht,
             )
+
     finally:
         logger.info("Copying hail log to logging bucket...")
         hl.copy_log(get_logging_path("subpop"))
@@ -277,12 +289,10 @@ if __name__ == "__main__":
         description="This script generates a QC MT and PCA scores to use for subpop analyses"
     )
     parser.add_argument(
-        "--slack-token",
-        help="Slack token that allows integration with slack",
+        "--slack-token", help="Slack token that allows integration with slack",
     )
     parser.add_argument(
-        "--slack-channel",
-        help="Slack channel to post results and notifications to",
+        "--slack-channel", help="Slack channel to post results and notifications to",
     )
     parser.add_argument(
         "--overwrite", help="Overwrites existing files", action="store_true"
@@ -332,10 +342,7 @@ if __name__ == "__main__":
         default=1e-8,
     )
     parser.add_argument(
-        "--ld-r2",
-        help="Minimum r2 to keep when LD-pruning",
-        type=float,
-        default=0.1,
+        "--ld-r2", help="Minimum r2 to keep when LD-pruning", type=float, default=0.1,
     )
     parser.add_argument(
         "--outlier-ht-path",
@@ -358,9 +365,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--assign-subpops",
-        help="Runs function to assign subpops",
-        action="store_true",
+        "--assign-subpops", help="Runs function to assign subpops", action="store_true",
     )
 
     args = parser.parse_args()
