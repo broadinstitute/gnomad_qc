@@ -6,14 +6,14 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
 
 * **sex_imputation_ploidy_cutoffs**: Contains sex chromosome ploidy cutoffs used when determining sex chromosome karyotypes for sex imputation.
     * **x_ploidy_cutoffs**: Cutoffs for X ploidy.
-        * upper_cutoff_X: Upper cutoff for single X.
-        * lower_cutoff_XX: Lower cutoff for double X.
-        * upper_cutoff_XX: Upper cutoff for double X.
-        * lower_cutoff_XXX: Lower cutoff for triple X. 
+        * **upper_cutoff_X**: Upper cutoff for single X.
+        * **lower_cutoff_XX**: Lower cutoff for double X.
+        * **upper_cutoff_XX**: Upper cutoff for double X.
+        * **lower_cutoff_XXX**: Lower cutoff for triple X. 
     * **y_ploidy_cutoffs**: Cutoffs for Y ploidy.
-        * lower_cutoff_Y: Lower cutoff for single Y.
-        * upper_cutoff_Y: Upper cutoff for single Y.
-        * lower_cutoff_YY: Lower cutoff for double Y.
+        * **lower_cutoff_Y**: Lower cutoff for single Y.
+        * **upper_cutoff_Y**: Upper cutoff for single Y.
+        * **lower_cutoff_YY**: Lower cutoff for double Y.
     * **f_stat_cutoff**: F-statistic cutoff to roughly divide 'XX' from 'XY' samples. XX samples are below cutoff and XY are above cutoff. Not used in final ploidy annotation.
 
  * **population_inference_pca_metrics**: Contains parameters from population assignment.
@@ -32,7 +32,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
 
 * **outlier_detection_metrics**: Contains the linear regression statistics and cutoffs used for filtering outlier samples based on QC metrics. 
     * **lms**: Linear regression statistics for QC metrics.
-        * **n_snp**: SNP regression statistics
+        * **n_snp**: SNP regression statistics.
             * **beta**: Estimated regression coefficient for each PC.
             * **standard_error**: Estimated standard error for each PC.
             * **t_stat**: t-statistic for each PC.
@@ -54,7 +54,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
             * **f_stat**: F-statistic for nested models.
             * **multiple_p_value**: (p-value for the F-test of nested models.
             * **n**: Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing.
-        * **r_ti_tv**: Transition/Transversion ratio regression statistics
+        * **r_ti_tv**: Transition/Transversion ratio regression statistics.
             * **beta**: Estimated regression coefficient for each PC.
             * **standard_error**: Estimated standard error for each PC.
             * **t_stat**: t-statistic for each PC.
@@ -76,7 +76,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
             * **f_stat**: F-statistic for nested models.
             * **multiple_p_value**: (p-value for the F-test of nested models.
             * **n**: Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing.
-        * **n_insertion**: Insertion regression statistics
+        * **n_insertion**: Insertion regression statistics.
             * **beta**: Estimated regression coefficient for each PC.
             * **standard_error**: Estimated standard error for each PC.
             * **t_stat**: t-statistic for each PC.
@@ -87,7 +87,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
             * **f_stat**: F-statistic for nested models.
             * **multiple_p_value**: (p-value for the F-test of nested models.
             * **n**: Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing.
-        * **n_deletion**: Deletion regression statistics
+        * **n_deletion**: Deletion regression statistics.
             * **beta**: Estimated regression coefficient for each PC.
             * **standard_error**: Estimated standard error for each PC.
             * **t_stat**: t-statistic for each PC.
@@ -98,7 +98,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
             * **f_stat**: F-statistic for nested models.
             * **multiple_p_value**: (p-value for the F-test of nested models.
             * **n**: Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing.
-        * **r_het_hom_var**: Het/HomVar regression statistics
+        * **r_het_hom_var**: Het/HomVar regression statistics.
             * **beta**: Estimated regression coefficient for each PC.
             * **standard_error**: Estimated standard error for each PC.
             * **t_stat**: t-statistic for each PC.
@@ -109,7 +109,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
             * **f_stat**: F-statistic for nested models.
             * **multiple_p_value**: (p-value for the F-test of nested models.
             * **n**: Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing.
-        * **n_transition**: Transition regression statistics
+        * **n_transition**: Transition regression statistics.
             * **beta**: Estimated regression coefficient for each PC.
             * **standard_error**: Estimated standard error for each PC.
             * **t_stat**: t-statistic for each PC.
@@ -120,7 +120,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
             * **f_stat**: F-statistic for nested models.
             * **multiple_p_value**: (p-value for the F-test of nested models.
             * **n**: Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing.
-        * **n_tranversion**: Transversion regression statistics
+        * **n_tranversion**: Transversion regression statistics.
             * **beta**: Estimated regression coefficient for each PC.
             * **standard_error**: Estimated standard error for each PC.
             * **t_stat**: t-statistic for each PC.
@@ -195,9 +195,9 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
 * **s**: Unique sample ID
 * **project_meta**: Metadata collected from collaborators or previous versions of gnomAD. The description of annotations in this struct can be found in the [gnomad_meta repo](https://github.com/broadinstitute/gnomad_meta/v3.1/README.md) (for internal use only).
 
-* **subsets**: Subsets of the gnomAD release HT that the sample belongs to
-    * **non_topmed**: Whether the sample was included in the ‘non_topmed’ subset. Subset contains variants from samples that are not the TOPMED cohort. Generated using the negation of the ‘project_meta.topmed’ annotation
-    * **controls_and_biobanks**: Whether the sample was included in the ‘controls_and_biobanks’ subset. Subset contains variants from samples that are either a control or from a biobank project. Generated matching on ‘case_control’ annotation values of ‘control' or 'biobank'
+* **subsets**: Subsets of the gnomAD release HT that the sample belongs to.
+    * **non_topmed**: Whether the sample was included in the ‘non_topmed’ subset. Subset contains variants from samples that are not the TOPMED cohort. Generated using the negation of the ‘project_meta.topmed’ annotation.
+    * **controls_and_biobanks**: Whether the sample was included in the ‘controls_and_biobanks’ subset. Subset contains variants from samples that are either a control or from a biobank project. Generated matching on ‘case_control’ annotation values of ‘control' or 'biobank'.
     * **non_neuro**: Whether the sample was included in the ‘non_neuro’ subset. Subset contains variants from samples that are either 1. not cases in neuro cohorts or 2. neuro cohort samples missing ‘case_control’ information. Generated using the ‘neuro_case’ annotation which is calculated using’ neuro_cohort’ and ‘case_control’.
     * **non_v2**: Whether the sample was included in the ‘non_v2’ subset. Subset contains variants from samples that are not in gnomAD v2, exomes or genomes. Generated using ‘v2_release’ annotation. 
     * **non_cancer**: Whether the sample was included in the ‘non_cancer’ subset. Subset contains variants from samples that are not from TCGA, regardless of germline or somatic status. 
@@ -275,7 +275,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
     * **sex_aneuploidy**: Whether the sample was flagged for sex aneuploidy.
     * **insert_size**: Whether the sample was flagged for insert size.
     * **chimera**: Whether the sample was flagged for chimera.
-    * contamination: Whether the sample was flagged for contamination.
+    * **contamination**: Whether the sample was flagged for contamination.
     * **bad_qc_metrics**: Whether the sample was flagged for hard filters from hard_filter_cutoffs.
     * **low_coverage**: Whether the sample was flagged for low coverage.
     * **ambiguous_sex**: Whether the sample was flagged for ambiguous sex.
@@ -303,7 +303,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
 
 * **qc_metrics_filters**: Set of all sample QC metrics for which each sample was found to be an outlier after computing sample QC metrics using Hail’s [sample_qc]([https://hail.is/docs/0.2/methods/genetics.html#hail.methods.sample_qc](https://hail.is/docs/0.2/methods/genetics.html#hail.methods.sample_qc)) and regressing out the first 8 ancestry assignment PCs.
 * **relatedness_inference**: Information about the sample’s relatedness to other samples within the callset.
-    * relationships: Samples that have a kinship estimate (kin) > 0.05 determined using Hail’s [pc_relate](https://hail.is/docs/0.2/methods/relatedness.html#hail.methods.pc_relate) with this sample.
+    * **relationships**: Samples that have a kinship estimate (kin) > 0.05 determined using Hail’s [pc_relate](https://hail.is/docs/0.2/methods/relatedness.html#hail.methods.pc_relate) with this sample.
 
-* **high_quality**: Whether the sample is considered high quality (no hard filter or qc_metric filter flags)
+* **high_quality**: Whether the sample is considered high quality (no hard filter or qc_metric filter flags).
 * **release**: Whether the sample meets criteria for release (Permission to release, high quality, not to be excluded, and not related to any other sample in the release).
