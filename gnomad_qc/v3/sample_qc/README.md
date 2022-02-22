@@ -20,10 +20,10 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
     * **min_prob**: The minimum cutoff probability of belonging to a given population at which the population was set.	
     * **include_unreleasable_samples**: Whether unreleasable samples were included in the ancestry PCA.
     * **max_mislabeled_training_samples**: The max number of mislabeled training samples that were allowed in population assignment.
-    * **n_pcs**: The number of principal components (PCs) used in [PC-project]([https://github.com/broadinstitute/gnomad_methods/blob/0b660daf23854efa5f6baa233ecbedce40d06fd3/gnomad/sample_qc/ancestry.py#L80](https://github.com/broadinstitute/gnomad_methods/blob/0b660daf23854efa5f6baa233ecbedce40d06fd3/gnomad/sample_qc/ancestry.py#L80)).
+    * **n_pcs**: The number of principal components (PCs) used in [PC-project](https://github.com/broadinstitute/gnomad_methods/blob/b95578056f8051d00dcbb749a10e585d48888f82/gnomad/sample_qc/ancestry.py#L80).
     * **pop_assignment_iterations**: How many population assignment iterations ran.
 
-* **relatedness_inference_cutoffs**: Contains relatedness inference cutoffs used when running Hail's [pc-relate]([https://hail.is/docs/0.2/methods/relatedness.html#hail.methods.pc_relate](https://hail.is/docs/0.2/methods/relatedness.html#hail.methods.pc_relate)).
+* **relatedness_inference_cutoffs**: Contains relatedness inference cutoffs used when running Hail's [pc-relate](https://hail.is/docs/0.2/methods/relatedness.html#hail.methods.pc_relate).
     * **min_individual_maf**: The minimum individual-specific minor allele frequency used to estimate relatedness for a pair of samples.
     * **min_emission_kinship**: The minimum kinship coefficient cutoff in the results.
     * **ibd0_0_max**: The IBD0 cutoff used to determine parent-offspring vs full sibling relationships.
@@ -301,7 +301,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
     * **fail_n_transition_residual**: Whether the sample failed the number of transition alternate alleles.
     * **fail_n_transversion_residual**: Whether the sample failed the number of transversion alternate alleles.
 
-* **qc_metrics_filters**: Set of all sample QC metrics for which each sample was found to be an outlier after computing sample QC metrics using Hail’s [sample_qc]([https://hail.is/docs/0.2/methods/genetics.html#hail.methods.sample_qc](https://hail.is/docs/0.2/methods/genetics.html#hail.methods.sample_qc)) and regressing out the first 8 ancestry assignment PCs.
+* **qc_metrics_filters**: Set of all sample QC metrics for which each sample was found to be an outlier after computing sample QC metrics using Hail’s [sample_qc](https://hail.is/docs/0.2/methods/genetics.html#hail.methods.sample_qc) and regressing out the first 8 ancestry assignment PCs.
 * **relatedness_inference**: Information about the sample’s relatedness to other samples within the callset.
     * **relationships**: Samples that have a kinship estimate (kin) > 0.05 determined using Hail’s [pc_relate](https://hail.is/docs/0.2/methods/relatedness.html#hail.methods.pc_relate) with this sample.
 
