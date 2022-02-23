@@ -172,7 +172,7 @@ def perform_contingency_table_test(
     return ht
 
 
-def filter_and_densify_v3_mt(filter_ht: hl.Table, test: bool = False):
+def filter_and_densify_v3_mt(filter_ht: hl.Table, test: bool = False) -> hl.MatrixTable:
     """
     Load, filter (to variants in `filter_ht`), and densify the gnomAD v3.1 MatrixTable.
 
@@ -281,7 +281,7 @@ def perform_logistic_regression(
     """
     if version1 != "v3_genomes" and version2 != "v2_exomes":
         raise NotImplementedError(
-            "Logistic regression with ancestry pca inclusion is currently only implemented for the comparison between "
+            "Logistic regression with ancestry PCA inclusion is currently only implemented for the comparison between "
             "gnomAD v3 genomes and v2 exomes."
         )
 

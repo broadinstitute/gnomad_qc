@@ -240,8 +240,8 @@ def get_freq_comparison(
     :param version1: First gnomAD version in the frequency comparison. Table will be in the root annotation path for this gnomAD version
     :param data_type1: Data type of first version in the frequency comparison. One of "exomes" or "genomes". Table will be in the root annotation path for this gnomAD data type
     :param version2: Second gnomAD version in the frequency comparison
-    :param data_type2: Data type of first version in the frequency comparison. One of "exomes" or "genomes"
-    :param logistic_regression: Whether the resource is for the logistic_regression comparison that takes into account ancestry. Defualt is the contingency table test
+    :param data_type2: Data type of second version in the frequency comparison. One of "exomes" or "genomes"
+    :param logistic_regression: Whether the resource is for the logistic_regression comparison that takes into account ancestry. Default is the contingency table test
     :return: Hail Table containing results from chi squared test and fishers exact test
     """
     versions = [r + "_exomes" for r in EXOME_RELEASES] + [
