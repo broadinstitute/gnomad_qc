@@ -4,55 +4,59 @@ from typing import Tuple
 
 import hail as hl
 
-from gnomad.resources.grch38.reference_data import (
-    telomeres_and_centromeres,
-)
+from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.sample_qc.pipeline import annotate_sex
 from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
 
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
-from gnomad_qc.v4.resources.sample_qc import sex
+from gnomad_qc.v4.resources.sample_qc import hard_filtered_ac_an_af, sex
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("sex_inference")
 logger.setLevel(logging.INFO)
 
 
-def compute_sex(aaf_threshold: float = 0.001, f_stat_cutoff: float = 0.5) -> hl.Table:
+def compute_sex(
+    method: str = "Hail",
+    aaf_threshold: float = 0.001,
+    f_stat_cutoff: float = 0.5,
+    high_cov_intervals: bool = False,
+    per_platform_high_cov_intervals: bool = False,
+    x_cov: int = None,
+    y_cov: int = None,
+    pct_samples_x=None,
+    pct_samples_y=None,
+) -> hl.Table:
     """
     Impute sample sex based on X-chromosome heterozygosity and sex chromosome ploidy.
 
-    Allele frequencies from v3.0 are used to prevent the need to densify the current version's sparse MT.
-
+    :param method:
     :param aaf_threshold: Minimum alternate allele frequency to be used in f-stat calculations.
     :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY are above cutoff.
     :return: Table with inferred sex annotation
     :rtype: hl.Table
     """
-    mt = get_gnomad_v4_vds(remove_hard_filtered_samples=True)
+    vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True)
 
-    # TODO: Determine what variants to use for f-stat calculation
-    freq_ht = freq.versions["3"].ht()
-    freq_ht = freq_ht.select(AF=freq_ht.freq[0].AF)
-    freq_ht = freq_ht.filter(freq_ht.AF > aaf_threshold)
-
+    # TODO: Determine what variants to use for f-stat calculation, current implementation will use a HT created by performing a full densify to get callrate and AF, note, this might not be needed, see CCDG f-stat values
+    freq_ht = hard_filtered_ac_an_af.ht()
     sex_ht = annotate_sex(
-        mt,
-        excluded_intervals=telomeres_and_centromeres.ht(),
-        aaf_threshold=aaf_threshold,
-        f_stat_cutoff=f_stat_cutoff,
+        hl.vds.to_merged_sparse_mt(vds),
+        included_intervals=calling_intervals,
         sites_ht=freq_ht,
         aaf_expr="AF",
         gt_expr="LGT",
+        reference_only = reference_only,
+        variants_only = variants_only,
     )
 
     return sex_ht
 
 
 def reannotate_sex(
-        cov_threshold: int,
-        x_ploidy_cutoffs: Tuple[float, Tuple[float, float], float],
-        y_ploidy_cutoffs: Tuple[Tuple[float, float], float],
+    cov_threshold: int,
+    x_ploidy_cutoffs: Tuple[float, Tuple[float, float], float],
+    y_ploidy_cutoffs: Tuple[Tuple[float, float], float],
 ):
     """
     Rerun sex karyotyping annotations without re-computing sex imputation metrics.
@@ -122,14 +126,25 @@ def reannotate_sex(
 def main(args):
     hl.init(log="/sex_inference.log", default_reference="GRCh38")
 
-    if args.impute_sex:
-        compute_sex().write(sex.path, overwrite=args.overwrite)
+    if args.compute_callrate_ac_af:
+        vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True)
+        mt = hl.vds.to_dense_mt(vds)
+        ht = mt.annotate_rows(
+            AN=hl.agg.count_where(hl.is_defined(mt.GT)) * 2,
+            AC=hl.agg.sum(mt.GT.n_alt_alleles),
+        ).rows()
+        ht = ht.annotate(AF=ht.AC/ht.AN)
+        ht = ht.write(hard_filtered_ac_an_af.path)
+    if args.impute_sex_gnomad_methods:
+        ht =
+        compute_sex(ht).write(sex.path, overwrite=args.overwrite)
     elif args.reannotate_sex:
         reannotate_sex(
             args.min_cov,
             (args.upper_x, (args.lower_xx, args.upper_xx), args.lower_xxx),
             ((args.lower_y, args.upper_y), args.lower_yy),
         ).write(sex.path, overwrite=args.overwrite)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -139,21 +154,26 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--impute_sex",
+        "--impute-sex-gnomad-methods",
         help="Runs sex imputation. Also runs sex karyotyping annotation.",
         action="store_true",
     )
     parser.add_argument(
-        "--reannotate_sex",
+        "--impute-sex-hail",
+        help="Runs sex imputation. Also runs sex karyotyping annotation.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--reannotate-sex",
         help="Runs the sex karyotyping annotations again, without re-computing sex imputation metrics.",
         action="store_true",
     )
-    parser.add_argument("--upper_x", help="Upper cutoff for single X", type=float)
-    parser.add_argument("--lower_xx", help="Lower cutoff for double X", type=float)
-    parser.add_argument("--upper_xx", help="Upper cutoff for double X", type=float)
-    parser.add_argument("--lower_xxx", help="Lower cutoff for triple X", type=float)
-    parser.add_argument("--lower_y", help="Lower cutoff for single Y", type=float)
-    parser.add_argument("--upper_y", help="Upper cutoff for single Y", type=float)
-    parser.add_argument("--lower_yy", help="Lower cutoff for double Y", type=float)
+    parser.add_argument("--upper-x", help="Upper cutoff for single X", type=float)
+    parser.add_argument("--lower-xx", help="Lower cutoff for double X", type=float)
+    parser.add_argument("--upper-xx", help="Upper cutoff for double X", type=float)
+    parser.add_argument("--lower-xxx", help="Lower cutoff for triple X", type=float)
+    parser.add_argument("--lower-y", help="Lower cutoff for single Y", type=float)
+    parser.add_argument("--upper-y", help="Upper cutoff for single Y", type=float)
+    parser.add_argument("--lower-yy", help="Lower cutoff for double Y", type=float)
 
     main(parser.parse_args())
