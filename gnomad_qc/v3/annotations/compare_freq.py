@@ -74,7 +74,8 @@ def extract_freq_info(version1: str, version2: str, pops: List[str]) -> hl.Table
 
     :param version1: First gnomAD version to extract frequency information from (v3_genomes, v2_exomes, v2_genomes)
     :param version2: Second gnomAD version to extract frequency information from (v3_genomes, v2_exomes, v2_genomes)
-    :param pops: List of populations in the order of the frequency lists, excluding the first 2 entries (adj, raw)
+    :param pops: List of populations to include in the reduced frequency arrays for both gnomAD versions. The reduced
+        frequency arrays will be in the order of `pops` after the first 2 entries (adj, raw)
     :return: Table with combined and filtered frequency information from two gnomAD versions
     """
     versions = [version1, version2]
@@ -132,7 +133,8 @@ def perform_contingency_table_test(
     :param ht: Table containing frequency information
     :param version1: First gnomAD version to extract frequency information from (v3_genomes, v2_exomes, v2_genomes)
     :param version2: Second gnomAD version to extract frequency information from (v3_genomes, v2_exomes, v2_genomes)
-    :param pops: List of populations in the order of the frequency lists, excluding the first 2 entries (adj, raw)
+    :param pops: List of populations in the order of the frequency lists, excluding the first 2 entries (adj, raw).
+        This should be the same list used in `extract_freq_info`
     :param min_cell_count: Minimum count in every cell to use the chi-squared test
     :return: Table with contingency table test results added
     """
@@ -184,7 +186,6 @@ def filter_and_densify_v3_mt(filter_ht: hl.Table, test: bool = False) -> hl.Matr
     logger.info("Loading v3.1 gnomAD MatrixTable...")
     mt = get_gnomad_v3_mt(
         key_by_locus_and_alleles=True,
-        remove_hard_filtered_samples=False,
         samples_meta=True,
         release_only=True,
     )
