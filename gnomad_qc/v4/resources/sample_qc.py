@@ -159,6 +159,17 @@ qc = VersionedMatrixTableResource(
     },
 )
 
+# HT containing AC, AN, AF information for the full callset after hard filtering
+hard_filtered_ac_an_af = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered.ac_an_af.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
 # PC relate PCA scores
 pc_relate_pca_scores = VersionedTableResource(
     CURRENT_VERSION,
