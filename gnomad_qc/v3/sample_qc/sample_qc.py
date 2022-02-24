@@ -517,7 +517,7 @@ def assign_pops(
                 .or_missing()
             )
         )
-        pop_field = "subpop_description"
+        pop_field = "subpop"
     else:
         pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples).ht()
         project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
