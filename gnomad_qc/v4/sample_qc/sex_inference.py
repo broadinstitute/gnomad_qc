@@ -4,7 +4,6 @@ from typing import Tuple
 
 import hail as hl
 
-from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.sample_qc.pipeline import annotate_sex
 from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
 
@@ -17,37 +16,65 @@ logger.setLevel(logging.INFO)
 
 
 def compute_sex(
-    method: str = "Hail",
+    vds,
+    use_gnomad_methods: bool = False,
     aaf_threshold: float = 0.001,
     f_stat_cutoff: float = 0.5,
     high_cov_intervals: bool = False,
     per_platform_high_cov_intervals: bool = False,
+    normalization_contig: str = 'chr20',
     x_cov: int = None,
     y_cov: int = None,
-    pct_samples_x=None,
-    pct_samples_y=None,
+    norm_cov: int = None,
+    prop_samples_x: float = None,
+    prop_samples_y: float = None,
+    prop_samples_norm: float = None,
+    reference_only: bool = False,
+    variants_only: bool = False,
 ) -> hl.Table:
     """
     Impute sample sex based on X-chromosome heterozygosity and sex chromosome ploidy.
 
-    :param method:
+    :param use_gnomad_methods:
     :param aaf_threshold: Minimum alternate allele frequency to be used in f-stat calculations.
     :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY are above cutoff.
     :return: Table with inferred sex annotation
     :rtype: hl.Table
     """
-    vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True)
 
     # TODO: Determine what variants to use for f-stat calculation, current implementation will use a HT created by performing a full densify to get callrate and AF, note, this might not be needed, see CCDG f-stat values
     freq_ht = hard_filtered_ac_an_af.ht()
+
+    if high_cov_intervals:
+        coverage_mt = interval_coverage(interval_name, padding).mt()
+        coverage_mt = coverage_mt.filter_rows(hl.literal({"chrY", "chrX", "chr20"}).contains(coverage_mt.interval.start.contig))
+        coverage_mt = coverage_mt.annotate_rows(
+            **{
+                f"over_{y_cov}x": hl.agg.fraction(coverage_mt.mean_dp > y_cov),
+                f"over_{x_cov}x": hl.agg.fraction(coverage_mt.mean_dp > x_cov),
+                f"over_{norm_cov}x": hl.agg.fraction(coverage_mt.mean_dp > norm_cov),
+            }
+        )
+        coverage_mt = coverage_mt.filter_rows(
+            ((coverage_mt.interval.start.contig == "chrX") & (coverage_mt[f"over_{x_cov}x"] > prop_samples_x))
+            | ((coverage_mt.interval.start.contig == "chrY") & (coverage_mt[f"over_{y_cov}x"] > prop_samples_y))
+            | ((coverage_mt.interval.start.contig == normalization_contig) & (coverage_mt[f"over_{norm_cov}x"] > prop_samples_norm))
+        )
+        calling_intervals_ht = coverage_mt.rows()
+    else:
+        calling_intervals_ht = calling_intervals(interval_name, padding).ht()
+
     sex_ht = annotate_sex(
-        hl.vds.to_merged_sparse_mt(vds),
-        included_intervals=calling_intervals,
+        hl.vds.to_merged_sparse_mt(vds) if use_gnomad_methods else vds,
+        included_intervals=calling_intervals_ht,
+        normalization_contig=normalization_contig,
         sites_ht=freq_ht,
         aaf_expr="AF",
         gt_expr="LGT",
-        reference_only = reference_only,
-        variants_only = variants_only,
+        f_stat_cutoff=f_stat_cutoff,
+        aaf_threshold=aaf_threshold,
+        reference_only=reference_only,
+        variants_only=variants_only,
     )
 
     return sex_ht
@@ -134,10 +161,29 @@ def main(args):
             AC=hl.agg.sum(mt.GT.n_alt_alleles),
         ).rows()
         ht = ht.annotate(AF=ht.AC/ht.AN)
-        ht = ht.write(hard_filtered_ac_an_af.path)
-    if args.impute_sex_gnomad_methods:
-        ht =
-        compute_sex(ht).write(sex.path, overwrite=args.overwrite)
+        ht.write(hard_filtered_ac_an_af.path)
+    if args.impute_sex:
+        vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True)
+        # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
+        if args.overwrite or not file_exists(sex.path):
+            ht = compute_sex(
+                vds,
+                args.use_gnomad_methods,
+                args.aaf_threshold,
+                args.f_stat_cutoff,
+                args.high_cov_intervals,
+                args.per_platform_high_cov_intervals,
+                args.normalization_contig,
+                args.x_cov,
+                args.y_cov,
+                args.norm_cov,
+                args.prop_samples_x,
+                args.prop_samples_y,
+                args.prop_samples_norm,
+                args.reference_only,
+                args.variants_only,
+            )
+            ht.write(sex.path, overwrite=True)
     elif args.reannotate_sex:
         reannotate_sex(
             args.min_cov,
@@ -154,15 +200,26 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--impute-sex-gnomad-methods",
+        "--impute-sex",
         help="Runs sex imputation. Also runs sex karyotyping annotation.",
         action="store_true",
     )
     parser.add_argument(
-        "--impute-sex-hail",
+        "--use-gnomad-methods",
         help="Runs sex imputation. Also runs sex karyotyping annotation.",
         action="store_true",
     )
+    parser.add_argument("--aaf-threshold", help="", type=float, default=0.001)
+    parser.add_argument("--f-stat-cutoff", help="", type=float, default=0.5)
+    parser.add_argument("--high-cov-intervals", help="", action="store_true")
+    parser.add_argument("--per-platform-high-cov-intervals", help="", action="store_true")
+    parser.add_argument("--x-cov", help="", type=int, default=10)
+    parser.add_argument("--y-cov", help="", type=int, default=5)
+    parser.add_argument("--norm-cov", help="", type=int, default=20)
+    parser.add_argument("--prop-samples-x", help="", type=float, default=0.80)
+    parser.add_argument("--prop-samples-y", help="", type=float, default=0.35)
+    parser.add_argument("--prop-samples-norm", help="", type=float, default=0.85)
+
     parser.add_argument(
         "--reannotate-sex",
         help="Runs the sex karyotyping annotations again, without re-computing sex imputation metrics.",
