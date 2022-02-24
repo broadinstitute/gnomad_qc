@@ -15,6 +15,7 @@ from gnomad_qc.v3.resources.sample_qc import (
     pca_related_samples_to_drop,
     subpop_qc,
 )
+from gnomad_qc.v3.sample_qc.sample_qc import assign_pops
 
 from gnomad.resources.grch38.reference_data import lcr_intervals
 from gnomad.utils.annotations import get_adj_expr
