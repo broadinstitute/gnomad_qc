@@ -20,12 +20,10 @@ from gnomad_qc.v3.sample_qc.sample_qc import assign_pops
 from gnomad.resources.grch38.reference_data import lcr_intervals
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.sparse_mt import densify_sites
 from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad_qc.v3.resources import release_sites
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.annotations import get_info
-
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -147,21 +145,6 @@ def filter_subpop_qc(
     return pop_qc_mt
 
 
-def annotate_subpop_meta(ht: hl.Table) -> hl.Table:
-    meta_ht = meta.ht()
-    ht = ht.annotate(**meta_ht[ht.key])
-    ht = ht.annotate(
-        subpop_description=ht.project_meta.subpop_description,
-        v2_pop=ht.project_meta.v2_pop,
-        v2_subpop=ht.project_meta.v2_subpop,
-        pop=ht.population_inference.pop,
-        project_id=ht.project_meta.project_id,
-        project_pop=ht.project_meta.project_pop,
-    )
-
-    return ht
-
-
 def main(args):  # noqa: D103
     pop = args.pop
     include_unreleasable_samples = args.include_unreleasable_samples
@@ -265,17 +248,13 @@ def main(args):  # noqa: D103
 
         if args.assign_subpops:
             logger.info("Assigning subpops...")
-            pop_pca_scores_ht = ancestry_pca_scores(
-                include_unreleasable_samples, high_quality, pop
-            ).ht()
-            pop_pca_scores_ht = annotate_subpop_meta(pop_pca_scores_ht)
             joint_pca_ht, joint_pca_fit = assign_pops(
-                min_prob=0.9,  # How to decide on this number?
+                min_prob=0.9,  # How to decide on this number? Should withhold a certain percent and make a PR curve gs://gnomad-julia/gnomad_v4/pca_with_ccdg_gnomad_ukb_variants.ipynb
                 include_unreleasable_samples=False,
                 max_mislabeled_training_samples=50,  # How to decide on this number?
                 n_pcs=4,
-                subpops=True,
-                subpops_pca_scores=pop_pca_scores_ht,
+                pop=pop,
+                high_quality=high_quality,
             )
 
             joint_pca_ht = joint_pca_ht.checkpoint(

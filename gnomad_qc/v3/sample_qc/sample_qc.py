@@ -470,14 +470,29 @@ def run_pca(
     return run_pca_with_relateds(qc_mt, samples_to_drop, n_pcs=n_pcs)
 
 
+def annotate_subpop_meta(ht: hl.Table) -> hl.Table:
+    meta_ht = meta.ht()
+    ht = ht.annotate(**meta_ht[ht.key])
+    ht = ht.annotate(
+        subpop_description=ht.project_meta.subpop_description,
+        v2_pop=ht.project_meta.v2_pop,
+        v2_subpop=ht.project_meta.v2_subpop,
+        pop=ht.population_inference.pop,
+        project_id=ht.project_meta.project_id,
+        project_pop=ht.project_meta.project_pop,
+    )
+
+    return ht
+
+
 def assign_pops(
     min_prob: float,
     include_unreleasable_samples: bool,
     max_mislabeled_training_samples: int = 50,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
     n_pcs: int = 16,
     withhold_prop: float = None,
-    subpops: bool = False,
-    subpops_pca_scores: hl.Table = None,
+    pop: str = None,
+    high_quality: bool = False,
 ) -> Tuple[hl.Table, Any]:
     """
     Use a random forest model to assign global population labels based on the results from `assign_pca`.
@@ -494,19 +509,16 @@ def assign_pops(
     :param max_mislabeled_training_samples: Maximum number of training samples that can be mislabelled
     :param n_pcs: Number of PCs to use in the RF
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
-    :param subpops: True if subpops should be assigned rather than pops
-    :param subpops_pca_scores: Table with PCA scores for subpops, needed if `subpops` parameter is True
+    :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
     :return: Table of pop or subpop assignments and the rf model
     :rtype: hl.Table
     """
     logger.info("Assigning global population labels")
+    # TODO: Should we be restricting to high quality
+    pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples, high_quality, pop).ht()
 
-    if subpops:
-        if subpops_pca_scores is None:
-            raise ValueError(
-                "A subpops_pca_scores must be supplied when setting subpops to True"
-            )
-        pop_pca_scores_ht = subpops_pca_scores
+    if pop is not None:
+        pop_pca_scores_ht = annotate_subpop_meta(pop_pca_scores_ht)
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=(
                 hl.case()
@@ -519,7 +531,7 @@ def assign_pops(
         )
         pop_field = "subpop"
     else:
-        pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples).ht()
+       
         project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=(
