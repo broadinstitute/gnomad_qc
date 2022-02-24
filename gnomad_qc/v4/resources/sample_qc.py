@@ -43,6 +43,16 @@ def get_sample_qc(strat: str = "all") -> VersionedTableResource:
         },
     )
 
+def _get_platform_pca_ht_path(part: str, version: str = CURRENT_VERSION) -> str:
+    """
+    Helper function to get path to files related to platform PCA.
+
+    :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores)
+    :param version: Version of sample QC path to return
+    :return: Path to requested platform PCA file
+    """
+    return f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.platform_pca_{part}.ht"
+
 
 def _get_ancestry_pca_ht_path(
     part: str,
@@ -154,6 +164,56 @@ qc = VersionedMatrixTableResource(
         version: MatrixTableResource(
             # TODO: What set this path to?
             f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.qc.mt"
+        )
+        for version in VERSIONS
+    },
+)
+
+# Platform PCA loadings
+platform_pca_loadings = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            _get_platform_pca_ht_path(
+                "loadings", version,
+            )
+        )
+        for version in VERSIONS
+    },
+)
+
+# Platform PCA scores
+platform_pca_scores = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            _get_platform_pca_ht_path(
+                "scores", version,
+            )
+        )
+        for version in VERSIONS
+    },
+)
+
+# Platform PCA eigenvalues
+platform_pca_eigenvalues = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            _get_platform_pca_ht_path(
+                "eigenvalues", version,
+            )
+        )
+        for version in VERSIONS
+    },
+)
+
+# Inferred sample platforms
+platform = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.platform.ht"
         )
         for version in VERSIONS
     },
