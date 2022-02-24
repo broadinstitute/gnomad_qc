@@ -21,7 +21,8 @@ def compute_sex(
     aaf_threshold: float = 0.001,
     f_stat_cutoff: float = 0.5,
     high_cov_intervals: bool = False,
-    per_platform_high_cov_intervals: bool = False,
+    per_platform: bool = False,
+    high_cov_all_platforms: bool = False,
     normalization_contig: str = 'chr20',
     x_cov: int = None,
     y_cov: int = None,
@@ -45,16 +46,43 @@ def compute_sex(
     # TODO: Determine what variants to use for f-stat calculation, current implementation will use a HT created by performing a full densify to get callrate and AF, note, this might not be needed, see CCDG f-stat values
     freq_ht = hard_filtered_ac_an_af.ht()
 
+    if per_platform:
+        platform_ht = platform.ht()
+        platforms = platform_ht.aggregate(hl.agg.collect_as_set(platform_ht.qc_platform))
+
     if high_cov_intervals:
         coverage_mt = interval_coverage(interval_name, padding).mt()
-        coverage_mt = coverage_mt.filter_rows(hl.literal({"chrY", "chrX", "chr20"}).contains(coverage_mt.interval.start.contig))
-        coverage_mt = coverage_mt.annotate_rows(
-            **{
-                f"over_{y_cov}x": hl.agg.fraction(coverage_mt.mean_dp > y_cov),
-                f"over_{x_cov}x": hl.agg.fraction(coverage_mt.mean_dp > x_cov),
-                f"over_{norm_cov}x": hl.agg.fraction(coverage_mt.mean_dp > norm_cov),
-            }
-        )
+        coverage_mt = coverage_mt.filter_rows(hl.literal({"chrY", "chrX", normalization_contig}).contains(coverage_mt.interval.start.contig)) 
+
+        if per_platform:
+            coverage_mt = coverage_mt.annotate_cols(platform=platform_ht[coverage_mt.col_key].qc_platform)
+
+        coverage_agg_expr = {
+            f"over_{x_cov}x": hl.agg.fraction(coverage_mt.mean_dp > x_cov),
+            f"over_{y_cov}x": hl.agg.fraction(coverage_mt.mean_dp > y_cov),
+            f"over_{norm_cov}x": hl.agg.fraction(coverage_mt.mean_dp > norm_cov),
+        }
+
+        if per_platform:
+            coverage_mt = coverage_mt.group_cols_by(coverage_mt.platform).aggregate(**coverage_agg_expr)
+            # Filter intervals to only those on chrX with this platform having a prop_samples_x of samples with over some mean DP defined by the x_cov_str annotation
+            # and those on chrY with this platform having a prop_samples_y of samples with over some mean DP defined by the y_cov_str annotation
+            for platform in platforms:
+                coverage_platform_mt = coverage_mt.filter_cols(coverage_mt.platform == platform)
+                coverage_platform_mt = coverage_platform_mt.filter_rows(
+                    ((coverage_platform_mt.interval.start.contig == "chrX") & hl.agg.any(
+                    coverage_platform_mt[f"over_{x_cov}x"] > prop_samples_x))
+                    | ((coverage_platform_mt.interval.start.contig == "chrY") & hl.agg.any(
+                    coverage_platform_mt[f"over_{y_cov}x"] > prop_samples_y))
+                    | ((coverage_platform_mt.interval.start.contig == "chr20") & hl.agg.any(
+                    coverage_platform_mt[f"over_{norm_cov}x"] > prop_samples_norm))
+                )
+                platform_pcs_ht2 = platform_pcs_ht.filter(platform_pcs_ht.platform == platform)
+                calling_intervals = coverage_platform_ht.rows()
+                vds = hl.vds.filter_samples(vds, coverage_platform_mt.cols(), keep=True)
+        else:
+            coverage_mt = coverage_mt.annotate_rows(**coverage_agg_expr)
+
         coverage_mt = coverage_mt.filter_rows(
             ((coverage_mt.interval.start.contig == "chrX") & (coverage_mt[f"over_{x_cov}x"] > prop_samples_x))
             | ((coverage_mt.interval.start.contig == "chrY") & (coverage_mt[f"over_{y_cov}x"] > prop_samples_y))
