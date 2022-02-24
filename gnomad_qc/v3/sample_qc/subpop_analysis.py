@@ -2,9 +2,6 @@ import argparse
 import hail as hl
 import logging
 
-# import pandas as pd
-
-
 from gnomad.sample_qc.ancestry import run_pca_with_relateds
 
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
@@ -13,6 +10,7 @@ from gnomad_qc.v3.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
     ancestry_pca_scores,
+    assigned_subpops_path,
     filtered_subpop_qc_mt,
     pca_related_samples_to_drop,
     subpop_qc,
@@ -277,6 +275,12 @@ def main(args):  # noqa: D103
                 n_pcs=4,
                 subpops=True,
                 subpops_pca_scores=pop_pca_scores_ht,
+            )
+
+            joint_pca_ht = joint_pca_ht.checkpoint(
+                assigned_subpops_path(pop),
+                overwrite=args.overwrite,
+                _read_if_exists=not args.overwrite,
             )
 
     finally:
