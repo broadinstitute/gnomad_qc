@@ -489,7 +489,7 @@ def assign_pops(
     min_prob: float,
     include_unreleasable_samples: bool,
     max_mislabeled_training_samples: int = 50,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
-    n_pcs: int = 16,
+    pcs: list = [1,2,3,4],
     withhold_prop: float = None,
     pop: str = None,
     high_quality: bool = False,
@@ -507,7 +507,7 @@ def assign_pops(
     :param min_prob: Minimum RF probability for pop assignment
     :param include_unreleasable_samples: Should unreleasable samples be included in the PCA
     :param max_mislabeled_training_samples: Maximum number of training samples that can be mislabelled
-    :param n_pcs: Number of PCs to use in the RF
+    :param pcs: List of PCs to use in the RF
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
     :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
     :param high_quality: Whether the file includes PCA info for only high-quality samples
@@ -571,7 +571,7 @@ def assign_pops(
 
     pop_ht, pops_rf_model = assign_population_pcs(
         pop_pca_scores_ht,
-        pc_cols=pop_pca_scores_ht.scores[:n_pcs],
+        pc_cols=[pop_pca_scores_ht.scores[i-1] for i in pcs],
         known_col="training_pop",
         output_col=pop_field,
         min_prob=min_prob,
@@ -618,7 +618,7 @@ def assign_pops(
 
         pop_ht, pops_rf_model = assign_population_pcs(
             pop_pca_scores_ht,
-            pc_cols=pop_pca_scores_ht.scores[:n_pcs],
+            pc_cols=[pop_pca_scores_ht.scores[i-1] for i in pcs],
             known_col="training_pop",
             min_prob=min_prob,
             output_col=pop_field,
@@ -644,7 +644,9 @@ def assign_pops(
         include_unreleasable_samples=include_unreleasable_samples,
         max_mislabeled_training_samples=max_mislabeled_training_samples,
         pop_assignment_iterations=pop_assignment_iter,
-        n_pcs=n_pcs,
+        pcs=pcs,
+        pop=pop,
+        high_quality=high_quality,
     )
     if withhold_prop:
         pop_ht = pop_ht.annotate_globals(withhold_prop=withhold_prop)

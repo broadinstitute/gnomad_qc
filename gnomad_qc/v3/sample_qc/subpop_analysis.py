@@ -252,7 +252,7 @@ def main(args):  # noqa: D103
                 min_prob=args.min_prob,  # How to decide on this number? Should withhold a certain percent and make a PR curve gs://gnomad-julia/gnomad_v4/pca_with_ccdg_gnomad_ukb_variants.ipynb
                 include_unreleasable_samples=False,
                 max_mislabeled_training_samples=args.max_mislabeled_training_samples,  # How to decide on this number?
-                n_pcs=4,
+                pcs=args.pcs,
                 withhold_prop=args.withhold_prop,
                 pop=pop,
                 high_quality=high_quality,
@@ -369,6 +369,12 @@ if __name__ == "__main__":
         help="Proportion of training pop samples to withhold from training will keep all samples if `None`",
         type=float,
         default=None,
+    )
+    parser.add_argument(
+        "--pcs",
+        help="List of PCs to use in the RF",
+        type=list,
+        default=[1,2,3,4],
     )
 
     args = parser.parse_args()
