@@ -1169,11 +1169,11 @@ def main(args):
         )
 
     if args.assign_pops:
-        n_pcs = args.pop_n_pcs
+        pcs = args.pop_pcs
         pop_ht, pops_rf_model = assign_pops(
             args.min_pop_prob,
             args.include_unreleasable_samples,
-            n_pcs=n_pcs,
+            pcs=pca,
             withhold_prop=args.withhold_prop,
         )
         pop_ht = pop_ht.checkpoint(
@@ -1404,10 +1404,10 @@ if __name__ == "__main__":
         "--assign_pops", help="Assigns pops from PCA", action="store_true"
     )
     parser.add_argument(
-        "--pop_n_pcs",
-        help="Number of PCs to use for ancestry assignment",
-        default=16,
-        type=int,
+        "--pop_pcs",
+        help="List of PCs to use for ancestry assignment",
+        default=list(range(1, 17)),
+        type=list,
     )
     parser.add_argument(
         "--min_pop_prob",
