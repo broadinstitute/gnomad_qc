@@ -1173,7 +1173,7 @@ def main(args):
         pop_ht, pops_rf_model = assign_pops(
             args.min_pop_prob,
             args.include_unreleasable_samples,
-            pcs=pca,
+            pcs=pcs,
             withhold_prop=args.withhold_prop,
         )
         pop_ht = pop_ht.checkpoint(
