@@ -216,3 +216,24 @@ def add_meta(
     mt = mt.annotate_cols(meta_name=meta.versions[version].ht()[mt.col_key])
 
     return mt
+
+
+def calling_intervals(interval_name: str, calling_interval_padding: int) -> TableResource:
+    """
+    Returns path to capture intervals Table.
+
+    :param str interval_name: One of 'ukb', 'broad', or 'intersection'
+    :param int calling_interval_padding: Padding around calling intervals. Available options are 0 or 50
+    :return: Calling intervals resource
+    """
+    if interval_name not in {"ukb", "broad", "intersection"}:
+        ValueError("Calling interval name must be one of: 'ukb', 'broad', or 'intersection'!")
+    if calling_interval_padding not in {0, 50}:
+        ValueError("calling interval padding must be one of: 0 or 50 (bp)!")
+    if interval_name == "ukb":
+        return TableResource(f"gs://gnomad/resources/intervals/xgen_plus_spikein.Homo_sapiens_assembly38.targets.pad{calling_interval_padding}.interval_list.ht")
+    elif interval_name == "broad":
+        return TableResource(f"gs://gnomad/resources/intervals/hg38_v0_exome_calling_regions.v1.pad{calling_interval_padding}.interval_list.ht")
+    elif interval_name == "intersection":
+        return TableResource(f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.intersection.interval_list.ht")
+
