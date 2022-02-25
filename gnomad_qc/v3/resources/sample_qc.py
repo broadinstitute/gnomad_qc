@@ -447,6 +447,17 @@ duplicates = VersionedTableResource(
     },
 )
 
+# PCA scores from projection of v3 samples onto v2 PCs
+v2_v3_pc_project_pca_scores = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v2_v{release}.pca_project_scores.ht"
+        )
+        for release in VERSIONS
+    },
+)
+
 # PC relate scores for the sample set that overlaps with v2 samples
 v2_v3_pc_relate_pca_scores = VersionedTableResource(
     CURRENT_VERSION,

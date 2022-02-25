@@ -296,7 +296,7 @@ def exac_release_sites_ht_path(hail_version=CURRENT_HAIL_VERSION):
 
 
 def hardcalls_mt_path(data_type, split=True, hail_version=CURRENT_HAIL_VERSION):
-    return 'gs://gnomad/hardcalls/hail-{0}/mt/{1}/gnomad.{1}{2}.mt'.format(hail_version, data_type,
+    return 'gs://gnomad_v2/hardcalls/hail-{0}/mt/{1}/gnomad.{1}{2}.mt'.format(hail_version, data_type,
                                                                            "" if split else ".unsplit")
 
 

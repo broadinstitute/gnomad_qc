@@ -1,5 +1,6 @@
 from typing import Optional
 
+from gnomad.resources.grch38.gnomad import public_release
 from gnomad.resources.resource_utils import (
     DataException,
     MatrixTableResource,
@@ -7,6 +8,7 @@ from gnomad.resources.resource_utils import (
     VersionedMatrixTableResource,
     VersionedTableResource,
 )
+from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import (
@@ -50,7 +52,10 @@ def release_ht_path(
     :return: File path for desired Hail Table
     """
     if public:
-        return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
+        if file_exists(public_release(data_type).versions[release_version].path):
+            return public_release(data_type).versions[release_version].path
+        else:
+            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
     else:
         return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
 
