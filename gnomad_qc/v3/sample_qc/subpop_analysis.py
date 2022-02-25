@@ -374,7 +374,7 @@ if __name__ == "__main__":
         "--pcs",
         help="List of PCs to use in the RF",
         type=list,
-        default=[1,2,3,4],
+        default=list(range(1, 17)),
     )
 
     args = parser.parse_args()

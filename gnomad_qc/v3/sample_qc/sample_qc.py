@@ -489,7 +489,7 @@ def assign_pops(
     min_prob: float,
     include_unreleasable_samples: bool,
     max_mislabeled_training_samples: int = 50,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
-    pcs: list = [1,2,3,4],
+    pcs: list = list(range(1, 17)),
     withhold_prop: float = None,
     pop: str = None,
     high_quality: bool = False,
@@ -514,7 +514,7 @@ def assign_pops(
     :return: Table of pop or subpop assignments and the rf model
     :rtype: hl.Table
     """
-    logger.info("Assigning global population labels")
+    logger.info("Assigning global population/subpopulation labels")
     # TODO: Should we be restricting to high quality
     pop_pca_scores_ht = ancestry_pca_scores(
         include_unreleasable_samples, high_quality, pop
@@ -571,7 +571,7 @@ def assign_pops(
 
     pop_ht, pops_rf_model = assign_population_pcs(
         pop_pca_scores_ht,
-        pc_cols=[pop_pca_scores_ht.scores[i-1] for i in pcs],
+        pc_cols=[pop_pca_scores_ht.scores[i - 1] for i in pcs],
         known_col="training_pop",
         output_col=pop_field,
         min_prob=min_prob,
@@ -618,7 +618,7 @@ def assign_pops(
 
         pop_ht, pops_rf_model = assign_population_pcs(
             pop_pca_scores_ht,
-            pc_cols=[pop_pca_scores_ht.scores[i-1] for i in pcs],
+            pc_cols=[pop_pca_scores_ht.scores[i - 1] for i in pcs],
             known_col="training_pop",
             min_prob=min_prob,
             output_col=pop_field,
