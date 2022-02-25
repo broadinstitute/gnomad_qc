@@ -373,7 +373,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--pcs",
         help="List of PCs to use in the RF",
-        type=list,
+        type=int,
+        nargs="+",
         default=list(range(1, 17)),
     )
 
