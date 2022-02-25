@@ -249,10 +249,11 @@ def main(args):  # noqa: D103
         if args.assign_subpops:
             logger.info("Assigning subpops...")
             joint_pca_ht, joint_pca_fit = assign_pops(
-                min_prob=0.9,  # How to decide on this number? Should withhold a certain percent and make a PR curve gs://gnomad-julia/gnomad_v4/pca_with_ccdg_gnomad_ukb_variants.ipynb
+                min_prob=args.min_prob,  # How to decide on this number? Should withhold a certain percent and make a PR curve gs://gnomad-julia/gnomad_v4/pca_with_ccdg_gnomad_ukb_variants.ipynb
                 include_unreleasable_samples=False,
-                max_mislabeled_training_samples=50,  # How to decide on this number?
+                max_mislabeled_training_samples=args.max_mislabeled_training_samples,  # How to decide on this number?
                 n_pcs=4,
+                withhold_prop=args.withhold_prop,
                 pop=pop,
                 high_quality=high_quality,
             )
@@ -350,6 +351,24 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--assign-subpops", help="Runs function to assign subpops", action="store_true",
+    )
+    parser.add_argument(
+        "--min-prob",
+        help="Minimum RF probability for subpop assignment",
+        type=float,
+        default=0.90,
+    )
+    parser.add_argument(
+        "--max-mislabeled-training-samples",
+        help="Maximum number of training samples that can be mislabelled",
+        type=int,
+        default=50,
+    )
+    parser.add_argument(
+        "--withhold-prop",
+        help="Proportion of training pop samples to withhold from training will keep all samples if `None`",
+        type=float,
+        default=None,
     )
 
     args = parser.parse_args()

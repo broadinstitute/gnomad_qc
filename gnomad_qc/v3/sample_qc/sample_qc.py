@@ -510,12 +510,15 @@ def assign_pops(
     :param n_pcs: Number of PCs to use in the RF
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
     :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
+    :param high_quality: Whether the file includes PCA info for only high-quality samples
     :return: Table of pop or subpop assignments and the rf model
     :rtype: hl.Table
     """
     logger.info("Assigning global population labels")
     # TODO: Should we be restricting to high quality
-    pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples, high_quality, pop).ht()
+    pop_pca_scores_ht = ancestry_pca_scores(
+        include_unreleasable_samples, high_quality, pop
+    ).ht()
 
     if pop is not None:
         pop_pca_scores_ht = annotate_subpop_meta(pop_pca_scores_ht)
@@ -531,7 +534,7 @@ def assign_pops(
         )
         pop_field = "subpop"
     else:
-       
+
         project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=(
