@@ -169,6 +169,17 @@ qc = VersionedMatrixTableResource(
     },
 )
 
+# VDS Hail interval_coverage results
+interval_coverage = VersionedMatrixTableResource(
+    CURRENT_VERSION,
+    {
+        version: MatrixTableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.interval_coverage.mt"
+        )
+        for version in VERSIONS
+    },
+)
+
 # Platform PCA loadings
 platform_pca_loadings = VersionedTableResource(
     CURRENT_VERSION,
