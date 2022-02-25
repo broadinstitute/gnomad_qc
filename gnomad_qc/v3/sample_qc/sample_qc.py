@@ -1180,7 +1180,7 @@ def main(args):
             pop.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite
         )
         pop_ht.transmute(
-            **{f"PC{i + 1}": pop_ht.pca_scores[i] for i in range(n_pcs)}
+            **{f"PC{i + 1}": pop_ht.pca_scores[i] for i in pcs}
         ).export(pop_tsv_path())
 
         with hl.hadoop_open(pop_rf_path(), "wb") as out:
