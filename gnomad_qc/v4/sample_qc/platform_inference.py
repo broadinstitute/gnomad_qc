@@ -41,7 +41,7 @@ def main(args):
             if args.test:
                 vds = gnomad_v4_testset.vds()
             else:
-                vds = get_gnomad_v4_vds(remove_hard_filtered_samples=False).vds()
+                vds = get_gnomad_v4_vds(remove_hard_filtered_samples=False)
             ht = calling_intervals(
                 args.calling_interval_name, args.calling_interval_padding
             ).ht()
@@ -63,7 +63,8 @@ def main(args):
                     mt = hl.read_matrix_table(test_coverage_path)
                 else:
                     raise FileNotFoundError(
-                        "The test interval coverage MatrixTable does not exist. Please run --compute_coverage with the --test argument."
+                        "The test interval coverage MatrixTable does not exist. Please run --compute_coverage with the"
+                        " --test argument."
                     )
             else:
                 mt = interval_coverage.mt()
@@ -85,10 +86,11 @@ def main(args):
             logger.info(
                 "Annotating interval coverage MatrixTable with 'callrate' defined as fraction over dp 0..."
             )
-            # Default `hl.vds.interval_coverage` will return a list for `fraction_over_dp_threshold` where the second element is dp >= 1 (dp > 0)
+            # Default `hl.vds.interval_coverage` will return a list for `fraction_over_dp_threshold` where the
+            # second element is dp >= 1 (dp > 0)
             mt = mt.annotate_entries(callrate=mt.fraction_over_dp_threshold[1])
 
-            # NOTE: added None binarization_threshold parameter to make sure we things the same way as before parameter existed
+            # NOTE: added None binarization_threshold parameter to be consistent with runs before this parameter existed
             eigenvalues, scores_ht, loadings_ht = run_platform_pca(
                 mt, binarization_threshold=None
             )
@@ -126,7 +128,8 @@ def main(args):
                     scores_ht = hl.read_table(test_scores_path)
                 else:
                     raise FileNotFoundError(
-                        "The test interval coverage MatrixTable does not exist. Please run --compute_coverage with the --test argument."
+                        "The test interval coverage MatrixTable does not exist. Please run --compute_coverage with "
+                        "the --test argument."
                     )
             else:
                 scores_ht = hl.read_table(platform_pca_scores.ht())
@@ -140,6 +143,8 @@ def main(args):
             # Make sure hdbscan_min_samples is not None before annotating globals
             if not args.hdbscan_min_samples:
                 hdbscan_min_samples = args.hdbscan_min_cluster_size
+            else:
+                hdbscan_min_samples = args.hdbscan_min_samples
             platform_ht = platform_ht.annotate_globals(
                 hdbscan_min_cluster_size=args.hdbscan_min_cluster_size,
                 hdbscan_min_samples=hdbscan_min_samples,
@@ -155,11 +160,10 @@ def main(args):
 
     finally:
         logger.info("Copying log to logging bucket...")
-        hl.copy_log(get_logging_path())
+        hl.copy_log(get_logging_path("platform_pca"))
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-o",
