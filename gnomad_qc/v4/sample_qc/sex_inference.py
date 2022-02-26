@@ -43,7 +43,8 @@ def compute_sex(
     :rtype: hl.Table
     """
 
-    # TODO: Determine what variants to use for f-stat calculation, current implementation will use a HT created by performing a full densify to get callrate and AF, note, this might not be needed, see CCDG f-stat values
+    # TODO: Determine what variants to use for f-stat calculation, current implementation will use a HT created by
+    #  performing a full densify to get callrate and AF, note, this might not be needed, see CCDG f-stat values
     freq_ht = hard_filtered_ac_an_af.ht()
 
     if per_platform:
