@@ -46,8 +46,15 @@ def main(args):
                 args.calling_interval_name, args.calling_interval_padding
             ).ht()
             mt = hl.vds.interval_coverage(vds, intervals=ht)
+            mt = mt.annotate_globals(
+                calling_interval_name=args.calling_interval_name,
+                calling_interval_padding=args.calling_interval_padding,
+            )
             mt.write(
-                get_checkpoint_path("test_interval_coverage", mt=True)
+                get_checkpoint_path(
+                    f"test_interval_coverage.{args.calling_interval_name}.pad{args.calling_interval_padding}",
+                    mt=True,
+                )
                 if args.test
                 else interval_coverage.path,
                 overwrite=args.overwrite,
@@ -57,14 +64,17 @@ def main(args):
             logger.info("Running platform PCA...")
             if args.test:
                 test_coverage_path = get_checkpoint_path(
-                    "test_interval_coverage", mt=True
+                    f"test_interval_coverage.{args.calling_interval_name}.pad{args.calling_interval_padding}",
+                    mt=True,
                 )
                 if file_exists(test_coverage_path):
                     mt = hl.read_matrix_table(test_coverage_path)
                 else:
                     raise FileNotFoundError(
-                        "The test interval coverage MatrixTable does not exist. Please run --compute_coverage with the"
-                        " --test argument."
+                        f"The test interval coverage MatrixTable does not exist for calling interval "
+                        f"{args.calling_interval_name} and interval padding {args.calling_interval_padding}. "
+                        f"Please run --compute_coverage with the --test argument and needed "
+                        f"--calling_interval_name/--calling_interval_padding arguments."
                     )
             else:
                 mt = interval_coverage.mt()
@@ -74,7 +84,7 @@ def main(args):
             )
             if args.test:
                 ht = gnomad_v4_testset_meta.ht()
-                ht = ht.filter(ht.hard_filtered_no_sex)
+                ht = ht.filter(hl.len(ht.rand_sampling_meta.hard_filters_no_sex) == 0)
             else:
                 ht = hard_filtered_samples.ht()
 
@@ -94,27 +104,44 @@ def main(args):
             eigenvalues, scores_ht, loadings_ht = run_platform_pca(
                 mt, binarization_threshold=None
             )
+            scores_ht = scores_ht.annotate_globals(
+                calling_interval_name=mt.calling_interval_name,
+                calling_interval_padding=mt.calling_interval_padding,
+            )
             scores_ht.write(
-                get_checkpoint_path("test_platform_scores")
+                get_checkpoint_path(
+                    f"test_platform_scores.{args.calling_interval_name}.pad{args.calling_interval_padding}"
+                )
                 if args.test
                 else platform_pca_scores.path,
                 overwrite=args.overwrite,
             )
+            loadings_ht = loadings_ht.annotate_globals(
+                calling_interval_name=mt.calling_interval_name,
+                calling_interval_padding=mt.calling_interval_padding,
+            )
             loadings_ht.write(
-                get_checkpoint_path("test_platform_loadings")
+                get_checkpoint_path(
+                    f"test_platform_loadings.{args.calling_interval_name}.pad{args.calling_interval_padding}"
+                )
                 if args.test
                 else platform_pca_loadings.path,
                 overwrite=args.overwrite,
             )
-
             eigenvalues_ht = hl.Table.parallelize(
                 hl.literal(
                     [{"PC": i + 1, "eigenvalue": x} for i, x in enumerate(eigenvalues)],
                     "array<struct{PC: int, eigenvalue: float}>",
                 )
             )
+            eigenvalues_ht = eigenvalues_ht.annotate_globals(
+                calling_interval_name=mt.calling_interval_name,
+                calling_interval_padding=mt.calling_interval_padding,
+            )
             eigenvalues_ht.write(
-                get_checkpoint_path("test_platform_eigenvalues")
+                get_checkpoint_path(
+                    f"test_platform_eigenvalues.{args.calling_interval_name}.pad{args.calling_interval_padding}"
+                )
                 if args.test
                 else platform_pca_eigenvalues.path,
                 overwrite=args.overwrite,
@@ -123,13 +150,17 @@ def main(args):
         if args.assign_platforms:
             logger.info("Assigning platforms based on platform PCA clustering")
             if args.test:
-                test_scores_path = get_checkpoint_path("test_platform_scores")
+                test_scores_path = get_checkpoint_path(
+                    f"test_platform_scores.{args.calling_interval_name}.pad{args.calling_interval_padding}"
+                )
                 if file_exists(test_scores_path):
                     scores_ht = hl.read_table(test_scores_path)
                 else:
                     raise FileNotFoundError(
-                        "The test interval coverage MatrixTable does not exist. Please run --compute_coverage with "
-                        "the --test argument."
+                        f"The test platform PCA Table does not exist for calling interval "
+                        f"{args.calling_interval_name} and interval padding {args.calling_interval_padding}. "
+                        f"Please run --compute_coverage and -- run_platform_pca with the --test argument and needed "
+                        f"--calling_interval_name/--calling_interval_padding arguments."
                     )
             else:
                 scores_ht = hl.read_table(platform_pca_scores.ht())
@@ -148,10 +179,13 @@ def main(args):
             platform_ht = platform_ht.annotate_globals(
                 hdbscan_min_cluster_size=args.hdbscan_min_cluster_size,
                 hdbscan_min_samples=hdbscan_min_samples,
+                calling_interval_name=scores_ht.calling_interval_name,
+                calling_interval_padding=scores_ht.calling_interval_padding,
             )
-            platform_ht = platform_ht.repartition(args.n_partitions)
             platform_ht = platform_ht.checkpoint(
-                get_checkpoint_path("test_platform_assignment")
+                get_checkpoint_path(
+                    f"test_platform_assignment.{args.calling_interval_name}.pad{args.calling_interval_padding}"
+                )
                 if args.test
                 else platform.path,
                 overwrite=args.overwrite,
