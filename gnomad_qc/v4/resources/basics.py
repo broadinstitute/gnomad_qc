@@ -129,10 +129,14 @@ _gnomad_v4_genotypes = {
     "4.0": VariantDatasetResource("gs://gnomad/raw/exomes/4.0/gnomad_v4.0.vds"),
 }
 
-
 gnomad_v4_genotypes = VersionedVariantDatasetResource(
     CURRENT_VERSION, _gnomad_v4_genotypes,
 )
+
+# v4 test dataset VDS
+gnomad_v4_testset = VariantDatasetResource("gs://gnomad/raw/exomes/4.0/gnomad_v4.0.vds")
+gnomad_v4_testset_meta = VariantDatasetResource("gs://gnomad/raw/exomes/4.0/gnomad_v4.0_meta.ht")
+
 
 # UKBB data resources
 def _ukbb_root_path() -> str:
@@ -189,18 +193,15 @@ def get_checkpoint_path(
     return f'{qc_temp_prefix(version)}{name}.{"mt" if mt else "ht"}'
 
 
-def testset_vds(version: str = CURRENT_VERSION) -> hl.vds.VariantDataset:
+def get_logging_path(name: str, version: str = CURRENT_VERSION) -> str:
     """
-    Return path to the testset VDS.
+    Create a path for Hail log files.
 
+    :param str name: Name of log file
     :param version: Version of annotation path to return
-    :return: Path to VDS with testset
+    :return: Output log path
     """
-    vds = hl.vds.read_vds(
-        "gs://gnomad/raw/exomes/{version}/testing/gnomad_v{version}_test.vds"
-    )
-
-    return vds
+    return f"{qc_temp_prefix(version)}{name}.log"
 
 
 def add_meta(
