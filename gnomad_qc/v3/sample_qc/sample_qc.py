@@ -479,7 +479,7 @@ def annotate_subpop_meta(ht: hl.Table) -> hl.Table:
     """
     meta_ht = meta.ht()
     ht = ht.annotate(**meta_ht[ht.key])
-    ht = ht.annotate(subpop_description=ht.project_meta.subpop_description,)
+    ht = ht.annotate(subpop_description=ht.project_meta.subpop_description)
 
     return ht
 
