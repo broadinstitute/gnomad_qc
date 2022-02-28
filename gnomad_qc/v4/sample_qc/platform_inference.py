@@ -112,10 +112,7 @@ def main(args):
             eigenvalues, scores_ht, loadings_ht = run_platform_pca(
                 mt, binarization_threshold=None
             )
-            scores_ht = scores_ht.annotate_globals(
-                calling_interval_name=mt.calling_interval_name,
-                calling_interval_padding=mt.calling_interval_padding,
-            )
+            scores_ht = scores_ht.annotate_globals(**mt.index_globals())
             scores_ht.write(
                 get_checkpoint_path(
                     f"test_platform_scores.{args.calling_interval_name}.pad{args.calling_interval_padding}"
@@ -124,10 +121,7 @@ def main(args):
                 else platform_pca_scores.path,
                 overwrite=args.overwrite,
             )
-            loadings_ht = loadings_ht.annotate_globals(
-                calling_interval_name=mt.calling_interval_name,
-                calling_interval_padding=mt.calling_interval_padding,
-            )
+            loadings_ht = loadings_ht.annotate_globals(**mt.index_globals())
             loadings_ht.write(
                 get_checkpoint_path(
                     f"test_platform_loadings.{args.calling_interval_name}.pad{args.calling_interval_padding}"
@@ -142,10 +136,7 @@ def main(args):
                     "array<struct{PC: int, eigenvalue: float}>",
                 )
             )
-            eigenvalues_ht = eigenvalues_ht.annotate_globals(
-                calling_interval_name=mt.calling_interval_name,
-                calling_interval_padding=mt.calling_interval_padding,
-            )
+            eigenvalues_ht = eigenvalues_ht.annotate_globals(**mt.index_globals())
             eigenvalues_ht.write(
                 get_checkpoint_path(
                     f"test_platform_eigenvalues.{args.calling_interval_name}.pad{args.calling_interval_padding}"
@@ -187,8 +178,7 @@ def main(args):
             platform_ht = platform_ht.annotate_globals(
                 hdbscan_min_cluster_size=args.hdbscan_min_cluster_size,
                 hdbscan_min_samples=hdbscan_min_samples,
-                calling_interval_name=scores_ht.calling_interval_name,
-                calling_interval_padding=scores_ht.calling_interval_padding,
+                **scores_ht.index_globals(),
             )
             platform_ht = platform_ht.checkpoint(
                 get_checkpoint_path(
