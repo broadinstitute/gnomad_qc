@@ -10,7 +10,7 @@ from gnomad_qc.v3.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
     ancestry_pca_scores,
-    assigned_subpops_path,
+    assigned_subpops,
     filtered_subpop_qc_mt,
     pca_related_samples_to_drop,
     subpop_qc,
@@ -259,7 +259,7 @@ def main(args):  # noqa: D103
                 missing_label="Other",
             )
 
-            joint_pca_ht.write(assigned_subpops_path(pop), overwrite=args.overwrite)
+            joint_pca_ht.write(assigned_subpops(pop).path, overwrite=args.overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
