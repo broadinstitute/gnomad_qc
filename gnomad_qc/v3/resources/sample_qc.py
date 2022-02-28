@@ -166,13 +166,13 @@ def filtered_subpop_qc_mt(pop: str, version: str = CURRENT_VERSION) -> str:
     return f"{get_sample_qc_root(version)}/subpop_analysis/gnomad_v{version}_filtered_subpop_qc_mt.{pop}.mt"
 
 
-def assigned_subpops_path(pop: str, version: str = CURRENT_VERSION) -> str:
+def assigned_subpops(pop: str, version: str = CURRENT_VERSION) -> TableResource:
     """
-    Path to Table of inferred sample subpopulations
+    Table resource for inferred sample subpopulations
     
     :param pop: Population in which subpops have been assgined
     :param version: Version of assigned subpops path to return
-    :return: String path to Table of assigned subpops within population specified by 'pop' parameter 
+    :return: TableResource of assigned subpops within population specified by 'pop' parameter 
     """
     return TableResource(f"{get_sample_qc_root(version)}/subpop_analysis/gnomad_v{version}_assigned_subpops.{pop}.ht")
 
