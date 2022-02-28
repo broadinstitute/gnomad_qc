@@ -468,19 +468,6 @@ def run_pca(
     return run_pca_with_relateds(qc_mt, samples_to_drop, n_pcs=n_pcs)
 
 
-def annotate_subpop_meta(ht: hl.Table) -> hl.Table:
-    """
-    Add subpop_description to a Table.
-
-    :param ht: Table to which metadata annotation of subpop_description should be addded
-    :return: Table with added annotation for subpop_description
-    """
-    meta_ht = meta.ht()
-    ht = ht.annotate(**meta_ht[ht.key])
-
-    return ht
-
-
 def assign_pops(
     min_prob: float,
     include_unreleasable_samples: bool,
@@ -519,7 +506,8 @@ def assign_pops(
     ).ht()
 
     if pop is not None:
-        pop_pca_scores_ht = annotate_subpop_meta(pop_pca_scores_ht)
+        meta_ht = meta.ht()
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(**meta_ht[pop_pca_scores_ht.key])
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=(
                 hl.case()
