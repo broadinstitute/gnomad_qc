@@ -471,16 +471,15 @@ def run_pca(
 
 
 def annotate_subpop_meta(ht: hl.Table) -> hl.Table:
+    """
+    Add subpop_description to a Table.
+
+    :param ht: Table to which metadata annotation of subpop_description should be addded
+    :return: Table with added annotation for subpop_description
+    """
     meta_ht = meta.ht()
     ht = ht.annotate(**meta_ht[ht.key])
-    ht = ht.annotate(
-        subpop_description=ht.project_meta.subpop_description,
-        v2_pop=ht.project_meta.v2_pop,
-        v2_subpop=ht.project_meta.v2_subpop,
-        pop=ht.population_inference.pop,
-        project_id=ht.project_meta.project_id,
-        project_pop=ht.project_meta.project_pop,
-    )
+    ht = ht.annotate(subpop_description=ht.project_meta.subpop_description,)
 
     return ht
 
@@ -489,10 +488,11 @@ def assign_pops(
     min_prob: float,
     include_unreleasable_samples: bool,
     max_mislabeled_training_samples: int = 50,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
-    pcs: list = list(range(1, 17)),
+    pcs: List(int) = list(range(1, 17)),
     withhold_prop: float = None,
     pop: str = None,
     high_quality: bool = False,
+    missing_label: str = "oth",
 ) -> Tuple[hl.Table, Any]:
     """
     Use a random forest model to assign global population labels based on the results from `assign_pca`.
@@ -511,7 +511,8 @@ def assign_pops(
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
     :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
     :param high_quality: Whether the file includes PCA info for only high-quality samples
-    :return: Table of pop or subpop assignments and the rf model
+    :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`
+    :return: Table of pop or subpop assignments and the RF model
     :rtype: hl.Table
     """
     logger.info("Assigning global population/subpopulation labels")

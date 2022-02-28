@@ -256,13 +256,10 @@ def main(args):  # noqa: D103
                 withhold_prop=args.withhold_prop,
                 pop=pop,
                 high_quality=high_quality,
+                missing_label="Other",
             )
 
-            joint_pca_ht = joint_pca_ht.checkpoint(
-                assigned_subpops_path(pop),
-                overwrite=args.overwrite,
-                _read_if_exists=not args.overwrite,
-            )
+            joint_pca_ht.write(assigned_subpops_path(pop), overwrite=args.overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -366,13 +363,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--withhold-prop",
-        help="Proportion of training pop samples to withhold from training will keep all samples if `None`",
+        help="Proportion of training pop samples to withhold from training, all samples will be kept if this flag is not used",
         type=float,
         default=None,
     )
     parser.add_argument(
         "--pcs",
-        help="List of PCs to use in the RF",
+        help="List of PCs to use in the subpop RF assignment",
         type=int,
         nargs="+",
         default=list(range(1, 17)),
