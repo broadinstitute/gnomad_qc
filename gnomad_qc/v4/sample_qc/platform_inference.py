@@ -39,9 +39,17 @@ def main(args):
     try:
         if args.compute_coverage:
             if args.test:
+                logger.info("Loading test VDS...")
                 vds = gnomad_v4_testset.vds()
             else:
+                logger.info("Loading full v4 VDS...")
                 vds = get_gnomad_v4_vds(remove_hard_filtered_samples=False)
+
+            logger.info(
+                "Loading calling intervals: %s with padding of %d...",
+                args.calling_interval_name,
+                args.calling_interval_padding,
+            )
             ht = calling_intervals(
                 args.calling_interval_name, args.calling_interval_padding
             ).ht()
