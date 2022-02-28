@@ -169,6 +169,7 @@ def filtered_subpop_qc_mt(pop: str, version: str = CURRENT_VERSION) -> str:
 def assigned_subpops_path(pop: str, version: str = CURRENT_VERSION) -> str:
     """
     Path to Table of inferred sample subpopulations
+    
     :param pop: Population in which subpops have been assgined
     :param version: Version of assigned subpops path to return
     :return: String path to Table of assigned subpops within population specified by 'pop' parameter 
