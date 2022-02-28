@@ -134,7 +134,7 @@ gnomad_v4_genotypes = VersionedVariantDatasetResource(
 )
 
 # v4 test dataset VDS
-gnomad_v4_testset = VariantDatasetResource("gs://gnomad/raw/exomes/4.0/gnomad_v4.0.vds")
+gnomad_v4_testset = VariantDatasetResource("gs://gnomad/raw/exomes/4.0/testing/gnomad_v4.0_test.vds")
 gnomad_v4_testset_meta = TableResource("gs://gnomad/raw/exomes/4.0/gnomad_v4.0_meta.ht")
 
 
