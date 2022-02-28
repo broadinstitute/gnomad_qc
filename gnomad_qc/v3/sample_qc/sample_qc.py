@@ -577,11 +577,6 @@ def assign_pops(
         min_prob=min_prob,
     )
 
-    # Set "<NA>" string to missing
-    pop_ht = pop_ht.annotate(
-        training_pop=hl.or_missing(pop_ht.training_pop != "<NA>", pop_ht.training_pop)
-    )
-
     n_mislabeled_samples = pop_ht.aggregate(
         hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
     )
@@ -622,13 +617,6 @@ def assign_pops(
             known_col="training_pop",
             min_prob=min_prob,
             output_col=pop_field,
-        )
-
-        # Set "<NA>" string to missing
-        pop_ht = pop_ht.annotate(
-            training_pop=hl.or_missing(
-                pop_ht.training_pop != "<NA>", pop_ht.training_pop
-            )
         )
 
         pop_ht = pop_ht.annotate(
@@ -1179,9 +1167,9 @@ def main(args):
         pop_ht = pop_ht.checkpoint(
             pop.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite
         )
-        pop_ht.transmute(
-            **{f"PC{i + 1}": pop_ht.pca_scores[i] for i in pcs}
-        ).export(pop_tsv_path())
+        pop_ht.transmute(**{f"PC{i + 1}": pop_ht.pca_scores[i] for i in pcs}).export(
+            pop_tsv_path()
+        )
 
         with hl.hadoop_open(pop_rf_path(), "wb") as out:
             pickle.dump(pops_rf_model, out)
