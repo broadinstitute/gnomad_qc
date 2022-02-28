@@ -472,7 +472,7 @@ def assign_pops(
     min_prob: float,
     include_unreleasable_samples: bool,
     max_mislabeled_training_samples: int = 50,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
-    pcs: List(int) = list(range(1, 17)),
+    pcs: List[int] = list(range(1, 17)),
     withhold_prop: float = None,
     pop: str = None,
     high_quality: bool = False,
