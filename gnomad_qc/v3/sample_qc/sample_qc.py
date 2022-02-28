@@ -268,7 +268,7 @@ def compute_hard_filters(
         # Remove samples with ambiguous sex assignments
         sex_ht = sex.ht()[ht.key]
         hard_filters["ambiguous_sex"] = sex_ht.sex_karyotype == "ambiguous"
-        hard_filters["sex_aneuploidy"] = ~hl.set({"ambiguous", "XX", "XY"}).contains(  # pylint: disable=invalid-unary-operand-type
+        hard_filters["sex_aneuploidy"] = ~hl.set({"ambiguous", "XX", "XY"}).contains( # pylint: disable=invalid-unary-operand-type
             sex_ht.sex_karyotype
         )
 
@@ -472,8 +472,11 @@ def assign_pops(
     min_prob: float,
     include_unreleasable_samples: bool,
     max_mislabeled_training_samples: int = 50,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
-    n_pcs: int = 16,
+    pcs: List[int] = list(range(1, 17)),
     withhold_prop: float = None,
+    pop: str = None,
+    high_quality: bool = False,
+    missing_label: str = "oth",
 ) -> Tuple[hl.Table, Any]:
     """
     Use a random forest model to assign global population labels based on the results from `assign_pca`.
@@ -488,24 +491,50 @@ def assign_pops(
     :param min_prob: Minimum RF probability for pop assignment
     :param include_unreleasable_samples: Should unreleasable samples be included in the PCA
     :param max_mislabeled_training_samples: Maximum number of training samples that can be mislabelled
-    :param n_pcs: Number of PCs to use in the RF
+    :param pcs: List of PCs to use in the RF
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
-    :return: Table of pop assignments and the rf model
+    :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
+    :param high_quality: Whether the file includes PCA info for only high-quality samples
+    :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`
+    :return: Table of pop or subpop assignments and the RF model
     :rtype: hl.Table
     """
-    logger.info("Assigning global population labels")
-    pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples).ht()
-    project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
-    pop_pca_scores_ht = pop_pca_scores_ht.annotate(
-        training_pop=(
-            hl.case()
-            .when(
-                hl.is_defined(project_meta_ht.project_pop), project_meta_ht.project_pop
+    logger.info("Assigning global population/subpopulation labels")
+    # TODO: Should we be restricting to high quality
+    pop_pca_scores_ht = ancestry_pca_scores(
+        include_unreleasable_samples, high_quality, pop
+    ).ht()
+
+    if pop is not None:
+        meta_ht = meta.ht()
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(**meta_ht[pop_pca_scores_ht.key])
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+            training_pop=(
+                hl.case()
+                .when(
+                    hl.is_defined(pop_pca_scores_ht.project_meta.subpop_description),
+                    pop_pca_scores_ht.project_meta.subpop_description,
+                )
+                .or_missing()
             )
-            .when(project_meta_ht.v2_pop != "oth", project_meta_ht.v2_pop)
-            .or_missing()
         )
-    )
+        pop_field = "subpop"
+    else:
+
+        project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+            training_pop=(
+                hl.case()
+                .when(
+                    hl.is_defined(project_meta_ht.project_pop),
+                    project_meta_ht.project_pop,
+                )
+                .when(project_meta_ht.v2_pop != "oth", project_meta_ht.v2_pop)
+                .or_missing()
+            )
+        )
+        pop_field = "pop"
+
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop_all=pop_pca_scores_ht.training_pop
     )
@@ -528,13 +557,14 @@ def assign_pops(
 
     pop_ht, pops_rf_model = assign_population_pcs(
         pop_pca_scores_ht,
-        pc_cols=pop_pca_scores_ht.scores[:n_pcs],
+        pc_cols=[pop_pca_scores_ht.scores[i - 1] for i in pcs],
         known_col="training_pop",
+        output_col=pop_field,
         min_prob=min_prob,
     )
 
     n_mislabeled_samples = pop_ht.aggregate(
-        hl.agg.count_where(pop_ht.training_pop != pop_ht.pop)
+        hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
     )
     pop_ht = pop_ht.annotate(
         training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all
@@ -549,11 +579,12 @@ def assign_pops(
         pop_ht = pop_ht[pop_pca_scores_ht.key]
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=hl.or_missing(
-                (pop_ht.training_pop == pop_ht.pop), pop_pca_scores_ht.training_pop
+                (pop_ht.training_pop == pop_ht[pop_field]),
+                pop_pca_scores_ht.training_pop,
             ),
             training_pop_all=hl.or_missing(
                 hl.is_missing(pop_ht.training_pop)
-                | (pop_ht.training_pop == pop_ht.pop),
+                | (pop_ht.training_pop == pop_ht[pop_field]),
                 pop_pca_scores_ht.training_pop_all,
             ),
         ).persist()
@@ -568,16 +599,18 @@ def assign_pops(
 
         pop_ht, pops_rf_model = assign_population_pcs(
             pop_pca_scores_ht,
-            pc_cols=pop_pca_scores_ht.scores[:n_pcs],
+            pc_cols=[pop_pca_scores_ht.scores[i - 1] for i in pcs],
             known_col="training_pop",
             min_prob=min_prob,
+            output_col=pop_field,
         )
+
         pop_ht = pop_ht.annotate(
             training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all
         )
 
         n_mislabeled_samples = pop_ht.aggregate(
-            hl.agg.count_where(pop_ht.training_pop != pop_ht.pop)
+            hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
         )
 
     pop_ht = pop_ht.annotate_globals(
@@ -585,7 +618,9 @@ def assign_pops(
         include_unreleasable_samples=include_unreleasable_samples,
         max_mislabeled_training_samples=max_mislabeled_training_samples,
         pop_assignment_iterations=pop_assignment_iter,
-        n_pcs=n_pcs,
+        pcs=pcs,
+        pop=pop,
+        high_quality=high_quality,
     )
     if withhold_prop:
         pop_ht = pop_ht.annotate_globals(withhold_prop=withhold_prop)
@@ -1108,19 +1143,19 @@ def main(args):
         )
 
     if args.assign_pops:
-        n_pcs = args.pop_n_pcs
+        pcs = args.pop_pcs
         pop_ht, pops_rf_model = assign_pops(
             args.min_pop_prob,
             args.include_unreleasable_samples,
-            n_pcs=n_pcs,
+            pcs=pcs,
             withhold_prop=args.withhold_prop,
         )
         pop_ht = pop_ht.checkpoint(
             pop.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite
         )
-        pop_ht.transmute(
-            **{f"PC{i + 1}": pop_ht.pca_scores[i] for i in range(n_pcs)}
-        ).export(pop_tsv_path())
+        pop_ht.transmute(**{f"PC{i + 1}": pop_ht.pca_scores[i] for i in pcs}).export(
+            pop_tsv_path()
+        )
 
         with hl.hadoop_open(pop_rf_path(), "wb") as out:
             pickle.dump(pops_rf_model, out)
@@ -1343,10 +1378,10 @@ if __name__ == "__main__":
         "--assign_pops", help="Assigns pops from PCA", action="store_true"
     )
     parser.add_argument(
-        "--pop_n_pcs",
-        help="Number of PCs to use for ancestry assignment",
-        default=16,
-        type=int,
+        "--pop_pcs",
+        help="List of PCs to use for ancestry assignment",
+        default=list(range(1, 17)),
+        type=list,
     )
     parser.add_argument(
         "--min_pop_prob",
