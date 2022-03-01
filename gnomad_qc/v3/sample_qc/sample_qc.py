@@ -561,6 +561,7 @@ def assign_pops(
         known_col="training_pop",
         output_col=pop_field,
         min_prob=min_prob,
+        missing_label=missing_label,
     )
 
     n_mislabeled_samples = pop_ht.aggregate(
@@ -601,8 +602,9 @@ def assign_pops(
             pop_pca_scores_ht,
             pc_cols=[pop_pca_scores_ht.scores[i - 1] for i in pcs],
             known_col="training_pop",
-            min_prob=min_prob,
             output_col=pop_field,
+            min_prob=min_prob,
+            missing_label=missing_label,
         )
 
         pop_ht = pop_ht.annotate(
