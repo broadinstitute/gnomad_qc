@@ -233,8 +233,8 @@ def calling_intervals(interval_name: str, calling_interval_padding: int) -> Tabl
         ValueError("calling interval padding must be one of: 0 or 50 (bp)!")
     if interval_name == "ukb":
         return TableResource(f"gs://gnomad/resources/intervals/xgen_plus_spikein.Homo_sapiens_assembly38.targets.pad{calling_interval_padding}.interval_list.ht")
-    elif interval_name == "broad":
+    if interval_name == "broad":
         return TableResource(f"gs://gnomad/resources/intervals/hg38_v0_exome_calling_regions.v1.pad{calling_interval_padding}.interval_list.ht")
-    elif interval_name == "intersection":
+    if interval_name == "intersection":
         return TableResource(f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.intersection.interval_list.ht")
 

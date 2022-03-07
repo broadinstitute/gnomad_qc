@@ -35,6 +35,8 @@ logger.setLevel(logging.INFO)
 
 def main(args):
     hl.init(log="/platform_pca.log", default_reference="GRCh38")
+    calling_interval_name = args.calling_interval_name
+    calling_interval_padding = args.calling_interval_padding
 
     try:
         if args.compute_coverage:
@@ -47,20 +49,20 @@ def main(args):
 
             logger.info(
                 "Loading calling intervals: %s with padding of %d...",
-                args.calling_interval_name,
-                args.calling_interval_padding,
+                calling_interval_name,
+                calling_interval_padding,
             )
             ht = calling_intervals(
-                args.calling_interval_name, args.calling_interval_padding
+                calling_interval_name, calling_interval_padding
             ).ht()
             mt = hl.vds.interval_coverage(vds, intervals=ht)
             mt = mt.annotate_globals(
-                calling_interval_name=args.calling_interval_name,
-                calling_interval_padding=args.calling_interval_padding,
+                calling_interval_name=calling_interval_name,
+                calling_interval_padding=calling_interval_padding,
             )
             mt.write(
                 get_checkpoint_path(
-                    f"test_interval_coverage.{args.calling_interval_name}.pad{args.calling_interval_padding}",
+                    f"test_interval_coverage.{calling_interval_name}.pad{calling_interval_padding}",
                     mt=True,
                 )
                 if args.test
@@ -72,7 +74,7 @@ def main(args):
             logger.info("Running platform PCA...")
             if args.test:
                 test_coverage_path = get_checkpoint_path(
-                    f"test_interval_coverage.{args.calling_interval_name}.pad{args.calling_interval_padding}",
+                    f"test_interval_coverage.{calling_interval_name}.pad{calling_interval_padding}",
                     mt=True,
                 )
                 if file_exists(test_coverage_path):
@@ -80,7 +82,7 @@ def main(args):
                 else:
                     raise FileNotFoundError(
                         f"The test interval coverage MatrixTable does not exist for calling interval "
-                        f"{args.calling_interval_name} and interval padding {args.calling_interval_padding}. "
+                        f"{calling_interval_name} and interval padding {calling_interval_padding}. "
                         f"Please run --compute_coverage with the --test argument and needed "
                         f"--calling_interval_name/--calling_interval_padding arguments."
                     )
@@ -115,7 +117,7 @@ def main(args):
             scores_ht = scores_ht.annotate_globals(**mt.index_globals())
             scores_ht.write(
                 get_checkpoint_path(
-                    f"test_platform_scores.{args.calling_interval_name}.pad{args.calling_interval_padding}"
+                    f"test_platform_scores.{calling_interval_name}.pad{calling_interval_padding}"
                 )
                 if args.test
                 else platform_pca_scores.path,
@@ -124,7 +126,7 @@ def main(args):
             loadings_ht = loadings_ht.annotate_globals(**mt.index_globals())
             loadings_ht.write(
                 get_checkpoint_path(
-                    f"test_platform_loadings.{args.calling_interval_name}.pad{args.calling_interval_padding}"
+                    f"test_platform_loadings.{calling_interval_name}.pad{calling_interval_padding}"
                 )
                 if args.test
                 else platform_pca_loadings.path,
@@ -139,7 +141,7 @@ def main(args):
             eigenvalues_ht = eigenvalues_ht.annotate_globals(**mt.index_globals())
             eigenvalues_ht.write(
                 get_checkpoint_path(
-                    f"test_platform_eigenvalues.{args.calling_interval_name}.pad{args.calling_interval_padding}"
+                    f"test_platform_eigenvalues.{calling_interval_name}.pad{calling_interval_padding}"
                 )
                 if args.test
                 else platform_pca_eigenvalues.path,
@@ -150,14 +152,14 @@ def main(args):
             logger.info("Assigning platforms based on platform PCA clustering")
             if args.test:
                 test_scores_path = get_checkpoint_path(
-                    f"test_platform_scores.{args.calling_interval_name}.pad{args.calling_interval_padding}"
+                    f"test_platform_scores.{calling_interval_name}.pad{calling_interval_padding}"
                 )
                 if file_exists(test_scores_path):
                     scores_ht = hl.read_table(test_scores_path)
                 else:
                     raise FileNotFoundError(
                         f"The test platform PCA Table does not exist for calling interval "
-                        f"{args.calling_interval_name} and interval padding {args.calling_interval_padding}. "
+                        f"{calling_interval_name} and interval padding {calling_interval_padding}. "
                         f"Please run --compute_coverage and -- run_platform_pca with the --test argument and needed "
                         f"--calling_interval_name/--calling_interval_padding arguments."
                     )
@@ -182,7 +184,7 @@ def main(args):
             )
             platform_ht = platform_ht.checkpoint(
                 get_checkpoint_path(
-                    f"test_platform_assignment.{args.calling_interval_name}.pad{args.calling_interval_padding}"
+                    f"test_platform_assignment.{calling_interval_name}.pad{calling_interval_padding}"
                 )
                 if args.test
                 else platform.path,
@@ -209,48 +211,48 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--compute_coverage",
+        "--compute-coverage",
         help="Compute per interval coverage metrics using Hail's vds.interval_coverage method.",
         action="store_true",
     )
     parser.add_argument(
-        "--calling_interval_name",
+        "--calling-interval-name",
         help="Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'.",
         type=str,
         choices=["ukb", "broad", "intersection"],
         default="intersection",
     )
     parser.add_argument(
-        "--calling_interval_padding",
+        "--calling-interval-padding",
         help="Number of base pair padding to use on the calling intervals. One of 0 or 50 bp.",
         type=int,
         choices=[0, 50],
         default=50,
     )
     parser.add_argument(
-        "--run_platform_pca",
+        "--run-platform-pca",
         help="Runs platform PCA (assumes coverage MatrixTable was computed, --compute_coverage).",
         action="store_true",
     )
     parser.add_argument(
-        "--assign_platforms",
+        "--assign-platforms",
         help="Assigns platforms based on per interval fraction of bases over DP 0 PCA results using HDBSCAN.",
         action="store_true",
     )
     parser.add_argument(
-        "--hdbscan_min_samples",
+        "--hdbscan-min-samples",
         help="Minimum samples parameter for HDBSCAN. If not specified, --hdbscan_min_cluster_size is used.",
         type=int,
         required=False,
     )
     parser.add_argument(
-        "--hdbscan_min_cluster_size",
+        "--hdbscan-min-cluster-size",
         help="Minimum cluster size parameter for HDBSCAN.",
         type=int,
         default=50,
     )
     parser.add_argument(
-        "--slack_channel", help="Slack channel to post results and notifications to."
+        "--slack-channel", help="Slack channel to post results and notifications to."
     )
     args = parser.parse_args()
 
