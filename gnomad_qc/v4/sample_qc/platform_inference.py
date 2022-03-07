@@ -158,7 +158,7 @@ def main(args):
                     raise FileNotFoundError(
                         f"The test platform PCA Table does not exist for calling interval "
                         f"{args.calling_interval_name} and interval padding {args.calling_interval_padding}. "
-                        f"Please run --compute_coverage and -- run_platform_pca with the --test argument and needed "
+                        f"Please run --compute_coverage and --run_platform_pca with the --test argument and needed "
                         f"--calling_interval_name/--calling_interval_padding arguments."
                     )
             else:
