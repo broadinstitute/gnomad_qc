@@ -197,7 +197,7 @@ def get_logging_path(name: str, version: str = CURRENT_VERSION) -> str:
     """
     Create a path for Hail log files.
 
-    :param str name: Name of log file
+    :param name: Name of log file
     :param version: Version of annotation path to return
     :return: Output log path
     """
@@ -221,16 +221,16 @@ def add_meta(
 
 def calling_intervals(interval_name: str, calling_interval_padding: int) -> TableResource:
     """
-    Returns path to capture intervals Table.
+    Return path to capture intervals Table.
 
-    :param str interval_name: One of 'ukb', 'broad', or 'intersection'
-    :param int calling_interval_padding: Padding around calling intervals. Available options are 0 or 50
+    :param interval_name: One of 'ukb', 'broad', or 'intersection'
+    :param calling_interval_padding: Padding around calling intervals. Available options are 0 or 50
     :return: Calling intervals resource
     """
     if interval_name not in {"ukb", "broad", "intersection"}:
         ValueError("Calling interval name must be one of: 'ukb', 'broad', or 'intersection'!")
     if calling_interval_padding not in {0, 50}:
-        ValueError("calling interval padding must be one of: 0 or 50 (bp)!")
+        ValueError("Calling interval padding must be one of: 0 or 50 (bp)!")
     if interval_name == "ukb":
         return TableResource(f"gs://gnomad/resources/intervals/xgen_plus_spikein.Homo_sapiens_assembly38.targets.pad{calling_interval_padding}.interval_list.ht")
     if interval_name == "broad":

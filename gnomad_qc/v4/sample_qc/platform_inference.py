@@ -160,8 +160,8 @@ def main(args):
                     raise FileNotFoundError(
                         f"The test platform PCA Table does not exist for calling interval "
                         f"{calling_interval_name} and interval padding {calling_interval_padding}. "
-                        f"Please run --compute_coverage and -- run_platform_pca with the --test argument and needed "
-                        f"--calling_interval_name/--calling_interval_padding arguments."
+                        f"Please run --compute_coverage and --run-platform-pca with the --test argument and needed "
+                        f"--calling-interval-name/--calling-interval-padding arguments."
                     )
             else:
                 scores_ht = hl.read_table(platform_pca_scores.ht())
