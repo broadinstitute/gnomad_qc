@@ -160,7 +160,7 @@ def main(args):
                     raise FileNotFoundError(
                         f"The test platform PCA Table does not exist for calling interval "
                         f"{calling_interval_name} and interval padding {calling_interval_padding}. "
-                        f"Please run --compute_coverage and --run-platform-pca with the --test argument and needed "
+                        f"Please run --compute-coverage and --run-platform-pca with the --test argument and needed "
                         f"--calling-interval-name/--calling-interval-padding arguments."
                     )
             else:
@@ -231,7 +231,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--run-platform-pca",
-        help="Runs platform PCA (assumes coverage MatrixTable was computed, --compute_coverage).",
+        help="Runs platform PCA (assumes coverage MatrixTable was computed, --compute-coverage).",
         action="store_true",
     )
     parser.add_argument(
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--hdbscan-min-samples",
-        help="Minimum samples parameter for HDBSCAN. If not specified, --hdbscan_min_cluster_size is used.",
+        help="Minimum samples parameter for HDBSCAN. If not specified, --hdbscan-min-cluster-size is used.",
         type=int,
         required=False,
     )
