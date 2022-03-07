@@ -1,29 +1,40 @@
 import argparse
 import logging
-from typing import Tuple
 
 import hail as hl
 
 from gnomad.sample_qc.pipeline import annotate_sex
-from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
+from gnomad.utils.file_utils import file_exists
+from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
-from gnomad_qc.v4.resources.sample_qc import hard_filtered_ac_an_af, sex
+from gnomad_qc.v4.resources.sample_qc import (
+    hard_filtered_ac_an_af,
+    interval_coverage,
+    platform,
+    sex,
+)
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("sex_inference")
 logger.setLevel(logging.INFO)
 
 
+# TODO: How to incorporate use_gnomad_methods_x_ploidy and use_gnomad_methods_y_ploidy?
+#  This means both need to be run if we want x_ploidy to use one method and y_ploidy to use another right?
+#  Should we break this up, run and save both methods (x and y), then have another function that actually uses them to
+#  determine the cutoffs? Or somehow bake this into the pipeline function? Or maybe add an option into Hail also where
+#  x and y can be done in different ways (or one done and not the other)
 def compute_sex(
     vds,
-    use_gnomad_methods: bool = False,
-    aaf_threshold: float = 0.001,
-    f_stat_cutoff: float = 0.5,
+    use_gnomad_methods_x_ploidy: bool = False,
+    use_gnomad_methods_y_ploidy: bool = False,
     high_cov_intervals: bool = False,
     per_platform: bool = False,
-    high_cov_all_platforms: bool = False,
-    normalization_contig: str = 'chr20',
+    high_cov_by_platform_all: bool = False,
+    min_platform_size: bool = 100,
+    normalization_contig: str = "chr20",
     x_cov: int = None,
     y_cov: int = None,
     norm_cov: int = None,
@@ -32,9 +43,73 @@ def compute_sex(
     prop_samples_norm: float = None,
     reference_only: bool = False,
     variants_only: bool = False,
+    freq_ht=None,
+    aaf_threshold: float = 0.001,
+    f_stat_cutoff: float = 0.5,
 ) -> hl.Table:
     """
     Impute sample sex based on X-chromosome heterozygosity and sex chromosome ploidy.
+
+    Within this function there are some critical parameters to consider (more details on each are described below):
+        - Filtering to intervals with high coverage for sex chromosome ploidy estimation (`high_cov_intervals`, `x_cov`,
+         `y_cov`, `norm_cov`, `prop_samples_x`, `prop_samples_y`, and `prop_samples_norm`).
+        - Per platform computations: either to determine per platform sex karyotype cutoffs, or if `high_cov_intervals`
+         is used, per platform sex chromosome ploidy estimation and determination of sex karyotype cutoffs is performed
+         using per platform high quality intervals (`x_cov`, `y_cov`, `norm_cov`, `prop_samples_x`, `prop_samples_y`,
+         `prop_samples_norm`, and `min_platform_size`).
+        - Use per platform stats to determine which are high quality across all platforms (depending on platform sample
+         size). Uses parameters `high_cov_by_platform_all`, `x_cov`, `y_cov`, `norm_cov`, `prop_samples_x`,
+         `prop_samples_y`, `prop_samples_norm`.
+        - Use of gnomad_methods imputation of sex ploidy `gnomad.utils.sparse_mt.impute_sex_ploidy`
+         (set `use_gnomad_methods_x_ploidy` and/or `use_gnomad_methods_y_ploidy` to True, which uses the parameters
+         `reference_only` and `variants_only`, default is to use both ref blocks and variants) or Hail's VDS imputation
+         of sex ploidy `hail.vds.impute_sex_chromosome_ploidy` (default for both x ploidy and y ploidy).
+        - Use of a `freq_ht` to filter variants for the X-chromosome heterozygosity computation. This is the f_stat
+         annotation applied by Hail's `impute_sex` module. (`freq_ht`, `aaf_threshold`).
+
+    The following are the available options for chrX and chrY relative sex ploidy estimation and sex karyotype
+    cutoff determination:
+        - Ploidy estimation using all intervals defined by `interval_name` and `padding`. Use options
+        - Per platform ploidy estimation using all intervals defined by `interval_name` and `padding`. Sex karyotype
+         cutoffs are determined by per platform ploidy distributions.
+        - Ploidy estimation using only high coverage intervals across the entire dataset, defined as: chrX intervals
+         having a proportion of all samples (`prop_samples_x`) with over a specified mean DP (`x_cov`), chrY intervals
+         having a proportion of all samples (`prop_samples_y`) with over a specified mean DP (`y_cov`), and
+         `normalization_contig` intervals having a proportion of all samples (`prop_samples_norm`) with over a
+         specified mean DP (`norm_cov`). Sex karyotype cutoffs are determined by ploidy distributions of all samples.
+        - Per platform ploidy estimation using only per platform high coverage intervals defined by: chrX intervals with
+         the specific platform having a proportion of samples (`prop_samples_x`) with over a specified mean DP (`x_cov`),
+         chrY intervals with the specific platform having a proportion of samples (`prop_samples_y`) with over a
+         specified mean DP (`y_cov`), and `normalization_contig` intervals with the specific platform having a
+         proportion of samples (`prop_samples_norm`) with over a specified mean DP (`norm_cov`). Sex karyotype cutoffs
+         are determined by per platform ploidy distributions.
+        - A combined ploidy estimation using only per platform high quality intervals. Each interval is assessed as high
+         quality per platform on chrX, chrY, and `normalization_contig` as described above for "per platform ploidy
+         estimation". Then this method uses only platforms that have # of samples > `min_platform_size` to determine
+         intervals that have a high coverage across all platforms. Then sex ploidy estimation and sex karyotype cutoffs
+         are determined using this intersection of high quality intervals across platforms.
+
+    For each of the options described above, there is also the possibility to use either the gnomad_methods sex ploidy
+    inference for chrX (`use_gnomad_methods_x_ploidy`) and chrY (`use_gnomad_methods_y_ploidy`) or the new Hail
+    VDS sex ploidy inference (default behavior for both chrX and chrY if `use_gnomad_methods_x_ploidy` and
+    `use_gnomad_methods_y_ploidy` are not changed). The differences are:
+        - gnomad_methods `gnomad.utils.sparse_mt.impute_sex_ploidy` has options to determine chromosome coverage using
+         reference block and variant DP (reference_only=False, variants_only= False), just reference block DP
+         (reference_only=True, variants_only=False), or just variant DP (reference_only=False, variants_only=True).
+        - In gnomad_methods, coverage for either method that includes reference blocks, the chromosome coverage will
+         be computed using all ref blocks and variants found in the sparse MatrixTable (or VDS converted to the sparse
+         MatrixTable representation), but it uses specified calling intervals to determine the contig size. This
+         method may not perform well when filtering to high quality intervals, and likely needs to be used per platform.
+        - If `variants_only` is set to True, gnomad_methods ploidy estimation will be adjusted to use only variants
+         within the specified calling intervals. This is the preferred method for chrX ploidy computation
+         (use_gnomad_methods_x_ploidy=True, variants_only=True).
+        - Hail's `hail.vds.impute_sex_chromosome_ploidy` will only compute chromosome ploidy using reference block DP
+         per calling interval. This method breaks up the reference blocks at the calling interval boundries, maintaining
+         all reference block END information for the mean DP per interval computation.
+
+    f-stat is computed on all variants unless a `freq_ht` is defined. Therefore the aaf_threshold is only used when
+    `freq_ht` is supplied.
+
 
     :param use_gnomad_methods:
     :param aaf_threshold: Minimum alternate allele frequency to be used in f-stat calculations.
@@ -43,20 +118,57 @@ def compute_sex(
     :rtype: hl.Table
     """
 
-    # TODO: Determine what variants to use for f-stat calculation, current implementation will use a HT created by
-    #  performing a full densify to get callrate and AF, note, this might not be needed, see CCDG f-stat values
-    freq_ht = hard_filtered_ac_an_af.ht()
+    def _get_filtered_coverage_mt(coverage_mt, agg_func):
+        return coverage_mt.filter_rows(
+            (
+                (coverage_mt.interval.start.contig == "chrX")
+                & agg_func(coverage_mt[f"over_{x_cov}"] > prop_samples_x)
+            )
+            | (
+                (coverage_mt.interval.start.contig == "chrY")
+                & agg_func(coverage_mt[f"over_{y_cov}"] > prop_samples_y)
+            )
+            | (
+                (coverage_mt.interval.start.contig == "chr20")
+                & agg_func(coverage_mt[f"over_{norm_cov}x"] > prop_samples_norm)
+            )
+        )
 
-    if per_platform:
+    def _annotate_sex(vds, calling_intervals_ht):
+        if use_gnomad_methods_x_ploidy != use_gnomad_methods_y_ploidy:
+            calling_intervals_x_ht = calling_intervals_ht.filter(calling_intervals_ht.interval.start.contig != "chrY")
+            calling_intervals_y_ht = calling_intervals_ht.filter(calling_intervals_ht.interval.start.contig != "chrX")
+        return annotate_sex(
+            hl.vds.to_merged_sparse_mt(vds) if use_gnomad_methods else vds,
+            included_intervals=calling_intervals_ht,
+            normalization_contig=normalization_contig,
+            sites_ht=freq_ht,
+            aaf_expr="AF",
+            gt_expr="LGT",
+            f_stat_cutoff=f_stat_cutoff,
+            aaf_threshold=aaf_threshold,
+            reference_only=reference_only,
+            variants_only=variants_only,
+        )
+
+    if per_platform or high_cov_by_platform_all:
         platform_ht = platform.ht()
-        platforms = platform_ht.aggregate(hl.agg.collect_as_set(platform_ht.qc_platform))
+        platforms = platform_ht.aggregate(
+            hl.agg.collect_as_set(platform_ht.qc_platform)
+        )
 
-    if high_cov_intervals:
-        coverage_mt = interval_coverage(interval_name, padding).mt()
-        coverage_mt = coverage_mt.filter_rows(hl.literal({"chrY", "chrX", normalization_contig}).contains(coverage_mt.interval.start.contig)) 
+    if high_cov_intervals or high_cov_by_platform_all:
+        coverage_mt = interval_coverage.mt()
+        coverage_mt = coverage_mt.filter_rows(
+            hl.literal({"chrY", "chrX", normalization_contig}).contains(
+                coverage_mt.interval.start.contig
+            )
+        )
 
-        if per_platform:
-            coverage_mt = coverage_mt.annotate_cols(platform=platform_ht[coverage_mt.col_key].qc_platform)
+        if per_platform or high_cov_by_platform_all:
+            coverage_mt = coverage_mt.annotate_cols(
+                platform=platform_ht[coverage_mt.col_key].qc_platform
+            )
 
         coverage_agg_expr = {
             f"over_{x_cov}x": hl.agg.fraction(coverage_mt.mean_dp > x_cov),
@@ -64,117 +176,55 @@ def compute_sex(
             f"over_{norm_cov}x": hl.agg.fraction(coverage_mt.mean_dp > norm_cov),
         }
 
+        if per_platform or high_cov_by_platform_all:
+            coverage_mt = coverage_mt.group_cols_by(coverage_mt.platform).aggregate(
+                **coverage_agg_expr
+            )
+
         if per_platform:
-            coverage_mt = coverage_mt.group_cols_by(coverage_mt.platform).aggregate(**coverage_agg_expr)
-            # Filter intervals to only those on chrX with this platform having a prop_samples_x of samples with over some mean DP defined by the x_cov_str annotation
-            # and those on chrY with this platform having a prop_samples_y of samples with over some mean DP defined by the y_cov_str annotation
+            per_platform_sex_hts = []
             for platform in platforms:
-                coverage_platform_mt = coverage_mt.filter_cols(coverage_mt.platform == platform)
-                coverage_platform_mt = coverage_platform_mt.filter_rows(
-                    ((coverage_platform_mt.interval.start.contig == "chrX") & hl.agg.any(
-                    coverage_platform_mt[f"over_{x_cov}x"] > prop_samples_x))
-                    | ((coverage_platform_mt.interval.start.contig == "chrY") & hl.agg.any(
-                    coverage_platform_mt[f"over_{y_cov}x"] > prop_samples_y))
-                    | ((coverage_platform_mt.interval.start.contig == "chr20") & hl.agg.any(
-                    coverage_platform_mt[f"over_{norm_cov}x"] > prop_samples_norm))
+                coverage_platform_mt = _get_filtered_coverage_mt(
+                    coverage_mt.filter_cols(coverage_mt.platform == platform),
+                    hl.agg.any,
                 )
-                platform_pcs_ht2 = platform_pcs_ht.filter(platform_pcs_ht.platform == platform)
-                calling_intervals = coverage_platform_ht.rows()
-                vds = hl.vds.filter_samples(vds, coverage_platform_mt.cols(), keep=True)
+                calling_intervals_ht = coverage_platform_mt.rows()
+                vds = hl.vds.filter_samples(vds, coverage_platform_mt.cols())
+                sex_ht = _annotate_sex(vds, calling_intervals_ht)
+                sex_ht = sex_ht.annotate(platform=platform)
+                per_platform_sex_hts.append(sex_ht)
+            sex_ht = per_platform_sex_hts[0].union(*per_platform_sex_hts[1:])
+        elif high_cov_by_platform_all:
+            platform_n_ht = platform_ht.group_by(platform_ht.platform).aggregate(
+                n_samples=hl.agg.count()
+            )
+            coverage_mt = coverage_mt.annotate_cols(
+                n_samples=platform_n_ht[coverage_mt.col_key].n_samples
+            )
+            coverage_mt = coverage_mt.filter_cols(
+                coverage_mt.n_samples >= min_platform_size
+            )
+            coverage_mt = _get_filtered_coverage_mt(coverage_mt, hl.agg.all)
+            calling_intervals_ht = coverage_mt.rows()
+            sex_ht = _annotate_sex(vds, calling_intervals_ht)
         else:
             coverage_mt = coverage_mt.annotate_rows(**coverage_agg_expr)
-
-        coverage_mt = coverage_mt.filter_rows(
-            ((coverage_mt.interval.start.contig == "chrX") & (coverage_mt[f"over_{x_cov}x"] > prop_samples_x))
-            | ((coverage_mt.interval.start.contig == "chrY") & (coverage_mt[f"over_{y_cov}x"] > prop_samples_y))
-            | ((coverage_mt.interval.start.contig == normalization_contig) & (coverage_mt[f"over_{norm_cov}x"] > prop_samples_norm))
-        )
-        calling_intervals_ht = coverage_mt.rows()
+            coverage_mt = _get_filtered_coverage_mt(coverage_mt, lambda x: x)
+            calling_intervals_ht = coverage_mt.rows()
+            sex_ht = _annotate_sex(vds, calling_intervals_ht)
     else:
         calling_intervals_ht = calling_intervals(interval_name, padding).ht()
-
-    sex_ht = annotate_sex(
-        hl.vds.to_merged_sparse_mt(vds) if use_gnomad_methods else vds,
-        included_intervals=calling_intervals_ht,
-        normalization_contig=normalization_contig,
-        sites_ht=freq_ht,
-        aaf_expr="AF",
-        gt_expr="LGT",
-        f_stat_cutoff=f_stat_cutoff,
-        aaf_threshold=aaf_threshold,
-        reference_only=reference_only,
-        variants_only=variants_only,
-    )
-
-    return sex_ht
-
-
-def reannotate_sex(
-    cov_threshold: int,
-    x_ploidy_cutoffs: Tuple[float, Tuple[float, float], float],
-    y_ploidy_cutoffs: Tuple[Tuple[float, float], float],
-):
-    """
-    Rerun sex karyotyping annotations without re-computing sex imputation metrics.
-
-    :param cov_threshold: Filtering threshold to use for chr20 coverage in `compute_hard_filters`
-    :param x_ploidy_cutoffs: Tuple of X chromosome ploidy cutoffs: (upper cutoff for single X, (lower cutoff for double X, upper cutoff for double X), lower cutoff for triple X)
-    :param y_ploidy_cutoffs: Tuple of Y chromosome ploidy cutoffs: ((lower cutoff for single Y, upper cutoff for single Y), lower cutoff for double Y)
-    :return: Table with sex karyotyping annotations
-    :rtype: hl.Table
-    """
-    # Copy HT to temp location to overwrite annotation
-    sex_ht = sex.ht().checkpoint("gs://gnomad-tmp/sex_ht_checkpoint.ht", overwrite=True)
-    hard_filter_ht = compute_hard_filters(cov_threshold, include_sex_filter=False)
-
-    # Copy HT to temp location because it uses sex_ht for chr20 coverage
-    hard_filter_ht = hard_filter_ht.checkpoint(
-        "gs://gnomad-tmp/hardfilter_checkpoint.ht", overwrite=True
-    )
-    new_x_ploidy_cutoffs, new_y_ploidy_cutoffs = get_ploidy_cutoffs(
-        sex_ht.filter(hl.is_missing(hard_filter_ht[sex_ht.key])), f_stat_cutoff=0.5
-    )
-    x_ploidy_cutoffs = hl.struct(
-        upper_x=x_ploidy_cutoffs[0] if x_ploidy_cutoffs[0] else new_x_ploidy_cutoffs[0],
-        lower_xx=x_ploidy_cutoffs[1][0]
-        if x_ploidy_cutoffs[1][0]
-        else new_x_ploidy_cutoffs[1][0],
-        upper_xx=x_ploidy_cutoffs[1][1]
-        if x_ploidy_cutoffs[1][1]
-        else new_x_ploidy_cutoffs[1][1],
-        lower_xxx=x_ploidy_cutoffs[2]
-        if x_ploidy_cutoffs[2]
-        else new_x_ploidy_cutoffs[2],
-    )
-    y_ploidy_cutoffs = hl.struct(
-        lower_y=y_ploidy_cutoffs[0][0]
-        if y_ploidy_cutoffs[0][0]
-        else new_y_ploidy_cutoffs[0][0],
-        upper_y=y_ploidy_cutoffs[0][1]
-        if y_ploidy_cutoffs[0][1]
-        else new_y_ploidy_cutoffs[0][1],
-        lower_yy=y_ploidy_cutoffs[1]
-        if y_ploidy_cutoffs[1]
-        else new_y_ploidy_cutoffs[1],
-    )
-    sex_ht = sex_ht.annotate(
-        **get_sex_expr(
-            sex_ht.chrX_ploidy,
-            sex_ht.chrY_ploidy,
-            (
-                x_ploidy_cutoffs["upper_x"],
-                (x_ploidy_cutoffs["lower_xx"], x_ploidy_cutoffs["upper_xx"]),
-                x_ploidy_cutoffs["lower_xxx"],
-            ),
-            (
-                (y_ploidy_cutoffs["lower_y"], y_ploidy_cutoffs["upper_y"]),
-                y_ploidy_cutoffs["lower_yy"],
-            ),
-        )
-    )
-    sex_ht = sex_ht.annotate_globals(
-        x_ploidy_cutoffs=x_ploidy_cutoffs, y_ploidy_cutoffs=y_ploidy_cutoffs,
-    )
+        if per_platform:
+            per_platform_sex_hts = []
+            for platform in platforms:
+                ht = platform_ht.filter(platform_ht.platform == platform)
+                vds = hl.vds.filter_samples(vds, ht)
+                sex_ht = _annotate_sex(vds, calling_intervals_ht)
+                sex_ht = sex_ht.annotate(platform=platform)
+                per_platform_sex_hts.append(sex_ht)
+            sex_ht = per_platform_sex_hts[0].union(*per_platform_sex_hts[1:])
+        else:
+            sex_ht = _annotate_sex(vds, calling_intervals_ht)
 
     return sex_ht
 
@@ -185,23 +235,33 @@ def main(args):
     if args.compute_callrate_ac_af:
         vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True)
         mt = hl.vds.to_dense_mt(vds)
+        n_samples = mt.count_cols()
         ht = mt.annotate_rows(
             AN=hl.agg.count_where(hl.is_defined(mt.GT)) * 2,
             AC=hl.agg.sum(mt.GT.n_alt_alleles),
         ).rows()
-        ht = ht.annotate(AF=ht.AC/ht.AN)
+        ht = ht.annotate(AF=ht.AC / ht.AN, callrate=ht.AN / (n_samples * 2))
         ht.write(hard_filtered_ac_an_af.path)
+
     if args.impute_sex:
         vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True)
+        if args.f_stat_high_callrate_common_var:
+            # TODO: Determine what variants to use for f-stat calculation, current implementation will use a HT created by
+            #  performing a full densify to get callrate and AF, note, this might not be needed, see CCDG f-stat values
+            freq_ht = hard_filtered_ac_an_af.ht()
+            freq_ht = freq_ht.filter(freq_ht.callrate > args.min_callrate)
+
         # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
         if args.overwrite or not file_exists(sex.path):
             ht = compute_sex(
                 vds,
                 args.use_gnomad_methods,
+                freq_ht if args.f_stat_high_callrate_common_variants else None,
                 args.aaf_threshold,
                 args.f_stat_cutoff,
                 args.high_cov_intervals,
-                args.per_platform_high_cov_intervals,
+                args.per_platform,
+                args.high_cov_all_platforms,
                 args.normalization_contig,
                 args.x_cov,
                 args.y_cov,
@@ -213,12 +273,6 @@ def main(args):
                 args.variants_only,
             )
             ht.write(sex.path, overwrite=True)
-    elif args.reannotate_sex:
-        reannotate_sex(
-            args.min_cov,
-            (args.upper_x, (args.lower_xx, args.upper_xx), args.lower_xxx),
-            ((args.lower_y, args.upper_y), args.lower_yy),
-        ).write(sex.path, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":
@@ -241,7 +295,9 @@ if __name__ == "__main__":
     parser.add_argument("--aaf-threshold", help="", type=float, default=0.001)
     parser.add_argument("--f-stat-cutoff", help="", type=float, default=0.5)
     parser.add_argument("--high-cov-intervals", help="", action="store_true")
-    parser.add_argument("--per-platform-high-cov-intervals", help="", action="store_true")
+    parser.add_argument(
+        "--per-platform-high-cov-intervals", help="", action="store_true"
+    )
     parser.add_argument("--x-cov", help="", type=int, default=10)
     parser.add_argument("--y-cov", help="", type=int, default=5)
     parser.add_argument("--norm-cov", help="", type=int, default=20)
@@ -249,17 +305,11 @@ if __name__ == "__main__":
     parser.add_argument("--prop-samples-y", help="", type=float, default=0.35)
     parser.add_argument("--prop-samples-norm", help="", type=float, default=0.85)
 
-    parser.add_argument(
-        "--reannotate-sex",
-        help="Runs the sex karyotyping annotations again, without re-computing sex imputation metrics.",
-        action="store_true",
-    )
-    parser.add_argument("--upper-x", help="Upper cutoff for single X", type=float)
-    parser.add_argument("--lower-xx", help="Lower cutoff for double X", type=float)
-    parser.add_argument("--upper-xx", help="Upper cutoff for double X", type=float)
-    parser.add_argument("--lower-xxx", help="Lower cutoff for triple X", type=float)
-    parser.add_argument("--lower-y", help="Lower cutoff for single Y", type=float)
-    parser.add_argument("--upper-y", help="Upper cutoff for single Y", type=float)
-    parser.add_argument("--lower-yy", help="Lower cutoff for double Y", type=float)
+    args = parser.parse_args()
+    main(args)
 
-    main(parser.parse_args())
+    if args.slack_channel:
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
+    else:
+        main(args)
