@@ -112,7 +112,7 @@ def get_gnomad_v4_vds(
         all_ukbb_samples_to_remove, no_header=True
     ).key_by("f0")
 
-    vds = hl.vds.filter_samples(vds, withdrawn_ht, keep=False) #, remove_dead_alleles=True)
+    vds = hl.vds.filter_samples(vds, withdrawn_ht, keep=False, remove_dead_alleles=True)
 
     # Log number of UKBB samples removed from the VDS
     n_samples_after_exclusion = vds.variant_data.count_cols()
