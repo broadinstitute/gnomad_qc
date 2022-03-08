@@ -177,11 +177,7 @@ def generate_cross_pop_ld_scores_from_ld_matrices(pop1, pop2, data_type, pop_dat
 
 def compute_and_annotate_ld_score(ht, r2_adj, radius, out_name, overwrite):
     starts_and_stops = hl.linalg.utils.locus_windows(ht.locus, radius, _localize=False)
-
-    # Lifted directly from https://github.com/hail-is/hail/blob/555e02d6c792263db2c3ed97db8002b489e2dacb/hail/python/hail/methods/statgen.py#L2595
-    # for the time being, until efficient BlockMatrix filtering gets an easier interface
-    # This is required, as the squaring/multiplication densifies, so this re-sparsifies.
-    r2_adj = BlockMatrix._sparsify_row_intervals_expr(starts_and_stops, blocks_only=False)
+    r2_adj = r2_adj._sparsify_row_intervals_expr(starts_and_stops, blocks_only=False)
 
     l2row = r2_adj.sum(axis=0).T
     l2col = r2_adj.sum(axis=1)
