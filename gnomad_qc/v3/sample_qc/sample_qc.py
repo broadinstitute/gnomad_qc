@@ -666,8 +666,8 @@ def assign_pops(
         pcs=pcs,
         pop=pop,
         high_quality=high_quality,
-        n_mislabeled_samples=n_mislabeled_samples,
-        prop_mislabeled_samples=prop_mislabeled_samples,
+        n_mislabeled_training_samples=n_mislabeled_samples,
+        prop_mislabeled_training_samples=prop_mislabeled_samples,
     )
     if withhold_prop:
         pop_ht = pop_ht.annotate_globals(withhold_prop=withhold_prop)
