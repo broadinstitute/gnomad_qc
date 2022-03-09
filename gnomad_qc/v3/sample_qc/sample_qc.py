@@ -268,9 +268,7 @@ def compute_hard_filters(
         # Remove samples with ambiguous sex assignments
         sex_ht = sex.ht()[ht.key]
         hard_filters["ambiguous_sex"] = sex_ht.sex_karyotype == "ambiguous"
-        hard_filters["sex_aneuploidy"] = ~hl.set(
-            {"ambiguous", "XX", "XY"}
-        ).contains(  # pylint: disable=invalid-unary-operand-type
+        hard_filters["sex_aneuploidy"] = ~hl.set({"ambiguous", "XX", "XY"}).contains( # pylint: disable=invalid-unary-operand-type
             sex_ht.sex_karyotype
         )
 
@@ -563,7 +561,6 @@ def assign_pops(
     ):
         max_mislabeled = max_proportion_mislabeled_training_samples
     else:
-        print("oh no no no no no....")
         raise ValueError(
             "One and only one of max_number_mislabeled_training_samples or max_proportion_mislabeled_training_samples must be set!"
         )

@@ -358,13 +358,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--max-number-mislabeled-training-samples",
-        help="Maximum number of training samples that can be mislabelled",
+        help="Maximum number of training samples that can be mislabelled. Can't be used if `max-proportion-mislabeled-training-samples` is already set",
         type=int,
         default=None,
     )
     parser.add_argument(
         "--max-proportion-mislabeled-training-samples",
-        help="Maximum proportion of training samples that can be mislabelled",
+        help="Maximum proportion of training samples that can be mislabelled. Can't be used if `max-number-mislabeled-training-samples` is already set",
         type=float,
         default=None,
     )
