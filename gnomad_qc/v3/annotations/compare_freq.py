@@ -288,7 +288,7 @@ def perform_logistic_regression(
 
     if use_pc_project and not use_v3_qc_pc_scores:
         pc_ht = v2_v3_pc_project_pca_scores.ht()
-    elif use_v3_qc_pc_scores:
+    elif use_v3_qc_pc_scores and not use_pc_project:
         pc_ht = v2_v3_pc_relate_pca_scores.versions["3"].ht()
     else:
         raise ValueError(
