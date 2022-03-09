@@ -291,7 +291,7 @@ def perform_logistic_regression(
     elif use_v3_qc_pc_scores:
         pc_ht = v2_v3_pc_relate_pca_scores.versions["3"].ht()
     else:
-        ValueError(
+        raise ValueError(
             "One and only one of use_pc_project or use_v3_qc_pc_scores must be True!"
         )
 

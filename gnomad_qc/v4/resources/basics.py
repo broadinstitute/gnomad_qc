@@ -228,9 +228,9 @@ def calling_intervals(interval_name: str, calling_interval_padding: int) -> Tabl
     :return: Calling intervals resource
     """
     if interval_name not in {"ukb", "broad", "intersection"}:
-        ValueError("Calling interval name must be one of: 'ukb', 'broad', or 'intersection'!")
+        raise ValueError("Calling interval name must be one of: 'ukb', 'broad', or 'intersection'!")
     if calling_interval_padding not in {0, 50}:
-        ValueError("Calling interval padding must be one of: 0 or 50 (bp)!")
+        raise ValueError("Calling interval padding must be one of: 0 or 50 (bp)!")
     if interval_name == "ukb":
         return TableResource(f"gs://gnomad/resources/intervals/xgen_plus_spikein.Homo_sapiens_assembly38.targets.pad{calling_interval_padding}.interval_list.ht")
     if interval_name == "broad":
