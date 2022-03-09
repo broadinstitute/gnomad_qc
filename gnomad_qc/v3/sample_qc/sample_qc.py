@@ -268,7 +268,9 @@ def compute_hard_filters(
         # Remove samples with ambiguous sex assignments
         sex_ht = sex.ht()[ht.key]
         hard_filters["ambiguous_sex"] = sex_ht.sex_karyotype == "ambiguous"
-        hard_filters["sex_aneuploidy"] = ~hl.set({"ambiguous", "XX", "XY"}).contains( # pylint: disable=invalid-unary-operand-type
+        hard_filters["sex_aneuploidy"] = ~hl.set(
+            {"ambiguous", "XX", "XY"}
+        ).contains(  # pylint: disable=invalid-unary-operand-type
             sex_ht.sex_karyotype
         )
 
@@ -471,7 +473,8 @@ def run_pca(
 def assign_pops(
     min_prob: float,
     include_unreleasable_samples: bool,
-    max_mislabeled_training_samples: int = 50,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
+    max_number_mislabeled_training_samples: int = None,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
+    max_proportion_mislabeled_training_samples: float = None,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
     pcs: List[int] = list(range(1, 17)),
     withhold_prop: float = None,
     pop: str = None,
@@ -486,11 +489,13 @@ def assign_pops(
 
     The method starts by inferring the pop on all samples, then comparing the training data to the inferred data,
     removing the truth outliers and re-training. This is repeated until the number of truth samples is less than
-    or equal to `max_mislabeled_training_samples`.
+    or equal to `max_number_mislabeled_training_samples` or `max_proportion_mislabeled_training_samples`. Only one
+    of `max_number_mislabeled_training_samples` or `max_proportion_mislabeled_training_samples` can be set.
 
     :param min_prob: Minimum RF probability for pop assignment
     :param include_unreleasable_samples: Should unreleasable samples be included in the PCA
-    :param max_mislabeled_training_samples: Maximum number of training samples that can be mislabelled
+    :param max_number_mislabeled_training_samples: Maximum number of training samples that can be mislabelled
+    :param max_number_proportion_training_samples: Maximum proportion of training samples that can be mislabelled
     :param pcs: List of PCs to use in the RF
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
     :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
@@ -547,6 +552,22 @@ def assign_pops(
             )
         )
 
+    if (
+        max_number_mislabeled_training_samples is not None
+        and max_proportion_mislabeled_training_samples is None
+    ):
+        max_mislabeled = max_number_mislabeled_training_samples
+    elif (
+        max_proportion_mislabeled_training_samples is not None
+        and max_number_mislabeled_training_samples is None
+    ):
+        max_mislabeled = max_proportion_mislabeled_training_samples
+    else:
+        print("oh no no no no no....")
+        raise ValueError(
+            "One and only one of max_number_mislabeled_training_samples or max_proportion_mislabeled_training_samples must be set!"
+        )
+
     logger.info(
         "Running RF using {} training examples".format(
             pop_pca_scores_ht.aggregate(
@@ -564,17 +585,30 @@ def assign_pops(
         missing_label=missing_label,
     )
 
+    # Calculate number and proportion of mislabled samples
     n_mislabeled_samples = pop_ht.aggregate(
         hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
     )
+
+    defined_training_pops = pop_ht.aggregate(
+        hl.agg.count_where(hl.is_defined(pop_ht.training_pop))
+    )
+
+    prop_mislabeled_samples = n_mislabeled_samples / defined_training_pops
+
+    if max_number_mislabeled_training_samples:
+        mislabeled = n_mislabeled_samples
+    else:
+        mislabeled = prop_mislabeled_samples
+
     pop_ht = pop_ht.annotate(
         training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all
     )
     pop_assignment_iter = 1
-    while n_mislabeled_samples > max_mislabeled_training_samples:
+    while mislabeled > max_mislabeled:
         pop_assignment_iter += 1
         logger.info(
-            f"Found {n_mislabeled_samples} samples labeled differently from their known pop. Re-running without."
+            f"Found {n_mislabeled_samples}({round(prop_mislabeled_samples*100, 2)}%) training samples labeled differently from their known pop. Re-running without."
         )
 
         pop_ht = pop_ht[pop_pca_scores_ht.key]
@@ -611,18 +645,32 @@ def assign_pops(
             training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all
         )
 
+        # Calculate number and proportion of mislabled samples
         n_mislabeled_samples = pop_ht.aggregate(
             hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
         )
 
+        defined_training_pops = pop_ht.aggregate(
+            hl.agg.count_where(hl.is_defined(pop_ht.training_pop))
+        )
+
+        prop_mislabeled_samples = n_mislabeled_samples / defined_training_pops
+
+        if max_number_mislabeled_training_samples:
+            mislabeled = n_mislabeled_samples
+        else:
+            mislabeled = prop_mislabeled_samples
+
     pop_ht = pop_ht.annotate_globals(
         min_prob=min_prob,
         include_unreleasable_samples=include_unreleasable_samples,
-        max_mislabeled_training_samples=max_mislabeled_training_samples,
+        max_mislabeled=max_mislabeled,
         pop_assignment_iterations=pop_assignment_iter,
         pcs=pcs,
         pop=pop,
         high_quality=high_quality,
+        n_mislabeled_samples=n_mislabeled_samples,
+        prop_mislabeled_samples=prop_mislabeled_samples,
     )
     if withhold_prop:
         pop_ht = pop_ht.annotate_globals(withhold_prop=withhold_prop)
