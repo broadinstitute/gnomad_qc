@@ -493,7 +493,7 @@ def assign_pops(
     :param min_prob: Minimum RF probability for pop assignment
     :param include_unreleasable_samples: Should unreleasable samples be included in the PCA
     :param max_number_mislabeled_training_samples: Maximum number of training samples that can be mislabelled
-    :param max_number_proportion_training_samples: Maximum proportion of training samples that can be mislabelled
+    :param max_proportion_mislabeled_training_samples: Maximum proportion of training samples that can be mislabelled
     :param pcs: List of PCs to use in the RF
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
     :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
