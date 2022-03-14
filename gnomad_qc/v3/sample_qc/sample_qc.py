@@ -605,7 +605,7 @@ def assign_pops(
     while mislabeled > max_mislabeled:
         pop_assignment_iter += 1
         logger.info(
-            f"Found {n_mislabeled_samples}({round(prop_mislabeled_samples*100, 2)}%) training samples labeled differently from their known pop. Re-running without."
+            f"Found {n_mislabeled_samples}({round(prop_mislabeled_samples*100, 2)}%) training samples labeled differently from their known pop. Re-running without them."
         )
 
         pop_ht = pop_ht[pop_pca_scores_ht.key]
