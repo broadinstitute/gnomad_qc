@@ -468,11 +468,32 @@ def run_pca(
     return run_pca_with_relateds(qc_mt, samples_to_drop, n_pcs=n_pcs)
 
 
+def calculate_mislabeled_training(pop_ht: hl.Table, pop_field: str) -> [int, float]:
+    """
+    Calculate the number and proportion of mislabled training samples.
+
+    :param pop_ht: Table with assigned pops/subpops that is returned by `assign_population_pcs`
+    :param pop_field: Name of field in the Table containing the assigned pop/subpop
+    :return: The number and proportion of mislabled training samples
+    """
+    n_mislabeled_samples = pop_ht.aggregate(
+        hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
+    )
+
+    defined_training_pops = pop_ht.aggregate(
+        hl.agg.count_where(hl.is_defined(pop_ht.training_pop))
+    )
+
+    prop_mislabeled_samples = n_mislabeled_samples / defined_training_pops
+
+    return n_mislabeled_samples, prop_mislabeled_samples
+
+
 def assign_pops(
     min_prob: float,
     include_unreleasable_samples: bool,
-    max_number_mislabeled_training_samples: int = None,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
-    max_proportion_mislabeled_training_samples: float = None,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
+    max_number_mislabeled_training_samples: int = None,
+    max_proportion_mislabeled_training_samples: float = None,
     pcs: List[int] = list(range(1, 17)),
     withhold_prop: float = None,
     pop: str = None,
@@ -523,7 +544,6 @@ def assign_pops(
         )
         pop_field = "subpop"
     else:
-
         project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=(
@@ -583,15 +603,7 @@ def assign_pops(
     )
 
     # Calculate number and proportion of mislabled samples
-    n_mislabeled_samples = pop_ht.aggregate(
-        hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
-    )
-
-    defined_training_pops = pop_ht.aggregate(
-        hl.agg.count_where(hl.is_defined(pop_ht.training_pop))
-    )
-
-    prop_mislabeled_samples = n_mislabeled_samples / defined_training_pops
+    n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(pop_ht, pop_field)
 
     if max_number_mislabeled_training_samples:
         mislabeled = n_mislabeled_samples
@@ -643,15 +655,7 @@ def assign_pops(
         )
 
         # Calculate number and proportion of mislabled samples
-        n_mislabeled_samples = pop_ht.aggregate(
-            hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
-        )
-
-        defined_training_pops = pop_ht.aggregate(
-            hl.agg.count_where(hl.is_defined(pop_ht.training_pop))
-        )
-
-        prop_mislabeled_samples = n_mislabeled_samples / defined_training_pops
+        n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(pop_ht, pop_field)
 
         if max_number_mislabeled_training_samples:
             mislabeled = n_mislabeled_samples
