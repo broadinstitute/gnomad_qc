@@ -357,18 +357,6 @@ if __name__ == "__main__":
         default=0.90,
     )
     parser.add_argument(
-        "--max-number-mislabeled-training-samples",
-        help="Maximum number of training samples that can be mislabelled. Can't be used if `max-proportion-mislabeled-training-samples` is already set",
-        type=int,
-        default=None,
-    )
-    parser.add_argument(
-        "--max-proportion-mislabeled-training-samples",
-        help="Maximum proportion of training samples that can be mislabelled. Can't be used if `max-number-mislabeled-training-samples` is already set",
-        type=float,
-        default=None,
-    )
-    parser.add_argument(
         "--withhold-prop",
         help="Proportion of training pop samples to withhold from training, all samples will be kept if this flag is not used",
         type=float,
@@ -380,6 +368,19 @@ if __name__ == "__main__":
         type=int,
         nargs="+",
         default=list(range(1, 17)),
+    )
+    mislabel_parser = parser.add_mutually_exclusive_group(required=True)
+    mislabel_parser.add_argument(
+        "--max-number-mislabeled-training-samples",
+        help="Maximum number of training samples that can be mislabelled. Can't be used if `max-proportion-mislabeled-training-samples` is already set",
+        type=int,
+        default=None,
+    )
+    mislabel_parser.add_argument(
+        "--max-proportion-mislabeled-training-samples",
+        help="Maximum proportion of training samples that can be mislabelled. Can't be used if `max-number-mislabeled-training-samples` is already set",
+        type=float,
+        default=None,
     )
 
     args = parser.parse_args()
