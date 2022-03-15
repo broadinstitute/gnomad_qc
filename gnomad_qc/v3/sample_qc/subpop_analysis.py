@@ -251,7 +251,8 @@ def main(args):  # noqa: D103
             joint_pca_ht, joint_pca_fit = assign_pops(
                 min_prob=args.min_prob,  # How to decide on this number? Should withhold a certain percent and make a PR curve gs://gnomad-julia/gnomad_v4/pca_with_ccdg_gnomad_ukb_variants.ipynb
                 include_unreleasable_samples=False,
-                max_mislabeled_training_samples=args.max_mislabeled_training_samples,  # How to decide on this number?
+                max_number_mislabeled_training_samples=args.max_number_mislabeled_training_samples,  # How to decide on this number?
+                max_proportion_mislabeled_training_samples=args.max_proportion_mislabeled_training_samples,
                 pcs=args.pcs,
                 withhold_prop=args.withhold_prop,
                 pop=pop,
@@ -356,12 +357,6 @@ if __name__ == "__main__":
         default=0.90,
     )
     parser.add_argument(
-        "--max-mislabeled-training-samples",
-        help="Maximum number of training samples that can be mislabelled",
-        type=int,
-        default=50,
-    )
-    parser.add_argument(
         "--withhold-prop",
         help="Proportion of training pop samples to withhold from training, all samples will be kept if this flag is not used",
         type=float,
@@ -373,6 +368,19 @@ if __name__ == "__main__":
         type=int,
         nargs="+",
         default=list(range(1, 17)),
+    )
+    mislabel_parser = parser.add_mutually_exclusive_group(required=True)
+    mislabel_parser.add_argument(
+        "--max-number-mislabeled-training-samples",
+        help="Maximum number of training samples that can be mislabelled. Can't be used if `max-proportion-mislabeled-training-samples` is already set",
+        type=int,
+        default=None,
+    )
+    mislabel_parser.add_argument(
+        "--max-proportion-mislabeled-training-samples",
+        help="Maximum proportion of training samples that can be mislabelled. Can't be used if `max-number-mislabeled-training-samples` is already set",
+        type=float,
+        default=None,
     )
 
     args = parser.parse_args()
