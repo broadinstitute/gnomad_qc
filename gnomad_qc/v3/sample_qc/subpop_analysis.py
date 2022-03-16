@@ -197,7 +197,7 @@ def main(args):  # noqa: D103
             )
 
             if args.run_subpop_pca:
-                # Read in the QC MT for a specified subpop andfilter samples based on user parameters
+                # Read in the QC MT for a specified subpop and filter samples based on user parameters
                 mt = hl.read_matrix_table(
                     get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
                     if args.test
@@ -307,7 +307,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--run-filter-subpop-qc",
-        help="Runs function to filter the QC MT to certain subpop specified by --pop argument",
+        help="Runs function to filter the QC MT to a certain subpop specified by --pop argument",
         action="store_true",
     )
     parser.add_argument(
