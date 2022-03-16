@@ -28,8 +28,8 @@ logger.setLevel(logging.INFO)
 #  x and y can be done in different ways (or one done and not the other)
 def compute_sex(
     vds,
-    use_gnomad_methods_x_ploidy: bool = False,
-    use_gnomad_methods_y_ploidy: bool = False,
+    variants_only_x_ploidy: bool = False,
+    variants_only_y_ploidy: bool = False,
     high_cov_intervals: bool = False,
     per_platform: bool = False,
     high_cov_by_platform_all: bool = False,
@@ -41,8 +41,6 @@ def compute_sex(
     prop_samples_x: float = None,
     prop_samples_y: float = None,
     prop_samples_norm: float = None,
-    reference_only: bool = False,
-    variants_only: bool = False,
     freq_ht=None,
     aaf_threshold: float = 0.001,
     f_stat_cutoff: float = 0.5,
@@ -60,10 +58,8 @@ def compute_sex(
         - Use per platform stats to determine which are high quality across all platforms (depending on platform sample
          size). Uses parameters `high_cov_by_platform_all`, `x_cov`, `y_cov`, `norm_cov`, `prop_samples_x`,
          `prop_samples_y`, `prop_samples_norm`.
-        - Use of gnomad_methods imputation of sex ploidy `gnomad.utils.sparse_mt.impute_sex_ploidy`
-         (set `use_gnomad_methods_x_ploidy` and/or `use_gnomad_methods_y_ploidy` to True, which uses the parameters
-         `reference_only` and `variants_only`, default is to use both ref blocks and variants) or Hail's VDS imputation
-         of sex ploidy `hail.vds.impute_sex_chromosome_ploidy` (default for both x ploidy and y ploidy).
+        - We use `annotate_sex`, which uses Hail's VDS imputation of sex ploidy `hail.vds.impute_sex_chromosome_ploidy`,
+          and uses `variants_only_x_ploidy` and `variants_only_y_ploidy`.
         - Use of a `freq_ht` to filter variants for the X-chromosome heterozygosity computation. This is the f_stat
          annotation applied by Hail's `impute_sex` module. (`freq_ht`, `aaf_threshold`).
 
@@ -89,27 +85,20 @@ def compute_sex(
          intervals that have a high coverage across all platforms. Then sex ploidy estimation and sex karyotype cutoffs
          are determined using this intersection of high quality intervals across platforms.
 
-    For each of the options described above, there is also the possibility to use either the gnomad_methods sex ploidy
-    inference for chrX (`use_gnomad_methods_x_ploidy`) and chrY (`use_gnomad_methods_y_ploidy`) or the new Hail
-    VDS sex ploidy inference (default behavior for both chrX and chrY if `use_gnomad_methods_x_ploidy` and
-    `use_gnomad_methods_y_ploidy` are not changed). The differences are:
-        - gnomad_methods `gnomad.utils.sparse_mt.impute_sex_ploidy` has options to determine chromosome coverage using
-         reference block and variant DP (reference_only=False, variants_only= False), just reference block DP
-         (reference_only=True, variants_only=False), or just variant DP (reference_only=False, variants_only=True).
-        - In gnomad_methods, coverage for either method that includes reference blocks, the chromosome coverage will
-         be computed using all ref blocks and variants found in the sparse MatrixTable (or VDS converted to the sparse
-         MatrixTable representation), but it uses specified calling intervals to determine the contig size. This
-         method may not perform well when filtering to high quality intervals, and likely needs to be used per platform.
-        - If `variants_only` is set to True, gnomad_methods ploidy estimation will be adjusted to use only variants
-         within the specified calling intervals. This is the preferred method for chrX ploidy computation
-         (use_gnomad_methods_x_ploidy=True, variants_only=True).
-        - Hail's `hail.vds.impute_sex_chromosome_ploidy` will only compute chromosome ploidy using reference block DP
-         per calling interval. This method breaks up the reference blocks at the calling interval boundries, maintaining
-         all reference block END information for the mean DP per interval computation.
+    For each of the options described above, there is also the possibility to use a ploidy estimation that uses only
+    variants within the specified calling intervals:
+        - This can be defined differently for chrX and chrY using `variants_only_x_ploidy` and `variants_only_y_ploidy`.
+        - `variants_only_x_ploidy` is the preferred method for chrX ploidy computation.
+        - If not using only variants Hail's `hail.vds.impute_sex_chromosome_ploidy` method will only compute chromosome
+         ploidy using reference block DP per calling interval. This method breaks up the reference blocks at the
+         calling interval boundries, maintaining all reference block END information for the mean DP per interval
+         computation. This is different from the method used on sparse MatrixTables in gnomad_methods
+         `gnomad.utils.sparse_mt.impute_sex_ploidy`. In this the chromosome coverage will be computed using all
+         reference blocks and variants found in the sparse MatrixTable, but it only uses specified calling intervals to
+         determine the contig size and doesn't adjust break up the reference blocks in the same way the Hail method does.
 
     f-stat is computed on all variants unless a `freq_ht` is defined. Therefore the aaf_threshold is only used when
     `freq_ht` is supplied.
-
 
     :param use_gnomad_methods:
     :param aaf_threshold: Minimum alternate allele frequency to be used in f-stat calculations.
