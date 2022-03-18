@@ -166,6 +166,17 @@ def filtered_subpop_qc_mt(pop: str, version: str = CURRENT_VERSION) -> str:
     return f"{get_sample_qc_root(version)}/subpop_analysis/gnomad_v{version}_filtered_subpop_qc_mt.{pop}.mt"
 
 
+def assigned_subpops(pop: str, version: str = CURRENT_VERSION) -> TableResource:
+    """
+    Table resource for inferred sample subpopulations
+    
+    :param pop: Population in which subpops have been assgined
+    :param version: Version of assigned subpops path to return
+    :return: TableResource of assigned subpops within population specified by 'pop' parameter 
+    """
+    return TableResource(f"{get_sample_qc_root(version)}/subpop_analysis/gnomad_v{version}_assigned_subpops.{pop}.ht")
+
+
 def get_relatedness_annotated_ht() -> hl.Table:
     """
     relatedness table annotated with get_relationship_expr.
@@ -442,6 +453,17 @@ duplicates = VersionedTableResource(
     {
         release: TableResource(
             f"{get_sample_qc_root(release)}/gnomad_v{release}_duplicates.ht"
+        )
+        for release in VERSIONS
+    },
+)
+
+# PCA scores from projection of v3 samples onto v2 PCs
+v2_v3_pc_project_pca_scores = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v2_v{release}.pca_project_scores.ht"
         )
         for release in VERSIONS
     },
