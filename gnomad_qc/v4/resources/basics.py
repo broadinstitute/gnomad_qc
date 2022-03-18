@@ -216,3 +216,18 @@ def add_meta(
     mt = mt.annotate_cols(meta_name=meta.versions[version].ht()[mt.col_key])
 
     return mt
+
+
+def calling_intervals(interval_name: str, padding: str) -> str:
+    """
+    Return capture interval Table.
+
+    :param str interval_name: One of 
+    :return: Path to capture intervals Table
+    :rtype: str
+    """
+    if interval_name == "broad":
+        return ""
+    else:
+        raise DataException("This data_source is currently not present")
+
