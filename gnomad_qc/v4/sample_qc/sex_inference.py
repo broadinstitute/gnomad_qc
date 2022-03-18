@@ -21,11 +21,6 @@ logger = logging.getLogger("sex_inference")
 logger.setLevel(logging.INFO)
 
 
-# TODO: How to incorporate use_gnomad_methods_x_ploidy and use_gnomad_methods_y_ploidy?
-#  This means both need to be run if we want x_ploidy to use one method and y_ploidy to use another right?
-#  Should we break this up, run and save both methods (x and y), then have another function that actually uses them to
-#  determine the cutoffs? Or somehow bake this into the pipeline function? Or maybe add an option into Hail also where
-#  x and y can be done in different ways (or one done and not the other)
 def compute_sex(
     vds,
     high_cov_intervals: bool = False,
@@ -163,6 +158,15 @@ def compute_sex(
             variants_only_x_ploidy=variants_only_x_ploidy,
             variants_only_y_ploidy=variants_only_y_ploidy,
         )
+
+    logger.info("Loading interval coverage MatrixTable and filtering to chrX, chrY and %s...", normalization_contig)
+    coverage_mt = interval_coverage.mt()
+    coverage_mt = coverage_mt.filter_rows(
+        hl.literal({"chrY", "chrX", normalization_contig}).contains(
+            coverage_mt.interval.start.contig
+        )
+    )
+
     if per_platform or high_cov_by_platform_all:
         logger.info("Collecting platform information...")
         platform_ht = platform.ht()
@@ -182,13 +186,6 @@ def compute_sex(
             prop_samples_norm * 100,
             norm_cov,
             normalization_contig
-        )
-        logger.info("Loading interval coverage MatrixTable and filtering to chrX, chrY and %s...", normalization_contig)
-        coverage_mt = interval_coverage.mt()
-        coverage_mt = coverage_mt.filter_rows(
-            hl.literal({"chrY", "chrX", normalization_contig}).contains(
-                coverage_mt.interval.start.contig
-            )
         )
 
         if per_platform or high_cov_by_platform_all:
@@ -254,7 +251,7 @@ def compute_sex(
             calling_intervals_ht = coverage_mt.rows()
             sex_ht = _annotate_sex(vds, calling_intervals_ht)
     else:
-        calling_intervals_ht = calling_intervals(interval_name, padding).ht()
+        calling_intervals_ht = coverage_mt.rows()
         if per_platform:
             logger.info("Running sex ploidy estimation and per platform sex karyotype estimation...")
             per_platform_sex_hts = []
@@ -274,7 +271,6 @@ def compute_sex(
 
 def main(args):
     hl.init(log="/sex_inference.log", default_reference="GRCh38")
-
     if args.compute_callrate_ac_af:
         if args.test:
             vds = testset_vds()
