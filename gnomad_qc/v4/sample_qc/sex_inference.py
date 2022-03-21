@@ -12,7 +12,6 @@ from gnomad_qc.v4.resources.basics import (
     calling_intervals,
     get_checkpoint_path,
     get_gnomad_v4_vds,
-    testset_vds,
 )
 from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_ac_an_af,
@@ -316,13 +315,10 @@ def main(args):
         if args.overwrite or not file_exists(sex.path):
             ht = compute_sex(
                 vds,
-                args.use_gnomad_methods,
-                freq_ht,
-                args.aaf_threshold if args.f_stat_high_callrate_common_variants else 0,
-                args.f_stat_cutoff,
                 args.high_cov_intervals,
                 args.per_platform,
                 args.high_cov_all_platforms,
+                args.min_platform_size,
                 args.normalization_contig,
                 args.variants_only_x_ploidy,
                 args.variants_only_y_ploidy,
@@ -332,6 +328,9 @@ def main(args):
                 args.prop_samples_x,
                 args.prop_samples_y,
                 args.prop_samples_norm,
+                freq_ht,
+                args.min_af if args.f_stat_high_callrate_common_variants else 0,
+                args.f_stat_cutoff,
             )
             ht.write(
                 get_checkpoint_path("sex_imputation") if args.test else sex.path,
@@ -367,26 +366,129 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--f_stat_high_callrate_common_var",
+        "--f-stat-high-callrate-common-var",
         help=(
             "Whether to use high callrate (> min_callrate) and common variants (> aaf-threshold) for f-stat computation. "
             "By default, no allele frequency or callrate cutoff will be used."
         ),
         action="store_true",
     )
-    parser.add_argument("--min_callrate", help="", type=float, default=0.001)
-    parser.add_argument("--aaf-threshold", help="", type=float, default=0.001)
-    parser.add_argument("--f-stat-cutoff", help="", type=float, default=0.5)
-    parser.add_argument("--high-cov-intervals", help="", action="store_true")
     parser.add_argument(
-        "--per-platform-high-cov-intervals", help="", action="store_true"
+        "--min_callrate", help="Minimum variant callrate.", default=0.99, type=float
     )
-    parser.add_argument("--x-cov", help="", type=int, default=10)
-    parser.add_argument("--y-cov", help="", type=int, default=5)
-    parser.add_argument("--norm-cov", help="", type=int, default=20)
-    parser.add_argument("--prop-samples-x", help="", type=float, default=0.80)
-    parser.add_argument("--prop-samples-y", help="", type=float, default=0.35)
-    parser.add_argument("--prop-samples-norm", help="", type=float, default=0.85)
+    parser.add_argument(
+        "--min-af",
+        help="Minimum variant allele frequency to retain variant in qc matrix table.",
+        default=0.001,
+        type=float,
+    )
+    parser.add_argument(
+        "--f-stat-cutoff",
+        help=(
+            "Cutoff for f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY "
+            "are above cutoff."
+        ),
+        type=float,
+        default=0.5,
+    )
+    parser.add_argument(
+        "--high-cov-intervals",
+        help="Whether to filter to high coverage intervals for the sex ploidy and karyotype inference.",
+        action="store_true"
+    )
+    parser.add_argument(
+        "--per-platform",
+        help="Whether to run the sex ploidy and karyotype inference per platform.",
+        action="store_true"
+    )
+    parser.add_argument(
+        "--per-platform-high-cov-intervals",
+        help=(
+            "Whether to filter to high coverage intervals for the sex ploidy and karyotype inference. "
+            "Using only intervals that are considered high coverage across all platforms."
+        ),
+        action="store_true"
+    )
+    parser.add_argument(
+        "--min-platform-size",
+        help=(
+            "Required size of a platform to be considered in '--per-platform-high-cov-intervals'. Only platforms that "
+            "have # of samples > 'min_platform_size' are used to determine intervals that have a high coverage across "
+            "all platforms."
+        ),
+        type=int,
+        default=100,
+    )
+    parser.add_argument(
+        "--normalization-contig",
+        help="Which autosomal chromosome to use for normalizing the coverage of chromosomes X and.",
+        type=str,
+        default="chr20",
+    )
+    parser.add_argument(
+        "--variants-only-x-ploidy",
+        help=(
+            "Whether to use depth of variant data for the x ploidy estimation instead of the default behavior that "
+            "will use reference blocks."
+        ),
+        action="store_true"
+    )
+    parser.add_argument(
+        "--variants-only-y-ploidy",
+        help=(
+            "Whether to use depth of variant data for the y ploidy estimation instead of the default behavior that "
+            "will use reference blocks."
+        ),
+        action="store_true"
+    )
+    parser.add_argument(
+        "--x-cov",
+        help=(
+            "Mean coverage level used to define high coverage intervals on chromosome X. This field must be in the "
+            "interval_coverage MT!"
+        ),
+        type=int,
+        default=10,
+    )
+    parser.add_argument(
+        "--y-cov",
+        help=(
+            "Mean coverage level used to define high coverage intervals on chromosome Y. This field must be in the "
+            "interval_coverage MT!"
+        ),
+        type=int,
+        default=5,
+    )
+    parser.add_argument(
+        "--norm-cov",
+        help=(
+            "Mean coverage level used to define high coverage intervals on the normalization autosome. This field must "
+            "be in the interval_coverage MT!"
+        ),
+        type=int,
+        default=20,
+    )
+    parser.add_argument(
+        "--prop-samples-x",
+        help="Proportion samples at specified coverage '--x-cov' to determine high coverage intervals on chromosome X.",
+        type=float,
+        default=0.80,
+    )
+    parser.add_argument(
+        "--prop-samples-y",
+        help="Proportion samples at specified coverage '--y-cov' to determine high coverage intervals on chromosome Y.",
+        type=float,
+        default=0.35,
+    )
+    parser.add_argument(
+        "--prop-samples-norm",
+        help=(
+            "Proportion samples at specified coverage '--norm-cov' to determine high coverage intervals on the "
+            "normalization chromosome specified by '--normalization-contig'."
+        ),
+        type=float,
+        default=0.85,
+    )
 
     args = parser.parse_args()
     main(args)
