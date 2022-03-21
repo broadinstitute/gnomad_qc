@@ -43,6 +43,7 @@ def get_sample_qc(strat: str = "all") -> VersionedTableResource:
         },
     )
 
+
 def _get_platform_pca_ht_path(part: str, version: str = CURRENT_VERSION) -> str:
     """
     Helper function to get path to files related to platform PCA.
@@ -51,7 +52,9 @@ def _get_platform_pca_ht_path(part: str, version: str = CURRENT_VERSION) -> str:
     :param version: Version of sample QC path to return
     :return: Path to requested platform PCA file
     """
-    return f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.platform_pca_{part}.ht"
+    return (
+        f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.platform_pca_{part}.ht"
+    )
 
 
 def _get_ancestry_pca_ht_path(
@@ -186,7 +189,8 @@ platform_pca_loadings = VersionedTableResource(
     {
         version: TableResource(
             _get_platform_pca_ht_path(
-                "loadings", version,
+                "loadings",
+                version,
             )
         )
         for version in VERSIONS
@@ -199,7 +203,8 @@ platform_pca_scores = VersionedTableResource(
     {
         version: TableResource(
             _get_platform_pca_ht_path(
-                "scores", version,
+                "scores",
+                version,
             )
         )
         for version in VERSIONS
@@ -212,7 +217,8 @@ platform_pca_eigenvalues = VersionedTableResource(
     {
         version: TableResource(
             _get_platform_pca_ht_path(
-                "eigenvalues", version,
+                "eigenvalues",
+                version,
             )
         )
         for version in VERSIONS

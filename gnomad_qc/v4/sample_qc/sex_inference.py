@@ -8,7 +8,12 @@ from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.basics import calling_intervals, get_checkpoint_path, get_gnomad_v4_vds, testset_vds
+from gnomad_qc.v4.resources.basics import (
+    calling_intervals,
+    get_checkpoint_path,
+    get_gnomad_v4_vds,
+    testset_vds,
+)
 from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_ac_an_af,
     interval_coverage,
@@ -159,7 +164,10 @@ def compute_sex(
             variants_only_y_ploidy=variants_only_y_ploidy,
         )
 
-    logger.info("Loading interval coverage MatrixTable and filtering to chrX, chrY and %s...", normalization_contig)
+    logger.info(
+        "Loading interval coverage MatrixTable and filtering to chrX, chrY and %s...",
+        normalization_contig,
+    )
     coverage_mt = interval_coverage.mt()
     coverage_mt = coverage_mt.filter_rows(
         hl.literal({"chrY", "chrX", normalization_contig}).contains(
@@ -185,7 +193,7 @@ def compute_sex(
             y_cov,
             prop_samples_norm * 100,
             norm_cov,
-            normalization_contig
+            normalization_contig,
         )
 
         if per_platform or high_cov_by_platform_all:
@@ -197,7 +205,9 @@ def compute_sex(
                 **{
                     f"over_{x_cov}x": hl.agg.fraction(coverage_mt.mean_dp > x_cov),
                     f"over_{y_cov}x": hl.agg.fraction(coverage_mt.mean_dp > y_cov),
-                    f"over_{norm_cov}x": hl.agg.fraction(coverage_mt.mean_dp > norm_cov),
+                    f"over_{norm_cov}x": hl.agg.fraction(
+                        coverage_mt.mean_dp > norm_cov
+                    ),
                 }
             )
 
@@ -222,7 +232,7 @@ def compute_sex(
             logger.info(
                 "Running sex ploidy and sex karyotype estimation using high quality intervals across all platforms. "
                 "Limited to platforms with at least %s samples...",
-                min_platform_size
+                min_platform_size,
             )
             platform_n_ht = platform_ht.group_by(platform_ht.platform).aggregate(
                 n_samples=hl.agg.count()
@@ -244,7 +254,9 @@ def compute_sex(
                 **{
                     f"over_{x_cov}x": hl.agg.fraction(coverage_mt.mean_dp > x_cov),
                     f"over_{y_cov}x": hl.agg.fraction(coverage_mt.mean_dp > y_cov),
-                    f"over_{norm_cov}x": hl.agg.fraction(coverage_mt.mean_dp > norm_cov),
+                    f"over_{norm_cov}x": hl.agg.fraction(
+                        coverage_mt.mean_dp > norm_cov
+                    ),
                 }
             )
             coverage_mt = _get_filtered_coverage_mt(coverage_mt, lambda x: x)
@@ -253,7 +265,9 @@ def compute_sex(
     else:
         calling_intervals_ht = coverage_mt.rows()
         if per_platform:
-            logger.info("Running sex ploidy estimation and per platform sex karyotype estimation...")
+            logger.info(
+                "Running sex ploidy estimation and per platform sex karyotype estimation..."
+            )
             per_platform_sex_hts = []
             for platform in platforms:
                 ht = platform_ht.filter(platform_ht.platform == platform)
@@ -280,7 +294,11 @@ def main(args):
             AC=hl.agg.sum(mt.GT.n_alt_alleles),
         ).rows()
         ht = ht.annotate(AF=ht.AC / ht.AN, callrate=ht.AN / (n_samples * 2))
-        ht.write(get_checkpoint_path("test_ac_an_af") if args.test else hard_filtered_ac_an_af.path)
+        ht.write(
+            get_checkpoint_path("test_ac_an_af")
+            if args.test
+            else hard_filtered_ac_an_af.path
+        )
 
     if args.impute_sex:
         vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
@@ -311,7 +329,10 @@ def main(args):
                 args.prop_samples_y,
                 args.prop_samples_norm,
             )
-            ht.write(get_checkpoint_path("sex_imputation") if args.test else sex.path, overwrite=True)
+            ht.write(
+                get_checkpoint_path("sex_imputation") if args.test else sex.path,
+                overwrite=True,
+            )
         else:
             logger.warning("File exists and overwrite is not set!")
 
