@@ -366,7 +366,7 @@ def main(args):
                 args.prop_samples_y,
                 args.prop_samples_norm,
                 freq_ht,
-                args.min_af if args.f_stat_high_callrate_common_variants else 0,
+                args.min_af if args.f_stat_high_callrate_common_var else 0,
                 args.f_stat_cutoff,
             )
             ht.write(
