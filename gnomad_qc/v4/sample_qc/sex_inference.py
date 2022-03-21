@@ -349,7 +349,7 @@ def main(args):
             freq_ht = None
 
         # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
-        if args.overwrite or not file_exists(sex.path):
+        if args.overwrite or not file_exists(get_checkpoint_path("sex_imputation") if args.test else sex.path):
             ht = compute_sex(
                 vds,
                 args.high_cov_intervals,
