@@ -333,7 +333,8 @@ def main(args):
         ht.write(
             get_checkpoint_path("test_ac_an_af")
             if args.test
-            else hard_filtered_ac_an_af.path
+            else hard_filtered_ac_an_af.path,
+            overwrite=args.overwrite,
         )
 
     if args.impute_sex:
