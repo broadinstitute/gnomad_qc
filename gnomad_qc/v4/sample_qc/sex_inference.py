@@ -291,8 +291,6 @@ def main(args):
         else:
             vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True)
         if args.f_stat_high_callrate_common_var:
-            # TODO: Determine what variants to use for f-stat calculation, current implementation will use a HT created by
-            #  performing a full densify to get callrate and AF, note, this might not be needed, see CCDG f-stat values
             freq_ht = hard_filtered_ac_an_af.ht()
             freq_ht = freq_ht.filter(freq_ht.callrate > args.min_callrate)
         else:
