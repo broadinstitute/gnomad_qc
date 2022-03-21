@@ -297,6 +297,24 @@ def compute_sex(
             logger.info("Running sex ploidy and sex karyotype estimation...")
             sex_ht = _annotate_sex(vds, calling_intervals_ht)
 
+        sex_ht = sex_ht.annotate_globals(
+            high_cov_intervals=high_cov_intervals,
+            per_platform=per_platform,
+            high_cov_by_platform_all=high_cov_by_platform_all,
+            min_platform_size=min_platform_size,
+            normalization_contig=normalization_contig,
+            variants_only_x_ploidy=variants_only_x_ploidy,
+            variants_only_y_ploidy=variants_only_y_ploidy,
+            x_cov=x_cov,
+            y_cov=y_cov,
+            norm_cov=norm_cov,
+            prop_samples_x=prop_samples_x,
+            prop_samples_y=prop_samples_y,
+            prop_samples_norm=prop_samples_norm,
+            aaf_threshold=aaf_threshold,
+            f_stat_cutoff=f_stat_cutoff,
+        )
+
     return sex_ht
 
 
