@@ -272,10 +272,7 @@ def compute_sex(
 def main(args):
     hl.init(log="/sex_inference.log", default_reference="GRCh38")
     if args.compute_callrate_ac_af:
-        if args.test:
-            vds = testset_vds()
-        else:
-            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True)
+        vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
         mt = hl.vds.to_dense_mt(vds)
         n_samples = mt.count_cols()
         ht = mt.annotate_rows(
@@ -286,10 +283,7 @@ def main(args):
         ht.write(get_checkpoint_path("test_ac_an_af") if args.test else hard_filtered_ac_an_af.path)
 
     if args.impute_sex:
-        if args.test:
-            vds = testset_vds()
-        else:
-            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True)
+        vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
         if args.f_stat_high_callrate_common_var:
             freq_ht = hard_filtered_ac_an_af.ht()
             freq_ht = freq_ht.filter(freq_ht.callrate > args.min_callrate)
