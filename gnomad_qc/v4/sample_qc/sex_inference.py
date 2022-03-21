@@ -327,7 +327,7 @@ def main(args):
         n_samples = mt.count_cols()
         ht = mt.annotate_rows(
             AN=hl.agg.count_where(hl.is_defined(mt.LGT)) * 2,
-            AC=hl.agg.sum(mt.LGT.n_alt_alleles),
+            AC=hl.agg.sum(mt.LGT.n_alt_alleles()),
         ).rows()
         ht = ht.annotate(AF=ht.AC / ht.AN, callrate=ht.AN / (n_samples * 2))
         ht.write(
