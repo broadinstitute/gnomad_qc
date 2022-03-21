@@ -305,6 +305,7 @@ def main(args):
     if args.compute_callrate_ac_af:
         vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
         mt = hl.vds.to_dense_mt(vds)
+        mt = mt.filter_rows(hl.len(mt.alleles) == 2)
         n_samples = mt.count_cols()
         ht = mt.annotate_rows(
             AN=hl.agg.count_where(hl.is_defined(mt.GT)) * 2,
