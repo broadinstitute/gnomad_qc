@@ -8,7 +8,7 @@ from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.basics import calling_intervals, get_gnomad_v4_vds, testset_vds
+from gnomad_qc.v4.resources.basics import calling_intervals, get_checkpoint_path, get_gnomad_v4_vds, testset_vds
 from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_ac_an_af,
     interval_coverage,
@@ -283,7 +283,7 @@ def main(args):
             AC=hl.agg.sum(mt.GT.n_alt_alleles),
         ).rows()
         ht = ht.annotate(AF=ht.AC / ht.AN, callrate=ht.AN / (n_samples * 2))
-        ht.write(hard_filtered_ac_an_af.path)
+        ht.write(get_checkpoint_path("test_ac_an_af") if args.test else hard_filtered_ac_an_af.path)
 
     if args.impute_sex:
         if args.test:
