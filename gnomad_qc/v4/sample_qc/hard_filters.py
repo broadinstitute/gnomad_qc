@@ -34,14 +34,11 @@ def compute_sample_qc() -> hl.Table:
     mt = filter_to_autosomes(
         get_gnomad_v4_vds(
             split=True,
-            key_by_locus_and_alleles=True,
             remove_hard_filtered_samples=False,
-        )
+        ).variant_data
     )
     mt = mt.select_entries("GT")
 
-    # Filter reference blocks
-    mt = filter_ref_blocks(mt)
 
     # Remove centromeres and telomeres incase they were included
     mt = filter_low_conf_regions(
@@ -82,7 +79,6 @@ def compute_hard_filters(
         max_r_het_hom_var: float = 3.3,
         max_pct_contamination: float = 5.00,
         max_pct_chimera: float = 5.00,
-        min_median_insert_size: int = 250,
 ) -> hl.Table:
     """
     Apply hard filters to samples and return Table with samples and the reason for filtering.
@@ -98,11 +94,10 @@ def compute_hard_filters(
         proportion, e.g. 5% == 5.00, %5 != 0.05)
     :param max_pct_chimera: Filtering threshold to use for max percent chimera (this is a percent not a proportion,
         e.g. 5% == 5.00, %5 != 0.05)
-    :param min_median_insert_size: Filtering threshold to use for min median insert size
     :return: Table of hard filtered samples
     :rtype: hl.Table
     """
-    ht = get_gnomad_v3_mt(remove_hard_filtered_samples=False).cols()
+    ht = get_gnomad_v4_vds(remove_hard_filtered_samples=False).variant_data.cols()
     hard_filters = dict()
 
     # Remove samples failing fingerprinting
@@ -148,7 +143,6 @@ def compute_hard_filters(
             max_r_het_hom_var=max_r_het_hom_var,
             max_pct_contamination=max_pct_contamination,
             max_pct_chimera=max_pct_chimera,
-            min_median_insert_size=min_median_insert_size,
         ),
     )
 
