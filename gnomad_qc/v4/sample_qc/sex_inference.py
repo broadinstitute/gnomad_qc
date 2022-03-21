@@ -317,7 +317,9 @@ def main(args):
                 args.prop_samples_y,
                 args.prop_samples_norm,
             )
-            ht.write(sex.path, overwrite=True)
+            ht.write(get_checkpoint_path("sex_imputation") if args.test else sex.path, overwrite=True)
+        else:
+            logger.warning("File exists and overwrite is not set!")
 
 
 if __name__ == "__main__":
