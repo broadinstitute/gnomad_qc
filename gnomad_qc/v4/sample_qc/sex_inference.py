@@ -133,6 +133,7 @@ def compute_sex(
     :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY are above cutoff
     :return: Table with inferred sex annotation
     """
+
     def _get_filtered_coverage_mt(
         coverage_mt: hl.MatrixTable,
         agg_func: Callable[[hl.expr.BooleanExpression], hl.BooleanExpression],
@@ -323,9 +324,7 @@ def main(args):
             ).rows()
             ht = ht.annotate_globals(n_samples=n_samples)
             ht.write(
-                get_checkpoint_path("test_ac")
-                if args.test
-                else hard_filtered_ac.path,
+                get_checkpoint_path("test_ac") if args.test else hard_filtered_ac.path,
                 overwrite=args.overwrite,
             )
         if args.compute_af_callrate:
@@ -336,11 +335,12 @@ def main(args):
             vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
             mt = hl.vds.to_dense_mt(vds)
             mt = mt.filter_rows(hl.len(mt.alleles) == 2)
+            n_samples = ac_ht.index_globals().n_samples
             ht = mt.annotate_rows(
                 AN=hl.agg.count_where(hl.is_defined(mt.LGT)) * 2,
-                AC=ac_ht[ht.row_key],
+                AC=ac_ht[mt.row_key].AC,
             ).rows()
-            ht = ht.annotate(AF=ht.AC / ht.AN, callrate=ht.AN / (ac_ht.n_samples * 2))
+            ht = ht.annotate(AF=ht.AC / ht.AN, callrate=ht.AN / (n_samples * 2))
             ht.write(
                 get_checkpoint_path("test_af_callrate")
                 if args.test
@@ -350,7 +350,9 @@ def main(args):
         if args.impute_sex:
             vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
             if args.f_stat_high_callrate_common_var and args.f_stat_ukbb_var:
-                raise ValueError("f_stat_high_callrate_common_var and f_stat_ukbb_var can't be used together.")
+                raise ValueError(
+                    "f_stat_high_callrate_common_var and f_stat_ukbb_var can't be used together."
+                )
             if args.f_stat_high_callrate_common_var:
                 freq_ht = (
                     hl.read_table(get_checkpoint_path("test_af_callrate"))
@@ -366,7 +368,7 @@ def main(args):
                     if args.test
                     else hard_filtered_ac.ht()
                 )
-                freq_ht = freq_ht.annotate(AF=freq_ht.AC/(freq_ht.n_samples * 2))
+                freq_ht = freq_ht.annotate(AF=freq_ht.AC / (freq_ht.n_samples * 2))
 
             # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
             if args.overwrite or not file_exists(
@@ -450,8 +452,20 @@ def main(args):
                     args.min_af,
                     args.f_stat_cutoff,
                 )
+                ht = ht.annotate_globals(
+                    f_stat_high_callrate_common_var=args.f_stat_high_callrate_common_var,
+                    f_stat_ukbb_var=args.f_stat_ukbb_var,
+                )
                 ht.write(
-                    get_checkpoint_path("sex_imputation") if args.test else sex.path,
+                    get_checkpoint_path(
+                        f"sex_imputation{'.per_platform' if args.per_platform else ''}"
+                        f"{'.high_cov_by_platform_all' if args.high_cov_by_platform_all else ''}"
+                        f"{'.high_cov' if args.high_cov_intervals else ''}"
+                        f"{'.ukbb_f_stat' if args.f_stat_ukbb_var else ''}"
+                        f"{'.callrate_common_f_stat' if args.f_stat_high_callrate_common_var else ''}"
+                    )
+                    if args.test
+                    else sex.path,
                     overwrite=True,
                 )
             else:
@@ -479,7 +493,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--compute-callrate-ac-af",
+        "--compute-af-callrate",
         help=(
             "Compute the callrate and allele frequency for all variants in the VDS. NOTE: This requires a full densify!!"
         ),
@@ -499,7 +513,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--f_stat_ukbb_var",
+        "--f-stat-ukbb-var",
         help=(
             "Whether to use UK Biobank high callrate and common variants (UKBB allele frequency > aaf-threshold) for "
             "f-stat computation. By default, no callrate cutoff will be used, and allele frequency will be approximated "
