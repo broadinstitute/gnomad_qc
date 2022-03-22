@@ -34,7 +34,7 @@ logger.setLevel(logging.INFO)
 
 
 def main(args):
-    hl.init(log="/platform_pca.log", default_reference="GRCh38")
+    hl.init(log="/platform_pca.log", default_reference="GRCh38", tmp_dir='gs://gnomad-tmp-4day')
     calling_interval_name = args.calling_interval_name
     calling_interval_padding = args.calling_interval_padding
 
