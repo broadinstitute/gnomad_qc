@@ -10,9 +10,9 @@ from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import (
-    calling_intervals,
     get_checkpoint_path,
     get_gnomad_v4_vds,
+    get_logging_path,
 )
 from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_ac_an_af,
@@ -585,6 +585,29 @@ if __name__ == "__main__":
         ),
         type=float,
         default=0.85,
+    )
+    parser.add_argument(
+        "--calling-interval-name",
+        help=(
+            "Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'. Only "
+            "used if '--test' is set and final coverage MT and/or platform assignment HT are not already written."
+        ),
+        type=str,
+        choices=["ukb", "broad", "intersection"],
+        default="intersection",
+    )
+    parser.add_argument(
+        "--calling-interval-padding",
+        help=(
+            "Number of base pair padding to use on the calling intervals. One of 0 or 50 bp. Only used if '--test' is "
+            "set and final coverage MT and/or platform assignment HT are not already written."
+        ),
+        type=int,
+        choices=[0, 50],
+        default=50,
+    )
+    parser.add_argument(
+        "--slack-channel", help="Slack channel to post results and notifications to."
     )
 
     args = parser.parse_args()
