@@ -565,10 +565,13 @@ def assign_pops(
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=hl.or_missing(
                 hl.is_defined(pop_pca_scores_ht.training_pop)
-                & hl.rand_bool(1.0 - withhold_prop),
+                & hl.rand_bool(1.0 - withhold_prop, seed=24),
                 pop_pca_scores_ht.training_pop,
             )
         )
+    pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+        withheld_sample = hl.is_defined(pop_pca_scores_ht.project_meta.subpop_description)
+        & (~hl.is_defined(pop_pca_scores_ht.training_pop)))
 
     if (
         max_number_mislabeled_training_samples is not None
@@ -672,9 +675,11 @@ def assign_pops(
         high_quality=high_quality,
         n_mislabeled_training_samples=n_mislabeled_samples,
         prop_mislabeled_training_samples=prop_mislabeled_samples,
+        iterations=pop_assignment_iter
     )
     if withhold_prop:
         pop_ht = pop_ht.annotate_globals(withhold_prop=withhold_prop)
+    pop_ht = pop_ht.annotate(withheld_sample = pop_pca_scores_ht[pop_ht.key].withheld_sample)
 
     return pop_ht, pops_rf_model
 
