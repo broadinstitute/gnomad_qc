@@ -27,10 +27,12 @@ logger.setLevel(logging.INFO)
 
 
 def compute_sex(
-    vds,
+    vds: hl.vds.VariantDataset,
+    coverage_mt: hl.MatrixTable,
     high_cov_intervals: bool = False,
     per_platform: bool = False,
     high_cov_by_platform_all: bool = False,
+    platform_ht: hl.Table = None,
     min_platform_size: bool = 100,
     normalization_contig: str = "chr20",
     variants_only_x_ploidy: bool = False,
@@ -101,10 +103,12 @@ def compute_sex(
     `freq_ht` is supplied.
 
     :param vds: Input VDS for use in sex inference
+    :param coverage_mt: Input interval coverage MatrixTable
     :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy and karyotype inference
     :param per_platform: Whether to run the sex ploidy and karyotype inference per platform
     :param high_cov_by_platform_all: Whether to filter to high coverage intervals for the sex ploidy and karyotype
         inference. Using only intervals that are considered high coverage across all platforms
+    :param platform_ht: Input platform assignment Table. This is only needed if per_platform or high_cov_by_platform_all are True
     :param min_platform_size: Required size of a platform to be considered when using `high_cov_by_platform_all`. Only
         platforms that have # of samples > 'min_platform_size' are used to determine intervals that have a
         high coverage across all platforms
@@ -181,20 +185,8 @@ def compute_sex(
             variants_only_y_ploidy=variants_only_y_ploidy,
         )
 
-    logger.info(
-        "Loading interval coverage MatrixTable and filtering to chrX, chrY and %s...",
-        normalization_contig,
-    )
-    coverage_mt = interval_coverage.mt()
-    coverage_mt = coverage_mt.filter_rows(
-        hl.literal({"chrY", "chrX", normalization_contig}).contains(
-            coverage_mt.interval.start.contig
-        )
-    )
-
-    if per_platform or high_cov_by_platform_all:
-        logger.info("Collecting platform information...")
-        platform_ht = platform.ht()
+    if platform_ht is not None:
+        logger.info("Collecting platform list...")
         platforms = platform_ht.aggregate(
             hl.agg.collect_as_set(platform_ht.qc_platform)
         )
@@ -320,62 +312,129 @@ def compute_sex(
 
 def main(args):
     hl.init(log="/sex_inference.log", default_reference="GRCh38")
-    if args.compute_callrate_ac_af:
-        vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
-        mt = hl.vds.to_dense_mt(vds)
-        mt = mt.filter_rows(hl.len(mt.alleles) == 2)
-        n_samples = mt.count_cols()
-        ht = mt.annotate_rows(
-            AN=hl.agg.count_where(hl.is_defined(mt.LGT)) * 2,
-            AC=hl.agg.sum(mt.LGT.n_alt_alleles()),
-        ).rows()
-        ht = ht.annotate(AF=ht.AC / ht.AN, callrate=ht.AN / (n_samples * 2))
-        ht.write(
-            get_checkpoint_path("test_ac_an_af")
-            if args.test
-            else hard_filtered_ac_an_af.path,
-            overwrite=args.overwrite,
-        )
 
-    if args.impute_sex:
-        vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
-        if args.f_stat_high_callrate_common_var:
-            freq_ht = (
-                hl.read_table(get_checkpoint_path("test_ac_an_af"))
-                if args.test
-                else hard_filtered_ac_an_af.ht()
-            )
-            freq_ht = freq_ht.filter(freq_ht.callrate > args.min_callrate)
-        else:
-            freq_ht = None
-
-        # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
-        if args.overwrite or not file_exists(get_checkpoint_path("sex_imputation") if args.test else sex.path):
-            ht = compute_sex(
-                vds,
-                args.high_cov_intervals,
-                args.per_platform,
-                args.high_cov_by_platform_all,
-                args.min_platform_size,
-                args.normalization_contig,
-                args.variants_only_x_ploidy,
-                args.variants_only_y_ploidy,
-                args.x_cov,
-                args.y_cov,
-                args.norm_cov,
-                args.prop_samples_x,
-                args.prop_samples_y,
-                args.prop_samples_norm,
-                freq_ht,
-                args.min_af if args.f_stat_high_callrate_common_var else 0,
-                args.f_stat_cutoff,
-            )
+    try:
+        if args.compute_callrate_ac_af:
+            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
+            mt = hl.vds.to_dense_mt(vds)
+            mt = mt.filter_rows(hl.len(mt.alleles) == 2)
+            n_samples = mt.count_cols()
+            logger.info("Number of samples: %d", n_samples)
+            ht = mt.annotate_rows(
+                AN=hl.agg.count_where(hl.is_defined(mt.LGT)) * 2,
+                AC=hl.agg.sum(mt.LGT.n_alt_alleles()),
+            ).rows()
+            ht = ht.annotate(AF=ht.AC / ht.AN, callrate=ht.AN / (n_samples * 2))
             ht.write(
-                get_checkpoint_path("sex_imputation") if args.test else sex.path,
-                overwrite=True,
+                get_checkpoint_path("test_ac_an_af")
+                if args.test
+                else hard_filtered_ac_an_af.path,
+                overwrite=args.overwrite,
             )
-        else:
-            logger.warning("File exists and overwrite is not set!")
+
+        if args.impute_sex:
+            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
+            if args.f_stat_high_callrate_common_var:
+                freq_ht = (
+                    hl.read_table(get_checkpoint_path("test_ac_an_af"))
+                    if args.test
+                    else hard_filtered_ac_an_af.ht()
+                )
+                freq_ht = freq_ht.filter(freq_ht.callrate > args.min_callrate)
+            else:
+                freq_ht = None
+
+            # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
+            if args.overwrite or not file_exists(
+                get_checkpoint_path("sex_imputation") if args.test else sex.path
+            ):
+                logger.info(
+                    "Loading interval coverage MatrixTable and filtering to chrX, chrY and %s...",
+                    args.normalization_contig,
+                )
+                if file_exists(interval_coverage.path):
+                    coverage_mt = interval_coverage.mt()
+                elif args.test:
+                    test_coverage_path = get_checkpoint_path(
+                        f"test_interval_coverage.{args.calling_interval_name}.pad{args.calling_interval_padding}",
+                        mt=True,
+                    )
+                    if file_exists(test_coverage_path):
+                        coverage_mt = hl.read_matrix_table(test_coverage_path)
+                    else:
+                        FileNotFoundError(
+                            f"There is no final coverage MatrixTable written and a test interval coverage MatrixTable does "
+                            f"not exist for calling interval {args.calling_interval_name} and interval padding "
+                            f"{args.calling_interval_padding}. Please run platform_inference.py --compute_coverage with the "
+                            f"--test argument and needed --calling_interval_name/--calling_interval_padding arguments."
+                        )
+                else:
+                    FileNotFoundError(
+                        f"There is no final coverage MatrixTable written. Please run: "
+                        f"platform_inference.py --compute_coverage to compute the interval coverage MatrixTable."
+                    )
+
+                coverage_mt = coverage_mt.filter_rows(
+                    hl.literal({"chrY", "chrX", args.normalization_contig}).contains(
+                        coverage_mt.interval.start.contig
+                    )
+                )
+                if args.per_platform or args.high_cov_by_platform_all:
+                    logger.info("Loading platform information...")
+                    if file_exists(platform.path):
+                        platform_ht = platform.ht()
+                    elif args.test:
+                        test_platform_path = get_checkpoint_path(
+                            f"test_platform_assignment.{args.calling_interval_name}.pad{args.calling_interval_padding}"
+                        )
+                        if file_exists(test_platform_path):
+                            platform_ht = hl.read_table(test_platform_path)
+                        else:
+                            FileNotFoundError(
+                                f"There is no final platform assignment Table written and a test platform assignment Table "
+                                f"does not exist for calling interval {args.calling_interval_name} and interval padding "
+                                f"{args.calling_interval_padding}. Please run platform_inference.py --assign_platforms "
+                                f"with the --test argument and needed --calling_interval_name/--calling_interval_padding "
+                                f"arguments."
+                            )
+                    else:
+                        FileNotFoundError(
+                            f"There is no final platform assignment Table written. Please run: "
+                            f"platform_inference.py --assign_platforms to compute the platform assignment Table."
+                        )
+                else:
+                    platform_ht = None
+
+                ht = compute_sex(
+                    vds,
+                    coverage_mt,
+                    args.high_cov_intervals,
+                    args.per_platform,
+                    args.high_cov_by_platform_all,
+                    platform_ht,
+                    args.min_platform_size,
+                    args.normalization_contig,
+                    args.variants_only_x_ploidy,
+                    args.variants_only_y_ploidy,
+                    args.x_cov,
+                    args.y_cov,
+                    args.norm_cov,
+                    args.prop_samples_x,
+                    args.prop_samples_y,
+                    args.prop_samples_norm,
+                    freq_ht,
+                    args.min_af if args.f_stat_high_callrate_common_var else 0,
+                    args.f_stat_cutoff,
+                )
+                ht.write(
+                    get_checkpoint_path("sex_imputation") if args.test else sex.path,
+                    overwrite=True,
+                )
+            else:
+                logger.warning("File exists and overwrite is not set!")
+    finally:
+        logger.info("Copying log to logging bucket...")
+        hl.copy_log(get_logging_path("sex_inference"))
 
 
 if __name__ == "__main__":
