@@ -236,12 +236,23 @@ platform = VersionedTableResource(
     },
 )
 
-# HT containing AC, AN, AF information for the full callset after hard filtering
-hard_filtered_ac_an_af = VersionedTableResource(
+# HT containing AC information for bi-allelic variants after hard filtering
+hard_filtered_ac = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered.ac_an_af.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered.ac.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
+# HT containing AN, AF, and callrate information for bi-allelic variants after hard filtering
+hard_filtered_af_callrate = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered.af_callrate.ht"
         )
         for version in VERSIONS
     },

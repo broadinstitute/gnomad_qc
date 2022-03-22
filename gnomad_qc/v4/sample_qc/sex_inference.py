@@ -13,9 +13,11 @@ from gnomad_qc.v4.resources.basics import (
     get_checkpoint_path,
     get_gnomad_v4_vds,
     get_logging_path,
+    ukbb_f_stat,
 )
 from gnomad_qc.v4.resources.sample_qc import (
-    hard_filtered_ac_an_af,
+    hard_filtered_ac,
+    hard_filtered_af_callrate,
     interval_coverage,
     platform,
     sex,
@@ -99,9 +101,6 @@ def compute_sex(
          reference blocks and variants found in the sparse MatrixTable, but it only uses specified calling intervals to
          determine the contig size and doesn't adjust break up the reference blocks in the same way the Hail method does.
 
-    f-stat is computed on all variants unless a `freq_ht` is defined. Therefore the `aaf_threshold` is only used when
-    `freq_ht` is supplied.
-
     :param vds: Input VDS for use in sex inference
     :param coverage_mt: Input interval coverage MatrixTable
     :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy and karyotype inference
@@ -127,14 +126,13 @@ def compute_sex(
     :param prop_samples_y: Proportion samples at specified coverage `y_cov` to determine high coverage intervals on chromosome Y
     :param prop_samples_norm: Proportion samples at specified coverage `norm_cov` to determine high coverage intervals
         on the normalization chromosome specified by `normalization_contig`
-    :param freq_ht: Optional Table to use for f-stat allele frequency cutoff. If present, the input VDS is filtered to
-        sites in this Table prior to running Hail's `impute_sex` module, and alternate allele frequency is used from
-        this Table with a `aaf_threshold` cutoff
+    :param freq_ht: Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in this Table
+        prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table with a
+        `aaf_threshold` cutoff
     :param aaf_threshold: Minimum alternate allele frequency to be used in f-stat calculations
     :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY are above cutoff
     :return: Table with inferred sex annotation
     """
-
     def _get_filtered_coverage_mt(
         coverage_mt: hl.MatrixTable,
         agg_func: Callable[[hl.expr.BooleanExpression], hl.BooleanExpression],
@@ -314,35 +312,61 @@ def main(args):
     hl.init(log="/sex_inference.log", default_reference="GRCh38")
 
     try:
-        if args.compute_callrate_ac_af:
+        if args.compute_ac:
             vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
-            mt = hl.vds.to_dense_mt(vds)
+            mt = vds.variant_data
             mt = mt.filter_rows(hl.len(mt.alleles) == 2)
             n_samples = mt.count_cols()
             logger.info("Number of samples: %d", n_samples)
             ht = mt.annotate_rows(
-                AN=hl.agg.count_where(hl.is_defined(mt.LGT)) * 2,
                 AC=hl.agg.sum(mt.LGT.n_alt_alleles()),
             ).rows()
-            ht = ht.annotate(AF=ht.AC / ht.AN, callrate=ht.AN / (n_samples * 2))
+            ht = ht.annotate_globals(n_samples=n_samples)
             ht.write(
-                get_checkpoint_path("test_ac_an_af")
+                get_checkpoint_path("test_ac")
                 if args.test
-                else hard_filtered_ac_an_af.path,
+                else hard_filtered_ac.path,
                 overwrite=args.overwrite,
             )
-
+        if args.compute_af_callrate:
+            if args.test:
+                ac_ht = hl.read_table(get_checkpoint_path("test_ac"))
+            else:
+                ac_ht = hard_filtered_ac.ht()
+            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
+            mt = hl.vds.to_dense_mt(vds)
+            mt = mt.filter_rows(hl.len(mt.alleles) == 2)
+            ht = mt.annotate_rows(
+                AN=hl.agg.count_where(hl.is_defined(mt.LGT)) * 2,
+                AC=ac_ht[ht.row_key],
+            ).rows()
+            ht = ht.annotate(AF=ht.AC / ht.AN, callrate=ht.AN / (ac_ht.n_samples * 2))
+            ht.write(
+                get_checkpoint_path("test_af_callrate")
+                if args.test
+                else hard_filtered_af_callrate.path,
+                overwrite=args.overwrite,
+            )
         if args.impute_sex:
             vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
+            if args.f_stat_high_callrate_common_var and args.f_stat_ukbb_var:
+                raise ValueError("f_stat_high_callrate_common_var and f_stat_ukbb_var can't be used together.")
             if args.f_stat_high_callrate_common_var:
                 freq_ht = (
-                    hl.read_table(get_checkpoint_path("test_ac_an_af"))
+                    hl.read_table(get_checkpoint_path("test_af_callrate"))
                     if args.test
-                    else hard_filtered_ac_an_af.ht()
+                    else hard_filtered_af_callrate.ht()
                 )
                 freq_ht = freq_ht.filter(freq_ht.callrate > args.min_callrate)
+            elif args.f_stat_ukbb_var:
+                freq_ht = ukbb_f_stat.ht()
             else:
-                freq_ht = None
+                freq_ht = (
+                    hl.read_table(get_checkpoint_path("test_ac"))
+                    if args.test
+                    else hard_filtered_ac.ht()
+                )
+                freq_ht = freq_ht.annotate(AF=freq_ht.AC/(freq_ht.n_samples * 2))
 
             # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
             if args.overwrite or not file_exists(
@@ -362,14 +386,14 @@ def main(args):
                     if file_exists(test_coverage_path):
                         coverage_mt = hl.read_matrix_table(test_coverage_path)
                     else:
-                        FileNotFoundError(
+                        raise FileNotFoundError(
                             f"There is no final coverage MatrixTable written and a test interval coverage MatrixTable does "
                             f"not exist for calling interval {args.calling_interval_name} and interval padding "
                             f"{args.calling_interval_padding}. Please run platform_inference.py --compute_coverage with the "
                             f"--test argument and needed --calling_interval_name/--calling_interval_padding arguments."
                         )
                 else:
-                    FileNotFoundError(
+                    raise FileNotFoundError(
                         f"There is no final coverage MatrixTable written. Please run: "
                         f"platform_inference.py --compute_coverage to compute the interval coverage MatrixTable."
                     )
@@ -390,7 +414,7 @@ def main(args):
                         if file_exists(test_platform_path):
                             platform_ht = hl.read_table(test_platform_path)
                         else:
-                            FileNotFoundError(
+                            raise FileNotFoundError(
                                 f"There is no final platform assignment Table written and a test platform assignment Table "
                                 f"does not exist for calling interval {args.calling_interval_name} and interval padding "
                                 f"{args.calling_interval_padding}. Please run platform_inference.py --assign_platforms "
@@ -398,7 +422,7 @@ def main(args):
                                 f"arguments."
                             )
                     else:
-                        FileNotFoundError(
+                        raise FileNotFoundError(
                             f"There is no final platform assignment Table written. Please run: "
                             f"platform_inference.py --assign_platforms to compute the platform assignment Table."
                         )
@@ -423,7 +447,7 @@ def main(args):
                     args.prop_samples_y,
                     args.prop_samples_norm,
                     freq_ht,
-                    args.min_af if args.f_stat_high_callrate_common_var else 0,
+                    args.min_af,
                     args.f_stat_cutoff,
                 )
                 ht.write(
@@ -450,10 +474,14 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
+        "--compute-ac",
+        help="Compute the allele count, for all bi-allelic variants in the VDS.",
+        action="store_true",
+    )
+    parser.add_argument(
         "--compute-callrate-ac-af",
         help=(
-            "Compute the callrate, allele count, and allele frequency for all variants in the VDS. NOTE: This "
-            "requires a full densify!!"
+            "Compute the callrate and allele frequency for all variants in the VDS. NOTE: This requires a full densify!!"
         ),
         action="store_true",
     )
@@ -466,7 +494,16 @@ if __name__ == "__main__":
         "--f-stat-high-callrate-common-var",
         help=(
             "Whether to use high callrate (> min_callrate) and common variants (> aaf-threshold) for f-stat computation. "
-            "By default, no allele frequency or callrate cutoff will be used."
+            "By default, no callrate cutoff will be used, and allele frequency will be approximated with AC/(n_samples * 2)."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--f_stat_ukbb_var",
+        help=(
+            "Whether to use UK Biobank high callrate and common variants (UKBB allele frequency > aaf-threshold) for "
+            "f-stat computation. By default, no callrate cutoff will be used, and allele frequency will be approximated "
+            "with AC/(n_samples * 2)."
         ),
         action="store_true",
     )
