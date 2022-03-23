@@ -5,9 +5,7 @@ import hail as hl
 
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.utils.annotations import bi_allelic_expr
-from gnomad.utils.filtering import (
-    add_filters_expr,
-)
+from gnomad.utils.filtering import add_filters_expr
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
@@ -33,7 +31,7 @@ def compute_sample_qc() -> hl.Table:
     vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
 
     # Remove centromeres and telomeres incase they were included
-    vds = hl.vds.filter_intervals(vds,intervals=telomeres_and_centromeres)
+    vds = hl.vds.filter_intervals(vds, intervals=telomeres_and_centromeres, keep=False)
 
     sample_qc_ht = compute_stratified_sample_qc(
         vds,
@@ -42,7 +40,7 @@ def compute_sample_qc() -> hl.Table:
             "multi_allelic": ~bi_allelic_expr(vds.variant_data),
         },
         tmp_ht_prefix=get_sample_qc().path[:-3],
-        gt_col="LGT", #Should hl.vds.lgt_to_gt be run first? 
+        gt_col="LGT",  # TODO: Determine if hl.vds.lgt_to_gt should be run first?
     )
 
     return sample_qc_ht.repartition(100)
@@ -79,12 +77,15 @@ def compute_hard_filters(
 
     # Flag samples failing fingerprinting
     # TODO: Need to update this once Julia runs the fingerprint check, assuming there will be a results file
-    hard_filters["failed_fingerprinting"] = hl.is_defined(fingerprinting_ht[ht.key])
+    fp_ht = fingerprinting.ht()
+    hard_filters["failed_fingerprinting"] = hl.is_defined(fp_ht[ht.key])
 
     # Flag low-coverage samples
     # chrom 20 coverage is computed to infer sex and used here
     cov_ht = sex.ht()
-    hard_filters["low_coverage"] = cov_ht[ht.key].chr20_mean_dp < cov_threshold
+    hard_filters["low_coverage"] = (
+        cov_ht[ht.key].chr20_mean_dp < cov_threshold
+    )  # TODO: Confirm still using sex ht mean chr20 dp, not a picard metric or the interval coverage mt
 
     # Flag extreme raw bi-allelic sample QC outliers
     # These were determined by visual inspection of the metrics
@@ -99,14 +100,16 @@ def compute_hard_filters(
     # Flag samples that fail picard metric thresholds
     picard_ht = picard_metrics.ht()[ht.key]
     hard_filters["contamination"] = (
-        picard_ht.bam_metrics.freemix > max_pct_contamination
-    )
-    hard_filters["chimera"] = picard_ht.bam_metrics.pct_chimeras > max_pct_chimera
+        picard_ht.contam_rate > max_pct_contamination
+    )  # TODO: Confirm this is a percent not proportion
+    hard_filters["chimera"] = (
+        picard_ht.chimeras_rate > max_pct_chimera
+    )  # TODO: Confirm comparison is accurate, this is a percent not proportion
 
     ht = ht.annotate(hard_filters=add_filters_expr(filters=hard_filters))
 
     # Remove samples failing hard filters
-    ht = ht.filter(hl.len(ht.hard_filters) > 0)
+    ht = ht.filter(hl.len(ht.hard_filters) > 0, keep=False)
     ht = ht.annotate_globals(
         hard_filter_cutoffs=hl.struct(
             min_cov=cov_threshold,
