@@ -89,12 +89,15 @@ def compute_hard_filters(
 
     # Flag extreme raw bi-allelic sample QC outliers
     # These were determined by visual inspection of the metrics
-    bi_allelic_qc_struct = get_sample_qc("bi_allelic").ht()[ht.key]
+    bi_allelic_qc_struct = sample_qc_ht[
+        ht.key
+    ].bi_allelic_sample_qc  # TODO: Update to get_sample_qc("bi_allelic").ht()[ht.key] if createt get_sample_qc method
     hard_filters["bad_qc_metrics"] = (
-        (bi_allelic_qc_struct.sample_qc.n_snp > max_n_snp)
-        | (bi_allelic_qc_struct.sample_qc.n_snp < min_n_snp)
-        | (bi_allelic_qc_struct.sample_qc.n_singleton > max_n_singleton)
-        | (bi_allelic_qc_struct.sample_qc.r_het_hom_var > max_r_het_hom_var)
+        (bi_allelic_qc_struct.n_snp > max_n_snp)
+        | (bi_allelic_qc_struct.n_snp < min_n_snp)
+        | (bi_allelic_qc_struct.n_singleton > max_n_singleton)
+        | (bi_allelic_qc_struct.r_het_hom_var > max_r_het_hom_var)
+        | ()
     )
 
     # Flag samples that fail picard metric thresholds
