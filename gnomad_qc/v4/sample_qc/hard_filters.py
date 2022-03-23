@@ -7,9 +7,8 @@ from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.utils.annotations import bi_allelic_expr
 from gnomad.utils.filtering import (
     add_filters_expr,
-    filter_low_conf_regions,
-    filter_to_autosomes,
 )
+from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources.sample_qc import (
@@ -26,42 +25,24 @@ logger.setLevel(logging.INFO)
 def compute_sample_qc() -> hl.Table:
     """
     Perform sample QC on the raw split matrix table using `compute_stratified_sample_qc`.
-
     :return: Table containing sample QC metrics
     :rtype: hl.Table
     """
     logger.info("Computing sample QC")
-    mt = filter_to_autosomes(
-        get_gnomad_v4_vds(split=True, remove_hard_filtered_samples=False,).variant_data
-    )
-    mt = mt.select_entries("GT")
+    vds = get_gnomad_v4_vds(split=True, remove_hard_filtered_samples=False)
+    vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
 
     # Remove centromeres and telomeres incase they were included
-    mt = filter_low_conf_regions(
-        mt,
-        filter_lcr=False,
-        filter_decoy=False,
-        filter_segdup=False,
-        filter_telomeres_and_centromeres=True,
-    )
+    vds = hl.vds.filter_intervals(vds,intervals=telomeres_and_centromeres)
 
     sample_qc_ht = compute_stratified_sample_qc(
-        mt,
+        vds,
         strata={
-            "bi_allelic": bi_allelic_expr(mt),
-            "multi_allelic": ~bi_allelic_expr(mt),
+            "bi_allelic": bi_allelic_expr(vds.variant_data),
+            "multi_allelic": ~bi_allelic_expr(vds.variant_data),
         },
         tmp_ht_prefix=get_sample_qc().path[:-3],
-    )
-
-    # Remove annotations that cannot be computed from the sparse format
-    sample_qc_ht = sample_qc_ht.annotate(
-        **{
-            x: sample_qc_ht[x].drop(
-                "n_called", "n_not_called", "n_filtered", "call_rate"
-            )
-            for x in sample_qc_ht.row_value
-        }
+        gt_col="LGT", #Should hl.vds.lgt_to_gt be run first? 
     )
 
     return sample_qc_ht.repartition(100)
