@@ -9,6 +9,7 @@ from gnomad.utils.filtering import add_filters_expr
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources import meta_tsv_path
 from gnomad_qc.v4.resources.sample_qc import (
     get_sample_qc,
     hard_filtered_samples,
@@ -89,9 +90,9 @@ def compute_hard_filters(
 
     # Flag extreme raw bi-allelic sample QC outliers
     # These were determined by visual inspection of the metrics
-    bi_allelic_qc_struct = sample_qc_ht[
-        ht.key
-    ].bi_allelic_sample_qc  # TODO: Update to get_sample_qc("bi_allelic").ht()[ht.key] if createt get_sample_qc method
+    bi_allelic_qc_struct = (
+        get_sample_qc("bi_allelic").ht()[ht.key].bi_allelic_sample_qc
+    )  # TODO: Update to if create get_sample_qc method not created
     hard_filters["bad_qc_metrics"] = (
         (bi_allelic_qc_struct.n_snp > max_n_snp)
         | (bi_allelic_qc_struct.n_snp < min_n_snp)
@@ -101,7 +102,9 @@ def compute_hard_filters(
     )
 
     # Flag samples that fail picard metric thresholds
-    picard_ht = picard_metrics.ht()[ht.key]
+    picard_ht = hl.import_table(meta_tsv_path(), force=True, impute=True)[
+        ht.key
+    ]  # TODO: update to resource once created
     hard_filters["contamination"] = (
         picard_ht.contam_rate > max_pct_contamination
     )  # TODO: Confirm this is a percent not proportion
