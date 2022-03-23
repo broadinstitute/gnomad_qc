@@ -279,10 +279,6 @@ if __name__ == "__main__":
         description="This script generates a QC MT and PCA scores to use for subpop analyses"
     )
     parser.add_argument(
-        "--slack-token",
-        help="Slack token that allows integration with slack",
-    )
-    parser.add_argument(
         "--slack-channel",
         help="Slack channel to post results and notifications to",
     )
@@ -405,9 +401,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Both a slack token and slack channel must be supplied to receive notifications on slack
-    if args.slack_channel and args.slack_token:
-        with slack_notifications(args.slack_token, args.slack_channel):
+    if args.slack_channel:
+        from slack_creds import slack_token
+        with slack_notifications(slack_token, args.slack_channel):
             main(args)
     else:
         main(args)
