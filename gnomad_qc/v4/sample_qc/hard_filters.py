@@ -11,6 +11,7 @@ from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources import meta_tsv_path
 from gnomad_qc.v4.resources.sample_qc import (
+    fingerprinting,
     get_sample_qc,
     hard_filtered_samples,
     sex,
