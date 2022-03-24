@@ -55,8 +55,8 @@ def compute_hard_filters(
     min_n_snp: float = 2.4e6,
     max_n_singleton: float = 1e5,
     max_r_het_hom_var: float = 3.3,
-    max_pct_contamination: float = 5.00,
-    max_pct_chimera: float = 5.00,
+    max_pct_contamination: float = 0.05,
+    max_pct_chimera: float = 0.05,
 ) -> hl.Table:
     """
     Apply hard filters to samples and return Table with samples and the reason for filtering.
@@ -68,10 +68,10 @@ def compute_hard_filters(
     :param min_n_snp: Filtering threshold to use for the min number of SNPs
     :param max_n_singleton: Filtering threshold to use for the max number of singletons
     :param max_r_het_hom_var: Filtering threshold to use for the max ratio of heterozygotes to alternate homozygotes
-    :param max_pct_contamination: Filtering threshold to use for max percent contamination (this is a percent not a
-        proportion, e.g. 5% == 5.00, %5 != 0.05)
-    :param max_pct_chimera: Filtering threshold to use for max percent chimera (this is a percent not a proportion,
-        e.g. 5% == 5.00, %5 != 0.05)
+    :param max_pct_contamination: Filtering threshold to use for max percent contamination (this is a proportion not a
+        percecnt, e.g. 5% == 0.05, %5 != 5)
+    :param max_pct_chimera: Filtering threshold to use for max percent chimera (this is a proportion not a percent,
+        e.g. 5% == 0.05, %5 != 5)
     :return: Table of hard filtered samples
     :rtype: hl.Table
     """
@@ -79,7 +79,6 @@ def compute_hard_filters(
     hard_filters = dict()
 
     # Flag samples failing fingerprinting
-    # TODO: Need to update this once Julia runs the fingerprint check, assuming there will be a results file, not sure of format
     fp_ht = fingerprinting.ht()
     hard_filters["failed_fingerprinting"] = hl.is_defined(fp_ht[ht.key])
 
@@ -118,17 +117,13 @@ def compute_hard_filters(
     picard_ht = hl.import_table(meta_tsv_path(), force=True, impute=True)[
         ht.key
     ]  # TODO: update meta_tsv_path() once resource created
-    hard_filters["contamination"] = (
-        picard_ht.contam_rate > max_pct_contamination
-    )  # TODO: Confirm this is a percent not proportion; accurately comparing 5%, not 0.05 to 5
-    hard_filters["chimera"] = (
-        picard_ht.chimeras_rate > max_pct_chimera
-    )  # TODO: Confirm comparison is accurate, this is a percent not proportion
+    hard_filters["contamination"] = picard_ht.contam_rate > max_pct_contamination
+    hard_filters["chimera"] = picard_ht.chimeras_rate > max_pct_chimera
 
     ht = ht.annotate(hard_filters=add_filters_expr(filters=hard_filters))
 
-    #  TODO: Remove samples failing hard filters, is this correct or is logic backwards and we want a table of hard_filtered samples
-    ht = ht.filter(hl.len(ht.hard_filters) > 0, keep=False)
+    #  TODO: Keep samples failing hard filters
+    ht = ht.filter(hl.len(ht.hard_filters) > 0)
     ht = ht.annotate_globals(
         hard_filter_cutoffs=hl.struct(
             min_cov=cov_threshold,
@@ -219,15 +214,15 @@ if __name__ == "__main__":
     )
     hard_filter_args.add_argument(
         "--max-contamination",
-        default=5.0,
+        default=0.05,
         type=float,
-        help="Filtering threshold to use for max percent contamination (this is a percent not a proportion, e.g. 5% == 5.00, %5 != 0.05). Default is 5.0",
+        help="Filtering threshold to use for max percent contamination (this is a proportion not percent, e.g. 5% == 0.05, %5 != 5). Default is 0.05",
     )
     hard_filter_args.add_argument(
         "--max-chimera",
         type=float,
-        default=5.00,
-        help="Filtering threshold to use for max percent chimera (this is a percent not a proportion, e.g. 5% == 5.00, %5 != 0.05). Default is 5.0.",
+        default=0.05,
+        help="Filtering threshold to use for max percent chimera (this is a proportion not a percent, e.g. 5% == 0.05, %5 != 5). Default is 0.05.",
     )
 
     main(parser.parse_args())
