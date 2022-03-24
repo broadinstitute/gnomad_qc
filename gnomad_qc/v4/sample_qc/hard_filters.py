@@ -133,8 +133,8 @@ def compute_hard_filters(
             min_n_snp=min_n_snp,
             max_n_singleton=max_n_singleton,
             max_r_het_hom_var=max_r_het_hom_var,
-            max_pct_contamination=max_contamination,
-            max_pct_chimera=max_chimera,
+            max_contamination=max_contamination,
+            max_chimera=max_chimera,
         ),
     )
 
