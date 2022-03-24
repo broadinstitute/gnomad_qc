@@ -55,8 +55,8 @@ def compute_hard_filters(
     min_n_snp: float = 2.4e6,
     max_n_singleton: float = 1e5,
     max_r_het_hom_var: float = 3.3,
-    max_pct_contamination: float = 0.05,
-    max_pct_chimera: float = 0.05,
+    max_contamination: float = 0.05,
+    max_chimera: float = 0.05,
 ) -> hl.Table:
     """
     Apply hard filters to samples and return Table with samples and the reason for filtering.
@@ -68,9 +68,9 @@ def compute_hard_filters(
     :param min_n_snp: Filtering threshold to use for the min number of SNPs
     :param max_n_singleton: Filtering threshold to use for the max number of singletons
     :param max_r_het_hom_var: Filtering threshold to use for the max ratio of heterozygotes to alternate homozygotes
-    :param max_pct_contamination: Filtering threshold to use for max percent contamination (this is a proportion not a
+    :param max_contamination: Filtering threshold to use for max percent contamination (this is a proportion not a
         percecnt, e.g. 5% == 0.05, %5 != 5)
-    :param max_pct_chimera: Filtering threshold to use for max percent chimera (this is a proportion not a percent,
+    :param max_chimera: Filtering threshold to use for max percent chimera (this is a proportion not a percent,
         e.g. 5% == 0.05, %5 != 5)
     :return: Table of hard filtered samples
     :rtype: hl.Table
@@ -95,9 +95,11 @@ def compute_hard_filters(
     if include_sex_filter:
         # Remove samples with ambiguous sex assignments
         hard_filters["ambiguous_sex"] = sex_ht.sex_karyotype == "ambiguous"
-        hard_filters["sex_aneuploidy"] = ~hl.set(  # pylint: disable=invalid-unary-operand-type
+        hard_filters[
+            "sex_aneuploidy"
+        ] = ~hl.set(  # pylint: disable=invalid-unary-operand-type
             {"ambiguous", "XX", "XY"}
-        ).contains( 
+        ).contains(
             sex_ht.sex_karyotype
         )
 
@@ -117,8 +119,8 @@ def compute_hard_filters(
     picard_ht = hl.import_table(meta_tsv_path(), force=True, impute=True)[
         ht.key
     ]  # TODO: update meta_tsv_path() once resource created
-    hard_filters["contamination"] = picard_ht.contam_rate > max_pct_contamination
-    hard_filters["chimera"] = picard_ht.chimeras_rate > max_pct_chimera
+    hard_filters["contamination"] = picard_ht.contam_rate > max_contamination
+    hard_filters["chimera"] = picard_ht.chimeras_rate > max_chimera
 
     ht = ht.annotate(hard_filters=add_filters_expr(filters=hard_filters))
 
@@ -131,8 +133,8 @@ def compute_hard_filters(
             min_n_snp=min_n_snp,
             max_n_singleton=max_n_singleton,
             max_r_het_hom_var=max_r_het_hom_var,
-            max_pct_contamination=max_pct_contamination,
-            max_pct_chimera=max_pct_chimera,
+            max_pct_contamination=max_contamination,
+            max_pct_chimera=max_chimera,
         ),
     )
 
@@ -145,7 +147,7 @@ def main(args):
     if args.sample_qc:
         compute_sample_qc().write(get_sample_qc().path, overwrite=args.overwrite)
 
-    if args.compute_hard_filters:  #  TODO: Will need to add args is we filter on f-stat
+    if args.compute_hard_filters:  # TODO: Will need to add args is we filter on f-stat
         compute_hard_filters(
             args.include_sex_filter,
             args.min_cov,
