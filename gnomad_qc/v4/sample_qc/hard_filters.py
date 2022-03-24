@@ -107,7 +107,7 @@ def compute_hard_filters(
     # These were determined by visual inspection of the metrics
     bi_allelic_qc_struct = (
         get_sample_qc("bi_allelic").ht()[ht.key].bi_allelic_sample_qc
-    )  # TODO: Update if create get_sample_qc method is not created, need to pull in the table generated from compute_sample_qc above
+    )  # Need to pull in the table generated from compute_sample_qc above
     hard_filters["bad_qc_metrics"] = (
         (bi_allelic_qc_struct.n_snp > max_n_snp)
         | (bi_allelic_qc_struct.n_snp < min_n_snp)
@@ -118,7 +118,7 @@ def compute_hard_filters(
     # Flag samples that fail picard metric thresholds
     picard_ht = hl.import_table(meta_tsv_path(), force=True, impute=True)[
         ht.key
-    ]  # TODO: update meta_tsv_path() once resource created
+    ]  # TODO: update meta_tsv_path() once project_meta resource created
     hard_filters["contamination"] = picard_ht.contam_rate > max_contamination
     hard_filters["chimera"] = picard_ht.chimeras_rate > max_chimera
 
