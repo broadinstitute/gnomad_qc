@@ -105,7 +105,7 @@ def compute_hard_filters(
     # These were determined by visual inspection of the metrics
     bi_allelic_qc_struct = (
         get_sample_qc("bi_allelic").ht()[ht.key].bi_allelic_sample_qc
-    )  # TODO: Update to if create get_sample_qc method not created
+    )  # TODO: Update if create get_sample_qc method is not created, need to pull in the table generated from compute_sample_qc above
     hard_filters["bad_qc_metrics"] = (
         (bi_allelic_qc_struct.n_snp > max_n_snp)
         | (bi_allelic_qc_struct.n_snp < min_n_snp)
@@ -126,7 +126,7 @@ def compute_hard_filters(
 
     ht = ht.annotate(hard_filters=add_filters_expr(filters=hard_filters))
 
-    # Remove samples failing hard filters
+    #  TODO: Remove samples failing hard filters, is this correct or is logic backwards and we want a table of hard_filtered samples
     ht = ht.filter(hl.len(ht.hard_filters) > 0, keep=False)
     ht = ht.annotate_globals(
         hard_filter_cutoffs=hl.struct(
