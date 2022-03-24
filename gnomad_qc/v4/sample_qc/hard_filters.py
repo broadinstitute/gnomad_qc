@@ -48,7 +48,7 @@ def compute_sample_qc() -> hl.Table:
 
 
 def compute_hard_filters(
-    include_sex_filter=True,
+    include_sex_filter=False,
     cov_threshold: int = 15,
     max_n_snp: float = 3.75e6,
     min_n_snp: float = 2.4e6,
