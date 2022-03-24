@@ -83,10 +83,17 @@ def compute_hard_filters(
 
     # Flag low-coverage samples
     # chrom 20 coverage is computed to infer sex and used here
-    cov_ht = sex.ht()
+    sex_ht = sex.ht()
     hard_filters["low_coverage"] = (
-        cov_ht[ht.key].chr20_mean_dp < cov_threshold
+        sex_ht[ht.key].chr20_mean_dp < cov_threshold
     )  # TODO: Confirm still using sex ht mean chr20 dp, not a picard metric or the interval coverage mt
+
+    #  TODO: Confirm what we will filter on from sex ht, e.g. "ambiguous_sex", "sex_aneuploidy"
+    #        CCDG used female_f_stat and male_f-stat, if we use this we would want to change
+    #        the language to XX_f_stat and XY_f_stat
+
+    hard_filters["ambiguous_sex"] = sex_ht.ambiguous_sex
+    hard_filters["sex_aneuploidy"] = sex_ht.sex_aneuploidy
 
     # Flag extreme raw bi-allelic sample QC outliers
     # These were determined by visual inspection of the metrics
@@ -137,7 +144,7 @@ def main(args):
     if args.sample_qc:
         compute_sample_qc().write(get_sample_qc().path, overwrite=args.overwrite)
 
-    if args.compute_hard_filters:
+    if args.compute_hard_filters:  #  TODO: Will need to add args is we filter on f-stat
         compute_hard_filters(
             args.min_cov,
             args.max_n_snp,
