@@ -170,10 +170,10 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--sample_qc", help="Compute Hail's VDS sample QC metrics", action="store_true"
+        "--sample-qc", help="Compute Hail's VDS sample QC metrics", action="store_true"
     )
     parser.add_argument(
-        "--compute_hard_filters",
+        "--compute-hard-filters",
         help="Computes samples to be hard-filtered",
         action="store_true",
     )
