@@ -95,9 +95,9 @@ def compute_hard_filters(
     if include_sex_filter:
         # Remove samples with ambiguous sex assignments
         hard_filters["ambiguous_sex"] = sex_ht.sex_karyotype == "ambiguous"
-        hard_filters["sex_aneuploidy"] = ~hl.set(
+        hard_filters["sex_aneuploidy"] = ~hl.set(  # pylint: disable=invalid-unary-operand-type
             {"ambiguous", "XX", "XY"}
-        ).contains(  # pylint: disable=invalid-unary-operand-type
+        ).contains( 
             sex_ht.sex_karyotype
         )
 
@@ -122,7 +122,7 @@ def compute_hard_filters(
 
     ht = ht.annotate(hard_filters=add_filters_expr(filters=hard_filters))
 
-    #  TODO: Keep samples failing hard filters
+    # Keep samples failing hard filters
     ht = ht.filter(hl.len(ht.hard_filters) > 0)
     ht = ht.annotate_globals(
         hard_filter_cutoffs=hl.struct(
