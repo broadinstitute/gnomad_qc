@@ -68,9 +68,9 @@ def compute_hard_filters(
     :param min_n_snp: Filtering threshold to use for the min number of SNPs
     :param max_n_singleton: Filtering threshold to use for the max number of singletons
     :param max_r_het_hom_var: Filtering threshold to use for the max ratio of heterozygotes to alternate homozygotes
-    :param max_contamination: Filtering threshold to use for max percent contamination (this is a proportion not a
+    :param max_contamination: Filtering threshold to use for max contamination (this is a proportion not a
         percecnt, e.g. 5% == 0.05, %5 != 5)
-    :param max_chimera: Filtering threshold to use for max percent chimera (this is a proportion not a percent,
+    :param max_chimera: Filtering threshold to use for max chimera (this is a proportion not a percent,
         e.g. 5% == 0.05, %5 != 5)
     :return: Table of hard filtered samples
     :rtype: hl.Table
