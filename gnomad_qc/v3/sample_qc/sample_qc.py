@@ -499,6 +499,7 @@ def assign_pops(
     pop: str = None,
     high_quality: bool = False,
     missing_label: str = "oth",
+    seed: int = 24,
 ) -> Tuple[hl.Table, Any]:
     """
     Use a random forest model to assign global population labels based on the results from `assign_pca`.
@@ -520,6 +521,7 @@ def assign_pops(
     :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
     :param high_quality: Whether the file includes PCA info for only high-quality samples
     :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`
+    :param seed: Random seed
     :return: Table of pop or subpop assignments and the RF model
     :rtype: hl.Table
     """
@@ -565,7 +567,7 @@ def assign_pops(
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=hl.or_missing(
                 hl.is_defined(pop_pca_scores_ht.training_pop)
-                & hl.rand_bool(1.0 - withhold_prop, seed=24),
+                & hl.rand_bool(1.0 - withhold_prop, seed=seed),
                 pop_pca_scores_ht.training_pop,
             )
         )
@@ -674,9 +676,7 @@ def assign_pops(
         pop=pop,
         high_quality=high_quality,
         n_mislabeled_training_samples=n_mislabeled_samples,
-        prop_mislabeled_training_samples=prop_mislabeled_samples,
-        iterations=pop_assignment_iter
-    )
+        prop_mislabeled_training_samples=prop_mislabeled_samples    )
     if withhold_prop:
         pop_ht = pop_ht.annotate_globals(withhold_prop=withhold_prop)
     pop_ht = pop_ht.annotate(withheld_sample = pop_pca_scores_ht[pop_ht.key].withheld_sample)
@@ -1500,6 +1500,12 @@ if __name__ == "__main__":
         "--regressed_metrics_outlier",
         help="Should metadata HT use regression outlier model.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--seed",
+        help="Random seed",
+        default=24,
+        type=int,
     )
 
     main(parser.parse_args())

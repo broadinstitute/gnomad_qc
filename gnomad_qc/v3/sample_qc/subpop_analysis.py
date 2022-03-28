@@ -34,8 +34,7 @@ logger.setLevel(logging.INFO)
 
 
 def compute_subpop_qc_mt(
-    mt: hl.MatrixTable,
-    min_popmax_af: float = 0.001,
+    mt: hl.MatrixTable, min_popmax_af: float = 0.001,
 ) -> hl.MatrixTable:
     """
     Generate the subpop QC MT to be used for all subpop analyses.
@@ -196,62 +195,62 @@ def main(args):  # noqa: D103
                 _read_if_exists=not args.overwrite,
             )
 
-            if args.run_subpop_pca:
-                # Read in the QC MT for a specified subpop and filter samples based on user parameters
-                mt = hl.read_matrix_table(
-                    get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
-                    if args.test
-                    else filtered_subpop_qc_mt(pop)
+        if args.run_subpop_pca:
+            # Read in the QC MT for a specified subpop and filter samples based on user parameters
+            mt = hl.read_matrix_table(
+                get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
+                if args.test
+                else filtered_subpop_qc_mt(pop)
+            )
+            if not include_unreleasable_samples:
+                mt = mt.filter_cols(
+                    mt.project_meta.releasable & ~mt.project_meta.exclude
                 )
-                if not include_unreleasable_samples:
-                    mt = mt.filter_cols(
-                        mt.project_meta.releasable & ~mt.project_meta.exclude
-                    )
-                if high_quality:
-                    mt = mt.filter_cols(mt.high_quality)
-                if args.outlier_ht_path is not None:
-                    outliers = hl.read_table(args.outlier_ht_path)
-                    mt = mt.filter_cols(hl.is_missing(outliers[mt.col_key]))
+            if high_quality:
+                mt = mt.filter_cols(mt.high_quality)
+            if args.outlier_ht_path is not None:
+                outliers = hl.read_table(args.outlier_ht_path)
+                mt = mt.filter_cols(hl.is_missing(outliers[mt.col_key]))
 
-                logger.info("Generating PCs for subpops...")
-                relateds = pca_related_samples_to_drop.ht()
-                pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
-                    mt, relateds, n_pcs=args.n_pcs
-                )
+            logger.info("Generating PCs for subpops...")
+            relateds = pca_related_samples_to_drop.ht()
+            pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
+                mt, relateds, n_pcs=args.n_pcs
+            )
 
-                pop_pca_evals_ht = hl.Table.parallelize(
-                    hl.literal(
-                        [
-                            {"PC": i + 1, "eigenvalue": x}
-                            for i, x in enumerate(pop_pca_evals)
-                        ],
-                        "array<struct{PC: int, eigenvalue: float}>",
-                    )
+            pop_pca_evals_ht = hl.Table.parallelize(
+                hl.literal(
+                    [
+                        {"PC": i + 1, "eigenvalue": x}
+                        for i, x in enumerate(pop_pca_evals)
+                    ],
+                    "array<struct{PC: int, eigenvalue: float}>",
                 )
-                pop_pca_evals_ht.write(
-                    get_checkpoint_path("test_pop_pca_evals_ht")
-                    if args.test
-                    else ancestry_pca_eigenvalues(
-                        include_unreleasable_samples, high_quality, pop
-                    ).path,
-                    overwrite=args.overwrite,
-                )
-                pop_pca_scores.write(
-                    get_checkpoint_path("test_pop_pca_scores_ht")
-                    if args.test
-                    else ancestry_pca_scores(
-                        include_unreleasable_samples, high_quality, pop
-                    ).path,
-                    overwrite=args.overwrite,
-                )
-                pop_pca_loadings.write(
-                    get_checkpoint_path("test_pop_pca_loadings_ht")
-                    if args.test
-                    else ancestry_pca_loadings(
-                        include_unreleasable_samples, high_quality, pop
-                    ).path,
-                    overwrite=args.overwrite,
-                )
+            )
+            pop_pca_evals_ht.write(
+                get_checkpoint_path("test_pop_pca_evals_ht")
+                if args.test
+                else ancestry_pca_eigenvalues(
+                    include_unreleasable_samples, high_quality, pop
+                ).path,
+                overwrite=args.overwrite,
+            )
+            pop_pca_scores.write(
+                get_checkpoint_path("test_pop_pca_scores_ht")
+                if args.test
+                else ancestry_pca_scores(
+                    include_unreleasable_samples, high_quality, pop
+                ).path,
+                overwrite=args.overwrite,
+            )
+            pop_pca_loadings.write(
+                get_checkpoint_path("test_pop_pca_loadings_ht")
+                if args.test
+                else ancestry_pca_loadings(
+                    include_unreleasable_samples, high_quality, pop
+                ).path,
+                overwrite=args.overwrite,
+            )
 
         if args.assign_subpops:
             logger.info("Assigning subpops...")
@@ -279,8 +278,7 @@ if __name__ == "__main__":
         description="This script generates a QC MT and PCA scores to use for subpop analyses"
     )
     parser.add_argument(
-        "--slack-channel",
-        help="Slack channel to post results and notifications to",
+        "--slack-channel", help="Slack channel to post results and notifications to",
     )
     parser.add_argument(
         "--overwrite", help="Overwrites existing files", action="store_true"
@@ -317,10 +315,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--n-pcs",
-        help="Number of PCs to compute",
-        type=int,
-        default=20,
+        "--n-pcs", help="Number of PCs to compute", type=int, default=20,
     )
     parser.add_argument(
         "--min-af",
@@ -341,10 +336,7 @@ if __name__ == "__main__":
         default=1e-8,
     )
     parser.add_argument(
-        "--ld-r2",
-        help="Minimum r2 to keep when LD-pruning",
-        type=float,
-        default=0.1,
+        "--ld-r2", help="Minimum r2 to keep when LD-pruning", type=float, default=0.1,
     )
     parser.add_argument(
         "--outlier-ht-path",
@@ -362,9 +354,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--assign-subpops",
-        help="Runs function to assign subpops",
-        action="store_true",
+        "--assign-subpops", help="Runs function to assign subpops", action="store_true",
     )
     parser.add_argument(
         "--min-prob",
@@ -402,7 +392,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.slack_channel:
-        from slack_creds import slack_token
+        from gnomad_qc.slack_creds import slack_token
+
         with slack_notifications(slack_token, args.slack_channel):
             main(args)
     else:
