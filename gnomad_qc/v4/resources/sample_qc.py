@@ -352,3 +352,14 @@ v3_v4_relatedness = VersionedTableResource(
         for version in VERSIONS
     },
 )
+
+# v4 samples that failed fingerprinting
+fingerprinting = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.fingerprinting.ht"
+        )
+        for version in VERSIONS
+    },
+)
