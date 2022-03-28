@@ -313,7 +313,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--run-subpop-pca",
-        help="Runs function to generate PCA data for a certain population specified by --pop argument",
+        help="Runs function to generate PCA data for a certain population specified by --pop argument and based on variants in the subpop QC MT created using the --run-filter-subpop-qc argument",
         action="store_true",
     )
     parser.add_argument(
