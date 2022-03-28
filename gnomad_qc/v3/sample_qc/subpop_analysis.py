@@ -393,7 +393,6 @@ if __name__ == "__main__":
 
     if args.slack_channel:
         from gnomad_qc.slack_creds import slack_token
-
         with slack_notifications(slack_token, args.slack_channel):
             main(args)
     else:
