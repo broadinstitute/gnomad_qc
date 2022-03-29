@@ -88,6 +88,8 @@ def compute_hard_filters(
     hard_filters["low_coverage"] = (
         sex_ht[ht.key].chr20_mean_dp < cov_threshold
     )  # TODO: Confirm still using sex ht mean chr20 dp, not a picard metric or the interval coverage mt
+       # IF so this needs to be moved into the include_sex_filter conditional because we need the other 
+       # hard filters prior to the sex_ht generation 
 
     if include_sex_filter:
         # Remove samples with ambiguous sex assignments
