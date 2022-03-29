@@ -42,7 +42,7 @@ def compute_sample_qc() -> hl.Table:
             "multi_allelic": ~bi_allelic_expr(vds.variant_data),
         },
         tmp_ht_prefix=get_sample_qc().path[:-3],
-        gt_col="LGT",  # TODO: Determine if hl.vds.lgt_to_gt should be run first?
+        gt_col="LGT",
     )
 
     return sample_qc_ht.repartition(100)
@@ -89,9 +89,6 @@ def compute_hard_filters(
         sex_ht[ht.key].chr20_mean_dp < cov_threshold
     )  # TODO: Confirm still using sex ht mean chr20 dp, not a picard metric or the interval coverage mt
 
-    #  TODO: Confirm what we will filter on from sex ht, e.g. "ambiguous_sex", "sex_aneuploidy"
-    #        CCDG used female_f_stat and male_f-stat, if we use this we would want to change
-    #        the language to XX_f_stat and XY_f_stat
     if include_sex_filter:
         # Remove samples with ambiguous sex assignments
         hard_filters["ambiguous_sex"] = sex_ht.sex_karyotype == "ambiguous"
@@ -147,7 +144,7 @@ def main(args):
     if args.sample_qc:
         compute_sample_qc().write(get_sample_qc().path, overwrite=args.overwrite)
 
-    if args.compute_hard_filters:  # TODO: Will need to add args is we filter on f-stat
+    if args.compute_hard_filters:
         compute_hard_filters(
             args.include_sex_filter,
             args.min_cov,
