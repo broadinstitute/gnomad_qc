@@ -9,7 +9,7 @@ from gnomad.utils.filtering import add_filters_expr
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
-from gnomad_qc.v4.resources import meta_tsv_path
+from gnomad_qc.v4.resources.meta import project_meta
 from gnomad_qc.v4.resources.sample_qc import (
     fingerprinting,
     get_sample_qc,
@@ -113,9 +113,7 @@ def compute_hard_filters(
     )
 
     # Flag samples that fail picard metric thresholds
-    picard_ht = hl.import_table(meta_tsv_path(), force=True, impute=True)[
-        ht.key
-    ]  # TODO: update meta_tsv_path() once project_meta resource created
+    picard_ht = project_meta.ht()
     hard_filters["contamination"] = picard_ht.contam_rate > max_contamination
     hard_filters["chimera"] = picard_ht.chimeras_rate > max_chimera
 
