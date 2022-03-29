@@ -358,7 +358,7 @@ fingerprinting = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.fingerprinting.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.fingerprintcheck_failures.ht"
         )
         for version in VERSIONS
     },
