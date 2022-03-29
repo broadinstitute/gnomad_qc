@@ -170,7 +170,7 @@ def main(args):  # noqa: D103
                 overwrite=args.overwrite,
             )
 
-        if args.run_subpop_pca:
+        if args.run_filter_subpop_qc:
             logger.info("Filtering subpop QC MT...")
             if args.test:
                 mt = hl.read_matrix_table(
@@ -187,15 +187,21 @@ def main(args):  # noqa: D103
                 args.ld_r2,
             )
 
-            if args.checkpoint_filtered_subpop_qc:
-                mt = mt.checkpoint(
-                    get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
-                    if args.test
-                    else filtered_subpop_qc_mt(pop),
-                    overwrite=args.overwrite,
-                    _read_if_exists=not args.overwrite,
-                )
+            mt.write(
+                get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
+                if args.test
+                else filtered_subpop_qc_mt(pop),
+                overwrite=args.overwrite,
+                _read_if_exists=not args.overwrite,
+            )
 
+        if args.run_subpop_pca:
+            # Read in the QC MT for a specified subpop and filter samples based on user parameters
+            mt = hl.read_matrix_table(
+                get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
+                if args.test
+                else filtered_subpop_qc_mt(pop)
+            )
             if not include_unreleasable_samples:
                 mt = mt.filter_cols(
                     mt.project_meta.releasable & ~mt.project_meta.exclude
@@ -209,7 +215,7 @@ def main(args):  # noqa: D103
             logger.info("Generating PCs for subpops...")
             relateds = pca_related_samples_to_drop.ht()
             pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
-                mt, relateds
+                mt, relateds, n_pcs=args.n_pcs
             )
 
             pop_pca_evals_ht = hl.Table.parallelize(
@@ -272,9 +278,6 @@ if __name__ == "__main__":
         description="This script generates a QC MT and PCA scores to use for subpop analyses"
     )
     parser.add_argument(
-        "--slack-token", help="Slack token that allows integration with slack",
-    )
-    parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to",
     )
     parser.add_argument(
@@ -297,14 +300,22 @@ if __name__ == "__main__":
         default=0.001,
     )
     parser.add_argument(
-        "--run-subpop-pca",
-        help="Runs function to generate PCA data for a certain population specified by --pop argument",
+        "--run-filter-subpop-qc",
+        help="Runs function to filter the QC MT to a certain subpop specified by --pop argument",
         action="store_true",
     )
     parser.add_argument(
         "--pop",
         help="Population to which the subpop QC MT should be filtered when generating the PCA data",
         type=str,
+    )
+    parser.add_argument(
+        "--run-subpop-pca",
+        help="Runs function to generate PCA data for a certain population specified by --pop argument and based on variants in the subpop QC MT created using the --run-filter-subpop-qc argument",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--n-pcs", help="Number of PCs to compute", type=int, default=20,
     )
     parser.add_argument(
         "--min-af",
@@ -343,11 +354,6 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--checkpoint-filtered-subpop-qc",
-        help="Checkpoint the filtered subpop QC MT",
-        action="store_true",
-    )
-    parser.add_argument(
         "--assign-subpops", help="Runs function to assign subpops", action="store_true",
     )
     parser.add_argument(
@@ -367,7 +373,7 @@ if __name__ == "__main__":
         help="List of PCs to use in the subpop RF assignment",
         type=int,
         nargs="+",
-        default=list(range(1, 17)),
+        default=list(range(1, 20)),
     )
     mislabel_parser = parser.add_mutually_exclusive_group(required=True)
     mislabel_parser.add_argument(
@@ -385,9 +391,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Both a slack token and slack channel must be supplied to receive notifications on slack
-    if args.slack_channel and args.slack_token:
-        with slack_notifications(args.slack_token, args.slack_channel):
+    if args.slack_channel:
+        from gnomad_qc.slack_creds import slack_token
+        with slack_notifications(slack_token, args.slack_channel):
             main(args)
     else:
         main(args)
