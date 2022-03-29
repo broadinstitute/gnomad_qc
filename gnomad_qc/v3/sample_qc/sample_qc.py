@@ -572,8 +572,9 @@ def assign_pops(
             )
         )
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
-        withheld_sample = hl.is_defined(pop_pca_scores_ht.project_meta.subpop_description)
-        & (~hl.is_defined(pop_pca_scores_ht.training_pop)))
+        withheld_sample=hl.is_defined(pop_pca_scores_ht.project_meta.subpop_description)
+        & (~hl.is_defined(pop_pca_scores_ht.training_pop))
+    )
 
     if (
         max_number_mislabeled_training_samples is not None
@@ -608,7 +609,9 @@ def assign_pops(
     )
 
     # Calculate number and proportion of mislabled samples
-    n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(pop_ht, pop_field)
+    n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(
+        pop_ht, pop_field
+    )
 
     if max_number_mislabeled_training_samples:
         mislabeled = n_mislabeled_samples
@@ -660,7 +663,9 @@ def assign_pops(
         )
 
         # Calculate number and proportion of mislabled samples
-        n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(pop_ht, pop_field)
+        n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(
+            pop_ht, pop_field
+        )
 
         if max_number_mislabeled_training_samples:
             mislabeled = n_mislabeled_samples
@@ -676,10 +681,13 @@ def assign_pops(
         pop=pop,
         high_quality=high_quality,
         n_mislabeled_training_samples=n_mislabeled_samples,
-        prop_mislabeled_training_samples=prop_mislabeled_samples    )
+        prop_mislabeled_training_samples=prop_mislabeled_samples,
+    )
     if withhold_prop:
         pop_ht = pop_ht.annotate_globals(withhold_prop=withhold_prop)
-    pop_ht = pop_ht.annotate(withheld_sample = pop_pca_scores_ht[pop_ht.key].withheld_sample)
+    pop_ht = pop_ht.annotate(
+        withheld_sample=pop_pca_scores_ht[pop_ht.key].withheld_sample
+    )
 
     return pop_ht, pops_rf_model
 
@@ -1502,10 +1510,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--seed",
-        help="Random seed",
-        default=24,
-        type=int,
+        "--seed", help="Random seed", default=24, type=int,
     )
 
     main(parser.parse_args())
