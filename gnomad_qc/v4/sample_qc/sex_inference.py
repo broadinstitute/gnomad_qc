@@ -352,9 +352,7 @@ def main(args):
             else:
                 ac_ht = hard_filtered_ac.ht()
             vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
-            variant_data = vds.variant_data
-            variant_data = variant_data.filter(hl.len(variant_data.alleles) == 2)
-            vds = hl.vds.VariantDataset(vds.reference_data, variant_data)
+            vds = hl.vds.filter_variants(vds, ac_ht)
             mt = hl.vds.to_dense_mt(vds)
             n_samples = ac_ht.index_globals().n_samples
             ht = mt.annotate_rows(
@@ -382,9 +380,10 @@ def main(args):
                 )
                 freq_ht = freq_ht.filter(freq_ht.callrate > args.min_callrate)
             elif args.f_stat_ukbb_var:
-                # The UK Biobank f-stat table contains only variants that were high callrate and common within the UK
-                # Biobank 200K Regeneron exome dataset and it includes the UK Biobank 200K allele frequency information
-                # that can be used in the hl.impute_sex f-stat computation allele frequency cutoff
+                # The UK Biobank f-stat table contains only variants that were high callrate (0.99) and common
+                # (AF >0.001) within the UK Biobank 200K Regeneron exome dataset and it includes the UK Biobank 200K
+                # allele frequency information that can be used in the hl.impute_sex f-stat computation allele frequency
+                # cutoff (args.min-af)
                 freq_ht = ukbb_f_stat.ht()
             else:
                 freq_ht = (
@@ -540,8 +539,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--f-stat-ukbb-var",
         help=(
-            "Whether to use UK Biobank high callrate and common variants (UKBB allele frequency > value specified by "
-            "--min-af) for f-stat computation. By default, no callrate cutoff will be used, and allele frequency will "
+            "Whether to use UK Biobank high callrate (0.99) and common variants (UKBB allele frequency > value specified "
+            "by --min-af) for f-stat computation. By default, no callrate cutoff will be used, and allele frequency will "
             "be approximated with AC/(n_samples * 2) and a default min allele frequency of 0.001."
         ),
         action="store_true",
