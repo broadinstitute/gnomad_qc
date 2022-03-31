@@ -530,7 +530,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--f-stat-high-callrate-common-var",
         help=(
-            "Whether to use high callrate (> value specified by -- min-callrate) and common variants (> value specified "
+            "Whether to use high callrate (> value specified by --min-callrate) and common variants (> value specified "
             "by --min-af) for f-stat computation. By default, no callrate cutoff will be used, and allele frequency "
             "will be approximated with AC/(n_samples * 2) and a default min allele frequency of 0.001."
         ),
