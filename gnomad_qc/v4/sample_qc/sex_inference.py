@@ -37,8 +37,8 @@ def compute_sex(
     platform_ht: hl.Table = None,
     min_platform_size: bool = 100,
     normalization_contig: str = "chr20",
-    variants_only_x_ploidy: bool = False,
-    variants_only_y_ploidy: bool = False,
+    variant_depth_only_x_ploidy: bool = False,
+    variant_depth_only_y_ploidy: bool = False,
     x_cov: int = None,
     y_cov: int = None,
     norm_cov: int = None,
@@ -46,7 +46,7 @@ def compute_sex(
     prop_samples_y: float = None,
     prop_samples_norm: float = None,
     freq_ht=None,
-    aaf_threshold: float = 0.001,
+    min_af: float = 0.001,
     f_stat_cutoff: float = 0.5,
 ) -> hl.Table:
     """
@@ -63,15 +63,15 @@ def compute_sex(
          size). Uses parameters `high_cov_by_platform_all`, `x_cov`, `y_cov`, `norm_cov`, `prop_samples_x`,
          `prop_samples_y`, `prop_samples_norm`.
         - We use `annotate_sex`, which uses Hail's VDS imputation of sex ploidy `hail.vds.impute_sex_chromosome_ploidy`,
-          and uses `variants_only_x_ploidy` and `variants_only_y_ploidy`.
+          and uses `variant_depth_only_x_ploidy` and `variant_depth_only_y_ploidy`.
         - Use of a `freq_ht` to filter variants for the X-chromosome heterozygosity computation. This is the f_stat
-         annotation applied by Hail's `impute_sex` module. (`freq_ht`, `aaf_threshold`).
+         annotation applied by Hail's `impute_sex` module. (`freq_ht`, `min_af`).
 
     The following are the available options for chrX and chrY relative sex ploidy estimation and sex karyotype
     cutoff determination:
-        - Ploidy estimation using all intervals defined by `interval_name` and `padding`. Use options
-        - Per platform ploidy estimation using all intervals defined by `interval_name` and `padding`. Sex karyotype
-         cutoffs are determined by per platform ploidy distributions.
+        - Ploidy estimation using all intervals found in `coverage_mt`.
+        - Per platform ploidy estimation using all intervals found in `coverage_mt`. Sex karyotype cutoffs are
+        determined by per platform ploidy distributions.
         - Ploidy estimation using only high coverage intervals across the entire dataset, defined as: chrX intervals
          having a proportion of all samples (`prop_samples_x`) with over a specified mean DP (`x_cov`), chrY intervals
          having a proportion of all samples (`prop_samples_y`) with over a specified mean DP (`y_cov`), and
@@ -91,8 +91,9 @@ def compute_sex(
 
     For each of the options described above, there is also the possibility to use a ploidy estimation that uses only
     variants within the specified calling intervals:
-        - This can be defined differently for chrX and chrY using `variants_only_x_ploidy` and `variants_only_y_ploidy`.
-        - `variants_only_x_ploidy` is the preferred method for chrX ploidy computation.
+        - This can be defined differently for chrX and chrY using `variant_depth_only_x_ploidy` and
+        `variant_depth_only_y_ploidy`.
+        - `variant_depth_only_x_ploidy` is the preferred method for chrX ploidy computation.
         - If not using only variants Hail's `hail.vds.impute_sex_chromosome_ploidy` method will only compute chromosome
          ploidy using reference block DP per calling interval. This method breaks up the reference blocks at the
          calling interval boundries, maintaining all reference block END information for the mean DP per interval
@@ -112,9 +113,9 @@ def compute_sex(
         platforms that have # of samples > 'min_platform_size' are used to determine intervals that have a
         high coverage across all platforms
     :param normalization_contig: Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y
-    :param variants_only_x_ploidy: Whether to use depth of variant data within calling intervals instead of reference
+    :param variant_depth_only_x_ploidy: Whether to use depth of variant data within calling intervals instead of reference
         data for chrX ploidy estimation. Default will only use reference data
-    :param variants_only_y_ploidy: Whether to use depth of variant data within calling intervals instead of reference
+    :param variant_depth_only_y_ploidy: Whether to use depth of variant data within calling intervals instead of reference
         data for chrY ploidy estimation. Default will only use reference data
     :param x_cov: Mean coverage level used to define high coverage intervals on chromosome X. This field must be in the
         interval_coverage MatrixTable
@@ -128,15 +129,15 @@ def compute_sex(
         on the normalization chromosome specified by `normalization_contig`
     :param freq_ht: Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in this Table
         prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table with a
-        `aaf_threshold` cutoff
-    :param aaf_threshold: Minimum alternate allele frequency to be used in f-stat calculations
+        `min_af` cutoff
+    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations
     :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY are above cutoff
     :return: Table with inferred sex annotation
     """
 
     def _get_filtered_coverage_mt(
         coverage_mt: hl.MatrixTable,
-        agg_func: Callable[[hl.expr.BooleanExpression], hl.BooleanExpression],
+        agg_func: Callable[[hl.expr.BooleanExpression], hl.BooleanExpression] = hl.agg.all,
     ) -> hl.MatrixTable:
         """
         Helper function to filter the interval coverage MatrixTable to high coverage intervals.
@@ -179,9 +180,9 @@ def compute_sex(
             aaf_expr="AF",
             gt_expr="LGT",
             f_stat_cutoff=f_stat_cutoff,
-            aaf_threshold=aaf_threshold,
-            variants_only_x_ploidy=variants_only_x_ploidy,
-            variants_only_y_ploidy=variants_only_y_ploidy,
+            aaf_threshold=min_af,
+            variants_only_x_ploidy=variant_depth_only_x_ploidy,
+            variants_only_y_ploidy=variant_depth_only_y_ploidy,
         )
 
     if platform_ht is not None:
@@ -230,10 +231,7 @@ def compute_sex(
             for platform in platforms:
                 ht = platform_ht.filter(platform_ht.qc_platform == platform)
                 logger.info("Platform %s has %d samples...", platform, ht.count())
-                coverage_platform_mt = _get_filtered_coverage_mt(
-                    coverage_mt.filter_cols(coverage_mt.platform == platform),
-                    hl.agg.any,
-                )
+                coverage_platform_mt = _get_filtered_coverage_mt(coverage_mt.filter_cols(coverage_mt.platform == platform))
                 calling_intervals_ht = coverage_platform_mt.rows()
                 sex_ht = _annotate_sex(
                     hl.vds.filter_samples(vds, ht), calling_intervals_ht
@@ -262,7 +260,7 @@ def compute_sex(
             coverage_mt = coverage_mt.filter_cols(
                 coverage_mt.n_samples >= min_platform_size
             )
-            coverage_mt = _get_filtered_coverage_mt(coverage_mt, hl.agg.all)
+            coverage_mt = _get_filtered_coverage_mt(coverage_mt)
             calling_intervals_ht = coverage_mt.rows()
             sex_ht = _annotate_sex(vds, calling_intervals_ht)
         else:
@@ -309,23 +307,23 @@ def compute_sex(
             logger.info("Running sex ploidy and sex karyotype estimation...")
             sex_ht = _annotate_sex(vds, calling_intervals_ht)
 
-        sex_ht = sex_ht.annotate_globals(
-            high_cov_intervals=high_cov_intervals,
-            per_platform=per_platform,
-            high_cov_by_platform_all=high_cov_by_platform_all,
-            min_platform_size=min_platform_size,
-            normalization_contig=normalization_contig,
-            variants_only_x_ploidy=variants_only_x_ploidy,
-            variants_only_y_ploidy=variants_only_y_ploidy,
-            x_cov=x_cov,
-            y_cov=y_cov,
-            norm_cov=norm_cov,
-            prop_samples_x=prop_samples_x,
-            prop_samples_y=prop_samples_y,
-            prop_samples_norm=prop_samples_norm,
-            aaf_threshold=aaf_threshold,
-            f_stat_cutoff=f_stat_cutoff,
-        )
+    sex_ht = sex_ht.annotate_globals(
+        high_cov_intervals=high_cov_intervals,
+        per_platform=per_platform,
+        high_cov_by_platform_all=high_cov_by_platform_all,
+        min_platform_size=min_platform_size,
+        normalization_contig=normalization_contig,
+        variant_depth_only_x_ploidy=variant_depth_only_x_ploidy,
+        variant_depth_only_y_ploidy=variant_depth_only_y_ploidy,
+        x_cov=x_cov,
+        y_cov=y_cov,
+        norm_cov=norm_cov,
+        prop_samples_x=prop_samples_x,
+        prop_samples_y=prop_samples_y,
+        prop_samples_norm=prop_samples_norm,
+        f_stat_min_af=min_af,
+        f_stat_cutoff=f_stat_cutoff,
+    )
 
     return sex_ht
 
@@ -354,8 +352,10 @@ def main(args):
             else:
                 ac_ht = hard_filtered_ac.ht()
             vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
+            variant_data = vds.variant_data
+            variant_data = variant_data.filter(hl.len(variant_data.alleles) == 2)
+            vds = hl.vds.VariantDataset(vds.reference_data, variant_data)
             mt = hl.vds.to_dense_mt(vds)
-            mt = mt.filter_rows(hl.len(mt.alleles) == 2)
             n_samples = ac_ht.index_globals().n_samples
             ht = mt.annotate_rows(
                 AN=hl.agg.count_where(hl.is_defined(mt.LGT)) * 2,
@@ -382,6 +382,9 @@ def main(args):
                 )
                 freq_ht = freq_ht.filter(freq_ht.callrate > args.min_callrate)
             elif args.f_stat_ukbb_var:
+                # The UK Biobank f-stat table contains only variants that were high callrate and common within the UK
+                # Biobank 200K Regeneron exome dataset and it includes the UK Biobank 200K allele frequency information
+                # that can be used in the hl.impute_sex f-stat computation allele frequency cutoff
                 freq_ht = ukbb_f_stat.ht()
             else:
                 freq_ht = (
@@ -461,8 +464,8 @@ def main(args):
                     platform_ht,
                     args.min_platform_size,
                     args.normalization_contig,
-                    args.variants_only_x_ploidy,
-                    args.variants_only_y_ploidy,
+                    args.variant_depth_only_x_ploidy,
+                    args.variant_depth_only_y_ploidy,
                     args.x_cov,
                     args.y_cov,
                     args.norm_cov,
@@ -500,7 +503,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite",
-        help="Overwrite all data from this subset (default: False).",
+        help="Overwrite output files.",
         action="store_true",
     )
     parser.add_argument(
@@ -528,22 +531,23 @@ if __name__ == "__main__":
     parser.add_argument(
         "--f-stat-high-callrate-common-var",
         help=(
-            "Whether to use high callrate (> min_callrate) and common variants (> aaf-threshold) for f-stat computation. "
-            "By default, no callrate cutoff will be used, and allele frequency will be approximated with AC/(n_samples * 2)."
+            "Whether to use high callrate (> value specified by -- min-callrate) and common variants (> value specified "
+            "by --min-af) for f-stat computation. By default, no callrate cutoff will be used, and allele frequency "
+            "will be approximated with AC/(n_samples * 2) and a default min allele frequency of 0.001."
         ),
         action="store_true",
     )
     parser.add_argument(
         "--f-stat-ukbb-var",
         help=(
-            "Whether to use UK Biobank high callrate and common variants (UKBB allele frequency > aaf-threshold) for "
-            "f-stat computation. By default, no callrate cutoff will be used, and allele frequency will be approximated "
-            "with AC/(n_samples * 2)."
+            "Whether to use UK Biobank high callrate and common variants (UKBB allele frequency > value specified by "
+            "--min-af) for f-stat computation. By default, no callrate cutoff will be used, and allele frequency will "
+            "be approximated with AC/(n_samples * 2) and a default min allele frequency of 0.001."
         ),
         action="store_true",
     )
     parser.add_argument(
-        "--min_callrate", help="Minimum variant callrate.", default=0.99, type=float
+        "--min-callrate", help="Minimum variant callrate.", default=0.99, type=float
     )
     parser.add_argument(
         "--min-af",
@@ -595,7 +599,7 @@ if __name__ == "__main__":
         default="chr20",
     )
     parser.add_argument(
-        "--variants-only-x-ploidy",
+        "--variant-depth-only-x-ploidy",
         help=(
             "Whether to use depth of variant data for the x ploidy estimation instead of the default behavior that "
             "will use reference blocks."
@@ -603,7 +607,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--variants-only-y-ploidy",
+        "--variant-depth-only-y-ploidy",
         help=(
             "Whether to use depth of variant data for the y ploidy estimation instead of the default behavior that "
             "will use reference blocks."
