@@ -33,7 +33,7 @@ def compute_sample_qc() -> hl.Table:
     vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
 
     # Remove centromeres and telomeres incase they were included
-    vds = hl.vds.filter_intervals(vds, intervals=telomeres_and_centromeres, keep=False)
+    vds = hl.vds.filter_intervals(vds, intervals=telomeres_and_centromeres.ht(), keep=False)
 
     sample_qc_ht = compute_stratified_sample_qc(
         vds,
@@ -104,13 +104,13 @@ def compute_hard_filters(
     fp_ht = fingerprinting.ht()
     hard_filters["failed_fingerprinting"] = hl.is_defined(fp_ht[ht.key])
 
-    # Flag low-coverage samples
+    # Flag low-coverage samples 
     sex_ht = sex.ht()
     hard_filters["low_coverage"] = (
         sex_ht[ht.key].chr20_mean_dp < cov_threshold
     )  #  TODO: Confirm still using sex ht mean chr20 dp, not another metric
-    # If keeping this, it needs to move into the include_sex_filter conditional
-    # because we need the other hard filters prior to the sex_ht generation
+       # If keeping this, it needs to move into the include_sex_filter conditional
+       # because we need the other hard filters prior to the sex_ht generation.
 
     # Flag extreme raw bi-allelic sample QC outliers
     #  TODO: Determine cutoffs by visual inspection of the metrics
@@ -149,7 +149,7 @@ def compute_hard_filters(
     picard_struct = project_meta.ht()[ht.key]
     hard_filters["contamination"] = (
         picard_struct.bam_metrics.contam_rate > max_contamination
-    )  # TODO: Update based on final project_metafile structure
+    )
     hard_filters["chimera"] = picard_struct.bam_metrics.chimeras_rate > max_chimera
 
     if include_sex_filter:
