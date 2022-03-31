@@ -33,7 +33,9 @@ def compute_sample_qc() -> hl.Table:
     vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
 
     # Remove centromeres and telomeres incase they were included
-    vds = hl.vds.filter_intervals(vds, intervals=telomeres_and_centromeres.ht(), keep=False)
+    vds = hl.vds.filter_intervals(
+        vds, intervals=telomeres_and_centromeres.ht(), keep=False
+    )
 
     sample_qc_ht = compute_stratified_sample_qc(
         vds,
@@ -104,18 +106,19 @@ def compute_hard_filters(
     fp_ht = fingerprinting.ht()
     hard_filters["failed_fingerprinting"] = hl.is_defined(fp_ht[ht.key])
 
-    # Flag low-coverage samples 
+    # Flag low-coverage samples
     sex_ht = sex.ht()
     hard_filters["low_coverage"] = (
         sex_ht[ht.key].chr20_mean_dp < cov_threshold
     )  #  TODO: Confirm still using sex ht mean chr20 dp, not another metric
-       # If keeping this, it needs to move into the include_sex_filter conditional
-       # because we need the other hard filters prior to the sex_ht generation.
+    # If keeping this, it needs to move into the include_sex_filter conditional
+    # because we need the other hard filters prior to the sex_ht generation.
 
     # Flag extreme raw bi-allelic sample QC outliers
     #  TODO: Determine cutoffs by visual inspection of the metrics
     bi_allelic_qc_ht = get_sample_qc("bi_allelic").ht()
-    # Convert tuples to lists so we can find the index of the threshold
+    
+    # Convert tuples to lists so we can find the index of the passed threshold
     gq_bins = [
         hl.eval(bi_allelic_qc_ht.gq_bins[i])
         for i in range(len(bi_allelic_qc_ht.gq_bins))
@@ -135,22 +138,20 @@ def compute_hard_filters(
             bi_allelic_qc_struct.bases_over_gq_threshold[
                 gq_bins.index(min_gq_threshold)
             ]
-            > min_n_over_gq_threshold
+            < min_n_over_gq_threshold
         )
         | (
             bi_allelic_qc_struct.bases_over_dp_threshold[
                 dp_bins.index(min_dp_threshold)
             ]
-            > min_n_over_dp_threshold
+            < min_n_over_dp_threshold
         )
     )
 
-    # Flag samples that fail picard metric thresholds
-    picard_struct = project_meta.ht()[ht.key]
-    hard_filters["contamination"] = (
-        picard_struct.bam_metrics.contam_rate > max_contamination
-    )
-    hard_filters["chimera"] = picard_struct.bam_metrics.chimeras_rate > max_chimera
+    # Flag samples that fail bam metric thresholds
+    bam_metrics_struct = project_meta.ht()[ht.key].bam_metrics
+    hard_filters["contamination"] = bam_metrics_struct.contam_rate > max_contamination
+    hard_filters["chimera"] = bam_metrics_struct.chimeras_rate > max_chimera
 
     if include_sex_filter:
         sex_struct = sex.ht()[ht.key]
@@ -238,7 +239,7 @@ if __name__ == "__main__":
     )
     hard_filter_args.add_argument(
         "--max-n-singleton",
-        type=int,
+        type=float,
         default=1e5,
         help="Filtering threshold to use for the max number of singletons. Default is 1e5.",
     )
@@ -281,7 +282,7 @@ if __name__ == "__main__":
     )
     hard_filter_args.add_argument(
         "--min-dp-threshold",
-        type=float,
+        type=int,
         help="Minimum DP threshold to use for filternig.",
         choices=[0, 1, 10, 20, 30],
         default=10,
