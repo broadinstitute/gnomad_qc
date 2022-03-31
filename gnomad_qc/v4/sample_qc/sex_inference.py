@@ -99,7 +99,7 @@ def compute_sex(
          computation. This is different from the method used on sparse MatrixTables in gnomad_methods
          `gnomad.utils.sparse_mt.impute_sex_ploidy`. In this the chromosome coverage will be computed using all
          reference blocks and variants found in the sparse MatrixTable, but it only uses specified calling intervals to
-         determine the contig size and doesn't adjust break up the reference blocks in the same way the Hail method does.
+         determine the contig size and doesn't break up the reference blocks in the same way the Hail method does.
 
     :param vds: Input VDS for use in sex inference
     :param coverage_mt: Input interval coverage MatrixTable
@@ -500,7 +500,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite",
-        help="Overwrite all data from this subset (default: False)",
+        help="Overwrite all data from this subset (default: False).",
         action="store_true",
     )
     parser.add_argument(
@@ -522,7 +522,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--impute-sex",
-        help="Runs sex ploidy and sex karyotyping imputation.",
+        help="Run sex ploidy and sex karyotyping imputation.",
         action="store_true",
     )
     parser.add_argument(
@@ -574,7 +574,7 @@ if __name__ == "__main__":
         "--high-cov-by-platform-all",
         help=(
             "Whether to filter to high coverage intervals for the sex ploidy and karyotype inference. "
-            "Using only intervals that are considered high coverage across all platforms."
+            "Use only intervals that are considered high coverage across all platforms."
         ),
         action="store_true",
     )

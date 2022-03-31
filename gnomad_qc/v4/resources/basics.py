@@ -195,7 +195,7 @@ ukbb_dups_idx_path = f"{_ukbb_root_path()}/dup_remove_idx_7.tsv"
 all_ukbb_samples_to_remove = f"{_ukbb_root_path()}/all_ukbb_samples_to_remove.txt"
 
 # UKBB f-stat sites Table with UKBB allele frequencies
-ukbb_f_stat = TableResource("gs://gnomad/v4.0/ukbb/f_stat_sites.ht")
+ukbb_f_stat = TableResource(f"{_ukbb_root_path()}/f_stat_sites.ht")
 
 def qc_temp_prefix(version: str = CURRENT_VERSION) -> str:
     """
