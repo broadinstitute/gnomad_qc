@@ -137,7 +137,9 @@ def compute_sex(
 
     def _get_filtered_coverage_mt(
         coverage_mt: hl.MatrixTable,
-        agg_func: Callable[[hl.expr.BooleanExpression], hl.BooleanExpression] = hl.agg.all,
+        agg_func: Callable[
+            [hl.expr.BooleanExpression], hl.BooleanExpression
+        ] = hl.agg.all,
     ) -> hl.MatrixTable:
         """
         Helper function to filter the interval coverage MatrixTable to high coverage intervals.
@@ -231,7 +233,9 @@ def compute_sex(
             for platform in platforms:
                 ht = platform_ht.filter(platform_ht.qc_platform == platform)
                 logger.info("Platform %s has %d samples...", platform, ht.count())
-                coverage_platform_mt = _get_filtered_coverage_mt(coverage_mt.filter_cols(coverage_mt.platform == platform))
+                coverage_platform_mt = _get_filtered_coverage_mt(
+                    coverage_mt.filter_cols(coverage_mt.platform == platform)
+                )
                 calling_intervals_ht = coverage_platform_mt.rows()
                 sex_ht = _annotate_sex(
                     hl.vds.filter_samples(vds, ht), calling_intervals_ht
