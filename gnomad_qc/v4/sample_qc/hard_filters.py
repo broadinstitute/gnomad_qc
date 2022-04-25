@@ -22,11 +22,12 @@ logger = logging.getLogger("hard_filters")
 logger.setLevel(logging.INFO)
 
 
-def compute_sample_qc() -> hl.Table:
+def compute_sample_qc(n_partitions: int = 1000) -> hl.Table:
     """
     Perform sample QC on the raw split matrix table using `compute_stratified_sample_qc`.
+
+    :param n_partitions: Number of partitions to write the output sample QC HT to
     :return: Table containing sample QC metrics
-    :rtype: hl.Table
     """
     logger.info("Computing sample QC")
     vds = get_gnomad_v4_vds(split=True, remove_hard_filtered_samples=False)
@@ -47,7 +48,7 @@ def compute_sample_qc() -> hl.Table:
         gt_col="LGT",
     )
 
-    return sample_qc_ht.repartition(100)
+    return sample_qc_ht.repartition(n_partitions)
 
 
 def compute_hard_filters(
@@ -176,7 +177,9 @@ def main(args):
     hl.init(log="/gnomad_hard_filters.log", default_reference="GRCh38")
 
     if args.sample_qc:
-        compute_sample_qc().write(get_sample_qc().path, overwrite=args.overwrite)
+        compute_sample_qc(n_partitions=args.sample_qc_n_partitions).write(
+            get_sample_qc().path, overwrite=args.overwrite
+        )
 
     if args.compute_hard_filters:
         compute_hard_filters(
@@ -205,6 +208,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--sample-qc", help="Compute Hail's VDS sample QC metrics", action="store_true"
+    )
+    parser.add_argument(
+        "--sample-qc-n-partitions",
+        help="Number of desired partitions for the sample QC output Table",
+        default=1000,
+        type=int,
     )
     parser.add_argument(
         "--compute-hard-filters",
