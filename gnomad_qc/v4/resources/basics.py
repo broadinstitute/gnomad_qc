@@ -17,7 +17,9 @@ logger.setLevel(logging.INFO)
 
 # Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4.0/<module>/<exomes_or_genomes>/
 def get_gnomad_v4_vds(
-    split=False, remove_hard_filtered_samples: bool = True, release_only: bool = False,
+    split=False,
+    remove_hard_filtered_samples: bool = True,
+    release_only: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
@@ -54,7 +56,8 @@ def get_gnomad_v4_vds(
 
     # Obtain withdrawn UKBB samples (includes 5 samples that should be removed from the VDS)
     excluded_ukbb_samples_ht = hl.import_table(
-        ukbb_excluded_samples_path, no_header=True,
+        ukbb_excluded_samples_path,
+        no_header=True,
     ).key_by("f0")
 
     sample_map_ht = ukbb_array_sample_map.ht()
@@ -79,19 +82,19 @@ def get_gnomad_v4_vds(
             line = line.strip().split("\t")
             dup_ids.append(f"{line[0]}_{line[1]}")
 
-    def _remove_ukbb_dup_by_index(mt: hl.MatrixTable, dup_ids: hl.expr.ArrayExpression) -> hl.MatrixTable:
+    def _remove_ukbb_dup_by_index(
+        mt: hl.MatrixTable, dup_ids: hl.expr.ArrayExpression
+    ) -> hl.MatrixTable:
         """
         Remove UKBB samples with exact duplicate names based on column index.
-        
+
         :param mt: MatrixTable of either the variant data or reference data of a VDS
         :param dup_ids: ArrayExpression of UKBB samples to remove in format of <sample_name>_<col_idx>
         :return: MatrixTable of UKBB samples with exact duplicate names removed based on column index
         """
         mt = mt.add_col_index()
         mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
-        mt = mt.filter_cols(~dup_ids.contains(mt.new_s)).drop(
-            "new_s", "col_idx"
-        )
+        mt = mt.filter_cols(~dup_ids.contains(mt.new_s)).drop("new_s", "col_idx")
         return mt
 
     dup_ids = hl.literal(dup_ids)
@@ -108,9 +111,9 @@ def get_gnomad_v4_vds(
         for sample in withdrawn_ids:
             d.write(sample + "\n")
 
-    withdrawn_ht = hl.import_table(
-        all_ukbb_samples_to_remove, no_header=True
-    ).key_by("f0")
+    withdrawn_ht = hl.import_table(all_ukbb_samples_to_remove, no_header=True).key_by(
+        "f0"
+    )
 
     vds = hl.vds.filter_samples(vds, withdrawn_ht, keep=False, remove_dead_alleles=True)
 
@@ -126,13 +129,22 @@ def get_gnomad_v4_vds(
 
 
 _gnomad_v4_genotypes = {
-    "4.0": VariantDatasetResource("gs://gnomad/raw/exomes/4.0/gnomad_v4.0.vds"),
+    "4.0": VariantDatasetResource("gs://gnomad/v4.0/raw/exomes/gnomad_v4.0.vds"),
 }
 
-
 gnomad_v4_genotypes = VersionedVariantDatasetResource(
-    CURRENT_VERSION, _gnomad_v4_genotypes,
+    CURRENT_VERSION,
+    _gnomad_v4_genotypes,
 )
+
+# v4 test dataset VDS
+gnomad_v4_testset = VariantDatasetResource(
+    "gs://gnomad/v4.0/raw/exomes/testing/gnomad_v4.0_test.vds"
+)
+gnomad_v4_testset_meta = TableResource(
+    "gs://gnomad/v4.0/raw/exomes/testing/gnomad_v4.0_meta.ht"
+)
+
 
 # UKBB data resources
 def _ukbb_root_path() -> str:
@@ -189,18 +201,15 @@ def get_checkpoint_path(
     return f'{qc_temp_prefix(version)}{name}.{"mt" if mt else "ht"}'
 
 
-def testset_vds(version: str = CURRENT_VERSION) -> hl.vds.VariantDataset:
+def get_logging_path(name: str, version: str = CURRENT_VERSION) -> str:
     """
-    Return path to the testset VDS.
+    Create a path for Hail log files.
 
+    :param name: Name of log file
     :param version: Version of annotation path to return
-    :return: Path to VDS with testset
+    :return: Output log path
     """
-    vds = hl.vds.read_vds(
-        "gs://gnomad/raw/exomes/{version}/testing/gnomad_v{version}_test.vds"
-    )
-
-    return vds
+    return f"{qc_temp_prefix(version)}{name}.log"
 
 
 def add_meta(
@@ -216,3 +225,33 @@ def add_meta(
     mt = mt.annotate_cols(meta_name=meta.versions[version].ht()[mt.col_key])
 
     return mt
+
+
+def calling_intervals(
+    interval_name: str, calling_interval_padding: int
+) -> TableResource:
+    """
+    Return path to capture intervals Table.
+
+    :param interval_name: One of 'ukb', 'broad', or 'intersection'
+    :param calling_interval_padding: Padding around calling intervals. Available options are 0 or 50
+    :return: Calling intervals resource
+    """
+    if interval_name not in {"ukb", "broad", "intersection"}:
+        raise ValueError(
+            "Calling interval name must be one of: 'ukb', 'broad', or 'intersection'!"
+        )
+    if calling_interval_padding not in {0, 50}:
+        raise ValueError("Calling interval padding must be one of: 0 or 50 (bp)!")
+    if interval_name == "ukb":
+        return TableResource(
+            f"gs://gnomad/resources/intervals/xgen_plus_spikein.Homo_sapiens_assembly38.targets.pad{calling_interval_padding}.interval_list.ht"
+        )
+    if interval_name == "broad":
+        return TableResource(
+            f"gs://gnomad/resources/intervals/hg38_v0_exome_calling_regions.v1.pad{calling_interval_padding}.interval_list.ht"
+        )
+    if interval_name == "intersection":
+        return TableResource(
+            f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.intersection.interval_list.ht"
+        )

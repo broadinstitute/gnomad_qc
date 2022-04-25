@@ -10,20 +10,20 @@ from gnomad_qc.v3.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
     ancestry_pca_scores,
+    assigned_subpops,
     filtered_subpop_qc_mt,
     pca_related_samples_to_drop,
     subpop_qc,
 )
+from gnomad_qc.v3.sample_qc.sample_qc import assign_pops
 
 from gnomad.resources.grch38.reference_data import lcr_intervals
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.sparse_mt import densify_sites
 from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad_qc.v3.resources import release_sites
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.annotations import get_info
-
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -34,8 +34,7 @@ logger.setLevel(logging.INFO)
 
 
 def compute_subpop_qc_mt(
-    mt: hl.MatrixTable,
-    min_popmax_af: float = 0.001,
+    mt: hl.MatrixTable, min_popmax_af: float = 0.001,
 ) -> hl.MatrixTable:
     """
     Generate the subpop QC MT to be used for all subpop analyses.
@@ -146,21 +145,6 @@ def filter_subpop_qc(
     return pop_qc_mt
 
 
-def annotate_subpop_meta(ht: hl.Table) -> hl.Table:
-    meta_ht = meta.ht()
-    ht = ht.annotate(**meta_ht[ht.key])
-    ht = ht.annotate(
-        subpop_description=ht.project_meta.subpop_description,
-        v2_pop=ht.project_meta.v2_pop,
-        v2_subpop=ht.project_meta.v2_subpop,
-        pop=ht.population_inference.pop,
-        project_id=ht.project_meta.project_id,
-        project_pop=ht.project_meta.project_pop,
-    )
-
-    return ht
-
-
 def main(args):  # noqa: D103
     pop = args.pop
     include_unreleasable_samples = args.include_unreleasable_samples
@@ -186,7 +170,7 @@ def main(args):  # noqa: D103
                 overwrite=args.overwrite,
             )
 
-        if args.run_subpop_pca:
+        if args.run_filter_subpop_qc:
             logger.info("Filtering subpop QC MT...")
             if args.test:
                 mt = hl.read_matrix_table(
@@ -203,15 +187,21 @@ def main(args):  # noqa: D103
                 args.ld_r2,
             )
 
-            if args.checkpoint_filtered_subpop_qc:
-                mt = mt.checkpoint(
-                    get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
-                    if args.test
-                    else filtered_subpop_qc_mt(pop),
-                    overwrite=args.overwrite,
-                    _read_if_exists=not args.overwrite,
-                )
+            mt.write(
+                get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
+                if args.test
+                else filtered_subpop_qc_mt(pop),
+                overwrite=args.overwrite,
+                _read_if_exists=not args.overwrite,
+            )
 
+        if args.run_subpop_pca:
+            # Read in the QC MT for a specified subpop and filter samples based on user parameters
+            mt = hl.read_matrix_table(
+                get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
+                if args.test
+                else filtered_subpop_qc_mt(pop)
+            )
             if not include_unreleasable_samples:
                 mt = mt.filter_cols(
                     mt.project_meta.releasable & ~mt.project_meta.exclude
@@ -225,7 +215,7 @@ def main(args):  # noqa: D103
             logger.info("Generating PCs for subpops...")
             relateds = pca_related_samples_to_drop.ht()
             pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
-                mt, relateds
+                mt, relateds, n_pcs=args.n_pcs
             )
 
             pop_pca_evals_ht = hl.Table.parallelize(
@@ -262,11 +252,22 @@ def main(args):  # noqa: D103
                 overwrite=args.overwrite,
             )
 
-        # TODO: Need to use annotate_subpop_meta before subpop assignment
         if args.assign_subpops:
-            raise NotImplementedError(
-                "Sub-population assignment is not currently implemented."
+            logger.info("Assigning subpops...")
+            joint_pca_ht, joint_pca_fit = assign_pops(
+                min_prob=args.min_prob,  # How to decide on this number? Should withhold a certain percent and make a PR curve gs://gnomad-julia/gnomad_v4/pca_with_ccdg_gnomad_ukb_variants.ipynb
+                include_unreleasable_samples=False,
+                max_number_mislabeled_training_samples=args.max_number_mislabeled_training_samples,  # How to decide on this number?
+                max_proportion_mislabeled_training_samples=args.max_proportion_mislabeled_training_samples,
+                pcs=args.pcs,
+                withhold_prop=args.withhold_prop,
+                pop=pop,
+                high_quality=high_quality,
+                missing_label="Other",
             )
+
+            joint_pca_ht.write(assigned_subpops(pop).path, overwrite=args.overwrite)
+
     finally:
         logger.info("Copying hail log to logging bucket...")
         hl.copy_log(get_logging_path("subpop"))
@@ -277,12 +278,7 @@ if __name__ == "__main__":
         description="This script generates a QC MT and PCA scores to use for subpop analyses"
     )
     parser.add_argument(
-        "--slack-token",
-        help="Slack token that allows integration with slack",
-    )
-    parser.add_argument(
-        "--slack-channel",
-        help="Slack channel to post results and notifications to",
+        "--slack-channel", help="Slack channel to post results and notifications to",
     )
     parser.add_argument(
         "--overwrite", help="Overwrites existing files", action="store_true"
@@ -304,14 +300,22 @@ if __name__ == "__main__":
         default=0.001,
     )
     parser.add_argument(
-        "--run-subpop-pca",
-        help="Runs function to generate PCA data for a certain population specified by --pop argument",
+        "--run-filter-subpop-qc",
+        help="Runs function to filter the QC MT to a certain subpop specified by --pop argument",
         action="store_true",
     )
     parser.add_argument(
         "--pop",
         help="Population to which the subpop QC MT should be filtered when generating the PCA data",
         type=str,
+    )
+    parser.add_argument(
+        "--run-subpop-pca",
+        help="Runs function to generate PCA data for a certain population specified by --pop argument and based on variants in the subpop QC MT created using the --run-filter-subpop-qc argument",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--n-pcs", help="Number of PCs to compute", type=int, default=20,
     )
     parser.add_argument(
         "--min-af",
@@ -332,10 +336,7 @@ if __name__ == "__main__":
         default=1e-8,
     )
     parser.add_argument(
-        "--ld-r2",
-        help="Minimum r2 to keep when LD-pruning",
-        type=float,
-        default=0.1,
+        "--ld-r2", help="Minimum r2 to keep when LD-pruning", type=float, default=0.1,
     )
     parser.add_argument(
         "--outlier-ht-path",
@@ -353,21 +354,46 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--checkpoint-filtered-subpop-qc",
-        help="Checkpoint the filtered subpop QC MT",
-        action="store_true",
+        "--assign-subpops", help="Runs function to assign subpops", action="store_true",
     )
     parser.add_argument(
-        "--assign-subpops",
-        help="Runs function to assign subpops",
-        action="store_true",
+        "--min-prob",
+        help="Minimum RF probability for subpop assignment",
+        type=float,
+        default=0.90,
+    )
+    parser.add_argument(
+        "--withhold-prop",
+        help="Proportion of training pop samples to withhold from training, all samples will be kept if this flag is not used",
+        type=float,
+        default=None,
+    )
+    parser.add_argument(
+        "--pcs",
+        help="List of PCs to use in the subpop RF assignment",
+        type=int,
+        nargs="+",
+        default=list(range(1, 20)),
+    )
+    mislabel_parser = parser.add_mutually_exclusive_group(required=True)
+    mislabel_parser.add_argument(
+        "--max-number-mislabeled-training-samples",
+        help="Maximum number of training samples that can be mislabelled. Can't be used if `max-proportion-mislabeled-training-samples` is already set",
+        type=int,
+        default=None,
+    )
+    mislabel_parser.add_argument(
+        "--max-proportion-mislabeled-training-samples",
+        help="Maximum proportion of training samples that can be mislabelled. Can't be used if `max-number-mislabeled-training-samples` is already set",
+        type=float,
+        default=None,
     )
 
     args = parser.parse_args()
 
-    # Both a slack token and slack channel must be supplied to receive notifications on slack
-    if args.slack_channel and args.slack_token:
-        with slack_notifications(args.slack_token, args.slack_channel):
+    if args.slack_channel:
+        from gnomad_qc.slack_creds import slack_token
+        with slack_notifications(slack_token, args.slack_channel):
             main(args)
     else:
         main(args)

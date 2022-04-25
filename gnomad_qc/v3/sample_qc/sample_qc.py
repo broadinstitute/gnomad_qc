@@ -268,7 +268,7 @@ def compute_hard_filters(
         # Remove samples with ambiguous sex assignments
         sex_ht = sex.ht()[ht.key]
         hard_filters["ambiguous_sex"] = sex_ht.sex_karyotype == "ambiguous"
-        hard_filters["sex_aneuploidy"] = ~hl.set({"ambiguous", "XX", "XY"}).contains(  # pylint: disable=invalid-unary-operand-type
+        hard_filters["sex_aneuploidy"] = ~hl.set({"ambiguous", "XX", "XY"}).contains( # pylint: disable=invalid-unary-operand-type
             sex_ht.sex_karyotype
         )
 
@@ -468,12 +468,38 @@ def run_pca(
     return run_pca_with_relateds(qc_mt, samples_to_drop, n_pcs=n_pcs)
 
 
+def calculate_mislabeled_training(pop_ht: hl.Table, pop_field: str) -> [int, float]:
+    """
+    Calculate the number and proportion of mislabled training samples.
+
+    :param pop_ht: Table with assigned pops/subpops that is returned by `assign_population_pcs`
+    :param pop_field: Name of field in the Table containing the assigned pop/subpop
+    :return: The number and proportion of mislabled training samples
+    """
+    n_mislabeled_samples = pop_ht.aggregate(
+        hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
+    )
+
+    defined_training_pops = pop_ht.aggregate(
+        hl.agg.count_where(hl.is_defined(pop_ht.training_pop))
+    )
+
+    prop_mislabeled_samples = n_mislabeled_samples / defined_training_pops
+
+    return n_mislabeled_samples, prop_mislabeled_samples
+
+
 def assign_pops(
     min_prob: float,
     include_unreleasable_samples: bool,
-    max_mislabeled_training_samples: int = 50,  # TODO: Think about this parameter and add it to assign_population_pcs. Maybe should be a fraction? fraction per pop?
-    n_pcs: int = 16,
+    max_number_mislabeled_training_samples: int = None,
+    max_proportion_mislabeled_training_samples: float = None,
+    pcs: List[int] = list(range(1, 17)),
     withhold_prop: float = None,
+    pop: str = None,
+    high_quality: bool = False,
+    missing_label: str = "oth",
+    seed: int = 24,
 ) -> Tuple[hl.Table, Any]:
     """
     Use a random forest model to assign global population labels based on the results from `assign_pca`.
@@ -483,29 +509,57 @@ def assign_pops(
 
     The method starts by inferring the pop on all samples, then comparing the training data to the inferred data,
     removing the truth outliers and re-training. This is repeated until the number of truth samples is less than
-    or equal to `max_mislabeled_training_samples`.
+    or equal to `max_number_mislabeled_training_samples` or `max_proportion_mislabeled_training_samples`. Only one
+    of `max_number_mislabeled_training_samples` or `max_proportion_mislabeled_training_samples` can be set.
 
     :param min_prob: Minimum RF probability for pop assignment
     :param include_unreleasable_samples: Should unreleasable samples be included in the PCA
-    :param max_mislabeled_training_samples: Maximum number of training samples that can be mislabelled
-    :param n_pcs: Number of PCs to use in the RF
+    :param max_number_mislabeled_training_samples: Maximum number of training samples that can be mislabelled
+    :param max_proportion_mislabeled_training_samples: Maximum proportion of training samples that can be mislabelled
+    :param pcs: List of PCs to use in the RF
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
-    :return: Table of pop assignments and the rf model
+    :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
+    :param high_quality: Whether the file includes PCA info for only high-quality samples
+    :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`
+    :param seed: Random seed
+    :return: Table of pop or subpop assignments and the RF model
     :rtype: hl.Table
     """
-    logger.info("Assigning global population labels")
-    pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples).ht()
-    project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
-    pop_pca_scores_ht = pop_pca_scores_ht.annotate(
-        training_pop=(
-            hl.case()
-            .when(
-                hl.is_defined(project_meta_ht.project_pop), project_meta_ht.project_pop
+    logger.info("Assigning global population/subpopulation labels")
+    # TODO: Should we be restricting to high quality
+    pop_pca_scores_ht = ancestry_pca_scores(
+        include_unreleasable_samples, high_quality, pop
+    ).ht()
+
+    if pop is not None:
+        meta_ht = meta.ht()
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(**meta_ht[pop_pca_scores_ht.key])
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+            training_pop=(
+                hl.case()
+                .when(
+                    hl.is_defined(pop_pca_scores_ht.project_meta.subpop_description),
+                    pop_pca_scores_ht.project_meta.subpop_description,
+                )
+                .or_missing()
             )
-            .when(project_meta_ht.v2_pop != "oth", project_meta_ht.v2_pop)
-            .or_missing()
         )
-    )
+        pop_field = "subpop"
+    else:
+        project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+            training_pop=(
+                hl.case()
+                .when(
+                    hl.is_defined(project_meta_ht.project_pop),
+                    project_meta_ht.project_pop,
+                )
+                .when(project_meta_ht.v2_pop != "oth", project_meta_ht.v2_pop)
+                .or_missing()
+            )
+        )
+        pop_field = "pop"
+
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop_all=pop_pca_scores_ht.training_pop
     )
@@ -513,9 +567,28 @@ def assign_pops(
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=hl.or_missing(
                 hl.is_defined(pop_pca_scores_ht.training_pop)
-                & hl.rand_bool(1.0 - withhold_prop),
+                & hl.rand_bool(1.0 - withhold_prop, seed=seed),
                 pop_pca_scores_ht.training_pop,
             )
+        )
+    pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+        withheld_sample=hl.is_defined(pop_pca_scores_ht.project_meta.subpop_description)
+        & (~hl.is_defined(pop_pca_scores_ht.training_pop))
+    )
+
+    if (
+        max_number_mislabeled_training_samples is not None
+        and max_proportion_mislabeled_training_samples is None
+    ):
+        max_mislabeled = max_number_mislabeled_training_samples
+    elif (
+        max_proportion_mislabeled_training_samples is not None
+        and max_number_mislabeled_training_samples is None
+    ):
+        max_mislabeled = max_proportion_mislabeled_training_samples
+    else:
+        raise ValueError(
+            "One and only one of max_number_mislabeled_training_samples or max_proportion_mislabeled_training_samples must be set!"
         )
 
     logger.info(
@@ -528,32 +601,42 @@ def assign_pops(
 
     pop_ht, pops_rf_model = assign_population_pcs(
         pop_pca_scores_ht,
-        pc_cols=pop_pca_scores_ht.scores[:n_pcs],
+        pc_cols=[pop_pca_scores_ht.scores[i - 1] for i in pcs],
         known_col="training_pop",
+        output_col=pop_field,
         min_prob=min_prob,
+        missing_label=missing_label,
     )
 
-    n_mislabeled_samples = pop_ht.aggregate(
-        hl.agg.count_where(pop_ht.training_pop != pop_ht.pop)
+    # Calculate number and proportion of mislabled samples
+    n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(
+        pop_ht, pop_field
     )
+
+    if max_number_mislabeled_training_samples:
+        mislabeled = n_mislabeled_samples
+    else:
+        mislabeled = prop_mislabeled_samples
+
     pop_ht = pop_ht.annotate(
         training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all
     )
     pop_assignment_iter = 1
-    while n_mislabeled_samples > max_mislabeled_training_samples:
+    while mislabeled > max_mislabeled:
         pop_assignment_iter += 1
         logger.info(
-            f"Found {n_mislabeled_samples} samples labeled differently from their known pop. Re-running without."
+            f"Found {n_mislabeled_samples}({round(prop_mislabeled_samples*100, 2)}%) training samples labeled differently from their known pop. Re-running without them."
         )
 
         pop_ht = pop_ht[pop_pca_scores_ht.key]
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=hl.or_missing(
-                (pop_ht.training_pop == pop_ht.pop), pop_pca_scores_ht.training_pop
+                (pop_ht.training_pop == pop_ht[pop_field]),
+                pop_pca_scores_ht.training_pop,
             ),
             training_pop_all=hl.or_missing(
                 hl.is_missing(pop_ht.training_pop)
-                | (pop_ht.training_pop == pop_ht.pop),
+                | (pop_ht.training_pop == pop_ht[pop_field]),
                 pop_pca_scores_ht.training_pop_all,
             ),
         ).persist()
@@ -568,27 +651,43 @@ def assign_pops(
 
         pop_ht, pops_rf_model = assign_population_pcs(
             pop_pca_scores_ht,
-            pc_cols=pop_pca_scores_ht.scores[:n_pcs],
+            pc_cols=[pop_pca_scores_ht.scores[i - 1] for i in pcs],
             known_col="training_pop",
+            output_col=pop_field,
             min_prob=min_prob,
+            missing_label=missing_label,
         )
+
         pop_ht = pop_ht.annotate(
             training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all
         )
 
-        n_mislabeled_samples = pop_ht.aggregate(
-            hl.agg.count_where(pop_ht.training_pop != pop_ht.pop)
+        # Calculate number and proportion of mislabled samples
+        n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(
+            pop_ht, pop_field
         )
+
+        if max_number_mislabeled_training_samples:
+            mislabeled = n_mislabeled_samples
+        else:
+            mislabeled = prop_mislabeled_samples
 
     pop_ht = pop_ht.annotate_globals(
         min_prob=min_prob,
         include_unreleasable_samples=include_unreleasable_samples,
-        max_mislabeled_training_samples=max_mislabeled_training_samples,
+        max_mislabeled=max_mislabeled,
         pop_assignment_iterations=pop_assignment_iter,
-        n_pcs=n_pcs,
+        pcs=pcs,
+        pop=pop,
+        high_quality=high_quality,
+        n_mislabeled_training_samples=n_mislabeled_samples,
+        prop_mislabeled_training_samples=prop_mislabeled_samples,
     )
     if withhold_prop:
         pop_ht = pop_ht.annotate_globals(withhold_prop=withhold_prop)
+    pop_ht = pop_ht.annotate(
+        withheld_sample=pop_pca_scores_ht[pop_ht.key].withheld_sample
+    )
 
     return pop_ht, pops_rf_model
 
@@ -1108,19 +1207,19 @@ def main(args):
         )
 
     if args.assign_pops:
-        n_pcs = args.pop_n_pcs
+        pcs = args.pop_pcs
         pop_ht, pops_rf_model = assign_pops(
             args.min_pop_prob,
             args.include_unreleasable_samples,
-            n_pcs=n_pcs,
+            pcs=pcs,
             withhold_prop=args.withhold_prop,
         )
         pop_ht = pop_ht.checkpoint(
             pop.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite
         )
-        pop_ht.transmute(
-            **{f"PC{i + 1}": pop_ht.pca_scores[i] for i in range(n_pcs)}
-        ).export(pop_tsv_path())
+        pop_ht.transmute(**{f"PC{i + 1}": pop_ht.pca_scores[i] for i in pcs}).export(
+            pop_tsv_path()
+        )
 
         with hl.hadoop_open(pop_rf_path(), "wb") as out:
             pickle.dump(pops_rf_model, out)
@@ -1343,10 +1442,10 @@ if __name__ == "__main__":
         "--assign_pops", help="Assigns pops from PCA", action="store_true"
     )
     parser.add_argument(
-        "--pop_n_pcs",
-        help="Number of PCs to use for ancestry assignment",
-        default=16,
-        type=int,
+        "--pop_pcs",
+        help="List of PCs to use for ancestry assignment",
+        default=list(range(1, 17)),
+        type=list,
     )
     parser.add_argument(
         "--min_pop_prob",
@@ -1409,6 +1508,9 @@ if __name__ == "__main__":
         "--regressed_metrics_outlier",
         help="Should metadata HT use regression outlier model.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--seed", help="Random seed", default=24, type=int,
     )
 
     main(parser.parse_args())
