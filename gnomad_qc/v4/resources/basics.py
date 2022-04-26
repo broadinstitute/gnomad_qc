@@ -17,9 +17,7 @@ logger.setLevel(logging.INFO)
 
 # Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4.0/<module>/<exomes_or_genomes>/
 def get_gnomad_v4_vds(
-    split=False,
-    remove_hard_filtered_samples: bool = True,
-    release_only: bool = False,
+    split=False, remove_hard_filtered_samples: bool = True, release_only: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
@@ -54,19 +52,28 @@ def get_gnomad_v4_vds(
     # Count current number of samples in the VDS
     n_samples = vds.variant_data.count_cols()
 
-    # Obtain withdrawn UKBB samples (includes 5 samples that should be removed from the VDS)
-    excluded_ukbb_samples_ht = hl.import_table(
-        ukbb_excluded_samples_path,
-        no_header=True,
-    ).key_by("f0")
-
-    sample_map_ht = ukbb_array_sample_map.ht()
-    sample_map_ht = sample_map_ht.annotate(
-        withdrawn_consent=hl.is_defined(
-            excluded_ukbb_samples_ht[sample_map_ht.ukbb_app_26041_id]
-        )
+    # Obtain 26041 withdrawn UKBB samples (includes 5 samples that should be removed from the VDS)
+    meta_ht = project_meta.ht()
+    ukbb_26041_withdrawns = hl.import_table(ukbb_excluded_26041_path, no_header=True)
+    ukbb_26041_withdrawns = ukbb_26041_withdrawns.key_by(
+        eid_26041=ukbb_26041_withdrawns.f0
     )
-    withdrawn_ids = sample_map_ht.filter(sample_map_ht.withdrawn_consent).s.collect()
+    withdrawn_26041_samples = meta_ht.filter(
+        hl.literal(ukbb_withdrawns.eid_26041.collect()).contains(
+            meta_ht.project_meta.ukbb_meta.eid_26041
+        )
+    ).s.collect()
+
+    # Obtain 31063 withdrawn UKBB samples (includes 45 samples that should be removed from the VDS)
+    ukbb_31063_withdrawns = hl.import_table(ukbb_excluded_31063_path, no_header=True)
+    ukbb_31063_withdrawns = ukbb_31063_withdrawns.key_by(
+        eid_31063=ukbb_31063_withdrawns.f0
+    )
+    withdrawn_31063_samples = meta_ht.filter(
+        hl.literal(ukbb_withdrawns.eid_31063.collect()).contains(
+            meta_ht.project_meta.ukbb_meta.eid_31063
+        )
+    ).s.collect()
 
     # Remove 43 samples that are known to be on the pharma's sample remove list
     # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308
@@ -87,7 +94,7 @@ def get_gnomad_v4_vds(
     ) -> hl.MatrixTable:
         """
         Remove UKBB samples with exact duplicate names based on column index.
-
+        
         :param mt: MatrixTable of either the variant data or reference data of a VDS
         :param dup_ids: ArrayExpression of UKBB samples to remove in format of <sample_name>_<col_idx>
         :return: MatrixTable of UKBB samples with exact duplicate names removed based on column index
@@ -103,7 +110,12 @@ def get_gnomad_v4_vds(
     vds = hl.vds.VariantDataset(rd, vd)
 
     # Filter withdrawn samples from the VDS
-    withdrawn_ids = withdrawn_ids + ids_to_remove + hl.eval(dup_ids)
+    withdrawn_ids = (
+        withdrawn_26041_samples
+        + withdrawn_31063_samples
+        + ids_to_remove
+        + hl.eval(dup_ids)
+    )
 
     logger.info("Total number of UKBB samples to exclude: %d", len(withdrawn_ids))
 
@@ -133,8 +145,7 @@ _gnomad_v4_genotypes = {
 }
 
 gnomad_v4_genotypes = VersionedVariantDatasetResource(
-    CURRENT_VERSION,
-    _gnomad_v4_genotypes,
+    CURRENT_VERSION, _gnomad_v4_genotypes,
 )
 
 # v4 test dataset VDS
@@ -157,8 +168,10 @@ def _ukbb_root_path() -> str:
 
 
 # List of samples to exclude from QC due to withdrawn consents
-# This is the file with the most up to date sample withdrawals we were sent. File downloaded on 8/16/21
-ukbb_excluded_samples_path = f"{_ukbb_root_path()}/w26041_20210809.csv"
+ukbb_excluded_26041_path = f"{_ukbb_root_path()}/w26041_20210809.csv"
+ukbb_excluded_31063_path = (
+    f"{_ukbb_root_path()}/ukb31063.withdrawn_participants.20220222.csv"
+)
 
 # UKBB map of exome IDs to array sample IDs (application ID: 26041)
 ukbb_array_sample_map = TableResource(
