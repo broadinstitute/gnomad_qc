@@ -17,7 +17,9 @@ logger.setLevel(logging.INFO)
 
 # Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4.0/<module>/<exomes_or_genomes>/
 def get_gnomad_v4_vds(
-    split=False, remove_hard_filtered_samples: bool = True, release_only: bool = False,
+    split=False,
+    remove_hard_filtered_samples: bool = True,
+    release_only: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
@@ -94,7 +96,7 @@ def get_gnomad_v4_vds(
     ) -> hl.MatrixTable:
         """
         Remove UKBB samples with exact duplicate names based on column index.
-        
+
         :param mt: MatrixTable of either the variant data or reference data of a VDS
         :param dup_ids: ArrayExpression of UKBB samples to remove in format of <sample_name>_<col_idx>
         :return: MatrixTable of UKBB samples with exact duplicate names removed based on column index
@@ -145,7 +147,8 @@ _gnomad_v4_genotypes = {
 }
 
 gnomad_v4_genotypes = VersionedVariantDatasetResource(
-    CURRENT_VERSION, _gnomad_v4_genotypes,
+    CURRENT_VERSION,
+    _gnomad_v4_genotypes,
 )
 
 # v4 test dataset VDS
