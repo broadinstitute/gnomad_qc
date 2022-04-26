@@ -52,7 +52,7 @@ def get_gnomad_v4_vds(
     # Count current number of samples in the VDS
     n_samples = vds.variant_data.count_cols()
 
-    # Obtain 26041 withdrawn UKBB samples (includes 5 samples that should be removed from the VDS)
+    # Obtain "application 26041" withdrawn UKBB samples (includes 5 samples that should be removed from the VDS)
     meta_ht = project_meta.ht()
     ukbb_26041_withdrawns = hl.import_table(ukbb_excluded_26041_path, no_header=True)
     ukbb_26041_withdrawns = ukbb_26041_withdrawns.key_by(
@@ -64,7 +64,7 @@ def get_gnomad_v4_vds(
         )
     ).s.collect()
 
-    # Obtain 31063 withdrawn UKBB samples (includes 45 samples that should be removed from the VDS)
+    # Obtain "application 31063" withdrawn UKBB samples (includes 45 samples that should be removed from the VDS)
     ukbb_31063_withdrawns = hl.import_table(ukbb_excluded_31063_path, no_header=True)
     ukbb_31063_withdrawns = ukbb_31063_withdrawns.key_by(
         eid_31063=ukbb_31063_withdrawns.f0
