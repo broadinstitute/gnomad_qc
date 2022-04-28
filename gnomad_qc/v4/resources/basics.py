@@ -54,27 +54,36 @@ def get_gnomad_v4_vds(
     # Count current number of samples in the VDS
     n_samples = vds.variant_data.count_cols()
 
-    # Obtain "application 26041" withdrawn UKBB samples (includes 5 samples that should be removed from the VDS)
-    meta_ht = project_meta.ht()
-    ukbb_26041_withdrawns = hl.import_table(ukbb_excluded_26041_path, no_header=True)
-    ukbb_26041_withdrawns = ukbb_26041_withdrawns.key_by(
-        eid_26041=ukbb_26041_withdrawns.f0
+    # Obtain samples in application 31063 withdraw list
+    ukbb_31063_withdrawn_ht = hl.import_table(ukbb_excluded_31063_path, no_header=True)
+    ukbb_31063_withdrawn_ht = ukbb_31063_withdrawn_ht.key_by(
+        eid_31063=ukbb_31063_withdrawn_ht.f0
     )
-    withdrawn_26041_samples = meta_ht.filter(
-        hl.literal(ukbb_withdrawns.eid_26041.collect()).contains(
-            meta_ht.project_meta.ukbb_meta.eid_26041
+
+    # Obtain samples in application 26041 withdraw list
+    ukbb_26041_withdrawn_ht = hl.import_table(ukbb_excluded_26041_path, no_header=True)
+    ukbb_26041_withdrawn_ht = ukbb_26041_withdrawn_ht.key_by(
+        eid_26041=ukbb_26041_withdrawn_ht.f0
+    )
+
+    ukbb_application_map_ht = ukbb_application_map.ht()
+    withdrawn_ukbb_samples = ukbb_application_map_ht.filter(
+        hl.literal(ukbb_31063_withdrawn_ht.eid_31063.collect()).contains(
+            ukbb_application_map_ht.eid_31063
+        )
+        | hl.literal(ukbb_26041_withdrawn_ht.eid_26041.collect()).contains(
+            ukbb_application_map_ht.eid_26041
         )
     ).s.collect()
 
-    # Obtain "application 31063" withdrawn UKBB samples (includes 45 samples that should be removed from the VDS)
-    ukbb_31063_withdrawns = hl.import_table(ukbb_excluded_31063_path, no_header=True)
-    ukbb_31063_withdrawns = ukbb_31063_withdrawns.key_by(
-        eid_31063=ukbb_31063_withdrawns.f0
-    )
-    withdrawn_31063_samples = meta_ht.filter(
-        hl.literal(ukbb_withdrawns.eid_31063.collect()).contains(
-            meta_ht.project_meta.ukbb_meta.eid_31063
+    sample_map_ht = ukbb_array_sample_map.ht().key_by("ukbb_app_26041_id")
+    sample_map_ht = sample_map_ht.annotate(
+        withdrawn_consent=hl.is_defined(
+            ukbb_26041_withdrawn_ht[sample_map_ht.ukbb_app_26041_id]
         )
+    )
+    withdrawn_26041_from_sample_map = sample_map_ht.filter(
+        sample_map_ht.withdrawn_consent
     ).s.collect()
 
     # Remove 43 samples that are known to be on the pharma's sample remove list
@@ -113,11 +122,13 @@ def get_gnomad_v4_vds(
 
     # Filter withdrawn samples from the VDS
     withdrawn_ids = (
-        withdrawn_26041_samples
-        + withdrawn_31063_samples
+        withdrawn_ukbb_samples
+        + withdrawn_26041_from_sample_map
         + ids_to_remove
         + hl.eval(dup_ids)
     )
+
+    withdrawn_ids = [i for i in withdrawn_ids if i is not None]
 
     logger.info("Total number of UKBB samples to exclude: %d", len(withdrawn_ids))
 
@@ -179,6 +190,11 @@ ukbb_excluded_31063_path = (
 # UKBB map of exome IDs to array sample IDs (application ID: 26041)
 ukbb_array_sample_map = TableResource(
     f"{_ukbb_root_path()}/array_sample_map_freeze_7.ht"
+)
+
+# UKBB full mapping file of sample ID and application IDs 26041, 31063, and 48511
+ukbb_application_map = TableResource(
+    f"{_ukbb_root_path()}/ukbb_application_id_mappings.ht"
 )
 
 # Samples known to be on the pharma partners' remove lists.
