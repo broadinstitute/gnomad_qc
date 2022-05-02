@@ -43,6 +43,7 @@ def get_sample_qc(strat: str = "all") -> VersionedTableResource:
         },
     )
 
+
 def _get_platform_pca_ht_path(part: str, version: str = CURRENT_VERSION) -> str:
     """
     Helper function to get path to files related to platform PCA.
@@ -51,7 +52,9 @@ def _get_platform_pca_ht_path(part: str, version: str = CURRENT_VERSION) -> str:
     :param version: Version of sample QC path to return
     :return: Path to requested platform PCA file
     """
-    return f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.platform_pca_{part}.ht"
+    return (
+        f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.platform_pca_{part}.ht"
+    )
 
 
 def _get_ancestry_pca_ht_path(
@@ -186,7 +189,8 @@ platform_pca_loadings = VersionedTableResource(
     {
         version: TableResource(
             _get_platform_pca_ht_path(
-                "loadings", version,
+                "loadings",
+                version,
             )
         )
         for version in VERSIONS
@@ -199,7 +203,8 @@ platform_pca_scores = VersionedTableResource(
     {
         version: TableResource(
             _get_platform_pca_ht_path(
-                "scores", version,
+                "scores",
+                version,
             )
         )
         for version in VERSIONS
@@ -212,7 +217,8 @@ platform_pca_eigenvalues = VersionedTableResource(
     {
         version: TableResource(
             _get_platform_pca_ht_path(
-                "eigenvalues", version,
+                "eigenvalues",
+                version,
             )
         )
         for version in VERSIONS
@@ -225,6 +231,28 @@ platform = VersionedTableResource(
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.platform.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
+# HT containing AC information for bi-allelic variants after hard filtering
+hard_filtered_ac = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered.ac.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
+# HT containing AN, AF, and callrate information for bi-allelic variants after hard filtering
+hard_filtered_af_callrate = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered.af_callrate.ht"
         )
         for version in VERSIONS
     },

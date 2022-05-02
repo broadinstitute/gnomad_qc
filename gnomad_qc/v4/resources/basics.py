@@ -20,23 +20,38 @@ def get_gnomad_v4_vds(
     split=False,
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
+    test: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
 
-    :param split: Perform split on MT - Note: this will perform a split on the MT rather than grab an already split MT
+    :param split: Perform split on VDS - Note: this will perform a split on the VDS rather than grab an already split VDS
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after sample QC)
-    :param release_only: Whether to filter the MT to only samples available for release (can only be used if metadata is present)
+    :param release_only: Whether to filter the VDS to only samples available for release (can only be used if metadata is present)
+    :param test: Whether to use the test VDS instead of the full v4 VDS
     :return: gnomAD v4 dataset with chosen annotations and filters
     """
-    vds = gnomad_v4_genotypes.vds()
+    if test:
+        vds = gnomad_v4_testset.vds()
+    else:
+        vds = gnomad_v4_genotypes.vds()
     if remove_hard_filtered_samples:
-        vds = hl.vds.filter_samples(
-            vds, hard_filtered_samples.versions[CURRENT_VERSION].ht(), keep=False
-        )
+        if test:
+            meta_ht = gnomad_v4_testset_meta.ht()
+            meta_ht = meta_ht.filter(
+                hl.len(meta_ht.rand_sampling_meta.hard_filters_no_sex) == 0
+            )
+            vds = hl.vds.filter_samples(vds, meta_ht)
+        else:
+            vds = hl.vds.filter_samples(
+                vds, hard_filtered_samples.versions[CURRENT_VERSION].ht(), keep=False
+            )
 
     if release_only:
-        meta_ht = meta.versions[CURRENT_VERSION].ht()
+        if test:
+            meta_ht = gnomad_v4_testset_meta.ht()
+        else:
+            meta_ht = meta.versions[CURRENT_VERSION].ht()
         meta_ht = meta_ht.filter(meta_ht.release)
         vds = hl.vds.filter_samples(vds, meta_ht)
 
@@ -50,6 +65,9 @@ def get_gnomad_v4_vds(
         )
         vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
         vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+
+    if test:
+        return vds
 
     # Count current number of samples in the VDS
     n_samples = vds.variant_data.count_cols()
@@ -176,6 +194,8 @@ ukbb_dups_idx_path = f"{_ukbb_root_path()}/dup_remove_idx_7.tsv"
 # Final list of UKBB samples to remove
 all_ukbb_samples_to_remove = f"{_ukbb_root_path()}/all_ukbb_samples_to_remove.txt"
 
+# UKBB f-stat sites Table with UKBB allele frequencies
+ukbb_f_stat = TableResource(f"{_ukbb_root_path()}/f_stat_sites.ht")
 
 def qc_temp_prefix(version: str = CURRENT_VERSION) -> str:
     """
@@ -222,7 +242,7 @@ def add_meta(
     :param version: Version of metadata ht to use for annotations
     :return: MatrixTable with metadata added in a 'meta' column
     """
-    mt = mt.annotate_cols(meta_name=meta.versions[version].ht()[mt.col_key])
+    mt = mt.annotate_cols(**{meta_name: meta.versions[version].ht()[mt.col_key]})
 
     return mt
 
