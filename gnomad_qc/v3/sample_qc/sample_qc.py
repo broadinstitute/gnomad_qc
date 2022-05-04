@@ -470,11 +470,11 @@ def run_pca(
 
 def calculate_mislabeled_training(pop_ht: hl.Table, pop_field: str) -> [int, float]:
     """
-    Calculate the number and proportion of mislabled training samples.
+    Calculate the number and proportion of mislabeled training samples.
 
     :param pop_ht: Table with assigned pops/subpops that is returned by `assign_population_pcs`
     :param pop_field: Name of field in the Table containing the assigned pop/subpop
-    :return: The number and proportion of mislabled training samples
+    :return: The number and proportion of mislabeled training samples
     """
     n_mislabeled_samples = pop_ht.aggregate(
         hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
@@ -662,7 +662,7 @@ def assign_pops(
             training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all
         )
 
-        # Calculate number and proportion of mislabled samples
+        # Calculate number and proportion of mislabeled samples
         n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(
             pop_ht, pop_field
         )
