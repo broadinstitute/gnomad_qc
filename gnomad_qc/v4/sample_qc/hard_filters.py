@@ -53,7 +53,7 @@ def compute_sample_qc(n_partitions: int = 1000, test: bool = False) -> hl.Table:
             "bi_allelic": bi_allelic_expr(vds.variant_data),
             "multi_allelic": ~bi_allelic_expr(vds.variant_data),
         },
-        tmp_ht_prefix=get_sample_qc().path[:-3],
+        tmp_ht_prefix=get_sample_qc(test=test).path[:-3],
         gt_col="GT",
     )
 
@@ -74,7 +74,7 @@ def compute_hard_filters(
     min_gq_threshold: int = 20,
     min_n_over_dp_threshold: float = 2.7e9,
     min_dp_threshold: int = 10,
-    test: bool = False
+    test: bool = False,
 ) -> hl.Table:
     """
     Apply hard filters to samples and return a Table with the filtered samples and the reason for filtering.
@@ -129,7 +129,7 @@ def compute_hard_filters(
     #  will use none of these filters as hard-filters, but it will be good to need to look at distributions to determine
     #  this. There could also be other metrics we want to use instead, but will not know until we have distributions on
     #  the full set.
-    # bi_allelic_qc_ht = get_sample_qc("bi_allelic").ht()
+    # bi_allelic_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
     # Convert tuples to lists so we can find the index of the passed threshold
     # gq_bins = [
     #    hl.eval(bi_allelic_qc_ht.gq_bins[i])
@@ -162,14 +162,20 @@ def compute_hard_filters(
     # Flag samples that fail bam metric thresholds
     if test:
         project_meta_ht = gnomad_v4_testset_meta.ht()
+        bam_metrics_struct = project_meta_ht[ht.key].rand_sampling_meta
+        bam_metrics_struct = bam_metrics_struct.annotate(
+            contam_rate=bam_metrics_struct.freemix,
+            chimeras_rate=bam_metrics_struct.pct_chimeras,
+        )
     else:
         project_meta_ht = project_meta.ht()
-    bam_metrics_struct = project_meta_ht[ht.key].bam_metrics
+        bam_metrics_struct = project_meta_ht[ht.key].bam_metrics
+
     hard_filters["contamination"] = bam_metrics_struct.contam_rate > max_contamination
     hard_filters["chimera"] = bam_metrics_struct.chimeras_rate > max_chimera
 
-    # Flag low-coverage samples
-    coverage_mt = hl.filter_intervals(coverage_mt, [hl.parse_locus_interval("chr20")])
+    # Flag low-coverage samples using mean coverage on chromosome 20
+    coverage_mt = coverage_mt.filter_rows(coverage_mt.interval.start.contig == "chr20")
     coverage_ht = coverage_mt.select_cols(
         chr20_mean_dp=hl.agg.sum(coverage_mt.sum_dp)
         / hl.agg.sum(coverage_mt.interval_size)
@@ -181,7 +187,6 @@ def compute_hard_filters(
         sex_struct = sex.ht()[ht.key]
         # Remove samples with ambiguous sex assignments
         hard_filters["ambiguous_sex"] = sex_struct.sex_karyotype == "ambiguous"
-        # TODO: Confirm this is what we want to remove
         hard_filters[
             "sex_aneuploidy"
         ] = ~hl.set(  # pylint: disable=invalid-unary-operand-type
@@ -268,7 +273,7 @@ def main(args):
 
     finally:
         logger.info("Copying log to logging bucket...")
-        hl.copy_log(get_logging_path("platform_pca"))
+        hl.copy_log(get_logging_path("hard_filters"))
 
 
 if __name__ == "__main__":
