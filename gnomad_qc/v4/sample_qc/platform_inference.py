@@ -12,10 +12,7 @@ from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import (
-    calling_intervals,
     get_checkpoint_path,
-    get_gnomad_v4_vds,
-    gnomad_v4_testset,
     gnomad_v4_testset_meta,
     get_logging_path,
 )

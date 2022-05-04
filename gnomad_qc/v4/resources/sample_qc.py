@@ -18,9 +18,14 @@ def get_sample_qc_root(version: str = CURRENT_VERSION, test: bool = True) -> str
     Return path to sample QC root folder.
 
     :param version: Version of sample QC path to return
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS
     :return: Root to sample QC path
     """
-    return f"gs://gnomad/v{version}/sample_qc/exomes"
+    return (
+        f"gs://gnomad-tmp/gnomad_v{version}_testing/sample_qc/exomes"
+        if test
+        else f"gs://gnomad/v{version}/sample_qc/exomes"
+    )
 
 
 def get_sample_qc(strat: str = "all", test: bool = False) -> VersionedTableResource:
@@ -31,13 +36,14 @@ def get_sample_qc(strat: str = "all", test: bool = False) -> VersionedTableResou
         - all
 
     :param strat: Which stratification to return
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS
     :return: Sample QC table
     """
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sample_qc_{strat}.ht"
+                f"{get_sample_qc_root(version, test)}/gnomad.exomes.v{version}.sample_qc_{strat}.ht"
             )
             for version in VERSIONS
         },
