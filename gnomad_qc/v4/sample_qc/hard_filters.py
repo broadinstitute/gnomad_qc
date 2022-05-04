@@ -41,7 +41,7 @@ def compute_sample_qc(n_partitions: int = 1000, test: bool = False) -> hl.Table:
     vds = get_gnomad_v4_vds(split=True, remove_hard_filtered_samples=False, test=test)
     vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
 
-    # Remove centromeres and telomeres incase they were included
+    # Remove centromeres and telomeres in case they were included
     vds = hl.vds.filter_intervals(
         vds, intervals=telomeres_and_centromeres.ht(), keep=False
     )
@@ -132,7 +132,9 @@ def compute_hard_filters(
         for i in range(len(bi_allelic_qc_ht.dp_bins))
     ]
     bi_allelic_qc_struct = bi_allelic_qc_ht[ht.key]
-    # TODO: Do we still want all of these? We may want to make these options, though I guess you can always set the cutoffs to -INF or INF to prevent filtering
+    # TODO: Do we still want all of these? We may want to make these cutoffs? We will need to look at distributions to
+    #  determine this. There could also be other metrics we want to use instead, but will not know until we have
+    #  distributions on the full set
     hard_filters["sample_qc_metrics"] = (
         (bi_allelic_qc_struct.n_snp > max_n_snp)
         | (bi_allelic_qc_struct.n_snp < min_n_snp)
