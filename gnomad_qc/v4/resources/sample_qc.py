@@ -13,7 +13,7 @@ from gnomad_qc.v4.resources.constants import (
 )
 
 
-def get_sample_qc_root(version: str = CURRENT_VERSION, test: bool = True) -> str:
+def get_sample_qc_root(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
     Return path to sample QC root folder.
 
