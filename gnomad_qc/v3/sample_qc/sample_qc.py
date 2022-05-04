@@ -602,6 +602,7 @@ def assign_pops(
     pop_ht, pops_rf_model = assign_population_pcs(
         pop_pca_scores_ht,
         pc_cols=[pop_pca_scores_ht.scores[i - 1] for i in pcs],
+        pc_names = pcs,
         known_col="training_pop",
         output_col=pop_field,
         min_prob=min_prob,
@@ -652,6 +653,7 @@ def assign_pops(
         pop_ht, pops_rf_model = assign_population_pcs(
             pop_pca_scores_ht,
             pc_cols=[pop_pca_scores_ht.scores[i - 1] for i in pcs],
+            pc_names = pcs,
             known_col="training_pop",
             output_col=pop_field,
             min_prob=min_prob,
@@ -662,7 +664,7 @@ def assign_pops(
             training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all
         )
 
-        # Calculate number and proportion of mislabled samples
+        # Calculate number and proportion of mislabeled samples
         n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(
             pop_ht, pop_field
         )
