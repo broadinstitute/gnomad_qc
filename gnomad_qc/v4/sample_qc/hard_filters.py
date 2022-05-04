@@ -126,8 +126,9 @@ def compute_hard_filters(
 
     # Flag extreme raw bi-allelic sample QC outliers
     # TODO: Do we still want all of these? They are the metrics and cutoffs used for gnomAD v3 and v3.1, my guess is we
-    #  will use none of these filters, but it will be good to need to look at distributions to determine this. There
-    #  could also be other metrics we want to use instead, but will not know until we have distributions on the full set.
+    #  will use none of these filters as hard-filters, but it will be good to need to look at distributions to determine
+    #  this. There could also be other metrics we want to use instead, but will not know until we have distributions on
+    #  the full set.
     # bi_allelic_qc_ht = get_sample_qc("bi_allelic").ht()
     # Convert tuples to lists so we can find the index of the passed threshold
     # gq_bins = [
