@@ -54,7 +54,7 @@ def compute_sample_qc(n_partitions: int = 1000, test: bool = False) -> hl.Table:
             "multi_allelic": ~bi_allelic_expr(vds.variant_data),
         },
         tmp_ht_prefix=get_sample_qc().path[:-3],
-        gt_col="LGT",
+        gt_col="GT",
     )
 
     return sample_qc_ht.repartition(n_partitions)
