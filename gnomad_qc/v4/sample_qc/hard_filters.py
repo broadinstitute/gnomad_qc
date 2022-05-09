@@ -273,7 +273,14 @@ def main(args):
                 args.min_n_over_dp,
                 args.min_dp,
                 test,
-            ).write(hard_filtered_samples.path, overwrite=args.overwrite)
+            ).write(
+                get_checkpoint_path(
+                    f"test_gnomad.exomes.hard_filtered_samples.ht"
+                )
+                if test
+                else hard_filtered_samples.path,
+                overwrite=args.overwrite,
+            )
 
     finally:
         logger.info("Copying log to logging bucket...")
