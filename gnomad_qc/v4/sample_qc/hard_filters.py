@@ -3,10 +3,10 @@ import logging
 
 import hail as hl
 
+from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.utils.annotations import bi_allelic_expr
 from gnomad.utils.filtering import add_filters_expr
-from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 
 from gnomad_qc.v4.resources.basics import (
     calling_intervals,
@@ -61,7 +61,7 @@ def compute_sample_qc(n_partitions: int = 1000, test: bool = False) -> hl.Table:
 
 
 def compute_hard_filters(
-    coverage_mt: hl.Table,
+    coverage_mt: hl.MatrixTable,
     include_sex_filter: bool = False,
     cov_threshold: int = 15,
     max_n_snp: float = 3.75e6,
@@ -70,7 +70,7 @@ def compute_hard_filters(
     max_r_het_hom_var: float = 3.3,
     max_contamination: float = 0.05,
     max_chimera: float = 0.05,
-    min_n_over_gq_threshold: float = 27e9,
+    min_n_over_gq_threshold: float = 2.7e9,
     min_gq_threshold: int = 20,
     min_n_over_dp_threshold: float = 2.7e9,
     min_dp_threshold: int = 10,
@@ -252,7 +252,7 @@ def main(args):
                     )
                 )
             else:
-                coverage_mt = interval_coverage.ht()
+                coverage_mt = interval_coverage.mt()
 
             compute_hard_filters(
                 coverage_mt,
@@ -328,12 +328,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--include-low-cov-filter",
-        help="Whether to mean chr20 coverage in hard filtering.",
+        help="Whether to use mean chr20 coverage in hard filtering.",
         action="store_true",
     )
     parser.add_argument_group()
     hard_filter_args = parser.add_argument_group(
-        "Hard-filter cut-offs", "Arguments used for hard-filter cut-offs."
+        "Hard-filter cutoffs", "Arguments used for hard-filter cutoffs."
     )
     hard_filter_args.add_argument(
         "--min-cov",
@@ -369,13 +369,13 @@ if __name__ == "__main__":
         "--max-contamination",
         default=0.05,
         type=float,
-        help="Filtering threshold to use for max percent contamination (this is a proportion not percent, e.g. 5% == 0.05, %5 != 5). Default is 0.05.",
+        help="Filtering threshold to use for max contamination (this is a proportion not percent, e.g. 5% == 0.05, %5 != 5). Default is 0.05.",
     )
     hard_filter_args.add_argument(
         "--max-chimera",
         type=float,
         default=0.05,
-        help="Filtering threshold to use for max percent chimera (this is a proportion not a percent, e.g. 5% == 0.05, %5 != 5). Default is 0.05.",
+        help="Filtering threshold to use for max chimera (this is a proportion not a percent, e.g. 5% == 0.05, %5 != 5). Default is 0.05.",
     )
     hard_filter_args.add_argument(
         "--min-n-over-gq-threshold",
