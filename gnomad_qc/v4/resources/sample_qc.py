@@ -459,7 +459,7 @@ v3_v4_relatedness = VersionedTableResource(
 )
 
 # v4 samples that failed fingerprinting
-fingerprinting = VersionedTableResource(
+fingerprinting_failed = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
