@@ -55,7 +55,7 @@ def get_gnomad_v4_vds(
     # Count current number of samples in the VDS
     n_samples = vds.variant_data.count_cols()
 
-    # Obtain withdrawn UKB samples (samples with withdrawn consents for application 26041 on 08/09/2021 and application 31063 on 02/22/2022)
+    # Remove 76 withdrawn UKB samples (samples with withdrawn consents for application 26041 on 08/09/2021 and application 31063 on 02/22/2022)
     ukb_application_map_ht = ukb_application_map.ht()
     withdrawn_ukb_samples = ukb_application_map_ht.filter(
         ukb_application_map_ht.withdraw
@@ -242,7 +242,7 @@ ukb_known_dups = TableResource(f"{_ukb_root_path()}/pharma_known_dups_7.ht")
 # 27 samples to remove based on column index
 ukb_dups_idx_path = f"{_ukb_root_path()}/dup_remove_idx_7.tsv"
 
-# Final list of UKB samples to remove
+# Final list of UKB samples to remove (duplicates that were removed will have their original index appended to the sample name)
 all_ukb_samples_to_remove = f"{_ukb_root_path()}/all_ukbb_samples_to_remove.txt"
 
 
