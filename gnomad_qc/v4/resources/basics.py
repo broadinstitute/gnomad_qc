@@ -240,7 +240,7 @@ ukb_known_dups = TableResource(f"{_ukb_root_path()}/pharma_known_dups_7.ht")
 
 # Samples with duplicate names in the VDS and their column index
 # 27 samples to remove based on column index
-ubb_dups_idx_path = f"{_ukb_root_path()}/dup_remove_idx_7.tsv"
+ukb_dups_idx_path = f"{_ukb_root_path()}/dup_remove_idx_7.tsv"
 
 # Final list of UKB samples to remove
 all_ukb_samples_to_remove = f"{_ukb_root_path()}/all_ukbb_samples_to_remove.txt"
