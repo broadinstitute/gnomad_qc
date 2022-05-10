@@ -4,6 +4,7 @@ import hail as hl
 from gnomad.resources.resource_utils import (
     TableResource,
     VariantDatasetResource,
+    VersionedTableResource,
     VersionedVariantDatasetResource,
 )
 
@@ -54,36 +55,10 @@ def get_gnomad_v4_vds(
     # Count current number of samples in the VDS
     n_samples = vds.variant_data.count_cols()
 
-    # Obtain samples in application 31063 withdraw list
-    ukb_31063_withdrawn_ht = hl.import_table(ukb_excluded_31063_path, no_header=True)
-    ukb_31063_withdrawn_ht = ukb_31063_withdrawn_ht.key_by(
-        eid_31063=ukbb_31063_withdrawn_ht.f0
-    )
-
-    # Obtain samples in application 26041 withdraw list
-    ukb_26041_withdrawn_ht = hl.import_table(ukb_excluded_26041_path, no_header=True)
-    ukb_26041_withdrawn_ht = ukb_26041_withdrawn_ht.key_by(
-        eid_26041=ukb_26041_withdrawn_ht.f0
-    )
-
+    # Obtain withdrawn UKB samples (samples with withdrawn consents for application 26041 on 08/09/2021 and application 31063 on 02/22/2022)
     ukb_application_map_ht = ukb_application_map.ht()
-    withdrawn_ukbb_samples = ukb_application_map_ht.filter(
-        hl.literal(ukb_31063_withdrawn_ht.eid_31063.collect()).contains(
-            ukb_application_map_ht.eid_31063
-        )
-        | hl.literal(ukb_26041_withdrawn_ht.eid_26041.collect()).contains(
-            ukb_application_map_ht.eid_26041
-        )
-    ).s.collect()
-
-    sample_map_ht = ukb_array_sample_map.ht().key_by("ukb_app_26041_id")
-    sample_map_ht = sample_map_ht.annotate(
-        withdrawn_consent=hl.is_defined(
-            ukb_26041_withdrawn_ht[sample_map_ht.ukb_app_26041_id]
-        )
-    )
-    withdrawn_26041_from_sample_map = sample_map_ht.filter(
-        sample_map_ht.withdrawn_consent
+    withdrawn_ukb_samples = ukb_application_map_ht.filter(
+        ukb_application_map_ht.withdraw
     ).s.collect()
 
     # Remove 43 samples that are known to be on the pharma's sample remove list
@@ -121,12 +96,7 @@ def get_gnomad_v4_vds(
     vds = hl.vds.VariantDataset(rd, vd)
 
     # Filter withdrawn samples from the VDS
-    withdrawn_ids = (
-        withdrawn_ukb_samples
-        + withdrawn_26041_from_sample_map
-        + ids_to_remove
-        + hl.eval(dup_ids)
-    )
+    withdrawn_ids = withdrawn_ukb_samples + ids_to_remove + hl.eval(dup_ids)
 
     withdrawn_ids = [i for i in withdrawn_ids if i is not None]
 
@@ -181,19 +151,89 @@ def _ukb_root_path() -> str:
     return "gs://gnomad/v4.0/ukbb"
 
 
-# List of samples to exclude from QC due to withdrawn consents
-ukb_excluded_26041_path = f"{_ukb_root_path()}/w26041_20210809.csv"
-ukb_excluded_31063_path = (
-    f"{_ukb_root_path()}/ukb31063.withdrawn_participants.20220222.csv"
+# List of samples to exclude from QC due to withdrawn consents for application 26041 on 08/09/2021 and application 31063 on 02/22/2022, originally imported at csvs and keyed by their respective eids.
+ukb_excluded = VersionedTableResource(
+    default_version="31063_20220222",
+    versions={
+        "26041_20210809": TableResource(path=f"{_ukb_root_path()}/w26041_20210809.ht"),
+        "31063_20220222": TableResource(
+            path=f"{_ukb_root_path()}/ukb31063.withdrawn_participants.20220222.ht"
+        ),
+    },
 )
 
 # UKB map of exome IDs to array sample IDs (application ID: 26041)
 ukb_array_sample_map = TableResource(f"{_ukb_root_path()}/array_sample_map_freeze_7.ht")
 
-# UKB full mapping file of sample ID and application IDs 26041, 31063, and 48511
+# UKB full mapping file of sample ID and application IDs 26041, 31063, and 48511, which is created in merge_meta.py
 ukb_application_map = TableResource(
     f"{_ukb_root_path()}/ukbb_application_id_mappings.ht"
 )
+
+
+def generate_ukb_application_map() -> None:
+    """
+    Generate the mapping file of application IDs 26041, 31063, and 48511, and add in annotatation 'withdraw', which is set to True if the UKB sample needs to be withdrawn.
+
+    :return: None
+    """
+    # The array sample map has the most complete list of 's' and 'eid_26041' for UKB samples, so use this file rather than the UKB 'meta.ht' (which already has some samples withdrawn from it)
+    ukb_array_sample_map = ukb_array_sample_map.ht()
+    ukb_array_sample_map = ukb_array_sample_map.select(
+        eid_26041=ukb_array_sample_map.ukbb_app_26041_id
+    )
+
+    # Add in bridge mapping from eid_26041 to eid_31063
+    ukb_map = ukb_array_sample_map.key_by("eid_26041")
+    mapping_ht_26041_31063 = hl.import_table(
+        "gs://gnomad/v4.0/ukbb/bridge_26041_31063.csv", delimiter=","
+    ).key_by("eid_26041")
+    ukb_map = ukb_map.join(mapping_ht_26041_31063, how="outer")
+
+    # Add in bridge mapping from eid_31063 to eid_48511
+    ukb_map = ukb_map.key_by("eid_31063")
+    mapping_ht_48511_31063 = hl.import_table(
+        "gs://gnomad/v4.0/ukbb/bridge_48511_31063", delimiter=","
+    ).key_by("eid_31063")
+    ukb_map = ukb_map.join(mapping_ht_48511_31063, how="outer")
+
+    # Annotate UKB samples that need to be withdrawn (these samples will be removed when loading the VDS with the 'get_gnomad_v4_vds' function)
+    withdrawn_31063_samples = hl.literal(
+        ukb_excluded.versions["31063_20220222"].ht().eid_31063.collect()
+    )
+    withdrawn_26041_samples = hl.literal(
+        ukb_excluded.versions["26041_20210809"].ht().eid_26041.collect()
+    )
+    ukb_map = ukb_map.annotate(
+        withdraw=(withdrawn_31063_samples.contains(ukb_map.eid_31063))
+        | (withdrawn_26041_samples.contains(ukb_map.eid_26041))
+    )
+    ukb_map = ukb_map.key_by("s")
+
+    total_samples_in_mapping = ukb_map.count()
+    total_eid_26041 = ukb_map.aggregate(
+        hl.agg.count_where(~hl.is_missing(ukb_map.eid_26041))
+    )
+    total_eid_31063 = ukb_map.aggregate(
+        hl.agg.count_where(~hl.is_missing(ukb_map.eid_31063))
+    )
+    total_eid_48511 = ukb_map.aggregate(
+        hl.agg.count_where(~hl.is_missing(ukb_map.eid_48511))
+    )
+
+    logger.info(
+        """Found %d UKB samples in mapping file\n
+            %d have an eid_26041\n 
+            %d have an eid_31063\n
+            %d have an eid_48511\n""",
+        total_samples_in_mapping,
+        total_eid_26041,
+        total_eid_31063,
+        total_eid_48511,
+    )
+
+    ukb_map.write(ukb_application_map.path, overwrite=True)
+
 
 # Samples known to be on the pharma partners' remove lists.
 # All 44 samples are marked as "unresolved duplicates" by the pharma partners.
