@@ -58,7 +58,8 @@ def get_gnomad_v4_vds(
     # Obtain withdrawn UKB samples (samples with withdrawn consents for application 26041 on 08/09/2021 and application 31063 on 02/22/2022)
     ukb_application_map_ht = ukb_application_map.ht()
     withdrawn_ukb_samples = ukb_application_map_ht.filter(
-        ukb_application_map_ht.withdraw).s.collect()
+        ukb_application_map_ht.withdraw
+    ).s.collect()
 
     # Remove 43 samples that are known to be on the pharma's sample remove list
     # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308
