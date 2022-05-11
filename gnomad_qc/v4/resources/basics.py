@@ -21,6 +21,7 @@ def get_gnomad_v4_vds(
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
     test: bool = False,
+    n_partitions: int = None,
 ) -> hl.vds.VariantDataset:
     """
     Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
@@ -29,12 +30,18 @@ def get_gnomad_v4_vds(
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after sample QC)
     :param release_only: Whether to filter the VDS to only samples available for release (can only be used if metadata is present)
     :param test: Whether to use the test VDS instead of the full v4 VDS
+    :param n_partitions: Optional argument to read the VDS with a specific number of partitions
     :return: gnomAD v4 dataset with chosen annotations and filters
     """
     if test:
-        vds = gnomad_v4_testset.vds()
+        gnomad_v4_resource = gnomad_v4_testset
     else:
-        vds = gnomad_v4_genotypes.vds()
+        gnomad_v4_resource = gnomad_v4_genotypes
+
+    gnomad_v4_resource.import_func = hl.vds.read_vds
+    gnomad_v4_resource.import_args = {"n_partitions": n_partitions}
+    vds = gnomad_v4_resource.vds(force_import=True)
+
     if remove_hard_filtered_samples:
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
@@ -147,7 +154,7 @@ def get_gnomad_v4_vds(
 
 
 _gnomad_v4_genotypes = {
-    "4.0": VariantDatasetResource("gs://gnomad/v4.0/raw/exomes/gnomad_v4.0.vds"),
+    "4.0": VariantDatasetResource("gs://gnomad/v4.0/raw/exomes/gnomad_v4.0.vds")
 }
 
 gnomad_v4_genotypes = VersionedVariantDatasetResource(
