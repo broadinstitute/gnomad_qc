@@ -14,6 +14,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+UKB_BATCHES_FOR_INCLUSION = {"100K", "150K", "200K"}
+
 HEADER_DICT = {
     "format": {
         "GT": {"Description": "Genotype", "Number": "1", "Type": "String"},
@@ -72,24 +74,41 @@ def main(args):
     vds = get_gnomad_v4_vds(n_partitions=args.n_partitions)
 
     if test:
-        vds = vds._filter_partitions(range(2))
+        vds = hl.vds.variant_dataset.VariantDataset(
+            vds.reference_data._filter_partitions(range(2)),
+            vds.variant_data._filter_partitions(range(2)),
+        )
 
     meta_ht = meta.ht()
-    subset_ht = hl.import_table(args.subset or args.subset_workspaces, header=True)
+    subset_ht = hl.import_table(args.subset or args.subset_workspaces)
 
     if args.subset_workspaces:
-        terra_workspaces = subset_ht.terra_workspace.collect()
+        terra_workspaces = hl.literal(subset_ht.terra_workspace.collect())
         subset_ht = meta_ht.filter(
             terra_workspaces.contains(meta_ht.terra_workspace)
         ).select("s")
 
     if args.include_ukb_200k:
         ukb_subset_ht = meta_ht.filter(
-            meta_ht.terra_workspace == "UKBB_WholeExomeDataset"
+            meta_ht.terra_workspace
+            == "UKBB_WholeExomeDataset"
+            & UKB_BATCHES_FOR_INCLUSION.contains(meta_ht.ukb_meta.batch)
         ).select("s")
         subset_ht = subset_ht.union(ukb_subset_ht)
 
     vds = hl.vds.filter_samples(vds, subset_ht, remove_dead_alleles=True)
+
+    if args.include_ukb_200k:
+        # TODO: add option to provide an application linking file as an argument. Default is ATGU ID
+        vds = hl.vds.variant_dataset.VariantDataset(
+            vds.reference_data.key_cols_by(
+                s=meta_ht[vds.reference_data.col_key].ukb_meta.eid_31063
+            ),
+            vds.variant_data.key_cols_by(
+                s=meta_ht[vds.variant_data.col_key].ukb_meta.eid_31063
+            ),
+        )
+        meta_ht = meta_ht.key_by(s=meta_ht.ukb_meta.eid_31063)
 
     if args.vds:
         vds.write(f"{args.output_path}/subset.vds")
@@ -132,7 +151,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="This script subsets gnomAD using a list of samples or terra workspaces."
     )
-    parser.add_argument("--test", help="Filter to the first 2 partitions for testing.")
+    parser.add_argument(
+        "--test",
+        help="Filter to the first 2 partitions for testing.",
+        action="store_true",
+    )
     subset_id_parser = parser.add_mutually_exclusive_group(required=True)
     subset_id_parser.add_argument(
         "--subset",
@@ -146,13 +169,23 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
-        "--include-ukb-200k", help="Whether to include the 200K UK Biobank samples."
+        "--include-ukb-200k",
+        help="Whether to include the 200K UK Biobank samples.",
+        action="store_true",
     )
-    parser.add_argument("--vds", help="Whether to make a subset VDS.", type=int)
-    parser.add_argument("--vcf", help="Whether to make a subset VCF.", type=int)
-    parser.add_argument("--dense-mt", help="Whether to make a dense MT", type=int)
     parser.add_argument(
-        "--split-multi", help="Whether to split multi-allelic variants.", type=int
+        "--vds", help="Whether to make a subset VDS.", action="store_true"
+    )
+    parser.add_argument(
+        "--vcf", help="Whether to make a subset VCF.", action="store_true"
+    )
+    parser.add_argument(
+        "--dense-mt", help="Whether to make a dense MT", action="store_true"
+    )
+    parser.add_argument(
+        "--split-multi",
+        help="Whether to split multi-allelic variants.",
+        action="store_true",
     )
     parser.add_argument(
         "--n-partitions",

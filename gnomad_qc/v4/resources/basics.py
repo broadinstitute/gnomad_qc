@@ -17,7 +17,7 @@ logger.setLevel(logging.INFO)
 
 # Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4.0/<module>/<exomes_or_genomes>/
 def get_gnomad_v4_vds(
-    split=False,
+    split: bool = False,
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
     test: bool = False,
@@ -38,9 +38,12 @@ def get_gnomad_v4_vds(
     else:
         gnomad_v4_resource = gnomad_v4_genotypes
 
-    gnomad_v4_resource.import_func = hl.vds.read_vds
-    gnomad_v4_resource.import_args = {"n_partitions": n_partitions}
-    vds = gnomad_v4_resource.vds(force_import=True)
+    if n_partitions:
+        gnomad_v4_resource.import_func = hl.vds.read_vds
+        gnomad_v4_resource.import_args = {"n_partitions": n_partitions}
+        vds = gnomad_v4_resource.vds(force_import=True)
+    else:
+        vds = gnomad_v4_resource.vds()
 
     if remove_hard_filtered_samples:
         if test:
