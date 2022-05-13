@@ -3,8 +3,12 @@ import logging
 
 import hail as hl
 
-from gnomad_qc.v3.resources.meta import meta
+# TODO: include this when we have the sample QC meta HT: from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+
+# TODO: Can remove when we use the full sample QC meta HT
+from gnomad_qc.v4.resources.meta import project_meta
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -79,22 +83,25 @@ def main(args):
             vds.variant_data._filter_partitions(range(2)),
         )
 
-    meta_ht = meta.ht()
+    meta_ht = project_meta.ht()
     subset_ht = hl.import_table(args.subset or args.subset_workspaces)
 
     if args.subset_workspaces:
-        terra_workspaces = hl.literal(subset_ht.terra_workspace.collect())
+        terra_workspaces = hl.literal(subset_ht.terra_workspace.lower().collect())
         subset_ht = meta_ht.filter(
-            terra_workspaces.contains(meta_ht.terra_workspace)
-        ).select("s")
+            terra_workspaces.contains(meta_ht.project_meta.terra_workspace)
+        ).select()
+        logger.info("Keeping %d samples using the list of terra workspaces.", subset_ht.count())
 
     if args.include_ukb_200k:
         ukb_subset_ht = meta_ht.filter(
-            meta_ht.terra_workspace
-            == "UKBB_WholeExomeDataset"
-            & UKB_BATCHES_FOR_INCLUSION.contains(meta_ht.ukb_meta.batch)
-        ).select("s")
+            (meta_ht.project_meta.terra_workspace == "ukbb_wholeexomedataset")
+            & hl.literal(UKB_BATCHES_FOR_INCLUSION).contains(
+                meta_ht.project_meta.ukb_meta.ukb_batch
+            )
+        ).select()
         subset_ht = subset_ht.union(ukb_subset_ht)
+        logger.info("Keeping %d samples after inclusion of the UKB 200K subset.", subset_ht.count())
 
     vds = hl.vds.filter_samples(vds, subset_ht, remove_dead_alleles=True)
 
@@ -102,20 +109,28 @@ def main(args):
         # TODO: add option to provide an application linking file as an argument. Default is ATGU ID
         vds = hl.vds.variant_dataset.VariantDataset(
             vds.reference_data.key_cols_by(
-                s=meta_ht[vds.reference_data.col_key].ukb_meta.eid_31063
+                s=hl.coalesce(
+                    meta_ht[vds.reference_data.col_key].project_meta.ukb_meta.eid_31063,
+                    vds.reference_data.col_key.s,
+                )
             ),
             vds.variant_data.key_cols_by(
-                s=meta_ht[vds.variant_data.col_key].ukb_meta.eid_31063
+                s=hl.coalesce(
+                    meta_ht[vds.variant_data.col_key].project_meta.ukb_meta.eid_31063,
+                    vds.variant_data.col_key.s,
+                )
             ),
         )
-        meta_ht = meta_ht.key_by(s=meta_ht.ukb_meta.eid_31063)
+        meta_ht = meta_ht.key_by(s=hl.coalesce(meta_ht.project_meta.ukb_meta.eid_31063, meta_ht.s))
 
     if args.vds:
-        vds.write(f"{args.output_path}/subset.vds")
+        vds.write(f"{args.output_path}/subset.vds", overwrite=args.overwrite)
 
     if args.export_meta:
         logger.info("Exporting metadata")
         meta_ht = meta_ht.semi_join(vds.variant_data.cols())
+        # TODO: Dropping the whole ukb_meta struct, but should we keep pop and sex inference if allowed?
+        meta_ht = meta_ht.annotate(project_meta=meta_ht.project_meta.drop("ukb_meta"))
         meta_ht.export(f"{args.output_path}/metadata.tsv.bgz")
 
     if args.split_multi:
@@ -123,28 +138,19 @@ def main(args):
         vds = hl.vds.split_multi(vds, filter_changed_loci=True)
 
     if args.vcf or args.dense_mt:
-        vds = vds.drop(vds.gvcf_info)  # Note: gvcf_info is sparse-specific
         mt = hl.vds.to_dense_mt(vds)
 
     if args.dense_mt:
-        mt.write(f"{args.output_path}/subset.mt")
+        mt.write(f"{args.output_path}/subset.mt", overwrite=args.overwrite)
 
     # TODO: add num-vcf-shards where no sharding happens if this is not set
     if args.vcf:
-        logger.info("Exporting VCF")
-        if args.num_vcf_shards:
-            hl.export_vcf(
-                mt,
-                f"{args.output_path}/sharded_vcf.bgz",
-                parallel="header_per_shard",
-                metadata=header_dict,
-            )
-        else:
-            hl.export_vcf(
-                mt,
-                f"{args.output_path}.bgz",
-                metadata=header_dict,
-            )
+        mt = mt.drop("gvcf_info")
+        hl.export_vcf(
+            mt,
+            f"{args.output_path}.bgz",
+            metadata=header_dict,
+        )
 
 
 if __name__ == "__main__":
