@@ -170,7 +170,7 @@ if __name__ == "__main__":
     subset_id_parser.add_argument(
         "--subset-workspaces",
         help=(
-            "Path to a text file with Terra workspaces that should be included in the subset must use a header of "
+            "Path to a text file with Terra workspaces that should be included in the subset, must use a header of "
             "'terra_workspace'."
         ),
     )
