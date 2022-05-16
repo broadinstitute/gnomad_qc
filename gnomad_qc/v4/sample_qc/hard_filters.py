@@ -85,13 +85,13 @@ def compute_hard_filters(
     :param coverage_mt: MatrixTable containing the per interval per sample coverage statistics.
     :param include_sex_filter: If sex inference should be used in filtering.
     :param min_cov: Filtering threshold to use for chr20 min mean coverage.
-    :param max_n_snp: Filtering threshold to use for the max number of SNPs.
-    :param min_n_snp: Filtering threshold to use for the min number of SNPs.
-    :param max_n_singleton: Filtering threshold to use for the max number of singletons.
-    :param max_r_het_hom_var: Filtering threshold to use for the max ratio of heterozygotes to alternate homozygotes
-    :param max_contamination: Filtering threshold to use for max contamination (this is a proportion not a
+    :param max_n_snp: Filtering threshold to use for the maximum number of SNPs.
+    :param min_n_snp: Filtering threshold to use for the minimum number of SNPs.
+    :param max_n_singleton: Filtering threshold to use for the maximum number of singletons.
+    :param max_r_het_hom_var: Filtering threshold to use for the maximum ratio of heterozygotes to alternate homozygotes
+    :param max_contamination: Filtering threshold to use for maximum contamination (this is a proportion not a
         percecnt, e.g. 5% == 0.05, %5 != 5).
-    :param max_chimera: Filtering threshold to use for max chimera (this is a proportion not a percent,
+    :param max_chimera: Filtering threshold to use for maximum chimera (this is a proportion not a percent,
         e.g. 5% == 0.05, %5 != 5).
     :param min_n_over_gq: Minimum number of bases with a GQ over the filtering threshold. Default is 2.7e9.
     :param min_gq: GQ threshold to use for filtering. Default is 20.
@@ -363,25 +363,31 @@ if __name__ == "__main__":
         "--max-n-singleton",
         type=float,
         default=1e5,
-        help="Filtering threshold to use for the max number of singletons. Default is 1e5.",
+        help="Filtering threshold to use for the maximum number of singletons. Default is 1e5.",
     )
     hard_filter_args.add_argument(
         "-max-r-het-hom-var",
         type=float,
         default=3.3,
-        help="Filtering threshold to use for the max ratio of heterozygotes to alternate homozygotes. Default is 3.3.",
+        help="Filtering threshold to use for the maximum ratio of heterozygotes to alternate homozygotes. Default is 3.3.",
     )
     hard_filter_args.add_argument(
         "--max-contamination",
         default=0.05,
         type=float,
-        help="Filtering threshold to use for max contamination (this is a proportion not percent, e.g. 5% == 0.05, %5 != 5). Default is 0.05.",
+        help=(
+            "Filtering threshold to use for maximum contamination (this is a proportion not percent, "
+            "e.g. 5% == 0.05, %5 != 5). Default is 0.05.",
+        ),
     )
     hard_filter_args.add_argument(
         "--max-chimera",
         type=float,
         default=0.05,
-        help="Filtering threshold to use for max chimera (this is a proportion not a percent, e.g. 5% == 0.05, %5 != 5). Default is 0.05.",
+        help=(
+            "Filtering threshold to use for maximum chimera (this is a proportion not a percent, "
+            "e.g. 5% == 0.05, %5 != 5). Default is 0.05."
+        ),
     )
     hard_filter_args.add_argument(
         "--min-n-over-gq",
