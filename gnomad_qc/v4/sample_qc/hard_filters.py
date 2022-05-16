@@ -275,7 +275,7 @@ def main(args):
                 test,
             ).write(
                 get_checkpoint_path(
-                    f"test_gnomad.exomes.hard_filtered_samples.ht"
+                    "test_gnomad.exomes.hard_filtered_samples"
                 )
                 if test
                 else hard_filtered_samples.path,
