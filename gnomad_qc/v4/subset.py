@@ -9,13 +9,8 @@ from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 # TODO: Can remove when we use the full sample QC meta HT
 from gnomad_qc.v4.resources.meta import project_meta
 
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s: %(message)s",
-    datefmt="%m/%d/%Y %I:%M:%S %p",
-)
-logger = logging.getLogger(__name__)
+logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+logger = logging.getLogger("subset")
 logger.setLevel(logging.INFO)
 
 UKB_BATCHES_FOR_INCLUSION = {"100K", "150K", "200K"}
@@ -64,7 +59,9 @@ HEADER_DICT = {
             "Type": "Integer",
         },
         "RGQ": {
-            "Description": "Unconditional reference genotype confidence, encoded as a phred quality -10*log10 p(genotype call is wrong)"
+            "Description": "Unconditional reference genotype confidence, encoded as a phred quality -10*log10 p(genotype call is wrong)",
+            "Number": "1",
+            "Type": "Integer",
         },
     },
 }
@@ -72,10 +69,10 @@ HEADER_DICT = {
 
 def main(args):
     hl.init(log="/subset.log", default_reference="GRCh38")
-    header_dict = HEADER_DICT
     test = args.test
+    output_path = args.output_path
 
-    vds = get_gnomad_v4_vds(n_partitions=args.n_partitions)
+    vds = get_gnomad_v4_vds(n_partitions=args.n_partitions, remove_hard_filtered_samples=False)
 
     if test:
         vds = hl.vds.variant_dataset.VariantDataset(
@@ -84,7 +81,7 @@ def main(args):
         )
 
     meta_ht = project_meta.ht()
-    subset_ht = hl.import_table(args.subset or args.subset_workspaces)
+    subset_ht = hl.import_table(args.subset_samples or args.subset_workspaces)
 
     if args.subset_workspaces:
         terra_workspaces = hl.literal(subset_ht.terra_workspace.lower().collect())
@@ -124,14 +121,14 @@ def main(args):
         meta_ht = meta_ht.key_by(s=hl.coalesce(meta_ht.project_meta.ukb_meta.eid_31063, meta_ht.s))
 
     if args.vds:
-        vds.write(f"{args.output_path}/subset.vds", overwrite=args.overwrite)
+        vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
 
     if args.export_meta:
         logger.info("Exporting metadata")
         meta_ht = meta_ht.semi_join(vds.variant_data.cols())
         # TODO: Dropping the whole ukb_meta struct, but should we keep pop and sex inference if allowed?
         meta_ht = meta_ht.annotate(project_meta=meta_ht.project_meta.drop("ukb_meta"))
-        meta_ht.export(f"{args.output_path}/metadata.tsv.bgz")
+        meta_ht.export(f"{output_path}/metadata.tsv.bgz")
 
     if args.split_multi:
         logger.info("Splitting multi-allelics and densifying")
@@ -141,15 +138,15 @@ def main(args):
         mt = hl.vds.to_dense_mt(vds)
 
     if args.dense_mt:
-        mt.write(f"{args.output_path}/subset.mt", overwrite=args.overwrite)
+        mt.write(f"{output_path}/subset.mt", overwrite=args.overwrite)
 
     # TODO: add num-vcf-shards where no sharding happens if this is not set
     if args.vcf:
         mt = mt.drop("gvcf_info")
         hl.export_vcf(
             mt,
-            f"{args.output_path}.bgz",
-            metadata=header_dict,
+            f"{output_path}.bgz",
+            metadata=HEADER_DICT,
         )
 
 
@@ -164,7 +161,7 @@ if __name__ == "__main__":
     )
     subset_id_parser = parser.add_mutually_exclusive_group(required=True)
     subset_id_parser.add_argument(
-        "--subset",
+        "--subset-samples",
         help="Path to a text file with sample IDs for subsetting and a header: s.",
     )
     subset_id_parser.add_argument(

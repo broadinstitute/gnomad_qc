@@ -39,9 +39,7 @@ def get_gnomad_v4_vds(
         gnomad_v4_resource = gnomad_v4_genotypes
 
     if n_partitions:
-        gnomad_v4_resource.import_func = hl.vds.read_vds
-        gnomad_v4_resource.import_args = {"n_partitions": n_partitions}
-        vds = gnomad_v4_resource.vds(force_import=True)
+        vds = hl.vds.read_vds(gnomad_v4_resource.path, n_partitions=n_partitions)
     else:
         vds = gnomad_v4_resource.vds()
 
