@@ -101,6 +101,7 @@ def main(args):
         logger.info("Keeping %d samples after inclusion of the UKB 200K subset.", subset_ht.count())
 
     vds = hl.vds.filter_samples(vds, subset_ht, remove_dead_alleles=True)
+    logger.info("Final number of samples being kept in the VDS: %d.", vds.variant_data.count_cols())
 
     if args.include_ukb_200k:
         # TODO: add option to provide an application linking file as an argument. Default is ATGU ID
