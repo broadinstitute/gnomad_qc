@@ -470,11 +470,11 @@ def run_pca(
 
 def calculate_mislabeled_training(pop_ht: hl.Table, pop_field: str) -> [int, float]:
     """
-    Calculate the number and proportion of mislabled training samples.
+    Calculate the number and proportion of mislabeled training samples.
 
     :param pop_ht: Table with assigned pops/subpops that is returned by `assign_population_pcs`
     :param pop_field: Name of field in the Table containing the assigned pop/subpop
-    :return: The number and proportion of mislabled training samples
+    :return: The number and proportion of mislabeled training samples
     """
     n_mislabeled_samples = pop_ht.aggregate(
         hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
@@ -601,14 +601,14 @@ def assign_pops(
 
     pop_ht, pops_rf_model = assign_population_pcs(
         pop_pca_scores_ht,
-        pc_cols=[pop_pca_scores_ht.scores[i - 1] for i in pcs],
+        pc_cols=pcs,
         known_col="training_pop",
         output_col=pop_field,
         min_prob=min_prob,
         missing_label=missing_label,
     )
 
-    # Calculate number and proportion of mislabled samples
+    # Calculate number and proportion of mislabeled samples
     n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(
         pop_ht, pop_field
     )
@@ -651,7 +651,7 @@ def assign_pops(
 
         pop_ht, pops_rf_model = assign_population_pcs(
             pop_pca_scores_ht,
-            pc_cols=[pop_pca_scores_ht.scores[i - 1] for i in pcs],
+            pc_cols=pcs,
             known_col="training_pop",
             output_col=pop_field,
             min_prob=min_prob,
@@ -662,7 +662,7 @@ def assign_pops(
             training_pop_all=pop_pca_scores_ht[pop_ht.key].training_pop_all
         )
 
-        # Calculate number and proportion of mislabled samples
+        # Calculate number and proportion of mislabeled samples
         n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(
             pop_ht, pop_field
         )
@@ -1443,7 +1443,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--pop_pcs",
-        help="List of PCs to use for ancestry assignment",
+        help="List of PCs to use for ancestry assignment. The values provided should be 1-based.",
         default=list(range(1, 17)),
         type=list,
     )

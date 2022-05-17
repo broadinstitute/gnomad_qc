@@ -34,7 +34,8 @@ logger.setLevel(logging.INFO)
 
 
 def compute_subpop_qc_mt(
-    mt: hl.MatrixTable, min_popmax_af: float = 0.001,
+    mt: hl.MatrixTable,
+    min_popmax_af: float = 0.001,
 ) -> hl.MatrixTable:
     """
     Generate the subpop QC MT to be used for all subpop analyses.
@@ -64,7 +65,9 @@ def compute_subpop_qc_mt(
         _read_if_exists=not args.overwrite,
     )
 
-    logger.info("Converting MT to VDS...")
+    logger.info(
+        "Converting MT to VDS..."
+    )  # Convert to VDS to more efficiently densify the data
     mt = mt.select_entries(
         "END", "LA", "LGT", adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
     )
@@ -204,7 +207,8 @@ def main(args):  # noqa: D103
             )
             if not include_unreleasable_samples:
                 mt = mt.filter_cols(
-                    mt.project_meta.releasable & ~mt.project_meta.exclude
+                    mt.project_meta.releasable
+                    & ~mt.project_meta.exclude  # See https://github.com/broadinstitute/gnomad_meta/tree/master/v3.1#gnomad-project-metadata-annotation-definitions for further explanation of 'exclude'
                 )
             if high_quality:
                 mt = mt.filter_cols(mt.high_quality)
@@ -278,7 +282,8 @@ if __name__ == "__main__":
         description="This script generates a QC MT and PCA scores to use for subpop analyses"
     )
     parser.add_argument(
-        "--slack-channel", help="Slack channel to post results and notifications to",
+        "--slack-channel",
+        help="Slack channel to post results and notifications to",
     )
     parser.add_argument(
         "--overwrite", help="Overwrites existing files", action="store_true"
@@ -315,7 +320,10 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--n-pcs", help="Number of PCs to compute", type=int, default=20,
+        "--n-pcs",
+        help="Number of PCs to compute",
+        type=int,
+        default=20,
     )
     parser.add_argument(
         "--min-af",
@@ -336,7 +344,10 @@ if __name__ == "__main__":
         default=1e-8,
     )
     parser.add_argument(
-        "--ld-r2", help="Minimum r2 to keep when LD-pruning", type=float, default=0.1,
+        "--ld-r2",
+        help="Minimum r2 to keep when LD-pruning",
+        type=float,
+        default=0.1,
     )
     parser.add_argument(
         "--outlier-ht-path",
@@ -354,7 +365,9 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--assign-subpops", help="Runs function to assign subpops", action="store_true",
+        "--assign-subpops",
+        help="Runs function to assign subpops",
+        action="store_true",
     )
     parser.add_argument(
         "--min-prob",
@@ -393,6 +406,7 @@ if __name__ == "__main__":
 
     if args.slack_channel:
         from gnomad_qc.slack_creds import slack_token
+
         with slack_notifications(slack_token, args.slack_channel):
             main(args)
     else:
