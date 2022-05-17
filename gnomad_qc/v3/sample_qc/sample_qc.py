@@ -1443,7 +1443,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--pop_pcs",
-        help="List of PCs to use for ancestry assignment",
+        help="List of PCs to use for ancestry assignment. The values provided should be 1-based.",
         default=list(range(1, 17)),
         type=list,
     )
