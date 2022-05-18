@@ -380,6 +380,16 @@ hard_filtered_samples = VersionedTableResource(
     },
 )
 
+hard_filtered_samples_no_sex = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered_samples_no_sex.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
 # Results of running population-based metrics filtering
 # Want to still generate stratified metrics for v4 but will likely use regressed metrics
 stratified_metrics = VersionedTableResource(

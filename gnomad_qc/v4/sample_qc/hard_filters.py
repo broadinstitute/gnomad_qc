@@ -21,6 +21,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     fingerprinting_failed,
     get_sample_qc,
     hard_filtered_samples,
+    hard_filtered_samples_no_sex,
     interval_coverage,
     sex,
 )
@@ -258,6 +259,19 @@ def main(args):
             else:
                 coverage_mt = interval_coverage.mt()
 
+            if args.include_sex_filter:
+                hard_filter_path = hard_filtered_samples
+                if test:
+                    hard_filter_path = get_checkpoint_path(
+                        "test_gnomad.exomes.hard_filtered_samples"
+                    )
+            else:
+                hard_filter_path = hard_filtered_samples_no_sex
+                if test:
+                    hard_filter_path = get_checkpoint_path(
+                        "test_gnomad.exomes.hard_filtered_samples_no_sex"
+                    )
+
             compute_hard_filters(
                 coverage_mt,
                 args.include_sex_filter,
@@ -273,14 +287,7 @@ def main(args):
                 args.min_n_over_dp,
                 args.min_dp,
                 test,
-            ).write(
-                get_checkpoint_path(
-                    "test_gnomad.exomes.hard_filtered_samples"
-                )
-                if test
-                else hard_filtered_samples.path,
-                overwrite=args.overwrite,
-            )
+            ).write(hard_filter_path, overwrite=args.overwrite)
 
     finally:
         logger.info("Copying log to logging bucket...")
@@ -411,7 +418,7 @@ if __name__ == "__main__":
     hard_filter_args.add_argument(
         "--min-dp",
         type=int,
-        help="Minimum DP threshold to use for filternig.",
+        help="Minimum DP threshold to use for filtering.",
         choices=[0, 1, 10, 20, 30],
         default=10,
     )
