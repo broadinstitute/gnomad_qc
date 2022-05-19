@@ -146,7 +146,7 @@ def main(args):
         else:
             data_to_drop = {"ukb_meta", "cram", "gvcf"}
 
-        meta_ht = meta_ht.annotate(project_meta=meta_ht.project_meta.drop(**data_to_drop))
+        meta_ht = meta_ht.annotate(project_meta=meta_ht.project_meta.drop(*data_to_drop))
         meta_ht.export(f"{output_path}/metadata.tsv.bgz")
 
     if args.split_multi:
