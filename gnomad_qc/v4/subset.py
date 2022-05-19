@@ -229,7 +229,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--output-path",
-        help="Output file path for subsetted VDS/VCF/MT, do not include file.",
+        help="Output file path for subsetted VDS/VCF/MT, do not include file extension.",
         required=True,
     )
     parser.add_argument(
