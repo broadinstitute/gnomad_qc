@@ -100,7 +100,7 @@ def main(args):
             & hl.literal(UKB_BATCHES_FOR_INCLUSION).contains(
                 meta_ht.project_meta.ukb_meta.ukb_batch
             )
-            & meta_ht.project_meta.ukb_meta.ukb_withdraw
+            & ~meta_ht.project_meta.ukb_meta.ukb_withdraw
         ).select()
         subset_ht = subset_ht.union(ukb_subset_ht)
         logger.info(
