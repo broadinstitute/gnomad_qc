@@ -72,7 +72,9 @@ def main(args):
     test = args.test
     output_path = args.output_path
 
-    vds = get_gnomad_v4_vds(n_partitions=args.n_partitions, remove_hard_filtered_samples=False)
+    vds = get_gnomad_v4_vds(
+        n_partitions=args.n_partitions, remove_hard_filtered_samples=False
+    )
 
     if test:
         vds = hl.vds.variant_dataset.VariantDataset(
@@ -88,7 +90,9 @@ def main(args):
         subset_ht = meta_ht.filter(
             terra_workspaces.contains(meta_ht.project_meta.terra_workspace)
         ).select()
-        logger.info("Keeping %d samples using the list of terra workspaces.", subset_ht.count())
+        logger.info(
+            "Keeping %d samples using the list of terra workspaces.", subset_ht.count()
+        )
 
     if args.include_ukb_200k:
         ukb_subset_ht = meta_ht.filter(
@@ -96,12 +100,19 @@ def main(args):
             & hl.literal(UKB_BATCHES_FOR_INCLUSION).contains(
                 meta_ht.project_meta.ukb_meta.ukb_batch
             )
+            & meta_ht.project_meta.ukb_meta.ukb_withdraw
         ).select()
         subset_ht = subset_ht.union(ukb_subset_ht)
-        logger.info("Keeping %d samples after inclusion of the UKB 200K subset.", subset_ht.count())
+        logger.info(
+            "Keeping %d samples after inclusion of the UKB 200K subset.",
+            subset_ht.count(),
+        )
 
     vds = hl.vds.filter_samples(vds, subset_ht, remove_dead_alleles=True)
-    logger.info("Final number of samples being kept in the VDS: %d.", vds.variant_data.count_cols())
+    logger.info(
+        "Final number of samples being kept in the VDS: %d.",
+        vds.variant_data.count_cols(),
+    )
 
     if args.include_ukb_200k:
         # TODO: add option to provide an application linking file as an argument. Default is ATGU ID
@@ -119,7 +130,9 @@ def main(args):
                 )
             ),
         )
-        meta_ht = meta_ht.key_by(s=hl.coalesce(meta_ht.project_meta.ukb_meta.eid_31063, meta_ht.s))
+        meta_ht = meta_ht.key_by(
+            s=hl.coalesce(meta_ht.project_meta.ukb_meta.eid_31063, meta_ht.s)
+        )
 
     if args.vds:
         vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
@@ -128,7 +141,12 @@ def main(args):
         logger.info("Exporting metadata")
         meta_ht = meta_ht.semi_join(vds.variant_data.cols())
         # TODO: Dropping the whole ukb_meta struct, but should we keep pop and sex inference if allowed?
-        meta_ht = meta_ht.annotate(project_meta=meta_ht.project_meta.drop("ukb_meta"))
+        if args.keep_data_paths:
+            data_to_drop = {"ukb_meta"}
+        else:
+            data_to_drop = {"ukb_meta", "cram", "gvcf"}
+
+        meta_ht = meta_ht.annotate(project_meta=meta_ht.project_meta.drop(**data_to_drop))
         meta_ht.export(f"{output_path}/metadata.tsv.bgz")
 
     if args.split_multi:
@@ -202,6 +220,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--export-meta",
         help="Pull sample subset metadata and export to a .tsv.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--keep-data-paths",
+        help="Keep CRAM and gVCF paths in the project metadata export.",
         action="store_true",
     )
     parser.add_argument(
