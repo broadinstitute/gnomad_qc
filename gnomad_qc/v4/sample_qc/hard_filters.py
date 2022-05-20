@@ -207,7 +207,14 @@ def compute_hard_filters(
 
 
 def main(args):
-    hl.init(log="/gnomad_hard_filters.log", default_reference="GRCh38")
+    hl.init(
+        log="/gnomad_hard_filters.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
+    # NOTE: remove this flag when the new shuffle method is the default
+    hl._set_flags(use_new_shuffle='1')
+
     calling_interval_name = args.calling_interval_name
     calling_interval_padding = args.calling_interval_padding
     test = args.test
