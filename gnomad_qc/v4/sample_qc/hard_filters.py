@@ -212,6 +212,8 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
+    hl._set_flags(use_new_shuffle='1')
+
     calling_interval_name = args.calling_interval_name
     calling_interval_padding = args.calling_interval_padding
     test = args.test

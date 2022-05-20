@@ -63,20 +63,6 @@ def get_gnomad_v4_vds(
         meta_ht = meta_ht.filter(meta_ht.release)
         vds = hl.vds.filter_samples(vds, meta_ht)
 
-    if split:
-        vmt = vds.variant_data
-        vmt = vmt.annotate_rows(
-            n_unsplit_alleles=hl.len(vmt.alleles),
-            mixed_site=(hl.len(vmt.alleles) > 2)
-            & hl.any(lambda a: hl.is_indel(vmt.alleles[0], a), vmt.alleles[1:])
-            & hl.any(lambda a: hl.is_snp(vmt.alleles[0], a), vmt.alleles[1:]),
-        )
-        vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
-        vds = hl.vds.VariantDataset(vds.reference_data, vmt)
-
-    if test:
-        return vds
-
     # Count current number of samples in the VDS
     n_samples = vds.variant_data.count_cols()
 
@@ -150,6 +136,17 @@ def get_gnomad_v4_vds(
     logger.info(
         "Total number of UKBB samples removed from the VDS: %d", n_samples_removed
     )
+
+    if split:
+        vmt = vds.variant_data
+        vmt = vmt.annotate_rows(
+            n_unsplit_alleles=hl.len(vmt.alleles),
+            mixed_site=(hl.len(vmt.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(vmt.alleles[0], a), vmt.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(vmt.alleles[0], a), vmt.alleles[1:]),
+        )
+        vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
+        vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
     return vds
 
