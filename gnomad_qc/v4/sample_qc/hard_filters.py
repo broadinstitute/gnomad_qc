@@ -212,6 +212,7 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
+    # NOTE: remove this flag when the new shuffle method is the default
     hl._set_flags(use_new_shuffle='1')
 
     calling_interval_name = args.calling_interval_name
