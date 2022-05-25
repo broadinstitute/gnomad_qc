@@ -55,7 +55,7 @@ def get_gnomad_v4_vds(
     # Count current number of samples in the VDS
     n_samples = vds.variant_data.count_cols()
 
-    # Remove 76 withdrawn UKB samples (samples with withdrawn consents for application 26041 on 08/09/2021 and application 31063 on 02/22/2022)
+    # Remove 75 withdrawn UKB samples (samples with withdrawn consents for application 31063 on 02/22/2022)
     ukb_application_map_ht = ukb_application_map.ht()
     withdrawn_ukb_samples = ukb_application_map_ht.filter(
         ukb_application_map_ht.withdraw
@@ -168,70 +168,6 @@ ukb_array_sample_map = TableResource(f"{_ukb_root_path()}/array_sample_map_freez
 ukb_application_map = TableResource(
     f"{_ukb_root_path()}/ukbb_application_id_mappings.ht"
 )
-
-
-def generate_ukb_application_map() -> None:
-    """
-    Generate the mapping file of application IDs 26041, 31063, and 48511, and add in annotatation 'withdraw', which is set to True if the UKB sample needs to be withdrawn.
-
-    :return: None
-    """
-    # The array sample map has the most complete list of 's' and 'eid_26041' for UKB samples, so use this file rather than the UKB 'meta.ht' (which already has some samples withdrawn from it)
-    ukb_array_sample_map_ht = ukb_array_sample_map.ht()
-    ukb_array_sample_map_ht = ukb_array_sample_map_ht.select(
-        eid_26041=ukb_array_sample_map_ht.ukbb_app_26041_id
-    )
-
-    # Add in bridge mapping from eid_26041 to eid_31063
-    ukb_map = ukb_array_sample_map.key_by("eid_26041")
-    mapping_ht_26041_31063 = hl.import_table(
-        "gs://gnomad/v4.0/ukbb/bridge_26041_31063.csv", delimiter=","
-    ).key_by("eid_26041")
-    ukb_map_ht = ukb_map_ht.join(mapping_ht_26041_31063, how="outer")
-
-    # Add in bridge mapping from eid_31063 to eid_48511
-    ukb_map_ht = ukb_map_ht.key_by("eid_31063")
-    mapping_ht_48511_31063 = hl.import_table(
-        "gs://gnomad/v4.0/ukbb/bridge_48511_31063", delimiter=","
-    ).key_by("eid_31063")
-    ukb_map_ht = ukb_map_ht.join(mapping_ht_48511_31063, how="outer")
-
-    # Annotate UKB samples that need to be withdrawn (these samples will be removed when loading the VDS with the 'get_gnomad_v4_vds' function)
-    withdrawn_31063_samples = hl.literal(
-        ukb_excluded.versions["31063_20220222"].ht().eid_31063.collect()
-    )
-    withdrawn_26041_samples = hl.literal(
-        ukb_excluded.versions["26041_20210809"].ht().eid_26041.collect()
-    )
-    ukb_map_ht = ukb_map_ht.annotate(
-        withdraw=(withdrawn_31063_samples.contains(ukb_map_ht.eid_31063))
-        | (withdrawn_26041_samples.contains(ukb_map.eid_26041))
-    )
-    ukb_map = ukb_map.key_by("s")
-
-    total_samples_in_mapping = ukb_map.count()
-    total_eid_26041 = ukb_map.aggregate(
-        hl.agg.count_where(~hl.is_missing(ukb_map.eid_26041))
-    )
-    total_eid_31063 = ukb_map.aggregate(
-        hl.agg.count_where(~hl.is_missing(ukb_map.eid_31063))
-    )
-    total_eid_48511 = ukb_map.aggregate(
-        hl.agg.count_where(~hl.is_missing(ukb_map.eid_48511))
-    )
-
-    logger.info(
-        """Found %d UKB samples in mapping file\n
-            %d have an eid_26041\n 
-            %d have an eid_31063\n
-            %d have an eid_48511\n""",
-        total_samples_in_mapping,
-        total_eid_26041,
-        total_eid_31063,
-        total_eid_48511,
-    )
-
-    ukb_map.write(ukb_application_map.path, overwrite=True)
 
 
 # Samples known to be on the pharma partners' remove lists.
