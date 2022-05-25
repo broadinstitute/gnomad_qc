@@ -206,8 +206,8 @@ ukb_dups_idx_path = f"{_ukb_root_path()}/dup_remove_idx_7.tsv"
 # Final list of UKB samples to remove (duplicates that were removed will have their original index appended to the sample name)
 all_ukb_samples_to_remove = f"{_ukb_root_path()}/all_ukbb_samples_to_remove.txt"
 
-# UKBB f-stat sites Table with UKBB allele frequencies
-ukbb_f_stat = TableResource(f"{_ukbb_root_path()}/f_stat_sites.ht")
+# UKB f-stat sites Table with UKB allele frequencies
+ukb_f_stat = TableResource(f"{_ukb_root_path()}/f_stat_sites.ht")
 
 def qc_temp_prefix(version: str = CURRENT_VERSION) -> str:
     """
