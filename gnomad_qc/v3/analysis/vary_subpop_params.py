@@ -147,6 +147,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--overwrite", help="Overwrites existing files", action="store_true"
     )
+    parser.add_argument(
+        "--pop",
+        help="Population to test (need to first run subpop_analysis.py with this `pop`",
+        type=str,
+    )
 
     parser.add_argument(
         "--min-prob-list",
