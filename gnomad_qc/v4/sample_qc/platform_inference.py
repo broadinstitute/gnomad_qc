@@ -12,10 +12,7 @@ from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import (
-    calling_intervals,
     get_checkpoint_path,
-    get_gnomad_v4_vds,
-    gnomad_v4_testset,
     gnomad_v4_testset_meta,
     get_logging_path,
 )
@@ -34,42 +31,11 @@ logger.setLevel(logging.INFO)
 
 
 def main(args):
-    hl.init(log="/platform_pca.log", default_reference="GRCh38")
+    hl.init(log="/platform_pca.log", default_reference="GRCh38", tmp_dir='gs://gnomad-tmp-4day')
     calling_interval_name = args.calling_interval_name
     calling_interval_padding = args.calling_interval_padding
 
     try:
-        if args.compute_coverage:
-            if args.test:
-                logger.info("Loading test VDS...")
-                vds = gnomad_v4_testset.vds()
-            else:
-                logger.info("Loading full v4 VDS...")
-                vds = get_gnomad_v4_vds(remove_hard_filtered_samples=False)
-
-            logger.info(
-                "Loading calling intervals: %s with padding of %d...",
-                calling_interval_name,
-                calling_interval_padding,
-            )
-            ht = calling_intervals(
-                calling_interval_name, calling_interval_padding
-            ).ht()
-            mt = hl.vds.interval_coverage(vds, intervals=ht)
-            mt = mt.annotate_globals(
-                calling_interval_name=calling_interval_name,
-                calling_interval_padding=calling_interval_padding,
-            )
-            mt.write(
-                get_checkpoint_path(
-                    f"test_interval_coverage.{calling_interval_name}.pad{calling_interval_padding}",
-                    mt=True,
-                )
-                if args.test
-                else interval_coverage.path,
-                overwrite=args.overwrite,
-            )
-
         if args.run_platform_pca:
             logger.info("Running platform PCA...")
             if args.test:
@@ -160,8 +126,9 @@ def main(args):
                     raise FileNotFoundError(
                         f"The test platform PCA Table does not exist for calling interval "
                         f"{calling_interval_name} and interval padding {calling_interval_padding}. "
-                        f"Please run --compute-coverage and --run-platform-pca with the --test argument and needed "
-                        f"--calling-interval-name/--calling-interval-padding arguments."
+                        f"Please run hard_filters.py --compute-coverage and platform_inference.py --run-platform-pca "
+                        f"with the --test argument and needed --calling-interval-name/--calling-interval-padding "
+                        f"arguments."
                     )
             else:
                 scores_ht = hl.read_table(platform_pca_scores.ht())
@@ -208,11 +175,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test",
         help="Use the v4 test dataset instead of the full dataset.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--compute-coverage",
-        help="Compute per interval coverage metrics using Hail's vds.interval_coverage method.",
         action="store_true",
     )
     parser.add_argument(

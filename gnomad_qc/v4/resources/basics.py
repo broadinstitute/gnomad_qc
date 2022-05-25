@@ -18,39 +18,51 @@ logger.setLevel(logging.INFO)
 
 # Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4.0/<module>/<exomes_or_genomes>/
 def get_gnomad_v4_vds(
-    split=False,
+    split: bool = False,
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
+    test: bool = False,
+    n_partitions: int = None,
 ) -> hl.vds.VariantDataset:
     """
     Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
 
-    :param split: Perform split on MT - Note: this will perform a split on the MT rather than grab an already split MT
+    :param split: Perform split on VDS - Note: this will perform a split on the VDS rather than grab an already split VDS
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after sample QC)
-    :param release_only: Whether to filter the MT to only samples available for release (can only be used if metadata is present)
+    :param release_only: Whether to filter the VDS to only samples available for release (can only be used if metadata is present)
+    :param test: Whether to use the test VDS instead of the full v4 VDS
+    :param n_partitions: Optional argument to read the VDS with a specific number of partitions
     :return: gnomAD v4 dataset with chosen annotations and filters
     """
-    vds = gnomad_v4_genotypes.vds()
+    if test:
+        gnomad_v4_resource = gnomad_v4_testset
+    else:
+        gnomad_v4_resource = gnomad_v4_genotypes
+
+    if n_partitions:
+        vds = hl.vds.read_vds(gnomad_v4_resource.path, n_partitions=n_partitions)
+    else:
+        vds = gnomad_v4_resource.vds()
+
     if remove_hard_filtered_samples:
-        vds = hl.vds.filter_samples(
-            vds, hard_filtered_samples.versions[CURRENT_VERSION].ht(), keep=False
-        )
+        if test:
+            meta_ht = gnomad_v4_testset_meta.ht()
+            meta_ht = meta_ht.filter(
+                hl.len(meta_ht.rand_sampling_meta.hard_filters_no_sex) == 0
+            )
+            vds = hl.vds.filter_samples(vds, meta_ht)
+        else:
+            vds = hl.vds.filter_samples(
+                vds, hard_filtered_samples.versions[CURRENT_VERSION].ht(), keep=False
+            )
 
     if release_only:
-        meta_ht = meta.versions[CURRENT_VERSION].ht()
+        if test:
+            meta_ht = gnomad_v4_testset_meta.ht()
+        else:
+            meta_ht = meta.versions[CURRENT_VERSION].ht()
         meta_ht = meta_ht.filter(meta_ht.release)
         vds = hl.vds.filter_samples(vds, meta_ht)
-
-    if split:
-        vmt = vds.variant_data
-        vmt = vmt.annotate_rows(
-            n_unsplit_alleles=hl.len(vmt.alleles),
-            mixed_site=(hl.len(vmt.alleles) > 2)
-            & hl.any(lambda a: hl.is_indel(vmt.alleles[0], a), vmt.alleles[1:])
-            & hl.any(lambda a: hl.is_snp(vmt.alleles[0], a), vmt.alleles[1:]),
-        )
-        vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
-        vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
     # Count current number of samples in the VDS
     n_samples = vds.variant_data.count_cols()
@@ -119,11 +131,22 @@ def get_gnomad_v4_vds(
         "Total number of UKB samples removed from the VDS: %d", n_samples_removed
     )
 
+    if split:
+        vmt = vds.variant_data
+        vmt = vmt.annotate_rows(
+            n_unsplit_alleles=hl.len(vmt.alleles),
+            mixed_site=(hl.len(vmt.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(vmt.alleles[0], a), vmt.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(vmt.alleles[0], a), vmt.alleles[1:]),
+        )
+        vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
+        vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+
     return vds
 
 
 _gnomad_v4_genotypes = {
-    "4.0": VariantDatasetResource("gs://gnomad/v4.0/raw/exomes/gnomad_v4.0.vds"),
+    "4.0": VariantDatasetResource("gs://gnomad/v4.0/raw/exomes/gnomad_v4.0.vds")
 }
 
 gnomad_v4_genotypes = VersionedVariantDatasetResource(
@@ -183,6 +206,8 @@ ukb_dups_idx_path = f"{_ukb_root_path()}/dup_remove_idx_7.tsv"
 # Final list of UKB samples to remove (duplicates that were removed will have their original index appended to the sample name)
 all_ukb_samples_to_remove = f"{_ukb_root_path()}/all_ukbb_samples_to_remove.txt"
 
+# UKBB f-stat sites Table with UKBB allele frequencies
+ukbb_f_stat = TableResource(f"{_ukbb_root_path()}/f_stat_sites.ht")
 
 def qc_temp_prefix(version: str = CURRENT_VERSION) -> str:
     """
@@ -229,7 +254,7 @@ def add_meta(
     :param version: Version of metadata ht to use for annotations
     :return: MatrixTable with metadata added in a 'meta' column
     """
-    mt = mt.annotate_cols(meta_name=meta.versions[version].ht()[mt.col_key])
+    mt = mt.annotate_cols(**{meta_name: meta.versions[version].ht()[mt.col_key]})
 
     return mt
 
