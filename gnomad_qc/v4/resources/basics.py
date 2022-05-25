@@ -187,14 +187,14 @@ def generate_ukb_application_map() -> None:
     mapping_ht_26041_31063 = hl.import_table(
         "gs://gnomad/v4.0/ukbb/bridge_26041_31063.csv", delimiter=","
     ).key_by("eid_26041")
-    ukb_map = ukb_map.join(mapping_ht_26041_31063, how="outer")
+    ukb_map_ht = ukb_map_ht.join(mapping_ht_26041_31063, how="outer")
 
     # Add in bridge mapping from eid_31063 to eid_48511
-    ukb_map = ukb_map.key_by("eid_31063")
+    ukb_map_ht = ukb_map_ht.key_by("eid_31063")
     mapping_ht_48511_31063 = hl.import_table(
         "gs://gnomad/v4.0/ukbb/bridge_48511_31063", delimiter=","
     ).key_by("eid_31063")
-    ukb_map = ukb_map.join(mapping_ht_48511_31063, how="outer")
+    ukb_map_ht = ukb_map_ht.join(mapping_ht_48511_31063, how="outer")
 
     # Annotate UKB samples that need to be withdrawn (these samples will be removed when loading the VDS with the 'get_gnomad_v4_vds' function)
     withdrawn_31063_samples = hl.literal(
@@ -203,8 +203,8 @@ def generate_ukb_application_map() -> None:
     withdrawn_26041_samples = hl.literal(
         ukb_excluded.versions["26041_20210809"].ht().eid_26041.collect()
     )
-    ukb_map = ukb_map.annotate(
-        withdraw=(withdrawn_31063_samples.contains(ukb_map.eid_31063))
+    ukb_map_ht = ukb_map_ht.annotate(
+        withdraw=(withdrawn_31063_samples.contains(ukb_map_ht.eid_31063))
         | (withdrawn_26041_samples.contains(ukb_map.eid_26041))
     )
     ukb_map = ukb_map.key_by("s")
