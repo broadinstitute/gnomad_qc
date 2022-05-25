@@ -1,10 +1,14 @@
+import argparse
 import hail as hl
 import logging
 import pandas as pd
 
-from gnomad_qc.v3.resources.basics import get_checkpoint_path
+from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.sample_qc.sample_qc import assign_pops
+
+from gnomad.utils.slack import slack_notifications
+
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -27,8 +31,10 @@ def main(args):  # noqa: D103
 
     try:
         # Run assign pops for each test combination of values in min_prob_list and max_prop_mislabeled_list
-        for min_prob in min_prob_list:
-            for max_proportion_mislabeled_training_samples in max_prop_mislabeled_list:
+        for min_prob in args.min_prob_list:
+            for (
+                max_proportion_mislabeled_training_samples
+            ) in args.max_prop_mislabeled_list:
                 logger.info(
                     "Running RF for min_prob: %s\nand max_proportion_mislabeled: %s ",
                     min_prob,
@@ -38,8 +44,8 @@ def main(args):  # noqa: D103
                     min_prob=min_prob,
                     max_proportion_mislabeled_training_samples=max_proportion_mislabeled_training_samples,
                     include_unreleasable_samples=False,
-                    pcs=pcs,
-                    withhold_prop=withhold_prop,
+                    pcs=args.pcs,
+                    withhold_prop=args.withhold_prop,
                     pop=pop,
                     high_quality=high_quality,
                     missing_label="Other",
