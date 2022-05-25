@@ -13,7 +13,7 @@ from gnomad_qc.v4.resources.basics import (
     get_checkpoint_path,
     get_gnomad_v4_vds,
     get_logging_path,
-    ukbb_f_stat,
+    ukb_f_stat,
 )
 from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_ac,
@@ -388,7 +388,7 @@ def main(args):
                 # (AF >0.001) within the UK Biobank 200K Regeneron exome dataset and it includes the UK Biobank 200K
                 # allele frequency information that can be used in the hl.impute_sex f-stat computation allele frequency
                 # cutoff (args.min-af)
-                freq_ht = ukbb_f_stat.ht()
+                freq_ht = ukb_f_stat.ht()
             else:
                 freq_ht = (
                     hl.read_table(get_checkpoint_path("test_ac"))
