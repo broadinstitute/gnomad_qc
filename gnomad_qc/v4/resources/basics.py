@@ -150,7 +150,9 @@ def _ukb_root_path() -> str:
     return "gs://gnomad/v4.0/ukbb"
 
 
-# List of samples to exclude from QC due to withdrawn consents for application 26041 on 08/09/2021 and application 31063 on 02/22/2022, originally imported at CSVs and keyed by their respective eids.
+# List of samples to exclude from QC due to withdrawn consents.
+# Application 26041 is from the 08/09/2021 list and application 31063 is from the 02/22/2022 list.
+# These were originally imported as CSVs and then keyed by their respective eids.
 ukb_excluded = VersionedTableResource(
     default_version="31063_20220222",
     versions={
