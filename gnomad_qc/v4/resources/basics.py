@@ -150,7 +150,7 @@ def _ukb_root_path() -> str:
     return "gs://gnomad/v4.0/ukbb"
 
 
-# List of samples to exclude from QC due to withdrawn consents for application 26041 on 08/09/2021 and application 31063 on 02/22/2022, originally imported at csvs and keyed by their respective eids.
+# List of samples to exclude from QC due to withdrawn consents for application 26041 on 08/09/2021 and application 31063 on 02/22/2022, originally imported at CSVs and keyed by their respective eids.
 ukb_excluded = VersionedTableResource(
     default_version="31063_20220222",
     versions={
@@ -177,9 +177,9 @@ def generate_ukb_application_map() -> None:
     :return: None
     """
     # The array sample map has the most complete list of 's' and 'eid_26041' for UKB samples, so use this file rather than the UKB 'meta.ht' (which already has some samples withdrawn from it)
-    ukb_array_sample_map = ukb_array_sample_map.ht()
-    ukb_array_sample_map = ukb_array_sample_map.select(
-        eid_26041=ukb_array_sample_map.ukbb_app_26041_id
+    ukb_array_sample_map_ht = ukb_array_sample_map.ht()
+    ukb_array_sample_map_ht = ukb_array_sample_map_ht.select(
+        eid_26041=ukb_array_sample_map_ht.ukbb_app_26041_id
     )
 
     # Add in bridge mapping from eid_26041 to eid_31063
