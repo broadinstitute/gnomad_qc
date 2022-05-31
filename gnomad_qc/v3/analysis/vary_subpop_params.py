@@ -122,7 +122,7 @@ def main(args):  # noqa: D103
 
         # Write results
         file_path = get_checkpoint_path(
-            "subpop_analysis/parameter_testing_{}{}{}.ht".format(
+            "subpop_analysis/parameter_testing_{}{}{}".format(
                 pop,
                 "_with_unreleasable_samples" if include_unreleasable_samples else "",
                 ".high_quality" if high_quality else "",
