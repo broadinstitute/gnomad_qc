@@ -195,7 +195,6 @@ def main(args):  # noqa: D103
                 if args.test
                 else filtered_subpop_qc_mt(pop),
                 overwrite=args.overwrite,
-                _read_if_exists=not args.overwrite,
             )
 
         if args.run_subpop_pca:
