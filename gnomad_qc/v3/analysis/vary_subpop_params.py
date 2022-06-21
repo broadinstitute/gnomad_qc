@@ -98,9 +98,9 @@ def main(args):  # noqa: D103
                         "min_prob": min_prob,
                         "max_proportion_mislabeled_training_samples": max_proportion_mislabeled_training_samples,
                         "percent_correct": correct * 100,
-                        "TP": TPs,
-                        "FP": FPs,
-                        "FN": FNs,
+                        "TP": tp,
+                        "FP": fp,
+                        "FN": fn,
                         "error_rate": hl.eval(ht.assign_pops_from_pc_params.error_rate),
                     }
                 )
