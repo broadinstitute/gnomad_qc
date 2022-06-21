@@ -89,9 +89,9 @@ def main(args):  # noqa: D103
                     .default(hl.missing(hl.tstr))
                 )
 
-                TPs = ht.aggregate(hl.agg.count_where(ht.result_status == "TP"))
-                FPs = ht.aggregate(hl.agg.count_where(ht.result_status == "FP"))
-                FNs = ht.aggregate(hl.agg.count_where(ht.result_status == "FN"))
+                tp = ht.aggregate(hl.agg.count_where(ht.result_status == "TP"))
+                fp = ht.aggregate(hl.agg.count_where(ht.result_status == "FP"))
+                fn = ht.aggregate(hl.agg.count_where(ht.result_status == "FN"))
 
                 merged.append(
                     {
