@@ -150,7 +150,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--pop",
-        help="Population to test (need to first run subpop_analysis.py with this `pop`",
+        help="Population to test (need to first run subpop_analysis.py with this `pop`)",
         type=str,
     )
 
