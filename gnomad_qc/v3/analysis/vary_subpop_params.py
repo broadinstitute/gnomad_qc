@@ -201,7 +201,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--high-quality",
-        help="Filter to only high-quality samples when generating the PCA data",
+        help="Filter to only high-quality samples when computing the PCA",
         action="store_true",
     )
 
