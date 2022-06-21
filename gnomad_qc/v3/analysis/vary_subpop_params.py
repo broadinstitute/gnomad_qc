@@ -1,13 +1,14 @@
 import argparse
-import hail as hl
 import logging
+
+import hail as hl
 import pandas as pd
+
+from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.sample_qc.sample_qc import assign_pops
-
-from gnomad.utils.slack import slack_notifications
 
 
 logging.basicConfig(
