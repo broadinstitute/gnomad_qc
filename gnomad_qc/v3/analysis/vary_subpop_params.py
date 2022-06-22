@@ -4,11 +4,12 @@ import logging
 import hail as hl
 import pandas as pd
 
+from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
 from gnomad_qc.v3.resources.meta import meta
-from gnomad_qc.v3.sample_qc.sample_qc import assign_pops
+from gnomad_qc.v3.sample_qc.sample_qc import ancestry_pca_scores, assign_pops
 
 
 logging.basicConfig(
@@ -25,6 +26,13 @@ def main(args):  # noqa: D103
     high_quality = args.high_quality
 
     try:
+        if not file_exists(
+            ancestry_pca_scores(include_unreleasable_samples, high_quality, pop).path
+        ):
+            logger.warning(
+                "PCs have not yet been computed for the supplied parameters. Please run subpop_analysis.py with the desired parameters for `include_unreleasable_samples`, `high_quality`, and `pop`"
+            )
+
         # Read in metadata
         meta_ht = meta.ht()
 
