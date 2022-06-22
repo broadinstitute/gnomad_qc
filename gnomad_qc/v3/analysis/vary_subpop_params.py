@@ -18,12 +18,6 @@ logging.basicConfig(
 logger = logging.getLogger("subpop_analysis")
 logger.setLevel(logging.INFO)
 
-# Read in metadata
-meta_ht = meta.ht().drop("high_quality")
-
-# Initiate lists for storing results
-merged = []
-
 
 def main(args):  # noqa: D103
     pop = args.pop
@@ -31,6 +25,12 @@ def main(args):  # noqa: D103
     high_quality = args.high_quality
 
     try:
+        # Read in metadata
+        meta_ht = meta.ht()
+
+        # Initiate lists for storing results
+        merged = []
+
         # Run assign pops for each test combination of values in min_prob_list and max_prop_mislabeled_list
         for min_prob in args.min_prob_list:
             for (
@@ -190,7 +190,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--withhold-prop",
-        help="Proportion of training pop samples to withhold from training, all samples will be kept if this flag is not used. NOTE: 20 percent of the training samples are used for evaluation, withholding samples will put aside a certain proportion of samples before splitting the remainder into training and evaluation",
+        help="Proportion of training pop samples to withhold from training, all samples will be kept if this flag is not used. NOTE: 20 percent of the training samples are used for evaluation, withholding samples will put aside a certain proportion of samples before splitting the remainder into training and evaluation. Setting a value for `withhold-prop` is recommended if values are supplied to `max-prop-mislabeled-list` in order to produce a reasonable PR curve when using iterations.",
         type=float,
         default=None,
     )
