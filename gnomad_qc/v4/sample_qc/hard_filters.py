@@ -71,6 +71,8 @@ def compute_hard_filters(
     max_contamination: float = 0.05,
     max_chimera: float = 0.05,
     test: bool = False,
+    coverage_mt: hl.MatrixTable = None,
+    cov_threshold: int = None,
 ) -> hl.Table:
     """
     Apply hard filters to samples and return a Table with the filtered samples and the reason for filtering.
@@ -91,6 +93,8 @@ def compute_hard_filters(
     :param max_chimera: Filtering threshold to use for maximum chimera (this is a proportion not a percent,
         e.g. 5% == 0.05, %5 != 5).
     :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full dataset.
+    :param coverage_mt: MatrixTable containing the per interval per sample coverage statistics.
+    :param cov_threshold: Filtering threshold to use for chr20 coverage.
     :return: Table of hard filtered samples.
     """
     ht = get_gnomad_v4_vds(
@@ -98,6 +102,7 @@ def compute_hard_filters(
     ).variant_data.cols()
     ht = ht.annotate_globals(
         hard_filter_cutoffs=hl.struct(
+            chr_20_dp_threshold=cov_threshold,
             max_n_singleton=max_n_singleton,
             max_r_het_hom_var=max_r_het_hom_var,
             min_bases_over_dp_1=min_bases_over_dp_1,
@@ -146,6 +151,21 @@ def compute_hard_filters(
 
     hard_filters["contamination"] = bam_metrics_struct.contam_rate > max_contamination
     hard_filters["chimera"] = bam_metrics_struct.chimeras_rate > max_chimera
+
+    # Flag low-coverage samples using mean coverage on chromosome 20
+    if cov_threshold is not None:
+        if coverage_mt is None:
+            raise ValueError(
+                "If a chromosome 20 coverage threshold is supplied, a coverage MatrixTable must be supplied too."
+            )
+        coverage_mt = coverage_mt.filter_rows(
+            coverage_mt.interval.start.contig == "chr20"
+        )
+        coverage_ht = coverage_mt.select_cols(
+            chr20_mean_dp=hl.agg.sum(coverage_mt.sum_dp)
+            / hl.agg.sum(coverage_mt.interval_size)
+        ).cols()
+        hard_filters["low_coverage"] = coverage_ht[ht.key].chr20_mean_dp < cov_threshold
 
     if include_sex_filter:
         sex_struct = sex.ht()[ht.key]
@@ -215,6 +235,17 @@ def main(args):
             )
 
         if args.compute_hard_filters:
+            # TODO: Determine cutoffs by visual inspection of the metrics, and modify defaults to match
+            if test:
+                coverage_mt = hl.read_matrix_table(
+                    get_checkpoint_path(
+                        f"test_interval_coverage.{calling_interval_name}.pad{calling_interval_padding}",
+                        mt=True,
+                    )
+                )
+            else:
+                coverage_mt = interval_coverage.mt()
+
             if args.include_sex_filter:
                 hard_filter_path = hard_filtered_samples
                 if test:
@@ -236,6 +267,8 @@ def main(args):
                 args.max_contamination,
                 args.max_chimera,
                 test,
+                coverage_mt,
+                args.min_cov,
             ).write(hard_filter_path, overwrite=args.overwrite)
 
     finally:
@@ -332,6 +365,12 @@ if __name__ == "__main__":
             "Filtering threshold to use for maximum chimera (this is a proportion not a percent, "
             "e.g. 5% == 0.05, %5 != 5). Default is 0.05."
         ),
+    )
+    hard_filter_args.add_argument(
+        "--min-cov",
+        help="Minimum chromosome 20 coverage for inclusion when computing hard-filters.",
+        default=None,
+        type=int,
     )
 
     args = parser.parse_args()
