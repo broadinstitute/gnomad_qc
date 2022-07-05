@@ -67,7 +67,7 @@ def compute_hard_filters(
     include_sex_filter: bool = False,
     max_n_singleton: float = 5000,
     max_r_het_hom_var: float = 10,
-    min_bases_over_dp_1: float = 5e7,
+    min_bases_dp_over_1: float = 5e7,
     max_contamination: float = 0.05,
     max_chimera: float = 0.05,
     test: bool = False,
@@ -87,7 +87,7 @@ def compute_hard_filters(
     :param include_sex_filter: If sex inference should be used in filtering.
     :param max_n_singleton: Filtering threshold to use for the maximum number of singletons.
     :param max_r_het_hom_var: Filtering threshold to use for the maximum ratio of heterozygotes to alternate homozygotes.
-    :param min_bases_over_dp_1: Filtering threshold to use for the minimum number of bases with a DP over one.
+    :param min_bases_dp_over_1: Filtering threshold to use for the minimum number of bases with a DP over one.
     :param max_contamination: Filtering threshold to use for maximum contamination (this is a proportion not a
         percecnt, e.g. 5% == 0.05, %5 != 5).
     :param max_chimera: Filtering threshold to use for maximum chimera (this is a proportion not a percent,
@@ -102,14 +102,20 @@ def compute_hard_filters(
     ).variant_data.cols()
     ht = ht.annotate_globals(
         hard_filter_cutoffs=hl.struct(
-            chr_20_dp_threshold=cov_threshold,
             max_n_singleton=max_n_singleton,
             max_r_het_hom_var=max_r_het_hom_var,
-            min_bases_over_dp_1=min_bases_over_dp_1,
+            min_bases_dp_over_1=min_bases_dp_over_1,
             max_contamination=max_contamination,
             max_chimera=max_chimera,
         ),
     )
+    if cov_threshold is not None:
+        ht = ht.annotate_globals(
+            hard_filter_cutoffs=ht.hard_filter_cutoffs.annotate(
+                chr_20_dp_threshold=cov_threshold
+            )
+        )
+
     hard_filters = dict()
 
     # Flag samples failing fingerprinting
@@ -132,7 +138,7 @@ def compute_hard_filters(
     hard_filters["sample_qc_metrics"] = (
         (bi_allelic_qc_struct.n_singleton > max_n_singleton)
         | (bi_allelic_qc_struct.r_het_hom_var > max_r_het_hom_var)
-        | (bi_allelic_qc_struct.bases_over_dp_1 < min_bases_over_dp_1)
+        | (bi_allelic_qc_struct.bases_dp_over_1 < min_bases_dp_over_1)
     )
 
     # Flag samples that fail bam metric thresholds
@@ -263,7 +269,7 @@ def main(args):
                 args.include_sex_filter,
                 args.max_n_singleton,
                 args.max_r_het_hom_var,
-                args.min_bases_over_dp_1,
+                args.min_bases_dp_over_1,
                 args.max_contamination,
                 args.max_chimera,
                 test,
@@ -371,6 +377,9 @@ if __name__ == "__main__":
         help="Minimum chromosome 20 coverage for inclusion when computing hard-filters.",
         default=None,
         type=int,
+    )
+    parser.add_argument(
+        "--slack-channel", help="Slack channel to post results and notifications to."
     )
 
     args = parser.parse_args()
