@@ -64,7 +64,6 @@ def compute_sample_qc(n_partitions: int = 500, test: bool = False) -> hl.Table:
 
 
 def compute_hard_filters(
-    coverage_mt: hl.MatrixTable,
     include_sex_filter: bool = False,
     max_n_singleton: float = 5000,
     max_r_het_hom_var: float = 10,
@@ -83,7 +82,6 @@ def compute_hard_filters(
         The defaults used in this function are callset specific, these hardfilter cutoffs will need to be re-examined
         for each callset
 
-    :param coverage_mt: MatrixTable containing the per interval per sample coverage statistics.
     :param include_sex_filter: If sex inference should be used in filtering.
     :param max_n_singleton: Filtering threshold to use for the maximum number of singletons.
     :param max_r_het_hom_var: Filtering threshold to use for the maximum ratio of heterozygotes to alternate homozygotes.
@@ -217,17 +215,6 @@ def main(args):
             )
 
         if args.compute_hard_filters:
-            # TODO: Determine cutoffs by visual inspection of the metrics, and modify defaults to match
-            if test:
-                coverage_mt = hl.read_matrix_table(
-                    get_checkpoint_path(
-                        f"test_interval_coverage.{calling_interval_name}.pad{calling_interval_padding}",
-                        mt=True,
-                    )
-                )
-            else:
-                coverage_mt = interval_coverage.mt()
-
             if args.include_sex_filter:
                 hard_filter_path = hard_filtered_samples
                 if test:
@@ -242,7 +229,6 @@ def main(args):
                     )
 
             compute_hard_filters(
-                coverage_mt,
                 args.include_sex_filter,
                 args.max_n_singleton,
                 args.max_r_het_hom_var,
