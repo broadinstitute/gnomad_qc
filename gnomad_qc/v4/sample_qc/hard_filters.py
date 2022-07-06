@@ -383,7 +383,6 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    main(args)
 
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
