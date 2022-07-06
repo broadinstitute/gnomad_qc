@@ -60,11 +60,11 @@ def main(args):
             )
             if args.test:
                 ht = gnomad_v4_testset_meta.ht()
-                ht = ht.filter(hl.len(ht.rand_sampling_meta.hard_filters_no_sex) == 0)
+                ht = ht.filter(hl.len(ht.rand_sampling_meta.hard_filters_no_sex) != 0)
             else:
                 ht = hard_filtered_samples_no_sex.ht()
 
-            mt = mt.filter_cols(hl.is_defined(ht[mt.col_key]))
+            mt = mt.filter_cols(hl.is_missing(ht[mt.col_key]))
 
             logger.info("Filter interval coverage MatrixTable to autosomes...")
             mt = mt.filter_rows(mt.interval.start.in_autosome())
@@ -131,7 +131,7 @@ def main(args):
                         f"arguments."
                     )
             else:
-                scores_ht = hl.read_table(platform_pca_scores.ht())
+                scores_ht = platform_pca_scores.ht()
 
             platform_ht = assign_platform_from_pcs(
                 scores_ht,
