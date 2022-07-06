@@ -265,7 +265,7 @@ def main(args):
                         "test_gnomad.exomes.hard_filtered_samples_no_sex"
                     )
 
-            compute_hard_filters(
+            ht = compute_hard_filters(
                 args.include_sex_filter,
                 args.max_n_singleton,
                 args.max_r_het_hom_var,
@@ -275,8 +275,9 @@ def main(args):
                 test,
                 coverage_mt,
                 args.min_cov,
-            ).write(hard_filter_path, overwrite=args.overwrite)
-
+            )
+            ht = ht.checkpoint(hard_filter_path, overwrite=args.overwrite)
+            ht.group_by('hard_filters').aggregate(n=hl.agg.count()).show(20)
     finally:
         logger.info("Copying log to logging bucket...")
         hl.copy_log(get_logging_path("hard_filters"))
