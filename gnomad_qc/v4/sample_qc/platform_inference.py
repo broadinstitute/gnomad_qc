@@ -17,7 +17,7 @@ from gnomad_qc.v4.resources.basics import (
     get_logging_path,
 )
 from gnomad_qc.v4.resources.sample_qc import (
-    hard_filtered_samples,
+    hard_filtered_samples_no_sex,
     interval_coverage,
     platform,
     platform_pca_eigenvalues,
@@ -62,7 +62,7 @@ def main(args):
                 ht = gnomad_v4_testset_meta.ht()
                 ht = ht.filter(hl.len(ht.rand_sampling_meta.hard_filters_no_sex) == 0)
             else:
-                ht = hard_filtered_samples.ht()
+                ht = hard_filtered_samples_no_sex.ht()
 
             mt = mt.filter_cols(hl.is_defined(ht[mt.col_key]))
 
