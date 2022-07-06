@@ -31,9 +31,13 @@ logger.setLevel(logging.INFO)
 
 
 def main(args):
-    hl.init(log="/platform_pca.log", default_reference="GRCh38", tmp_dir='gs://gnomad-tmp-4day')
+    hl.init(
+        log="/platform_pca.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
     # NOTE: remove this flag when the new shuffle method is the default
-    hl._set_flags(use_new_shuffle='1')
+    hl._set_flags(use_new_shuffle="1")
 
     calling_interval_name = args.calling_interval_name
     calling_interval_padding = args.calling_interval_padding
