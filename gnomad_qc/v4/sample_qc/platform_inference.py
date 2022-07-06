@@ -17,7 +17,7 @@ from gnomad_qc.v4.resources.basics import (
     get_logging_path,
 )
 from gnomad_qc.v4.resources.sample_qc import (
-    hard_filtered_samples,
+    hard_filtered_samples_no_sex,
     interval_coverage,
     platform,
     platform_pca_eigenvalues,
@@ -31,7 +31,14 @@ logger.setLevel(logging.INFO)
 
 
 def main(args):
-    hl.init(log="/platform_pca.log", default_reference="GRCh38", tmp_dir='gs://gnomad-tmp-4day')
+    hl.init(
+        log="/platform_pca.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
+    # NOTE: remove this flag when the new shuffle method is the default
+    hl._set_flags(use_new_shuffle="1")
+
     calling_interval_name = args.calling_interval_name
     calling_interval_padding = args.calling_interval_padding
 
@@ -60,11 +67,11 @@ def main(args):
             )
             if args.test:
                 ht = gnomad_v4_testset_meta.ht()
-                ht = ht.filter(hl.len(ht.rand_sampling_meta.hard_filters_no_sex) == 0)
+                ht = ht.filter(hl.len(ht.rand_sampling_meta.hard_filters_no_sex) != 0)
             else:
-                ht = hard_filtered_samples.ht()
+                ht = hard_filtered_samples_no_sex.ht()
 
-            mt = mt.filter_cols(hl.is_defined(ht[mt.col_key]))
+            mt = mt.filter_cols(hl.is_missing(ht[mt.col_key]))
 
             logger.info("Filter interval coverage MatrixTable to autosomes...")
             mt = mt.filter_rows(mt.interval.start.in_autosome())
@@ -131,7 +138,7 @@ def main(args):
                         f"arguments."
                     )
             else:
-                scores_ht = hl.read_table(platform_pca_scores.ht())
+                scores_ht = platform_pca_scores.ht()
 
             platform_ht = assign_platform_from_pcs(
                 scores_ht,
