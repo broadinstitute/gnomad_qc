@@ -253,13 +253,13 @@ def main(args):
                 coverage_mt = interval_coverage.mt()
 
             if args.include_sex_filter:
-                hard_filter_path = hard_filtered_samples
+                hard_filter_path = hard_filtered_samples.path
                 if test:
                     hard_filter_path = get_checkpoint_path(
                         "test_gnomad.exomes.hard_filtered_samples"
                     )
             else:
-                hard_filter_path = hard_filtered_samples_no_sex
+                hard_filter_path = hard_filtered_samples_no_sex.path
                 if test:
                     hard_filter_path = get_checkpoint_path(
                         "test_gnomad.exomes.hard_filtered_samples_no_sex"
