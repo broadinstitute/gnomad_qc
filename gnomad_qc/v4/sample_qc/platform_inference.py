@@ -219,7 +219,7 @@ if __name__ == "__main__":
         "--n-assignment-pcs",
         help="Number of platform PCs to use for platform assignment.",
         type=int,
-        default=30,
+        default=10,
     )
     parser.add_argument(
         "--hdbscan-min-samples",
