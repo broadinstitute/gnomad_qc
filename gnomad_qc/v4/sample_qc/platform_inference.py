@@ -41,6 +41,9 @@ def main(args):
 
     calling_interval_name = args.calling_interval_name
     calling_interval_padding = args.calling_interval_padding
+    hdbscan_min_cluster_size = args.hdbscan_min_cluster_size
+    hdbscan_min_samples = args.hdbscan_min_samples
+    n_assignment_pcs = args.n_assignment_pcs
 
     try:
         if args.run_platform_pca:
@@ -141,20 +144,20 @@ def main(args):
                 scores_ht = platform_pca_scores.ht()
 
             platform_ht = assign_platform_from_pcs(
-                scores_ht.annotate(scores=scores_ht.scores[:args.n_assignment_pcs]),
-                hdbscan_min_cluster_size=args.hdbscan_min_cluster_size,
-                hdbscan_min_samples=args.hdbscan_min_samples,
+                scores_ht.annotate(scores=scores_ht.scores[:n_assignment_pcs]),
+                hdbscan_min_cluster_size=hdbscan_min_cluster_size,
+                hdbscan_min_samples=hdbscan_min_samples,
             )
 
             # Make sure hdbscan_min_samples is not None before annotating globals
-            if not args.hdbscan_min_samples:
-                hdbscan_min_samples = args.hdbscan_min_cluster_size
+            if not hdbscan_min_samples:
+                hdbscan_min_samples = hdbscan_min_cluster_size
             else:
-                hdbscan_min_samples = args.hdbscan_min_samples
+                hdbscan_min_samples = hdbscan_min_samples
             platform_ht = platform_ht.annotate_globals(
-                hdbscan_min_cluster_size=args.hdbscan_min_cluster_size,
+                hdbscan_min_cluster_size=hdbscan_min_cluster_size,
                 hdbscan_min_samples=hdbscan_min_samples,
-                n_pcs=args.n_assignment_pcs,
+                n_pcs=n_assignment_pcs,
                 **scores_ht.index_globals(),
             )
             platform_ht = platform_ht.checkpoint(
