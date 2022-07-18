@@ -161,9 +161,21 @@ def get_relatedness_annotated_ht() -> hl.Table:
         )
     )
 
+# HT of pre LD pruned variants chosen from CCDG, gnomAD v3, and UKB variant info
+# https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py
+gnomad_v4_pre_ld_prune_qc_sites = TableResource(
+    f"gs://gnomad/v4.0/sample_qc/pre_ld_pruning_qc_variants.ht"
+)
 
-gnomad_v4_qc_sites = TableResource(
-    "gs://gcp-public-data--gnomad/resources/grch38/gnomad_v4_qc_sites_b38.ht"
+# HT of chosen v4 QC sites
+gnomad_v4_qc_sites = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.qc_sites.ht"
+        )
+        for version in VERSIONS
+    },
 )
 
 # Dense MT of samples at QC sites
