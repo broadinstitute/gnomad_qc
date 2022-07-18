@@ -41,6 +41,9 @@ def main(args):
 
     calling_interval_name = args.calling_interval_name
     calling_interval_padding = args.calling_interval_padding
+    hdbscan_min_cluster_size = args.hdbscan_min_cluster_size
+    hdbscan_min_samples = args.hdbscan_min_samples
+    n_assignment_pcs = args.n_assignment_pcs
 
     try:
         if args.run_platform_pca:
@@ -85,7 +88,7 @@ def main(args):
 
             # NOTE: added None binarization_threshold parameter to be consistent with runs before this parameter existed
             eigenvalues, scores_ht, loadings_ht = run_platform_pca(
-                mt, binarization_threshold=None
+                mt, binarization_threshold=None, n_pcs=args.n_platform_pcs
             )
             scores_ht = scores_ht.annotate_globals(**mt.index_globals())
             scores_ht.write(
@@ -141,19 +144,20 @@ def main(args):
                 scores_ht = platform_pca_scores.ht()
 
             platform_ht = assign_platform_from_pcs(
-                scores_ht,
-                hdbscan_min_cluster_size=args.hdbscan_min_cluster_size,
-                hdbscan_min_samples=args.hdbscan_min_samples,
+                scores_ht.annotate(scores=scores_ht.scores[:n_assignment_pcs]),
+                hdbscan_min_cluster_size=hdbscan_min_cluster_size,
+                hdbscan_min_samples=hdbscan_min_samples,
             )
 
             # Make sure hdbscan_min_samples is not None before annotating globals
-            if not args.hdbscan_min_samples:
-                hdbscan_min_samples = args.hdbscan_min_cluster_size
+            if not hdbscan_min_samples:
+                hdbscan_min_samples = hdbscan_min_cluster_size
             else:
-                hdbscan_min_samples = args.hdbscan_min_samples
+                hdbscan_min_samples = hdbscan_min_samples
             platform_ht = platform_ht.annotate_globals(
-                hdbscan_min_cluster_size=args.hdbscan_min_cluster_size,
+                hdbscan_min_cluster_size=hdbscan_min_cluster_size,
                 hdbscan_min_samples=hdbscan_min_samples,
+                n_pcs=n_assignment_pcs,
                 **scores_ht.index_globals(),
             )
             platform_ht = platform_ht.checkpoint(
@@ -204,9 +208,21 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
+        "--n-platform-pcs",
+        help="Number of platform PCs to compute.",
+        type=int,
+        default=30,
+    )
+    parser.add_argument(
         "--assign-platforms",
         help="Assigns platforms based on per interval fraction of bases over DP 0 PCA results using HDBSCAN.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--n-assignment-pcs",
+        help="Number of platform PCs to use for platform assignment.",
+        type=int,
+        default=10,
     )
     parser.add_argument(
         "--hdbscan-min-samples",
