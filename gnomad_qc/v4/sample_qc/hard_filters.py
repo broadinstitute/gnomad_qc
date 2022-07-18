@@ -292,7 +292,9 @@ def main(args):
             )
             ht = ht.checkpoint(hard_filter_path, overwrite=args.overwrite)
             ht.group_by("hard_filters").aggregate(n=hl.agg.count()).show(20)
-            ht.group_by("sample_qc_metric_hard_filters").aggregate(n=hl.agg.count()).show(20)
+            ht.group_by("sample_qc_metric_hard_filters").aggregate(
+                n=hl.agg.count()
+            ).show(20)
     finally:
         logger.info("Copying log to logging bucket...")
         hl.copy_log(get_logging_path("hard_filters"))
