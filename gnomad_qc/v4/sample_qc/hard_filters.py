@@ -72,7 +72,7 @@ def compute_hard_filters(
     max_chimera: float = 0.05,
     test: bool = False,
     coverage_mt: hl.MatrixTable = None,
-    cov_threshold: int = None,
+    min_cov: int = None,
 ) -> hl.Table:
     """
     Apply hard filters to samples and return a Table with the filtered samples and the reason for filtering.
@@ -94,7 +94,7 @@ def compute_hard_filters(
         e.g. 5% == 0.05, %5 != 5).
     :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full dataset.
     :param coverage_mt: MatrixTable containing the per interval per sample coverage statistics.
-    :param cov_threshold: Filtering threshold to use for chr20 coverage.
+    :param min_cov: Filtering threshold to use for chr20 coverage.
     :return: Table of hard filtered samples.
     """
     ht = get_gnomad_v4_vds(
@@ -109,21 +109,21 @@ def compute_hard_filters(
             max_chimera=max_chimera,
         ),
     )
-    if cov_threshold is not None:
+    if min_cov is not None:
         ht = ht.annotate_globals(
             hard_filter_cutoffs=ht.hard_filter_cutoffs.annotate(
-                chr_20_dp_threshold=cov_threshold
+                chr_20_dp_threshold=min_cov
             )
         )
 
     hard_filters = dict()
+    sample_qc_metric_hard_filters = dict()
 
     # Flag samples failing fingerprinting
     fp_ht = fingerprinting_failed.ht()
     hard_filters["failed_fingerprinting"] = hl.is_defined(fp_ht[ht.key])
 
     # Flag extreme raw bi-allelic sample QC outliers
-
     bi_allelic_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
     # Convert tuples to lists so we can find the index of the passed threshold
     bi_allelic_qc_ht = bi_allelic_qc_ht.annotate(
@@ -135,10 +135,19 @@ def compute_hard_filters(
         },
     )
     bi_allelic_qc_struct = bi_allelic_qc_ht[ht.key]
+    sample_qc_metric_hard_filters["high_n_singleton"] = (
+        bi_allelic_qc_struct.n_singleton > max_n_singleton
+    )
+    sample_qc_metric_hard_filters["high_r_het_hom_var"] = (
+        bi_allelic_qc_struct.r_het_hom_var > max_r_het_hom_var
+    )
+    sample_qc_metric_hard_filters["low_bases_dp_over_1"] = (
+        bi_allelic_qc_struct.bases_dp_over_1 < min_bases_dp_over_1
+    )
     hard_filters["sample_qc_metrics"] = (
-        (bi_allelic_qc_struct.n_singleton > max_n_singleton)
-        | (bi_allelic_qc_struct.r_het_hom_var > max_r_het_hom_var)
-        | (bi_allelic_qc_struct.bases_dp_over_1 < min_bases_dp_over_1)
+        sample_qc_metric_hard_filters["high_n_singleton"]
+        | sample_qc_metric_hard_filters["high_r_het_hom_var"]
+        | sample_qc_metric_hard_filters["low_bases_dp_over_1"]
     )
 
     # Flag samples that fail bam metric thresholds
@@ -159,7 +168,7 @@ def compute_hard_filters(
     hard_filters["chimera"] = bam_metrics_struct.chimeras_rate > max_chimera
 
     # Flag low-coverage samples using mean coverage on chromosome 20
-    if cov_threshold is not None:
+    if min_cov is not None:
         if coverage_mt is None:
             raise ValueError(
                 "If a chromosome 20 coverage threshold is supplied, a coverage MatrixTable must be supplied too."
@@ -171,7 +180,7 @@ def compute_hard_filters(
             chr20_mean_dp=hl.agg.sum(coverage_mt.sum_dp)
             / hl.agg.sum(coverage_mt.interval_size)
         ).cols()
-        hard_filters["low_coverage"] = coverage_ht[ht.key].chr20_mean_dp < cov_threshold
+        hard_filters["low_coverage"] = coverage_ht[ht.key].chr20_mean_dp < min_cov
 
     if include_sex_filter:
         sex_struct = sex.ht()[ht.key]
@@ -185,7 +194,12 @@ def compute_hard_filters(
             sex_struct.sex_karyotype
         )
 
-    ht = ht.annotate(hard_filters=add_filters_expr(filters=hard_filters))
+    ht = ht.annotate(
+        hard_filters=add_filters_expr(filters=hard_filters),
+        sample_qc_metric_hard_filters=add_filters_expr(
+            filters=sample_qc_metric_hard_filters
+        ),
+    )
 
     # Keep samples failing hard filters
     ht = ht.filter(hl.len(ht.hard_filters) > 0)
@@ -277,7 +291,7 @@ def main(args):
                 args.min_cov,
             )
             ht = ht.checkpoint(hard_filter_path, overwrite=args.overwrite)
-            ht.group_by('hard_filters').aggregate(n=hl.agg.count()).show(20)
+            ht.group_by("hard_filters").aggregate(n=hl.agg.count()).show(20)
     finally:
         logger.info("Copying log to logging bucket...")
         hl.copy_log(get_logging_path("hard_filters"))
