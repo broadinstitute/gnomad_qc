@@ -59,7 +59,7 @@ def _get_platform_pca_ht_path(part: str, version: str = CURRENT_VERSION) -> str:
     :return: Path to requested platform PCA file
     """
     return (
-        f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.platform_pca_{part}.include_coverage.ht"
+        f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.platform_pca_{part}.ht"
     )
 
 
@@ -236,7 +236,7 @@ platform = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.platform.include_coverage.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.platform.ht"
         )
         for version in VERSIONS
     },
@@ -384,7 +384,7 @@ hard_filtered_samples_no_sex = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered_samples_no_sex.include_coverage.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered_samples_no_sex.ht"
         )
         for version in VERSIONS
     },
