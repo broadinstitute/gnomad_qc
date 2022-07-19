@@ -180,7 +180,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n-partitions",
         help="Desired number of partitions for output QC MatrixTable",
-        default=10000,
+        default=1000,
         type=int,
     )
     parser.add_argument(
