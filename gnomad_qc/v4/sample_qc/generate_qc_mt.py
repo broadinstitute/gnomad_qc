@@ -4,21 +4,20 @@ import logging
 import hail as hl
 
 from gnomad.sample_qc.pipeline import get_qc_mt
-from gnomad.utils.annotations import get_adj_expr, get_lowqual_expr
-from gnomad.utils.file_utils import file_exists
-from gnomad.utils.sparse_mt import densify_sites, get_as_info_expr, get_site_info_expr
+from gnomad.utils.annotations import annotate_adj
 from gnomad.utils.slack import slack_notifications
 
-from gnomad_qc.slack_creds import slack_token
-from ukbb_qc.resources.basics import (
+from gnomad_qc.v4.resources.basics import (
     get_checkpoint_path,
-    get_ukbb_data,
-    last_END_positions_ht_path,
-    logging_path,
+    get_logging_path,
+    get_gnomad_v4_vds,
 )
-from ukbb_qc.resources.resource_utils import CURRENT_FREEZE
-from ukbb_qc.resources.sample_qc import qc_ht_path, qc_mt_path, qc_sites_path
-from ukbb_qc.utils.utils import get_qc_mt_sites
+from gnomad_qc.v4.resources.sample_qc import (
+    gnomad_v4_pre_ld_prune_qc_sites,
+    gnomad_v4_qc_sites,
+    qc,
+)
+from gnomad_qc.slack_creds import slack_token
 
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -26,260 +25,160 @@ logger = logging.getLogger("create_qc_data")
 logger.setLevel(logging.INFO)
 
 
-def compute_qc_mt(
-        min_af: float = 0.0, min_inbreeding_coeff_threshold: float = -0.025
-) -> hl.MatrixTable:
-    """
-    Generate the QC MT to be used in downstream sample QC.
-
-    Filter MT to bi-allelic SNVs at gnomAD v2 QC and p5k sites. Compute and return QC MT.
-    :param min_af: Minimum variant allele frequency to retain variant in qc matrix table
-    :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to keep
-    :return: MatrixTable filtered to variants for sample QC
-    """
-    # Load v2 and p5k sites for QC
-    v2_qc_sites = get_liftover_v2_qc_mt("joint", ld_pruned=True).rows().key_by("locus")
-    qc_sites = v2_qc_sites.union(purcell_5k_intervals.ht(), unify=True)
-
-    qc_sites = qc_sites.filter(hl.is_missing(lcr_intervals.ht()[qc_sites.key]))
-
-    mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
-    mt = mt.select_entries(
-        "END", GT=mt.LGT, adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
+def main(args):
+    hl.init(
+        log="/generate_qc_mt.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
     )
-    mt = densify_sites(mt, qc_sites, hl.read_table(last_END_position.path))
+    # NOTE: remove this flag when the new shuffle method is the default
+    hl._set_flags(use_new_shuffle="1")
 
-    # Filter MT to bi-allelic SNVs that are found in the v2 QC and p5k HT
-    mt = mt.filter_rows(
-        (hl.len(mt.alleles) == 2)
-        & hl.is_snp(mt.alleles[0], mt.alleles[1])
-        & (qc_sites[mt.locus].alleles == mt.alleles)
-    )
-    mt = mt.checkpoint(
-        "gs://gnomad-tmp/gnomad_v3_qc_mt_v2_sites_dense.mt", overwrite=True
-    )
-    mt = mt.naive_coalesce(5000)
-    mt = mt.checkpoint(
-        "gs://gnomad-tmp/gnomad_v3_qc_mt_v2_sites_dense_repartitioned.mt",
-        overwrite=True,
-    )
-    info_ht = get_info(split=False).ht()
-    info_ht = info_ht.annotate(
-        info=info_ht.info.select(
-            # No need for AS_annotations since it's bi-allelic sites only
-            **{x: info_ht.info[x] for x in info_ht.info if not x.startswith("AS_")}
-        )
-    )
-    mt = mt.annotate_rows(info=info_ht[mt.row_key].info)
-    qc_mt = get_qc_mt(
-        mt,
-        min_af=min_af,
-        min_inbreeding_coeff_threshold=min_inbreeding_coeff_threshold,
-        min_hardy_weinberg_threshold=None,
-        ld_r2=None,
-        filter_lcr=False,
-        filter_decoy=False,
-        filter_segdup=False,
-    )
-    return qc_mt
+    overwrite = args.overwrite
+    ld_r2 = args.ld_r2
+    test = args.test
 
+    try:
+        if args.create_intermediate_qc_mt:
+            vds = get_gnomad_v4_vds(split=True, remove_hard_filtered_samples=False)
+            if test:
+                logger.info("Filtering to the first five partitions")
+                vds = hl.vds.VariantDataset(
+                    vds.reference_data._filter_partitions(range(20)),
+                    vds.variant_data._filter_partitions(range(20)),
+                )
 
-    if ld_pruning:
-        # Whether this is still required?
-        logger.warning(
-            "The LD-prune step of this function requires non-preemptible workers only!"
-        )
-        logger.info("Creating Table after LD pruning of %s...", ld_pruning_dataset)
-        if ld_pruning_dataset == "ccdg_genomes":
-            vds = get_ccdg_vds("genomes")
-            vds = hl.vds.split_multi(vds, filter_changed_loci=True)
-            vds = hl.vds.filter_variants(vds, ht, keep=True)
-            mt = hl.vds.to_dense_mt(vds)
-        elif ld_pruning_dataset == "gnomad_genomes":
-            mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
-            logger.info("Converting gnomAD v3.1 MatrixTable to VDS...")
-            mt = mt.select_entries(
-                "END", "LA", "LGT", adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
-            )
-            vds = hl.vds.VariantDataset.from_merged_representation(mt)
-
-            logger.info("Performing split-multi and filtering variants...")
-            vds = hl.vds.split_multi(vds, filter_changed_loci=True)
-            vds = hl.vds.filter_variants(vds, ht)
+            logger.info("Filtering variants to predetermined QC variants...")
+            vds = hl.vds.filter_variants(vds, gnomad_v4_pre_ld_prune_qc_sites.ht())
 
             logger.info("Densifying data...")
             mt = hl.vds.to_dense_mt(vds)
-        else:
-            ValueError(
-                "Only options for LD pruning are `ccdg_genomes` and `gnomad_genomes`"
+
+            logger.info("Writing temp MT...")
+            hl._set_flags(no_whole_stage_codegen="1")
+            mt = mt.select_entries("GT", "GQ", "DP", "AD")
+
+            mt_cp_path = get_checkpoint_path(
+                f"dense_pre_ld_prune_qc_sites{'.test' if test else ''}", mt=True
+            )
+            mt.write(mt_cp_path, overwrite=True)
+            mt = hl.read_matrix_table(mt_cp_path, _n_partitions=args.n_partitions)
+            logger.info(
+                "Number of predetermined QC variants found in the VDS: %d...",
+                mt.count_rows(),
             )
 
-        hl._set_flags(no_whole_stage_codegen="1")
-        mt = mt.checkpoint(
-            get_pca_variants_path(ld_pruned=False, data=ld_pruning_dataset, mt=True),
-            overwrite=(not read_pre_ld_prune_mt_checkpoint_if_exists),
-            _read_if_exists=read_pre_ld_prune_mt_checkpoint_if_exists,
-        )
-        hl._set_flags(no_whole_stage_codegen=None)
-        ht = hl.ld_prune(mt.GT, r2=ld_r2)
-        ht = ht.annotate_globals(ld_r2=ld_r2, ld_pruning_dataset=ld_pruning_dataset)
-        ht = ht.checkpoint(
-            get_pca_variants_path(ld_pruned=True, data=ld_pruning_dataset),
-            overwrite=overwrite,
-            _read_if_exists=(not overwrite),
-        )
-        mt = mt.filter_rows(hl.is_defined(ht[mt.row_key]))
-        mt.naive_coalesce(1000).write(
-            get_pca_variants_path(ld_pruned=True, data=ld_pruning_dataset, mt=True),
-            overwrite=overwrite,
-        )
-
-
-def main(args):
-    hl.init(log="/create_qc_data.log", default_reference="GRCh38")
-
-    data_source = "broad"
-    freeze = args.freeze
-
-    try:
-        if args.compute_qc_mt:
-            logger.info("Reading in raw MT...")
-            mt = get_ukbb_data(
-                data_source,
-                freeze,
-                key_by_locus_and_alleles=True,
-                split=False,
-                raw=True,
-                repartition=args.repartition,
-                n_partitions=args.raw_partitions,
+            logger.info(
+                "Annotating with adj and filtering to pre LD-pruned QC sites..."
             )
-            mt = mt.transmute_entries(**mt.gvcf_info)
-            mt = mt.select_entries(
-                "LGT",
-                "GQ",
-                "DP",
-                "LAD",
-                "LA",
-                "END",
-                "QUALapprox",
-                "VarDP",
-                "ReadPosRankSum",
-                "MQRankSum",
-                "SB",
-                "RAW_MQandDP",
-            )
-
-            logger.info("Reading in QC MT sites from tranche 2/freeze 5...")
-            if not file_exists(qc_sites_path()):
-                get_qc_mt_sites()
-            qc_sites_ht = hl.read_table(qc_sites_path())
-            logger.info(f"Number of QC sites: {qc_sites_ht.count()}")
-
-            logger.info("Densifying sites...")
-            last_END_ht = hl.read_table(last_END_positions_ht_path(freeze))
-            mt = densify_sites(mt, qc_sites_ht, last_END_ht)
-
-            logger.info("Checkpointing densified MT")
-            mt = mt.checkpoint(
-                get_checkpoint_path(
-                    data_source, freeze, name="dense_qc_mt_v2_sites", mt=True
-                ),
-                overwrite=True,
-            )
-
-            logger.info("Repartitioning densified MT")
-            mt = mt.naive_coalesce(args.n_partitions)
-            mt = mt.checkpoint(
-                get_checkpoint_path(
-                    data_source,
-                    freeze,
-                    name="dense_qc_mt_v2_sites.repartitioned",
-                    mt=True,
-                ),
-                overwrite=True,
-            )
-
-            # NOTE: Need MQ, QD, FS for hard filters
-            logger.info("Adding info and low QUAL annotations and filtering to adj...")
-            info_expr = get_site_info_expr(mt)
-            info_expr = info_expr.annotate(**get_as_info_expr(mt))
-            mt = mt.annotate_rows(info=info_expr)
-            mt = mt.select_entries(
-                GT=hl.experimental.lgt_to_gt(mt.LGT, mt.LA),
-                adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
-            )
-
-            logger.info("Checkpointing MT...")
-            mt = mt.checkpoint(
-                get_checkpoint_path(
-                    data_source,
-                    freeze,
-                    name=f"{data_source}.freeze_{freeze}.qc_sites.mt",
-                    mt=True,
-                ),
-                overwrite=True,
-            )
-
-            # NOTE: adding decoy and segdup hg38 resources/filters are still pending
-            qc_mt = get_qc_mt(
+            mt = annotate_adj(mt)
+            mt = get_qc_mt(
                 mt,
+                bi_allelic_only=args.bi_allelic_only,
                 min_af=args.min_af,
                 min_callrate=args.min_callrate,
-                apply_hard_filters=True,
-                ld_r2=None,
-                filter_lcr=False,
-                filter_decoy=False,
-                filter_segdup=False,
+                min_inbreeding_coeff_threshold=args.min_inbreeding_coeff_threshold,
+                min_hardy_weinberg_threshold=None,
+                apply_hard_filters=False,
+                ld_r2=None,  # Done below to avoid an error
+                filter_lcr=False,  # Already filtered from the initial set of QC variants
+                filter_decoy=False,  # Doesn't exist for hg38
+                filter_segdup=False,  # Already filtered from the initial set of QC variants
             )
-            # NOTE: not using default indel_phred_het_prior to make sure lowqual values match with standard pre-VQSR lowqual values
-            # NOTE: Using AS_QUALapprox[1] because these are biallelic sites
-            mt = mt.annotate_rows(
-                AS_lowqual=get_lowqual_expr(
-                    mt.alleles, mt.info.AS_QUALapprox[1], indel_phred_het_prior=40,
+            mt = mt.checkpoint(
+                get_checkpoint_path(
+                    f"dense_pre_ld_prune_qc_mt{'.test' if test else ''}", mt=True
+                ),
+                overwrite=True,
+            )
+            logger.info("Number of pre LD-pruned QC sites: %d...", mt.count_rows())
+
+        if args.ld_prune:
+            logger.warning(
+                "The LD-prune step of this function requires non-preemptible workers only!"
+            )
+            mt = hl.read_matrix_table(
+                get_checkpoint_path(
+                    f"dense_pre_ld_prune_qc_mt{'.test' if test else ''}", mt=True
                 )
             )
-            qc_mt = qc_mt.checkpoint(
-                qc_mt_path(data_source, freeze), overwrite=args.overwrite,
+            logger.info("Number of pre LD-pruned QC sites: %d...", mt.count_rows())
+
+            logger.info("Performing LD prune...")
+            hl._set_flags(no_whole_stage_codegen=None)
+            unfiltered_qc_mt = mt.unfilter_entries()
+            ht = hl.ld_prune(unfiltered_qc_mt.GT, r2=ld_r2)
+            ht = ht.annotate_globals(ld_r2=ld_r2)
+            ht = ht.checkpoint(
+                get_checkpoint_path("qc_sites.test")
+                if test
+                else gnomad_v4_qc_sites.path,
+                overwrite=overwrite,
             )
-            logger.info(
-                f"Total number of bi-allelic, high-callrate, common SNPs for sample QC: {qc_mt.count_rows()}"
+            logger.info("Final number of QC sites: %d...", ht.count())
+
+            logger.info("Filtering dense MT to final QC sites...")
+            mt = mt.filter_rows(hl.is_defined(ht[mt.row_key]))
+            mt = mt.annotate_globals(qc_mt_params=mt.qc_mt_params.annotate(ld_r2=ld_r2))
+            mt.write(
+                get_checkpoint_path("dense_ld_prune_qc_mt.test", mt=True)
+                if test
+                else qc.path,
+                overwrite=overwrite,
             )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(logging_path(data_source, freeze))
+        hl.copy_log(get_logging_path("generate_qc_mt"))
 
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-f", "--freeze", help="Data freeze to use", default=CURRENT_FREEZE, type=int,
+        "--test", help="Runs a test on two partitions of the VDS.", action="store_true"
     )
     parser.add_argument(
-        "--compute_qc_mt",
-        help="Compute matrix to be used in sample qc",
+        "--create-intermediate-qc-mt",
+        help="Create a checkpointed intermediate dense QC MT with all filters except the LD prune step.",
         action="store_true",
     )
     parser.add_argument(
-        "--min_af",
+        "--bi-allelic-only",
+        help="Filter to variants that are bi-allelic.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--min-af",
         help="Minimum variant allele frequency to retain variant in QC MatrixTable.",
         default=0.001,
         type=float,
     )
     parser.add_argument(
-        "--min_callrate",
+        "--min-callrate",
         help="Minimum variant callrate to retain variant in qc matrix table.",
         default=0.99,
         type=float,
     )
     parser.add_argument(
-        "--compute_sample_qc_ht",
-        help="Compute sample qc on qc matrix table",
+        "--min-inbreeding-coeff-threshold",
+        help="Minimum site inbreeding coefficient to keep.",
+        default=-0.8,
+        type=float,
+    )
+    parser.add_argument(
+        "--ld-prune",
+        help="Perform ld prune of the checkpointed intermediate dense QC MT.",
         action="store_true",
     )
     parser.add_argument(
-        "--n_partitions",
+        "--ld-r2",
+        help="LD pruning cutoff",
+        default=0.1,
+        type=float,
+    )
+    parser.add_argument(
+        "--n-partitions",
         help="Desired number of partitions for output QC MatrixTable",
         default=10000,
         type=int,
@@ -291,7 +190,8 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--slack_channel", help="Slack channel to post results and notifications to.",
+        "--slack-channel",
+        help="Slack channel to post results and notifications to.",
     )
 
     args = parser.parse_args()
