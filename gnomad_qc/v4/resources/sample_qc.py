@@ -242,6 +242,17 @@ platform = VersionedTableResource(
     },
 )
 
+# Interval QC results
+interval_qc = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.interval_qc.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
 # HT containing AC information for bi-allelic variants after hard filtering
 hard_filtered_ac = VersionedTableResource(
     CURRENT_VERSION,
@@ -367,7 +378,6 @@ def _import_related_samples_to_drop(**kwargs):
     ht = ht.key_by(s=ht.f0)
 
     return ht
-
 
 # Hard-filtered samples
 hard_filtered_samples = VersionedTableResource(
