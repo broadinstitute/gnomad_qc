@@ -82,7 +82,7 @@ def main(args):
     hl.init(log="/interval_qc.log", default_reference="GRCh38")
 
     try:
-        coverage_mt = interval_coverage.mt()
+        coverage_mt = interval_coverage.mt() #TODO: remove hard filtered samples
         if args.test:
             logger.info(
                 "Filtering to the first 2 partitions on chr1, chrX, and chrY (for tests only)..."
