@@ -55,7 +55,7 @@ def compute_interval_qc(
 
     agg_expr = {
         "interval_mean_dp": hl.agg.mean(mt.mean_dp),
-        "pct_samples_by_dp": hl.struct(
+        "prop_samples_by_dp": hl.struct(
             **{
                 f"over_{dp}x": hl.agg.fraction(_get_frac_agg_expr(dp))
                 for dp in mean_dp_thresholds
@@ -66,7 +66,7 @@ def compute_interval_qc(
     if add_per_platform:
         logger.info("Adding per platform aggregation...")
         mt = mt.annotate_cols(platform=platform_ht[mt.col_key].qc_platform)
-        agg_expr["pct_samples_by_platform"] = hl.agg.group_by(
+        agg_expr["prop_samples_by_platform"] = hl.agg.group_by(
             mt.platform,
             hl.struct(
                 **{f"over_{dp}x": _get_frac_agg_expr(dp) for dp in mean_dp_thresholds}
@@ -77,6 +77,59 @@ def compute_interval_qc(
     ht = ht.annotate_globals(mean_dp_thresholds=mean_dp_thresholds)
 
     return ht
+
+
+def annotate_interval_qc_filter(
+    t: Union[hl.MatrixTable, hl.Table],
+    min_cov: int = 20,
+    min_xy_cov: int = 10,
+    min_prop_samples: float = 0.85,
+) -> Union[hl.MatrixTable, hl.Table]:
+    """
+    Add `interval_qc_pass` annotation to indicate whether the site falls within a high coverage interval.
+
+    :param t: Input MatrixTable or Table
+    :param min_cov: Coverage to use for filtering of autosomes/sex chr par/female X
+    :param min_xy_cov: Coverage to use for filtering of male X and Y
+    :param min_prop_samples: Proportion of samples with mean coverage greater than `min_cov`/`min_xy_cov` over the interval for filtering
+    :return: MatrixTable or Table with samples removed
+    """
+    interval_qc_ht = interval_qc.ht()
+    good_intervals_ht = interval_qc_ht.filter(
+        interval_qc_ht.prop_samples_by_dp[f"over_{min_cov}x"] > min_prop_samples
+    )
+
+    if not autosomes_only:
+        interval_qc_sex_ht = hl.read_table(
+            interval_qc_path(data_source, freeze, "sex_chr")
+        )
+
+        good_sex_intervals_ht = interval_qc_sex_ht.filter(
+            (
+                interval_qc_sex_ht.interval.start.in_autosome_or_par()
+                & (interval_qc_sex_ht.prop_samples_by_dp[f"over_{min_cov}x"]["XX"] > min_prop_samples)
+                & (interval_qc_sex_ht.prop_samples_by_dp[f"over_{min_cov}x"]["XY"] > min_prop_samples)
+            )
+            | (
+                (interval_qc_sex_ht.interval.start.contig == "chrX")
+                & (interval_qc_sex_ht.prop_samples_by_dp[f"over_{min_cov}x"]["XX"] > min_prop_samples)
+                & (interval_qc_sex_ht.prop_samples_by_dp[f"over_{min_cov}x"]["XY"] > min_prop_samples)
+            )
+            | (
+                (interval_qc_sex_ht.interval.start.contig == "chrY")
+                & (interval_qc_sex_ht.prop_samples_by_dp[f"over_{min_cov}x"]["XY"] > min_prop_samples)
+            )
+        )
+        good_intervals_ht = good_intervals_ht.select().union(
+            good_sex_intervals_ht.select()
+        )
+
+    if isinstance(t, hl.MatrixTable):
+        t = t.annotate_rows(interval_qc_pass=hl.is_defined(good_intervals_ht[t.locus]))
+    else:
+        t = t.annotate(interval_qc_pass=hl.is_defined(good_intervals_ht[t.locus]))
+
+    return t
 
 
 def main(args):
