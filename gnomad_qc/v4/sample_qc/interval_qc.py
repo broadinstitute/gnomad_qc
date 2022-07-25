@@ -3,7 +3,6 @@ import logging
 
 import hail as hl
 
-from gnomad.utils.file_utils import file_exists
 from gnomad.utils.generic import filter_to_autosomes
 from gnomad.utils.slack import slack_notifications
 
@@ -17,81 +16,8 @@ from gnomad_qc.v4.resources.sample_qc import (
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
-logger = logging.getLogger("sex_inference")
+logger = logging.getLogger("interval_qc")
 logger.setLevel(logging.INFO)
-
-
-def load_platform_ht(
-    test: bool = False,
-    calling_interval_name: str = "intersection",
-    calling_interval_padding: int = 50,
-):
-    """
-
-    :param test:
-    :param calling_interval_name:
-    :param calling_interval_padding:
-    :return:
-    """
-    logger.info("Loading platform information...")
-    if file_exists(platform.path):
-        ht = platform.ht()
-    elif test:
-        test_platform_path = get_checkpoint_path(
-            f"test_platform_assignment.{calling_interval_name}.pad{calling_interval_padding}"
-        )
-        if file_exists(test_platform_path):
-            ht = hl.read_table(test_platform_path)
-        else:
-            raise FileNotFoundError(
-                f"There is no final platform assignment Table written and a test platform assignment Table "
-                f"does not exist for calling interval {calling_interval_name} and interval padding "
-                f"{calling_interval_padding}. Please run platform_inference.py --assign_platforms "
-                f"with the --test argument and needed --calling_interval_name/--calling_interval_padding "
-                f"arguments."
-            )
-    else:
-        raise FileNotFoundError(
-            f"There is no final platform assignment Table written. Please run: "
-            f"platform_inference.py --assign_platforms to compute the platform assignment Table."
-        )
-
-    return ht
-
-
-def load_coverage_mt(
-    calling_interval_name: str = "intersection", calling_interval_padding: int = 50
-):
-    """
-
-    :param calling_interval_name:
-    :param calling_interval_padding:
-    :return:
-    """
-    logger.info("Loading interval coverage MatrixTable...")
-    if file_exists(interval_coverage.path):
-        mt = interval_coverage.mt()
-    elif args.test:
-        test_coverage_path = get_checkpoint_path(
-            f"test_interval_coverage.{calling_interval_name}.pad{calling_interval_padding}",
-            mt=True,
-        )
-        if file_exists(test_coverage_path):
-            mt = hl.read_matrix_table(test_coverage_path)
-        else:
-            raise FileNotFoundError(
-                f"There is no final coverage MatrixTable written and a test interval coverage MatrixTable does "
-                f"not exist for calling interval {calling_interval_name} and interval padding "
-                f"{calling_interval_padding}. Please run platform_inference.py --compute_coverage with the "
-                f"--test argument and needed --calling_interval_name/--calling_interval_padding arguments."
-            )
-    else:
-        raise FileNotFoundError(
-            f"There is no final coverage MatrixTable written. Please run: "
-            f"platform_inference.py --compute_coverage to compute the interval coverage MatrixTable."
-        )
-
-    return mt
 
 
 def compute_interval_qc(
@@ -156,13 +82,22 @@ def main(args):
     hl.init(log="/interval_qc.log", default_reference="GRCh38")
 
     try:
-        coverage_mt = load_coverage_mt(
-            args.calling_interval_name, args.calling_interval_padding
-        )
-        if args.add_per_platform:
-            platform_ht = load_platform_ht(
-                args.test, args.calling_interval_name, args.calling_interval_padding
+        coverage_mt = interval_coverage.mt()
+        if args.test:
+            logger.info(
+                "Filtering to the first 2 partitions on chr1, chrX, and chrY (for tests only)..."
             )
+            coverage_mt = coverage_mt._filter_partitions(range(2))
+            chrx_mt = hl.filter_intervals(
+                coverage_mt, [hl.parse_locus_interval("chrX")]
+            )._filter_partitions(range(2))
+            chry_mt = hl.filter_intervals(
+                coverage_mt, [hl.parse_locus_interval("chrY")]
+            )._filter_partitions(range(2))
+            coverage_mt = coverage_mt.union_rows(chrx_mt, chry_mt)
+
+        if args.add_per_platform:
+            platform_ht = platform.ht()
         else:
             platform_ht = None
 
@@ -243,26 +178,6 @@ if __name__ == "__main__":
         ),
         type=int,
         default=20,
-    )
-    parser.add_argument(
-        "--calling-interval-name",
-        help=(
-            "Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'. Only "
-            "used if '--test' is set and final coverage MT and/or platform assignment HT are not already written."
-        ),
-        type=str,
-        choices=["ukb", "broad", "intersection"],
-        default="intersection",
-    )
-    parser.add_argument(
-        "--calling-interval-padding",
-        help=(
-            "Number of base pair padding to use on the calling intervals. One of 0 or 50 bp. Only used if '--test' is "
-            "set and final coverage MT and/or platform assignment HT are not already written."
-        ),
-        type=int,
-        choices=[0, 50],
-        default=50,
     )
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
