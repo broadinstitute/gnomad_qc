@@ -13,7 +13,8 @@ from gnomad_qc.v4.resources.basics import (
     get_gnomad_v4_vds,
 )
 from gnomad_qc.v4.resources.sample_qc import (
-    gnomad_v4_pre_ld_prune_qc_sites,
+    predetermined_qc_sites,
+    gnomad_v4_predetermined_qc_sites_dense_mt,
     gnomad_v4_qc_sites,
     qc,
 )
@@ -39,35 +40,42 @@ def main(args):
     test = args.test
 
     try:
-        if args.create_intermediate_qc_mt:
-            vds = get_gnomad_v4_vds(split=True, remove_hard_filtered_samples=False)
+        if args.create_filtered_dense_mt:
+            vds = get_gnomad_v4_vds(split=True)
             if test:
-                logger.info("Filtering to the first five partitions")
+                logger.info("Filtering to the first 20 partitions")
                 vds = hl.vds.VariantDataset(
                     vds.reference_data._filter_partitions(range(20)),
                     vds.variant_data._filter_partitions(range(20)),
                 )
 
             logger.info("Filtering variants to predetermined QC variants...")
-            vds = hl.vds.filter_variants(vds, gnomad_v4_pre_ld_prune_qc_sites.ht())
+            vds = hl.vds.filter_variants(vds, predetermined_qc_sites.ht())
 
             logger.info("Densifying data...")
             mt = hl.vds.to_dense_mt(vds)
 
             logger.info("Writing temp MT...")
-            hl._set_flags(no_whole_stage_codegen="1")
             mt = mt.select_entries("GT", "GQ", "DP", "AD")
 
-            mt_cp_path = get_checkpoint_path(
-                f"dense_pre_ld_prune_qc_sites{'.test' if test else ''}", mt=True
+            mt = mt.checkpoint(
+                get_checkpoint_path("dense_pre_ld_prune_qc_sites.test", mt=True)
+                if test
+                else gnomad_v4_predetermined_qc_sites_dense_mt.path,
+                overwrite=True,
             )
-            mt.write(mt_cp_path, overwrite=True)
-            mt = hl.read_matrix_table(mt_cp_path, _n_partitions=args.n_partitions)
             logger.info(
                 "Number of predetermined QC variants found in the VDS: %d...",
                 mt.count_rows(),
             )
 
+        if args.create_intermediate_qc_mt:
+            mt = hl.read_matrix_table(
+                get_checkpoint_path("dense_pre_ld_prune_qc_sites.test", mt=True)
+                if test
+                else gnomad_v4_predetermined_qc_sites_dense_mt.path,
+                _n_partitions=args.n_partitions,
+            )
             logger.info(
                 "Annotating with adj and filtering to pre LD-pruned QC sites..."
             )
@@ -78,7 +86,7 @@ def main(args):
                 min_af=args.min_af,
                 min_callrate=args.min_callrate,
                 min_inbreeding_coeff_threshold=args.min_inbreeding_coeff_threshold,
-                min_hardy_weinberg_threshold=None,
+                min_hardy_weinberg_threshold=None, # Already filtered from the initial set of QC variants
                 apply_hard_filters=False,
                 ld_r2=None,  # Done below to avoid an error
                 filter_lcr=False,  # Already filtered from the initial set of QC variants
@@ -105,7 +113,6 @@ def main(args):
             logger.info("Number of pre LD-pruned QC sites: %d...", mt.count_rows())
 
             logger.info("Performing LD prune...")
-            hl._set_flags(no_whole_stage_codegen=None)
             unfiltered_qc_mt = mt.unfilter_entries()
             ht = hl.ld_prune(unfiltered_qc_mt.GT, r2=ld_r2)
             ht = ht.annotate_globals(ld_r2=ld_r2)
@@ -139,8 +146,13 @@ if __name__ == "__main__":
         "--test", help="Runs a test on two partitions of the VDS.", action="store_true"
     )
     parser.add_argument(
+        "--create-filtered-dense-mt",
+        help="Create a dense MatrixTable from the raw VariantDataset filtered to predetermined QC variants.",
+        action="store_true",
+    )
+    parser.add_argument(
         "--create-intermediate-qc-mt",
-        help="Create a checkpointed intermediate dense QC MT with all filters except the LD prune step.",
+        help="Create a checkpointed intermediate dense QC MatrixTable with all filters except LD-pruning.",
         action="store_true",
     )
     parser.add_argument(
@@ -151,12 +163,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--min-af",
         help="Minimum variant allele frequency to retain variant in QC MatrixTable.",
-        default=0.001,
+        default=0.0001,
         type=float,
     )
     parser.add_argument(
         "--min-callrate",
-        help="Minimum variant callrate to retain variant in qc matrix table.",
+        help="Minimum variant callrate to retain variant in QC MatrixTable.",
         default=0.99,
         type=float,
     )
@@ -168,12 +180,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--ld-prune",
-        help="Perform ld prune of the checkpointed intermediate dense QC MT.",
+        help="Perform LD-pruning of the checkpointed intermediate dense QC MatrixTable.",
         action="store_true",
     )
     parser.add_argument(
         "--ld-r2",
-        help="LD pruning cutoff",
+        help="LD-pruning cutoff",
         default=0.1,
         type=float,
     )
