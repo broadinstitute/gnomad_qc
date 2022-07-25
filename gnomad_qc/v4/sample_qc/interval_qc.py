@@ -9,6 +9,7 @@ from gnomad.utils.slack import slack_notifications
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import get_checkpoint_path, get_logging_path
 from gnomad_qc.v4.resources.sample_qc import (
+    hard_filtered_samples,
     interval_coverage,
     interval_qc,
     platform,
@@ -82,7 +83,7 @@ def main(args):
     hl.init(log="/interval_qc.log", default_reference="GRCh38")
 
     try:
-        coverage_mt = interval_coverage.mt() #TODO: remove hard filtered samples
+        coverage_mt = interval_coverage.mt()
         if args.test:
             logger.info(
                 "Filtering to the first 2 partitions on chr1, chrX, and chrY (for tests only)..."
@@ -100,6 +101,9 @@ def main(args):
             platform_ht = platform.ht()
         else:
             platform_ht = None
+
+        logger.info("Removing hard-filtered samples from the coverage MT...")
+        coverage_mt = coverage_mt.filter(hl.is_missing(hard_filtered_samples.ht()[coverage_mt.col_key]))
 
         ht = compute_interval_qc(
             filter_to_autosomes(coverage_mt),
