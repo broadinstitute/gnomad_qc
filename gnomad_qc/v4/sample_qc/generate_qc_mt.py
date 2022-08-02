@@ -82,15 +82,16 @@ def generate_qc_mt(
     ld_r2: float = 0.1,
 ) -> hl.MatrixTable:
     """
+    Generate combined gnomAD v3 and v4 QC MatrixTable for use in relatedness and ancestry inference.
 
-    :param v3_mt:
-    :param v4_mt:
-    :param bi_allelic_only:
-    :param min_af:
-    :param min_callrate:
-    :param min_inbreeding_coeff_threshold:
-    :param ld_r2:
-    :return:
+    :param v3_mt: Dense gnomAD v3 MatrixTable filtered to predetermined sites.
+    :param v4_mt: Dense gnomAD v4 MatrixTable filtered to predetermined sites.
+    :param bi_allelic_only: Whether to filter to bi-allelic variants.
+    :param min_af: Minimum variant allele frequency to retain variant in QC MatrixTable.
+    :param min_callrate: Minimum variant callrate to retain variant in QC MatrixTable.
+    :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to retain variant in QC MatrixTable.
+    :param ld_r2: LD-pruning cutoff.
+    :return: MatrixTable of sites that pass QC filters.
     """
     # TODO: Should we only keep v3 release samples or all samples?
     logger.info(
@@ -277,7 +278,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--min-inbreeding-coeff-threshold",
-        help="Minimum site inbreeding coefficient to keep.",
+        help="Minimum site inbreeding coefficient to retain variant in QC MatrixTable.",
         default=-0.8,
         type=float,
     )
