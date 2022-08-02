@@ -17,7 +17,7 @@ from gnomad_qc.v4.resources.basics import (
 from gnomad_qc.v4.resources.sample_qc import (
     get_predetermined_qc_sites_dense,
     hard_filtered_samples_no_sex,
-    #hard_filtered_samples,
+    # hard_filtered_samples,
     predetermined_qc_sites,
     qc,
 )
@@ -49,7 +49,7 @@ def create_filtered_dense_mt(
                 mtds.variant_data._filter_partitions(range(20)),
             )
         else:
-            mtds._filter_partitions(range(20))
+            mtds = mtds._filter_partitions(range(20))
 
     if is_vds:
         vds = mtds
@@ -103,7 +103,7 @@ def generate_qc_mt(
         "Number of (variants, samples) in the v4 MatrixTable: %s...", v4_mt.count()
     )
     # Remove v4 hard filtered samples
-    #v4_mt = v4_mt.anti_join_cols(hard_filtered_samples.ht())
+    # v4_mt = v4_mt.anti_join_cols(hard_filtered_samples.ht())
     v4_mt = v4_mt.anti_join_cols(hard_filtered_samples_no_sex.ht())
 
     samples_in_both = v4_mt.cols().semi_join_cols(v3_mt.cols())
@@ -132,7 +132,7 @@ def generate_qc_mt(
         apply_hard_filters=False,
         ld_r2=ld_r2,
         checkpoint_path=cp_path,
-        #ld_r2=None,  # Done in a separate function to allow for different cluster configurations
+        # ld_r2=None,  # Done in a separate function to allow for different cluster configurations
         filter_lcr=False,  # Already filtered from the initial set of QC variants
         filter_decoy=False,  # Doesn't exist for hg38
         filter_segdup=False,  # Already filtered from the initial set of QC variants
@@ -142,7 +142,7 @@ def generate_qc_mt(
         hl.read_matrix_table(cp_path).count_rows(),
     )
 
-    #mt = perform_ld_prune(mt, ld_r2)
+    # mt = perform_ld_prune(mt, ld_r2)
     return mt
 
 
@@ -166,6 +166,7 @@ def perform_ld_prune(mt: hl.MatrixTable, ld_r2: float = 0.1) -> hl.MatrixTable:
 
     return mt
 """
+
 
 def main(args):
     hl.init(
@@ -224,7 +225,7 @@ def main(args):
                 min_af=args.min_af,
                 min_callrate=args.min_callrate,
                 min_inbreeding_coeff_threshold=args.min_inbreeding_coeff_threshold,
-                ld_r2=ld_r2
+                ld_r2=ld_r2,
             )
             mt.write(
                 get_checkpoint_path("dense_ld_prune_qc_mt.test", mt=True)
