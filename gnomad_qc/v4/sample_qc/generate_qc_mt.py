@@ -95,7 +95,6 @@ def generate_qc_mt(
     :param ld_r2: LD-pruning cutoff.
     :return: MatrixTable of sites that pass QC filters.
     """
-    # TODO: Should we only keep v3 release samples or all samples?
     logger.info(
         "Number of (variants, samples) in the v3.1 MatrixTable: %s...", v3_mt.count()
     )
