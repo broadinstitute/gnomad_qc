@@ -52,6 +52,8 @@ def create_filtered_dense_mt(
             mtds._filter_partitions(range(20))
 
     if is_vds:
+        vds = mtds
+    else:
         logger.info("Converting MatrixTable to VariantDataset...")
         mtds = mtds.select_entries("END", "LA", "LGT", "GQ", "DP", "LAD")
         vds = hl.vds.VariantDataset.from_merged_representation(mtds)
