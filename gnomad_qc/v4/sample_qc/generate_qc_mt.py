@@ -34,11 +34,12 @@ def create_filtered_dense_mt(
     split: bool = False,
 ) -> hl.MatrixTable:
     """
+    Filter a sparse MatrixTable or VariantDataset to a set of predetermined QC sites and return a dense MatrixTable.
 
-    :param mtds:
-    :param test:
-    :param split:
-    :return:
+    :param mtds: Input MatrixTable or VariantDataset.
+    :param test: Whether to filter `mtds` to the first 20 partitions.
+    :param split: Whether `mtds` should have multi-allelics split before filtering variants.
+    :return: Filtered and densified MatrixTable.
     """
     is_vds = isinstance(mtds, hl.vds.VariantDataset)
     if test:
@@ -68,7 +69,7 @@ def create_filtered_dense_mt(
     logger.info("Densifying data...")
     mt = hl.vds.to_dense_mt(vds)
 
-    logger.info("Writing dense MT...")
+    logger.info("Writing dense MatrixTable...")
     mt = mt.select_entries("GT", "GQ", "DP", "AD")
 
     return mt
@@ -122,6 +123,8 @@ def generate_qc_mt(
     mt = annotate_adj(mt)
 
     cp_path = get_checkpoint_path("combined_pre_ld_prune_qc_mt", mt=True)
+    # TODO: As I have it now, v3 and v4 are used to determine AF and callrate, is that OK, or should they be considered
+    #  independently and then shared passing variants merged?
     mt = get_qc_mt(
         mt,
         bi_allelic_only=bi_allelic_only,
@@ -132,7 +135,6 @@ def generate_qc_mt(
         apply_hard_filters=False,
         ld_r2=ld_r2,
         checkpoint_path=cp_path,
-        # ld_r2=None,  # Done in a separate function to allow for different cluster configurations
         filter_lcr=False,  # Already filtered from the initial set of QC variants
         filter_decoy=False,  # Doesn't exist for hg38
         filter_segdup=False,  # Already filtered from the initial set of QC variants
@@ -142,30 +144,7 @@ def generate_qc_mt(
         hl.read_matrix_table(cp_path).count_rows(),
     )
 
-    # mt = perform_ld_prune(mt, ld_r2)
     return mt
-
-
-"""
-def perform_ld_prune(mt: hl.MatrixTable, ld_r2: float = 0.1) -> hl.MatrixTable:
-    logger.warning(
-        "The LD-prune step of this function requires non-preemptible workers only!"
-    )
-    logger.info("Number of pre LD-pruned QC sites: %d...", mt.count_rows())
-
-    logger.info("Performing LD prune...")
-    unfiltered_qc_mt = mt.unfilter_entries()
-    ht = hl.ld_prune(unfiltered_qc_mt.GT, r2=ld_r2)
-    ht = ht.annotate_globals(ld_r2=ld_r2)
-    ht = ht.checkpoint(get_checkpoint_path(f"ld_prune_qc_sites"), overwrite=True)
-    logger.info("Final number of LD-pruned QC sites: %d...", ht.count())
-
-    logger.info("Filtering MatrixTable to LD-pruned QC sites...")
-    mt = mt.filter_rows(hl.is_defined(ht[mt.row_key]))
-    mt = mt.annotate_globals(qc_mt_params=mt.qc_mt_params.annotate(ld_r2=ld_r2))
-
-    return mt
-"""
 
 
 def main(args):
@@ -188,16 +167,16 @@ def main(args):
             mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
             mt = create_filtered_dense_mt(mt, test, split=True)
             mt = mt.checkpoint(
-                get_predetermined_qc_sites_dense(version="v3.1", test=test).path,
+                get_predetermined_qc_sites_dense(version="3.1", test=test).path,
                 overwrite=overwrite,
             )
             logger.info(
-                "Number of predetermined QC variants found in the gnomAD v3 MT: %d...",
+                "Number of predetermined QC variants found in the gnomAD v3 MatrixTable: %d...",
                 mt.count_rows(),
             )
 
         if args.create_v4_filtered_dense_mt:
-            # Note: This subset dense MT was created before the final hard filtering was determined
+            # Note: This subset dense MatrixTable was created before the final hard filtering was determined
             # Hard filtering is performed in `generate_qc_mt` before applying variant filters
             vds = get_gnomad_v4_vds(split=True, remove_hard_filtered_samples=False)
             mt = create_filtered_dense_mt(vds, test)
