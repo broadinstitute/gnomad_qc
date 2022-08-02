@@ -107,7 +107,7 @@ def generate_qc_mt(
     # v4_mt = v4_mt.anti_join_cols(hard_filtered_samples.ht())
     v4_mt = v4_mt.anti_join_cols(hard_filtered_samples_no_sex.ht())
 
-    samples_in_both = v4_mt.cols().semi_join_cols(v3_mt.cols())
+    samples_in_both = v4_mt.cols().semi_join(v3_mt.cols())
     n_samples_in_both = samples_in_both.count()
     if n_samples_in_both > 0:
         logger.info("The following samples are found in both MatrixTables:")
