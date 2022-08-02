@@ -167,8 +167,8 @@ def get_predetermined_qc_sites_dense(
     version: str = CURRENT_VERSION, test: bool = False
 ):
     if test:
-        return get_checkpoint_path(
-            f"dense_pre_ld_prune_qc_sites.{version}.test", mt=True
+        return TableResource(
+            get_checkpoint_path(f"dense_pre_ld_prune_qc_sites.{version}.test", mt=True)
         )
     elif version == "3.1":
         return gnomad_v3_predetermined_qc_sites_dense
