@@ -190,7 +190,7 @@ def main(args):
 
         if args.generate_qc_mt:
             v3_mt = hl.read_matrix_table(
-                get_dense_predetermined_qc(version="v3.1", test=test).path,
+                get_dense_predetermined_qc(version="3.1", test=test).path,
                 _n_partitions=n_partitions,
             )
             v4_mt = hl.read_matrix_table(
