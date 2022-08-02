@@ -16,8 +16,7 @@ from gnomad_qc.v4.resources.basics import (
 )
 from gnomad_qc.v4.resources.sample_qc import (
     get_dense_predetermined_qc,
-    hard_filtered_samples_no_sex,
-    # hard_filtered_samples,
+    hard_filtered_samples,
     predetermined_qc_sites,
     qc,
 )
@@ -104,8 +103,7 @@ def generate_qc_mt(
         "Number of (variants, samples) in the v4 MatrixTable: %s...", v4_mt.count()
     )
     # Remove v4 hard filtered samples
-    # v4_mt = v4_mt.anti_join_cols(hard_filtered_samples.ht())
-    v4_mt = v4_mt.anti_join_cols(hard_filtered_samples_no_sex.ht())
+    v4_mt = v4_mt.anti_join_cols(hard_filtered_samples.ht())
 
     samples_in_both = v4_mt.cols().semi_join(v3_mt.cols())
     n_samples_in_both = samples_in_both.count()
