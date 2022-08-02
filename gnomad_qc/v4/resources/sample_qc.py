@@ -7,6 +7,7 @@ from gnomad.resources.resource_utils import (
 )
 from gnomad.sample_qc.relatedness import get_relationship_expr
 
+from gnomad_qc.v4.resources.basics import get_checkpoint_path
 from gnomad_qc.v4.resources.constants import (
     CURRENT_VERSION,
     VERSIONS,
@@ -161,29 +162,37 @@ def get_relatedness_annotated_ht() -> hl.Table:
         )
     )
 
+
+def get_predetermined_qc_sites_dense(
+    version: str = CURRENT_VERSION, test: bool = False
+):
+    if test:
+        return get_checkpoint_path(
+            f"dense_pre_ld_prune_qc_sites.{version}.test", mt=True
+        )
+    elif version == "3.1":
+        return gnomad_v3_predetermined_qc_sites_dense
+    else:
+        return gnomad_v4_predetermined_qc_sites_dense.versions[version]
+
+
 # HT of pre LD pruned variants chosen from CCDG, gnomAD v3, and UKB variant info
 # https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py
 predetermined_qc_sites = TableResource(
     f"gs://gnomad/v4.0/sample_qc/pre_ld_pruning_qc_variants.ht"
 )
 
-# Dense MT of all predetermined possible QC sites `predetermined_qc_sites`
-gnomad_v4_predetermined_qc_sites_dense_mt = VersionedMatrixTableResource(
+# gnomAD v3 dense MT of all predetermined possible QC sites `predetermined_qc_sites`
+gnomad_v3_predetermined_qc_sites_dense = MatrixTableResource(
+    f"gs://gnomad/sample_qc/mt/genomes_v3.1/gnomad.exomes.v3.1.pre_ld_prune_qc_sites.dense.mt"
+)
+
+# gnomAD v4 dense MT of all predetermined possible QC sites `predetermined_qc_sites`
+gnomad_v4_predetermined_qc_sites_dense = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
         version: MatrixTableResource(
             f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.pre_ld_prune_qc_sites.dense.mt"
-        )
-        for version in VERSIONS
-    },
-)
-
-# HT of chosen v4 QC sites
-gnomad_v4_qc_sites = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.qc_sites.ht"
         )
         for version in VERSIONS
     },
