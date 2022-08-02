@@ -163,17 +163,17 @@ def get_relatedness_annotated_ht() -> hl.Table:
     )
 
 
-def get_predetermined_qc_sites_dense(
+def get_dense_predetermined_qc(
     version: str = CURRENT_VERSION, test: bool = False
 ):
     if test:
         return MatrixTableResource(
-            get_checkpoint_path(f"dense_pre_ld_prune_qc_sites.{version}.test", mt=True)
+            get_checkpoint_path(f"dense_pre_ld_prune_qc_sites.v{version}.test", mt=True)
         )
     elif version == "3.1":
-        return gnomad_v3_predetermined_qc_sites_dense
+        return dense_gnomad_v3_predetermined_qc
     else:
-        return gnomad_v4_predetermined_qc_sites_dense.versions[version]
+        return dense_gnomad_v4_predetermined_qc.versions[version]
 
 
 # HT of pre LD pruned variants chosen from CCDG, gnomAD v3, and UKB variant info
@@ -183,12 +183,12 @@ predetermined_qc_sites = TableResource(
 )
 
 # gnomAD v3 dense MT of all predetermined possible QC sites `predetermined_qc_sites`
-gnomad_v3_predetermined_qc_sites_dense = MatrixTableResource(
+dense_gnomad_v3_predetermined_qc = MatrixTableResource(
     f"gs://gnomad/sample_qc/mt/genomes_v3.1/gnomad.exomes.v3.1.pre_ld_prune_qc_sites.dense.mt"
 )
 
 # gnomAD v4 dense MT of all predetermined possible QC sites `predetermined_qc_sites`
-gnomad_v4_predetermined_qc_sites_dense = VersionedMatrixTableResource(
+dense_gnomad_v4_predetermined_qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
         version: MatrixTableResource(

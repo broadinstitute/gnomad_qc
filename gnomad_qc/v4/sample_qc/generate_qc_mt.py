@@ -15,7 +15,7 @@ from gnomad_qc.v4.resources.basics import (
     get_gnomad_v4_vds,
 )
 from gnomad_qc.v4.resources.sample_qc import (
-    get_predetermined_qc_sites_dense,
+    get_dense_predetermined_qc,
     hard_filtered_samples_no_sex,
     # hard_filtered_samples,
     predetermined_qc_sites,
@@ -167,7 +167,7 @@ def main(args):
             mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
             mt = create_filtered_dense_mt(mt, test, split=True)
             mt = mt.checkpoint(
-                get_predetermined_qc_sites_dense(version="3.1", test=test).path,
+                get_dense_predetermined_qc(version="3.1", test=test).path,
                 overwrite=overwrite,
             )
             logger.info(
@@ -181,7 +181,7 @@ def main(args):
             vds = get_gnomad_v4_vds(split=True, remove_hard_filtered_samples=False)
             mt = create_filtered_dense_mt(vds, test)
             mt = mt.checkpoint(
-                get_predetermined_qc_sites_dense(test=test).path, overwrite=overwrite
+                get_dense_predetermined_qc(test=test).path, overwrite=overwrite
             )
             logger.info(
                 "Number of predetermined QC variants found in the gnomAD v4 VDS: %d...",
@@ -190,11 +190,11 @@ def main(args):
 
         if args.generate_qc_mt:
             v3_mt = hl.read_matrix_table(
-                get_predetermined_qc_sites_dense(version="v3.1", test=test).path,
+                get_dense_predetermined_qc(version="v3.1", test=test).path,
                 _n_partitions=n_partitions,
             )
             v4_mt = hl.read_matrix_table(
-                get_predetermined_qc_sites_dense(test=test).path,
+                get_dense_predetermined_qc(test=test).path,
                 _n_partitions=n_partitions,
             )
             mt = generate_qc_mt(
