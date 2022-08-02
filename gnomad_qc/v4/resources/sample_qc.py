@@ -44,7 +44,7 @@ def get_sample_qc(strat: str = "all", test: bool = False) -> VersionedTableResou
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test)}/gnomad.exomes.v{version}.sample_qc_{strat}.ht"
+                f"{get_sample_qc_root(version, test)}/gnomad.exomes.v{version}.sample_qc_all_{'' if strat == 'all' else strat}.ht"
             )
             for version in VERSIONS
         },
