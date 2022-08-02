@@ -163,9 +163,14 @@ def get_relatedness_annotated_ht() -> hl.Table:
     )
 
 
-def get_dense_predetermined_qc(
-    version: str = CURRENT_VERSION, test: bool = False
-):
+def get_dense_predetermined_qc(version: str = CURRENT_VERSION, test: bool = False):
+    """
+    Get the dense MatrixTableResource of all predetermined QC sites for the indicated gnomAD version.
+
+    :param version: Version of QC MatrixTableResource to return.
+    :param test: Whether to use a tmp path for a test MatrixTableResource.
+    :return: MatrixTableResource of predetermined QC sites.
+    """
     if test:
         return MatrixTableResource(
             get_checkpoint_path(f"dense_pre_ld_prune_qc_sites.v{version}.test", mt=True)

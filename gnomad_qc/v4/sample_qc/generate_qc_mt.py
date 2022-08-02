@@ -24,7 +24,7 @@ from gnomad_qc.v4.resources.sample_qc import (
 from gnomad_qc.slack_creds import slack_token
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
-logger = logging.getLogger("create_qc_data")
+logger = logging.getLogger("generate_qc_mt")
 logger.setLevel(logging.INFO)
 
 
