@@ -84,101 +84,6 @@ SUBSETS = [
 Default list of subsets to include in the sample QC meta HT from the project meta HT
 """
 
-CURATED_SUBPOPS = {
-    "eas": [
-        "Cambodian",
-        "Chinese Dai",
-        "Dai",
-        "Daur",
-        "Han",
-        "Han Chinese",
-        "Hezhen",
-        "Japanese",
-        "Kinh",
-        "Lahu",
-        "Miaozu",
-        "Mongola",
-        "Naxi",
-        "Oroqen",
-        "She",
-        "Southern Han Chinese",
-        "Tu",
-        "Tujia",
-        "Uygur",
-        "Xibo",
-        "Yakut",
-        "Yizu",
-    ],
-    "sas": [
-        "Balochi",
-        "Bengali",
-        "Brahui",
-        "Burusho",
-        "Gujarati",
-        "Hazara",
-        "Indian Telugu",
-        "Kalash",
-        "Makrani",
-        "Pakistani",
-        "Pathan",
-        "Punjabi",
-        "Sindhi",
-        "Sri Lankan Tamil",
-    ],
-    "mid": ["Bedouin", "Druze", "Mozabite", "Palestinian"],
-    "amr": [
-        "Colombian",
-        "Costa Rican",
-        "Hawaiian",
-        "Indigenous American",
-        "Karitiana",
-        "Maya",
-        "Mexican-American",
-        "Peruvian",
-        "Pima",
-        "Puerto Rican",
-        "Rapa Nui from Easter Island",
-        "Surui",
-    ],
-    "afr": [
-        "African Caribbean",
-        "African-American",
-        "Bantu Kenya",
-        "Bantu S Africa",
-        "Biaka Pygmy",
-        "Continental African",
-        "Esan",
-        "Gambian",
-        "Luhya",
-        "Mandenka",
-        "Mbuti Pygmy",
-        "Mende",
-        "San",
-        "Yoruba",
-    ],
-    "nfe": [
-        "Adygei",
-        "Basque",
-        "British",
-        "Dutch",
-        "Estonian",
-        "French",
-        "German",
-        "Iberian",
-        "Italian",
-        "Norwegian",
-        "Orcadian",
-        "Russian",
-        "Sardinian",
-        "Swedish",
-        "Toscani",
-        "Utah Residents (European Ancestry)",
-    ],
-}
-"""
-Manually curated list of which subpops to included within each pop. Manual curation was needed as some known subpop labels may be inaccurate, especially those that are cohort-level annotations."
-"""
-
 
 def compute_sample_qc() -> hl.Table:
     """
@@ -594,6 +499,7 @@ def assign_pops(
     pcs: List[int] = list(range(1, 17)),
     withhold_prop: float = None,
     pop: str = None,
+    curated_subpops: list = [],
     high_quality: bool = False,
     missing_label: str = "oth",
     seed: int = 24,
@@ -616,6 +522,7 @@ def assign_pops(
     :param pcs: List of PCs to use in the RF
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
     :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
+    :param curated_subpops:  List of the subpops that are accepted as known lables for the pop. If not specified, all values of subpop_description will be used as known labels when inferrring subpops.
     :param high_quality: Whether the file includes PCA info for only high-quality samples
     :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`
     :param seed: Random seed
@@ -623,38 +530,40 @@ def assign_pops(
     :rtype: hl.Table
     """
     logger.info("Assigning global population/subpopulation labels")
-    # TODO: Should we be restricting to high quality
     pop_pca_scores_ht = ancestry_pca_scores(
         include_unreleasable_samples, high_quality, pop
     ).ht()
 
+    project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
+
     if pop is not None:
-        meta_ht = meta.ht()
-        pop_pca_scores_ht = pop_pca_scores_ht.annotate(**meta_ht[pop_pca_scores_ht.key])
-        # Set subpop_descritpion to missing if the subpop is not in the manually curated list of subpops for the given pop
-        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
-            project_meta=pop_pca_scores_ht.project_meta.annotate(
+        # Set subpop_description to missing if the subpop is not in the manually curated list of subpops for the given pop
+        if curated_subpops:
+            pop_pca_scores_ht = pop_pca_scores_ht.annotate(
                 subpop_description=hl.or_missing(
-                    hl.literal(CURATED_SUBPOPS[pop]).contains(
-                        pop_pca_scores_ht.project_meta.subpop_description
+                    hl.literal(curated_subpops).contains(
+                        project_meta_ht.subpop_description
                     ),
-                    pop_pca_scores_ht.project_meta.subpop_description,
+                    project_meta_ht.subpop_description,
                 )
             )
-        )
+        else:
+            pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+                subpop_description=project_meta_ht.subpop_description
+            )
+
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=(
                 hl.case()
                 .when(
-                    hl.is_defined(pop_pca_scores_ht.project_meta.subpop_description),
-                    pop_pca_scores_ht.project_meta.subpop_description,
+                    hl.is_defined(pop_pca_scores_ht.subpop_description),
+                    pop_pca_scores_ht.subpop_description,
                 )
                 .or_missing()
             )
         )
         pop_field = "subpop"
     else:
-        project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=(
                 hl.case()
@@ -665,6 +574,10 @@ def assign_pops(
                 .when(project_meta_ht.v2_pop != "oth", project_meta_ht.v2_pop)
                 .or_missing()
             )
+        )
+        # Keep track of defined pops, useful if decide to withhold samples
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+            defined_pop=pop_pca_scores_ht.training_pop
         )
         pop_field = "pop"
 
@@ -679,10 +592,16 @@ def assign_pops(
                 pop_pca_scores_ht.training_pop,
             )
         )
-    pop_pca_scores_ht = pop_pca_scores_ht.annotate(
-        withheld_sample=hl.is_defined(pop_pca_scores_ht.project_meta.subpop_description)
-        & (~hl.is_defined(pop_pca_scores_ht.training_pop))
-    )
+    if pop is not None:
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+            withheld_sample=hl.is_defined(pop_pca_scores_ht.subpop_description)
+            & (~hl.is_defined(pop_pca_scores_ht.training_pop))
+        )
+    else:
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+            withheld_sample=hl.is_defined(pop_pca_scores_ht.defined_pop)
+            & (~hl.is_defined(pop_pca_scores_ht.training_pop))
+        )
 
     if (
         max_number_mislabeled_training_samples is not None
