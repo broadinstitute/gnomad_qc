@@ -15,7 +15,7 @@ from gnomad_qc.v4.resources.basics import (
     get_gnomad_v4_vds,
 )
 from gnomad_qc.v4.resources.sample_qc import (
-    get_dense_predetermined_qc,
+    get_predetermined_qc,
     hard_filtered_samples,
     predetermined_qc_sites,
     qc,
@@ -68,7 +68,6 @@ def create_filtered_dense_mt(
     logger.info("Densifying data...")
     mt = hl.vds.to_dense_mt(vds)
 
-    logger.info("Writing dense MatrixTable...")
     mt = mt.select_entries("GT", "GQ", "DP", "AD")
 
     return mt
@@ -150,7 +149,7 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    # NOTE: remove this flag when the new shuffle method is the default
+    # NOTE: remove this flag when the new shuffle method is the default. This is necessary for hail 0.2.97.
     hl._set_flags(use_new_shuffle="1")
 
     overwrite = args.overwrite
@@ -164,7 +163,7 @@ def main(args):
             mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
             mt = create_filtered_dense_mt(mt, test, split=True)
             mt = mt.checkpoint(
-                get_dense_predetermined_qc(version="3.1", test=test).path,
+                get_predetermined_qc(version="3.1", test=test).path,
                 overwrite=overwrite,
             )
             logger.info(
@@ -178,7 +177,7 @@ def main(args):
             vds = get_gnomad_v4_vds(split=True, remove_hard_filtered_samples=False)
             mt = create_filtered_dense_mt(vds, test)
             mt = mt.checkpoint(
-                get_dense_predetermined_qc(test=test).path, overwrite=overwrite
+                get_predetermined_qc(test=test).path, overwrite=overwrite
             )
             logger.info(
                 "Number of predetermined QC variants found in the gnomAD v4 VDS: %d...",
