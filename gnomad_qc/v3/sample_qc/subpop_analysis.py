@@ -353,7 +353,6 @@ def main(args):  # noqa: D103
 
         if args.assign_subpops:
             logger.info("Assigning subpops...")
-            print(CURATED_SUBPOPS[pop])
             joint_pca_ht, joint_pca_fit = assign_pops(
                 min_prob=args.min_prob,
                 include_unreleasable_samples=False,
