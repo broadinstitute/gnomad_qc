@@ -1,0 +1,3 @@
+[submodule "gnomad_qc/v4/sample_qc/cuKING"]
+	path = gnomad_qc/v4/sample_qc/cuKING
+	url = https://github.com/populationgenomics/cuKING.git

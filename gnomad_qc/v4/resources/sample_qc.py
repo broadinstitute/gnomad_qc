@@ -331,7 +331,7 @@ pc_relate_pca_scores = VersionedTableResource(
     },
 )
 
-# PC relate results.
+# Relatedness results.
 relatedness = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -466,6 +466,11 @@ pop = VersionedTableResource(
         for version in VERSIONS
     },
 )
+
+
+def cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+    # cuKING inputs can be easily regenerated, so use a temp location.
+    return f"{qc_temp_prefix(version)}/cuking_inputs{'_test' if test else ''}.parquet"
 
 
 def pop_tsv_path(version: str = CURRENT_VERSION) -> str:
