@@ -7,7 +7,7 @@ from gnomad.resources.resource_utils import (
 )
 from gnomad.sample_qc.relatedness import get_relationship_expr
 
-from gnomad_qc.v4.resources.basics import get_checkpoint_path
+from gnomad_qc.v4.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v4.resources.constants import (
     CURRENT_VERSION,
     VERSIONS,
@@ -311,7 +311,7 @@ pc_relate_pca_scores = VersionedTableResource(
     },
 )
 
-# PC relate results
+# Relatedness results
 relatedness = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -376,6 +376,11 @@ pop = VersionedTableResource(
         for version in VERSIONS
     },
 )
+
+
+def cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+    # cuKING inputs can be easily regenerated, so use a temp location.
+    return f"{qc_temp_prefix(version)}/cuking_inputs{'_test' if test else ''}.parquet"
 
 
 def pop_tsv_path(version: str = CURRENT_VERSION) -> str:
