@@ -430,7 +430,7 @@ if __name__ == "__main__":
             "genomes/exomes, gnomAD v3.1 genomes, and UKBB exomes) after ADJ filtering."
         ),
         default=None,
-        type=int,
+        type=float,
     )
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
