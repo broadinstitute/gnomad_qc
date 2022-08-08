@@ -157,7 +157,8 @@ def compute_hard_filters(
     hard_filters["sample_qc_metrics"] = (
         sample_qc_metric_hard_filters["high_n_singleton"]
         | sample_qc_metric_hard_filters["high_r_het_hom_var"]
-        | sample_qc_metric_hard_filters["low_bases_dp_over_1"]
+        | sample_qc_metric_hard_filters["low_bases_dp_over_1"] |
+        sample_qc_metric_hard_filters["low_bases_dp_over_20"]
     )
 
     # Flag samples that fail bam metric thresholds
