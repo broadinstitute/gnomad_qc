@@ -6,7 +6,7 @@ import hail as hl
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.utils.annotations import bi_allelic_expr
-from gnomad.utils.filtering import add_filters_expr
+from gnomad.utils.filtering import add_filters_expr, filter_to_adj
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
@@ -26,6 +26,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_samples_no_sex,
     interval_coverage,
     sex,
+    v4_predetermined_qc,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -73,6 +74,7 @@ def compute_hard_filters(
     test: bool = False,
     coverage_mt: hl.MatrixTable = None,
     min_cov: int = None,
+    min_qc_mt_adj_callrate: int = None,
 ) -> hl.Table:
     """
     Apply hard filters to samples and return a Table with the filtered samples and the reason for filtering.
@@ -95,6 +97,8 @@ def compute_hard_filters(
     :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full dataset.
     :param coverage_mt: MatrixTable containing the per interval per sample coverage statistics.
     :param min_cov: Filtering threshold to use for chr20 coverage.
+    :param min_qc_mt_adj_callrate: Filtering threshold to use for sample callrate computed on only predetermined QC
+        variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKBB exomes) after ADJ filtering.
     :return: Table of hard filtered samples.
     """
     ht = get_gnomad_v4_vds(
@@ -181,6 +185,15 @@ def compute_hard_filters(
             / hl.agg.sum(coverage_mt.interval_size)
         ).cols()
         hard_filters["low_coverage"] = coverage_ht[ht.key].chr20_mean_dp < min_cov
+
+    if min_qc_mt_adj_callrate is not None:
+        mt = v4_predetermined_qc.mt()
+        mt = filter_to_adj(mt)
+        num_variants = mt.count_rows()
+        callrate_ht = mt.annotate_cols(
+            callrate_adj=hl.agg.count_where(hl.is_defined(mt.GT)) / num_variants
+        ).cols()
+        hard_filters["low_adj_callrate"] = callrate_ht[ht.key].callrate_adj < min_qc_mt_adj_callrate
 
     if include_sex_filter:
         sex_struct = sex.ht()[ht.key]
@@ -289,6 +302,7 @@ def main(args):
                 test,
                 coverage_mt,
                 args.min_cov,
+                args.min_qc_mt_adj_callrate,
             )
             ht = ht.checkpoint(hard_filter_path, overwrite=args.overwrite)
             ht.group_by("hard_filters").aggregate(n=hl.agg.count()).show(20)
@@ -393,6 +407,15 @@ if __name__ == "__main__":
     hard_filter_args.add_argument(
         "--min-cov",
         help="Minimum chromosome 20 coverage for inclusion when computing hard-filters.",
+        default=None,
+        type=int,
+    )
+    hard_filter_args.add_argument(
+        "--min-qc-mt-adj-callrate",
+        help=(
+            "Minimum sample callrate computed on only predetermined QC variants (predetermined using CCDG "
+            "genomes/exomes, gnomAD v3.1 genomes, and UKBB exomes) after ADJ filtering."
+        ),
         default=None,
         type=int,
     )
