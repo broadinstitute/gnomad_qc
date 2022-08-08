@@ -69,6 +69,7 @@ def compute_hard_filters(
     max_n_singleton: float = 5000,
     max_r_het_hom_var: float = 10,
     min_bases_dp_over_1: float = 5e7,
+    min_bases_dp_over_20: float = 4e7,
     max_contamination: float = 0.05,
     max_chimera: float = 0.05,
     test: bool = False,
@@ -90,8 +91,9 @@ def compute_hard_filters(
     :param max_n_singleton: Filtering threshold to use for the maximum number of singletons.
     :param max_r_het_hom_var: Filtering threshold to use for the maximum ratio of heterozygotes to alternate homozygotes.
     :param min_bases_dp_over_1: Filtering threshold to use for the minimum number of bases with a DP over one.
+    :param min_bases_dp_over_20: Filtering threshold to use for the minimum number of bases with a DP over 20.
     :param max_contamination: Filtering threshold to use for maximum contamination (this is a proportion not a
-        percecnt, e.g. 5% == 0.05, %5 != 5).
+        percent, e.g. 5% == 0.05, %5 != 5).
     :param max_chimera: Filtering threshold to use for maximum chimera (this is a proportion not a percent,
         e.g. 5% == 0.05, %5 != 5).
     :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full dataset.
@@ -109,6 +111,7 @@ def compute_hard_filters(
             max_n_singleton=max_n_singleton,
             max_r_het_hom_var=max_r_het_hom_var,
             min_bases_dp_over_1=min_bases_dp_over_1,
+            min_bases_dp_over_20=min_bases_dp_over_20,
             max_contamination=max_contamination,
             max_chimera=max_chimera,
         ),
@@ -147,6 +150,9 @@ def compute_hard_filters(
     )
     sample_qc_metric_hard_filters["low_bases_dp_over_1"] = (
         bi_allelic_qc_struct.bases_dp_over_1 < min_bases_dp_over_1
+    )
+    sample_qc_metric_hard_filters["low_bases_dp_over_20"] = (
+        bi_allelic_qc_struct.bases_dp_over_20 < min_bases_dp_over_20
     )
     hard_filters["sample_qc_metrics"] = (
         sample_qc_metric_hard_filters["high_n_singleton"]
@@ -297,6 +303,7 @@ def main(args):
                 args.max_n_singleton,
                 args.max_r_het_hom_var,
                 args.min_bases_dp_over_1,
+                args.min_bases_dp_over_20,
                 args.max_contamination,
                 args.max_chimera,
                 test,
@@ -385,6 +392,12 @@ if __name__ == "__main__":
         type=float,
         help="Filtering threshold to use for the minimum number of bases with a DP over one. Default is 5e7.",
         default=5e7,
+    )
+    hard_filter_args.add_argument(
+        "--min-bases-dp-over-20",
+        type=float,
+        help="Filtering threshold to use for the minimum number of bases with a DP over 20. Default is 4e7.",
+        default=4e7,
     )
     hard_filter_args.add_argument(
         "--max-contamination",
