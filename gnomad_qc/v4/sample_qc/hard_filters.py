@@ -157,8 +157,8 @@ def compute_hard_filters(
     hard_filters["sample_qc_metrics"] = (
         sample_qc_metric_hard_filters["high_n_singleton"]
         | sample_qc_metric_hard_filters["high_r_het_hom_var"]
-        | sample_qc_metric_hard_filters["low_bases_dp_over_1"] |
-        sample_qc_metric_hard_filters["low_bases_dp_over_20"]
+        | sample_qc_metric_hard_filters["low_bases_dp_over_1"]
+        | sample_qc_metric_hard_filters["low_bases_dp_over_20"]
     )
 
     # Flag samples that fail bam metric thresholds
@@ -200,13 +200,21 @@ def compute_hard_filters(
         mt = filter_to_adj(mt)
         mt = mt.filter_rows(
             ((hl.agg.count_where(hl.is_defined(mt.GT)) / num_samples) > 0.99)
-            & ((hl.agg.sum(mt.GT.n_alt_alleles()) / hl.agg.count_where(hl.is_defined(mt.GT))) > 0.0001)
+            & (
+                (
+                    hl.agg.sum(mt.GT.n_alt_alleles())
+                    / (hl.agg.count_where(hl.is_defined(mt.GT)) * 2)
+                )
+                > 0.0001
+            )
         )
         num_variants = mt.count_rows()
         callrate_ht = mt.annotate_cols(
             callrate_adj=hl.agg.count_where(hl.is_defined(mt.GT)) / num_variants
         ).cols()
-        hard_filters["low_adj_callrate"] = callrate_ht[ht.key].callrate_adj < min_qc_mt_adj_callrate
+        hard_filters["low_adj_callrate"] = (
+            callrate_ht[ht.key].callrate_adj < min_qc_mt_adj_callrate
+        )
 
     if include_sex_filter:
         sex_struct = sex.ht()[ht.key]
