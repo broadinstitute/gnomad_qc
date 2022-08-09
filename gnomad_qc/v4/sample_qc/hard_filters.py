@@ -196,10 +196,13 @@ def compute_hard_filters(
     if min_qc_mt_adj_callrate is not None:
         mt = v4_predetermined_qc.mt()
         num_samples = mt.count_cols()
-        # Filter predetermined QC variants to only variants with a high pre ADJ callrate
-        mt = mt.filter_rows((hl.agg.count_where(hl.is_defined(mt.GT)) / num_samples) > 0.99)
-        num_variants = mt.count_rows()
+        # Filter predetermined QC variants to only variants with a high ADJ callrate
         mt = filter_to_adj(mt)
+        mt = mt.filter_rows(
+            ((hl.agg.count_where(hl.is_defined(mt.GT)) / num_samples) > 0.99)
+            & ((hl.agg.sum(mt.GT.n_alt_alleles()) / hl.agg.count_where(hl.is_defined(mt.GT))) > 0.0001)
+        )
+        num_variants = mt.count_rows()
         callrate_ht = mt.annotate_cols(
             callrate_adj=hl.agg.count_where(hl.is_defined(mt.GT)) / num_variants
         ).cols()
