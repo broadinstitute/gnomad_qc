@@ -522,7 +522,7 @@ def assign_pops(
     :param pcs: List of PCs to use in the RF
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
     :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
-    :param curated_subpops:  List of the subpops that are accepted as known lables for the pop. If not specified, all values of subpop_description will be used as known labels when inferring subpops.
+    :param curated_subpops: List of the subpops that are accepted as known labels for the pop. If not specified, all values of subpop_description will be used as known labels when inferring subpops.
     :param high_quality: Whether the file includes PCA info for only high-quality samples
     :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`
     :param seed: Random seed
