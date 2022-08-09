@@ -575,7 +575,7 @@ def assign_pops(
                 .or_missing()
             )
         )
-        # Keep track of defined pops, useful if decide to withhold samples
+        # Keep track of defined pops, useful if samples are withheld
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             defined_pop=pop_pca_scores_ht.training_pop
         )
