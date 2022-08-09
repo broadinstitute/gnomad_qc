@@ -6,10 +6,10 @@ We use [`cuKING`](https://github.com/populationgenomics/cuKING) for pruning rela
 
 ### Preparing the production environment
 
-Below, `$GCP_PROJECT` refers to the GCP project name for gnomAD production.
+Below, `$PROJECT_ID` refers to the GCP project ID for gnomAD production.
 
 ```sh
-gcloud config set project $GCP_PROJECT
+gcloud config set project $PROJECT_ID
 ```
 
 Enable the necessary services:
@@ -27,20 +27,11 @@ Create an Artifact Registry repository for Docker images:
 gcloud artifacts repositories create images --location=us-central1
 ```
 
-Fetch a `cuKING` release and replace the GCP project ID:
-
-```sh
-curl -sSL https://github.com/populationgenomics/cuKING/archive/refs/tags/v1.0.0.tar.gz | tar xz -
-
-cd cuKING-1.0.0
-
-perl -pi -e "s/cpg-gnomad-production-27bb/$GCP_PROJECT/g" *
-```
-
 Build the Docker image:
 
 ```sh
-gcloud builds submit --config cloudbuild.yaml .
+cd cuKING
+gcloud builds submit --region=us-central1 --config cloudbuild.yaml --substitutions=TAG_NAME=$(git describe --tags) .
 ```
 
 This should take about half an hour.
@@ -54,20 +45,20 @@ gcloud iam service-accounts create cuking
 Grant the service account write access to the `gnomad` bucket:
 
 ```sh
-gsutil iam ch serviceAccount:cuking@$GCP_PROJECT.iam.gserviceaccount.com:objectAdmin gs://gnomad
+gsutil iam ch serviceAccount:cuking@$PROJECT_ID.iam.gserviceaccount.com:objectAdmin gs://gnomad
 ```
 
 Create a VM instance template:
 
 ```sh
 gcloud compute instance-templates create cuking-instance-template \
-    --project=$GCP_PROJECT \
+    --project=$PROJECT_ID \
     --machine-type=a2-highgpu-1g \
     --network-interface=network=default,network-tier=PREMIUM,address="" \
     --metadata-from-file=startup-script=instance_startup_script.sh \
     --maintenance-policy=TERMINATE \
     --provisioning-model=STANDARD \
-    --service-account=cuking@$GCP_PROJECT.iam.gserviceaccount.com \
+    --service-account=cuking@$PROJECT_ID.iam.gserviceaccount.com \
     --scopes=https://www.googleapis.com/auth/cloud-platform \
     --accelerator=count=1,type=nvidia-tesla-a100 \
     --create-disk=auto-delete=yes,boot=yes,device-name=cuking-instance-template,image=projects/ubuntu-os-cloud/global/images/ubuntu-1804-bionic-v20220712,mode=rw,size=10,type=pd-balanced \
@@ -83,7 +74,7 @@ Start an autoscaling Hail Dataproc cluster with 20 secondary workers and submit 
 
 ### Run `cuKING`
 
-This step doesn't need a Dataproc cluster. Run `relatedness.py --run-cuking` to submit a Cloud Batch job. The script will print the command that can be used to check progress. This should take about two hours.
+This step doesn't need a Dataproc cluster. Run the command printed by `relatedness.py --print-cuking-command` to submit a Cloud Batch job. This should take about two hours.
 
 ### Convert outputs
 

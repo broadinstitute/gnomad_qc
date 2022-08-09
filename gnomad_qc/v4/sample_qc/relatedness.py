@@ -1,6 +1,9 @@
+#!/usr/bin/env python3
+
 import argparse
 import logging
 import json
+import textwrap
 
 import hail as hl
 from hail.utils import hadoop_exists, hadoop_open
@@ -11,6 +14,7 @@ from gnomad_qc.v4.resources.basics import get_logging_path
 from gnomad_qc.v4.resources.sample_qc import (
     get_predetermined_qc_sites,
     cuking_input_path,
+    cuking_output_path,
 )
 from gnomad.resources.resource_utils import DataException
 from gnomad_qc.slack_creds import slack_token
@@ -23,6 +27,30 @@ logger.setLevel(logging.INFO)
 def main(args):
     test = args.test
 
+    input_path = cuking_input_path(test=test)
+    output_path = cuking_output_path(test=test)
+
+    if args.print_cuking_command:
+        print(
+            textwrap.dedent(
+                f"""\
+                # Make sure that $PROJECT_ID is set.
+                cd cuKING && \\
+                ./cloud_batch_submit.py \\
+                    --location=us-central1 \\
+                    --project_id=$PROJECT_ID \\
+                    --tag_name=$(git describe --tags) \\
+                    --input_uri={input_path} \\
+                    --output_uri={output_path} \\
+                    --requester_pays_project=$PROJECT_ID \\
+                    --kin_threshold=0.05 \\
+                    --split_factor=4 && \\
+                cd ..
+                """
+            )
+        )
+        return
+
     hl.init(
         log="/relatedness.log",
         default_reference="GRCh38",
@@ -30,9 +58,8 @@ def main(args):
 
     try:
         if args.prepare_inputs:
-            output_path = cuking_input_path(test=test)
-            if hadoop_exists(output_path):
-                raise DataException(f"{output_path} already exists")
+            if hadoop_exists(input_path):
+                raise DataException(f"{input_path} already exists")
 
             mt_v3 = hl.read_matrix_table(
                 get_predetermined_qc_sites(version="3.1", test=test).path
@@ -71,7 +98,7 @@ def main(args):
 
             # Export one compressed Parquet file per partition.
             logger.info("Writing Parquet tables...")
-            entries.to_spark().write.option("compression", "zstd").parquet(output_path)
+            entries.to_spark().write.option("compression", "zstd").parquet(input_path)
 
             # Write metadata that's useful for postprocessing. Map `col_idx` to `s`
             # explicitly so we don't need to rely on a particular order returned by
@@ -83,7 +110,7 @@ def main(args):
                 "num_sites": row_count_v4,
                 "samples": [e.s for e in col_idx_mapping],
             }
-            with hadoop_open(f"{output_path}/metadata.json", 'w') as f:
+            with hadoop_open(f"{input_path}/metadata.json", 'w') as f:
                 json.dump(metadata, f)
 
     finally:
@@ -99,6 +126,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--prepare-inputs",
         help="Converts the dense QC matrix to a Parquet format suitable for cuKING.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--print-cuking-command",
+        help="Print the command to submit a Cloud Batch job for running cuKING.",
         action="store_true",
     )
     parser.add_argument(

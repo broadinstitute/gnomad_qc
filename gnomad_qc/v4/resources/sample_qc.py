@@ -470,7 +470,12 @@ pop = VersionedTableResource(
 
 def cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     # cuKING inputs can be easily regenerated, so use a temp location.
-    return f"{qc_temp_prefix(version)}/cuking_inputs{'_test' if test else ''}.parquet"
+    return f"{qc_temp_prefix(version)}/cuking_input{'_test' if test else ''}.parquet"
+
+
+def cuking_output_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+    # cuKING outputs are directly converted into a Hail table, so use a temp location.
+    return f"{qc_temp_prefix(version)}/cuking_output{'_test' if test else ''}.parquet"
 
 
 def pop_tsv_path(version: str = CURRENT_VERSION) -> str:
