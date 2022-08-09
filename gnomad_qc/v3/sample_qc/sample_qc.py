@@ -499,7 +499,7 @@ def assign_pops(
     pcs: List[int] = list(range(1, 17)),
     withhold_prop: float = None,
     pop: str = None,
-    curated_subpops: list = [],
+    curated_subpops: None,
     high_quality: bool = False,
     missing_label: str = "oth",
     seed: int = 24,
@@ -538,7 +538,7 @@ def assign_pops(
 
     if pop is not None:
         # Set subpop_description to missing if the subpop is not in the manually curated list of subpops for the given pop
-        if curated_subpops:
+        if curated_subpops is not None:
             pop_pca_scores_ht = pop_pca_scores_ht.annotate(
                 subpop_description=hl.or_missing(
                     hl.literal(curated_subpops).contains(
