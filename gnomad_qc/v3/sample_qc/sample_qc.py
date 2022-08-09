@@ -499,7 +499,7 @@ def assign_pops(
     pcs: List[int] = list(range(1, 17)),
     withhold_prop: float = None,
     pop: str = None,
-    curated_subpops: None,
+    curated_subpops: list = None,
     high_quality: bool = False,
     missing_label: str = "oth",
     seed: int = 24,
