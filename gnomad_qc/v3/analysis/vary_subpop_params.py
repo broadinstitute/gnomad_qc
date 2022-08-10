@@ -10,7 +10,7 @@ from gnomad.utils.slack import slack_notifications
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.sample_qc.sample_qc import ancestry_pca_scores, assign_pops
-
+from gnomad_qc.v3.sample_qc.subpop_analysis import CURATED_SUBPOPS
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -56,6 +56,7 @@ def main(args):  # noqa: D103
                     pcs=args.pcs,
                     withhold_prop=args.withhold_prop,
                     pop=pop,
+                    curated_subpops=CURATED_SUBPOPS[pop],
                     high_quality=high_quality,
                     missing_label="Other",
                 )

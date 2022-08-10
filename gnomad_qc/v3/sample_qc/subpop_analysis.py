@@ -32,6 +32,102 @@ logging.basicConfig(
 logger = logging.getLogger("subpop_analysis")
 logger.setLevel(logging.INFO)
 
+CURATED_SUBPOPS = {
+    # NOTE: 'Dai' is a known subpop label within eas but is removed as only 8 samples have defined subpop labels in this group, and it is similar to "Chinese Dai" which has more samples with defined subpop labels (92 samples)
+    # NOTE: 'Han' is a known subpop label within eas but is removed as it is already encompassed by more distinct subpops, "Han Chinese" and "Southern Han Chinese" ("Han" overlaps both "Han Chinese" and "Southern Han Chinese" in PCA plots)
+    "eas": [
+        "Cambodian",
+        "Chinese Dai",
+        "Daur",
+        "Han Chinese",
+        "Hezhen",
+        "Japanese",
+        "Kinh",
+        "Lahu",
+        "Miaozu",
+        "Mongola",
+        "Naxi",
+        "Oroqen",
+        "She",
+        "Southern Han Chinese",
+        "Tu",
+        "Tujia",
+        "Uygur",
+        "Xibo",
+        "Yakut",
+        "Yizu",
+    ],
+    "sas": [
+        "Balochi",
+        "Bengali",
+        "Brahui",
+        "Burusho",
+        "Gujarati",
+        "Hazara",
+        "Indian Telugu",
+        "Kalash",
+        "Makrani",
+        "Pakistani",
+        "Pathan",
+        "Punjabi",
+        "Sindhi",
+        "Sri Lankan Tamil",
+    ],
+    "mid": ["Bedouin", "Druze", "Mozabite", "Palestinian"],
+    "amr": [
+        "Colombian",
+        "Costa Rican",
+        "Hawaiian",
+        "Indigenous American",
+        "Karitiana",
+        "Maya",
+        "Mexican-American",
+        "Peruvian",
+        "Pima",
+        "Puerto Rican",
+        "Rapa Nui from Easter Island",
+        "Surui",
+    ],
+    "afr": [
+        "African Caribbean",
+        "African-American",
+        "Bantu Kenya",
+        "Bantu S Africa",
+        "Biaka Pygmy",
+        "Continental African",
+        "Esan",
+        "Gambian",
+        "Luhya",
+        "Mandenka",
+        "Mbuti Pygmy",
+        "Mende",
+        "San",
+        "Yoruba",
+    ],
+    "nfe": [
+        "Adygei",
+        "Basque",
+        "British",
+        "Dutch",
+        "Estonian",
+        "French",
+        "German",
+        "Iberian",
+        "Italian",
+        "Norwegian",
+        "Orcadian",
+        "Russian",
+        "Sardinian",
+        "Swedish",
+        "Toscani",
+        "Utah Residents (European Ancestry)",
+    ],
+}
+"""
+Manually curated list of which subpopulations to include within each global population. Manual curation was needed as some known subpop labels may be inaccurate, especially those that are cohort-level annotations.
+For example, curation is needed to remove "Costa Rican" and "Indigenous American" subpops from the list of known subpops for the East Asian population.
+"""
+
 
 def compute_subpop_qc_mt(
     mt: hl.MatrixTable,
@@ -265,6 +361,7 @@ def main(args):  # noqa: D103
                 pcs=args.pcs,
                 withhold_prop=args.withhold_prop,
                 pop=pop,
+                curated_subpops=CURATED_SUBPOPS[pop],
                 high_quality=high_quality,
                 missing_label="Other",
             )
