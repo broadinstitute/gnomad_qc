@@ -2,11 +2,10 @@ import argparse
 import logging
 from typing import Union
 
-import hail as hl
-
 from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad.utils.annotations import annotate_adj, get_adj_expr
 from gnomad.utils.slack import slack_notifications
+import hail as hl
 
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v4.resources.basics import (
@@ -94,12 +93,12 @@ def generate_qc_mt(
     :param ld_r2: LD-pruning cutoff.
     :return: MatrixTable of sites that pass QC filters.
     """
+    v3_count = v3_mt.count()
+    v4_count = v4_mt.count()
     logger.info(
-        "Number of (variants, samples) in the v3.1 MatrixTable: %s...", v3_mt.count()
+        "Number of (variants, samples) in the v3.1 MatrixTable: %s...", v3_count
     )
-    logger.info(
-        "Number of (variants, samples) in the v4 MatrixTable: %s...", v4_mt.count()
-    )
+    logger.info("Number of (variants, samples) in the v4 MatrixTable: %s...", v4_count)
     # Remove v4 hard filtered samples
     v4_mt = v4_mt.anti_join_cols(hard_filtered_samples.ht())
 
@@ -110,6 +109,16 @@ def generate_qc_mt(
         samples_in_both.show(n_samples_in_both)
         raise ValueError("Overlapping sample names were found in the MatrixTables!")
 
+    n_variants_in_both = v4_mt.rows().semi_join(v3_mt.rows()).count()
+    logger.info(
+        "Number of variants found in both MatrixTables: %d\n"
+        "Number of variants found in only the v3.1 MatrixTable: %d\n"
+        "Number of variants founs in only the v4 MatrixTable: %d",
+        n_variants_in_both,
+        v3_count[0] - n_variants_in_both,
+        v4_count[0] - n_variants_in_both,
+    )
+
     logger.info(
         "Performing a union of the v3.1 and v4 predetermined QC site MatrixTable columns..."
     )
@@ -119,8 +128,6 @@ def generate_qc_mt(
     mt = annotate_adj(mt)
 
     cp_path = get_checkpoint_path("combined_pre_ld_prune_qc_mt", mt=True)
-    # TODO: As I have it now, v3 and v4 are used to determine AF and callrate, is that OK, or should they be considered
-    #  independently and then shared passing variants merged?
     mt = get_qc_mt(
         mt,
         bi_allelic_only=bi_allelic_only,
@@ -185,12 +192,14 @@ def main(args):
             )
 
         if args.generate_qc_mt:
+            # Note: Both dense MatrixTables were created without a final repartition, therefore they are repartitioned
+            # on read here so the final QC MT will have the desired number of partitions `n_partitions`
             v3_mt = hl.read_matrix_table(
-                get_dense_predetermined_qc(version="3.1", test=test).path,
+                get_predetermined_qc(version="3.1", test=test).path,
                 _n_partitions=n_partitions,
             )
             v4_mt = hl.read_matrix_table(
-                get_dense_predetermined_qc(test=test).path,
+                get_predetermined_qc(test=test).path,
                 _n_partitions=n_partitions,
             )
             mt = generate_qc_mt(
