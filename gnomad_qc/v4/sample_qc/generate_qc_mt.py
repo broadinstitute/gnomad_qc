@@ -230,10 +230,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--create-v3-filtered-dense-mt",
-        help=(
-            "Create a dense MatrixTable from the raw gnomAD v3.1 sparse MatrixTable filtered to predetermined "
-            "QC variants."
-        ),
+        help="Create a dense MatrixTable from the raw gnomAD v3.1 sparse MatrixTable filtered to predetermined QC variants.",
         action="store_true",
     )
     parser.add_argument(
