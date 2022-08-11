@@ -163,7 +163,7 @@ def get_relatedness_annotated_ht() -> hl.Table:
     )
 
 
-def get_predetermined_qc_sites(version: str = CURRENT_VERSION, test: bool = False):
+def get_predetermined_qc(version: str = CURRENT_VERSION, test: bool = False):
     """
     Get the dense MatrixTableResource of all predetermined QC sites for the indicated gnomAD version.
 
