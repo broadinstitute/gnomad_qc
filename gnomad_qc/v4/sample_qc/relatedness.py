@@ -12,7 +12,7 @@ from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.v4.resources.basics import get_logging_path
 from gnomad_qc.v4.resources.sample_qc import (
-    get_predetermined_qc_sites,
+    get_predetermined_qc,
     cuking_input_path,
     cuking_output_path,
 )
@@ -62,9 +62,9 @@ def main(args):
                 raise DataException(f"{input_path} already exists")
 
             mt_v3 = hl.read_matrix_table(
-                get_predetermined_qc_sites(version="3.1", test=test).path
+                get_predetermined_qc(version="3.1", test=test).path
             )
-            mt_v4 = hl.read_matrix_table(get_predetermined_qc_sites(test=test).path)
+            mt_v4 = hl.read_matrix_table(get_predetermined_qc(test=test).path)
 
             # Check that there are no duplicate sample names.
             sample_list = mt_v3.s.collect() + mt_v4.s.collect()
