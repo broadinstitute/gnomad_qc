@@ -15,8 +15,12 @@ from gnomad_qc.v4.resources.sample_qc import (
     get_predetermined_qc,
     cuking_input_path,
     cuking_output_path,
+    relatedness,
+    related_samples_to_drop,
+    samples_rankings,
 )
 from gnomad.resources.resource_utils import DataException
+from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
 from gnomad_qc.slack_creds import slack_token
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -26,9 +30,6 @@ logger.setLevel(logging.INFO)
 
 def main(args):
     test = args.test
-
-    input_path = cuking_input_path(test=test)
-    output_path = cuking_output_path(test=test)
 
     if args.print_cuking_command:
         print(
@@ -40,10 +41,10 @@ def main(args):
                     --location=us-central1 \\
                     --project_id=$PROJECT_ID \\
                     --tag_name=$(git describe --tags) \\
-                    --input_uri={input_path} \\
-                    --output_uri={output_path} \\
+                    --input_uri={cuking_input_path(test=test)} \\
+                    --output_uri={cuking_output_path(test=test)} \\
                     --requester_pays_project=$PROJECT_ID \\
-                    --kin_threshold=0.05 \\
+                    --kin_threshold={args.second_degree_kin_cutoff} \\
                     --split_factor=4 && \\
                 cd ..
                 """
@@ -58,6 +59,8 @@ def main(args):
 
     try:
         if args.prepare_inputs:
+            input_path = cuking_input_path(test=test)
+
             if hadoop_exists(input_path):
                 raise DataException(f"{input_path} already exists")
 
@@ -113,6 +116,80 @@ def main(args):
             with hadoop_open(f"{input_path}/metadata.json", 'w') as f:
                 json.dump(metadata, f)
 
+        if args.create_relatedness_table:
+            from hail.utils.java import Env
+
+            spark = Env.spark_session()
+            df = spark.read.parquet(cuking_output_path(test=test))
+            ht = hl.Table.from_spark(df)
+            ht = ht.repartition(64)
+            ht = ht.key_by(ht.i, ht.j)
+            ht.write(relatedness.path)
+
+        if args.compute_related_samples_to_drop:
+            # compute_related_samples_to_drop uses a rank table as a tie breaker when
+            # pruning samples. We determine rankings as follows: filtered samples are
+            # ranked lowest, followed by non-releasable samples, followed by presence in
+            # v3 (favoring v3 over v4), and then by coverage where higher coverage is a
+            # higher rank.
+            def annotated_meta_ht(meta_ht, sex_ht, hard_filtered_samples_ht):
+                return meta_ht.select(
+                    meta_ht.releasable,
+                    meta_ht.exclude,
+                    chr20_mean_dp=sex_ht[meta_ht.key].chr20_mean_dp,
+                    filtered=hl.or_else(
+                        hl.len(hard_filtered_samples_ht[meta_ht.key].hard_filters) > 0,
+                        False,
+                    ),
+                )
+
+            from gnomad_qc.v4.resources.meta import meta as meta_v4
+            from gnomad_qc.v3.resources.meta import meta as meta_v3
+            from gnomad_qc.v3.resources.sample_qc import (
+                hard_filtered_samples as hard_filtered_samples_v3,
+            )
+            from gnomad_qc.v4.resources.sample_qc import (
+                hard_filtered_samples as hard_filtered_samples_v4,
+            )
+            from gnomad_qc.v3.resources.sample_qc import sex as sex_v3
+            from gnomad_qc.v4.resources.sample_qc import sex as sex_v4
+
+            annotated_meta_v3_ht = annotated_meta_ht(
+                meta_v3.ht(), sex_v3.ht(), hard_filtered_samples_v3.ht()
+            )
+            annotated_meta_v4_ht = annotated_meta_ht(
+                meta_v4.ht(), sex_v4.ht(), hard_filtered_samples_v4.ht()
+            )
+
+            rank_ht = annotated_meta_v3_ht.union(annotated_meta_v4_ht)
+
+            rank_ht = rank_ht.order_by(
+                rank_ht.filtered,
+                hl.desc(rank_ht.releasable & ~rank_ht.exclude),
+                ~hl.is_defined(annotated_meta_v3_ht[rank_ht.s]),  # Favor v3 samples.
+                hl.desc(rank_ht.chr20_mean_dp),
+            ).add_index(name="rank")
+
+            rank_ht = rank_ht.key_by(rank_ht.s).select(rank_ht.filtered, rank_ht.rank)
+
+            rank_ht = rank_ht.write(samples_rankings.path)
+            rank_ht = sample_rankings.ht()
+
+            filtered_samples = hl.literal(
+                rank_ht.aggregate(
+                    hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))
+                )
+            )
+
+            samples_to_drop = compute_related_samples_to_drop(
+                relatedness.ht(),
+                rank_ht,
+                args.second_degree_kin_cutoff,
+                filtered_samples=filtered_samples,
+            )
+            samples_to_drop = samples_to_drop.key_by(s=samples_to_drop.s.s)
+            samples_to_drop.write(related_samples_to_drop.path)
+
     finally:
         logger.info("Copying hail log to logging bucket...")
         hl.copy_log(get_logging_path("relatedness"))
@@ -132,6 +209,24 @@ if __name__ == "__main__":
         "--print-cuking-command",
         help="Print the command to submit a Cloud Batch job for running cuKING.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--create-relatedness-table",
+        help="Convert the cuKING outputs to a standard Hail table.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--compute-related-samples-to-drop",
+        help="Determine the minimal set of related samples to prune.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--second_degree_kin_cutoff",
+        help="Minimum kinship threshold for filtering a pair of samples with a second degree relationship\
+        in KING and filtering related individuals. (Default = 0.1) \
+        Bycroft et al. (2018) calculates 0.08838835 but from evaluation of the distributions v3 and v4 has used 0.1",
+        default=0.1,
+        type=float,
     )
     parser.add_argument(
         "--slack-channel",
