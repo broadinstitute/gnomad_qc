@@ -120,31 +120,39 @@ def main(args):
             from hail.utils.java import Env
 
             spark = Env.spark_session()
-            df = spark.read.parquet(cuking_output_path(test=test))
+            # df = spark.read.parquet(cuking_output_path(test=test))
+            df = spark.read.parquet(
+                'gs://cpg-gnomad-production/relatedness/gnomad.exomes.v4.0.pre_ld_prune_qc_sites_king.parquet'
+            )
             ht = hl.Table.from_spark(df)
             ht = ht.repartition(64)
             ht = ht.key_by(ht.i, ht.j)
-            ht.write(relatedness.path)
+            # ht.write(relatedness.path)
+            ht.write('gs://cpg-gnomad-production/relatedness/relatedness.ht')
 
         if args.compute_related_samples_to_drop:
             # compute_related_samples_to_drop uses a rank table as a tie breaker when
             # pruning samples. We determine rankings as follows: filtered samples are
             # ranked lowest, followed by non-releasable samples, followed by presence in
-            # v3 (favoring v3 over v4), and then by coverage where higher coverage is a
-            # higher rank.
-            def annotated_meta_ht(meta_ht, sex_ht, hard_filtered_samples_ht):
-                return meta_ht.select(
-                    meta_ht.releasable,
-                    meta_ht.exclude,
-                    chr20_mean_dp=sex_ht[meta_ht.key].chr20_mean_dp,
+            # v3 (favoring v3 over v4), and then by coverage.
+            def annotate_project_meta_ht(
+                project_meta_ht, sex_ht, hard_filtered_samples_ht
+            ):
+                return project_meta_ht.select(
+                    project_meta_ht.releasable,
+                    project_meta_ht.exclude,
+                    chr20_mean_dp=sex_ht[project_meta_ht.key].chr20_mean_dp,
                     filtered=hl.or_else(
-                        hl.len(hard_filtered_samples_ht[meta_ht.key].hard_filters) > 0,
+                        hl.len(
+                            hard_filtered_samples_ht[project_meta_ht.key].hard_filters
+                        )
+                        > 0,
                         False,
                     ),
                 )
 
-            from gnomad_qc.v4.resources.meta import meta as meta_v4
-            from gnomad_qc.v3.resources.meta import meta as meta_v3
+            from gnomad_qc.v3.resources.meta import project_meta as project_meta_v3
+            from gnomad_qc.v4.resources.meta import project_meta as project_meta_v4
             from gnomad_qc.v3.resources.sample_qc import (
                 hard_filtered_samples as hard_filtered_samples_v3,
             )
@@ -154,41 +162,60 @@ def main(args):
             from gnomad_qc.v3.resources.sample_qc import sex as sex_v3
             from gnomad_qc.v4.resources.sample_qc import sex as sex_v4
 
-            annotated_meta_v3_ht = annotated_meta_ht(
-                meta_v3.ht(), sex_v3.ht(), hard_filtered_samples_v3.ht()
-            )
-            annotated_meta_v4_ht = annotated_meta_ht(
-                meta_v4.ht(), sex_v4.ht(), hard_filtered_samples_v4.ht()
-            )
+            # annotated_project_meta_v3_ht = annotate_project_meta_ht(
+            #    project_meta_v3.ht(), sex_v3.ht(), hard_filtered_samples_v3.ht()
+            # )
+            # annotated_project_meta_v4_ht = annotate_project_meta_ht(
+            #    project_meta_v4.ht(), hard_filtered_samples_v4.ht()
+            # )
 
-            rank_ht = annotated_meta_v3_ht.union(annotated_meta_v4_ht)
+            # rank_ht = annotated_project_meta_v3_ht.union(annotated_project_meta_v4_ht, unify=True)
+            project_meta_v3_ht = project_meta_v3.ht()
+            project_meta_v4_ht = project_meta_v4.ht()
+            rank_ht = project_meta_v3_ht.union(project_meta_v4_ht, unify=True)
+            rank_ht = rank_ht.annotate(filtered=False)
 
+            # rank_ht = rank_ht.order_by(
+            #    rank_ht.filtered,
+            #    hl.desc(rank_ht.releasable & ~rank_ht.exclude),
+            #    ~hl.is_defined(  # Favor v3 samples.
+            #        annotated_project_meta_v3_ht[rank_ht.s]
+            #    ),
+            #    hl.desc(rank_ht.chr20_mean_dp),
+            # ).add_index(name="rank")
             rank_ht = rank_ht.order_by(
-                rank_ht.filtered,
-                hl.desc(rank_ht.releasable & ~rank_ht.exclude),
-                ~hl.is_defined(annotated_meta_v3_ht[rank_ht.s]),  # Favor v3 samples.
-                hl.desc(rank_ht.chr20_mean_dp),
+                ~hl.is_defined(project_meta_v3_ht[rank_ht.s]),  # Favor v3 samples.
             ).add_index(name="rank")
 
-            rank_ht = rank_ht.key_by(rank_ht.s).select(rank_ht.filtered, rank_ht.rank)
+            rank_ht = rank_ht.key_by(rank_ht.s)
+            rank_ht = rank_ht.select(rank_ht.filtered, rank_ht.rank)
 
-            rank_ht = rank_ht.write(samples_rankings.path)
-            rank_ht = sample_rankings.ht()
+            # rank_ht.write(samples_rankings.path)
+            # rank_ht = sample_rankings.ht()
+            rank_ht.write('gs://cpg-gnomad-production/relatedness/rank.ht')
+            rank_ht = hl.read_table('gs://cpg-gnomad-production/relatedness/rank.ht')
 
-            filtered_samples = hl.literal(
-                rank_ht.aggregate(
-                    hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))
-                )
+            # filtered_samples = hl.literal(
+            #    rank_ht.aggregate(
+            #        hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))
+            #    )
+            # )
+
+            relatedness_ht = hl.read_table(
+                'gs://cpg-gnomad-production/relatedness/relatedness.ht'
             )
-
             samples_to_drop = compute_related_samples_to_drop(
-                relatedness.ht(),
+                # relatedness.ht(),
+                relatedness_ht,
                 rank_ht,
                 args.second_degree_kin_cutoff,
-                filtered_samples=filtered_samples,
+                # filtered_samples=filtered_samples,
             )
-            samples_to_drop = samples_to_drop.key_by(s=samples_to_drop.s.s)
-            samples_to_drop.write(related_samples_to_drop.path)
+            samples_to_drop = samples_to_drop.key_by(s=samples_to_drop.s)
+            # samples_to_drop.write(related_samples_to_drop.path)
+            samples_to_drop.write(
+                'gs://cpg-gnomad-production/relatedness/samples_to_drop.ht'
+            )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
