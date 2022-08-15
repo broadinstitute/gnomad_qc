@@ -86,4 +86,4 @@ To prune samples up to second degree relatedness, run `relatedness.py --compute-
 
 ### Inferring relationships for closely related samples
 
-To create the annotations for distinguishing between siblings, parent-child pairs, etc., run `relatedness.py --create-relatedness-annotated-table` on a small Dataproc cluster. This should only take a minute.
+`get_relatedness_annotated_ht` annotates the relatedness table for closely related samples based on the kinship and IBS values computed by cuKING.

@@ -6,7 +6,14 @@ from gnomad.resources.resource_utils import (
     VersionedMatrixTableResource,
     VersionedTableResource,
 )
-from gnomad.sample_qc.relatedness import get_relationship_expr
+from gnomad.sample_qc.relatedness import (
+    UNRELATED,
+    SECOND_DEGREE_RELATIVES,
+    PARENT_CHILD,
+    SIBLINGS,
+    DUPLICATE_OR_TWINS,
+    AMBIGUOUS_RELATIONSHIP,
+)
 
 from gnomad_qc.v4.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
@@ -150,18 +157,35 @@ def ancestry_pca_eigenvalues(
 
 def get_relatedness_annotated_ht() -> hl.Table:
     """
-    Get the relatedness table annotated with get_relationship_expr.
+    Get the relatedness table annotated with relationship classifications for closely
+    related samples. We're not using `get_relationship_expr`, as it expects IBD values.
+    For v4, we only have IBS values from cuKING.
 
     :return: Annotated relatedness table
     """
-    relatedness_ht = relatedness.ht()
-    return relatedness_ht.annotate(
-        relationship=get_relationship_expr(
-            kin_expr=relatedness_ht.kin,
-            ibd0_expr=relatedness_ht.ibd0,
-            ibd1_expr=relatedness_ht.ibd1,
-            ibd2_expr=relatedness_ht.ibd2,
+    ht = relatedness.ht()
+    ibs0_2 = ht.ibs0 / ht.ibs2
+
+    # The classification thresholds were chosen by inspecting clusters formed in a
+    # scatter plot with KING kinship vs (IBD0 / IBD2) axes.
+    return ht.annotate(
+        relationship=hl.case()
+        .when(ht.kin < 0.1, UNRELATED)
+        .when(ht.kin > 0.42, DUPLICATE_OR_TWINS)
+        .when(
+            ht.kin < 0.34,
+            hl.case()
+            .when(
+                (ibs0_2 > 2e-4)
+                & ((ht.kin < 0.17) | (ibs0_2 < -1e-2 * ht.kin + 2.2e-3)),
+                SECOND_DEGREE_RELATIVES,
+            )
+            .when(ht.kin < 0.15, AMBIGUOUS_RELATIONSHIP)
+            .when(ibs0_2 < -3e-3 * ht.kin + 9.2e-4, PARENT_CHILD)
+            .when(ibs0_2 > 4e-5, SIBLINGS)
+            .default(AMBIGUOUS_RELATIONSHIP),
         )
+        .default(AMBIGUOUS_RELATIONSHIP)
     )
 
 
