@@ -113,7 +113,7 @@ def generate_qc_mt(
     logger.info(
         "Number of variants found in both MatrixTables: %d\n"
         "Number of variants found in only the v3.1 MatrixTable: %d\n"
-        "Number of variants founs in only the v4 MatrixTable: %d",
+        "Number of variants found in only the v4 MatrixTable: %d",
         n_variants_in_both,
         v3_count[0] - n_variants_in_both,
         v4_count[0] - n_variants_in_both,
