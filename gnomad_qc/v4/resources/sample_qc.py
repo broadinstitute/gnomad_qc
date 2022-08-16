@@ -362,18 +362,18 @@ pca_related_samples_to_drop = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_v{version}_related_samples_to_drop_for_pca.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.related_samples_to_drop_for_pca.ht"
         )
         for version in VERSIONS
     },
 )
 
 # Related samples to drop for release
-version_related_samples_to_drop = VersionedTableResource(
+release_related_samples_to_drop = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_v{version}_related_version_samples_to_drop.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.related_release_samples_to_drop.ht"
         )
         for version in VERSIONS
     },
