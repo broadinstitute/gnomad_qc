@@ -30,7 +30,7 @@ logger.setLevel(logging.INFO)
 
 def main(args):
     test = args.test
-overwrite = args.overwrite
+    overwrite = args.overwrite
 
     if args.print_cuking_command:
         print(
@@ -63,7 +63,9 @@ overwrite = args.overwrite
             input_path = cuking_input_path(test=test)
 
             if file_exists(input_path) and not overwrite:
-                raise DataException(f"{input_path} already exists and the --overwrite option was not used!")
+                raise DataException(
+                    f"{input_path} already exists and the --overwrite option was not used!"
+                )
 
             mt_v3 = hl.read_matrix_table(
                 get_predetermined_qc(version="3.1", test=test).path
@@ -104,9 +106,8 @@ overwrite = args.overwrite
             logger.info("Writing Parquet tables...")
             entry_write = entries.to_spark().write.option("compression", "zstd")
             if args.overwrite:
-                entry_write = entry_write.mode('overwrite')
+                entry_write = entry_write.mode("overwrite")
             entry_write.parquet(input_path)
-
 
             # Write metadata that's useful for postprocessing. Map `col_idx` to `s`
             # explicitly so we don't need to rely on a particular order returned by
@@ -118,7 +119,7 @@ overwrite = args.overwrite
                 "num_sites": row_count_v4,
                 "samples": [e.s for e in col_idx_mapping],
             }
-            with hl.hadoop_open(f"{input_path}/metadata.json", 'w') as f:
+            with hl.hadoop_open(f"{input_path}/metadata.json", "w") as f:
                 json.dump(metadata, f)
 
         if args.create_relatedness_table:
