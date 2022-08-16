@@ -80,6 +80,7 @@ def generate_qc_mt(
     min_callrate: float = 0.99,
     min_inbreeding_coeff_threshold: float = -0.8,
     ld_r2: float = 0.1,
+    n_partitions: int = 1000,
 ) -> hl.MatrixTable:
     """
     Generate combined gnomAD v3 and v4 QC MatrixTable for use in relatedness and ancestry inference.
@@ -91,6 +92,7 @@ def generate_qc_mt(
     :param min_callrate: Minimum variant callrate to retain variant in QC MatrixTable.
     :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to retain variant in QC MatrixTable.
     :param ld_r2: LD-pruning cutoff.
+    :param n_partitions: Number of partitions to repartition the MT to before LD pruning.
     :return: MatrixTable of sites that pass QC filters.
     """
     v3_count = v3_mt.count()
@@ -113,7 +115,7 @@ def generate_qc_mt(
     logger.info(
         "Number of variants found in both MatrixTables: %d\n"
         "Number of variants found in only the v3.1 MatrixTable: %d\n"
-        "Number of variants founs in only the v4 MatrixTable: %d",
+        "Number of variants found in only the v4 MatrixTable: %d",
         n_variants_in_both,
         v3_count[0] - n_variants_in_both,
         v4_count[0] - n_variants_in_both,
@@ -141,6 +143,7 @@ def generate_qc_mt(
         filter_lcr=False,  # Already filtered from the initial set of QC variants
         filter_decoy=False,  # Doesn't exist for hg38
         filter_segdup=False,  # Already filtered from the initial set of QC variants
+        n_partitions=n_partitions,
     )
     logger.info(
         "Number of pre LD-pruned QC sites in gnomAD v3 + v4: %d...",
@@ -162,7 +165,6 @@ def main(args):
     overwrite = args.overwrite
     ld_r2 = args.ld_r2
     test = args.test
-    n_partitions = args.n_partitions
 
     try:
         if args.create_v3_filtered_dense_mt:
@@ -192,16 +194,8 @@ def main(args):
             )
 
         if args.generate_qc_mt:
-            # Note: Both dense MatrixTables were created without a final repartition, therefore they are repartitioned
-            # on read here so the final QC MT will have the desired number of partitions `n_partitions`
-            v3_mt = hl.read_matrix_table(
-                get_predetermined_qc(version="3.1", test=test).path,
-                _n_partitions=n_partitions,
-            )
-            v4_mt = hl.read_matrix_table(
-                get_predetermined_qc(test=test).path,
-                _n_partitions=n_partitions,
-            )
+            v3_mt = get_predetermined_qc(version="3.1", test=test).mt()
+            v4_mt = get_predetermined_qc(test=test).mt()
             mt = generate_qc_mt(
                 v3_mt,
                 v4_mt,
@@ -210,6 +204,7 @@ def main(args):
                 min_callrate=args.min_callrate,
                 min_inbreeding_coeff_threshold=args.min_inbreeding_coeff_threshold,
                 ld_r2=ld_r2,
+                n_partitions=args.n_partitions,
             )
             mt.write(
                 get_checkpoint_path("dense_ld_prune_qc_mt.test", mt=True)
