@@ -129,9 +129,7 @@ def main(args):
                 json.dump(metadata, f)
 
         if args.create_relatedness_table:
-            from hail.utils.java import Env
-
-            spark = Env.spark_session()
+            spark = hl.utils.java.Env.spark_session()
             df = spark.read.parquet(cuking_output_path(test=test))
             ht = hl.Table.from_spark(df)
             ht = ht.repartition(64)
