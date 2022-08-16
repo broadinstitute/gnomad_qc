@@ -230,7 +230,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--second_degree_kin_cutoff",
+        "--second-degree-kin-cutoff",
         help="Minimum kinship threshold for filtering a pair of samples with a second degree relationship\
         in KING and filtering related individuals. (Default = 0.1) \
         Bycroft et al. (2018) calculates 0.08838835 but from evaluation of the distributions v3 and v4 has used 0.1",
