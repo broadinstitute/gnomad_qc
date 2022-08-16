@@ -134,6 +134,19 @@ def main(args):
             s=hl.coalesce(meta_ht.project_meta.ukb_meta.eid_31063, meta_ht.s)
         )
 
+    if args.split_multi:
+        logger.info("Splitting multi-allelics")
+        vd = vds.variant_data
+        vd = vd.annotate_rows(
+            n_unsplit_alleles=hl.len(vd.alleles),
+            mixed_site=(hl.len(vd.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(vd.alleles[0], a), vd.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
+        )
+        vds = hl.vds.split_multi(
+            hl.vds.VariantDataset(vds.reference_data, vd), filter_changed_loci=True
+        )
+
     if args.vds:
         vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
 
@@ -151,20 +164,8 @@ def main(args):
         )
         meta_ht.export(f"{output_path}/metadata.tsv.bgz")
 
-    if args.split_multi:
-        logger.info("Splitting multi-allelics and densifying")
-        vd = vds.variant_data
-        vd = vd.annotate_rows(
-            n_unsplit_alleles=hl.len(vd.alleles),
-            mixed_site=(hl.len(vd.alleles) > 2)
-            & hl.any(lambda a: hl.is_indel(vd.alleles[0], a), vd.alleles[1:])
-            & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
-        )
-        vds = hl.vds.split_multi(
-            hl.vds.VariantDataset(vds.reference_data, vd), filter_changed_loci=True
-        )
-
     if args.vcf or args.dense_mt:
+        logger.info("Densifying VDS")
         mt = hl.vds.to_dense_mt(vds)
 
     if args.dense_mt:
