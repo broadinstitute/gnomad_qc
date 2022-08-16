@@ -100,7 +100,7 @@ def compute_hard_filters(
     :param coverage_mt: MatrixTable containing the per interval per sample coverage statistics.
     :param min_cov: Filtering threshold to use for chr20 coverage.
     :param min_qc_mt_adj_callrate: Filtering threshold to use for sample callrate computed on only predetermined QC
-        variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKBB exomes) after ADJ filtering.
+        variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering.
     :return: Table of hard filtered samples.
     """
     ht = get_gnomad_v4_vds(
@@ -196,7 +196,7 @@ def compute_hard_filters(
     if min_qc_mt_adj_callrate is not None:
         mt = v4_predetermined_qc.mt()
         num_samples = mt.count_cols()
-        # Filter predetermined QC variants to only variants with a high ADJ callrate
+        # Filter predetermined QC variants to only common variants (AF > 0.0001) with high site callrate ( > 0.99) for ADJ genotypes 
         mt = filter_to_adj(mt)
         mt = mt.filter_rows(
             ((hl.agg.count_where(hl.is_defined(mt.GT)) / num_samples) > 0.99)
@@ -442,7 +442,7 @@ if __name__ == "__main__":
         "--min-qc-mt-adj-callrate",
         help=(
             "Minimum sample callrate computed on only predetermined QC variants (predetermined using CCDG "
-            "genomes/exomes, gnomAD v3.1 genomes, and UKBB exomes) after ADJ filtering."
+            "genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering."
         ),
         default=None,
         type=float,
