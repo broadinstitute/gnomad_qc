@@ -6,8 +6,8 @@ import json
 import textwrap
 
 import hail as hl
-from hail.utils import hadoop_exists, hadoop_open
 
+from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.v4.resources.basics import get_logging_path
@@ -30,6 +30,7 @@ logger.setLevel(logging.INFO)
 
 def main(args):
     test = args.test
+overwrite = args.overwrite
 
     if args.print_cuking_command:
         print(
@@ -61,8 +62,8 @@ def main(args):
         if args.prepare_inputs:
             input_path = cuking_input_path(test=test)
 
-            if hadoop_exists(input_path):
-                raise DataException(f"{input_path} already exists")
+            if file_exists(input_path) and not overwrite:
+                raise DataException(f"{input_path} already exists and the --overwrite option was not used!")
 
             mt_v3 = hl.read_matrix_table(
                 get_predetermined_qc(version="3.1", test=test).path
@@ -101,7 +102,11 @@ def main(args):
 
             # Export one compressed Parquet file per partition.
             logger.info("Writing Parquet tables...")
-            entries.to_spark().write.option("compression", "zstd").parquet(input_path)
+            entry_write = entries.to_spark().write.option("compression", "zstd")
+            if args.overwrite:
+                entry_write = entry_write.mode('overwrite')
+            entry_write.parquet(input_path)
+
 
             # Write metadata that's useful for postprocessing. Map `col_idx` to `s`
             # explicitly so we don't need to rely on a particular order returned by
@@ -113,7 +118,7 @@ def main(args):
                 "num_sites": row_count_v4,
                 "samples": [e.s for e in col_idx_mapping],
             }
-            with hadoop_open(f"{input_path}/metadata.json", 'w') as f:
+            with hl.hadoop_open(f"{input_path}/metadata.json", 'w') as f:
                 json.dump(metadata, f)
 
         if args.create_relatedness_table:
@@ -206,6 +211,12 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-o",
+        "--overwrite",
+        help="Overwrite output files.",
+        action="store_true",
+    )
     parser.add_argument(
         "--test", help="Use a test MatrixTableResource as input.", action="store_true"
     )
