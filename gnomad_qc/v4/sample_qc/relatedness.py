@@ -16,7 +16,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     cuking_input_path,
     cuking_output_path,
     relatedness,
-    related_samples_to_drop,
+    pca_related_samples_to_drop,
     samples_rankings,
 )
 from gnomad.resources.resource_utils import DataException
@@ -197,7 +197,7 @@ def main(args):
                 filtered_samples=filtered_samples,
             )
             samples_to_drop = samples_to_drop.key_by(samples_to_drop.s)
-            samples_to_drop.write(related_samples_to_drop.path)
+            samples_to_drop.write(pca_related_samples_to_drop.path)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
