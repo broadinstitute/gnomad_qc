@@ -24,7 +24,7 @@ gcloud services enable \
 Create an Artifact Registry repository for Docker images:
 
 ```sh
-gcloud artifacts repositories create images --location=us-central1
+gcloud artifacts repositories create images --location=us-central1 --repository-format=docker
 ```
 
 Build the Docker image:
