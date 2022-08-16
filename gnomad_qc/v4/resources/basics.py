@@ -10,7 +10,6 @@ from gnomad.resources.resource_utils import (
 
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION
 from gnomad_qc.v4.resources.meta import meta
-from gnomad_qc.v4.resources.sample_qc import hard_filtered_samples
 
 logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
@@ -52,6 +51,8 @@ def get_gnomad_v4_vds(
             )
             vds = hl.vds.filter_samples(vds, meta_ht)
         else:
+            from gnomad_qc.v4.resources.sample_qc import hard_filtered_samples
+
             vds = hl.vds.filter_samples(
                 vds, hard_filtered_samples.versions[CURRENT_VERSION].ht(), keep=False
             )
@@ -208,6 +209,7 @@ all_ukb_samples_to_remove = f"{_ukb_root_path()}/all_ukbb_samples_to_remove.txt"
 
 # UKB f-stat sites Table with UKB allele frequencies
 ukb_f_stat = TableResource(f"{_ukb_root_path()}/f_stat_sites.ht")
+
 
 def qc_temp_prefix(version: str = CURRENT_VERSION) -> str:
     """
