@@ -78,7 +78,7 @@ This step doesn't need a Dataproc cluster. Run the command printed by `relatedne
 
 ### Convert outputs
 
-`cuKING` writes Parquet files. To convert these to a standard Hail table, run `relatedness.py --create-relatedness-table` on a small Dataproc cluster. This should only take a minute.
+`cuKING` writes Parquet files. To convert these to a standard Hail Table, run `relatedness.py --create-relatedness-table` on a small Dataproc cluster. This should only take a minute.
 
 ### Determine samples to drop
 
@@ -86,4 +86,4 @@ To prune samples up to second degree relatedness, run `relatedness.py --compute-
 
 ### Inferring relationships for closely related samples
 
-`get_relatedness_annotated_ht` annotates the relatedness table for closely related samples based on the kinship and IBS values computed by cuKING.
+`get_relatedness_annotated_ht` annotates the relatedness Table for closely related samples based on the kinship and IBS values computed by cuKING.
