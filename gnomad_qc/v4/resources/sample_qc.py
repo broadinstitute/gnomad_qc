@@ -7,6 +7,7 @@ from gnomad.resources.resource_utils import (
 )
 from gnomad.sample_qc.relatedness import get_relationship_expr
 
+from gnomad_qc.v4.resources.basics import get_checkpoint_path
 from gnomad_qc.v4.resources.constants import (
     CURRENT_VERSION,
     VERSIONS,
@@ -162,8 +163,44 @@ def get_relatedness_annotated_ht() -> hl.Table:
     )
 
 
-gnomad_v4_qc_sites = TableResource(
-    "gs://gcp-public-data--gnomad/resources/grch38/gnomad_v4_qc_sites_b38.ht"
+def get_predetermined_qc(version: str = CURRENT_VERSION, test: bool = False):
+    """
+    Get the dense MatrixTableResource of all predetermined QC sites for the indicated gnomAD version.
+
+    :param version: Version of QC MatrixTableResource to return.
+    :param test: Whether to use a tmp path for a test MatrixTableResource.
+    :return: MatrixTableResource of predetermined QC sites.
+    """
+    if test:
+        return MatrixTableResource(
+            get_checkpoint_path(f"dense_pre_ld_prune_qc_sites.v{version}.test", mt=True)
+        )
+    elif version == "3.1":
+        return v3_predetermined_qc
+    else:
+        return v4_predetermined_qc.versions[version]
+
+
+# HT of pre LD pruned variants chosen from CCDG, gnomAD v3, and UKB variant info
+# https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py
+predetermined_qc_sites = TableResource(
+    "gs://gnomad/v4.0/sample_qc/pre_ld_pruning_qc_variants.ht"
+)
+
+# gnomAD v3 dense MT of all predetermined possible QC sites `predetermined_qc_sites`
+v3_predetermined_qc = MatrixTableResource(
+    "gs://gnomad/sample_qc/mt/genomes_v3.1/gnomad.exomes.v3.1.pre_ld_prune_qc_sites.dense.mt"
+)
+
+# gnomAD v4 dense MT of all predetermined possible QC sites `predetermined_qc_sites`
+v4_predetermined_qc = VersionedMatrixTableResource(
+    CURRENT_VERSION,
+    {
+        version: MatrixTableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.pre_ld_prune_qc_sites.dense.mt"
+        )
+        for version in VERSIONS
+    },
 )
 
 # Dense MT of samples at QC sites
@@ -171,7 +208,6 @@ qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
         version: MatrixTableResource(
-            # TODO: What set this path to?
             f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.qc.mt"
         )
         for version in VERSIONS
