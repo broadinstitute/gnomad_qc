@@ -451,7 +451,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--n-partitions",
-        help="Optional number of partitions to repartition the MT to before running LD pruning",
+        help="Optional number of partitions to repartition the MT to before running LD pruning. Repartitioning to fewer partitions is useful after filtering out many variants to avoid errors regarding 'maximal_independent_set may run out of memory' while LD pruning",
         type=int,
         default=None,
     )
