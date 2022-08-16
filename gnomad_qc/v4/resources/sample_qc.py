@@ -602,7 +602,7 @@ pca_samples_rankings = VersionedTableResource(
 
 # Ranking of all release samples based on quality metrics. Used to remove relateds for
 # release.
-release_samples_rankings = VersionedTableResource(
+version_samples_rankings = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
