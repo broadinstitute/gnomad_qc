@@ -361,21 +361,21 @@ sex = VersionedTableResource(
 pca_related_samples_to_drop = VersionedTableResource(
     CURRENT_VERSION,
     {
-        release: TableResource(
-            f"{get_sample_qc_root(release)}/gnomad_v{release}_related_samples_to_drop_for_pca.ht"
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad_v{version}_related_samples_to_drop_for_pca.ht"
         )
-        for release in VERSIONS
+        for version in VERSIONS
     },
 )
 
 # Related samples to drop for release
-release_related_samples_to_drop = VersionedTableResource(
+version_related_samples_to_drop = VersionedTableResource(
     CURRENT_VERSION,
     {
-        release: TableResource(
-            f"{get_sample_qc_root(release)}/gnomad_v{release}_related_release_samples_to_drop.ht"
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad_v{version}_related_version_samples_to_drop.ht"
         )
-        for release in VERSIONS
+        for version in VERSIONS
     },
 )
 
