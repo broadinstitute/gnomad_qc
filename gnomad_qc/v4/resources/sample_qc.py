@@ -600,8 +600,8 @@ regressed_metrics = VersionedTableResource(
     },
 )
 
-# Ranking of all samples based on quality metrics. Used to remove relateds.
-samples_rankings = VersionedTableResource(
+# Ranking of all samples based on quality metrics. Used to remove relateds for PCA.
+pca_samples_rankings = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(

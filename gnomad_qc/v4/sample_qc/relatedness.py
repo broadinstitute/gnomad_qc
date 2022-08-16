@@ -12,12 +12,12 @@ from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.v4.resources.basics import get_logging_path
 from gnomad_qc.v4.resources.sample_qc import (
-    get_predetermined_qc,
     cuking_input_path,
     cuking_output_path,
-    relatedness,
+    get_predetermined_qc,
     pca_related_samples_to_drop,
-    samples_rankings,
+    pca_samples_rankings,
+    relatedness,
 )
 from gnomad.resources.resource_utils import DataException
 from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
@@ -181,8 +181,8 @@ def main(args):
             rank_ht = rank_ht.key_by(rank_ht.s)
             rank_ht = rank_ht.select(rank_ht.filtered, rank_ht.rank)
 
-            rank_ht.write(samples_rankings.path)
-            rank_ht = samples_rankings.ht()
+            rank_ht.write(pca_samples_rankings.path)
+            rank_ht = pca_samples_rankings.ht()
 
             filtered_samples = hl.literal(
                 rank_ht.aggregate(
