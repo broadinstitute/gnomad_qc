@@ -33,6 +33,15 @@ def main(args):
     overwrite = args.overwrite
 
     if args.print_cuking_command:
+        if (
+            args.prepare_inputs
+            or args.create_relatedness_table
+            or args.compute_related_samples_to_drop
+        ):
+            raise ValueError(
+                "--print-cuking-command can't be used simultaneously with other run modes"
+            )
+
         print(
             textwrap.dedent(
                 f"""\
