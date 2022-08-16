@@ -186,7 +186,7 @@ def filter_subpop_qc(
     min_inbreeding_coeff_threshold: float = -0.25,
     min_hardy_weinberg_threshold: float = 1e-8,
     ld_r2: float = 0.1,
-    partitions: int = None,
+    n_partitions: int = None,
 ) -> hl.MatrixTable:
     """
     Generate the QC MT per specified population.
@@ -201,7 +201,7 @@ def filter_subpop_qc(
     :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to retain variant in QC MT
     :param min_hardy_weinberg_threshold: Minimum site HW test p-value to keep
     :param ld_r2: Minimum r2 to keep when LD-pruning (set to `None` for no LD pruning)
-    :param partitions: Number of partitions to repartition to before LD pruning
+    :param n_partitions: Number of partitions to repartition the MT to before LD pruning
     :return: Filtered QC MT with sample metadata for the specified population to use for subpop analysis
     """
     meta_ht = meta.ht()
@@ -241,7 +241,7 @@ def filter_subpop_qc(
         ld_r2=ld_r2,
         filter_decoy=False,
         checkpoint_path=get_checkpoint_path("intermediate_qc_mt", mt=True),
-        partitions=partitions,
+        n_partitions=n_partitions,
     )
 
     return pop_qc_mt
@@ -287,7 +287,7 @@ def main(args):  # noqa: D103
                 args.min_inbreeding_coeff_threshold,
                 args.min_hardy_weinberg_threshold,
                 args.ld_r2,
-                args.partitions,
+                args.n_partitions,
             )
 
             mt.write(
@@ -450,8 +450,8 @@ if __name__ == "__main__":
         default=0.1,
     )
     parser.add_argument(
-        "--partitions",
-        help="Number of partitions to repartition to before running LD pruning",
+        "--n-partitions",
+        help="Optional number of partitions to repartition the MT to before running LD pruning",
         type=int,
         default=None,
     )
