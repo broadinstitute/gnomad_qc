@@ -150,20 +150,6 @@ def main(args):
     if args.vds:
         vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
 
-    if args.export_meta:
-        logger.info("Exporting metadata")
-        meta_ht = meta_ht.semi_join(vds.variant_data.cols())
-        # TODO: Dropping the whole ukb_meta struct, but should we keep pop and sex inference if allowed?
-        if args.keep_data_paths:
-            data_to_drop = {"ukb_meta"}
-        else:
-            data_to_drop = {"ukb_meta", "cram", "gvcf"}
-
-        meta_ht = meta_ht.annotate(
-            project_meta=meta_ht.project_meta.drop(*data_to_drop)
-        )
-        meta_ht.export(f"{output_path}/metadata.tsv.bgz")
-
     if args.vcf or args.dense_mt:
         logger.info("Densifying VDS")
         mt = hl.vds.to_dense_mt(vds)
@@ -180,6 +166,19 @@ def main(args):
             metadata=HEADER_DICT,
         )
 
+    if args.export_meta:
+        logger.info("Exporting metadata")
+        meta_ht = meta_ht.semi_join(vds.variant_data.cols())
+        # TODO: Dropping the whole ukb_meta struct, but should we keep pop and sex inference if allowed?
+        if args.keep_data_paths:
+            data_to_drop = {"ukb_meta"}
+        else:
+            data_to_drop = {"ukb_meta", "cram", "gvcf"}
+
+        meta_ht = meta_ht.annotate(
+            project_meta=meta_ht.project_meta.drop(*data_to_drop)
+        )
+        meta_ht.export(f"{output_path}/metadata.tsv.bgz")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
