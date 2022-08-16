@@ -75,7 +75,7 @@ def compute_hard_filters(
     test: bool = False,
     coverage_mt: hl.MatrixTable = None,
     min_cov: int = None,
-    min_qc_mt_adj_callrate: int = None,
+    min_qc_mt_adj_callrate: float = None,
 ) -> hl.Table:
     """
     Apply hard filters to samples and return a Table with the filtered samples and the reason for filtering.
