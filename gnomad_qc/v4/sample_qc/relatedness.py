@@ -135,7 +135,7 @@ def main(args):
             spark = hl.utils.java.Env.spark_session()
             df = spark.read.parquet(cuking_output_path(test=test))
             ht = hl.Table.from_spark(df)
-            ht = ht.repartition(64)
+            ht = ht.repartition(args.relatedness_n_partitions)
             ht = ht.key_by(ht.i, ht.j)
             ht.write(relatedness.path)
 
@@ -255,6 +255,12 @@ if __name__ == "__main__":
         Bycroft et al. (2018) calculates 0.08838835 but from evaluation of the distributions v3 and v4 has used 0.1",
         default=0.1,
         type=float,
+    )
+    parser.add_argument(
+        "--relatedness-n-partitions",
+        help="Number of desired partitions for the relatedness Table.",
+        default=50,
+        type=int,
     )
     parser.add_argument(
         "--slack-channel",
