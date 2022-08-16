@@ -506,18 +506,18 @@ pca_samples_rankings = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_v{version}_pca_samples_ranking.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.pca_samples_ranking.ht"
         )
         for version in VERSIONS
     },
 )
 
 # Ranking of all release samples based on quality metrics. Used to remove relateds for release.
-version_samples_rankings = VersionedTableResource(
+release_samples_rankings = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad_v{version}_version_samples_ranking.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.release_samples_ranking.ht"
         )
         for version in VERSIONS
     },
