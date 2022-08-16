@@ -146,12 +146,23 @@ def main(args):
         else:
             data_to_drop = {"ukb_meta", "cram", "gvcf"}
 
-        meta_ht = meta_ht.annotate(project_meta=meta_ht.project_meta.drop(*data_to_drop))
+        meta_ht = meta_ht.annotate(
+            project_meta=meta_ht.project_meta.drop(*data_to_drop)
+        )
         meta_ht.export(f"{output_path}/metadata.tsv.bgz")
 
     if args.split_multi:
         logger.info("Splitting multi-allelics and densifying")
-        vds = hl.vds.split_multi(vds, filter_changed_loci=True)
+        vd = vds.variant_data
+        vd = vd.annotate_rows(
+            n_unsplit_alleles=hl.len(vd.alleles),
+            mixed_site=(hl.len(vd.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(vd.alleles[0], a), vd.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
+        )
+        vds = hl.vds.split_multi(
+            hl.vds.VariantDataset(vds.reference_data, vd), filter_changed_loci=True
+        )
 
     if args.vcf or args.dense_mt:
         mt = hl.vds.to_dense_mt(vds)
