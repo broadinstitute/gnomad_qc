@@ -505,21 +505,21 @@ regressed_metrics = VersionedTableResource(
 pca_samples_rankings = VersionedTableResource(
     CURRENT_VERSION,
     {
-        release: TableResource(
-            f"{get_sample_qc_root(release)}/gnomad_v{release}_pca_samples_ranking.ht"
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad_v{version}_pca_samples_ranking.ht"
         )
-        for release in VERSIONS
+        for version in VERSIONS
     },
 )
 
 # Ranking of all release samples based on quality metrics. Used to remove relateds for release.
-release_samples_rankings = VersionedTableResource(
+version_samples_rankings = VersionedTableResource(
     CURRENT_VERSION,
     {
-        release: TableResource(
-            f"{get_sample_qc_root(release)}/gnomad_v{release}_release_samples_ranking.ht"
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad_v{version}_version_samples_ranking.ht"
         )
-        for release in VERSIONS
+        for version in VERSIONS
     },
 )
 
