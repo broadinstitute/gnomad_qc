@@ -6,12 +6,12 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 from gnomad.sample_qc.relatedness import (
-    UNRELATED,
-    SECOND_DEGREE_RELATIVES,
-    PARENT_CHILD,
-    SIBLINGS,
-    DUPLICATE_OR_TWINS,
     AMBIGUOUS_RELATIONSHIP,
+    DUPLICATE_OR_TWINS,
+    PARENT_CHILD,
+    SECOND_DEGREE_RELATIVES,
+    SIBLINGS,
+    UNRELATED,
 )
 
 from gnomad_qc.v4.resources.basics import get_checkpoint_path, qc_temp_prefix
