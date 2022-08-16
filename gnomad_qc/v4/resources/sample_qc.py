@@ -501,14 +501,25 @@ regressed_metrics = VersionedTableResource(
     },
 )
 
-# Ranking of all samples based on quality metrics. Used to remove relateds.
-samples_rankings = VersionedTableResource(
+# Ranking of all samples based on quality metrics. Used to remove relateds for PCA.
+pca_samples_rankings = VersionedTableResource(
     CURRENT_VERSION,
     {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.samples_ranking.ht"
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_pca_samples_ranking.ht"
         )
-        for version in VERSIONS
+        for release in VERSIONS
+    },
+)
+
+# Ranking of all release samples based on quality metrics. Used to remove relateds for release.
+release_samples_rankings = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        release: TableResource(
+            f"{get_sample_qc_root(release)}/gnomad_v{release}_release_samples_ranking.ht"
+        )
+        for release in VERSIONS
     },
 )
 
