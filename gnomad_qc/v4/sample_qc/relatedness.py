@@ -87,7 +87,7 @@ def main(args):
             # Compute the field required for KING.
             mt = mt.select_entries(n_alt_alleles=mt.GT.n_alt_alleles())
 
-            # Create a table based on entries alone. By adding a row and column index,
+            # Create a Table based on entries alone. By adding a row and column index,
             # we can drop the locus, alleles, and sample field, as well as skip writing
             # missing entries.
             mt = mt.select_globals()
@@ -127,7 +127,7 @@ def main(args):
             ht.write(relatedness.path)
 
         if args.compute_related_samples_to_drop:
-            # compute_related_samples_to_drop uses a rank table as a tie breaker when
+            # compute_related_samples_to_drop uses a rank Table as a tie breaker when
             # pruning samples. We determine rankings as follows: filtered samples are
             # ranked lowest, followed by non-releasable samples, followed by presence in
             # v3 (favoring v3 over v4), and then by coverage.
@@ -211,7 +211,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--prepare-inputs",
-        help="Converts the dense QC matrix to a Parquet format suitable for cuKING.",
+        help="Converts the dense QC MatrixTable to a Parquet format suitable for cuKING.",
         action="store_true",
     )
     parser.add_argument(
@@ -221,7 +221,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--create-relatedness-table",
-        help="Convert the cuKING outputs to a standard Hail table.",
+        help="Convert the cuKING outputs to a standard Hail Table.",
         action="store_true",
     )
     parser.add_argument(
