@@ -62,10 +62,7 @@ def main(args):
         )
         return
 
-    hl.init(
-        log="/relatedness.log",
-        default_reference="GRCh38",
-    )
+    hl.init(log="/relatedness.log", default_reference="GRCh38")
 
     try:
         if args.prepare_inputs:
