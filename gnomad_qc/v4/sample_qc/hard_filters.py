@@ -6,7 +6,7 @@ import hail as hl
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.utils.annotations import bi_allelic_expr
-from gnomad.utils.filtering import add_filters_expr
+from gnomad.utils.filtering import add_filters_expr, filter_to_adj
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
@@ -26,6 +26,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_samples_no_sex,
     interval_coverage,
     sex,
+    v4_predetermined_qc,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -68,11 +69,13 @@ def compute_hard_filters(
     max_n_singleton: float = 5000,
     max_r_het_hom_var: float = 10,
     min_bases_dp_over_1: float = 5e7,
+    min_bases_dp_over_20: float = 4e7,
     max_contamination: float = 0.05,
     max_chimera: float = 0.05,
     test: bool = False,
     coverage_mt: hl.MatrixTable = None,
     min_cov: int = None,
+    min_qc_mt_adj_callrate: float = None,
 ) -> hl.Table:
     """
     Apply hard filters to samples and return a Table with the filtered samples and the reason for filtering.
@@ -88,13 +91,16 @@ def compute_hard_filters(
     :param max_n_singleton: Filtering threshold to use for the maximum number of singletons.
     :param max_r_het_hom_var: Filtering threshold to use for the maximum ratio of heterozygotes to alternate homozygotes.
     :param min_bases_dp_over_1: Filtering threshold to use for the minimum number of bases with a DP over one.
+    :param min_bases_dp_over_20: Filtering threshold to use for the minimum number of bases with a DP over 20.
     :param max_contamination: Filtering threshold to use for maximum contamination (this is a proportion not a
-        percecnt, e.g. 5% == 0.05, %5 != 5).
+        percent, e.g. 5% == 0.05, %5 != 5).
     :param max_chimera: Filtering threshold to use for maximum chimera (this is a proportion not a percent,
         e.g. 5% == 0.05, %5 != 5).
     :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full dataset.
     :param coverage_mt: MatrixTable containing the per interval per sample coverage statistics.
     :param min_cov: Filtering threshold to use for chr20 coverage.
+    :param min_qc_mt_adj_callrate: Filtering threshold to use for sample callrate computed on only predetermined QC
+        variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering.
     :return: Table of hard filtered samples.
     """
     ht = get_gnomad_v4_vds(
@@ -105,6 +111,7 @@ def compute_hard_filters(
             max_n_singleton=max_n_singleton,
             max_r_het_hom_var=max_r_het_hom_var,
             min_bases_dp_over_1=min_bases_dp_over_1,
+            min_bases_dp_over_20=min_bases_dp_over_20,
             max_contamination=max_contamination,
             max_chimera=max_chimera,
         ),
@@ -144,10 +151,14 @@ def compute_hard_filters(
     sample_qc_metric_hard_filters["low_bases_dp_over_1"] = (
         bi_allelic_qc_struct.bases_dp_over_1 < min_bases_dp_over_1
     )
+    sample_qc_metric_hard_filters["low_bases_dp_over_20"] = (
+        bi_allelic_qc_struct.bases_dp_over_20 < min_bases_dp_over_20
+    )
     hard_filters["sample_qc_metrics"] = (
         sample_qc_metric_hard_filters["high_n_singleton"]
         | sample_qc_metric_hard_filters["high_r_het_hom_var"]
         | sample_qc_metric_hard_filters["low_bases_dp_over_1"]
+        | sample_qc_metric_hard_filters["low_bases_dp_over_20"]
     )
 
     # Flag samples that fail bam metric thresholds
@@ -181,6 +192,29 @@ def compute_hard_filters(
             / hl.agg.sum(coverage_mt.interval_size)
         ).cols()
         hard_filters["low_coverage"] = coverage_ht[ht.key].chr20_mean_dp < min_cov
+
+    if min_qc_mt_adj_callrate is not None:
+        mt = v4_predetermined_qc.mt()
+        num_samples = mt.count_cols()
+        # Filter predetermined QC variants to only common variants (AF > 0.0001) with high site callrate ( > 0.99) for ADJ genotypes 
+        mt = filter_to_adj(mt)
+        mt = mt.filter_rows(
+            ((hl.agg.count_where(hl.is_defined(mt.GT)) / num_samples) > 0.99)
+            & (
+                (
+                    hl.agg.sum(mt.GT.n_alt_alleles())
+                    / (hl.agg.count_where(hl.is_defined(mt.GT)) * 2)
+                )
+                > 0.0001
+            )
+        )
+        num_variants = mt.count_rows()
+        callrate_ht = mt.annotate_cols(
+            callrate_adj=hl.agg.count_where(hl.is_defined(mt.GT)) / num_variants
+        ).cols()
+        hard_filters["low_adj_callrate"] = (
+            callrate_ht[ht.key].callrate_adj < min_qc_mt_adj_callrate
+        )
 
     if include_sex_filter:
         sex_struct = sex.ht()[ht.key]
@@ -284,11 +318,13 @@ def main(args):
                 args.max_n_singleton,
                 args.max_r_het_hom_var,
                 args.min_bases_dp_over_1,
+                args.min_bases_dp_over_20,
                 args.max_contamination,
                 args.max_chimera,
                 test,
                 coverage_mt,
                 args.min_cov,
+                args.min_qc_mt_adj_callrate,
             )
             ht = ht.checkpoint(hard_filter_path, overwrite=args.overwrite)
             ht.group_by("hard_filters").aggregate(n=hl.agg.count()).show(20)
@@ -373,6 +409,12 @@ if __name__ == "__main__":
         default=5e7,
     )
     hard_filter_args.add_argument(
+        "--min-bases-dp-over-20",
+        type=float,
+        help="Filtering threshold to use for the minimum number of bases with a DP over 20. Default is 4e7.",
+        default=4e7,
+    )
+    hard_filter_args.add_argument(
         "--max-contamination",
         default=0.05,
         type=float,
@@ -395,6 +437,15 @@ if __name__ == "__main__":
         help="Minimum chromosome 20 coverage for inclusion when computing hard-filters.",
         default=None,
         type=int,
+    )
+    hard_filter_args.add_argument(
+        "--min-qc-mt-adj-callrate",
+        help=(
+            "Minimum sample callrate computed on only predetermined QC variants (predetermined using CCDG "
+            "genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering."
+        ),
+        default=None,
+        type=float,
     )
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
