@@ -7,21 +7,24 @@ import textwrap
 
 import hail as hl
 
+from gnomad.resources.resource_utils import DataException
+from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import get_logging_path
 from gnomad_qc.v4.resources.sample_qc import (
     cuking_input_path,
     cuking_output_path,
-    get_predetermined_qc,
     pca_related_samples_to_drop,
     pca_samples_rankings,
+    qc,
     relatedness,
 )
-from gnomad.resources.resource_utils import DataException
-from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
-from gnomad_qc.slack_creds import slack_token
+
+from cuKING.mt_to_cuking_inputs import mt_to_cuking_inputs
+from cuKING.cuking_outputs_to_ht import cuking_outputs_to_ht
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("relatedness")
@@ -66,75 +69,26 @@ def main(args):
 
     try:
         if args.prepare_inputs:
-            input_path = cuking_input_path(test=test)
+            parquet_uri = cuking_input_path(test=test)
 
-            if file_exists(input_path) and not overwrite:
+            if file_exists(parquet_uri) and not overwrite:
                 raise DataException(
-                    f"{input_path} already exists and the --overwrite option was not used!"
+                    f"{parquet_uri} already exists and the --overwrite option was not used!"
                 )
 
-            mt_v3 = hl.read_matrix_table(
-                get_predetermined_qc(version="3.1", test=test).path
+            mt_to_cuking_inputs(
+                mt=qc.mt(), parquet_uri=parquet_uri, overwrite=overwrite
             )
-            mt_v4 = hl.read_matrix_table(get_predetermined_qc(test=test).path)
-
-            # Check that there are no duplicate sample names.
-            sample_list = mt_v3.s.collect() + mt_v4.s.collect()
-            if len(sample_list) != len(set(sample_list)):
-                raise DataException("duplicate samples found in v3 + v4")
-
-            # Check that the number of sites match.
-            row_count_v3 = mt_v3.count_rows()
-            row_count_v4 = mt_v4.count_rows()
-            if row_count_v3 != row_count_v4:
-                raise DataException("number of sites doesn't match between v3 and v4")
-
-            # Combine v3 and v4 dense QC matrices, as we need to compute relatedness
-            # across the union of samples.
-            mt = mt_v3.union_cols(mt_v4)
-
-            # Compute the field required for KING.
-            mt = mt.select_entries(n_alt_alleles=mt.GT.n_alt_alleles())
-
-            # Create a Table based on entries alone. By adding a row and column index,
-            # we can drop the locus, alleles, and sample field, as well as skip writing
-            # missing entries.
-            mt = mt.select_globals()
-            mt = mt.add_row_index()
-            mt = mt.add_col_index()
-            entries = mt.entries()
-            entries = entries.key_by()
-            entries = entries.select(
-                entries.row_idx, entries.col_idx, entries.n_alt_alleles
-            )
-
-            # Export one compressed Parquet file per partition.
-            logger.info("Writing Parquet tables...")
-            entry_write = entries.to_spark().write.option("compression", "zstd")
-            if args.overwrite:
-                entry_write = entry_write.mode("overwrite")
-            entry_write.parquet(input_path)
-
-            # Write metadata that's useful for postprocessing. Map `col_idx` to `s`
-            # explicitly so we don't need to rely on a particular order returned by
-            # `collect`.
-            logger.info("Writing metadata...")
-            col_idx_mapping = hl.struct(col_idx=mt.col_idx, s=mt.s).collect()
-            col_idx_mapping.sort(key=lambda e: e.col_idx)
-            metadata = {
-                "num_sites": row_count_v4,
-                "samples": [e.s for e in col_idx_mapping],
-            }
-            with hl.hadoop_open(f"{input_path}/metadata.json", "w") as f:
-                json.dump(metadata, f)
 
         if args.create_relatedness_table:
-            spark = hl.utils.java.Env.spark_session()
-            df = spark.read.parquet(cuking_output_path(test=test))
-            ht = hl.Table.from_spark(df)
+            if file_exists(relatedness.path) and not overwrite:
+                raise DataException(
+                    f"{relatedness.path} already exists and the --overwrite option was not used!"
+                )
+
+            ht = cuking_outputs_to_ht(parquet_uri=cuking_output_path(test=test))
             ht = ht.repartition(args.relatedness_n_partitions)
-            ht = ht.key_by(ht.i, ht.j)
-            ht.write(relatedness.path)
+            ht.write(relatedness.path, overwrite=overwrite)
 
         if args.compute_related_samples_to_drop:
             # compute_related_samples_to_drop uses a rank Table as a tie breaker when
