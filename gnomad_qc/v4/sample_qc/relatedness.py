@@ -2,7 +2,6 @@
 
 import argparse
 import logging
-import json
 import textwrap
 
 import hail as hl
@@ -23,8 +22,8 @@ from gnomad_qc.v4.resources.sample_qc import (
     relatedness,
 )
 
-from cuKING.mt_to_cuking_inputs import mt_to_cuking_inputs
-from cuKING.cuking_outputs_to_ht import cuking_outputs_to_ht
+from gnomad_qc.v4.sample_qc.cuKING.mt_to_cuking_inputs import mt_to_cuking_inputs
+from gnomad_qc.v4.sample_qc.cuKING.cuking_outputs_to_ht import cuking_outputs_to_ht
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("relatedness")
