@@ -2,7 +2,7 @@
 
 ## Relatedness
 
-We use [`cuKING`](https://github.com/populationgenomics/cuKING) for pruning related samples for v4. It involves the following steps:
+We use [`cuKING`](https://github.com/populationgenomics/cuKING) for pruning related samples for v4. Make sure that you've cloned the `cuKING` git submodule in this directory (`git submodule update --init`). Then follow these steps:
 
 ### Preparing the production environment
 
@@ -86,4 +86,4 @@ To prune samples up to second degree relatedness, run `relatedness.py --compute-
 
 ### Inferring relationships for closely related samples
 
-`get_relatedness_annotated_ht` annotates the relatedness Table for closely related samples based on the kinship and IBS values computed by cuKING.
+`get_relatedness_annotated_ht()` annotates the relatedness Table for closely related samples based on the kinship and IBS values computed by cuKING.
