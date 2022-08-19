@@ -62,7 +62,7 @@ def main(args):  # noqa: D103
                 )
 
                 # Filter to just evaluation samples
-                ht = ht.filter(ht.evaluation_sample)
+                ht = joint_pca_ht.filter(joint_pca_ht.evaluation_sample)
 
                 # Calculate number of mislabeled samples
                 # NOTE: `training_pop` is the known label for the sample, but could have been used for either training or evaluation
