@@ -203,7 +203,7 @@ def filter_subpop_qc(
     :param min_hardy_weinberg_threshold: Minimum site HW test p-value to keep
     :param ld_r2: Minimum r2 to keep when LD-pruning (set to `None` for no LD pruning)
     :param n_partitions: Number of partitions to repartition the MT to before LD pruning
-    :param block_size: If given, set the block size to this value when LD pruning.
+    :param block_size: If given, set the block size to this value when LD pruning
     :return: Filtered QC MT with sample metadata for the specified population to use for subpop analysis
     """
     meta_ht = meta.ht()
