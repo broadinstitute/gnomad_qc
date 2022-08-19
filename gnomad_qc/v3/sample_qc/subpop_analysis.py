@@ -187,6 +187,7 @@ def filter_subpop_qc(
     min_hardy_weinberg_threshold: float = 1e-8,
     ld_r2: float = 0.1,
     n_partitions: int = None,
+    block_size: int = None,
 ) -> hl.MatrixTable:
     """
     Generate the QC MT per specified population.
@@ -202,6 +203,7 @@ def filter_subpop_qc(
     :param min_hardy_weinberg_threshold: Minimum site HW test p-value to keep
     :param ld_r2: Minimum r2 to keep when LD-pruning (set to `None` for no LD pruning)
     :param n_partitions: Number of partitions to repartition the MT to before LD pruning
+    :param block_size: If given, set the block size to this value when LD pruning.
     :return: Filtered QC MT with sample metadata for the specified population to use for subpop analysis
     """
     meta_ht = meta.ht()
@@ -242,6 +244,7 @@ def filter_subpop_qc(
         filter_decoy=False,
         checkpoint_path=get_checkpoint_path("intermediate_qc_mt", mt=True),
         n_partitions=n_partitions,
+        block_size=block_size,
     )
 
     return pop_qc_mt
@@ -288,6 +291,7 @@ def main(args):  # noqa: D103
                 args.min_hardy_weinberg_threshold,
                 args.ld_r2,
                 args.n_partitions,
+                args.block_size,
             )
 
             mt.write(
@@ -452,6 +456,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n-partitions",
         help="Optional number of partitions to repartition the MT to before running LD pruning. Repartitioning to fewer partitions is useful after filtering out many variants to avoid errors regarding 'maximal_independent_set may run out of memory' while LD pruning",
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
+        "--block-size",
+        help="Optional block size to use for LD pruning",
         type=int,
         default=None,
     )
