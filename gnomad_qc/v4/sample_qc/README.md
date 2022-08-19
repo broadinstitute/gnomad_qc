@@ -42,11 +42,34 @@ Create a service account for running `cuKING`:
 gcloud iam service-accounts create cuking
 ```
 
-Grant the service account write access to the `gnomad` bucket:
+Grant the service account access permissions for:
 
-```sh
-gsutil iam ch serviceAccount:cuking@$PROJECT_ID.iam.gserviceaccount.com:objectAdmin gs://gnomad
-```
+* the Artifact Registry repository,
+
+  ```sh
+  gcloud artifacts repositories add-iam-policy-binding images \
+      --location=us-central1 \
+      --member=serviceAccount:cuking@$PROJECT_ID.iam.gserviceaccount.com \
+      --role=roles/artifactregistry.reader
+  ```
+
+* Cloud Batch related roles on the project level, and
+
+  ```sh
+  for role in role=roles/batch.agentReporter roles/serviceusage.serviceUsageConsumer roles/logging.logWriter roles/monitoring.metricWriter
+  do
+      gcloud projects add-iam-policy-binding $PROJECT_ID --member=serviceAccount:cuking@$PROJECT_ID.iam.gserviceaccount.com --role=$role
+  done
+  ```
+
+* the `gnomad` and `gnomad-tmp` buckets.
+
+  ```sh
+  for bucket in gnomad gnomad-tmp
+  do
+      gsutil iam ch serviceAccount:cuking@$PROJECT_ID.iam.gserviceaccount.com:objectAdmin gs://$bucket
+  done
+  ```
 
 Create a VM instance template:
 
@@ -67,6 +90,10 @@ gcloud compute instance-templates create cuking-instance-template \
     --shielded-integrity-monitoring \
     --reservation-affinity=any
 ```
+
+The above instance template uses A2 machines with NVIDIA A100 GPUs. Make sure that your [quotas](https://console.cloud.google.com/iam-admin/quotas) are set sufficiently high for `NVIDIA_A100_GPUS` and `A2_CPUS` (e.g. 16 and 192, respectively).
+
+Make sure that the [firewall configuration](https://console.cloud.google.com/networking/firewalls/list) contains a rule to allow internal traffic (like [`default-allow-internal`](https://cloud.google.com/vpc/docs/firewalls#default_firewall_rules) for the default network).
 
 ### Prepare inputs
 
