@@ -189,7 +189,7 @@ predetermined_qc_sites = TableResource(
 
 # gnomAD v3 dense MT of all predetermined possible QC sites `predetermined_qc_sites`
 v3_predetermined_qc = MatrixTableResource(
-    "gs://gnomad/sample_qc/mt/genomes_v3.1/gnomad.exomes.v3.1.pre_ld_prune_qc_sites.dense.mt"
+    "gs://gnomad/sample_qc/mt/genomes_v3.1/gnomad.genomes.v3.1.pre_ld_prune_qc_sites.dense.mt"
 )
 
 # gnomAD v4 dense MT of all predetermined possible QC sites `predetermined_qc_sites`
@@ -208,7 +208,7 @@ qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
         version: MatrixTableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.qc.mt"
+            f"{get_sample_qc_root(version)}/gnomad.joint.v{version}.qc.mt"
         )
         for version in VERSIONS
     },
