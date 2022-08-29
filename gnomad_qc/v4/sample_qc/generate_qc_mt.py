@@ -7,7 +7,7 @@ from gnomad.utils.annotations import annotate_adj, get_adj_expr
 from gnomad.utils.slack import slack_notifications
 import hail as hl
 
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt, gnomad_v3_testset
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v4.resources.basics import (
     get_checkpoint_path,
