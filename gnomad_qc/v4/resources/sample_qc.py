@@ -214,12 +214,34 @@ qc = VersionedMatrixTableResource(
     },
 )
 
+# v3 and v4 combined sample metadata Table for relatedness and population inference
+qc_meta = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.joint.v{version}.qc_meta.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
 # VDS Hail interval_coverage results
 interval_coverage = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
         version: MatrixTableResource(
             f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.interval_coverage.mt"
+        )
+        for version in VERSIONS
+    },
+)
+
+# Mean chr20 DP per sample using Hail's interval_coverage results
+sample_chr20_mean_dp = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sample_chr20_mean_dp.ht"
         )
         for version in VERSIONS
     },

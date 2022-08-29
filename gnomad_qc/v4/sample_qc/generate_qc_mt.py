@@ -8,16 +8,20 @@ from gnomad.utils.slack import slack_notifications
 import hail as hl
 
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
+from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v4.resources.basics import (
     get_checkpoint_path,
     get_logging_path,
     get_gnomad_v4_vds,
 )
+from gnomad_qc.v4.resources.meta import project_meta as v4_meta
 from gnomad_qc.v4.resources.sample_qc import (
     get_predetermined_qc,
     hard_filtered_samples,
     predetermined_qc_sites,
     qc,
+    qc_meta,
+    sample_chr20_mean_dp,
 )
 from gnomad_qc.slack_creds import slack_token
 
@@ -153,6 +157,75 @@ def generate_qc_mt(
     return mt
 
 
+def generate_qc_meta_ht() -> hl.Table:
+    """
+    Combine v3 and v4 sample metadata into a single Table for relatedness and population inference.
+
+    :return: Table with v3 and v4 sample metadata
+    """
+    v3_meta_ht = v3_meta.ht()
+    v3_meta_ht = v3_meta_ht.select(
+        v2_meta=hl.struct(
+            v2_known_pop=v3_meta_ht.project_meta.v2_known_pop,
+            v2_known_subpop=v3_meta_ht.project_meta.v2_known_subpop,
+            v2_pop=v3_meta_ht.project_meta.v2_pop,
+            v2_subpop=v3_meta_ht.project_meta.v2_subpop,
+        ),
+        v3_meta=hl.struct(
+            v3_project_ancestry=v3_meta_ht.project_meta.project_ancestry,
+            v3_project_pop=v3_meta_ht.project_meta.project_pop,
+            v3_project_subpop=v3_meta_ht.project_meta.project_subpop,
+            v3_subpop_description=v3_meta_ht.project_meta.subpop_description,
+            v3_subsets=v3_meta_ht.subsets,
+            v3_population_inference=v3_meta_ht.population_inference.select(
+                "training_pop", "pca_scores", "pop"
+            ),
+            v3_relatedness_relationships=v3_meta_ht.relatedness_inference.relationships,
+            v3_release_related=v3_meta_ht.sample_filters.release_related,
+            v3_qc_metrics_outlier_filters=v3_meta_ht.sample_filters.qc_metrics_filters,
+            v3_exclude=v3_meta_ht.project_meta.exclude,
+            v3_exclude_reason=v3_meta_ht.project_meta.exclude_reason,
+            v3_high_quality=v3_meta_ht.high_quality,
+            v3_release=v3_meta_ht.release,
+        ),
+        chr20_mean_dp=v3_meta_ht.sex_imputation.chr20_mean_dp,
+        releasable=v3_meta_ht.project_meta.releasable,
+        broad_external=v3_meta_ht.project_meta.broad_external,
+        hard_filters=v3_meta_ht.sample_filters.hard_filters,
+        hard_filtered=v3_meta_ht.sample_filters.hard_filtered,
+        data_type="genomes",
+    )
+
+    v4_meta_ht = v4_meta.ht()
+    chr20_mean_dp_ht = sample_chr20_mean_dp.ht()
+    hardfilter_ht = hard_filtered_samples.ht()
+
+    v4_meta_ht = v4_meta_ht.select(
+        v2_meta=hl.struct(
+            v2_known_pop=v4_meta_ht.project_meta.v2_meta.v2_known_pop,
+            v2_known_subpop=v4_meta_ht.project_meta.v2_meta.v2_known_subpop,
+            v2_pop=v4_meta_ht.project_meta.v2_meta.v2_pop,
+            v2_subpop=v4_meta_ht.project_meta.v2_meta.v2_subpop,
+        ),
+        v4_race_ethnicity=v4_meta_ht.project_meta.race_ethnicity,
+        chr20_mean_dp=chr20_mean_dp_ht[v4_meta_ht.key].chr20_mean_dp,
+        releasable=v4_meta_ht.project_meta.releasable,
+        broad_external=v4_meta_ht.project_meta.broad_external,
+        hard_filters=hardfilter_ht[v4_meta_ht.key].hard_filters,
+        hard_filtered=hl.is_defined(hardfilter_ht[v4_meta_ht.key].hard_filters),
+        data_type="exomes",
+    )
+
+    samples_in_both = v4_meta_ht.semi_join(v3_meta_ht)
+    n_samples_in_both = samples_in_both.count()
+    if n_samples_in_both > 0:
+        logger.info("The following samples are found in both metadata Tables:")
+        samples_in_both.show(n_samples_in_both)
+        raise ValueError("Overlapping sample names were found in the metadata Tables!")
+
+    return v3_meta_ht.union(v4_meta_ht, unify=True)
+
+
 def main(args):
     hl.init(
         log="/generate_qc_mt.log",
@@ -213,6 +286,9 @@ def main(args):
                 overwrite=overwrite,
             )
 
+        if args.generate_qc_meta:
+            generate_qc_meta_ht().write(qc_meta.path)
+
     finally:
         logger.info("Copying hail log to logging bucket...")
         hl.copy_log(get_logging_path("generate_qc_mt"))
@@ -272,6 +348,11 @@ if __name__ == "__main__":
         help="Desired number of partitions for output QC MatrixTable.",
         default=1000,
         type=int,
+    )
+    parser.add_argument(
+        "--generate-qc-meta",
+        help="Create a merged gnomAD v3 + v4 metadata Table for QC purposes.",
+        action="store_true",
     )
     parser.add_argument(
         "-o",
