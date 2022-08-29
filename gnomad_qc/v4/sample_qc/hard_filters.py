@@ -66,29 +66,19 @@ def compute_sample_qc(n_partitions: int = 500, test: bool = False) -> hl.Table:
 def compute_contamination_metric(
     vds: hl.vds.VariantDataset,
     dp_cutoff: int = 10,
-    gq_cutoff: int = 20,
 ):
     mt = filter_to_autosomes(vds.variant_data)
     mt = mt.filter_rows(hl.len(mt.alleles) == 2)
     mt = mt.annotate_entries(AB=mt.LAD[0] / (mt.LAD[0] + mt.LAD[1]))
     mt = mt.annotate_rows(
         is_snp=hl.is_snp(mt.alleles[0], mt.alleles[1]),
-        mean_AB_het=hl.agg.filter(
-            mt.LGT.is_het() & (mt.DP > dp_cutoff) & (mt.GQ > gq_cutoff),
-            hl.agg.mean(mt.AB),
-        ),
-        std_AB_het=hl.agg.filter(
-            mt.LGT.is_het() & (mt.DP > dp_cutoff) & (mt.GQ > gq_cutoff),
-            hl.agg.stats(mt.AB).stdev,
-        ),
     )
-    mt = mt.annotate_rows(
-        kurtosis_AB_het=hl.agg.mean((mt.AB - mt.mean_AB_het) ** 4)
-        / (mt.std_AB_het**4),
+    mt = mt.annotate_cols(
+        mean_AB_snp_biallelic_no_filter=hl.agg.filter(
+            mt.is_snp & ~mt.was_split, hl.agg.mean(mt.AB)
+        )
     )
-
     mt = mt.filter_entries(mt.GT.is_hom_var() & (mt.DP > dp_cutoff))
-    mt = mt.filter_rows(mt.kurtosis_AB_het < 3e33)
 
     mt = mt.annotate_cols(
         mean_AB_snp_biallelic=hl.agg.filter(
@@ -320,8 +310,8 @@ def main(args):
             )
 
         if args.compute_contamination_estimate:
-            logger.info("Loading v4 VDS...")
             vds = get_gnomad_v4_vds(remove_hard_filtered_samples=False, test=test)
+            compute_contamination_metric(vds).write(get_checkpoint_path("test_gnomad.exomes.contamination"))
 
         if args.compute_hard_filters:
             # TODO: Determine cutoffs by visual inspection of the metrics, and modify defaults to match
