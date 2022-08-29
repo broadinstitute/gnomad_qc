@@ -196,7 +196,7 @@ def compute_hard_filters(
     if min_qc_mt_adj_callrate is not None:
         mt = v4_predetermined_qc.mt()
         num_samples = mt.count_cols()
-        # Filter predetermined QC variants to only common variants (AF > 0.0001) with high site callrate ( > 0.99) for ADJ genotypes 
+        # Filter predetermined QC variants to only common variants (AF > 0.0001) with high site callrate ( > 0.99) for ADJ genotypes
         mt = filter_to_adj(mt)
         mt = mt.filter_rows(
             ((hl.agg.count_where(hl.is_defined(mt.GT)) / num_samples) > 0.99)
