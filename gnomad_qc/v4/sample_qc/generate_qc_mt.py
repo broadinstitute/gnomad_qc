@@ -28,27 +28,16 @@ logger.setLevel(logging.INFO)
 
 def create_filtered_dense_mt(
     mtds: Union[hl.vds.VariantDataset, hl.MatrixTable],
-    test: bool = False,
     split: bool = False,
 ) -> hl.MatrixTable:
     """
     Filter a sparse MatrixTable or VariantDataset to a set of predetermined QC sites and return a dense MatrixTable.
 
     :param mtds: Input MatrixTable or VariantDataset.
-    :param test: Whether to filter `mtds` to the first 20 partitions.
     :param split: Whether `mtds` should have multi-allelics split before filtering variants.
     :return: Filtered and densified MatrixTable.
     """
     is_vds = isinstance(mtds, hl.vds.VariantDataset)
-    if test:
-        logger.info("Filtering to the first 20 partitions")
-        if is_vds:
-            mtds = hl.vds.VariantDataset(
-                mtds.reference_data._filter_partitions(range(20)),
-                mtds.variant_data._filter_partitions(range(20)),
-            )
-        else:
-            mtds = mtds._filter_partitions(range(20))
 
     if is_vds:
         vds = mtds
@@ -169,8 +158,8 @@ def main(args):
     try:
         if args.create_v3_filtered_dense_mt:
             # Note: This command removes hard filtered samples
-            mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
-            mt = create_filtered_dense_mt(mt, test, split=True)
+            mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, test=test)
+            mt = create_filtered_dense_mt(mt, split=True)
             mt = mt.checkpoint(
                 get_predetermined_qc(version="3.1", test=test).path,
                 overwrite=overwrite,
@@ -183,8 +172,10 @@ def main(args):
         if args.create_v4_filtered_dense_mt:
             # Note: This subset dense MatrixTable was created before the final hard filtering was determined
             # Hard filtering is performed in `generate_qc_mt` before applying variant filters
-            vds = get_gnomad_v4_vds(split=True, remove_hard_filtered_samples=False)
-            mt = create_filtered_dense_mt(vds, test)
+            vds = get_gnomad_v4_vds(
+                split=True, remove_hard_filtered_samples=False, test=test
+            )
+            mt = create_filtered_dense_mt(vds)
             mt = mt.checkpoint(
                 get_predetermined_qc(test=test).path, overwrite=overwrite
             )
