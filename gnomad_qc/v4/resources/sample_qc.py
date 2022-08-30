@@ -215,7 +215,7 @@ qc = VersionedMatrixTableResource(
 )
 
 # v3 and v4 combined sample metadata Table for relatedness and population inference
-qc_meta = VersionedTableResource(
+joint_qc_meta = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(

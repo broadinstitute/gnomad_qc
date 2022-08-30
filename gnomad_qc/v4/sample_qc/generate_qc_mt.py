@@ -18,9 +18,9 @@ from gnomad_qc.v4.resources.meta import project_meta as v4_meta
 from gnomad_qc.v4.resources.sample_qc import (
     get_predetermined_qc,
     hard_filtered_samples,
+    joint_qc_meta,
     predetermined_qc_sites,
     qc,
-    qc_meta,
     sample_chr20_mean_dp,
 )
 from gnomad_qc.slack_creds import slack_token
@@ -278,7 +278,7 @@ def main(args):
             )
 
         if args.generate_qc_meta:
-            generate_qc_meta_ht().write(qc_meta.path)
+            generate_qc_meta_ht().write(joint_qc_meta.path, overwrite=overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
