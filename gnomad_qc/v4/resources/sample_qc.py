@@ -225,6 +225,17 @@ interval_coverage = VersionedMatrixTableResource(
     },
 )
 
+# Sample contamination estimate Table
+contamination = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.contamination.mt"
+        )
+        for version in VERSIONS
+    },
+)
+
 # Platform PCA loadings
 platform_pca_loadings = VersionedTableResource(
     CURRENT_VERSION,
