@@ -70,8 +70,8 @@ def compute_hard_filters(
     max_r_het_hom_var: float = 10,
     min_bases_dp_over_1: float = 5e7,
     min_bases_dp_over_20: float = 4e7,
-    max_contamination: float = 0.05,
     max_chimera: float = 0.05,
+    max_contamination_estimate: float = 0.015,
     test: bool = False,
     coverage_mt: hl.MatrixTable = None,
     min_cov: int = None,
@@ -92,10 +92,9 @@ def compute_hard_filters(
     :param max_r_het_hom_var: Filtering threshold to use for the maximum ratio of heterozygotes to alternate homozygotes.
     :param min_bases_dp_over_1: Filtering threshold to use for the minimum number of bases with a DP over one.
     :param min_bases_dp_over_20: Filtering threshold to use for the minimum number of bases with a DP over 20.
-    :param max_contamination: Filtering threshold to use for maximum contamination (this is a proportion not a
-        percent, e.g. 5% == 0.05, %5 != 5).
     :param max_chimera: Filtering threshold to use for maximum chimera (this is a proportion not a percent,
         e.g. 5% == 0.05, %5 != 5).
+    :param max_contamination_estimate: Filtering threshold to use for maximum contamination estimate.
     :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full dataset.
     :param coverage_mt: MatrixTable containing the per interval per sample coverage statistics.
     :param min_cov: Filtering threshold to use for chr20 coverage.
@@ -112,8 +111,8 @@ def compute_hard_filters(
             max_r_het_hom_var=max_r_het_hom_var,
             min_bases_dp_over_1=min_bases_dp_over_1,
             min_bases_dp_over_20=min_bases_dp_over_20,
-            max_contamination=max_contamination,
             max_chimera=max_chimera,
+            max_contamination_estimate=max_contamination_estimate,
         ),
     )
     if min_cov is not None:
@@ -168,15 +167,20 @@ def compute_hard_filters(
         # This annotation includes all of the metadata for the random samples chosen for the test dataset
         bam_metrics_struct = project_meta_ht[ht.key].rand_sampling_meta
         bam_metrics_struct = bam_metrics_struct.annotate(
-            contam_rate=bam_metrics_struct.freemix,
-            chimeras_rate=bam_metrics_struct.pct_chimeras,
+            chimeras_rate=bam_metrics_struct.pct_chimeras
+        )
+        contamination_ht = hl.read_table(
+            get_checkpoint_path("test_gnomad.exomes.contamination")
         )
     else:
         project_meta_ht = project_meta.ht()
         bam_metrics_struct = project_meta_ht[ht.key].bam_metrics
+        contamination_ht = contamination.ht()
 
-    hard_filters["contamination"] = bam_metrics_struct.contam_rate > max_contamination
     hard_filters["chimera"] = bam_metrics_struct.chimeras_rate > max_chimera
+    hard_filters["contamination"] = (
+        contamination_ht.mean_AB_snp_biallelic > max_contamination_estimate
+    )
 
     # Flag low-coverage samples using mean coverage on chromosome 20
     if min_cov is not None:
@@ -452,21 +456,21 @@ if __name__ == "__main__":
         default=4e7,
     )
     hard_filter_args.add_argument(
-        "--max-contamination",
-        default=0.05,
-        type=float,
-        help=(
-            "Filtering threshold to use for maximum contamination (this is a proportion not percent, "
-            "e.g. 5% == 0.05, %5 != 5). Default is 0.05.",
-        ),
-    )
-    hard_filter_args.add_argument(
         "--max-chimera",
         type=float,
         default=0.05,
         help=(
             "Filtering threshold to use for maximum chimera (this is a proportion not a percent, "
             "e.g. 5% == 0.05, %5 != 5). Default is 0.05."
+        ),
+    )
+    hard_filter_args.add_argument(
+        "--max-contamination-estimate",
+        default=0.015,
+        type=float,
+        help=(
+            "Filtering threshold to use for maximum contamination estimate (from --compute-contamination-estimate). "
+            "Default is 0.015."
         ),
     )
     hard_filter_args.add_argument(
