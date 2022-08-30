@@ -262,7 +262,7 @@ def main(args):
         if args.sample_qc:
             compute_sample_qc(
                 n_partitions=args.sample_qc_n_partitions, test=test
-            ).write(get_sample_qc(test=test).path, overwrite=args.overwrite)
+            ).write(get_sample_qc(test=test).path, overwrite=overwrite)
 
         if args.compute_coverage:
             logger.info("Loading v4 VDS...")
@@ -286,7 +286,7 @@ def main(args):
                 )
                 if test
                 else interval_coverage.path,
-                overwrite=args.overwrite,
+                overwrite=overwrite,
             )
 
         if args.compute_contamination_estimate:
