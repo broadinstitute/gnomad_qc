@@ -291,7 +291,7 @@ def main(args):
 
         if args.compute_contamination_estimate:
             logger.info(
-                "Loading v4 VDS, filtering to high-quality (DP > %f), autosomal, bi-allelic homozygous SNVs and "
+                "Loading v4 VDS, filtering to high-quality (DP > %d), autosomal, bi-allelic homozygous SNVs and "
                 "computing the mean of reference allele balances per sample...",
                 args.contam_dp_cutoff,
             )
@@ -303,7 +303,7 @@ def main(args):
             mt = mt.filter_rows(
                 (hl.len(mt.alleles) == 2) & hl.is_snp(mt.alleles[0], mt.alleles[1])
             )
-            mt = mt.filter_entries(mt.LGT.is_hom_var() & mt.DP >= args.contam_dp_cutoff)
+            mt = mt.filter_entries(mt.LGT.is_hom_var() & (mt.DP >= args.contam_dp_cutoff))
             mt = mt.annotate_cols(
                 mean_AB_snp_biallelic=hl.agg.mean(mt.LAD[0] / (mt.LAD[0] + mt.LAD[1]))
             )
