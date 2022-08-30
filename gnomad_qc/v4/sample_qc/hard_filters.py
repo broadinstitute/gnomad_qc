@@ -19,6 +19,7 @@ from gnomad_qc.v4.resources.basics import (
 )
 from gnomad_qc.v4.resources.meta import project_meta
 from gnomad_qc.v4.resources.sample_qc import (
+    contamination,
     fingerprinting_failed,
     get_sample_qc,
     hard_filtered_samples,
@@ -61,32 +62,6 @@ def compute_sample_qc(n_partitions: int = 500, test: bool = False) -> hl.Table:
     )
 
     return sample_qc_ht.repartition(n_partitions)
-
-
-def compute_contamination_metric(
-    vds: hl.vds.VariantDataset,
-    dp_cutoff: int = 10,
-):
-    mt = filter_to_autosomes(vds.variant_data)
-    mt = mt.filter_rows(hl.len(mt.alleles) == 2)
-    mt = mt.annotate_entries(AB=mt.LAD[0] / (mt.LAD[0] + mt.LAD[1]))
-    mt = mt.annotate_rows(
-        is_snp=hl.is_snp(mt.alleles[0], mt.alleles[1]),
-    )
-    mt = mt.annotate_cols(
-        mean_AB_snp_biallelic_no_filter=hl.agg.filter(
-            mt.is_snp & ~mt.was_split, hl.agg.mean(mt.AB)
-        )
-    )
-    mt = mt.filter_entries(mt.GT.is_hom_var() & (mt.DP > dp_cutoff))
-
-    mt = mt.annotate_cols(
-        mean_AB_snp_biallelic=hl.agg.filter(
-            mt.is_snp & ~mt.was_split, hl.agg.mean(mt.AB)
-        )
-    )
-
-    return mt.cols()
 
 
 def compute_hard_filters(
@@ -277,6 +252,7 @@ def main(args):
     calling_interval_name = args.calling_interval_name
     calling_interval_padding = args.calling_interval_padding
     test = args.test
+    overwrite = args.overwrite
 
     try:
         if args.sample_qc:
@@ -310,8 +286,30 @@ def main(args):
             )
 
         if args.compute_contamination_estimate:
-            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=False, test=test)
-            compute_contamination_metric(vds).write(get_checkpoint_path("test_gnomad.exomes.contamination"))
+            logger.info(
+                "Loading v4 VDS, filtering to high-quality (DP > %f), autosomal, bi-allelic homozygous SNVs and "
+                "computing the mean of reference allele balances per sample...",
+                args.contam_dp_cutoff,
+            )
+            mt = filter_to_autosomes(
+                get_gnomad_v4_vds(
+                    remove_hard_filtered_samples=False, test=test
+                ).variant_data
+            )
+            mt = mt.filter_rows(
+                (hl.len(mt.alleles) == 2) & hl.is_snp(mt.alleles[0], mt.alleles[1])
+            )
+            mt = mt.filter_entries(mt.LGT.is_hom_var() & mt.DP >= args.contam_dp_cutoff)
+            mt = mt.annotate_cols(
+                mean_AB_snp_biallelic=hl.agg.mean(mt.LAD[0] / (mt.LAD[0] + mt.LAD[1]))
+            )
+            mt = mt.cols().annotate_globals(dp_cutoff=args.contam_dp_cutoff)
+            mt.write(
+                get_checkpoint_path("test_gnomad.exomes.contamination")
+                if test
+                else contamination.path,
+                overwrite=overwrite,
+            )
 
         if args.compute_hard_filters:
             # TODO: Determine cutoffs by visual inspection of the metrics, and modify defaults to match
@@ -344,14 +342,14 @@ def main(args):
                 args.max_r_het_hom_var,
                 args.min_bases_dp_over_1,
                 args.min_bases_dp_over_20,
-                args.max_contamination,
                 args.max_chimera,
+                args.max_contamination_estimate,
                 test,
                 coverage_mt,
                 args.min_cov,
                 args.min_qc_mt_adj_callrate,
             )
-            ht = ht.checkpoint(hard_filter_path, overwrite=args.overwrite)
+            ht = ht.checkpoint(hard_filter_path, overwrite=overwrite)
             ht.group_by("hard_filters").aggregate(n=hl.agg.count()).show(20)
             ht.group_by("sample_qc_metric_hard_filters").aggregate(
                 n=hl.agg.count()
@@ -386,6 +384,20 @@ if __name__ == "__main__":
         "--compute-coverage",
         help="Compute per interval coverage metrics using Hail's vds.interval_coverage method.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--compute-contamination-estimate",
+        help=(
+            "Compute contamination estimate as the mean of reference allele balances of high-quality "
+            "(DP > contam-dp-cutoff), autosomal, bi-allelic homozygous SNVs per sample."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--contam-dp-cutoff",
+        help="Minimum genotype depth to be included in contamination estimate calculation.",
+        type=int,
+        default=10,
     )
     parser.add_argument(
         "--calling-interval-name",
