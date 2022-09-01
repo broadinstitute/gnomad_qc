@@ -172,7 +172,7 @@ def compute_hard_filters(
         )
         contamination_ht = hl.read_table(
             get_checkpoint_path("test_gnomad.exomes.contamination")
-        )
+        )[ht.key]
     else:
         project_meta_ht = project_meta.ht()
         bam_metrics_struct = project_meta_ht[ht.key].bam_metrics
@@ -297,7 +297,9 @@ def main(args):
             mt = mt.filter_rows(
                 (hl.len(mt.alleles) == 2) & hl.is_snp(mt.alleles[0], mt.alleles[1])
             )
-            mt = mt.filter_entries(mt.LGT.is_hom_var() & (mt.DP >= args.contam_dp_cutoff))
+            mt = mt.filter_entries(
+                mt.LGT.is_hom_var() & (mt.DP >= args.contam_dp_cutoff)
+            )
             mt = mt.annotate_cols(
                 mean_AB_snp_biallelic=hl.agg.mean(mt.LAD[0] / (mt.LAD[0] + mt.LAD[1]))
             )
