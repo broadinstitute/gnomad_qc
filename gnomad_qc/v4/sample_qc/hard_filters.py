@@ -172,15 +172,15 @@ def compute_hard_filters(
         )
         contamination_ht = hl.read_table(
             get_checkpoint_path("test_gnomad.exomes.contamination")
-        )
+        )[ht.key]
     else:
         project_meta_ht = project_meta.ht()
         bam_metrics_struct = project_meta_ht[ht.key].bam_metrics
-        contamination_ht = contamination.ht()
+        contamination_struct = contamination.ht()[ht.key]
 
     hard_filters["chimera"] = bam_metrics_struct.chimeras_rate > max_chimera
     hard_filters["contamination"] = (
-        contamination_ht.mean_AB_snp_biallelic > max_contamination_estimate
+        contamination_struct.mean_AB_snp_biallelic > max_contamination_estimate
     )
 
     # Flag low-coverage samples using mean coverage on chromosome 20
@@ -285,7 +285,7 @@ def main(args):
 
         if args.compute_contamination_estimate:
             logger.info(
-                "Loading v4 VDS, filtering to high-quality (DP > %d), autosomal, bi-allelic homozygous SNVs and "
+                "Loading v4 VDS, filtering to high-quality (DP >= %d), autosomal, bi-allelic homozygous SNVs and "
                 "computing the mean of reference allele balances per sample...",
                 args.contam_dp_cutoff,
             )
@@ -297,7 +297,9 @@ def main(args):
             mt = mt.filter_rows(
                 (hl.len(mt.alleles) == 2) & hl.is_snp(mt.alleles[0], mt.alleles[1])
             )
-            mt = mt.filter_entries(mt.LGT.is_hom_var() & (mt.DP >= args.contam_dp_cutoff))
+            mt = mt.filter_entries(
+                mt.LGT.is_hom_var() & (mt.DP >= args.contam_dp_cutoff)
+            )
             mt = mt.annotate_cols(
                 mean_AB_snp_biallelic=hl.agg.mean(mt.LAD[0] / (mt.LAD[0] + mt.LAD[1]))
             )
@@ -406,7 +408,7 @@ if __name__ == "__main__":
         "--compute-contamination-estimate",
         help=(
             "Compute contamination estimate as the mean of reference allele balances of high-quality "
-            "(DP > contam-dp-cutoff), autosomal, bi-allelic homozygous SNVs per sample."
+            "(DP >= contam-dp-cutoff), autosomal, bi-allelic homozygous SNVs per sample."
         ),
         action="store_true",
     )
