@@ -176,11 +176,11 @@ def compute_hard_filters(
     else:
         project_meta_ht = project_meta.ht()
         bam_metrics_struct = project_meta_ht[ht.key].bam_metrics
-        contamination_ht = contamination.ht()
+        contamination_struct = contamination.ht()[ht.key]
 
     hard_filters["chimera"] = bam_metrics_struct.chimeras_rate > max_chimera
     hard_filters["contamination"] = (
-        contamination_ht.mean_AB_snp_biallelic > max_contamination_estimate
+        contamination_struct.mean_AB_snp_biallelic > max_contamination_estimate
     )
 
     # Flag low-coverage samples using mean coverage on chromosome 20
