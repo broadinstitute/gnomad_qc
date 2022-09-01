@@ -252,7 +252,7 @@ contamination = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.contamination.mt"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.contamination.ht"
         )
         for version in VERSIONS
     },
