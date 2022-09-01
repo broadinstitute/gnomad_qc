@@ -406,7 +406,7 @@ if __name__ == "__main__":
         "--compute-contamination-estimate",
         help=(
             "Compute contamination estimate as the mean of reference allele balances of high-quality "
-            "(DP > contam-dp-cutoff), autosomal, bi-allelic homozygous SNVs per sample."
+            "(DP >= contam-dp-cutoff), autosomal, bi-allelic homozygous SNVs per sample."
         ),
         action="store_true",
     )
