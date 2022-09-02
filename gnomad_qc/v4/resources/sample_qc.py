@@ -17,7 +17,6 @@ from gnomad_qc.v4.resources.constants import (
 def get_sample_qc_root(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
     Return path to sample QC root folder.
-
     :param version: Version of sample QC path to return
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS
     :return: Root to sample QC path
@@ -35,7 +34,6 @@ def get_sample_qc(strat: str = "all", test: bool = False) -> VersionedTableResou
         - bi_allelic
         - multi_allelic
         - all
-
     :param strat: Which stratification to return
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS
     :return: Sample QC table
@@ -54,7 +52,6 @@ def get_sample_qc(strat: str = "all", test: bool = False) -> VersionedTableResou
 def _get_platform_pca_ht_path(part: str, version: str = CURRENT_VERSION) -> str:
     """
     Helper function to get path to files related to platform PCA.
-
     :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores)
     :param version: Version of sample QC path to return
     :return: Path to requested platform PCA file
@@ -67,26 +64,26 @@ def _get_platform_pca_ht_path(part: str, version: str = CURRENT_VERSION) -> str:
 def _get_ancestry_pca_ht_path(
     part: str,
     version: str = CURRENT_VERSION,
-    include_unreleasable_samples: bool = False,
+    remove_unreleasable_samples: bool = False,
+    test: bool = False,
 ) -> str:
     """
     Helper function to get path to files related to ancestry PCA.
-
-    :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores)
-    :param version: Version of sample QC path to return
-    :param include_unreleasable_samples: Whether the file includes PCA info for unreleasable samples
-    :return: Path to requested ancestry PCA file
+    :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores).
+    :param version: Version of sample QC path to return.
+    :param remove_unreleasable_samples: Whether the PCA removed unreleasable samples.
+    :return: Path to requested ancestry PCA file.
     """
-    return f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
+    return f"{get_sample_qc_root(version,test)}/gnomad.exomes.v{version}.pca_{part}{'_without_unreleasable_samples' if remove_unreleasable_samples else ''}.ht"
 
 
 def ancestry_pca_loadings(
-    include_unreleasable_samples: bool = False,
+    remove_unreleasable_samples: bool = False, test: bool = False,
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA loadings VersionedTableResource.
-
-    :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
+    :param remove_unreleasable_samples: Whether to get the PCA that removed unreleasable in training.
+    :param test: Whether to use a temp path.
     :return: Ancestry PCA loadings
     """
     return VersionedTableResource(
@@ -94,7 +91,7 @@ def ancestry_pca_loadings(
         {
             version: TableResource(
                 _get_ancestry_pca_ht_path(
-                    "loadings", version, include_unreleasable_samples
+                    "loadings", version, remove_unreleasable_samples, test
                 )
             )
             for version in VERSIONS
@@ -103,12 +100,12 @@ def ancestry_pca_loadings(
 
 
 def ancestry_pca_scores(
-    include_unreleasable_samples: bool = False,
+    remove_unreleasable_samples: bool = False, test: bool = False
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA scores VersionedTableResource.
-
-    :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
+    :param remove_unreleasable_samples: Whether to get the PCA that removed unreleasable in training.
+    :param test: Whether to use a temp path.
     :return: Ancestry PCA scores
     """
     return VersionedTableResource(
@@ -116,7 +113,7 @@ def ancestry_pca_scores(
         {
             version: TableResource(
                 _get_ancestry_pca_ht_path(
-                    "scores", version, include_unreleasable_samples
+                    "scores", version, remove_unreleasable_samples, test
                 )
             )
             for version in VERSIONS
@@ -125,12 +122,12 @@ def ancestry_pca_scores(
 
 
 def ancestry_pca_eigenvalues(
-    include_unreleasable_samples: bool = False,
+    remove_unreleasable_samples: bool = False, test: bool = False,
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA eigenvalues VersionedTableResource.
-
-    :param include_unreleasable_samples: Whether to get the PCA that included unreleasable in training
+    :param remove_unreleasable_samples: Whether to get the PCA that removed unreleasable in training.
+    :param test: Whether to use a temp path.
     :return: Ancestry PCA eigenvalues
     """
     return VersionedTableResource(
@@ -138,7 +135,7 @@ def ancestry_pca_eigenvalues(
         {
             version: TableResource(
                 _get_ancestry_pca_ht_path(
-                    "eigenvalues", version, include_unreleasable_samples
+                    "eigenvalues", version, remove_unreleasable_samples, test
                 )
             )
             for version in VERSIONS
@@ -149,7 +146,6 @@ def ancestry_pca_eigenvalues(
 def get_relatedness_annotated_ht() -> hl.Table:
     """
     Get the relatedness table annotated with get_relationship_expr.
-
     :return: Annotated relatedness table
     """
     relatedness_ht = relatedness.ht()
@@ -166,7 +162,6 @@ def get_relatedness_annotated_ht() -> hl.Table:
 def get_predetermined_qc(version: str = CURRENT_VERSION, test: bool = False):
     """
     Get the dense MatrixTableResource of all predetermined QC sites for the indicated gnomAD version.
-
     :param version: Version of QC MatrixTableResource to return.
     :param test: Whether to use a tmp path for a test MatrixTableResource.
     :return: MatrixTableResource of predetermined QC sites.
@@ -179,6 +174,21 @@ def get_predetermined_qc(version: str = CURRENT_VERSION, test: bool = False):
         return v3_predetermined_qc
     else:
         return v4_predetermined_qc.versions[version]
+
+
+def get_qc_mt(version: str = CURRENT_VERSION, test: bool = False):
+    """
+    Get the joint dense MatrixTableResource of all samples at predetermined QC sites for the indicated gnomAD version.
+    :param version: Version of QC MatrixTableResource to return.
+    :param test: Whether to use the test version of the QC MatrixTableResource.
+    :return: MatrixTableResource of predetermined QC sites.
+    """
+    if test:
+        return MatrixTableResource(
+            get_checkpoint_path("dense_ld_prune_qc_mt.test", mt=True)
+        )
+    else:
+        return qc.versions[version]
 
 
 # HT of pre LD pruned variants chosen from CCDG, gnomAD v3, and UKB variant info
@@ -247,27 +257,11 @@ sample_chr20_mean_dp = VersionedTableResource(
     },
 )
 
-# Sample contamination estimate Table
-contamination = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.contamination.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
 # Platform PCA loadings
 platform_pca_loadings = VersionedTableResource(
     CURRENT_VERSION,
     {
-        version: TableResource(
-            _get_platform_pca_ht_path(
-                "loadings",
-                version,
-            )
-        )
+        version: TableResource(_get_platform_pca_ht_path("loadings", version,))
         for version in VERSIONS
     },
 )
@@ -276,12 +270,7 @@ platform_pca_loadings = VersionedTableResource(
 platform_pca_scores = VersionedTableResource(
     CURRENT_VERSION,
     {
-        version: TableResource(
-            _get_platform_pca_ht_path(
-                "scores",
-                version,
-            )
-        )
+        version: TableResource(_get_platform_pca_ht_path("scores", version,))
         for version in VERSIONS
     },
 )
@@ -290,12 +279,7 @@ platform_pca_scores = VersionedTableResource(
 platform_pca_eigenvalues = VersionedTableResource(
     CURRENT_VERSION,
     {
-        version: TableResource(
-            _get_platform_pca_ht_path(
-                "eigenvalues",
-                version,
-            )
-        )
+        version: TableResource(_get_platform_pca_ht_path("eigenvalues", version,))
         for version in VERSIONS
     },
 )
@@ -411,24 +395,41 @@ pop = VersionedTableResource(
 )
 
 
-def pop_tsv_path(version: str = CURRENT_VERSION) -> str:
+def pop_tsv_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
     Path to tab delimited file indicating inferred sample populations.
-
     :param version: gnomAD Version
+    :param test: Whether the rf was from a test dataset.
     :return: String path to sample populations
     """
-    return f"gs://gnomad/v{version}/sample_qc/exomes/gnomad.exomes.v{version}.RF_pop_assignments.txt.gz"
+    return f"{get_sample_qc_root(version,test)}/gnomad.exomes.v{version}.RF_pop_assignments.txt.gz"
 
 
-def pop_rf_path(version: str = CURRENT_VERSION) -> str:
+def pop_rf_path(version: str = CURRENT_VERSION, test: bool = False,) -> str:
     """
     Path to RF model used for inferring sample populations.
-
     :param version: gnomAD Version
+    :param test: Whether the rf was from a test dataset.
     :return: String path to sample pop RF model
     """
-    return f"gs://gnomad/v{version}/sample_qc/exomes/gnomad.exomes.v{version}.pop.RF_fit.pickle"
+    return (
+        f"{get_sample_qc_root(version,test)}/gnomad.exomes.v{version}.pop.RF_fit.pickle"
+    )
+
+
+def get_pop_ht(version: str = CURRENT_VERSION, test: bool = False):
+    """
+    Get the pop Table of all samples for the indicated gnomAD version.
+    :param version: Version of pop TableResource to return.
+    :param test: Whether to use the test version of the pop TableResource.
+    :return: TableResource of sample pops.
+    """
+    if test:
+        return TableResource(
+            f"{get_sample_qc_root(version,test)}/gnomad.exomes.v{version}.pop.ht"
+        )
+    else:
+        return pop.versions[version]
 
 
 def _import_related_samples_to_drop(**kwargs):
