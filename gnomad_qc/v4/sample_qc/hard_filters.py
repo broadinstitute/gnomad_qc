@@ -6,7 +6,7 @@ import hail as hl
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.utils.annotations import bi_allelic_expr
-from gnomad.utils.filtering import add_filters_expr, filter_to_adj
+from gnomad.utils.filtering import add_filters_expr, filter_to_adj, filter_to_autosomes
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
@@ -15,16 +15,17 @@ from gnomad_qc.v4.resources.basics import (
     get_checkpoint_path,
     get_gnomad_v4_vds,
     get_logging_path,
-    gnomad_v4_testset,
     gnomad_v4_testset_meta,
 )
 from gnomad_qc.v4.resources.meta import project_meta
 from gnomad_qc.v4.resources.sample_qc import (
+    contamination,
     fingerprinting_failed,
     get_sample_qc,
     hard_filtered_samples,
     hard_filtered_samples_no_sex,
     interval_coverage,
+    sample_chr20_mean_dp,
     sex,
     v4_predetermined_qc,
 )
@@ -70,10 +71,10 @@ def compute_hard_filters(
     max_r_het_hom_var: float = 10,
     min_bases_dp_over_1: float = 5e7,
     min_bases_dp_over_20: float = 4e7,
-    max_contamination: float = 0.05,
     max_chimera: float = 0.05,
+    max_contamination_estimate: float = 0.015,
     test: bool = False,
-    coverage_mt: hl.MatrixTable = None,
+    chr20_mean_dp_ht: hl.Table = None,
     min_cov: int = None,
     min_qc_mt_adj_callrate: float = None,
 ) -> hl.Table:
@@ -92,12 +93,11 @@ def compute_hard_filters(
     :param max_r_het_hom_var: Filtering threshold to use for the maximum ratio of heterozygotes to alternate homozygotes.
     :param min_bases_dp_over_1: Filtering threshold to use for the minimum number of bases with a DP over one.
     :param min_bases_dp_over_20: Filtering threshold to use for the minimum number of bases with a DP over 20.
-    :param max_contamination: Filtering threshold to use for maximum contamination (this is a proportion not a
-        percent, e.g. 5% == 0.05, %5 != 5).
     :param max_chimera: Filtering threshold to use for maximum chimera (this is a proportion not a percent,
         e.g. 5% == 0.05, %5 != 5).
+    :param max_contamination_estimate: Filtering threshold to use for maximum contamination estimate.
     :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full dataset.
-    :param coverage_mt: MatrixTable containing the per interval per sample coverage statistics.
+    :param chr20_mean_dp_ht: Table containing the per sample chromosome 20 mean DP.
     :param min_cov: Filtering threshold to use for chr20 coverage.
     :param min_qc_mt_adj_callrate: Filtering threshold to use for sample callrate computed on only predetermined QC
         variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering.
@@ -112,8 +112,8 @@ def compute_hard_filters(
             max_r_het_hom_var=max_r_het_hom_var,
             min_bases_dp_over_1=min_bases_dp_over_1,
             min_bases_dp_over_20=min_bases_dp_over_20,
-            max_contamination=max_contamination,
             max_chimera=max_chimera,
+            max_contamination_estimate=max_contamination_estimate,
         ),
     )
     if min_cov is not None:
@@ -168,35 +168,33 @@ def compute_hard_filters(
         # This annotation includes all of the metadata for the random samples chosen for the test dataset
         bam_metrics_struct = project_meta_ht[ht.key].rand_sampling_meta
         bam_metrics_struct = bam_metrics_struct.annotate(
-            contam_rate=bam_metrics_struct.freemix,
-            chimeras_rate=bam_metrics_struct.pct_chimeras,
+            chimeras_rate=bam_metrics_struct.pct_chimeras
         )
+        contamination_ht = hl.read_table(
+            get_checkpoint_path("test_gnomad.exomes.contamination")
+        )[ht.key]
     else:
         project_meta_ht = project_meta.ht()
         bam_metrics_struct = project_meta_ht[ht.key].bam_metrics
+        contamination_struct = contamination.ht()[ht.key]
 
-    hard_filters["contamination"] = bam_metrics_struct.contam_rate > max_contamination
     hard_filters["chimera"] = bam_metrics_struct.chimeras_rate > max_chimera
+    hard_filters["contamination"] = (
+        contamination_struct.mean_AB_snp_biallelic > max_contamination_estimate
+    )
 
     # Flag low-coverage samples using mean coverage on chromosome 20
     if min_cov is not None:
-        if coverage_mt is None:
+        if chr20_mean_dp_ht is None:
             raise ValueError(
-                "If a chromosome 20 coverage threshold is supplied, a coverage MatrixTable must be supplied too."
+                "If a chromosome 20 coverage threshold is supplied, a chr20 mean DP Table must be supplied too."
             )
-        coverage_mt = coverage_mt.filter_rows(
-            coverage_mt.interval.start.contig == "chr20"
-        )
-        coverage_ht = coverage_mt.select_cols(
-            chr20_mean_dp=hl.agg.sum(coverage_mt.sum_dp)
-            / hl.agg.sum(coverage_mt.interval_size)
-        ).cols()
-        hard_filters["low_coverage"] = coverage_ht[ht.key].chr20_mean_dp < min_cov
+        hard_filters["low_coverage"] = chr20_mean_dp_ht[ht.key].chr20_mean_dp < min_cov
 
     if min_qc_mt_adj_callrate is not None:
         mt = v4_predetermined_qc.mt()
         num_samples = mt.count_cols()
-        # Filter predetermined QC variants to only common variants (AF > 0.0001) with high site callrate ( > 0.99) for ADJ genotypes 
+        # Filter predetermined QC variants to only common variants (AF > 0.0001) with high site callrate ( > 0.99) for ADJ genotypes
         mt = filter_to_adj(mt)
         mt = mt.filter_rows(
             ((hl.agg.count_where(hl.is_defined(mt.GT)) / num_samples) > 0.99)
@@ -252,20 +250,17 @@ def main(args):
     calling_interval_name = args.calling_interval_name
     calling_interval_padding = args.calling_interval_padding
     test = args.test
+    overwrite = args.overwrite
 
     try:
         if args.sample_qc:
             compute_sample_qc(
                 n_partitions=args.sample_qc_n_partitions, test=test
-            ).write(get_sample_qc(test=test).path, overwrite=args.overwrite)
+            ).write(get_sample_qc(test=test).path, overwrite=overwrite)
 
         if args.compute_coverage:
-            if test:
-                logger.info("Loading test VDS...")
-                vds = gnomad_v4_testset.vds()
-            else:
-                logger.info("Loading full v4 VDS...")
-                vds = get_gnomad_v4_vds(remove_hard_filtered_samples=False)
+            logger.info("Loading v4 VDS...")
+            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=False, test=test)
 
             logger.info(
                 "Loading calling intervals: %s with padding of %d...",
@@ -285,11 +280,37 @@ def main(args):
                 )
                 if test
                 else interval_coverage.path,
-                overwrite=args.overwrite,
+                overwrite=overwrite,
             )
 
-        if args.compute_hard_filters:
-            # TODO: Determine cutoffs by visual inspection of the metrics, and modify defaults to match
+        if args.compute_contamination_estimate:
+            logger.info(
+                "Loading v4 VDS, filtering to high-quality (DP >= %d), autosomal, bi-allelic homozygous SNVs and "
+                "computing the mean of reference allele balances per sample...",
+                args.contam_dp_cutoff,
+            )
+            mt = filter_to_autosomes(
+                get_gnomad_v4_vds(
+                    remove_hard_filtered_samples=False, test=test
+                ).variant_data
+            )
+            mt = mt.filter_rows(
+                (hl.len(mt.alleles) == 2) & hl.is_snp(mt.alleles[0], mt.alleles[1])
+            )
+            mt = mt.filter_entries(
+                mt.LGT.is_hom_var() & (mt.DP >= args.contam_dp_cutoff)
+            )
+            mt = mt.annotate_cols(
+                mean_AB_snp_biallelic=hl.agg.mean(mt.LAD[0] / (mt.LAD[0] + mt.LAD[1]))
+            )
+            mt = mt.cols().annotate_globals(dp_cutoff=args.contam_dp_cutoff)
+            mt.write(
+                get_checkpoint_path("test_gnomad.exomes.contamination")
+                if test
+                else contamination.path,
+                overwrite=overwrite,
+            )
+        if args.compute_chr20_mean_dp:
             if test:
                 coverage_mt = hl.read_matrix_table(
                     get_checkpoint_path(
@@ -299,6 +320,27 @@ def main(args):
                 )
             else:
                 coverage_mt = interval_coverage.mt()
+
+            coverage_mt = coverage_mt.filter_rows(
+                coverage_mt.interval.start.contig == "chr20"
+            )
+            coverage_mt.select_cols(
+                chr20_mean_dp=hl.agg.sum(coverage_mt.sum_dp)
+                / hl.agg.sum(coverage_mt.interval_size)
+            ).cols().write(
+                get_checkpoint_path("test_gnomad.exomes.chr20_mean_dp")
+                if test
+                else sample_chr20_mean_dp.path,
+                overwrite=overwrite,
+            )
+
+        if args.compute_hard_filters:
+            if test:
+                chr20_mean_dp_ht = hl.read_table(
+                    get_checkpoint_path("test_gnomad.exomes.chr20_mean_dp")
+                )
+            else:
+                chr20_mean_dp_ht = sample_chr20_mean_dp.ht()
 
             if args.include_sex_filter:
                 hard_filter_path = hard_filtered_samples.path
@@ -319,14 +361,14 @@ def main(args):
                 args.max_r_het_hom_var,
                 args.min_bases_dp_over_1,
                 args.min_bases_dp_over_20,
-                args.max_contamination,
                 args.max_chimera,
+                args.max_contamination_estimate,
                 test,
-                coverage_mt,
+                chr20_mean_dp_ht,
                 args.min_cov,
                 args.min_qc_mt_adj_callrate,
             )
-            ht = ht.checkpoint(hard_filter_path, overwrite=args.overwrite)
+            ht = ht.checkpoint(hard_filter_path, overwrite=overwrite)
             ht.group_by("hard_filters").aggregate(n=hl.agg.count()).show(20)
             ht.group_by("sample_qc_metric_hard_filters").aggregate(
                 n=hl.agg.count()
@@ -363,6 +405,20 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
+        "--compute-contamination-estimate",
+        help=(
+            "Compute contamination estimate as the mean of reference allele balances of high-quality "
+            "(DP >= contam-dp-cutoff), autosomal, bi-allelic homozygous SNVs per sample."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--contam-dp-cutoff",
+        help="Minimum genotype depth to be included in contamination estimate calculation.",
+        type=int,
+        default=10,
+    )
+    parser.add_argument(
         "--calling-interval-name",
         help="Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'.",
         type=str,
@@ -375,6 +431,11 @@ if __name__ == "__main__":
         type=int,
         choices=[0, 50],
         default=50,
+    )
+    parser.add_argument(
+        "--compute-chr20-mean-dp",
+        help="Compute per sample mean DP on chromosome 20 using interval coverage results.",
+        action="store_true",
     )
     parser.add_argument(
         "--compute-hard-filters",
@@ -415,21 +476,21 @@ if __name__ == "__main__":
         default=4e7,
     )
     hard_filter_args.add_argument(
-        "--max-contamination",
-        default=0.05,
-        type=float,
-        help=(
-            "Filtering threshold to use for maximum contamination (this is a proportion not percent, "
-            "e.g. 5% == 0.05, %5 != 5). Default is 0.05.",
-        ),
-    )
-    hard_filter_args.add_argument(
         "--max-chimera",
         type=float,
         default=0.05,
         help=(
             "Filtering threshold to use for maximum chimera (this is a proportion not a percent, "
             "e.g. 5% == 0.05, %5 != 5). Default is 0.05."
+        ),
+    )
+    hard_filter_args.add_argument(
+        "--max-contamination-estimate",
+        default=0.015,
+        type=float,
+        help=(
+            "Filtering threshold to use for maximum contamination estimate (from --compute-contamination-estimate). "
+            "Default is 0.015."
         ),
     )
     hard_filter_args.add_argument(

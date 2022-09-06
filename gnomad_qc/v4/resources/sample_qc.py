@@ -213,7 +213,7 @@ predetermined_qc_sites = TableResource(
 
 # gnomAD v3 dense MT of all predetermined possible QC sites `predetermined_qc_sites`
 v3_predetermined_qc = MatrixTableResource(
-    "gs://gnomad/sample_qc/mt/genomes_v3.1/gnomad.exomes.v3.1.pre_ld_prune_qc_sites.dense.mt"
+    "gs://gnomad/sample_qc/mt/genomes_v3.1/gnomad.genomes.v3.1.pre_ld_prune_qc_sites.dense.mt"
 )
 
 # gnomAD v4 dense MT of all predetermined possible QC sites `predetermined_qc_sites`
@@ -232,7 +232,18 @@ qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
         version: MatrixTableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.qc.mt"
+            f"{get_sample_qc_root(version)}/gnomad.joint.v{version}.qc.mt"
+        )
+        for version in VERSIONS
+    },
+)
+
+# v3 and v4 combined sample metadata Table for relatedness and population inference
+joint_qc_meta = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.joint.v{version}.qc_meta.ht"
         )
         for version in VERSIONS
     },
@@ -244,6 +255,28 @@ interval_coverage = VersionedMatrixTableResource(
     {
         version: MatrixTableResource(
             f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.interval_coverage.mt"
+        )
+        for version in VERSIONS
+    },
+)
+
+# Mean chr20 DP per sample using Hail's interval_coverage results
+sample_chr20_mean_dp = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sample_chr20_mean_dp.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
+# Sample contamination estimate Table
+contamination = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.contamination.ht"
         )
         for version in VERSIONS
     },

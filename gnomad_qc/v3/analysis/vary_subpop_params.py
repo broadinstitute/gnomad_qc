@@ -61,38 +61,32 @@ def main(args):  # noqa: D103
                     missing_label="Other",
                 )
 
-                # Add on metadata annotation for "subpop_description"
-                ht = joint_pca_ht.annotate(
-                    subpop_description=meta_ht[
-                        joint_pca_ht.key
-                    ].project_meta.subpop_description
-                )
-
                 # Filter to just evaluation samples
-                ht = ht.filter(ht.evaluation_sample)
+                ht = joint_pca_ht.filter(joint_pca_ht.evaluation_sample)
 
                 # Calculate number of mislabeled samples
+                # NOTE: `training_pop` is the known label for the sample, but could have been used for either training or evaluation
                 total = ht.count()
                 mislabelled = ht.aggregate(
-                    hl.agg.count_where(ht.subpop_description != ht.subpop)
+                    hl.agg.count_where(ht.training_pop != ht.subpop)
                 )
                 correct = 1 - mislabelled / total
 
                 # Calculate TP/FP/FN
                 # Definitions:
-                # TP = Samples where `subpop_description` equals assigned `subpop`
-                # FP = Samples where `subpop_description` does not equal assigned `subpop` and `subpop` is not `Other`
-                # FN = Samples where `subpop_description` does not equal assigned `subpop` and `subpop` is `Other`
+                # TP = Samples where `training_pop` equals assigned `subpop`
+                # FP = Samples where `training_pop` does not equal assigned `subpop` and `subpop` is not `Other`
+                # FN = Samples where `training_pop` does not equal assigned `subpop` and `subpop` is `Other`
 
                 ht = ht.annotate(
                     result_status=hl.case()
-                    .when(ht.subpop_description == ht.subpop, "TP")
+                    .when(ht.training_pop == ht.subpop, "TP")
                     .when(
-                        (ht.subpop_description != ht.subpop) & (ht.subpop != "Other"),
+                        (ht.training_pop != ht.subpop) & (ht.subpop != "Other"),
                         "FP",
                     )
                     .when(
-                        (ht.subpop_description != ht.subpop) & (ht.subpop == "Other"),
+                        (ht.training_pop != ht.subpop) & (ht.subpop == "Other"),
                         "FN",
                     )
                     .default(hl.missing(hl.tstr))

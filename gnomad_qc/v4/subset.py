@@ -134,26 +134,24 @@ def main(args):
             s=hl.coalesce(meta_ht.project_meta.ukb_meta.eid_31063, meta_ht.s)
         )
 
+    if args.split_multi:
+        logger.info("Splitting multi-allelics")
+        vd = vds.variant_data
+        vd = vd.annotate_rows(
+            n_unsplit_alleles=hl.len(vd.alleles),
+            mixed_site=(hl.len(vd.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(vd.alleles[0], a), vd.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
+        )
+        vds = hl.vds.split_multi(
+            hl.vds.VariantDataset(vds.reference_data, vd), filter_changed_loci=True
+        )
+
     if args.vds:
         vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
 
-    if args.export_meta:
-        logger.info("Exporting metadata")
-        meta_ht = meta_ht.semi_join(vds.variant_data.cols())
-        # TODO: Dropping the whole ukb_meta struct, but should we keep pop and sex inference if allowed?
-        if args.keep_data_paths:
-            data_to_drop = {"ukb_meta"}
-        else:
-            data_to_drop = {"ukb_meta", "cram", "gvcf"}
-
-        meta_ht = meta_ht.annotate(project_meta=meta_ht.project_meta.drop(*data_to_drop))
-        meta_ht.export(f"{output_path}/metadata.tsv.bgz")
-
-    if args.split_multi:
-        logger.info("Splitting multi-allelics and densifying")
-        vds = hl.vds.split_multi(vds, filter_changed_loci=True)
-
     if args.vcf or args.dense_mt:
+        logger.info("Densifying VDS")
         mt = hl.vds.to_dense_mt(vds)
 
     if args.dense_mt:
@@ -168,6 +166,19 @@ def main(args):
             metadata=HEADER_DICT,
         )
 
+    if args.export_meta:
+        logger.info("Exporting metadata")
+        meta_ht = meta_ht.semi_join(vds.variant_data.cols())
+        # TODO: Dropping the whole ukb_meta struct, but should we keep pop and sex inference if allowed?
+        if args.keep_data_paths:
+            data_to_drop = {"ukb_meta"}
+        else:
+            data_to_drop = {"ukb_meta", "cram", "gvcf"}
+
+        meta_ht = meta_ht.annotate(
+            project_meta=meta_ht.project_meta.drop(*data_to_drop)
+        )
+        meta_ht.export(f"{output_path}/metadata.tsv.bgz")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
