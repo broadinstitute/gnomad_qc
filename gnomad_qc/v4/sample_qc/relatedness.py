@@ -16,6 +16,7 @@ from gnomad_qc.v4.resources.basics import get_logging_path
 from gnomad_qc.v4.resources.sample_qc import (
     cuking_input_path,
     cuking_output_path,
+    joint_qc_meta,
     pca_related_samples_to_drop,
     pca_samples_rankings,
     qc,
@@ -91,53 +92,21 @@ def main(args):
 
         if args.compute_related_samples_to_drop:
             # compute_related_samples_to_drop uses a rank Table as a tie breaker when
-            # pruning samples. We determine rankings as follows: filtered samples are
-            # ranked lowest, followed by non-releasable samples, followed by presence in
-            # v3 (favoring v3 over v4), and then by coverage.
-            def annotate_project_meta_ht(
-                project_meta_ht, sex_ht, hard_filtered_samples_ht
-            ):
-                return project_meta_ht.select(
-                    project_meta_ht.releasable,
-                    project_meta_ht.exclude,
-                    chr20_mean_dp=sex_ht[project_meta_ht.key].chr20_mean_dp,
-                    filtered=hl.or_else(
-                        hl.len(
-                            hard_filtered_samples_ht[project_meta_ht.key].hard_filters
-                        )
-                        > 0,
-                        False,
-                    ),
-                )
+            # pruning samples.
+            rank_ht = joint_qc_meta.ht()
 
-            from gnomad_qc.v3.resources.meta import project_meta as project_meta_v3
-            from gnomad_qc.v4.resources.meta import project_meta as project_meta_v4
-            from gnomad_qc.v3.resources.sample_qc import (
-                hard_filtered_samples as hard_filtered_samples_v3,
-            )
-            from gnomad_qc.v4.resources.sample_qc import (
-                hard_filtered_samples as hard_filtered_samples_v4,
-            )
-            from gnomad_qc.v3.resources.sample_qc import sex as sex_v3
-            from gnomad_qc.v4.resources.sample_qc import sex as sex_v4
-
-            annotated_project_meta_v3_ht = annotate_project_meta_ht(
-                project_meta_v3.ht(), sex_v3.ht(), hard_filtered_samples_v3.ht()
-            )
-            annotated_project_meta_v4_ht = annotate_project_meta_ht(
-                project_meta_v4.ht(), sex_v4.ht, hard_filtered_samples_v4.ht()
+            rank_ht = rank_ht.select(
+                rank_ht.hard_filtered,
+                rank_ht.releasable,
+                rank_ht.chr20_mean_dp,
+                present_in_v3=hl.is_defined(rank_ht.v3_meta),
             )
 
-            rank_ht = annotated_project_meta_v3_ht.union(
-                annotated_project_meta_v4_ht, unify=True
-            )
-
+            # Favor v3 release samples, then v4 samples over v3 non-release samples.
             rank_ht = rank_ht.order_by(
-                rank_ht.filtered,
-                hl.desc(rank_ht.releasable & ~rank_ht.exclude),
-                ~hl.is_defined(  # Favor v3 samples.
-                    annotated_project_meta_v3_ht[rank_ht.s]
-                ),
+                hl.asc(rank_ht.hard_filtered),
+                hl.desc(rank_ht.present_in_v3 & rank_ht.releasable),
+                hl.desc(rank_ht.releasable),
                 hl.desc(rank_ht.chr20_mean_dp),
             ).add_index(name="rank")
 
