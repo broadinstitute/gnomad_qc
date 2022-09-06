@@ -437,11 +437,11 @@ pop = VersionedTableResource(
 
 def cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
-    Returns the path containing the input files read by cuKING.
+    Return the path containing the input files read by cuKING.
 
     Those files correspond to Parquet tables derived from the dense QC matrix.
 
-    :param version: Version of QC MatrixTableResource to return.
+    :param version: gnomAD version.
     :param test: Whether to return a path corresponding to a test subset.
     :return: Temporary path to hold Parquet input tables for running cuKING.
     """
@@ -451,11 +451,11 @@ def cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) -> str
 
 def cuking_output_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
-    Returns the path containing the output files written by cuKING.
+    Return the path containing the output files written by cuKING.
 
     Those files correspond to Parquet tables containing relatedness results.
 
-    :param version: Version of QC MatrixTableResource to return.
+    :param version: gnomAD version.
     :param test: Whether to return a path corresponding to a test subset.
     :return: Temporary path to hold Parquet output tables for running cuKING.
     """
