@@ -443,7 +443,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.slack_channel:
-        from slack_creds import slack_token
+        from gnomad_qc.slack_creds import slack_token
 
         with slack_notifications(slack_token, args.slack_channel):
             main(args)
