@@ -1,7 +1,7 @@
 import argparse
 import logging
-from typing import Any, List, Tuple, Union
 import pickle
+from typing import Any, List, Tuple, Union
 
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
 from gnomad.utils.slack import slack_notifications
@@ -149,7 +149,7 @@ def assign_pops(
     max_proportion_mislabeled_training_samples: float = None,
     pcs: List[int] = list(range(1, 17)),
     withhold_prop: float = None,
-    missing_label: str = "unassigned",  # TODO: Bring up at project meeting to decide
+    missing_label: str = "remaining",
     seed: int = 24,
     test: bool = False,
     overwrite: bool = False,
@@ -323,13 +323,16 @@ def write_pca_results(
         )
     )
     pop_pca_eigenvalues_ht.write(
-        ancestry_pca_eigenvalues(removed_unreleasables, test).path, overwrite=overwrite,
+        ancestry_pca_eigenvalues(removed_unreleasables, test).path,
+        overwrite=overwrite,
     )
     pop_pca_scores_ht.write(
-        ancestry_pca_scores(removed_unreleasables, test).path, overwrite=overwrite,
+        ancestry_pca_scores(removed_unreleasables, test).path,
+        overwrite=overwrite,
     )
     pop_pca_loadings_ht.write(
-        ancestry_pca_loadings(removed_unreleasables, test).path, overwrite=overwrite,
+        ancestry_pca_loadings(removed_unreleasables, test).path,
+        overwrite=overwrite,
     )
 
 
@@ -346,7 +349,10 @@ def main(args):
 
     if args.run_pca:
         pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
-            remove_unreleasables, args.n_pcs, pca_related_samples_to_drop.ht(), test,
+            remove_unreleasables,
+            args.n_pcs,
+            pca_related_samples_to_drop.ht(),
+            test,
         )
 
         write_pca_results(
@@ -431,7 +437,8 @@ if __name__ == "__main__":
         default=None,
     )
     parser.add_argument(
-        "--slack-channel", help="Slack channel to post results and notifications to.",
+        "--slack-channel",
+        help="Slack channel to post results and notifications to.",
     )
     parser.add_argument(
         "--test", help="Run script on test dataset.", action="store_true"
