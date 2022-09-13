@@ -2,6 +2,7 @@ import argparse
 import logging
 
 from gnomad.utils.annotations import annotate_adj
+from gnomad.utils.vcf import adjust_vcf_incompatible_types
 import hail as hl
 
 # TODO: include this when we have the sample QC meta HT: from gnomad_qc.v4.resources.meta import meta
@@ -80,6 +81,10 @@ SUBSET_CALLSTATS_INFO_DICT = {
         "Number": "A",
         "Description": "Alternate allele frequency in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
     },
+    "nhomalt_raw": {
+        "Number": "A",
+        "Description": "Count of homozygous individuals in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
     "AC": {
         "Number": "A",
         "Description": "Alternate allele count in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
@@ -91,7 +96,11 @@ SUBSET_CALLSTATS_INFO_DICT = {
     "AF": {
         "Number": "A",
         "Description": "Alternate allele frequency in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
-    }
+    },
+    "nhomalt": {
+        "Number": "A",
+        "Description": "Count of homozygous individuals in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
 }
 
 
@@ -182,43 +191,46 @@ def main(args):
 
         if args.subset_call_stats:
             logger.info("Adding subset callstats")
-            mt = mt.annotate_rows(subset_callstats_raw=hl.agg.call_stats(mt.GT, mt.alleles))
-            mt = mt.annotate_rows(
-                info=mt.info.annotate(
-                    AC_raw=mt.subset_callstats_raw.AC[1],
-                    AN_raw=mt.subset_callstats_raw.AN,
-                    AF_raw=hl.float32(mt.subset_callstats_raw.AF[1]))
-            )
-            mt = mt.drop('subset_callstats_raw')
             mt = annotate_adj(mt)
-            mt = mt.annotate_rows(subset_callstats_adj=hl.agg.filter(mt.adj, hl.agg.call_stats(mt.GT, mt.alleles)))
-            mt = mt.annotate_rows(
-                info=mt.info.annotate(
-                    AC=mt.subset_callstats_adj.AC[1],
-                    AN=mt.subset_callstats_adj.AN,
-                    AF=hl.float32(mt.subset_callstats_adj.AF[1]))
+            ht = mt.annotate_rows(
+                subset_callstats_raw=hl.agg.call_stats(mt.GT, mt.alleles),
+                subset_callstats_adj=hl.agg.filter(mt.adj, hl.agg.call_stats(mt.GT, mt.alleles))
+            ).rows()
+            ht = ht.select_rows(
+                info=ht.info.annotate(
+                    AC_raw=ht.subset_callstats_raw.AC[1:],
+                    AN_raw=ht.subset_callstats_raw.AN,
+                    AF_raw=ht.subset_callstats_raw.AF[1:],
+                    nhomalt_raw=ht.subset_callstats_raw.homozygote_count[1:],
+                    AC=ht.subset_callstats_adj.AC[1:],
+                    AN=ht.subset_callstats_adj.AN,
+                    AF=ht.subset_callstats_adj.AF[1:],
+                    nhomalt=ht.subset_callstats_adj.homozygote_count[1:],
+                )
             )
-            mt = mt.drop('subset_callstats_adj', 'adj')
-            header_dict['info'].update(SUBSET_CALLSTATS_INFO_DICT)
+            ht = adjust_vcf_incompatible_types(ht)
+            mt = mt.annotate_rows(info=ht.info.annotate(**ht[mt.row_key]))
+
+            if args.vds:
+                vd = vds.variant_dataset
+                vd = vd.annotate_rows(info=ht.info.annotate(**ht[vd.row_key]))
+                vds = hl.vds.VariantDataset(vds.reference_data, vd)
+
+        if args.dense_mt:
+            mt.write(f"{output_path}/subset.mt", overwrite=args.overwrite)
+
+        # TODO: add num-vcf-shards where no sharding happens if this is not set
+        if args.vcf:
+            mt = mt.drop("gvcf_info")
+            header_dict['info'] = SUBSET_CALLSTATS_INFO_DICT
+            hl.export_vcf(
+                mt,
+                f"{output_path}.bgz",
+                metadata=header_dict,
+            )
 
     if args.vds:
         vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
-
-    if args.vcf or args.dense_mt:
-        logger.info("Densifying VDS")
-        mt = hl.vds.to_dense_mt(vds)
-
-    if args.dense_mt:
-        mt.write(f"{output_path}/subset.mt", overwrite=args.overwrite)
-
-    # TODO: add num-vcf-shards where no sharding happens if this is not set
-    if args.vcf:
-        mt = mt.drop("gvcf_info")
-        hl.export_vcf(
-            mt,
-            f"{output_path}.bgz",
-            metadata=header_dict,
-        )
 
     if args.export_meta:
         logger.info("Exporting metadata")
@@ -283,6 +295,7 @@ if __name__ == "__main__":
         ),
         type=int,
     )
+    parser.add_argument("--subset-call-stats", help="Adds subset callstats, AC, AN, AF, nhomalt", action="store_true")
     parser.add_argument(
         "--export-meta",
         help="Pull sample subset metadata and export to a .tsv.",
