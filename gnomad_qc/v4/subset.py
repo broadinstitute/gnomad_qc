@@ -1,6 +1,7 @@
 import argparse
 import logging
 
+from gnomad.utils.annotations import annotate_adj
 import hail as hl
 
 # TODO: include this when we have the sample QC meta HT: from gnomad_qc.v4.resources.meta import meta
@@ -66,11 +67,39 @@ HEADER_DICT = {
     },
 }
 
+SUBSET_CALLSTATS_INFO_DICT = {
+    "AC_raw": {
+        "Number": "A",
+        "Description": "Alternate allele count in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
+    "AN_raw": {
+        "Number": "1",
+        "Description": "Total number of alleles in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
+    "AF_raw": {
+        "Number": "A",
+        "Description": "Alternate allele frequency in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
+    "AC": {
+        "Number": "A",
+        "Description": "Alternate allele count in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
+    "AN": {
+        "Number": "1",
+        "Description": "Total number of alleles in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+    },
+    "AF": {
+        "Number": "A",
+        "Description": "Alternate allele frequency in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    }
+}
+
 
 def main(args):
     hl.init(log="/subset.log", default_reference="GRCh38")
     test = args.test
     output_path = args.output_path
+    header_dict = HEADER_DICT
 
     vds = get_gnomad_v4_vds(
         n_partitions=args.n_partitions, remove_hard_filtered_samples=False
@@ -147,6 +176,31 @@ def main(args):
             hl.vds.VariantDataset(vds.reference_data, vd), filter_changed_loci=True
         )
 
+    if args.vcf or args.dense_mt or args.subset_call_stats:
+        logger.info("Densifying VDS")
+        mt = hl.vds.to_dense_mt(vds)
+
+        if args.subset_call_stats:
+            logger.info("Adding subset callstats")
+            mt = mt.annotate_rows(subset_callstats_raw=hl.agg.call_stats(mt.GT, mt.alleles))
+            mt = mt.annotate_rows(
+                info=mt.info.annotate(
+                    AC_raw=mt.subset_callstats_raw.AC[1],
+                    AN_raw=mt.subset_callstats_raw.AN,
+                    AF_raw=hl.float32(mt.subset_callstats_raw.AF[1]))
+            )
+            mt = mt.drop('subset_callstats_raw')
+            mt = annotate_adj(mt)
+            mt = mt.annotate_rows(subset_callstats_adj=hl.agg.filter(mt.adj, hl.agg.call_stats(mt.GT, mt.alleles)))
+            mt = mt.annotate_rows(
+                info=mt.info.annotate(
+                    AC=mt.subset_callstats_adj.AC[1],
+                    AN=mt.subset_callstats_adj.AN,
+                    AF=hl.float32(mt.subset_callstats_adj.AF[1]))
+            )
+            mt = mt.drop('subset_callstats_adj', 'adj')
+            header_dict['info'].update(SUBSET_CALLSTATS_INFO_DICT)
+
     if args.vds:
         vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
 
@@ -163,7 +217,7 @@ def main(args):
         hl.export_vcf(
             mt,
             f"{output_path}.bgz",
-            metadata=HEADER_DICT,
+            metadata=header_dict,
         )
 
     if args.export_meta:
@@ -179,6 +233,7 @@ def main(args):
             project_meta=meta_ht.project_meta.drop(*data_to_drop)
         )
         meta_ht.export(f"{output_path}/metadata.tsv.bgz")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
