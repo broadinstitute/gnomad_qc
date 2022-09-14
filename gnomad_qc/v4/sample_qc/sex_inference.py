@@ -91,6 +91,59 @@ def determine_fstat_sites(
     return ht
 
 
+def load_platform_ht(
+    test: bool = False,
+    calling_interval_name: str = "intersection",
+    calling_interval_padding: int = 50,
+) -> hl.Table:
+    """
+    Load platform assignment Table or test Table and return an error if requested Table does not exist.
+
+    .. note::
+
+        If `test` is True and the test platform assignment Table does not exist, the function will load the final
+        platform assignment Table instead if it already exists.
+
+    :param test: Whether a test platform assignment Table should be loaded.
+    :param calling_interval_name: Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or
+        'intersection'. Only used if `test` is True.
+    :param calling_interval_padding: Number of base pair padding to use on the calling intervals. One of 0 or 50 bp.
+        Only used if `test` is True.
+    :return: Platform assignment Table.
+    """
+    logger.info("Loading platform information...")
+    test_platform_path = get_checkpoint_path(
+        f"test_platform_assignment.{calling_interval_name}.pad{calling_interval_padding}"
+    )
+    if test and file_exists(test_platform_path):
+        ht = hl.read_table(test_platform_path)
+    elif file_exists(platform.path):
+        ht = platform.ht()
+        if test:
+            logger.warning(
+                "Test platform file does not exist for calling interval %s and interval padding %s, using final "
+                "platform assignment Table instead. To use a test platform assignment please run "
+                "platform_inference.py --assign-platforms with the --test argument and needed "
+                "--calling-interval-name/--calling-interval-padding arguments.",
+                calling_interval_name,
+                calling_interval_padding,
+            )
+    elif test:
+        raise FileNotFoundError(
+            f"There is no test platform assignment Table written for calling interval {calling_interval_name} and "
+            f"interval padding {calling_interval_padding} and a final platform assignment Table does not exist. "
+            f"Please run platform_inference.py --assign-platforms with the --test argument and needed "
+            f"--calling-interval-name/--calling-interval-padding arguments."
+        )
+    else:
+        raise FileNotFoundError(
+            f"There is no final platform assignment Table written. Please run: "
+            f"platform_inference.py --assign-platforms to compute the platform assignment Table."
+        )
+
+    return ht
+
+
 def generate_sex_imputation_interval_coverage_mt(
     vds: hl.vds.VariantDataset,
     calling_intervals_ht: hl.Table,
