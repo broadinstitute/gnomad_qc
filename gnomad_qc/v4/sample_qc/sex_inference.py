@@ -786,6 +786,75 @@ if __name__ == "__main__":
         default=1000,
         type=int,
     )
+
+    sex_coverage_args = parser.add_argument_group(
+        "Sex imputation interval coverage",
+        "Arguments used for computing interval coverage for sex imputation.",
+    )
+    sex_coverage_args.add_argument(
+        "--sex-imputation-interval-coverage",
+        help=(
+            "Create a MatrixTable of interval-by-sample coverage on a specified list of contigs with PAR regions "
+            "excluded."
+        ),
+        action="store_true",
+    )
+    sex_coverage_args.add_argument(
+        "--normalization-contig",
+        help="Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.",
+        type=str,
+        default="chr20",
+    )
+    sex_coverage_args.add_argument(
+        "--calling-interval-name",
+        help=(
+            "Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'. Only "
+            "used if '--test' is set."
+        ),
+        type=str,
+        choices=["ukb", "broad", "intersection"],
+        default="intersection",
+    )
+    sex_coverage_args.add_argument(
+        "--calling-interval-padding",
+        help=(
+            "Number of base pair padding to use on the calling intervals. One of 0 or 50 bp. Only used if '--test' is "
+            "set."
+        ),
+        type=int,
+        choices=[0, 50],
+        default=50,
+    )
+
+    sex_interval_qc_args = parser.add_argument_group(
+        "Sex chromosome interval QC",
+        "Arguments used for making an interval QC HT from the sex imputation interval coverage MT.",
+    )
+    sex_interval_qc_args.add_argument(
+        "--sex-imputation-interval-qc",
+        help=(
+            "Create a Table of the fraction of samples per interval and per platform with mean DP over thresholds "
+            "specified by '--mean-dp-thresholds'."
+        ),
+        action="store_true",
+    )
+    sex_interval_qc_args.add_argument(
+        "--mean-dp-thresholds",
+        help=(
+            "List of mean DP cutoffs to determining the fraction of samples with mean coverage >= the cutoff for each "
+            "interval."
+        ),
+        type=int,
+        nargs="+",
+        default=[5, 10, 15, 20, 25],
+    )
+    sex_interval_qc_args.add_argument(
+        "--interval-qc-n-partitions",
+        help="Number of desired partitions for the sex imputation interval QC output Table.",
+        default=500,
+        type=int,
+    )
+
     sex_ploidy_args = parser.add_argument_group(
         "Impute sex ploidy", "Arguments used for imputing sex chromosome ploidy."
     )
@@ -845,12 +914,6 @@ if __name__ == "__main__":
         ),
         type=int,
         default=100,
-    )
-    sex_ploidy_args.add_argument(
-        "--normalization-contig",
-        help="Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.",
-        type=str,
-        default="chr20",
     )
     sex_ploidy_args.add_argument(
         "--variant-depth-only-x-ploidy",
@@ -915,26 +978,6 @@ if __name__ == "__main__":
         ),
         type=float,
         default=0.85,
-    )
-    sex_ploidy_args.add_argument(
-        "--calling-interval-name",
-        help=(
-            "Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'. Only "
-            "used if '--test' is set and final coverage MT and/or platform assignment HT are not already written."
-        ),
-        type=str,
-        choices=["ukb", "broad", "intersection"],
-        default="intersection",
-    )
-    sex_ploidy_args.add_argument(
-        "--calling-interval-padding",
-        help=(
-            "Number of base pair padding to use on the calling intervals. One of 0 or 50 bp. Only used if '--test' is "
-            "set and final coverage MT and/or platform assignment HT are not already written."
-        ),
-        type=int,
-        choices=[0, 50],
-        default=50,
     )
 
     args = parser.parse_args()
