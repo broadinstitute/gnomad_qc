@@ -580,12 +580,15 @@ if __name__ == "__main__":
         default=1000,
         type=int,
     )
-    parser.add_argument(
+    sex_ploidy_args = parser.add_argument_group(
+        "Impute sex ploidy", "Arguments used for imputing sex chromosome ploidy."
+    )
+    sex_ploidy_args.add_argument(
         "--impute-sex",
         help="Run sex ploidy and sex karyotyping imputation.",
         action="store_true",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--f-stat-ukb-var",
         help=(
             "Whether to use UK Biobank high callrate (0.99) and common variants (UKB allele frequency > value specified "
@@ -594,13 +597,13 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--min-af",
         help="Minimum variant allele frequency to retain variant in qc matrix table.",
         default=0.001,
         type=float,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--f-stat-cutoff",
         help=(
             "Cutoff for f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY "
@@ -609,17 +612,17 @@ if __name__ == "__main__":
         type=float,
         default=0.5,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--high-cov-intervals",
         help="Whether to filter to high coverage intervals for the sex ploidy and karyotype inference.",
         action="store_true",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--per-platform",
         help="Whether to run the sex ploidy and karyotype inference per platform.",
         action="store_true",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--high-cov-by-platform-all",
         help=(
             "Whether to filter to high coverage intervals for the sex ploidy and karyotype inference. "
@@ -627,7 +630,7 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--min-platform-size",
         help=(
             "Required size of a platform to be considered in '--high-cov-by-platform-all'. Only platforms that "
@@ -637,13 +640,13 @@ if __name__ == "__main__":
         type=int,
         default=100,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--normalization-contig",
         help="Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.",
         type=str,
         default="chr20",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--variant-depth-only-x-ploidy",
         help=(
             "Whether to use depth of variant data for the x ploidy estimation instead of the default behavior that "
@@ -651,7 +654,7 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--variant-depth-only-y-ploidy",
         help=(
             "Whether to use depth of variant data for the y ploidy estimation instead of the default behavior that "
@@ -659,7 +662,7 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--x-cov",
         help=(
             "Mean coverage level used to define high coverage intervals on chromosome X. This field must be in the "
@@ -668,7 +671,7 @@ if __name__ == "__main__":
         type=int,
         default=10,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--y-cov",
         help=(
             "Mean coverage level used to define high coverage intervals on chromosome Y. This field must be in the "
@@ -677,7 +680,7 @@ if __name__ == "__main__":
         type=int,
         default=5,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--norm-cov",
         help=(
             "Mean coverage level used to define high coverage intervals on the normalization autosome. This field must "
@@ -686,19 +689,19 @@ if __name__ == "__main__":
         type=int,
         default=20,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--prop-samples-x",
         help="Proportion samples at specified coverage '--x-cov' to determine high coverage intervals on chromosome X.",
         type=float,
         default=0.80,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--prop-samples-y",
         help="Proportion samples at specified coverage '--y-cov' to determine high coverage intervals on chromosome Y.",
         type=float,
         default=0.35,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--prop-samples-norm",
         help=(
             "Proportion samples at specified coverage '--norm-cov' to determine high coverage intervals on the "
@@ -707,7 +710,7 @@ if __name__ == "__main__":
         type=float,
         default=0.85,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--calling-interval-name",
         help=(
             "Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'. Only "
@@ -717,7 +720,7 @@ if __name__ == "__main__":
         choices=["ukb", "broad", "intersection"],
         default="intersection",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--calling-interval-padding",
         help=(
             "Number of base pair padding to use on the calling intervals. One of 0 or 50 bp. Only used if '--test' is "
