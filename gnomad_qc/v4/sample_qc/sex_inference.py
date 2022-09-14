@@ -10,6 +10,7 @@ from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import (
+    calling_intervals,
     get_checkpoint_path,
     get_gnomad_v4_vds,
     get_logging_path,
@@ -494,6 +495,11 @@ def main(args):
     # NOTE: remove this flag when the new shuffle method is the default
     hl._set_flags(use_new_shuffle="1")
 
+    test = args.test
+    calling_interval_name = args.calling_interval_name
+    calling_interval_padding = args.calling_interval_padding
+    normalization_contig = args.normalization_contig
+
     try:
         if args.determine_fstat_sites:
             vds = get_gnomad_v4_vds(
@@ -511,6 +517,58 @@ def main(args):
                 get_checkpoint_path("test_f_stat_sites") if args.test else f_stat_sites.path,
                 overwrite=args.overwrite,
             )
+
+        if args.sex_imputation_interval_coverage:
+            vds = get_gnomad_v4_vds(
+                remove_hard_filtered_samples=False,
+                remove_hard_filtered_samples_no_sex=True,
+                test=test,
+            )
+            calling_intervals_ht = calling_intervals(
+                calling_interval_name, calling_interval_padding
+            ).ht()
+            coverage_mt = generate_sex_imputation_interval_coverage_mt(
+                vds,
+                calling_intervals_ht,
+                contigs=["chrX", "chrY", normalization_contig],
+            )
+            coverage_mt = coverage_mt.annotate_globals(
+                calling_interval_name=calling_interval_name,
+                calling_interval_padding=calling_interval_padding,
+                normalization_contig=normalization_contig,
+            )
+            coverage_mt.write(
+                get_checkpoint_path("test_sex_imputation_cov", mt=True)
+                if test
+                else sex_imputation_coverage.path,
+                overwrite=args.overwrite,
+            )
+
+        if args.sex_imputation_interval_qc:
+            if test:
+                coverage_mt = hl.read_matrix_table(
+                    get_checkpoint_path("test_sex_imputation_cov", mt=True)
+                )
+            else:
+                coverage_mt = sex_imputation_coverage.mt()
+
+            platform_ht = load_platform_ht(
+                test,
+                coverage_mt.calling_interval_name,
+                coverage_mt.calling_interval_padding,
+            )
+            platform_mt = generate_sex_imputation_interval_qc_mt(
+                coverage_mt,
+                platform_ht,
+                mean_dp_thresholds=args.mean_dp_thresholds,
+            )
+            platform_mt.naive_coalesce(args.interval_qc_n_partitions).write(
+                get_checkpoint_path("test_sex_imputation_cov.per_platform", mt=True)
+                if test
+                else sex_imputation_platform_coverage.path,
+                overwrite=args.overwrite,
+            )
+
         if args.impute_sex:
             vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
             if args.f_stat_ukb_var:
