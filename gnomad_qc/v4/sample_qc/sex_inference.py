@@ -584,8 +584,8 @@ if __name__ == "__main__":
         "Impute sex ploidy", "Arguments used for imputing sex chromosome ploidy."
     )
     sex_ploidy_args.add_argument(
-        "--impute-sex",
-        help="Run sex ploidy and sex karyotyping imputation.",
+        "--impute-sex-ploidy",
+        help="Run sex chromosome ploidy imputation.",
         action="store_true",
     )
     sex_ploidy_args.add_argument(
@@ -612,28 +612,31 @@ if __name__ == "__main__":
         type=float,
         default=0.5,
     )
-    sex_ploidy_args.add_argument(
+    sex_ploidy_high_cov_method_parser = sex_ploidy_args.add_mutually_exclusive_group(
+        required=False
+    )
+    sex_ploidy_high_cov_method_parser.add_argument(
         "--high-cov-intervals",
-        help="Whether to filter to high coverage intervals for the sex ploidy and karyotype inference.",
+        help="Whether to filter to high coverage intervals for the sex ploidy imputation.",
         action="store_true",
     )
-    sex_ploidy_args.add_argument(
-        "--per-platform",
-        help="Whether to run the sex ploidy and karyotype inference per platform.",
+    sex_ploidy_high_cov_method_parser.add_argument(
+        "--high-cov-per-platform",
+        help="Whether filter to per platform high coverage intervals for the sex ploidy imputation.",
         action="store_true",
     )
-    sex_ploidy_args.add_argument(
-        "--high-cov-by-platform-all",
+    sex_ploidy_high_cov_method_parser.add_argument(
+        "--high-cov-all-platforms",
         help=(
-            "Whether to filter to high coverage intervals for the sex ploidy and karyotype inference. "
-            "Use only intervals that are considered high coverage across all platforms."
+            "Whether to filter to high coverage intervals for the sex ploidy imputation. Use only intervals that are "
+            "considered high coverage across all platforms."
         ),
         action="store_true",
     )
     sex_ploidy_args.add_argument(
         "--min-platform-size",
         help=(
-            "Required size of a platform to be considered in '--high-cov-by-platform-all'. Only platforms that "
+            "Required size of a platform to be considered in '--high-cov-all-platforms'. Only platforms that "
             "have # of samples > 'min_platform_size' are used to determine intervals that have a high coverage across "
             "all platforms."
         ),
@@ -729,6 +732,19 @@ if __name__ == "__main__":
         type=int,
         choices=[0, 50],
         default=50,
+    )
+    sex_karyotype_args = parser.add_argument_group(
+        "Annotate sex karyotype", "Arguments used for annotating sex karyotype."
+    )
+    sex_karyotype_args.add_argument(
+        "--annotate-sex-karyotype",
+        help="Run sex karyotype inference.",
+        action="store_true",
+    )
+    sex_karyotype_args.add_argument(
+        "--per-platform",
+        help="Whether to run the karyotype inference per platform.",
+        action="store_true",
     )
 
     args = parser.parse_args()
