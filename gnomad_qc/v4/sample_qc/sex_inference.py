@@ -1,6 +1,6 @@
 import argparse
 import logging
-from typing import Callable
+from typing import Callable, List
 
 import hail as hl
 
@@ -86,6 +86,56 @@ def determine_fstat_sites(
         )
 
     return ht
+
+
+def generate_sex_imputation_interval_coverage_mt(
+    vds: hl.vds.VariantDataset,
+    calling_intervals_ht: hl.Table,
+    contigs: List[str] = ["chrX", "chrY", "chr20"],
+) -> hl.MatrixTable:
+    """
+    Create a MatrixTable of interval-by-sample coverage on a specified list of contigs with PAR regions excluded.
+
+    :param vds: Input VariantDataset.
+    :param calling_intervals_ht: Calling interval Table.
+    :param contigs: Which contigs to compute interval coverage on for sex imputation. Default: 'chrX', 'chrY', 'chr20'.
+    :return: MatrixTable with interval coverage per sample on specified contigs and PAR regions excluded.
+    """
+    calling_intervals_ht = calling_intervals_ht.filter(
+        hl.literal(contigs).contains(calling_intervals_ht.interval.start.contig)
+    )
+    logger.info(
+        "Filtering VariantDataset to the following contigs: %s...",
+        ", ".join(contigs),
+    )
+    vds = hl.vds.filter_chromosomes(vds, keep=contigs)
+    rg = vds.reference_data.locus.dtype.reference_genome
+
+    par_boundaries = []
+    for par_interval in rg.par:
+        par_boundaries.append(par_interval.start)
+        par_boundaries.append(par_interval.end)
+
+    # Segment on PAR interval boundaries
+    calling_intervals = hl.segment_intervals(calling_intervals_ht, par_boundaries)
+
+    # Remove intervals overlapping PAR
+    calling_intervals = calling_intervals.filter(
+        hl.all(lambda x: ~x.overlaps(calling_intervals.interval), hl.literal(rg.par))
+    )
+
+    kept_contig_filter = hl.array(contigs).map(
+        lambda x: hl.parse_locus_interval(x, reference_genome=rg)
+    )
+    vds = hl.vds.VariantDataset(
+        hl.filter_intervals(vds.reference_data, kept_contig_filter),
+        hl.filter_intervals(vds.variant_data, kept_contig_filter),
+    )
+    mt = hl.vds.interval_coverage(vds, calling_intervals, gq_thresholds=()).drop(
+        "gq_thresholds"
+    )
+
+    return mt
 
 
 def compute_sex(
