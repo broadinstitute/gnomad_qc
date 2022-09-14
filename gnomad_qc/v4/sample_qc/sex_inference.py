@@ -393,7 +393,13 @@ def compute_sex(
 
 
 def main(args):
-    hl.init(log="/sex_inference.log", default_reference="GRCh38")
+    hl.init(
+        log="/sex_inference.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
+    # NOTE: remove this flag when the new shuffle method is the default
+    hl._set_flags(use_new_shuffle="1")
 
     try:
         if args.determine_fstat_sites:
