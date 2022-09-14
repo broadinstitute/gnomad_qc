@@ -21,6 +21,8 @@ from gnomad_qc.v4.resources.sample_qc import (
     interval_coverage,
     platform,
     sex,
+    sex_imputation_coverage,
+    sex_imputation_platform_coverage,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
