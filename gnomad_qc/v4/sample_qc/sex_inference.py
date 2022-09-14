@@ -138,6 +138,49 @@ def generate_sex_imputation_interval_coverage_mt(
     return mt
 
 
+def generate_sex_imputation_interval_qc_mt(
+    mt: hl.MatrixTable,
+    platform_ht: hl.Table,
+    mean_dp_thresholds: List[int] = [5, 10, 15, 20, 25],
+) -> hl.MatrixTable:
+    """
+    Create a Table of fraction of samples per interval and per platform with mean DP over specified thresholds.
+
+    :param mt: Input sex interval coverage MatrixTable.
+    :param platform_ht: Input platform assignment Table.
+    :param mean_dp_thresholds: List of mean DP thresholds to use for computing the fraction of samples with mean
+        interval DP >= the threshold.
+    :return: MatrixTable with annotations for the fraction of samples per interval and per platform over DP thresholds.
+    """
+    mt = mt.annotate_cols(platform=platform_ht[mt.col_key].qc_platform)
+    mt = mt.annotate_rows(
+        **{
+            f"over_{dp}x": hl.agg.fraction(mt.mean_dp >= dp)
+            for dp in mean_dp_thresholds
+        },
+        mean_fraction_over_dp_0=hl.agg.mean(mt.fraction_over_dp_threshold[1]),
+    )
+    mt = mt.select_globals(mean_dp_thresholds=mean_dp_thresholds)
+
+    logger.info("Adding per platform aggregation...")
+    platform_mt = mt.group_cols_by(mt.platform).aggregate(
+        **{
+            f"platform_over_{dp}x": hl.agg.fraction(mt.mean_dp >= dp)
+            for dp in mean_dp_thresholds
+        },
+        platform_mean_fraction_over_dp_0=hl.agg.mean(mt.fraction_over_dp_threshold[1]),
+    )
+
+    platform_ht = platform_ht.group_by(platform_ht.qc_platform).aggregate(
+        n_samples=hl.agg.count()
+    )
+    platform_mt = platform_mt.annotate_cols(
+        n_samples=platform_ht[platform_mt.col_key].n_samples
+    )
+
+    return platform_mt
+
+
 def compute_sex(
     vds: hl.vds.VariantDataset,
     coverage_mt: hl.MatrixTable,
