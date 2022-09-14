@@ -16,8 +16,7 @@ from gnomad_qc.v4.resources.basics import (
     ukb_f_stat,
 )
 from gnomad_qc.v4.resources.sample_qc import (
-    hard_filtered_ac,
-    hard_filtered_af_callrate,
+    f_stat_sites,
     interval_coverage,
     platform,
     sex,
@@ -26,6 +25,67 @@ from gnomad_qc.v4.resources.sample_qc import (
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("sex_inference")
 logger.setLevel(logging.INFO)
+
+
+def determine_fstat_sites(
+    vds: hl.vds.VariantDataset,
+    approx_af_and_no_callrate: bool = False,
+    min_af: float = 0.001,
+    min_callrate: float = 0.99,
+) -> hl.Table:
+    """
+    Write a Table with chromosome X SNPs that are bi-allelic, common, and high callrate by default.
+
+    This Table is designed to be used as a variant filter in sex imputation for f-stat computation.
+
+    .. warning::
+
+        By default `approx_af_and_no_callrate` is False and the final Table will be filtered to high callrate (> value
+        specified by `min_callrate`) variants. This requires a densify of chrX!!"
+
+    .. note::
+
+        If `approx_af_and_no_callrate` is True allele frequency is approximated with AC/(n_samples * 2) and no callrate
+        filter is used.
+
+    :param vds: Input VariantDataset.
+    :param approx_af_and_no_callrate: Whether to approximate allele frequency with AC/(n_samples * 2) and use no
+        callrate cutoff to filter sites.
+    :param min_af: Alternate allele frequency cutoff used to filter sites.
+    :param min_callrate: Callrate cutoff used to filter sites.
+    :return: Table of chromosome X sites to be used for f-stat computation.
+    """
+    vds = hl.vds.filter_chromosomes(vds, keep=["chrX"])
+    vd = vds.variant_data
+    vd = vd.filter_rows(
+        (hl.len(vd.alleles) == 2) & hl.is_snp(vd.alleles[0], vd.alleles[1])
+    )
+    vd = vd.transmute_entries(GT=hl.experimental.lgt_to_gt(vd.LGT, vd.LA))
+    vds = hl.vds.VariantDataset(vds.reference_data, vd)
+
+    if approx_af_and_no_callrate:
+        n_samples = vd.count_cols()
+        logger.info("Number of samples: %d", n_samples)
+        ht = vd.select_rows(
+            AF=hl.agg.sum(vd.GT.n_alt_alleles()) / (n_samples * 2),
+        ).rows()
+        ht = ht.filter(ht.AF > min_af)
+        ht = ht.annotate_globals(
+            min_approx_af=min_af,
+        )
+    else:
+        mt = hl.vds.to_dense_mt(vds)
+        ht = hl.variant_qc(mt).rows()
+        ht = ht.filter(
+            (ht.variant_qc.call_rate > min_callrate) & (ht.variant_qc.AF[1] > min_af)
+        )
+        ht = ht.annotate(AF=ht.variant_qc.AF[1])
+        ht = ht.annotate_globals(
+            min_af=min_af,
+            min_callrate=min_callrate,
+        )
+
+    return ht
 
 
 def compute_sex(
@@ -336,54 +396,25 @@ def main(args):
     hl.init(log="/sex_inference.log", default_reference="GRCh38")
 
     try:
-        if args.compute_ac:
-            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
-            mt = vds.variant_data
-            mt = mt.filter_rows(hl.len(mt.alleles) == 2)
-            n_samples = mt.count_cols()
-            logger.info("Number of samples: %d", n_samples)
-            ht = mt.annotate_rows(
-                AC=hl.agg.sum(mt.LGT.n_alt_alleles()),
-            ).rows()
-            ht = ht.annotate_globals(n_samples=n_samples)
-            ht.write(
-                get_checkpoint_path("test_ac") if args.test else hard_filtered_ac.path,
-                overwrite=args.overwrite,
+        if args.determine_fstat_sites:
+            vds = get_gnomad_v4_vds(
+                remove_hard_filtered_samples=False,
+                remove_hard_filtered_samples_no_sex=True,
+                test=args.test,
             )
-        if args.compute_af_callrate:
-            if args.test:
-                ac_ht = hl.read_table(get_checkpoint_path("test_ac"))
-            else:
-                ac_ht = hard_filtered_ac.ht()
-            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
-            vds = hl.vds.filter_variants(vds, ac_ht)
-            mt = hl.vds.to_dense_mt(vds)
-            n_samples = ac_ht.index_globals().n_samples
-            ht = mt.annotate_rows(
-                AN=hl.agg.count_where(hl.is_defined(mt.LGT)) * 2,
-                AC=ac_ht[mt.row_key].AC,
-            ).rows()
-            ht = ht.annotate(AF=ht.AC / ht.AN, callrate=ht.AN / (n_samples * 2))
-            ht.write(
-                get_checkpoint_path("test_af_callrate")
-                if args.test
-                else hard_filtered_af_callrate.path,
+            ht = determine_fstat_sites(
+                vds,
+                approx_af_and_no_callrate=args.approx_af_and_no_callrate,
+                min_af=args.min_af,
+                min_callrate=args.min_callrate,
+            )
+            ht.naive_coalesce(args.fstat_n_partitions).write(
+                get_checkpoint_path("test_f_stat_sites") if args.test else f_stat_sites.path,
                 overwrite=args.overwrite,
             )
         if args.impute_sex:
             vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
-            if args.f_stat_high_callrate_common_var and args.f_stat_ukbb_var:
-                raise ValueError(
-                    "f_stat_high_callrate_common_var and f_stat_ukbb_var can't be used together."
-                )
-            if args.f_stat_high_callrate_common_var:
-                freq_ht = (
-                    hl.read_table(get_checkpoint_path("test_af_callrate"))
-                    if args.test
-                    else hard_filtered_af_callrate.ht()
-                )
-                freq_ht = freq_ht.filter(freq_ht.callrate > args.min_callrate)
-            elif args.f_stat_ukbb_var:
+            if args.f_stat_ukb_var:
                 # The UK Biobank f-stat table contains only variants that were high callrate (0.99) and common
                 # (AF >0.001) within the UK Biobank 200K Regeneron exome dataset and it includes the UK Biobank 200K
                 # allele frequency information that can be used in the hl.impute_sex f-stat computation allele frequency
@@ -391,11 +422,10 @@ def main(args):
                 freq_ht = ukb_f_stat.ht()
             else:
                 freq_ht = (
-                    hl.read_table(get_checkpoint_path("test_ac"))
+                    hl.read_table(get_checkpoint_path("test_f_stat_sites"))
                     if args.test
-                    else hard_filtered_ac.ht()
+                    else f_stat_sites.ht()
                 )
-                freq_ht = freq_ht.annotate(AF=freq_ht.AC / (freq_ht.n_samples * 2))
 
             # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
             if args.overwrite or not file_exists(
@@ -479,17 +509,13 @@ def main(args):
                     args.min_af,
                     args.f_stat_cutoff,
                 )
-                ht = ht.annotate_globals(
-                    f_stat_high_callrate_common_var=args.f_stat_high_callrate_common_var,
-                    f_stat_ukbb_var=args.f_stat_ukbb_var,
-                )
+                ht = ht.annotate_globals(f_stat_ukb_var=args.f_stat_ukb_var)
                 ht.write(
                     get_checkpoint_path(
                         f"sex_imputation{'.per_platform' if args.per_platform else ''}"
                         f"{'.high_cov_by_platform_all' if args.high_cov_by_platform_all else ''}"
                         f"{'.high_cov' if args.high_cov_intervals else ''}"
-                        f"{'.ukbb_f_stat' if args.f_stat_ukbb_var else ''}"
-                        f"{'.callrate_common_f_stat' if args.f_stat_high_callrate_common_var else ''}"
+                        f"{'.ukb_f_stat' if args.f_stat_ukb_var else ''}"
                     )
                     if args.test
                     else sex.path,
@@ -515,16 +541,38 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--compute-ac",
-        help="Compute the allele count, for all bi-allelic variants in the VDS.",
-        action="store_true",
+        "--slack-channel", help="Slack channel to post results and notifications to."
     )
-    parser.add_argument(
-        "--compute-af-callrate",
+
+    fstat_args = parser.add_argument_group(
+        "Determine f-stat sites",
+        "Arguments used for determining sites to use for f-stat calculations.",
+    )
+    fstat_args.add_argument(
+        "--determine-fstat-sites",
         help=(
-            "Compute the callrate and allele frequency for all variants in the VDS. NOTE: This requires a full densify!!"
+            "Create Table of common (> value specified by '--min-af'), bi-allelic SNPs on chromosome X for f-stat "
+            "calculations. Additionally filter to high callrate (> value specified by '--min-callrate') variants "
+            "if '--approx-af-and-no-callrate' is not used. NOTE: This requires a densify of chrX!!"
         ),
         action="store_true",
+    )
+    fstat_args.add_argument(
+        "--min-callrate", help="Minimum variant callrate.", default=0.99, type=float
+    )
+    fstat_args.add_argument(
+        "--approx-af-and-no-callrate",
+        help=(
+            "Whether to approximate allele frequency with AC/(n_samples * 2) and use no callrate cutoff for "
+            "determination of f-stat sites."
+        ),
+        action="store_true",
+    )
+    fstat_args.add_argument(
+        "--fstat-n-partitions",
+        help="Number of desired partitions for the f-stat sites output Table.",
+        default=1000,
+        type=int,
     )
     parser.add_argument(
         "--impute-sex",
@@ -532,25 +580,13 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--f-stat-high-callrate-common-var",
+        "--f-stat-ukb-var",
         help=(
-            "Whether to use high callrate (> value specified by --min-callrate) and common variants (> value specified "
-            "by --min-af) for f-stat computation. By default, no callrate cutoff will be used, and allele frequency "
-            "will be approximated with AC/(n_samples * 2) and a default min allele frequency of 0.001."
-        ),
-        action="store_true",
-    )
-    parser.add_argument(
-        "--f-stat-ukbb-var",
-        help=(
-            "Whether to use UK Biobank high callrate (0.99) and common variants (UKBB allele frequency > value specified "
+            "Whether to use UK Biobank high callrate (0.99) and common variants (UKB allele frequency > value specified "
             "by --min-af) for f-stat computation. By default, no callrate cutoff will be used, and allele frequency will "
             "be approximated with AC/(n_samples * 2) and a default min allele frequency of 0.001."
         ),
         action="store_true",
-    )
-    parser.add_argument(
-        "--min-callrate", help="Minimum variant callrate.", default=0.99, type=float
     )
     parser.add_argument(
         "--min-af",
@@ -684,9 +720,6 @@ if __name__ == "__main__":
         type=int,
         choices=[0, 50],
         default=50,
-    )
-    parser.add_argument(
-        "--slack-channel", help="Slack channel to post results and notifications to."
     )
 
     args = parser.parse_args()
