@@ -375,7 +375,7 @@ def compute_sex(
                 & agg_func(interval_qc_mt[f"{prefix}over_{y_cov}x"] > prop_samples_y)
             )
             | (
-                (interval_qc_mt.interval.start.contig == "chr20")
+                (interval_qc_mt.interval.start.contig == normalization_contig)
                 & agg_func(
                     interval_qc_mt[f"{prefix}over_{norm_cov}x"] > prop_samples_norm
                 )
