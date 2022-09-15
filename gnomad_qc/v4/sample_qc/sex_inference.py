@@ -639,64 +639,27 @@ def main(args):
                     else f_stat_sites.ht()
                 )
 
+            sex_ht_path = get_checkpoint_path("sex_imputation") if args.test else sex.path
             # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
-            if args.overwrite or not file_exists(
-                get_checkpoint_path("sex_imputation") if args.test else sex.path
-            ):
-                logger.info(
-                    "Loading interval coverage MatrixTable and filtering to chrX, chrY and %s...",
-                    args.normalization_contig,
+            if args.overwrite or not file_exists(sex_ht_path):
+                coverage_mt = (
+                    hl.read_matrix_table(
+                        get_checkpoint_path("test_sex_imputation_cov", mt=True)
+                    )
+                    if test
+                    else sex_imputation_coverage.mt()
                 )
-                if file_exists(interval_coverage.path):
-                    coverage_mt = interval_coverage.mt()
-                elif args.test:
-                    test_coverage_path = get_checkpoint_path(
-                        f"test_interval_coverage.{args.calling_interval_name}.pad{args.calling_interval_padding}",
-                        mt=True,
-                    )
-                    if file_exists(test_coverage_path):
-                        coverage_mt = hl.read_matrix_table(test_coverage_path)
-                    else:
-                        raise FileNotFoundError(
-                            f"There is no final coverage MatrixTable written and a test interval coverage MatrixTable does "
-                            f"not exist for calling interval {args.calling_interval_name} and interval padding "
-                            f"{args.calling_interval_padding}. Please run platform_inference.py --compute_coverage with the "
-                            f"--test argument and needed --calling_interval_name/--calling_interval_padding arguments."
+                interval_qc_mt = (
+                    hl.read_matrix_table(
+                        get_checkpoint_path(
+                            "test_sex_imputation_cov.per_platform", mt=True
                         )
-                else:
-                    raise FileNotFoundError(
-                        f"There is no final coverage MatrixTable written. Please run: "
-                        f"platform_inference.py --compute_coverage to compute the interval coverage MatrixTable."
                     )
-
-                coverage_mt = coverage_mt.filter_rows(
-                    hl.literal({"chrY", "chrX", args.normalization_contig}).contains(
-                        coverage_mt.interval.start.contig
-                    )
+                    if test
+                    else sex_imputation_platform_coverage.mt()
                 )
-                if args.per_platform or args.high_cov_by_platform_all:
-                    logger.info("Loading platform information...")
-                    if file_exists(platform.path):
-                        platform_ht = platform.ht()
-                    elif args.test:
-                        test_platform_path = get_checkpoint_path(
-                            f"test_platform_assignment.{args.calling_interval_name}.pad{args.calling_interval_padding}"
-                        )
-                        if file_exists(test_platform_path):
-                            platform_ht = hl.read_table(test_platform_path)
-                        else:
-                            raise FileNotFoundError(
-                                f"There is no final platform assignment Table written and a test platform assignment Table "
-                                f"does not exist for calling interval {args.calling_interval_name} and interval padding "
-                                f"{args.calling_interval_padding}. Please run platform_inference.py --assign_platforms "
-                                f"with the --test argument and needed --calling_interval_name/--calling_interval_padding "
-                                f"arguments."
-                            )
-                    else:
-                        raise FileNotFoundError(
-                            f"There is no final platform assignment Table written. Please run: "
-                            f"platform_inference.py --assign_platforms to compute the platform assignment Table."
-                        )
+                if args.per_platform or args.high_cov_all_platforms:
+                    platform_ht = load_platform_ht(test, calling_interval_name, calling_interval_padding)
                 else:
                     platform_ht = None
 
