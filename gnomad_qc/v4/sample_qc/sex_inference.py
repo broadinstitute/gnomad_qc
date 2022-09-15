@@ -105,7 +105,7 @@ def compute_sex(
     prop_samples_x: float = None,
     prop_samples_y: float = None,
     prop_samples_norm: float = None,
-    freq_ht=None,
+    freq_ht: hl.Table = None,
     min_af: float = 0.001,
     f_stat_cutoff: float = -1.0,
 ) -> hl.Table:
@@ -190,12 +190,12 @@ def compute_sex(
         chromosome Y.
     :param prop_samples_norm: Proportion samples at specified coverage `norm_cov` to determine high coverage intervals
         on the normalization chromosome specified by `normalization_contig`.
-    :param freq_ht: Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in this Table
-        prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table with a
-        `min_af` cutoff.
-    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations.
+    :param freq_ht: Optional Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in
+        this Table prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table
+        with a `min_af` cutoff.
+    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations. Default is 0.001.
     :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY
-        are above cutoff.
+        are above cutoff. Default is -1.0.
     :return: Table with inferred sex annotation.
     """
 
