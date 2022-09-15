@@ -243,7 +243,9 @@ def compute_sex(
             vds,
             included_intervals=calling_intervals_ht,
             normalization_contig=normalization_contig,
-            sites_ht=freq_ht,
+            sites_ht=freq_ht.filter(hl.is_defined(calling_intervals_ht[freq_ht.locus]))
+            if freq_ht is not None
+            else None,
             aaf_expr="AF",
             gt_expr="LGT",
             f_stat_cutoff=f_stat_cutoff,
