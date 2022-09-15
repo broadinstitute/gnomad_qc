@@ -162,37 +162,41 @@ def compute_sex(
          reference blocks and variants found in the sparse MatrixTable, but it only uses specified calling intervals to
          determine the contig size and doesn't break up the reference blocks in the same way the Hail method does.
 
-    :param vds: Input VDS for use in sex inference
-    :param coverage_mt: Input interval coverage MatrixTable
-    :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy and karyotype inference
-    :param per_platform: Whether to run the sex ploidy and karyotype inference per platform
+    :param vds: Input VDS for use in sex inference.
+    :param coverage_mt: Input interval coverage MatrixTable.
+    :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy and karyotype inference.
+    :param per_platform: Whether to run the sex ploidy and karyotype inference per platform.
     :param high_cov_by_platform_all: Whether to filter to high coverage intervals for the sex ploidy and karyotype
-        inference. Using only intervals that are considered high coverage across all platforms
-    :param platform_ht: Input platform assignment Table. This is only needed if per_platform or high_cov_by_platform_all are True
+        inference. Using only intervals that are considered high coverage across all platforms.
+    :param platform_ht: Input platform assignment Table. This is only needed if per_platform or high_cov_by_platform_all
+        are True.
     :param min_platform_size: Required size of a platform to be considered when using `high_cov_by_platform_all`. Only
         platforms that have # of samples > 'min_platform_size' are used to determine intervals that have a
-        high coverage across all platforms
-    :param normalization_contig: Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y
-    :param variant_depth_only_x_ploidy: Whether to use depth of variant data within calling intervals instead of reference
-        data for chrX ploidy estimation. Default will only use reference data
-    :param variant_depth_only_y_ploidy: Whether to use depth of variant data within calling intervals instead of reference
-        data for chrY ploidy estimation. Default will only use reference data
+        high coverage across all platforms.
+    :param normalization_contig: Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.
+    :param variant_depth_only_x_ploidy: Whether to use depth of variant data within calling intervals instead of
+        reference data for chrX ploidy estimation. Default will only use reference data.
+    :param variant_depth_only_y_ploidy: Whether to use depth of variant data within calling intervals instead of
+        reference data for chrY ploidy estimation. Default will only use reference data.
     :param x_cov: Mean coverage level used to define high coverage intervals on chromosome X. This field must be in the
-        interval_coverage MatrixTable
+        interval_coverage MatrixTable.
     :param y_cov: Mean coverage level used to define high coverage intervals on chromosome Y. This field must be in the
-        interval_coverage MatrixTable
+        interval_coverage MatrixTable.
     :param norm_cov: Mean coverage level used to define high coverage intervals on the normalization autosome
-        (`normalization_contig`). This field must be in the interval_coverage MT
-    :param prop_samples_x: Proportion samples at specified coverage `x_cov` to determine high coverage intervals on chromosome X
-    :param prop_samples_y: Proportion samples at specified coverage `y_cov` to determine high coverage intervals on chromosome Y
+        (`normalization_contig`). This field must be in the interval_coverage MT.
+    :param prop_samples_x: Proportion samples at specified coverage `x_cov` to determine high coverage intervals on
+        chromosome X.
+    :param prop_samples_y: Proportion samples at specified coverage `y_cov` to determine high coverage intervals on
+        chromosome Y.
     :param prop_samples_norm: Proportion samples at specified coverage `norm_cov` to determine high coverage intervals
-        on the normalization chromosome specified by `normalization_contig`
+        on the normalization chromosome specified by `normalization_contig`.
     :param freq_ht: Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in this Table
         prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table with a
-        `min_af` cutoff
-    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations
-    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY are above cutoff
-    :return: Table with inferred sex annotation
+        `min_af` cutoff.
+    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations.
+    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY
+        are above cutoff.
+    :return: Table with inferred sex annotation.
     """
 
     def _get_filtered_coverage_mt(
@@ -221,14 +225,15 @@ def compute_sex(
                 & agg_func(coverage_mt[f"over_{y_cov}x"] > prop_samples_y)
             )
             | (
-                (coverage_mt.interval.start.contig == "chr20")
+                (coverage_mt.interval.start.contig == normalization_contig)
                 & agg_func(coverage_mt[f"over_{norm_cov}x"] > prop_samples_norm)
             )
         )
 
     def _annotate_sex(vds, calling_intervals_ht):
         """
-        Helper function to perform `annotate_sex` using unchanged parameters with changes to the VDS and calling intervals.
+        Helper function to perform `annotate_sex` using unchanged parameters with changes to the VDS and calling
+        intervals.
 
         :param vds: Input VDS to use for sex annotation
         :param calling_intervals_ht: Calling intervals to filter to for sex annotation
@@ -329,7 +334,8 @@ def compute_sex(
             sex_ht = _annotate_sex(vds, calling_intervals_ht)
         else:
             logger.info(
-                "Running sex ploidy and sex karyotype estimation using high coverage intervals across the full sample set..."
+                "Running sex ploidy and sex karyotype estimation using high coverage intervals across the full sample "
+                "set..."
             )
             coverage_mt = coverage_mt.annotate_rows(
                 **{
@@ -454,10 +460,11 @@ def main(args):
                         coverage_mt = hl.read_matrix_table(test_coverage_path)
                     else:
                         raise FileNotFoundError(
-                            f"There is no final coverage MatrixTable written and a test interval coverage MatrixTable does "
-                            f"not exist for calling interval {args.calling_interval_name} and interval padding "
-                            f"{args.calling_interval_padding}. Please run platform_inference.py --compute_coverage with the "
-                            f"--test argument and needed --calling_interval_name/--calling_interval_padding arguments."
+                            f"There is no final coverage MatrixTable written and a test interval coverage MatrixTable "
+                            f"does not exist for calling interval {args.calling_interval_name} and interval padding "
+                            f"{args.calling_interval_padding}. Please run platform_inference.py --compute_coverage "
+                            f"with the --test argument and needed --calling_interval_name/--calling_interval_padding "
+                            f"arguments."
                         )
                 else:
                     raise FileNotFoundError(
@@ -482,11 +489,11 @@ def main(args):
                             platform_ht = hl.read_table(test_platform_path)
                         else:
                             raise FileNotFoundError(
-                                f"There is no final platform assignment Table written and a test platform assignment Table "
-                                f"does not exist for calling interval {args.calling_interval_name} and interval padding "
-                                f"{args.calling_interval_padding}. Please run platform_inference.py --assign_platforms "
-                                f"with the --test argument and needed --calling_interval_name/--calling_interval_padding "
-                                f"arguments."
+                                f"There is no final platform assignment Table written and a test platform assignment "
+                                f"Table does not exist for calling interval {args.calling_interval_name} and interval "
+                                f"padding {args.calling_interval_padding}. Please run platform_inference.py "
+                                f"--assign_platforms with the --test argument and needed --calling_interval_name / "
+                                f"--calling_interval_padding arguments."
                             )
                     else:
                         raise FileNotFoundError(
@@ -593,9 +600,8 @@ if __name__ == "__main__":
     sex_ploidy_args.add_argument(
         "--f-stat-ukb-var",
         help=(
-            "Whether to use UK Biobank high callrate (0.99) and common variants (UKB allele frequency > value specified "
-            "by --min-af) for f-stat computation. By default, no callrate cutoff will be used, and allele frequency will "
-            "be approximated with AC/(n_samples * 2) and a default min allele frequency of 0.001."
+            "Whether to use UK Biobank high callrate (0.99) and common variants (UKB allele frequency > value specified"
+            " by '--min-af') for f-stat computation instead of the sites determined by '--determine-fstat-sites'."
         ),
         action="store_true",
     )
