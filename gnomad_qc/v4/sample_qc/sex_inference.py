@@ -1,6 +1,6 @@
 import argparse
 import logging
-from typing import Callable, List
+from typing import Callable, List, Optional
 
 import hail as hl
 
@@ -254,7 +254,7 @@ def compute_sex(
     prop_samples_x: float = None,
     prop_samples_y: float = None,
     prop_samples_norm: float = None,
-    freq_ht=None,
+    freq_ht: Optional[hl.Table] = None,
     min_af: float = 0.001,
     f_stat_cutoff: float = 0.5,
 ) -> hl.Table:
