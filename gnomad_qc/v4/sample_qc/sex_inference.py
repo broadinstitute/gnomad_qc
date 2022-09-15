@@ -264,10 +264,9 @@ def compute_sex_ploidy(
     Within this function there are some critical parameters to consider (more details on each are described below):
         - Filtering to intervals with high coverage for sex chromosome ploidy estimation (`high_cov_intervals`, `x_cov`,
          `y_cov`, `norm_cov`, `prop_samples_x`, `prop_samples_y`, and `prop_samples_norm`).
-        - Per platform computations: either to determine per platform sex karyotype cutoffs, or if `high_cov_intervals`
-         is used, per platform sex chromosome ploidy estimation and determination of sex karyotype cutoffs is performed
-         using per platform high coverage intervals (`x_cov`, `y_cov`, `norm_cov`, `prop_samples_x`, `prop_samples_y`,
-         `prop_samples_norm`, and `min_platform_size`).
+        - Per platform computations: if `high_cov_per_platform` is used, per platform sex chromosome ploidy estimation
+         is performed using per platform high coverage intervals (`x_cov`, `y_cov`, `norm_cov`, `prop_samples_x`,
+         `prop_samples_y`, `prop_samples_norm`, and `min_platform_size`).
         - Use per platform stats to determine which are high coverage across all platforms (depending on platform sample
          size). Uses parameters `high_cov_all_platforms`, `x_cov`, `y_cov`, `norm_cov`, `prop_samples_x`,
          `prop_samples_y`, `prop_samples_norm`.
@@ -276,27 +275,23 @@ def compute_sex_ploidy(
         - Use of a `freq_ht` to filter variants for the X-chromosome heterozygosity computation. This is the f_stat
          annotation applied by Hail's `impute_sex` module. (`freq_ht`, `min_af`).
 
-    The following are the available options for chrX and chrY relative sex ploidy estimation and sex karyotype
-    cutoff determination:
+    The following are the available options for chrX and chrY relative sex ploidy estimation:
         - Ploidy estimation using all intervals found in `interval_qc_mt`.
-        - Per platform ploidy estimation using all intervals found in `interval_qc_mt`. Sex karyotype cutoffs are
-         determined by per platform ploidy distributions.
+        - Per platform ploidy estimation using all intervals found in `interval_qc_mt`.
         - Ploidy estimation using only high coverage intervals across the entire dataset, defined as: chrX intervals
          having a proportion of all samples (`prop_samples_x`) with over a specified mean DP (`x_cov`), chrY intervals
          having a proportion of all samples (`prop_samples_y`) with over a specified mean DP (`y_cov`), and
          `normalization_contig` intervals having a proportion of all samples (`prop_samples_norm`) with over a
-         specified mean DP (`norm_cov`). Sex karyotype cutoffs are determined by ploidy distributions of all samples.
+         specified mean DP (`norm_cov`).
         - Per platform ploidy estimation using only per platform high coverage intervals defined by: chrX intervals with
          the specific platform having a proportion of samples (`prop_samples_x`) with over a specified mean DP (`x_cov`),
          chrY intervals with the specific platform having a proportion of samples (`prop_samples_y`) with over a
          specified mean DP (`y_cov`), and `normalization_contig` intervals with the specific platform having a
-         proportion of samples (`prop_samples_norm`) with over a specified mean DP (`norm_cov`). Sex karyotype cutoffs
-         are determined by per platform ploidy distributions.
+         proportion of samples (`prop_samples_norm`) with over a specified mean DP (`norm_cov`).
         - A combined ploidy estimation using only per platform high coverage intervals. Each interval is assessed as high
          coverage per platform on chrX, chrY, and `normalization_contig` as described above for "per platform ploidy
          estimation". Then this method uses only platforms that have # of samples > `min_platform_size` to determine
-         intervals that have a high coverage across all platforms. Then sex ploidy estimation and sex karyotype cutoffs
-         are determined using this intersection of high coverage intervals across platforms.
+         intervals that have a high coverage across all platforms.
 
     For each of the options described above, there is also the possibility to use a ploidy estimation that uses only
     variants within the specified calling intervals:
@@ -311,38 +306,42 @@ def compute_sex_ploidy(
          reference blocks and variants found in the sparse MatrixTable, but it only uses specified calling intervals to
          determine the contig size and doesn't break up the reference blocks in the same way the Hail method does.
 
-    :param vds: Input VDS for use in sex inference
-    :param interval_qc_mt: Optional interval QC MatrixTable. This is only needed if `high_cov_intervals` or
-        `high_cov_all_platforms` are True
-    :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy and karyotype inference
-    :param per_platform: Whether to run the sex ploidy and karyotype inference per platform
-    :param high_cov_all_platforms: Whether to filter to high coverage intervals for the sex ploidy and karyotype
-        inference. Using only intervals that are considered high coverage across all platforms
-    :param platform_ht: Input platform assignment Table. This is only needed if `per_platform` or `high_cov_all_platforms` are True
+    :param vds: Input VDS for use in sex inference.
+    :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy imputation. Default
+        is False.
+    :param high_cov_per_platform: Whether filter to per platform high coverage intervals for the sex ploidy imputation.
+        Default is False.
+    :param high_cov_all_platforms: Whether to filter to high coverage intervals for the sex ploidy imputation. Using
+        only intervals that are considered high coverage across all platforms. Default is False.
+    :param interval_qc_mt: Optional interval QC MatrixTable. This is only needed if `high_cov_intervals`,
+        `high_cov_per_platform` or `high_cov_all_platforms` are True.
+    :param platform_ht: Input platform assignment Table. This is only needed if `high_cov_per_platform` or
+        `high_cov_all_platforms` are True.
     :param min_platform_size: Required size of a platform to be considered when using `high_cov_all_platforms`. Only
-        platforms that have # of samples > 'min_platform_size' are used to determine intervals that have a
-        high coverage across all platforms
-    :param normalization_contig: Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y
-    :param variant_depth_only_x_ploidy: Whether to use depth of variant data within calling intervals instead of reference
-        data for chrX ploidy estimation. Default will only use reference data
-    :param variant_depth_only_y_ploidy: Whether to use depth of variant data within calling intervals instead of reference
-        data for chrY ploidy estimation. Default will only use reference data
+        platforms that have # of samples > 'min_platform_size' are used to determine intervals that have a high
+        coverage across all platforms. Default is 100.
+    :param normalization_contig: Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.
+        Default is 'chr20'.
+    :param variant_depth_only_x_ploidy: Whether to use depth of variant data within calling intervals instead of
+        reference data for chrX ploidy estimation. Default will only use reference data.
+    :param variant_depth_only_y_ploidy: Whether to use depth of variant data within calling intervals instead of
+        reference data for chrY ploidy estimation. Default will only use reference data.
     :param x_cov: Mean coverage level used to define high coverage intervals on chromosome X. This field must be in the
-        interval_coverage MatrixTable
+        interval_coverage MatrixTable.
     :param y_cov: Mean coverage level used to define high coverage intervals on chromosome Y. This field must be in the
-        interval_coverage MatrixTable
+        interval_coverage MatrixTable.
     :param norm_cov: Mean coverage level used to define high coverage intervals on the normalization autosome
-        (`normalization_contig`). This field must be in the interval_coverage MT
-    :param prop_samples_x: Proportion samples at specified coverage `x_cov` to determine high coverage intervals on chromosome X
-    :param prop_samples_y: Proportion samples at specified coverage `y_cov` to determine high coverage intervals on chromosome Y
+        (`normalization_contig`). This field must be in the interval_coverage MT.
+    :param prop_samples_x: Proportion samples at specified coverage `x_cov` to determine high coverage intervals on chromosome X.
+    :param prop_samples_y: Proportion samples at specified coverage `y_cov` to determine high coverage intervals on chromosome Y.
     :param prop_samples_norm: Proportion samples at specified coverage `norm_cov` to determine high coverage intervals
-        on the normalization chromosome specified by `normalization_contig`
+        on the normalization chromosome specified by `normalization_contig`.
     :param freq_ht: Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in this Table
         prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table with a
-        `min_af` cutoff
-    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations
-    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY are above cutoff
-    :return: Table with inferred sex annotation
+        `min_af` cutoff.
+    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations.
+    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY are above cutoff.
+    :return: Table with imputed ploidies.
     """
     if (high_cov_per_platform or high_cov_all_platforms) and platform_ht is None:
         raise ValueError(
@@ -402,11 +401,12 @@ def compute_sex_ploidy(
         vds: hl.vds.VariantDataset, calling_intervals_ht: hl.Table
     ) -> hl.Table:
         """
-        Helper function to perform `annotate_sex` using unchanged parameters with changes to the VDS and calling intervals.
+        Helper function to perform `annotate_sex` using unchanged parameters with changes to the VDS and calling
+        intervals.
 
-        :param vds: Input VDS to use for sex annotation
-        :param calling_intervals_ht: Calling intervals to filter to for sex annotation
-        :return: Table containing sex annotation for samples in the input VDS
+        :param vds: Input VDS to use for sex annotation.
+        :param calling_intervals_ht: Table including only intervals wanted for sex annotation.
+        :return: Table containing sex ploidy estimates for samples in the input VDS.
         """
         ploidy_ht = annotate_sex(
             vds,
