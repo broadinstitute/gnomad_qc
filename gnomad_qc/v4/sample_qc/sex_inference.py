@@ -409,12 +409,19 @@ def main(args):
     # NOTE: remove this flag when the new shuffle method is the default
     hl._set_flags(use_new_shuffle="1")
 
+    test = args.test
+    calling_interval_name = args.calling_interval_name
+    calling_interval_padding = args.calling_interval_padding
+    normalization_contig = args.normalization_contig
+    per_platform = args.per_platform
+    overwrite = args.overwrite
+
     try:
         if args.determine_fstat_sites:
             vds = get_gnomad_v4_vds(
                 remove_hard_filtered_samples=False,
                 remove_hard_filtered_samples_no_sex=True,
-                test=args.test,
+                test=test,
             )
             ht = determine_fstat_sites(
                 vds,
@@ -423,13 +430,11 @@ def main(args):
                 min_callrate=args.min_callrate,
             )
             ht.naive_coalesce(args.fstat_n_partitions).write(
-                get_checkpoint_path("test_f_stat_sites")
-                if args.test
-                else f_stat_sites.path,
-                overwrite=args.overwrite,
+                get_checkpoint_path("test_f_stat_sites") if test else f_stat_sites.path,
+                overwrite=overwrite,
             )
         if args.impute_sex:
-            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
+            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=test)
             if args.f_stat_ukb_var:
                 # The UK Biobank f-stat table contains only variants that were high callrate (0.99) and common
                 # (AF >0.001) within the UK Biobank 200K Regeneron exome dataset and it includes the UK Biobank 200K
@@ -439,23 +444,23 @@ def main(args):
             else:
                 freq_ht = (
                     hl.read_table(get_checkpoint_path("test_f_stat_sites"))
-                    if args.test
+                    if test
                     else f_stat_sites.ht()
                 )
 
             # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
-            if args.overwrite or not file_exists(
-                get_checkpoint_path("sex_imputation") if args.test else sex.path
+            if overwrite or not file_exists(
+                get_checkpoint_path("sex_imputation") if test else sex.path
             ):
                 logger.info(
                     "Loading interval coverage MatrixTable and filtering to chrX, chrY and %s...",
-                    args.normalization_contig,
+                    normalization_contig,
                 )
                 if file_exists(interval_coverage.path):
                     coverage_mt = interval_coverage.mt()
-                elif args.test:
+                elif test:
                     test_coverage_path = get_checkpoint_path(
-                        f"test_interval_coverage.{args.calling_interval_name}.pad{args.calling_interval_padding}",
+                        f"test_interval_coverage.{calling_interval_name}.pad{calling_interval_padding}",
                         mt=True,
                     )
                     if file_exists(test_coverage_path):
@@ -463,8 +468,8 @@ def main(args):
                     else:
                         raise FileNotFoundError(
                             f"There is no final coverage MatrixTable written and a test interval coverage MatrixTable "
-                            f"does not exist for calling interval {args.calling_interval_name} and interval padding "
-                            f"{args.calling_interval_padding}. Please run platform_inference.py --compute_coverage "
+                            f"does not exist for calling interval {calling_interval_name} and interval padding "
+                            f"{calling_interval_padding}. Please run platform_inference.py --compute_coverage "
                             f"with the --test argument and needed --calling_interval_name/--calling_interval_padding "
                             f"arguments."
                         )
@@ -475,25 +480,25 @@ def main(args):
                     )
 
                 coverage_mt = coverage_mt.filter_rows(
-                    hl.literal({"chrY", "chrX", args.normalization_contig}).contains(
+                    hl.literal({"chrY", "chrX", normalization_contig}).contains(
                         coverage_mt.interval.start.contig
                     )
                 )
-                if args.per_platform or args.high_cov_by_platform_all:
+                if per_platform or args.high_cov_by_platform_all:
                     logger.info("Loading platform information...")
                     if file_exists(platform.path):
                         platform_ht = platform.ht()
-                    elif args.test:
+                    elif test:
                         test_platform_path = get_checkpoint_path(
-                            f"test_platform_assignment.{args.calling_interval_name}.pad{args.calling_interval_padding}"
+                            f"test_platform_assignment.{calling_interval_name}.pad{calling_interval_padding}"
                         )
                         if file_exists(test_platform_path):
                             platform_ht = hl.read_table(test_platform_path)
                         else:
                             raise FileNotFoundError(
                                 f"There is no final platform assignment Table written and a test platform assignment "
-                                f"Table does not exist for calling interval {args.calling_interval_name} and interval "
-                                f"padding {args.calling_interval_padding}. Please run platform_inference.py "
+                                f"Table does not exist for calling interval {calling_interval_name} and interval "
+                                f"padding {calling_interval_padding}. Please run platform_inference.py "
                                 f"--assign_platforms with the --test argument and needed --calling_interval_name / "
                                 f"--calling_interval_padding arguments."
                             )
@@ -508,33 +513,33 @@ def main(args):
                 ht = compute_sex(
                     vds,
                     coverage_mt,
-                    args.high_cov_intervals,
-                    args.per_platform,
-                    args.high_cov_by_platform_all,
-                    platform_ht,
-                    args.min_platform_size,
-                    args.normalization_contig,
-                    args.variant_depth_only_x_ploidy,
-                    args.variant_depth_only_y_ploidy,
-                    args.x_cov,
-                    args.y_cov,
-                    args.norm_cov,
-                    args.prop_samples_x,
-                    args.prop_samples_y,
-                    args.prop_samples_norm,
-                    freq_ht,
-                    args.min_af,
-                    args.f_stat_cutoff,
+                    high_cov_intervals=args.high_cov_intervals,
+                    per_platform=per_platform,
+                    high_cov_by_platform_all=args.high_cov_by_platform_all,
+                    platform_ht=platform_ht,
+                    min_platform_size=args.min_platform_size,
+                    normalization_contig=normalization_contig,
+                    variant_depth_only_x_ploidy=args.variant_depth_only_x_ploidy,
+                    variant_depth_only_y_ploidy=args.variant_depth_only_y_ploidy,
+                    x_cov=args.x_cov,
+                    y_cov=args.y_cov,
+                    norm_cov=args.norm_cov,
+                    prop_samples_x=args.prop_samples_x,
+                    prop_samples_y=args.prop_samples_y,
+                    prop_samples_norm=args.prop_samples_norm,
+                    freq_ht=freq_ht,
+                    min_af=args.min_af,
+                    f_stat_cutoff=args.f_stat_cutoff,
                 )
                 ht = ht.annotate_globals(f_stat_ukb_var=args.f_stat_ukb_var)
                 ht.write(
                     get_checkpoint_path(
-                        f"sex_imputation{'.per_platform' if args.per_platform else ''}"
+                        f"sex_imputation{'.per_platform' if per_platform else ''}"
                         f"{'.high_cov_by_platform_all' if args.high_cov_by_platform_all else ''}"
                         f"{'.high_cov' if args.high_cov_intervals else ''}"
                         f"{'.ukb_f_stat' if args.f_stat_ukb_var else ''}"
                     )
-                    if args.test
+                    if test
                     else sex.path,
                     overwrite=True,
                 )
