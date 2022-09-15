@@ -415,7 +415,9 @@ def main(args):
                 min_callrate=args.min_callrate,
             )
             ht.naive_coalesce(args.fstat_n_partitions).write(
-                get_checkpoint_path("test_f_stat_sites") if args.test else f_stat_sites.path,
+                get_checkpoint_path("test_f_stat_sites")
+                if args.test
+                else f_stat_sites.path,
                 overwrite=args.overwrite,
             )
         if args.impute_sex:

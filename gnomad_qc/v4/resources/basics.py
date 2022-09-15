@@ -65,6 +65,7 @@ def get_gnomad_v4_vds(
                 hard_filtered_samples,
                 hard_filtered_samples_no_sex,
             )
+
             if remove_hard_filtered_samples:
                 hard_filter_ht = hard_filtered_samples.versions[CURRENT_VERSION].ht()
             else:
