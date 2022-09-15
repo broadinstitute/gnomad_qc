@@ -107,7 +107,7 @@ def compute_sex(
     prop_samples_norm: float = None,
     freq_ht=None,
     min_af: float = 0.001,
-    f_stat_cutoff: float = 0.5,
+    f_stat_cutoff: float = -1.0,
 ) -> hl.Table:
     """
     Impute sample sex based on X-chromosome heterozygosity and sex chromosome ploidy.
@@ -612,7 +612,7 @@ if __name__ == "__main__":
             "are above cutoff."
         ),
         type=float,
-        default=0.5,
+        default=-1.0,
     )
     sex_ploidy_args.add_argument(
         "--high-cov-intervals",
