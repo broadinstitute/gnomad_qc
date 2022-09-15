@@ -529,6 +529,53 @@ def compute_sex(
     return sex_ht
 
 
+def infer_sex_karyotype_from_ploidy(
+    ploidy_ht: hl.Table,
+    per_platform: bool = False,
+    f_stat_cutoff: float = -1.0,
+) -> hl.Table:
+    """
+    Create a Table with X_karyotype, Y_karyotype, and sex_karyotype.
+
+    :param ploidy_ht: Table with chromosome X and chromosome Y ploidies, and f-stat.
+    :param per_platform: Whether the sex karyotype ploidy cutoff inference should be applied per platform.
+    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY
+        are above cutoff.
+    :return: Table of imputed sex karyotypes.
+    """
+    logger.info("Running sex karyotype inference")
+    if per_platform:
+        platforms = ploidy_ht.aggregate(hl.agg.collect_as_set(ploidy_ht.platform))
+        per_platform_karyotype_hts = []
+        x_ploidy_cutoffs = {}
+        y_ploidy_cutoffs = {}
+
+        for platform in platforms:
+            logger.info(
+                "Performing sex karyotype inference for platform %s...",
+                platform,
+            )
+            karyotype_ht = infer_sex_karyotype(
+                ploidy_ht.filter(ploidy_ht.platform == platform),
+                f_stat_cutoff,
+            )
+            per_platform_karyotype_hts.append(karyotype_ht)
+            x_ploidy_cutoffs[platform] = karyotype_ht.index_globals().x_ploidy_cutoffs
+            y_ploidy_cutoffs[platform] = karyotype_ht.index_globals().y_ploidy_cutoffs
+
+        karyotype_ht = per_platform_karyotype_hts[0].union(
+            *per_platform_karyotype_hts[1:]
+        )
+        karyotype_ht = karyotype_ht.annotate_globals(
+            x_ploidy_cutoffs=hl.struct(**x_ploidy_cutoffs),
+            y_ploidy_cutoffs=hl.struct(**y_ploidy_cutoffs),
+        )
+    else:
+        karyotype_ht = infer_sex_karyotype(ploidy_ht, f_stat_cutoff)
+
+    return karyotype_ht
+
+
 def main(args):
     hl.init(
         log="/sex_inference.log",
