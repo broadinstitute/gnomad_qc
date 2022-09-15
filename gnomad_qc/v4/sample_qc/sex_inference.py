@@ -244,10 +244,11 @@ def generate_sex_imputation_interval_qc_mt(
 
 def compute_sex_ploidy(
     vds: hl.vds.VariantDataset,
-    interval_qc_mt: Optional[hl.MatrixTable] = None,
+    coverage_mt: hl.MatrixTable,
     high_cov_intervals: bool = False,
     high_cov_per_platform: bool = False,
     high_cov_all_platforms: bool = False,
+    interval_qc_mt: Optional[hl.MatrixTable] = None,
     high_cov_cutoffs: Optional[Dict[str, Tuple]] = None,
     platform_ht: Optional[hl.Table] = None,
     min_platform_size: bool = 100,
@@ -264,6 +265,9 @@ def compute_sex_ploidy(
 ) -> hl.Table:
     """
     Impute sex chromosome ploidy, and optionally chrX heterozygosity and fraction homozygous alternate variants on chrX.
+
+    This function imputes sex chromosome ploidy from a VDS and a sex inference specific coverage MT (created by
+    `generate_sex_imputation_interval_coverage_mt`).
 
     With no additional parameters passed, chrX and chrY ploidy will be imputed using Hail's
     `hail.vds.impute_sex_chromosome_ploidy` method which computes chromosome ploidy using reference block DP per
@@ -308,6 +312,7 @@ def compute_sex_ploidy(
               {"chrX": ("over_10x", 0.80), "chrY": ("over_5x", 0.35), `normalization_contig`: ("over_20x", 0.85)}
 
     :param vds: Input VDS for use in sex inference.
+    :param coverage_mt: Input sex inference specific interval coverage MatrixTable.
     :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy imputation. Default
         is False.
     :param high_cov_per_platform: Whether filter to per platform high coverage intervals for the sex ploidy imputation.
@@ -420,6 +425,7 @@ def compute_sex_ploidy(
             variants_filter_segdup=variant_depth_only_ploidy_filter_segdup,
             variants_snv_only=variant_depth_only_ploidy_snv_only,
             compute_x_frac_variants_hom_alt=compute_x_frac_variants_hom_alt,
+            coverage_mt=coverage_mt,
             infer_karyotype=False,
         )
         return ploidy_ht
@@ -815,6 +821,13 @@ def main(args):
 
             # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
             if args.overwrite or not file_exists(ploidy_ht_path):
+                coverage_mt = (
+                    hl.read_matrix_table(
+                        get_checkpoint_path("test_sex_imputation_cov", mt=True)
+                    )
+                    if test
+                    else sex_imputation_coverage.mt()
+                )
                 interval_qc_mt = (
                     hl.read_matrix_table(
                         get_checkpoint_path(
@@ -852,14 +865,15 @@ def main(args):
 
                 ploidy_ht = compute_sex_ploidy(
                     vds,
-                    interval_qc_mt,
+                    coverage_mt,
+                    interval_qc_mt=interval_qc_mt,
                     high_cov_intervals=args.high_cov_intervals,
                     high_cov_per_platform=args.high_cov_per_platform,
                     high_cov_all_platforms=args.high_cov_all_platforms,
                     high_cov_cutoffs=high_cov_cutoffs,
                     platform_ht=platform_ht,
                     min_platform_size=args.min_platform_size,
-                    normalization_contig=normalization_contig,
+                    normalization_contig=coverage_mt.normalization_contig.collect()[0],
                     variant_depth_only_x_ploidy=args.variant_depth_only_x_ploidy,
                     variant_depth_only_y_ploidy=args.variant_depth_only_y_ploidy,
                     variant_depth_only_ploidy_filter_lcr=not args.omit_variant_depth_ploidy_lcr_filter,
