@@ -256,7 +256,7 @@ def compute_sex_ploidy(
     prop_samples_norm: float = None,
     freq_ht: Optional[hl.Table] = None,
     min_af: float = 0.001,
-    f_stat_cutoff: float = 0.5,
+    f_stat_cutoff: float = -1.0,
 ) -> hl.Table:
     """
     Impute sample sex based on X-chromosome heterozygosity and sex chromosome ploidy.
@@ -307,14 +307,14 @@ def compute_sex_ploidy(
          determine the contig size and doesn't break up the reference blocks in the same way the Hail method does.
 
     :param vds: Input VDS for use in sex inference.
+    :param interval_qc_mt: Optional interval QC MatrixTable. This is only needed if `high_cov_intervals`,
+        `high_cov_per_platform` or `high_cov_all_platforms` are True.
     :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy imputation. Default
         is False.
     :param high_cov_per_platform: Whether filter to per platform high coverage intervals for the sex ploidy imputation.
         Default is False.
     :param high_cov_all_platforms: Whether to filter to high coverage intervals for the sex ploidy imputation. Using
         only intervals that are considered high coverage across all platforms. Default is False.
-    :param interval_qc_mt: Optional interval QC MatrixTable. This is only needed if `high_cov_intervals`,
-        `high_cov_per_platform` or `high_cov_all_platforms` are True.
     :param platform_ht: Input platform assignment Table. This is only needed if `high_cov_per_platform` or
         `high_cov_all_platforms` are True.
     :param min_platform_size: Required size of a platform to be considered when using `high_cov_all_platforms`. Only
@@ -332,15 +332,18 @@ def compute_sex_ploidy(
         interval_coverage MatrixTable.
     :param norm_cov: Mean coverage level used to define high coverage intervals on the normalization autosome
         (`normalization_contig`). This field must be in the interval_coverage MT.
-    :param prop_samples_x: Proportion samples at specified coverage `x_cov` to determine high coverage intervals on chromosome X.
-    :param prop_samples_y: Proportion samples at specified coverage `y_cov` to determine high coverage intervals on chromosome Y.
+    :param prop_samples_x: Proportion samples at specified coverage `x_cov` to determine high coverage intervals on
+        chromosome X.
+    :param prop_samples_y: Proportion samples at specified coverage `y_cov` to determine high coverage intervals on
+        chromosome Y.
     :param prop_samples_norm: Proportion samples at specified coverage `norm_cov` to determine high coverage intervals
         on the normalization chromosome specified by `normalization_contig`.
-    :param freq_ht: Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in this Table
-        prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table with a
-        `min_af` cutoff.
-    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations.
-    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY are above cutoff.
+    :param freq_ht: Optional Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in
+        this Table prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table
+        with a `min_af` cutoff.
+    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations. Default is 0.001.
+    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY
+        are above cutoff. Default is -1.0.
     :return: Table with imputed ploidies.
     """
     if (high_cov_per_platform or high_cov_all_platforms) and platform_ht is None:
@@ -412,7 +415,9 @@ def compute_sex_ploidy(
             vds,
             included_intervals=calling_intervals_ht,
             normalization_contig=normalization_contig,
-            sites_ht=freq_ht,
+            sites_ht=freq_ht.filter(hl.is_defined(calling_intervals_ht[freq_ht.locus]))
+            if freq_ht is not None
+            else None,
             aaf_expr="AF",
             gt_expr="LGT",
             f_stat_cutoff=f_stat_cutoff,
@@ -557,13 +562,15 @@ def main(args):
     calling_interval_name = args.calling_interval_name
     calling_interval_padding = args.calling_interval_padding
     normalization_contig = args.normalization_contig
+    per_platform = args.per_platform
+    overwrite = args.overwrite
 
     try:
         if args.determine_fstat_sites:
             vds = get_gnomad_v4_vds(
                 remove_hard_filtered_samples=False,
                 remove_hard_filtered_samples_no_sex=True,
-                test=args.test,
+                test=test,
             )
             ht = determine_fstat_sites(
                 vds,
@@ -573,9 +580,9 @@ def main(args):
             )
             ht.naive_coalesce(args.fstat_n_partitions).write(
                 get_checkpoint_path("test_f_stat_sites")
-                if args.test
+                if test
                 else f_stat_sites.path,
-                overwrite=args.overwrite,
+                overwrite=overwrite,
             )
 
         if args.sex_imputation_interval_coverage:
@@ -846,9 +853,8 @@ if __name__ == "__main__":
     sex_ploidy_args.add_argument(
         "--f-stat-ukb-var",
         help=(
-            "Whether to use UK Biobank high callrate (0.99) and common variants (UKB allele frequency > value specified "
-            "by --min-af) for f-stat computation. By default, no callrate cutoff will be used, and allele frequency will "
-            "be approximated with AC/(n_samples * 2) and a default min allele frequency of 0.001."
+            "Whether to use UK Biobank high callrate (0.99) and common variants (UKB allele frequency > value specified"
+            " by '--min-af') for f-stat computation instead of the sites determined by '--determine-fstat-sites'."
         ),
         action="store_true",
     )
@@ -865,7 +871,7 @@ if __name__ == "__main__":
             "are above cutoff."
         ),
         type=float,
-        default=0.5,
+        default=-1.0,
     )
     sex_ploidy_high_cov_method_parser = sex_ploidy_args.add_mutually_exclusive_group(
         required=False
