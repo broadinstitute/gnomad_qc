@@ -916,6 +916,35 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
+    sex_ploidy_high_cov_opt_parser = sex_ploidy_args.add_mutually_exclusive_group(
+        required=False
+    )
+    sex_ploidy_high_cov_opt_parser.add_argument(
+        "--high-cov-by-mean-fraction-over-dp-0",
+        help="Whether to use the mean fraction of bases over DP 0 to determine high coverage intervals.",
+        action="store_true",
+    )
+    sex_ploidy_high_cov_opt_parser.add_argument(
+        "--high-cov-by-prop-samples-over-cov",
+        help=(
+            "Whether to determine high coverage intervals using the proportion of samples with a mean interval "
+            "coverage over a specified coverage for chrX (--x-cov), chrY (--y-cov), and the normalization contig "
+            "(--norm-cov)."
+        ),
+        action="store_true",
+    )
+    sex_ploidy_args.add_argument(
+        "--sex-mean-fraction-over-dp-0",
+        help="Mean fraction of bases over DP used to define high coverage intervals on sex chromosomes.",
+        type=float,
+        default=0.4,
+    )
+    sex_ploidy_args.add_argument(
+        "--norm-mean-fraction-over-dp-0",
+        help="Mean fraction of bases over DP used to define high coverage intervals on the normalization chromosome.",
+        type=float,
+        default=0.99,
+    )
     sex_ploidy_args.add_argument(
         "--x-cov",
         help=(
@@ -999,7 +1028,20 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    main(args)
+
+    if (
+        args.high_cov_intervals
+        or args.high_cov_per_platform
+        or args.high_cov_all_platforms
+    ) and not (
+        args.high_cov_by_mean_fraction_over_dp_0
+        or args.high_cov_by_prop_samples_over_cov
+    ):
+        parser.error(
+            "One of --high-cov-by-mean-fraction-over-dp-0 or --high-cov-by-prop-samples-over-cov is required when a "
+            "high coverage option (--high-cov-intervals, --high-cov-per-platform, or --high-cov-all-platforms) "
+            "is specified."
+        )
 
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
