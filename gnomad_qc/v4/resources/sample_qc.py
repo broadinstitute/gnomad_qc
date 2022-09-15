@@ -366,6 +366,17 @@ sex_imputation_platform_coverage = VersionedMatrixTableResource(
     },
 )
 
+# Ploidy imputation results
+ploidy = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.ploidy.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
 # Sex imputation results
 sex = VersionedTableResource(
     CURRENT_VERSION,

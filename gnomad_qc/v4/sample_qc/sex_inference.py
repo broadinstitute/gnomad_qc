@@ -18,8 +18,8 @@ from gnomad_qc.v4.resources.basics import (
 )
 from gnomad_qc.v4.resources.sample_qc import (
     f_stat_sites,
-    interval_coverage,
     platform,
+    ploidy,
     sex,
     sex_imputation_coverage,
     sex_imputation_platform_coverage,
@@ -629,11 +629,14 @@ def main(args):
                 overwrite=args.overwrite,
             )
 
-        if args.impute_sex:
+        if args.impute_sex_ploidy:
             vds = get_gnomad_v4_vds(
                 remove_hard_filtered_samples=False,
                 remove_hard_filtered_samples_no_sex=True,
                 test=test,
+            )
+            platform_ht = load_platform_ht(
+                test, calling_interval_name, calling_interval_padding
             )
             if args.f_stat_ukb_var:
                 # The UK Biobank f-stat table contains only variants that were high callrate (0.99) and common
@@ -648,11 +651,11 @@ def main(args):
                     else f_stat_sites.ht()
                 )
 
-            sex_ht_path = (
-                get_checkpoint_path("sex_imputation") if args.test else sex.path
+            ploidy_ht_path = (
+                get_checkpoint_path(f"ploidy_imputation") if test else ploidy.path
             )
             # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
-            if args.overwrite or not file_exists(sex_ht_path):
+            if args.overwrite or not file_exists(ploidy_ht_path):
                 interval_qc_mt = (
                     hl.read_matrix_table(
                         get_checkpoint_path(
@@ -662,46 +665,33 @@ def main(args):
                     if test
                     else sex_imputation_platform_coverage.mt()
                 )
-                if args.per_platform or args.high_cov_all_platforms:
-                    platform_ht = load_platform_ht(
-                        test, calling_interval_name, calling_interval_padding
-                    )
-                else:
-                    platform_ht = None
 
-                ht = compute_sex(
+                ploidy_ht = compute_sex_ploidy(
                     vds,
                     interval_qc_mt,
-                    args.high_cov_intervals,
-                    args.per_platform,
-                    args.high_cov_all_platforms,
-                    platform_ht,
-                    args.min_platform_size,
-                    args.normalization_contig,
-                    args.variant_depth_only_x_ploidy,
-                    args.variant_depth_only_y_ploidy,
-                    args.x_cov,
-                    args.y_cov,
-                    args.norm_cov,
-                    args.prop_samples_x,
-                    args.prop_samples_y,
-                    args.prop_samples_norm,
-                    freq_ht,
-                    args.min_af,
-                    args.f_stat_cutoff,
+                    high_cov_intervals=args.high_cov_intervals,
+                    high_cov_per_platform=args.high_cov_per_platform,
+                    high_cov_all_platforms=args.high_cov_all_platforms,
+                    platform_ht=platform_ht,
+                    min_platform_size=args.min_platform_size,
+                    normalization_contig=normalization_contig,
+                    variant_depth_only_x_ploidy=args.variant_depth_only_x_ploidy,
+                    variant_depth_only_y_ploidy=args.variant_depth_only_y_ploidy,
+                    x_cov=args.x_cov,
+                    y_cov=args.y_cov,
+                    norm_cov=args.norm_cov,
+                    prop_samples_x=args.prop_samples_x,
+                    prop_samples_y=args.prop_samples_y,
+                    prop_samples_norm=args.prop_samples_norm,
+                    freq_ht=freq_ht,
+                    min_af=args.min_af,
+                    f_stat_cutoff=args.f_stat_cutoff,
                 )
-                ht = ht.annotate_globals(f_stat_ukb_var=args.f_stat_ukb_var)
-                ht.write(
-                    get_checkpoint_path(
-                        f"sex_imputation{'.per_platform' if args.per_platform else ''}"
-                        f"{'.high_cov_all_platforms' if args.high_cov_all_platforms else ''}"
-                        f"{'.high_cov' if args.high_cov_intervals else ''}"
-                        f"{'.ukb_f_stat' if args.f_stat_ukb_var else ''}"
-                    )
-                    if args.test
-                    else sex.path,
-                    overwrite=True,
-                )
+
+                ploidy_ht = ploidy_ht.annotate(platform=platform_ht[ploidy_ht.key].qc_platform)
+                ploidy_ht = ploidy_ht.annotate_globals(f_stat_ukb_var=args.f_stat_ukb_var)
+                logger.info("Writing ploidy Table...")
+                ploidy_ht.write(ploidy_ht_path, overwrite=True)
             else:
                 logger.warning("File exists and overwrite is not set!")
     finally:
