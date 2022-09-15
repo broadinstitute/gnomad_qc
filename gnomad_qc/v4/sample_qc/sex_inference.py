@@ -710,7 +710,7 @@ def main(args):
             )
             karyotype_ht = infer_sex_karyotype_from_ploidy(
                 ploidy_ht,
-                per_platform=args.per_platform,
+                per_platform=per_platform,
                 f_stat_cutoff=args.f_stat_cutoff,
             )
             sex_ht = ploidy_ht.annotate(**karyotype_ht[ploidy_ht.key])
