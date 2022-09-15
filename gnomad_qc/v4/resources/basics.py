@@ -19,6 +19,7 @@ logger.setLevel(logging.INFO)
 def get_gnomad_v4_vds(
     split: bool = False,
     remove_hard_filtered_samples: bool = True,
+    remove_hard_filtered_samples_no_sex: bool = False,
     release_only: bool = False,
     test: bool = False,
     n_partitions: int = None,
@@ -27,12 +28,19 @@ def get_gnomad_v4_vds(
     Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
 
     :param split: Perform split on VDS - Note: this will perform a split on the VDS rather than grab an already split VDS
-    :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after sample QC)
+    :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after hard filtering is complete)
+    :param remove_hard_filtered_samples_no_sex: Whether to remove samples that failed non sex inference hard filters (only relevant after pre-sex imputation hard filtering is complete)
     :param release_only: Whether to filter the VDS to only samples available for release (can only be used if metadata is present)
     :param test: Whether to use the test VDS instead of the full v4 VDS
     :param n_partitions: Optional argument to read the VDS with a specific number of partitions
     :return: gnomAD v4 dataset with chosen annotations and filters
     """
+
+    if remove_hard_filtered_samples and remove_hard_filtered_samples_no_sex:
+        raise ValueError(
+            "Only one of 'remove_hard_filtered_samples' or 'remove_hard_filtered_samples_no_sex' can be set to True."
+        )
+
     if test:
         gnomad_v4_resource = gnomad_v4_testset
     else:
@@ -43,19 +51,27 @@ def get_gnomad_v4_vds(
     else:
         vds = gnomad_v4_resource.vds()
 
-    if remove_hard_filtered_samples:
+    if remove_hard_filtered_samples or remove_hard_filtered_samples_no_sex:
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
-            meta_ht = meta_ht.filter(
-                hl.len(meta_ht.rand_sampling_meta.hard_filters_no_sex) == 0
-            )
+            if remove_hard_filtered_samples_no_sex:
+                hard_filter_expr = meta_ht.rand_sampling_meta.hard_filters_no_sex
+            else:
+                hard_filter_expr = meta_ht.rand_sampling_meta.hard_filters
+            meta_ht = meta_ht.filter(hl.len(hard_filter_expr) == 0)
             vds = hl.vds.filter_samples(vds, meta_ht)
         else:
-            from gnomad_qc.v4.resources.sample_qc import hard_filtered_samples
-
-            vds = hl.vds.filter_samples(
-                vds, hard_filtered_samples.versions[CURRENT_VERSION].ht(), keep=False
+            from gnomad_qc.v4.resources.sample_qc import (
+                hard_filtered_samples,
+                hard_filtered_samples_no_sex,
             )
+            if remove_hard_filtered_samples:
+                hard_filter_ht = hard_filtered_samples.versions[CURRENT_VERSION].ht()
+            else:
+                hard_filter_ht = hard_filtered_samples_no_sex.versions[
+                    CURRENT_VERSION
+                ].ht()
+            vds = hl.vds.filter_samples(vds, hard_filter_ht, keep=False)
 
     if release_only:
         if test:
