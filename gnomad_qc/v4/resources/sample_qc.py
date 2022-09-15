@@ -7,7 +7,7 @@ from gnomad.resources.resource_utils import (
 )
 from gnomad.sample_qc.relatedness import get_relationship_expr
 
-from gnomad_qc.v4.resources.basics import get_checkpoint_path
+from gnomad_qc.v4.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v4.resources.constants import (
     CURRENT_VERSION,
     VERSIONS,
@@ -387,6 +387,21 @@ sex = VersionedTableResource(
         for version in VERSIONS
     },
 )
+
+
+def get_ploidy_cutoff_json_path(version: str = CURRENT_VERSION, test: bool = False):
+    """
+    Get the sex karyotype ploidy cutoff JSON path for the indicated gnomAD version.
+
+    :param version: Version of the JSON to return.
+    :param test: Whether to use a tmp path for a test JSON.
+    :return: Path of sex karyotype ploidy cutoff JSON.
+    """
+    if test:
+        return f"{qc_temp_prefix(version)}ploidy_cutoffs.test.json"
+    else:
+        return f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.ploidy_cutoffs.json"
+
 
 # Samples to drop for PCA due to them being related
 pca_related_samples_to_drop = VersionedTableResource(
