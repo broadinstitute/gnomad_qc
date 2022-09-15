@@ -418,7 +418,9 @@ def compute_sex_ploidy(
         add_globals["high_cov_interval_parameters"] = high_cov_cutoffs
 
     if high_cov_per_platform:
-        logger.info("Running sex ploidy imputation per platform using per platform high coverage intervals...")
+        logger.info(
+            "Running sex ploidy imputation per platform using per platform high coverage intervals..."
+        )
         platforms = platform_ht.aggregate(
             hl.agg.collect_as_set(platform_ht.qc_platform)
         )
@@ -450,11 +452,17 @@ def compute_sex_ploidy(
             (interval_qc_mt.n_samples >= min_platform_size)
             & (interval_qc_mt.platform != "platform_-1")
         )
-        ploidy_ht = _annotate_sex(vds, _get_high_coverage_intervals_ht(interval_qc_mt, prefix="platform_"))
+        ploidy_ht = _annotate_sex(
+            vds, _get_high_coverage_intervals_ht(interval_qc_mt, prefix="platform_")
+        )
         add_globals["high_cov_all_platforms_min_platform_size"] = min_platform_size
     elif high_cov_intervals:
-        logger.info("Running sex ploidy imputation using high coverage intervals across the full sample set...")
-        ploidy_ht = _annotate_sex(vds, _get_high_coverage_intervals_ht(interval_qc_mt, agg_func=lambda x: x))
+        logger.info(
+            "Running sex ploidy imputation using high coverage intervals across the full sample set..."
+        )
+        ploidy_ht = _annotate_sex(
+            vds, _get_high_coverage_intervals_ht(interval_qc_mt, agg_func=lambda x: x)
+        )
     else:
         logger.info("Running sex ploidy imputation...")
         ploidy_ht = _annotate_sex(vds, interval_qc_mt.rows())
@@ -683,8 +691,12 @@ def main(args):
                     f_stat_cutoff=args.f_stat_cutoff,
                 )
 
-                ploidy_ht = ploidy_ht.annotate(platform=platform_ht[ploidy_ht.key].qc_platform)
-                ploidy_ht = ploidy_ht.annotate_globals(f_stat_ukb_var=args.f_stat_ukb_var)
+                ploidy_ht = ploidy_ht.annotate(
+                    platform=platform_ht[ploidy_ht.key].qc_platform
+                )
+                ploidy_ht = ploidy_ht.annotate_globals(
+                    f_stat_ukb_var=args.f_stat_ukb_var
+                )
                 logger.info("Writing ploidy Table...")
                 ploidy_ht.write(ploidy_ht_path, overwrite=True)
             else:
