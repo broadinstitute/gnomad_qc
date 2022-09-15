@@ -625,7 +625,11 @@ def main(args):
             )
 
         if args.impute_sex:
-            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
+            vds = get_gnomad_v4_vds(
+                remove_hard_filtered_samples=False,
+                remove_hard_filtered_samples_no_sex=True,
+                test=test,
+            )
             if args.f_stat_ukb_var:
                 # The UK Biobank f-stat table contains only variants that were high callrate (0.99) and common
                 # (AF >0.001) within the UK Biobank 200K Regeneron exome dataset and it includes the UK Biobank 200K
@@ -635,7 +639,7 @@ def main(args):
             else:
                 freq_ht = (
                     hl.read_table(get_checkpoint_path("test_f_stat_sites"))
-                    if args.test
+                    if test
                     else f_stat_sites.ht()
                 )
 
