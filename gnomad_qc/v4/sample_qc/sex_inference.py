@@ -376,7 +376,9 @@ def compute_sex(
             )
             | (
                 (interval_qc_mt.interval.start.contig == "chr20")
-                & agg_func(interval_qc_mt[f"{prefix}over_{norm_cov}x"] > prop_samples_norm)
+                & agg_func(
+                    interval_qc_mt[f"{prefix}over_{norm_cov}x"] > prop_samples_norm
+                )
             )
         ).rows()
 
@@ -462,12 +464,17 @@ def compute_sex(
                 (interval_qc_mt.n_samples >= min_platform_size)
                 & (interval_qc_mt.platform != "platform_-1")
             )
-            sex_ht = _annotate_sex(vds, _get_high_coverage_intervals_ht(interval_qc_mt, prefix="platform_"))
+            sex_ht = _annotate_sex(
+                vds, _get_high_coverage_intervals_ht(interval_qc_mt, prefix="platform_")
+            )
         else:
             logger.info(
                 "Running sex ploidy and sex karyotype estimation using high coverage intervals across the full sample set..."
             )
-            sex_ht = _annotate_sex(vds, _get_high_coverage_intervals_ht(interval_qc_mt, agg_func=lambda x: x))
+            sex_ht = _annotate_sex(
+                vds,
+                _get_high_coverage_intervals_ht(interval_qc_mt, agg_func=lambda x: x),
+            )
     else:
         calling_intervals_ht = interval_qc_mt.rows()
         if per_platform:
@@ -486,7 +493,7 @@ def compute_sex(
                     hl.vds.filter_samples(
                         vds, platform_ht.filter(platform_ht.qc_platform == platform)
                     ),
-                    calling_intervals_ht
+                    calling_intervals_ht,
                 )
                 sex_ht = sex_ht.annotate(platform=platform)
                 per_platform_sex_hts.append(sex_ht)
@@ -550,7 +557,9 @@ def main(args):
                 min_callrate=args.min_callrate,
             )
             ht.naive_coalesce(args.fstat_n_partitions).write(
-                get_checkpoint_path("test_f_stat_sites") if args.test else f_stat_sites.path,
+                get_checkpoint_path("test_f_stat_sites")
+                if args.test
+                else f_stat_sites.path,
                 overwrite=args.overwrite,
             )
 
@@ -624,7 +633,9 @@ def main(args):
                     else f_stat_sites.ht()
                 )
 
-            sex_ht_path = get_checkpoint_path("sex_imputation") if args.test else sex.path
+            sex_ht_path = (
+                get_checkpoint_path("sex_imputation") if args.test else sex.path
+            )
             # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
             if args.overwrite or not file_exists(sex_ht_path):
                 interval_qc_mt = (
@@ -637,7 +648,9 @@ def main(args):
                     else sex_imputation_platform_coverage.mt()
                 )
                 if args.per_platform or args.high_cov_all_platforms:
-                    platform_ht = load_platform_ht(test, calling_interval_name, calling_interval_padding)
+                    platform_ht = load_platform_ht(
+                        test, calling_interval_name, calling_interval_padding
+                    )
                 else:
                     platform_ht = None
 
