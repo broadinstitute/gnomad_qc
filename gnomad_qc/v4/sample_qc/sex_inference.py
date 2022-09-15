@@ -694,6 +694,27 @@ def main(args):
                 ploidy_ht.write(ploidy_ht_path, overwrite=True)
             else:
                 logger.warning("File exists and overwrite is not set!")
+
+        if args.annotate_sex_karyotype:
+            ploidy_ht = (
+                hl.read_table(get_checkpoint_path(f"ploidy_imputation"))
+                if test
+                else ploidy.ht()
+            )
+            karyotype_ht = infer_sex_karyotype_from_ploidy(
+                ploidy_ht,
+                per_platform=args.per_platform,
+                f_stat_cutoff=args.f_stat_cutoff,
+            )
+            sex_ht = ploidy_ht.annotate(**karyotype_ht[ploidy_ht.key])
+            sex_ht = sex_ht.annotate_globals(**karyotype_ht.index_globals())
+
+            logger.info("Writing sex HT with karyotype annotation...")
+            sex_ht.write(
+                get_checkpoint_path("sex") if test else sex.path,
+                overwrite=args.overwrite,
+            )
+
     finally:
         logger.info("Copying log to logging bucket...")
         hl.copy_log(get_logging_path("sex_inference"))
