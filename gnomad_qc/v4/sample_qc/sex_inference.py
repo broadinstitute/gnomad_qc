@@ -242,8 +242,8 @@ def compute_sex(
     coverage_mt: hl.MatrixTable,
     high_cov_intervals: bool = False,
     per_platform: bool = False,
-    high_cov_by_platform_all: bool = False,
-    platform_ht: hl.Table = None,
+    high_cov_all_platforms: bool = False,
+    platform_ht: Optional[hl.Table] = None,
     min_platform_size: bool = 100,
     normalization_contig: str = "chr20",
     variant_depth_only_x_ploidy: bool = False,
@@ -269,7 +269,7 @@ def compute_sex(
          using per platform high coverage intervals (`x_cov`, `y_cov`, `norm_cov`, `prop_samples_x`, `prop_samples_y`,
          `prop_samples_norm`, and `min_platform_size`).
         - Use per platform stats to determine which are high coverage across all platforms (depending on platform sample
-         size). Uses parameters `high_cov_by_platform_all`, `x_cov`, `y_cov`, `norm_cov`, `prop_samples_x`,
+         size). Uses parameters `high_cov_all_platforms`, `x_cov`, `y_cov`, `norm_cov`, `prop_samples_x`,
          `prop_samples_y`, `prop_samples_norm`.
         - We use `annotate_sex`, which uses Hail's VDS imputation of sex ploidy `hail.vds.impute_sex_chromosome_ploidy`,
           and uses `variant_depth_only_x_ploidy` and `variant_depth_only_y_ploidy`.
@@ -315,10 +315,10 @@ def compute_sex(
     :param coverage_mt: Input interval coverage MatrixTable
     :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy and karyotype inference
     :param per_platform: Whether to run the sex ploidy and karyotype inference per platform
-    :param high_cov_by_platform_all: Whether to filter to high coverage intervals for the sex ploidy and karyotype
+    :param high_cov_all_platforms: Whether to filter to high coverage intervals for the sex ploidy and karyotype
         inference. Using only intervals that are considered high coverage across all platforms
-    :param platform_ht: Input platform assignment Table. This is only needed if per_platform or high_cov_by_platform_all are True
-    :param min_platform_size: Required size of a platform to be considered when using `high_cov_by_platform_all`. Only
+    :param platform_ht: Input platform assignment Table. This is only needed if `per_platform` or `high_cov_all_platforms` are True
+    :param min_platform_size: Required size of a platform to be considered when using `high_cov_all_platforms`. Only
         platforms that have # of samples > 'min_platform_size' are used to determine intervals that have a
         high coverage across all platforms
     :param normalization_contig: Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y
@@ -402,7 +402,7 @@ def compute_sex(
             hl.agg.collect_as_set(platform_ht.qc_platform)
         )
 
-    if high_cov_intervals or high_cov_by_platform_all:
+    if high_cov_intervals or high_cov_all_platforms:
         logger.info(
             "Running sex ploidy and sex karyotype estimation using only high coverage intervals: %d percent of samples "
             "with greater than %dx coverage on chrX, %d percent of samples with greater than %dx coverage on chrY, and "
@@ -416,7 +416,7 @@ def compute_sex(
             normalization_contig,
         )
 
-        if per_platform or high_cov_by_platform_all:
+        if per_platform or high_cov_all_platforms:
             logger.info("Annotating coverage MatrixTable with platform information")
             coverage_mt = coverage_mt.annotate_cols(
                 platform=platform_ht[coverage_mt.col_key].qc_platform
@@ -458,7 +458,7 @@ def compute_sex(
                 x_ploidy_cutoffs=hl.struct(**x_ploidy_cutoffs),
                 y_ploidy_cutoffs=hl.struct(**y_ploidy_cutoffs),
             )
-        elif high_cov_by_platform_all:
+        elif high_cov_all_platforms:
             logger.info(
                 "Running sex ploidy and sex karyotype estimation using high coverage intervals across all platforms. "
                 "Limited to platforms with at least %s samples...",
@@ -523,7 +523,7 @@ def compute_sex(
     sex_ht = sex_ht.annotate_globals(
         high_cov_intervals=high_cov_intervals,
         per_platform=per_platform,
-        high_cov_by_platform_all=high_cov_by_platform_all,
+        high_cov_all_platforms=high_cov_all_platforms,
         min_platform_size=min_platform_size,
         normalization_contig=normalization_contig,
         variant_depth_only_x_ploidy=variant_depth_only_x_ploidy,
@@ -668,7 +668,7 @@ def main(args):
                     coverage_mt,
                     args.high_cov_intervals,
                     args.per_platform,
-                    args.high_cov_by_platform_all,
+                    args.high_cov_all_platforms,
                     platform_ht,
                     args.min_platform_size,
                     args.normalization_contig,
@@ -688,7 +688,7 @@ def main(args):
                 ht.write(
                     get_checkpoint_path(
                         f"sex_imputation{'.per_platform' if args.per_platform else ''}"
-                        f"{'.high_cov_by_platform_all' if args.high_cov_by_platform_all else ''}"
+                        f"{'.high_cov_all_platforms' if args.high_cov_all_platforms else ''}"
                         f"{'.high_cov' if args.high_cov_intervals else ''}"
                         f"{'.ukb_f_stat' if args.f_stat_ukb_var else ''}"
                     )
@@ -861,7 +861,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     sex_ploidy_args.add_argument(
-        "--high-cov-by-platform-all",
+        "--high-cov-all-platforms",
         help=(
             "Whether to filter to high coverage intervals for the sex ploidy and karyotype inference. "
             "Use only intervals that are considered high coverage across all platforms."
@@ -871,7 +871,7 @@ if __name__ == "__main__":
     sex_ploidy_args.add_argument(
         "--min-platform-size",
         help=(
-            "Required size of a platform to be considered in '--high-cov-by-platform-all'. Only platforms that "
+            "Required size of a platform to be considered in '--high-cov-all-platforms'. Only platforms that "
             "have # of samples > 'min_platform_size' are used to determine intervals that have a high coverage across "
             "all platforms."
         ),
