@@ -310,7 +310,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--subset-call-stats",
-        help="Adds subset callstats, AC, AN, AF, nhomalt",
+        help="Adds subset callstats, AC, AN, AF, nhomalt.",
         action="store_true",
     )
     parser.add_argument(
