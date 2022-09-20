@@ -297,6 +297,16 @@ relatedness = VersionedTableResource(
     },
 )
 
+sex_imputation_coverage = VersionedMatrixTableResource(
+    CURRENT_VERSION,
+    {
+        version: MatrixTableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sex_imputation_coverage.mt"
+        )
+        for version in VERSIONS
+    },
+)
+
 # Sex imputation results
 sex = VersionedTableResource(
     CURRENT_VERSION,
