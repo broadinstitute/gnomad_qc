@@ -14,18 +14,21 @@ from gnomad_qc.v4.resources.constants import (
 )
 
 
-def get_sample_qc_root(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def get_sample_qc_root(
+    version: str = CURRENT_VERSION, test: bool = False, data_type="exomes"
+) -> str:
     """
     Return path to sample QC root folder.
 
     :param version: Version of sample QC path to return
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
     :return: Root to sample QC path
     """
     return (
-        f"gs://gnomad-tmp/gnomad_v{version}_testing/sample_qc/exomes"
+        f"gs://gnomad-tmp/gnomad_v{version}_testing/sample_qc/{data_type}"
         if test
-        else f"gs://gnomad/v{version}/sample_qc/exomes"
+        else f"gs://gnomad/v{version}/sample_qc/{data_type}"
     )
 
 
@@ -78,7 +81,7 @@ def _get_ancestry_pca_ht_path(
     :param remove_unreleasable_samples: Whether the PCA removed unreleasable samples.
     :return: Path to requested ancestry PCA file.
     """
-    return f"{get_sample_qc_root(version,test)}/gnomad.exomes.v{version}.pca_{part}{'_without_unreleasable_samples' if remove_unreleasable_samples else ''}.ht"
+    return f"{get_sample_qc_root(version,test)}/gnomad.joint.v{version}.pca_{part}{'_without_unreleasable_samples' if remove_unreleasable_samples else ''}.ht"
 
 
 def ancestry_pca_loadings(
