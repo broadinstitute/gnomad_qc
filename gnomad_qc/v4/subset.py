@@ -1,6 +1,8 @@
 import argparse
 import logging
 
+from gnomad.utils.annotations import get_adj_expr
+from gnomad.utils.vcf import adjust_vcf_incompatible_types
 import hail as hl
 
 # TODO: include this when we have the sample QC meta HT: from gnomad_qc.v4.resources.meta import meta
@@ -66,18 +68,59 @@ HEADER_DICT = {
     },
 }
 
+SUBSET_CALLSTATS_INFO_DICT = {
+    "AC_raw": {
+        "Number": "A",
+        "Description": "Alternate allele count in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
+    "AN_raw": {
+        "Number": "1",
+        "Description": "Total number of alleles in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
+    "AF_raw": {
+        "Number": "A",
+        "Description": "Alternate allele frequency in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
+    "nhomalt_raw": {
+        "Number": "A",
+        "Description": "Count of homozygous individuals in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
+    "AC": {
+        "Number": "A",
+        "Description": "Alternate allele count in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
+    "AN": {
+        "Number": "1",
+        "Description": "Total number of alleles in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
+    "AF": {
+        "Number": "A",
+        "Description": "Alternate allele frequency in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
+    "nhomalt": {
+        "Number": "A",
+        "Description": "Count of homozygous individuals in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+    },
+}
+
 
 def main(args):
     hl.init(log="/subset.log", default_reference="GRCh38")
     test = args.test
     output_path = args.output_path
+    header_dict = HEADER_DICT
+
+    if args.vcf and not args.split_multi:
+        raise ValueError(
+            "VCF export without split multi is not supported at this time."
+        )
 
     vds = get_gnomad_v4_vds(
         n_partitions=args.n_partitions, remove_hard_filtered_samples=False
     )
 
     if test:
-        vds = hl.vds.variant_dataset.VariantDataset(
+        vds = hl.vds.VariantDataset(
             vds.reference_data._filter_partitions(range(2)),
             vds.variant_data._filter_partitions(range(2)),
         )
@@ -116,7 +159,7 @@ def main(args):
 
     if args.include_ukb_200k:
         # TODO: add option to provide an application linking file as an argument. Default is ATGU ID
-        vds = hl.vds.variant_dataset.VariantDataset(
+        vds = hl.vds.VariantDataset(
             vds.reference_data.key_cols_by(
                 s=hl.coalesce(
                     meta_ht[vds.reference_data.col_key].project_meta.ukb_meta.eid_31063,
@@ -134,6 +177,71 @@ def main(args):
             s=hl.coalesce(meta_ht.project_meta.ukb_meta.eid_31063, meta_ht.s)
         )
 
+    if args.split_multi:
+        logger.info("Splitting multi-allelics")
+        vd = vds.variant_data
+        vd = vd.annotate_rows(
+            n_unsplit_alleles=hl.len(vd.alleles),
+            mixed_site=(hl.len(vd.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(vd.alleles[0], a), vd.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
+        )
+        vds = hl.vds.split_multi(
+            hl.vds.VariantDataset(vds.reference_data, vd), filter_changed_loci=True
+        )
+
+    if args.vcf or args.dense_mt or args.subset_call_stats:
+        logger.info("Densifying VDS")
+        mt = hl.vds.to_dense_mt(vds)
+
+        if args.subset_call_stats:
+            logger.info("Adding subset callstats")
+            if not args.split_multi:
+                mt = mt.annotate_entries(
+                    GT=hl.experimental.lgt_to_gt(mt.LGT, mt.LA),
+                    adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
+                )
+            else:
+                mt = mt.annotate_entries(adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD))
+            ht = mt.annotate_rows(
+                subset_callstats_raw=hl.agg.call_stats(mt.GT, mt.alleles),
+                subset_callstats_adj=hl.agg.filter(
+                    mt.adj, hl.agg.call_stats(mt.GT, mt.alleles)
+                ),
+            ).rows()
+            ht = ht.select(
+                info=hl.struct(
+                    AC_raw=ht.subset_callstats_raw.AC[1:],
+                    AN_raw=ht.subset_callstats_raw.AN,
+                    AF_raw=ht.subset_callstats_raw.AF[1:],
+                    nhomalt_raw=ht.subset_callstats_raw.homozygote_count[1:],
+                    AC=ht.subset_callstats_adj.AC[1:],
+                    AN=ht.subset_callstats_adj.AN,
+                    AF=ht.subset_callstats_adj.AF[1:],
+                    nhomalt=ht.subset_callstats_adj.homozygote_count[1:],
+                )
+            )
+            ht = adjust_vcf_incompatible_types(ht)
+            mt = mt.annotate_rows(info=ht[mt.row_key].info)
+
+            if args.vds:
+                vd = vds.variant_data
+                vd = vd.annotate_rows(info=ht[vd.row_key].info)
+                vds = hl.vds.VariantDataset(vds.reference_data, vd)
+
+        if args.dense_mt:
+            mt.write(f"{output_path}/subset.mt", overwrite=args.overwrite)
+
+        # TODO: add num-vcf-shards where no sharding happens if this is not set
+        if args.vcf:
+            mt = mt.drop("gvcf_info")
+            header_dict["info"] = SUBSET_CALLSTATS_INFO_DICT
+            hl.export_vcf(
+                mt,
+                f"{output_path}.bgz",
+                metadata=header_dict,
+            )
+
     if args.vds:
         vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
 
@@ -146,27 +254,10 @@ def main(args):
         else:
             data_to_drop = {"ukb_meta", "cram", "gvcf"}
 
-        meta_ht = meta_ht.annotate(project_meta=meta_ht.project_meta.drop(*data_to_drop))
-        meta_ht.export(f"{output_path}/metadata.tsv.bgz")
-
-    if args.split_multi:
-        logger.info("Splitting multi-allelics and densifying")
-        vds = hl.vds.split_multi(vds, filter_changed_loci=True)
-
-    if args.vcf or args.dense_mt:
-        mt = hl.vds.to_dense_mt(vds)
-
-    if args.dense_mt:
-        mt.write(f"{output_path}/subset.mt", overwrite=args.overwrite)
-
-    # TODO: add num-vcf-shards where no sharding happens if this is not set
-    if args.vcf:
-        mt = mt.drop("gvcf_info")
-        hl.export_vcf(
-            mt,
-            f"{output_path}.bgz",
-            metadata=HEADER_DICT,
+        meta_ht = meta_ht.annotate(
+            project_meta=meta_ht.project_meta.drop(*data_to_drop)
         )
+        meta_ht.export(f"{output_path}/metadata.tsv.bgz")
 
 
 if __name__ == "__main__":
@@ -216,6 +307,11 @@ if __name__ == "__main__":
             "of shards in the output VCF if --vcf is set. By default, there will be no change in partitioning."
         ),
         type=int,
+    )
+    parser.add_argument(
+        "--subset-call-stats",
+        help="Adds subset callstats, AC, AN, AF, nhomalt.",
+        action="store_true",
     )
     parser.add_argument(
         "--export-meta",
