@@ -26,10 +26,10 @@ logger.setLevel(logging.INFO)
 
 
 def run_pca(
-    remove_unreleasable_samples: bool,
-    n_pcs: int,
     related_samples_to_drop: hl.Table,
-    test: hl.bool = True,
+    remove_unreleasable_samples: hl.bool = True,
+    n_pcs: int = 16,
+    test: hl.bool = False,
 ) -> Tuple[List[float], hl.Table, hl.Table]:
     """
     Run population PCA using `run_pca_with_relateds`.
@@ -349,9 +349,9 @@ def main(args):
 
     if args.run_pca:
         pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
+            pca_related_samples_to_drop.ht(),
             remove_unreleasables,
             args.n_pcs,
-            pca_related_samples_to_drop.ht(),
             test,
         )
 
