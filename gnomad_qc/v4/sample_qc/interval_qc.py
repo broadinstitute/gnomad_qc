@@ -2,12 +2,17 @@ import argparse
 import logging
 from typing import List, Tuple, Union
 
-from gnomad.utils.filtering import filter_to_autosomes
+from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 import hail as hl
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.basics import get_checkpoint_path, get_logging_path
+from gnomad_qc.v4.resources.basics import (
+    calling_intervals,
+    get_checkpoint_path,
+    get_gnomad_v4_vds,
+    get_logging_path,
+)
 from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_samples,
     hard_filtered_samples_no_sex,
@@ -21,6 +26,56 @@ from gnomad_qc.v4.resources.sample_qc import (
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("interval_qc")
 logger.setLevel(logging.INFO)
+
+
+def generate_sex_chr_interval_coverage_mt(
+    vds: hl.vds.VariantDataset,
+    calling_intervals_ht: hl.Table,
+) -> hl.MatrixTable:
+    """
+    Create a MatrixTable of interval-by-sample coverage on sex chromosomes with intervals split at PAR regions.
+
+    :param vds: Input VariantDataset.
+    :param calling_intervals_ht: Calling interval Table.
+    :return: MatrixTable with interval coverage per sample on sex chromosomes.
+    """
+    contigs = ["chrX", "chrY"]
+    calling_intervals_ht = calling_intervals_ht.filter(
+        hl.literal(contigs).contains(calling_intervals_ht.interval.start.contig)
+    )
+    logger.info(
+        "Filtering VariantDataset to the following contigs: %s...",
+        ", ".join(contigs),
+    )
+    vds = hl.vds.filter_chromosomes(vds, keep=contigs)
+    rg = vds.reference_data.locus.dtype.reference_genome
+
+    par_boundaries = []
+    for par_interval in rg.par:
+        par_boundaries.append(par_interval.start)
+        par_boundaries.append(par_interval.end)
+
+    # Segment on PAR interval boundaries
+    calling_intervals = hl.segment_intervals(calling_intervals_ht, par_boundaries)
+
+    # Annotate intervals overlapping PAR
+    calling_intervals = calling_intervals.annotate(
+        overlap_par=hl.any(
+            lambda x: x.overlaps(calling_intervals.interval), hl.literal(rg.par)
+        )
+    )
+
+    kept_contig_filter = hl.array(contigs).map(
+        lambda x: hl.parse_locus_interval(x, reference_genome=rg)
+    )
+    vds = hl.vds.VariantDataset(
+        hl.filter_intervals(vds.reference_data, kept_contig_filter),
+        hl.filter_intervals(vds.variant_data, kept_contig_filter),
+    )
+    mt = hl.vds.interval_coverage(vds, calling_intervals)
+    mt = mt.annotate_rows(overlap_par=calling_intervals[mt.row_key].overlap_par)
+
+    return mt
 
 
 def filter_to_test(
@@ -37,6 +92,12 @@ def filter_to_test(
     :return: Input MatrixTables filtered to `num_partitions` on chr1, chrX, and all of chrY.
     """
     logger.info(
+        "Filtering to columns in both the coverage MT and the sex coverage MT for testing...",
+    )
+    mt = mt.anti_join_cols(sex_mt.cols())
+    sex_mt = sex_mt.anti_join_cols(mt.cols())
+
+    logger.info(
         "Filtering to %d partitions on chr1, chrX, and all of chrY for testing...",
         num_partitions,
     )
@@ -52,8 +113,7 @@ def filter_to_test(
 
 def compute_interval_qc(
     mt: hl.MatrixTable,
-    add_per_platform: bool = False,
-    platform_ht: hl.Table = None,
+    platform_ht: hl.Table,
     mean_dp_thresholds: List[int] = [5, 10, 15, 20, 25],
     split_by_sex: bool = False,
 ) -> hl.Table:
@@ -61,15 +121,12 @@ def compute_interval_qc(
 
 
     :param mt: Input interval coverage MatrixTable
-    :param add_per_platform: Whether to compute the aggregate interval means per platform.
     :param platform_ht: Input platform assignment Table.
     :param mean_dp_thresholds: List of mean DP thresholds to use for computing the fraction of samples with mean
         interval DP >= the threshold.
     :param bool split_by_sex: Whether the interval QC should be stratified by sex. If True, mt must be annotated with sex_karyotype.
     :return: Table with interval QC annotations
     """
-    if add_per_platform and platform_ht is None:
-        raise ValueError("'platform_ht' must be defined if 'add_per_platform' is True!")
 
     def _get_agg_expr(expr, agg_func=hl.agg.mean, group_by=None):
         """
@@ -93,60 +150,40 @@ def compute_interval_qc(
 
         return agg_expr
 
-    mt = mt.select_globals(mean_dp_thresholds=mean_dp_thresholds)
-    if add_per_platform:
-        mt = mt.annotate_cols(platform=platform_ht[mt.col_key].qc_platform)
-        platforms = platform_ht.aggregate(
-            hl.agg.collect_as_set(platform_ht.qc_platform)
-        )
-        mt = mt.annotate_globals(platforms=platforms)
-
-    agg_expr = {
-        "interval_mean_dp": _get_agg_expr(mt.mean_dp),
-        "prop_samples_by_dp": hl.struct(
-            **{
-                f"over_{dp}x": _get_agg_expr(mt.mean_dp >= dp, hl.agg.fraction)
-                for dp in mean_dp_thresholds
-            }
-        ),
-        "mean_fraction_over_dp_0": _get_agg_expr(mt.fraction_over_dp_threshold[1]),
-    }
-
-    add_globals = hl.struct()
-    if add_per_platform:
-        logger.info("Adding per platform aggregation...")
-        agg_expr.update(
-            {
-                "platform_interval_mean_dp": _get_agg_expr(
-                    mt.mean_dp,
-                    group_by=mt.platform,
-                ),
-                "platform_prop_samples_by_dp": hl.struct(
-                    **{
-                        f"over_{dp}x": _get_agg_expr(
-                            mt.mean_dp >= dp,
-                            agg_func=hl.agg.fraction,
-                            group_by=mt.platform,
-                        )
-                        for dp in mean_dp_thresholds
-                    }
-                ),
-                "platform_mean_fraction_over_dp_0": _get_agg_expr(
-                    mt.fraction_over_dp_threshold[1],
-                    group_by=mt.platform,
-                ),
-            }
-        )
-        add_globals = hl.struct(
-            platform_n_samples=mt.aggregate_cols(
-                hl.agg.group_by(mt.platform, hl.agg.count())
+    mt = mt.annotate_cols(platform=platform_ht[mt.col_key].qc_platform)
+    agg_groups = [("", None), ("platform_", mt.platform)]
+    mt = mt.select_rows(
+        **{
+            f"{prefix}interval_mean_dp": _get_agg_expr(mt.mean_dp, group_by=group_by)
+            for prefix, group_by in agg_groups
+        },
+        **{
+            f"{prefix}prop_samples_by_dp": hl.struct(
+                **{
+                    f"over_{dp}x": _get_agg_expr(
+                        mt.mean_dp >= dp, agg_func=hl.agg.fraction, group_by=group_by
+                    )
+                    for dp in mean_dp_thresholds
+                }
             )
-        )
+            for prefix, group_by in agg_groups
+        },
+        **{
+            f"{prefix}mean_fraction_over_dp_0": _get_agg_expr(
+                mt.fraction_over_dp_threshold[1], group_by=group_by
+            )
+            for prefix, group_by in agg_groups
+        },
+    )
 
-    ht = mt.select_rows(**agg_expr).rows()
-    ht = ht.annotate_globals(**add_globals)
+    mt = mt.annotate_globals(
+        mean_dp_thresholds=mean_dp_thresholds,
+        platform_n_samples=mt.aggregate_cols(
+            hl.agg.group_by(mt.platform, hl.agg.count())
+        ),
+    )
 
-    return ht
+    return mt.rows()
 
 
 def get_interval_qc_pass(
@@ -164,7 +201,7 @@ def get_interval_qc_pass(
     """
     Add `interval_qc_pass` annotation to indicate whether the site falls within a high coverage interval.
 
-    :param t: Input MatrixTable or Table.
+    :param interval_qc_ht: Input interval QC Table.
     :param per_platform: Whether filter to per platform high coverage intervals for the sex ploidy imputation.
     :param all_platforms: Whether to filter to high coverage intervals for the sex ploidy imputation. Use only intervals that are considered high coverage across all platforms.
     :param by_mean_fraction_over_dp_0: Whether to use the mean fraction of bases over DP 0 to determine high coverage intervals.
@@ -190,9 +227,9 @@ def get_interval_qc_pass(
         all_platforms=all_platforms,
     )
     interval_start = interval_qc_ht.interval.start
-    autosome_or_par = interval_start.in_autosome_or_par()
-    x_non_par = interval_start.in_x_nonpar()
-    y_non_par = interval_start.in_y_nonpar()
+    autosome_or_par = interval_start.in_autosome_or_par() | interval_qc_ht.overlap_par
+    x_non_par = interval_start.in_x_nonpar() & ~interval_qc_ht.overlap_par
+    y_non_par = interval_start.in_y_nonpar() & ~interval_qc_ht.overlap_par
 
     if per_platform or all_platforms:
         platform_n_samples = (
@@ -291,31 +328,53 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
+    test = args.test
+    calling_interval_name = args.calling_interval_name
+    calling_interval_padding = args.calling_interval_padding
+    overwrite = args.overwrite
 
     try:
-        coverage_mt = interval_coverage.mt()
-        sex_coverage_mt = sex_imputation_coverage.mt()
-        if args.test:
-            coverage_mt, sex_coverage_mt = filter_to_test(coverage_mt, sex_coverage_mt)
+        if args.sex_chr_interval_coverage:
+            vds = get_gnomad_v4_vds(
+                remove_hard_filtered_samples=False,
+                remove_hard_filtered_samples_no_sex=True,
+                test=test,
+            )
+            calling_intervals_ht = calling_intervals(
+                calling_interval_name, calling_interval_padding
+            ).ht()
+            sex_coverage_mt = generate_sex_chr_interval_coverage_mt(
+                vds,
+                calling_intervals_ht,
+            )
+            sex_coverage_mt = sex_coverage_mt.annotate_globals(
+                calling_interval_name=calling_interval_name,
+                calling_interval_padding=calling_interval_padding,
+            )
+            sex_coverage_mt.write(
+                get_checkpoint_path("test_sex_imputation_cov", mt=True)
+                if test
+                else sex_chr_coverage.path,
+                overwrite=args.overwrite,
+            )
 
-        if args.add_per_platform:
+        if args.generate_interval_qc_ht:
             platform_ht = platform.ht()
-        else:
-            platform_ht = None
-
-        if args.remove_hardfiltered_no_sex:
-            logger.info(
-                "Removing hard-filtered (without sex imputation) samples from the coverage MTs..."
-            )
-            coverage_mt = coverage_mt.filter_cols(
-                hl.is_missing(hard_filtered_samples_no_sex.ht()[coverage_mt.col_key])
-            )
-            sex_coverage_mt = sex_coverage_mt.filter_cols(
-                hl.is_missing(
-                    hard_filtered_samples_no_sex.ht()[sex_coverage_mt.col_key]
+            coverage_mt = interval_coverage.mt()
+            sex_coverage_mt = sex_imputation_coverage.mt()
+            if args.test:
+                coverage_mt, sex_coverage_mt = filter_to_test(
+                    coverage_mt, sex_coverage_mt
                 )
-            )
-        if args.remove_hardfiltered:
+                coverage_mt = coverage_mt.checkpoint(
+                    get_checkpoint_path("interval_qc_coverage", mt=True),
+                    _read_if_exists=True,
+                )
+                sex_coverage_mt = sex_coverage_mt.checkpoint(
+                    get_checkpoint_path("interval_qc_sex_coverage", mt=True),
+                    _read_if_exists=True,
+                )
+
             logger.info("Removing hard-filtered samples from the coverage MTs...")
             coverage_mt = coverage_mt.filter_cols(
                 hl.is_missing(hard_filtered_samples.ht()[coverage_mt.col_key])
@@ -324,43 +383,54 @@ def main(args):
                 hl.is_missing(hard_filtered_samples.ht()[sex_coverage_mt.col_key])
             )
 
-        ht = compute_interval_qc(
-            filter_to_autosomes(coverage_mt),
-            add_per_platform=args.add_per_platform,
-            platform_ht=platform_ht,
-            mean_dp_thresholds=args.mean_dp_thresholds,
-        )
-
-        logger.info("Filtering sex imputation coverage MT to sex chromosomes...")
-        sex_coverage_mt = hl.filter_intervals(
-            sex_coverage_mt,
-            [hl.parse_locus_interval(contig) for contig in ["chrX", "chrY"]],
-        )
-
-        logger.info("Filtering to XX and XY samples...")
-        sex_ht = sex.ht().select("sex_karyotype")
-        sex_coverage_mt = sex_coverage_mt.annotate_cols(
-            **sex_ht[sex_coverage_mt.col_key]
-        )
-        sex_coverage_mt = sex_coverage_mt.filter_cols(
-            (sex_coverage_mt.sex_karyotype == "XX")
-            | (sex_coverage_mt.sex_karyotype == "XY")
-        )
-
-        ht = ht.union(
-            compute_interval_qc(
-                sex_coverage_mt,
-                add_per_platform=args.add_per_platform,
-                platform_ht=platform_ht,
-                mean_dp_thresholds=args.mean_dp_thresholds,
-                split_by_sex=True,
+            coverage_mt = coverage_mt.filter_rows(
+                coverage_mt.interval.start.in_autosome()
             )
-        )
+            ht = compute_interval_qc(
+                coverage_mt,
+                platform_ht=platform_ht,
+                mean_dp_thresholds=coverage_mt.mean_dp_thresholds,
+            )
 
-        ht.write(
-            get_checkpoint_path("interval_qc") if args.test else interval_qc.path,
-            overwrite=args.overwrite,
-        )
+            logger.info("Filtering to XX and XY samples...")
+            sex_ht = sex.ht().select("sex_karyotype")
+            sex_coverage_mt = sex_coverage_mt.annotate_cols(
+                **sex_ht[sex_coverage_mt.col_key]
+            )
+            sex_coverage_mt = sex_coverage_mt.filter_cols(
+                (sex_coverage_mt.sex_karyotype == "XX")
+                | (sex_coverage_mt.sex_karyotype == "XY")
+            )
+
+            ht = ht.union(
+                compute_interval_qc(
+                    sex_coverage_mt,
+                    platform_ht=platform_ht,
+                    mean_dp_thresholds=sex_coverage_mt.mean_dp_thresholds,
+                    split_by_sex=True,
+                )
+            )
+            ht.write(
+                get_checkpoint_path("interval_qc") if args.test else interval_qc.path,
+                overwrite=args.overwrite,
+            )
+        if args.interval_qc_pass_ht:
+            ht = (
+                hl.read_table(get_checkpoint_path("interval_qc"))
+                if args.test
+                else interval_qc.ht()
+            )
+            ht = get_interval_qc_pass(
+                ht,
+                per_platform=False,
+                all_platforms=False,
+                by_mean_fraction_over_dp_0=True,
+                by_prop_samples_over_cov=False,
+            )
+            # ht.write(
+            #    get_checkpoint_path("interval_qc") if args.test else interval_qc.path,
+            #    overwrite=args.overwrite,
+            # )
     finally:
         logger.info("Copying log to logging bucket...")
         hl.copy_log(get_logging_path("interval_qc"))
@@ -381,34 +451,38 @@ if __name__ == "__main__":
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
-    parser.add_argument(
-        "--add-per-platform",
+
+    sex_coverage_args = parser.add_argument_group(
+        "Sex imputation interval coverage",
+        "Arguments used for computing interval coverage for sex imputation.",
+    )
+    sex_coverage_args.add_argument(
+        "--sex-imputation-interval-coverage",
         help=(
-            "Whether to add a per platform interval QC annotation indicating if the interval is considered high "
-            "coverage within the samples assigned platform."
+            "Create a MatrixTable of interval-by-sample coverage on a specified list of contigs with PAR regions "
+            "excluded."
         ),
         action="store_true",
     )
-    hard_filter_parser = parser.add_mutually_exclusive_group(required=True)
-    hard_filter_parser.add_argument(
-        "--remove-hardfiltered-no-sex",
-        help="",
-        action="store_true",
-    )
-    hard_filter_parser.add_argument(
-        "--remove-hardfiltered",
-        help="",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--mean-dp-thresholds",
+    sex_coverage_args.add_argument(
+        "--calling-interval-name",
         help=(
-            "List of mean DP cutoffs to determining the fraction of samples with mean coverage >= the cutoff for each "
-            "interval."
+            "Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'. Only "
+            "used if '--test' is set."
+        ),
+        type=str,
+        choices=["ukb", "broad", "intersection"],
+        default="intersection",
+    )
+    sex_coverage_args.add_argument(
+        "--calling-interval-padding",
+        help=(
+            "Number of base pair padding to use on the calling intervals. One of 0 or 50 bp. Only used if '--test' is "
+            "set."
         ),
         type=int,
-        nargs="+",
-        default=[5, 10, 15, 20, 25],
+        choices=[0, 50],
+        default=50,
     )
 
     args = parser.parse_args()
