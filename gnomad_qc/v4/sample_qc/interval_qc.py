@@ -2,7 +2,6 @@ import argparse
 import logging
 from typing import List, Tuple, Union
 
-from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 import hail as hl
 
@@ -15,12 +14,11 @@ from gnomad_qc.v4.resources.basics import (
 )
 from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_samples,
-    hard_filtered_samples_no_sex,
     interval_coverage,
     interval_qc,
     platform,
     sex,
-    sex_imputation_coverage,
+    sex_chr_coverage,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
