@@ -144,17 +144,18 @@ def compute_interval_qc(
     return ht
 
 
-def annotate_interval_qc_filter(
-    t: Union[hl.MatrixTable, hl.Table],
-    per_platform: bool = False,
-    all_platforms: bool = False,
-    by_mean_fraction_over_dp_0: bool = True,
-    by_prop_samples_over_cov: bool = False,
-    mean_fraction_over_dp_0: float = 0.99,
-    autosome_par_xx_cov: int = 20,
-    xy_nonpar_cov: int = 10,
-    prop_samples: float = 0.85,
-) -> Union[hl.MatrixTable, hl.Table]:
+def get_interval_qc_pass(
+        interval_qc_ht: hl.Table,
+        per_platform: bool = False,
+        all_platforms: bool = False,
+        min_platform_size: int = 100,
+        by_mean_fraction_over_dp_0: bool = True,
+        by_prop_samples_over_cov: bool = False,
+        mean_fraction_over_dp_0: float = 0.99,
+        autosome_par_xx_cov: int = 20,
+        xy_nonpar_cov: int = 10,
+        prop_samples: float = 0.85,
+) -> hl.Table:
     """
     Add `interval_qc_pass` annotation to indicate whether the site falls within a high coverage interval.
 
@@ -169,7 +170,8 @@ def annotate_interval_qc_filter(
     :param prop_samples: Proportion of samples with mean coverage greater than `autosome_cov`/`sex_cov` over the interval to determine high coverage intervals. Default is 0.85.
     :return: MatrixTable or Table with samples removed
     """
-    if (by_mean_fraction_over_dp_0 and by_prop_samples_over_cov) or (not by_mean_fraction_over_dp_0 and not by_prop_samples_over_cov):
+    if (by_mean_fraction_over_dp_0 and by_prop_samples_over_cov) or (
+            not by_mean_fraction_over_dp_0 and not by_prop_samples_over_cov):
         raise ValueError(
             "One and only one of 'high_cov_by_mean_fraction_over_dp_0' and 'high_cov_by_prop_samples_over_cov' must be "
             "True!"
@@ -177,37 +179,96 @@ def annotate_interval_qc_filter(
     if per_platform and all_platforms:
         raise ValueError("Only one of 'per_platform' and 'all_platforms' can be True!")
 
-    interval_qc_ht = interval_qc.ht()
+    interval_qc_ht = interval_qc_ht.annotate_globals(
+        per_platform=per_platform,
+        all_platforms=all_platforms,
+    )
     interval_start = interval_qc_ht.interval.start
+    autosome_or_par = interval_start.in_autosome_or_par()
+    x_non_par = interval_start.in_x_nonpar()
+    y_non_par = interval_start.in_y_nonpar()
 
     if per_platform or all_platforms:
+        platform_n_samples = interval_qc_ht.index_globals().platform_n_samples.collect()[0]
         ann_prefix = "platform_"
     else:
         ann_prefix = ""
 
     if by_mean_fraction_over_dp_0:
-        interval_qc_expr = interval_qc_ht[f"{ann_prefix}mean_fraction_over_dp_0"]
-        interval_qc_autosome_par_expr = interval_qc_expr["all"]
-        interval_qc_xx_expr = interval_qc_expr["XX"]
-        interval_qc_xy_expr = interval_qc_expr["XY"]
+        add_globals = hl.struct(
+            mean_fraction_over_dp_0=mean_fraction_over_dp_0
+        )
+        qc_expr = interval_qc_ht[f"{ann_prefix}mean_fraction_over_dp_0"]
+        qc_autosome_par_expr = qc_expr["all"]
+        qc_xx_expr = qc_expr.get("XX", None)
+        qc_xy_expr = qc_expr.get("XY", None)
         cutoff = mean_fraction_over_dp_0
-    elif by_prop_samples_over_cov:
-        interval_qc_expr = interval_qc_ht[f"{ann_prefix}prop_samples_by_dp"]
-        interval_qc_autosome_par_expr = interval_qc_expr[f"over_{autosome_par_xx_cov}x"]["all"]
-        interval_qc_xx_expr = interval_qc_expr[f"over_{autosome_par_xx_cov}x"]["XX"]
-        interval_qc_xy_expr = interval_qc_expr[f"over_{xy_nonpar_cov}x"]["XY"]
+    if by_prop_samples_over_cov:
+        add_globals = hl.struct(
+            autosome_par_xx_cov=autosome_par_xx_cov,
+            xy_nonpar_cov=xy_nonpar_cov,
+            prop_samples=prop_samples,
+        )
+        qc_expr = interval_qc_ht[f"{ann_prefix}prop_samples_by_dp"]
+        qc_autosome_par_expr = qc_expr[f"over_{autosome_par_xx_cov}x"]["all"]
+        qc_xx_expr = qc_expr[f"over_{autosome_par_xx_cov}x"].get("XX", None)
+        qc_xy_expr = qc_expr[f"over_{xy_nonpar_cov}x"].get("XY", None)
         cutoff = prop_samples
 
-    interval_qc_ht = interval_qc_ht.filter(
-        (interval_start.in_autosome_or_par() & (interval_qc_autosome_par_expr > cutoff))
-        | ((interval_start.contig == "chrX") & (interval_qc_xx_expr > cutoff) & (interval_qc_xy_expr > cutoff))
-        | ((interval_start.contig == "chrY") & (interval_qc_xy_expr > cutoff))
+    def _get_pass_expr(qc_autosome_par_expr, qc_xx_expr, qc_xy_expr):
+        return (
+                (autosome_or_par & (qc_autosome_par_expr > cutoff))
+                | (x_non_par & (qc_xx_expr > cutoff) & (qc_xy_expr > cutoff))
+                | (y_non_par & (qc_xy_expr > cutoff))
+        )
+
+    if per_platform or all_platforms:
+        interval_qc_ht = interval_qc_ht.select(
+            pass_interval_qc=hl.struct(
+                **{
+                    platform: _get_pass_expr(
+                        qc_autosome_par_expr[platform],
+                        qc_xx_expr[platform],
+                        qc_xy_expr[platform],
+                    )
+                    for platform in platform_n_samples
+                }
+            )
+        )
+        if all_platforms:
+            add_globals = add_globals.annotate(min_platform_size=min_platform_size)
+            platforms = [platform for platform, n_samples in platform_n_samples.items() if
+                         (n_samples >= min_platform_size) & (platform != "platform_-1")]
+            interval_qc_ht = interval_qc_ht.select(
+                pass_interval_qc=hl.all([interval_qc_ht.pass_interval_qc[platform] for platform in platforms])
+            )
+    else:
+        interval_qc_ht = interval_qc_ht.select(
+            pass_interval_qc=_get_pass_expr(
+                qc_autosome_par_expr,
+                qc_xx_expr,
+                qc_xy_expr,
+            )
+        )
+    interval_qc_ht = interval_qc_ht.annotate_globals(
+        **add_globals
     )
 
+    return interval_qc_ht
+
+
+def annotate_interval_qc_filter(
+        t: Union[hl.MatrixTable, hl.Table],
+        interval_qc_ht,
+        **kwargs,
+) -> Union[hl.MatrixTable, hl.Table]:
+    # interval_qc_ht = interval_qc.ht()
+    interval_qc_ht = get_interval_qc_pass(interval_qc_ht, **kwargs)
+
     if isinstance(t, hl.MatrixTable):
-        t = t.annotate_rows(interval_qc_pass=hl.is_defined(interval_qc_ht[t.locus]))
+        t = t.annotate_rows(interval_qc_pass=interval_qc_ht[t.locus].pass_interval_qc)
     else:
-        t = t.annotate(interval_qc_pass=hl.is_defined(interval_qc_ht[t.locus]))
+        t = t.annotate(interval_qc_pass=interval_qc_ht[t.locus].pass_interval_qc)
 
     return t
 
