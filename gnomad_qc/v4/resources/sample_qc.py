@@ -311,45 +311,12 @@ platform = VersionedTableResource(
     },
 )
 
-# Table containing aggregate stats for interval QC
-interval_qc = VersionedTableResource(
+# HT with bi-allelic SNPs on chromosome X used in sex imputation f-stat calculation
+f_stat_sites = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.interval_qc.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-# Table with interval QC pass annotation
-interval_qc_pass = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.interval_qc_pass.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-# HT containing AC information for bi-allelic variants after hard filtering
-hard_filtered_ac = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered.ac.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-# HT containing AN, AF, and callrate information for bi-allelic variants after hard filtering
-hard_filtered_af_callrate = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered.af_callrate.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.f_stat_sites.ht"
         )
         for version in VERSIONS
     },
@@ -405,6 +372,28 @@ sex = VersionedTableResource(
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sex.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
+# Table containing aggregate stats for interval QC
+interval_qc = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.interval_qc.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
+# Table with interval QC pass annotation
+interval_qc_pass = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.interval_qc_pass.ht"
         )
         for version in VERSIONS
     },
@@ -480,6 +469,7 @@ def _import_related_samples_to_drop(**kwargs):
     ht = ht.key_by(s=ht.f0)
 
     return ht
+
 
 # Hard-filtered samples
 hard_filtered_samples = VersionedTableResource(
