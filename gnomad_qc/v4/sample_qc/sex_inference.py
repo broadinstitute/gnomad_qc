@@ -16,8 +16,7 @@ from gnomad_qc.v4.resources.basics import (
     ukb_f_stat,
 )
 from gnomad_qc.v4.resources.sample_qc import (
-    hard_filtered_ac,
-    hard_filtered_af_callrate,
+    f_stat_sites,
     interval_coverage,
     platform,
     sex,
@@ -26,6 +25,66 @@ from gnomad_qc.v4.resources.sample_qc import (
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("sex_inference")
 logger.setLevel(logging.INFO)
+
+
+def determine_fstat_sites(
+    vds: hl.vds.VariantDataset,
+    approx_af_and_no_callrate: bool = False,
+    min_af: float = 0.001,
+    min_callrate: float = 0.99,
+) -> hl.Table:
+    """
+    Write a Table with chromosome X SNPs that are bi-allelic, common, and high callrate by default.
+
+    This Table is designed to be used as a variant filter in sex imputation for f-stat computation.
+
+    .. warning::
+
+        By default `approx_af_and_no_callrate` is False and the final Table will be filtered to high callrate (> value
+        specified by `min_callrate`) variants. This requires a densify of chrX!"
+
+    .. note::
+
+        If `approx_af_and_no_callrate` is True, allele frequency is approximated with AC/(n_samples * 2) and no callrate
+        filter is used.
+
+    :param vds: Input VariantDataset.
+    :param approx_af_and_no_callrate: Whether to approximate allele frequency with AC/(n_samples * 2) and use no
+        callrate cutoff to filter sites.
+    :param min_af: Minimum alternate allele frequency cutoff used to filter sites.
+    :param min_callrate: Minimum callrate cutoff used to filter sites.
+    :return: Table of chromosome X sites to be used for f-stat computation.
+    """
+    vds = hl.vds.filter_chromosomes(vds, keep=["chrX"])
+    vd = vds.variant_data
+    vd = vd.filter_rows(
+        (hl.len(vd.alleles) == 2) & hl.is_snp(vd.alleles[0], vd.alleles[1])
+    )
+    vd = vd.transmute_entries(GT=hl.experimental.lgt_to_gt(vd.LGT, vd.LA))
+
+    if approx_af_and_no_callrate:
+        n_samples = vd.count_cols()
+        logger.info("Number of samples: %d", n_samples)
+        ht = vd.select_rows(
+            AF=hl.agg.sum(vd.GT.n_alt_alleles()) / (n_samples * 2),
+        ).rows()
+        ht = ht.filter(ht.AF > min_af)
+        ht = ht.annotate_globals(
+            min_approx_af=min_af,
+        )
+    else:
+        mt = hl.vds.to_dense_mt(hl.vds.VariantDataset(vds.reference_data, vd))
+        ht = hl.variant_qc(mt).rows()
+        ht = ht.filter(
+            (ht.variant_qc.call_rate > min_callrate) & (ht.variant_qc.AF[1] > min_af)
+        )
+        ht = ht.annotate(AF=ht.variant_qc.AF[1])
+        ht = ht.annotate_globals(
+            min_af=min_af,
+            min_callrate=min_callrate,
+        )
+
+    return ht
 
 
 def compute_sex(
@@ -45,9 +104,9 @@ def compute_sex(
     prop_samples_x: float = None,
     prop_samples_y: float = None,
     prop_samples_norm: float = None,
-    freq_ht=None,
+    freq_ht: hl.Table = None,
     min_af: float = 0.001,
-    f_stat_cutoff: float = 0.5,
+    f_stat_cutoff: float = -1.0,
 ) -> hl.Table:
     """
     Impute sample sex based on X-chromosome heterozygosity and sex chromosome ploidy.
@@ -102,37 +161,41 @@ def compute_sex(
          reference blocks and variants found in the sparse MatrixTable, but it only uses specified calling intervals to
          determine the contig size and doesn't break up the reference blocks in the same way the Hail method does.
 
-    :param vds: Input VDS for use in sex inference
-    :param coverage_mt: Input interval coverage MatrixTable
-    :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy and karyotype inference
-    :param per_platform: Whether to run the sex ploidy and karyotype inference per platform
+    :param vds: Input VDS for use in sex inference.
+    :param coverage_mt: Input interval coverage MatrixTable.
+    :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy and karyotype inference.
+    :param per_platform: Whether to run the sex ploidy and karyotype inference per platform.
     :param high_cov_by_platform_all: Whether to filter to high coverage intervals for the sex ploidy and karyotype
-        inference. Using only intervals that are considered high coverage across all platforms
-    :param platform_ht: Input platform assignment Table. This is only needed if per_platform or high_cov_by_platform_all are True
+        inference. Using only intervals that are considered high coverage across all platforms.
+    :param platform_ht: Input platform assignment Table. This is only needed if per_platform or high_cov_by_platform_all
+        are True.
     :param min_platform_size: Required size of a platform to be considered when using `high_cov_by_platform_all`. Only
         platforms that have # of samples > 'min_platform_size' are used to determine intervals that have a
-        high coverage across all platforms
-    :param normalization_contig: Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y
-    :param variant_depth_only_x_ploidy: Whether to use depth of variant data within calling intervals instead of reference
-        data for chrX ploidy estimation. Default will only use reference data
-    :param variant_depth_only_y_ploidy: Whether to use depth of variant data within calling intervals instead of reference
-        data for chrY ploidy estimation. Default will only use reference data
+        high coverage across all platforms.
+    :param normalization_contig: Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.
+    :param variant_depth_only_x_ploidy: Whether to use depth of variant data within calling intervals instead of
+        reference data for chrX ploidy estimation. Default will only use reference data.
+    :param variant_depth_only_y_ploidy: Whether to use depth of variant data within calling intervals instead of
+        reference data for chrY ploidy estimation. Default will only use reference data.
     :param x_cov: Mean coverage level used to define high coverage intervals on chromosome X. This field must be in the
-        interval_coverage MatrixTable
+        interval_coverage MatrixTable.
     :param y_cov: Mean coverage level used to define high coverage intervals on chromosome Y. This field must be in the
-        interval_coverage MatrixTable
+        interval_coverage MatrixTable.
     :param norm_cov: Mean coverage level used to define high coverage intervals on the normalization autosome
-        (`normalization_contig`). This field must be in the interval_coverage MT
-    :param prop_samples_x: Proportion samples at specified coverage `x_cov` to determine high coverage intervals on chromosome X
-    :param prop_samples_y: Proportion samples at specified coverage `y_cov` to determine high coverage intervals on chromosome Y
+        (`normalization_contig`). This field must be in the interval_coverage MT.
+    :param prop_samples_x: Proportion samples at specified coverage `x_cov` to determine high coverage intervals on
+        chromosome X.
+    :param prop_samples_y: Proportion samples at specified coverage `y_cov` to determine high coverage intervals on
+        chromosome Y.
     :param prop_samples_norm: Proportion samples at specified coverage `norm_cov` to determine high coverage intervals
-        on the normalization chromosome specified by `normalization_contig`
-    :param freq_ht: Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in this Table
-        prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table with a
-        `min_af` cutoff
-    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations
-    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY are above cutoff
-    :return: Table with inferred sex annotation
+        on the normalization chromosome specified by `normalization_contig`.
+    :param freq_ht: Optional Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in
+        this Table prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table
+        with a `min_af` cutoff.
+    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations. Default is 0.001.
+    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY
+        are above cutoff. Default is -1.0.
+    :return: Table with inferred sex annotation.
     """
 
     def _get_filtered_coverage_mt(
@@ -161,14 +224,15 @@ def compute_sex(
                 & agg_func(coverage_mt[f"over_{y_cov}x"] > prop_samples_y)
             )
             | (
-                (coverage_mt.interval.start.contig == "chr20")
+                (coverage_mt.interval.start.contig == normalization_contig)
                 & agg_func(coverage_mt[f"over_{norm_cov}x"] > prop_samples_norm)
             )
         )
 
     def _annotate_sex(vds, calling_intervals_ht):
         """
-        Helper function to perform `annotate_sex` using unchanged parameters with changes to the VDS and calling intervals.
+        Helper function to perform `annotate_sex` using unchanged parameters with changes to the VDS and calling
+        intervals.
 
         :param vds: Input VDS to use for sex annotation
         :param calling_intervals_ht: Calling intervals to filter to for sex annotation
@@ -178,7 +242,9 @@ def compute_sex(
             vds,
             included_intervals=calling_intervals_ht,
             normalization_contig=normalization_contig,
-            sites_ht=freq_ht,
+            sites_ht=freq_ht.filter(hl.is_defined(calling_intervals_ht[freq_ht.locus]))
+            if freq_ht is not None
+            else None,
             aaf_expr="AF",
             gt_expr="LGT",
             f_stat_cutoff=f_stat_cutoff,
@@ -269,7 +335,8 @@ def compute_sex(
             sex_ht = _annotate_sex(vds, calling_intervals_ht)
         else:
             logger.info(
-                "Running sex ploidy and sex karyotype estimation using high coverage intervals across the full sample set..."
+                "Running sex ploidy and sex karyotype estimation using high coverage intervals across the full sample "
+                "set..."
             )
             coverage_mt = coverage_mt.annotate_rows(
                 **{
@@ -333,57 +400,42 @@ def compute_sex(
 
 
 def main(args):
-    hl.init(log="/sex_inference.log", default_reference="GRCh38")
+    hl.init(
+        log="/sex_inference.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
+    # NOTE: remove this flag when the new shuffle method is the default
+    hl._set_flags(use_new_shuffle="1")
+
+    test = args.test
+    calling_interval_name = args.calling_interval_name
+    calling_interval_padding = args.calling_interval_padding
+    normalization_contig = args.normalization_contig
+    per_platform = args.per_platform
+    overwrite = args.overwrite
 
     try:
-        if args.compute_ac:
-            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
-            mt = vds.variant_data
-            mt = mt.filter_rows(hl.len(mt.alleles) == 2)
-            n_samples = mt.count_cols()
-            logger.info("Number of samples: %d", n_samples)
-            ht = mt.annotate_rows(
-                AC=hl.agg.sum(mt.LGT.n_alt_alleles()),
-            ).rows()
-            ht = ht.annotate_globals(n_samples=n_samples)
-            ht.write(
-                get_checkpoint_path("test_ac") if args.test else hard_filtered_ac.path,
-                overwrite=args.overwrite,
+        if args.determine_fstat_sites:
+            logger.info("Determining sites to use for f-stat computations...")
+            vds = get_gnomad_v4_vds(
+                remove_hard_filtered_samples=False,
+                remove_hard_filtered_samples_no_sex=True,
+                test=test,
             )
-        if args.compute_af_callrate:
-            if args.test:
-                ac_ht = hl.read_table(get_checkpoint_path("test_ac"))
-            else:
-                ac_ht = hard_filtered_ac.ht()
-            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
-            vds = hl.vds.filter_variants(vds, ac_ht)
-            mt = hl.vds.to_dense_mt(vds)
-            n_samples = ac_ht.index_globals().n_samples
-            ht = mt.annotate_rows(
-                AN=hl.agg.count_where(hl.is_defined(mt.LGT)) * 2,
-                AC=ac_ht[mt.row_key].AC,
-            ).rows()
-            ht = ht.annotate(AF=ht.AC / ht.AN, callrate=ht.AN / (n_samples * 2))
-            ht.write(
-                get_checkpoint_path("test_af_callrate")
-                if args.test
-                else hard_filtered_af_callrate.path,
-                overwrite=args.overwrite,
+            ht = determine_fstat_sites(
+                vds,
+                approx_af_and_no_callrate=args.approx_af_and_no_callrate,
+                min_af=args.min_af,
+                min_callrate=args.min_callrate,
+            )
+            ht.naive_coalesce(args.fstat_n_partitions).write(
+                get_checkpoint_path("test_f_stat_sites") if test else f_stat_sites.path,
+                overwrite=overwrite,
             )
         if args.impute_sex:
-            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=args.test)
-            if args.f_stat_high_callrate_common_var and args.f_stat_ukbb_var:
-                raise ValueError(
-                    "f_stat_high_callrate_common_var and f_stat_ukbb_var can't be used together."
-                )
-            if args.f_stat_high_callrate_common_var:
-                freq_ht = (
-                    hl.read_table(get_checkpoint_path("test_af_callrate"))
-                    if args.test
-                    else hard_filtered_af_callrate.ht()
-                )
-                freq_ht = freq_ht.filter(freq_ht.callrate > args.min_callrate)
-            elif args.f_stat_ukbb_var:
+            vds = get_gnomad_v4_vds(remove_hard_filtered_samples=True, test=test)
+            if args.f_stat_ukb_var:
                 # The UK Biobank f-stat table contains only variants that were high callrate (0.99) and common
                 # (AF >0.001) within the UK Biobank 200K Regeneron exome dataset and it includes the UK Biobank 200K
                 # allele frequency information that can be used in the hl.impute_sex f-stat computation allele frequency
@@ -391,35 +443,35 @@ def main(args):
                 freq_ht = ukb_f_stat.ht()
             else:
                 freq_ht = (
-                    hl.read_table(get_checkpoint_path("test_ac"))
-                    if args.test
-                    else hard_filtered_ac.ht()
+                    hl.read_table(get_checkpoint_path("test_f_stat_sites"))
+                    if test
+                    else f_stat_sites.ht()
                 )
-                freq_ht = freq_ht.annotate(AF=freq_ht.AC / (freq_ht.n_samples * 2))
 
             # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
-            if args.overwrite or not file_exists(
-                get_checkpoint_path("sex_imputation") if args.test else sex.path
+            if overwrite or not file_exists(
+                get_checkpoint_path("sex_imputation") if test else sex.path
             ):
                 logger.info(
                     "Loading interval coverage MatrixTable and filtering to chrX, chrY and %s...",
-                    args.normalization_contig,
+                    normalization_contig,
                 )
                 if file_exists(interval_coverage.path):
                     coverage_mt = interval_coverage.mt()
-                elif args.test:
+                elif test:
                     test_coverage_path = get_checkpoint_path(
-                        f"test_interval_coverage.{args.calling_interval_name}.pad{args.calling_interval_padding}",
+                        f"test_interval_coverage.{calling_interval_name}.pad{calling_interval_padding}",
                         mt=True,
                     )
                     if file_exists(test_coverage_path):
                         coverage_mt = hl.read_matrix_table(test_coverage_path)
                     else:
                         raise FileNotFoundError(
-                            f"There is no final coverage MatrixTable written and a test interval coverage MatrixTable does "
-                            f"not exist for calling interval {args.calling_interval_name} and interval padding "
-                            f"{args.calling_interval_padding}. Please run platform_inference.py --compute_coverage with the "
-                            f"--test argument and needed --calling_interval_name/--calling_interval_padding arguments."
+                            f"There is no final coverage MatrixTable written and a test interval coverage MatrixTable "
+                            f"does not exist for calling interval {calling_interval_name} and interval padding "
+                            f"{calling_interval_padding}. Please run platform_inference.py --compute_coverage "
+                            f"with the --test argument and needed --calling_interval_name/--calling_interval_padding "
+                            f"arguments."
                         )
                 else:
                     raise FileNotFoundError(
@@ -428,27 +480,27 @@ def main(args):
                     )
 
                 coverage_mt = coverage_mt.filter_rows(
-                    hl.literal({"chrY", "chrX", args.normalization_contig}).contains(
+                    hl.literal({"chrY", "chrX", normalization_contig}).contains(
                         coverage_mt.interval.start.contig
                     )
                 )
-                if args.per_platform or args.high_cov_by_platform_all:
+                if per_platform or args.high_cov_by_platform_all:
                     logger.info("Loading platform information...")
                     if file_exists(platform.path):
                         platform_ht = platform.ht()
-                    elif args.test:
+                    elif test:
                         test_platform_path = get_checkpoint_path(
-                            f"test_platform_assignment.{args.calling_interval_name}.pad{args.calling_interval_padding}"
+                            f"test_platform_assignment.{calling_interval_name}.pad{calling_interval_padding}"
                         )
                         if file_exists(test_platform_path):
                             platform_ht = hl.read_table(test_platform_path)
                         else:
                             raise FileNotFoundError(
-                                f"There is no final platform assignment Table written and a test platform assignment Table "
-                                f"does not exist for calling interval {args.calling_interval_name} and interval padding "
-                                f"{args.calling_interval_padding}. Please run platform_inference.py --assign_platforms "
-                                f"with the --test argument and needed --calling_interval_name/--calling_interval_padding "
-                                f"arguments."
+                                f"There is no final platform assignment Table written and a test platform assignment "
+                                f"Table does not exist for calling interval {calling_interval_name} and interval "
+                                f"padding {calling_interval_padding}. Please run platform_inference.py "
+                                f"--assign_platforms with the --test argument and needed --calling_interval_name / "
+                                f"--calling_interval_padding arguments."
                             )
                     else:
                         raise FileNotFoundError(
@@ -461,37 +513,33 @@ def main(args):
                 ht = compute_sex(
                     vds,
                     coverage_mt,
-                    args.high_cov_intervals,
-                    args.per_platform,
-                    args.high_cov_by_platform_all,
-                    platform_ht,
-                    args.min_platform_size,
-                    args.normalization_contig,
-                    args.variant_depth_only_x_ploidy,
-                    args.variant_depth_only_y_ploidy,
-                    args.x_cov,
-                    args.y_cov,
-                    args.norm_cov,
-                    args.prop_samples_x,
-                    args.prop_samples_y,
-                    args.prop_samples_norm,
-                    freq_ht,
-                    args.min_af,
-                    args.f_stat_cutoff,
+                    high_cov_intervals=args.high_cov_intervals,
+                    per_platform=per_platform,
+                    high_cov_by_platform_all=args.high_cov_by_platform_all,
+                    platform_ht=platform_ht,
+                    min_platform_size=args.min_platform_size,
+                    normalization_contig=normalization_contig,
+                    variant_depth_only_x_ploidy=args.variant_depth_only_x_ploidy,
+                    variant_depth_only_y_ploidy=args.variant_depth_only_y_ploidy,
+                    x_cov=args.x_cov,
+                    y_cov=args.y_cov,
+                    norm_cov=args.norm_cov,
+                    prop_samples_x=args.prop_samples_x,
+                    prop_samples_y=args.prop_samples_y,
+                    prop_samples_norm=args.prop_samples_norm,
+                    freq_ht=freq_ht,
+                    min_af=args.min_af,
+                    f_stat_cutoff=args.f_stat_cutoff,
                 )
-                ht = ht.annotate_globals(
-                    f_stat_high_callrate_common_var=args.f_stat_high_callrate_common_var,
-                    f_stat_ukbb_var=args.f_stat_ukbb_var,
-                )
+                ht = ht.annotate_globals(f_stat_ukb_var=args.f_stat_ukb_var)
                 ht.write(
                     get_checkpoint_path(
-                        f"sex_imputation{'.per_platform' if args.per_platform else ''}"
+                        f"sex_imputation{'.per_platform' if per_platform else ''}"
                         f"{'.high_cov_by_platform_all' if args.high_cov_by_platform_all else ''}"
                         f"{'.high_cov' if args.high_cov_intervals else ''}"
-                        f"{'.ukbb_f_stat' if args.f_stat_ukbb_var else ''}"
-                        f"{'.callrate_common_f_stat' if args.f_stat_high_callrate_common_var else ''}"
+                        f"{'.ukb_f_stat' if args.f_stat_ukb_var else ''}"
                     )
-                    if args.test
+                    if test
                     else sex.path,
                     overwrite=True,
                 )
@@ -515,69 +563,81 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--compute-ac",
-        help="Compute the allele count, for all bi-allelic variants in the VDS.",
-        action="store_true",
+        "--slack-channel", help="Slack channel to post results and notifications to."
     )
-    parser.add_argument(
-        "--compute-af-callrate",
+
+    fstat_args = parser.add_argument_group(
+        "Determine f-stat sites",
+        "Arguments used for determining sites to use for f-stat calculations.",
+    )
+    fstat_args.add_argument(
+        "--determine-fstat-sites",
         help=(
-            "Compute the callrate and allele frequency for all variants in the VDS. NOTE: This requires a full densify!!"
+            "Create Table of common (> value specified by '--min-af'), bi-allelic SNPs on chromosome X for f-stat "
+            "calculations. Additionally filter to high callrate (> value specified by '--min-callrate') variants "
+            "if '--approx-af-and-no-callrate' is not used. NOTE: This requires a densify of chrX!"
         ),
         action="store_true",
     )
-    parser.add_argument(
+    fstat_args.add_argument(
+        "--min-callrate", help="Minimum variant callrate.", default=0.99, type=float
+    )
+    fstat_args.add_argument(
+        "--approx-af-and-no-callrate",
+        help=(
+            "Whether to approximate allele frequency with AC/(n_samples * 2) and use no callrate cutoff for "
+            "determination of f-stat sites."
+        ),
+        action="store_true",
+    )
+    fstat_args.add_argument(
+        "--fstat-n-partitions",
+        help="Number of desired partitions for the f-stat sites output Table.",
+        default=1000,
+        type=int,
+    )
+    sex_ploidy_args = parser.add_argument_group(
+        "Impute sex ploidy", "Arguments used for imputing sex chromosome ploidy."
+    )
+    sex_ploidy_args.add_argument(
         "--impute-sex",
         help="Run sex ploidy and sex karyotyping imputation.",
         action="store_true",
     )
-    parser.add_argument(
-        "--f-stat-high-callrate-common-var",
+    sex_ploidy_args.add_argument(
+        "--f-stat-ukb-var",
         help=(
-            "Whether to use high callrate (> value specified by --min-callrate) and common variants (> value specified "
-            "by --min-af) for f-stat computation. By default, no callrate cutoff will be used, and allele frequency "
-            "will be approximated with AC/(n_samples * 2) and a default min allele frequency of 0.001."
+            "Whether to use UK Biobank high callrate (0.99) and common variants (UKB allele frequency > value specified"
+            " by '--min-af') for f-stat computation instead of the sites determined by '--determine-fstat-sites'."
         ),
         action="store_true",
     )
-    parser.add_argument(
-        "--f-stat-ukbb-var",
-        help=(
-            "Whether to use UK Biobank high callrate (0.99) and common variants (UKBB allele frequency > value specified "
-            "by --min-af) for f-stat computation. By default, no callrate cutoff will be used, and allele frequency will "
-            "be approximated with AC/(n_samples * 2) and a default min allele frequency of 0.001."
-        ),
-        action="store_true",
-    )
-    parser.add_argument(
-        "--min-callrate", help="Minimum variant callrate.", default=0.99, type=float
-    )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--min-af",
-        help="Minimum variant allele frequency to retain variant in qc matrix table.",
+        help="Minimum variant allele frequency to retain variant.",
         default=0.001,
         type=float,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--f-stat-cutoff",
         help=(
             "Cutoff for f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY "
             "are above cutoff."
         ),
         type=float,
-        default=0.5,
+        default=-1.0,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--high-cov-intervals",
         help="Whether to filter to high coverage intervals for the sex ploidy and karyotype inference.",
         action="store_true",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--per-platform",
         help="Whether to run the sex ploidy and karyotype inference per platform.",
         action="store_true",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--high-cov-by-platform-all",
         help=(
             "Whether to filter to high coverage intervals for the sex ploidy and karyotype inference. "
@@ -585,7 +645,7 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--min-platform-size",
         help=(
             "Required size of a platform to be considered in '--high-cov-by-platform-all'. Only platforms that "
@@ -595,13 +655,13 @@ if __name__ == "__main__":
         type=int,
         default=100,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--normalization-contig",
         help="Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.",
         type=str,
         default="chr20",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--variant-depth-only-x-ploidy",
         help=(
             "Whether to use depth of variant data for the x ploidy estimation instead of the default behavior that "
@@ -609,7 +669,7 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--variant-depth-only-y-ploidy",
         help=(
             "Whether to use depth of variant data for the y ploidy estimation instead of the default behavior that "
@@ -617,7 +677,7 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--x-cov",
         help=(
             "Mean coverage level used to define high coverage intervals on chromosome X. This field must be in the "
@@ -626,7 +686,7 @@ if __name__ == "__main__":
         type=int,
         default=10,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--y-cov",
         help=(
             "Mean coverage level used to define high coverage intervals on chromosome Y. This field must be in the "
@@ -635,7 +695,7 @@ if __name__ == "__main__":
         type=int,
         default=5,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--norm-cov",
         help=(
             "Mean coverage level used to define high coverage intervals on the normalization autosome. This field must "
@@ -644,19 +704,19 @@ if __name__ == "__main__":
         type=int,
         default=20,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--prop-samples-x",
         help="Proportion samples at specified coverage '--x-cov' to determine high coverage intervals on chromosome X.",
         type=float,
         default=0.80,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--prop-samples-y",
         help="Proportion samples at specified coverage '--y-cov' to determine high coverage intervals on chromosome Y.",
         type=float,
         default=0.35,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--prop-samples-norm",
         help=(
             "Proportion samples at specified coverage '--norm-cov' to determine high coverage intervals on the "
@@ -665,7 +725,7 @@ if __name__ == "__main__":
         type=float,
         default=0.85,
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--calling-interval-name",
         help=(
             "Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'. Only "
@@ -675,7 +735,7 @@ if __name__ == "__main__":
         choices=["ukb", "broad", "intersection"],
         default="intersection",
     )
-    parser.add_argument(
+    sex_ploidy_args.add_argument(
         "--calling-interval-padding",
         help=(
             "Number of base pair padding to use on the calling intervals. One of 0 or 50 bp. Only used if '--test' is "
@@ -684,9 +744,6 @@ if __name__ == "__main__":
         type=int,
         choices=[0, 50],
         default=50,
-    )
-    parser.add_argument(
-        "--slack-channel", help="Slack channel to post results and notifications to."
     )
 
     args = parser.parse_args()

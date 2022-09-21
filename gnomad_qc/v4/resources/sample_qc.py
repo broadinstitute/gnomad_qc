@@ -311,23 +311,12 @@ platform = VersionedTableResource(
     },
 )
 
-# HT containing AC information for bi-allelic variants after hard filtering
-hard_filtered_ac = VersionedTableResource(
+# HT with bi-allelic SNPs on chromosome X used in sex imputation f-stat calculation
+f_stat_sites = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered.ac.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-# HT containing AN, AF, and callrate information for bi-allelic variants after hard filtering
-hard_filtered_af_callrate = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.hard_filtered.af_callrate.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.f_stat_sites.ht"
         )
         for version in VERSIONS
     },
