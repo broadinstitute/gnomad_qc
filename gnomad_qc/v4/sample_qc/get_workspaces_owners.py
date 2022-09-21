@@ -41,3 +41,4 @@ for workspace in workspaces:
     ).json().get("owners")
     
     writer.writerow([workspace, ",".join(owners)])
+    
