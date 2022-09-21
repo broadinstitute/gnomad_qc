@@ -24,32 +24,28 @@ logger.setLevel(logging.INFO)
 
 
 def filter_to_test(
-    mt: hl.MatrixTable,
-    sex_mt: hl.MatrixTable,
-    num_partitions: int = 2,
+        mt: hl.MatrixTable,
+        sex_mt: hl.MatrixTable,
+        num_partitions: int = 10,
 ) -> Tuple[hl.MatrixTable, hl.MatrixTable]:
     """
-    Filter `mt` to `num_partitions` partitions on chr20 and `sex_mt` to `num_partitions` partitions on chrX and chrY.
+    Filter `mt` to `num_partitions` partitions on chr1 and `sex_mt` to `num_partitions` partitions on chrX and chrY.
 
-    :param mt: Input MatrixTable to filter to specified number of partitions on chr20.
-    :param sex_mt: Input MatrixTable to filter to specified number of partitions on chrX and chrY.
-    :param num_partitions: Number of partitions to grab from each chromosome.
-    :return: Input MatrixTables filtered to `num_partitions` on chr20, chrX, and chrY.
+    :param mt: Input MatrixTable to filter to specified number of partitions on chr1.
+    :param sex_mt: Input MatrixTable to filter to specified number of partitions on chrX and all of chrY.
+    :param num_partitions: Number of partitions to grab from mt.
+    :return: Input MatrixTables filtered to `num_partitions` on chr1, chrX, and all of chrY.
     """
     logger.info(
-        "Filtering to %d partitions on chr20, chrX, and chrY (for tests only)...",
+        "Filtering to %d partitions on chr1, chrX, and all of chrY for testing...",
         num_partitions,
     )
-    mt_chr20 = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20")])
-    mt_chr20 = mt_chr20._filter_partitions(range(num_partitions))
-
-    sex_mt_chrx = hl.filter_intervals(sex_mt, [hl.parse_locus_interval("chrX")])
-    sex_mt_chrx = sex_mt_chrx._filter_partitions(range(num_partitions))
-
-    sex_mt_chry = hl.filter_intervals(sex_mt, [hl.parse_locus_interval("chrY")])
+    mt = mt._filter_partitions(range(num_partitions))
+    sex_mt_chrx = sex_mt._filter_partitions(range(num_partitions))
+    sex_mt_chry = sex_mt.filter_rows((sex_mt.interval.start.contig == "chrY")).repartition(100)
     sex_mt_chry = sex_mt_chry._filter_partitions(range(num_partitions))
 
-    return mt_chr20, sex_mt_chrx.union_rows(sex_mt_chry)
+    return mt, sex_mt_chrx.union_rows(sex_mt_chry)
 
 
 def compute_interval_qc(
