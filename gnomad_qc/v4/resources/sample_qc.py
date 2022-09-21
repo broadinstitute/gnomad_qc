@@ -311,12 +311,23 @@ platform = VersionedTableResource(
     },
 )
 
-# Interval QC results
+# Table containing aggregate stats for interval QC
 interval_qc = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.interval_qc.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
+# Table with interval QC pass annotation
+interval_qc_pass = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.interval_qc_pass.ht"
         )
         for version in VERSIONS
     },
