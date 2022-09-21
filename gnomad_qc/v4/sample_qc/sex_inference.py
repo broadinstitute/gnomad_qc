@@ -44,18 +44,18 @@ def determine_fstat_sites(
     .. warning::
 
         By default `approx_af_and_no_callrate` is False and the final Table will be filtered to high callrate (> value
-        specified by `min_callrate`) variants. This requires a densify of chrX!!"
+        specified by `min_callrate`) variants. This requires a densify of chrX!"
 
     .. note::
 
-        If `approx_af_and_no_callrate` is True allele frequency is approximated with AC/(n_samples * 2) and no callrate
+        If `approx_af_and_no_callrate` is True, allele frequency is approximated with AC/(n_samples * 2) and no callrate
         filter is used.
 
     :param vds: Input VariantDataset.
     :param approx_af_and_no_callrate: Whether to approximate allele frequency with AC/(n_samples * 2) and use no
         callrate cutoff to filter sites.
-    :param min_af: Alternate allele frequency cutoff used to filter sites.
-    :param min_callrate: Callrate cutoff used to filter sites.
+    :param min_af: Minimum alternate allele frequency cutoff used to filter sites.
+    :param min_callrate: Minimum callrate cutoff used to filter sites.
     :return: Table of chromosome X sites to be used for f-stat computation.
     """
     vds = hl.vds.filter_chromosomes(vds, keep=["chrX"])
@@ -64,7 +64,6 @@ def determine_fstat_sites(
         (hl.len(vd.alleles) == 2) & hl.is_snp(vd.alleles[0], vd.alleles[1])
     )
     vd = vd.transmute_entries(GT=hl.experimental.lgt_to_gt(vd.LGT, vd.LA))
-    vds = hl.vds.VariantDataset(vds.reference_data, vd)
 
     if approx_af_and_no_callrate:
         n_samples = vd.count_cols()
@@ -77,7 +76,7 @@ def determine_fstat_sites(
             min_approx_af=min_af,
         )
     else:
-        mt = hl.vds.to_dense_mt(vds)
+        mt = hl.vds.to_dense_mt(hl.vds.VariantDataset(vds.reference_data, vd))
         ht = hl.variant_qc(mt).rows()
         ht = ht.filter(
             (ht.variant_qc.call_rate > min_callrate) & (ht.variant_qc.AF[1] > min_af)
@@ -567,6 +566,7 @@ def main(args):
 
     try:
         if args.determine_fstat_sites:
+            logger.info("Determining sites to use for f-stat computations...")
             vds = get_gnomad_v4_vds(
                 remove_hard_filtered_samples=False,
                 remove_hard_filtered_samples_no_sex=True,
@@ -752,7 +752,7 @@ if __name__ == "__main__":
         help=(
             "Create Table of common (> value specified by '--min-af'), bi-allelic SNPs on chromosome X for f-stat "
             "calculations. Additionally filter to high callrate (> value specified by '--min-callrate') variants "
-            "if '--approx-af-and-no-callrate' is not used. NOTE: This requires a densify of chrX!!"
+            "if '--approx-af-and-no-callrate' is not used. NOTE: This requires a densify of chrX!"
         ),
         action="store_true",
     )
@@ -860,7 +860,7 @@ if __name__ == "__main__":
     )
     sex_ploidy_args.add_argument(
         "--min-af",
-        help="Minimum variant allele frequency to retain variant in qc matrix table.",
+        help="Minimum variant allele frequency to retain variant.",
         default=0.001,
         type=float,
     )
