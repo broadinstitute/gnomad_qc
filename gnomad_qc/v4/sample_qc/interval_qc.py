@@ -24,9 +24,9 @@ logger.setLevel(logging.INFO)
 
 
 def filter_to_test(
-        mt: hl.MatrixTable,
-        sex_mt: hl.MatrixTable,
-        num_partitions: int = 10,
+    mt: hl.MatrixTable,
+    sex_mt: hl.MatrixTable,
+    num_partitions: int = 10,
 ) -> Tuple[hl.MatrixTable, hl.MatrixTable]:
     """
     Filter `mt` to `num_partitions` partitions on chr1 and `sex_mt` to `num_partitions` partitions on chrX and chrY.
@@ -42,18 +42,20 @@ def filter_to_test(
     )
     mt = mt._filter_partitions(range(num_partitions))
     sex_mt_chrx = sex_mt._filter_partitions(range(num_partitions))
-    sex_mt_chry = sex_mt.filter_rows((sex_mt.interval.start.contig == "chrY")).repartition(100)
+    sex_mt_chry = sex_mt.filter_rows(
+        (sex_mt.interval.start.contig == "chrY")
+    ).repartition(100)
     sex_mt_chry = sex_mt_chry._filter_partitions(range(num_partitions))
 
     return mt, sex_mt_chrx.union_rows(sex_mt_chry)
 
 
 def compute_interval_qc(
-        mt: hl.MatrixTable,
-        add_per_platform: bool = False,
-        platform_ht: hl.Table = None,
-        mean_dp_thresholds: List[int] = [5, 10, 15, 20, 25],
-        split_by_sex: bool = False,
+    mt: hl.MatrixTable,
+    add_per_platform: bool = False,
+    platform_ht: hl.Table = None,
+    mean_dp_thresholds: List[int] = [5, 10, 15, 20, 25],
+    split_by_sex: bool = False,
 ) -> hl.Table:
     """
 
@@ -67,9 +69,7 @@ def compute_interval_qc(
     :return: Table with interval QC annotations
     """
     if add_per_platform and platform_ht is None:
-        raise ValueError(
-            "'platform_ht' must be defined if 'add_per_platform' is True!"
-        )
+        raise ValueError("'platform_ht' must be defined if 'add_per_platform' is True!")
 
     def _get_agg_expr(expr, agg_func=hl.agg.mean, group_by=None):
         """
@@ -82,12 +82,12 @@ def compute_interval_qc(
             agg_func = hl.agg.group_by(group_by, agg_func(expr))
         else:
             agg_func = agg_func(expr)
-        agg_expr = {'all': agg_func}
+        agg_expr = {"all": agg_func}
         if split_by_sex:
             agg_expr.update(
                 {
-                    'XX': hl.agg.filter(mt.sex_karyotype == "XX", agg_func),
-                    'XY': hl.agg.filter(mt.sex_karyotype == "XY", agg_func)
+                    "XX": hl.agg.filter(mt.sex_karyotype == "XX", agg_func),
+                    "XY": hl.agg.filter(mt.sex_karyotype == "XY", agg_func),
                 }
             )
 
@@ -96,7 +96,9 @@ def compute_interval_qc(
     mt = mt.select_globals(mean_dp_thresholds=mean_dp_thresholds)
     if add_per_platform:
         mt = mt.annotate_cols(platform=platform_ht[mt.col_key].qc_platform)
-        platforms = platform_ht.aggregate(hl.agg.collect_as_set(platform_ht.qc_platform))
+        platforms = platform_ht.aggregate(
+            hl.agg.collect_as_set(platform_ht.qc_platform)
+        )
         mt = mt.annotate_globals(platforms=platforms)
 
     agg_expr = {
@@ -125,17 +127,20 @@ def compute_interval_qc(
                             mt.mean_dp >= dp,
                             agg_func=hl.agg.fraction,
                             group_by=mt.platform,
-                        ) for dp in mean_dp_thresholds
+                        )
+                        for dp in mean_dp_thresholds
                     }
                 ),
                 "platform_mean_fraction_over_dp_0": _get_agg_expr(
                     mt.fraction_over_dp_threshold[1],
                     group_by=mt.platform,
-                )
+                ),
             }
         )
         add_globals = hl.struct(
-            platform_n_samples=mt.aggregate_cols(hl.agg.group_by(mt.platform, hl.agg.count()))
+            platform_n_samples=mt.aggregate_cols(
+                hl.agg.group_by(mt.platform, hl.agg.count())
+            )
         )
 
     ht = mt.select_rows(**agg_expr).rows()
@@ -145,16 +150,16 @@ def compute_interval_qc(
 
 
 def get_interval_qc_pass(
-        interval_qc_ht: hl.Table,
-        per_platform: bool = False,
-        all_platforms: bool = False,
-        min_platform_size: int = 100,
-        by_mean_fraction_over_dp_0: bool = True,
-        by_prop_samples_over_cov: bool = False,
-        mean_fraction_over_dp_0: float = 0.99,
-        autosome_par_xx_cov: int = 20,
-        xy_nonpar_cov: int = 10,
-        prop_samples: float = 0.85,
+    interval_qc_ht: hl.Table,
+    per_platform: bool = False,
+    all_platforms: bool = False,
+    min_platform_size: int = 100,
+    by_mean_fraction_over_dp_0: bool = True,
+    by_prop_samples_over_cov: bool = False,
+    mean_fraction_over_dp_0: float = 0.99,
+    autosome_par_xx_cov: int = 20,
+    xy_nonpar_cov: int = 10,
+    prop_samples: float = 0.85,
 ) -> hl.Table:
     """
     Add `interval_qc_pass` annotation to indicate whether the site falls within a high coverage interval.
@@ -171,7 +176,8 @@ def get_interval_qc_pass(
     :return: MatrixTable or Table with samples removed
     """
     if (by_mean_fraction_over_dp_0 and by_prop_samples_over_cov) or (
-            not by_mean_fraction_over_dp_0 and not by_prop_samples_over_cov):
+        not by_mean_fraction_over_dp_0 and not by_prop_samples_over_cov
+    ):
         raise ValueError(
             "One and only one of 'high_cov_by_mean_fraction_over_dp_0' and 'high_cov_by_prop_samples_over_cov' must be "
             "True!"
@@ -189,15 +195,15 @@ def get_interval_qc_pass(
     y_non_par = interval_start.in_y_nonpar()
 
     if per_platform or all_platforms:
-        platform_n_samples = interval_qc_ht.index_globals().platform_n_samples.collect()[0]
+        platform_n_samples = (
+            interval_qc_ht.index_globals().platform_n_samples.collect()[0]
+        )
         ann_prefix = "platform_"
     else:
         ann_prefix = ""
 
     if by_mean_fraction_over_dp_0:
-        add_globals = hl.struct(
-            mean_fraction_over_dp_0=mean_fraction_over_dp_0
-        )
+        add_globals = hl.struct(mean_fraction_over_dp_0=mean_fraction_over_dp_0)
         qc_expr = interval_qc_ht[f"{ann_prefix}mean_fraction_over_dp_0"]
         qc_autosome_par_expr = qc_expr["all"]
         qc_xx_expr = qc_expr.get("XX", None)
@@ -217,9 +223,9 @@ def get_interval_qc_pass(
 
     def _get_pass_expr(qc_autosome_par_expr, qc_xx_expr, qc_xy_expr):
         return (
-                (autosome_or_par & (qc_autosome_par_expr > cutoff))
-                | (x_non_par & (qc_xx_expr > cutoff) & (qc_xy_expr > cutoff))
-                | (y_non_par & (qc_xy_expr > cutoff))
+            (autosome_or_par & (qc_autosome_par_expr > cutoff))
+            | (x_non_par & (qc_xx_expr > cutoff) & (qc_xy_expr > cutoff))
+            | (y_non_par & (qc_xy_expr > cutoff))
         )
 
     if per_platform or all_platforms:
@@ -237,10 +243,18 @@ def get_interval_qc_pass(
         )
         if all_platforms:
             add_globals = add_globals.annotate(min_platform_size=min_platform_size)
-            platforms = [platform for platform, n_samples in platform_n_samples.items() if
-                         (n_samples >= min_platform_size) & (platform != "platform_-1")]
+            platforms = [
+                platform
+                for platform, n_samples in platform_n_samples.items()
+                if (n_samples >= min_platform_size) & (platform != "platform_-1")
+            ]
             interval_qc_ht = interval_qc_ht.select(
-                pass_interval_qc=hl.all([interval_qc_ht.pass_interval_qc[platform] for platform in platforms])
+                pass_interval_qc=hl.all(
+                    [
+                        interval_qc_ht.pass_interval_qc[platform]
+                        for platform in platforms
+                    ]
+                )
             )
     else:
         interval_qc_ht = interval_qc_ht.select(
@@ -250,17 +264,15 @@ def get_interval_qc_pass(
                 qc_xy_expr,
             )
         )
-    interval_qc_ht = interval_qc_ht.annotate_globals(
-        **add_globals
-    )
+    interval_qc_ht = interval_qc_ht.annotate_globals(**add_globals)
 
     return interval_qc_ht
 
 
 def annotate_interval_qc_filter(
-        t: Union[hl.MatrixTable, hl.Table],
-        interval_qc_ht,
-        **kwargs,
+    t: Union[hl.MatrixTable, hl.Table],
+    interval_qc_ht,
+    **kwargs,
 ) -> Union[hl.MatrixTable, hl.Table]:
     # interval_qc_ht = interval_qc.ht()
     interval_qc_ht = get_interval_qc_pass(interval_qc_ht, **kwargs)
@@ -274,7 +286,11 @@ def annotate_interval_qc_filter(
 
 
 def main(args):
-    hl.init(log="/interval_qc.log", default_reference="GRCh38", tmp_dir="gs://gnomad-tmp-4day")
+    hl.init(
+        log="/interval_qc.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
 
     try:
         coverage_mt = interval_coverage.mt()
@@ -288,13 +304,25 @@ def main(args):
             platform_ht = None
 
         if args.remove_hardfiltered_no_sex:
-            logger.info("Removing hard-filtered (without sex imputation) samples from the coverage MTs...")
-            coverage_mt = coverage_mt.filter_cols(hl.is_missing(hard_filtered_samples_no_sex.ht()[coverage_mt.col_key]))
-            sex_coverage_mt = sex_coverage_mt.filter_cols(hl.is_missing(hard_filtered_samples_no_sex.ht()[sex_coverage_mt.col_key]))
+            logger.info(
+                "Removing hard-filtered (without sex imputation) samples from the coverage MTs..."
+            )
+            coverage_mt = coverage_mt.filter_cols(
+                hl.is_missing(hard_filtered_samples_no_sex.ht()[coverage_mt.col_key])
+            )
+            sex_coverage_mt = sex_coverage_mt.filter_cols(
+                hl.is_missing(
+                    hard_filtered_samples_no_sex.ht()[sex_coverage_mt.col_key]
+                )
+            )
         if args.remove_hardfiltered:
             logger.info("Removing hard-filtered samples from the coverage MTs...")
-            coverage_mt = coverage_mt.filter_cols(hl.is_missing(hard_filtered_samples.ht()[coverage_mt.col_key]))
-            sex_coverage_mt = sex_coverage_mt.filter_cols(hl.is_missing(hard_filtered_samples.ht()[sex_coverage_mt.col_key]))
+            coverage_mt = coverage_mt.filter_cols(
+                hl.is_missing(hard_filtered_samples.ht()[coverage_mt.col_key])
+            )
+            sex_coverage_mt = sex_coverage_mt.filter_cols(
+                hl.is_missing(hard_filtered_samples.ht()[sex_coverage_mt.col_key])
+            )
 
         ht = compute_interval_qc(
             filter_to_autosomes(coverage_mt),
@@ -311,9 +339,12 @@ def main(args):
 
         logger.info("Filtering to XX and XY samples...")
         sex_ht = sex.ht().select("sex_karyotype")
-        sex_coverage_mt = sex_coverage_mt.annotate_cols(**sex_ht[sex_coverage_mt.col_key])
+        sex_coverage_mt = sex_coverage_mt.annotate_cols(
+            **sex_ht[sex_coverage_mt.col_key]
+        )
         sex_coverage_mt = sex_coverage_mt.filter_cols(
-            (sex_coverage_mt.sex_karyotype == "XX") | (sex_coverage_mt.sex_karyotype == "XY")
+            (sex_coverage_mt.sex_karyotype == "XX")
+            | (sex_coverage_mt.sex_karyotype == "XY")
         )
 
         ht = ht.union(
