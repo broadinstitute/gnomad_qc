@@ -61,7 +61,6 @@ def determine_fstat_sites(
         (hl.len(vd.alleles) == 2) & hl.is_snp(vd.alleles[0], vd.alleles[1])
     )
     vd = vd.transmute_entries(GT=hl.experimental.lgt_to_gt(vd.LGT, vd.LA))
-    vds = hl.vds.VariantDataset(vds.reference_data, vd)
 
     if approx_af_and_no_callrate:
         n_samples = vd.count_cols()
@@ -74,7 +73,7 @@ def determine_fstat_sites(
             min_approx_af=min_af,
         )
     else:
-        mt = hl.vds.to_dense_mt(vds)
+        mt = hl.vds.to_dense_mt(hl.vds.VariantDataset(vds.reference_data, vd))
         ht = hl.variant_qc(mt).rows()
         ht = ht.filter(
             (ht.variant_qc.call_rate > min_callrate) & (ht.variant_qc.AF[1] > min_af)
@@ -418,6 +417,7 @@ def main(args):
 
     try:
         if args.determine_fstat_sites:
+            logger.info("Determining sites to use for f-stat computations...")
             vds = get_gnomad_v4_vds(
                 remove_hard_filtered_samples=False,
                 remove_hard_filtered_samples_no_sex=True,
