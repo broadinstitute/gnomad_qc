@@ -170,7 +170,7 @@ def compute_hard_filters(
         bam_metrics_struct = bam_metrics_struct.annotate(
             chimeras_rate=bam_metrics_struct.pct_chimeras
         )
-        contamination_ht = hl.read_table(
+        contamination_struct = hl.read_table(
             get_checkpoint_path("test_gnomad.exomes.contamination")
         )[ht.key]
     else:
