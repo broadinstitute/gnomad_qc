@@ -49,11 +49,11 @@ def filter_to_test(
 
 
 def compute_interval_qc(
-    mt: hl.MatrixTable,
-    add_per_platform: bool = False,
-    platform_ht: hl.Table = None,
-    mean_dp_thresholds: List[int] = [5, 10, 15, 20, 25],
-    split_by_sex: bool = False,
+        mt: hl.MatrixTable,
+        add_per_platform: bool = False,
+        platform_ht: hl.Table = None,
+        mean_dp_thresholds: List[int] = [5, 10, 15, 20, 25],
+        split_by_sex: bool = False,
 ) -> hl.Table:
     """
 
@@ -71,20 +71,33 @@ def compute_interval_qc(
             "'platform_ht' must be defined if 'add_per_platform' is True!"
         )
 
-    def _get_agg_expr(expr, agg_func=hl.agg.mean):
+    def _get_agg_expr(expr, agg_func=hl.agg.mean, group_by=None):
         """
 
         :param expr:
         :param agg_func:
         :return:
         """
-        agg_expr = hl.struct(all=agg_func(expr))
+        if group_by is not None:
+            agg_func = hl.agg.group_by(group_by, agg_func(expr))
+        else:
+            agg_func = agg_func(expr)
+        agg_expr = {'all': agg_func}
         if split_by_sex:
-            agg_expr = agg_expr.annotate(
-                **hl.agg.group_by(mt.sex_karyotype, agg_func(expr))
+            agg_expr.update(
+                {
+                    'XX': hl.agg.filter(mt.sex_karyotype == "XX", agg_func),
+                    'XY': hl.agg.filter(mt.sex_karyotype == "XY", agg_func)
+                }
             )
 
         return agg_expr
+
+    mt = mt.select_globals(mean_dp_thresholds=mean_dp_thresholds)
+    if add_per_platform:
+        mt = mt.annotate_cols(platform=platform_ht[mt.col_key].qc_platform)
+        platforms = platform_ht.aggregate(hl.agg.collect_as_set(platform_ht.qc_platform))
+        mt = mt.annotate_globals(platforms=platforms)
 
     agg_expr = {
         "interval_mean_dp": _get_agg_expr(mt.mean_dp),
@@ -97,27 +110,36 @@ def compute_interval_qc(
         "mean_fraction_over_dp_0": _get_agg_expr(mt.fraction_over_dp_threshold[1]),
     }
 
+    add_globals = hl.struct()
     if add_per_platform:
         logger.info("Adding per platform aggregation...")
-        mt = mt.annotate_cols(platform=platform_ht[mt.col_key].qc_platform)
         agg_expr.update(
             {
-                "platform_prop_samples": hl.agg.group_by(
-                    mt.platform,
-                    hl.struct(
-                        **{f"over_{dp}x": _get_agg_expr(mt.mean_dp >= dp, hl.agg.fraction) for dp in mean_dp_thresholds}
-                    ),
+                "platform_interval_mean_dp": _get_agg_expr(
+                    mt.mean_dp,
+                    group_by=mt.platform,
                 ),
-                "platform_mean_fraction_over_dp_0": hl.agg.group_by(
-                    mt.platform,
-                    _get_agg_expr(mt.fraction_over_dp_threshold[1])
+                "platform_prop_samples_by_dp": hl.struct(
+                    **{
+                        f"over_{dp}x": _get_agg_expr(
+                            mt.mean_dp >= dp,
+                            agg_func=hl.agg.fraction,
+                            group_by=mt.platform,
+                        ) for dp in mean_dp_thresholds
+                    }
+                ),
+                "platform_mean_fraction_over_dp_0": _get_agg_expr(
+                    mt.fraction_over_dp_threshold[1],
+                    group_by=mt.platform,
                 )
             }
         )
-        # TODO should we add n_samples = hl.agg.count() ?
+        add_globals = hl.struct(
+            platform_n_samples=mt.aggregate_cols(hl.agg.group_by(mt.platform, hl.agg.count()))
+        )
 
-    ht = mt.annotate_rows(**agg_expr)
-    ht = ht.annotate_globals(mean_dp_thresholds=mean_dp_thresholds)
+    ht = mt.select_rows(**agg_expr).rows()
+    ht = ht.annotate_globals(**add_globals)
 
     return ht
 
