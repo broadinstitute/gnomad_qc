@@ -75,7 +75,7 @@ def _get_ancestry_pca_ht_path(
     version: str = CURRENT_VERSION,
     remove_unreleasable_samples: bool = True,
     test: bool = False,
-    data_type: str = "exomes",
+    data_type: str = "joint",
 ) -> str:
     """
     Helper function to get path to files related to ancestry PCA.

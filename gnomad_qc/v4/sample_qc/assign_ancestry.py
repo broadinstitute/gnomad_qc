@@ -344,7 +344,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
 
-    remove_unreleasables = args.remove_unreleasable_samples
+    remove_unreleasables = not args.include_unreleasable_samples
     overwrite = args.overwrite
     test = args.test
 
@@ -400,7 +400,7 @@ if __name__ == "__main__":
         type=int,
     )
     parser.add_argument(
-        "--remove-unreleasable-samples",
+        "--include-unreleasable-samples",
         help="Remove unreleasable samples when computing PCA.",
         action="store_true",
     )
