@@ -27,7 +27,7 @@ logger = logging.getLogger("interval_qc")
 logger.setLevel(logging.INFO)
 
 
-def generate_sex_chr_interval_coverage_mt(
+def generate_sex_chr_interval_coverage_mt( # Move to gnomad_methods?
     vds: hl.vds.VariantDataset,
     calling_intervals_ht: hl.Table,
 ) -> hl.MatrixTable:
@@ -83,7 +83,7 @@ def filter_to_test(
     num_partitions: int = 10,
 ) -> Tuple[hl.MatrixTable, hl.MatrixTable]:
     """
-    Filter `mt` to `num_partitions` partitions on chr1 and `sex_mt` to `num_partitions` partitions on chrX and chrY.
+    Filter `mt` to `num_partitions` partitions on chr1 and `sex_mt` to `num_partitions` partitions on chrX and all chrY.
 
     :param mt: Input MatrixTable to filter to specified number of partitions on chr1.
     :param sex_mt: Input MatrixTable to filter to specified number of partitions on chrX and all of chrY.
@@ -107,29 +107,55 @@ def filter_to_test(
     return mt, sex_mt_chrx.union_rows(sex_mt_chry)
 
 
-def compute_interval_qc(
+def compute_interval_qc(  # Move to gnomad_methods?
     mt: hl.MatrixTable,
     platform_ht: hl.Table,
     mean_dp_thresholds: List[int] = [5, 10, 15, 20, 25],
     split_by_sex: bool = False,
 ) -> hl.Table:
     """
+    Compute interval QC aggregate statistics per interval, per platform, and optionally split by sex karyotype.
 
+    The following annotations must be on `mt` (interval-by-sample MT output from `hl.vds.interval_coverage`):
+        - interval - Genomic interval of interest.
+        - mean_dp - Mean depth of bases across the interval.
+        - fraction_over_dp_threshold - Fraction of interval (in bases) above each DP threshold. Second element must be
+        dp >= 1 (dp > 0).
 
-    :param mt: Input interval coverage MatrixTable
+        If `split_by_sex`:
+            - sex_karyotype - StringExpression annotation with sex karyotype information including 'XX' and 'XY' values.
+
+    The `platform_ht` must have a 'qc_platform' annotation indicating the platform each sample was assigned.
+
+    Returns a Table with the following annotations:
+        - interval_mean_dp - Mean DP of the interval across 'all' samples and optionally split by 'XX' and 'XY'.
+        - fraction_samples_by_dp - Struct of 'fraction_over_{dp}x' for all 'dp' in `mean_dp_thresholds`, which is
+            the fraction of samples with mean DP over 'dp'. Computed across 'all' samples and optionally split by 'XX'
+            and 'XY'.
+        - mean_fraction_over_dp_0 - Mean of the fraction of the interval (in bases) that is dp > 0. Computed across
+            'all' samples and optionally split by 'XX' and 'XY'.
+        - platform_interval_mean_dp - Same as 'interval_mean_dp', but instead of a single value for 'all', 'XX' and
+            'XY' each is a dict of per platform values.
+        - platform_fraction_samples_by_dp  - Same as 'fraction_samples_by_dp', but instead of a single value for 'all',
+            'XX' and 'XY' each is a dict of per platform values.
+        - platform_mean_fraction_over_dp_0 - Same as 'mean_fraction_over_dp_0', but instead of a single value for
+            'all', 'XX' and 'XY' each is a dict of per platform values.
+
+    :param mt: Input interval coverage MatrixTable.
     :param platform_ht: Input platform assignment Table.
     :param mean_dp_thresholds: List of mean DP thresholds to use for computing the fraction of samples with mean
         interval DP >= the threshold.
-    :param bool split_by_sex: Whether the interval QC should be stratified by sex. If True, mt must be annotated with sex_karyotype.
-    :return: Table with interval QC annotations
+    :param split_by_sex: Whether the interval QC should be stratified by sex. If True, `mt` must be annotated with
+        'sex_karyotype'.
+    :return: Table with interval QC annotations.
     """
-
     def _get_agg_expr(expr, agg_func=hl.agg.mean, group_by=None):
         """
+        Helper function to call `agg_func` on `expr` with optional stratification by sex karyotype and `group_by`.
 
-        :param expr:
-        :param agg_func:
-        :return:
+        :param expr: Expression to pass to `agg_func`.
+        :param agg_func: Function to use for aggregation of `expr`. Default is hl.agg.mean.
+        :return: Aggregation expression.
         """
         if group_by is not None:
             agg_func = hl.agg.group_by(group_by, agg_func(expr))
@@ -154,6 +180,8 @@ def compute_interval_qc(
         num_samples - mt.count_cols(),
     )
 
+    # Note: Default hl.vds.interval_coverage will return a list for 'fraction_over_dp_threshold' where the
+    # second element is dp >= 1 (dp > 0)
     agg_groups = [("", None), ("platform_", mt.platform)]
     mt = mt.annotate_rows(
         **{
@@ -161,9 +189,9 @@ def compute_interval_qc(
             for prefix, group_by in agg_groups
         },
         **{
-            f"{prefix}prop_samples_by_dp": hl.struct(
+            f"{prefix}fraction_samples_by_dp": hl.struct(
                 **{
-                    f"over_{dp}x": _get_agg_expr(
+                    f"fraction_over_{dp}x": _get_agg_expr(
                         mt.mean_dp >= dp, agg_func=hl.agg.fraction, group_by=group_by
                     )
                     for dp in mean_dp_thresholds
@@ -195,11 +223,11 @@ def get_interval_qc_pass(
     all_platforms: bool = False,
     min_platform_size: int = 100,
     by_mean_fraction_over_dp_0: bool = True,
-    by_prop_samples_over_cov: bool = False,
+    by_fraction_samples_over_cov: bool = False,
     mean_fraction_over_dp_0: float = 0.99,
     autosome_par_xx_cov: int = 20,
     xy_nonpar_cov: int = 10,
-    prop_samples: float = 0.85,
+    fraction_samples: float = 0.85,
 ) -> hl.Table:
     """
     Add `interval_qc_pass` annotation to indicate whether the site falls within a high coverage interval.
@@ -214,23 +242,23 @@ def get_interval_qc_pass(
         platforms.
     :param by_mean_fraction_over_dp_0: Whether to use the mean fraction of bases over DP 0 to determine high quality
         intervals.
-    :param by_prop_samples_over_cov: Whether to determine high coverage intervals using the proportion of samples
-        (`prop_samples`) with a mean interval coverage over the specified coverage levels (`autosome_par_xx_cov` and
+    :param by_fraction_samples_over_cov: Whether to determine high coverage intervals using the fraction of samples
+        (`fraction_samples`) with a mean interval coverage over the specified coverage levels (`autosome_par_xx_cov` and
         `xy_nonpar_cov`).
     :param mean_fraction_over_dp_0: Mean fraction of bases over DP used to define high quality intervals. Default is 0.99.
     :param autosome_par_xx_cov: Mean coverage level used to define high coverage intervals on the the autosomes, sex
         chromosome PAR, and chrX in XX individuals. Default is 20.
     :param xy_nonpar_cov: Mean coverage level used to define high coverage intervals on non-PAR chrX in XY individuals
         and non-PAR chrY in XY individuals. Default is 10.
-    :param prop_samples: Proportion of samples with mean coverage greater than `autosome_par_xx_cov`/`xy_nonpar_cov`
+    :param fraction_samples: Fraction of samples with mean coverage greater than `autosome_par_xx_cov`/`xy_nonpar_cov`
         over the interval to determine high coverage intervals. Default is 0.85.
     :return: MatrixTable or Table with samples removed
     """
-    if (by_mean_fraction_over_dp_0 and by_prop_samples_over_cov) or (
-        not by_mean_fraction_over_dp_0 and not by_prop_samples_over_cov
+    if (by_mean_fraction_over_dp_0 and by_fraction_samples_over_cov) or (
+        not by_mean_fraction_over_dp_0 and not by_fraction_samples_over_cov
     ):
         raise ValueError(
-            "One and only one of 'high_cov_by_mean_fraction_over_dp_0' and 'high_cov_by_prop_samples_over_cov' must be "
+            "One and only one of 'by_mean_fraction_over_dp_0' and 'by_fraction_samples_over_cov' must be "
             "True!"
         )
     if per_platform and all_platforms:
@@ -260,17 +288,17 @@ def get_interval_qc_pass(
         qc_xx_expr = qc_expr.get("XX", None)  # What if None?
         qc_xy_expr = qc_expr.get("XY", None)  # What if None?
         cutoff = mean_fraction_over_dp_0
-    if by_prop_samples_over_cov:
+    if by_fraction_samples_over_cov:
         add_globals = hl.struct(
             autosome_par_xx_cov=autosome_par_xx_cov,
             xy_nonpar_cov=xy_nonpar_cov,
-            prop_samples=prop_samples,
+            fraction_samples=fraction_samples,
         )
-        qc_expr = interval_qc_ht[f"{ann_prefix}prop_samples_by_dp"]
-        qc_autosome_par_expr = qc_expr[f"over_{autosome_par_xx_cov}x"]["all"]
-        qc_xx_expr = qc_expr[f"over_{autosome_par_xx_cov}x"].get("XX", None)
-        qc_xy_expr = qc_expr[f"over_{xy_nonpar_cov}x"].get("XY", None)
-        cutoff = prop_samples
+        qc_expr = interval_qc_ht[f"{ann_prefix}fraction_samples_by_dp"]
+        qc_autosome_par_expr = qc_expr[f"fraction_over_{autosome_par_xx_cov}x"]["all"]
+        qc_xx_expr = qc_expr[f"fraction_over_{autosome_par_xx_cov}x"].get("XX", None)
+        qc_xy_expr = qc_expr[f"fraction_over_{xy_nonpar_cov}x"].get("XY", None)
+        cutoff = fraction_samples
 
     def _get_pass_expr(qc_autosome_par_expr, qc_xx_expr, qc_xy_expr):
         return (
@@ -324,8 +352,16 @@ def annotate_interval_qc_filter(
     t: Union[hl.MatrixTable, hl.Table],
     **kwargs,
 ) -> Union[hl.MatrixTable, hl.Table]:
-    #interval_qc_ht = interval_qc.ht()
-    interval_qc_ht = hl.read_table(get_checkpoint_path("interval_qc"))
+    """
+    Wrapper function around `get_interval_qc_pass` to annotate a Table/MatrixTable with 'pass_interval_qc'.
+
+    Passes the interval QC Table resource and kwargs to `get_interval_qc_pass`.
+
+    :param t: Input Table or MatrixTable.
+    :param kwargs: Optional keyword arguments to pass to `get_interval_qc_pass`.
+    :return: Input Table or MatrixTable annotated with 'pass_interval_qc'.
+    """
+    interval_qc_ht = interval_qc.ht()
     interval_qc_ht = get_interval_qc_pass(interval_qc_ht, **kwargs)
 
     if isinstance(t, hl.MatrixTable):
@@ -451,11 +487,11 @@ def main(args):
                 all_platforms=args.all_platforms,
                 min_platform_size=args.min_platform_size,
                 by_mean_fraction_over_dp_0=args.by_mean_fraction_over_dp_0,
-                by_prop_samples_over_cov=args.by_prop_samples_over_cov,
+                by_fraction_samples_over_cov=args.by_fraction_samples_over_cov,
                 mean_fraction_over_dp_0=args.mean_fraction_over_dp_0,
                 autosome_par_xx_cov=args.autosome_par_xx_cov,
                 xy_nonpar_cov=args.xy_nonpar_cov,
-                prop_samples=args.prop_samples,
+                fraction_samples=args.fraction_samples,
             )
             ht.write(
                 get_checkpoint_path("interval_qc_pass")
@@ -582,12 +618,12 @@ if __name__ == "__main__":
         action="store_true",
     )
     interval_qc_pass_method_parser.add_argument(
-        "--by-prop-samples-over-cov",
+        "--by-fraction-samples-over-cov",
         help=(
-            "Whether to determine high quality intervals using the proportion of samples (--prop-samples) with a mean "
-            "interval coverage over a specified coverage for intervals on the the autosomes/sex chromosome PAR/chrX in "
-            "XX individuals (--autosome-par-xx-cov) and intervals on non-PAR chrX in XY individuals and non-PAR chrY "
-            "in XY individuals (--xy-nonpar-cov)."
+            "Whether to determine high quality intervals using the fraction of samples (--fraction-samples) with a "
+            "mean interval coverage over a specified coverage for intervals on the the autosomes/sex chromosome "
+            "PAR/chrX in XX individuals (--autosome-par-xx-cov) and intervals on non-PAR chrX in XY individuals and "
+            "non-PAR chrY in XY individuals (--xy-nonpar-cov)."
         ),
         action="store_true",
     )
@@ -616,9 +652,9 @@ if __name__ == "__main__":
         default=10,
     )
     interval_qc_pass_args.add_argument(
-        "--prop-samples",
+        "--fraction-samples",
         help=(
-            "Proportion of samples with mean coverage greater than '--autosome-par-xx-cov'/'--xy-nonpar-cov' over the "
+            "Fraction of samples with mean coverage greater than '--autosome-par-xx-cov'/'--xy-nonpar-cov' over the "
             "interval to determine high coverage intervals."
         ),
         type=float,
@@ -628,10 +664,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.generate_interval_qc_pass_ht and not (
-        args.by_mean_fraction_over_dp_0 or args.by_prop_samples_over_cov
+        args.by_mean_fraction_over_dp_0 or args.by_fraction_samples_over_cov
     ):
         parser.error(
-            "One of --by-mean-fraction-over-dp-0 or --by-prop-samples-over-cov is required when "
+            "One of --by-mean-fraction-over-dp-0 or --by-fraction-samples-over-cov is required when "
             "--generate_interval_qc_pass_ht is specified."
         )
 
