@@ -13,7 +13,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_loadings,
     ancestry_pca_scores,
     get_pop_ht,
-    get_qc_mt,
+    get_joint_qc_mt,
     joint_qc_meta,
     pca_related_samples_to_drop,
     pop_rf_path,
@@ -34,14 +34,14 @@ def run_pca(
     """
     Run population PCA using `run_pca_with_relateds`.
 
-    :param remove_unreleasable_samples: Should unreleasable samples be removed the PCA
-    :param n_pcs: Number of PCs to compute
-    :param related_samples_to_drop: Table of related samples to drop from PCA run
+    :param related_samples_to_drop: Table of related samples to drop from PCA run.
+    :param remove_unreleasable_samples: Should unreleasable samples be removed from the PCA.
+    :param n_pcs: Number of PCs to compute.
     :param test: Subset qc mt to small test dataset.
-    :return: eigenvalues, scores and loadings
+    :return: Eigenvalues, scores and loadings from PCA.
     """
     logger.info("Running population PCA")
-    qc_mt = get_qc_mt(test=test).mt()
+    qc_mt = get_joint_qc_mt(test=test).mt()
     joint_meta = joint_qc_meta.ht()
     samples_to_drop = related_samples_to_drop.select()
 
@@ -58,7 +58,7 @@ def run_pca(
             .select()
         )
     else:
-        logger.info("Including unreleasable samples for PCA")
+        logger.info("Including unreleasable samples for PCA.")
 
     return run_pca_with_relateds(qc_mt, samples_to_drop, n_pcs=n_pcs)
 
@@ -91,18 +91,19 @@ def prep_ht_for_rf(
     test: bool = False,
 ) -> hl.Table:
     """
-    Prepare the pca scores hail Table for the random forest population assignment runs.
+    Prepare the PCA scores hail Table for the random forest population assignment runs.
 
     :param remove_unreleasable_samples: Should unreleasable samples be remove in the PCA.
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`.
     :param seed: Random seed, defaults to 24.
-    :param test: Whether RF is running on test qc mt.
+    :param test: Whether RF should run on the test QC MT.
     :return Table with input for the random forest.
     """
     pop_pca_scores_ht = ancestry_pca_scores(remove_unreleasable_samples, test).ht()
     joint_meta = joint_qc_meta.ht()[pop_pca_scores_ht.key]
 
-    # Assign known populations or prevoiusly inferred pops as training pop for the RF
+    # Assign known populations or prevouisly inferred pops as training pop for the RF
+    # TODO: Add code for subpopulations
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop=(
             hl.case()
@@ -113,7 +114,7 @@ def prep_ht_for_rf(
             .when(
                 joint_meta.v3_meta.v3_population_inference.pop != "oth",
                 joint_meta.v3_meta.v3_population_inference.pop,
-            )  # TODO: Anylsis of where v2_pop does not agree with v3 assigned pop
+            )  # TODO: Analysis of where v2_pop does not agree with v3 assigned pop
             .or_missing()
         ),
         hgdp_or_tgp=joint_meta.v3_meta.v3_subsets.hgdp
@@ -147,7 +148,7 @@ def assign_pops(
     remove_unreleasable_samples: bool = False,
     max_number_mislabeled_training_samples: int = None,
     max_proportion_mislabeled_training_samples: float = None,
-    pcs: List[int] = list(range(1, 17)),
+    pcs: List[int] = list(range(1, 21)),
     withhold_prop: float = None,
     missing_label: str = "remaining",
     seed: int = 24,
@@ -157,23 +158,23 @@ def assign_pops(
     """
     Use a random forest model to assign global population labels based on the results from `run_pca`.
 
-    The training data used is v3 project metadata's `project_pop` if it is defined, otherwise it uses `v2_pop` if defined with the exception of `oth`.
+    The training data is the v3 project metadata's `project_pop` when defined, otherwise the v3 inferred population is used when it is defined with the exception of `oth`.
     The method starts by inferring the pop on all samples, then comparing the training data to the inferred data,
     removing the truth outliers and re-training. This is repeated until the number of truth samples is less than
     or equal to `max_number_mislabeled_training_samples` or `max_proportion_mislabeled_training_samples`. Only one
     of `max_number_mislabeled_training_samples` or `max_proportion_mislabeled_training_samples` can be set.
 
-    :param min_prob: Minimum RF probability for pop assignment
+    :param min_prob: Minimum RF probability for pop assignment.
     :param remove_unreleasable_samples: Whether unreleasable were removed from PCA.
-    :param max_number_mislabeled_training_samples: Maximum number of training samples that can be mislabelled
-    :param max_proportion_mislabeled_training_samples: Maximum proportion of training samples that can be mislabelled
-    :param pcs: List of PCs to use in the RF
-    :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
-    :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`
+    :param max_number_mislabeled_training_samples: Maximum number of training samples that can be mislabelled.
+    :param max_proportion_mislabeled_training_samples: Maximum proportion of training samples that can be mislabelled.
+    :param pcs: List of PCs to use in the RF.
+    :param withhold_prop: Proportion of training pop samples to withhold from training. Keep all samples if `None`.
+    :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`.
     :param seed: Random seed, defaults to 24.
     :param test: Whether running assigment on a test dataset.
     :param overwrite: Whether to overwrite existing files.
-    :return: Table of pop assignments and the RF model
+    :return: Table of pop assignments and the RF model.
     """
     logger.info("Assigning global population labels")
 
@@ -301,19 +302,19 @@ def write_pca_results(
     pop_pca_eigenvalues: List[float],
     pop_pca_scores_ht: hl.Table,
     pop_pca_loadings_ht: hl.Table,
-    overwrite: hl.bool,
-    removed_unreleasables: hl.bool,
+    overwrite: hl.bool = False,
+    removed_unreleasables: hl.bool = True,
     test: hl.bool = False,
 ):
     """
-    Write out the three objects returned by run_pca().
+    Write out the eigenvalue hail Table, scores hail Table, and loadings hail Table returned by run_pca().
 
     :param pop_pca_eigenvalues: List of eigenvalues returned by run_pca.
     :param pop_pca_scores_ht: Table of scores returned by run_pca.
     :param pop_pca_loadings_ht: Table of loadings returned by run_pca.
     :param overwrite: Whether to overwrite an existing file.
     :param removed_unreleasables: Whether run_pca removed unreleasable samples.
-    :param test: Whether the test qc mt was used in pca.
+    :param test: Whether the test QC MT was used in the PCA.
     :return: None
     """
     pop_pca_eigenvalues_ht = hl.Table.parallelize(
@@ -391,7 +392,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--run-pca", help="Compute PCA", action="store_true")
+    parser.add_argument("--run-pca", help="Compute ancestry PCA", action="store_true")
     parser.add_argument(
         "--n-pcs",
         help="Number of PCs to compute for ancestry PCA. Defaults to 30.",
@@ -408,9 +409,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--pop-pcs",
-        help="List of PCs to use for ancestry assignment. The values provided should be 1-based. Defaults to 16 PCs",
-        default=list(range(1, 17)),
+        help="List of PCs to use for ancestry assignment. The values provided should be 1-based. Defaults to 20 PCs",
+        default=list(range(1, 21)),
         type=list,
+        nargs="+",
     )
     parser.add_argument(
         "--min-pop-prob",
@@ -420,7 +422,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--withhold-prop",
-        help="Proportion of training samples to withhold from pop assignment RF training.",
+        help="Proportion of training samples to withhold from pop assignment RF training. All samples with known labels will be used for training if this flag is not used.",
         type=float,
     )
     mislabel_parser = parser.add_mutually_exclusive_group(required=True)
