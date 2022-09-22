@@ -312,7 +312,7 @@ def compute_sex_ploidy(
         `high_cov_per_platform` or `high_cov_all_platforms` are True.
     :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy imputation. Default
         is False.
-    :param high_cov_per_platform: Whether filter to per platform high coverage intervals for the sex ploidy imputation.
+    :param high_cov_per_platform: Whether to filter to per platform high coverage intervals for the sex ploidy imputation.
         Default is False.
     :param high_cov_all_platforms: Whether to filter to high coverage intervals for the sex ploidy imputation. Using
         only intervals that are considered high coverage across all platforms. Default is False.
@@ -408,7 +408,7 @@ def compute_sex_ploidy(
         Helper function to perform `annotate_sex` using unchanged parameters with changes to the VDS and calling
         intervals.
 
-        :param vds: Input VDS to use for sex annotation.
+        :param vds: Input VDS to use for sex ploidy annotation.
         :param calling_intervals_ht: Table including only intervals wanted for sex annotation.
         :return: Table containing sex ploidy estimates for samples in the input VDS.
         """
@@ -431,7 +431,7 @@ def compute_sex_ploidy(
 
     if high_cov_intervals or high_cov_all_platforms or high_cov_per_platform:
         logger.info(
-            "Running sex ploidy and sex karyotype estimation using only high coverage intervals: %d percent of samples "
+            "Running sex ploidy estimation using only high coverage intervals: %d percent of samples "
             "with greater than %dx coverage on chrX, %d percent of samples with greater than %dx coverage on chrY, and "
             "%d percent of samples with greater than %dx coverage on %s...",
             int(prop_samples_x * 100),
@@ -472,7 +472,7 @@ def compute_sex_ploidy(
             "with at least %s samples...",
             min_platform_size,
         )
-        # Excluding small platforms and platform_-1 (platfrom containing all samples with unassigned platform)
+        # Excluding small platforms and platform_-1 (platform containing all samples with unassigned platform)
         interval_qc_mt = interval_qc_mt.filter_cols(
             (interval_qc_mt.n_samples >= min_platform_size)
             & (interval_qc_mt.platform != "platform_-1")
@@ -665,7 +665,7 @@ def main(args):
                 get_checkpoint_path(f"ploidy_imputation") if test else ploidy.path
             )
             # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
-            if args.overwrite or not file_exists(ploidy_ht_path):
+            if overwrite or not file_exists(ploidy_ht_path):
                 interval_qc_mt = (
                     hl.read_matrix_table(
                         get_checkpoint_path(
@@ -722,7 +722,7 @@ def main(args):
             logger.info("Writing sex HT with karyotype annotation...")
             sex_ht.write(
                 get_checkpoint_path("sex") if test else sex.path,
-                overwrite=args.overwrite,
+                overwrite=overwrite,
             )
 
     finally:
@@ -886,7 +886,7 @@ if __name__ == "__main__":
     )
     sex_ploidy_high_cov_method_parser.add_argument(
         "--high-cov-per-platform",
-        help="Whether filter to per platform high coverage intervals for the sex ploidy imputation.",
+        help="Whether to filter to per platform high coverage intervals for the sex ploidy imputation.",
         action="store_true",
     )
     sex_ploidy_high_cov_method_parser.add_argument(
