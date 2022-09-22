@@ -207,10 +207,12 @@ def generate_sex_imputation_interval_qc_mt(
         interval DP >= the threshold.
     :return: MatrixTable with annotations for the fraction of samples per interval and per platform over DP thresholds.
     """
+    # Note: Default `hl.vds.interval_coverage` will return a list for `fraction_over_dp_threshold` where the
+    # second element is dp >= 1 (dp > 0)
     mt = mt.annotate_cols(platform=platform_ht[mt.col_key].qc_platform)
     mt = mt.annotate_rows(
         **{
-            f"over_{dp}x": hl.agg.fraction(mt.mean_dp >= dp)
+            f"fraction_over_{dp}x": hl.agg.fraction(mt.mean_dp >= dp)
             for dp in mean_dp_thresholds
         },
         mean_fraction_over_dp_0=hl.agg.mean(mt.fraction_over_dp_threshold[1]),
@@ -220,7 +222,7 @@ def generate_sex_imputation_interval_qc_mt(
     logger.info("Adding per platform aggregation...")
     platform_mt = mt.group_cols_by(mt.platform).aggregate(
         **{
-            f"platform_over_{dp}x": hl.agg.fraction(mt.mean_dp >= dp)
+            f"platform_fraction_over_{dp}x": hl.agg.fraction(mt.mean_dp >= dp)
             for dp in mean_dp_thresholds
         },
         platform_mean_fraction_over_dp_0=hl.agg.mean(mt.fraction_over_dp_threshold[1]),
@@ -385,16 +387,16 @@ def compute_sex_ploidy(
         return interval_qc_mt.filter_rows(
             (
                 (interval_qc_mt.interval.start.contig == "chrX")
-                & agg_func(interval_qc_mt[f"{prefix}over_{x_cov}x"] > prop_samples_x)
+                & agg_func(interval_qc_mt[f"{prefix}fraction_over_{x_cov}x"] > prop_samples_x)
             )
             | (
                 (interval_qc_mt.interval.start.contig == "chrY")
-                & agg_func(interval_qc_mt[f"{prefix}over_{y_cov}x"] > prop_samples_y)
+                & agg_func(interval_qc_mt[f"{prefix}fraction_over_{y_cov}x"] > prop_samples_y)
             )
             | (
                 (interval_qc_mt.interval.start.contig == normalization_contig)
                 & agg_func(
-                    interval_qc_mt[f"{prefix}over_{norm_cov}x"] > prop_samples_norm
+                    interval_qc_mt[f"{prefix}fraction_over_{norm_cov}x"] > prop_samples_norm
                 )
             )
         ).rows()
@@ -470,6 +472,7 @@ def compute_sex_ploidy(
             "with at least %s samples...",
             min_platform_size,
         )
+        # Excluding small platforms and platform_-1 (platfrom containing all samples with unassigned platform)
         interval_qc_mt = interval_qc_mt.filter_cols(
             (interval_qc_mt.n_samples >= min_platform_size)
             & (interval_qc_mt.platform != "platform_-1")
@@ -608,7 +611,7 @@ def main(args):
                 get_checkpoint_path("test_sex_imputation_cov", mt=True)
                 if test
                 else sex_imputation_coverage.path,
-                overwrite=args.overwrite,
+                overwrite=overwrite,
             )
 
         if args.sex_imputation_interval_qc:
@@ -633,7 +636,7 @@ def main(args):
                 get_checkpoint_path("test_sex_imputation_cov.per_platform", mt=True)
                 if test
                 else sex_imputation_platform_coverage.path,
-                overwrite=args.overwrite,
+                overwrite=overwrite,
             )
 
         if args.impute_sex_ploidy:
