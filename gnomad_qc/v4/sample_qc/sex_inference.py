@@ -596,7 +596,7 @@ def main(args):
                 get_checkpoint_path("test_sex_imputation_cov", mt=True)
                 if test
                 else sex_imputation_coverage.path,
-                overwrite=args.overwrite,
+                overwrite=overwrite,
             )
 
         if args.sex_imputation_interval_qc:
@@ -621,7 +621,7 @@ def main(args):
                 get_checkpoint_path("test_sex_imputation_cov.per_platform", mt=True)
                 if test
                 else sex_imputation_platform_coverage.path,
-                overwrite=args.overwrite,
+                overwrite=overwrite,
             )
 
         if args.impute_sex:
