@@ -881,19 +881,26 @@ if __name__ == "__main__":
     )
     sex_ploidy_high_cov_method_parser.add_argument(
         "--high-cov-intervals",
-        help="Whether to filter to high coverage intervals for the sex ploidy imputation.",
+        help=(
+            "Whether to filter to high coverage intervals for the sex ploidy imputation. Can't be used at the same "
+            "time as '--high-cov-per-platform' or '--high-cov-all-platforms'."
+        ),
         action="store_true",
     )
     sex_ploidy_high_cov_method_parser.add_argument(
         "--high-cov-per-platform",
-        help="Whether to filter to per platform high coverage intervals for the sex ploidy imputation.",
+        help=(
+            "Whether to filter to per platform high coverage intervals for the sex ploidy imputation. Can't be used "
+             "at the same time as '--high-cov-intervals' or '--high-cov-all-platforms'."
+        ),
         action="store_true",
     )
     sex_ploidy_high_cov_method_parser.add_argument(
         "--high-cov-all-platforms",
         help=(
             "Whether to filter to high coverage intervals for the sex ploidy imputation. Use only intervals that are "
-            "considered high coverage across all platforms."
+            "considered high coverage across all platforms.  Can't be used at the same time as '--high-cov-intervals' "
+            "or '--high-cov-per-platform'"
         ),
         action="store_true",
     )
