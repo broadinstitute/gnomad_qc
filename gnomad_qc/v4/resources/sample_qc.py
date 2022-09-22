@@ -92,7 +92,7 @@ def _get_ancestry_pca_ht_path(
 def ancestry_pca_loadings(
     remove_unreleasable_samples: bool = True,
     test: bool = False,
-    data_type: str = "exomes",
+    data_type: str = "joint",
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA loadings VersionedTableResource.
@@ -118,7 +118,7 @@ def ancestry_pca_loadings(
 def ancestry_pca_scores(
     remove_unreleasable_samples: bool = True,
     test: bool = False,
-    data_type: str = "exomes",
+    data_type: str = "joint",
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA scores VersionedTableResource.
@@ -144,7 +144,7 @@ def ancestry_pca_scores(
 def ancestry_pca_eigenvalues(
     remove_unreleasable_samples: bool = True,
     test: bool = False,
-    data_type: str = "exomes",
+    data_type: str = "joint",
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA eigenvalues VersionedTableResource.
@@ -202,7 +202,7 @@ def get_predetermined_qc(version: str = CURRENT_VERSION, test: bool = False):
         return v4_predetermined_qc.versions[version]
 
 
-def get_qc_mt(version: str = CURRENT_VERSION, test: bool = False):
+def get_joint_qc_mt(version: str = CURRENT_VERSION, test: bool = False):
     """
     Get the joint dense MatrixTableResource of all samples at predetermined QC sites for the indicated gnomAD version.
 
@@ -212,7 +212,7 @@ def get_qc_mt(version: str = CURRENT_VERSION, test: bool = False):
     """
     if test:
         return MatrixTableResource(
-            get_checkpoint_path("dense_ld_prune_qc_mt.test", mt=True)
+            get_checkpoint_path("dense_ld_prune_qc_mt.test", version, mt=True)
         )
     else:
         return qc.versions[version]
@@ -453,7 +453,7 @@ def pop_tsv_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     Path to tab delimited file indicating inferred sample populations.
 
     :param version: gnomAD Version
-    :param test: Whether the rf was from a test dataset.
+    :param test: Whether the RF assignment used a test dataset.
     :return: String path to sample populations
     """
     return f"{get_sample_qc_root(version,test)}/gnomad.exomes.v{version}.RF_pop_assignments.txt.gz"
@@ -477,7 +477,7 @@ def pop_rf_path(
 
 def get_pop_ht(version: str = CURRENT_VERSION, test: bool = False):
     """
-    Get the pop Table of all samples for the indicated gnomAD version.
+    Get the TableResource of samples' inferred population for the indicated gnomAD version.
 
     :param version: Version of pop TableResource to return.
     :param test: Whether to use the test version of the pop TableResource.
