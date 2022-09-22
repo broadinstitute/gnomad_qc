@@ -93,8 +93,8 @@ def filter_to_test(
     logger.info(
         "Filtering to columns in both the coverage MT and the sex coverage MT for testing...",
     )
-    mt = mt.anti_join_cols(sex_mt.cols())
-    sex_mt = sex_mt.anti_join_cols(mt.cols())
+    mt = mt.semi_join_cols(sex_mt.cols())
+    sex_mt = sex_mt.semi_join_cols(mt.cols())
 
     logger.info(
         "Filtering to %d partitions on chr1, chrX, and all of chrY for testing...",
@@ -102,10 +102,7 @@ def filter_to_test(
     )
     mt = mt._filter_partitions(range(num_partitions))
     sex_mt_chrx = sex_mt._filter_partitions(range(num_partitions))
-    sex_mt_chry = sex_mt.filter_rows(
-        (sex_mt.interval.start.contig == "chrY")
-    ).repartition(100)
-    sex_mt_chry = sex_mt_chry._filter_partitions(range(num_partitions))
+    sex_mt_chry = sex_mt.filter_rows(sex_mt.interval.start.contig == "chrY")
 
     return mt, sex_mt_chrx.union_rows(sex_mt_chry)
 
@@ -149,9 +146,16 @@ def compute_interval_qc(
 
         return agg_expr
 
+    num_samples = mt.count_cols()
     mt = mt.annotate_cols(platform=platform_ht[mt.col_key].qc_platform)
+    mt = mt.filter_cols(hl.is_defined(mt.platform))
+    logger.warning(
+        "Number of samples in MT with no platform assignment: %d",
+        num_samples - mt.count_cols(),
+    )
+
     agg_groups = [("", None), ("platform_", mt.platform)]
-    mt = mt.select_rows(
+    mt = mt.annotate_rows(
         **{
             f"{prefix}interval_mean_dp": _get_agg_expr(mt.mean_dp, group_by=group_by)
             for prefix, group_by in agg_groups
@@ -237,9 +241,9 @@ def get_interval_qc_pass(
         all_platforms=all_platforms,
     )
     interval_start = interval_qc_ht.interval.start
-    autosome_or_par = interval_start.in_autosome_or_par() | interval_qc_ht.overlap_par
-    x_non_par = interval_start.in_x_nonpar() & ~interval_qc_ht.overlap_par
-    y_non_par = interval_start.in_y_nonpar() & ~interval_qc_ht.overlap_par
+    autosome_or_par = interval_start.in_autosome_or_par()
+    x_non_par = interval_start.in_x_nonpar()
+    y_non_par = interval_start.in_y_nonpar()
 
     if per_platform or all_platforms:
         platform_n_samples = (
@@ -253,8 +257,8 @@ def get_interval_qc_pass(
         add_globals = hl.struct(mean_fraction_over_dp_0=mean_fraction_over_dp_0)
         qc_expr = interval_qc_ht[f"{ann_prefix}mean_fraction_over_dp_0"]
         qc_autosome_par_expr = qc_expr["all"]
-        qc_xx_expr = qc_expr.get("XX", None)
-        qc_xy_expr = qc_expr.get("XY", None)
+        qc_xx_expr = qc_expr.get("XX", None)  # What if None?
+        qc_xy_expr = qc_expr.get("XY", None)  # What if None?
         cutoff = mean_fraction_over_dp_0
     if by_prop_samples_over_cov:
         add_globals = hl.struct(
@@ -271,7 +275,7 @@ def get_interval_qc_pass(
     def _get_pass_expr(qc_autosome_par_expr, qc_xx_expr, qc_xy_expr):
         return (
             (autosome_or_par & (qc_autosome_par_expr > cutoff))
-            | (x_non_par & (qc_xx_expr > cutoff) & (qc_xy_expr > cutoff))
+            | (x_non_par & (qc_xx_expr > cutoff) & (qc_xy_expr > cutoff))  # Will evaluate to NA is there are no Males, not really what we want
             | (y_non_par & (qc_xy_expr > cutoff))
         )
 
@@ -280,9 +284,9 @@ def get_interval_qc_pass(
             pass_interval_qc=hl.struct(
                 **{
                     platform: _get_pass_expr(
-                        qc_autosome_par_expr[platform],
-                        qc_xx_expr[platform],
-                        qc_xy_expr[platform],
+                        qc_autosome_par_expr.get(platform, None),
+                        qc_xx_expr.get(platform, None),
+                        qc_xy_expr.get(platform, None),
                     )
                     for platform in platform_n_samples
                 }
@@ -318,10 +322,10 @@ def get_interval_qc_pass(
 
 def annotate_interval_qc_filter(
     t: Union[hl.MatrixTable, hl.Table],
-    interval_qc_ht,
     **kwargs,
 ) -> Union[hl.MatrixTable, hl.Table]:
-    # interval_qc_ht = interval_qc.ht()
+    #interval_qc_ht = interval_qc.ht()
+    interval_qc_ht = hl.read_table(get_checkpoint_path("interval_qc"))
     interval_qc_ht = get_interval_qc_pass(interval_qc_ht, **kwargs)
 
     if isinstance(t, hl.MatrixTable):
@@ -342,6 +346,7 @@ def main(args):
     calling_interval_name = args.calling_interval_name
     calling_interval_padding = args.calling_interval_padding
     overwrite = args.overwrite
+    mean_dp_thresholds = args.mean_dp_thresholds
 
     try:
         if args.sex_chr_interval_coverage:
@@ -371,22 +376,24 @@ def main(args):
         if args.generate_interval_qc_ht:
             platform_ht = platform.ht()
             coverage_mt = interval_coverage.mt()
-            sex_coverage_mt = sex_chr_coverage.mt()
 
             if test:
                 coverage_mt, sex_coverage_mt = filter_to_test(
-                    coverage_mt, sex_coverage_mt
+                    coverage_mt,
+                    hl.read_matrix_table(
+                        get_checkpoint_path("test_sex_imputation_cov", mt=True)
+                    ),
                 )
                 coverage_mt = coverage_mt.checkpoint(
                     get_checkpoint_path("interval_qc_coverage", mt=True),
-                    overwrite=True,
-                    # _read_if_exists=True,
+                    _read_if_exists=True,
                 )
                 sex_coverage_mt = sex_coverage_mt.checkpoint(
                     get_checkpoint_path("interval_qc_sex_coverage", mt=True),
-                    overwrite=True,
-                    # _read_if_exists=True,
+                    _read_if_exists=True,
                 )
+            else:
+                sex_coverage_mt = sex_chr_coverage.mt()
 
             logger.info("Removing hard-filtered samples from the coverage MTs...")
             coverage_mt = coverage_mt.filter_cols(
@@ -400,10 +407,11 @@ def main(args):
             coverage_mt = coverage_mt.filter_rows(
                 coverage_mt.interval.start.in_autosome()
             )
+            coverage_mt = coverage_mt.annotate_rows(overlap_par=False)
             ht = compute_interval_qc(
                 coverage_mt,
                 platform_ht=platform_ht,
-                mean_dp_thresholds=coverage_mt.mean_dp_thresholds,
+                mean_dp_thresholds=mean_dp_thresholds,
             )
 
             logger.info("Filtering to XX and XY samples...")
@@ -423,7 +431,7 @@ def main(args):
                 compute_interval_qc(
                     sex_coverage_mt,
                     platform_ht=platform_ht,
-                    mean_dp_thresholds=sex_coverage_mt.mean_dp_thresholds,
+                    mean_dp_thresholds=mean_dp_thresholds,
                     split_by_sex=True,
                 )
             )
@@ -512,6 +520,16 @@ if __name__ == "__main__":
         help="Compute aggregate interval stats for interval QC from coverage MatrixTables.",
         action="store_true",
     )
+    interval_qc_args.add_argument(
+        "--mean-dp-thresholds",
+        help=(
+            "List of mean DP cutoffs to determining the fraction of samples with mean coverage >= the cutoff for each "
+            "interval."
+        ),
+        type=int,
+        nargs="+",
+        default=[5, 10, 15, 20, 25],
+    )
 
     interval_qc_pass_args = parser.add_argument_group(
         "Generate interval QC pass annotation",
@@ -526,8 +544,8 @@ if __name__ == "__main__":
         action="store_true",
     )
 
-    interval_qc_pass_platform_opt_parser = interval_qc_pass_args.add_mutually_exclusive_group(
-        required=False
+    interval_qc_pass_platform_opt_parser = (
+        interval_qc_pass_args.add_mutually_exclusive_group(required=False)
     )
     interval_qc_pass_platform_opt_parser.add_argument(
         "--per-platform",
@@ -609,7 +627,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    if args.generate_interval_qc_pass_ht and not (args.by_mean_fraction_over_dp_0 or args.by_prop_samples_over_cov):
+    if args.generate_interval_qc_pass_ht and not (
+        args.by_mean_fraction_over_dp_0 or args.by_prop_samples_over_cov
+    ):
         parser.error(
             "One of --by-mean-fraction-over-dp-0 or --by-prop-samples-over-cov is required when "
             "--generate_interval_qc_pass_ht is specified."
