@@ -73,7 +73,7 @@ def _get_platform_pca_ht_path(part: str, version: str = CURRENT_VERSION) -> str:
 def _get_ancestry_pca_ht_path(
     part: str,
     version: str = CURRENT_VERSION,
-    remove_unreleasable_samples: bool = False,
+    remove_unreleasable_samples: bool = True,
     test: bool = False,
     data_type: str = "exomes",
 ) -> str:
@@ -90,14 +90,14 @@ def _get_ancestry_pca_ht_path(
 
 
 def ancestry_pca_loadings(
-    remove_unreleasable_samples: bool = False,
+    remove_unreleasable_samples: bool = True,
     test: bool = False,
     data_type: str = "exomes",
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA loadings VersionedTableResource.
 
-    :param remove_unreleasable_samples: Whether to get the PCA that removed unreleasable in training.
+    :param remove_unreleasable_samples: Whether to get the PCA loadings from the PCA that did not use unreleasable samples.
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
     :return: Ancestry PCA loadings
@@ -116,14 +116,14 @@ def ancestry_pca_loadings(
 
 
 def ancestry_pca_scores(
-    remove_unreleasable_samples: bool = False,
+    remove_unreleasable_samples: bool = True,
     test: bool = False,
     data_type: str = "exomes",
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA scores VersionedTableResource.
 
-    :param remove_unreleasable_samples: Whether to get the PCA that removed unreleasable in training.
+    :param remove_unreleasable_samples: Whether to get the PCA scores from the PCA that did not use unreleasable samples.
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
     :return: Ancestry PCA scores
@@ -142,14 +142,14 @@ def ancestry_pca_scores(
 
 
 def ancestry_pca_eigenvalues(
-    remove_unreleasable_samples: bool = False,
+    remove_unreleasable_samples: bool = True,
     test: bool = False,
     data_type: str = "exomes",
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA eigenvalues VersionedTableResource.
 
-    :param remove_unreleasable_samples: Whether to get the PCA that removed unreleasable in training.
+    :param remove_unreleasable_samples: Whether to get the PCA eigenvalues from the PCA that did not use unreleasable samples.
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
     :return: Ancestry PCA eigenvalues
