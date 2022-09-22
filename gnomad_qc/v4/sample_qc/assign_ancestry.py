@@ -28,7 +28,7 @@ logger.setLevel(logging.INFO)
 def run_pca(
     related_samples_to_drop: hl.Table,
     remove_unreleasable_samples: hl.bool = True,
-    n_pcs: int = 16,
+    n_pcs: int = 30,
     test: hl.bool = False,
 ) -> Tuple[List[float], hl.Table, hl.Table]:
     """

@@ -20,7 +20,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_samples,
     joint_qc_meta,
     predetermined_qc_sites,
-    qc,
+    joint_qc,
     sample_chr20_mean_dp,
 )
 from gnomad_qc.slack_creds import slack_token
@@ -273,7 +273,7 @@ def main(args):
             mt.write(
                 get_checkpoint_path("dense_ld_prune_qc_mt.test", mt=True)
                 if test
-                else qc.path,
+                else joint_qc.path,
                 overwrite=overwrite,
             )
 

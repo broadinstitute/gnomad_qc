@@ -215,7 +215,7 @@ def get_joint_qc_mt(version: str = CURRENT_VERSION, test: bool = False):
             get_checkpoint_path("dense_ld_prune_qc_mt.test", version, mt=True)
         )
     else:
-        return qc.versions[version]
+        return joint_qc.versions[version]
 
 
 # HT of pre LD pruned variants chosen from CCDG, gnomAD v3, and UKB variant info
@@ -241,7 +241,7 @@ v4_predetermined_qc = VersionedMatrixTableResource(
 )
 
 # Dense MT of samples at QC sites
-qc = VersionedMatrixTableResource(
+joint_qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
         version: MatrixTableResource(
