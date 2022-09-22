@@ -299,7 +299,11 @@ def compute_sex_ploidy(
               }
             - Example of `high_cov_cutoffs` dictionary using annotations for the proportion of samples over a specified
               coverage:
-              {"chrX": ("over_10x", 0.80), "chrY": ("over_5x", 0.35), `normalization_contig`: ("over_20x", 0.85)}
+              {
+                  "chrX": ("fraction_over_10x", 0.80),
+                  "chrY": ("fraction_over_5x", 0.35),
+                  `normalization_contig`: ("fraction_over_20x", 0.85)
+              }
 
     :param vds: Input VDS for use in sex inference.
     :param interval_qc_mt: Optional interval QC MatrixTable. This is only needed if `high_cov_intervals`,
@@ -673,10 +677,10 @@ def main(args):
                     }
                 elif args.high_cov_by_prop_samples_over_cov:
                     high_cov_cutoffs = {
-                        "chrX": (f"over_{args.x_cov}x", args.prop_samples_x),
-                        "chrY": (f"over_{args.y_cov}x", args.prop_samples_y),
+                        "chrX": (f"fraction_over_{args.x_cov}x", args.prop_samples_x),
+                        "chrY": (f"fraction_over_{args.y_cov}x", args.prop_samples_y),
                         normalization_contig: (
-                            f"over_{args.norm_cov}x",
+                            f"fraction_over_{args.norm_cov}x",
                             args.prop_samples_norm,
                         ),
                     }
