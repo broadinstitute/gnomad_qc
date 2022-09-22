@@ -46,18 +46,18 @@ def determine_fstat_sites(
     .. warning::
 
         By default `approx_af_and_no_callrate` is False and the final Table will be filtered to high callrate (> value
-        specified by `min_callrate`) variants. This requires a densify of chrX!!"
+        specified by `min_callrate`) variants. This requires a densify of chrX!"
 
     .. note::
 
-        If `approx_af_and_no_callrate` is True allele frequency is approximated with AC/(n_samples * 2) and no callrate
+        If `approx_af_and_no_callrate` is True, allele frequency is approximated with AC/(n_samples * 2) and no callrate
         filter is used.
 
     :param vds: Input VariantDataset.
     :param approx_af_and_no_callrate: Whether to approximate allele frequency with AC/(n_samples * 2) and use no
         callrate cutoff to filter sites.
-    :param min_af: Alternate allele frequency cutoff used to filter sites.
-    :param min_callrate: Callrate cutoff used to filter sites.
+    :param min_af: Minimum alternate allele frequency cutoff used to filter sites.
+    :param min_callrate: Minimum callrate cutoff used to filter sites.
     :return: Table of chromosome X sites to be used for f-stat computation.
     """
     vds = hl.vds.filter_chromosomes(vds, keep=["chrX"])
@@ -66,7 +66,6 @@ def determine_fstat_sites(
         (hl.len(vd.alleles) == 2) & hl.is_snp(vd.alleles[0], vd.alleles[1])
     )
     vd = vd.transmute_entries(GT=hl.experimental.lgt_to_gt(vd.LGT, vd.LA))
-    vds = hl.vds.VariantDataset(vds.reference_data, vd)
 
     if approx_af_and_no_callrate:
         n_samples = vd.count_cols()
@@ -79,7 +78,7 @@ def determine_fstat_sites(
             min_approx_af=min_af,
         )
     else:
-        mt = hl.vds.to_dense_mt(vds)
+        mt = hl.vds.to_dense_mt(hl.vds.VariantDataset(vds.reference_data, vd))
         ht = hl.variant_qc(mt).rows()
         ht = ht.filter(
             (ht.variant_qc.call_rate > min_callrate) & (ht.variant_qc.AF[1] > min_af)
@@ -210,10 +209,12 @@ def generate_sex_imputation_interval_qc_mt(
         interval DP >= the threshold.
     :return: MatrixTable with annotations for the fraction of samples per interval and per platform over DP thresholds.
     """
+    # Note: Default `hl.vds.interval_coverage` will return a list for `fraction_over_dp_threshold` where the
+    # second element is dp >= 1 (dp > 0)
     mt = mt.annotate_cols(platform=platform_ht[mt.col_key].qc_platform)
     mt = mt.annotate_rows(
         **{
-            f"over_{dp}x": hl.agg.fraction(mt.mean_dp >= dp)
+            f"fraction_over_{dp}x": hl.agg.fraction(mt.mean_dp >= dp)
             for dp in mean_dp_thresholds
         },
         mean_fraction_over_dp_0=hl.agg.mean(mt.fraction_over_dp_threshold[1]),
@@ -223,7 +224,7 @@ def generate_sex_imputation_interval_qc_mt(
     logger.info("Adding per platform aggregation...")
     platform_mt = mt.group_cols_by(mt.platform).aggregate(
         **{
-            f"platform_over_{dp}x": hl.agg.fraction(mt.mean_dp >= dp)
+            f"platform_fraction_over_{dp}x": hl.agg.fraction(mt.mean_dp >= dp)
             for dp in mean_dp_thresholds
         },
         platform_mean_fraction_over_dp_0=hl.agg.mean(mt.fraction_over_dp_threshold[1]),
@@ -305,7 +306,7 @@ def compute_sex_ploidy(
         `high_cov_per_platform` or `high_cov_all_platforms` are True.
     :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy imputation. Default
         is False.
-    :param high_cov_per_platform: Whether filter to per platform high coverage intervals for the sex ploidy imputation.
+    :param high_cov_per_platform: Whether to filter to per platform high coverage intervals for the sex ploidy imputation.
         Default is False.
     :param high_cov_all_platforms: Whether to filter to high coverage intervals for the sex ploidy imputation. Using
         only intervals that are considered high coverage across all platforms. Default is False.
@@ -386,7 +387,7 @@ def compute_sex_ploidy(
         Helper function to perform `annotate_sex` using unchanged parameters with changes to the VDS and calling
         intervals.
 
-        :param vds: Input VDS to use for sex annotation.
+        :param vds: Input VDS to use for sex ploidy annotation.
         :param calling_intervals_ht: Table including only intervals wanted for sex annotation.
         :return: Table containing sex ploidy estimates for samples in the input VDS.
         """
@@ -450,6 +451,7 @@ def compute_sex_ploidy(
             "with at least %s samples...",
             min_platform_size,
         )
+        # Excluding small platforms and platform_-1 (platform containing all samples with unassigned platform)
         interval_qc_mt = interval_qc_mt.filter_cols(
             (interval_qc_mt.n_samples >= min_platform_size)
             & (interval_qc_mt.platform != "platform_-1")
@@ -546,6 +548,7 @@ def main(args):
 
     try:
         if args.determine_fstat_sites:
+            logger.info("Determining sites to use for f-stat computations...")
             vds = get_gnomad_v4_vds(
                 remove_hard_filtered_samples=False,
                 remove_hard_filtered_samples_no_sex=True,
@@ -587,7 +590,7 @@ def main(args):
                 get_checkpoint_path("test_sex_imputation_cov", mt=True)
                 if test
                 else sex_imputation_coverage.path,
-                overwrite=args.overwrite,
+                overwrite=overwrite,
             )
 
         if args.sex_imputation_interval_qc:
@@ -612,7 +615,7 @@ def main(args):
                 get_checkpoint_path("test_sex_imputation_cov.per_platform", mt=True)
                 if test
                 else sex_imputation_platform_coverage.path,
-                overwrite=args.overwrite,
+                overwrite=overwrite,
             )
 
         if args.impute_sex_ploidy:
@@ -642,7 +645,7 @@ def main(args):
             )
 
             # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
-            if args.overwrite or not file_exists(ploidy_ht_path):
+            if overwrite or not file_exists(ploidy_ht_path):
                 interval_qc_mt = (
                     hl.read_matrix_table(
                         get_checkpoint_path(
@@ -723,7 +726,7 @@ def main(args):
             logger.info("Writing sex HT with karyotype annotation...")
             sex_ht.write(
                 get_checkpoint_path("sex") if test else sex.path,
-                overwrite=args.overwrite,
+                overwrite=overwrite,
             )
 
     finally:
@@ -756,7 +759,7 @@ if __name__ == "__main__":
         help=(
             "Create Table of common (> value specified by '--min-af'), bi-allelic SNPs on chromosome X for f-stat "
             "calculations. Additionally filter to high callrate (> value specified by '--min-callrate') variants "
-            "if '--approx-af-and-no-callrate' is not used. NOTE: This requires a densify of chrX!!"
+            "if '--approx-af-and-no-callrate' is not used. NOTE: This requires a densify of chrX!"
         ),
         action="store_true",
     )
@@ -864,7 +867,7 @@ if __name__ == "__main__":
     )
     sex_ploidy_args.add_argument(
         "--min-af",
-        help="Minimum variant allele frequency to retain variant in qc matrix table.",
+        help="Minimum variant allele frequency to retain variant.",
         default=0.001,
         type=float,
     )
@@ -882,19 +885,26 @@ if __name__ == "__main__":
     )
     sex_ploidy_high_cov_method_parser.add_argument(
         "--high-cov-intervals",
-        help="Whether to filter to high coverage intervals for the sex ploidy imputation.",
+        help=(
+            "Whether to filter to high coverage intervals for the sex ploidy imputation. Can't be used at the same "
+            "time as '--high-cov-per-platform' or '--high-cov-all-platforms'."
+        ),
         action="store_true",
     )
     sex_ploidy_high_cov_method_parser.add_argument(
         "--high-cov-per-platform",
-        help="Whether filter to per platform high coverage intervals for the sex ploidy imputation.",
+        help=(
+            "Whether to filter to per platform high coverage intervals for the sex ploidy imputation. Can't be used "
+             "at the same time as '--high-cov-intervals' or '--high-cov-all-platforms'."
+        ),
         action="store_true",
     )
     sex_ploidy_high_cov_method_parser.add_argument(
         "--high-cov-all-platforms",
         help=(
             "Whether to filter to high coverage intervals for the sex ploidy imputation. Use only intervals that are "
-            "considered high coverage across all platforms."
+            "considered high coverage across all platforms.  Can't be used at the same time as '--high-cov-intervals' "
+            "or '--high-cov-per-platform'"
         ),
         action="store_true",
     )
