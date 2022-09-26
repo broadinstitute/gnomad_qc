@@ -48,14 +48,7 @@ def run_pca(
     if remove_unreleasable_samples:
         logger.info("Excluding unreleasable samples for PCA.")
         samples_to_drop = samples_to_drop.union(
-            qc_mt.filter_cols(
-                (~joint_meta[qc_mt.col_key].releasable)
-                | (
-                    ~joint_meta[qc_mt.col_key].v3_meta.v3_release
-                )  # TODO: Switch back to releasable? Need to discuss with Julia about adding to joint meta
-            )
-            .cols()
-            .select()
+            qc_mt.filter_cols(~joint_meta[qc_mt.col_key].releasable).cols().select()
         )
     else:
         logger.info("Including unreleasable samples for PCA.")
