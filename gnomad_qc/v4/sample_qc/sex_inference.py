@@ -373,6 +373,9 @@ def compute_sex_ploidy(
             `cov_*` > `prop_samples_*` criteria.
         :return: Table of high coverage intervals.
         """
+        # Apply the 'or' operator cumulatively from left to right to get a single bool.
+        # Each contig has a different set of high coverage cutoffs, this will apply those cutoffs to each contig then
+        # merge these contig expressions with the 'or' operator to keep all intervals that pass thee relevant cutoffs.
         filter_expr = functools.reduce(
             operator.or_,
             [
@@ -943,7 +946,8 @@ if __name__ == "__main__":
     )
     sex_ploidy_high_cov_opt_parser.add_argument(
         "--high-cov-by-mean-fraction-over-dp-0",
-        help="Whether to use the mean fraction of bases over DP 0 to determine high coverage intervals.",
+        help="Whether to use the mean fraction of bases over DP 0 to determine high coverage intervals. Can't be set "
+             "at the same time as '--high-cov-by-prop-samples-over-cov'.",
         action="store_true",
     )
     sex_ploidy_high_cov_opt_parser.add_argument(
@@ -951,7 +955,7 @@ if __name__ == "__main__":
         help=(
             "Whether to determine high coverage intervals using the proportion of samples with a mean interval "
             "coverage over a specified coverage for chrX (--x-cov), chrY (--y-cov), and the normalization contig "
-            "(--norm-cov)."
+            "(--norm-cov). Can't be set at the same time as '--high-cov-by-mean-fraction-over-dp-0'."
         ),
         action="store_true",
     )
