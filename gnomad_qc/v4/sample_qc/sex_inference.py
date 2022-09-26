@@ -339,7 +339,7 @@ def compute_sex_ploidy(
     :param variant_depth_only_ploidy_snv_only: Whether to filter to only single nucleotide variants for variants only
         ploidy estimation and fraction of homozygous alternate variants on chromosome X. Default is False.
     :param compute_x_frac_variants_hom_alt: Whether to return an annotation for the fraction of homozygous alternate
-        variants on chromosome X. Default is False.
+        variants on chromosome X. Default is True.
     :param freq_ht: Optional Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in
         this Table prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table
         with a `min_af` cutoff.
@@ -516,7 +516,7 @@ def infer_sex_karyotype_from_ploidy(
     :param per_platform: Whether the sex karyotype ploidy cutoff inference should be applied per platform.
     :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY
         are above cutoff.
-    :param use_gmm_for_ploidy_cutoffs: Use gaussian mixture model to split samples into 'XX' and 'XY' instead of f-stat.
+    :param use_gmm_for_ploidy_cutoffs: Use Gaussian mixture model to split samples into 'XX' and 'XY' instead of f-stat.
     :return: Table of imputed sex karyotypes.
     """
     logger.info("Running sex karyotype inference")
@@ -1080,7 +1080,7 @@ if __name__ == "__main__":
     )
     sex_karyotype_args.add_argument(
         "--use-gmm-for-ploidy-cutoffs",
-        help="Whether to use gaussian mixture model to roughly split samples into 'XX' and 'XY' instead of f-stat.",
+        help="Whether to use Gaussian mixture model to roughly split samples into 'XX' and 'XY' instead of f-stat.",
         action="store_true",
     )
     sex_karyotype_args.add_argument(
