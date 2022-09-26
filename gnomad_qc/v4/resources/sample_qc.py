@@ -7,7 +7,10 @@ from gnomad.resources.resource_utils import (
 )
 from gnomad.sample_qc.relatedness import get_relationship_expr
 
-from gnomad_qc.v4.resources.basics import get_checkpoint_path
+from gnomad_qc.resource_utils import (
+    GnomadPrivateMatrixTableResource,
+    GnomadPrivateTableResource,
+)
 from gnomad_qc.v4.resources.constants import (
     CURRENT_VERSION,
     VERSIONS,
@@ -163,19 +166,14 @@ def get_relatedness_annotated_ht() -> hl.Table:
     )
 
 
-def get_predetermined_qc(version: str = CURRENT_VERSION, test: bool = False):
+def get_predetermined_qc(version: str = CURRENT_VERSION):
     """
     Get the dense MatrixTableResource of all predetermined QC sites for the indicated gnomAD version.
 
     :param version: Version of QC MatrixTableResource to return.
-    :param test: Whether to use a tmp path for a test MatrixTableResource.
     :return: MatrixTableResource of predetermined QC sites.
     """
-    if test:
-        return MatrixTableResource(
-            get_checkpoint_path(f"dense_pre_ld_prune_qc_sites.v{version}.test", mt=True)
-        )
-    elif version == "3.1":
+    if version == "3.1":
         return v3_predetermined_qc
     else:
         return v4_predetermined_qc.versions[version]
@@ -188,7 +186,7 @@ predetermined_qc_sites = TableResource(
 )
 
 # gnomAD v3 dense MT of all predetermined possible QC sites `predetermined_qc_sites`
-v3_predetermined_qc = MatrixTableResource(
+v3_predetermined_qc = GnomadPrivateMatrixTableResource(
     "gs://gnomad/sample_qc/mt/genomes_v3.1/gnomad.genomes.v3.1.pre_ld_prune_qc_sites.dense.mt"
 )
 
@@ -196,7 +194,7 @@ v3_predetermined_qc = MatrixTableResource(
 v4_predetermined_qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
-        version: MatrixTableResource(
+        version: GnomadPrivateMatrixTableResource(
             f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.pre_ld_prune_qc_sites.dense.mt"
         )
         for version in VERSIONS
@@ -204,10 +202,10 @@ v4_predetermined_qc = VersionedMatrixTableResource(
 )
 
 # Dense MT of samples at QC sites
-qc = VersionedMatrixTableResource(
+joint_qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
-        version: MatrixTableResource(
+        version: GnomadPrivateTableResource(
             f"{get_sample_qc_root(version)}/gnomad.joint.v{version}.qc.mt"
         )
         for version in VERSIONS
