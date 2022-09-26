@@ -24,7 +24,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     joint_qc_meta,
     pca_related_samples_to_drop,
     pca_samples_rankings,
-    qc,
+    joint_qc,
     relatedness,
 )
 
@@ -77,14 +77,16 @@ def main(args):
             parquet_uri = cuking_input_path(test=test)
             check_resource_existence(parquet_uri, not overwrite)
             mt_to_cuking_inputs(
-                mt=qc.mt(), parquet_uri=parquet_uri, overwrite=overwrite
+                mt=joint_qc(test=test).mt(),
+                parquet_uri=parquet_uri,
+                overwrite=overwrite,
             )
 
         if args.create_relatedness_table:
             check_resource_existence(relatedness(test=test), not overwrite)
             ht = cuking_outputs_to_ht(parquet_uri=cuking_output_path(test=test))
             ht = ht.repartition(args.relatedness_n_partitions)
-            ht.write(relatedness.path, overwrite=overwrite)
+            ht.write(relatedness(test=test).path, overwrite=overwrite)
 
         if args.compute_related_samples_to_drop:
             # compute_related_samples_to_drop uses a rank Table as a tie breaker when
@@ -92,7 +94,6 @@ def main(args):
             check_resource_list_existence([pca_samples_rankings, pca_related_samples_to_drop(test=test)], not overwrite)
 
             rank_ht = joint_qc_meta.ht()
-
             rank_ht = rank_ht.select(
                 rank_ht.hard_filtered,
                 rank_ht.releasable,
@@ -107,27 +108,24 @@ def main(args):
                 hl.desc(rank_ht.releasable),
                 hl.desc(rank_ht.chr20_mean_dp),
             ).add_index(name="rank")
-
             rank_ht = rank_ht.key_by(rank_ht.s)
-            rank_ht = rank_ht.select(rank_ht.filtered, rank_ht.rank)
-
-            rank_ht.write(pca_samples_rankings.path)
-            rank_ht = pca_samples_rankings.ht()
-
-            filtered_samples = hl.literal(
-                rank_ht.aggregate(
-                    hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s))
-                )
-            )
+            rank_ht = rank_ht.select(rank_ht.hard_filtered, rank_ht.rank)
+            rank_ht = rank_ht.checkpoint(pca_samples_rankings.path)
 
             samples_to_drop = compute_related_samples_to_drop(
-                relatedness.ht(),
+                relatedness(test=test).ht(),
                 rank_ht,
                 args.second_degree_kin_cutoff,
-                filtered_samples=filtered_samples,
+                filtered_samples=hl.literal(
+                    rank_ht.aggregate(
+                        hl.agg.filter(
+                            rank_ht.hard_filtered, hl.agg.collect_as_set(rank_ht.s)
+                        )
+                    )
+                ),
             )
             samples_to_drop = samples_to_drop.key_by(samples_to_drop.s)
-            samples_to_drop.write(pca_related_samples_to_drop.path)
+            samples_to_drop.write(pca_related_samples_to_drop(test=test).path)
 
     finally:
         logger.info("Copying hail log to logging bucket...")

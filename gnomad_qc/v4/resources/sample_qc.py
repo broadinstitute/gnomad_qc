@@ -229,16 +229,22 @@ v4_predetermined_qc = VersionedMatrixTableResource(
     },
 )
 
-# Dense MT of samples at QC sites.
-qc = VersionedMatrixTableResource(
-    CURRENT_VERSION,
-    {
-        version: MatrixTableResource(
-            f"{get_sample_qc_root(version)}/gnomad.joint.v{version}.qc.mt"
-        )
-        for version in VERSIONS
-    },
-)
+def joint_qc(test: bool = False):
+    """
+    Get the dense MatrixTableResource at final joint v3 and v4 QC sites.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: MatrixTableResource of QC sites.
+    """
+    return VersionedMatrixTableResource(
+        CURRENT_VERSION,
+        {
+            version: MatrixTableResource(
+                f"{get_sample_qc_root(version, test)}/gnomad.joint.v{version}.qc.mt"
+            )
+            for version in VERSIONS
+        },
+    )
 
 # v3 and v4 combined sample metadata Table for relatedness and population inference.
 joint_qc_meta = VersionedTableResource(
@@ -355,16 +361,27 @@ pc_relate_pca_scores = VersionedTableResource(
     },
 )
 
-# Relatedness results.
-relatedness = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.relatedness.ht"
-        )
-        for version in VERSIONS
-    },
-)
+
+def relatedness(method: str = "cuking", test: bool = False):
+    """
+    Get the VersionedTableResource for relatedness results.
+
+    :param method: Method of relatedness inference to return VersionedTableResource for. One of 'cuking' or 'pc_relate'.
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    if method not in {"cuking", "pc_relate"}:
+        raise ValueError("method must be one of 'cuking' or 'pc_relate'!")
+
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/gnomad.exomes.v{version}.relatedness.{method}.ht"
+            )
+            for version in VERSIONS
+        },
+    )
 
 # Sex chromosome coverage aggregate stats MT.
 sex_chr_coverage = VersionedMatrixTableResource(
@@ -452,11 +469,29 @@ pca_related_samples_to_drop = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.related_samples_to_drop_for_pca.ht"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.pca_samples_ranking.ht"
         )
         for version in VERSIONS
     },
 )
+
+
+def pca_related_samples_to_drop(test: bool = False):
+    """
+    Get the VersionedTableResource for samples to drop for PCA due to them being related.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/gnomad.exomes.v{version}.related_samples_to_drop_for_pca.ht"
+            )
+            for version in VERSIONS
+        }
+    )
 
 # Related samples to drop for release
 release_related_samples_to_drop = VersionedTableResource(
@@ -618,28 +653,6 @@ duplicates = VersionedTableResource(
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.duplicates.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-# PC relate scores for the sample set that overlaps with v3 samples.
-v3_v4_pc_relate_pca_scores = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.v3_v{version}.release_pca_scores.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-# Relatedness information for the sample set that overlaps with v3 samples.
-v3_v4_relatedness = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.v3_v{version}.release_relatedness.ht"
         )
         for version in VERSIONS
     },
