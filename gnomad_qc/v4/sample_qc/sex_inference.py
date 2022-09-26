@@ -619,7 +619,7 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
             *per_platform_karyotype_hts[1:]
         )
     else:
-        if ploidy_cutoffs_isstr:
+        if not ploidy_cutoffs_isstr:
             raise ValueError(
                 "X ploidy and Y ploidy cutoff dictionary values must be strings when not running per platform!"
             )
