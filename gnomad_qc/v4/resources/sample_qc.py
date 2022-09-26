@@ -4,6 +4,7 @@ from gnomad.resources.resource_utils import (
     TableResource,
     VersionedMatrixTableResource,
     VersionedTableResource,
+GnomadPublicMatrixTableResource
 )
 from gnomad.sample_qc.relatedness import get_relationship_expr
 
