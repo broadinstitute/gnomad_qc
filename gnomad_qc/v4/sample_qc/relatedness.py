@@ -57,13 +57,13 @@ def main(args):
                 cd cuKING && \\
                 ./cloud_batch_submit.py \\
                     --location=us-central1 \\
-                    --project_id=$PROJECT_ID \\
-                    --tag_name=$(git describe --tags) \\
-                    --input_uri={cuking_input_path(test=test)} \\
-                    --output_uri={cuking_output_path(test=test)} \\
-                    --requester_pays_project=$PROJECT_ID \\
-                    --kin_threshold={args.second_degree_kin_cutoff} \\
-                    --split_factor=4 && \\
+                    --project-id=$PROJECT_ID \\
+                    --tag-name=$(git describe --tags) \\
+                    --input-uri={cuking_input_path(test=test)} \\
+                    --output-uri={cuking_output_path(test=test)} \\
+                    --requester-pays-project=$PROJECT_ID \\
+                    --kin-threshold={args.second_degree_kin_cutoff} \\
+                    --split-factor=4 && \\
                 cd ..
                 """
             )
