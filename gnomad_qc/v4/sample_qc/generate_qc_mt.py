@@ -16,11 +16,11 @@ from gnomad_qc.v4.resources.basics import (
 )
 from gnomad_qc.v4.resources.meta import project_meta as v4_meta
 from gnomad_qc.v4.resources.sample_qc import (
-    get_predetermined_qc,
+    predetermined_qc,
     hard_filtered_samples,
     joint_qc_meta,
     predetermined_qc_sites,
-    qc,
+    joint_qc,
     sample_chr20_mean_dp,
 )
 from gnomad_qc.slack_creds import slack_token
@@ -234,7 +234,7 @@ def main(args):
             mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, test=test)
             mt = create_filtered_dense_mt(mt, split=True)
             mt = mt.checkpoint(
-                get_predetermined_qc(version="3.1", test=test).path,
+                predetermined_qc(version="3.1", test=test).path,
                 overwrite=overwrite,
             )
             logger.info(
@@ -250,7 +250,7 @@ def main(args):
             )
             mt = create_filtered_dense_mt(vds)
             mt = mt.checkpoint(
-                get_predetermined_qc(test=test).path, overwrite=overwrite
+                predetermined_qc(test=test).path, overwrite=overwrite
             )
             logger.info(
                 "Number of predetermined QC variants found in the gnomAD v4 VDS: %d...",
@@ -258,8 +258,8 @@ def main(args):
             )
 
         if args.generate_qc_mt:
-            v3_mt = get_predetermined_qc(version="3.1", test=test).mt()
-            v4_mt = get_predetermined_qc(test=test).mt()
+            v3_mt = predetermined_qc(version="3.1", test=test).mt()
+            v4_mt = predetermined_qc(test=test).mt()
             mt = generate_qc_mt(
                 v3_mt,
                 v4_mt,
@@ -270,12 +270,7 @@ def main(args):
                 ld_r2=ld_r2,
                 n_partitions=args.n_partitions,
             )
-            mt.write(
-                get_checkpoint_path("dense_ld_prune_qc_mt.test", mt=True)
-                if test
-                else qc.path,
-                overwrite=overwrite,
-            )
+            mt.write(joint_qc(test=test).path, overwrite=overwrite)
 
         if args.generate_qc_meta:
             generate_qc_meta_ht().write(joint_qc_meta.path, overwrite=overwrite)
