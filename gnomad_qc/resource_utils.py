@@ -80,6 +80,12 @@ class GnomadPrivateResource(BaseResource):
 
         return super()._set_path(path)
 
+    def get_path(self, test: bool = False):
+        if test:
+            return self.test_path
+        else:
+            return self.path
+
     test_path = property(
         fget=lambda self: self._get_path(test=True),
     )

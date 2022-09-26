@@ -232,7 +232,7 @@ def main(args):
     try:
         if args.create_v3_filtered_dense_mt:
             # Note: This command removes hard filtered samples
-            predetermined_qc_path = get_predetermined_qc(version="3.1").test_path if test else get_predetermined_qc(version="3.1").path
+            predetermined_qc_path = get_predetermined_qc(version="3.1").get_path(test=test)
             check_resource_existence(predetermined_qc_path, not overwrite)
             mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, test=test)
             mt = create_filtered_dense_mt(mt, split=True)
@@ -245,7 +245,7 @@ def main(args):
         if args.create_v4_filtered_dense_mt:
             # Note: This subset dense MatrixTable was created before the final hard filtering was determined
             # Hard filtering is performed in `generate_qc_mt` before applying variant filters
-            predetermined_qc_path = get_predetermined_qc().test_path if test else get_predetermined_qc().path
+            predetermined_qc_path = get_predetermined_qc().get_path(test=test)
             check_resource_existence(predetermined_qc_path, not overwrite)
             vds = get_gnomad_v4_vds(
                 split=True, remove_hard_filtered_samples=False, test=test
@@ -258,8 +258,8 @@ def main(args):
             )
 
         if args.generate_qc_mt:
-            joint_qc_path = joint_qc.test_path if test else joint_qc.path
-            check_resource_existence(joint_qc_path, not overwrite)
+            joint_qc_path = joint_qc.get_path(test=test)
+            check_resource_existence(joint_qc, not overwrite)
 
             v3_mt = get_predetermined_qc(version="3.1").mt(test=test)
             v4_mt = get_predetermined_qc().mt(test=test)
