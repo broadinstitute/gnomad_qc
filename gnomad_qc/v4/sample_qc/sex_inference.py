@@ -252,12 +252,16 @@ def compute_sex_ploidy(
     normalization_contig: str = "chr20",
     variant_depth_only_x_ploidy: bool = False,
     variant_depth_only_y_ploidy: bool = False,
+    variant_depth_only_ploidy_filter_lcr: bool = True,
+    variant_depth_only_ploidy_filter_segdup: bool = True,
+    variant_depth_only_ploidy_snv_only: bool = False,
+    compute_x_frac_variants_hom_alt=True,
     freq_ht: Optional[hl.Table] = None,
     min_af: float = 0.001,
     f_stat_cutoff: float = -1.0,
 ) -> hl.Table:
     """
-    Impute sample sex based on X-chromosome heterozygosity and sex chromosome ploidy.
+    Impute sex chromosome ploidy, and optionally chrX heterozygosity and fraction homozygous alternate variants on chrX.
 
     With no additional parameters passed, chrX and chrY ploidy will be imputed using Hail's
     `hail.vds.impute_sex_chromosome_ploidy` method which computes chromosome ploidy using reference block DP per
@@ -328,6 +332,14 @@ def compute_sex_ploidy(
         reference data for chrX ploidy estimation. Default will only use reference data.
     :param variant_depth_only_y_ploidy: Whether to use depth of variant data within calling intervals instead of
         reference data for chrY ploidy estimation. Default will only use reference data.
+    :param variant_depth_only_ploidy_filter_lcr: Whether to filter out variants in LCR regions for variants only ploidy
+        estimation and fraction of homozygous alternate variants on chromosome X. Default is True.
+    :param variant_depth_only_ploidy_filter_segdup: Whether to filter out variants in segdup regions for variants only
+        ploidy estimation and fraction of homozygous alternate variants on chromosome X. Default is True.
+    :param variant_depth_only_ploidy_snv_only: Whether to filter to only single nucleotide variants for variants only
+        ploidy estimation and fraction of homozygous alternate variants on chromosome X. Default is False.
+    :param compute_x_frac_variants_hom_alt: Whether to return an annotation for the fraction of homozygous alternate
+        variants on chromosome X. Default is True.
     :param freq_ht: Optional Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in
         this Table prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table
         with a `min_af` cutoff.
@@ -411,6 +423,10 @@ def compute_sex_ploidy(
             aaf_threshold=min_af,
             variants_only_x_ploidy=variant_depth_only_x_ploidy,
             variants_only_y_ploidy=variant_depth_only_y_ploidy,
+            variants_filter_lcr=variant_depth_only_ploidy_filter_lcr,
+            variants_filter_segdup=variant_depth_only_ploidy_filter_segdup,
+            variants_snv_only=variant_depth_only_ploidy_snv_only,
+            compute_x_frac_variants_hom_alt=compute_x_frac_variants_hom_alt,
             infer_karyotype=False,
         )
         return ploidy_ht
@@ -494,14 +510,16 @@ def infer_sex_karyotype_from_ploidy(
     ploidy_ht: hl.Table,
     per_platform: bool = False,
     f_stat_cutoff: float = -1.0,
+    use_gmm_for_ploidy_cutoffs: bool = True,
 ) -> hl.Table:
     """
     Create a Table with X_karyotype, Y_karyotype, and sex_karyotype.
 
-    :param ploidy_ht: Table with chromosome X and chromosome Y ploidies, and f-stat.
+    :param ploidy_ht: Table with chromosome X and chromosome Y ploidies, and f-stat if not `use_gmm_for_ploidy_cutoffs`.
     :param per_platform: Whether the sex karyotype ploidy cutoff inference should be applied per platform.
     :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY
         are above cutoff.
+    :param use_gmm_for_ploidy_cutoffs: Use Gaussian mixture model to split samples into 'XX' and 'XY' instead of f-stat.
     :return: Table of imputed sex karyotypes.
     """
     logger.info("Running sex karyotype inference")
@@ -519,6 +537,7 @@ def infer_sex_karyotype_from_ploidy(
             karyotype_ht = infer_sex_karyotype(
                 ploidy_ht.filter(ploidy_ht.platform == platform),
                 f_stat_cutoff,
+                use_gmm_for_ploidy_cutoffs,
             )
             per_platform_karyotype_hts.append(karyotype_ht)
             x_ploidy_cutoffs[platform] = karyotype_ht.index_globals().x_ploidy_cutoffs
@@ -532,7 +551,9 @@ def infer_sex_karyotype_from_ploidy(
             y_ploidy_cutoffs=hl.struct(**y_ploidy_cutoffs),
         )
     else:
-        karyotype_ht = infer_sex_karyotype(ploidy_ht, f_stat_cutoff)
+        karyotype_ht = infer_sex_karyotype(
+            ploidy_ht, f_stat_cutoff, use_gmm_for_ploidy_cutoffs
+        )
 
     return karyotype_ht
 
@@ -700,6 +721,10 @@ def main(args):
                     normalization_contig=normalization_contig,
                     variant_depth_only_x_ploidy=args.variant_depth_only_x_ploidy,
                     variant_depth_only_y_ploidy=args.variant_depth_only_y_ploidy,
+                    variant_depth_only_ploidy_filter_lcr=not args.omit_variant_depth_ploidy_lcr_filter,
+                    variant_depth_only_ploidy_filter_segdup=not args.omit_variant_depth_ploidy_segdup_filter,
+                    variant_depth_only_ploidy_snv_only=args.variant_depth_ploidy_snv_only,
+                    compute_x_frac_variants_hom_alt=not args.omit_compute_x_frac_variants_hom_alt,
                     freq_ht=freq_ht,
                     min_af=args.min_af,
                     f_stat_cutoff=args.f_stat_cutoff,
@@ -941,6 +966,35 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
+    sex_ploidy_args.add_argument(
+        "--omit-variant-depth-ploidy-lcr-filter",
+        help=(
+            "Whether to omit filtering out variants in LCR regions for the variants only ploidy estimation and "
+            "fraction of homozygous alternate variants on chromosome X."
+        ),
+        action="store_true",
+    )
+    sex_ploidy_args.add_argument(
+        "--omit-variant-depth-ploidy-segdup-filter",
+        help=(
+            "Whether to omit filtering out variants in segdup regions for the variants only ploidy estimation and "
+            "fraction of homozygous alternate variants on chromosome X."
+        ),
+        action="store_true",
+    )
+    sex_ploidy_args.add_argument(
+        "--variant-depth-ploidy-snv-only",
+        help=(
+            "Whether to filter to only single nucleotide variants for variants only ploidy estimation and fraction "
+            "of homozygous alternate variants on chromosome X."
+        ),
+        action="store_true",
+    )
+    sex_ploidy_args.add_argument(
+        "--omit-compute-x-frac-variants-hom-alt",
+        help="Whether to omit the computation of the fraction of homozygous alternate variants on chromosome X.",
+        action="store_true",
+    )
     sex_ploidy_high_cov_opt_parser = sex_ploidy_args.add_mutually_exclusive_group(
         required=False
     )
@@ -1026,6 +1080,11 @@ if __name__ == "__main__":
     sex_karyotype_args.add_argument(
         "--annotate-sex-karyotype",
         help="Run sex karyotype inference.",
+        action="store_true",
+    )
+    sex_karyotype_args.add_argument(
+        "--use-gmm-for-ploidy-cutoffs",
+        help="Whether to use Gaussian mixture model to roughly split samples into 'XX' and 'XY' instead of f-stat.",
         action="store_true",
     )
     sex_karyotype_args.add_argument(
