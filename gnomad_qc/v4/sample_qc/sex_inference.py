@@ -282,7 +282,7 @@ def compute_sex_ploidy(
           uses only platforms that have # of samples > `min_platform_size` to determine intervals that have a high
           coverage across all platforms.
 
-        - For all of these options the `high_cov_cutoffs` and `interval_qc_mt` are used to filter to high coverage
+        - For all of these options, `high_cov_cutoffs` and `interval_qc_mt` are used to filter to high coverage
           intervals.
             - `interval_qc_mt` is the output of `generate_sex_imputation_interval_qc_mt` and contains annotations
               that can be used in the `high_cov_cutoffs` dictionary to indicate intervals that are considered high
@@ -342,7 +342,7 @@ def compute_sex_ploidy(
     :param variant_depth_only_ploidy_snv_only: Whether to filter to only single nucleotide variants for variants only
         ploidy estimation and fraction of homozygous alternate variants on chromosome X. Default is False.
     :param compute_x_frac_variants_hom_alt: Whether to return an annotation for the fraction of homozygous alternate
-        variants on chromosome X. Default is False.
+        variants on chromosome X. Default is True.
     :param freq_ht: Optional Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in
         this Table prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table
         with a `min_af` cutoff.
@@ -388,6 +388,9 @@ def compute_sex_ploidy(
             `cov_*` > `prop_samples_*` criteria.
         :return: Table of high coverage intervals.
         """
+        # Apply the 'or' operator cumulatively from left to right to get a single bool.
+        # Each contig has a different set of high coverage cutoffs, this will apply those cutoffs to each contig then
+        # merge these contig expressions with the 'or' operator to keep all intervals that pass thee relevant cutoffs.
         filter_expr = functools.reduce(
             operator.or_,
             [
@@ -650,7 +653,7 @@ def infer_sex_karyotype_from_ploidy(
     :param per_platform: Whether the sex karyotype ploidy cutoff inference should be applied per platform.
     :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY
         are above cutoff.
-    :param use_gmm_for_ploidy_cutoffs: Use gaussian mixture model to split samples into 'XX' and 'XY' instead of f-stat.
+    :param use_gmm_for_ploidy_cutoffs: Use Gaussian mixture model to split samples into 'XX' and 'XY' instead of f-stat.
     :return: Table of imputed sex karyotypes.
     """
     logger.info("Running sex karyotype inference")
@@ -1170,7 +1173,8 @@ if __name__ == "__main__":
     )
     sex_ploidy_high_cov_opt_parser.add_argument(
         "--high-cov-by-mean-fraction-over-dp-0",
-        help="Whether to use the mean fraction of bases over DP 0 to determine high coverage intervals.",
+        help="Whether to use the mean fraction of bases over DP 0 to determine high coverage intervals. Can't be set "
+             "at the same time as '--high-cov-by-prop-samples-over-cov'.",
         action="store_true",
     )
     sex_ploidy_high_cov_opt_parser.add_argument(
@@ -1178,19 +1182,19 @@ if __name__ == "__main__":
         help=(
             "Whether to determine high coverage intervals using the proportion of samples with a mean interval "
             "coverage over a specified coverage for chrX (--x-cov), chrY (--y-cov), and the normalization contig "
-            "(--norm-cov)."
+            "(--norm-cov). Can't be set at the same time as '--high-cov-by-mean-fraction-over-dp-0'."
         ),
         action="store_true",
     )
     sex_ploidy_args.add_argument(
         "--sex-mean-fraction-over-dp-0",
-        help="Mean fraction of bases over DP used to define high coverage intervals on sex chromosomes.",
+        help="Mean fraction of bases over DP 0 used to define high coverage intervals on sex chromosomes.",
         type=float,
         default=0.4,
     )
     sex_ploidy_args.add_argument(
         "--norm-mean-fraction-over-dp-0",
-        help="Mean fraction of bases over DP used to define high coverage intervals on the normalization chromosome.",
+        help="Mean fraction of bases over DP 0 used to define high coverage intervals on the normalization chromosome.",
         type=float,
         default=0.99,
     )
@@ -1216,7 +1220,7 @@ if __name__ == "__main__":
         "--norm-cov",
         help=(
             "Mean coverage level used to define high coverage intervals on the normalization autosome. This field must "
-            "sex interval coverage MT (defined in '--mean-dp-thresholds')!"
+            "be in the sex interval coverage MT (defined in '--mean-dp-thresholds')!"
         ),
         type=int,
         default=20,
@@ -1253,7 +1257,7 @@ if __name__ == "__main__":
     )
     sex_karyotype_args.add_argument(
         "--use-gmm-for-ploidy-cutoffs",
-        help="Whether to use gaussian mixture model to roughly split samples into 'XX' and 'XY' instead of f-stat.",
+        help="Whether to use Gaussian mixture model to roughly split samples into 'XX' and 'XY' instead of f-stat.",
         action="store_true",
     )
     sex_karyotype_args.add_argument(
