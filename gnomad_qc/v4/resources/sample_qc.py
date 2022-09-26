@@ -206,7 +206,7 @@ v4_predetermined_qc = VersionedMatrixTableResource(
 joint_qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
-        version: GnomadPrivateTableResource(
+        version: GnomadPrivateMatrixTableResource(
             f"{get_sample_qc_root(version)}/gnomad.joint.v{version}.qc.mt"
         )
         for version in VERSIONS
