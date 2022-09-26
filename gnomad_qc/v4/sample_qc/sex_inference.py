@@ -275,7 +275,7 @@ def compute_sex_ploidy(
           uses only platforms that have # of samples > `min_platform_size` to determine intervals that have a high
           coverage across all platforms.
 
-        - For all of these options the `high_cov_cutoffs` and `interval_qc_mt` are used to filter to high coverage
+        - For all of these options, `high_cov_cutoffs` and `interval_qc_mt` are used to filter to high coverage
           intervals.
             - `interval_qc_mt` is the output of `generate_sex_imputation_interval_qc_mt` and contains annotations
               that can be used in the `high_cov_cutoffs` dictionary to indicate intervals that are considered high
@@ -957,13 +957,13 @@ if __name__ == "__main__":
     )
     sex_ploidy_args.add_argument(
         "--sex-mean-fraction-over-dp-0",
-        help="Mean fraction of bases over DP used to define high coverage intervals on sex chromosomes.",
+        help="Mean fraction of bases over DP 0 used to define high coverage intervals on sex chromosomes.",
         type=float,
         default=0.4,
     )
     sex_ploidy_args.add_argument(
         "--norm-mean-fraction-over-dp-0",
-        help="Mean fraction of bases over DP used to define high coverage intervals on the normalization chromosome.",
+        help="Mean fraction of bases over DP 0 used to define high coverage intervals on the normalization chromosome.",
         type=float,
         default=0.99,
     )
@@ -989,7 +989,7 @@ if __name__ == "__main__":
         "--norm-cov",
         help=(
             "Mean coverage level used to define high coverage intervals on the normalization autosome. This field must "
-            "sex interval coverage MT (defined in '--mean-dp-thresholds')!"
+            "be in the sex interval coverage MT (defined in '--mean-dp-thresholds')!"
         ),
         type=int,
         default=20,
