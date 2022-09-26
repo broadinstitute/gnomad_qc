@@ -91,7 +91,7 @@ def prep_ht_for_rf(
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`.
     :param seed: Random seed, defaults to 24.
     :param test: Whether RF should run on the test QC MT.
-    :param only_train_on_hgdp_tgp: Whether to train RF classifier using only the HGDP and TGP populations. Defaults to False.
+    :param only_train_on_hgdp_tgp: Whether to train RF classifier using only the HGDP and 1KG populations. Defaults to False.
     :return Table with input for the random forest.
     """
     pop_pca_scores_ht = ancestry_pca_scores(remove_unreleasable_samples, test).ht()
@@ -158,6 +158,7 @@ def assign_pops(
     seed: int = 24,
     test: bool = False,
     overwrite: bool = False,
+    only_train_on_hgdp_tgp: bool = False,
 ) -> Tuple[hl.Table, Any]:
     """
     Use a random forest model to assign global population labels based on the results from `run_pca`.
@@ -178,6 +179,7 @@ def assign_pops(
     :param seed: Random seed, defaults to 24.
     :param test: Whether running assigment on a test dataset.
     :param overwrite: Whether to overwrite existing files.
+    :param only_train_on_hgdp_tgp: Whether to train the RF classifier using only the HGDP and 1KG populations. Defaults to False.
     :return: Table of pop assignments and the RF model.
     """
     logger.info("Assigning global population labels")
@@ -198,7 +200,11 @@ def assign_pops(
         max_mislabeled = None
 
     pop_pca_scores_ht = prep_ht_for_rf(
-        remove_unreleasable_samples, withhold_prop, seed, test
+        remove_unreleasable_samples,
+        withhold_prop,
+        seed,
+        test,
+        only_train_on_hgdp_tgp,
     )
     pop_field = "pop"
     logger.info(
@@ -355,6 +361,7 @@ def main(args):
     remove_unreleasables = not args.include_unreleasable_samples
     overwrite = args.overwrite
     test = args.test
+    only_train_on_hgdp_tgp = args.only_train_on_hgdp_tgp
 
     if args.run_pca:
         pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
@@ -384,17 +391,20 @@ def main(args):
             withhold_prop=args.withhold_prop,
             test=test,
             overwrite=overwrite,
+            only_train_on_hgdp_tgp=only_train_on_hgdp_tgp,
         )
         pop_ht = pop_ht.checkpoint(
-            get_pop_ht(test=test).path,
+            get_pop_ht(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp).path,
             overwrite=overwrite,
             _read_if_exists=not overwrite,
         )
         pop_ht.transmute(
             **{f"PC{i}": pop_ht.pca_scores[i - 1] for i in pop_pcs}
-        ).export(pop_tsv_path(test=test))
+        ).export(pop_tsv_path(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp))
 
-        with hl.hadoop_open(pop_rf_path(test=test), "wb") as out:
+        with hl.hadoop_open(
+            pop_rf_path(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp), "wb"
+        ) as out:
             pickle.dump(pops_rf_model, out)
 
 
@@ -455,6 +465,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--overwrite", help="Overwrite output files.", action="store_true"
+    )
+    parser.add_argument(
+        "--only-train-on-hgdp-tgp",
+        help="Whether to train RF classifier using only the HGDP and TGP populations.",
+        action="store_true",
     )
 
     args = parser.parse_args()
