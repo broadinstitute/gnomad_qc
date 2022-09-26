@@ -1,9 +1,6 @@
 import logging
-import os
-from abc import ABC
-from enum import Enum
-from functools import reduce, wraps
-from typing import Iterable, Union
+from functools import reduce
+from typing import Union
 
 import hail as hl
 from hail.linalg import BlockMatrix
@@ -25,76 +22,6 @@ GNOMAD_PRIVATE_BUCKETS = ("gnomad", "gnomad-tmp")
 """
 Private buckets for gnomAD data.
 """
-
-
-class GnomadPrivateResourceSource(Enum):
-    """Sources for private gnomAD resources."""
-
-    GNOMAD_PRODUCTION = "gnomAD production private bucket"
-    GNOMAD_PRODUCTION_TEMP = "gnomAD production temporary private bucket"
-
-
-def get_default_private_resource_source() -> Union[GnomadPrivateResourceSource, str]:
-    """
-    Get the default source for private gnomAD resources.
-
-    The default source is determined by...
-
-    - If the ``GNOMAD_DEFAULT_PRIVATE_RESOURCE_SOURCE`` environment variable is set, use the source configured there.
-    - Otherwise, use gnomAD production private bucket.
-
-    :returns: Default resource source
-    """
-    default_source_from_env = os.getenv("GNOMAD_DEFAULT_PRIVATE_RESOURCE_SOURCE", None)
-    if default_source_from_env:
-        # Convert to a GnomadPrivateResourceSource enum if possible
-        try:
-            default_source = GnomadPrivateResourceSource(default_source_from_env)
-            logger.info(
-                "Using configured source for gnomAD private resources: %s",
-                default_source.value,
-            )
-            return default_source
-        except ValueError:
-            logger.info(
-                "Using configured custom source for gnomAD private resources: %s",
-                default_source_from_env,
-            )
-            return default_source_from_env
-
-    return GnomadPrivateResourceSource.GNOMAD_PRODUCTION
-
-
-class _GnomadPrivateResourceConfiguration:
-    """Configuration for private gnomAD resources."""
-
-    _source: Union[GnomadPrivateResourceSource, str, None] = None
-
-    @property
-    def source(self) -> Union[GnomadPrivateResourceSource, str]:
-        """
-        Get the source for private gnomAD resource files.
-
-        This is used to determine which URLs gnomAD resources will be loaded from.
-        :returns: Source name or path to root of resources directory
-        """
-        if self._source is None:
-            self._source = get_default_private_resource_source()
-
-        return self._source
-
-    @source.setter
-    def source(self, source: Union[GnomadPrivateResourceSource, str]) -> None:
-        """
-        Set the default source for resource files.
-
-        This is used to determine which URLs gnomAD resources will be loaded from.
-        :param source: Source name or path to root of resources directory
-        """
-        self._source = source
-
-
-gnomad_private_resource_configuration = _GnomadPrivateResourceConfiguration()
 
 
 def check_resource_existence(
@@ -126,37 +53,22 @@ def check_resource_existence(
     return exists
 
 
-def set_gnomad_test():
-    gnomad_private_resource_configuration.source = (
-        GnomadPrivateResourceSource.GNOMAD_PRODUCTION_TEMP
-    )
-
-
 class GnomadPrivateResource(BaseResource):
     """Base class for the gnomAD project's private resources."""
 
     def _get_path(self, test: bool = False) -> str:
         if test:
-            resource_source = GnomadPrivateResourceSource.GNOMAD_PRODUCTION_TEMP
-        else:
-            resource_source = gnomad_private_resource_configuration.source
-        if resource_source == GnomadPrivateResourceSource.GNOMAD_PRODUCTION:
-            return self._path
+            relative_path = reduce(
+                lambda path, bucket: path[5 + len(bucket):]
+                if path.startswith(f"gs://{bucket}/")
+                else path,
+                GNOMAD_PRIVATE_BUCKETS,
+                self._path,
+            )
 
-        relative_path = reduce(
-            lambda path, bucket: path[5 + len(bucket) :]
-            if path.startswith(f"gs://{bucket}/")
-            else path,
-            GNOMAD_PRIVATE_BUCKETS,
-            self._path,
-        )
-
-        if resource_source == GnomadPrivateResourceSource.GNOMAD_PRODUCTION_TEMP:
             return f"gs://gnomad-tmp{relative_path}"
-
-        return (
-            f"{resource_source.rstrip('/')}{relative_path}"  # pylint: disable=no-member
-        )
+        else:
+            return self._path
 
     def _set_path(self, path):
         if not any(

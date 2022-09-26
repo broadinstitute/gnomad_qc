@@ -7,6 +7,7 @@ from gnomad.utils.annotations import annotate_adj, get_adj_expr
 from gnomad.utils.slack import slack_notifications
 import hail as hl
 
+from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v4.resources.basics import (
@@ -231,14 +232,11 @@ def main(args):
     try:
         if args.create_v3_filtered_dense_mt:
             # Note: This command removes hard filtered samples
+            predetermined_qc_path = get_predetermined_qc(version="3.1").test_path if test else get_predetermined_qc(version="3.1").path
+            check_resource_existence(predetermined_qc_path, not overwrite)
             mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, test=test)
             mt = create_filtered_dense_mt(mt, split=True)
-            mt = mt.checkpoint(
-                get_predetermined_qc(version="3.1").test_path
-                if test
-                else get_predetermined_qc(version="3.1").path,
-                overwrite=overwrite,
-            )
+            mt = mt.checkpoint(predetermined_qc_path, overwrite=overwrite)
             logger.info(
                 "Number of predetermined QC variants found in the gnomAD v3 MatrixTable: %d...",
                 mt.count_rows(),
@@ -247,22 +245,22 @@ def main(args):
         if args.create_v4_filtered_dense_mt:
             # Note: This subset dense MatrixTable was created before the final hard filtering was determined
             # Hard filtering is performed in `generate_qc_mt` before applying variant filters
+            predetermined_qc_path = get_predetermined_qc().test_path if test else get_predetermined_qc().path
+            check_resource_existence(predetermined_qc_path, not overwrite)
             vds = get_gnomad_v4_vds(
                 split=True, remove_hard_filtered_samples=False, test=test
             )
             mt = create_filtered_dense_mt(vds)
-            mt = mt.checkpoint(
-                get_predetermined_qc().test_path
-                if test
-                else get_predetermined_qc().path,
-                overwrite=overwrite,
-            )
+            mt = mt.checkpoint(predetermined_qc_path, overwrite=overwrite)
             logger.info(
                 "Number of predetermined QC variants found in the gnomAD v4 VDS: %d...",
                 mt.count_rows(),
             )
 
         if args.generate_qc_mt:
+            joint_qc_path = joint_qc.test_path if test else joint_qc.path
+            check_resource_existence(joint_qc_path, not overwrite)
+
             v3_mt = get_predetermined_qc(version="3.1").mt(test=test)
             v4_mt = get_predetermined_qc().mt(test=test)
             mt = generate_qc_mt(
@@ -275,7 +273,7 @@ def main(args):
                 ld_r2=ld_r2,
                 n_partitions=args.n_partitions,
             )
-            mt.write(joint_qc.test_path if test else joint_qc.path, overwrite=overwrite)
+            mt.write(joint_qc_path, overwrite=overwrite)
 
         if args.generate_qc_meta:
             generate_qc_meta_ht().write(joint_qc_meta.path, overwrite=overwrite)
