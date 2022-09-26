@@ -259,7 +259,7 @@ def main(args):
 
         if args.generate_qc_mt:
             joint_qc_path = joint_qc.get_path(test=test)
-            check_resource_existence(joint_qc, not overwrite)
+            check_resource_existence(joint_qc_path, not overwrite)
 
             v3_mt = get_predetermined_qc(version="3.1").mt(test=test)
             v4_mt = get_predetermined_qc().mt(test=test)
