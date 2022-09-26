@@ -99,7 +99,7 @@ def prep_ht_for_rf(
 
     # TODO: Add code for subpopulations
 
-    # Either train with only HGDP and TGP or assign known populations and prevouisly inferred pops as training pop for the RF
+    # Either train the RF with only HGDP and TGP or all known populations and prevouisly inferred pops in v3
     if only_train_on_hgdp_tgp:
         training_pop = hl.or_missing(
             (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp),
@@ -116,7 +116,7 @@ def prep_ht_for_rf(
                 joint_meta.v3_meta.v3_population_inference.pop != "oth",
                 joint_meta.v3_meta.v3_population_inference.pop,
             )
-            .or_missing()
+            .or_missing()  # TODO: Do we want a case for v2 known pops after v3 inferred?
         )  # TODO: Analysis of where v2_pop does not agree with v3 assigned pop
 
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
@@ -130,7 +130,6 @@ def prep_ht_for_rf(
     )
 
     # Use the withhold proportion to create PR curves for when the RF removes samples because it will remove samples that are misclassified
-    # TODO: talk to kristen about how she handled this for subpops
     if withhold_prop:
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=hl.or_missing(
@@ -235,7 +234,7 @@ def assign_pops(
     )
     pop_assignment_iter = 1
 
-    # Rerun the RF until the number of mislabeled samples (known pop != assigned pop) is below our max mislabeled threshold
+    # Rerun the RF until the number of mislabeled samples (known pop != assigned pop) is below our max mislabeled threshold. The basis of this decision should be rooted in the reliability of the samples' provided population label.
     if max_mislabeled:
         while mislabeled > max_mislabeled:
             pop_assignment_iter += 1
@@ -446,13 +445,13 @@ if __name__ == "__main__":
     mislabel_parser = parser.add_mutually_exclusive_group(required=False)
     mislabel_parser.add_argument(
         "--max-number-mislabeled-training-samples",
-        help="If set, run the population assignment until number of training samples that are mislabelled is under this number threshold. Can't be used if `max-proportion-mislabeled-training-samples` is already set",
+        help="If set, run the population assignment until number of training samples that are mislabelled is under this number threshold. The basis of this decision should be rooted in the reliability of the samples' provided population label. Can't be used if `max-proportion-mislabeled-training-samples` is already set",
         type=int,
         default=None,
     )
     mislabel_parser.add_argument(
         "--max-proportion-mislabeled-training-samples",
-        help="If set, un the population assignment until number of training samples that are mislabelled is under this proportion threshold. Can't be used if `max-number-mislabeled-training-samples` is already set",
+        help="If set, un the population assignment until number of training samples that are mislabelled is under this proportion threshold. The basis of this decision should be rooted in the reliability of the samples' provided population label. Can't be used if `max-number-mislabeled-training-samples` is already set",
         type=float,
         default=None,
     )
