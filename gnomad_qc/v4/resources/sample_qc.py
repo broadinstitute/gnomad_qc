@@ -448,44 +448,54 @@ pop = VersionedTableResource(
 )
 
 
-def pop_tsv_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def pop_tsv_path(
+    version: str = CURRENT_VERSION,
+    test: bool = False,
+    data_type: str = "joint",
+) -> str:
     """
     Path to tab delimited file indicating inferred sample populations.
 
     :param version: gnomAD Version
     :param test: Whether the RF assignment used a test dataset.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
     :return: String path to sample populations
     """
-    return f"{get_sample_qc_root(version,test)}/gnomad.exomes.v{version}.RF_pop_assignments.txt.gz"
+    return f"{get_sample_qc_root(version,test,data_type)}/gnomad.{data_type}.v{version}.RF_pop_assignments.txt.gz"
 
 
 def pop_rf_path(
     version: str = CURRENT_VERSION,
     test: bool = False,
+    data_type: str = "joint",
 ) -> str:
     """
     Path to RF model used for inferring sample populations.
 
     :param version: gnomAD Version
     :param test: Whether the rf was from a test dataset.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
     :return: String path to sample pop RF model
     """
-    return (
-        f"{get_sample_qc_root(version,test)}/gnomad.exomes.v{version}.pop.RF_fit.pickle"
-    )
+    return f"{get_sample_qc_root(version,test, data_type)}/gnomad.{data_type}.v{version}.pop.RF_fit.pickle"
 
 
-def get_pop_ht(version: str = CURRENT_VERSION, test: bool = False):
+def get_pop_ht(
+    version: str = CURRENT_VERSION,
+    test: bool = False,
+    data_type: str = "joint",
+):
     """
     Get the TableResource of samples' inferred population for the indicated gnomAD version.
 
     :param version: Version of pop TableResource to return.
     :param test: Whether to use the test version of the pop TableResource.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
     :return: TableResource of sample pops.
     """
     if test:
         return TableResource(
-            f"{get_sample_qc_root(version,test)}/gnomad.exomes.v{version}.pop.ht"
+            f"{get_sample_qc_root(version,test, data_type)}/gnomad.{data_type}.v{version}.pop.ht"
         )
     else:
         return pop.versions[version]
