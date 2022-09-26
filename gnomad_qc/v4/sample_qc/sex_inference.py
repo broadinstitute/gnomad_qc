@@ -644,7 +644,7 @@ def infer_sex_karyotype_from_ploidy(
     ploidy_ht: hl.Table,
     per_platform: bool = False,
     f_stat_cutoff: float = -1.0,
-    use_gmm_for_ploidy_cutoffs: bool = True,
+    use_gmm_for_ploidy_cutoffs: bool = False,
 ) -> hl.Table:
     """
     Create a Table with X_karyotype, Y_karyotype, and sex_karyotype.
