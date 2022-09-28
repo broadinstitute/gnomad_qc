@@ -344,7 +344,7 @@ relatedness = VersionedTableResource(
     },
 )
 
-# Sex imputation coverage aggregate stats MT
+# Sex chromosome coverage aggregate stats MT
 sex_chr_coverage = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
@@ -355,7 +355,7 @@ sex_chr_coverage = VersionedMatrixTableResource(
     },
 )
 
-# Sex imputation coverage aggregate stats per platform MT
+# Table containing aggregate stats for interval QC specific to sex imputation
 sex_imputation_interval_qc = VersionedTableResource(
     CURRENT_VERSION,
     {
