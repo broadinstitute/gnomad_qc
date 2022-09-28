@@ -356,11 +356,11 @@ sex_chr_coverage = VersionedMatrixTableResource(
 )
 
 # Sex imputation coverage aggregate stats per platform MT
-sex_imputation_interval_qc = VersionedMatrixTableResource(
+sex_imputation_interval_qc = VersionedTableResource(
     CURRENT_VERSION,
     {
-        version: MatrixTableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sex_imputation_interval_qc.mt"
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sex_imputation_interval_qc.ht"
         )
         for version in VERSIONS
     },

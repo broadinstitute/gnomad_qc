@@ -27,7 +27,7 @@ logger = logging.getLogger("interval_qc")
 logger.setLevel(logging.INFO)
 
 
-def generate_sex_chr_interval_coverage_mt( # Move to gnomad_methods?
+def generate_sex_chr_interval_coverage_mt(
     vds: hl.vds.VariantDataset,
     calling_intervals_ht: hl.Table,
 ) -> hl.MatrixTable:
@@ -107,7 +107,7 @@ def filter_to_test(
     return mt, sex_mt_chrx.union_rows(sex_mt_chry)
 
 
-def compute_interval_qc(  # Move to gnomad_methods?
+def compute_interval_qc(
     mt: hl.MatrixTable,
     platform_ht: hl.Table,
     mean_dp_thresholds: List[int] = [5, 10, 15, 20, 25],
@@ -129,14 +129,13 @@ def compute_interval_qc(  # Move to gnomad_methods?
 
     Returns a Table with the following annotations:
         - interval_mean_dp - Mean DP of the interval across 'all' samples and optionally split by 'XX' and 'XY'.
-        - fraction_samples_by_dp - Struct of 'fraction_over_{dp}x' for all 'dp' in `mean_dp_thresholds`, which is
-            the fraction of samples with mean DP over 'dp'. Computed across 'all' samples and optionally split by 'XX'
-            and 'XY'.
+        - fraction_over_{dp}x - for all 'dp' in `mean_dp_thresholds`, which is the fraction of samples with mean DP
+            over 'dp'. Computed across 'all' samples and optionally split by 'XX' and 'XY'.
         - mean_fraction_over_dp_0 - Mean of the fraction of the interval (in bases) that is dp > 0. Computed across
             'all' samples and optionally split by 'XX' and 'XY'.
         - platform_interval_mean_dp - Same as 'interval_mean_dp', but instead of a single value for 'all', 'XX' and
             'XY' each is a dict of per platform values.
-        - platform_fraction_samples_by_dp  - Same as 'fraction_samples_by_dp', but instead of a single value for 'all',
+        - platform_fraction_over_{dp}x  - Same as 'fraction_over_{dp}x', but instead of a single value for 'all',
             'XX' and 'XY' each is a dict of per platform values.
         - platform_mean_fraction_over_dp_0 - Same as 'mean_fraction_over_dp_0', but instead of a single value for
             'all', 'XX' and 'XY' each is a dict of per platform values.
@@ -149,6 +148,7 @@ def compute_interval_qc(  # Move to gnomad_methods?
         'sex_karyotype'.
     :return: Table with interval QC annotations.
     """
+
     def _get_agg_expr(expr, agg_func=hl.agg.mean, group_by=None):
         """
         Helper function to call `agg_func` on `expr` with optional stratification by sex karyotype and `group_by`.
@@ -175,10 +175,12 @@ def compute_interval_qc(  # Move to gnomad_methods?
     num_samples = mt.count_cols()
     mt = mt.annotate_cols(platform=platform_ht[mt.col_key].qc_platform)
     mt = mt.filter_cols(hl.is_defined(mt.platform))
-    logger.warning(
-        "Number of samples in MT with no platform assignment: %d",
-        num_samples - mt.count_cols(),
-    )
+    num_samples_no_platform = num_samples - mt.count_cols()
+    if num_samples_no_platform > 0:
+        logger.warning(
+            "Number of samples in MT with no platform assignment: %d",
+            num_samples - mt.count_cols(),
+        )
 
     # Note: Default hl.vds.interval_coverage will return a list for 'fraction_over_dp_threshold' where the
     # second element is dp >= 1 (dp > 0)
@@ -189,14 +191,10 @@ def compute_interval_qc(  # Move to gnomad_methods?
             for prefix, group_by in agg_groups
         },
         **{
-            f"{prefix}fraction_samples_by_dp": hl.struct(
-                **{
-                    f"fraction_over_{dp}x": _get_agg_expr(
-                        mt.mean_dp >= dp, agg_func=hl.agg.fraction, group_by=group_by
-                    )
-                    for dp in mean_dp_thresholds
-                }
+            f"{prefix}fraction_over_{dp}x": _get_agg_expr(
+                mt.mean_dp >= dp, agg_func=hl.agg.fraction, group_by=group_by
             )
+            for dp in mean_dp_thresholds
             for prefix, group_by in agg_groups
         },
         **{
@@ -245,7 +243,7 @@ def get_interval_qc_pass(
     :param by_fraction_samples_over_cov: Whether to determine high coverage intervals using the fraction of samples
         (`fraction_samples`) with a mean interval coverage over the specified coverage levels (`autosome_par_xx_cov` and
         `xy_nonpar_cov`).
-    :param mean_fraction_over_dp_0: Mean fraction of bases over DP used to define high quality intervals. Default is 0.99.
+    :param mean_fraction_over_dp_0: Mean fraction of bases over DP 0 used to define high quality intervals. Default is 0.99.
     :param autosome_par_xx_cov: Mean coverage level used to define high coverage intervals on the the autosomes, sex
         chromosome PAR, and chrX in XX individuals. Default is 20.
     :param xy_nonpar_cov: Mean coverage level used to define high coverage intervals on non-PAR chrX in XY individuals
@@ -294,31 +292,36 @@ def get_interval_qc_pass(
             xy_nonpar_cov=xy_nonpar_cov,
             fraction_samples=fraction_samples,
         )
-        qc_expr = interval_qc_ht[f"{ann_prefix}fraction_samples_by_dp"]
-        qc_autosome_par_expr = qc_expr[f"fraction_over_{autosome_par_xx_cov}x"]["all"]
-        qc_xx_expr = qc_expr[f"fraction_over_{autosome_par_xx_cov}x"].get("XX", None)
-        qc_xy_expr = qc_expr[f"fraction_over_{xy_nonpar_cov}x"].get("XY", None)
+        qc_autosome_par_expr = interval_qc_ht[
+            f"{ann_prefix}fraction_over_{autosome_par_xx_cov}x"
+        ]["all"]
+        qc_xx_expr = interval_qc_ht[
+            f"{ann_prefix}fraction_over_{autosome_par_xx_cov}x"
+        ].get("XX", None)
+        qc_xy_expr = interval_qc_ht[f"{ann_prefix}fraction_over_{xy_nonpar_cov}x"].get(
+            "XY", None
+        )
         cutoff = fraction_samples
 
     def _get_pass_expr(qc_autosome_par_expr, qc_xx_expr, qc_xy_expr):
         return (
             (autosome_or_par & (qc_autosome_par_expr > cutoff))
-            | (x_non_par & (qc_xx_expr > cutoff) & (qc_xy_expr > cutoff))  # Will evaluate to NA is there are no Males, not really what we want
+            | (
+                x_non_par & (qc_xx_expr > cutoff) & (qc_xy_expr > cutoff)
+            )  # Will evaluate to NA is there are no Males, not really what we want
             | (y_non_par & (qc_xy_expr > cutoff))
         )
 
     if per_platform or all_platforms:
-        interval_qc_ht = interval_qc_ht.select(
-            pass_interval_qc=hl.struct(
-                **{
-                    platform: _get_pass_expr(
-                        qc_autosome_par_expr.get(platform, None),
-                        qc_xx_expr.get(platform, None),
-                        qc_xy_expr.get(platform, None),
-                    )
-                    for platform in platform_n_samples
-                }
-            )
+        pass_interval_qc = hl.struct(
+            **{
+                platform: _get_pass_expr(
+                    qc_autosome_par_expr.get(platform, None),
+                    qc_xx_expr.get(platform, None),
+                    qc_xy_expr.get(platform, None),
+                )
+                for platform in platform_n_samples
+            }
         )
         if all_platforms:
             add_globals = add_globals.annotate(min_platform_size=min_platform_size)
@@ -327,22 +330,17 @@ def get_interval_qc_pass(
                 for platform, n_samples in platform_n_samples.items()
                 if (n_samples >= min_platform_size) & (platform != "platform_-1")
             ]
-            interval_qc_ht = interval_qc_ht.select(
-                pass_interval_qc=hl.all(
-                    [
-                        interval_qc_ht.pass_interval_qc[platform]
-                        for platform in platforms
-                    ]
-                )
+            pass_interval_qc = hl.all(
+                [pass_interval_qc[platform] for platform in platforms]
             )
     else:
-        interval_qc_ht = interval_qc_ht.select(
-            pass_interval_qc=_get_pass_expr(
-                qc_autosome_par_expr,
-                qc_xx_expr,
-                qc_xy_expr,
-            )
+        pass_interval_qc = _get_pass_expr(
+            qc_autosome_par_expr,
+            qc_xx_expr,
+            qc_xy_expr,
         )
+
+    interval_qc_ht = interval_qc_ht.select(pass_interval_qc=pass_interval_qc)
     interval_qc_ht = interval_qc_ht.annotate_globals(**add_globals)
 
     return interval_qc_ht
@@ -614,7 +612,8 @@ if __name__ == "__main__":
     )
     interval_qc_pass_method_parser.add_argument(
         "--by-mean-fraction-over-dp-0",
-        help="Whether to use the mean fraction of bases over DP 0 to determine high quality intervals.",
+        help="Whether to use the mean fraction of bases over DP 0 to determine high quality intervals. Can't be set "
+        "at the same time as '--by-prop-samples-over-cov'.",
         action="store_true",
     )
     interval_qc_pass_method_parser.add_argument(
@@ -623,13 +622,14 @@ if __name__ == "__main__":
             "Whether to determine high quality intervals using the fraction of samples (--fraction-samples) with a "
             "mean interval coverage over a specified coverage for intervals on the the autosomes/sex chromosome "
             "PAR/chrX in XX individuals (--autosome-par-xx-cov) and intervals on non-PAR chrX in XY individuals and "
-            "non-PAR chrY in XY individuals (--xy-nonpar-cov)."
+            "non-PAR chrY in XY individuals (--xy-nonpar-cov). Can't be set at the same time as "
+            "'--by-mean-fraction-over-dp-0'"
         ),
         action="store_true",
     )
     interval_qc_pass_args.add_argument(
         "--mean-fraction-over-dp-0",
-        help="Mean fraction of bases over DP used to define high quality intervals.",
+        help="Mean fraction of bases over DP 0 used to define high quality intervals.",
         type=float,
         default=0.99,
     )
@@ -668,7 +668,7 @@ if __name__ == "__main__":
     ):
         parser.error(
             "One of --by-mean-fraction-over-dp-0 or --by-fraction-samples-over-cov is required when "
-            "--generate_interval_qc_pass_ht is specified."
+            "--generate-interval-qc-pass-ht is specified."
         )
 
     if args.slack_channel:

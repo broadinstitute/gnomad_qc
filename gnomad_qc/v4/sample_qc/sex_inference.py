@@ -3,7 +3,7 @@ import functools
 import json
 import logging
 import operator
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Tuple, Union
 
 import hail as hl
 
@@ -14,7 +14,6 @@ from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import (
-    calling_intervals,
     get_checkpoint_path,
     get_gnomad_v4_vds,
     get_logging_path,
@@ -23,12 +22,15 @@ from gnomad_qc.v4.resources.basics import (
 from gnomad_qc.v4.resources.sample_qc import (
     f_stat_sites,
     get_ploidy_cutoff_json_path,
+    hard_filtered_samples_no_sex,
+    interval_coverage,
     platform,
     ploidy,
     sex,
-    sex_imputation_coverage,
-    sex_imputation_platform_coverage,
+    sex_chr_coverage,
+    sex_imputation_interval_qc,
 )
+from gnomad_qc.v4.sample_qc.interval_qc import compute_interval_qc
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("sex_inference")
@@ -148,99 +150,88 @@ def load_platform_ht(
     return ht
 
 
-def generate_sex_imputation_interval_coverage_mt(
-    vds: hl.vds.VariantDataset,
-    calling_intervals_ht: hl.Table,
-    contigs: List[str] = ["chrX", "chrY", "chr20"],
-) -> hl.MatrixTable:
+def prepare_sex_imputation_coverage_mt(
+    normalization_contig: str = "chr20",
+    test: bool = False,
+    read_if_exists: bool = False,
+):
     """
-    Create a MatrixTable of interval-by-sample coverage on a specified list of contigs with PAR regions excluded.
+    Prepare the sex imputation coverage MT.
 
-    :param vds: Input VariantDataset.
-    :param calling_intervals_ht: Calling interval Table.
-    :param contigs: Which contigs to compute interval coverage on for sex imputation. Default: 'chrX', 'chrY', 'chr20'.
-    :return: MatrixTable with interval coverage per sample on specified contigs and PAR regions excluded.
+    Filter the full interval coverage MatrixTable to the specified normalization contig and hard filtered samples
+    (before sex hard filter) and union it with the sex coverage MatrixTable after excluding intervals that overlap
+    PAR regions.
+
+    :param normalization_contig: Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.
+        Default is 'chr20'.
+    :param test: Whether to use gnomAD v4 test dataset. Default is False.
+    :param read_if_exists: Whether to use the sex imputation coverage MT if it already exists rather than remaking
+        this intermediate temporary file. Default is False.
+    :return: Interval coverage MatrixTable for sex imputation.
     """
-    calling_intervals_ht = calling_intervals_ht.filter(
-        hl.literal(contigs).contains(calling_intervals_ht.interval.start.contig)
-    )
     logger.info(
-        "Filtering VariantDataset to the following contigs: %s...",
-        ", ".join(contigs),
+        "Loading the full interval coverage MT and filtering to the desired normalization contig..."
     )
-    vds = hl.vds.filter_chromosomes(vds, keep=contigs)
-    rg = vds.reference_data.locus.dtype.reference_genome
-
-    par_boundaries = []
-    for par_interval in rg.par:
-        par_boundaries.append(par_interval.start)
-        par_boundaries.append(par_interval.end)
-
-    # Segment on PAR interval boundaries
-    calling_intervals = hl.segment_intervals(calling_intervals_ht, par_boundaries)
-
-    # Remove intervals overlapping PAR
-    calling_intervals = calling_intervals.filter(
-        hl.all(lambda x: ~x.overlaps(calling_intervals.interval), hl.literal(rg.par))
+    coverage_mt = interval_coverage.mt()
+    coverage_mt = coverage_mt.filter_rows(
+        coverage_mt.interval.start.contig == normalization_contig
     )
 
-    kept_contig_filter = hl.array(contigs).map(
-        lambda x: hl.parse_locus_interval(x, reference_genome=rg)
+    logger.info("Removing hard-filtered samples from the full interval coverage MT...")
+    coverage_mt = coverage_mt.filter_cols(
+        hl.is_missing(hard_filtered_samples_no_sex.ht()[coverage_mt.col_key])
     )
-    vds = hl.vds.VariantDataset(
-        hl.filter_intervals(vds.reference_data, kept_contig_filter),
-        hl.filter_intervals(vds.variant_data, kept_contig_filter),
+    if test:
+        sex_coverage_mt = hl.read_matrix_table(
+            get_checkpoint_path("test_sex_imputation_cov", mt=True)
+        )
+        logger.info(
+            "Filtering to columns in both the coverage MT and the sex coverage MT for testing...",
+        )
+        coverage_mt = coverage_mt.semi_join_cols(sex_coverage_mt.cols())
+        sex_coverage_mt = sex_coverage_mt.semi_join_cols(coverage_mt.cols())
+
+        # The test sex HT columns are in a different order than the full cov MT because of a different loading order
+        # This will reorder the sex test HT for the row_union, but doesn't need to be done on the full dataset run
+        sex_coverage_mt_tmp = sex_coverage_mt.annotate_cols(
+            idx_in_cov_mt=coverage_mt.add_col_index()
+            .index_cols(sex_coverage_mt.s)
+            .col_idx
+        )
+        sex_coverage_mt_tmp = sex_coverage_mt_tmp.add_col_index()
+        idx_in_sex_coverage_mt = sex_coverage_mt_tmp.aggregate_cols(
+            hl.map(
+                lambda x: x.col_idx,
+                hl.sorted(
+                    hl.agg.collect(
+                        sex_coverage_mt_tmp.col.select("idx_in_cov_mt", "col_idx")
+                    ),
+                    key=lambda x: x.idx_in_cov_mt,
+                ),
+            )
+        )
+        sex_coverage_mt = sex_coverage_mt.choose_cols(idx_in_sex_coverage_mt)
+    else:
+        sex_coverage_mt = sex_chr_coverage.mt()
+
+    logger.info(
+        "Excluding intervals that overlap PAR regions from the sex coverage MT..."
     )
-    mt = hl.vds.interval_coverage(vds, calling_intervals, gq_thresholds=()).drop(
-        "gq_thresholds"
+    sex_coverage_mt = sex_coverage_mt.filter_rows(~sex_coverage_mt.overlap_par)
+    coverage_mt = coverage_mt.union_rows(sex_coverage_mt.drop("overlap_par"))
+    coverage_mt = coverage_mt.annotate_globals(
+        normalization_contig=normalization_contig
     )
-
-    return mt
-
-
-def generate_sex_imputation_interval_qc_mt(
-    mt: hl.MatrixTable,
-    platform_ht: hl.Table,
-    mean_dp_thresholds: List[int] = [5, 10, 15, 20, 25],
-) -> hl.MatrixTable:
-    """
-    Create a Table of fraction of samples per interval and per platform with mean DP over specified thresholds.
-
-    :param mt: Input sex interval coverage MatrixTable.
-    :param platform_ht: Input platform assignment Table.
-    :param mean_dp_thresholds: List of mean DP thresholds to use for computing the fraction of samples with mean
-        interval DP >= the threshold.
-    :return: MatrixTable with annotations for the fraction of samples per interval and per platform over DP thresholds.
-    """
-    # Note: Default `hl.vds.interval_coverage` will return a list for `fraction_over_dp_threshold` where the
-    # second element is dp >= 1 (dp > 0)
-    mt = mt.annotate_cols(platform=platform_ht[mt.col_key].qc_platform)
-    mt = mt.annotate_rows(
-        **{
-            f"fraction_over_{dp}x": hl.agg.fraction(mt.mean_dp >= dp)
-            for dp in mean_dp_thresholds
-        },
-        mean_fraction_over_dp_0=hl.agg.mean(mt.fraction_over_dp_threshold[1]),
-    )
-    mt = mt.select_globals(mean_dp_thresholds=mean_dp_thresholds)
-
-    logger.info("Adding per platform aggregation...")
-    platform_mt = mt.group_cols_by(mt.platform).aggregate(
-        **{
-            f"platform_fraction_over_{dp}x": hl.agg.fraction(mt.mean_dp >= dp)
-            for dp in mean_dp_thresholds
-        },
-        platform_mean_fraction_over_dp_0=hl.agg.mean(mt.fraction_over_dp_threshold[1]),
-    )
-
-    platform_ht = platform_ht.group_by(platform_ht.qc_platform).aggregate(
-        n_samples=hl.agg.count()
-    )
-    platform_mt = platform_mt.annotate_cols(
-        n_samples=platform_ht[platform_mt.col_key].n_samples
+    coverage_mt = coverage_mt.checkpoint(
+        get_checkpoint_path(
+            f"temp_sex_imputation_cov.{normalization_contig}{'.test' if test else ''}",
+            mt=True,
+        ),
+        _read_if_exists=read_if_exists,
+        overwrite=not read_if_exists,
     )
 
-    return platform_mt
+    return coverage_mt
 
 
 def compute_sex_ploidy(
@@ -249,7 +240,7 @@ def compute_sex_ploidy(
     high_cov_intervals: bool = False,
     high_cov_per_platform: bool = False,
     high_cov_all_platforms: bool = False,
-    interval_qc_mt: Optional[hl.MatrixTable] = None,
+    interval_qc_ht: Optional[hl.Table] = None,
     high_cov_cutoffs: Optional[Dict[str, Tuple]] = None,
     platform_ht: Optional[hl.Table] = None,
     min_platform_size: bool = 100,
@@ -324,7 +315,7 @@ def compute_sex_ploidy(
         Default is False.
     :param high_cov_all_platforms: Whether to filter to high coverage intervals for the sex ploidy imputation. Using
         only intervals that are considered high coverage across all platforms. Default is False.
-    :param interval_qc_mt: Optional interval QC MatrixTable. This is only needed if `high_cov_intervals`,
+    :param interval_qc_ht: Optional interval QC Table. This is only needed if `high_cov_intervals`,
         `high_cov_per_platform` or `high_cov_all_platforms` are True.
     :param high_cov_cutoffs: Optional dictionary containing per contig annotations and cutoffs to use for filtering to
         high coverage intervals before imputing sex ploidy. This is only needed if `high_cov_intervals`,
@@ -374,11 +365,11 @@ def compute_sex_ploidy(
     add_globals = {}
 
     def _get_high_coverage_intervals_ht(
-        interval_qc_mt: hl.MatrixTable,
-        prefix: str = "",
+        interval_qc_ht: hl.Table,
         agg_func: Callable[
             [hl.expr.BooleanExpression], hl.BooleanExpression
         ] = hl.agg.all,
+        platform: str = None,
     ) -> hl.Table:
         """
         Helper function to create a Table filtered to high coverage intervals.
@@ -386,9 +377,7 @@ def compute_sex_ploidy(
         High coverage intervals are determined using `agg_func`, `x_cov`, `y_cov`, `norm_cov`, `prop_samples_x`,
         `prop_samples_y`, and `prop_samples_norm`.
 
-        :param interval_qc_mt: Input interval QC MatrixTable.
-        :param prefix: Prefix of annotations in `interval_qc_mt` that contain the proportion of samples with
-            mean DP over coverage cutoffs.
+        :param interval_qc_ht: Input interval QC Table.
         :param agg_func: Hail aggregation function to determine if an interval coverage meets the
             `cov_*` > `prop_samples_*` criteria.
         :return: Table of high coverage intervals.
@@ -396,16 +385,24 @@ def compute_sex_ploidy(
         # Apply the 'or' operator cumulatively from left to right to get a single bool.
         # Each contig has a different set of high coverage cutoffs, this will apply those cutoffs to each contig then
         # merge these contig expressions with the 'or' operator to keep all intervals that pass thee relevant cutoffs.
+        if platform is not None:
+            prefix = "platform_"
+        else:
+            prefix = ""
         filter_expr = functools.reduce(
             operator.or_,
             [
-                (interval_qc_mt.interval.start.contig == contig)
-                & agg_func(interval_qc_mt[f"{prefix}{ann}"] > cutoff)
+                (interval_qc_ht.interval.start.contig == contig)
+                & agg_func(
+                    (interval_qc_ht[f"{prefix}{ann}"]["all"][platform] > cutoff)
+                    if platform
+                    else (interval_qc_ht[f"{prefix}{ann}"]["all"] > cutoff)
+                )  # TODO NEED TO CHANGE FOR PLATFORMS
                 for contig, (ann, cutoff) in high_cov_cutoffs.items()
             ],
         )
 
-        return interval_qc_mt.filter_rows(filter_expr).rows()
+        return interval_qc_ht.filter(filter_expr)
 
     def _annotate_sex(
         vds: hl.vds.VariantDataset, calling_intervals_ht: hl.Table
@@ -470,8 +467,8 @@ def compute_sex_ploidy(
                     vds, platform_ht.filter(platform_ht.qc_platform == platform)
                 ),
                 _get_high_coverage_intervals_ht(
-                    interval_qc_mt.filter_cols(interval_qc_mt.platform == platform),
-                    prefix="platform_",
+                    interval_qc_ht,
+                    platform=platform,
                 ),
             )
             per_platform_ploidy_hts.append(ploidy_ht)
@@ -484,10 +481,11 @@ def compute_sex_ploidy(
             min_platform_size,
         )
         # Excluding small platforms and platform_-1 (platform containing all samples with unassigned platform)
-        interval_qc_mt = interval_qc_mt.filter_cols(
-            (interval_qc_mt.n_samples >= min_platform_size)
-            & (interval_qc_mt.platform != "platform_-1")
-        )
+        platforms = [
+            platform
+            for platform, n_samples in platform_n_samples.items()
+            if (n_samples >= min_platform_size) & (platform != "platform_-1")
+        ]
         ploidy_ht = _annotate_sex(
             vds, _get_high_coverage_intervals_ht(interval_qc_mt, prefix="platform_")
         )
@@ -729,11 +727,10 @@ def main(args):
     hl._set_flags(use_new_shuffle="1")
 
     test = args.test
-    calling_interval_name = args.calling_interval_name
-    calling_interval_padding = args.calling_interval_padding
     normalization_contig = args.normalization_contig
     per_platform = args.per_platform
     overwrite = args.overwrite
+    read_sex_cov_if_exists = args.read_sex_imputation_coverage_mt_if_exists
 
     try:
         if args.determine_fstat_sites:
@@ -750,60 +747,30 @@ def main(args):
                 min_callrate=args.min_callrate,
             )
             ht.naive_coalesce(args.fstat_n_partitions).write(
-                get_checkpoint_path("test_f_stat_sites")
-                if test
-                else f_stat_sites.path,
-                overwrite=overwrite,
-            )
-
-        if args.sex_imputation_interval_coverage:
-            vds = get_gnomad_v4_vds(
-                remove_hard_filtered_samples=False,
-                remove_hard_filtered_samples_no_sex=True,
-                test=test,
-            )
-            calling_intervals_ht = calling_intervals(
-                calling_interval_name, calling_interval_padding
-            ).ht()
-            coverage_mt = generate_sex_imputation_interval_coverage_mt(
-                vds,
-                calling_intervals_ht,
-                contigs=["chrX", "chrY", normalization_contig],
-            )
-            coverage_mt = coverage_mt.annotate_globals(
-                calling_interval_name=calling_interval_name,
-                calling_interval_padding=calling_interval_padding,
-                normalization_contig=normalization_contig,
-            )
-            coverage_mt.write(
-                get_checkpoint_path("test_sex_imputation_cov", mt=True)
-                if test
-                else sex_imputation_coverage.path,
+                get_checkpoint_path("test_f_stat_sites") if test else f_stat_sites.path,
                 overwrite=overwrite,
             )
 
         if args.sex_imputation_interval_qc:
-            if test:
-                coverage_mt = hl.read_matrix_table(
-                    get_checkpoint_path("test_sex_imputation_cov", mt=True)
-                )
-            else:
-                coverage_mt = sex_imputation_coverage.mt()
-
+            sex_coverage_mt = prepare_sex_imputation_coverage_mt(
+                normalization_contig,
+                test,
+                read_sex_cov_if_exists,
+            )
             platform_ht = load_platform_ht(
                 test,
-                coverage_mt.calling_interval_name,
-                coverage_mt.calling_interval_padding,
+                sex_coverage_mt.calling_interval_name.collect()[0],
+                sex_coverage_mt.calling_interval_padding.collect()[0],
             )
-            platform_mt = generate_sex_imputation_interval_qc_mt(
-                coverage_mt,
-                platform_ht,
+            ht = compute_interval_qc(
+                sex_coverage_mt,
+                platform_ht=platform_ht,
                 mean_dp_thresholds=args.mean_dp_thresholds,
             )
-            platform_mt.naive_coalesce(args.interval_qc_n_partitions).write(
-                get_checkpoint_path("test_sex_imputation_cov.per_platform", mt=True)
+            ht.naive_coalesce(args.interval_qc_n_partitions).write(
+                get_checkpoint_path("test_sex_chr_interval_qc")
                 if test
-                else sex_imputation_platform_coverage.path,
+                else sex_imputation_interval_qc.path,
                 overwrite=overwrite,
             )
 
@@ -812,9 +779,6 @@ def main(args):
                 remove_hard_filtered_samples=False,
                 remove_hard_filtered_samples_no_sex=True,
                 test=test,
-            )
-            platform_ht = load_platform_ht(
-                test, calling_interval_name, calling_interval_padding
             )
             if args.f_stat_ukb_var:
                 # The UK Biobank f-stat table contains only variants that were high callrate (0.99) and common
@@ -835,21 +799,30 @@ def main(args):
 
             # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
             if overwrite or not file_exists(ploidy_ht_path):
-                coverage_mt = (
-                    hl.read_matrix_table(
-                        get_checkpoint_path("test_sex_imputation_cov", mt=True)
-                    )
+                interval_qc_ht = (
+                    hl.read_table(get_checkpoint_path("test_sex_chr_interval_qc"))
                     if test
-                    else sex_imputation_coverage.mt()
+                    else sex_imputation_interval_qc.ht()
                 )
-                interval_qc_mt = (
-                    hl.read_matrix_table(
-                        get_checkpoint_path(
-                            "test_sex_imputation_cov.per_platform", mt=True
-                        )
+                if (
+                    interval_qc_ht.normalization_contig.collect()[0]
+                    != normalization_contig
+                ):
+                    raise ValueError(
+                        "Normalization contig %s is not in the sex imputation interval QC HT, rerun "
+                        "'--sex-imputation-interval-qc' to use a different normalization contig than %s",
+                        normalization_contig,
+                        interval_qc_ht.normalization_contig.collect()[0],
                     )
-                    if test
-                    else sex_imputation_platform_coverage.mt()
+                coverage_mt = prepare_sex_imputation_coverage_mt(
+                    normalization_contig,
+                    test,
+                    read_sex_cov_if_exists,
+                )
+                platform_ht = load_platform_ht(
+                    test,
+                    coverage_mt.calling_interval_name.collect()[0],
+                    coverage_mt.calling_interval_padding.collect()[0],
                 )
                 high_cov_cutoffs = None
                 if args.high_cov_by_mean_fraction_over_dp_0:
@@ -880,14 +853,14 @@ def main(args):
                 ploidy_ht = compute_sex_ploidy(
                     vds,
                     coverage_mt,
-                    interval_qc_mt=interval_qc_mt,
                     high_cov_intervals=args.high_cov_intervals,
                     high_cov_per_platform=args.high_cov_per_platform,
                     high_cov_all_platforms=args.high_cov_all_platforms,
+                    interval_qc_ht=interval_qc_ht,
                     high_cov_cutoffs=high_cov_cutoffs,
                     platform_ht=platform_ht,
                     min_platform_size=args.min_platform_size,
-                    normalization_contig=coverage_mt.normalization_contig.collect()[0],
+                    normalization_contig=normalization_contig,
                     variant_depth_only_x_ploidy=args.variant_depth_only_x_ploidy,
                     variant_depth_only_y_ploidy=args.variant_depth_only_y_ploidy,
                     variant_depth_only_ploidy_filter_lcr=not args.omit_variant_depth_ploidy_lcr_filter,
@@ -1000,50 +973,11 @@ if __name__ == "__main__":
         type=int,
     )
 
-    sex_coverage_args = parser.add_argument_group(
-        "Sex imputation interval coverage",
-        "Arguments used for computing interval coverage for sex imputation.",
-    )
-    sex_coverage_args.add_argument(
-        "--sex-imputation-interval-coverage",
-        help=(
-            "Create a MatrixTable of interval-by-sample coverage on a specified list of contigs with PAR regions "
-            "excluded."
-        ),
-        action="store_true",
-    )
-    sex_coverage_args.add_argument(
-        "--normalization-contig",
-        help="Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.",
-        type=str,
-        default="chr20",
-    )
-    sex_coverage_args.add_argument(
-        "--calling-interval-name",
-        help=(
-            "Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'. Only "
-            "used if '--test' is set."
-        ),
-        type=str,
-        choices=["ukb", "broad", "intersection"],
-        default="intersection",
-    )
-    sex_coverage_args.add_argument(
-        "--calling-interval-padding",
-        help=(
-            "Number of base pair padding to use on the calling intervals. One of 0 or 50 bp. Only used if '--test' is "
-            "set."
-        ),
-        type=int,
-        choices=[0, 50],
-        default=50,
-    )
-
-    sex_interval_qc_args = parser.add_argument_group(
+    sex_imputation_interval_qc_args = parser.add_argument_group(
         "Sex chromosome interval QC",
         "Arguments used for making an interval QC HT from the sex imputation interval coverage MT.",
     )
-    sex_interval_qc_args.add_argument(
+    sex_imputation_interval_qc_args.add_argument(
         "--sex-imputation-interval-qc",
         help=(
             "Create a Table of the fraction of samples per interval and per platform with mean DP over thresholds "
@@ -1051,7 +985,21 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
-    sex_interval_qc_args.add_argument(
+    sex_cov_mt_read_if_exists_action = sex_imputation_interval_qc_args.add_argument(
+        "--read-sex-imputation-coverage-mt-if-exists",
+        help=(
+            "Whether to use the sex imputation coverage MT if it already exists rather than remaking this intermediate "
+            "temporary file."
+        ),
+        action="store_true",
+    )
+    norm_contig_action = sex_imputation_interval_qc_args.add_argument(
+        "--normalization-contig",
+        help="Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.",
+        type=str,
+        default="chr20",
+    )
+    sex_imputation_interval_qc_args.add_argument(
         "--mean-dp-thresholds",
         help=(
             "List of mean DP cutoffs to determining the fraction of samples with mean coverage >= the cutoff for each "
@@ -1061,7 +1009,7 @@ if __name__ == "__main__":
         nargs="+",
         default=[5, 10, 15, 20, 25],
     )
-    sex_interval_qc_args.add_argument(
+    sex_imputation_interval_qc_args.add_argument(
         "--interval-qc-n-partitions",
         help="Number of desired partitions for the sex imputation interval QC output Table.",
         default=500,
@@ -1076,6 +1024,10 @@ if __name__ == "__main__":
         help="Run sex chromosome ploidy imputation.",
         action="store_true",
     )
+    # Indicate that the --normalization-contig and --read-sex-imputation-coverage-mt-if-exists options are available
+    # for this argument group as well
+    sex_ploidy_args._group_actions.append(norm_contig_action)
+    sex_ploidy_args._group_actions.append(sex_cov_mt_read_if_exists_action)
     sex_ploidy_args.add_argument(
         "--f-stat-ukb-var",
         help=(
@@ -1114,7 +1066,7 @@ if __name__ == "__main__":
         "--high-cov-per-platform",
         help=(
             "Whether to filter to per platform high coverage intervals for the sex ploidy imputation. Can't be used "
-             "at the same time as '--high-cov-intervals' or '--high-cov-all-platforms'."
+            "at the same time as '--high-cov-intervals' or '--high-cov-all-platforms'."
         ),
         action="store_true",
     )
@@ -1188,7 +1140,7 @@ if __name__ == "__main__":
     sex_ploidy_high_cov_opt_parser.add_argument(
         "--high-cov-by-mean-fraction-over-dp-0",
         help="Whether to use the mean fraction of bases over DP 0 to determine high coverage intervals. Can't be set "
-             "at the same time as '--high-cov-by-prop-samples-over-cov'.",
+        "at the same time as '--high-cov-by-prop-samples-over-cov'.",
         action="store_true",
     )
     sex_ploidy_high_cov_opt_parser.add_argument(
