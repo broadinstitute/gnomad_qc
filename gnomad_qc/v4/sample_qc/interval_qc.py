@@ -289,7 +289,7 @@ def get_high_qual_cutoff_dict(
 
 def get_interval_qc_pass(
     interval_qc_ht: hl.Table,
-    high_qual_cutoffs,
+    high_qual_cutoffs: Dict[str, List[Tuple[Union[str, float]]]],
     per_platform: bool = False,
     all_platforms: bool = False,
     min_platform_size: int = 100,
