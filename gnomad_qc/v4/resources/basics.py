@@ -1,10 +1,7 @@
 import logging
-from typing import List, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
-    BaseResource,
-    DataException,
     TableResource,
     VariantDatasetResource,
     VersionedTableResource,
@@ -16,48 +13,6 @@ from gnomad_qc.v4.resources.meta import meta
 
 logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
-
-
-def check_resource_existence(
-    resource: Union[str, BaseResource],
-    raise_exist_no_overwrite_error: bool = False,
-):
-    if not isinstance(resource, str):
-        resource = resource.path
-
-    paths_to_test = [resource]
-    if any(resource.endswith(ext) for ext in (".ht", ".mt", ".bm", ".parquet")):
-        paths_to_test = [f"{resource}/_SUCCESS"]
-
-    if resource.endswith(".vds"):
-        paths_to_test = [f"{resource}/reference_data/_SUCCESS", f"{resource}/variant_data/_SUCCESS"]
-
-    exists = all([hl.current_backend().fs.exists(path_to_test) for path_to_test in paths_to_test])
-
-    if exists and raise_exist_no_overwrite_error:
-        raise DataException(
-            f"{resource} already exists and the --overwrite option was not used!"
-        )
-
-    return exists
-
-
-def check_resource_list_existence(
-    resource_list: List[Union[str, BaseResource]],
-    raise_exist_no_overwrite_error: bool = False
-):
-    exists = []
-    exceptions_raised = []
-    for resource in resource_list:
-        try:
-            exists.append(check_resource_existence(resource, raise_exist_no_overwrite_error))
-        except DataException as e:
-            exceptions_raised.append(str(e))
-
-    if exceptions_raised:
-        raise DataException("\n".join(exceptions_raised))
-
-    return exists
 
 
 # Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4.0/<module>/<exomes_or_genomes>/
