@@ -1,6 +1,8 @@
 import argparse
+import functools
 import logging
-from typing import List, Tuple, Union
+import operator
+from typing import Dict, List, Tuple, Union
 
 from gnomad.utils.slack import slack_notifications
 import hail as hl
@@ -216,14 +218,53 @@ def compute_interval_qc(
 
 
 def get_high_qual_cutoff_dict(
-    autosome_par_cutoff,
-    x_nonpar_cutoff,
-    y_nonpar_cutoff,
-    autosome_par_qc_ann,
-    x_nonpar_qc_ann,
-    y_nonpar_qc_ann,
+    autosome_par_cutoff: float,
+    x_nonpar_cutoff: float,
+    y_nonpar_cutoff: float,
+    autosome_par_qc_ann: str,
+    x_nonpar_qc_ann: str,
+    y_nonpar_qc_ann: str,
     split_by_sex: bool = False,
-):
+) -> Dict[str, List[Tuple[Union[str, float]]]]:
+    """
+    Create a dictionary specifying annotations and cutoffs to use for determining high quality intervals.
+
+    This Dictionary is meant to be used as input to `get_interval_qc_pass`.
+
+    If `split_by_sex` is True, the 'x_non_par' dictionary value will contain a cutoff for both 'XX' and 'XY', and
+    'y_non_par' will contain a cutoff for only 'XY'.
+
+    The returned dictionary will be in this form if `split_by_sex` is False:
+      {
+          'autosome_par': [(`autosome_par_qc_ann`, 'all', `autosome_par_cutoff`)],
+          'x_non_par': [(`x_nonpar_qc_ann`, 'all', `x_nonpar_cutoff`)],
+          'y_non_par': [(`y_nonpar_qc_ann`, 'all', `y_nonpar_cutoff`)]
+      }
+
+    The returned dictionary will be in this form if `split_by_sex` is True:
+      {
+          'autosome_par': [(`autosome_par_qc_ann`, 'all', `autosome_par_cutoff`)],
+          'x_non_par': [(`x_nonpar_qc_ann`, 'XX', `x_nonpar_cutoff`), (`y_nonpar_qc_ann`, 'XY', `y_nonpar_cutoff`)],
+          'y_non_par': [(`y_nonpar_qc_ann`, 'XY', `y_nonpar_cutoff`)]
+      }
+
+    :param autosome_par_cutoff: Cutoff to define high coverage intervals for autosome and par intervals. Intervals
+        with `autosome_par_qc_ann` > `autosome_par_cutoff` are considered high coverage.
+    :param x_nonpar_cutoff: Cutoff to define high coverage intervals for chromosome X non par intervals (for XX
+        individuals if `split_by_sex` is True). Intervals with `x_nonpar_qc_ann` > `x_nonpar_cutoff` are considered
+        high coverage.
+    :param y_nonpar_cutoff: Cutoff to define high coverage intervals for chromosome Y non par intervals (for XY
+        individuals if `split_by_sex` is True). Intervals with `y_nonpar_qc_ann` > `y_nonpar_cutoff` are considered
+        high coverage. Also used to define high coverage X non par intervals if `split_by_sex` is True.
+    :param autosome_par_qc_ann: Annotation in an interval QC HT that will be used to filter high coverage intervals for
+        autosomes and par regions.
+    :param x_nonpar_qc_ann: Annotation in an interval QC HT that will be used to filter high coverage intervals for
+        chromosome X non par regions.
+    :param y_nonpar_qc_ann: Annotation in an interval QC HT that will be used to filter high coverage intervals for
+        chromosome Y non par regions. Also used for chromosome X non par regions if `split_by_sex` is True.
+    :param split_by_sex: Whether to split 'x_non_par' and 'y_non_par' cutoffs based on sex karyotype. Default is False.
+    :return: Dictionary of annotations and cutoffs to use to define high quality intervals.
+    """
     if split_by_sex:
         xx = "XX"
         xy = "XY"
@@ -254,10 +295,38 @@ def get_interval_qc_pass(
     min_platform_size: int = 100,
 ) -> hl.Table:
     """
-    Add `interval_qc_pass` annotation to indicate whether the site falls within a high coverage interval.
+    Add `interval_qc_pass` annotation to indicate whether the interval is high coverage.
+
+    `interval_qc_ht` is the output of `compute_interval_qc` and contains annotations that can be used in the
+    `high_qual_cutoffs` dictionary to indicate intervals that are considered high quality.
+
+    The `high_qual_cutoffs` dictionary can be created using `get_high_qual_cutoff_dict`. It specifies annotations and
+    cutoffs  to use for determining high quality intervals. Annotations in the `high_qual_cutoffs` dictionary must
+    exist in  the `interval_qc_ht` Table. The `high_qual_cutoffs` dictionary must have the following keys:
+    'autosome_par', 'x_non_par' and 'y_non_par'. Each Key specifies a list of annotations and cutoffs to use for
+    filtering.
+
+    Example of `high_qual_cutoffs` dictionary using annotations for the proportion of samples over a specified coverage:
+      {
+          'autosome_par': [('fraction_over_20x', 'all', 0.85)],
+          'x_non_par': [('fraction_over_20x', 'XX', 0.85), ('fraction_over_10x', 'XY', 0.85)],
+          'y_non_par': [('fraction_over_10x', 'XY', 0.85)]
+      }
+
+    Example of `high_qual_cutoffs` dictionary using annotations for the proportion of samples over a specified coverage
+    and specifying differences by sex karyotype:
+      {
+          'autosome_par': [('fraction_over_20x', 'all', 0.85)],
+          'x_non_par': [('fraction_over_10x', 'all', 0.80)],
+          'y_non_par': [('fraction_over_5x', 'all', 0.35)]
+      }
+
+    Only one of 'per_platform' and 'all_platforms' can be True, and if `per_platform` or `all_platforms` is True,
+    a prefix of "platform_" is added before the annotation in the `high_qual_cutoffs` dictionary.
 
     :param interval_qc_ht: Input interval QC Table.
-    :param high_qual_cutoffs:
+    :param high_qual_cutoffs: Dictionary containing annotations and cutoffs to use for filtering to high coverage
+        intervals.
     :param per_platform: Whether to make the interval QC pass annotation a DictionaryExpression with interval QC pass
         per platform.
     :param all_platforms: Whether to consider an interval as passing QC only if it passes interval QC per platform
@@ -291,12 +360,33 @@ def get_interval_qc_pass(
         high_qual_cutoffs=high_qual_cutoffs,
     )
 
-    def _get_qc_ann_expr(expr, platform=None):
+    def _get_qc_ann_expr(
+        expr: Union[hl.Float64Expression, hl.DictExpression], platform: str = None
+    ) -> hl.Float64Expression:
+        """
+        Helper function to return the value of `expr` keyed by `platform` if supplied, otherwise return `expr`.
+
+        :param expr: Input FloatExpression or DictExpression.
+        :param platform: Optional key of `expr`.
+        :return: FloatExpression.
+        """
         if platform is None:
             return expr
         return expr.get(platform, None)
 
-    def _get_pass_expr(platform=None):
+    def _get_pass_expr(platform: str = None) -> hl.BooleanExpression:
+        """
+        Helper function to define high quality intervals using `high_qual_cutoffs`.
+
+        :param platform: Optional platform to filter to.
+        :return: BooleanExpression indicating high quality.
+        """
+        # Apply the 'iand' operator cumulatively from left to right of each values in high_qual_cutoffs (list of
+        # cutoffs that must all apply) to get a single bool for each key in high_qual_cutoffs.
+        # Then apply the 'ior' operator cumulatively from left to right to get a single bool indicating high quality.
+        # Each interval type in high_qual_cutoffs has a different set of annotations and cutoffs, this will apply those
+        # cutoffs to each interval type then merge these expressions with the 'or' operator to keep all intervals that
+        # pass the relevant cutoffs.
         return functools.reduce(
             operator.ior,
             [
@@ -324,6 +414,11 @@ def get_interval_qc_pass(
             interval_qc_globals = interval_qc_globals.annotate(
                 min_platform_size=min_platform_size
             )
+            logger.info(
+                "Defining high quality intervals across all platforms. Limited to platforms with at least %s samples...",
+                min_platform_size,
+            )
+            # Excluding small platforms and platform_-1 (platform containing all samples with unassigned platform)
             platforms = [
                 platform
                 for platform, n_samples in platform_n_samples.items()
@@ -332,12 +427,15 @@ def get_interval_qc_pass(
             pass_interval_qc = hl.all(
                 [pass_interval_qc[platform] for platform in platforms]
             )
+        else:
+            logger.info("Defining high quality intervals per platform...")
     else:
+        logger.info("Defining high coverage intervals across the full sample set...")
         pass_interval_qc = _get_pass_expr()
 
     interval_qc_ht = interval_qc_ht.select(pass_interval_qc=pass_interval_qc)
     interval_qc_ht = interval_qc_ht.select_globals(
-        pass_interval_qc_parameters=interval_qc_globals
+        high_qual_interval_parameters=interval_qc_globals
     )
 
     return interval_qc_ht
@@ -476,31 +574,23 @@ def main(args):
                 if test
                 else interval_qc.ht()
             )
-            bla = {}
             if args.by_mean_fraction_over_dp_0:
-                bla["autosome_par_cutoff"] = bla["x_nonpar_cutoff"] = bla[
-                    "y_nonpar_cutoff"
-                ] = args.mean_fraction_over_dp_0
-                bla["autosome_par_qc_ann"] = bla["x_nonpar_qc_ann"] = bla[
-                    "y_nonpar_qc_ann"
-                ] = "mean_fraction_over_dp_0"
-
+                # The same cutoffs and annotations are used for autosome_par, x_non_par, and y_non_par
+                high_qual_cutoffs = get_high_qual_cutoff_dict(
+                    *[args.mean_fraction_over_dp_0] * 3,
+                    *["mean_fraction_over_dp_0"] * 3,
+                    split_by_sex=True,
+                )
             if args.by_fraction_samples_over_cov:
-                annotation_format = "fraction_over_{cov}x"
-                bla["autosome_par_cutoff"] = bla["x_nonpar_cutoff"] = bla[
-                    "y_nonpar_cutoff"
-                ] = args.fraction_samples
-                bla["autosome_par_qc_ann"] = bla[
-                    "x_nonpar_qc_ann"
-                ] = annotation_format.format(cov=args.autosome_par_xx_cov)
-                bla["y_nonpar_qc_ann"] = annotation_format.format(
-                    cov=args.xy_nonpar_cov
+                # The same cutoffs are used for autosome_par, x_non_par, and y_non_par and annotations for autosome_par
+                # and x_non_par
+                high_qual_cutoffs = get_high_qual_cutoff_dict(
+                    *[args.fraction_samples] * 3,
+                    *[f"fraction_over_{args.autosome_par_xx_cov}"] * 2,
+                    f"fraction_over_{args.xy_nonpar_cov}",
+                    split_by_sex=True,
                 )
 
-            high_qual_cutoffs = get_high_qual_cutoff_dict(
-                **bla,
-                split_by_sex=True,
-            )
             ht = get_interval_qc_pass(
                 ht,
                 high_qual_cutoffs,

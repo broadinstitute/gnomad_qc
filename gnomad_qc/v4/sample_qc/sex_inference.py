@@ -1,12 +1,10 @@
 import argparse
-import functools
 import json
 import logging
-import operator
-from typing import Callable, Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import hail as hl
-
+from gnomad.resources.resource_utils import DataException
 from gnomad.sample_qc.pipeline import annotate_sex, infer_sex_karyotype
 from gnomad.sample_qc.sex import get_sex_expr
 from gnomad.utils.file_utils import file_exists
@@ -30,7 +28,11 @@ from gnomad_qc.v4.resources.sample_qc import (
     sex_chr_coverage,
     sex_imputation_interval_qc,
 )
-from gnomad_qc.v4.sample_qc.interval_qc import compute_interval_qc
+from gnomad_qc.v4.sample_qc.interval_qc import (
+    compute_interval_qc,
+    get_high_qual_cutoff_dict,
+    get_interval_qc_pass,
+)
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("sex_inference")
@@ -237,13 +239,9 @@ def prepare_sex_imputation_coverage_mt(
 def compute_sex_ploidy(
     vds: hl.vds.VariantDataset,
     coverage_mt: hl.MatrixTable,
-    high_cov_intervals: bool = False,
-    high_cov_per_platform: bool = False,
-    high_cov_all_platforms: bool = False,
     interval_qc_ht: Optional[hl.Table] = None,
-    high_cov_cutoffs: Optional[Dict[str, Tuple]] = None,
+    high_qual_per_platform: bool = False,
     platform_ht: Optional[hl.Table] = None,
-    min_platform_size: bool = 100,
     normalization_contig: str = "chr20",
     variant_depth_only_x_ploidy: bool = False,
     variant_depth_only_y_ploidy: bool = False,
@@ -259,7 +257,7 @@ def compute_sex_ploidy(
     Impute sex chromosome ploidy, and optionally chrX heterozygosity and fraction homozygous alternate variants on chrX.
 
     This function imputes sex chromosome ploidy from a VDS and a sex inference specific coverage MT (created by
-    `generate_sex_imputation_interval_coverage_mt`).
+    `prepare_sex_imputation_coverage_mt`).
 
     With no additional parameters passed, chrX and chrY ploidy will be imputed using Hail's
     `hail.vds.impute_sex_chromosome_ploidy` method which computes chromosome ploidy using reference block DP per
@@ -270,61 +268,19 @@ def compute_sex_ploidy(
     of using reference block depths. This can be defined differently for chrX and chrY using
     `variant_depth_only_x_ploidy` and `variant_depth_only_y_ploidy`.
 
-    The following options are available to filter to high coverage intervals prior to sex chromosome ploidy imputation.
-        - `high_cov_intervals` - filter to high coverage intervals across the entire dataset.
-        - `high_cov_per_platform` - filter to per platform high coverage intervals.
-        - `high_cov_all_platforms` - filter to only intervals that are high coverage within all platforms. This method
-          uses only platforms that have # of samples > `min_platform_size` to determine intervals that have a high
-          coverage across all platforms.
+    If an `interval_qc_ht` Table is supplied, only high coverage intervals will be used in sex chromosome ploidy
+    imputation. High quality intervals are defined by 'interval_qc_ht.pass_interval_qc'.
 
-        - For all of these options, `high_cov_cutoffs` and `interval_qc_mt` are used to filter to high coverage
-          intervals.
-            - `interval_qc_mt` is the output of `generate_sex_imputation_interval_qc_mt` and contains annotations
-              that can be used in the `high_cov_cutoffs` dictionary to indicate intervals that are considered high
-              coverage.
-            - `high_cov_cutoffs` dictionary should be in this form:
-              {
-                  "chrX": (annotation in `interval_qc_mt`, cutoff),
-                  "chrY": (annotation in `interval_qc_mt`, cutoff),
-                  `normalization_contig`: (annotation in `interval_qc_mt`, cutoff)
-              }
-            - `high_cov_cutoffs` and `interval_qc_mt` are then used to filter to intervals where for contig in
-              `high_cov_cutoffs`:
-              - interval_qc_mt.contig == contig
-              - interval_qc_mt[annotation in `interval_qc_mt`] > cutoff
-              - Note: a prefix of "platform_" is added before the annotation if coverage should be per platform.
-            - Example of `high_cov_cutoffs` dictionary using the mean_fraction_over_dp_0 annotation:
-              {
-                  "chrX": ("mean_fraction_over_dp_0", 0.4),
-                  "chrY": ("mean_fraction_over_dp_0", 0.4),
-                  `normalization_contig`: ("mean_fraction_over_dp_0", 0.99)
-              }
-            - Example of `high_cov_cutoffs` dictionary using annotations for the proportion of samples over a specified
-              coverage:
-              {
-                  "chrX": ("fraction_over_10x", 0.80),
-                  "chrY": ("fraction_over_5x", 0.35),
-                  `normalization_contig`: ("fraction_over_20x", 0.85)
-              }
+    If `high_qual_per_platform` is True, `interval_qc_ht` and `platform_ht` must be supplied, and
+    'interval_qc_ht.pass_interval_qc' should be a Struct with one BooleanExpression per platform.
 
     :param vds: Input VDS for use in sex inference.
     :param coverage_mt: Input sex inference specific interval coverage MatrixTable.
-    :param high_cov_intervals: Whether to filter to high coverage intervals for the sex ploidy imputation. Default
-        is False.
-    :param high_cov_per_platform: Whether to filter to per platform high coverage intervals for the sex ploidy imputation.
-        Default is False.
-    :param high_cov_all_platforms: Whether to filter to high coverage intervals for the sex ploidy imputation. Using
-        only intervals that are considered high coverage across all platforms. Default is False.
-    :param interval_qc_ht: Optional interval QC Table. This is only needed if `high_cov_intervals`,
-        `high_cov_per_platform` or `high_cov_all_platforms` are True.
-    :param high_cov_cutoffs: Optional dictionary containing per contig annotations and cutoffs to use for filtering to
-        high coverage intervals before imputing sex ploidy. This is only needed if `high_cov_intervals`,
-        `high_cov_per_platform` or `high_cov_all_platforms` are True.
-    :param platform_ht: Input platform assignment Table. This is only needed if `high_cov_per_platform` or
-        `high_cov_all_platforms` are True.
-    :param min_platform_size: Required size of a platform to be considered when using `high_cov_all_platforms`. Only
-        platforms that have # of samples > 'min_platform_size' are used to determine intervals that have a high
-        coverage across all platforms. Default is 100.
+    :param interval_qc_ht: Optional interval QC Table to use for filtering to high quality intervals before sex ploidy
+        imputation.
+    :param high_qual_per_platform: Whether to filter to per platform high quality intervals for the sex ploidy
+        imputation. Default is False.
+    :param platform_ht: Input platform assignment Table. This is only needed if `high_qual_per_platform` is True.
     :param normalization_contig: Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.
         Default is 'chr20'.
     :param variant_depth_only_x_ploidy: Whether to use depth of variant data within calling intervals instead of
@@ -347,62 +303,17 @@ def compute_sex_ploidy(
         are above cutoff. Default is -1.0.
     :return: Table with imputed ploidies.
     """
-    if (high_cov_per_platform or high_cov_all_platforms) and platform_ht is None:
+    if high_qual_per_platform and platform_ht is None:
         raise ValueError(
-            "'platform_ht' must be defined if 'high_cov_per_platform' or 'high_cov_all_platforms' is True!"
+            "'platform_ht' must be defined if 'high_qual_per_platform' is True!"
         )
 
-    if high_cov_per_platform and high_cov_all_platforms:
+    if high_qual_per_platform and interval_qc_ht is None:
         raise ValueError(
-            "Only one of 'high_cov_per_platform' or 'high_cov_all_platforms' can be True!"
+            "'interval_qc_ht' must be defined if 'high_qual_per_platform' is True!"
         )
 
-    if high_cov_intervals and high_cov_all_platforms:
-        logger.warning(
-            "Both 'high_cov_intervals' and 'high_cov_all_platforms' are True, high coverage intervals will be defined"
-            " as intervals that match high coverage criteria within all platforms."
-        )
     add_globals = {}
-
-    def _get_high_coverage_intervals_ht(
-        interval_qc_ht: hl.Table,
-        agg_func: Callable[
-            [hl.expr.BooleanExpression], hl.BooleanExpression
-        ] = hl.agg.all,
-        platform: str = None,
-    ) -> hl.Table:
-        """
-        Helper function to create a Table filtered to high coverage intervals.
-
-        High coverage intervals are determined using `agg_func`, `x_cov`, `y_cov`, `norm_cov`, `prop_samples_x`,
-        `prop_samples_y`, and `prop_samples_norm`.
-
-        :param interval_qc_ht: Input interval QC Table.
-        :param agg_func: Hail aggregation function to determine if an interval coverage meets the
-            `cov_*` > `prop_samples_*` criteria.
-        :return: Table of high coverage intervals.
-        """
-        # Apply the 'or' operator cumulatively from left to right to get a single bool.
-        # Each contig has a different set of high coverage cutoffs, this will apply those cutoffs to each contig then
-        # merge these contig expressions with the 'or' operator to keep all intervals that pass thee relevant cutoffs.
-        if platform is not None:
-            prefix = "platform_"
-        else:
-            prefix = ""
-        filter_expr = functools.reduce(
-            operator.or_,
-            [
-                (interval_qc_ht.interval.start.contig == contig)
-                & agg_func(
-                    (interval_qc_ht[f"{prefix}{ann}"]["all"][platform] > cutoff)
-                    if platform
-                    else (interval_qc_ht[f"{prefix}{ann}"]["all"] > cutoff)
-                )  # TODO NEED TO CHANGE FOR PLATFORMS
-                for contig, (ann, cutoff) in high_cov_cutoffs.items()
-            ],
-        )
-
-        return interval_qc_ht.filter(filter_expr)
 
     def _annotate_sex(
         vds: hl.vds.VariantDataset, calling_intervals_ht: hl.Table
@@ -437,74 +348,55 @@ def compute_sex_ploidy(
         )
         return ploidy_ht
 
-    if high_cov_intervals or high_cov_all_platforms or high_cov_per_platform:
-        if high_cov_cutoffs is None:
-            raise ValueError(
-                "If 'high_cov_intervals', 'high_cov_all_platforms', or 'high_cov_per_platform is True "
-                "'high_cov_cutoffs' must be supplied!"
-            )
-        logger.info(
-            "Running sex ploidy imputation using only high coverage intervals: %s...",
-            high_cov_cutoffs,
+    if interval_qc_ht is not None:
+        high_qual_cutoffs = (
+            interval_qc_ht.index_globals().high_qual_interval_parameters.collect()[0]
         )
-        add_globals["high_cov_interval_parameters"] = high_cov_cutoffs
+        logger.info(
+            "Running sex ploidy imputation using only high quality intervals: %s...",
+            high_qual_cutoffs,
+        )
+        add_globals["high_qual_interval_parameters"] = high_qual_cutoffs
 
-    if high_cov_per_platform:
-        logger.info(
-            "Running sex ploidy imputation per platform using per platform high coverage intervals..."
-        )
-        platforms = platform_ht.aggregate(
-            hl.agg.collect_as_set(platform_ht.qc_platform)
-        )
-        per_platform_ploidy_hts = []
-        for platform in platforms:
+        if high_qual_per_platform:
+            if not isinstance(interval_qc_ht.pass_interval_qc, hl.struct):
+                ValueError(
+                    "'interval_qc_ht.pass_interval_qc' is not a hl.struct containing interval pass per platform!"
+                )
             logger.info(
-                "Performing ploidy imputation using high coverage intervals for platform %s...",
-                platform,
+                "Running sex ploidy imputation per platform using per platform high quality intervals..."
+            )
+            platforms = platform_ht.aggregate(
+                hl.agg.collect_as_set(platform_ht.qc_platform)
+            )
+            per_platform_ploidy_hts = []
+            for platform in platforms:
+                logger.info(
+                    "Performing ploidy imputation using high quality intervals for platform %s...",
+                    platform,
+                )
+                ploidy_ht = _annotate_sex(
+                    hl.vds.filter_samples(
+                        vds, platform_ht.filter(platform_ht.qc_platform == platform)
+                    ),
+                    interval_qc_ht.filter(interval_qc_ht.pass_interval_qc[platform]),
+                )
+                per_platform_ploidy_hts.append(ploidy_ht)
+
+            ploidy_ht = per_platform_ploidy_hts[0].union(*per_platform_ploidy_hts[1:])
+
+        else:
+            logger.info(
+                "Running sex ploidy imputation using only high quality intervals in 'interval_qc_ht'..."
             )
             ploidy_ht = _annotate_sex(
-                hl.vds.filter_samples(
-                    vds, platform_ht.filter(platform_ht.qc_platform == platform)
-                ),
-                _get_high_coverage_intervals_ht(
-                    interval_qc_ht,
-                    platform=platform,
-                ),
+                vds, interval_qc_ht.filter(interval_qc_ht.pass_interval_qc)
             )
-            per_platform_ploidy_hts.append(ploidy_ht)
-
-        ploidy_ht = per_platform_ploidy_hts[0].union(*per_platform_ploidy_hts[1:])
-    elif high_cov_all_platforms:
-        logger.info(
-            "Running sex ploidy imputation using high coverage intervals across all platforms. Limited to platforms "
-            "with at least %s samples...",
-            min_platform_size,
-        )
-        # Excluding small platforms and platform_-1 (platform containing all samples with unassigned platform)
-        platforms = [
-            platform
-            for platform, n_samples in platform_n_samples.items()
-            if (n_samples >= min_platform_size) & (platform != "platform_-1")
-        ]
-        ploidy_ht = _annotate_sex(
-            vds, _get_high_coverage_intervals_ht(interval_qc_mt, prefix="platform_")
-        )
-        add_globals["high_cov_all_platforms_min_platform_size"] = min_platform_size
-    elif high_cov_intervals:
-        logger.info(
-            "Running sex ploidy imputation using high coverage intervals across the full sample set..."
-        )
-        ploidy_ht = _annotate_sex(
-            vds, _get_high_coverage_intervals_ht(interval_qc_mt, agg_func=lambda x: x)
-        )
     else:
         logger.info("Running sex ploidy imputation...")
-        ploidy_ht = _annotate_sex(vds, interval_qc_mt.rows())
+        ploidy_ht = _annotate_sex(vds, coverage_mt.rows())
 
     ploidy_ht = ploidy_ht.annotate_globals(
-        high_cov_intervals=high_cov_intervals,
-        high_cov_per_platform=high_cov_per_platform,
-        high_cov_all_platforms=high_cov_all_platforms,
         f_stat_min_af=min_af,
         f_stat_cutoff=f_stat_cutoff,
         **add_globals,
@@ -728,6 +620,9 @@ def main(args):
 
     test = args.test
     normalization_contig = args.normalization_contig
+    high_qual_intervals = args.high_qual_intervals
+    high_qual_per_platform = args.high_qual_per_platform
+    high_qual_all_platforms = args.high_qual_all_platforms
     per_platform = args.per_platform
     overwrite = args.overwrite
     read_sex_cov_if_exists = args.read_sex_imputation_coverage_mt_if_exists
@@ -798,7 +693,43 @@ def main(args):
             )
 
             # Added because without this impute_sex_chromosome_ploidy will still run even with overwrite=False
-            if overwrite or not file_exists(ploidy_ht_path):
+            if file_exists(ploidy_ht_path) and not overwrite:
+                raise DataException(
+                    f"{ploidy_ht_path} already exists and the --overwrite option was not used!"
+                )
+
+            coverage_mt = prepare_sex_imputation_coverage_mt(
+                normalization_contig,
+                test,
+                read_sex_cov_if_exists,
+            )
+            platform_ht = load_platform_ht(
+                test,
+                coverage_mt.calling_interval_name.collect()[0],
+                coverage_mt.calling_interval_padding.collect()[0],
+            )
+
+            high_qual_cutoffs = None
+            if args.high_qual_by_mean_fraction_over_dp_0:
+                # The same cutoffs are used for x_non_par, and y_non_par
+                # The same annotations are used for autosome_par, x_non_par, and y_non_par
+                high_qual_cutoffs = get_high_qual_cutoff_dict(
+                    args.norm_mean_fraction_over_dp_0,
+                    *[args.sex_mean_fraction_over_dp_0] * 2,
+                    *["mean_fraction_over_dp_0"] * 3,
+                )
+            elif args.high_qual_by_prop_samples_over_cov:
+                high_qual_cutoffs = get_high_qual_cutoff_dict(
+                    args.prop_samples_norm,
+                    args.prop_samples_x,
+                    args.prop_samples_y,
+                    f"fraction_over_{args.norm_cov}x",
+                    f"fraction_over_{args.x_cov}x",
+                    f"fraction_over_{args.y_cov}x",
+                )
+
+            interval_qc_ht = None
+            if high_qual_intervals or high_qual_per_platform or high_qual_all_platforms:
                 interval_qc_ht = (
                     hl.read_table(get_checkpoint_path("test_sex_chr_interval_qc"))
                     if test
@@ -814,74 +745,37 @@ def main(args):
                         normalization_contig,
                         interval_qc_ht.normalization_contig.collect()[0],
                     )
-                coverage_mt = prepare_sex_imputation_coverage_mt(
-                    normalization_contig,
-                    test,
-                    read_sex_cov_if_exists,
-                )
-                platform_ht = load_platform_ht(
-                    test,
-                    coverage_mt.calling_interval_name.collect()[0],
-                    coverage_mt.calling_interval_padding.collect()[0],
-                )
-                high_cov_cutoffs = None
-                if args.high_cov_by_mean_fraction_over_dp_0:
-                    high_cov_cutoffs = {
-                        "chrX": (
-                            "mean_fraction_over_dp_0",
-                            args.sex_mean_fraction_over_dp_0,
-                        ),
-                        "chrY": (
-                            "mean_fraction_over_dp_0",
-                            args.sex_mean_fraction_over_dp_0,
-                        ),
-                        normalization_contig: (
-                            "mean_fraction_over_dp_0",
-                            args.norm_mean_fraction_over_dp_0,
-                        ),
-                    }
-                elif args.high_cov_by_prop_samples_over_cov:
-                    high_cov_cutoffs = {
-                        "chrX": (f"fraction_over_{args.x_cov}x", args.prop_samples_x),
-                        "chrY": (f"fraction_over_{args.y_cov}x", args.prop_samples_y),
-                        normalization_contig: (
-                            f"fraction_over_{args.norm_cov}x",
-                            args.prop_samples_norm,
-                        ),
-                    }
-
-                ploidy_ht = compute_sex_ploidy(
-                    vds,
-                    coverage_mt,
-                    high_cov_intervals=args.high_cov_intervals,
-                    high_cov_per_platform=args.high_cov_per_platform,
-                    high_cov_all_platforms=args.high_cov_all_platforms,
-                    interval_qc_ht=interval_qc_ht,
-                    high_cov_cutoffs=high_cov_cutoffs,
-                    platform_ht=platform_ht,
+                interval_qc_ht = get_interval_qc_pass(
+                    interval_qc_ht,
+                    high_qual_cutoffs,
+                    per_platform=args.high_qual_per_platform,
+                    all_platforms=args.high_qual_all_platforms,
                     min_platform_size=args.min_platform_size,
-                    normalization_contig=normalization_contig,
-                    variant_depth_only_x_ploidy=args.variant_depth_only_x_ploidy,
-                    variant_depth_only_y_ploidy=args.variant_depth_only_y_ploidy,
-                    variant_depth_only_ploidy_filter_lcr=not args.omit_variant_depth_ploidy_lcr_filter,
-                    variant_depth_only_ploidy_filter_segdup=not args.omit_variant_depth_ploidy_segdup_filter,
-                    variant_depth_only_ploidy_snv_only=args.variant_depth_ploidy_snv_only,
-                    compute_x_frac_variants_hom_alt=not args.omit_compute_x_frac_variants_hom_alt,
-                    freq_ht=freq_ht,
-                    min_af=args.min_af,
-                    f_stat_cutoff=args.f_stat_cutoff,
                 )
 
-                ploidy_ht = ploidy_ht.annotate(
-                    platform=platform_ht[ploidy_ht.key].qc_platform
-                )
-                ploidy_ht = ploidy_ht.annotate_globals(
-                    f_stat_ukb_var=args.f_stat_ukb_var
-                )
-                logger.info("Writing ploidy Table...")
-                ploidy_ht.write(ploidy_ht_path, overwrite=True)
-            else:
-                logger.warning("File exists and overwrite is not set!")
+            ploidy_ht = compute_sex_ploidy(
+                vds,
+                coverage_mt,
+                interval_qc_ht=interval_qc_ht,
+                high_qual_per_platform=args.high_qual_per_platform,
+                platform_ht=platform_ht,
+                normalization_contig=normalization_contig,
+                variant_depth_only_x_ploidy=args.variant_depth_only_x_ploidy,
+                variant_depth_only_y_ploidy=args.variant_depth_only_y_ploidy,
+                variant_depth_only_ploidy_filter_lcr=not args.omit_variant_depth_ploidy_lcr_filter,
+                variant_depth_only_ploidy_filter_segdup=not args.omit_variant_depth_ploidy_segdup_filter,
+                variant_depth_only_ploidy_snv_only=args.variant_depth_ploidy_snv_only,
+                compute_x_frac_variants_hom_alt=not args.omit_compute_x_frac_variants_hom_alt,
+                freq_ht=freq_ht,
+                min_af=args.min_af,
+                f_stat_cutoff=args.f_stat_cutoff,
+            )
+            ploidy_ht = ploidy_ht.annotate(
+                platform=platform_ht[ploidy_ht.key].qc_platform
+            )
+            ploidy_ht = ploidy_ht.annotate_globals(f_stat_ukb_var=args.f_stat_ukb_var)
+            logger.info("Writing ploidy Table...")
+            ploidy_ht.write(ploidy_ht_path, overwrite=True)
 
         if args.annotate_sex_karyotype:
             ploidy_ht = (
@@ -1051,39 +945,39 @@ if __name__ == "__main__":
         type=float,
         default=-1.0,
     )
-    sex_ploidy_high_cov_method_parser = sex_ploidy_args.add_mutually_exclusive_group(
+    sex_ploidy_high_qual_method_parser = sex_ploidy_args.add_mutually_exclusive_group(
         required=False
     )
-    sex_ploidy_high_cov_method_parser.add_argument(
-        "--high-cov-intervals",
+    sex_ploidy_high_qual_method_parser.add_argument(
+        "--high-qual-intervals",
         help=(
-            "Whether to filter to high coverage intervals for the sex ploidy imputation. Can't be used at the same "
-            "time as '--high-cov-per-platform' or '--high-cov-all-platforms'."
+            "Whether to filter to high quality intervals for the sex ploidy imputation. Can't be used at the same "
+            "time as '--high-qual-per-platform' or '--high-qual-all-platforms'."
         ),
         action="store_true",
     )
-    sex_ploidy_high_cov_method_parser.add_argument(
-        "--high-cov-per-platform",
+    sex_ploidy_high_qual_method_parser.add_argument(
+        "--high-qual-per-platform",
         help=(
-            "Whether to filter to per platform high coverage intervals for the sex ploidy imputation. Can't be used "
-            "at the same time as '--high-cov-intervals' or '--high-cov-all-platforms'."
+            "Whether to filter to per platform high quality intervals for the sex ploidy imputation. Can't be used "
+            "at the same time as '--high-qual-intervals' or '--high-qual-all-platforms'."
         ),
         action="store_true",
     )
-    sex_ploidy_high_cov_method_parser.add_argument(
-        "--high-cov-all-platforms",
+    sex_ploidy_high_qual_method_parser.add_argument(
+        "--high-qual-all-platforms",
         help=(
-            "Whether to filter to high coverage intervals for the sex ploidy imputation. Use only intervals that are "
-            "considered high coverage across all platforms.  Can't be used at the same time as '--high-cov-intervals' "
-            "or '--high-cov-per-platform'"
+            "Whether to filter to high quality intervals for the sex ploidy imputation. Use only intervals that are "
+            "considered high quality across all platforms.  Can't be used at the same time as '--high-qual-intervals' "
+            "or '--high-qual-per-platform'"
         ),
         action="store_true",
     )
     sex_ploidy_args.add_argument(
         "--min-platform-size",
         help=(
-            "Required size of a platform to be considered in '--high-cov-all-platforms'. Only platforms that "
-            "have # of samples > 'min_platform_size' are used to determine intervals that have a high coverage across "
+            "Required size of a platform to be considered in '--high-qual-all-platforms'. Only platforms that "
+            "have # of samples > 'min_platform_size' are used to determine intervals that have a high quality across "
             "all platforms."
         ),
         type=int,
@@ -1134,40 +1028,40 @@ if __name__ == "__main__":
         help="Whether to omit the computation of the fraction of homozygous alternate variants on chromosome X.",
         action="store_true",
     )
-    sex_ploidy_high_cov_opt_parser = sex_ploidy_args.add_mutually_exclusive_group(
+    sex_ploidy_high_qual_opt_parser = sex_ploidy_args.add_mutually_exclusive_group(
         required=False
     )
-    sex_ploidy_high_cov_opt_parser.add_argument(
-        "--high-cov-by-mean-fraction-over-dp-0",
-        help="Whether to use the mean fraction of bases over DP 0 to determine high coverage intervals. Can't be set "
-        "at the same time as '--high-cov-by-prop-samples-over-cov'.",
+    sex_ploidy_high_qual_opt_parser.add_argument(
+        "--high-qual-by-mean-fraction-over-dp-0",
+        help="Whether to use the mean fraction of bases over DP 0 to determine high quality intervals. Can't be set "
+        "at the same time as '--high-qual-by-prop-samples-over-cov'.",
         action="store_true",
     )
-    sex_ploidy_high_cov_opt_parser.add_argument(
-        "--high-cov-by-prop-samples-over-cov",
+    sex_ploidy_high_qual_opt_parser.add_argument(
+        "--high-qual-by-prop-samples-over-cov",
         help=(
-            "Whether to determine high coverage intervals using the proportion of samples with a mean interval "
-            "coverage over a specified coverage for chrX (--x-cov), chrY (--y-cov), and the normalization contig "
-            "(--norm-cov). Can't be set at the same time as '--high-cov-by-mean-fraction-over-dp-0'."
+            "Whether to determine high quality intervals using the proportion of samples with a mean interval "
+            "quality over a specified quality for chrX (--x-cov), chrY (--y-cov), and the normalization contig "
+            "(--norm-cov). Can't be set at the same time as '--high-qual-by-mean-fraction-over-dp-0'."
         ),
         action="store_true",
     )
     sex_ploidy_args.add_argument(
         "--sex-mean-fraction-over-dp-0",
-        help="Mean fraction of bases over DP 0 used to define high coverage intervals on sex chromosomes.",
+        help="Mean fraction of bases over DP 0 used to define high quality intervals on sex chromosomes.",
         type=float,
         default=0.4,
     )
     sex_ploidy_args.add_argument(
         "--norm-mean-fraction-over-dp-0",
-        help="Mean fraction of bases over DP 0 used to define high coverage intervals on the normalization chromosome.",
+        help="Mean fraction of bases over DP 0 used to define high quality intervals on the normalization chromosome.",
         type=float,
         default=0.99,
     )
     sex_ploidy_args.add_argument(
         "--x-cov",
         help=(
-            "Mean coverage level used to define high coverage intervals on chromosome X. This field must be in the "
+            "Mean coverage level used to define high quality intervals on chromosome X. This field must be in the "
             "sex interval coverage MT (defined in '--mean-dp-thresholds')!"
         ),
         type=int,
@@ -1176,7 +1070,7 @@ if __name__ == "__main__":
     sex_ploidy_args.add_argument(
         "--y-cov",
         help=(
-            "Mean coverage level used to define high coverage intervals on chromosome Y. This field must be in the "
+            "Mean coverage level used to define high quality intervals on chromosome Y. This field must be in the "
             "sex interval coverage MT (defined in '--mean-dp-thresholds')!"
         ),
         type=int,
@@ -1185,7 +1079,7 @@ if __name__ == "__main__":
     sex_ploidy_args.add_argument(
         "--norm-cov",
         help=(
-            "Mean coverage level used to define high coverage intervals on the normalization autosome. This field must "
+            "Mean coverage level used to define high quality intervals on the normalization autosome. This field must "
             "be in the sex interval coverage MT (defined in '--mean-dp-thresholds')!"
         ),
         type=int,
@@ -1193,20 +1087,20 @@ if __name__ == "__main__":
     )
     sex_ploidy_args.add_argument(
         "--prop-samples-x",
-        help="Proportion samples at specified coverage '--x-cov' to determine high coverage intervals on chromosome X.",
+        help="Proportion samples at specified coverage '--x-cov' to determine high quality intervals on chromosome X.",
         type=float,
         default=0.80,
     )
     sex_ploidy_args.add_argument(
         "--prop-samples-y",
-        help="Proportion samples at specified coverage '--y-cov' to determine high coverage intervals on chromosome Y.",
+        help="Proportion samples at specified coverage '--y-cov' to determine high quality intervals on chromosome Y.",
         type=float,
         default=0.35,
     )
     sex_ploidy_args.add_argument(
         "--prop-samples-norm",
         help=(
-            "Proportion samples at specified coverage '--norm-cov' to determine high coverage intervals on the "
+            "Proportion samples at specified coverage '--norm-cov' to determine high quality intervals on the "
             "normalization chromosome specified by '--normalization-contig'."
         ),
         type=float,
@@ -1243,16 +1137,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if (
-        args.high_cov_intervals
-        or args.high_cov_per_platform
-        or args.high_cov_all_platforms
+        args.high_qual_intervals
+        or args.high_qual_per_platform
+        or args.high_qual_all_platforms
     ) and not (
-        args.high_cov_by_mean_fraction_over_dp_0
-        or args.high_cov_by_prop_samples_over_cov
+        args.high_qual_by_mean_fraction_over_dp_0
+        or args.high_qual_by_prop_samples_over_cov
     ):
         parser.error(
-            "One of --high-cov-by-mean-fraction-over-dp-0 or --high-cov-by-prop-samples-over-cov is required when a "
-            "high coverage option (--high-cov-intervals, --high-cov-per-platform, or --high-cov-all-platforms) "
+            "One of --high-qual-by-mean-fraction-over-dp-0 or --high-qual-by-prop-samples-over-cov is required when a "
+            "high quality option (--high-qual-intervals, --high-qual-per-platform, or --high-qual-all-platforms) "
             "is specified."
         )
 
