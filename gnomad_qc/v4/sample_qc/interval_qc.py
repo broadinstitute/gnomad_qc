@@ -225,7 +225,7 @@ def get_high_qual_cutoff_dict(
     x_nonpar_qc_ann: str,
     y_nonpar_qc_ann: str,
     split_by_sex: bool = False,
-) -> Dict[str, List[Tuple[Union[str, float]]]]:
+) -> Dict[str, List[Tuple[str, str, float]]]:
     """
     Create a dictionary specifying annotations and cutoffs to use for determining high quality intervals.
 
@@ -289,7 +289,7 @@ def get_high_qual_cutoff_dict(
 
 def get_interval_qc_pass(
     interval_qc_ht: hl.Table,
-    high_qual_cutoffs: Dict[str, List[Tuple[Union[str, float]]]],
+    high_qual_cutoffs: Dict[str, List[Tuple[str, str, float]]],
     per_platform: bool = False,
     all_platforms: bool = False,
     min_platform_size: int = 100,
