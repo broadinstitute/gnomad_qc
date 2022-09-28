@@ -6,18 +6,12 @@ import textwrap
 
 import hail as hl
 
-from gnomad.resources.resource_utils import DataException
 from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
-from gnomad.utils.file_utils import file_exists
+from gnomad.utils.file_utils import file_exists, file_list_exists
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.basics import (
-    check_resource_existence,
-    check_resource_list_existence,
-    get_checkpoint_path,
-    get_logging_path,
-)
+from gnomad_qc.v4.resources.basics import get_checkpoint_path, get_logging_path
 from gnomad_qc.v4.resources.sample_qc import (
     cuking_input_path,
     cuking_output_path,
@@ -75,7 +69,7 @@ def main(args):
     try:
         if args.prepare_inputs:
             parquet_uri = cuking_input_path(test=test)
-            check_resource_existence(parquet_uri, not overwrite)
+            file_exists(parquet_uri, overwrite)
             mt_to_cuking_inputs(
                 mt=joint_qc(test=test).mt(),
                 parquet_uri=parquet_uri,
@@ -83,7 +77,7 @@ def main(args):
             )
 
         if args.create_relatedness_table:
-            check_resource_existence(relatedness(test=test), not overwrite)
+            file_exists(relatedness(test=test).path, overwrite)
             ht = cuking_outputs_to_ht(parquet_uri=cuking_output_path(test=test))
             ht = ht.repartition(args.relatedness_n_partitions)
             ht.write(relatedness(test=test).path, overwrite=overwrite)
@@ -91,7 +85,10 @@ def main(args):
         if args.compute_related_samples_to_drop:
             # compute_related_samples_to_drop uses a rank Table as a tie breaker when
             # pruning samples.
-            check_resource_list_existence([pca_samples_rankings, pca_related_samples_to_drop(test=test)], not overwrite)
+            file_list_exists(
+                [pca_samples_rankings.path, pca_related_samples_to_drop(test=test).path],
+                not overwrite,
+            )
 
             rank_ht = joint_qc_meta.ht()
             rank_ht = rank_ht.select(
