@@ -7,7 +7,7 @@ import textwrap
 import hail as hl
 
 from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
-from gnomad.utils.file_utils import file_exists, file_list_exists
+from gnomad.utils.file_utils import check_file_exists_no_overwrite
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
@@ -69,7 +69,7 @@ def main(args):
     try:
         if args.prepare_inputs:
             parquet_uri = cuking_input_path(test=test)
-            file_exists(parquet_uri, overwrite)
+            check_file_exists_no_overwrite(parquet_uri, overwrite)
             mt_to_cuking_inputs(
                 mt=joint_qc(test=test).mt(),
                 parquet_uri=parquet_uri,
@@ -77,7 +77,7 @@ def main(args):
             )
 
         if args.create_relatedness_table:
-            file_exists(relatedness(test=test).path, overwrite)
+            check_file_exists_no_overwrite(relatedness(test=test).path, overwrite)
             ht = cuking_outputs_to_ht(parquet_uri=cuking_output_path(test=test))
             ht = ht.repartition(args.relatedness_n_partitions)
             ht.write(relatedness(test=test).path, overwrite=overwrite)
@@ -85,9 +85,9 @@ def main(args):
         if args.compute_related_samples_to_drop:
             # compute_related_samples_to_drop uses a rank Table as a tie breaker when
             # pruning samples.
-            file_list_exists(
+            check_file_exists_no_overwrite(
                 [pca_samples_rankings.path, pca_related_samples_to_drop(test=test).path],
-                not overwrite,
+                overwrite,
             )
 
             rank_ht = joint_qc_meta.ht()
