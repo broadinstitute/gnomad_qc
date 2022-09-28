@@ -718,11 +718,11 @@ def main(args):
                     *[args.sex_mean_fraction_over_dp_0] * 2,
                     *["mean_fraction_over_dp_0"] * 3,
                 )
-            elif args.high_qual_by_prop_samples_over_cov:
+            elif args.high_qual_by_fraction_samples_over_cov:
                 high_qual_cutoffs = get_high_qual_cutoff_dict(
-                    args.prop_samples_norm,
-                    args.prop_samples_x,
-                    args.prop_samples_y,
+                    args.fraction_samples_norm,
+                    args.fraction_samples_x,
+                    args.fraction_samples_y,
                     f"fraction_over_{args.norm_cov}x",
                     f"fraction_over_{args.x_cov}x",
                     f"fraction_over_{args.y_cov}x",
@@ -1034,13 +1034,13 @@ if __name__ == "__main__":
     sex_ploidy_high_qual_opt_parser.add_argument(
         "--high-qual-by-mean-fraction-over-dp-0",
         help="Whether to use the mean fraction of bases over DP 0 to determine high quality intervals. Can't be set "
-        "at the same time as '--high-qual-by-prop-samples-over-cov'.",
+        "at the same time as '--high-qual-by-fraction-samples-over-cov'.",
         action="store_true",
     )
     sex_ploidy_high_qual_opt_parser.add_argument(
-        "--high-qual-by-prop-samples-over-cov",
+        "--high-qual-by-fraction-samples-over-cov",
         help=(
-            "Whether to determine high quality intervals using the proportion of samples with a mean interval "
+            "Whether to determine high quality intervals using the fraction of samples with a mean interval "
             "quality over a specified quality for chrX (--x-cov), chrY (--y-cov), and the normalization contig "
             "(--norm-cov). Can't be set at the same time as '--high-qual-by-mean-fraction-over-dp-0'."
         ),
@@ -1086,21 +1086,21 @@ if __name__ == "__main__":
         default=20,
     )
     sex_ploidy_args.add_argument(
-        "--prop-samples-x",
-        help="Proportion samples at specified coverage '--x-cov' to determine high quality intervals on chromosome X.",
+        "--fraction-samples-x",
+        help="Fraction samples at specified coverage '--x-cov' to determine high quality intervals on chromosome X.",
         type=float,
         default=0.80,
     )
     sex_ploidy_args.add_argument(
-        "--prop-samples-y",
-        help="Proportion samples at specified coverage '--y-cov' to determine high quality intervals on chromosome Y.",
+        "--fraction-samples-y",
+        help="Fraction samples at specified coverage '--y-cov' to determine high quality intervals on chromosome Y.",
         type=float,
         default=0.35,
     )
     sex_ploidy_args.add_argument(
-        "--prop-samples-norm",
+        "--fraction-samples-norm",
         help=(
-            "Proportion samples at specified coverage '--norm-cov' to determine high quality intervals on the "
+            "Fraction samples at specified coverage '--norm-cov' to determine high quality intervals on the "
             "normalization chromosome specified by '--normalization-contig'."
         ),
         type=float,
@@ -1142,12 +1142,12 @@ if __name__ == "__main__":
         or args.high_qual_all_platforms
     ) and not (
         args.high_qual_by_mean_fraction_over_dp_0
-        or args.high_qual_by_prop_samples_over_cov
+        or args.high_qual_by_fraction_samples_over_cov
     ):
         parser.error(
-            "One of --high-qual-by-mean-fraction-over-dp-0 or --high-qual-by-prop-samples-over-cov is required when a "
-            "high quality option (--high-qual-intervals, --high-qual-per-platform, or --high-qual-all-platforms) "
-            "is specified."
+            "One of --high-qual-by-mean-fraction-over-dp-0 or --high-qual-by-fraction-samples-over-cov is required "
+            "when a high quality option (--high-qual-intervals, --high-qual-per-platform, or --high-qual-all-platforms)"
+            " is specified."
         )
 
     if args.slack_channel:
