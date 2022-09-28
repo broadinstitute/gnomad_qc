@@ -215,22 +215,49 @@ def compute_interval_qc(
     return mt.rows()
 
 
+def get_high_qual_cutoff_dict(
+    autosome_par_cutoff,
+    x_nonpar_cutoff,
+    y_nonpar_cutoff,
+    autosome_par_qc_ann,
+    x_nonpar_qc_ann,
+    y_nonpar_qc_ann,
+    split_by_sex: bool = False,
+):
+    if split_by_sex:
+        xx = "XX"
+        xy = "XY"
+        autosome_par = "all"
+    else:
+        xx = xy = autosome_par = "all"
+
+    autosome_par_cutoff = (autosome_par_qc_ann, autosome_par, autosome_par_cutoff)
+    x_nonpar_cutoff = (x_nonpar_qc_ann, xx, x_nonpar_cutoff)
+    y_nonpar_cutoff = (y_nonpar_qc_ann, xy, y_nonpar_cutoff)
+    high_qual_cutoffs = {
+        "autosome_par": [autosome_par_cutoff],
+        "x_non_par": [x_nonpar_cutoff],
+        "y_non_par": [y_nonpar_cutoff],
+    }
+
+    if split_by_sex:
+        high_qual_cutoffs["x_non_par"].append(y_nonpar_cutoff)
+
+    return high_qual_cutoffs
+
+
 def get_interval_qc_pass(
     interval_qc_ht: hl.Table,
+    high_qual_cutoffs,
     per_platform: bool = False,
     all_platforms: bool = False,
     min_platform_size: int = 100,
-    by_mean_fraction_over_dp_0: bool = True,
-    by_fraction_samples_over_cov: bool = False,
-    mean_fraction_over_dp_0: float = 0.99,
-    autosome_par_xx_cov: int = 20,
-    xy_nonpar_cov: int = 10,
-    fraction_samples: float = 0.85,
 ) -> hl.Table:
     """
     Add `interval_qc_pass` annotation to indicate whether the site falls within a high coverage interval.
 
     :param interval_qc_ht: Input interval QC Table.
+    :param high_qual_cutoffs:
     :param per_platform: Whether to make the interval QC pass annotation a DictionaryExpression with interval QC pass
         per platform.
     :param all_platforms: Whether to consider an interval as passing QC only if it passes interval QC per platform
@@ -238,38 +265,17 @@ def get_interval_qc_pass(
     :param min_platform_size: Required size of a platform to be considered in `all_platforms`. Only platforms that
         have # of samples > 'min_platform_size' are used to determine intervals that have a high coverage across all
         platforms.
-    :param by_mean_fraction_over_dp_0: Whether to use the mean fraction of bases over DP 0 to determine high quality
-        intervals.
-    :param by_fraction_samples_over_cov: Whether to determine high coverage intervals using the fraction of samples
-        (`fraction_samples`) with a mean interval coverage over the specified coverage levels (`autosome_par_xx_cov` and
-        `xy_nonpar_cov`).
-    :param mean_fraction_over_dp_0: Mean fraction of bases over DP 0 used to define high quality intervals. Default is 0.99.
-    :param autosome_par_xx_cov: Mean coverage level used to define high coverage intervals on the the autosomes, sex
-        chromosome PAR, and chrX in XX individuals. Default is 20.
-    :param xy_nonpar_cov: Mean coverage level used to define high coverage intervals on non-PAR chrX in XY individuals
-        and non-PAR chrY in XY individuals. Default is 10.
-    :param fraction_samples: Fraction of samples with mean coverage greater than `autosome_par_xx_cov`/`xy_nonpar_cov`
-        over the interval to determine high coverage intervals. Default is 0.85.
     :return: MatrixTable or Table with samples removed
     """
-    if (by_mean_fraction_over_dp_0 and by_fraction_samples_over_cov) or (
-        not by_mean_fraction_over_dp_0 and not by_fraction_samples_over_cov
-    ):
-        raise ValueError(
-            "One and only one of 'by_mean_fraction_over_dp_0' and 'by_fraction_samples_over_cov' must be "
-            "True!"
-        )
     if per_platform and all_platforms:
         raise ValueError("Only one of 'per_platform' and 'all_platforms' can be True!")
 
-    interval_qc_ht = interval_qc_ht.annotate_globals(
-        per_platform=per_platform,
-        all_platforms=all_platforms,
-    )
     interval_start = interval_qc_ht.interval.start
-    autosome_or_par = interval_start.in_autosome_or_par()
-    x_non_par = interval_start.in_x_nonpar()
-    y_non_par = interval_start.in_y_nonpar()
+    region_exprs = {
+        "autosome_par": interval_start.in_autosome_or_par(),
+        "x_non_par": interval_start.in_x_nonpar(),
+        "y_non_par": interval_start.in_y_nonpar(),
+    }
 
     if per_platform or all_platforms:
         platform_n_samples = (
@@ -279,52 +285,45 @@ def get_interval_qc_pass(
     else:
         ann_prefix = ""
 
-    if by_mean_fraction_over_dp_0:
-        add_globals = hl.struct(mean_fraction_over_dp_0=mean_fraction_over_dp_0)
-        qc_expr = interval_qc_ht[f"{ann_prefix}mean_fraction_over_dp_0"]
-        qc_autosome_par_expr = qc_expr["all"]
-        qc_xx_expr = qc_expr.get("XX", None)  # What if None?
-        qc_xy_expr = qc_expr.get("XY", None)  # What if None?
-        cutoff = mean_fraction_over_dp_0
-    if by_fraction_samples_over_cov:
-        add_globals = hl.struct(
-            autosome_par_xx_cov=autosome_par_xx_cov,
-            xy_nonpar_cov=xy_nonpar_cov,
-            fraction_samples=fraction_samples,
-        )
-        qc_autosome_par_expr = interval_qc_ht[
-            f"{ann_prefix}fraction_over_{autosome_par_xx_cov}x"
-        ]["all"]
-        qc_xx_expr = interval_qc_ht[
-            f"{ann_prefix}fraction_over_{autosome_par_xx_cov}x"
-        ].get("XX", None)
-        qc_xy_expr = interval_qc_ht[f"{ann_prefix}fraction_over_{xy_nonpar_cov}x"].get(
-            "XY", None
-        )
-        cutoff = fraction_samples
+    interval_qc_globals = hl.struct(
+        per_platform=per_platform,
+        all_platforms=all_platforms,
+        high_qual_cutoffs=high_qual_cutoffs,
+    )
 
-    def _get_pass_expr(qc_autosome_par_expr, qc_xx_expr, qc_xy_expr):
-        return (
-            (autosome_or_par & (qc_autosome_par_expr > cutoff))
-            | (
-                x_non_par & (qc_xx_expr > cutoff) & (qc_xy_expr > cutoff)
-            )  # Will evaluate to NA is there are no Males, not really what we want
-            | (y_non_par & (qc_xy_expr > cutoff))
+    def _get_qc_ann_expr(expr, platform=None):
+        if platform is None:
+            return expr
+        return expr.get(platform, None)
+
+    def _get_pass_expr(platform=None):
+        return functools.reduce(
+            operator.ior,
+            [
+                region_exprs[region]
+                & functools.reduce(
+                    operator.iand,
+                    [
+                        _get_qc_ann_expr(
+                            interval_qc_ht[f"{ann_prefix}{ann}"].get(sex, None),
+                            platform,
+                        )
+                        > cutoff
+                        for ann, sex, cutoff in ann_cutoffs
+                    ],
+                )
+                for region, ann_cutoffs in high_qual_cutoffs.items()
+            ],
         )
 
     if per_platform or all_platforms:
         pass_interval_qc = hl.struct(
-            **{
-                platform: _get_pass_expr(
-                    qc_autosome_par_expr.get(platform, None),
-                    qc_xx_expr.get(platform, None),
-                    qc_xy_expr.get(platform, None),
-                )
-                for platform in platform_n_samples
-            }
+            **{platform: _get_pass_expr(platform) for platform in platform_n_samples}
         )
         if all_platforms:
-            add_globals = add_globals.annotate(min_platform_size=min_platform_size)
+            interval_qc_globals = interval_qc_globals.annotate(
+                min_platform_size=min_platform_size
+            )
             platforms = [
                 platform
                 for platform, n_samples in platform_n_samples.items()
@@ -334,14 +333,12 @@ def get_interval_qc_pass(
                 [pass_interval_qc[platform] for platform in platforms]
             )
     else:
-        pass_interval_qc = _get_pass_expr(
-            qc_autosome_par_expr,
-            qc_xx_expr,
-            qc_xy_expr,
-        )
+        pass_interval_qc = _get_pass_expr()
 
     interval_qc_ht = interval_qc_ht.select(pass_interval_qc=pass_interval_qc)
-    interval_qc_ht = interval_qc_ht.annotate_globals(**add_globals)
+    interval_qc_ht = interval_qc_ht.select_globals(
+        pass_interval_qc_parameters=interval_qc_globals
+    )
 
     return interval_qc_ht
 
@@ -479,18 +476,39 @@ def main(args):
                 if test
                 else interval_qc.ht()
             )
+            bla = {}
+            if args.by_mean_fraction_over_dp_0:
+                bla["autosome_par_cutoff"] = bla["x_nonpar_cutoff"] = bla[
+                    "y_nonpar_cutoff"
+                ] = args.mean_fraction_over_dp_0
+                bla["autosome_par_qc_ann"] = bla["x_nonpar_qc_ann"] = bla[
+                    "y_nonpar_qc_ann"
+                ] = "mean_fraction_over_dp_0"
+
+            if args.by_fraction_samples_over_cov:
+                annotation_format = "fraction_over_{cov}x"
+                bla["autosome_par_cutoff"] = bla["x_nonpar_cutoff"] = bla[
+                    "y_nonpar_cutoff"
+                ] = args.fraction_samples
+                bla["autosome_par_qc_ann"] = bla[
+                    "x_nonpar_qc_ann"
+                ] = annotation_format.format(cov=args.autosome_par_xx_cov)
+                bla["y_nonpar_qc_ann"] = annotation_format.format(
+                    cov=args.xy_nonpar_cov
+                )
+
+            high_qual_cutoffs = get_high_qual_cutoff_dict(
+                **bla,
+                split_by_sex=True,
+            )
             ht = get_interval_qc_pass(
                 ht,
+                high_qual_cutoffs,
                 per_platform=args.per_platform,
                 all_platforms=args.all_platforms,
                 min_platform_size=args.min_platform_size,
-                by_mean_fraction_over_dp_0=args.by_mean_fraction_over_dp_0,
-                by_fraction_samples_over_cov=args.by_fraction_samples_over_cov,
-                mean_fraction_over_dp_0=args.mean_fraction_over_dp_0,
-                autosome_par_xx_cov=args.autosome_par_xx_cov,
-                xy_nonpar_cov=args.xy_nonpar_cov,
-                fraction_samples=args.fraction_samples,
             )
+
             ht.write(
                 get_checkpoint_path("interval_qc_pass")
                 if test
