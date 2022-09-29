@@ -233,7 +233,7 @@ def prepare_sex_imputation_coverage_mt(
         overwrite=not read_if_exists,
     )
 
-    return coverage_mt
+    return coverage_mt.drop('gq_thresholds')
 
 
 def compute_sex_ploidy(
@@ -316,13 +316,16 @@ def compute_sex_ploidy(
     add_globals = {}
 
     def _annotate_sex(
-        vds: hl.vds.VariantDataset, calling_intervals_ht: hl.Table
+        vds: hl.vds.VariantDataset,
+        coverage_mt: hl.MatrixTable,
+        calling_intervals_ht: hl.Table,
     ) -> hl.Table:
         """
         Helper function to perform `annotate_sex` using unchanged parameters with changes to the VDS and calling
         intervals.
 
         :param vds: Input VDS to use for sex ploidy annotation.
+        :param coverage_mt: Input precomputed coverage MT to use for sex ploidy annotation.
         :param calling_intervals_ht: Table including only intervals wanted for sex annotation.
         :return: Table containing sex ploidy estimates for samples in the input VDS.
         """
@@ -359,9 +362,9 @@ def compute_sex_ploidy(
         add_globals["high_qual_interval_parameters"] = high_qual_cutoffs
 
         if high_qual_per_platform:
-            if not isinstance(interval_qc_ht.pass_interval_qc, hl.struct):
+            if not isinstance(interval_qc_ht.pass_interval_qc, hl.StructExpression):
                 ValueError(
-                    "'interval_qc_ht.pass_interval_qc' is not a hl.struct containing interval pass per platform!"
+                    "'interval_qc_ht.pass_interval_qc' is not a StructExpression containing interval pass per platform!"
                 )
             logger.info(
                 "Running sex ploidy imputation per platform using per platform high quality intervals..."
@@ -375,10 +378,12 @@ def compute_sex_ploidy(
                     "Performing ploidy imputation using high quality intervals for platform %s...",
                     platform,
                 )
+                filtered_platform_ht = platform_ht.filter(
+                    platform_ht.qc_platform == platform
+                )
                 ploidy_ht = _annotate_sex(
-                    hl.vds.filter_samples(
-                        vds, platform_ht.filter(platform_ht.qc_platform == platform)
-                    ),
+                    hl.vds.filter_samples(vds, filtered_platform_ht),
+                    coverage_mt.semi_join_cols(filtered_platform_ht),
                     interval_qc_ht.filter(interval_qc_ht.pass_interval_qc[platform]),
                 )
                 per_platform_ploidy_hts.append(ploidy_ht)
@@ -390,11 +395,11 @@ def compute_sex_ploidy(
                 "Running sex ploidy imputation using only high quality intervals in 'interval_qc_ht'..."
             )
             ploidy_ht = _annotate_sex(
-                vds, interval_qc_ht.filter(interval_qc_ht.pass_interval_qc)
+                vds, coverage_mt, interval_qc_ht.filter(interval_qc_ht.pass_interval_qc)
             )
     else:
         logger.info("Running sex ploidy imputation...")
-        ploidy_ht = _annotate_sex(vds, coverage_mt.rows())
+        ploidy_ht = _annotate_sex(vds, coverage_mt, coverage_mt.rows())
 
     ploidy_ht = ploidy_ht.annotate_globals(
         f_stat_min_af=min_af,
@@ -968,7 +973,7 @@ if __name__ == "__main__":
         "--high-qual-all-platforms",
         help=(
             "Whether to filter to high quality intervals for the sex ploidy imputation. Use only intervals that are "
-            "considered high quality across all platforms.  Can't be used at the same time as '--high-qual-intervals' "
+            "considered high quality across all platforms. Can't be used at the same time as '--high-qual-intervals' "
             "or '--high-qual-per-platform'"
         ),
         action="store_true",
