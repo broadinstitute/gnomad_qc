@@ -35,6 +35,7 @@ logger.setLevel(logging.INFO)
 CURATED_SUBPOPS = {
     # NOTE: 'Dai' is a known subpop label within eas but is removed as only 8 samples have defined subpop labels in this group, and it is similar to "Chinese Dai" which has more samples with defined subpop labels (92 samples)
     # NOTE: 'Han' is a known subpop label within eas but is removed as it is already encompassed by more distinct subpops, "Han Chinese" and "Southern Han Chinese" ("Han" overlaps both "Han Chinese" and "Southern Han Chinese" in PCA plots)
+    # NOTE: 'Utah Residents (European Ancestry)' is a known subpop label within nfe but is removed as it is not a descriptive/accurate label and clusters near (0,0) on many PCs, which is potentially a result of missing data
     "eas": [
         "Cambodian",
         "Chinese Dai",
@@ -120,7 +121,6 @@ CURATED_SUBPOPS = {
         "Sardinian",
         "Swedish",
         "Toscani",
-        "Utah Residents (European Ancestry)",
     ],
 }
 """
