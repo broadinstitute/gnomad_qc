@@ -740,11 +740,11 @@ def main(args):
                     != normalization_contig
                 ):
                     raise ValueError(
-                        "Normalization contig %s is not in the sex imputation interval QC HT, rerun "
-                        "'--sex-imputation-interval-qc' to use a different normalization contig than %s",
-                        normalization_contig,
-                        interval_qc_ht.normalization_contig.collect()[0],
+                        f"Normalization contig {normalization_contig} is not in the sex imputation interval QC HT, "
+                        f"rerun '--sex-imputation-interval-qc' to use a different normalization contig than "
+                        f"{interval_qc_ht.normalization_contig.collect()[0]}.",
                     )
+
                 interval_qc_ht = get_interval_qc_pass(
                     interval_qc_ht,
                     high_qual_cutoffs,
