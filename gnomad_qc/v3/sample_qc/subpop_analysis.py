@@ -21,8 +21,8 @@ from gnomad_qc.v3.sample_qc.sample_qc import assign_pops
 from gnomad.resources.grch38.reference_data import lcr_intervals
 from gnomad.resources.resource_utils import DataException
 from gnomad.utils.annotations import get_adj_expr
-from gnomad.utils.slack import slack_notifications
 from gnomad.utils.file_utils import file_exists
+from gnomad.utils.slack import slack_notifications
 from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad_qc.v3.resources import release_sites
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
