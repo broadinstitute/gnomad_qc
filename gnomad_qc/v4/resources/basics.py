@@ -51,37 +51,6 @@ def get_gnomad_v4_vds(
     else:
         vds = gnomad_v4_resource.vds()
 
-    if remove_hard_filtered_samples or remove_hard_filtered_samples_no_sex:
-        if test:
-            meta_ht = gnomad_v4_testset_meta.ht()
-            if remove_hard_filtered_samples_no_sex:
-                hard_filter_expr = meta_ht.rand_sampling_meta.hard_filters_no_sex
-            else:
-                hard_filter_expr = meta_ht.rand_sampling_meta.hard_filters
-            meta_ht = meta_ht.filter(hl.len(hard_filter_expr) == 0)
-            vds = hl.vds.filter_samples(vds, meta_ht)
-        else:
-            from gnomad_qc.v4.resources.sample_qc import (
-                hard_filtered_samples,
-                hard_filtered_samples_no_sex,
-            )
-
-            if remove_hard_filtered_samples:
-                hard_filter_ht = hard_filtered_samples.versions[CURRENT_VERSION].ht()
-            else:
-                hard_filter_ht = hard_filtered_samples_no_sex.versions[
-                    CURRENT_VERSION
-                ].ht()
-            vds = hl.vds.filter_samples(vds, hard_filter_ht, keep=False)
-
-    if release_only:
-        if test:
-            meta_ht = gnomad_v4_testset_meta.ht()
-        else:
-            meta_ht = meta.versions[CURRENT_VERSION].ht()
-        meta_ht = meta_ht.filter(meta_ht.release)
-        vds = hl.vds.filter_samples(vds, meta_ht)
-
     # Count current number of samples in the VDS
     n_samples = vds.variant_data.count_cols()
 
@@ -148,6 +117,37 @@ def get_gnomad_v4_vds(
     logger.info(
         "Total number of UKB samples removed from the VDS: %d", n_samples_removed
     )
+
+    if remove_hard_filtered_samples or remove_hard_filtered_samples_no_sex:
+        if test:
+            meta_ht = gnomad_v4_testset_meta.ht()
+            if remove_hard_filtered_samples_no_sex:
+                hard_filter_expr = meta_ht.rand_sampling_meta.hard_filters_no_sex
+            else:
+                hard_filter_expr = meta_ht.rand_sampling_meta.hard_filters
+            meta_ht = meta_ht.filter(hl.len(hard_filter_expr) == 0)
+            vds = hl.vds.filter_samples(vds, meta_ht)
+        else:
+            from gnomad_qc.v4.resources.sample_qc import (
+                hard_filtered_samples,
+                hard_filtered_samples_no_sex,
+            )
+
+            if remove_hard_filtered_samples:
+                hard_filter_ht = hard_filtered_samples.versions[CURRENT_VERSION].ht()
+            else:
+                hard_filter_ht = hard_filtered_samples_no_sex.versions[
+                    CURRENT_VERSION
+                ].ht()
+            vds = hl.vds.filter_samples(vds, hard_filter_ht, keep=False)
+
+    if release_only:
+        if test:
+            meta_ht = gnomad_v4_testset_meta.ht()
+        else:
+            meta_ht = meta.versions[CURRENT_VERSION].ht()
+        meta_ht = meta_ht.filter(meta_ht.release)
+        vds = hl.vds.filter_samples(vds, meta_ht)
 
     if split:
         vmt = vds.variant_data
