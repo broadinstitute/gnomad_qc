@@ -141,12 +141,12 @@ def compute_interval_qc(
             over 'dp'. Computed across 'all' samples and optionally split by 'XX' and 'XY'.
         - mean_fraction_over_dp_0 - Mean of the fraction of the interval (in bases) that is dp > 0. Computed across
             'all' samples and optionally split by 'XX' and 'XY'.
-        - platform_interval_mean_dp - Same as 'interval_mean_dp', but instead of a single value for 'all', 'XX' and
-            'XY' each is a dict of per platform values.
-        - platform_fraction_over_{dp}x  - Same as 'fraction_over_{dp}x', but instead of a single value for 'all',
-            'XX' and 'XY' each is a dict of per platform values.
-        - platform_mean_fraction_over_dp_0 - Same as 'mean_fraction_over_dp_0', but instead of a single value for
-            'all', 'XX' and 'XY' each is a dict of per platform values.
+        - platform_interval_mean_dp - Same as 'interval_mean_dp', but instead of containing a single value, 'all'
+            (and 'XX' and 'XY' if `split_by_sex` is True) contains a dictionary of per platform values.
+        - platform_fraction_over_{dp}x  - Same as 'fraction_over_{dp}x', but instead of containing a single value, 'all'
+            (and 'XX' and 'XY' if `split_by_sex` is True) contains a dictionary of per platform values.
+        - platform_mean_fraction_over_dp_0 - Same as 'mean_fraction_over_dp_0', but instead of containing a single
+            value, 'all' (and 'XX' and 'XY' if `split_by_sex` is True) contains a dictionary of per platform values.
 
     :param mt: Input interval coverage MatrixTable.
     :param platform_ht: Input platform assignment Table.
