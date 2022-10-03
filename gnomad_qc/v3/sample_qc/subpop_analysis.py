@@ -13,12 +13,15 @@ from gnomad_qc.v3.resources.sample_qc import (
     assigned_subpops,
     filtered_subpop_qc_mt,
     pca_related_samples_to_drop,
+    subpop_outliers,
     subpop_qc,
 )
 from gnomad_qc.v3.sample_qc.sample_qc import assign_pops
 
 from gnomad.resources.grch38.reference_data import lcr_intervals
+from gnomad.resources.resource_utils import DataException
 from gnomad.utils.annotations import get_adj_expr
+from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad_qc.v3.resources import release_sites
@@ -315,8 +318,13 @@ def main(args):  # noqa: D103
                 )
             if high_quality:
                 mt = mt.filter_cols(mt.high_quality)
-            if args.outlier_ht_path is not None:
-                outliers = hl.read_table(args.outlier_ht_path)
+            if args.remove_outliers:
+                if not file_exists(subpop_outliers(pop).path):
+                    raise DataException(
+                        f"The --remove-outlier option was used, but a Table of outlier samples does not exist for population {pop} at {subpop_outliers(pop).path}"
+                    )
+
+                outliers = subpop_outliers(pop).ht()
                 mt = mt.filter_cols(hl.is_missing(outliers[mt.col_key]))
 
             logger.info("Generating PCs for subpops...")
@@ -466,9 +474,9 @@ if __name__ == "__main__":
         default=None,
     )
     parser.add_argument(
-        "--outlier-ht-path",
-        help="Path to Table keyed by column containing outliers to remove when generating the PCA data",
-        type=str,
+        "--remove-outliers",
+        help="Whether to remove outliers when generating the PCA data. Outliers are manually determined after visualizing the PC plots",
+        action="store_true",
     )
     parser.add_argument(
         "--include-unreleasable-samples",
