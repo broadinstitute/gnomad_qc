@@ -156,7 +156,7 @@ def prepare_sex_imputation_coverage_mt(
     normalization_contig: str = "chr20",
     test: bool = False,
     read_if_exists: bool = False,
-):
+) -> hl.MatrixTable:
     """
     Prepare the sex imputation coverage MT.
 
@@ -268,7 +268,7 @@ def compute_sex_ploidy(
     of using reference block depths. This can be defined differently for chrX and chrY using
     `variant_depth_only_x_ploidy` and `variant_depth_only_y_ploidy`.
 
-    If an `interval_qc_ht` Table is supplied, only high coverage intervals will be used in sex chromosome ploidy
+    If an `interval_qc_ht` Table is supplied, only high quality intervals will be used in sex chromosome ploidy
     imputation. High quality intervals are defined by 'interval_qc_ht.pass_interval_qc'.
 
     If `high_qual_per_platform` is True, `interval_qc_ht` and `platform_ht` must be supplied, and
@@ -924,7 +924,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     # Indicate that the --normalization-contig and --read-sex-imputation-coverage-mt-if-exists options are available
-    # for this argument group as well
+    # for the "sex_ploidy_args" argument group as well
     sex_ploidy_args._group_actions.append(norm_contig_action)
     sex_ploidy_args._group_actions.append(sex_cov_mt_read_if_exists_action)
     sex_ploidy_args.add_argument(

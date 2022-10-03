@@ -85,7 +85,7 @@ def filter_to_test(
     num_partitions: int = 10,
 ) -> Tuple[hl.MatrixTable, hl.MatrixTable]:
     """
-    Filter `mt` to `num_partitions` partitions on chr1 and `sex_mt` to `num_partitions` partitions on chrX and all chrY.
+    Filter `mt` to `num_partitions` partitions on chr1 and `sex_mt` to `num_partitions` partitions on chrX and all of chrY.
 
     :param mt: Input MatrixTable to filter to specified number of partitions on chr1.
     :param sex_mt: Input MatrixTable to filter to specified number of partitions on chrX and all of chrY.
@@ -181,7 +181,7 @@ def compute_interval_qc(
     if num_samples_no_platform > 0:
         logger.warning(
             "Number of samples in MT with no platform assignment: %d",
-            num_samples - mt.count_cols(),
+            num_samples_no_platform
         )
 
     # Note: Default hl.vds.interval_coverage will return a list for 'fraction_over_dp_threshold' where the
@@ -248,20 +248,20 @@ def get_high_qual_cutoff_dict(
           'y_non_par': [(`y_nonpar_qc_ann`, 'XY', `y_nonpar_cutoff`)]
       }
 
-    :param autosome_par_cutoff: Cutoff to define high coverage intervals for autosome and par intervals. Intervals
+    :param autosome_par_cutoff: Cutoff to define high coverage intervals for autosome and PAR intervals. Intervals
         with `autosome_par_qc_ann` > `autosome_par_cutoff` are considered high coverage.
-    :param x_nonpar_cutoff: Cutoff to define high coverage intervals for chromosome X non par intervals (for XX
+    :param x_nonpar_cutoff: Cutoff to define high coverage intervals for chromosome X non PAR intervals (for XX
         individuals if `split_by_sex` is True). Intervals with `x_nonpar_qc_ann` > `x_nonpar_cutoff` are considered
         high coverage.
-    :param y_nonpar_cutoff: Cutoff to define high coverage intervals for chromosome Y non par intervals (for XY
+    :param y_nonpar_cutoff: Cutoff to define high coverage intervals for chromosome Y non PAR intervals (for XY
         individuals if `split_by_sex` is True). Intervals with `y_nonpar_qc_ann` > `y_nonpar_cutoff` are considered
-        high coverage. Also used to define high coverage X non par intervals if `split_by_sex` is True.
+        high coverage. Also used to define high coverage X non PAR intervals if `split_by_sex` is True.
     :param autosome_par_qc_ann: Annotation in an interval QC HT that will be used to filter high coverage intervals for
-        autosomes and par regions.
+        autosomes and PAR regions.
     :param x_nonpar_qc_ann: Annotation in an interval QC HT that will be used to filter high coverage intervals for
-        chromosome X non par regions.
+        chromosome X non PAR regions.
     :param y_nonpar_qc_ann: Annotation in an interval QC HT that will be used to filter high coverage intervals for
-        chromosome Y non par regions. Also used for chromosome X non par regions if `split_by_sex` is True.
+        chromosome Y non PAR regions. Also used for chromosome X non PAR regions if `split_by_sex` is True.
     :param split_by_sex: Whether to split 'x_non_par' and 'y_non_par' cutoffs based on sex karyotype. Default is False.
     :return: Dictionary of annotations and cutoffs to use to define high quality intervals.
     """
@@ -295,7 +295,7 @@ def get_interval_qc_pass(
     min_platform_size: int = 100,
 ) -> hl.Table:
     """
-    Add `interval_qc_pass` annotation to indicate whether the interval is high coverage.
+    Add `interval_qc_pass` annotation to indicate whether the interval is high quality.
 
     `interval_qc_ht` is the output of `compute_interval_qc` and contains annotations that can be used in the
     `high_qual_cutoffs` dictionary to indicate intervals that are considered high quality.
@@ -381,7 +381,7 @@ def get_interval_qc_pass(
         :param platform: Optional platform to filter to.
         :return: BooleanExpression indicating high quality.
         """
-        # Apply the 'iand' operator cumulatively from left to right of each values in high_qual_cutoffs (list of
+        # Apply the 'iand' operator cumulatively from left to right of each value in high_qual_cutoffs (list of
         # cutoffs that must all apply) to get a single bool for each key in high_qual_cutoffs.
         # Then apply the 'ior' operator cumulatively from left to right to get a single bool indicating high quality.
         # Each interval type in high_qual_cutoffs has a different set of annotations and cutoffs, this will apply those
@@ -667,7 +667,7 @@ if __name__ == "__main__":
     interval_qc_args.add_argument(
         "--mean-dp-thresholds",
         help=(
-            "List of mean DP cutoffs to determining the fraction of samples with mean coverage >= the cutoff for each "
+            "List of mean DP cutoffs to determine the fraction of samples with mean coverage >= the cutoff for each "
             "interval."
         ),
         type=int,
