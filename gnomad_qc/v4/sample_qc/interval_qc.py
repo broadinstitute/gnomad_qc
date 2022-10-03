@@ -91,7 +91,7 @@ def filter_to_test(
 
         This returns the first `num_partitions` in `mt`, the first `num_partitions` in `sex_mt`, and all of chrY.
         It makes the assumption that the first `num_partitions` in `mt` are on chr1 and that the first `num_partitions`
-        in `sex_mt` on on chrY. If `num_partitions` is too high this may not hold true.
+        in `sex_mt` are on chrY. If `num_partitions` is too high this may not hold true.
 
     :param mt: Input MatrixTable to filter to specified number of partitions on chr1.
     :param sex_mt: Input MatrixTable to filter to specified number of partitions on chrX and all of chrY.
@@ -743,7 +743,7 @@ if __name__ == "__main__":
         help=(
             "Whether to determine high quality intervals using the fraction of samples (--fraction-samples) with a "
             "mean interval coverage over a specified coverage for intervals on the the autosomes/sex chromosome "
-            "PAR/chrX in XX individuals (--autosome-par-xx-cov) and intervals on non-PAR chrX in XY individuals and "
+            "PAR/chrX in XX individuals (--autosome-par-xx-cov) and intervals on non-PAR chrX and "
             "non-PAR chrY in XY individuals (--xy-nonpar-cov). Can't be set at the same time as "
             "'--by-mean-fraction-over-dp-0'"
         ),
@@ -767,7 +767,7 @@ if __name__ == "__main__":
     interval_qc_pass_args.add_argument(
         "--xy-nonpar-cov",
         help=(
-            "Mean coverage level used to define high coverage intervals on non-PAR chrX in XY individuals and non-PAR "
+            "Mean coverage level used to define high coverage intervals on non-PAR chrX and non-PAR "
             "chrY in XY individuals. This field must be in the interval coverage MatrixTables!"
         ),
         type=int,
