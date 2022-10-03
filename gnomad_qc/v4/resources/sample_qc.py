@@ -460,7 +460,7 @@ def pop_tsv_path(
     :param version: gnomAD Version
     :param test: Whether the RF assignment used a test dataset.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Defaults to False.
+    :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Default is False.
     :return: String path to sample populations
     """
     return f"{get_sample_qc_root(version,test,data_type)}/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}RF_pop_assignments.txt.gz"
@@ -476,9 +476,9 @@ def pop_rf_path(
     Path to RF model used for inferring sample populations.
 
     :param version: gnomAD Version
-    :param test: Whether the rf was from a test dataset.
+    :param test: Whether the RF assignment was from a test dataset.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Defaults to False.
+    :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Default is False.
     :return: String path to sample pop RF model
     """
     return f"{get_sample_qc_root(version,test, data_type)}/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}pop.RF_fit.pickle"
@@ -496,7 +496,7 @@ def get_pop_ht(
     :param version: Version of pop TableResource to return.
     :param test: Whether to use the test version of the pop TableResource.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Defaults to False.
+    :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Default is False.
     :return: TableResource of sample pops.
     """
     if test:

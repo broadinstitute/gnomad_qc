@@ -82,7 +82,7 @@ def prep_ht_for_rf(
     withhold_prop: hl.float = None,
     seed: int = 24,
     test: bool = False,
-    only_train_on_hgdp_tgp=False,
+    only_train_on_hgdp_tgp: bool = False,
 ) -> hl.Table:
     """
     Prepare the PCA scores hail Table for the random forest population assignment runs.
@@ -91,7 +91,7 @@ def prep_ht_for_rf(
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`.
     :param seed: Random seed, defaults to 24.
     :param test: Whether RF should run on the test QC MT.
-    :param only_train_on_hgdp_tgp: Whether to train RF classifier using only the HGDP and 1KG populations. Defaults to False.
+    :param only_train_on_hgdp_tgp: Whether to train RF classifier using only the HGDP and 1KG populations. Default is False.
     :return Table with input for the random forest.
     """
     pop_pca_scores_ht = ancestry_pca_scores(remove_unreleasable_samples, test).ht()
@@ -99,7 +99,7 @@ def prep_ht_for_rf(
 
     # TODO: Add code for subpopulations
 
-    # Either train the RF with only HGDP and TGP or all known populations and prevouisly inferred pops in v3
+    # Either train the RF with only HGDP and TGP or all known populations and previously inferred pops in v3
     if only_train_on_hgdp_tgp:
         training_pop = hl.or_missing(
             (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp),
@@ -171,7 +171,7 @@ def assign_pops(
     :param min_prob: Minimum RF probability for pop assignment.
     :param remove_unreleasable_samples: Whether unreleasable were removed from PCA.
     :param max_number_mislabeled_training_samples: If set, run the population assignment until the maximum number of mislabeled training samples is less than this number threshold.
-    :param max_proportion_mislabeled_training_samples: If set, run the population assignment until the maximum number of mislabeled training samples is less than this proportion threshold.
+    :param max_proportion_mislabeled_training_samples: If set, run the population assignment until the number of mislabeled training samples is less than this proportion threshold.
     :param pcs: List of PCs to use in the RF.
     :param withhold_prop: Proportion of training pop samples to withhold from training. Keep all samples if `None`.
     :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`.
@@ -451,7 +451,7 @@ if __name__ == "__main__":
     )
     mislabel_parser.add_argument(
         "--max-proportion-mislabeled-training-samples",
-        help="If set, un the population assignment until number of training samples that are mislabelled is under this proportion threshold. The basis of this decision should be rooted in the reliability of the samples' provided population label. Can't be used if `max-number-mislabeled-training-samples` is already set",
+        help="If set, run the population assignment until number of training samples that are mislabelled is under this proportion threshold. The basis of this decision should be rooted in the reliability of the samples' provided population label. Can't be used if `max-number-mislabeled-training-samples` is already set",
         type=float,
         default=None,
     )
