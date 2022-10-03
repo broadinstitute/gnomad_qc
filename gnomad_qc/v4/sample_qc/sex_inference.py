@@ -233,7 +233,7 @@ def prepare_sex_imputation_coverage_mt(
         overwrite=not read_if_exists,
     )
 
-    return coverage_mt.drop('gq_thresholds')
+    return coverage_mt.drop("gq_thresholds")
 
 
 def compute_sex_ploidy(
@@ -716,8 +716,9 @@ def main(args):
 
             high_qual_cutoffs = None
             if args.high_qual_by_mean_fraction_over_dp_0:
-                # The same cutoffs are used for x_non_par, and y_non_par
-                # The same annotations are used for autosome_par, x_non_par, and y_non_par
+                # The same cutoffs are used for x_non_par, and y_non_par within their respective dictionaries and the
+                # same annotations are used for autosome_par, x_non_par, and y_non_par within their respective
+                # dictionaries
                 high_qual_cutoffs = get_high_qual_cutoff_dict(
                     args.norm_mean_fraction_over_dp_0,
                     *[args.sex_mean_fraction_over_dp_0] * 2,
@@ -753,8 +754,8 @@ def main(args):
                 interval_qc_ht = get_interval_qc_pass(
                     interval_qc_ht,
                     high_qual_cutoffs,
-                    per_platform=args.high_qual_per_platform,
-                    all_platforms=args.high_qual_all_platforms,
+                    per_platform=high_qual_per_platform,
+                    all_platforms=high_qual_all_platforms,
                     min_platform_size=args.min_platform_size,
                 )
 
@@ -762,7 +763,7 @@ def main(args):
                 vds,
                 coverage_mt,
                 interval_qc_ht=interval_qc_ht,
-                high_qual_per_platform=args.high_qual_per_platform,
+                high_qual_per_platform=high_qual_per_platform,
                 platform_ht=platform_ht,
                 normalization_contig=normalization_contig,
                 variant_depth_only_x_ploidy=args.variant_depth_only_x_ploidy,
@@ -780,7 +781,7 @@ def main(args):
             )
             ploidy_ht = ploidy_ht.annotate_globals(f_stat_ukb_var=args.f_stat_ukb_var)
             logger.info("Writing ploidy Table...")
-            ploidy_ht.write(ploidy_ht_path, overwrite=True)
+            ploidy_ht.write(ploidy_ht_path, overwrite=overwrite)
 
         if args.annotate_sex_karyotype:
             ploidy_ht = (
@@ -1066,8 +1067,9 @@ if __name__ == "__main__":
     sex_ploidy_args.add_argument(
         "--x-cov",
         help=(
-            "Mean coverage level used to define high quality intervals on chromosome X. This field must be in the "
-            "sex interval coverage MT (defined in '--mean-dp-thresholds')!"
+            "Mean coverage level used to define high quality intervals on chromosome X. Aggregate mean for this "
+            "coverage level must be in the sex chromosome interval QC HT (must be value in '--mean-dp-thresholds' list "
+            "used to create the QC HT)!"
         ),
         type=int,
         default=10,
@@ -1075,8 +1077,9 @@ if __name__ == "__main__":
     sex_ploidy_args.add_argument(
         "--y-cov",
         help=(
-            "Mean coverage level used to define high quality intervals on chromosome Y. This field must be in the "
-            "sex interval coverage MT (defined in '--mean-dp-thresholds')!"
+            "Mean coverage level used to define high quality intervals on chromosome Y. Aggregate mean for this "
+            "coverage level must be in the sex chromosome interval QC HT (must be value in '--mean-dp-thresholds' list "
+            "used to create the QC HT)!"
         ),
         type=int,
         default=5,
@@ -1084,8 +1087,9 @@ if __name__ == "__main__":
     sex_ploidy_args.add_argument(
         "--norm-cov",
         help=(
-            "Mean coverage level used to define high quality intervals on the normalization autosome. This field must "
-            "be in the sex interval coverage MT (defined in '--mean-dp-thresholds')!"
+            "Mean coverage level used to define high quality intervals on the normalization autosome. Aggregate mean "
+            "for this coverage level must be in the sex chromosome interval QC HT (must be value in "
+            "'--mean-dp-thresholds' list used to create the QC HT)!"
         ),
         type=int,
         default=20,

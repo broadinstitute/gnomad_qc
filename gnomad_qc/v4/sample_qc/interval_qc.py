@@ -2,7 +2,7 @@ import argparse
 import functools
 import logging
 import operator
-from typing import Dict, List, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 from gnomad.utils.slack import slack_notifications
 import hail as hl
@@ -87,6 +87,12 @@ def filter_to_test(
     """
     Filter `mt` to `num_partitions` partitions on chr1 and `sex_mt` to `num_partitions` partitions on chrX and all of chrY.
 
+    .. note::
+
+        This returns the first `num_partitions` in `mt`, the first `num_partitions` in `sex_mt`, and all of chrY.
+        It makes the assumption that the first `num_partitions` in `mt` are on chr1 and that the first `num_partitions`
+        in `sex_mt` on on chrY. If `num_partitions` is too high this may not hold true.
+
     :param mt: Input MatrixTable to filter to specified number of partitions on chr1.
     :param sex_mt: Input MatrixTable to filter to specified number of partitions on chrX and all of chrY.
     :param num_partitions: Number of partitions to grab from mt.
@@ -151,12 +157,17 @@ def compute_interval_qc(
     :return: Table with interval QC annotations.
     """
 
-    def _get_agg_expr(expr, agg_func=hl.agg.mean, group_by=None):
+    def _get_agg_expr(
+        expr: hl.expr.Expression,
+        agg_func: Callable = hl.agg.mean,
+        group_by: Optional[hl.expr.StringExpression] = None,
+    ) -> hl.Expression:
         """
         Helper function to call `agg_func` on `expr` with optional stratification by sex karyotype and `group_by`.
 
         :param expr: Expression to pass to `agg_func`.
         :param agg_func: Function to use for aggregation of `expr`. Default is hl.agg.mean.
+        :param group_by: Optional StringExpression to group by before applying `agg_func` to `expr`.
         :return: Aggregation expression.
         """
         if group_by is not None:
@@ -181,7 +192,7 @@ def compute_interval_qc(
     if num_samples_no_platform > 0:
         logger.warning(
             "Number of samples in MT with no platform assignment: %d",
-            num_samples_no_platform
+            num_samples_no_platform,
         )
 
     # Note: Default hl.vds.interval_coverage will return a list for 'fraction_over_dp_threshold' where the
@@ -577,7 +588,8 @@ def main(args):
                 else interval_qc.ht()
             )
             if args.by_mean_fraction_over_dp_0:
-                # The same cutoffs and annotations are used for autosome_par, x_non_par, and y_non_par
+                # The same cutoffs and annotations are used for autosome_par, x_non_par, and y_non_par within their
+                # respective dictionaries
                 high_qual_cutoffs = get_high_qual_cutoff_dict(
                     *[args.mean_fraction_over_dp_0] * 3,
                     *["mean_fraction_over_dp_0"] * 3,
@@ -585,11 +597,11 @@ def main(args):
                 )
             if args.by_fraction_samples_over_cov:
                 # The same cutoffs are used for autosome_par, x_non_par, and y_non_par and annotations for autosome_par
-                # and x_non_par
+                # and x_non_par within their respective dictionaries
                 high_qual_cutoffs = get_high_qual_cutoff_dict(
                     *[args.fraction_samples] * 3,
-                    *[f"fraction_over_{args.autosome_par_xx_cov}"] * 2,
-                    f"fraction_over_{args.xy_nonpar_cov}",
+                    *[f"fraction_over_{args.autosome_par_xx_cov}x"] * 2,
+                    f"fraction_over_{args.xy_nonpar_cov}x",
                     split_by_sex=True,
                 )
 
@@ -621,7 +633,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--test",
-        help="Test using only 2 partitions on chr20, chrX, and chrY.",
+        help="Test using only 10 partitions on chr1 and chrX, and all of chrY.",
         action="store_true",
     )
     parser.add_argument(
@@ -682,8 +694,8 @@ if __name__ == "__main__":
     interval_qc_pass_args.add_argument(
         "--generate-interval-qc-pass-ht",
         help=(
-            "Create a MatrixTable of interval-by-sample coverage on sex chromosomes with intervals split at PAR "
-            "regions."
+            "Create Table that contains an 'interval_qc_pass' annotation indicating whether the interval passes "
+            "high-quality criteria."
         ),
         action="store_true",
     )
@@ -711,7 +723,7 @@ if __name__ == "__main__":
         "--min-platform-size",
         help=(
             "Required size of a platform to be considered in '--all-platforms'. Only platforms that "
-            "have # of samples > 'min_platform_size' are used to determine intervals that have a high coverage across "
+            "have # of samples > 'min_platform_size' are used to determine intervals that are high quality across "
             "all platforms."
         ),
         type=int,
