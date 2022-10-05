@@ -344,23 +344,23 @@ relatedness = VersionedTableResource(
     },
 )
 
-# Sex imputation coverage aggregate stats MT
-sex_imputation_coverage = VersionedMatrixTableResource(
+# Sex chromosome coverage aggregate stats MT
+sex_chr_coverage = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
         version: MatrixTableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sex_imputation_coverage.mt"
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sex_chr_coverage.mt"
         )
         for version in VERSIONS
     },
 )
 
-# Sex imputation coverage aggregate stats per platform MT
-sex_imputation_platform_coverage = VersionedMatrixTableResource(
+# Table containing aggregate stats for interval QC specific to sex imputation
+sex_imputation_interval_qc = VersionedTableResource(
     CURRENT_VERSION,
     {
-        version: MatrixTableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sex_imputation_coverage.per_platform.mt"
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sex_imputation_interval_qc.ht"
         )
         for version in VERSIONS
     },
@@ -383,6 +383,28 @@ sex = VersionedTableResource(
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.sex.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
+# Table containing aggregate stats for interval QC
+interval_qc = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.interval_qc.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
+# Table with interval QC pass annotation
+interval_qc_pass = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.interval_qc_pass.ht"
         )
         for version in VERSIONS
     },
