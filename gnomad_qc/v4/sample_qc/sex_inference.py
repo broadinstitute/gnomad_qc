@@ -574,6 +574,9 @@ def infer_sex_karyotype_from_ploidy(
                 f_stat_cutoff,
                 use_gmm_for_ploidy_cutoffs,
             )
+            karyotype_ht = karyotype_ht.checkpoint(
+                get_checkpoint_path(f"karyotype_platform_{platform}"), overwrite=True
+            )
             per_platform_karyotype_hts.append(karyotype_ht)
             x_ploidy_cutoffs[platform] = karyotype_ht.index_globals().x_ploidy_cutoffs
             y_ploidy_cutoffs[platform] = karyotype_ht.index_globals().y_ploidy_cutoffs
