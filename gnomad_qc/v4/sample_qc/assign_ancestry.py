@@ -3,9 +3,11 @@ import logging
 import pickle
 from typing import Any, List, Tuple, Union
 
+import hail as hl
+
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
 from gnomad.utils.slack import slack_notifications
-import hail as hl
+
 
 from gnomad_qc.v4.resources.basics import get_checkpoint_path
 from gnomad_qc.v4.resources.sample_qc import (
