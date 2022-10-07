@@ -1,3 +1,6 @@
+# noqa: D100
+# noqa: D103
+
 import argparse
 import logging
 

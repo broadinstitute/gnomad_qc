@@ -1,3 +1,5 @@
+# noqa: D100,D103
+
 import argparse
 import logging
 
@@ -45,7 +47,7 @@ logger.setLevel(logging.INFO)
 
 def compute_info() -> hl.Table:
     """
-    Computes a HT with the typical GATK AS and site-level info fields as well as ACs and lowqual fields.
+    Compute a HT with the typical GATK AS and site-level info fields as well as ACs and lowqual fields.
 
     Note that this table doesn't split multi-allelic sites.
 
@@ -139,7 +141,7 @@ def compute_info() -> hl.Table:
 
 def split_info() -> hl.Table:
     """
-    Generates an info table that splits multi-allelic sites from the multi-allelic info table.
+    Generate an info table that splits multi-allelic sites from the multi-allelic info table.
 
     :return: Info table with split multi-allelics
     :rtype: Table
@@ -160,8 +162,13 @@ def split_info() -> hl.Table:
 
 def generate_allele_data(ht: hl.Table) -> hl.Table:
     """
-    Returns bi-allelic sites HT with the following annotations:
-     - allele_data (nonsplit_alleles, has_star, variant_type, and n_alt_alleles)
+    Return bi-allelic sites HT with an 'allele_data' annotation.
+
+    'allele_data' is a struct with the following information:
+        - nonsplit_alleles
+        - has_star
+        - variant_type
+        - n_alt_alleles
 
     :param Table ht: Full unsplit HT
     :return: Table with allele data annotations
@@ -192,7 +199,7 @@ def generate_allele_data(ht: hl.Table) -> hl.Table:
 
 def generate_ac(mt: hl.MatrixTable) -> hl.Table:
     """
-    Creates Table containing allele counts per variant.
+    Create Table containing allele counts per variant.
 
     Returns table containing the following annotations:
         - `ac_qc_samples_raw`: Allele count of high quality samples
@@ -276,7 +283,7 @@ def generate_fam_stats(mt: hl.MatrixTable, fam_file: str) -> hl.Table:
 
 def export_transmitted_singletons_vcf():
     """
-    Exports the transmitted singleton Table to a VCF.
+    Export the transmitted singleton Table to a VCF.
 
     :return: None
     """
@@ -304,7 +311,7 @@ def export_transmitted_singletons_vcf():
 
 def run_vep(vep_version: str = "101") -> hl.Table:
     """
-    Returns a table with a VEP annotation for each variant in the raw MatrixTable.
+    Return a table with a VEP annotation for each variant in the raw MatrixTable.
 
     :param vep_version: Version of VEPed context Table to use in `vep_or_lookup_vep`
     :return: VEPed Table

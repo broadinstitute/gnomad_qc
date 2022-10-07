@@ -1,3 +1,5 @@
+# noqa: D100,D103
+
 import argparse
 import logging
 from typing import Optional
@@ -22,7 +24,8 @@ def import_vqsr(
     import_header_path: Optional[str] = None,
 ) -> None:
     """
-    Imports vqsr site vcf into a HT
+    Import vqsr site vcf into a HT.
+
     :param vqsr_path: Path to input vqsr site vcf. This can be specified as Hadoop glob patterns
     :param vqsr_type: One of `classic`, `alleleSpecific` (allele specific) or `alleleSpecificTrans`
         (allele specific with transmitted singletons)
@@ -31,7 +34,6 @@ def import_vqsr(
     :param import_header_path: Optional path to a header file to use for import
     :return: None
     """
-
     logger.info(f"Importing VQSR annotations for {vqsr_type} VQSR...")
     mt = hl.import_vcf(
         vqsr_path,

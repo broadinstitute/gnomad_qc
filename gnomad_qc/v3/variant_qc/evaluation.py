@@ -1,3 +1,5 @@
+# noqa: D100,D103
+
 import argparse
 import logging
 from pprint import pformat
@@ -36,7 +38,7 @@ logger.setLevel(logging.INFO)
 
 def create_bin_ht(model_id: str, n_bins: int, hgdp_tgp_subset: bool) -> hl.Table:
     """
-    Creates a table with bin annotations added for a RF or VQSR run and writes it to its correct location in annotations.
+    Create a table with bin annotations added for a RF or VQSR run and writes it to its correct location in annotations.
 
     :param model_id: Which variant QC model (RF or VQSR model ID) to annotate with bin
     :param n_bins: Number of bins to bin the data into
@@ -99,15 +101,20 @@ def create_bin_ht(model_id: str, n_bins: int, hgdp_tgp_subset: bool) -> hl.Table
 
 def create_aggregated_bin_ht(model_id: str) -> hl.Table:
     """
-    Aggregates variants into bins, grouped by `bin_id` (rank, bi-allelic, etc.), contig, and `snv`, `bi_allelic`,
-    and `singleton` status, using previously annotated bin information.
+    Aggregate variants into bins using previously annotated bin information.
+
+    Variants are grouped by:
+        -'bin_id' (rank, bi-allelic, etc.)
+        -'contig'
+        -'snv'
+        -'bi_allelic'
+        -'singleton'
 
     For each bin, aggregates statistics needed for evaluation plots.
 
     :param str model_id: Which variant QC model (RF or VQSR model ID) to group
     :return: Table of aggregate statistics by bin
     """
-
     ht = get_score_bins(model_id, aggregated=False).ht()
 
     # Count variants for ranking

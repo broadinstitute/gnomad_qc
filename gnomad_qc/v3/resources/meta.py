@@ -1,3 +1,5 @@
+# noqa: D100
+
 import hail as hl
 from gnomad.resources.resource_utils import (
     PedigreeResource,
@@ -12,7 +14,7 @@ from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, CURRENT_VERSION, R
 # Samples metadata
 def _meta_root_path(version: str = CURRENT_RELEASE) -> str:
     """
-    Retrieves the path to the root metadata directory
+    Retrieve the path to the root metadata directory.
 
     :param version: gnomAD release version
     :return: String representation of the path to the root metadata directory
@@ -24,7 +26,7 @@ def meta_tsv_path(
     version: str = CURRENT_RELEASE, meta_version: str = CURRENT_VERSION
 ) -> str:
     """
-    Gets the path to the finalized sample metadata information after sample QC
+    Get the path to the finalized sample metadata information after sample QC.
 
     :param version: gnomAD release version
     :param meta_version: metadata version to return

@@ -1,3 +1,5 @@
+# noqa: D100,D103
+
 import argparse
 import logging
 from collections import Counter, defaultdict

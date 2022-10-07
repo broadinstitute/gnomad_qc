@@ -1,3 +1,5 @@
+# noqa: D100,D103
+
 import argparse
 import logging
 import sys
@@ -38,7 +40,7 @@ def generate_final_filter_ht(
     vqsr_ht: hl.Table = None,
 ) -> hl.Table:
     """
-    Prepares finalized filtering model given a filtering HT from `rf.apply_rf_model` or VQSR and cutoffs for filtering.
+    Prepare finalized filtering model given a filtering HT from `rf.apply_rf_model` or VQSR and cutoffs for filtering.
 
     .. note::
 

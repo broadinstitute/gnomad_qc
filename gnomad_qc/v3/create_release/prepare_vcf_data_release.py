@@ -1,3 +1,5 @@
+# noqa: D100,D103
+
 import argparse
 import logging
 import pickle
@@ -162,8 +164,11 @@ def populate_subset_info_dict(
     label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
     """
-    Call `make_info_dict` to populate INFO dictionary with specific sexes, population names, and filtering allele
-    frequency (faf) pops for the requested subset.
+    Call `make_info_dict` to populate INFO dictionary for the requested `subset`.
+
+    Creates:
+        - INFO fields for AC, AN, AF, nhomalt for each combination of sample population, sex both for adj and raw data
+        - INFO fields for filtering allele frequency (faf) annotations
 
     :param subset: Sample subset in dataset.
     :param description_text: Text describing the sample subset that should be added to the INFO description.
@@ -173,7 +178,6 @@ def populate_subset_info_dict(
     :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
     :return: Dictionary containing Subset specific INFO header fields.
     """
-
     vcf_info_dict = {}
     faf_label_groups = create_label_groups(pops=faf_pops, sexes=sexes)
     for label_group in faf_label_groups:
@@ -229,8 +233,7 @@ def populate_info_dict(
     label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
     """
-    Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary with specific sexes, population names,
-    and filtering allele frequency (faf) pops.
+    Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary.
 
     Used during VCF export.
 
@@ -380,8 +383,9 @@ def unfurl_nested_annotations(
     entries_to_remove: Set[str] = None,
 ) -> [hl.expr.StructExpression, Set[str]]:
     """
-    Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the
-    values of the dictionary are Hail Expressions describing how to access the corresponding values.
+    Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays.
+
+    The values of the returned dictionary are Hail Expressions describing how to access the corresponding values.
 
     .. note::
 

@@ -1,3 +1,5 @@
+# noqa: D100
+
 import hail as hl
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
@@ -18,7 +20,7 @@ def get_gnomad_v3_mt(
     test: bool = False,
 ) -> hl.MatrixTable:
     """
-    Wrapper function to get gnomAD data with desired filtering and metadata annotations.
+    Get gnomAD data with desired filtering and metadata annotations.
 
     :param split: Perform split on MT - Note: this will perform a split on the MT rather than grab an already split MT
     :param key_by_locus_and_alleles: Whether to key the MatrixTable by locus and alleles (only needed for v3)

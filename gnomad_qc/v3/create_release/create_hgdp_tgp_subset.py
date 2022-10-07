@@ -1,3 +1,5 @@
+# noqa: D100,D103
+
 import argparse
 import logging
 from typing import Dict
@@ -163,7 +165,6 @@ def prepare_sample_annotations() -> hl.Table:
 
     :return: Table containing sample metadata for the subset
     """
-
     logger.info(
         "Subsetting and modifying sample QC metadata to desired globals and annotations"
     )

@@ -1,3 +1,5 @@
+# noqa: D100,D103
+
 import argparse
 import logging
 
@@ -167,7 +169,6 @@ def pre_process_subset_freq(
     :param het_nonref_patch: Whether this is frequency information for only variants that need the het nonref patch applied
     :return: Table containing subset frequencies with missing freq structs filled in
     """
-
     # Read in subset HTs
     subset_ht_path = get_freq(subset=subset, het_nonref_patch=het_nonref_patch).path
     subset_test_ht_path = get_checkpoint_path(
