@@ -266,9 +266,11 @@ def compute_hard_filters(
         # Remove samples with ambiguous sex assignments
         sex_ht = sex.ht()[ht.key]
         hard_filters["ambiguous_sex"] = sex_ht.sex_karyotype == "ambiguous"
-        hard_filters["sex_aneuploidy"] = ~hl.set(
+        hard_filters[
+            "sex_aneuploidy"
+        ] = ~hl.set(  # pylint: disable=invalid-unary-operand-type
             {"ambiguous", "XX", "XY"}
-        ).contains(  # pylint: disable=invalid-unary-operand-type
+        ).contains(
             sex_ht.sex_karyotype
         )
 
