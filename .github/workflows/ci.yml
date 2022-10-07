@@ -31,7 +31,5 @@ jobs:
         run: black --check gnomad tests
       - name: Check imports
         run: isort --check-only gnomad tests
-      - name: Check docstrings
-        run: pydocstyle gnomad tests
       - name: Run Pylint
         run: ./lint --disable=W
