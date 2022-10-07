@@ -28,8 +28,8 @@ jobs:
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
       - name: Check formatting
-        run: black --check gnomad tests
+        run: black --check gnomad_qc
       - name: Check imports
-        run: isort --check-only gnomad tests
+        run: isort --check-only gnomad_qc
       - name: Run Pylint
         run: ./lint --disable=W
