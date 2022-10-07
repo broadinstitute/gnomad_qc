@@ -10,10 +10,10 @@ def hom_alt_depletion_fix(
 ) -> hl.MatrixTable:
     """
     Adjust MT genotypes with temporary fix for the depletion of homozygous alternate genotypes.
-    
+
     More details about the problem can be found on the gnomAD blog:
     https://gnomad.broadinstitute.org/blog/2020-10-gnomad-v3-1-new-content-methods-annotations-and-data-availability/#tweaks-and-updates
-    
+
     :param mt: Input MT that needs hom alt genotype fix
     :param het_non_ref_expr: Expression indicating whether the original genotype (pre split multi) is het non ref
     :param af_expr: Allele frequency expression to determine which variants need the hom alt fix

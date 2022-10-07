@@ -2,7 +2,7 @@ name: CI
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
 jobs:
   pylint:
@@ -11,12 +11,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Setup Python
-        uses: actions/setup-python@v1
+      - name: Setup Python 3.8
+        uses: actions/setup-python@v2
         with:
-          python-version: 3.7
+          python-version: 3.8
       - name: Use pip cache
-        uses: actions/cache@v1
+        uses: actions/cache@v2
         with:
           path: ~/.cache/pip
           key: pip-${{ hashFiles('**/requirements*.txt') }}
@@ -26,6 +26,10 @@ jobs:
         run: |
           pip install wheel
           pip install -r requirements.txt
-          pip install pylint
+          pip install -r requirements-dev.txt
+      - name: Check formatting
+        run: black --check gnomad_qc
+      - name: Check imports
+        run: isort --check-only gnomad_qc
       - name: Run Pylint
         run: ./lint --disable=W

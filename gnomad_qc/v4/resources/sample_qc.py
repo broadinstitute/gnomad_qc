@@ -8,10 +8,7 @@ from gnomad.resources.resource_utils import (
 from gnomad.sample_qc.relatedness import get_relationship_expr
 
 from gnomad_qc.v4.resources.basics import get_checkpoint_path, qc_temp_prefix
-from gnomad_qc.v4.resources.constants import (
-    CURRENT_VERSION,
-    VERSIONS,
-)
+from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
 
 def get_sample_qc_root(version: str = CURRENT_VERSION, test: bool = False) -> str:

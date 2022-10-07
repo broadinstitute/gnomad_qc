@@ -10,10 +10,7 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v4.resources.constants import (
-    CURRENT_VERSION,
-    VERSIONS,
-)
+from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
 
 def _annotations_root(version: str = CURRENT_VERSION) -> str:

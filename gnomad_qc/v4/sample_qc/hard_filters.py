@@ -2,7 +2,6 @@ import argparse
 import logging
 
 import hail as hl
-
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.utils.annotations import bi_allelic_expr

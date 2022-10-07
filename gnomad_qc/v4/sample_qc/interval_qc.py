@@ -4,8 +4,8 @@ import logging
 import operator
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
-from gnomad.utils.slack import slack_notifications
 import hail as hl
+from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import (

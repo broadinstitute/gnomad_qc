@@ -51,7 +51,9 @@ def get_info(split: bool = True) -> VersionedTableResource:
 
 
 def get_vqsr_filters(
-    model_id: str, split: bool = True, finalized: bool = False,
+    model_id: str,
+    split: bool = True,
+    finalized: bool = False,
 ) -> VersionedTableResource:
     """
     Gets the specified VQSR filtering annotation resource.
@@ -170,7 +172,9 @@ allele_data = VersionedTableResource(
 
 
 def get_freq(
-    version: str = None, subset: Optional[str] = None, het_nonref_patch: bool = False,
+    version: str = None,
+    subset: Optional[str] = None,
+    het_nonref_patch: bool = False,
 ) -> VersionedTableResource:
     """
     Get the frequency annotation table for a specified release.

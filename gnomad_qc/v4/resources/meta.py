@@ -50,7 +50,8 @@ _picard_metric_versions = {
 
 _pedigree_versions = {
     f"4{x}": PedigreeResource(
-        f"gs://gnomad/v4.0/metadata/exomes/gnomad.exomes.v4.0{x}.fam", delimiter="\t",
+        f"gs://gnomad/v4.0/metadata/exomes/gnomad.exomes.v4.0{x}.fam",
+        delimiter="\t",
     )
     for x in ["", "_raw"]
 }

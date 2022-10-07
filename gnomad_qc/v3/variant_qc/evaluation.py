@@ -3,7 +3,6 @@ import logging
 from pprint import pformat
 
 import hail as hl
-
 from gnomad.resources.grch38.reference_data import clinvar, telomeres_and_centromeres
 from gnomad.utils.filtering import filter_low_conf_regions, filter_to_clinvar_pathogenic
 from gnomad.utils.slack import slack_notifications
@@ -16,6 +15,7 @@ from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources import (
+    TRUTH_SAMPLES,
     allele_data,
     fam_stats,
     get_binned_concordance,
@@ -27,7 +27,6 @@ from gnomad_qc.v3.resources import (
     get_rf_result,
     get_score_bins,
     get_vqsr_filters,
-    TRUTH_SAMPLES,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -133,7 +132,8 @@ def create_aggregated_bin_ht(model_id: str) -> hl.Table:
 
     logger.info(f"Creating grouped bin table...")
     grouped_binned_ht = compute_grouped_binned_ht(
-        ht, checkpoint_path=get_checkpoint_path(f"grouped_bin_{model_id}"),
+        ht,
+        checkpoint_path=get_checkpoint_path(f"grouped_bin_{model_id}"),
     )
 
     logger.info(f"Aggregating grouped bin table...")
@@ -197,7 +197,8 @@ def main(args):
 
         # Checkpoint to prevent needing to go through the large table a second time
         mt = mt.checkpoint(
-            get_checkpoint_path("truth_samples", mt=True), overwrite=args.overwrite,
+            get_checkpoint_path("truth_samples", mt=True),
+            overwrite=args.overwrite,
         )
 
         for truth_sample in TRUTH_SAMPLES:
@@ -207,7 +208,8 @@ def main(args):
                 hl.agg.any(truth_sample_mt.GT.is_non_ref())
             )
             truth_sample_mt.naive_coalesce(args.n_partitions).write(
-                get_callset_truth_data(truth_sample).path, overwrite=args.overwrite,
+                get_callset_truth_data(truth_sample).path,
+                overwrite=args.overwrite,
             )
 
     if args.merge_with_truth_data:
@@ -280,7 +282,9 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--model_id", help="Model ID.", required=False,
+        "--model_id",
+        help="Model ID.",
+        required=False,
     )
     parser.add_argument(
         "--hgdp_tgp_subset",

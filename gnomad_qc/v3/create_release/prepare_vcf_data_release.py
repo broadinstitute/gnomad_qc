@@ -4,51 +4,46 @@ import pickle
 from typing import Dict, List, Optional, Set, Union
 
 import hail as hl
-
-from gnomad.sample_qc.ancestry import POP_NAMES
+from gnomad.assessment.validity_checks import validate_release_t, vcf_field_check
 from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     HGDP_POPS,
-    TGP_POPS,
-    TGP_POP_NAMES,
     POPS,
     SEXES,
     SUBSETS,
+    TGP_POP_NAMES,
+    TGP_POPS,
 )
 from gnomad.resources.resource_utils import DataException
+from gnomad.sample_qc.ancestry import POP_NAMES
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import remove_fields_from_constant
-from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
 from gnomad.utils.vcf import (
-    add_as_info_dict,
-    adjust_vcf_incompatible_types,
     ALLELE_TYPE_FIELDS,
     AS_FIELDS,
     AS_VQSR_FIELDS,
-    build_vcf_export_reference,
-    create_label_groups,
     ENTRIES,
     FAF_POPS,
     FORMAT_DICT,
     HISTS,
-    INFO_DICT,
     IN_SILICO_ANNOTATIONS_INFO_DICT,
-    rekey_new_reference,
-    make_hist_bin_edges_expr,
-    make_hist_dict,
-    make_info_dict,
-    make_vcf_filter_dict,
+    INFO_DICT,
     REGION_FLAG_FIELDS,
     RF_FIELDS,
     SITE_FIELDS,
     VQSR_FIELDS,
+    add_as_info_dict,
+    adjust_vcf_incompatible_types,
+    build_vcf_export_reference,
+    create_label_groups,
+    make_hist_bin_edges_expr,
+    make_hist_dict,
+    make_info_dict,
+    make_vcf_filter_dict,
+    rekey_new_reference,
 )
+from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
 from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
-
-from gnomad.assessment.validity_checks import (
-    validate_release_t,
-    vcf_field_check,
-)
 
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v3.resources.release import (
@@ -312,7 +307,8 @@ def populate_info_dict(
 
 
 def make_info_expr(
-    t: Union[hl.MatrixTable, hl.Table], hist_prefix: str = "",
+    t: Union[hl.MatrixTable, hl.Table],
+    hist_prefix: str = "",
 ) -> Dict[str, hl.expr.Expression]:
     """
     Make Hail expression for variant annotations to be included in VCF INFO field.
@@ -357,7 +353,9 @@ def make_info_expr(
         vcf_info_dict.update(hist_dict)
 
         if "dp" in hist:
-            vcf_info_dict.update({f"{hist}_n_larger": t[hist_type][hist].n_larger},)
+            vcf_info_dict.update(
+                {f"{hist}_n_larger": t[hist_type][hist].n_larger},
+            )
 
     # Add in silico annotations to info dict
     vcf_info_dict["cadd_raw_score"] = t["cadd"]["raw_score"]
@@ -570,7 +568,8 @@ def prepare_vcf_ht(
             "Unfurling nested gnomAD frequency annotations and add to INFO field..."
         )
         info_struct, freq_entries_to_remove = unfurl_nested_annotations(
-            ht, entries_to_remove=freq_entries_to_remove,
+            ht,
+            entries_to_remove=freq_entries_to_remove,
         )
     else:
         logger.info(
@@ -639,7 +638,8 @@ def prepare_vcf_ht(
         )
     else:
         ht = ht.annotate_globals(
-            vep_csq_header=vep_csq_header, freq_entries_to_remove=hl.empty_set(hl.tstr),
+            vep_csq_header=vep_csq_header,
+            freq_entries_to_remove=hl.empty_set(hl.tstr),
         )
 
     # Select relevant fields for VCF export
@@ -823,7 +823,8 @@ def build_parameter_dict(
 
 def main(args):
     hl.init(
-        log="/vcf_release.log", default_reference="GRCh38",
+        log="/vcf_release.log",
+        default_reference="GRCh38",
     )
     hgdp_tgp = args.hgdp_tgp_subset
     chromosome = args.export_chromosome
@@ -885,7 +886,8 @@ def main(args):
 
             logger.info("Saving header dict to pickle...")
             with hl.hadoop_open(
-                release_header_path(hgdp_tgp_subset=hgdp_tgp), "wb",
+                release_header_path(hgdp_tgp_subset=hgdp_tgp),
+                "wb",
             ) as p:
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -906,7 +908,8 @@ def main(args):
         if args.export_vcf:
             logger.info("Loading VCF header dict...")
             with hl.hadoop_open(
-                release_header_path(hgdp_tgp_subset=hgdp_tgp), "rb",
+                release_header_path(hgdp_tgp_subset=hgdp_tgp),
+                "rb",
             ) as f:
                 header_dict = pickle.load(f)
 
@@ -926,7 +929,12 @@ def main(args):
                 logger.info(
                     "Loading the HGDP + TGP subset MT and annotating with the prepared VCF HT for VCF export..."
                 )
-                t = hgdp_tgp_subset(dense=True).mt().select_rows().select_entries(*ENTRIES)
+                t = (
+                    hgdp_tgp_subset(dense=True)
+                    .mt()
+                    .select_rows()
+                    .select_entries(*ENTRIES)
+                )
                 t = t.annotate_rows(**prepared_vcf_ht[t.row_key])
             else:
                 t = prepared_vcf_ht
@@ -942,7 +950,8 @@ def main(args):
                 output_path = f"{qc_temp_prefix()}gnomad.genomes_vcf_test{'hgdp_tgp_subset' if hgdp_tgp else ''}.vcf.bgz"
             else:
                 output_path = release_vcf_path(
-                    contig=chromosome, hgdp_tgp_subset=hgdp_tgp,
+                    contig=chromosome,
+                    hgdp_tgp_subset=hgdp_tgp,
                 )
 
             hl.export_vcf(

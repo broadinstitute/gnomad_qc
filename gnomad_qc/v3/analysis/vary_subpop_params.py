@@ -3,7 +3,6 @@ import logging
 
 import hail as hl
 import pandas as pd
-
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 

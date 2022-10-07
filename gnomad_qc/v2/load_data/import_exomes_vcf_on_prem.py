@@ -1,4 +1,3 @@
-
 # NOTE
 # This script is kept here only for archiving purpose.
 # It has no practical utility and is outdated
