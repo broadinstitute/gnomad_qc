@@ -475,13 +475,13 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
     ploidy_cutoffs_isstr = all(map(lambda x: isinstance(x, str), all_cutoff_values))
 
     def _format_ploidy_cutoffs(
-        x_ploidy_cutoffs: Dict[str, Dict[str, float]],
-        y_ploidy_cutoffs: Dict[str, Dict[str, float]],
-        x_frac_hom_alt_cutoffs: Optional[Dict[str, Dict[str, float]]] = None,
+        x_ploidy_cutoffs: Dict[str, float],
+        y_ploidy_cutoffs: Dict[str, float],
+        x_frac_hom_alt_cutoffs: Optional[Dict[str, float]] = None,
     ) -> Tuple[
         Tuple[float, Tuple[float, float], float],
         Tuple[Tuple[float, float], float],
-        Union[Tuple[Tuple[float, float], float]],
+        Union[Tuple[Tuple[float, float], float], None],
     ]:
         """
         Reformat ploidy cutoffs for input to `get_sex_expr`.
@@ -526,7 +526,7 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
             (
                 x_ploidy_platform_cutoffs,
                 y_ploidy_platform_cutoffs,
-                x_frac_hom_alt_cutoffs,
+                x_frac_hom_alt_platform_cutoffs,
             ) = _format_ploidy_cutoffs(
                 x_ploidy_cutoffs[platform],
                 y_ploidy_cutoffs[platform],
@@ -538,10 +538,10 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
                     platform_ploidy_ht.chrY_ploidy,
                     x_ploidy_platform_cutoffs,
                     y_ploidy_platform_cutoffs,
-                    chr_x_frac_hom_alt_expr=None
-                    if x_frac_hom_alt_cutoffs is None
-                    else platform_ploidy_ht.chrx_frac_hom_alt_adj,
-                    chr_x_frac_hom_alt_cutoffs=x_frac_hom_alt_cutoffs,
+                    chr_x_frac_hom_alt_expr=platform_ploidy_ht.chrx_frac_hom_alt_adj
+                    if x_frac_hom_alt_cutoffs
+                    else None,
+                    chr_x_frac_hom_alt_cutoffs=x_frac_hom_alt_platform_cutoffs,
                 )
             )
             per_platform_karyotype_hts.append(karyotype_ht)
@@ -574,7 +574,15 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
             )
         )
 
-    karyotype_ht = karyotype_ht.annotate_globals(**sex_karyotype_ploidy_cutoffs)
+    def _to_struct(x):
+        if isinstance(x, dict):
+            return hl.struct(**{v: _to_struct(x[v]) for v in x})
+        else:
+            return x
+
+    karyotype_ht = karyotype_ht.annotate_globals(
+        **_to_struct(sex_karyotype_ploidy_cutoffs)
+    )
 
     return karyotype_ht
 
@@ -877,7 +885,7 @@ def main(args):
             )
 
             if args.sex_karyotype_cutoffs:
-                with hl.hadoop_open(args.sex_karyotype_ploidy_cutoffs, "r") as d:
+                with hl.hadoop_open(args.sex_karyotype_cutoffs, "r") as d:
                     ploidy_cutoffs = json.load(d)
                 karyotype_ht = annotate_sex_karyotype_from_ploidy_cutoffs(
                     ploidy_ht,
