@@ -1,6 +1,8 @@
 [MESSAGES CONTROL]
 
 disable=
-  unused-wildcard-import,
+  # Ignore refactor and convention categories
   R,
   C
+
+ignore-paths=^gnomad_qc/v2/.*$

@@ -1,4 +1,0 @@
-black==21.9b0 # This should be kept in sync with the version in .pre-commit-config.yaml
-pre-commit
-pylint
-pytest
