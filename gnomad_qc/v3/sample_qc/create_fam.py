@@ -3,18 +3,22 @@ import logging
 from collections import Counter, defaultdict
 
 import hail as hl
-from gnomad.sample_qc.relatedness import (create_fake_pedigree,
-                                          get_duplicated_samples,
-                                          get_duplicated_samples_ht,
-                                          infer_families)
+from gnomad.sample_qc.relatedness import (
+    create_fake_pedigree,
+    get_duplicated_samples,
+    get_duplicated_samples_ht,
+    infer_families,
+)
 
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v3.resources.meta import (meta, ped_mendel_errors, pedigree,
-                                         trios)
-from gnomad_qc.v3.resources.sample_qc import (duplicates,
-                                              get_relatedness_annotated_ht,
-                                              release_samples_rankings, sex)
+from gnomad_qc.v3.resources.meta import meta, ped_mendel_errors, pedigree, trios
+from gnomad_qc.v3.resources.sample_qc import (
+    duplicates,
+    get_relatedness_annotated_ht,
+    release_samples_rankings,
+    sex,
+)
 
 logger = logging.getLogger("create_fam")
 
@@ -31,8 +35,8 @@ def run_mendel_errors() -> hl.Table:
                 hl.agg.filter(
                     hl.rand_bool(0.01)
                     & (
-                            (hl.len(meta_ht.qc_metrics_filters) == 0)
-                            & hl.or_else(hl.len(meta_ht.hard_filters) == 0, False)
+                        (hl.len(meta_ht.qc_metrics_filters) == 0)
+                        & hl.or_else(hl.len(meta_ht.hard_filters) == 0, False)
                     ),
                     hl.agg.collect_as_set(meta_ht.s),
                 )
@@ -49,7 +53,9 @@ def run_mendel_errors() -> hl.Table:
     )
     mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
     mt = mt.filter_cols(ped_samples.contains(mt.s))
-    mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr20", reference_genome='GRCh38')])
+    mt = hl.filter_intervals(
+        mt, [hl.parse_locus_interval("chr20", reference_genome="GRCh38")]
+    )
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
     mt = mt.select_entries("GT", "END")
     mt = hl.experimental.densify(mt)
@@ -60,9 +66,7 @@ def run_mendel_errors() -> hl.Table:
 
 def run_infer_families() -> hl.Pedigree:
     logger.info("Inferring families")
-    ped = infer_families(
-        get_relatedness_annotated_ht(), sex.ht(), duplicates.ht()
-    )
+    ped = infer_families(get_relatedness_annotated_ht(), sex.ht(), duplicates.ht())
 
     # Remove all trios containing any QC-filtered sample
     meta_ht = meta.ht()
@@ -79,8 +83,8 @@ def run_infer_families() -> hl.Pedigree:
             trio
             for trio in ped.trios
             if trio.s not in filtered_samples
-               and trio.pat_id not in filtered_samples
-               and trio.mat_id not in filtered_samples
+            and trio.pat_id not in filtered_samples
+            and trio.mat_id not in filtered_samples
         ]
     )
 
@@ -94,7 +98,7 @@ def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:
         f"Found a total of {len(ped.trios)} trios in {len(trios_per_fam)} families:"
     ]
     for n_trios, n_fam in Counter(
-            [len(trios) for trios in trios_per_fam.values()]
+        [len(trios) for trios in trios_per_fam.values()]
     ).items():
         message.append(f"{n_fam} with {n_trios} trios.")
     logger.info("\n".join(message))
@@ -103,23 +107,27 @@ def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:
 
 
 def filter_ped(
-        raw_ped: hl.Pedigree, mendel: hl.Table, max_dnm: int, max_mendel: int
+    raw_ped: hl.Pedigree, mendel: hl.Table, max_dnm: int, max_mendel: int
 ) -> hl.Pedigree:
     mendel = mendel.filter(mendel.fam_id.startswith("fake"))
     mendel_by_s = (
         mendel.group_by(mendel.s)
-            .aggregate(
+        .aggregate(
             fam_id=hl.agg.take(mendel.fam_id, 1)[0],
             n_mendel=hl.agg.count(),
-            n_de_novo=hl.agg.count_where(mendel.mendel_code == 2), # Code 2 is parents are hom ref, child is het
+            n_de_novo=hl.agg.count_where(
+                mendel.mendel_code == 2
+            ),  # Code 2 is parents are hom ref, child is het
         )
-            .persist()
+        .persist()
     )
 
     good_trios = mendel_by_s.aggregate(
         hl.agg.filter(
             (mendel_by_s.n_mendel < max_mendel) & (mendel_by_s.n_de_novo < max_dnm),
-            hl.agg.collect(mendel_by_s.s, ),
+            hl.agg.collect(
+                mendel_by_s.s,
+            ),
         )
     )
     logger.info(f"Found {len(good_trios)} trios passing filters")

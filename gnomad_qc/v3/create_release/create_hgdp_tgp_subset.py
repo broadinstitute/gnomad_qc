@@ -3,7 +3,6 @@ import logging
 from typing import Dict
 
 import hail as hl
-
 from gnomad.resources.grch38.gnomad import POPS_STORED_AS_SUBPOPS
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
@@ -17,12 +16,8 @@ from gnomad.utils.annotations import get_adj_expr, region_flag_expr
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.release import make_freq_index_dict
 from gnomad.utils.slack import slack_notifications
+from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS, SPARSE_ENTRIES
 from gnomad.utils.vep import vep_or_lookup_vep
-from gnomad.utils.vcf import (
-    AS_FIELDS,
-    SITE_FIELDS,
-    SPARSE_ENTRIES,
-)
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.create_release.hgdp_tgp_constants import (
@@ -32,26 +27,23 @@ from gnomad_qc.v3.create_release.hgdp_tgp_constants import (
     SAMPLE_ANNOTATIONS,
     VARIANT_ANNOTATIONS,
 )
-from gnomad_qc.v3.resources.annotations import (
-    get_freq,
-    get_info,
-)
+from gnomad_qc.v3.resources.annotations import get_freq, get_info
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.release import (
-    release_sites,
     hgdp_tgp_subset,
     hgdp_tgp_subset_annotations,
     hgdp_tgp_subset_sample_tsv,
+    release_sites,
 )
 from gnomad_qc.v3.resources.sample_qc import (
     hgdp_tgp_meta,
     hgdp_tgp_pcs,
     hgdp_tgp_pop_outliers,
-    hgdp_tgp_relatedness,
     hgdp_tgp_related_samples_to_drop,
+    hgdp_tgp_relatedness,
 )
-from gnomad_qc.v3.resources.variant_qc import final_filter, SYNDIP
+from gnomad_qc.v3.resources.variant_qc import SYNDIP, final_filter
 from gnomad_qc.v3.utils import hom_alt_depletion_fix
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -336,7 +328,8 @@ def prepare_variant_annotations(
     missing_info_fields = set(info_fields).difference(info_ht.info.keys())
     select_info_fields = set(info_fields).intersection(info_ht.info.keys())
     logger.info(
-        "The following fields are not found in the info HT: %s", missing_info_fields,
+        "The following fields are not found in the info HT: %s",
+        missing_info_fields,
     )
 
     # NOTE: SOR and AS_SOR annotations are now added to the info HT by default with get_as_info_expr and
@@ -420,7 +413,7 @@ def prepare_variant_annotations(
     )
 
     logger.info("Adding global variant annotations...")
-    # The `freq_meta` global annotation on subset frequency Tables include a "subset" key in each element. 
+    # The `freq_meta` global annotation on subset frequency Tables include a "subset" key in each element.
     # E.g., `{'group': 'adj', 'pop': 'cdx', 'subset': 'hgdp|tgp'}`
     # This needs to be removed for the HGDP + 1KG variant annotations
     hgdp_tgp_freq_meta = [
@@ -437,7 +430,9 @@ def prepare_variant_annotations(
         ),
         hgdp_tgp_freq_meta=hgdp_tgp_freq_meta,
         hgdp_tgp_freq_index_dict=make_freq_index_dict(
-            hgdp_tgp_freq_meta, pops=POPS_STORED_AS_SUBPOPS, label_delimiter="-",
+            hgdp_tgp_freq_meta,
+            pops=POPS_STORED_AS_SUBPOPS,
+            label_delimiter="-",
         ),
         gnomad_freq_meta=freq_meta,
         gnomad_freq_index_dict=freq_index_dict,
@@ -473,7 +468,7 @@ def adjust_subset_alleles(mt: hl.MatrixTable) -> hl.MatrixTable:
     def split_shuffle(mt: hl.MatrixTable) -> hl.MatrixTable:
         """
         Split rows that do and do not have the same new and old locus prior to the row rekey.
-        
+
         Most rows will have the same new and old locus annotations.
 
         Re-keying rows triggers a shuffle in hail.

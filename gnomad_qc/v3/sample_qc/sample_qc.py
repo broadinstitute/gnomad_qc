@@ -5,7 +5,6 @@ import pickle
 from typing import Any, List, Tuple
 
 import hail as hl
-
 from gnomad.assessment.validity_checks import compare_row_counts
 from gnomad.resources.grch38.reference_data import (
     clinvar,
@@ -21,12 +20,12 @@ from gnomad.sample_qc.filtering import (
 )
 from gnomad.sample_qc.pipeline import annotate_sex, get_qc_mt
 from gnomad.sample_qc.relatedness import (
-    compute_related_samples_to_drop,
     DUPLICATE_OR_TWINS,
-    get_relationship_expr,
     PARENT_CHILD,
     SIBLINGS,
     UNRELATED,
+    compute_related_samples_to_drop,
+    get_relationship_expr,
 )
 from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
 from gnomad.utils.annotations import bi_allelic_expr, get_adj_expr
@@ -46,7 +45,6 @@ from gnomad_qc.v3.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
     ancestry_pca_scores,
-    sample_clinvar_count,
     get_sample_qc,
     hard_filtered_samples,
     pc_relate_pca_scores,
@@ -61,11 +59,11 @@ from gnomad_qc.v3.resources.sample_qc import (
     relatedness,
     release_related_samples_to_drop,
     release_samples_rankings,
+    sample_clinvar_count,
     sample_inbreeding,
     sex,
     stratified_metrics,
 )
-
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("sample_qc")
@@ -268,7 +266,9 @@ def compute_hard_filters(
         # Remove samples with ambiguous sex assignments
         sex_ht = sex.ht()[ht.key]
         hard_filters["ambiguous_sex"] = sex_ht.sex_karyotype == "ambiguous"
-        hard_filters["sex_aneuploidy"] = ~hl.set({"ambiguous", "XX", "XY"}).contains( # pylint: disable=invalid-unary-operand-type
+        hard_filters["sex_aneuploidy"] = ~hl.set(
+            {"ambiguous", "XX", "XY"}
+        ).contains(  # pylint: disable=invalid-unary-operand-type
             sex_ht.sex_karyotype
         )
 

@@ -6,11 +6,7 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v3.resources.constants import (
-    CURRENT_VERSION,
-    CURRENT_RELEASE,
-    RELEASES,
-)
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, CURRENT_VERSION, RELEASES
 
 
 # Samples metadata
@@ -64,13 +60,15 @@ _project_meta_versions = {
 
 _pedigree_versions = {
     "3.1": PedigreeResource(
-        "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1.fam", delimiter="\t",
+        "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1.fam",
+        delimiter="\t",
     ),
     "3.1_raw": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_raw.fam", delimiter="\t"
     ),
     "3": PedigreeResource(
-        "gs://gnomad/metadata/genomes_v3/gnomad_v3.fam", delimiter="\t",
+        "gs://gnomad/metadata/genomes_v3/gnomad_v3.fam",
+        delimiter="\t",
     ),
     "3_raw": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3/gnomad_v3_raw.fam", delimiter="\t"
@@ -80,13 +78,15 @@ _pedigree_versions = {
 
 _trios_versions = {
     "3.1": PedigreeResource(
-        "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_trios.fam", delimiter="\t",
+        "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_trios.fam",
+        delimiter="\t",
     ),
     "3.1_raw": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_trios_raw.fam", delimiter="\t"
     ),
     "3": PedigreeResource(
-        "gs://gnomad/metadata/genomes_v3/gnomad_v3_trios.fam", delimiter="\t",
+        "gs://gnomad/metadata/genomes_v3/gnomad_v3_trios.fam",
+        delimiter="\t",
     ),
     "3_raw": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3/gnomad_v3_trios_raw.fam", delimiter="\t"

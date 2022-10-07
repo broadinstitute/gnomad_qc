@@ -1,9 +1,9 @@
 import argparse
 import logging
 
+import hail as hl
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
-import hail as hl
 
 # TODO: include this when we have the sample QC meta HT: from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds

@@ -4,10 +4,7 @@ from gnomad.resources.resource_utils import (
     VersionedMatrixTableResource,
 )
 
-from gnomad_qc.v3.resources.constants import (
-    CURRENT_RELEASE,
-    CURRENT_VERSION,
-)
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, CURRENT_VERSION
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.sample_qc import hard_filtered_samples
 
@@ -82,7 +79,8 @@ _gnomad_v3_genotypes = {
 
 # The same raw MT is used for v3.1.1, v3.1.2, and v3.1
 gnomad_v3_genotypes = VersionedMatrixTableResource(
-    CURRENT_VERSION, _gnomad_v3_genotypes,
+    CURRENT_VERSION,
+    _gnomad_v3_genotypes,
 )
 
 # v3 test dataset sparse MT

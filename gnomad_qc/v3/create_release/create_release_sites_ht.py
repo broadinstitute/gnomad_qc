@@ -2,12 +2,7 @@ import argparse
 import logging
 
 import hail as hl
-
-from gnomad.resources.grch38.gnomad import (
-    POPS,
-    POPS_STORED_AS_SUBPOPS,
-    SUBSETS,
-)
+from gnomad.resources.grch38.gnomad import POPS, POPS_STORED_AS_SUBPOPS, SUBSETS
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
     lcr_intervals,
@@ -18,10 +13,7 @@ from gnomad.utils.annotations import missing_callstats_expr, region_flag_expr
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.release import make_freq_index_dict
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vcf import (
-    AS_FIELDS,
-    SITE_FIELDS,
-)
+from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
 from gnomad.utils.vep import VEP_CSQ_HEADER
 
 from gnomad_qc.slack_creds import slack_token

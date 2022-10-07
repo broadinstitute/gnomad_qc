@@ -7,10 +7,7 @@ from gnomad.resources.resource_utils import (
 )
 from gnomad.sample_qc.relatedness import get_relationship_expr
 
-from gnomad_qc.v3.resources.constants import (
-    CURRENT_VERSION,
-    VERSIONS,
-)
+from gnomad_qc.v3.resources.constants import CURRENT_VERSION, VERSIONS
 
 
 def get_sample_qc_root(version: str = CURRENT_VERSION, mt: bool = False) -> str:
@@ -169,12 +166,14 @@ def filtered_subpop_qc_mt(pop: str, version: str = CURRENT_VERSION) -> str:
 def assigned_subpops(pop: str, version: str = CURRENT_VERSION) -> TableResource:
     """
     Table resource for inferred sample subpopulations
-    
+
     :param pop: Population in which subpops have been assgined
     :param version: Version of assigned subpops path to return
-    :return: TableResource of assigned subpops within population specified by 'pop' parameter 
+    :return: TableResource of assigned subpops within population specified by 'pop' parameter
     """
-    return TableResource(f"{get_sample_qc_root(version)}/subpop_analysis/gnomad_v{version}_assigned_subpops.{pop}.ht")
+    return TableResource(
+        f"{get_sample_qc_root(version)}/subpop_analysis/gnomad_v{version}_assigned_subpops.{pop}.ht"
+    )
 
 
 def get_relatedness_annotated_ht() -> hl.Table:
@@ -197,12 +196,14 @@ def get_relatedness_annotated_ht() -> hl.Table:
 def subpop_outliers(pop: str, version: str = CURRENT_VERSION) -> TableResource:
     """
     Table resource for outlier samples in the subpopulation analysis
-    
+
     :param pop: Population in which subpops have been assgined
     :param version: Version of subpop outliers path to return
-    :return: TableResource of outlier samples in subpops analysis within population specified by 'pop' parameter 
+    :return: TableResource of outlier samples in subpops analysis within population specified by 'pop' parameter
     """
-    return TableResource(f"{get_sample_qc_root(version)}/subpop_analysis/gnomad_v{version}_outlier_in_subpops.{pop}.ht")
+    return TableResource(
+        f"{get_sample_qc_root(version)}/subpop_analysis/gnomad_v{version}_outlier_in_subpops.{pop}.ht"
+    )
 
 
 # QC Sites (gnomAD v2 QC sites, lifted over)

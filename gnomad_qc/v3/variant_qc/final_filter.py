@@ -4,7 +4,6 @@ import sys
 from typing import Optional
 
 import hail as hl
-
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.resources.resource_utils import DataException
 from gnomad.utils.file_utils import file_exists
@@ -253,7 +252,9 @@ def main(args):
         freq_ht = release_sites().ht()
         freq_ht = freq_ht.select("freq", InbreedingCoeff=freq_ht.info.InbreedingCoeff)
     else:
-        raise DataException("There is no frequency HT or release sites HT available for the current release!")
+        raise DataException(
+            "There is no frequency HT or release sites HT available for the current release!"
+        )
 
     ht = ht.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
     freq_idx = freq_ht[ht.key]
@@ -271,7 +272,9 @@ def main(args):
         # Note: (freq_idx.freq[1].AF == 0) is actually already filtered out, only focus on variants where all samples
         # are homozygous alternate for the variant.
         # If this is monoallelic in gnomAD and monoallelic in HGDP + 1KG/TGP mark it as monoallelic
-        mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) & (hgdp_tgp_freq_idx.freq[1].AF == 1)
+        mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) & (
+            hgdp_tgp_freq_idx.freq[1].AF == 1
+        )
     else:
         ac0_filter_expr = freq_idx.freq[0].AC == 0
         mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0)

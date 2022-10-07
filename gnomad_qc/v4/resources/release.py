@@ -11,10 +11,7 @@ from gnomad.resources.resource_utils import (
 from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
-from gnomad_qc.v4.resources.constants import (
-    CURRENT_RELEASE,
-    RELEASES,
-)
+from gnomad_qc.v4.resources.constants import CURRENT_RELEASE, RELEASES
 
 
 def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
@@ -79,7 +76,8 @@ def release_sites(public: bool = False) -> VersionedTableResource:
 
 
 def release_vcf_path(
-    release_version: Optional[str] = None, contig: Optional[str] = None,
+    release_version: Optional[str] = None,
+    contig: Optional[str] = None,
 ) -> str:
     """
     Fetch bucket for release (sites-only) VCFs.

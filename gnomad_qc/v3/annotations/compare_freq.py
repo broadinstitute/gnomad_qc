@@ -15,7 +15,6 @@ import logging
 from typing import List
 
 import hail as hl
-
 from gnomad.resources.grch37.gnomad import (
     CURRENT_EXOME_RELEASE,
     CURRENT_GENOME_RELEASE,
@@ -25,21 +24,21 @@ from gnomad.resources.grch37.gnomad import (
     public_pca_loadings,
 )
 from gnomad.resources.grch37.gnomad import public_release as v2_public_release
+from gnomad.resources.grch38.gnomad import CURRENT_GENOME_RELEASE as V3_CURRENT_RELEASE
 from gnomad.resources.grch38.gnomad import POPS
 from gnomad.resources.grch38.gnomad import public_release as v3_public_release
-from gnomad.resources.grch38.gnomad import CURRENT_GENOME_RELEASE as V3_CURRENT_RELEASE
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.liftover import default_lift_data
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v2.resources.basics import get_gnomad_data, get_gnomad_meta
+from gnomad_qc.v3.resources.annotations import get_freq_comparison
 from gnomad_qc.v3.resources.basics import (
     get_checkpoint_path,
     get_gnomad_v3_mt,
     get_logging_path,
 )
-from gnomad_qc.v3.resources.annotations import get_freq_comparison
 from gnomad_qc.v3.resources.sample_qc import (
     v2_v3_pc_project_pca_scores,
     v2_v3_pc_relate_pca_scores,
@@ -232,7 +231,8 @@ def project_on_exome_pop_pcs(test: bool = False) -> hl.Table:
 
     logger.info(f"Checkpointing the liftover of gnomAD v2 PCA loading sites.")
     v2_exome_loadings_ht = v2_exome_loadings_ht.checkpoint(
-        get_checkpoint_path("v2_exome_loadings_liftover"), overwrite=True,
+        get_checkpoint_path("v2_exome_loadings_liftover"),
+        overwrite=True,
     )
 
     # Need to densify before running pc project
@@ -243,7 +243,9 @@ def project_on_exome_pop_pcs(test: bool = False) -> hl.Table:
         "Performing PC projection of gnomAD v3 samples into gnomAD v2 PC space..."
     )
     ht = hl.experimental.pc_project(
-        mt.GT, v2_exome_loadings_ht.loadings, v2_exome_loadings_ht.pca_af,
+        mt.GT,
+        v2_exome_loadings_ht.loadings,
+        v2_exome_loadings_ht.pca_af,
     )
     ht = ht.annotate(version="v3_genomes")
 
@@ -438,7 +440,9 @@ if __name__ == "__main__":
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
     parser.add_argument(
-        "--overwrite", help="Overwrite output files.", action="store_true",
+        "--overwrite",
+        help="Overwrite output files.",
+        action="store_true",
     )
     parser.add_argument(
         "--test",
