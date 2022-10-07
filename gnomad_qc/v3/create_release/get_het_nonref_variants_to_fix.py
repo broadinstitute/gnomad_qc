@@ -1,5 +1,3 @@
-# noqa: D100,D103
-
 """
 This script is needed for the v3.1.2 release to correct a problem discovered in the gnomAD v3.1 release.
 
@@ -29,7 +27,7 @@ logger = logging.getLogger("get_impacted_variants")
 logger.setLevel(logging.INFO)
 
 
-def main(args):
+def main(args):  # noqa: D103
     """Script used to get variants impacted by homalt hotfix."""
     hl.init(log="/get_impacted_variants.log", default_reference="GRCh38")
 

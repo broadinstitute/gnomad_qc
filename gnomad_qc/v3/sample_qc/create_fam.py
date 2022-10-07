@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 import logging
@@ -136,7 +136,7 @@ def filter_ped(
     return hl.Pedigree([trio for trio in raw_ped.trios if trio.s in good_trios])
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(default_reference="GRCh38")
 
     if args.find_dups:

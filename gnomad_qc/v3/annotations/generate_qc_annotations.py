@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 import logging
@@ -327,7 +327,7 @@ def run_vep(vep_version: str = "101") -> hl.Table:
     return ht
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(default_reference="GRCh38", log="/qc_annotations.log")
 
     if args.compute_info:

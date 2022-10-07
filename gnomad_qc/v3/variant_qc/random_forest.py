@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 import json
@@ -255,7 +255,7 @@ def train_rf(
     return ht, rf_model
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/variant_qc_random_forest.log")
 
     if args.list_rf_runs:

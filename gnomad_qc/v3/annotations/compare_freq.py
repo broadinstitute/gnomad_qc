@@ -1,4 +1,4 @@
-# noqa: D103
+# noqa: D100
 
 """
 Compare frequencies for two gnomAD versions.
@@ -361,7 +361,7 @@ def perform_logistic_regression(
     return ht
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/compare_freq.log")
 
     try:

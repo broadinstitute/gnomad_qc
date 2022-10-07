@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 import logging
@@ -79,7 +79,7 @@ def import_vqsr(
     )
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/load_data.log", default_reference="GRCh38")
 
     import_vqsr(

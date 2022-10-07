@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 import logging
@@ -825,7 +825,7 @@ def build_parameter_dict(
     return parameter_dict
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(
         log="/vcf_release.log",
         default_reference="GRCh38",

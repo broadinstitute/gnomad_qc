@@ -1,5 +1,4 @@
 # noqa: D100
-# noqa: D103
 
 import argparse
 import logging
@@ -17,7 +16,7 @@ from gnomad_qc.v3.resources.sample_qc import (
 logger = logging.getLogger("v2_pc_relate")
 
 
-def main(args):
+def main(args):  # noqa: D103
     if args.join_qc_mt:
         v2_qc_mt_liftover = get_liftover_v2_qc_mt(
             "exomes", ld_pruned=True, release_only=True

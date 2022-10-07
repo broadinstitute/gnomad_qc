@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 import logging
@@ -153,7 +153,7 @@ def create_aggregated_bin_ht(model_id: str) -> hl.Table:
     return agg_ht
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/variant_qc_evaluation.log")
 
     if args.create_bin_ht:

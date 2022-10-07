@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 import logging
@@ -231,7 +231,7 @@ def generate_final_filter_ht(
     return ht
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/variant_qc_finalize.log")
 
     ht = get_score_bins(

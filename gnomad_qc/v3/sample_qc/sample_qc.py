@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 import logging
@@ -1124,7 +1124,7 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     return left_ht
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/hail.log", default_reference="GRCh38")
 
     if args.sample_qc:

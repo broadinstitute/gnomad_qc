@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 import logging
@@ -49,7 +49,7 @@ logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
 
 
-def main(args):
+def main(args):  # noqa: D103
     subsets = args.subsets
     hl.init(
         log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",

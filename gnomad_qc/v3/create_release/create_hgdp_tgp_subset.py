@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 import logging
@@ -602,7 +602,7 @@ def create_full_subset_dense_mt(
     return mt
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/hgdp_tgp_subset.log", default_reference="GRCh38")
 
     test = args.test

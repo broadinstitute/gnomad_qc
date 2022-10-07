@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 import logging
@@ -218,7 +218,7 @@ def pre_process_subset_freq(
     return ht
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/create_release_ht.log", default_reference="GRCh38")
     global_freq_path = get_freq(het_nonref_patch=args.het_nonref_patch).path
 

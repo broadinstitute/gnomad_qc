@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 
@@ -7,7 +7,7 @@ import hail as hl
 from gnomad_qc.v3.resources import get_gnomad_v3_mt
 
 
-def main(args):
+def main(args):  # noqa: D103
     mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
     mt = mt.annotate_entries(
         gvcf_info=mt.gvcf_info.drop("ClippingRankSum", "ReadPosRankSum")

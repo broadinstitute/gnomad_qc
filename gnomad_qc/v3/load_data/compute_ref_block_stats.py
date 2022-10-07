@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 import pickle
@@ -74,7 +74,7 @@ def compute_stats(stats_path: str):
         pickle.dump(ref_block_stats, f)
 
 
-def main(args):
+def main(args):  # noqa: D103
     if args.compute_stats:
         compute_stats(args.stats_path)
         print_ref_block_stats(

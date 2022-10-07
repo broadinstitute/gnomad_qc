@@ -1,4 +1,4 @@
-# noqa: D100,D103
+# noqa: D100
 
 import argparse
 import json
@@ -55,7 +55,7 @@ def create_frequency_bins_expr_inbreeding(
     return bin_expr
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(default_reference="GRCh38", log="/variant_histograms.log")
 
     logger.info("Loading ANNOTATIONS_HISTS dictionary...")

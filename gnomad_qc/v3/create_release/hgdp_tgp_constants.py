@@ -1,3 +1,5 @@
+# noqa: D100
+
 GLOBAL_SAMPLE_ANNOTATIONS = {
     "gnomad_sex_imputation_ploidy_cutoffs": {
         "Description": (
