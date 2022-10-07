@@ -1,6 +1,7 @@
 [MESSAGES CONTROL]
 
 disable=
+  unused-wildcard-import,
   # Ignore refactor and convention categories
   R,
   C
