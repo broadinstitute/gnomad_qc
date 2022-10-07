@@ -391,8 +391,8 @@ def main(args):
             )
 
         if args.run_pc_project_v3_on_v2:
-            ht = project_on_exome_pop_pcs(args.test)
-            ht.write(
+            scores_ht = project_on_exome_pop_pcs(args.test)
+            scores_ht.write(
                 get_checkpoint_path(f"v3_pc_project_on_v2.test")
                 if args.test
                 else v2_v3_pc_project_pca_scores.versions["3.1"].path,

@@ -4,12 +4,12 @@ import hail as hl
 from gnomad.resources.resource_utils import (
     TableResource,
     VariantDatasetResource,
+    VersionedTableResource,
     VersionedVariantDatasetResource,
 )
 
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION
 from gnomad_qc.v4.resources.meta import meta
-from gnomad_qc.v4.resources.sample_qc import hard_filtered_samples
 
 logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
@@ -17,24 +17,135 @@ logger.setLevel(logging.INFO)
 
 # Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4.0/<module>/<exomes_or_genomes>/
 def get_gnomad_v4_vds(
-    split=False, remove_hard_filtered_samples: bool = True, release_only: bool = False,
+    split: bool = False,
+    remove_hard_filtered_samples: bool = True,
+    remove_hard_filtered_samples_no_sex: bool = False,
+    release_only: bool = False,
+    test: bool = False,
+    n_partitions: int = None,
 ) -> hl.vds.VariantDataset:
     """
     Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
 
-    :param split: Perform split on MT - Note: this will perform a split on the MT rather than grab an already split MT
-    :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after sample QC)
-    :param release_only: Whether to filter the MT to only samples available for release (can only be used if metadata is present)
+    :param split: Perform split on VDS - Note: this will perform a split on the VDS rather than grab an already split VDS
+    :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after hard filtering is complete)
+    :param remove_hard_filtered_samples_no_sex: Whether to remove samples that failed non sex inference hard filters (only relevant after pre-sex imputation hard filtering is complete)
+    :param release_only: Whether to filter the VDS to only samples available for release (can only be used if metadata is present)
+    :param test: Whether to use the test VDS instead of the full v4 VDS
+    :param n_partitions: Optional argument to read the VDS with a specific number of partitions
     :return: gnomAD v4 dataset with chosen annotations and filters
     """
-    vds = gnomad_v4_genotypes.vds()
-    if remove_hard_filtered_samples:
-        vds = hl.vds.filter_samples(
-            vds, hard_filtered_samples.versions[CURRENT_VERSION].ht(), keep=False
+
+    if remove_hard_filtered_samples and remove_hard_filtered_samples_no_sex:
+        raise ValueError(
+            "Only one of 'remove_hard_filtered_samples' or 'remove_hard_filtered_samples_no_sex' can be set to True."
         )
 
+    if test:
+        gnomad_v4_resource = gnomad_v4_testset
+    else:
+        gnomad_v4_resource = gnomad_v4_genotypes
+
+    if n_partitions:
+        vds = hl.vds.read_vds(gnomad_v4_resource.path, n_partitions=n_partitions)
+    else:
+        vds = gnomad_v4_resource.vds()
+
+    # Count current number of samples in the VDS
+    n_samples = vds.variant_data.count_cols()
+
+    # Remove 75 withdrawn UKB samples (samples with withdrawn consents for application 31063 on 02/22/2022)
+    ukb_application_map_ht = ukb_application_map.ht()
+    withdrawn_ukb_samples = ukb_application_map_ht.filter(
+        ukb_application_map_ht.withdraw
+    ).s.collect()
+
+    # Remove 43 samples that are known to be on the pharma's sample remove list
+    # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308
+    dups_ht = ukb_known_dups.ht()
+    ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
+
+    # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS)
+    # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286
+    # Confirmed that the col_idx of the 27 dup samples in the original UKB MT match the col_idx of the dup UKB samples in the VDS
+    dup_ids = []
+    with hl.hadoop_open(ukb_dups_idx_path, "r") as d:
+        for line in d:
+            line = line.strip().split("\t")
+            dup_ids.append(f"{line[0]}_{line[1]}")
+
+    def _remove_ukb_dup_by_index(
+        mt: hl.MatrixTable, dup_ids: hl.expr.ArrayExpression
+    ) -> hl.MatrixTable:
+        """
+        Remove UKB samples with exact duplicate names based on column index.
+
+        :param mt: MatrixTable of either the variant data or reference data of a VDS
+        :param dup_ids: ArrayExpression of UKB samples to remove in format of <sample_name>_<col_idx>
+        :return: MatrixTable of UKB samples with exact duplicate names removed based on column index
+        """
+        mt = mt.add_col_index()
+        mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
+        mt = mt.filter_cols(~dup_ids.contains(mt.new_s)).drop("new_s", "col_idx")
+        return mt
+
+    dup_ids = hl.literal(dup_ids)
+    vd = _remove_ukb_dup_by_index(vds.variant_data, dup_ids)
+    rd = _remove_ukb_dup_by_index(vds.reference_data, dup_ids)
+    vds = hl.vds.VariantDataset(rd, vd)
+
+    # Filter withdrawn samples from the VDS
+    withdrawn_ids = withdrawn_ukb_samples + ids_to_remove + hl.eval(dup_ids)
+    withdrawn_ids = [i for i in withdrawn_ids if i is not None]
+
+    logger.info("Total number of UKB samples to exclude: %d", len(withdrawn_ids))
+
+    with hl.hadoop_open(all_ukb_samples_to_remove, "w") as d:
+        for sample in withdrawn_ids:
+            d.write(sample + "\n")
+
+    withdrawn_ht = hl.import_table(all_ukb_samples_to_remove, no_header=True).key_by(
+        "f0"
+    )
+
+    vds = hl.vds.filter_samples(vds, withdrawn_ht, keep=False, remove_dead_alleles=True)
+
+    # Log number of UKB samples removed from the VDS
+    n_samples_after_exclusion = vds.variant_data.count_cols()
+    n_samples_removed = n_samples - n_samples_after_exclusion
+
+    logger.info(
+        "Total number of UKB samples removed from the VDS: %d", n_samples_removed
+    )
+
+    if remove_hard_filtered_samples or remove_hard_filtered_samples_no_sex:
+        if test:
+            meta_ht = gnomad_v4_testset_meta.ht()
+            if remove_hard_filtered_samples_no_sex:
+                hard_filter_expr = meta_ht.rand_sampling_meta.hard_filters_no_sex
+            else:
+                hard_filter_expr = meta_ht.rand_sampling_meta.hard_filters
+            meta_ht = meta_ht.filter(hl.len(hard_filter_expr) == 0)
+            vds = hl.vds.filter_samples(vds, meta_ht)
+        else:
+            from gnomad_qc.v4.resources.sample_qc import (
+                hard_filtered_samples,
+                hard_filtered_samples_no_sex,
+            )
+
+            if remove_hard_filtered_samples:
+                hard_filter_ht = hard_filtered_samples.versions[CURRENT_VERSION].ht()
+            else:
+                hard_filter_ht = hard_filtered_samples_no_sex.versions[
+                    CURRENT_VERSION
+                ].ht()
+            vds = hl.vds.filter_samples(vds, hard_filter_ht, keep=False)
+
     if release_only:
-        meta_ht = meta.versions[CURRENT_VERSION].ht()
+        if test:
+            meta_ht = gnomad_v4_testset_meta.ht()
+        else:
+            meta_ht = meta.versions[CURRENT_VERSION].ht()
         meta_ht = meta_ht.filter(meta_ht.release)
         vds = hl.vds.filter_samples(vds, meta_ht)
 
@@ -49,124 +160,72 @@ def get_gnomad_v4_vds(
         vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
         vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
-    # Count current number of samples in the VDS
-    n_samples = vds.variant_data.count_cols()
-
-    # Obtain withdrawn UKBB samples (includes 5 samples that should be removed from the VDS)
-    excluded_ukbb_samples_ht = hl.import_table(
-        ukbb_excluded_samples_path, no_header=True,
-    ).key_by("f0")
-
-    sample_map_ht = ukbb_array_sample_map.ht()
-    sample_map_ht = sample_map_ht.annotate(
-        withdrawn_consent=hl.is_defined(
-            excluded_ukbb_samples_ht[sample_map_ht.ukbb_app_26041_id]
-        )
-    )
-    withdrawn_ids = sample_map_ht.filter(sample_map_ht.withdrawn_consent).s.collect()
-
-    # Remove 43 samples that are known to be on the pharma's sample remove list
-    # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308
-    dups_ht = ukbb_known_dups.ht()
-    ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
-
-    # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS)
-    # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286
-    # Confirmed that the col_idx of the 27 dup samples in the original UKBB MT match the col_idx of the dup UKBB samples in the VDS
-    dup_ids = []
-    with hl.hadoop_open(ukbb_dups_idx_path, "r") as d:
-        for line in d:
-            line = line.strip().split("\t")
-            dup_ids.append(f"{line[0]}_{line[1]}")
-
-    def _remove_ukbb_dup_by_index(mt: hl.MatrixTable, dup_ids: hl.expr.ArrayExpression) -> hl.MatrixTable:
-        """
-        Remove UKBB samples with exact duplicate names based on column index.
-        
-        :param mt: MatrixTable of either the variant data or reference data of a VDS
-        :param dup_ids: ArrayExpression of UKBB samples to remove in format of <sample_name>_<col_idx>
-        :return: MatrixTable of UKBB samples with exact duplicate names removed based on column index
-        """
-        mt = mt.add_col_index()
-        mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
-        mt = mt.filter_cols(~dup_ids.contains(mt.new_s)).drop(
-            "new_s", "col_idx"
-        )
-        return mt
-
-    dup_ids = hl.literal(dup_ids)
-    vd = _remove_ukbb_dup_by_index(vds.variant_data, dup_ids)
-    rd = _remove_ukbb_dup_by_index(vds.reference_data, dup_ids)
-    vds = hl.vds.VariantDataset(rd, vd)
-
-    # Filter withdrawn samples from the VDS
-    withdrawn_ids = withdrawn_ids + ids_to_remove + hl.eval(dup_ids)
-
-    logger.info("Total number of UKBB samples to exclude: %d", len(withdrawn_ids))
-
-    with hl.hadoop_open(all_ukbb_samples_to_remove, "w") as d:
-        for sample in withdrawn_ids:
-            d.write(sample + "\n")
-
-    withdrawn_ht = hl.import_table(
-        all_ukbb_samples_to_remove, no_header=True
-    ).key_by("f0")
-
-    vds = hl.vds.filter_samples(vds, withdrawn_ht, keep=False, remove_dead_alleles=True)
-
-    # Log number of UKBB samples removed from the VDS
-    n_samples_after_exclusion = vds.variant_data.count_cols()
-    n_samples_removed = n_samples - n_samples_after_exclusion
-
-    logger.info(
-        "Total number of UKBB samples removed from the VDS: %d", n_samples_removed
-    )
-
     return vds
 
 
 _gnomad_v4_genotypes = {
-    "4.0": VariantDatasetResource("gs://gnomad/raw/exomes/4.0/gnomad_v4.0.vds"),
+    "4.0": VariantDatasetResource("gs://gnomad/v4.0/raw/exomes/gnomad_v4.0.vds")
 }
 
 gnomad_v4_genotypes = VersionedVariantDatasetResource(
-    CURRENT_VERSION, _gnomad_v4_genotypes,
+    CURRENT_VERSION,
+    _gnomad_v4_genotypes,
 )
 
 # v4 test dataset VDS
-gnomad_v4_testset = VariantDatasetResource("gs://gnomad/raw/exomes/4.0/testing/gnomad_v4.0_test.vds")
-gnomad_v4_testset_meta = TableResource("gs://gnomad/raw/exomes/4.0/testing/gnomad_v4.0_meta.ht")
+gnomad_v4_testset = VariantDatasetResource(
+    "gs://gnomad/v4.0/raw/exomes/testing/gnomad_v4.0_test.vds"
+)
+gnomad_v4_testset_meta = TableResource(
+    "gs://gnomad/v4.0/raw/exomes/testing/gnomad_v4.0_meta.ht"
+)
 
 
-# UKBB data resources
-def _ukbb_root_path() -> str:
+# UKB data resources
+def _ukb_root_path() -> str:
     """
-    Retrieve the path to the UKBB data directory.
+    Retrieve the path to the UKB data directory.
 
-    :return: String representation of the path to the UKBB data directory
+    :return: String representation of the path to the UKB data directory
     """
     return "gs://gnomad/v4.0/ukbb"
 
 
-# List of samples to exclude from QC due to withdrawn consents
-# This is the file with the most up to date sample withdrawals we were sent. File downloaded on 8/16/21
-ukbb_excluded_samples_path = f"{_ukbb_root_path()}/w26041_20210809.csv"
-
-# UKBB map of exome IDs to array sample IDs (application ID: 26041)
-ukbb_array_sample_map = TableResource(
-    f"{_ukbb_root_path()}/array_sample_map_freeze_7.ht"
+# List of samples to exclude from QC due to withdrawn consents.
+# Application 26041 is from the 08/09/2021 list and application 31063 is from the 02/22/2022 list.
+# These were originally imported as CSVs and then keyed by their respective eids.
+ukb_excluded = VersionedTableResource(
+    default_version="31063_20220222",
+    versions={
+        "26041_20210809": TableResource(path=f"{_ukb_root_path()}/w26041_20210809.ht"),
+        "31063_20220222": TableResource(
+            path=f"{_ukb_root_path()}/ukb31063.withdrawn_participants.20220222.ht"
+        ),
+    },
 )
+
+# UKB map of exome IDs to array sample IDs (application ID: 26041)
+ukb_array_sample_map = TableResource(f"{_ukb_root_path()}/array_sample_map_freeze_7.ht")
+
+# UKB full mapping file of sample ID and application IDs 26041, 31063, and 48511
+ukb_application_map = TableResource(
+    f"{_ukb_root_path()}/ukbb_application_id_mappings.ht"
+)
+
 
 # Samples known to be on the pharma partners' remove lists.
 # All 44 samples are marked as "unresolved duplicates" by the pharma partners.
-ukbb_known_dups = TableResource(f"{_ukbb_root_path()}/pharma_known_dups_7.ht")
+ukb_known_dups = TableResource(f"{_ukb_root_path()}/pharma_known_dups_7.ht")
 
 # Samples with duplicate names in the VDS and their column index
 # 27 samples to remove based on column index
-ukbb_dups_idx_path = f"{_ukbb_root_path()}/dup_remove_idx_7.tsv"
+ukb_dups_idx_path = f"{_ukb_root_path()}/dup_remove_idx_7.tsv"
 
-# Final list of UKBB samples to remove
-all_ukbb_samples_to_remove = f"{_ukbb_root_path()}/all_ukbb_samples_to_remove.txt"
+# Final list of UKB samples to remove (duplicates that were removed will have their original index appended to the sample name)
+all_ukb_samples_to_remove = f"{_ukb_root_path()}/all_ukbb_samples_to_remove.txt"
+
+# UKB f-stat sites Table with UKB allele frequencies
+ukb_f_stat = TableResource(f"{_ukb_root_path()}/f_stat_sites.ht")
 
 
 def qc_temp_prefix(version: str = CURRENT_VERSION) -> str:
@@ -214,12 +273,14 @@ def add_meta(
     :param version: Version of metadata ht to use for annotations
     :return: MatrixTable with metadata added in a 'meta' column
     """
-    mt = mt.annotate_cols(meta_name=meta.versions[version].ht()[mt.col_key])
+    mt = mt.annotate_cols(**{meta_name: meta.versions[version].ht()[mt.col_key]})
 
     return mt
 
 
-def calling_intervals(interval_name: str, calling_interval_padding: int) -> TableResource:
+def calling_intervals(
+    interval_name: str, calling_interval_padding: int
+) -> TableResource:
     """
     Return path to capture intervals Table.
 
@@ -228,12 +289,20 @@ def calling_intervals(interval_name: str, calling_interval_padding: int) -> Tabl
     :return: Calling intervals resource
     """
     if interval_name not in {"ukb", "broad", "intersection"}:
-        raise ValueError("Calling interval name must be one of: 'ukb', 'broad', or 'intersection'!")
+        raise ValueError(
+            "Calling interval name must be one of: 'ukb', 'broad', or 'intersection'!"
+        )
     if calling_interval_padding not in {0, 50}:
         raise ValueError("Calling interval padding must be one of: 0 or 50 (bp)!")
     if interval_name == "ukb":
-        return TableResource(f"gs://gnomad/resources/intervals/xgen_plus_spikein.Homo_sapiens_assembly38.targets.pad{calling_interval_padding}.interval_list.ht")
+        return TableResource(
+            f"gs://gnomad/resources/intervals/xgen_plus_spikein.Homo_sapiens_assembly38.targets.pad{calling_interval_padding}.interval_list.ht"
+        )
     if interval_name == "broad":
-        return TableResource(f"gs://gnomad/resources/intervals/hg38_v0_exome_calling_regions.v1.pad{calling_interval_padding}.interval_list.ht")
+        return TableResource(
+            f"gs://gnomad/resources/intervals/hg38_v0_exome_calling_regions.v1.pad{calling_interval_padding}.interval_list.ht"
+        )
     if interval_name == "intersection":
-        return TableResource(f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.intersection.interval_list.ht")
+        return TableResource(
+            f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.intersection.interval_list.ht"
+        )

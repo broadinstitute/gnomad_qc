@@ -194,6 +194,17 @@ def get_relatedness_annotated_ht() -> hl.Table:
     )
 
 
+def subpop_outliers(pop: str, version: str = CURRENT_VERSION) -> TableResource:
+    """
+    Table resource for outlier samples in the subpopulation analysis
+    
+    :param pop: Population in which subpops have been assgined
+    :param version: Version of subpop outliers path to return
+    :return: TableResource of outlier samples in subpops analysis within population specified by 'pop' parameter 
+    """
+    return TableResource(f"{get_sample_qc_root(version)}/subpop_analysis/gnomad_v{version}_outlier_in_subpops.{pop}.ht")
+
+
 # QC Sites (gnomAD v2 QC sites, lifted over)
 gnomad_v2_qc_sites = TableResource(
     "gs://gcp-public-data--gnomad/resources/grch38/gnomad_v2_qc_sites_b38.ht"

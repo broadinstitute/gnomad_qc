@@ -13,12 +13,15 @@ from gnomad_qc.v3.resources.sample_qc import (
     assigned_subpops,
     filtered_subpop_qc_mt,
     pca_related_samples_to_drop,
+    subpop_outliers,
     subpop_qc,
 )
 from gnomad_qc.v3.sample_qc.sample_qc import assign_pops
 
 from gnomad.resources.grch38.reference_data import lcr_intervals
+from gnomad.resources.resource_utils import DataException
 from gnomad.utils.annotations import get_adj_expr
+from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad_qc.v3.resources import release_sites
@@ -32,9 +35,106 @@ logging.basicConfig(
 logger = logging.getLogger("subpop_analysis")
 logger.setLevel(logging.INFO)
 
+CURATED_SUBPOPS = {
+    # NOTE: 'Dai' is a known subpop label within eas but is removed as only 8 samples have defined subpop labels in this group, and it is similar to "Chinese Dai" which has more samples with defined subpop labels (92 samples)
+    # NOTE: 'Han' is a known subpop label within eas but is removed as it is already encompassed by more distinct subpops, "Han Chinese" and "Southern Han Chinese" ("Han" overlaps both "Han Chinese" and "Southern Han Chinese" in PCA plots)
+    # NOTE: 'Utah Residents (European Ancestry)' is a known subpop label within nfe but is removed as it is not a descriptive/accurate label and clusters near (0,0) on many PCs, which is potentially a result of missing data
+    "eas": [
+        "Cambodian",
+        "Chinese Dai",
+        "Daur",
+        "Han Chinese",
+        "Hezhen",
+        "Japanese",
+        "Kinh",
+        "Lahu",
+        "Miaozu",
+        "Mongola",
+        "Naxi",
+        "Oroqen",
+        "She",
+        "Southern Han Chinese",
+        "Tu",
+        "Tujia",
+        "Uygur",
+        "Xibo",
+        "Yakut",
+        "Yizu",
+    ],
+    "sas": [
+        "Balochi",
+        "Bengali",
+        "Brahui",
+        "Burusho",
+        "Gujarati",
+        "Hazara",
+        "Indian Telugu",
+        "Kalash",
+        "Makrani",
+        "Pakistani",
+        "Pathan",
+        "Punjabi",
+        "Sindhi",
+        "Sri Lankan Tamil",
+    ],
+    "mid": ["Bedouin", "Druze", "Mozabite", "Palestinian"],
+    "amr": [
+        "Colombian",
+        "Costa Rican",
+        "Hawaiian",
+        "Indigenous American",
+        "Karitiana",
+        "Maya",
+        "Mexican-American",
+        "Peruvian",
+        "Pima",
+        "Puerto Rican",
+        "Rapa Nui from Easter Island",
+        "Surui",
+    ],
+    "afr": [
+        "African Caribbean",
+        "African-American",
+        "Bantu Kenya",
+        "Bantu S Africa",
+        "Biaka Pygmy",
+        "Continental African",
+        "Esan",
+        "Gambian",
+        "Luhya",
+        "Mandenka",
+        "Mbuti Pygmy",
+        "Mende",
+        "San",
+        "Yoruba",
+    ],
+    "nfe": [
+        "Adygei",
+        "Basque",
+        "British",
+        "Dutch",
+        "Estonian",
+        "French",
+        "German",
+        "Iberian",
+        "Italian",
+        "Norwegian",
+        "Orcadian",
+        "Russian",
+        "Sardinian",
+        "Swedish",
+        "Toscani",
+    ],
+}
+"""
+Manually curated list of which subpopulations to include within each global population. Manual curation was needed as some known subpop labels may be inaccurate, especially those that are cohort-level annotations.
+For example, curation is needed to remove "Costa Rican" and "Indigenous American" subpops from the list of known subpops for the East Asian population.
+"""
+
 
 def compute_subpop_qc_mt(
-    mt: hl.MatrixTable, min_popmax_af: float = 0.001,
+    mt: hl.MatrixTable,
+    min_popmax_af: float = 0.001,
 ) -> hl.MatrixTable:
     """
     Generate the subpop QC MT to be used for all subpop analyses.
@@ -64,7 +164,9 @@ def compute_subpop_qc_mt(
         _read_if_exists=not args.overwrite,
     )
 
-    logger.info("Converting MT to VDS...")
+    logger.info(
+        "Converting MT to VDS..."
+    )  # Convert to VDS to more efficiently densify the data
     mt = mt.select_entries(
         "END", "LA", "LGT", adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
     )
@@ -87,6 +189,8 @@ def filter_subpop_qc(
     min_inbreeding_coeff_threshold: float = -0.25,
     min_hardy_weinberg_threshold: float = 1e-8,
     ld_r2: float = 0.1,
+    n_partitions: int = None,
+    block_size: int = None,
 ) -> hl.MatrixTable:
     """
     Generate the QC MT per specified population.
@@ -101,6 +205,8 @@ def filter_subpop_qc(
     :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to retain variant in QC MT
     :param min_hardy_weinberg_threshold: Minimum site HW test p-value to keep
     :param ld_r2: Minimum r2 to keep when LD-pruning (set to `None` for no LD pruning)
+    :param n_partitions: Number of partitions to repartition the MT to before LD pruning
+    :param block_size: If given, set the block size to this value when LD pruning
     :return: Filtered QC MT with sample metadata for the specified population to use for subpop analysis
     """
     meta_ht = meta.ht()
@@ -140,6 +246,8 @@ def filter_subpop_qc(
         ld_r2=ld_r2,
         filter_decoy=False,
         checkpoint_path=get_checkpoint_path("intermediate_qc_mt", mt=True),
+        n_partitions=n_partitions,
+        block_size=block_size,
     )
 
     return pop_qc_mt
@@ -170,7 +278,7 @@ def main(args):  # noqa: D103
                 overwrite=args.overwrite,
             )
 
-        if args.run_subpop_pca:
+        if args.run_filter_subpop_qc:
             logger.info("Filtering subpop QC MT...")
             if args.test:
                 mt = hl.read_matrix_table(
@@ -185,31 +293,44 @@ def main(args):  # noqa: D103
                 args.min_inbreeding_coeff_threshold,
                 args.min_hardy_weinberg_threshold,
                 args.ld_r2,
+                args.n_partitions,
+                args.block_size,
             )
 
-            if args.checkpoint_filtered_subpop_qc:
-                mt = mt.checkpoint(
-                    get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
-                    if args.test
-                    else filtered_subpop_qc_mt(pop),
-                    overwrite=args.overwrite,
-                    _read_if_exists=not args.overwrite,
-                )
+            mt.write(
+                get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
+                if args.test
+                else filtered_subpop_qc_mt(pop),
+                overwrite=args.overwrite,
+            )
 
+        if args.run_subpop_pca:
+            # Read in the QC MT for a specified subpop and filter samples based on user parameters
+            mt = hl.read_matrix_table(
+                get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
+                if args.test
+                else filtered_subpop_qc_mt(pop)
+            )
             if not include_unreleasable_samples:
                 mt = mt.filter_cols(
-                    mt.project_meta.releasable & ~mt.project_meta.exclude
+                    mt.project_meta.releasable
+                    & ~mt.project_meta.exclude  # See https://github.com/broadinstitute/gnomad_meta/tree/master/v3.1#gnomad-project-metadata-annotation-definitions for further explanation of 'exclude'
                 )
             if high_quality:
                 mt = mt.filter_cols(mt.high_quality)
-            if args.outlier_ht_path is not None:
-                outliers = hl.read_table(args.outlier_ht_path)
+            if args.remove_outliers:
+                if not file_exists(subpop_outliers(pop).path):
+                    raise DataException(
+                        f"The --remove-outlier option was used, but a Table of outlier samples does not exist for population {pop} at {subpop_outliers(pop).path}"
+                    )
+
+                outliers = subpop_outliers(pop).ht()
                 mt = mt.filter_cols(hl.is_missing(outliers[mt.col_key]))
 
             logger.info("Generating PCs for subpops...")
             relateds = pca_related_samples_to_drop.ht()
             pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
-                mt, relateds
+                mt, relateds, n_pcs=args.n_pcs
             )
 
             pop_pca_evals_ht = hl.Table.parallelize(
@@ -249,13 +370,14 @@ def main(args):  # noqa: D103
         if args.assign_subpops:
             logger.info("Assigning subpops...")
             joint_pca_ht, joint_pca_fit = assign_pops(
-                min_prob=args.min_prob,  # How to decide on this number? Should withhold a certain percent and make a PR curve gs://gnomad-julia/gnomad_v4/pca_with_ccdg_gnomad_ukb_variants.ipynb
+                min_prob=args.min_prob,
                 include_unreleasable_samples=False,
-                max_number_mislabeled_training_samples=args.max_number_mislabeled_training_samples,  # How to decide on this number?
+                max_number_mislabeled_training_samples=args.max_number_mislabeled_training_samples,
                 max_proportion_mislabeled_training_samples=args.max_proportion_mislabeled_training_samples,
                 pcs=args.pcs,
                 withhold_prop=args.withhold_prop,
                 pop=pop,
+                curated_subpops=CURATED_SUBPOPS[pop],
                 high_quality=high_quality,
                 missing_label="Other",
             )
@@ -272,10 +394,8 @@ if __name__ == "__main__":
         description="This script generates a QC MT and PCA scores to use for subpop analyses"
     )
     parser.add_argument(
-        "--slack-token", help="Slack token that allows integration with slack",
-    )
-    parser.add_argument(
-        "--slack-channel", help="Slack channel to post results and notifications to",
+        "--slack-channel",
+        help="Slack channel to post results and notifications to",
     )
     parser.add_argument(
         "--overwrite", help="Overwrites existing files", action="store_true"
@@ -297,14 +417,25 @@ if __name__ == "__main__":
         default=0.001,
     )
     parser.add_argument(
-        "--run-subpop-pca",
-        help="Runs function to generate PCA data for a certain population specified by --pop argument",
+        "--run-filter-subpop-qc",
+        help="Runs function to filter the QC MT to a certain subpop specified by --pop argument",
         action="store_true",
     )
     parser.add_argument(
         "--pop",
         help="Population to which the subpop QC MT should be filtered when generating the PCA data",
         type=str,
+    )
+    parser.add_argument(
+        "--run-subpop-pca",
+        help="Runs function to generate PCA data for a certain population specified by --pop argument and based on variants in the subpop QC MT created using the --run-filter-subpop-qc argument",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--n-pcs",
+        help="Number of PCs to compute",
+        type=int,
+        default=20,
     )
     parser.add_argument(
         "--min-af",
@@ -325,12 +456,27 @@ if __name__ == "__main__":
         default=1e-8,
     )
     parser.add_argument(
-        "--ld-r2", help="Minimum r2 to keep when LD-pruning", type=float, default=0.1,
+        "--ld-r2",
+        help="Minimum r2 to keep when LD-pruning",
+        type=float,
+        default=0.1,
     )
     parser.add_argument(
-        "--outlier-ht-path",
-        help="Path to Table keyed by column containing outliers to remove when generating the PCA data",
-        type=str,
+        "--n-partitions",
+        help="Optional number of partitions to repartition the MT to before running LD pruning. Repartitioning to fewer partitions is useful after filtering out many variants to avoid errors regarding 'maximal_independent_set may run out of memory' while LD pruning",
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
+        "--block-size",
+        help="Optional block size to use for LD pruning",
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
+        "--remove-outliers",
+        help="Whether to remove outliers when generating the PCA data. Outliers are manually determined after visualizing the PC plots",
+        action="store_true",
     )
     parser.add_argument(
         "--include-unreleasable-samples",
@@ -343,12 +489,9 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--checkpoint-filtered-subpop-qc",
-        help="Checkpoint the filtered subpop QC MT",
+        "--assign-subpops",
+        help="Runs function to assign subpops",
         action="store_true",
-    )
-    parser.add_argument(
-        "--assign-subpops", help="Runs function to assign subpops", action="store_true",
     )
     parser.add_argument(
         "--min-prob",
@@ -367,7 +510,7 @@ if __name__ == "__main__":
         help="List of PCs to use in the subpop RF assignment",
         type=int,
         nargs="+",
-        default=list(range(1, 17)),
+        default=list(range(1, 20)),
     )
     mislabel_parser = parser.add_mutually_exclusive_group(required=True)
     mislabel_parser.add_argument(
@@ -385,9 +528,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Both a slack token and slack channel must be supplied to receive notifications on slack
-    if args.slack_channel and args.slack_token:
-        with slack_notifications(args.slack_token, args.slack_channel):
+    if args.slack_channel:
+        from gnomad_qc.slack_creds import slack_token
+
+        with slack_notifications(slack_token, args.slack_channel):
             main(args)
     else:
         main(args)
