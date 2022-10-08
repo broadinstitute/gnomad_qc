@@ -2,7 +2,6 @@ import argparse
 import logging
 
 import hail as hl
-
 from gnomad.sample_qc.relatedness import generate_trio_stats_expr
 from gnomad.utils.annotations import (
     add_variant_type,
@@ -13,10 +12,10 @@ from gnomad.utils.annotations import (
 from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
-    get_as_info_expr,
-    get_site_info_expr,
     INFO_INT32_SUM_AGG_FIELDS,
     INFO_SUM_AGG_FIELDS,
+    get_as_info_expr,
+    get_site_info_expr,
     split_info_annotation,
     split_lowqual_annotation,
 )
@@ -28,13 +27,13 @@ from gnomad_qc.v3.resources.annotations import (
     allele_data,
     fam_stats,
     get_info,
+    get_transmitted_singleton_vcf_path,
     info_vcf_path,
     qc_ac,
     vep,
 )
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import trios
-from gnomad_qc.v3.resources.annotations import get_transmitted_singleton_vcf_path
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -262,7 +261,10 @@ def generate_fam_stats(mt: hl.MatrixTable, fam_file: str) -> hl.Table:
         **generate_trio_stats_expr(
             mt,
             transmitted_strata={"raw": True, "adj": trio_adj},
-            de_novo_strata={"raw": True, "adj": trio_adj,},
+            de_novo_strata={
+                "raw": True,
+                "adj": trio_adj,
+            },
             proband_is_female_expr=mt.is_female,
         )
     ).rows()

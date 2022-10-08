@@ -12,8 +12,8 @@ from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v3.resources.basics import qc_temp_prefix
 from gnomad_qc.v3.resources.constants import (
-    CURRENT_RELEASE,
     CURRENT_HGDP_TGP_RELEASE,
+    CURRENT_RELEASE,
     HGDP_TGP_RELEASES,
     RELEASES,
 )

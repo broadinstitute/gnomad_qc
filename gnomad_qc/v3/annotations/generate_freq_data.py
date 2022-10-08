@@ -2,7 +2,6 @@ import argparse
 import logging
 
 import hail as hl
-
 from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     DOWNSAMPLINGS,
@@ -21,13 +20,10 @@ from gnomad.utils.annotations import (
     get_adj_expr,
     pop_max_expr,
     qual_hist_expr,
+    set_female_y_metrics_to_na_expr,
 )
 from gnomad.utils.file_utils import file_exists
-from gnomad.utils.release import (
-    make_faf_index_dict,
-    make_freq_index_dict,
-)
-from gnomad.utils.annotations import set_female_y_metrics_to_na_expr
+from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token

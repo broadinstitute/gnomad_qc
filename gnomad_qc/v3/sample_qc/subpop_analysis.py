@@ -1,10 +1,22 @@
 import argparse
-import hail as hl
 import logging
 
+import hail as hl
+from gnomad.resources.grch38.reference_data import lcr_intervals
+from gnomad.resources.resource_utils import DataException
 from gnomad.sample_qc.ancestry import run_pca_with_relateds
+from gnomad.sample_qc.pipeline import get_qc_mt
+from gnomad.utils.annotations import get_adj_expr
+from gnomad.utils.file_utils import file_exists
+from gnomad.utils.slack import slack_notifications
 
-from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
+from gnomad_qc.v3.resources import release_sites
+from gnomad_qc.v3.resources.annotations import get_info
+from gnomad_qc.v3.resources.basics import (
+    get_checkpoint_path,
+    get_gnomad_v3_mt,
+    get_logging_path,
+)
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.sample_qc import (
     ancestry_pca_eigenvalues,
@@ -17,16 +29,6 @@ from gnomad_qc.v3.resources.sample_qc import (
     subpop_qc,
 )
 from gnomad_qc.v3.sample_qc.sample_qc import assign_pops
-
-from gnomad.resources.grch38.reference_data import lcr_intervals
-from gnomad.resources.resource_utils import DataException
-from gnomad.utils.annotations import get_adj_expr
-from gnomad.utils.file_utils import file_exists
-from gnomad.utils.slack import slack_notifications
-from gnomad.sample_qc.pipeline import get_qc_mt
-from gnomad_qc.v3.resources import release_sites
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
-from gnomad_qc.v3.resources.annotations import get_info
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",

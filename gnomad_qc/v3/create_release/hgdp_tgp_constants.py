@@ -504,8 +504,12 @@ VARIANT_ANNOTATIONS = {
     "locus": {
         "Description": "Variant locus. Contains contig and position information.",
     },
-    "alleles": {"Description": "Variant alleles.",},
-    "rsid": {"Description": "dbSNP reference SNP identification (rsID) numbers.",},
+    "alleles": {
+        "Description": "Variant alleles.",
+    },
+    "rsid": {
+        "Description": "dbSNP reference SNP identification (rsID) numbers.",
+    },
     "a_index": {
         "Description": (
             "The original index of this alternate allele in the multiallelic representation (1 is the first alternate "

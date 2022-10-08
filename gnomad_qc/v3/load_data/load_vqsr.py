@@ -3,9 +3,9 @@ import logging
 from typing import Optional
 
 import hail as hl
-
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import split_info_annotation
+
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_vqsr_filters
 
@@ -91,7 +91,10 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vqsr_vcf_path", help="Path to VQSR VCF. Can be specified as Hadoop glob patterns")
+    parser.add_argument(
+        "--vqsr_vcf_path",
+        help="Path to VQSR VCF. Can be specified as Hadoop glob patterns",
+    )
     parser.add_argument(
         "--vqsr_type",
         help="Type of VQSR corresponding to the VQSR VCF being loaded",
@@ -115,7 +118,8 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--slack_channel", help="Slack channel to post results and notifications to",
+        "--slack_channel",
+        help="Slack channel to post results and notifications to",
     )
     args = parser.parse_args()
 

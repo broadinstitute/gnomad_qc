@@ -2,19 +2,15 @@ import argparse
 import logging
 
 import hail as hl
-
-from gnomad.sample_qc.platform import (
-    assign_platform_from_pcs,
-    run_platform_pca,
-)
+from gnomad.sample_qc.platform import assign_platform_from_pcs, run_platform_pca
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import (
     get_checkpoint_path,
-    gnomad_v4_testset_meta,
     get_logging_path,
+    gnomad_v4_testset_meta,
 )
 from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_samples_no_sex,

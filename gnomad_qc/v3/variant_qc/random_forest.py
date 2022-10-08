@@ -2,11 +2,10 @@ import argparse
 import json
 import logging
 import sys
-from typing import List, Optional, Union
 import uuid
+from typing import List, Optional, Union
 
 import hail as hl
-
 from gnomad.resources.grch38.reference_data import (
     get_truth_ht,
     telomeres_and_centromeres,
@@ -24,7 +23,6 @@ from gnomad.variant_qc.random_forest import (
 )
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources.basics import get_checkpoint_path
 from gnomad_qc.v3.resources.annotations import (
     allele_data,
     fam_stats,
@@ -33,6 +31,7 @@ from gnomad_qc.v3.resources.annotations import (
     get_vqsr_filters,
     qc_ac,
 )
+from gnomad_qc.v3.resources.basics import get_checkpoint_path
 from gnomad_qc.v3.resources.variant_qc import (
     get_rf_annotations,
     get_rf_model_path,
@@ -161,9 +160,11 @@ def create_rf_ht(
     if impute_features:
         ht = median_impute_features(ht, {"variant_type": ht.variant_type})
 
-    summary = ht.group_by("omni", "mills", "transmitted_singleton",).aggregate(
-        n=hl.agg.count()
-    )
+    summary = ht.group_by(
+        "omni",
+        "mills",
+        "transmitted_singleton",
+    ).aggregate(n=hl.agg.count())
     logger.info("Summary of truth data annotations:")
     summary.show(20)
 
@@ -268,7 +269,8 @@ def main(args):
             checkpoint_path=get_checkpoint_path("rf_annotation"),
         )
         ht.write(
-            get_rf_annotations(args.adj).path, overwrite=args.overwrite,
+            get_rf_annotations(args.adj).path,
+            overwrite=args.overwrite,
         )
         logger.info(f"Completed annotation wrangling for random forests model training")
 
@@ -292,7 +294,8 @@ def main(args):
         )
 
         ht = ht.checkpoint(
-            get_rf_training(model_id=model_id).path, overwrite=args.overwrite,
+            get_rf_training(model_id=model_id).path,
+            overwrite=args.overwrite,
         )
 
         logger.info("Adding run to RF run list")
@@ -315,7 +318,9 @@ def main(args):
 
         logger.info("Saving RF model")
         save_model(
-            rf_model, get_rf_model_path(model_id=model_id), overwrite=args.overwrite,
+            rf_model,
+            get_rf_model_path(model_id=model_id),
+            overwrite=args.overwrite,
         )
 
     else:
@@ -331,7 +336,8 @@ def main(args):
         logger.info("Finished applying RF model")
         ht = ht.annotate_globals(rf_model_id=model_id)
         ht = ht.checkpoint(
-            get_rf_result(model_id=model_id).path, overwrite=args.overwrite,
+            get_rf_result(model_id=model_id).path,
+            overwrite=args.overwrite,
         )
 
         ht_summary = ht.group_by(

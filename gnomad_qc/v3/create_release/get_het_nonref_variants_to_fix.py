@@ -8,16 +8,14 @@ import argparse
 import logging
 
 import hail as hl
-
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import densify_sites
 from gnomad.utils.vcf import SPARSE_ENTRIES
 
+from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.resources.annotations import last_END_position
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.release import release_sites
-from gnomad_qc.v3.resources.annotations import last_END_position
-from gnomad_qc.slack_creds import slack_token
-
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -36,7 +34,9 @@ def main(args):
 
     logger.info("Reading sparse MT and metadata table with release only samples...")
     mt = get_gnomad_v3_mt(
-        key_by_locus_and_alleles=True, samples_meta=True, release_only=True,
+        key_by_locus_and_alleles=True,
+        samples_meta=True,
+        release_only=True,
     ).select_entries(*SPARSE_ENTRIES)
 
     if args.test:
@@ -73,7 +73,10 @@ def main(args):
     # Thus, it doesn't matter that `sites_ht` has already been split
     # NOTE: set semi_join_rows to False here because the sites_HT is small
     mt = densify_sites(
-        mt, sites_ht, last_END_position.versions["3.1"].ht(), semi_join_rows=False,
+        mt,
+        sites_ht,
+        last_END_position.versions["3.1"].ht(),
+        semi_join_rows=False,
     )
     mt = mt.filter_rows(
         (hl.len(mt.alleles) > 1) & (hl.is_defined(sites_ht[mt.row_key]))

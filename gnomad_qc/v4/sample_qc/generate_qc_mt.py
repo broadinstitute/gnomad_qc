@@ -2,17 +2,18 @@ import argparse
 import logging
 from typing import Union
 
+import hail as hl
 from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad.utils.annotations import annotate_adj, get_adj_expr
 from gnomad.utils.slack import slack_notifications
-import hail as hl
 
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v4.resources.basics import (
     get_checkpoint_path,
-    get_logging_path,
     get_gnomad_v4_vds,
+    get_logging_path,
 )
 from gnomad_qc.v4.resources.meta import project_meta as v4_meta
 from gnomad_qc.v4.resources.sample_qc import (
@@ -23,7 +24,6 @@ from gnomad_qc.v4.resources.sample_qc import (
     qc,
     sample_chr20_mean_dp,
 )
-from gnomad_qc.slack_creds import slack_token
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("generate_qc_mt")

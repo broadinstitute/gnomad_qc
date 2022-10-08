@@ -15,7 +15,6 @@ from gnomad_qc.v3.resources.release import (
     release_ht_path,
 )
 
-
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
@@ -26,7 +25,7 @@ logger.setLevel(logging.INFO)
 
 LOG10_ANNOTATIONS = ["AS_VarDP", "QUALapprox", "AS_QUALapprox"]
 """
-List of annotations to log scale when creating histograms. 
+List of annotations to log scale when creating histograms.
 """
 
 
@@ -140,7 +139,10 @@ def main(args):
             ht.aggregate(
                 hl.agg.filter(
                     ht.af_bin == x,
-                    hl.agg.hist(ht.info.InbreedingCoeff, *inbreeding_bin_ranges[x],),
+                    hl.agg.hist(
+                        ht.info.InbreedingCoeff,
+                        *inbreeding_bin_ranges[x],
+                    ),
                 )
             ).annotate(metric="InbreedingCoeff" + "-" + x)
             for x in inbreeding_bin_ranges
