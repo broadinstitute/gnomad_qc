@@ -1,3 +1,4 @@
+"""Script to determine samples that fail hard filtering thresholds."""
 import argparse
 import logging
 
@@ -238,6 +239,7 @@ def compute_hard_filters(
 
 
 def main(args):
+    """Determine samples that fail hard filtering thresholds."""
     hl.init(
         log="/gnomad_hard_filters.log",
         default_reference="GRCh38",

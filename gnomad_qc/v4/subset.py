@@ -1,3 +1,4 @@
+"""Script to filter the gnomAD v4 VariantDataset to a subset of specified samples."""
 import argparse
 import logging
 
@@ -105,6 +106,7 @@ SUBSET_CALLSTATS_INFO_DICT = {
 
 
 def main(args):
+    """Filter the gnomAD v4 VariantDataset to a subset of specified samples."""
     hl.init(log="/subset.log", default_reference="GRCh38")
     test = args.test
     output_path = args.output_path

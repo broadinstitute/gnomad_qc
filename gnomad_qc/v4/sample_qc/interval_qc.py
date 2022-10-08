@@ -1,3 +1,13 @@
+"""
+Script to define high quality intervals based on per interval aggregate statistics over samples.
+
+Two methods are available for defining high quality intervals:
+    - mean fraction of bases over DP 0 to determine high quality intervals.
+    - fraction of samples with a mean interval coverage over a specified coverage that is different for autosomes and
+      sex chromosomes.
+
+Aggregate statistics over samples can also be stratified by platform to determine per-platform high quality intervals.
+"""
 import argparse
 import functools
 import logging
@@ -477,6 +487,7 @@ def annotate_interval_qc_filter(
 
 
 def main(args):
+    """Define high quality intervals based on per interval aggregate statistics over samples."""
     hl.init(
         log="/interval_qc.log",
         default_reference="GRCh38",

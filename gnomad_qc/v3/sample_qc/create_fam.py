@@ -25,7 +25,7 @@ from gnomad_qc.v3.resources.sample_qc import (
 logger = logging.getLogger("create_fam")
 
 
-def run_mendel_errors() -> hl.Table:
+def run_mendel_errors() -> hl.Table:  # noqa: D103
     meta_ht = meta.ht()
     ped = pedigree.versions[f"{CURRENT_RELEASE}_raw"].pedigree()
     logger.info(f"Running Mendel errors for {len(ped.trios)} trios.")
@@ -66,7 +66,7 @@ def run_mendel_errors() -> hl.Table:
     return mendel_errors
 
 
-def run_infer_families() -> hl.Pedigree:
+def run_infer_families() -> hl.Pedigree:  # noqa: D103
     logger.info("Inferring families")
     ped = infer_families(get_relatedness_annotated_ht(), sex.ht(), duplicates.ht())
 
@@ -91,7 +91,7 @@ def run_infer_families() -> hl.Pedigree:
     )
 
 
-def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:
+def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:  # noqa: D103
     trios_per_fam = defaultdict(list)
     for trio in ped.trios:
         trios_per_fam[trio.fam_id].append(trio)
@@ -110,7 +110,7 @@ def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:
 
 def filter_ped(
     raw_ped: hl.Pedigree, mendel: hl.Table, max_dnm: int, max_mendel: int
-) -> hl.Pedigree:
+) -> hl.Pedigree:  # noqa: D103
     mendel = mendel.filter(mendel.fam_id.startswith("fake"))
     mendel_by_s = (
         mendel.group_by(mendel.s)

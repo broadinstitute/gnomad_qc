@@ -1,3 +1,4 @@
+"""Script containing generic resources."""
 import logging
 
 import hail as hl

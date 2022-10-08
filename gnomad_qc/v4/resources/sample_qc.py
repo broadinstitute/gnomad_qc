@@ -1,3 +1,4 @@
+"""Script containing sample QC related resources."""
 import hail as hl
 from gnomad.resources.resource_utils import (
     MatrixTableResource,

@@ -1,3 +1,4 @@
+"""Script containing variant QC related resources."""
 from typing import Optional, Union
 
 from gnomad.resources.grch38 import (
@@ -7,7 +8,6 @@ from gnomad.resources.grch38 import (
     syndip_hc_intervals,
 )
 from gnomad.resources.resource_utils import (
-    DataException,
     MatrixTableResource,
     TableResource,
     VersionedMatrixTableResource,

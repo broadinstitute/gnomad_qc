@@ -9,7 +9,7 @@ from gnomad.utils.annotations import get_adj_expr
 from gnomad_qc.v3.resources import get_gnomad_v3_mt
 
 
-def print_ref_block_stats(path: str):
+def print_ref_block_stats(path: str):  # noqa: D103
     import numpy as np
 
     def _print_block_stats(stats: hl.Struct):
@@ -45,7 +45,7 @@ def print_ref_block_stats(path: str):
             _print_block_stats(pickle.load(f))
 
 
-def compute_stats(stats_path: str):
+def compute_stats(stats_path: str):  # noqa: D103
     mt = get_gnomad_v3_mt()
     mt = mt.filter_entries(hl.is_defined(mt.END))
     ref_block_stats = mt.aggregate_entries(

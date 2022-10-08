@@ -1,3 +1,4 @@
+"""Script to impute chromosomal sex karyotype annotation."""
 import argparse
 import json
 import logging
@@ -617,6 +618,7 @@ def reformat_ploidy_cutoffs_for_json(ht: hl.Table, per_platform: bool = False) -
 
 
 def main(args):
+    """Impute chromosomal sex karyotype annotation."""
     hl.init(
         log="/sex_inference.log",
         default_reference="GRCh38",
