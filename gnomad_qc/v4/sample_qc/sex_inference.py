@@ -508,7 +508,7 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
                     x_frac_hom_alt_cutoffs["lower_cutoff_more_than_one_X"],
                     x_frac_hom_alt_cutoffs["upper_cutoff_more_than_one_X"],
                 ),
-                x_frac_hom_alt_cutoffs["lower_cutoff_X"],
+                x_frac_hom_alt_cutoffs["lower_cutoff_single_X"],
             )
 
         return x_ploidy_cutoffs, y_ploidy_cutoffs, x_frac_hom_alt_cutoffs
@@ -622,19 +622,19 @@ def infer_sex_karyotype_from_ploidy(
                 platform,
             )
             ploidy_platform_ht = ploidy_ht.filter(ploidy_ht.platform == platform)
+
             if apply_x_frac_hom_alt_cutoffs:
-                karyotype_ht = infer_sex_karyotype(
-                    ploidy_platform_ht,
-                    f_stat_cutoff,
-                    use_gmm_for_ploidy_cutoffs,
-                    chr_x_frac_hom_alt_expr=ploidy_platform_ht.chrx_frac_hom_alt_adj,
-                )
+                chr_x_frac_hom_alt_expr = ploidy_platform_ht.chrx_frac_hom_alt_adj
             else:
-                karyotype_ht = infer_sex_karyotype(
-                    ploidy_platform_ht,
-                    f_stat_cutoff,
-                    use_gmm_for_ploidy_cutoffs,
-                )
+                chr_x_frac_hom_alt_expr = None
+
+            karyotype_ht = infer_sex_karyotype(
+                ploidy_platform_ht,
+                f_stat_cutoff,
+                use_gmm_for_ploidy_cutoffs,
+                chr_x_frac_hom_alt_expr=chr_x_frac_hom_alt_expr,
+            )
+
             karyotype_ht = karyotype_ht.checkpoint(
                 get_checkpoint_path(f"karyotype_platform_{platform}"), overwrite=True
             )
@@ -659,16 +659,16 @@ def infer_sex_karyotype_from_ploidy(
             )
     else:
         if apply_x_frac_hom_alt_cutoffs:
-            karyotype_ht = infer_sex_karyotype(
-                ploidy_ht,
-                f_stat_cutoff,
-                use_gmm_for_ploidy_cutoffs,
-                chr_x_frac_hom_alt_expr=ploidy_ht.chrx_frac_hom_alt_adj,
-            )
+            chr_x_frac_hom_alt_expr = ploidy_ht.chrx_frac_hom_alt_adj
         else:
-            karyotype_ht = infer_sex_karyotype(
-                ploidy_ht, f_stat_cutoff, use_gmm_for_ploidy_cutoffs
-            )
+            chr_x_frac_hom_alt_expr = None
+
+        karyotype_ht = infer_sex_karyotype(
+            ploidy_ht,
+            f_stat_cutoff,
+            use_gmm_for_ploidy_cutoffs,
+            chr_x_frac_hom_alt_expr=chr_x_frac_hom_alt_expr,
+        )
 
     return karyotype_ht
 
