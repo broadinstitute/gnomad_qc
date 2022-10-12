@@ -467,9 +467,7 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
 
     if apply_x_frac_hom_alt_cutoffs:
         x_frac_hom_alt_cutoffs = sex_karyotype_ploidy_cutoffs["x_frac_hom_alt_cutoffs"]
-        all_cutoff_values +=  list(
-            x_frac_hom_alt_cutoffs.values()
-        )
+        all_cutoff_values += list(x_frac_hom_alt_cutoffs.values())
     else:
         x_frac_hom_alt_cutoffs = None
 
