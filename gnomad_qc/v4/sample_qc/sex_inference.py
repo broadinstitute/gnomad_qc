@@ -413,9 +413,11 @@ def compute_sex_ploidy(
 def annotate_sex_karyotype_from_ploidy_cutoffs(
     ploidy_ht: hl.Table,
     sex_karyotype_ploidy_cutoffs: Union[
-        Dict[str, Dict[str, Dict[str, float]]], Dict[str, Dict[str, float]]
+        Dict[str, Dict[str, Dict[str, float]]],
+        Dict[str, Dict[str, float]],
     ],
     per_platform: bool = False,
+    apply_x_frac_hom_alt_cutoffs: bool = False,
 ) -> hl.Table:
     """
     Determine sex karyotype annotation based on chromosome X and chromosome Y ploidy estimates and ploidy cutoffs.
@@ -452,6 +454,8 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
     :param ploidy_ht: Table with chromosome X and chromosome Y ploidies.
     :param sex_karyotype_ploidy_cutoffs: Dictionary of sex karyotype ploidy cutoffs.
     :param per_platform: Whether the `sex_karyotype_ploidy_cutoffs` should be applied per platform.
+    :param apply_x_frac_hom_alt_cutoffs: Whether to apply cutoffs for the fraction homozygous alternate genotypes
+        (hom-alt/(hom-alt + het)) on chromosome X.
     :return: Sex karyotype Table.
     """
     x_ploidy_cutoffs = sex_karyotype_ploidy_cutoffs["x_ploidy_cutoffs"]
@@ -460,14 +464,24 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
     all_cutoff_values = list(x_ploidy_cutoffs.values()) + list(
         y_ploidy_cutoffs.values()
     )
+
+    if apply_x_frac_hom_alt_cutoffs:
+        x_frac_hom_alt_cutoffs = sex_karyotype_ploidy_cutoffs["x_frac_hom_alt_cutoffs"]
+        all_cutoff_values += list(x_frac_hom_alt_cutoffs.values())
+    else:
+        x_frac_hom_alt_cutoffs = None
+
     ploidy_cutoffs_isdict = all(map(lambda x: isinstance(x, dict), all_cutoff_values))
     ploidy_cutoffs_isstr = all(map(lambda x: isinstance(x, str), all_cutoff_values))
 
     def _format_ploidy_cutoffs(
-        x_ploidy_cutoffs: Dict[str, Dict[str, float]],
-        y_ploidy_cutoffs: Dict[str, Dict[str, float]],
+        x_ploidy_cutoffs: Dict[str, float],
+        y_ploidy_cutoffs: Dict[str, float],
+        x_frac_hom_alt_cutoffs: Optional[Dict[str, float]] = None,
     ) -> Tuple[
-        Tuple[float, Tuple[float, float], float], Tuple[Tuple[float, float], float]
+        Tuple[float, Tuple[float, float], float],
+        Tuple[Tuple[float, float], float],
+        Union[Tuple[Tuple[float, float], float], None],
     ]:
         """
         Reformat ploidy cutoffs for input to `get_sex_expr`.
@@ -486,7 +500,16 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
             y_ploidy_cutoffs["lower_cutoff_YY"],
         )
 
-        return x_ploidy_cutoffs, y_ploidy_cutoffs
+        if x_frac_hom_alt_cutoffs:
+            x_frac_hom_alt_cutoffs = (
+                (
+                    x_frac_hom_alt_cutoffs["lower_cutoff_more_than_one_X"],
+                    x_frac_hom_alt_cutoffs["upper_cutoff_more_than_one_X"],
+                ),
+                x_frac_hom_alt_cutoffs["lower_cutoff_single_X"],
+            )
+
+        return x_ploidy_cutoffs, y_ploidy_cutoffs, x_frac_hom_alt_cutoffs
 
     logger.info("Annotating sex karyotype based on input ploidy cutoffs")
     if per_platform:
@@ -503,8 +526,11 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
             (
                 x_ploidy_platform_cutoffs,
                 y_ploidy_platform_cutoffs,
+                x_frac_hom_alt_platform_cutoffs,
             ) = _format_ploidy_cutoffs(
-                x_ploidy_cutoffs[platform], y_ploidy_cutoffs[platform]
+                x_ploidy_cutoffs[platform],
+                y_ploidy_cutoffs[platform],
+                x_frac_hom_alt_cutoffs[platform] if x_frac_hom_alt_cutoffs else None,
             )
             karyotype_ht = platform_ploidy_ht.select(
                 **get_sex_expr(
@@ -512,6 +538,10 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
                     platform_ploidy_ht.chrY_ploidy,
                     x_ploidy_platform_cutoffs,
                     y_ploidy_platform_cutoffs,
+                    chr_x_frac_hom_alt_expr=platform_ploidy_ht.chrx_frac_hom_alt_adj
+                    if x_frac_hom_alt_cutoffs
+                    else None,
+                    chr_x_frac_hom_alt_cutoffs=x_frac_hom_alt_platform_cutoffs,
                 )
             )
             per_platform_karyotype_hts.append(karyotype_ht)
@@ -524,8 +554,12 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
             raise ValueError(
                 "X ploidy and Y ploidy cutoff dictionary values must be strings when not running per platform!"
             )
-        x_ploidy_cutoffs, y_ploidy_cutoffs = _format_ploidy_cutoffs(
-            x_ploidy_cutoffs, y_ploidy_cutoffs
+        (
+            x_ploidy_cutoffs,
+            y_ploidy_cutoffs,
+            x_frac_hom_alt_cutoffs,
+        ) = _format_ploidy_cutoffs(
+            x_ploidy_cutoffs, y_ploidy_cutoffs, x_frac_hom_alt_cutoffs
         )
         karyotype_ht = ploidy_ht.select(
             **get_sex_expr(
@@ -533,10 +567,22 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
                 ploidy_ht.chrY_ploidy,
                 x_ploidy_cutoffs,
                 y_ploidy_cutoffs,
+                chr_x_frac_hom_alt_expr=None
+                if x_frac_hom_alt_cutoffs is None
+                else ploidy_ht.chrx_frac_hom_alt_adj,
+                chr_x_frac_hom_alt_cutoffs=x_frac_hom_alt_cutoffs,
             )
         )
 
-    karyotype_ht = karyotype_ht.annotate_globals(**sex_karyotype_ploidy_cutoffs)
+    def _to_struct(x):
+        if isinstance(x, dict):
+            return hl.struct(**{v: _to_struct(x[v]) for v in x})
+        else:
+            return x
+
+    karyotype_ht = karyotype_ht.annotate_globals(
+        **_to_struct(sex_karyotype_ploidy_cutoffs)
+    )
 
     return karyotype_ht
 
@@ -546,6 +592,7 @@ def infer_sex_karyotype_from_ploidy(
     per_platform: bool = False,
     f_stat_cutoff: float = -1.0,
     use_gmm_for_ploidy_cutoffs: bool = False,
+    apply_x_frac_hom_alt_cutoffs: bool = False,
 ) -> hl.Table:
     """
     Create a Table with X_karyotype, Y_karyotype, and sex_karyotype.
@@ -555,6 +602,8 @@ def infer_sex_karyotype_from_ploidy(
     :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY
         are above cutoff.
     :param use_gmm_for_ploidy_cutoffs: Use Gaussian mixture model to split samples into 'XX' and 'XY' instead of f-stat.
+    :param apply_x_frac_hom_alt_cutoffs: Whether to apply cutoffs for the fraction homozygous alternate genotypes
+        (hom-alt/(hom-alt + het)) on chromosome X.
     :return: Table of imputed sex karyotypes.
     """
     logger.info("Running sex karyotype inference")
@@ -563,23 +612,37 @@ def infer_sex_karyotype_from_ploidy(
         per_platform_karyotype_hts = []
         x_ploidy_cutoffs = {}
         y_ploidy_cutoffs = {}
+        x_frac_hom_alt_cutoffs = {}
 
         for platform in platforms:
             logger.info(
                 "Performing sex karyotype inference for platform %s...",
                 platform,
             )
+            ploidy_platform_ht = ploidy_ht.filter(ploidy_ht.platform == platform)
+
+            if apply_x_frac_hom_alt_cutoffs:
+                chr_x_frac_hom_alt_expr = ploidy_platform_ht.chrx_frac_hom_alt_adj
+            else:
+                chr_x_frac_hom_alt_expr = None
+
             karyotype_ht = infer_sex_karyotype(
-                ploidy_ht.filter(ploidy_ht.platform == platform),
+                ploidy_platform_ht,
                 f_stat_cutoff,
                 use_gmm_for_ploidy_cutoffs,
+                chr_x_frac_hom_alt_expr=chr_x_frac_hom_alt_expr,
             )
+
             karyotype_ht = karyotype_ht.checkpoint(
                 get_checkpoint_path(f"karyotype_platform_{platform}"), overwrite=True
             )
             per_platform_karyotype_hts.append(karyotype_ht)
             x_ploidy_cutoffs[platform] = karyotype_ht.index_globals().x_ploidy_cutoffs
             y_ploidy_cutoffs[platform] = karyotype_ht.index_globals().y_ploidy_cutoffs
+            if apply_x_frac_hom_alt_cutoffs:
+                x_frac_hom_alt_cutoffs[
+                    platform
+                ] = karyotype_ht.index_globals().x_frac_hom_alt_cutoffs
 
         karyotype_ht = per_platform_karyotype_hts[0].union(
             *per_platform_karyotype_hts[1:]
@@ -588,33 +651,63 @@ def infer_sex_karyotype_from_ploidy(
             x_ploidy_cutoffs=hl.struct(**x_ploidy_cutoffs),
             y_ploidy_cutoffs=hl.struct(**y_ploidy_cutoffs),
         )
+        if apply_x_frac_hom_alt_cutoffs:
+            karyotype_ht = karyotype_ht.annotate_globals(
+                x_frac_hom_alt_cutoffs=hl.struct(**x_frac_hom_alt_cutoffs),
+            )
     else:
+        if apply_x_frac_hom_alt_cutoffs:
+            chr_x_frac_hom_alt_expr = ploidy_ht.chrx_frac_hom_alt_adj
+        else:
+            chr_x_frac_hom_alt_expr = None
+
         karyotype_ht = infer_sex_karyotype(
-            ploidy_ht, f_stat_cutoff, use_gmm_for_ploidy_cutoffs
+            ploidy_ht,
+            f_stat_cutoff,
+            use_gmm_for_ploidy_cutoffs,
+            chr_x_frac_hom_alt_expr=chr_x_frac_hom_alt_expr,
         )
 
     return karyotype_ht
 
 
-def reformat_ploidy_cutoffs_for_json(ht: hl.Table, per_platform: bool = False) -> dict:
+def reformat_ploidy_cutoffs_for_json(
+    ht: hl.Table,
+    per_platform: bool = False,
+    include_x_frac_hom_alt_cutoffs: bool = True,
+) -> dict:
     """
     Format x_ploidy_cutoffs and y_ploidy_cutoffs global annotations for JSON export.
 
     :param ht: Table including globals for x_ploidy_cutoffs and y_ploidy_cutoffs.
     :param per_platform: Whether the ploidy global cutoffs are per platform.
+    :param include_x_frac_hom_alt_cutoffs: Whether to include cutoffs for the fraction homozygous alternate
+        genotypes (hom-alt/(hom-alt + het)) on chromosome X.
     :return: Dictionary of X and Y ploidy cutoffs for JSON export.
     """
     x_ploidy_cutoffs = dict(ht.index_globals().x_ploidy_cutoffs.collect()[0])
     y_ploidy_cutoffs = dict(ht.index_globals().y_ploidy_cutoffs.collect()[0])
+    if include_x_frac_hom_alt_cutoffs:
+        x_frac_hom_alt_cutoffs = dict(
+            ht.index_globals().x_frac_hom_alt_cutoffs.collect()[0]
+        )
 
     if per_platform:
         x_ploidy_cutoffs = {k: dict(v) for k, v in x_ploidy_cutoffs.items()}
         y_ploidy_cutoffs = {k: dict(v) for k, v in y_ploidy_cutoffs.items()}
+        if include_x_frac_hom_alt_cutoffs:
+            x_frac_hom_alt_cutoffs = {
+                k: dict(v) for k, v in x_frac_hom_alt_cutoffs.items()
+            }
 
-    return {
+    cutoffs = {
         "x_ploidy_cutoffs": x_ploidy_cutoffs,
         "y_ploidy_cutoffs": y_ploidy_cutoffs,
     }
+    if include_x_frac_hom_alt_cutoffs:
+        cutoffs.update({"x_frac_hom_alt_cutoffs": x_frac_hom_alt_cutoffs})
+
+    return cutoffs
 
 
 def main(args):
@@ -634,6 +727,7 @@ def main(args):
     per_platform = args.per_platform
     overwrite = args.overwrite
     read_sex_cov_if_exists = args.read_sex_imputation_coverage_mt_if_exists
+    apply_x_frac_hom_alt_cutoffs = args.apply_x_frac_hom_alt_cutoffs
 
     try:
         if args.determine_fstat_sites:
@@ -793,13 +887,14 @@ def main(args):
                 else ploidy.ht()
             )
 
-            if args.sex_karyotype_ploidy_cutoffs:
-                with hl.hadoop_open(args.sex_karyotype_ploidy_cutoffs, "r") as d:
+            if args.sex_karyotype_cutoffs:
+                with hl.hadoop_open(args.sex_karyotype_cutoffs, "r") as d:
                     ploidy_cutoffs = json.load(d)
                 karyotype_ht = annotate_sex_karyotype_from_ploidy_cutoffs(
                     ploidy_ht,
                     ploidy_cutoffs,
                     per_platform=per_platform,
+                    apply_x_frac_hom_alt_cutoffs=apply_x_frac_hom_alt_cutoffs,
                 )
             else:
                 karyotype_ht = infer_sex_karyotype_from_ploidy(
@@ -807,6 +902,7 @@ def main(args):
                     per_platform=per_platform,
                     f_stat_cutoff=args.f_stat_cutoff,
                     use_gmm_for_ploidy_cutoffs=args.use_gmm_for_ploidy_cutoffs,
+                    apply_x_frac_hom_alt_cutoffs=apply_x_frac_hom_alt_cutoffs,
                 )
             sex_ht = ploidy_ht.annotate(**karyotype_ht[ploidy_ht.key])
             sex_ht = sex_ht.annotate_globals(**karyotype_ht.index_globals())
@@ -818,7 +914,9 @@ def main(args):
             )
 
             ploidy_cutoffs = reformat_ploidy_cutoffs_for_json(
-                sex_ht, per_platform=per_platform
+                sex_ht,
+                per_platform=per_platform,
+                include_x_frac_hom_alt_cutoffs=apply_x_frac_hom_alt_cutoffs,
             )
             cutoff_json_path = get_ploidy_cutoff_json_path(test=test)
             logger.info("Writing ploidy cutoffs dictionary to %s.", cutoff_json_path)
@@ -1133,15 +1231,24 @@ if __name__ == "__main__":
         action="store_true",
     )
     sex_karyotype_args.add_argument(
+        "--apply-x-frac-hom-alt-cutoffs",
+        help=(
+            "Whether to apply 'XX' and 'XY' cutoffs for the fraction of homozygous alternate genotypes on "
+            "chromosome X and use them to infer sex karyotype."
+        ),
+        action="store_true",
+    )
+    sex_karyotype_args.add_argument(
         "--per-platform",
         help="Whether to run the karyotype inference per platform.",
         action="store_true",
     )
     sex_karyotype_args.add_argument(
-        "--sex-karyotype-ploidy-cutoffs",
+        "--sex-karyotype-cutoffs",
         help=(
             "Optional path to JSON file containing sex karyotype X and Y ploidy cutoffs to use for karyotype "
-            "annotation instead of inferring cutoffs."
+            "annotation instead of inferring cutoffs. If '--apply-x-frac-hom-alt-cutoffs' is used, this file must"
+            "also include cutoffs for the fraction of homozygous alternate genotypes on chromosome X."
         ),
         type=str,
     )
