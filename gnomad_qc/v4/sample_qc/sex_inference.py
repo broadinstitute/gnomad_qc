@@ -467,7 +467,7 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
 
     if apply_x_frac_hom_alt_cutoffs:
         x_frac_hom_alt_cutoffs = sex_karyotype_ploidy_cutoffs["x_frac_hom_alt_cutoffs"]
-        all_cutoff_values += list(x_ploidy_cutoffs.values()) + list(
+        all_cutoff_values +=  list(
             x_frac_hom_alt_cutoffs.values()
         )
     else:
@@ -1235,7 +1235,7 @@ if __name__ == "__main__":
     sex_karyotype_args.add_argument(
         "--apply-x-frac-hom-alt-cutoffs",
         help=(
-            "Whether to infer 'XX' and 'XY' cutoffs for the fraction of homozygous alternate genotypes on "
+            "Whether to apply 'XX' and 'XY' cutoffs for the fraction of homozygous alternate genotypes on "
             "chromosome X and use them to infer sex karyotype."
         ),
         action="store_true",
