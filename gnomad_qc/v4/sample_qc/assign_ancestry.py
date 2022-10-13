@@ -14,8 +14,8 @@ from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
     ancestry_pca_scores,
-    get_pop_ht,
     get_joint_qc_mt,
+    get_pop_ht,
     joint_qc_meta,
     pca_related_samples_to_drop,
     pop_rf_path,
@@ -80,7 +80,7 @@ def calculate_mislabeled_training(pop_ht: hl.Table, pop_field: str) -> [int, flo
 
 
 def prep_ht_for_rf(
-    remove_unreleasable_samples: bool = False,
+    remove_unreleasable_samples: bool = True,
     withhold_prop: hl.float = None,
     seed: int = 24,
     test: bool = False,
@@ -150,7 +150,7 @@ def prep_ht_for_rf(
 
 def assign_pops(
     min_prob: float,
-    remove_unreleasable_samples: bool = False,
+    remove_unreleasable_samples: bool = True,
     max_number_mislabeled_training_samples: int = None,
     max_proportion_mislabeled_training_samples: float = None,
     pcs: List[int] = list(range(1, 21)),
