@@ -24,7 +24,7 @@ def import_vqsr(
     import_header_path: Optional[str] = None,
 ) -> None:
     """
-    Import vqsr site vcf into a HT.
+    Import VQSR site VCF into a HT.
 
     :param vqsr_path: Path to input vqsr site vcf. This can be specified as Hadoop glob patterns
     :param vqsr_type: One of `classic`, `alleleSpecific` (allele specific) or `alleleSpecificTrans`

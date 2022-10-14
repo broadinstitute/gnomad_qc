@@ -1,11 +1,11 @@
 """
-Script to create a dense MatrixTable filtered a diverse set of variants for relatedness/ancestry PCA using CCDG, gnomAD v3, and UK Biobank.
+Script to create a dense MatrixTable filtered to a diverse set of variants for relatedness/ancestry PCA using CCDG, gnomAD v3, and UK Biobank.
 
 The variant set was determined using this script:
 https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py
 
 The full gnomAD v4 VariantDataset and v4 sparse MatrixTable are filtered to these sites and then densified. The resulting
-MatrixTables are merged and additional allele frequency and callrate filters are applied, then finally LD-pruning is
+MatrixTables are merged and additional allele frequency and callrate filters are applied, then LD-pruning is
 performed.
 
 Additionally, the script creates a joint v3 and v4 metadata file for use in relatedness/ancestry PCA.
