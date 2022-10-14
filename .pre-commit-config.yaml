@@ -19,7 +19,7 @@ repos:
         args: ["--profile", "black", "--filter-files"]
         files: gnomad_qc
   - repo: https://github.com/pycqa/pydocstyle
-    rev: 6.0.0 # This should be kept in sync with the version in requirements-dev.in
+    rev: 6.1.1 # This should be kept in sync with the version in requirements-dev.in
     hooks:
       - id: pydocstyle
         args: ["--match-dir", "'(?!v2).*'"]
