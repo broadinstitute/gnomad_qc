@@ -359,14 +359,20 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--model_id",
-        help="Model ID. Created by --train_rf and only needed for --apply_rf without running --train_rf.",
+        help=(
+            "Model ID. Created by --train_rf and only needed for --apply_rf without"
+            " running --train_rf."
+        ),
         required=False,
     )
 
     actions = parser.add_argument_group("Actions")
     actions.add_argument(
         "--list_rf_runs",
-        help="Lists all previous RF runs, along with their model ID, parameters and testing results.",
+        help=(
+            "Lists all previous RF runs, along with their model ID, parameters and"
+            " testing results."
+        ),
         action="store_true",
     )
     actions.add_argument(
@@ -395,13 +401,19 @@ if __name__ == "__main__":
     rf_params = parser.add_argument_group("Random Forest parameters")
     rf_params.add_argument(
         "--fp_to_tp",
-        help="Ratio of FPs to TPs for training the RF model. If 0, all training examples are used. (default=1.0)",
+        help=(
+            "Ratio of FPs to TPs for training the RF model. If 0, all training examples"
+            " are used. (default=1.0)"
+        ),
         default=1.0,
         type=float,
     )
     rf_params.add_argument(
         "--test_intervals",
-        help='The specified interval(s) will be held out for testing and evaluation only. (default to "chr20")',
+        help=(
+            "The specified interval(s) will be held out for testing and evaluation"
+            ' only. (default to "chr20")'
+        ),
         nargs="+",
         type=str,
         default="chr20",
@@ -428,7 +440,10 @@ if __name__ == "__main__":
     )
     training_params.add_argument(
         "--vqsr_model_id",
-        help="If a VQSR model ID is provided the VQSR training annotations will be used for training.",
+        help=(
+            "If a VQSR model ID is provided the VQSR training annotations will be used"
+            " for training."
+        ),
         default="vqsr_alleleSpecificTrans",
         choices=["vqsr_classic", "vqsr_alleleSpecific", "vqsr_alleleSpecificTrans"],
         type=str,
@@ -453,12 +468,14 @@ if __name__ == "__main__":
 
     if not args.model_id and not args.train_rf and args.apply_rf:
         sys.exit(
-            "Error: --model_id is required when running --apply_rf without running --train_rf too."
+            "Error: --model_id is required when running --apply_rf without running"
+            " --train_rf too."
         )
 
     if args.model_id and args.train_rf:
         sys.exit(
-            "Error: --model_id and --train_rf are mutually exclusive. --train_rf will generate a run model ID."
+            "Error: --model_id and --train_rf are mutually exclusive. --train_rf will"
+            " generate a run model ID."
         )
 
     if args.slack_channel:

@@ -231,7 +231,8 @@ def plot_metric(
                 )
 
             # Add circles layouts one model at a time, so that no default legend is generated.
-            # Because data is in the same ColumnDataSource, use a BooleanFilter to plot each model separately
+            # Because data is in the same ColumnDataSource, use a BooleanFilter to
+            # plot each model separately
             circles = []
             for model in set(data_source.data["model"]):
                 view = CDSView(
@@ -295,7 +296,8 @@ def plot_metric(
             df[f"{col}_cumul"] = df.groupby("model").aggregate(np.cumsum)[col]
         df["cumul"] = df[[f"{col}_cumul" for col in cols]].apply(y_fun, axis=1)
 
-        # Create data ranges that are either shared or distinct depending on the y_cumul parameter
+        # Create data ranges that are either shared or distinct depending on the
+        # y_cumul parameter
         non_cumul_data_ranges = (DataRange1d(), DataRange1d())
         cumul_data_ranges = (
             non_cumul_data_ranges
@@ -694,10 +696,8 @@ def plot_concordance_pr(
 
     tabs = []
     for rank in ["truth_sample_rank", "global_rank"]:
-
         plot_row = []
         for truth_sample in set([g[1] for g in pr_df.groups]):
-
             p = figure(
                 title=truth_sample[0].upper() + truth_sample[1:],
                 x_axis_label="Recall",

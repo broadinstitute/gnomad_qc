@@ -16,7 +16,8 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("subpops")
 logger.setLevel(logging.INFO)
 
-# 3 letter country codes are ISO ALPHA-3 (https://www.nationsonline.org/oneworld/country_code_list.htm)
+# 3 letter country codes are ISO ALPHA-3
+# (https://www.nationsonline.org/oneworld/country_code_list.htm)
 
 
 def get_known_populations(
@@ -145,7 +146,8 @@ def main(args):
         pruned_mt = pruned_mt.filter_cols(sample_criteria)
         variants, samples = pruned_mt.count()
         logger.info(
-            f"{samples} samples, {variants} variants found in {args.population} in joint MT"
+            f"{samples} samples, {variants} variants found in {args.population} in"
+            " joint MT"
         )
 
         pca_mt, related_mt = split_mt_by_relatedness(pruned_mt)
@@ -154,7 +156,8 @@ def main(args):
         pca_platforms_mt = pca_mt.group_cols_by(pca_mt.meta.qc_platform).aggregate(
             missing=hl.agg.count_where(hl.is_missing(pca_mt.GT)), total=hl.agg.count()
         )
-        # All variants must have a callrate at least .999 in each platform, or no more than 1 missing sample if platform <= 1000 samples
+        # All variants must have a callrate at least .999 in each platform, or no
+        # more than 1 missing sample if platform <= 1000 samples
         pca_platforms_mt = pca_platforms_mt.annotate_entries(
             remove_variant=(
                 hl.case()
@@ -174,7 +177,8 @@ def main(args):
         )
         variants, samples = pca_mt.count()
         logger.info(
-            f"{samples} samples, {variants} variants found in {args.population} in PCA MT after filtering variants by AF and platform callrate"
+            f"{samples} samples, {variants} variants found in {args.population} in PCA"
+            " MT after filtering variants by AF and platform callrate"
         )
 
         pca_pruned = hl.ld_prune(pca_mt.GT, r2=0.1)
@@ -200,7 +204,8 @@ def main(args):
 
     variants, samples = pca_mt.count()
     logger.info(
-        f"{samples} samples after removing relateds, {variants} variants after filtering and LD pruning"
+        f"{samples} samples after removing relateds, {variants} variants after"
+        " filtering and LD pruning"
     )
 
     if not args.skip_pop_pca:
@@ -227,7 +232,8 @@ def main(args):
 
     logger.info("Assigning population annotations...")
     pop_colnames = ["related", "known_pop", "scores"]
-    # Join MTs, then annotate with known pops, then select out columns we care about, then assign pop pcs
+    # Join MTs, then annotate with known pops, then select out columns we care
+    # about, then assign pop pcs
     joint_ht = pca_mt.cols().union(related_mt.cols())
     joint_ht = get_known_populations(joint_ht, args.population)
     joint_ht = joint_ht.select(
@@ -259,7 +265,10 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--population",
-        help="Which super-populations to select (can be one of the major pops, eur, or all)",
+        help=(
+            "Which super-populations to select (can be one of the major pops, eur, or"
+            " all)"
+        ),
         required=True,
     )
     parser.add_argument(

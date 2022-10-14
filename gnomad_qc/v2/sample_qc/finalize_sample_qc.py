@@ -180,19 +180,28 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--min_pop_size",
-        help="Minimum population size for release purpose. Smaller populations are collapsed into oth",
+        help=(
+            "Minimum population size for release purpose. Smaller populations are"
+            " collapsed into oth"
+        ),
         default=50,
         type=int,
     )
     parser.add_argument(
         "--exomes_topmed_dup_cutoff",
-        help="Proportion of shared singletons between an individual exome and TopMed to be considered a duplicate.",
+        help=(
+            "Proportion of shared singletons between an individual exome and TopMed to"
+            " be considered a duplicate."
+        ),
         default=0.6,
         type=float,
     )
     parser.add_argument(
         "--genomes_topmed_dup_cutoff",
-        help="Proportion of shared singletons between an individual genome and TopMed to be considered a duplicate.",
+        help=(
+            "Proportion of shared singletons between an individual genome and TopMed to"
+            " be considered a duplicate."
+        ),
         default=0.8,
         type=float,
     )

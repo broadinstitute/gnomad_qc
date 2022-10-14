@@ -27,7 +27,7 @@ def merge_genomes_sv_samples(
     )
 
     genomes_samples = genomes_samples.key_by(
-        sv_s=(genomes_samples.project_id + "_" + genomes_samples.s).replace("\W+", "_")
+        sv_s=(genomes_samples.project_id + "_" + genomes_samples.s).replace("\\W+", "_")
     )
     genomes_samples = genomes_samples.select(
         genomes_s=genomes_samples.s, in_v2_genomes=True
@@ -111,7 +111,7 @@ def merge_with_short_variants(min_af: float):
 def generate_hists():
     mt = hl.read_matrix_table(gnomad_sv_mt_path)
     meta = get_gnomad_meta("genomes")
-    meta = meta.key_by(s=(meta.project_id + "_" + meta.s).replace("\W+", "_"))
+    meta = meta.key_by(s=(meta.project_id + "_" + meta.s).replace("\\W+", "_"))
     mt = mt.annotate_cols(
         age=meta[mt.col_key].age, in_v2=hl.is_defined(meta[mt.col_key])
     )
@@ -185,12 +185,18 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--merge_with_short_variants",
-        help="Creates an MT merging SVs and short variants. An AF cutoff is used for short variants (--short_variants_af)",
+        help=(
+            "Creates an MT merging SVs and short variants. An AF cutoff is used for"
+            " short variants (--short_variants_af)"
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--short_variants_af",
-        help="Short variant AF cutoff (AF >= x in any pop) for merging SVs and short variants",
+        help=(
+            "Short variant AF cutoff (AF >= x in any pop) for merging SVs and short"
+            " variants"
+        ),
         default=0.005,
         type=float,
     )

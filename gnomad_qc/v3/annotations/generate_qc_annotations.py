@@ -253,7 +253,8 @@ def generate_fam_stats(mt: hl.MatrixTable, fam_file: str) -> hl.Table:
 
     mt = mt.filter_cols(hl.is_defined(fam_ht[mt.col_key]))
     logger.info(
-        f"Generating family stats using {mt.count_cols()} samples from {len(ped.trios)} trios."
+        f"Generating family stats using {mt.count_cols()} samples from"
+        f" {len(ped.trios)} trios."
     )
 
     mt = filter_to_autosomes(mt)
@@ -388,7 +389,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--generate_ac",
-        help="Creates a table with ACs for QC, unrelated QC and release samples (raw and adj)",
+        help=(
+            "Creates a table with ACs for QC, unrelated QC and release samples (raw and"
+            " adj)"
+        ),
         action="store_true",
     )
     parser.add_argument(

@@ -122,7 +122,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--pc_scores_in_separate_fields",
-        help="This option was added to deal with legacy scores HT, where the PC scores where stored in multiple annotations (PC1, ... PCn)",
+        help=(
+            "This option was added to deal with legacy scores HT, where the PC scores"
+            " where stored in multiple annotations (PC1, ... PCn)"
+        ),
         action="store_true",
     )
     parser.add_argument(

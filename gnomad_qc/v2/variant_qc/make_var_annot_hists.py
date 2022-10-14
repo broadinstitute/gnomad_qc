@@ -104,7 +104,8 @@ def main(args):
     ]
 
     ht = hl.read_table(release_ht_path(data_type, nested=False))
-    # NOTE: histogram aggregations are done on the entire callset (not just PASS variants), on raw data
+    # NOTE: histogram aggregations are done on the entire callset (not just
+    # PASS variants), on raw data
 
     # NOTE: run the following code in a first pass to determine bounds for metrics
     # Evaluate minimum and maximum values for each metric of interest
@@ -154,7 +155,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--first_pass",
-        help="Determine min/max values for each variant metric (to be used in hand-tooled histogram ranges",
+        help=(
+            "Determine min/max values for each variant metric (to be used in"
+            " hand-tooled histogram ranges"
+        ),
         action="store_true",
     )
     parser.add_argument(

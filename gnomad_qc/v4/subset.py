@@ -6,10 +6,11 @@ import hail as hl
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 
-# TODO: include this when we have the sample QC meta HT: from gnomad_qc.v4.resources.meta import meta
+# TODO: include this when we have the sample QC meta HT: from
+# gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 
-# TODO: Can remove when we use the full sample QC meta HT
+# TODO: Can remove when we use the full sample QC meta HT.
 from gnomad_qc.v4.resources.meta import project_meta
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -22,7 +23,9 @@ HEADER_DICT = {
     "format": {
         "GT": {"Description": "Genotype", "Number": "1", "Type": "String"},
         "AD": {
-            "Description": "Allelic depths for the ref and alt alleles in the order listed",
+            "Description": (
+                "Allelic depths for the ref and alt alleles in the order listed"
+            ),
             "Number": "R",
             "Type": "Integer",
         },
@@ -32,7 +35,11 @@ HEADER_DICT = {
             "Type": "Integer",
         },
         "GQ": {
-            "Description": "Phred-scaled confidence that the genotype assignment is correct. Value is the difference between the second lowest PL and the lowest PL (always normalized to 0).",
+            "Description": (
+                "Phred-scaled confidence that the genotype assignment is correct. Value"
+                " is the difference between the second lowest PL and the lowest PL"
+                " (always normalized to 0)."
+            ),
             "Number": "1",
             "Type": "Integer",
         },
@@ -42,27 +49,46 @@ HEADER_DICT = {
             "Type": "Integer",
         },
         "PGT": {
-            "Description": "Physical phasing haplotype information, describing how the alternate alleles are phased in relation to one another",
+            "Description": (
+                "Physical phasing haplotype information, describing how the alternate"
+                " alleles are phased in relation to one another"
+            ),
             "Number": "1",
             "Type": "String",
         },
         "PID": {
-            "Description": "Physical phasing ID information, where each unique ID within a given sample (but not across samples) connects records within a phasing group",
+            "Description": (
+                "Physical phasing ID information, where each unique ID within a given"
+                " sample (but not across samples) connects records within a phasing"
+                " group"
+            ),
             "Number": "1",
             "Type": "String",
         },
         "PL": {
-            "Description": "Normalized, phred-scaled likelihoods for genotypes as defined in the VCF specification",
+            "Description": (
+                "Normalized, phred-scaled likelihoods for genotypes as defined in the"
+                " VCF specification"
+            ),
             "Number": "G",
             "Type": "Integer",
         },
         "SB": {
-            "Description": "Per-sample component statistics which comprise the Fisher's exact test to detect strand bias. Values are: depth of reference allele on forward strand, depth of reference allele on reverse strand, depth of alternate allele on forward strand, depth of alternate allele on reverse strand.",
+            "Description": (
+                "Per-sample component statistics which comprise the Fisher's exact test"
+                " to detect strand bias. Values are: depth of reference allele on"
+                " forward strand, depth of reference allele on reverse strand, depth of"
+                " alternate allele on forward strand, depth of alternate allele on"
+                " reverse strand."
+            ),
             "Number": "4",
             "Type": "Integer",
         },
         "RGQ": {
-            "Description": "Unconditional reference genotype confidence, encoded as a phred quality -10*log10 p(genotype call is wrong)",
+            "Description": (
+                "Unconditional reference genotype confidence, encoded as a phred"
+                " quality -10*log10 p(genotype call is wrong)"
+            ),
             "Number": "1",
             "Type": "Integer",
         },
@@ -72,35 +98,59 @@ HEADER_DICT = {
 SUBSET_CALLSTATS_INFO_DICT = {
     "AC_raw": {
         "Number": "A",
-        "Description": "Alternate allele count in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+        "Description": (
+            "Alternate allele count in subset before filtering of low-confidence"
+            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
     },
     "AN_raw": {
         "Number": "1",
-        "Description": "Total number of alleles in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+        "Description": (
+            "Total number of alleles in subset before filtering of low-confidence"
+            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
     },
     "AF_raw": {
         "Number": "A",
-        "Description": "Alternate allele frequency in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+        "Description": (
+            "Alternate allele frequency in subset before filtering of low-confidence"
+            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
     },
     "nhomalt_raw": {
         "Number": "A",
-        "Description": "Count of homozygous individuals in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+        "Description": (
+            "Count of homozygous individuals in subset before filtering of"
+            " low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
     },
     "AC": {
         "Number": "A",
-        "Description": "Alternate allele count in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+        "Description": (
+            "Alternate allele count in subset after filtering of low-confidence"
+            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
     },
     "AN": {
         "Number": "1",
-        "Description": "Total number of alleles in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+        "Description": (
+            "Total number of alleles in subset after filtering of low-confidence"
+            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
     },
     "AF": {
         "Number": "A",
-        "Description": "Alternate allele frequency in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+        "Description": (
+            "Alternate allele frequency in subset after filtering of low-confidence"
+            " genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
     },
     "nhomalt": {
         "Number": "A",
-        "Description": "Count of homozygous individuals in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
+        "Description": (
+            "Count of homozygous individuals in subset after filtering of"
+            " low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
+        ),
     },
 }
 
@@ -160,7 +210,8 @@ def main(args):
     )
 
     if args.include_ukb_200k:
-        # TODO: add option to provide an application linking file as an argument. Default is ATGU ID
+        # TODO: add option to provide an application linking file as an argument.
+        # Default is ATGU ID.
         vds = hl.vds.VariantDataset(
             vds.reference_data.key_cols_by(
                 s=hl.coalesce(
@@ -234,7 +285,7 @@ def main(args):
         if args.dense_mt:
             mt.write(f"{output_path}/subset.mt", overwrite=args.overwrite)
 
-        # TODO: add num-vcf-shards where no sharding happens if this is not set
+        # TODO: add num-vcf-shards where no sharding happens if this is not set.
         if args.vcf:
             mt = mt.drop("gvcf_info")
             header_dict["info"] = SUBSET_CALLSTATS_INFO_DICT
@@ -250,7 +301,8 @@ def main(args):
     if args.export_meta:
         logger.info("Exporting metadata")
         meta_ht = meta_ht.semi_join(vds.variant_data.cols())
-        # TODO: Dropping the whole ukb_meta struct, but should we keep pop and sex inference if allowed?
+        # TODO: Dropping the whole ukb_meta struct, but should we keep pop and sex
+        # inference if allowed?
         if args.keep_data_paths:
             data_to_drop = {"ukb_meta"}
         else:
@@ -264,7 +316,9 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="This script subsets gnomAD using a list of samples or terra workspaces."
+        description=(
+            "This script subsets gnomAD using a list of samples or terra workspaces."
+        )
     )
     parser.add_argument(
         "--test",
@@ -279,8 +333,8 @@ if __name__ == "__main__":
     subset_id_parser.add_argument(
         "--subset-workspaces",
         help=(
-            "Path to a text file with Terra workspaces that should be included in the subset, must use a header of "
-            "'terra_workspace'."
+            "Path to a text file with Terra workspaces that should be included in the"
+            " subset, must use a header of 'terra_workspace'."
         ),
     )
     parser.add_argument(
@@ -305,8 +359,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n-partitions",
         help=(
-            "Number of desired partitions for the subset VDS if --vds and/or MT if --dense-mt is set and/or the number "
-            "of shards in the output VCF if --vcf is set. By default, there will be no change in partitioning."
+            "Number of desired partitions for the subset VDS if --vds and/or MT if"
+            " --dense-mt is set and/or the number of shards in the output VCF if --vcf"
+            " is set. By default, there will be no change in partitioning."
         ),
         type=int,
     )
@@ -327,7 +382,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--output-path",
-        help="Output file path for subsetted VDS/VCF/MT, do not include file extension.",
+        help=(
+            "Output file path for subsetted VDS/VCF/MT, do not include file extension."
+        ),
         required=True,
     )
     parser.add_argument(

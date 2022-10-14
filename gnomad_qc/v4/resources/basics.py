@@ -16,7 +16,8 @@ logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
 
 
-# Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4.0/<module>/<exomes_or_genomes>/
+# Note: Unlike previous versions, the v4 resource directory uses a general format of
+# gs://gnomad/v4.0/<module>/<exomes_or_genomes>/.
 def get_gnomad_v4_vds(
     split: bool = False,
     remove_hard_filtered_samples: bool = True,
@@ -38,7 +39,8 @@ def get_gnomad_v4_vds(
     """
     if remove_hard_filtered_samples and remove_hard_filtered_samples_no_sex:
         raise ValueError(
-            "Only one of 'remove_hard_filtered_samples' or 'remove_hard_filtered_samples_no_sex' can be set to True."
+            "Only one of 'remove_hard_filtered_samples' or"
+            " 'remove_hard_filtered_samples_no_sex' can be set to True."
         )
 
     if test:
@@ -51,23 +53,25 @@ def get_gnomad_v4_vds(
     else:
         vds = gnomad_v4_resource.vds()
 
-    # Count current number of samples in the VDS
+    # Count current number of samples in the VDS.
     n_samples = vds.variant_data.count_cols()
 
-    # Remove 75 withdrawn UKB samples (samples with withdrawn consents for application 31063 on 02/22/2022)
+    # Remove 75 withdrawn UKB samples (samples with withdrawn consents for application
+    # 31063 on 02/22/2022).
     ukb_application_map_ht = ukb_application_map.ht()
     withdrawn_ukb_samples = ukb_application_map_ht.filter(
         ukb_application_map_ht.withdraw
     ).s.collect()
 
-    # Remove 43 samples that are known to be on the pharma's sample remove list
-    # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308
+    # Remove 43 samples that are known to be on the pharma's sample remove list. See:
+    # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308.
     dups_ht = ukb_known_dups.ht()
     ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
 
-    # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS)
-    # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286
-    # Confirmed that the col_idx of the 27 dup samples in the original UKB MT match the col_idx of the dup UKB samples in the VDS
+    # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS). See:
+    # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286.
+    # Confirmed that the col_idx of the 27 dup samples in the original UKB MT match
+    # the col_idx of the dup UKB samples in the VDS.
     dup_ids = []
     with hl.hadoop_open(ukb_dups_idx_path, "r") as d:
         for line in d:
@@ -94,7 +98,7 @@ def get_gnomad_v4_vds(
     rd = _remove_ukb_dup_by_index(vds.reference_data, dup_ids)
     vds = hl.vds.VariantDataset(rd, vd)
 
-    # Filter withdrawn samples from the VDS
+    # Filter withdrawn samples from the VDS.
     withdrawn_ids = withdrawn_ukb_samples + ids_to_remove + hl.eval(dup_ids)
     withdrawn_ids = [i for i in withdrawn_ids if i is not None]
 
@@ -110,7 +114,7 @@ def get_gnomad_v4_vds(
 
     vds = hl.vds.filter_samples(vds, withdrawn_ht, keep=False, remove_dead_alleles=True)
 
-    # Log number of UKB samples removed from the VDS
+    # Log number of UKB samples removed from the VDS.
     n_samples_after_exclusion = vds.variant_data.count_cols()
     n_samples_removed = n_samples - n_samples_after_exclusion
 
@@ -172,7 +176,7 @@ gnomad_v4_genotypes = VersionedVariantDatasetResource(
     _gnomad_v4_genotypes,
 )
 
-# v4 test dataset VDS
+# v4 test dataset VDS.
 gnomad_v4_testset = VariantDatasetResource(
     "gs://gnomad/v4.0/raw/exomes/testing/gnomad_v4.0_test.vds"
 )
@@ -181,7 +185,7 @@ gnomad_v4_testset_meta = TableResource(
 )
 
 
-# UKB data resources
+# UKB data resources.
 def _ukb_root_path() -> str:
     """
     Retrieve the path to the UKB data directory.
@@ -192,7 +196,8 @@ def _ukb_root_path() -> str:
 
 
 # List of samples to exclude from QC due to withdrawn consents.
-# Application 26041 is from the 08/09/2021 list and application 31063 is from the 02/22/2022 list.
+# Application 26041 is from the 08/09/2021 list and application 31063 is from the
+# 02/22/2022 list.
 # These were originally imported as CSVs and then keyed by their respective eids.
 ukb_excluded = VersionedTableResource(
     default_version="31063_20220222",
@@ -204,10 +209,10 @@ ukb_excluded = VersionedTableResource(
     },
 )
 
-# UKB map of exome IDs to array sample IDs (application ID: 26041)
+# UKB map of exome IDs to array sample IDs (application ID: 26041).
 ukb_array_sample_map = TableResource(f"{_ukb_root_path()}/array_sample_map_freeze_7.ht")
 
-# UKB full mapping file of sample ID and application IDs 26041, 31063, and 48511
+# UKB full mapping file of sample ID and application IDs 26041, 31063, and 48511.
 ukb_application_map = TableResource(
     f"{_ukb_root_path()}/ukbb_application_id_mappings.ht"
 )
@@ -217,14 +222,15 @@ ukb_application_map = TableResource(
 # All 44 samples are marked as "unresolved duplicates" by the pharma partners.
 ukb_known_dups = TableResource(f"{_ukb_root_path()}/pharma_known_dups_7.ht")
 
-# Samples with duplicate names in the VDS and their column index
-# 27 samples to remove based on column index
+# Samples with duplicate names in the VDS and their column index 27 samples to remove
+# based on column index.
 ukb_dups_idx_path = f"{_ukb_root_path()}/dup_remove_idx_7.tsv"
 
-# Final list of UKB samples to remove (duplicates that were removed will have their original index appended to the sample name)
+# Final list of UKB samples to remove (duplicates that were removed will have their
+# original index appended to the sample name).
 all_ukb_samples_to_remove = f"{_ukb_root_path()}/all_ukbb_samples_to_remove.txt"
 
-# UKB f-stat sites Table with UKB allele frequencies
+# UKB f-stat sites Table with UKB allele frequencies.
 ukb_f_stat = TableResource(f"{_ukb_root_path()}/f_stat_sites.ht")
 
 

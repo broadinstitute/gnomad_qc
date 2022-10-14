@@ -107,7 +107,8 @@ def get_sample_qc_filter_struct_expr(ht: hl.Table) -> hl.struct:
     num_outliers_found = ht.filter(set_to_remove.contains(ht["s"])).count()
     if hl.eval(hl.len(set_to_remove)) != num_outliers:
         raise ValueError(
-            f"Expected {num_outliers} samples to be labeled as population PCA outliers, but found {num_outliers_found}"
+            f"Expected {num_outliers} samples to be labeled as population PCA outliers,"
+            f" but found {num_outliers_found}"
         )
 
     return hl.struct(
@@ -205,10 +206,11 @@ def prepare_sample_annotations() -> hl.Table:
 
     relatedness_ht = get_relatedness_set_ht(relatedness_ht)
 
-    # Note: Needs to be done before adding the relatedness info because the relatedness HT doesn't have the prefix
+    # Note: Needs to be done before adding the relatedness info because the
+    # relatedness HT doesn't have the prefix
     logger.info(
-        "Removing 'v3.1::' from the sample names, these were added because there are duplicates of some 1KG/TGP samples"
-        " in the full gnomAD dataset..."
+        "Removing 'v3.1::' from the sample names, these were added because there are"
+        " duplicates of some 1KG/TGP samples in the full gnomAD dataset..."
     )
     meta_ht = meta_ht.key_by(s=meta_ht.s.replace("v3.1::", ""))
     meta_ht = meta_ht.select(
@@ -237,7 +239,8 @@ def prepare_sample_annotations() -> hl.Table:
                 relatedness_ht[meta_ht.key].related_samples,
                 hl.empty_set(
                     hl.dtype(
-                        "struct{s: str, kin: float64, ibd0: float64, ibd1: float64, ibd2: float64}"
+                        "struct{s: str, kin: float64, ibd0: float64, ibd1: float64,"
+                        " ibd2: float64}"
                     )
                 ),
             ),
@@ -286,7 +289,8 @@ def prepare_sample_annotations() -> hl.Table:
     return meta_ht
 
 
-# TODO: Might be good to generalize this because a similar function is used in creating the release sites HT.
+# TODO: Might be good to generalize this because a similar function is
+# used in creating the release sites HT.
 def prepare_variant_annotations(
     ht: hl.Table, filter_lowqual: bool = True, vep_version: str = "101"
 ) -> hl.Table:
@@ -300,13 +304,15 @@ def prepare_variant_annotations(
     """
     logger.info("Loading annotation tables...")
     filters_ht = final_filter(hgdp_tgp_subset=True).ht()
-    # vep_ht = vep.ht()  # Commented out for v3.1.2 release because annotation file has been removed
+    # vep_ht = vep.ht()  # Commented out for v3.1.2 release because annotation
+    # file has been removed
     dbsnp_ht = dbsnp.ht().select("rsid")
     score_name = hl.eval(filters_ht.filtering_model.score_name)
     subset_freq = get_freq(subset="hgdp-tgp").ht()
     release_ht = release_sites(public=True).versions["3.1.1"].ht()
 
-    # NOTE: Added for v3.1.2 release because this annotation was removed and not a full duplicate of variants in the release HT
+    # NOTE: Added for v3.1.2 release because this annotation was removed and
+    # not a full duplicate of variants in the release HT
     vep_ht = vep_or_lookup_vep(ht, vep_version=vep_version)
     vep_ht = vep_ht.annotate_globals(version=f"v{vep_version}")
 
@@ -353,8 +359,8 @@ def prepare_variant_annotations(
     )
 
     logger.info(
-        "Preparing gnomad freq information from the release HT: removing downsampling and subset info from freq, "
-        "freq_meta, and freq_index_dict"
+        "Preparing gnomad freq information from the release HT: removing downsampling"
+        " and subset info from freq, freq_meta, and freq_index_dict"
     )
     full_release_freq_meta = release_ht.freq_meta.collect()[0]
     freq_meta = [
@@ -540,7 +546,8 @@ def create_full_subset_dense_mt(
     :return: Dense release MatrixTable with all row, column, and global annotations
     """
     logger.info(
-        "Adding subset's sample QC metadata to MT columns and global annotations to MT globals..."
+        "Adding subset's sample QC metadata to MT columns and global annotations to MT"
+        " globals..."
     )
     mt = mt.annotate_cols(**meta_ht[mt.col_key])
     mt = mt.annotate_globals(
@@ -551,7 +558,8 @@ def create_full_subset_dense_mt(
     )
 
     logger.info(
-        "Annotate entries with het non ref status for use in the homozygous alternate depletion fix..."
+        "Annotate entries with het non ref status for use in the homozygous alternate"
+        " depletion fix..."
     )
     mt = mt.annotate_entries(_het_non_ref=mt.LGT.is_het_non_ref())
 
@@ -567,7 +575,8 @@ def create_full_subset_dense_mt(
     )
 
     logger.info(
-        "Setting het genotypes at sites with > 1% AF (using precomputed v3.0 frequencies) and > 0.9 AB to homalt..."
+        "Setting het genotypes at sites with > 1% AF (using precomputed v3.0"
+        " frequencies) and > 0.9 AB to homalt..."
     )
     # NOTE: Using v3.0 frequencies here and not v3.1 frequencies because
     # the frequency code adjusted genotypes (homalt depletion fix) using v3.0 frequencies
@@ -591,8 +600,8 @@ def create_full_subset_dense_mt(
     mt = hl.experimental.densify(mt)
 
     logger.info(
-        "Filter out LowQual variants (using allele-specific annotation) and variants within centromere and telomere "
-        "regions..."
+        "Filter out LowQual variants (using allele-specific annotation) and variants"
+        " within centromere and telomere regions..."
     )
     mt = mt.filter_rows(
         ~mt.AS_lowqual & ~mt.telomere_or_centromere & (hl.len(mt.alleles) > 1)
@@ -636,8 +645,9 @@ def main(args):  # noqa: D103
         and not file_exists(sample_annotation_resource.path)
     ):
         raise DataException(
-            "There is currently no sample meta HT for the HGDP + TGP subset written to temp for testing. "
-            "Run '--create_sample_annotation_ht' with '--test' to create one."
+            "There is currently no sample meta HT for the HGDP + TGP subset written to"
+            " temp for testing. Run '--create_sample_annotation_ht' with '--test' to"
+            " create one."
         )
 
     if args.export_sample_annotation_tsv:
@@ -645,7 +655,9 @@ def main(args):  # noqa: D103
         meta_ht.export(hgdp_tgp_subset_sample_tsv(test=test))
 
     if args.create_subset_sparse_mt:
-        # NOTE: We no longer remove samples that fail the gnomAD-wide sample QC high_quality filter. However, for frequency calculations we still remove samples failing hard filters and subcontinental PCA outliers.
+        # NOTE: We no longer remove samples that fail the gnomAD-wide sample QC
+        # high_quality filter. However, for frequency calculations we still remove
+        # samples failing hard filters and subcontinental PCA outliers.
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
         )
@@ -657,7 +669,8 @@ def main(args):  # noqa: D103
             mt = mt._filter_partitions(range(args.test_n_partitions))
 
         logger.info(
-            "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample (syndip)"
+            "Filtering MT columns to HGDP + TGP samples and the CHMI haploid sample"
+            " (syndip)"
         )
         # Note: Need to use sample names with the v3.1:: prefix
         meta_ht = meta.ht()
@@ -668,8 +681,8 @@ def main(args):  # noqa: D103
         logger.info("Number of samples in sparse MT: %d", mt.count_cols())
 
         logger.info(
-            "Removing 'v3.1::' from the column names, these were added because there are duplicates of some 1KG/TGP samples"
-            " in the full gnomAD dataset..."
+            "Removing 'v3.1::' from the column names, these were added because there"
+            " are duplicates of some 1KG/TGP samples in the full gnomAD dataset..."
         )
         mt = mt.key_cols_by(s=mt.s.replace("v3.1::", ""))
 
@@ -677,10 +690,12 @@ def main(args):  # noqa: D103
         mt = adjust_subset_alleles(mt)
 
         logger.info(
-            "NOTE: This sparse MT is the raw subset MT and therefore it does not have adjusted sex genotypes and "
-            "the fix for older GATK gVCFs with a known depletion of homozygous alternate alleles. This also does not "
-            "remove standard GATK LowQual variants and variants in centromeres and telomeres (to preserve the ref "
-            "block END annotation), which we recommend ultimately removing (and is removed for the dense MT release)."
+            "NOTE: This sparse MT is the raw subset MT and therefore it does not have"
+            " adjusted sex genotypes and the fix for older GATK gVCFs with a known"
+            " depletion of homozygous alternate alleles. This also does not remove"
+            " standard GATK LowQual variants and variants in centromeres and telomeres"
+            " (to preserve the ref block END annotation), which we recommend ultimately"
+            " removing (and is removed for the dense MT release)."
         )
         mt.write(sparse_mt_resource.path, overwrite=args.overwrite)
 
@@ -690,8 +705,8 @@ def main(args):  # noqa: D103
         and not file_exists(sparse_mt_resource.path)
     ):
         raise DataException(
-            "There is currently no sparse test MT for the HGDP + TGP subset. Run '--create_subset_sparse_mt' "
-            "with '--test' to create one."
+            "There is currently no sparse test MT for the HGDP + TGP subset. Run"
+            " '--create_subset_sparse_mt' with '--test' to create one."
         )
 
     if args.create_variant_annotation_ht:
@@ -711,8 +726,9 @@ def main(args):  # noqa: D103
         meta_ht = sample_annotation_resource.ht()
         if test and not file_exists(variant_annotation_resource.path):
             raise DataException(
-                "There is currently no variant annotation HT for the HGDP + TGP subset written to temp for testing. "
-                "Run '--create_variant_annotation_ht' with '--test' to create one."
+                "There is currently no variant annotation HT for the HGDP + TGP subset"
+                " written to temp for testing. Run '--create_variant_annotation_ht'"
+                " with '--test' to create one."
             )
         variant_annotation_ht = variant_annotation_resource.ht()
 
@@ -728,7 +744,10 @@ def main(args):  # noqa: D103
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="This script subsets the gnomAD v3.1 release to only HGDP and 1KG/TGP samples."
+        description=(
+            "This script subsets the gnomAD v3.1 release to only HGDP and 1KG/TGP"
+            " samples."
+        )
     )
     parser.add_argument(
         "--create_sample_annotation_ht",
@@ -742,7 +761,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--create_subset_sparse_mt",
-        help="Create the HGDP + 1KG/TGP subset sparse MT. NOTE: This needs to be run without preemptibles because the allele adjustment requires a shuffle!",
+        help=(
+            "Create the HGDP + 1KG/TGP subset sparse MT. NOTE: This needs to be run"
+            " without preemptibles because the allele adjustment requires a shuffle!"
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -764,8 +786,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test",
         help=(
-            "Run small test export on a subset of partitions of the MT. Writes to temp rather than writing to the "
-            "main bucket."
+            "Run small test export on a subset of partitions of the MT. Writes to temp"
+            " rather than writing to the main bucket."
         ),
         action="store_true",
     )

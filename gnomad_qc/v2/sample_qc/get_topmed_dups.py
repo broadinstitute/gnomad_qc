@@ -14,7 +14,8 @@ logger = logging.getLogger("topmed_dups")
 
 def create_shared_sites_table(data_type: str, overwrite: bool):
     freq_ht = hl.read_table(annotations_ht_path(data_type, "frequencies"))
-    # NOTE: the following TOPMed filepath is now broken; preserving for archival purposes
+    # NOTE: the following TOPMed filepath is now broken; preserving for
+    # archival purposes
     topmed_ht = hl.read_matrix_table(
         "gs://gnomad-public/resources/hail-0.2/topmed.b37.mt"
     ).rows()
@@ -32,7 +33,8 @@ def create_shared_sites_table(data_type: str, overwrite: bool):
         gnomad = gnomad.filter_rows(hl.len(filter_ht[gnomad.row_key].filters) == 0)
     else:
         logger.warn(
-            f"Could not find filtering table {rf_path}. Not filtering poor quality sites leads to lower performance."
+            f"Could not find filtering table {rf_path}. Not filtering poor quality"
+            " sites leads to lower performance."
         )
 
     gnomad = gnomad.filter_rows(

@@ -110,7 +110,8 @@ def get_score_bins(
     """
     if aggregated and hgdp_tgp_subset:
         raise DataException(
-            "The aggregated score bins Table is not available for the HGDP + 1KG/TGP subset."
+            "The aggregated score bins Table is not available for the HGDP + 1KG/TGP"
+            " subset."
         )
 
     return VersionedTableResource(

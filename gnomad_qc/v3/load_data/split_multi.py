@@ -26,12 +26,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--create_split_for_real",
-        help="Needed to create the split MT. IMPORTANT: The cost of storing the split MT is likely larger than recomputing it!",
+        help=(
+            "Needed to create the split MT. IMPORTANT: The cost of storing the split MT"
+            " is likely larger than recomputing it!"
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--split_mt_location",
-        help="Specifies where to write the split MT. This should likely be a temporary location as storing the split MT is not a cost-effective long-term solution.",
+        help=(
+            "Specifies where to write the split MT. This should likely be a temporary"
+            " location as storing the split MT is not a cost-effective long-term"
+            " solution."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -42,5 +49,7 @@ if __name__ == "__main__":
         main(args)
     else:
         print(
-            "ERROR: If you really want to create the split MT, please add --create_split_for_real. IMPORTANT: The cost of storing the split MT is likely larger than recomputing it and this is therefore not recommended!"
+            "ERROR: If you really want to create the split MT, please add"
+            " --create_split_for_real. IMPORTANT: The cost of storing the split MT is"
+            " likely larger than recomputing it and this is therefore not recommended!"
         )

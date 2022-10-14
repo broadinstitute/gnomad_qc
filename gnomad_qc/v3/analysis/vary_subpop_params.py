@@ -31,7 +31,9 @@ def main(args):  # noqa: D103
             ancestry_pca_scores(include_unreleasable_samples, high_quality, pop).path
         ):
             logger.warning(
-                "PCs have not yet been computed for the supplied parameters. Please run subpop_analysis.py with the desired parameters for `include_unreleasable_samples`, `high_quality`, and `pop`"
+                "PCs have not yet been computed for the supplied parameters. Please run"
+                " subpop_analysis.py with the desired parameters for"
+                " `include_unreleasable_samples`, `high_quality`, and `pop`"
             )
 
         # Read in metadata
@@ -40,7 +42,8 @@ def main(args):  # noqa: D103
         # Initiate lists for storing results
         merged = []
 
-        # Run assign pops for each test combination of values in min_prob_list and max_prop_mislabeled_list
+        # Run assign pops for each test combination of values in min_prob_list and
+        # max_prop_mislabeled_list
         for min_prob in args.min_prob_list:
             for (
                 max_proportion_mislabeled_training_samples
@@ -66,7 +69,8 @@ def main(args):  # noqa: D103
                 ht = joint_pca_ht.filter(joint_pca_ht.evaluation_sample)
 
                 # Calculate number of mislabeled samples
-                # NOTE: `training_pop` is the known label for the sample, but could have been used for either training or evaluation
+                # NOTE: `training_pop` is the known label for the sample, but could have
+                # been used for either training or evaluation
                 total = ht.count()
                 mislabelled = ht.aggregate(
                     hl.agg.count_where(ht.training_pop != ht.subpop)
@@ -77,7 +81,8 @@ def main(args):  # noqa: D103
                 # Definitions:
                 # TP = Samples where `training_pop` equals assigned `subpop`
                 # FP = Samples where `training_pop` does not equal assigned `subpop` and `subpop` is not `Other`
-                # FN = Samples where `training_pop` does not equal assigned `subpop` and `subpop` is `Other`
+                # FN = Samples where `training_pop` does not equal assigned `subpop` and
+                # `subpop` is `Other`
 
                 ht = ht.annotate(
                     result_status=hl.case()
@@ -113,7 +118,9 @@ def main(args):  # noqa: D103
         results_ht = hl.Table.parallelize(
             hl.literal(
                 merged,
-                "array<struct{min_prob: float, max_proportion_mislabeled_training_samples: float, percent_correct: float, TP: int, FP: int, FN: int, error_rate: float}>",
+                "array<struct{min_prob: float,"
+                " max_proportion_mislabeled_training_samples: float, percent_correct:"
+                " float, TP: int, FP: int, FN: int, error_rate: float}>",
             )
         )
 
@@ -143,7 +150,10 @@ def main(args):  # noqa: D103
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="This script generates a Table with precision and recall results to test the performance of subpop assignment"
+        description=(
+            "This script generates a Table with precision and recall results to test"
+            " the performance of subpop assignment"
+        )
     )
     parser.add_argument(
         "--slack-channel",
@@ -154,7 +164,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--pop",
-        help="Population to test (need to first run subpop_analysis.py with this `pop`)",
+        help=(
+            "Population to test (need to first run subpop_analysis.py with this `pop`)"
+        ),
         type=str,
     )
 
@@ -180,7 +192,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--max-prop-mislabeled-list",
-        help="List of maximum number of training samples that can be mislabelled to test for subpop assignment",
+        help=(
+            "List of maximum number of training samples that can be mislabelled to test"
+            " for subpop assignment"
+        ),
         type=float,
         nargs="+",
         default=[1],
@@ -194,7 +209,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--withhold-prop",
-        help="Proportion of training pop samples to withhold from training, all samples will be kept if this flag is not used. NOTE: 20 percent of the training samples are used for evaluation, withholding samples will put aside a certain proportion of samples before splitting the remainder into training and evaluation. Setting a value for `withhold-prop` is recommended if values are supplied to `max-prop-mislabeled-list` in order to produce a reasonable PR curve when using iterations.",
+        help=(
+            "Proportion of training pop samples to withhold from training, all samples"
+            " will be kept if this flag is not used. NOTE: 20 percent of the training"
+            " samples are used for evaluation, withholding samples will put aside a"
+            " certain proportion of samples before splitting the remainder into"
+            " training and evaluation. Setting a value for `withhold-prop` is"
+            " recommended if values are supplied to `max-prop-mislabeled-list` in order"
+            " to produce a reasonable PR curve when using iterations."
+        ),
         type=float,
         default=None,
     )

@@ -480,7 +480,8 @@ def create_fake_pedigree(
         )
         if len(probands) == len(sample_list):
             raise ValueError(
-                "Full sample list for fake trios generation needs to include samples that aren't probands in the real trios."
+                "Full sample list for fake trios generation needs to include samples"
+                " that aren't probands in the real trios."
             )
 
     fake_trios = []
@@ -523,13 +524,15 @@ def infer_ped(related_data: GnomADRelatedData) -> None:
 
     raw_ped = infer_families(related_data.kin_ht, sex, dups_to_remove)
     logger.info(
-        f"Found {len(raw_ped.complete_trios())} complete trios in {related_data.data_type}."
+        f"Found {len(raw_ped.complete_trios())} complete trios in"
+        f" {related_data.data_type}."
     )
 
     # Create dataframe with all combinations of dups
     dup_trios_pd = get_dup_trios(raw_ped, related_data.sample_to_dups)
     logger.info(
-        f"Found {len(dup_trios_pd)} trios combinations with dups in {related_data.data_type}."
+        f"Found {len(dup_trios_pd)} trios combinations with dups in"
+        f" {related_data.data_type}."
     )
     with hl.hadoop_open(dup_pedigree_tsv_path(related_data.data_type), "w") as out:
         dup_trios_pd.to_csv(out, sep="\t", index=False)
@@ -557,7 +560,8 @@ def select_dups(related_data: GnomADRelatedData) -> None:
     raw_trios = pick_duplicates(dup_trios_pd, rank_pd, related_data.sample_project)
     raw_ped = pandas_to_ped(raw_trios)
     logger.info(
-        f"Generated {len(raw_ped.complete_trios())} complete trios after optimizing families in {related_data.data_type}."
+        f"Generated {len(raw_ped.complete_trios())} complete trios after optimizing"
+        f" families in {related_data.data_type}."
     )
     raw_ped.write(raw_fam_path(related_data.data_type))
 
@@ -586,7 +590,8 @@ def create_meta(
 
     n_fake_trios = int(fake_fam_prop * len(raw_ped.complete_trios()))
     logger.info(
-        f"Generating fake pedigree with {n_fake_trios} trios for {related_data.data_type}"
+        f"Generating fake pedigree with {n_fake_trios} trios for"
+        f" {related_data.data_type}"
     )
     fake_fams = create_fake_pedigree(
         n_fake_trios, list(related_data.meta_pd.s), raw_ped
@@ -596,7 +601,8 @@ def create_meta(
 
     logger.info(f"Running mendel_errors on {related_data.data_type}")
 
-    # Run mendel errors on families made of random samples to establish expectation in non-trios:
+    # Run mendel errors on families made of random samples to establish
+    # expectation in non-trios:
     pedigrees = [
         ("new", raw_ped),
         (
@@ -666,7 +672,8 @@ def create_ped(related_data: GnomADRelatedData, new_version: str, max_mv_z: int 
     """
     raw_ped = hl.Pedigree.read(raw_fam_path(related_data.data_type), delimiter="\\t")
     logger.info(
-        f"Loaded raw {related_data.data_type} pedigree containing {len(raw_ped.trios)} trios"
+        f"Loaded raw {related_data.data_type} pedigree containing"
+        f" {len(raw_ped.trios)} trios"
     )
 
     # Filter families
@@ -687,12 +694,12 @@ def create_ped(related_data: GnomADRelatedData, new_version: str, max_mv_z: int 
     final_ped.write(fam_path(related_data.data_type, version=new_version))
 
     logger.info(
-        f"Wrote final {related_data.data_type} pedigree with {len(final_ped.trios)} trios."
+        f"Wrote final {related_data.data_type} pedigree with"
+        f" {len(final_ped.trios)} trios."
     )
 
 
 def main(args):
-
     data_types = []
     if args.exomes:
         data_types.append("exomes")
@@ -700,7 +707,6 @@ def main(args):
         data_types.append("genomes")
 
     for data_type in data_types:
-
         related_data = GnomADRelatedData(data_type)
 
         # Infer families from the data
@@ -749,25 +755,37 @@ if __name__ == "__main__":
     select_dup_grp = parser.add_argument_group("Select duplicates")
     select_dup_grp.add_argument(
         "--select_dups",
-        help="Select a single duplicate sample for each trio, optimizing for (1) number of trio/family members within the same project, and (2) rank in sampleqc list.",
+        help=(
+            "Select a single duplicate sample for each trio, optimizing for (1) number"
+            " of trio/family members within the same project, and (2) rank in sampleqc"
+            " list."
+        ),
         action="store_true",
     )
 
     meta_grp = parser.add_argument_group("Pedigree quality control (metadata creation)")
     meta_grp.add_argument(
         "--fake_fam_prop",
-        help="Number of fake trios to generate as a proportion of the total number of trios found in the data. (default=0.1)",
+        help=(
+            "Number of fake trios to generate as a proportion of the total number of"
+            " trios found in the data. (default=0.1)"
+        ),
         default=0.1,
         type=float,
     )
     meta_grp.add_argument(
         "--create_meta",
-        help="Creates a HT with metadata (mendel error, kinship, sample meta) about trios (old, new and fake to allow for comparison).",
+        help=(
+            "Creates a HT with metadata (mendel error, kinship, sample meta) about"
+            " trios (old, new and fake to allow for comparison)."
+        ),
         action="store_true",
     )
     meta_grp.add_argument(
         "--old_version",
-        help="Version for the old data. (default=current version specified in resources)",
+        help=(
+            "Version for the old data. (default=current version specified in resources)"
+        ),
         default=CURRENT_FAM,
     )
 
@@ -786,7 +804,10 @@ if __name__ == "__main__":
     )
     final_ped_grp.add_argument(
         "--max_mv_z",
-        help="Max number of std devs above the mean number of MVs in inferred trios to keep trio. (default=3)",
+        help=(
+            "Max number of std devs above the mean number of MVs in inferred trios to"
+            " keep trio. (default=3)"
+        ),
         default=3,
         type=int,
     )

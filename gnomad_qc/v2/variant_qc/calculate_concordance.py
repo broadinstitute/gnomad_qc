@@ -20,7 +20,6 @@ logger = logging.getLogger("calculate_concordance")
 
 
 def write_duplicates(version: str, overwrite: bool) -> None:
-
     kin_ht = hl.read_table(sample_qc.relatedness_ht_path)
     kin_ht = kin_ht.filter((kin_ht.i.data_type != kin_ht.j.data_type))
     kin_ht = kin_ht.key_by(
@@ -238,7 +237,9 @@ def create_binned_concordance(
         and not overwrite
     ):
         logger.warn(
-            f"Skipping binned concordance creation as {binned_concordance_path(data_type, truth_sample, metric)} exists and overwrite=False"
+            "Skipping binned concordance creation as"
+            f" {binned_concordance_path(data_type, truth_sample, metric)} exists and"
+            " overwrite=False"
         )
     else:
         ht = hl.read_table(
@@ -343,7 +344,8 @@ def create_binned_concordance(
         ht = (
             ht.group_by("rank_name", "snv", "bin")
             .aggregate(
-                # Look at site-level metrics -> tp > fp > fn -- only important for multi-sample comparisons
+                # Look at site-level metrics -> tp > fp > fn -- only important for
+                # multi-sample comparisons
                 tp=hl.agg.count_where(ht.n_tp > 0),
                 fp=hl.agg.count_where((ht.n_tp == 0) & (ht.n_fp > 0)),
                 fn=hl.agg.count_where((ht.n_tp == 0) & (ht.n_fp == 0) & (ht.n_fn > 0)),
@@ -361,7 +363,6 @@ def create_binned_concordance(
 
 
 def main(args):
-
     if args.debug:
         logger.setLevel(logging.DEBUG)
 
@@ -376,7 +377,6 @@ def main(args):
         data_types.append("genomes")
 
     for data_type in data_types:
-
         if args.compute_concordance:
             if args.na12878:
                 logger.info(f"Computing {data_type} / NA12878 concordance")
@@ -417,7 +417,6 @@ def main(args):
                 )
 
         if args.bin_concordance:
-
             truth_samples = []
             if args.na12878:
                 truth_samples.append("NA12878")
@@ -441,7 +440,8 @@ def main(args):
             for truth_sample in truth_samples:
                 for metric in metrics:
                     logger.info(
-                        f"Creating binned concordance table for {data_type} / {truth_sample} for metric {metric}"
+                        f"Creating binned concordance table for {data_type} /"
+                        f" {truth_sample} for metric {metric}"
                     )
                     create_binned_concordance(
                         data_type, truth_sample, metric, args.n_bins, args.overwrite
@@ -501,7 +501,11 @@ if __name__ == "__main__":
     conc_grp = parser.add_argument_group("Compute concordance options")
     conc_grp.add_argument(
         "--dup_version",
-        help="Version of the exomes/genomes duplicates. (default is current version). Note that if --write_duplicates is used, then the new file generated is used.",
+        help=(
+            "Version of the exomes/genomes duplicates. (default is current version)."
+            " Note that if --write_duplicates is used, then the new file generated is"
+            " used."
+        ),
         default=CURRENT_DUPS,
     )
 
@@ -517,7 +521,10 @@ if __name__ == "__main__":
     )
     bin_grp.add_argument(
         "--rf_2_0_2_beta",
-        help="When set, annotates with 2.0.2 RF beta (no medians, QD / max(pAB)) rank file.",
+        help=(
+            "When set, annotates with 2.0.2 RF beta (no medians, QD / max(pAB)) rank"
+            " file."
+        ),
         action="store_true",
     )
     bin_grp.add_argument(
@@ -536,19 +543,22 @@ if __name__ == "__main__":
         args.exomes or args.genomes
     ):
         sys.exit(
-            "Error: At least one of --exomes or --genomes must be specified when using --compute_concordance or --bin_concordance."
+            "Error: At least one of --exomes or --genomes must be specified when using"
+            " --compute_concordance or --bin_concordance."
         )
 
     if args.compute_concordance and not (
         args.na12878 or args.syndip or args.omes or args.omes_by_platform
     ):
         sys.exit(
-            "Error At least one dataset should be specified when running --compute_concordance."
+            "Error At least one dataset should be specified when running"
+            " --compute_concordance."
         )
 
     if args.bin_concordance and not (args.na12878 or args.syndip):
         sys.exit(
-            "Error: At least one dataset should be specified when running --bin_concordance. (At the moment --omes is not implemented)"
+            "Error: At least one dataset should be specified when running"
+            " --bin_concordance. (At the moment --omes is not implemented)"
         )
 
     if (
@@ -561,7 +571,8 @@ if __name__ == "__main__":
         )
     ):
         sys.exit(
-            "Error: Computing --omes_by_platform requires computing --omes first. Please run --omes first (you can run with both options in a single run)"
+            "Error: Computing --omes_by_platform requires computing --omes first."
+            " Please run --omes first (you can run with both options in a single run)"
         )
 
     if args.slack_channel:

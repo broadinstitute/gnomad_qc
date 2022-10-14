@@ -71,7 +71,8 @@ def create_bin_ht(model_id: str, n_bins: int, hgdp_tgp_subset: bool) -> hl.Table
     else:
         if hgdp_tgp_subset:
             raise ValueError(
-                "The hgdp_tgp_subset option is only relevant for VQSR models in all v3 releases."
+                "The hgdp_tgp_subset option is only relevant for VQSR models in all v3"
+                " releases."
             )
 
         ht = get_rf_result(model_id=model_id).ht()
@@ -222,7 +223,8 @@ def main(args):  # noqa: D103
     if args.merge_with_truth_data:
         for truth_sample in TRUTH_SAMPLES:
             logger.info(
-                f"Creating a merged table with callset truth sample and truth data for {truth_sample}..."
+                "Creating a merged table with callset truth sample and truth data for"
+                f" {truth_sample}..."
             )
 
             # Load truth data
@@ -244,7 +246,8 @@ def main(args):  # noqa: D103
     if args.bin_truth_sample_concordance:
         for truth_sample in TRUTH_SAMPLES:
             logger.info(
-                f"Creating binned concordance table for {truth_sample} for model {args.model_id}"
+                f"Creating binned concordance table for {truth_sample} for model"
+                f" {args.model_id}"
             )
             ht = get_callset_truth_data(truth_sample, mt=False).ht()
 
@@ -264,7 +267,8 @@ def main(args):  # noqa: D103
             )
 
             logger.info(
-                "Loading HT containing RF or VQSR scores annotated with a bin based on the rank of score..."
+                "Loading HT containing RF or VQSR scores annotated with a bin based on"
+                " the rank of score..."
             )
             metric_ht = get_score_bins(args.model_id, aggregated=False).ht()
             ht = ht.filter(hl.is_defined(metric_ht[ht.key]))
@@ -296,15 +300,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--hgdp_tgp_subset",
         help=(
-            "Use HGDP + 1KG/TGP subset raw allele count as a filter in `create_bin_ht` instead of the full gnomAD raw "
-            "allele count. Only relevant to VQSR because VQSR was used for filtering in all v3 releases. This is needed"
-            "only for the HGDP + 1KG/TGP subset release and is not used in evaluation."
+            "Use HGDP + 1KG/TGP subset raw allele count as a filter in `create_bin_ht`"
+            " instead of the full gnomAD raw allele count. Only relevant to VQSR"
+            " because VQSR was used for filtering in all v3 releases. This is"
+            " neededonly for the HGDP + 1KG/TGP subset release and is not used in"
+            " evaluation."
         ),
         action="store_true",
     )
     parser.add_argument(
         "--create_bin_ht",
-        help="When set, creates file annotated with bin based on rank of VQSR/RF score.",
+        help=(
+            "When set, creates file annotated with bin based on rank of VQSR/RF score."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -314,7 +322,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--create_aggregated_bin_ht",
-        help="When set, creates a file with aggregate counts of variants based on bins.",
+        help=(
+            "When set, creates a file with aggregate counts of variants based on bins."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -336,12 +346,18 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--merge_with_truth_data",
-        help="Computes a table for each truth sample comparing the truth sample in the callset vs the truth.",
+        help=(
+            "Computes a table for each truth sample comparing the truth sample in the"
+            " callset vs the truth."
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--bin_truth_sample_concordance",
-        help="Merges concordance results (callset vs. truth) for a given truth sample with bins from specified model",
+        help=(
+            "Merges concordance results (callset vs. truth) for a given truth sample"
+            " with bins from specified model"
+        ),
         action="store_true",
     )
 

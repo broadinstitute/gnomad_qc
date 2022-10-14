@@ -66,10 +66,10 @@ def generate_sex_chr_interval_coverage_mt(
         par_boundaries.append(par_interval.start)
         par_boundaries.append(par_interval.end)
 
-    # Segment on PAR interval boundaries
+    # Segment on PAR interval boundaries.
     calling_intervals = hl.segment_intervals(calling_intervals_ht, par_boundaries)
 
-    # Annotate intervals overlapping PAR
+    # Annotate intervals overlapping PAR.
     calling_intervals = calling_intervals.annotate(
         overlap_par=hl.any(
             lambda x: x.overlaps(calling_intervals.interval), hl.literal(rg.par)
@@ -109,7 +109,8 @@ def filter_to_test(
     :return: Input MatrixTables filtered to `num_partitions` on chr1, chrX, and all of chrY.
     """
     logger.info(
-        "Filtering to columns in both the coverage MT and the sex coverage MT for testing...",
+        "Filtering to columns in both the coverage MT and the sex coverage MT for"
+        " testing...",
     )
     mt = mt.semi_join_cols(sex_mt.cols())
     sex_mt = sex_mt.semi_join_cols(mt.cols())
@@ -205,8 +206,8 @@ def compute_interval_qc(
             num_samples_no_platform,
         )
 
-    # Note: Default hl.vds.interval_coverage will return a list for 'fraction_over_dp_threshold' where the
-    # second element is dp >= 1 (dp > 0)
+    # Note: Default hl.vds.interval_coverage will return a list for
+    # 'fraction_over_dp_threshold' where the second element is dp >= 1 (dp > 0).
     agg_groups = [("", None), ("platform_", mt.platform)]
     mt = mt.annotate_rows(
         **{
@@ -402,12 +403,14 @@ def get_interval_qc_pass(
         :param platform: Optional platform to filter to.
         :return: BooleanExpression indicating high quality.
         """
-        # Apply the 'iand' operator cumulatively from left to right of each value in high_qual_cutoffs (list of
-        # cutoffs that must all apply) to get a single bool for each key in high_qual_cutoffs.
-        # Then apply the 'ior' operator cumulatively from left to right to get a single bool indicating high quality.
-        # Each interval type in high_qual_cutoffs has a different set of annotations and cutoffs, this will apply those
-        # cutoffs to each interval type then merge these expressions with the 'or' operator to keep all intervals that
-        # pass the relevant cutoffs.
+        # Apply the 'iand' operator cumulatively from left to right of each value in
+        # high_qual_cutoffs (list of cutoffs that must all apply) to get a single bool
+        # for each key in high_qual_cutoffs. Then apply the 'ior' operator cumulatively
+        # from left to right to get a single bool indicating high quality. Each
+        # interval type in high_qual_cutoffs has a different set of annotations and
+        # cutoffs, this will apply those cutoffs to each interval type then merge these
+        # expressions with the 'or' operator to keep all intervals that pass the
+        # relevant cutoffs.
         return functools.reduce(
             operator.ior,
             [
@@ -436,10 +439,12 @@ def get_interval_qc_pass(
                 min_platform_size=min_platform_size
             )
             logger.info(
-                "Defining high quality intervals across all platforms. Limited to platforms with at least %s samples...",
+                "Defining high quality intervals across all platforms. Limited to"
+                " platforms with at least %s samples...",
                 min_platform_size,
             )
-            # Excluding small platforms and platform_-1 (platform containing all samples with unassigned platform)
+            # Excluding small platforms and platform_-1 (platform containing all
+            # samples with unassigned platform).
             platforms = [
                 platform
                 for platform, n_samples in platform_n_samples.items()
@@ -487,7 +492,7 @@ def annotate_interval_qc_filter(
 
 
 def main(args):
-    """Define high quality intervals based on per interval aggregate statistics over samples."""
+    """Define high quality intervals based on aggregate statistics over samples."""
     hl.init(
         log="/interval_qc.log",
         default_reference="GRCh38",
@@ -578,7 +583,8 @@ def main(args):
             )
 
             logger.info(
-                "Computing interval QC on sex chromosomes and joining with autosome interval QC HT..."
+                "Computing interval QC on sex chromosomes and joining with autosome"
+                " interval QC HT..."
             )
             ht = ht.union(
                 compute_interval_qc(
@@ -599,16 +605,17 @@ def main(args):
                 else interval_qc.ht()
             )
             if args.by_mean_fraction_over_dp_0:
-                # The same cutoffs and annotations are used for autosome_par, x_non_par, and y_non_par within their
-                # respective dictionaries
+                # The same cutoffs and annotations are used for autosome_par,
+                # x_non_par, and y_non_par within their respective dictionaries.
                 high_qual_cutoffs = get_high_qual_cutoff_dict(
                     *[args.mean_fraction_over_dp_0] * 3,
                     *["mean_fraction_over_dp_0"] * 3,
                     split_by_sex=True,
                 )
             if args.by_fraction_samples_over_cov:
-                # The same cutoffs are used for autosome_par, x_non_par, and y_non_par and annotations for autosome_par
-                # and x_non_par within their respective dictionaries
+                # The same cutoffs are used for autosome_par, x_non_par, and y_non_par
+                # and annotations for autosome_par and x_non_par within their respective
+                # dictionaries.
                 high_qual_cutoffs = get_high_qual_cutoff_dict(
                     *[args.fraction_samples] * 3,
                     *[f"fraction_over_{args.autosome_par_xx_cov}x"] * 2,
@@ -658,21 +665,27 @@ if __name__ == "__main__":
     sex_coverage_args.add_argument(
         "--sex-chr-interval-coverage",
         help=(
-            "Create a MatrixTable of interval-by-sample coverage on sex chromosomes with intervals split at PAR "
-            "regions."
+            "Create a MatrixTable of interval-by-sample coverage on sex chromosomes"
+            " with intervals split at PAR regions."
         ),
         action="store_true",
     )
     sex_coverage_args.add_argument(
         "--calling-interval-name",
-        help="Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'.",
+        help=(
+            "Name of calling intervals to use for interval coverage. One of: 'ukb',"
+            " 'broad', or 'intersection'."
+        ),
         type=str,
         choices=["ukb", "broad", "intersection"],
         default="intersection",
     )
     sex_coverage_args.add_argument(
         "--calling-interval-padding",
-        help="Number of base pair padding to use on the calling intervals. One of 0 or 50 bp.",
+        help=(
+            "Number of base pair padding to use on the calling intervals. One of 0 or"
+            " 50 bp."
+        ),
         type=int,
         choices=[0, 50],
         default=50,
@@ -684,14 +697,17 @@ if __name__ == "__main__":
     )
     interval_qc_args.add_argument(
         "--generate-interval-qc-ht",
-        help="Compute aggregate interval stats for interval QC from coverage MatrixTables.",
+        help=(
+            "Compute aggregate interval stats for interval QC from coverage"
+            " MatrixTables."
+        ),
         action="store_true",
     )
     interval_qc_args.add_argument(
         "--mean-dp-thresholds",
         help=(
-            "List of mean DP cutoffs to determine the fraction of samples with mean coverage >= the cutoff for each "
-            "interval."
+            "List of mean DP cutoffs to determine the fraction of samples with mean"
+            " coverage >= the cutoff for each interval."
         ),
         type=int,
         nargs="+",
@@ -705,8 +721,8 @@ if __name__ == "__main__":
     interval_qc_pass_args.add_argument(
         "--generate-interval-qc-pass-ht",
         help=(
-            "Create Table that contains an 'interval_qc_pass' annotation indicating whether the interval passes "
-            "high-quality criteria."
+            "Create Table that contains an 'interval_qc_pass' annotation indicating"
+            " whether the interval passes high-quality criteria."
         ),
         action="store_true",
     )
@@ -717,25 +733,26 @@ if __name__ == "__main__":
     interval_qc_pass_platform_opt_parser.add_argument(
         "--per-platform",
         help=(
-            "Whether to make the interval QC pass annotation a DictionaryExpression with interval QC pass per "
-            "platform."
+            "Whether to make the interval QC pass annotation a DictionaryExpression"
+            " with interval QC pass per platform."
         ),
         action="store_true",
     )
     interval_qc_pass_platform_opt_parser.add_argument(
         "--all-platforms",
         help=(
-            "Whether to consider an interval as passing QC only if it passes interval QC per platform across all "
-            "platforms (with a sample size above '--min-platform-size')."
+            "Whether to consider an interval as passing QC only if it passes interval"
+            " QC per platform across all platforms (with a sample size above"
+            " '--min-platform-size')."
         ),
         action="store_true",
     )
     interval_qc_pass_args.add_argument(
         "--min-platform-size",
         help=(
-            "Required size of a platform to be considered in '--all-platforms'. Only platforms that "
-            "have # of samples > 'min_platform_size' are used to determine intervals that are high quality across "
-            "all platforms."
+            "Required size of a platform to be considered in '--all-platforms'. Only"
+            " platforms that have # of samples > 'min_platform_size' are used to"
+            " determine intervals that are high quality across all platforms."
         ),
         type=int,
         default=100,
@@ -745,18 +762,22 @@ if __name__ == "__main__":
     )
     interval_qc_pass_method_parser.add_argument(
         "--by-mean-fraction-over-dp-0",
-        help="Whether to use the mean fraction of bases over DP 0 to determine high quality intervals. Can't be set "
-        "at the same time as '--by-prop-samples-over-cov'.",
+        help=(
+            "Whether to use the mean fraction of bases over DP 0 to determine high"
+            " quality intervals. Can't be set at the same time as"
+            " '--by-prop-samples-over-cov'."
+        ),
         action="store_true",
     )
     interval_qc_pass_method_parser.add_argument(
         "--by-fraction-samples-over-cov",
         help=(
-            "Whether to determine high quality intervals using the fraction of samples (--fraction-samples) with a "
-            "mean interval coverage over a specified coverage for intervals on the the autosomes/sex chromosome "
-            "PAR/chrX in XX individuals (--autosome-par-xx-cov) and intervals on non-PAR chrX and "
-            "non-PAR chrY in XY individuals (--xy-nonpar-cov). Can't be set at the same time as "
-            "'--by-mean-fraction-over-dp-0'"
+            "Whether to determine high quality intervals using the fraction of samples"
+            " (--fraction-samples) with a mean interval coverage over a specified"
+            " coverage for intervals on the the autosomes/sex chromosome PAR/chrX in XX"
+            " individuals (--autosome-par-xx-cov) and intervals on non-PAR chrX and"
+            " non-PAR chrY in XY individuals (--xy-nonpar-cov). Can't be set at the"
+            " same time as '--by-mean-fraction-over-dp-0'"
         ),
         action="store_true",
     )
@@ -769,8 +790,9 @@ if __name__ == "__main__":
     interval_qc_pass_args.add_argument(
         "--autosome-par-xx-cov",
         help=(
-            "Mean coverage level used to define high coverage intervals on the the autosomes, sex chromosome PAR, "
-            "and chrX in XX individuals. This field must be in the interval coverage MatrixTables!"
+            "Mean coverage level used to define high coverage intervals on the the"
+            " autosomes, sex chromosome PAR, and chrX in XX individuals. This field"
+            " must be in the interval coverage MatrixTables!"
         ),
         type=int,
         default=20,
@@ -778,8 +800,9 @@ if __name__ == "__main__":
     interval_qc_pass_args.add_argument(
         "--xy-nonpar-cov",
         help=(
-            "Mean coverage level used to define high coverage intervals on non-PAR chrX and non-PAR "
-            "chrY in XY individuals. This field must be in the interval coverage MatrixTables!"
+            "Mean coverage level used to define high coverage intervals on non-PAR chrX"
+            " and non-PAR chrY in XY individuals. This field must be in the interval"
+            " coverage MatrixTables!"
         ),
         type=int,
         default=10,
@@ -787,8 +810,9 @@ if __name__ == "__main__":
     interval_qc_pass_args.add_argument(
         "--fraction-samples",
         help=(
-            "Fraction of samples with mean coverage greater than '--autosome-par-xx-cov'/'--xy-nonpar-cov' over the "
-            "interval to determine high coverage intervals."
+            "Fraction of samples with mean coverage greater than"
+            " '--autosome-par-xx-cov'/'--xy-nonpar-cov' over the interval to determine"
+            " high coverage intervals."
         ),
         type=float,
         default=0.85,
@@ -800,8 +824,8 @@ if __name__ == "__main__":
         args.by_mean_fraction_over_dp_0 or args.by_fraction_samples_over_cov
     ):
         parser.error(
-            "One of --by-mean-fraction-over-dp-0 or --by-fraction-samples-over-cov is required when "
-            "--generate-interval-qc-pass-ht is specified."
+            "One of --by-mean-fraction-over-dp-0 or --by-fraction-samples-over-cov is"
+            " required when --generate-interval-qc-pass-ht is specified."
         )
 
     if args.slack_channel:

@@ -95,7 +95,8 @@ def extract_freq_info(version1: str, version2: str, pops: List[str]) -> hl.Table
         ht = ht.filter(hl.len(ht.filters) == 0)
         freq_index_dict = hl.eval(ht.freq_index_dict)
 
-        # Keep full gnomAD callset adj [0], raw [1], and ancestry-specific adj frequencies
+        # Keep full gnomAD callset adj [0], raw [1], and ancestry-specific adj
+        # frequencies
         freq_idx = [0, 1] + [
             freq_index_dict[POP_FORMAT[version].format(pop)] for pop in pops
         ]
@@ -141,7 +142,8 @@ def perform_contingency_table_test(
     """
     versions = [version1, version2]
 
-    # First two entries of the frequency lists are excluded because they are adj and raw, we only need it by pop
+    # First two entries of the frequency lists are excluded because they are
+    # adj and raw, we only need it by pop
     ht = ht.annotate(
         n_ref=hl.struct(
             **{
@@ -183,7 +185,8 @@ def filter_and_densify_v3_mt(filter_ht: hl.Table, test: bool = False) -> hl.Matr
     :param test: Whether to filter the v3.1 MatrixTable to the first 5 partitions for testing
     :return: Dense gnomAD v3.1 MatrixTable containing only variants in `filter_ht`
     """
-    # Loading unsplit v3 because this is needed for the conversion to VDS before the necessary densify
+    # Loading unsplit v3 because this is needed for the conversion to VDS
+    # before the necessary densify
     logger.info("Loading v3.1 gnomAD MatrixTable...")
     mt = get_gnomad_v3_mt(
         key_by_locus_and_alleles=True,
@@ -286,8 +289,8 @@ def perform_logistic_regression(
     """
     if version1 != "v3_genomes" and version2 != "v2_exomes":
         raise NotImplementedError(
-            "Logistic regression with ancestry PCA inclusion is currently only implemented for the comparison between "
-            "gnomAD v3 genomes and v2 exomes."
+            "Logistic regression with ancestry PCA inclusion is currently only"
+            " implemented for the comparison between gnomAD v3 genomes and v2 exomes."
         )
 
     if use_pc_project and not use_v3_qc_pc_scores:
@@ -312,7 +315,8 @@ def perform_logistic_regression(
     v3_mt = v3_mt.select_entries("GT")
 
     logger.info(
-        "Loading v2 exomes liftover HT for annotation onto the gnomAD v2 exome MatrixTable..."
+        "Loading v2 exomes liftover HT for annotation onto the gnomAD v2 exome"
+        " MatrixTable..."
     )
     v2_liftover_ht = liftover("exomes").ht()
     v2_liftover_ht = v2_liftover_ht.key_by("original_locus", "original_alleles")
@@ -324,15 +328,16 @@ def perform_logistic_regression(
     v2_mt = v2_mt.key_rows_by(locus=v2_liftover.locus, alleles=v2_liftover.alleles)
 
     logger.info(
-        "Filtering gnomAD v2 MatrixTable to the variants found in the joined frequency HT and adding "
-        "is_genome annotation..."
+        "Filtering gnomAD v2 MatrixTable to the variants found in the joined frequency"
+        " HT and adding is_genome annotation..."
     )
     v2_mt = v2_mt.filter_rows(hl.is_defined(ht[v2_mt.row_key]))
     v2_mt = v2_mt.annotate_cols(is_genome=False)
     v2_mt = v2_mt.select_entries("GT")
 
     logger.info(
-        "Performing a union of the gnomAD v2 exomes MatrixTable and gnomAD v3 MatrixTable columns..."
+        "Performing a union of the gnomAD v2 exomes MatrixTable and gnomAD v3"
+        " MatrixTable columns..."
     )
     # Selecting only needed info in order to do the union on MatrixTables
     v3_mt = v3_mt.select_rows().select_cols("is_genome")
@@ -345,7 +350,8 @@ def perform_logistic_regression(
     )
 
     logger.info(
-        "Running a logistic regression of the rows: genome_vs_exome_status ~ genotype + [ancestry_pcs]..."
+        "Running a logistic regression of the rows: genome_vs_exome_status ~ genotype +"
+        " [ancestry_pcs]..."
     )
     mt = mt.annotate_cols(pc=pc_ht[mt.col_key].scores)
     ht = hl.logistic_regression_rows(
@@ -365,7 +371,8 @@ def main(args):  # noqa: D103
     hl.init(log="/compare_freq.log")
 
     try:
-        # Reorder so that v3_genomes is version1. Forces the output location to be in the more recent release location
+        # Reorder so that v3_genomes is version1. Forces the output location to be
+        # in the more recent release location
         version1, version2 = [
             v
             for v in ["v3_genomes", "v2_genomes", "v2_exomes"]
@@ -461,8 +468,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--contingency-table-test",
         help=(
-            "Perform chi-squared or Fisher’s exact test of independence on the allele frequencies based "
-            "on `min_cell_count`."
+            "Perform chi-squared or Fisher’s exact test of independence on the allele"
+            " frequencies based on `min_cell_count`."
         ),
         action="store_true",
     )
@@ -475,35 +482,42 @@ if __name__ == "__main__":
     parser.add_argument(
         "--run-pc-project-v3-on-v2",
         help=(
-            "Run the projection of v3.1 samples onto v2 PCs using v2 loadings. This is needed for '--logistic-regression' "
-            "if '--use-pc-project' is wanted."
+            "Run the projection of v3.1 samples onto v2 PCs using v2 loadings. This is"
+            " needed for '--logistic-regression' if '--use-pc-project' is wanted."
         ),
         action="store_true",
     )
     parser.add_argument(
         "--logistic-regression",
         help=(
-            "Perform a logistic regression of the rows: genome_vs_exome_status ~ genotype + [ancestry_pcs]. Only "
-            "implemented for the comparison of v3 genomes to v2 exomes."
+            "Perform a logistic regression of the rows: genome_vs_exome_status ~"
+            " genotype + [ancestry_pcs]. Only implemented for the comparison of v3"
+            " genomes to v2 exomes."
         ),
         action="store_true",
     )
     parser.add_argument(
         "--use-pc-project",
-        help="Use PC project scores as the ancestry PCs in the logistic regression '--logistic-regression'.",
+        help=(
+            "Use PC project scores as the ancestry PCs in the logistic regression"
+            " '--logistic-regression'."
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--use-v3-qc-pc-scores",
         help=(
-            "Use the joint v3/v2_exome PC scores from an old run of PC relate (includes relateds and only used 10% of "
-            "QC variants)."
+            "Use the joint v3/v2_exome PC scores from an old run of PC relate (includes"
+            " relateds and only used 10% of QC variants)."
         ),
         action="store_true",
     )
     parser.add_argument(
         "--read-checkpoint-if-exists",
-        help="Whether to read the checkpointed v2/v3 unified MatrixTable if it exists. Used in '--logistic-regression'.",
+        help=(
+            "Whether to read the checkpointed v2/v3 unified MatrixTable if it exists."
+            " Used in '--logistic-regression'."
+        ),
         action="store_true",
     )
 

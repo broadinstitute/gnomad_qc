@@ -177,7 +177,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--find_dups",
-        help="Creates a table with duplicate samples indicating which one is the best to use.",
+        help=(
+            "Creates a table with duplicate samples indicating which one is the best to"
+            " use."
+        ),
         action="store_true",
     )
     parser.add_argument("--infer_families", help="Infers families", action="store_true")
@@ -186,7 +189,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--finalize_ped",
-        help="Creates a final ped file by excluding families where the number of Mendel errors or de novos are higher than those specified in --max_dnm and --max_mendel",
+        help=(
+            "Creates a final ped file by excluding families where the number of Mendel"
+            " errors or de novos are higher than those specified in --max_dnm and"
+            " --max_mendel"
+        ),
         action="store_true",
     )
     parser.add_argument(
