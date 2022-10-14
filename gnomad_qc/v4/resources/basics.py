@@ -222,8 +222,8 @@ ukb_application_map = TableResource(
 # All 44 samples are marked as "unresolved duplicates" by the pharma partners.
 ukb_known_dups = TableResource(f"{_ukb_root_path()}/pharma_known_dups_7.ht")
 
-# Samples with duplicate names in the VDS and their column index 27 samples to remove
-# based on column index.
+# Samples with duplicate names in the VDS and their column index.
+# 27 samples to remove based on column index.
 ukb_dups_idx_path = f"{_ukb_root_path()}/dup_remove_idx_7.tsv"
 
 # Final list of UKB samples to remove (duplicates that were removed will have their
