@@ -1,22 +1,17 @@
+"""Script containing release related resources."""
 from typing import Optional
 
 from gnomad.resources.grch38.gnomad import public_release
-from gnomad.resources.resource_utils import (
-    DataException,
-    MatrixTableResource,
-    TableResource,
-    VersionedMatrixTableResource,
-    VersionedTableResource,
-)
+from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 from gnomad.utils.file_utils import file_exists
 
-from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE, RELEASES
 
 
 def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
     """
     Return path to file containing ANNOTATIONS_HISTS dictionary.
+
     Dictionary contains histogram values for each metric.
     For example, "InbreedingCoeff": [-0.25, 0.25, 50].
 

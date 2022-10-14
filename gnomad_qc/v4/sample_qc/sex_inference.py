@@ -1,3 +1,4 @@
+"""Script to impute chromosomal sex karyotype annotation."""
 import argparse
 import json
 import logging
@@ -321,8 +322,7 @@ def compute_sex_ploidy(
         calling_intervals_ht: hl.Table,
     ) -> hl.Table:
         """
-        Helper function to perform `annotate_sex` using unchanged parameters with changes to the VDS and calling
-        intervals.
+        Perform `annotate_sex` using unchanged parameters with changes to the VDS and calling intervals.
 
         :param vds: Input VDS to use for sex ploidy annotation.
         :param coverage_mt: Input precomputed coverage MT to use for sex ploidy annotation.
@@ -711,6 +711,7 @@ def reformat_ploidy_cutoffs_for_json(
 
 
 def main(args):
+    """Impute chromosomal sex karyotype annotation."""
     hl.init(
         log="/sex_inference.log",
         default_reference="GRCh38",

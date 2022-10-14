@@ -1,3 +1,5 @@
+# noqa: D100
+
 import argparse
 import json
 import logging
@@ -33,7 +35,7 @@ def create_frequency_bins_expr_inbreeding(
     AF: hl.expr.NumericExpression,
 ) -> hl.expr.StringExpression:
     """
-    Creates bins for frequencies in preparation for aggregating QUAL by frequency bin.
+    Create bins for frequencies in preparation for aggregating QUAL by frequency bin.
 
     Uses bins of < 0.0005 and >= 0.0005
 
@@ -53,7 +55,7 @@ def create_frequency_bins_expr_inbreeding(
     return bin_expr
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(default_reference="GRCh38", log="/variant_histograms.log")
 
     logger.info("Loading ANNOTATIONS_HISTS dictionary...")

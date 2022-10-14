@@ -1,3 +1,5 @@
+# noqa: D100
+
 """
 Compare frequencies for two gnomAD versions.
 
@@ -210,7 +212,7 @@ def filter_and_densify_v3_mt(filter_ht: hl.Table, test: bool = False) -> hl.Matr
 
 def project_on_exome_pop_pcs(test: bool = False) -> hl.Table:
     """
-    Performs `pc_project` on gnomAD v3.1 using gnomAD v2 population PCA loadings.
+    Perform `pc_project` on gnomAD v3.1 using gnomAD v2 population PCA loadings.
 
     :param test: Whether to filter the v3.1 MatrixTable to the first 5 partitions for testing
     :return: Table with PC project scores of gnomAD v3.1 projected onto v2 PCs combined with the v2 PCs
@@ -359,7 +361,7 @@ def perform_logistic_regression(
     return ht
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/compare_freq.log")
 
     try:

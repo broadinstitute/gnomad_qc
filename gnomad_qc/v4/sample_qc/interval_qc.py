@@ -1,3 +1,13 @@
+"""
+Script to define high quality intervals based on per interval aggregate statistics over samples.
+
+Two methods are available for defining high quality intervals:
+    - mean fraction of bases over DP 0 to determine high quality intervals.
+    - fraction of samples with a mean interval coverage over a specified coverage that is different for autosomes and
+      sex chromosomes.
+
+Aggregate statistics over samples can also be stratified by platform to determine per-platform high quality intervals.
+"""
 import argparse
 import functools
 import logging
@@ -163,7 +173,7 @@ def compute_interval_qc(
         group_by: Optional[hl.expr.StringExpression] = None,
     ) -> hl.Expression:
         """
-        Helper function to call `agg_func` on `expr` with optional stratification by sex karyotype and `group_by`.
+        Call `agg_func` on `expr` with optional stratification by sex karyotype and `group_by`.
 
         :param expr: Expression to pass to `agg_func`.
         :param agg_func: Function to use for aggregation of `expr`. Default is hl.agg.mean.
@@ -375,7 +385,7 @@ def get_interval_qc_pass(
         expr: Union[hl.Float64Expression, hl.DictExpression], platform: str = None
     ) -> hl.Float64Expression:
         """
-        Helper function to return the value of `expr` keyed by `platform` if supplied, otherwise return `expr`.
+        Return the value of `expr` keyed by `platform` if supplied, otherwise return `expr`.
 
         :param expr: Input FloatExpression or DictExpression.
         :param platform: Optional key of `expr`.
@@ -387,7 +397,7 @@ def get_interval_qc_pass(
 
     def _get_pass_expr(platform: str = None) -> hl.BooleanExpression:
         """
-        Helper function to define high quality intervals using `high_qual_cutoffs`.
+        Define high quality intervals using `high_qual_cutoffs`.
 
         :param platform: Optional platform to filter to.
         :return: BooleanExpression indicating high quality.
@@ -457,7 +467,7 @@ def annotate_interval_qc_filter(
     **kwargs,
 ) -> Union[hl.MatrixTable, hl.Table]:
     """
-    Wrapper function around `get_interval_qc_pass` to annotate a Table/MatrixTable with 'pass_interval_qc'.
+    Annotate a Table/MatrixTable with 'pass_interval_qc' using `get_interval_qc_pass`.
 
     Passes the interval QC Table resource and kwargs to `get_interval_qc_pass`.
 
@@ -477,6 +487,7 @@ def annotate_interval_qc_filter(
 
 
 def main(args):
+    """Define high quality intervals based on per interval aggregate statistics over samples."""
     hl.init(
         log="/interval_qc.log",
         default_reference="GRCh38",

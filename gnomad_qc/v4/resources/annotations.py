@@ -1,3 +1,4 @@
+"""Script containing annotation related resources."""
 from typing import Optional
 
 from gnomad.resources.grch37.gnomad import EXOME_RELEASES, GENOME_RELEASES

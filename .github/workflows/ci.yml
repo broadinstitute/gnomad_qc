@@ -33,3 +33,5 @@ jobs:
         run: isort --check-only gnomad_qc
       - name: Run Pylint
         run: ./lint --disable=W
+      - name: Check docstrings
+        run: pydocstyle --match-dir='(?!v2).*' gnomad_qc

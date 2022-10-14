@@ -1,4 +1,4 @@
-import hail as hl
+"""Script containing metadata related resources."""
 from gnomad.resources.resource_utils import (
     PedigreeResource,
     TableResource,

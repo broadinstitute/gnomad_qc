@@ -1,3 +1,5 @@
+# noqa: D100
+
 from typing import Optional
 
 from gnomad.resources.grch38.gnomad import public_release
@@ -21,7 +23,8 @@ from gnomad_qc.v3.resources.constants import (
 
 def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
     """
-    Returns path to file containing ANNOTATIONS_HISTS dictionary.
+    Return path to file containing ANNOTATIONS_HISTS dictionary.
+
     Dictionary contains histogram values for each metric.
     For example, "InbreedingCoeff": [-0.25, 0.25, 50].
 
@@ -110,7 +113,6 @@ def release_vcf_path(
         sites VCF path
     :return: Filepath for the desired VCF
     """
-
     if release_version is None:
         release_version = (
             CURRENT_HGDP_TGP_RELEASE if hgdp_tgp_subset else CURRENT_RELEASE
@@ -190,7 +192,6 @@ def hgdp_tgp_subset(
     :param test: If true, will return the annotation resource for testing purposes
     :return: MatrixTableResource for specific subset
     """
-
     return VersionedMatrixTableResource(
         default_version=CURRENT_HGDP_TGP_RELEASE,
         versions={

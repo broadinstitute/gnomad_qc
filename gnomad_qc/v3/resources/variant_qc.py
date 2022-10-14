@@ -1,3 +1,5 @@
+# noqa: D100
+
 from typing import Optional, Union
 
 from gnomad.resources.grch38 import (
@@ -50,7 +52,7 @@ Current truth samples available are syndip and NA12878. Available data for each 
 
 def get_variant_qc_root(version: str = CURRENT_VERSION) -> str:
     """
-    Return path to variant QC root folder
+    Return path to variant QC root folder.
 
     :param version: Version of variant QC path to return
     :return: Root to sample QC path
@@ -62,7 +64,7 @@ def get_callset_truth_data(
     truth_sample: str, mt: bool = True
 ) -> Union[MatrixTableResource, TableResource]:
     """
-    Get resources for the truth sample data that is subset from the full callset
+    Get resources for the truth sample data that is subset from the full callset.
 
     If `mt` this will return the truth sample MatrixTable (subset from callset); otherwise it returns the
     merged truth sample Table that includes both the truth data and the data from the callset
@@ -98,7 +100,7 @@ def get_score_bins(
     model_id: str, aggregated: bool, hgdp_tgp_subset: bool = False
 ) -> VersionedTableResource:
     """
-    Returns the path to a Table containing RF or VQSR scores and annotated with a bin based on rank of the metric scores.
+    Return the path to a Table containing RF or VQSR scores and annotated with a bin based on rank of the metric scores.
 
     :param model_id: RF or VQSR model ID for which to return score data.
     :param bool aggregated: Whether to get the aggregated data.
@@ -124,8 +126,10 @@ def get_score_bins(
 
 def get_binned_concordance(model_id: str, truth_sample: str) -> VersionedTableResource:
     """
-    Returns the path to a truth sample concordance Table (containing TP, FP, FN) between a truth sample within the
-    callset and the sample's truth data, grouped by bins of a metric (RF or VQSR scores)
+    Return the path to a truth sample concordance Table.
+
+    This Table contains concordance information (TP, FP, FN) between a truth sample within the callset and the
+    sample's truth data, grouped by bins of a metric (RF or VQSR scores).
 
     :param model_id: RF or VQSR model ID for which to return score data.
     :param truth_sample: Which truth sample concordance to analyze (e.g., "NA12878" or "syndip")
@@ -144,7 +148,7 @@ def get_binned_concordance(model_id: str, truth_sample: str) -> VersionedTableRe
 
 def get_rf_annotations(adj: bool = False) -> VersionedTableResource:
     """
-    Returns the VersionedTableResource to the RF-ready annotated Table
+    Return the VersionedTableResource to the RF-ready annotated Table.
 
     Annotations that are included in the Table:
 
@@ -180,7 +184,7 @@ def get_rf_annotations(adj: bool = False) -> VersionedTableResource:
 
 def rf_run_path(release: str = CURRENT_VERSION):
     """
-    Returns the path to the json file containing the RF runs list.
+    Return the path to the json file containing the RF runs list.
 
     :param release: Release RF path to return
     :return: Path to json file
@@ -191,7 +195,7 @@ def rf_run_path(release: str = CURRENT_VERSION):
 
 def get_rf_model_path(model_id: str, release: str = CURRENT_VERSION) -> str:
     """
-    Get the path to the RF model for a given run
+    Get the path to the RF model for a given run.
 
     :param model_id: RF run to load
     :param release: Release of model path to return
@@ -202,7 +206,7 @@ def get_rf_model_path(model_id: str, release: str = CURRENT_VERSION) -> str:
 
 def get_rf_training(model_id: str) -> VersionedTableResource:
     """
-    Get the training data for a given run
+    Get the training data for a given run.
 
     :param model_id: RF run to load
     :return: VersionedTableResource for RF training data
@@ -220,7 +224,7 @@ def get_rf_training(model_id: str) -> VersionedTableResource:
 
 def get_rf_result(model_id: Optional[str] = None) -> VersionedTableResource:
     """
-    Get the results of RF filtering for a given run
+    Get the results of RF filtering for a given run.
 
     :param model_id: RF run to load
     :return: VersionedTableResource for RF filtered data

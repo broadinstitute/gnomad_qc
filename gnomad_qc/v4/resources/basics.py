@@ -1,3 +1,4 @@
+"""Script containing generic resources."""
 import logging
 
 import hail as hl
@@ -25,7 +26,7 @@ def get_gnomad_v4_vds(
     n_partitions: int = None,
 ) -> hl.vds.VariantDataset:
     """
-    Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
+    Get gnomAD v4 data with desired filtering and metadata annotations.
 
     :param split: Perform split on VDS - Note: this will perform a split on the VDS rather than grab an already split VDS
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after hard filtering is complete)
@@ -35,7 +36,6 @@ def get_gnomad_v4_vds(
     :param n_partitions: Optional argument to read the VDS with a specific number of partitions
     :return: gnomAD v4 dataset with chosen annotations and filters
     """
-
     if remove_hard_filtered_samples and remove_hard_filtered_samples_no_sex:
         raise ValueError(
             "Only one of 'remove_hard_filtered_samples' or 'remove_hard_filtered_samples_no_sex' can be set to True."

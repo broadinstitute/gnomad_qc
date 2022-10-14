@@ -1,8 +1,10 @@
-# NOTE:
-# This script is needed for the v3.1.2 release to correct a problem discovered in the gnomAD v3.1 release.
-# The fix we implemented to correct a technical artifact creating the depletion of homozygous alternate genotypes
-# was not performed correctly in situations where samples that were individually heterozygous non-reference had both
-# a heterozygous and homozygous alternate call at the same locus.
+"""
+This script is needed for the v3.1.2 release to correct a problem discovered in the gnomAD v3.1 release.
+
+The fix we implemented to correct a technical artifact creating the depletion of homozygous alternate genotypes
+was not performed correctly in situations where samples that were individually heterozygous non-reference had both
+a heterozygous and homozygous alternate call at the same locus.
+"""
 
 import argparse
 import logging
@@ -25,11 +27,8 @@ logger = logging.getLogger("get_impacted_variants")
 logger.setLevel(logging.INFO)
 
 
-def main(args):
-    """
-    Script used to get variants impacted by homalt hotfix.
-    """
-
+def main(args):  # noqa: D103
+    """Script used to get variants impacted by homalt hotfix."""
     hl.init(log="/get_impacted_variants.log", default_reference="GRCh38")
 
     logger.info("Reading sparse MT and metadata table with release only samples...")

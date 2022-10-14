@@ -1,3 +1,5 @@
+# noqa: D100
+
 import hail as hl
 
 from gnomad_qc.v3.resources.annotations import last_END_position

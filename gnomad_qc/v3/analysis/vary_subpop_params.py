@@ -1,3 +1,5 @@
+# noqa: D100
+
 import argparse
 import logging
 

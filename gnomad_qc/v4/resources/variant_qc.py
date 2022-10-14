@@ -1,3 +1,4 @@
+"""Script containing variant QC related resources."""
 from typing import Optional, Union
 
 from gnomad.resources.grch38 import (
@@ -7,7 +8,6 @@ from gnomad.resources.grch38 import (
     syndip_hc_intervals,
 )
 from gnomad.resources.resource_utils import (
-    DataException,
     MatrixTableResource,
     TableResource,
     VersionedMatrixTableResource,
@@ -112,8 +112,10 @@ def get_score_bins(model_id: str, aggregated: bool) -> VersionedTableResource:
 
 def get_binned_concordance(model_id: str, truth_sample: str) -> VersionedTableResource:
     """
-    Return the path to a truth sample concordance Table (containing TP, FP, FN) between a truth sample within the
-    callset and the sample's truth data, grouped by bins of a metric (RF or VQSR scores).
+    Return the path to a truth sample concordance Table.
+
+    This Table contains concordance information (TP, FP, FN) between a truth sample within the callset and the
+    sample's truth data, grouped by bins of a metric (RF or VQSR scores).
 
     :param model_id: RF or VQSR model ID for which to return score data.
     :param truth_sample: Which truth sample concordance to analyze (e.g., "NA12878" or "syndip")

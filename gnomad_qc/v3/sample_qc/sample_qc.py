@@ -1,3 +1,5 @@
+# noqa: D100
+
 import argparse
 import logging
 import math
@@ -767,8 +769,7 @@ def apply_regressed_filters(
     n_pcs: int = 16,
 ) -> hl.Table:
     """
-    Compute sample QC metrics residuals after regressing out population PCs and determine what samples are outliers
-    that should be filtered.
+    Compute sample QC metrics residuals after regressing out population PCs and determine what samples are outliers that should be filtered.
 
     .. note::
 
@@ -845,7 +846,7 @@ def get_relationship_filter_expr(
     relationship_set: hl.expr.SetExpression,
 ) -> hl.expr.builders.CaseBuilder:
     """
-    Return case statement to populate relatedness filters in sample_filters struct
+    Return case statement to populate relatedness filters in sample_filters struct.
 
     :param hl.expr.BooleanExpression hard_filtered_expr: Boolean for whether sample was hard filtered.
     :param str relationship: Relationship to check for. One of DUPLICATE_OR_TWINS, PARENT_CHILD, or SIBLINGS.
@@ -870,7 +871,7 @@ def join_tables(
     sample_count_match: bool = True,
 ) -> hl.Table:
     """
-    Joins left and right tables using specified keys and join types and returns result.
+    Join left and right tables using specified keys and join types and returns result.
 
     Also prints warning if sample counts are not the same.
 
@@ -1123,7 +1124,7 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     return left_ht
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/hail.log", default_reference="GRCh38")
 
     if args.sample_qc:

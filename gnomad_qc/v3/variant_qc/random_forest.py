@@ -1,3 +1,5 @@
+# noqa: D100
+
 import argparse
 import json
 import logging
@@ -76,7 +78,7 @@ def create_rf_ht(
     checkpoint_path: Optional[str] = None,
 ) -> hl.Table:
     """
-    Creates a Table with all necessary annotations for the random forest model.
+    Create a Table with all necessary annotations for the random forest model.
 
     Annotations that are included:
 
@@ -103,7 +105,6 @@ def create_rf_ht(
     :return: Hail Table ready for RF
     :rtype: Table
     """
-
     group = "adj" if adj else "raw"
 
     ht = get_info(split=True).ht()
@@ -184,7 +185,7 @@ def train_rf(
     test_intervals: Union[str, List[str]] = "chr20",
 ):
     """
-    Train random forest model using `train_rf_model`
+    Train random forest model using `train_rf_model`.
 
     :param ht: Table containing annotations needed for RF training, built with `create_rf_ht`
     :param fp_to_tp: Ratio of FPs to TPs for creating the RF model. If set to 0, all training examples are used.
@@ -254,7 +255,7 @@ def train_rf(
     return ht, rf_model
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/variant_qc_random_forest.log")
 
     if args.list_rf_runs:

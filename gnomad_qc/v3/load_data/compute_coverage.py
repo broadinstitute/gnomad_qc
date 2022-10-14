@@ -1,3 +1,5 @@
+# noqa: D100
+
 import argparse
 import logging
 
@@ -15,7 +17,7 @@ from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(default_reference="GRCh38")
     coverage_version = (
         args.coverage_version
