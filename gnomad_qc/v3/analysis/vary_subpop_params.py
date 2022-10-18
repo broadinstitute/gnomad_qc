@@ -223,7 +223,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--remove-outliers",
-        help="Whether to remove outliers when generating the PCA data. Outliers are manually determined after visualizing the PC plots",
+        help="Whether to remove outliers when training the random forest model. Outliers are manually determined after visualizing the PC plots",
         action="store_true",
     )
 
