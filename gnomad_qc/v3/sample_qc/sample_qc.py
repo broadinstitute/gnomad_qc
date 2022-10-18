@@ -558,7 +558,7 @@ def assign_pops(
                 subpop_description=project_meta_ht.subpop_description
             )
 
-        if samples_to_drop:
+        if additional_samples_to_drop:
             pop_pca_scores_ht = pop_pca_scores_ht.annotate(
                 subpop_description=hl.or_missing(
                     ~samples_to_drop.contains(pop_pca_scores_ht.s),
@@ -591,7 +591,7 @@ def assign_pops(
             )
         )
 
-        if samples_to_drop:
+        if additional_samples_to_drop:
             pop_pca_scores_ht = pop_pca_scores_ht.annotate(
                 training_pop=hl.or_missing(
                     ~samples_to_drop.contains(pop_pca_scores_ht.s),
