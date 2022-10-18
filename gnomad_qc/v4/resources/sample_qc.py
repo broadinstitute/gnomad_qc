@@ -288,7 +288,6 @@ platform_pca_scores = VersionedTableResource(
     },
 )
 
-# Platform PCA eigenvalues.
 platform_pca_eigenvalues = VersionedTableResource(
     CURRENT_VERSION,
     {
