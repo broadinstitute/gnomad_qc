@@ -274,7 +274,6 @@ platform_pca_loadings = VersionedTableResource(
     },
 )
 
-# Platform PCA scores.
 platform_pca_scores = VersionedTableResource(
     CURRENT_VERSION,
     {
