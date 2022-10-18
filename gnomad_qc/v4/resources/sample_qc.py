@@ -499,7 +499,6 @@ def _import_related_samples_to_drop(**kwargs):
     return ht
 
 
-# Hard-filtered samples.
 hard_filtered_samples = VersionedTableResource(
     CURRENT_VERSION,
     {
