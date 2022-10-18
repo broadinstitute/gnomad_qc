@@ -5,5 +5,9 @@ disable=
   # Ignore refactor and convention categories
   R,
   C
+  # Allow TODO and FIXME comments
+  fixme,
+  # Ignore unnecessary-lambda because it has many false positives from hl.ArrayExpression.map, etc.
+  unnecessary-lambda,
 
 ignore-paths=^gnomad_qc/v2/.*$

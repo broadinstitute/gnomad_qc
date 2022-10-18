@@ -229,8 +229,7 @@ def compute_hard_filters(
     hard_filters = dict()
 
     # Remove samples failing fingerprinting
-    # TODO: Add these into hard filtering metadata when incorporating internal
-    # smaples Picard metrics
+    # TODO: Add these into hard filtering metadata when incorporating internal samples Picard metrics # noqa
     hard_filters["failed_fingerprinting"] = hl.array(
         ["09C90823", "10C103592", "S5530"]
     ).contains(ht.s)

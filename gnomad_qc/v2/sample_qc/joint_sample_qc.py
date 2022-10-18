@@ -427,8 +427,7 @@ def main(args):
     if not args.skip_pop_pca:
         variants, samples = pca_mt.count()
         logger.info("{} samples after removing relateds".format(samples))
-        # TODO: Check that there are no longer any 2nd-degree relateds in the
-        # callset by running KING on the output file below
+        # TODO: Check that there are no longer any 2nd-degree relateds in the callset by running KING on the output file below # noqa
         plink_mt = (
             pca_mt.annotate_cols(
                 uid=pca_mt.data_type + "_" + pca_mt.s.replace(" ", "_")

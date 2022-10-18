@@ -289,8 +289,7 @@ def prepare_sample_annotations() -> hl.Table:
     return meta_ht
 
 
-# TODO: Might be good to generalize this because a similar function is
-# used in creating the release sites HT.
+# TODO: Might be good to generalize this because a similar function is used in creating the release sites HT. # noqa
 def prepare_variant_annotations(
     ht: hl.Table, filter_lowqual: bool = True, vep_version: str = "101"
 ) -> hl.Table:
