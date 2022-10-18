@@ -9,7 +9,11 @@ from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
 from gnomad_qc.v3.resources.meta import meta
-from gnomad_qc.v3.sample_qc.sample_qc import ancestry_pca_scores, assign_pops
+from gnomad_qc.v3.sample_qc.sample_qc import (
+    ancestry_pca_scores,
+    assign_pops,
+    subpop_outliers,
+)
 from gnomad_qc.v3.sample_qc.subpop_analysis import CURATED_SUBPOPS
 
 logging.basicConfig(
@@ -39,6 +43,15 @@ def main(args):  # noqa: D103
         # Initiate lists for storing results
         merged = []
 
+        if args.remove_outliers:
+            if not file_exists(subpop_outliers(pop).path):
+                raise DataException(
+                    f"The --remove-outliers option was used, but a Table of outlier samples does not exist for population {pop} at {subpop_outliers(pop).path}"
+                )
+                outliers_ht = subpop_outliers(pop).ht()
+            else:
+                outliers_ht = None
+
         # Run assign pops for each test combination of values in min_prob_list and max_prop_mislabeled_list
         for min_prob in args.min_prob_list:
             for (
@@ -57,6 +70,7 @@ def main(args):  # noqa: D103
                     withhold_prop=args.withhold_prop,
                     pop=pop,
                     curated_subpops=CURATED_SUBPOPS[pop],
+                    additional_samples_to_drop=outliers_ht,
                     high_quality=high_quality,
                     missing_label="Other",
                 )
@@ -205,6 +219,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--high-quality",
         help="Filter to only high-quality samples when computing the PCA",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--remove-outliers",
+        help="Whether to remove outliers when generating the PCA data. Outliers are manually determined after visualizing the PC plots",
         action="store_true",
     )
 
