@@ -324,7 +324,6 @@ f_stat_sites = VersionedTableResource(
     },
 )
 
-# PC relate PCA scores.
 pc_relate_pca_scores = VersionedTableResource(
     CURRENT_VERSION,
     {
