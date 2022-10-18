@@ -260,7 +260,6 @@ contamination = VersionedTableResource(
     },
 )
 
-# Platform PCA loadings.
 platform_pca_loadings = VersionedTableResource(
     CURRENT_VERSION,
     {
