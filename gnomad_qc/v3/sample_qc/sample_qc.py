@@ -268,7 +268,9 @@ def compute_hard_filters(
         # Remove samples with ambiguous sex assignments
         sex_ht = sex.ht()[ht.key]
         hard_filters["ambiguous_sex"] = sex_ht.sex_karyotype == "ambiguous"
-        hard_filters["sex_aneuploidy"] = ~hl.set({"ambiguous", "XX", "XY"}).contains( # pylint: disable=invalid-unary-operand-type
+        hard_filters["sex_aneuploidy"] = ~hl.set(
+            {"ambiguous", "XX", "XY"}
+        ).contains(  # pylint: disable=invalid-unary-operand-type
             sex_ht.sex_karyotype
         )
 
@@ -500,6 +502,7 @@ def assign_pops(
     withhold_prop: float = None,
     pop: str = None,
     curated_subpops: list = None,
+    additional_samples_to_drop: hl.Table = None,
     high_quality: bool = False,
     missing_label: str = "oth",
     seed: int = 24,
@@ -523,6 +526,7 @@ def assign_pops(
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
     :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
     :param curated_subpops: List of the subpops that are accepted as known labels for the pop. If not specified, all values of subpop_description will be used as known labels when inferring subpops.
+    :param additional_samples_to_drop: Table of additional samples to drop when training the random forest model
     :param high_quality: Whether the file includes PCA info for only high-quality samples
     :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`
     :param seed: Random seed
@@ -535,6 +539,8 @@ def assign_pops(
     ).ht()
 
     project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
+    if additional_samples_to_drop:
+        samples_to_drop = hl.literal(additional_samples_to_drop.s.collect())
 
     if pop is not None:
         # Set subpop_description to missing if the subpop is not in the manually curated list of subpops for the given pop
@@ -552,6 +558,14 @@ def assign_pops(
                 subpop_description=project_meta_ht.subpop_description
             )
 
+        if samples_to_drop:
+            pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+                subpop_description=hl.or_missing(
+                    ~samples_to_drop.contains(pop_pca_scores_ht.s),
+                    pop_pca_scores_ht.subpop_description,
+                )
+            )
+
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=(
                 hl.case()
@@ -562,6 +576,7 @@ def assign_pops(
                 .or_missing()
             )
         )
+
         pop_field = "subpop"
     else:
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
@@ -575,6 +590,15 @@ def assign_pops(
                 .or_missing()
             )
         )
+
+        if samples_to_drop:
+            pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+                training_pop=hl.or_missing(
+                    ~samples_to_drop.contains(pop_pca_scores_ht.s),
+                    pop_pca_scores_ht.training_pop,
+                )
+            )
+
         # Keep track of defined pops, useful if samples are withheld
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             defined_pop=pop_pca_scores_ht.training_pop
@@ -584,6 +608,7 @@ def assign_pops(
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop_all=pop_pca_scores_ht.training_pop
     )
+
     if withhold_prop:
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=hl.or_missing(
@@ -592,6 +617,7 @@ def assign_pops(
                 pop_pca_scores_ht.training_pop,
             )
         )
+
     if pop is not None:
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             withheld_sample=hl.is_defined(pop_pca_scores_ht.subpop_description)

@@ -321,16 +321,20 @@ def main(args):  # noqa: D103
             if args.remove_outliers:
                 if not file_exists(subpop_outliers(pop).path):
                     raise DataException(
-                        f"The --remove-outlier option was used, but a Table of outlier samples does not exist for population {pop} at {subpop_outliers(pop).path}"
+                        f"The --remove-outliers option was used, but a Table of outlier samples does not exist for population {pop} at {subpop_outliers(pop).path}"
                     )
 
-                outliers = subpop_outliers(pop).ht()
-                mt = mt.filter_cols(hl.is_missing(outliers[mt.col_key]))
+                outliers_ht = subpop_outliers(pop).ht()
+            else:
+                outliers_ht = None
 
             logger.info("Generating PCs for subpops...")
-            relateds = pca_related_samples_to_drop.ht()
+            relateds_ht = pca_related_samples_to_drop.ht()
             pop_pca_evals, pop_pca_scores, pop_pca_loadings = run_pca_with_relateds(
-                mt, relateds, n_pcs=args.n_pcs
+                qc_mt=mt,
+                related_samples_to_drop=relateds_ht,
+                additional_samples_to_drop=outliers_ht,
+                n_pcs=args.n_pcs,
             )
 
             pop_pca_evals_ht = hl.Table.parallelize(
@@ -378,6 +382,7 @@ def main(args):  # noqa: D103
                 withhold_prop=args.withhold_prop,
                 pop=pop,
                 curated_subpops=CURATED_SUBPOPS[pop],
+                additional_samples_to_drop=outliers_ht,
                 high_quality=high_quality,
                 missing_label="Other",
             )
