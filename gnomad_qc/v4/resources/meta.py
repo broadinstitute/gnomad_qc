@@ -9,7 +9,6 @@ from gnomad.resources.resource_utils import (
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
 
-# Samples metadata.
 def _meta_root_path(version: str = CURRENT_VERSION) -> str:
     """
     Retrieve the path to the root metadata directory.
