@@ -297,9 +297,7 @@ def main(args):  # noqa: D103
     )
 
     # Create frequency index dictionary on concatenated array (i.e., including all subsets)
-    # NOTE: non-standard downsampling values are created in the frequency script corresponding to population totals, so
-    # callset-specific DOWNSAMPLINGS must be used instead of the generic
-    # DOWNSAMPLING values
+    # NOTE: non-standard downsampling values are created in the frequency script corresponding to population totals, so callset-specific DOWNSAMPLINGS must be used instead of the generic DOWNSAMPLING values # noqa
     freq_ht = freq_ht.annotate_globals(
         freq_index_dict=make_freq_index_dict(
             freq_meta=hl.eval(freq_ht.freq_meta),

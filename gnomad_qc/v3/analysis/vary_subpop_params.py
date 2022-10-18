@@ -69,8 +69,7 @@ def main(args):  # noqa: D103
                 ht = joint_pca_ht.filter(joint_pca_ht.evaluation_sample)
 
                 # Calculate number of mislabeled samples
-                # NOTE: `training_pop` is the known label for the sample, but could have
-                # been used for either training or evaluation
+                # NOTE: `training_pop` is the known label for the sample, but could have been used for either training or evaluation # noqa
                 total = ht.count()
                 mislabelled = ht.aggregate(
                     hl.agg.count_where(ht.training_pop != ht.subpop)

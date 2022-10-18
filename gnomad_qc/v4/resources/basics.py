@@ -16,8 +16,7 @@ logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
 
 
-# Note: Unlike previous versions, the v4 resource directory uses a general format of
-# gs://gnomad/v4.0/<module>/<exomes_or_genomes>/.
+# Note: Unlike previous versions, the v4 resource directory uses a general format of gs://gnomad/v4.0/<module>/<exomes_or_genomes>/. # noqa
 def get_gnomad_v4_vds(
     split: bool = False,
     remove_hard_filtered_samples: bool = True,

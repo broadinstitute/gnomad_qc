@@ -236,8 +236,7 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    # NOTE: remove this flag when the new shuffle method is the default. This is
-    # necessary for hail 0.2.97.
+    # NOTE: remove this flag when the new shuffle method is the default. This is necessary for hail 0.2.97. # noqa
     hl._set_flags(use_new_shuffle="1")
 
     overwrite = args.overwrite
@@ -246,7 +245,7 @@ def main(args):
 
     try:
         if args.create_v3_filtered_dense_mt:
-            # Note: This command removes hard filtered samples.
+            # NOTE: This command removes hard filtered samples.
             mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, test=test)
             mt = create_filtered_dense_mt(mt, split=True)
             mt = mt.checkpoint(
@@ -260,8 +259,7 @@ def main(args):
             )
 
         if args.create_v4_filtered_dense_mt:
-            # Note: This subset dense MatrixTable was created before the final hard
-            # filtering was determined.
+            # NOTE: This subset dense MatrixTable was created before the final hard filtering was determined. # noqa
             # Hard filtering is performed in `generate_qc_mt` before applying variant
             # filters.
             vds = get_gnomad_v4_vds(

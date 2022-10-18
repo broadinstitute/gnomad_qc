@@ -68,8 +68,7 @@ def main(args):  # noqa: D103
     with hl.hadoop_open(annotation_hists_path()) as a:
         ANNOTATIONS_HISTS = json.loads(a.read())
 
-    # NOTE: histogram aggregations on these metrics are done on the entire
-    # callset (not just PASS variants), on raw data
+    # NOTE: histogram aggregations on these metrics are done on the entire callset (not just PASS variants), on raw data # noqa
     ht = hl.read_table(release_ht_path(public=False))
     ht = ht.select(freq=ht.freq, info=ht.info.select(*ANNOTATIONS_HISTS))
 
@@ -83,8 +82,7 @@ def main(args):  # noqa: D103
     hist_ranges_expr = get_annotations_hists(ht, ANNOTATIONS_HISTS, LOG10_ANNOTATIONS)
 
     # Evaluate minimum and maximum values for each metric of interest to help determine the bounds of the hists
-    # NOTE: Run this first, then update values in annotation_hists_path JSON
-    # as necessary
+    # NOTE: Run this first, then update values in annotation_hists_path JSON as necessary # noqa
     if args.determine_bounds:
         logger.info(
             "Evaluating minimum and maximum values for each metric of interest. Maximum"

@@ -168,7 +168,7 @@ def sample_rf_training_examples(
                 ht[train_col],
             )
             # train_expr = hl.cond(hl.or_else(ht[tp_col], False),
-            # hl.or_else(~ht[fp_col], True), ht[fp_col] & hl.rand_bool(prob_fp))  #
+            # hl.or_else(~ht[fp_col], True), ht[fp_col] & hl.rand_bool(prob_fp))
             # Note: Hail propagates missing values with invert operator
         elif prob_tp < 1.0:
             ht = ht.annotate(

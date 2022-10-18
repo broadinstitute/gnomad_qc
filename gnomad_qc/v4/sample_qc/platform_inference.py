@@ -87,8 +87,7 @@ def main(args):
             # `fraction_over_dp_threshold` where the second element is dp >= 1 (dp > 0).
             mt = mt.annotate_entries(callrate=mt.fraction_over_dp_threshold[1])
 
-            # NOTE: added None binarization_threshold parameter to be consistent with
-            # runs before this parameter existed.
+            # NOTE: added None binarization_threshold parameter to be consistent with runs before this parameter existed. # noqa
             eigenvalues, scores_ht, loadings_ht = run_platform_pca(
                 mt, binarization_threshold=None, n_pcs=args.n_platform_pcs
             )

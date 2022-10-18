@@ -393,8 +393,7 @@ def main(args):
 
         logger.info("Running PC-Relate...")
         scores = hl.read_table(qc_temp_data_prefix("joint") + ".pruned.pca_scores.ht")
-        # NOTE: This needs SSDs on your workers (for the temp files) and no
-        # pre-emptibles while the BlockMatrix writes
+        # NOTE: This needs SSDs on your workers (for the temp files) and no pre-emptibles while the BlockMatrix writes # noqa
         relatedness_ht = hl.pc_relate(
             pruned_mt.GT,
             min_individual_maf=0.05,
@@ -521,8 +520,7 @@ def main(args):
         gnomad_sample_qc(genome_mt).cols().select("sample_qc").write(
             qc_temp_data_prefix("genomes") + ".sample_qc.ht", args.overwrite
         )
-        # TODO: check that the pcr_free annotations are complete once samples are
-        # updated from Jessica's spreadsheet
+        # TODO: check that the pcr_free annotations are complete once samples are updated from Jessica's spreadsheet # noqa
 
     logger.info("Annotating population and platform assignments...")
     platform_ht = hl.read_table(qc_ht_path("exomes", "platforms"))

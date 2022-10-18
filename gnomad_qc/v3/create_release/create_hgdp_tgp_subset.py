@@ -310,8 +310,7 @@ def prepare_variant_annotations(
     subset_freq = get_freq(subset="hgdp-tgp").ht()
     release_ht = release_sites(public=True).versions["3.1.1"].ht()
 
-    # NOTE: Added for v3.1.2 release because this annotation was removed and
-    # not a full duplicate of variants in the release HT
+    # NOTE: Added for v3.1.2 release because this annotation was removed and not a full duplicate of variants in the release HT # noqa
     vep_ht = vep_or_lookup_vep(ht, vep_version=vep_version)
     vep_ht = vep_ht.annotate_globals(version=f"v{vep_version}")
 
@@ -338,8 +337,7 @@ def prepare_variant_annotations(
         missing_info_fields,
     )
 
-    # NOTE: SOR and AS_SOR annotations are now added to the info HT by default with get_as_info_expr and
-    # get_site_info_expr in gnomad_methods, but they were not for v3 or v3.1
+    # NOTE: SOR and AS_SOR annotations are now added to the info HT by default with get_as_info_expr and get_site_info_expr in gnomad_methods, but they were not for v3 or v3.1 # noqa
     keyed_filters = filters_ht[info_ht.key]
     info_ht = info_ht.transmute(
         info=info_ht.info.select(
@@ -577,8 +575,7 @@ def create_full_subset_dense_mt(
         "Setting het genotypes at sites with > 1% AF (using precomputed v3.0"
         " frequencies) and > 0.9 AB to homalt..."
     )
-    # NOTE: Using v3.0 frequencies here and not v3.1 frequencies because
-    # the frequency code adjusted genotypes (homalt depletion fix) using v3.0 frequencies
+    # NOTE: Using v3.0 frequencies here and not v3.1 frequencies because the frequency code adjusted genotypes (homalt depletion fix) using v3.0 frequencies # noqa
     # https://github.com/broadinstitute/gnomad_qc/blob/efea6851a421f4bc66b73db588c0eeeb7cd27539/gnomad_qc/v3/annotations/generate_freq_data_hgdp_tgp.py#L129
     freq_ht = release_sites(public=True).versions["3.0"].ht().select("freq")
     mt = hom_alt_depletion_fix(
@@ -654,9 +651,7 @@ def main(args):  # noqa: D103
         meta_ht.export(hgdp_tgp_subset_sample_tsv(test=test))
 
     if args.create_subset_sparse_mt:
-        # NOTE: We no longer remove samples that fail the gnomAD-wide sample QC
-        # high_quality filter. However, for frequency calculations we still remove
-        # samples failing hard filters and subcontinental PCA outliers.
+        # NOTE: We no longer remove samples that fail the gnomAD-wide sample QC high_quality filter. However, for frequency calculations we still remove samples failing hard filters and subcontinental PCA outliers. # noqa
         mt = get_gnomad_v3_mt(
             key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
         )

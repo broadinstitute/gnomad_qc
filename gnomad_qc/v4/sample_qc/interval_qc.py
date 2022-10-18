@@ -206,8 +206,7 @@ def compute_interval_qc(
             num_samples_no_platform,
         )
 
-    # Note: Default hl.vds.interval_coverage will return a list for
-    # 'fraction_over_dp_threshold' where the second element is dp >= 1 (dp > 0).
+    # NOTE: Default hl.vds.interval_coverage will return a list for 'fraction_over_dp_threshold' where the second element is dp >= 1 (dp > 0). # noqa
     agg_groups = [("", None), ("platform_", mt.platform)]
     mt = mt.annotate_rows(
         **{

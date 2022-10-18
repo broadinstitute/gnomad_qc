@@ -104,8 +104,7 @@ def main(args):
     ]
 
     ht = hl.read_table(release_ht_path(data_type, nested=False))
-    # NOTE: histogram aggregations are done on the entire callset (not just
-    # PASS variants), on raw data
+    # NOTE: histogram aggregations are done on the entire callset (not just PASS variants), on raw data # noqa
 
     # NOTE: run the following code in a first pass to determine bounds for metrics
     # Evaluate minimum and maximum values for each metric of interest

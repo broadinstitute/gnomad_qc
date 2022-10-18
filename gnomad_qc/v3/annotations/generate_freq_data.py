@@ -192,8 +192,7 @@ def main(args):  # noqa: D103
             " 0.9 AB to homalt..."
         )
         # Load v3.0 allele frequencies to avoid an extra frequency calculation
-        # NOTE: Using previous callset AF works for small incremental changes to a
-        # callset, but we will need to revisit for large increments
+        # NOTE: Using previous callset AF works for small incremental changes to a callset, but we will need to revisit for large increments # noqa
         freq_ht = release_sites(public=True).versions["3.0"].ht().select("freq")
         mt = hom_alt_depletion_fix(
             mt, het_non_ref_expr=mt._het_non_ref, af_expr=freq_ht[mt.row_key].freq[0].AF
@@ -208,8 +207,7 @@ def main(args):  # noqa: D103
                 pop_expr=mt.meta.population_inference.pop
                 if not n_subsets_use_subpops
                 else mt.meta.project_meta.project_subpop,
-                # NOTE: TGP and HGDP labeled populations are highly specific and are
-                # stored in the project_subpop meta field
+                # NOTE: TGP and HGDP labeled populations are highly specific and are stored in the project_subpop meta field # noqa
             )
             freq_meta = [
                 {**x, **{"subset": "|".join(subsets)}} for x in hl.eval(mt.freq_meta)
@@ -259,9 +257,7 @@ def main(args):  # noqa: D103
                     hl.is_defined(mt.meta.project_meta.age),
                     mt.meta.project_meta.age,
                     mt.meta.project_meta.age_alt,
-                    # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples,
-                    # age is stored as a bin range and 'age_alt' corresponds to an
-                    # integer in the middle of the bin
+                    # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples, age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin # noqa
                 )
             )
             mt = mt.annotate_rows(**age_hists_expr(mt.adj, mt.GT, mt.age))
@@ -290,8 +286,7 @@ def main(args):  # noqa: D103
             mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
 
             logger.info("Calculating InbreedingCoeff...")
-            # NOTE: This is not the ideal location to calculate this, but added here
-            # to avoid another densify
+            # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify # noqa
             mt = mt.annotate_rows(
                 InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT)
             )
@@ -321,8 +316,7 @@ def main(args):  # noqa: D103
             )
 
             logger.info("Annotating quality metrics histograms...")
-            # NOTE: these are performed here as the quality metrics histograms also
-            # require densifying
+            # NOTE: these are performed here as the quality metrics histograms also require densifying # noqa
             mt = mt.annotate_rows(
                 qual_hists=qual_hist_expr(mt.GT, mt.GQ, mt.DP, mt.AD, mt.adj)
             )

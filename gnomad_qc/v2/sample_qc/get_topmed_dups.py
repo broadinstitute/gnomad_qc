@@ -14,8 +14,7 @@ logger = logging.getLogger("topmed_dups")
 
 def create_shared_sites_table(data_type: str, overwrite: bool):
     freq_ht = hl.read_table(annotations_ht_path(data_type, "frequencies"))
-    # NOTE: the following TOPMed filepath is now broken; preserving for
-    # archival purposes
+    # NOTE: the following TOPMed filepath is now broken; preserving for archival purposes # noqa
     topmed_ht = hl.read_matrix_table(
         "gs://gnomad-public/resources/hail-0.2/topmed.b37.mt"
     ).rows()

@@ -6,8 +6,7 @@ import hail as hl
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 
-# TODO: include this when we have the sample QC meta HT: from
-# gnomad_qc.v4.resources.meta import meta
+# TODO: include this when we have the sample QC meta HT: from gnomad_qc.v4.resources.meta import meta # noqa
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 
 # TODO: Can remove when we use the full sample QC meta HT.
@@ -210,8 +209,7 @@ def main(args):
     )
 
     if args.include_ukb_200k:
-        # TODO: add option to provide an application linking file as an argument.
-        # Default is ATGU ID.
+        # TODO: add option to provide an application linking file as an argument. Default is ATGU ID. # noqa
         vds = hl.vds.VariantDataset(
             vds.reference_data.key_cols_by(
                 s=hl.coalesce(
@@ -301,8 +299,7 @@ def main(args):
     if args.export_meta:
         logger.info("Exporting metadata")
         meta_ht = meta_ht.semi_join(vds.variant_data.cols())
-        # TODO: Dropping the whole ukb_meta struct, but should we keep pop and sex
-        # inference if allowed?
+        # TODO: Dropping the whole ukb_meta struct, but should we keep pop and sex inference if allowed? # noqa
         if args.keep_data_paths:
             data_to_drop = {"ukb_meta"}
         else:

@@ -822,8 +822,7 @@ def build_parameter_dict(
             "ht": release_sites().ht(),
         }
         # Downsampling and subset entries to remove from VCF's freq export
-        # Note: Need to extract the non-standard downsamplings from the freq_meta
-        # struct to the FREQ_ENTRIES_TO_REMOVE
+        # Note: Need to extract the non-standard downsamplings from the freq_meta struct to the FREQ_ENTRIES_TO_REMOVE # noqa
         freq_entries_to_remove = {
             str(x["downsampling"])
             for x in hl.eval(parameter_dict["ht"].freq_meta)
@@ -863,8 +862,7 @@ def main(args):  # noqa: D103
                 vcf_info_reorder=parameter_dict["vcf_info_reorder"],
             )
 
-            # Note: Checkpoint saves time for the final export by not needing to run
-            # the VCF HT prep on each chromosome
+            # Note: Checkpoint saves time for the final export by not needing to run the VCF HT prep on each chromosome # noqa
             logger.info(
                 "Checkpointing prepared VCF HT for validity checks and export..."
             )
@@ -896,8 +894,7 @@ def main(args):  # noqa: D103
                 subset_list=parameter_dict["subsets"],
                 pops=parameter_dict["pops"],
                 filtering_model_field=parameter_dict["filtering_model_field"],
-                # NOTE: This is not currently on the 3.1.1 (or earlier) Table, but will
-                # be on the 3.1.2 Table
+                # NOTE: This is not currently on the 3.1.1 (or earlier) Table, but will be on the 3.1.2 Table # noqa
                 # parameter_dict["ht"].inbreeding_coeff_cutoff,
                 inbreeding_coeff_cutoff=INBREEDING_COEFF_HARD_CUTOFF,
             )
