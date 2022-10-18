@@ -260,7 +260,6 @@ contamination = VersionedTableResource(
     },
 )
 
-# Platform PCA loadings.
 platform_pca_loadings = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -274,7 +273,6 @@ platform_pca_loadings = VersionedTableResource(
     },
 )
 
-# Platform PCA scores.
 platform_pca_scores = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -288,7 +286,6 @@ platform_pca_scores = VersionedTableResource(
     },
 )
 
-# Platform PCA eigenvalues.
 platform_pca_eigenvalues = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -324,7 +321,6 @@ f_stat_sites = VersionedTableResource(
     },
 )
 
-# PC relate PCA scores.
 pc_relate_pca_scores = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -499,7 +495,6 @@ def _import_related_samples_to_drop(**kwargs):
     return ht
 
 
-# Hard-filtered samples.
 hard_filtered_samples = VersionedTableResource(
     CURRENT_VERSION,
     {
