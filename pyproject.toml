@@ -11,6 +11,7 @@ max_line_length = 88
 # E202 - whitespace before ‘)’
 # E203 - whitespace before ‘:’
 # Ignore E731 - do not assign a lambda expression, use a def
-ignore = ['E201', 'E202', 'E203', 'E731']
+# Ignore W605 - invalid escape sequence
+ignore = ['E201', 'E202', 'E203', 'E731', 'W605']
 recursive = true
 aggressive = 1

@@ -47,11 +47,11 @@ def import_vqsr(
     ht = ht.annotate(
         info=ht.info.annotate(
             AS_VQSLOD=ht.info.AS_VQSLOD.map(lambda x: hl.float(x)),
-            AS_QUALapprox=ht.info.AS_QUALapprox.split("\\|")[1:].map(
+            AS_QUALapprox=ht.info.AS_QUALapprox.split("\|")[1:].map(
                 lambda x: hl.int(x)
             ),
-            AS_VarDP=ht.info.AS_VarDP.split("\\|")[1:].map(lambda x: hl.int(x)),
-            AS_SB_TABLE=ht.info.AS_SB_TABLE.split("\\|").map(
+            AS_VarDP=ht.info.AS_VarDP.split("\|")[1:].map(lambda x: hl.int(x)),
+            AS_SB_TABLE=ht.info.AS_SB_TABLE.split("\|").map(
                 lambda x: x.split(",").map(lambda y: hl.int(y))
             ),
         )
