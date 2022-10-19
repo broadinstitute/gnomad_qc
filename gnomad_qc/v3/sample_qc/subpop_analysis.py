@@ -1,10 +1,24 @@
+# noqa: D100
+
 import argparse
-import hail as hl
 import logging
 
+import hail as hl
+from gnomad.resources.grch38.reference_data import lcr_intervals
+from gnomad.resources.resource_utils import DataException
 from gnomad.sample_qc.ancestry import run_pca_with_relateds
+from gnomad.sample_qc.pipeline import get_qc_mt
+from gnomad.utils.annotations import get_adj_expr
+from gnomad.utils.file_utils import file_exists
+from gnomad.utils.slack import slack_notifications
 
-from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
+from gnomad_qc.v3.resources import release_sites
+from gnomad_qc.v3.resources.annotations import get_info
+from gnomad_qc.v3.resources.basics import (
+    get_checkpoint_path,
+    get_gnomad_v3_mt,
+    get_logging_path,
+)
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.sample_qc import (
     ancestry_pca_eigenvalues,
@@ -18,16 +32,6 @@ from gnomad_qc.v3.resources.sample_qc import (
 )
 from gnomad_qc.v3.sample_qc.sample_qc import assign_pops
 
-from gnomad.resources.grch38.reference_data import lcr_intervals
-from gnomad.resources.resource_utils import DataException
-from gnomad.utils.annotations import get_adj_expr
-from gnomad.utils.file_utils import file_exists
-from gnomad.utils.slack import slack_notifications
-from gnomad.sample_qc.pipeline import get_qc_mt
-from gnomad_qc.v3.resources import release_sites
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
-from gnomad_qc.v3.resources.annotations import get_info
-
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
@@ -36,9 +40,9 @@ logger = logging.getLogger("subpop_analysis")
 logger.setLevel(logging.INFO)
 
 CURATED_SUBPOPS = {
-    # NOTE: 'Dai' is a known subpop label within eas but is removed as only 8 samples have defined subpop labels in this group, and it is similar to "Chinese Dai" which has more samples with defined subpop labels (92 samples)
-    # NOTE: 'Han' is a known subpop label within eas but is removed as it is already encompassed by more distinct subpops, "Han Chinese" and "Southern Han Chinese" ("Han" overlaps both "Han Chinese" and "Southern Han Chinese" in PCA plots)
-    # NOTE: 'Utah Residents (European Ancestry)' is a known subpop label within nfe but is removed as it is not a descriptive/accurate label and clusters near (0,0) on many PCs, which is potentially a result of missing data
+    # NOTE: 'Dai' is a known subpop label within eas but is removed as only 8 samples have defined subpop labels in this group, and it is similar to "Chinese Dai" which has more samples with defined subpop labels (92 samples) # noqa
+    # NOTE: 'Han' is a known subpop label within eas but is removed as it is already encompassed by more distinct subpops, "Han Chinese" and "Southern Han Chinese" ("Han" overlaps both "Han Chinese" and "Southern Han Chinese" in PCA plots) # noqa
+    # NOTE: 'Utah Residents (European Ancestry)' is a known subpop label within nfe but is removed as it is not a descriptive/accurate label and clusters near (0,0) on many PCs, which is potentially a result of missing data # noqa
     "eas": [
         "Cambodian",
         "Chinese Dai",
@@ -147,7 +151,8 @@ def compute_subpop_qc_mt(
     """
     release_ht = hl.read_table(release_sites().path)
 
-    # Filter to biallelic SNVs not in low-confidence regions and with a popmax above min_popmax_af
+    # Filter to biallelic SNVs not in low-confidence regions and with a popmax
+    # above min_popmax_af
     qc_sites = release_ht.filter(
         (release_ht.popmax.AF > min_popmax_af)
         & ~release_ht.was_split
@@ -156,7 +161,9 @@ def compute_subpop_qc_mt(
     )
 
     logger.info(
-        f"Checkpointing the QC sites HT of biallelic SNVs that are not in low-confidence regions and have a popmax above the specified minimum allele frequency of {min_popmax_af}."
+        "Checkpointing the QC sites HT of biallelic SNVs that are not in"
+        " low-confidence regions and have a popmax above the specified minimum allele"
+        f" frequency of {min_popmax_af}."
     )
     qc_sites = qc_sites.checkpoint(
         get_checkpoint_path("qc_sites"),
@@ -305,7 +312,8 @@ def main(args):  # noqa: D103
             )
 
         if args.run_subpop_pca:
-            # Read in the QC MT for a specified subpop and filter samples based on user parameters
+            # Read in the QC MT for a specified subpop and filter samples based on
+            # user parameters
             mt = hl.read_matrix_table(
                 get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
                 if args.test
@@ -321,7 +329,9 @@ def main(args):  # noqa: D103
             if args.remove_outliers:
                 if not file_exists(subpop_outliers(pop).path):
                     raise DataException(
-                        f"The --remove-outliers option was used, but a Table of outlier samples does not exist for population {pop} at {subpop_outliers(pop).path}"
+                        "The --remove-outlier option was used, but a Table of outlier"
+                        f" samples does not exist for population {pop} at"
+                        f" {subpop_outliers(pop).path}"
                     )
 
                 outliers_ht = subpop_outliers(pop).ht()
@@ -396,7 +406,9 @@ def main(args):  # noqa: D103
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="This script generates a QC MT and PCA scores to use for subpop analyses"
+        description=(
+            "This script generates a QC MT and PCA scores to use for subpop analyses"
+        )
     )
     parser.add_argument(
         "--slack-channel",
@@ -412,28 +424,44 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--make-full-subpop-qc-mt",
-        help="Runs function to create dense MT to use as QC MT for all subpop analyses. This uses --min-popmax-af to determine variants that need to be retained",
+        help=(
+            "Runs function to create dense MT to use as QC MT for all subpop analyses."
+            " This uses --min-popmax-af to determine variants that need to be retained"
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--min-popmax-af",
-        help="Minimum population max variant allele frequency to retain a variant for the subpop QC MT",
+        help=(
+            "Minimum population max variant allele frequency to retain a variant for"
+            " the subpop QC MT"
+        ),
         type=float,
         default=0.001,
     )
     parser.add_argument(
         "--run-filter-subpop-qc",
-        help="Runs function to filter the QC MT to a certain subpop specified by --pop argument",
+        help=(
+            "Runs function to filter the QC MT to a certain subpop specified by --pop"
+            " argument"
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--pop",
-        help="Population to which the subpop QC MT should be filtered when generating the PCA data",
+        help=(
+            "Population to which the subpop QC MT should be filtered when generating"
+            " the PCA data"
+        ),
         type=str,
     )
     parser.add_argument(
         "--run-subpop-pca",
-        help="Runs function to generate PCA data for a certain population specified by --pop argument and based on variants in the subpop QC MT created using the --run-filter-subpop-qc argument",
+        help=(
+            "Runs function to generate PCA data for a certain population specified by"
+            " --pop argument and based on variants in the subpop QC MT created using"
+            " the --run-filter-subpop-qc argument"
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -444,13 +472,19 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--min-af",
-        help="Minimum population variant allele frequency to retain variant in QC MT when generating the PCA data",
+        help=(
+            "Minimum population variant allele frequency to retain variant in QC MT"
+            " when generating the PCA data"
+        ),
         type=float,
         default=0.001,
     )
     parser.add_argument(
         "--min-inbreeding-coeff-threshold",
-        help="Minimum site inbreeding coefficient to keep a variant when generating the PCA data",
+        help=(
+            "Minimum site inbreeding coefficient to keep a variant when generating the"
+            " PCA data"
+        ),
         type=float,
         default=-0.25,
     )
@@ -468,7 +502,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--n-partitions",
-        help="Optional number of partitions to repartition the MT to before running LD pruning. Repartitioning to fewer partitions is useful after filtering out many variants to avoid errors regarding 'maximal_independent_set may run out of memory' while LD pruning",
+        help=(
+            "Optional number of partitions to repartition the MT to before running LD"
+            " pruning. Repartitioning to fewer partitions is useful after filtering out"
+            " many variants to avoid errors regarding 'maximal_independent_set may run"
+            " out of memory' while LD pruning"
+        ),
         type=int,
         default=None,
     )
@@ -480,7 +519,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--remove-outliers",
-        help="Whether to remove outliers when generating the PCA data. Outliers are manually determined after visualizing the PC plots",
+        help=(
+            "Whether to remove outliers when generating the PCA data. Outliers are"
+            " manually determined after visualizing the PC plots"
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -506,7 +548,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--withhold-prop",
-        help="Proportion of training pop samples to withhold from training, all samples will be kept if this flag is not used",
+        help=(
+            "Proportion of training pop samples to withhold from training, all samples"
+            " will be kept if this flag is not used"
+        ),
         type=float,
         default=None,
     )
@@ -520,13 +565,19 @@ if __name__ == "__main__":
     mislabel_parser = parser.add_mutually_exclusive_group(required=True)
     mislabel_parser.add_argument(
         "--max-number-mislabeled-training-samples",
-        help="Maximum number of training samples that can be mislabelled. Can't be used if `max-proportion-mislabeled-training-samples` is already set",
+        help=(
+            "Maximum number of training samples that can be mislabelled. Can't be used"
+            " if `max-proportion-mislabeled-training-samples` is already set"
+        ),
         type=int,
         default=None,
     )
     mislabel_parser.add_argument(
         "--max-proportion-mislabeled-training-samples",
-        help="Maximum proportion of training samples that can be mislabelled. Can't be used if `max-number-mislabeled-training-samples` is already set",
+        help=(
+            "Maximum proportion of training samples that can be mislabelled. Can't be"
+            " used if `max-number-mislabeled-training-samples` is already set"
+        ),
         type=float,
         default=None,
     )

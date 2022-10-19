@@ -1,25 +1,17 @@
+"""Script containing release related resources."""
 from typing import Optional
 
 from gnomad.resources.grch38.gnomad import public_release
-from gnomad.resources.resource_utils import (
-    DataException,
-    MatrixTableResource,
-    TableResource,
-    VersionedMatrixTableResource,
-    VersionedTableResource,
-)
+from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 from gnomad.utils.file_utils import file_exists
 
-from gnomad_qc.v4.resources.basics import qc_temp_prefix
-from gnomad_qc.v4.resources.constants import (
-    CURRENT_RELEASE,
-    RELEASES,
-)
+from gnomad_qc.v4.resources.constants import CURRENT_RELEASE, RELEASES
 
 
 def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
     """
     Return path to file containing ANNOTATIONS_HISTS dictionary.
+
     Dictionary contains histogram values for each metric.
     For example, "InbreedingCoeff": [-0.25, 0.25, 50].
 
@@ -79,7 +71,8 @@ def release_sites(public: bool = False) -> VersionedTableResource:
 
 
 def release_vcf_path(
-    release_version: Optional[str] = None, contig: Optional[str] = None,
+    release_version: Optional[str] = None,
+    contig: Optional[str] = None,
 ) -> str:
     """
     Fetch bucket for release (sites-only) VCFs.
@@ -95,8 +88,8 @@ def release_vcf_path(
     if contig:
         return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}.sites.{contig}.vcf.bgz"
     else:
-        # if contig is None, return path to sharded vcf bucket
-        # NOTE: need to add .bgz or else hail will not bgzip shards
+        # If contig is None, return path to sharded vcf bucket.
+        # NOTE: need to add .bgz or else hail will not bgzip shards.
         return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}.sites.vcf.bgz"
 
 
@@ -125,4 +118,6 @@ def append_to_vcf_header_path(
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :return: Filepath for extra fields TSV file
     """
-    return f"gs://gnomad/release/{release_version}/vcf/exomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
+    return (
+        f"gs://gnomad/release/{release_version}/vcf/exomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
+    )

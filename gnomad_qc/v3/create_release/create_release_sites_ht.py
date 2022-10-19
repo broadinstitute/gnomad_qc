@@ -1,13 +1,10 @@
+# noqa: D100
+
 import argparse
 import logging
 
 import hail as hl
-
-from gnomad.resources.grch38.gnomad import (
-    POPS,
-    POPS_STORED_AS_SUBPOPS,
-    SUBSETS,
-)
+from gnomad.resources.grch38.gnomad import POPS, POPS_STORED_AS_SUBPOPS, SUBSETS
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
     lcr_intervals,
@@ -18,10 +15,7 @@ from gnomad.utils.annotations import missing_callstats_expr, region_flag_expr
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.release import make_freq_index_dict
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vcf import (
-    AS_FIELDS,
-    SITE_FIELDS,
-)
+from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
 from gnomad.utils.vep import VEP_CSQ_HEADER
 
 from gnomad_qc.slack_creds import slack_token
@@ -43,12 +37,15 @@ logging.basicConfig(
 logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
-# Remove InbreedingCoeff from allele-specific fields (processed separately from other fields)
+# Remove InbreedingCoeff from allele-specific fields (processed separately
+# from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
 
-# Add fine-resolution populations specific to 1KG/TGP and HGDP to standard gnomAD pops; used to create frequency index dictionary
+# Add fine-resolution populations specific to 1KG/TGP and HGDP to standard
+# gnomAD pops; used to create frequency index dictionary
 POPS.extend(POPS_STORED_AS_SUBPOPS)
-# Add 'global' tag used to distinguish cohort-wide vs. subset annotations in frequency index dictionary
+# Add 'global' tag used to distinguish cohort-wide vs. subset annotations
+# in frequency index dictionary
 POPS.extend(["global"])
 
 
@@ -104,7 +101,9 @@ def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
     filters = filters_ht[info_ht.key]
     info_ht = info_ht.annotate(
         info=info_ht.info.annotate(
-            AS_SOR=filters.AS_SOR,  # NOTE: AS_SOR will be incorporated into the info HT after v3.1, so no need to add this annotation in future releases
+            AS_SOR=filters.AS_SOR,
+            # NOTE: AS_SOR will be incorporated into the info HT after v3.1, so no
+            # need to add this annotation in future releases
             SOR=filters.SOR,
             singleton=filters.singleton,
             transmitted_singleton=filters.transmitted_singleton,
@@ -175,7 +174,6 @@ def pre_process_subset_freq(
     :param het_nonref_patch: Whether this is frequency information for only variants that need the het nonref patch applied
     :return: Table containing subset frequencies with missing freq structs filled in
     """
-
     # Read in subset HTs
     subset_ht_path = get_freq(subset=subset, het_nonref_patch=het_nonref_patch).path
     subset_test_ht_path = get_checkpoint_path(
@@ -208,7 +206,9 @@ def pre_process_subset_freq(
 
     else:
         raise DataException(
-            f"Hail Table containing {subset} subset frequencies not found. You may need to run the script generate_freq_data.py to generate frequency annotations first."
+            f"Hail Table containing {subset} subset frequencies not found. You may need"
+            " to run the script generate_freq_data.py to generate frequency"
+            " annotations first."
         )
 
     # Fill in missing freq structs
@@ -225,7 +225,7 @@ def pre_process_subset_freq(
     return ht
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/create_release_ht.log", default_reference="GRCh38")
     global_freq_path = get_freq(het_nonref_patch=args.het_nonref_patch).path
 
@@ -260,7 +260,8 @@ def main(args):
 
     else:
         raise DataException(
-            "Hail Table containing global callset frequencies not found. You may need to run the script to generate frequency annotations first."
+            "Hail Table containing global callset frequencies not found. You may need"
+            " to run the script to generate frequency annotations first."
         )
 
     # Load subset frequency Table(s)
@@ -296,8 +297,7 @@ def main(args):
     )
 
     # Create frequency index dictionary on concatenated array (i.e., including all subsets)
-    # NOTE: non-standard downsampling values are created in the frequency script corresponding to population totals, so
-    # callset-specific DOWNSAMPLINGS must be used instead of the generic DOWNSAMPLING values
+    # NOTE: non-standard downsampling values are created in the frequency script corresponding to population totals, so callset-specific DOWNSAMPLINGS must be used instead of the generic DOWNSAMPLING values # noqa
     freq_ht = freq_ht.annotate_globals(
         freq_index_dict=make_freq_index_dict(
             freq_meta=hl.eval(freq_ht.freq_meta),
@@ -306,7 +306,8 @@ def main(args):
         )
     )
 
-    # Add back in all global frequency annotations not present in concatenated frequencies HT
+    # Add back in all global frequency annotations not present in concatenated
+    # frequencies HT
     row_fields = global_freq_ht.row_value.keys() - freq_ht.row_value.keys()
     logger.info(
         "Adding back the following row annotations onto concatenated frequencies: %s",
@@ -317,7 +318,8 @@ def main(args):
     global_fields = global_freq_ht.globals.keys() - freq_ht.globals.keys()
     global_fields.remove("downsamplings")
     logger.info(
-        "Adding back the following global annotations onto concatenated frequencies: %s",
+        "Adding back the following global annotations onto concatenated"
+        " frequencies: %s",
         global_fields,
     )
     freq_ht = freq_ht.annotate_globals(
@@ -383,13 +385,19 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--test_subsets",
-        help="Specify subsets on which to run test, e.g. '--test_subsets non_v2 non_topmed'",
+        help=(
+            "Specify subsets on which to run test, e.g. '--test_subsets non_v2"
+            " non_topmed'"
+        ),
         default=SUBSETS,
         nargs="+",
     )
     parser.add_argument(
         "--het_nonref_patch",
-        help="Fix release using frequency information from only variants where the v3.1 homalt hotfix incorrectly adjusted het nonref genotype calls.",
+        help=(
+            "Fix release using frequency information from only variants where the v3.1"
+            " homalt hotfix incorrectly adjusted het nonref genotype calls."
+        ),
         action="store_true",
     )
     parser.add_argument(

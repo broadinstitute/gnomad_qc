@@ -1,4 +1,4 @@
-import hail as hl
+"""Script containing metadata related resources."""
 from gnomad.resources.resource_utils import (
     PedigreeResource,
     TableResource,
@@ -9,7 +9,6 @@ from gnomad.resources.resource_utils import (
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
 
-# Samples metadata
 def _meta_root_path(version: str = CURRENT_VERSION) -> str:
     """
     Retrieve the path to the root metadata directory.
@@ -50,7 +49,8 @@ _picard_metric_versions = {
 
 _pedigree_versions = {
     f"4{x}": PedigreeResource(
-        f"gs://gnomad/v4.0/metadata/exomes/gnomad.exomes.v4.0{x}.fam", delimiter="\t",
+        f"gs://gnomad/v4.0/metadata/exomes/gnomad.exomes.v4.0{x}.fam",
+        delimiter="\t",
     )
     for x in ["", "_raw"]
 }

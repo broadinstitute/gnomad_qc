@@ -1,3 +1,5 @@
+# noqa: D100
+
 import argparse
 import logging
 import math
@@ -5,7 +7,6 @@ import pickle
 from typing import Any, List, Tuple
 
 import hail as hl
-
 from gnomad.assessment.validity_checks import compare_row_counts
 from gnomad.resources.grch38.reference_data import (
     clinvar,
@@ -21,12 +22,12 @@ from gnomad.sample_qc.filtering import (
 )
 from gnomad.sample_qc.pipeline import annotate_sex, get_qc_mt
 from gnomad.sample_qc.relatedness import (
-    compute_related_samples_to_drop,
     DUPLICATE_OR_TWINS,
-    get_relationship_expr,
     PARENT_CHILD,
     SIBLINGS,
     UNRELATED,
+    compute_related_samples_to_drop,
+    get_relationship_expr,
 )
 from gnomad.sample_qc.sex import get_ploidy_cutoffs, get_sex_expr
 from gnomad.utils.annotations import bi_allelic_expr, get_adj_expr
@@ -46,7 +47,6 @@ from gnomad_qc.v3.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
     ancestry_pca_scores,
-    sample_clinvar_count,
     get_sample_qc,
     hard_filtered_samples,
     pc_relate_pca_scores,
@@ -61,11 +61,11 @@ from gnomad_qc.v3.resources.sample_qc import (
     relatedness,
     release_related_samples_to_drop,
     release_samples_rankings,
+    sample_clinvar_count,
     sample_inbreeding,
     sex,
     stratified_metrics,
 )
-
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("sample_qc")
@@ -229,12 +229,13 @@ def compute_hard_filters(
     hard_filters = dict()
 
     # Remove samples failing fingerprinting
-    # TODO: Add these into hard filtering metadata when incorporating internal smaples Picard metrics
+    # TODO: Add these into hard filtering metadata when incorporating internal samples Picard metrics # noqa
     hard_filters["failed_fingerprinting"] = hl.array(
         ["09C90823", "10C103592", "S5530"]
     ).contains(ht.s)
 
-    # Remove TCGA tumor samples based on TCGA naming convention: https://docs.gdc.cancer.gov/Encyclopedia/pages/TCGA_Barcode/
+    # Remove TCGA tumor samples based on TCGA naming convention:
+    # https://docs.gdc.cancer.gov/Encyclopedia/pages/TCGA_Barcode/
     hard_filters["TCGA_tumor_sample"] = ht.s.startswith("TCGA") & (
         hl.int(hl.str(ht.s).split("-")[3][:2]) < 10
     )
@@ -268,9 +269,11 @@ def compute_hard_filters(
         # Remove samples with ambiguous sex assignments
         sex_ht = sex.ht()[ht.key]
         hard_filters["ambiguous_sex"] = sex_ht.sex_karyotype == "ambiguous"
-        hard_filters["sex_aneuploidy"] = ~hl.set(
+        hard_filters[
+            "sex_aneuploidy"
+        ] = ~hl.set(  # pylint: disable=invalid-unary-operand-type
             {"ambiguous", "XX", "XY"}
-        ).contains(  # pylint: disable=invalid-unary-operand-type
+        ).contains(
             sex_ht.sex_karyotype
         )
 
@@ -543,7 +546,8 @@ def assign_pops(
         samples_to_drop = hl.literal(additional_samples_to_drop.s.collect())
 
     if pop is not None:
-        # Set subpop_description to missing if the subpop is not in the manually curated list of subpops for the given pop
+        # Set subpop_description to missing if the subpop is not in the manually
+        # curated list of subpops for the given pop
         if curated_subpops is not None:
             pop_pca_scores_ht = pop_pca_scores_ht.annotate(
                 subpop_description=hl.or_missing(
@@ -641,7 +645,8 @@ def assign_pops(
         max_mislabeled = max_proportion_mislabeled_training_samples
     else:
         raise ValueError(
-            "One and only one of max_number_mislabeled_training_samples or max_proportion_mislabeled_training_samples must be set!"
+            "One and only one of max_number_mislabeled_training_samples or"
+            " max_proportion_mislabeled_training_samples must be set!"
         )
 
     logger.info(
@@ -678,7 +683,9 @@ def assign_pops(
     while mislabeled > max_mislabeled:
         pop_assignment_iter += 1
         logger.info(
-            f"Found {n_mislabeled_samples}({round(prop_mislabeled_samples*100, 2)}%) training samples labeled differently from their known pop. Re-running without them."
+            f"Found {n_mislabeled_samples}({round(prop_mislabeled_samples*100, 2)}%)"
+            " training samples labeled differently from their known pop. Re-running"
+            " without them."
         )
 
         pop_ht = pop_ht[pop_pca_scores_ht.key]
@@ -791,8 +798,7 @@ def apply_regressed_filters(
     n_pcs: int = 16,
 ) -> hl.Table:
     """
-    Compute sample QC metrics residuals after regressing out population PCs and determine what samples are outliers
-    that should be filtered.
+    Compute sample QC metrics residuals after regressing out population PCs and determine what samples are outliers that should be filtered.
 
     .. note::
 
@@ -869,7 +875,7 @@ def get_relationship_filter_expr(
     relationship_set: hl.expr.SetExpression,
 ) -> hl.expr.builders.CaseBuilder:
     """
-    Return case statement to populate relatedness filters in sample_filters struct
+    Return case statement to populate relatedness filters in sample_filters struct.
 
     :param hl.expr.BooleanExpression hard_filtered_expr: Boolean for whether sample was hard filtered.
     :param str relationship: Relationship to check for. One of DUPLICATE_OR_TWINS, PARENT_CHILD, or SIBLINGS.
@@ -894,7 +900,7 @@ def join_tables(
     sample_count_match: bool = True,
 ) -> hl.Table:
     """
-    Joins left and right tables using specified keys and join types and returns result.
+    Join left and right tables using specified keys and join types and returns result.
 
     Also prints warning if sample counts are not the same.
 
@@ -913,14 +919,16 @@ def join_tables(
         in_left_not_right = left_ht.anti_join(right_ht)
         if in_left_not_right.count() != 0:
             logger.warning(
-                f"The following {in_left_not_right.count()} samples are found in the left HT, but are not found in the right HT"
+                f"The following {in_left_not_right.count()} samples are found in the"
+                " left HT, but are not found in the right HT"
             )
             in_left_not_right.select().show(n=-1)
 
         in_right_not_left = right_ht.anti_join(left_ht)
         if in_right_not_left.count() != 0:
             logger.warning(
-                f"The following {in_right_not_left.count()} samples are found in the right HT, but are not found in left HT"
+                f"The following {in_right_not_left.count()} samples are found in the"
+                " right HT, but are not found in left HT"
             )
             in_right_not_left.select().show(n=-1)
 
@@ -943,7 +951,8 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     logging_statement = "Reading in {} and joining with meta HT"
 
     logger.info(
-        "Loading metadata file with subset, age, and releasable information to begin creation of the meta HT"
+        "Loading metadata file with subset, age, and releasable information to begin"
+        " creation of the meta HT"
     )
     left_ht = get_gnomad_v3_mt(remove_hard_filtered_samples=False).cols()
 
@@ -992,7 +1001,8 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     )
 
     logger.info(
-        "Reading hard filters HT, renaming hard filters struct to sample_filters, and joining with meta HT"
+        "Reading hard filters HT, renaming hard filters struct to sample_filters, and"
+        " joining with meta HT"
     )
     right_ht = hard_filtered_samples.ht()
     left_ht = join_tables(
@@ -1021,7 +1031,8 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     )
 
     logger.info(
-        "Reading in PCA related samples to drop HT and preparing to annotate meta HT's sample_filter struct with relatedness booleans"
+        "Reading in PCA related samples to drop HT and preparing to annotate meta HT's"
+        " sample_filter struct with relatedness booleans"
     )
     related_samples_to_drop_ht = pca_related_samples_to_drop.ht()
     release_related_samples_to_drop_ht = release_related_samples_to_drop.ht()
@@ -1147,7 +1158,7 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     return left_ht
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/hail.log", default_reference="GRCh38")
 
     if args.sample_qc:
@@ -1424,7 +1435,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--reannotate_sex",
-        help="Runs the sex karyotyping annotations again, without re-computing sex imputation metrics.",
+        help=(
+            "Runs the sex karyotyping annotations again, without re-computing sex"
+            " imputation metrics."
+        ),
         action="store_true",
     )
     parser.add_argument("--upper_x", help="Upper cutoff for single X", type=float)
@@ -1458,26 +1472,34 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--first_degree_kin_thresholds",
-        help="First degree kinship threshold for filtering a pair of samples with a first degree relationship. \
-        Default = (0.1767767, 0.4); \
-        Defaults taken from Bycroft et al. (2018)",
+        help=(
+            "First degree kinship threshold for filtering a pair of samples with a"
+            " first degree relationship.         Default = (0.1767767, 0.4);        "
+            " Defaults taken from Bycroft et al. (2018)"
+        ),
         nargs=2,
         default=(0.1767767, 0.4),
         type=float,
     )
     parser.add_argument(
         "--second_degree_kin_cutoff",
-        help="Minimum kinship threshold for filtering a pair of samples with a second degree relationship\
-        in PC relate and filtering related individuals. (Default = 0.1) \
-        Bycroft et al. (2018) calculates 0.08838835 but from evaluation of the distributions v3 has used 0.1",
+        help=(
+            "Minimum kinship threshold for filtering a pair of samples with a second"
+            " degree relationship        in PC relate and filtering related"
+            " individuals. (Default = 0.1)         Bycroft et al. (2018) calculates"
+            " 0.08838835 but from evaluation of the distributions v3 has used 0.1"
+        ),
         default=0.1,
         type=float,
     )
     parser.add_argument(
         "--ibd0_0_max",
-        help="IBD0 cutoff to determine parent offspring vs full sibling (Default = 0.05) \
-        Default is adjusted from theoretical values; parent-offspring should have an IBD0 = 0. \
-        Full siblings should have an IBD0 = 0.25.",
+        help=(
+            "IBD0 cutoff to determine parent offspring vs full sibling (Default = 0.05)"
+            "         Default is adjusted from theoretical values; parent-offspring"
+            " should have an IBD0 = 0.         Full siblings should have an IBD0 ="
+            " 0.25."
+        ),
         default=0.05,
     )
     parser.add_argument(
@@ -1508,7 +1530,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--pop_pcs",
-        help="List of PCs to use for ancestry assignment. The values provided should be 1-based.",
+        help=(
+            "List of PCs to use for ancestry assignment. The values provided should be"
+            " 1-based."
+        ),
         default=list(range(1, 17)),
         type=list,
     )
@@ -1520,7 +1545,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--withhold_prop",
-        help="Proportion of training samples to withhold from pop assignment RF training",
+        help=(
+            "Proportion of training samples to withhold from pop assignment RF training"
+        ),
         type=float,
     )
     parser.add_argument(

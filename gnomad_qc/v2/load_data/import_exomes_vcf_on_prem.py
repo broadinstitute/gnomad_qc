@@ -1,4 +1,3 @@
-
 # NOTE
 # This script is kept here only for archiving purpose.
 # It has no practical utility and is outdated
@@ -26,4 +25,6 @@
 
 # To copy to cloud:
 # cd /humgen/atgu1/fs03/konradk/gnomad/2.1/hail
-# hadoop distcp -libjars gcs-connector-latest-hadoop2.jar -conf core-site.xml -m 50 hdfs:///user/konradk/gnomad.vds gs://gnomad/raw/hail-0.2/vds/exomes/gnomad.exomes.vds
+# hadoop distcp -libjars gcs-connector-latest-hadoop2.jar -conf
+# core-site.xml -m 50 hdfs:///user/konradk/gnomad.vds
+# gs://gnomad/raw/hail-0.2/vds/exomes/gnomad.exomes.vds

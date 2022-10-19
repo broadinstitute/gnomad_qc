@@ -3,7 +3,7 @@ The scripts below are run approximately in the order they are listed.
 
 ### Quality Control
 **load_data/**
-* `import_vcf.py` — import raw VCF files into Hail, left-align indel representation, and write to MatrixTable format 
+* `import_vcf.py` — import raw VCF files into Hail, left-align indel representation, and write to MatrixTable format
 * `import_resources.py` — import reference datasets (e.g., Clinvar annotations, methylation and CpG annotations, ExAC site annotations, truth sets) into Hail and write to MatrixTable or Table format
 * `load_coverage.py` — import individual-level coverage files, write to MatrixTable and Table formats, compute summary metrics, and export summary data for release
 * `import_gnomad_sv.py` - import the gnomAD SV VCF and write it as a MT; merge gnomAD SVs and short variants into a single MT using an allele frequency cutoff for short variants; generate age and GQ histograms

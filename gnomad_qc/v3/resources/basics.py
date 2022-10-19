@@ -1,13 +1,12 @@
+# noqa: D100
+
 import hail as hl
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
     VersionedMatrixTableResource,
 )
 
-from gnomad_qc.v3.resources.constants import (
-    CURRENT_RELEASE,
-    CURRENT_VERSION,
-)
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, CURRENT_VERSION
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.sample_qc import hard_filtered_samples
 
@@ -21,7 +20,7 @@ def get_gnomad_v3_mt(
     test: bool = False,
 ) -> hl.MatrixTable:
     """
-    Wrapper function to get gnomAD data with desired filtering and metadata annotations.
+    Get gnomAD data with desired filtering and metadata annotations.
 
     :param split: Perform split on MT - Note: this will perform a split on the MT rather than grab an already split MT
     :param key_by_locus_and_alleles: Whether to key the MatrixTable by locus and alleles (only needed for v3)
@@ -82,7 +81,8 @@ _gnomad_v3_genotypes = {
 
 # The same raw MT is used for v3.1.1, v3.1.2, and v3.1
 gnomad_v3_genotypes = VersionedMatrixTableResource(
-    CURRENT_VERSION, _gnomad_v3_genotypes,
+    CURRENT_VERSION,
+    _gnomad_v3_genotypes,
 )
 
 # v3 test dataset sparse MT

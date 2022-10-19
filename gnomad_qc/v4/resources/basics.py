@@ -1,3 +1,4 @@
+"""Script containing generic resources."""
 import logging
 
 import hail as hl
@@ -15,7 +16,7 @@ logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
 
 
-# Note: Unlike previous versions, the v4 resource directory uses a general format of hgs://gnomad/v4.0/<module>/<exomes_or_genomes>/
+# Note: Unlike previous versions, the v4 resource directory uses a general format of gs://gnomad/v4.0/<module>/<exomes_or_genomes>/. # noqa
 def get_gnomad_v4_vds(
     split: bool = False,
     remove_hard_filtered_samples: bool = True,
@@ -25,7 +26,7 @@ def get_gnomad_v4_vds(
     n_partitions: int = None,
 ) -> hl.vds.VariantDataset:
     """
-    Wrapper function to get gnomAD v4 data with desired filtering and metadata annotations.
+    Get gnomAD v4 data with desired filtering and metadata annotations.
 
     :param split: Perform split on VDS - Note: this will perform a split on the VDS rather than grab an already split VDS
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after hard filtering is complete)
@@ -35,10 +36,10 @@ def get_gnomad_v4_vds(
     :param n_partitions: Optional argument to read the VDS with a specific number of partitions
     :return: gnomAD v4 dataset with chosen annotations and filters
     """
-
     if remove_hard_filtered_samples and remove_hard_filtered_samples_no_sex:
         raise ValueError(
-            "Only one of 'remove_hard_filtered_samples' or 'remove_hard_filtered_samples_no_sex' can be set to True."
+            "Only one of 'remove_hard_filtered_samples' or"
+            " 'remove_hard_filtered_samples_no_sex' can be set to True."
         )
 
     if test:
@@ -50,6 +51,75 @@ def get_gnomad_v4_vds(
         vds = hl.vds.read_vds(gnomad_v4_resource.path, n_partitions=n_partitions)
     else:
         vds = gnomad_v4_resource.vds()
+
+    # Count current number of samples in the VDS.
+    n_samples = vds.variant_data.count_cols()
+
+    # Remove 75 withdrawn UKB samples (samples with withdrawn consents for application
+    # 31063 on 02/22/2022).
+    ukb_application_map_ht = ukb_application_map.ht()
+    withdrawn_ukb_samples = ukb_application_map_ht.filter(
+        ukb_application_map_ht.withdraw
+    ).s.collect()
+
+    # Remove 43 samples that are known to be on the pharma's sample remove list. See:
+    # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308.
+    dups_ht = ukb_known_dups.ht()
+    ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
+
+    # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS). See:
+    # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286.
+    # Confirmed that the col_idx of the 27 dup samples in the original UKB MT match
+    # the col_idx of the dup UKB samples in the VDS.
+    dup_ids = []
+    with hl.hadoop_open(ukb_dups_idx_path, "r") as d:
+        for line in d:
+            line = line.strip().split("\t")
+            dup_ids.append(f"{line[0]}_{line[1]}")
+
+    def _remove_ukb_dup_by_index(
+        mt: hl.MatrixTable, dup_ids: hl.expr.ArrayExpression
+    ) -> hl.MatrixTable:
+        """
+        Remove UKB samples with exact duplicate names based on column index.
+
+        :param mt: MatrixTable of either the variant data or reference data of a VDS
+        :param dup_ids: ArrayExpression of UKB samples to remove in format of <sample_name>_<col_idx>
+        :return: MatrixTable of UKB samples with exact duplicate names removed based on column index
+        """
+        mt = mt.add_col_index()
+        mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
+        mt = mt.filter_cols(~dup_ids.contains(mt.new_s)).drop("new_s", "col_idx")
+        return mt
+
+    dup_ids = hl.literal(dup_ids)
+    vd = _remove_ukb_dup_by_index(vds.variant_data, dup_ids)
+    rd = _remove_ukb_dup_by_index(vds.reference_data, dup_ids)
+    vds = hl.vds.VariantDataset(rd, vd)
+
+    # Filter withdrawn samples from the VDS.
+    withdrawn_ids = withdrawn_ukb_samples + ids_to_remove + hl.eval(dup_ids)
+    withdrawn_ids = [i for i in withdrawn_ids if i is not None]
+
+    logger.info("Total number of UKB samples to exclude: %d", len(withdrawn_ids))
+
+    with hl.hadoop_open(all_ukb_samples_to_remove, "w") as d:
+        for sample in withdrawn_ids:
+            d.write(sample + "\n")
+
+    withdrawn_ht = hl.import_table(all_ukb_samples_to_remove, no_header=True).key_by(
+        "f0"
+    )
+
+    vds = hl.vds.filter_samples(vds, withdrawn_ht, keep=False, remove_dead_alleles=True)
+
+    # Log number of UKB samples removed from the VDS.
+    n_samples_after_exclusion = vds.variant_data.count_cols()
+    n_samples_removed = n_samples - n_samples_after_exclusion
+
+    logger.info(
+        "Total number of UKB samples removed from the VDS: %d", n_samples_removed
+    )
 
     if remove_hard_filtered_samples or remove_hard_filtered_samples_no_sex:
         if test:
@@ -82,73 +152,6 @@ def get_gnomad_v4_vds(
         meta_ht = meta_ht.filter(meta_ht.release)
         vds = hl.vds.filter_samples(vds, meta_ht)
 
-    # Count current number of samples in the VDS
-    n_samples = vds.variant_data.count_cols()
-
-    # Remove 75 withdrawn UKB samples (samples with withdrawn consents for application 31063 on 02/22/2022)
-    ukb_application_map_ht = ukb_application_map.ht()
-    withdrawn_ukb_samples = ukb_application_map_ht.filter(
-        ukb_application_map_ht.withdraw
-    ).s.collect()
-
-    # Remove 43 samples that are known to be on the pharma's sample remove list
-    # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308
-    dups_ht = ukb_known_dups.ht()
-    ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
-
-    # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS)
-    # See https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286
-    # Confirmed that the col_idx of the 27 dup samples in the original UKB MT match the col_idx of the dup UKB samples in the VDS
-    dup_ids = []
-    with hl.hadoop_open(ukb_dups_idx_path, "r") as d:
-        for line in d:
-            line = line.strip().split("\t")
-            dup_ids.append(f"{line[0]}_{line[1]}")
-
-    def _remove_ukb_dup_by_index(
-        mt: hl.MatrixTable, dup_ids: hl.expr.ArrayExpression
-    ) -> hl.MatrixTable:
-        """
-        Remove UKB samples with exact duplicate names based on column index.
-
-        :param mt: MatrixTable of either the variant data or reference data of a VDS
-        :param dup_ids: ArrayExpression of UKB samples to remove in format of <sample_name>_<col_idx>
-        :return: MatrixTable of UKB samples with exact duplicate names removed based on column index
-        """
-        mt = mt.add_col_index()
-        mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
-        mt = mt.filter_cols(~dup_ids.contains(mt.new_s)).drop("new_s", "col_idx")
-        return mt
-
-    dup_ids = hl.literal(dup_ids)
-    vd = _remove_ukb_dup_by_index(vds.variant_data, dup_ids)
-    rd = _remove_ukb_dup_by_index(vds.reference_data, dup_ids)
-    vds = hl.vds.VariantDataset(rd, vd)
-
-    # Filter withdrawn samples from the VDS
-    withdrawn_ids = withdrawn_ukb_samples + ids_to_remove + hl.eval(dup_ids)
-    withdrawn_ids = [i for i in withdrawn_ids if i is not None]
-
-    logger.info("Total number of UKB samples to exclude: %d", len(withdrawn_ids))
-
-    with hl.hadoop_open(all_ukb_samples_to_remove, "w") as d:
-        for sample in withdrawn_ids:
-            d.write(sample + "\n")
-
-    withdrawn_ht = hl.import_table(all_ukb_samples_to_remove, no_header=True).key_by(
-        "f0"
-    )
-
-    vds = hl.vds.filter_samples(vds, withdrawn_ht, keep=False, remove_dead_alleles=True)
-
-    # Log number of UKB samples removed from the VDS
-    n_samples_after_exclusion = vds.variant_data.count_cols()
-    n_samples_removed = n_samples - n_samples_after_exclusion
-
-    logger.info(
-        "Total number of UKB samples removed from the VDS: %d", n_samples_removed
-    )
-
     if split:
         vmt = vds.variant_data
         vmt = vmt.annotate_rows(
@@ -172,7 +175,7 @@ gnomad_v4_genotypes = VersionedVariantDatasetResource(
     _gnomad_v4_genotypes,
 )
 
-# v4 test dataset VDS
+# v4 test dataset VDS.
 gnomad_v4_testset = VariantDatasetResource(
     "gs://gnomad/v4.0/raw/exomes/testing/gnomad_v4.0_test.vds"
 )
@@ -181,7 +184,7 @@ gnomad_v4_testset_meta = TableResource(
 )
 
 
-# UKB data resources
+# UKB data resources.
 def _ukb_root_path() -> str:
     """
     Retrieve the path to the UKB data directory.
@@ -192,7 +195,8 @@ def _ukb_root_path() -> str:
 
 
 # List of samples to exclude from QC due to withdrawn consents.
-# Application 26041 is from the 08/09/2021 list and application 31063 is from the 02/22/2022 list.
+# Application 26041 is from the 08/09/2021 list and application 31063 is from the
+# 02/22/2022 list.
 # These were originally imported as CSVs and then keyed by their respective eids.
 ukb_excluded = VersionedTableResource(
     default_version="31063_20220222",
@@ -204,10 +208,10 @@ ukb_excluded = VersionedTableResource(
     },
 )
 
-# UKB map of exome IDs to array sample IDs (application ID: 26041)
+# UKB map of exome IDs to array sample IDs (application ID: 26041).
 ukb_array_sample_map = TableResource(f"{_ukb_root_path()}/array_sample_map_freeze_7.ht")
 
-# UKB full mapping file of sample ID and application IDs 26041, 31063, and 48511
+# UKB full mapping file of sample ID and application IDs 26041, 31063, and 48511.
 ukb_application_map = TableResource(
     f"{_ukb_root_path()}/ukbb_application_id_mappings.ht"
 )
@@ -217,14 +221,15 @@ ukb_application_map = TableResource(
 # All 44 samples are marked as "unresolved duplicates" by the pharma partners.
 ukb_known_dups = TableResource(f"{_ukb_root_path()}/pharma_known_dups_7.ht")
 
-# Samples with duplicate names in the VDS and their column index
-# 27 samples to remove based on column index
+# Samples with duplicate names in the VDS and their column index.
+# 27 samples to remove based on column index.
 ukb_dups_idx_path = f"{_ukb_root_path()}/dup_remove_idx_7.tsv"
 
-# Final list of UKB samples to remove (duplicates that were removed will have their original index appended to the sample name)
+# Final list of UKB samples to remove (duplicates that were removed will have their
+# original index appended to the sample name).
 all_ukb_samples_to_remove = f"{_ukb_root_path()}/all_ukbb_samples_to_remove.txt"
 
-# UKB f-stat sites Table with UKB allele frequencies
+# UKB f-stat sites Table with UKB allele frequencies.
 ukb_f_stat = TableResource(f"{_ukb_root_path()}/f_stat_sites.ht")
 
 
