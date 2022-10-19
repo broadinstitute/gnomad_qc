@@ -43,7 +43,8 @@ def main(args):  # noqa: D103
         mt = mt._filter_partitions(range(2))
 
     logger.info(
-        "Adding annotation for whether original genotype (pre-splitting multiallelics) is het nonref..."
+        "Adding annotation for whether original genotype (pre-splitting multiallelics)"
+        " is het nonref..."
     )
     # Adding a Boolean for whether a sample had a heterozygous non-reference genotype
     # Need to add this prior to splitting MT to make sure these genotypes
@@ -82,7 +83,8 @@ def main(args):  # noqa: D103
     )
 
     logger.info(
-        "Writing out dense MT with only het nonref calls that may have been incorrectly adjusted with the homalt hotfix..."
+        "Writing out dense MT with only het nonref calls that may have been incorrectly"
+        " adjusted with the homalt hotfix..."
     )
     if args.test:
         mt.write(
@@ -96,7 +98,6 @@ def main(args):  # noqa: D103
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument(

@@ -88,8 +88,8 @@ def release_vcf_path(
     if contig:
         return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}.sites.{contig}.vcf.bgz"
     else:
-        # if contig is None, return path to sharded vcf bucket
-        # NOTE: need to add .bgz or else hail will not bgzip shards
+        # If contig is None, return path to sharded vcf bucket.
+        # NOTE: need to add .bgz or else hail will not bgzip shards.
         return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}.sites.vcf.bgz"
 
 
@@ -118,4 +118,6 @@ def append_to_vcf_header_path(
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :return: Filepath for extra fields TSV file
     """
-    return f"gs://gnomad/release/{release_version}/vcf/exomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
+    return (
+        f"gs://gnomad/release/{release_version}/vcf/exomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
+    )

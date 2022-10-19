@@ -1,6 +1,8 @@
 # NOTE
 # This script is kept here only for archiving purpose.
-# It was used in the gnomAD v2 flagship LOF paper (https://www.nature.com/articles/s41586-020-2308-7), but is not used as a regular part of gnomAD production
+# It was used in the gnomAD v2 flagship LOF paper
+# (https://www.nature.com/articles/s41586-020-2308-7), but is not used as
+# a regular part of gnomAD production
 
 import argparse
 import logging
@@ -182,7 +184,8 @@ def export_gene_coverage(overwrite: bool):
         "gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz"
     ):
         logger.warn(
-            "gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz not exported as it already exists and --overwrite is not set."
+            "gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.1/summary_gene_coverage/gencode_grch37_gene_by_platform_coverage_summary.tsv.gz"
+            " not exported as it already exists and --overwrite is not set."
         )
     else:
         cov.export(

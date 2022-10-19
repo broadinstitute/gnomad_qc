@@ -107,9 +107,7 @@ def make_rank_file(outfile: str) -> hl.Table:
         pd.Series(list(exome["s"])).isin(list(exome_trio["s"])), "parent_child"
     ] = 3
 
-    exome_internal = exome.loc[
-        exome.internal,
-    ].copy()
+    exome_internal = exome.loc[exome.internal].copy()
     exome_internal["project_id"].replace(
         to_replace="^RP-", value="", regex=True, inplace=True
     )
@@ -121,9 +119,7 @@ def make_rank_file(outfile: str) -> hl.Table:
         ["project_id", "parent_child", "pct_bases_20x"], ascending=[False, True, False]
     )
 
-    exome_external = exome.loc[
-        ~exome.internal,
-    ].copy()
+    exome_external = exome.loc[~exome.internal].copy()
     sorted_exome_external = exome_external.sort_values(
         ["parent_child", "pct_bases_20x"], ascending=[True, False]
     )
@@ -137,12 +133,8 @@ def make_rank_file(outfile: str) -> hl.Table:
     # Combine and rearrange by permissions
     sorted_data = pd.concat([sorted_genome, sorted_exome])
 
-    releasable = sorted_data.loc[
-        sorted_data.releasable,
-    ].copy()
-    nonreleasable = sorted_data.loc[
-        ~sorted_data.releasable,
-    ].copy()
+    releasable = sorted_data.loc[sorted_data.releasable].copy()
+    nonreleasable = sorted_data.loc[~sorted_data.releasable].copy()
     sorted_data = pd.concat([releasable, nonreleasable])
     sorted_data.rename(index=str, columns={"project_id": "rank_project_id"})
     sorted_data["rank"] = range(1, len(sorted_data) + 1)
@@ -401,7 +393,7 @@ def main(args):
 
         logger.info("Running PC-Relate...")
         scores = hl.read_table(qc_temp_data_prefix("joint") + ".pruned.pca_scores.ht")
-        # NOTE: This needs SSDs on your workers (for the temp files) and no pre-emptibles while the BlockMatrix writes
+        # NOTE: This needs SSDs on your workers (for the temp files) and no pre-emptibles while the BlockMatrix writes # noqa
         relatedness_ht = hl.pc_relate(
             pruned_mt.GT,
             min_individual_maf=0.05,
@@ -434,7 +426,7 @@ def main(args):
     if not args.skip_pop_pca:
         variants, samples = pca_mt.count()
         logger.info("{} samples after removing relateds".format(samples))
-        # TODO: Check that there are no longer any 2nd-degree relateds in the callset by running KING on the output file below
+        # TODO: Check that there are no longer any 2nd-degree relateds in the callset by running KING on the output file below # noqa
         plink_mt = (
             pca_mt.annotate_cols(
                 uid=pca_mt.data_type + "_" + pca_mt.s.replace(" ", "_")
@@ -528,7 +520,7 @@ def main(args):
         gnomad_sample_qc(genome_mt).cols().select("sample_qc").write(
             qc_temp_data_prefix("genomes") + ".sample_qc.ht", args.overwrite
         )
-        # TODO: check that the pcr_free annotations are complete once samples are updated from Jessica's spreadsheet
+        # TODO: check that the pcr_free annotations are complete once samples are updated from Jessica's spreadsheet # noqa
 
     logger.info("Annotating population and platform assignments...")
     platform_ht = hl.read_table(qc_ht_path("exomes", "platforms"))

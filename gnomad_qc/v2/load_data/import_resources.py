@@ -142,4 +142,6 @@ if __name__ == "__main__":
 
 # Raw counts:
 # print hc.import_vcf('gs://exac2/variantqc/ExAC.merged.sites_only.vcf.ICfiltered.recalibrated.vcf.bgz').query_variants('variants.count()')[0]  # 18444471 sites
-# print hc.read('gs://exac2/variantqc/exac2_vqsr.vds').query_variants('variants.count()')[0]  # 21352671 variants
+# print
+# hc.read('gs://exac2/variantqc/exac2_vqsr.vds').query_variants('variants.count()')[0]
+# 21352671 variants

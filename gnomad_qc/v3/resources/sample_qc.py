@@ -441,7 +441,8 @@ pca_samples_rankings = VersionedTableResource(
     },
 )
 
-# Ranking of all release samples based on quality metrics. Used to remove relateds for release.
+# Ranking of all release samples based on quality metrics. Used to remove
+# relateds for release.
 release_samples_rankings = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -512,7 +513,8 @@ hgdp_tgp_meta = TableResource(
     path="gs://gnomad/sample_qc/ht/genomes_v3.1/hgdp_tgp_additional_sample_metadata.ht"
 )
 
-# Table with the set of outliers found by Alicia Martin's group during pop specific PCA analyses as well as one duplicate sample
+# Table with the set of outliers found by Alicia Martin's group during pop
+# specific PCA analyses as well as one duplicate sample
 hgdp_tgp_pop_outliers = TableResource(
     path="gs://gnomad/sample_qc/ht/gnomad.genomes.v3.1.hgdp_tgp_pop_outlier.ht",
     import_func=hl.import_table,
@@ -537,7 +539,8 @@ hgdp_tgp_related_samples_to_drop = TableResource(
     },
 )
 
-# Table with HGDP + 1KG/TGP global and subcontinental PCA scores before and after removing outliers
+# Table with HGDP + 1KG/TGP global and subcontinental PCA scores before
+# and after removing outliers
 hgdp_tgp_pcs = VersionedTableResource(
     default_version="3.1",
     versions={

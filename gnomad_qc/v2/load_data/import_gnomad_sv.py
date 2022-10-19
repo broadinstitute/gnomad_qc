@@ -185,12 +185,18 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--merge_with_short_variants",
-        help="Creates an MT merging SVs and short variants. An AF cutoff is used for short variants (--short_variants_af)",
+        help=(
+            "Creates an MT merging SVs and short variants. An AF cutoff is used for"
+            " short variants (--short_variants_af)"
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--short_variants_af",
-        help="Short variant AF cutoff (AF >= x in any pop) for merging SVs and short variants",
+        help=(
+            "Short variant AF cutoff (AF >= x in any pop) for merging SVs and short"
+            " variants"
+        ),
         default=0.005,
         type=float,
     )

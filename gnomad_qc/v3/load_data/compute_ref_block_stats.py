@@ -34,7 +34,8 @@ def print_ref_block_stats(path: str):  # noqa: D103
             print(f"99.9% block size: {get_quantile(cum_prop, 0.999)}")
             print(f"99.95% block size: {get_quantile(cum_prop, 0.9995)}")
             print(
-                f"Percentage blocks below 10k: {1-(ref_block_stats.hist.n_larger/n_blocks)}"
+                "Percentage blocks below 10k:"
+                f" {1-(ref_block_stats.hist.n_larger/n_blocks)}"
             )
 
     if path.startswith("gs://"):

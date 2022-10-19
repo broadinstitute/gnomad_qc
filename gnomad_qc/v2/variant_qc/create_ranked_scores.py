@@ -474,7 +474,6 @@ def main(args):
         data_types.append("genomes")
 
     for data_type in data_types:
-
         if args.run_hash:
             run_data(
                 create_rf_rank, [data_type, args.run_hash], args.run_hash, data_type
@@ -496,7 +495,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--slack_channel", help="Slack channel to post results and notifications to."
@@ -517,7 +515,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--cnn",
-        help="When set, creates the CNN rank file. Note that there is no CNN file for exomes.",
+        help=(
+            "When set, creates the CNN rank file. Note that there is no CNN file for"
+            " exomes."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -527,7 +528,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--rf_2_0_2_beta",
-        help="When set, creates the 2.0.2 RF beta (no medians, QD / max(pAB)) rank file.",
+        help=(
+            "When set, creates the 2.0.2 RF beta (no medians, QD / max(pAB)) rank file."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -562,7 +565,8 @@ if __name__ == "__main__":
         and not args.create_binned_file
     ):
         sys.exit(
-            "Error: At least one of --create_rank_file, --run_sanity_checks or --create_binned_file must be specified."
+            "Error: At least one of --create_rank_file, --run_sanity_checks or"
+            " --create_binned_file must be specified."
         )
 
     if args.slack_channel:

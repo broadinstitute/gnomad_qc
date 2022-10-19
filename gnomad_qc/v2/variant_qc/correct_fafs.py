@@ -52,7 +52,8 @@ def main(args):
         )  # {'adj_afr': 2, 'adj_amr': 5, 'adj_eas': 3, 'adj_nfe': 1, 'adj_sas': 4, 'adj': 0}
 
         # For any population where there is only a singleton, the faf for that population should be 0
-        # Get pop names where ac_pop == 1; then match faf entry metas to these pop names and set fafs to 0
+        # Get pop names where ac_pop == 1; then match faf entry metas to these pop
+        # names and set fafs to 0
         freq_ht = freq_ht.annotate(
             faf_ac=hl.Struct(
                 **make_faf_ac_struct(freq_ht, freq_index_dict, faf_index_dict)

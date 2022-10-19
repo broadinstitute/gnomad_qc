@@ -305,7 +305,8 @@ def main(args):
     if args.subset_samples_by_field:
         mt = mt.filter_cols(mt.meta[args.subset_samples_by_field], keep=not args.invert)
     logger.info(
-        f"Calculating frequencies for {mt.count_cols()} samples with {args.subset_samples_by_field} == {not args.invert}"
+        f"Calculating frequencies for {mt.count_cols()} samples with"
+        f" {args.subset_samples_by_field} == {not args.invert}"
     )
 
     location = (
@@ -370,11 +371,17 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--subset_samples_by_field",
-        help="Annotation field containing boolean values describing samples to keep in subset",
+        help=(
+            "Annotation field containing boolean values describing samples to keep in"
+            " subset"
+        ),
     )
     parser.add_argument(
         "--invert",
-        help="Remove samples in --subset_samples_by_field instead of keeping (e.g. neuro)",
+        help=(
+            "Remove samples in --subset_samples_by_field instead of keeping (e.g."
+            " neuro)"
+        ),
         action="store_true",
     )
     parser.add_argument(

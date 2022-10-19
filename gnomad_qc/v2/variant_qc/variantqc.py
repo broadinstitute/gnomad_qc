@@ -98,7 +98,6 @@ def sample_rf_training_examples(
     """
 
     def get_train_counts(ht: hl.Table) -> Tuple[int, int]:
-
         if "test_intervals" in ht.globals:
             interval_list = hl.eval(ht.globals.test_intervals)
             ht = hl.filter_intervals(ht, interval_list, keep=False)
@@ -139,7 +138,6 @@ def sample_rf_training_examples(
     n_tp, n_fp = get_train_counts(ht)
 
     if fp_to_tp > 0:
-
         desired_fp = fp_to_tp * n_tp
         if desired_fp < n_fp:
             prob_tp = 1.0
@@ -169,7 +167,9 @@ def sample_rf_training_examples(
                 hl.rand_bool(prob_fp),
                 ht[train_col],
             )
-            # train_expr = hl.cond(hl.or_else(ht[tp_col], False), hl.or_else(~ht[fp_col], True), ht[fp_col] & hl.rand_bool(prob_fp))  # Note: Hail propagates missing values with invert operator
+            # train_expr = hl.cond(hl.or_else(ht[tp_col], False),
+            # hl.or_else(~ht[fp_col], True), ht[fp_col] & hl.rand_bool(prob_fp))
+            # Note: Hail propagates missing values with invert operator
         elif prob_tp < 1.0:
             ht = ht.annotate(
                 **{
@@ -496,7 +496,6 @@ def get_run_data(
 
 
 def train_rf(data_type, args):
-
     # Get unique hash for run and load previous runs
     run_hash = str(uuid.uuid4())[:8]
     rf_runs = get_rf_runs(data_type)
@@ -552,7 +551,8 @@ def train_rf(data_type, args):
     )
 
     logger.info(
-        "Training RF model:\nfeatures: {}\nnum_tree: {}\nmax_depth:{}\nTest intervals: {}".format(
+        "Training RF model:\nfeatures: {}\nnum_tree: {}\nmax_depth:{}\nTest"
+        " intervals: {}".format(
             ",".join(rf_features),
             args.num_trees,
             args.max_depth,
@@ -629,12 +629,12 @@ def train_rf(data_type, args):
 def prepare_final_ht(
     data_type: str, run_hash: str, snp_bin_cutoff: int, indel_bin_cutoff: int
 ) -> hl.Table:
-
     # Get snv and indel RF cutoffs based on bin
     binned_ht_path = score_ranking_path(data_type, run_hash, binned=True)
     if not hl.hadoop_exists(score_ranking_path(data_type, run_hash, binned=True)):
         sys.exit(
-            f"Could not find binned HT for RF  run {run_hash} ({binned_ht_path}). Please run create_ranked_scores.py for that hash."
+            f"Could not find binned HT for RF  run {run_hash} ({binned_ht_path})."
+            " Please run create_ranked_scores.py for that hash."
         )
     binned_ht = hl.read_table(binned_ht_path)
     snp_rf_cutoff, indel_rf_cutoff = binned_ht.aggregate(
@@ -707,7 +707,8 @@ def prepare_final_ht(
 
     ht = ht.transmute(**annotations_expr)
 
-    # This column is added by the RF module based on a 0.5 threshold which doesn't correspond to what we use
+    # This column is added by the RF module based on a 0.5 threshold which
+    # doesn't correspond to what we use
     ht = ht.drop(ht.rf_prediction)
 
     return ht
@@ -765,7 +766,8 @@ def main(args):
             )
         else:
             logger.warn(
-                "Ranking was not added  because of missing annotations -- please run 'create_ranked_scores.py' to add rank."
+                "Ranking was not added  because of missing annotations -- please run"
+                " 'create_ranked_scores.py' to add rank."
             )
 
         ht.write(
@@ -793,7 +795,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--run_hash",
-        help="Run hash. Created by --train_rf and only needed for --apply_rf without running --train_rf",
+        help=(
+            "Run hash. Created by --train_rf and only needed for --apply_rf without"
+            " running --train_rf"
+        ),
         required=False,
     )
     parser.add_argument(
@@ -815,7 +820,10 @@ if __name__ == "__main__":
     actions = parser.add_argument_group("Actions")
     actions.add_argument(
         "--list_rf_runs",
-        help="Lists all previous RF runs, along with their hash,  parameters and testing results.",
+        help=(
+            "Lists all previous RF runs, along with their hash,  parameters and testing"
+            " results."
+        ),
         action="store_true",
     )
     actions.add_argument(
@@ -845,13 +853,19 @@ if __name__ == "__main__":
     rf_params = parser.add_argument_group("Random Forest parameters")
     rf_params.add_argument(
         "--fp_to_tp",
-        help="Ratio of FPs to TPs for creating the RF model. If set to 0, all training examples are used. (default=1.0)",
+        help=(
+            "Ratio of FPs to TPs for creating the RF model. If set to 0, all training"
+            " examples are used. (default=1.0)"
+        ),
         default=1.0,
         type=float,
     )
     rf_params.add_argument(
         "--test_intervals",
-        help='The specified interval(s) will be held out for testing and used for evaluation only. (default to "20")',
+        help=(
+            "The specified interval(s) will be held out for testing and used for"
+            ' evaluation only. (default to "20")'
+        ),
         nargs="+",
         type=str,
         default="20",
@@ -896,12 +910,14 @@ if __name__ == "__main__":
 
     if not args.run_hash and not args.train_rf and args.apply_rf:
         sys.exit(
-            "Error: --run_hash is required when running --apply_rf without running --train_rf too."
+            "Error: --run_hash is required when running --apply_rf without running"
+            " --train_rf too."
         )
 
     if args.run_hash and args.train_rf:
         sys.exit(
-            "Error: --run_hash and --train_rf are mutually exclusive. --train_rf will generate a run hash."
+            "Error: --run_hash and --train_rf are mutually exclusive. --train_rf will"
+            " generate a run hash."
         )
 
     if args.slack_channel:

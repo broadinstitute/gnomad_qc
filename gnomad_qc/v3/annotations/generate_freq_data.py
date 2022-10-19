@@ -70,28 +70,34 @@ def main(args):  # noqa: D103
 
         if invalid_subsets:
             raise ValueError(
-                f"{', '.join(invalid_subsets)} subset(s) are not one of the following official subsets: {SUBSETS}"
+                f"{', '.join(invalid_subsets)} subset(s) are not one of the following"
+                f" official subsets: {SUBSETS}"
             )
         if n_subsets_use_subpops & (n_subsets_use_subpops != len(subsets)):
             raise ValueError(
-                f"Cannot combine cohorts that use subpops in frequency calculations {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
-                f"with cohorts that use pops in frequency calculations {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
+                "Cannot combine cohorts that use subpops in frequency calculations"
+                f" {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
+                "with cohorts that use pops in frequency calculations"
+                f" {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
             )
     if args.hgdp_tgp_subset and not file_exists(hgdp_tgp_subset_annotations().path):
         raise DataException(
-            "There is currently no sample meta HT for the HGDP + TGP subset."
-            "Run create_hgdp_tgp_subset.py --create_sample_annotation_ht to use this option."
+            "There is currently no sample meta HT for the HGDP + TGP subset.Run"
+            " create_hgdp_tgp_subset.py --create_sample_annotation_ht to use this"
+            " option."
         )
     if args.hgdp_tgp_subset and args.include_non_release:
         raise ValueError(
-            "The hgdp_tgp_subset flag can't be used with the include_non_release flag because of differences in sample filtering."
+            "The hgdp_tgp_subset flag can't be used with the include_non_release flag"
+            " because of differences in sample filtering."
         )
 
     try:
         if args.het_nonref_patch:
             logger.info(
-                "Reading dense MT containing only sites that may require frequency recalculation due to het non ref site error. "
-                "This dense MT only contains release samples and has already been split"
+                "Reading dense MT containing only sites that may require frequency"
+                " recalculation due to het non ref site error. This dense MT only"
+                " contains release samples and has already been split"
             )
             mt = hl.read_matrix_table(
                 "gs://gnomad-tmp/release_3.1.2/het_nonref_fix_sites_3.1.2_test.mt"
@@ -112,7 +118,8 @@ def main(args):  # noqa: D103
 
         if not args.het_nonref_patch:
             logger.info(
-                "Annotate entries with het non ref status for use in the homozygous alternate depletion fix..."
+                "Annotate entries with het non ref status for use in the homozygous"
+                " alternate depletion fix..."
             )
             mt = mt.annotate_entries(_het_non_ref=mt.LGT.is_het_non_ref())
             mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
@@ -123,18 +130,20 @@ def main(args):  # noqa: D103
             mt = mt.filter_cols(mt.meta.high_quality)
             high_quality_sample_count = mt.count_cols()
             logger.info(
-                f"Filtered {total_sample_count - high_quality_sample_count} from the full set of {total_sample_count} "
-                f"samples..."
+                f"Filtered {total_sample_count - high_quality_sample_count} from the"
+                f" full set of {total_sample_count} samples..."
             )
 
         if args.hgdp_tgp_subset:
             logger.info(
-                "Filtering MT columns to HGDP + 1KG/TGP samples that pass specialized sample QC"
+                "Filtering MT columns to HGDP + 1KG/TGP samples that pass specialized"
+                " sample QC"
             )
             hgdp_tgp_meta = hgdp_tgp_subset_annotations().ht()
 
             # Note: Sample IDs in MT have v3.1:: prefix, but sample IDs in HGDP + 1KG/TGP meta do not
-            # Need to add prefix to HGDP + 1KG/TGP meta IDs to filter samples in MT correctly
+            # Need to add prefix to HGDP + 1KG/TGP meta IDs to filter samples in MT
+            # correctly
             meta_ht = meta.ht()
             meta_ht = meta_ht.filter(
                 (meta_ht.subsets.hgdp | meta_ht.subsets.tgp | (meta_ht.s == SYNDIP))
@@ -156,7 +165,8 @@ def main(args):  # noqa: D103
         if subsets:
             mt = mt.filter_cols(hl.any([mt.meta.subsets[s] for s in subsets]))
             logger.info(
-                f"Running frequency generation pipeline on {mt.count_cols()} samples in {', '.join(subsets)} subset(s)..."
+                f"Running frequency generation pipeline on {mt.count_cols()} samples in"
+                f" {', '.join(subsets)} subset(s)..."
             )
         else:
             logger.info(
@@ -178,10 +188,11 @@ def main(args):  # noqa: D103
 
         # Temporary hotfix for depletion of homozygous alternate genotypes
         logger.info(
-            "Setting het genotypes at sites with >1% AF (using v3.0 frequencies) and > 0.9 AB to homalt..."
+            "Setting het genotypes at sites with >1% AF (using v3.0 frequencies) and >"
+            " 0.9 AB to homalt..."
         )
         # Load v3.0 allele frequencies to avoid an extra frequency calculation
-        # NOTE: Using previous callset AF works for small incremental changes to a callset, but we will need to revisit for large increments
+        # NOTE: Using previous callset AF works for small incremental changes to a callset, but we will need to revisit for large increments # noqa
         freq_ht = release_sites(public=True).versions["3.0"].ht().select("freq")
         mt = hom_alt_depletion_fix(
             mt, het_non_ref_expr=mt._het_non_ref, af_expr=freq_ht[mt.row_key].freq[0].AF
@@ -196,7 +207,7 @@ def main(args):  # noqa: D103
                 pop_expr=mt.meta.population_inference.pop
                 if not n_subsets_use_subpops
                 else mt.meta.project_meta.project_subpop,
-                # NOTE: TGP and HGDP labeled populations are highly specific and are stored in the project_subpop meta field
+                # NOTE: TGP and HGDP labeled populations are highly specific and are stored in the project_subpop meta field # noqa
             )
             freq_meta = [
                 {**x, **{"subset": "|".join(subsets)}} for x in hl.eval(mt.freq_meta)
@@ -221,7 +232,8 @@ def main(args):  # noqa: D103
             freq_ht = mt.rows()
 
             logger.info(
-                f"Writing out {'patch ' if args.het_nonref_patch else ''}frequency data for {', '.join(subsets)} subset(s)..."
+                f"Writing out {'patch ' if args.het_nonref_patch else ''}frequency data"
+                f" for {', '.join(subsets)} subset(s)..."
             )
             if args.test:
                 freq_ht.write(
@@ -245,8 +257,7 @@ def main(args):  # noqa: D103
                     hl.is_defined(mt.meta.project_meta.age),
                     mt.meta.project_meta.age,
                     mt.meta.project_meta.age_alt,
-                    # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples,
-                    # age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin
+                    # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples, age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin # noqa
                 )
             )
             mt = mt.annotate_rows(**age_hists_expr(mt.adj, mt.GT, mt.age))
@@ -275,7 +286,7 @@ def main(args):  # noqa: D103
             mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
 
             logger.info("Calculating InbreedingCoeff...")
-            # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify
+            # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify # noqa
             mt = mt.annotate_rows(
                 InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT)
             )
@@ -305,7 +316,7 @@ def main(args):  # noqa: D103
             )
 
             logger.info("Annotating quality metrics histograms...")
-            # NOTE: these are performed here as the quality metrics histograms also require densifying
+            # NOTE: these are performed here as the quality metrics histograms also require densifying # noqa
             mt = mt.annotate_rows(
                 qual_hists=qual_hist_expr(mt.GT, mt.GQ, mt.DP, mt.AD, mt.adj)
             )
@@ -324,7 +335,8 @@ def main(args):  # noqa: D103
             )
 
             logger.info(
-                f"Writing out frequency data {'for patch' if args.het_nonref_patch else ''}..."
+                "Writing out frequency data"
+                f" {'for patch' if args.het_nonref_patch else ''}..."
             )
             if args.test:
                 ht.write(
@@ -362,12 +374,19 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--hgdp_tgp_subset",
-        help="Calculate HGDP + 1KG/TGP frequencies with specialized sample QC. Note: create_hgdp_tgp_subset.py --create_sample_annotation_ht must be run prior to using this option. Subsets option does not need to be used.",
+        help=(
+            "Calculate HGDP + 1KG/TGP frequencies with specialized sample QC. Note:"
+            " create_hgdp_tgp_subset.py --create_sample_annotation_ht must be run prior"
+            " to using this option. Subsets option does not need to be used."
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--het_nonref_patch",
-        help="Perform frequency calculations on only variants where the v3.1 homalt hotfix incorrectly adjusted het nonref genotype calls.",
+        help=(
+            "Perform frequency calculations on only variants where the v3.1 homalt"
+            " hotfix incorrectly adjusted het nonref genotype calls."
+        ),
         action="store_true",
     )
     parser.add_argument(

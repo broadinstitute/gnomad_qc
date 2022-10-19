@@ -77,7 +77,9 @@ def _get_ancestry_pca_ht_path(
     :param include_unreleasable_samples: Whether the file includes PCA info for unreleasable samples
     :return: Path to requested ancestry PCA file
     """
-    return f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
+    return (
+        f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
+    )
 
 
 def ancestry_pca_loadings(
@@ -181,18 +183,18 @@ def get_predetermined_qc(version: str = CURRENT_VERSION, test: bool = False):
         return v4_predetermined_qc.versions[version]
 
 
-# HT of pre LD pruned variants chosen from CCDG, gnomAD v3, and UKB variant info
-# https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py
+# HT of pre LD pruned variants chosen from CCDG, gnomAD v3, and UKB variant info.
+# See: https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py
 predetermined_qc_sites = TableResource(
     "gs://gnomad/v4.0/sample_qc/pre_ld_pruning_qc_variants.ht"
 )
 
-# gnomAD v3 dense MT of all predetermined possible QC sites `predetermined_qc_sites`
+# gnomAD v3 dense MT of all predetermined possible QC sites `predetermined_qc_sites`.
 v3_predetermined_qc = MatrixTableResource(
     "gs://gnomad/sample_qc/mt/genomes_v3.1/gnomad.genomes.v3.1.pre_ld_prune_qc_sites.dense.mt"
 )
 
-# gnomAD v4 dense MT of all predetermined possible QC sites `predetermined_qc_sites`
+# gnomAD v4 dense MT of all predetermined possible QC sites `predetermined_qc_sites`.
 v4_predetermined_qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
@@ -203,7 +205,7 @@ v4_predetermined_qc = VersionedMatrixTableResource(
     },
 )
 
-# Dense MT of samples at QC sites
+# Dense MT of samples at QC sites.
 qc = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
@@ -214,7 +216,7 @@ qc = VersionedMatrixTableResource(
     },
 )
 
-# v3 and v4 combined sample metadata Table for relatedness and population inference
+# v3 and v4 combined sample metadata Table for relatedness and population inference.
 joint_qc_meta = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -225,7 +227,7 @@ joint_qc_meta = VersionedTableResource(
     },
 )
 
-# VDS Hail interval_coverage results
+# VDS Hail interval_coverage results.
 interval_coverage = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
@@ -236,7 +238,7 @@ interval_coverage = VersionedMatrixTableResource(
     },
 )
 
-# Mean chr20 DP per sample using Hail's interval_coverage results
+# Mean chr20 DP per sample using Hail's interval_coverage results.
 sample_chr20_mean_dp = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -247,7 +249,7 @@ sample_chr20_mean_dp = VersionedTableResource(
     },
 )
 
-# Sample contamination estimate Table
+# Sample contamination estimate Table.
 contamination = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -258,7 +260,6 @@ contamination = VersionedTableResource(
     },
 )
 
-# Platform PCA loadings
 platform_pca_loadings = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -272,7 +273,6 @@ platform_pca_loadings = VersionedTableResource(
     },
 )
 
-# Platform PCA scores
 platform_pca_scores = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -286,7 +286,6 @@ platform_pca_scores = VersionedTableResource(
     },
 )
 
-# Platform PCA eigenvalues
 platform_pca_eigenvalues = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -300,7 +299,7 @@ platform_pca_eigenvalues = VersionedTableResource(
     },
 )
 
-# Inferred sample platforms
+# Inferred sample platforms.
 platform = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -311,7 +310,7 @@ platform = VersionedTableResource(
     },
 )
 
-# HT with bi-allelic SNPs on chromosome X used in sex imputation f-stat calculation
+# HT with bi-allelic SNPs on chromosome X used in sex imputation f-stat calculation.
 f_stat_sites = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -322,7 +321,6 @@ f_stat_sites = VersionedTableResource(
     },
 )
 
-# PC relate PCA scores
 pc_relate_pca_scores = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -333,7 +331,7 @@ pc_relate_pca_scores = VersionedTableResource(
     },
 )
 
-# PC relate results
+# PC relate results.
 relatedness = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -344,7 +342,7 @@ relatedness = VersionedTableResource(
     },
 )
 
-# Sex chromosome coverage aggregate stats MT
+# Sex chromosome coverage aggregate stats MT.
 sex_chr_coverage = VersionedMatrixTableResource(
     CURRENT_VERSION,
     {
@@ -355,7 +353,7 @@ sex_chr_coverage = VersionedMatrixTableResource(
     },
 )
 
-# Table containing aggregate stats for interval QC specific to sex imputation
+# Table containing aggregate stats for interval QC specific to sex imputation.
 sex_imputation_interval_qc = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -366,7 +364,7 @@ sex_imputation_interval_qc = VersionedTableResource(
     },
 )
 
-# Ploidy imputation results
+# Ploidy imputation results.
 ploidy = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -377,7 +375,7 @@ ploidy = VersionedTableResource(
     },
 )
 
-# Sex imputation results
+# Sex imputation results.
 sex = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -388,7 +386,7 @@ sex = VersionedTableResource(
     },
 )
 
-# Table containing aggregate stats for interval QC
+# Table containing aggregate stats for interval QC.
 interval_qc = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -399,7 +397,7 @@ interval_qc = VersionedTableResource(
     },
 )
 
-# Table with interval QC pass annotation
+# Table with interval QC pass annotation.
 interval_qc_pass = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -425,7 +423,7 @@ def get_ploidy_cutoff_json_path(version: str = CURRENT_VERSION, test: bool = Fal
         return f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.ploidy_cutoffs.json"
 
 
-# Samples to drop for PCA due to them being related
+# Samples to drop for PCA due to them being related.
 pca_related_samples_to_drop = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -436,7 +434,7 @@ pca_related_samples_to_drop = VersionedTableResource(
     },
 )
 
-# Related samples to drop for release
+# Related samples to drop for release.
 release_related_samples_to_drop = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -447,7 +445,7 @@ release_related_samples_to_drop = VersionedTableResource(
     },
 )
 
-# Number of clinvar variants per sample
+# Number of clinvar variants per sample.
 sample_clinvar_count = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -458,7 +456,7 @@ sample_clinvar_count = VersionedTableResource(
     },
 )
 
-# Inferred sample populations
+# Inferred sample populations.
 pop = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -497,7 +495,6 @@ def _import_related_samples_to_drop(**kwargs):
     return ht
 
 
-# Hard-filtered samples
 hard_filtered_samples = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -518,8 +515,7 @@ hard_filtered_samples_no_sex = VersionedTableResource(
     },
 )
 
-# Results of running population-based metrics filtering
-# Want to still generate stratified metrics for v4 but will likely use regressed metrics
+# Results of running population-based metrics filtering.
 stratified_metrics = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -530,7 +526,7 @@ stratified_metrics = VersionedTableResource(
     },
 )
 
-# Results of running regressed metrics filtering
+# Results of running regressed metrics filtering.
 regressed_metrics = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -552,7 +548,8 @@ pca_samples_rankings = VersionedTableResource(
     },
 )
 
-# Ranking of all release samples based on quality metrics. Used to remove relateds for release.
+# Ranking of all release samples based on quality metrics. Used to remove relateds for
+# release.
 release_samples_rankings = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -563,7 +560,7 @@ release_samples_rankings = VersionedTableResource(
     },
 )
 
-# Duplicated (or twin) samples
+# Duplicated (or twin) samples.
 duplicates = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -574,7 +571,7 @@ duplicates = VersionedTableResource(
     },
 )
 
-# PC relate scores for the sample set that overlaps with v3 samples
+# PC relate scores for the sample set that overlaps with v3 samples.
 v3_v4_pc_relate_pca_scores = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -585,7 +582,7 @@ v3_v4_pc_relate_pca_scores = VersionedTableResource(
     },
 )
 
-# Relatedness information for the sample set that overlaps with v3 samples
+# Relatedness information for the sample set that overlaps with v3 samples.
 v3_v4_relatedness = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -596,7 +593,7 @@ v3_v4_relatedness = VersionedTableResource(
     },
 )
 
-# v4 samples that failed fingerprinting
+# v4 samples that failed fingerprinting.
 fingerprinting_failed = VersionedTableResource(
     CURRENT_VERSION,
     {

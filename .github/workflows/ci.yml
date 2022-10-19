@@ -31,6 +31,8 @@ jobs:
         run: black --check gnomad_qc
       - name: Check imports
         run: isort --check-only gnomad_qc
+      - name: Check comment formatting
+        run: autopep8 --exit-code --diff gnomad_qc
       - name: Run Pylint
         run: ./lint --disable=W
       - name: Check docstrings

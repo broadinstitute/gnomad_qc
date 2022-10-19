@@ -229,12 +229,13 @@ def compute_hard_filters(
     hard_filters = dict()
 
     # Remove samples failing fingerprinting
-    # TODO: Add these into hard filtering metadata when incorporating internal smaples Picard metrics
+    # TODO: Add these into hard filtering metadata when incorporating internal samples Picard metrics # noqa
     hard_filters["failed_fingerprinting"] = hl.array(
         ["09C90823", "10C103592", "S5530"]
     ).contains(ht.s)
 
-    # Remove TCGA tumor samples based on TCGA naming convention: https://docs.gdc.cancer.gov/Encyclopedia/pages/TCGA_Barcode/
+    # Remove TCGA tumor samples based on TCGA naming convention:
+    # https://docs.gdc.cancer.gov/Encyclopedia/pages/TCGA_Barcode/
     hard_filters["TCGA_tumor_sample"] = ht.s.startswith("TCGA") & (
         hl.int(hl.str(ht.s).split("-")[3][:2]) < 10
     )
@@ -541,7 +542,8 @@ def assign_pops(
     project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
 
     if pop is not None:
-        # Set subpop_description to missing if the subpop is not in the manually curated list of subpops for the given pop
+        # Set subpop_description to missing if the subpop is not in the manually
+        # curated list of subpops for the given pop
         if curated_subpops is not None:
             pop_pca_scores_ht = pop_pca_scores_ht.annotate(
                 subpop_description=hl.or_missing(
@@ -619,7 +621,8 @@ def assign_pops(
         max_mislabeled = max_proportion_mislabeled_training_samples
     else:
         raise ValueError(
-            "One and only one of max_number_mislabeled_training_samples or max_proportion_mislabeled_training_samples must be set!"
+            "One and only one of max_number_mislabeled_training_samples or"
+            " max_proportion_mislabeled_training_samples must be set!"
         )
 
     logger.info(
@@ -656,7 +659,9 @@ def assign_pops(
     while mislabeled > max_mislabeled:
         pop_assignment_iter += 1
         logger.info(
-            f"Found {n_mislabeled_samples}({round(prop_mislabeled_samples*100, 2)}%) training samples labeled differently from their known pop. Re-running without them."
+            f"Found {n_mislabeled_samples}({round(prop_mislabeled_samples*100, 2)}%)"
+            " training samples labeled differently from their known pop. Re-running"
+            " without them."
         )
 
         pop_ht = pop_ht[pop_pca_scores_ht.key]
@@ -890,14 +895,16 @@ def join_tables(
         in_left_not_right = left_ht.anti_join(right_ht)
         if in_left_not_right.count() != 0:
             logger.warning(
-                f"The following {in_left_not_right.count()} samples are found in the left HT, but are not found in the right HT"
+                f"The following {in_left_not_right.count()} samples are found in the"
+                " left HT, but are not found in the right HT"
             )
             in_left_not_right.select().show(n=-1)
 
         in_right_not_left = right_ht.anti_join(left_ht)
         if in_right_not_left.count() != 0:
             logger.warning(
-                f"The following {in_right_not_left.count()} samples are found in the right HT, but are not found in left HT"
+                f"The following {in_right_not_left.count()} samples are found in the"
+                " right HT, but are not found in left HT"
             )
             in_right_not_left.select().show(n=-1)
 
@@ -920,7 +927,8 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     logging_statement = "Reading in {} and joining with meta HT"
 
     logger.info(
-        "Loading metadata file with subset, age, and releasable information to begin creation of the meta HT"
+        "Loading metadata file with subset, age, and releasable information to begin"
+        " creation of the meta HT"
     )
     left_ht = get_gnomad_v3_mt(remove_hard_filtered_samples=False).cols()
 
@@ -969,7 +977,8 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     )
 
     logger.info(
-        "Reading hard filters HT, renaming hard filters struct to sample_filters, and joining with meta HT"
+        "Reading hard filters HT, renaming hard filters struct to sample_filters, and"
+        " joining with meta HT"
     )
     right_ht = hard_filtered_samples.ht()
     left_ht = join_tables(
@@ -998,7 +1007,8 @@ def generate_metadata(regressed_metrics_outlier: bool = True) -> hl.Table:
     )
 
     logger.info(
-        "Reading in PCA related samples to drop HT and preparing to annotate meta HT's sample_filter struct with relatedness booleans"
+        "Reading in PCA related samples to drop HT and preparing to annotate meta HT's"
+        " sample_filter struct with relatedness booleans"
     )
     related_samples_to_drop_ht = pca_related_samples_to_drop.ht()
     release_related_samples_to_drop_ht = release_related_samples_to_drop.ht()
@@ -1401,7 +1411,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--reannotate_sex",
-        help="Runs the sex karyotyping annotations again, without re-computing sex imputation metrics.",
+        help=(
+            "Runs the sex karyotyping annotations again, without re-computing sex"
+            " imputation metrics."
+        ),
         action="store_true",
     )
     parser.add_argument("--upper_x", help="Upper cutoff for single X", type=float)
@@ -1435,26 +1448,34 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--first_degree_kin_thresholds",
-        help="First degree kinship threshold for filtering a pair of samples with a first degree relationship. \
-        Default = (0.1767767, 0.4); \
-        Defaults taken from Bycroft et al. (2018)",
+        help=(
+            "First degree kinship threshold for filtering a pair of samples with a"
+            " first degree relationship.         Default = (0.1767767, 0.4);        "
+            " Defaults taken from Bycroft et al. (2018)"
+        ),
         nargs=2,
         default=(0.1767767, 0.4),
         type=float,
     )
     parser.add_argument(
         "--second_degree_kin_cutoff",
-        help="Minimum kinship threshold for filtering a pair of samples with a second degree relationship\
-        in PC relate and filtering related individuals. (Default = 0.1) \
-        Bycroft et al. (2018) calculates 0.08838835 but from evaluation of the distributions v3 has used 0.1",
+        help=(
+            "Minimum kinship threshold for filtering a pair of samples with a second"
+            " degree relationship        in PC relate and filtering related"
+            " individuals. (Default = 0.1)         Bycroft et al. (2018) calculates"
+            " 0.08838835 but from evaluation of the distributions v3 has used 0.1"
+        ),
         default=0.1,
         type=float,
     )
     parser.add_argument(
         "--ibd0_0_max",
-        help="IBD0 cutoff to determine parent offspring vs full sibling (Default = 0.05) \
-        Default is adjusted from theoretical values; parent-offspring should have an IBD0 = 0. \
-        Full siblings should have an IBD0 = 0.25.",
+        help=(
+            "IBD0 cutoff to determine parent offspring vs full sibling (Default = 0.05)"
+            "         Default is adjusted from theoretical values; parent-offspring"
+            " should have an IBD0 = 0.         Full siblings should have an IBD0 ="
+            " 0.25."
+        ),
         default=0.05,
     )
     parser.add_argument(
@@ -1485,7 +1506,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--pop_pcs",
-        help="List of PCs to use for ancestry assignment. The values provided should be 1-based.",
+        help=(
+            "List of PCs to use for ancestry assignment. The values provided should be"
+            " 1-based."
+        ),
         default=list(range(1, 17)),
         type=list,
     )
@@ -1497,7 +1521,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--withhold_prop",
-        help="Proportion of training samples to withhold from pop assignment RF training",
+        help=(
+            "Proportion of training samples to withhold from pop assignment RF training"
+        ),
         type=float,
     )
     parser.add_argument(

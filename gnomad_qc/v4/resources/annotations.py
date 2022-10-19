@@ -4,7 +4,7 @@ from typing import Optional
 from gnomad.resources.grch37.gnomad import EXOME_RELEASES, GENOME_RELEASES
 from gnomad.resources.grch38.gnomad import SUBSETS
 
-# TODO: Add a V4_SUBSETS to replace SUBSETS (currently includes tgp and hgdp which are not relevant for v4)
+# TODO: Add a V4_SUBSETS to replace SUBSETS (currently includes tgp and hgdp which are not relevant for v4) # noqa
 from gnomad.resources.resource_utils import (
     DataException,
     TableResource,
@@ -35,7 +35,9 @@ def get_info(split: bool = True) -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                path=f"{_annotations_root(version)}/gnomad.exomes.v{version}.info{'.split' if split else ''}.ht"
+                path=(
+                    f"{_annotations_root(version)}/gnomad.exomes.v{version}.info{'.split' if split else ''}.ht"
+                )
             )
             for version in VERSIONS
         },
@@ -86,7 +88,9 @@ def get_transmitted_singleton_vcf_path(
     :param version: Version of transmitted singleton VCF path to return
     :return: String for the path to the transmitted singleton VCF
     """
-    return f'{_annotations_root(version)}/gnomad.exomes.v{version}.transmitted_singletons.{"adj" if adj else "raw"}.vcf.bgz'
+    return (
+        f'{_annotations_root(version)}/gnomad.exomes.v{version}.transmitted_singletons.{"adj" if adj else "raw"}.vcf.bgz'
+    )
 
 
 freq = VersionedTableResource(
@@ -165,7 +169,8 @@ def get_freq(
         for s in subset.split("-"):
             if s not in SUBSETS:
                 raise DataException(
-                    f"{subset} subset is not one of the following official subsets: {SUBSETS}"
+                    f"{subset} subset is not one of the following official subsets:"
+                    f" {SUBSETS}"
                 )
 
     return VersionedTableResource(
@@ -200,7 +205,8 @@ def get_freq_comparison(version1, data_type1, version2, data_type2):
         or f"{version2}_{data_type2}" not in versions
     ):
         raise DataException(
-            f"One of the versions/datatypes supplied doesn't exist. Possible options are: {versions}"
+            "One of the versions/datatypes supplied doesn't exist. Possible options"
+            f" are: {versions}"
         )
 
     ht_path = (

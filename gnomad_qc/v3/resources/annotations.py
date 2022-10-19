@@ -100,7 +100,9 @@ def get_transmitted_singleton_vcf_path(
     :param version: Version of transmitted singleton VCF path to return
     :return:
     """
-    return f'{_annotations_root(version)}/transmitted_singletons_{"adj" if adj else "raw"}.vcf.bgz'
+    return (
+        f'{_annotations_root(version)}/transmitted_singletons_{"adj" if adj else "raw"}.vcf.bgz'
+    )
 
 
 last_END_position = VersionedTableResource(
@@ -204,7 +206,8 @@ def get_freq(
         for s in subset.split("-"):
             if s not in SUBSETS:
                 raise DataException(
-                    f"{subset} subset is not one of the following official subsets: {SUBSETS}"
+                    f"{subset} subset is not one of the following official subsets:"
+                    f" {SUBSETS}"
                 )
 
     return VersionedTableResource(
@@ -257,10 +260,13 @@ def get_freq_comparison(
         or f"{version2}_{data_type2}" not in versions
     ):
         raise DataException(
-            f"One of the versions/datatypes supplied doesn't exist. Possible options are: {versions}"
+            "One of the versions/datatypes supplied doesn't exist. Possible options"
+            f" are: {versions}"
         )
 
-    ht_path = f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq{'.logistic_regression' if logistic_regression else ''}.ht"
+    ht_path = (
+        f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq{'.logistic_regression' if logistic_regression else ''}.ht"
+    )
     if version1 in RELEASES:
         ht_path = f"{_annotations_root(version1)}/{ht_path}"
     else:

@@ -6,7 +6,9 @@
 #
 astroid==2.12.10
     # via pylint
-black==22.3.0
+autopep8==1.7.0
+    # via -r requirements-dev.in
+black==22.10.0
     # via -r requirements-dev.in
 cfgv==3.3.1
     # via pre-commit
@@ -41,6 +43,8 @@ platformdirs==2.5.2
     #   virtualenv
 pre-commit==2.20.0
     # via -r requirements-dev.in
+pycodestyle==2.9.1
+    # via autopep8
 pydocstyle==6.1.1
     # via -r requirements-dev.in
 pylint==2.15.3
@@ -50,7 +54,9 @@ pyyaml==6.0
 snowballstemmer==2.2.0
     # via pydocstyle
 toml==0.10.2
-    # via pre-commit
+    # via
+    #   autopep8
+    #   pre-commit
 tomli==2.0.1
     # via
     #   black

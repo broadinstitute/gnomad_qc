@@ -70,7 +70,9 @@ def release_ht_path(
         else:
             return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
     else:
-        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}{'.patch' if het_nonref_patch else ''}.sites.ht"
+        return (
+            f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}{'.patch' if het_nonref_patch else ''}.sites.ht"
+        )
 
 
 def release_sites(
@@ -121,7 +123,8 @@ def release_vcf_path(
     if hgdp_tgp_subset:
         if release_version not in HGDP_TGP_RELEASES:
             raise DataException(
-                f"{release_version} is not one of the available releases for the HGP + 1KG/TGP subset: {HGDP_TGP_RELEASES}"
+                f"{release_version} is not one of the available releases for the HGP +"
+                f" 1KG/TGP subset: {HGDP_TGP_RELEASES}"
             )
         subset = "hgdp_tgp"
     else:
@@ -156,7 +159,8 @@ def release_header_path(
     if hgdp_tgp_subset:
         if release_version not in HGDP_TGP_RELEASES:
             raise DataException(
-                f"{release_version} is not one of the available releases for the HGP + 1KG/TGP subset: {HGDP_TGP_RELEASES}"
+                f"{release_version} is not one of the available releases for the HGP +"
+                f" 1KG/TGP subset: {HGDP_TGP_RELEASES}"
             )
         subset = "_hgdp_tgp"
 
@@ -177,9 +181,12 @@ def append_to_vcf_header_path(
     """
     if release_version == "3.0":
         raise DataException(
-            "Extra fields to append to VCF header TSV only exists for releases after v3!"
+            "Extra fields to append to VCF header TSV only exists for releases"
+            " after v3!"
         )
-    return f"gs://gnomad/release/{release_version}/vcf/genomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
+    return (
+        f"gs://gnomad/release/{release_version}/vcf/genomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
+    )
 
 
 def hgdp_tgp_subset(
@@ -235,4 +242,6 @@ def hgdp_tgp_subset_sample_tsv(
     :param test: If true, will return the sample tsv path for testing purposes
     :return: Path to file
     """
-    return f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/tsv/'}gnomad.genomes.v{release}.hgdp_1kg_subset_sample_meta.tsv.bgz"
+    return (
+        f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/tsv/'}gnomad.genomes.v{release}.hgdp_1kg_subset_sample_meta.tsv.bgz"
+    )

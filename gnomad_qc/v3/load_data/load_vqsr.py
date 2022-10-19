@@ -75,7 +75,8 @@ def import_vqsr(
     )
     split_count = ht.count()
     logger.info(
-        f"Found {unsplit_count} unsplit and {split_count} split variants with VQSR annotations"
+        f"Found {unsplit_count} unsplit and {split_count} split variants with VQSR"
+        " annotations"
     )
 
 

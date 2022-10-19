@@ -31,7 +31,6 @@ def main(args):  # noqa: D103
     )
 
     if args.compute_coverage_ht:
-
         print("Building reference context HT")
         ref_ht = get_reference_ht(
             hl.get_reference("GRCh38"),
@@ -78,7 +77,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--coverage_version",
-        help="Specifies coverage version to read/write. If not set, gnomad.resources.grch38.gnomad.CURRENT_GENOME_COVERAGE_RELEASE is used.",
+        help=(
+            "Specifies coverage version to read/write. If not set,"
+            " gnomad.resources.grch38.gnomad.CURRENT_GENOME_COVERAGE_RELEASE is used."
+        ),
     )
 
     main(parser.parse_args())

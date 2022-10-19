@@ -181,7 +181,8 @@ def generate_ld_scores_from_ld_matrix(
     overwrite=False,
 ):
     # This function required a decent number of high-mem machines (with an SSD for good measure) to complete the AFR
-    # For the rest, on 20 n1-standard-8's, 1h15m to export block matrix, 15 mins to compute LD scores per population (~$150 total)
+    # For the rest, on 20 n1-standard-8's, 1h15m to export block matrix, 15
+    # mins to compute LD scores per population (~$150 total)
     for label, pops in dict(pop_data).items():
         for pop, n in pops.items():
             ht = hl.read_table(ld_resources._ld_index_path(data_type, pop, adj=adj))

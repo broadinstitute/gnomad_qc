@@ -75,7 +75,8 @@ def get_release_file(file_path: str, version: str = CURRENT_RELEASE) -> str:
         for v in range(RELEASES.index(version) - 1, -1, -1):
             if file_exists(file_path.format(RELEASES[v])):
                 print(
-                    "WARN: Resource {} could not be found for gnomAD release version {}.\n Loading gnomAD release version {} of the file. ({})".format(
+                    "WARN: Resource {} could not be found for gnomAD release version"
+                    " {}.\n Loading gnomAD release version {} of the file. ({})".format(
                         file_path.format(version),
                         version,
                         RELEASES[v],
@@ -378,7 +379,9 @@ def hardcalls_mt_path(data_type, split=True, hail_version=CURRENT_HAIL_VERSION):
 
 
 def non_refs_only_mt_path(data_type, split=True):
-    return f'gs://gnomad/non_refs_only/hail-0.2/mt/{data_type}/gnomad.{data_type}{"" if split else ".unsplit"}.mt'
+    return (
+        f'gs://gnomad/non_refs_only/hail-0.2/mt/{data_type}/gnomad.{data_type}{"" if split else ".unsplit"}.mt'
+    )
 
 
 def pbt_phased_trios_mt_path(
@@ -387,11 +390,14 @@ def pbt_phased_trios_mt_path(
     trio_matrix: bool = False,
     hail_version: str = CURRENT_HAIL_VERSION,
 ):
-    return "gs://gnomad/hardcalls/hail-{0}/mt/{1}/gnomad.{1}.trios.pbt_phased{2}{3}.mt".format(
-        hail_version,
-        data_type,
-        "" if split else ".unsplit",
-        ".trio_matrix" if trio_matrix else "",
+    return (
+        "gs://gnomad/hardcalls/hail-{0}/mt/{1}/gnomad.{1}.trios.pbt_phased{2}{3}.mt"
+        .format(
+            hail_version,
+            data_type,
+            "" if split else ".unsplit",
+            ".trio_matrix" if trio_matrix else "",
+        )
     )
 
 
@@ -444,9 +450,8 @@ def gnomad_public_pca_loadings_ht_path(
     :rtype: str
     """
     return get_release_file(
-        "gs://gcp-public-data--gnomad/release/{{0}}/pca/gnomad.r{{0}}.pca_loadings{0}.ht".format(
-            f".{subpop}" if subpop else ""
-        ),
+        "gs://gcp-public-data--gnomad/release/{{0}}/pca/gnomad.r{{0}}.pca_loadings{0}.ht"
+        .format(f".{subpop}" if subpop else ""),
         version,
     )
 
@@ -481,8 +486,9 @@ def coverage_mt_path(data_type, grouped: bool = False) -> str:
     :return: Coverage MT
     :rtype: MatrixTable
     """
-    return "gs://gnomad/coverage/hail-0.2/coverage/{0}/mt/gnomad.{0}.coverage{1}.mt".format(
-        data_type, ".grouped" if grouped else ""
+    return (
+        "gs://gnomad/coverage/hail-0.2/coverage/{0}/mt/gnomad.{0}.coverage{1}.mt"
+        .format(data_type, ".grouped" if grouped else "")
     )
 
 
@@ -578,11 +584,15 @@ REFERENCE_DATA = {
     "GRCh37": {
         "vep_config": "gs://hail-common/vep/vep/vep85-loftee-gcloud.json",
         "all_possible": "gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.0/context/Homo_sapiens_assembly19.fasta.snps_only.vep_20181129.ht",
-        "methylation": "gs://gcp-public-data--gnomad/resources/methylation/methylation.ht",
+        "methylation": (
+            "gs://gcp-public-data--gnomad/resources/methylation/methylation.ht"
+        ),
     },
     "GRCh38": {
         "vep_config": "gs://hail-common/vep/vep/vep95-GRCh38-loftee-gcloud.json",
-        "methylation": "gs://gnomad-resources/methylation/hail-0.2/methylation_GRCh38.ht",
+        "methylation": (
+            "gs://gnomad-resources/methylation/hail-0.2/methylation_GRCh38.ht"
+        ),
     },
 }
 
@@ -624,8 +634,12 @@ clinvar_vcf_path = "gs://gnomad-resources/clinvar/source/clinvar_20181028.vcf.bg
 clinvar_ht_path = "gs://gnomad-resources/clinvar/hail-0.2/clinvar_20181028.vep.ht"
 
 # Useful intervals
-lcr_intervals_path = "gs://gcp-public-data--gnomad/intervals/LCR.GRCh37_compliant.interval_list"  # "gs://gnomad-public/intervals/LCR.interval_list"
-decoy_intervals_path = "gs://gcp-public-data--gnomad/intervals/mm-2-merged.GRCh37_compliant.bed"  # "gs://gnomad-public/intervals/mm-2-merged.bed.gz"
+lcr_intervals_path = (  # "gs://gnomad-public/intervals/LCR.interval_list"
+    "gs://gcp-public-data--gnomad/intervals/LCR.GRCh37_compliant.interval_list"
+)
+decoy_intervals_path = (  # "gs://gnomad-public/intervals/mm-2-merged.bed.gz"
+    "gs://gcp-public-data--gnomad/intervals/mm-2-merged.GRCh37_compliant.bed"
+)
 purcell5k_intervals_path = (
     "gs://gcp-public-data--gnomad/intervals/purcell5k.interval_list"
 )
@@ -657,8 +671,9 @@ constraint_ht_path = "gs://gcp-public-data--gnomad/papers/2019-flagship-lof/v1.0
 
 # Sample QC files
 def qc_ht_path(data_type: str):
-    return "gs://gnomad/sample_qc/ht/gnomad.{}.high_callrate_common_biallelic_snps.ht".format(
-        data_type
+    return (
+        "gs://gnomad/sample_qc/ht/gnomad.{}.high_callrate_common_biallelic_snps.ht"
+        .format(data_type)
     )
 
 

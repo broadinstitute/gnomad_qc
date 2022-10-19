@@ -62,7 +62,8 @@ def main(args):
             )
 
     if args.merge_coverage_mts:
-        # Exomes: first merges are ~7.5 mins each, final one is ~1.5 hours (on 40 n1-standard-8s)
+        # Exomes: first merges are ~7.5 mins each, final one is ~1.5 hours (on 40
+        # n1-standard-8s)
         chunks = int(len(all_file_data) ** 0.5) + 1
         for i in range(chunks):
             if i * chunks >= len(all_file_data):

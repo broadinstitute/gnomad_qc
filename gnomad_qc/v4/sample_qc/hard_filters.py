@@ -47,7 +47,7 @@ def compute_sample_qc(n_partitions: int = 500, test: bool = False) -> hl.Table:
     vds = get_gnomad_v4_vds(split=True, remove_hard_filtered_samples=False, test=test)
     vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
 
-    # Remove centromeres and telomeres in case they were included
+    # Remove centromeres and telomeres in case they were included.
     vds = hl.vds.filter_intervals(
         vds, intervals=telomeres_and_centromeres.ht(), keep=False
     )
@@ -126,13 +126,13 @@ def compute_hard_filters(
     hard_filters = dict()
     sample_qc_metric_hard_filters = dict()
 
-    # Flag samples failing fingerprinting
+    # Flag samples failing fingerprinting.
     fp_ht = fingerprinting_failed.ht()
     hard_filters["failed_fingerprinting"] = hl.is_defined(fp_ht[ht.key])
 
-    # Flag extreme raw bi-allelic sample QC outliers
+    # Flag extreme raw bi-allelic sample QC outliers.
     bi_allelic_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
-    # Convert tuples to lists so we can find the index of the passed threshold
+    # Convert tuples to lists so we can find the index of the passed threshold.
     bi_allelic_qc_ht = bi_allelic_qc_ht.annotate(
         **{
             f"bases_dp_over_{hl.eval(bi_allelic_qc_ht.dp_bins[i])}": bi_allelic_qc_ht.bases_over_dp_threshold[
@@ -161,11 +161,13 @@ def compute_hard_filters(
         | sample_qc_metric_hard_filters["low_bases_dp_over_20"]
     )
 
-    # Flag samples that fail bam metric thresholds
+    # Flag samples that fail bam metric thresholds.
     if test:
         project_meta_ht = gnomad_v4_testset_meta.ht()
-        # Use the gnomAD v4 test dataset's `rand_sampling_meta` annotation to get the bam metrics needed for hard filtering
-        # This annotation includes all of the metadata for the random samples chosen for the test dataset
+        # Use the gnomAD v4 test dataset's `rand_sampling_meta` annotation to get the
+        # bam metrics needed for hard filtering.
+        # This annotation includes all of the metadata for the random samples
+        # chosen for the test dataset.
         bam_metrics_struct = project_meta_ht[ht.key].rand_sampling_meta
         bam_metrics_struct = bam_metrics_struct.annotate(
             chimeras_rate=bam_metrics_struct.pct_chimeras
@@ -183,18 +185,20 @@ def compute_hard_filters(
         contamination_struct.mean_AB_snp_biallelic > max_contamination_estimate
     )
 
-    # Flag low-coverage samples using mean coverage on chromosome 20
+    # Flag low-coverage samples using mean coverage on chromosome 20.
     if min_cov is not None:
         if chr20_mean_dp_ht is None:
             raise ValueError(
-                "If a chromosome 20 coverage threshold is supplied, a chr20 mean DP Table must be supplied too."
+                "If a chromosome 20 coverage threshold is supplied, a chr20 mean DP"
+                " Table must be supplied too."
             )
         hard_filters["low_coverage"] = chr20_mean_dp_ht[ht.key].chr20_mean_dp < min_cov
 
     if min_qc_mt_adj_callrate is not None:
         mt = v4_predetermined_qc.mt()
         num_samples = mt.count_cols()
-        # Filter predetermined QC variants to only common variants (AF > 0.0001) with high site callrate ( > 0.99) for ADJ genotypes
+        # Filter predetermined QC variants to only common variants (AF > 0.0001)
+        # with high site callrate ( > 0.99) for ADJ genotypes.
         mt = filter_to_adj(mt)
         mt = mt.filter_rows(
             ((hl.agg.count_where(hl.is_defined(mt.GT)) / num_samples) > 0.99)
@@ -216,7 +220,7 @@ def compute_hard_filters(
 
     if include_sex_filter:
         sex_struct = sex.ht()[ht.key]
-        # Remove samples with ambiguous sex assignments
+        # Remove samples with ambiguous sex assignments.
         hard_filters["ambiguous_sex"] = sex_struct.sex_karyotype == "ambiguous"
         hard_filters["sex_aneuploidy"] = hl.is_defined(
             sex_struct.sex_karyotype
@@ -233,7 +237,7 @@ def compute_hard_filters(
         ),
     )
 
-    # Keep samples failing hard filters
+    # Keep samples failing hard filters.
     ht = ht.filter(hl.len(ht.hard_filters) > 0)
     return ht
 
@@ -245,7 +249,7 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    # NOTE: remove this flag when the new shuffle method is the default
+    # NOTE: remove this flag when the new shuffle method is the default.
     hl._set_flags(use_new_shuffle="1")
 
     calling_interval_name = args.calling_interval_name
@@ -286,8 +290,9 @@ def main(args):
 
         if args.compute_contamination_estimate:
             logger.info(
-                "Loading v4 VDS, filtering to high-quality (DP >= %d), autosomal, bi-allelic homozygous SNVs and "
-                "computing the mean of reference allele balances per sample...",
+                "Loading v4 VDS, filtering to high-quality (DP >= %d), autosomal,"
+                " bi-allelic homozygous SNVs and computing the mean of reference allele"
+                " balances per sample...",
                 args.contam_dp_cutoff,
             )
             mt = filter_to_autosomes(
@@ -402,45 +407,64 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--compute-coverage",
-        help="Compute per interval coverage metrics using Hail's vds.interval_coverage method.",
+        help=(
+            "Compute per interval coverage metrics using Hail's vds.interval_coverage"
+            " method."
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--compute-contamination-estimate",
         help=(
-            "Compute contamination estimate as the mean of reference allele balances of high-quality "
-            "(DP >= contam-dp-cutoff), autosomal, bi-allelic homozygous SNVs per sample."
+            "Compute contamination estimate as the mean of reference allele balances of"
+            " high-quality (DP >= contam-dp-cutoff), autosomal, bi-allelic homozygous"
+            " SNVs per sample."
         ),
         action="store_true",
     )
     parser.add_argument(
         "--contam-dp-cutoff",
-        help="Minimum genotype depth to be included in contamination estimate calculation.",
+        help=(
+            "Minimum genotype depth to be included in contamination estimate"
+            " calculation."
+        ),
         type=int,
         default=10,
     )
     parser.add_argument(
         "--calling-interval-name",
-        help="Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'.",
+        help=(
+            "Name of calling intervals to use for interval coverage. One of: 'ukb',"
+            " 'broad', or 'intersection'."
+        ),
         type=str,
         choices=["ukb", "broad", "intersection"],
         default="intersection",
     )
     parser.add_argument(
         "--calling-interval-padding",
-        help="Number of base pair padding to use on the calling intervals. One of 0 or 50 bp.",
+        help=(
+            "Number of base pair padding to use on the calling intervals. One of 0 or"
+            " 50 bp."
+        ),
         type=int,
         choices=[0, 50],
         default=50,
     )
     parser.add_argument(
         "--compute-chr20-mean-dp",
-        help="Compute per sample mean DP on chromosome 20 using interval coverage results.",
+        help=(
+            "Compute per sample mean DP on chromosome 20 using interval coverage"
+            " results."
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--compute-hard-filters",
-        help="Computes samples to be hard-filtered. NOTE: Cutoffs should be determined by visual inspection of the metrics.",
+        help=(
+            "Computes samples to be hard-filtered. NOTE: Cutoffs should be determined"
+            " by visual inspection of the metrics."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -456,24 +480,36 @@ if __name__ == "__main__":
         "--max-n-singleton",
         type=float,
         default=5000,
-        help="Filtering threshold to use for the maximum number of singletons. Default is 5000.",
+        help=(
+            "Filtering threshold to use for the maximum number of singletons. Default"
+            " is 5000."
+        ),
     )
     hard_filter_args.add_argument(
         "--max-r-het-hom-var",
         type=float,
         default=10,
-        help="Filtering threshold to use for the maximum ratio of heterozygotes to alternate homozygotes. Default is 10.",
+        help=(
+            "Filtering threshold to use for the maximum ratio of heterozygotes to"
+            " alternate homozygotes. Default is 10."
+        ),
     )
     hard_filter_args.add_argument(
         "--min-bases-dp-over-1",
         type=float,
-        help="Filtering threshold to use for the minimum number of bases with a DP over one. Default is 5e7.",
+        help=(
+            "Filtering threshold to use for the minimum number of bases with a DP over"
+            " one. Default is 5e7."
+        ),
         default=5e7,
     )
     hard_filter_args.add_argument(
         "--min-bases-dp-over-20",
         type=float,
-        help="Filtering threshold to use for the minimum number of bases with a DP over 20. Default is 4e7.",
+        help=(
+            "Filtering threshold to use for the minimum number of bases with a DP over"
+            " 20. Default is 4e7."
+        ),
         default=4e7,
     )
     hard_filter_args.add_argument(
@@ -481,8 +517,8 @@ if __name__ == "__main__":
         type=float,
         default=0.05,
         help=(
-            "Filtering threshold to use for maximum chimera (this is a proportion not a percent, "
-            "e.g. 5% == 0.05, %5 != 5). Default is 0.05."
+            "Filtering threshold to use for maximum chimera (this is a proportion not a"
+            " percent, e.g. 5% == 0.05, %5 != 5). Default is 0.05."
         ),
     )
     hard_filter_args.add_argument(
@@ -490,21 +526,24 @@ if __name__ == "__main__":
         default=0.015,
         type=float,
         help=(
-            "Filtering threshold to use for maximum contamination estimate (from --compute-contamination-estimate). "
-            "Default is 0.015."
+            "Filtering threshold to use for maximum contamination estimate (from"
+            " --compute-contamination-estimate). Default is 0.015."
         ),
     )
     hard_filter_args.add_argument(
         "--min-cov",
-        help="Minimum chromosome 20 coverage for inclusion when computing hard-filters.",
+        help=(
+            "Minimum chromosome 20 coverage for inclusion when computing hard-filters."
+        ),
         default=None,
         type=int,
     )
     hard_filter_args.add_argument(
         "--min-qc-mt-adj-callrate",
         help=(
-            "Minimum sample callrate computed on only predetermined QC variants (predetermined using CCDG "
-            "genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering."
+            "Minimum sample callrate computed on only predetermined QC variants"
+            " (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB"
+            " exomes) after ADJ filtering."
         ),
         default=None,
         type=float,

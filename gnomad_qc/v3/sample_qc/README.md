@@ -9,7 +9,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
         * **upper_cutoff_X**: Upper cutoff for single X.
         * **lower_cutoff_XX**: Lower cutoff for double X.
         * **upper_cutoff_XX**: Upper cutoff for double X.
-        * **lower_cutoff_XXX**: Lower cutoff for triple X. 
+        * **lower_cutoff_XXX**: Lower cutoff for triple X.
     * **y_ploidy_cutoffs**: Cutoffs for Y ploidy.
         * **lower_cutoff_Y**: Lower cutoff for single Y.
         * **upper_cutoff_Y**: Upper cutoff for single Y.
@@ -17,7 +17,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
     * **f_stat_cutoff**: F-statistic cutoff to roughly divide 'XX' from 'XY' samples. XX samples are below cutoff and XY are above cutoff. Not used in final ploidy annotation.
 
  * **population_inference_pca_metrics**: Contains parameters from population assignment.
-    * **min_prob**: The minimum cutoff probability of belonging to a given population at which the population was set.	
+    * **min_prob**: The minimum cutoff probability of belonging to a given population at which the population was set.
     * **include_unreleasable_samples**: Whether unreleasable samples were included in the ancestry PCA.
     * **max_mislabeled_training_samples**: The max number of mislabeled training samples that were allowed in population assignment.
     * **n_pcs**: The number of principal components (PCs) used in [PC-project](https://github.com/broadinstitute/gnomad_methods/blob/b95578056f8051d00dcbb749a10e585d48888f82/gnomad/sample_qc/ancestry.py#L80).
@@ -28,9 +28,9 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
     * **min_emission_kinship**: The minimum kinship coefficient cutoff in the results.
     * **ibd0_0_max**: The IBD0 cutoff used to determine parent-offspring vs full sibling relationships.
     * **second_degree_kin_cutoff**: The minimum kinship threshold used for filtering a pair of samples with a second degree relationship.
-    * **first_degree_kin_thresholds**: The first degree kinship threshold used for filtering a pair of samples with a first degree relationship. 
+    * **first_degree_kin_thresholds**: The first degree kinship threshold used for filtering a pair of samples with a first degree relationship.
 
-* **outlier_detection_metrics**: Contains the linear regression statistics and cutoffs used for filtering outlier samples based on QC metrics. 
+* **outlier_detection_metrics**: Contains the linear regression statistics and cutoffs used for filtering outlier samples based on QC metrics.
     * **lms**: Linear regression statistics for QC metrics.
         * **n_snp**: SNP regression statistics.
             * **beta**: Estimated regression coefficient for each PC.
@@ -180,7 +180,7 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
     * **n_pcs**: The number of PCs computed during the ancestry assignment that were regressed out.
     * **used_regressed_metrics**: Whether the regression outlier Hail Table was used for outlier detection rather than the population stratified Hail Table.
 
-* **hard_filter_cutoffs**: Contains the cutoffs used for hard-filtering samples prior to sample QC. 
+* **hard_filter_cutoffs**: Contains the cutoffs used for hard-filtering samples prior to sample QC.
     * **min_cov**: Filtering threshold to use for chr20 coverage.
     * **max_n_snp**: Filtering threshold to use for the max number of SNPs.
     * **min_n_snp**: Filtering threshold to use for the min number of SNPs.
@@ -199,8 +199,8 @@ Below are gnomAD sample QC metadata annotation definitions. These annotations ar
     * **non_topmed**: Whether the sample was included in the ‘non_topmed’ subset. Subset contains variants from samples that are not the TOPMED cohort. Generated using the negation of the ‘project_meta.topmed’ annotation.
     * **controls_and_biobanks**: Whether the sample was included in the ‘controls_and_biobanks’ subset. Subset contains variants from samples that are either a control or from a biobank project. Generated matching on ‘case_control’ annotation values of ‘control' or 'biobank'.
     * **non_neuro**: Whether the sample was included in the ‘non_neuro’ subset. Subset contains variants from samples that are either 1. not cases in neuro cohorts or 2. neuro cohort samples missing ‘case_control’ information. Generated using the ‘neuro_case’ annotation which is calculated using’ neuro_cohort’ and ‘case_control’.
-    * **non_v2**: Whether the sample was included in the ‘non_v2’ subset. Subset contains variants from samples that are not in gnomAD v2, exomes or genomes. Generated using ‘v2_release’ annotation. 
-    * **non_cancer**: Whether the sample was included in the ‘non_cancer’ subset. Subset contains variants from samples that are not from TCGA, regardless of germline or somatic status. 
+    * **non_v2**: Whether the sample was included in the ‘non_v2’ subset. Subset contains variants from samples that are not in gnomAD v2, exomes or genomes. Generated using ‘v2_release’ annotation.
+    * **non_cancer**: Whether the sample was included in the ‘non_cancer’ subset. Subset contains variants from samples that are not from TCGA, regardless of germline or somatic status.
     * **tgp**: Whether the sample was included in the 1000 Genomes Project subset.
     * **hgdp**: Whether the sample was included in the Human Genome Diversity Project subset.
 

@@ -238,12 +238,18 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--exomes",
-        help="Input MatrixTable contains exomes. One of --exomes or --genomes is required.",
+        help=(
+            "Input MatrixTable contains exomes. One of --exomes or --genomes is"
+            " required."
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--genomes",
-        help="Input MatrixTable contains genomes. One of --exomes or --genomes is required.",
+        help=(
+            "Input MatrixTable contains genomes. One of --exomes or --genomes is"
+            " required."
+        ),
         action="store_true",
     )
     parser.add_argument(

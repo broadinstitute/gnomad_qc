@@ -8,7 +8,7 @@ The gnomAD release HT annotations are defined below:
 * **freq_index_dict**: Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: gnomAD inferred global population, sex: sex karyotype), with values describing the corresponding index of each grouping entry in the ‘freq’ array row annotation.
 * **faf_index_dict**: Dictionary keyed by specified label grouping combinations (group: adj/raw, pop: gnomAD inferred global population, sex: sex karyotype), with values describing the corresponding index of each grouping entry in the filtering allele frequency (‘faf’) row annotation.
 * **faf_meta**: Filtering allele frequency metadata. An ordered list containing the frequency aggregation group for each element of the ‘faf’ array row annotation.
-* **VEP version**: VEP version that was run on the callset. 
+* **VEP version**: VEP version that was run on the callset.
 * **vep_csq_header**: VEP header for VCF export.
 * **dbsnp_version**: dbSNP version used in the callset.
 * **filtering_model**: The variant filtering model used and its specific cutoffs.
@@ -34,7 +34,7 @@ The gnomAD release HT annotations are defined below:
 
 * **locus**: Variant locus. Contains contig and position information.
 * **alleles**: Variant alleles.
-* **freq**: Array of allele frequency information  (AC, AN, AF, homozygote count) for each frequency aggregation group in the gnomAD release. 
+* **freq**: Array of allele frequency information  (AC, AN, AF, homozygote count) for each frequency aggregation group in the gnomAD release.
     * **AC**: Alternate allele count in release.
     * **AF**: Alternate allele frequency, (AC/AN), in release.
     * **AN**: Total number of alleles in release.
@@ -71,7 +71,7 @@ The gnomAD release HT annotations are defined below:
     * **AN**: Total number of alleles in the population with the maximum allele frequency.
     * **homozygote_count**: Count of homozygous individuals in the population with the maximum allele frequency.
     * **pop**: Population with maximum allele frequency
-    * **faf95**: Filtering allele frequency (using Poisson 95% CI) for the population with the maximum allele frequency. 
+    * **faf95**: Filtering allele frequency (using Poisson 95% CI) for the population with the maximum allele frequency.
 * **qual_hists**: Genotype quality metric histograms for high quality genotypes.
     * **gq_hist_all**: Histogram for GQ calculated on high quality genotypes.
         * **bin_edges**: Bin edges for the GQ histogram calculated on high quality genotypes are: 0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100.
