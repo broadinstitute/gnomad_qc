@@ -1,8 +1,11 @@
 """Script containing generic resources."""
 import logging
+from typing import List, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
+    BaseResource,
+    DataException,
     TableResource,
     VariantDatasetResource,
     VersionedTableResource,

@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+        with:
+          submodules: recursive
       - name: Setup Python 3.8
         uses: actions/setup-python@v2
         with:
@@ -36,4 +38,4 @@ jobs:
       - name: Run Pylint
         run: ./lint --disable=W
       - name: Check docstrings
-        run: pydocstyle --match-dir='(?!v2).*' gnomad_qc
+        run: pydocstyle --match-dir='(?!v2|cuKING).*' gnomad_qc

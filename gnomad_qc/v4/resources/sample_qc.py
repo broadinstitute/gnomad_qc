@@ -6,7 +6,6 @@ from gnomad.resources.resource_utils import (
     VersionedMatrixTableResource,
     VersionedTableResource,
 )
-from gnomad.sample_qc.relatedness import get_relationship_expr
 
 from gnomad_qc.v4.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
@@ -148,24 +147,9 @@ def ancestry_pca_eigenvalues(
     )
 
 
-def get_relatedness_annotated_ht() -> hl.Table:
-    """
-    Get the relatedness table annotated with get_relationship_expr.
-
-    :return: Annotated relatedness table
-    """
-    relatedness_ht = relatedness.ht()
-    return relatedness_ht.annotate(
-        relationship=get_relationship_expr(
-            kin_expr=relatedness_ht.kin,
-            ibd0_expr=relatedness_ht.ibd0,
-            ibd1_expr=relatedness_ht.ibd1,
-            ibd2_expr=relatedness_ht.ibd2,
-        )
-    )
-
-
-def get_predetermined_qc(version: str = CURRENT_VERSION, test: bool = False):
+def get_predetermined_qc(
+    version: str = CURRENT_VERSION, test: bool = False
+) -> VersionedMatrixTableResource:
     """
     Get the dense MatrixTableResource of all predetermined QC sites for the indicated gnomAD version.
 
@@ -205,16 +189,24 @@ v4_predetermined_qc = VersionedMatrixTableResource(
     },
 )
 
-# Dense MT of samples at QC sites.
-qc = VersionedMatrixTableResource(
-    CURRENT_VERSION,
-    {
-        version: MatrixTableResource(
-            f"{get_sample_qc_root(version)}/gnomad.joint.v{version}.qc.mt"
-        )
-        for version in VERSIONS
-    },
-)
+
+def joint_qc(test: bool = False) -> VersionedMatrixTableResource:
+    """
+    Get the dense MatrixTableResource at final joint v3 and v4 QC sites.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: MatrixTableResource of QC sites.
+    """
+    return VersionedMatrixTableResource(
+        CURRENT_VERSION,
+        {
+            version: MatrixTableResource(
+                f"{get_sample_qc_root(version, test)}/gnomad.joint.v{version}.qc.mt"
+            )
+            for version in VERSIONS
+        },
+    )
+
 
 # v3 and v4 combined sample metadata Table for relatedness and population inference.
 joint_qc_meta = VersionedTableResource(
@@ -331,16 +323,29 @@ pc_relate_pca_scores = VersionedTableResource(
     },
 )
 
-# PC relate results.
-relatedness = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.relatedness.ht"
-        )
-        for version in VERSIONS
-    },
-)
+
+def relatedness(method: str = "cuking", test: bool = False):
+    """
+    Get the VersionedTableResource for relatedness results.
+
+    :param method: Method of relatedness inference to return VersionedTableResource for.
+        One of 'cuking' or 'pc_relate'.
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    if method not in {"cuking", "pc_relate"}:
+        raise ValueError("method must be one of 'cuking' or 'pc_relate'!")
+
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/gnomad.exomes.v{version}.relatedness.{method}.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
 
 # Sex chromosome coverage aggregate stats MT.
 sex_chr_coverage = VersionedMatrixTableResource(
@@ -423,18 +428,25 @@ def get_ploidy_cutoff_json_path(version: str = CURRENT_VERSION, test: bool = Fal
         return f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.ploidy_cutoffs.json"
 
 
-# Samples to drop for PCA due to them being related.
-pca_related_samples_to_drop = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.related_samples_to_drop_for_pca.ht"
-        )
-        for version in VERSIONS
-    },
-)
+def pca_related_samples_to_drop(test: bool = False) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for samples to drop for PCA due to them being related.
 
-# Related samples to drop for release.
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/gnomad.exomes.v{version}.related_samples_to_drop_for_pca.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+# Related samples to drop for release
 release_related_samples_to_drop = VersionedTableResource(
     CURRENT_VERSION,
     {
@@ -466,6 +478,34 @@ pop = VersionedTableResource(
         for version in VERSIONS
     },
 )
+
+
+def cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+    """
+    Return the path containing the input files read by cuKING.
+
+    Those files correspond to Parquet tables derived from the dense QC matrix.
+
+    :param version: gnomAD version.
+    :param test: Whether to return a path corresponding to a test subset.
+    :return: Temporary path to hold Parquet input tables for running cuKING.
+    """
+    # cuKING inputs can be easily regenerated, so use a temp location.
+    return f"{qc_temp_prefix(version)}cuking_input{'_test' if test else ''}.parquet"
+
+
+def cuking_output_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+    """
+    Return the path containing the output files written by cuKING.
+
+    Those files correspond to Parquet tables containing relatedness results.
+
+    :param version: gnomAD version.
+    :param test: Whether to return a path corresponding to a test subset.
+    :return: Temporary path to hold Parquet output tables for running cuKING.
+    """
+    # cuKING outputs can be easily regenerated, so use a temp location.
+    return f"{qc_temp_prefix(version)}cuking_output{'_test' if test else ''}.parquet"
 
 
 def pop_tsv_path(version: str = CURRENT_VERSION) -> str:
@@ -566,28 +606,6 @@ duplicates = VersionedTableResource(
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.duplicates.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-# PC relate scores for the sample set that overlaps with v3 samples.
-v3_v4_pc_relate_pca_scores = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.v3_v{version}.release_pca_scores.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-# Relatedness information for the sample set that overlaps with v3 samples.
-v3_v4_relatedness = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.v3_v{version}.release_relatedness.ht"
         )
         for version in VERSIONS
     },
