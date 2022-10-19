@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import argparse
 import logging
 import textwrap
@@ -36,18 +34,23 @@ def main(args):
 
     if args.print_cuking_command:
         if (
-            args.prepare_inputs
+            args.prepare_cuking_inputs
             or args.create_relatedness_table
             or args.compute_related_samples_to_drop
         ):
             raise ValueError(
-                "--print-cuking-command can't be used simultaneously with other run modes"
+                "--print-cuking-command can't be used simultaneously with other run "
+                "modes."
             )
 
+        logger.warning("Make sure that $PROJECT_ID is set!")
+        logger.warning(
+            "This printed command assumes that the cuKING directory is in the same "
+            "location where the command is being run!"
+        )
         print(
             textwrap.dedent(
                 f"""\
-                # Make sure that $PROJECT_ID is set.
                 cd cuKING && \\
                 ./cloud_batch_submit.py \\
                     --location=us-central1 \\
@@ -56,8 +59,8 @@ def main(args):
                     --input-uri={cuking_input_path(test=test)} \\
                     --output-uri={cuking_output_path(test=test)} \\
                     --requester-pays-project=$PROJECT_ID \\
-                    --kin-threshold={args.second_degree_kin_cutoff} \\
-                    --split-factor=4 && \\
+                    --kin-threshold={args.min_kin_cutoff} \\
+                    --split-factor={args.cuking_split_factor} &&
                 cd ..
                 """
             )
@@ -76,7 +79,7 @@ def main(args):
                 overwrite=overwrite,
             )
 
-        if args.create_relatedness_table:
+        if args.create_cuking_relatedness_table:
             check_file_exists_raise_error(relatedness(test=test).path, not overwrite)
             ht = cuking_outputs_to_ht(parquet_uri=cuking_output_path(test=test))
             ht = ht.repartition(args.relatedness_n_partitions)
@@ -86,7 +89,10 @@ def main(args):
             # compute_related_samples_to_drop uses a rank Table as a tie breaker when
             # pruning samples.
             check_file_exists_raise_error(
-                [pca_samples_rankings.path, pca_related_samples_to_drop(test=test).path],
+                [
+                    pca_samples_rankings.path,
+                    pca_related_samples_to_drop(test=test).path,
+                ],
                 not overwrite,
             )
 
@@ -107,7 +113,7 @@ def main(args):
             ).add_index(name="rank")
             rank_ht = rank_ht.key_by(rank_ht.s)
             rank_ht = rank_ht.select(rank_ht.hard_filtered, rank_ht.rank)
-            rank_ht = rank_ht.checkpoint(pca_samples_rankings.path)
+            rank_ht = rank_ht.checkpoint(pca_samples_rankings.path, overwrite=overwrite)
 
             samples_to_drop = compute_related_samples_to_drop(
                 relatedness(test=test).ht(),
@@ -122,7 +128,9 @@ def main(args):
                 ),
             )
             samples_to_drop = samples_to_drop.key_by(samples_to_drop.s)
-            samples_to_drop.write(pca_related_samples_to_drop(test=test).path)
+            samples_to_drop.write(
+                pca_related_samples_to_drop(test=test).path, overwrite=overwrite
+            )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -141,8 +149,10 @@ if __name__ == "__main__":
         "--test", help="Use a test MatrixTableResource as input.", action="store_true"
     )
     parser.add_argument(
-        "--prepare-inputs",
-        help="Converts the dense QC MatrixTable to a Parquet format suitable for cuKING.",
+        "--prepare-cuking-inputs",
+        help=(
+            "Converts the dense QC MatrixTable to a Parquet format suitable for cuKING."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -151,9 +161,38 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--create-relatedness-table",
+        "--cuking-split-factor",
+        help=(
+            "Split factor to use for splitting the full relatedness matrix table "
+            "into equally sized submatrices that are computed independently to "
+            "parallelize the relatedness computation and decrease the memory "
+            "requirements. For example, to halve memory requirements, the full matrix "
+            "can be split into  equally sized submatrices (i.e. a 'split factor' of 4)."
+            " Only the 'upper triangular' submatrices need to be evaluated due to "
+            "the symmetry of the relatedness matrix, leading to 10 shards."
+        ),
+        default=4,
+        type=int,
+    )
+    parser.add_argument(
+        "--min-kin-cutoff",
+        help=(
+            "Minimum kinship threshold for a pair of samples to be retained in the "
+            "cuKING output."
+        ),
+        default=0.05,
+        type=float,
+    )
+    parser.add_argument(
+        "--create-cuking-relatedness-table",
         help="Convert the cuKING outputs to a standard Hail Table.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--relatedness-n-partitions",
+        help="Number of desired partitions for the relatedness Table.",
+        default=50,
+        type=int,
     )
     parser.add_argument(
         "--compute-related-samples-to-drop",
@@ -162,17 +201,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--second-degree-kin-cutoff",
-        help="Minimum kinship threshold for filtering a pair of samples with a second degree relationship\
-        in KING and filtering related individuals. (Default = 0.1) \
-        Bycroft et al. (2018) calculates 0.08838835 but from evaluation of the distributions v3 and v4 has used 0.1",
+        help=(
+            "Minimum kinship threshold for filtering a pair of samples with a second "
+            "degree relationship when filtering related individuals. Default is 0.1 "
+            "Bycroft et al. (2018) calculates a theoretical kinship of 0.08838835 "
+            "for a second degree relationship cutoff, but 0.1 was decided on after "
+            "evaluation of the distributions in gnomAD v3 and v4."
+        ),
         default=0.1,
         type=float,
-    )
-    parser.add_argument(
-        "--relatedness-n-partitions",
-        help="Number of desired partitions for the relatedness Table.",
-        default=50,
-        type=int,
     )
     parser.add_argument(
         "--slack-channel",

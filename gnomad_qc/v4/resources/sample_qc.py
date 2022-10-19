@@ -195,6 +195,7 @@ v4_predetermined_qc = VersionedMatrixTableResource(
     },
 )
 
+
 def joint_qc(test: bool = False):
     """
     Get the dense MatrixTableResource at final joint v3 and v4 QC sites.
@@ -332,7 +333,8 @@ def relatedness(method: str = "cuking", test: bool = False):
     """
     Get the VersionedTableResource for relatedness results.
 
-    :param method: Method of relatedness inference to return VersionedTableResource for. One of 'cuking' or 'pc_relate'.
+    :param method: Method of relatedness inference to return VersionedTableResource for.
+        One of 'cuking' or 'pc_relate'.
     :param test: Whether to use a tmp path for a test resource.
     :return: VersionedTableResource.
     """
