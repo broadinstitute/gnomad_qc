@@ -1,7 +1,7 @@
 [pydocstyle]
 convention = pep257
 match = .*\.py
-match-dir = (?!v2).*
+match-dir = (?!v2|cuKING).*
 add-ignore =
   D105, # Ignore missing docstring for magic methods.
   D107 # Ignore missing docstring for __init__ method. Parameters are documented in the class docstring.
