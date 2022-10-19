@@ -1,3 +1,4 @@
+"""Script to compute relatedness estimates among pairs of samples in the callset."""
 import argparse
 import logging
 import textwrap
@@ -29,6 +30,7 @@ logger.setLevel(logging.INFO)
 
 
 def main(args):
+    """Compute relatedness estimates among pairs of samples in the callset."""
     test = args.test
     overwrite = args.overwrite
 
