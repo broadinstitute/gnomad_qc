@@ -29,11 +29,11 @@ from gnomad_qc.v4.resources.basics import (
 )
 from gnomad_qc.v4.resources.meta import project_meta as v4_meta
 from gnomad_qc.v4.resources.sample_qc import (
-    predetermined_qc,
     hard_filtered_samples,
-    joint_qc_meta,
-    predetermined_qc_sites,
     joint_qc,
+    joint_qc_meta,
+    predetermined_qc,
+    predetermined_qc_sites,
     sample_chr20_mean_dp,
 )
 
@@ -269,9 +269,7 @@ def main(args):
                 split=True, remove_hard_filtered_samples=False, test=test
             )
             mt = create_filtered_dense_mt(vds)
-            mt = mt.checkpoint(
-                predetermined_qc(test=test).path, overwrite=overwrite
-            )
+            mt = mt.checkpoint(predetermined_qc(test=test).path, overwrite=overwrite)
             logger.info(
                 "Number of predetermined QC variants found in the gnomAD v4 VDS: %d...",
                 mt.count_rows(),
