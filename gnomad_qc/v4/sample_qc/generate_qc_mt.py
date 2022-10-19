@@ -86,6 +86,7 @@ def generate_qc_mt(
     min_inbreeding_coeff_threshold: float = -0.8,
     ld_r2: float = 0.1,
     n_partitions: int = 1000,
+    block_size: int = 2048,
 ) -> hl.MatrixTable:
     """
     Generate combined gnomAD v3 and v4 QC MatrixTable for use in relatedness and ancestry inference.
@@ -98,6 +99,7 @@ def generate_qc_mt(
     :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to retain variant in QC MatrixTable.
     :param ld_r2: LD-pruning cutoff.
     :param n_partitions: Number of partitions to repartition the MT to before LD pruning.
+    :param block_size: Block size parameter to use for LD pruning.
     :return: MatrixTable of sites that pass QC filters.
     """
     v3_count = v3_mt.count()
@@ -149,6 +151,7 @@ def generate_qc_mt(
         filter_decoy=False,  # Doesn't exist for hg38
         filter_segdup=False,  # Already filtered from the initial set of QC variants
         n_partitions=n_partitions,
+        block_size=block_size,
     )
     logger.info(
         "Number of pre LD-pruned QC sites in gnomAD v3 + v4: %d...",
@@ -282,6 +285,7 @@ def main(args):
                 min_inbreeding_coeff_threshold=args.min_inbreeding_coeff_threshold,
                 ld_r2=ld_r2,
                 n_partitions=args.n_partitions,
+                block_size=args.block_size,
             )
             mt.write(
                 get_checkpoint_path("dense_ld_prune_qc_mt.test", mt=True)
@@ -351,6 +355,12 @@ if __name__ == "__main__":
         "--n-partitions",
         help="Desired number of partitions for output QC MatrixTable.",
         default=1000,
+        type=int,
+    )
+    parser.add_argument(
+        "--block-size",
+        help="Block size parameter to use for LD pruning.",
+        default=2048,
         type=int,
     )
     parser.add_argument(
