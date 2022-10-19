@@ -213,6 +213,7 @@ def joint_qc(test: bool = False):
         },
     )
 
+
 # v3 and v4 combined sample metadata Table for relatedness and population inference.
 joint_qc_meta = VersionedTableResource(
     CURRENT_VERSION,
@@ -351,6 +352,7 @@ def relatedness(method: str = "cuking", test: bool = False):
         },
     )
 
+
 # Sex chromosome coverage aggregate stats MT.
 sex_chr_coverage = VersionedMatrixTableResource(
     CURRENT_VERSION,
@@ -432,18 +434,6 @@ def get_ploidy_cutoff_json_path(version: str = CURRENT_VERSION, test: bool = Fal
         return f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.ploidy_cutoffs.json"
 
 
-# Samples to drop for PCA due to them being related.
-pca_related_samples_to_drop = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.pca_samples_ranking.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-
 def pca_related_samples_to_drop(test: bool = False):
     """
     Get the VersionedTableResource for samples to drop for PCA due to them being related.
@@ -458,8 +448,9 @@ def pca_related_samples_to_drop(test: bool = False):
                 f"{get_sample_qc_root(version, test)}/gnomad.exomes.v{version}.related_samples_to_drop_for_pca.ht"
             )
             for version in VERSIONS
-        }
+        },
     )
+
 
 # Related samples to drop for release
 release_related_samples_to_drop = VersionedTableResource(
