@@ -155,41 +155,7 @@ def ancestry_pca_eigenvalues(
     )
 
 
-def get_relatedness_annotated_ht() -> hl.Table:
-    """
-    Get the relatedness table annotated with relationship classifications for closely
-    related samples. We're not using `get_relationship_expr`, as it expects IBD values.
-    For v4, we only have IBS values from cuKING.
-
-    :return: Annotated relatedness table
-    """
-    ht = relatedness.ht()
-    ibs0_2 = ht.ibs0 / ht.ibs2
-
-    # The classification thresholds were chosen by inspecting clusters formed in a
-    # scatter plot with KING kinship vs (IBD0 / IBD2) axes.
-    return ht.annotate(
-        relationship=hl.case()
-        .when(ht.kin < 0.1, UNRELATED)
-        .when(ht.kin > 0.42, DUPLICATE_OR_TWINS)
-        .when(
-            ht.kin < 0.34,
-            hl.case()
-            .when(
-                (ibs0_2 > 2e-4)
-                & ((ht.kin < 0.17) | (ibs0_2 < -1e-2 * ht.kin + 2.2e-3)),
-                SECOND_DEGREE_RELATIVES,
-            )
-            .when(ht.kin < 0.15, AMBIGUOUS_RELATIONSHIP)
-            .when(ibs0_2 < -3e-3 * ht.kin + 9.2e-4, PARENT_CHILD)
-            .when(ibs0_2 > 4e-5, SIBLINGS)
-            .default(AMBIGUOUS_RELATIONSHIP),
-        )
-        .default(AMBIGUOUS_RELATIONSHIP)
-    )
-
-
-def get_predetermined_qc(version: str = CURRENT_VERSION, test: bool = False):
+def predetermined_qc(version: str = CURRENT_VERSION, test: bool = False):
     """
     Get the dense MatrixTableResource of all predetermined QC sites for the indicated gnomAD version.
 
