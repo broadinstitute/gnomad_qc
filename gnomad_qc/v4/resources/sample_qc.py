@@ -6,14 +6,6 @@ from gnomad.resources.resource_utils import (
     VersionedMatrixTableResource,
     VersionedTableResource,
 )
-from gnomad.sample_qc.relatedness import (
-    AMBIGUOUS_RELATIONSHIP,
-    DUPLICATE_OR_TWINS,
-    PARENT_CHILD,
-    SECOND_DEGREE_RELATIVES,
-    SIBLINGS,
-    UNRELATED,
-)
 
 from gnomad_qc.v4.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
@@ -155,7 +147,9 @@ def ancestry_pca_eigenvalues(
     )
 
 
-def predetermined_qc(version: str = CURRENT_VERSION, test: bool = False):
+def get_predetermined_qc(
+    version: str = CURRENT_VERSION, test: bool = False
+) -> VersionedMatrixTableResource:
     """
     Get the dense MatrixTableResource of all predetermined QC sites for the indicated gnomAD version.
 
@@ -196,7 +190,7 @@ v4_predetermined_qc = VersionedMatrixTableResource(
 )
 
 
-def joint_qc(test: bool = False):
+def joint_qc(test: bool = False) -> VersionedMatrixTableResource:
     """
     Get the dense MatrixTableResource at final joint v3 and v4 QC sites.
 
@@ -434,7 +428,7 @@ def get_ploidy_cutoff_json_path(version: str = CURRENT_VERSION, test: bool = Fal
         return f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.ploidy_cutoffs.json"
 
 
-def pca_related_samples_to_drop(test: bool = False):
+def pca_related_samples_to_drop(test: bool = False) -> VersionedTableResource:
     """
     Get the VersionedTableResource for samples to drop for PCA due to them being related.
 

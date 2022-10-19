@@ -4,7 +4,6 @@ import logging
 import textwrap
 
 import hail as hl
-
 from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
 from gnomad.utils.file_utils import check_file_exists_raise_error
 from gnomad.utils.slack import slack_notifications
@@ -14,15 +13,14 @@ from gnomad_qc.v4.resources.basics import get_checkpoint_path, get_logging_path
 from gnomad_qc.v4.resources.sample_qc import (
     cuking_input_path,
     cuking_output_path,
+    joint_qc,
     joint_qc_meta,
     pca_related_samples_to_drop,
     pca_samples_rankings,
-    joint_qc,
     relatedness,
 )
-
-from gnomad_qc.v4.sample_qc.cuKING.mt_to_cuking_inputs import mt_to_cuking_inputs
 from gnomad_qc.v4.sample_qc.cuKING.cuking_outputs_to_ht import cuking_outputs_to_ht
+from gnomad_qc.v4.sample_qc.cuKING.mt_to_cuking_inputs import mt_to_cuking_inputs
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("relatedness")
