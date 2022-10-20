@@ -214,19 +214,49 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test", help="Use a test MatrixTableResource as input.", action="store_true"
     )
-    parser.add_argument(
+
+    relatedness_estimate_args = parser.add_argument_group(
+        "Common relatedness estimate arguments",
+        "Arguments relevant to both cuKING and PC-relate relatedness estimates.",
+    )
+    relatedness_estimate_args.add_argument(
+        "--min-emission-kinship",
+        help=(
+            "Minimum kinship threshold for emitting a pair of samples in the "
+            "relatedness output."
+        ),
+        default=0.05,
+        type=float,
+    )
+    relatedness_estimate_args.add_argument(
+        "--relatedness-n-partitions",
+        help="Number of desired partitions for the relatedness Table.",
+        default=50,
+        type=int,
+    )
+
+    cuking_args = parser.add_argument_group(
+        "cuKING specific relatedness arguments",
+        "Arguments specific to computing relatedness estimates using cuKING.",
+    )
+    cuking_args.add_argument(
         "--prepare-cuking-inputs",
         help=(
             "Converts the dense QC MatrixTable to a Parquet format suitable for cuKING."
         ),
         action="store_true",
     )
-    parser.add_argument(
+    print_cuking_cmd = cuking_args.add_argument_group(
+        "Print cuKING Cloud Batch job submission command",
+        "Arguments used to create the cuKING Cloud Batch job submission command "
+        "needed to run cuKING.",
+    )
+    print_cuking_cmd.add_argument(
         "--print-cuking-command",
         help="Print the command to submit a Cloud Batch job for running cuKING.",
         action="store_true",
     )
-    parser.add_argument(
+    print_cuking_cmd.add_argument(
         "--cuking-split-factor",
         help=(
             "Split factor to use for splitting the full relatedness matrix table "
@@ -240,24 +270,54 @@ if __name__ == "__main__":
         default=4,
         type=int,
     )
-    parser.add_argument(
-        "--min-kin-cutoff",
-        help=(
-            "Minimum kinship threshold for a pair of samples to be retained in the "
-            "cuKING output."
-        ),
-        default=0.05,
-        type=float,
-    )
-    parser.add_argument(
+    cuking_args.add_argument(
         "--create-cuking-relatedness-table",
         help="Convert the cuKING outputs to a standard Hail Table.",
         action="store_true",
     )
-    parser.add_argument(
-        "--relatedness-n-partitions",
-        help="Number of desired partitions for the relatedness Table.",
-        default=50,
+
+    pc_relate_args = parser.add_argument_group(
+        "PC-relate specific relatedness arguments",
+        "Arguments specific to computing relatedness estimates using PC-relate.",
+    )
+    run_pca = pc_relate_args.add_argument_group(
+        "Run PCA for PC-relate", "Arguments used to run the PCA for PC-relate."
+    )
+    run_pca.add_argument(
+        "--run-pc-relate-pca",
+        help="Run PCA to generate the scores needed for PC-relate.",
+        action="store_true",
+    )
+    run_pca.add_argument(
+        "--n-pca-pcs",
+        help="Number of PCs to compute for PC-relate.",
+        type=int,
+        default=20,
+    )
+    run_pc_relate = pc_relate_args.add_argument_group(
+        "Run PC-relate", "Arguments used to run PC-relate."
+    )
+    run_pc_relate.add_argument(
+        "--create-pc-relate-relatedness-table",
+        help="Run PC-relate to create the PC-relate relatedness Table.",
+        action="store_true",
+    )
+    run_pc_relate.add_argument(
+        "--n-pc-relate-pcs",
+        help="Number of PCs to compute for PC-relate.",
+        type=int,
+        default=10,
+    )
+    run_pc_relate.add_argument(
+        "--min-individual-maf",
+        help="The minimum individual-specific minor allele frequency.",
+        default=0.01,
+        type=float,
+    )
+    run_pc_relate.add_argument(
+        "--block-size",
+        help="Block size parameter to use for PC-relate.",
+        default=2048,
         type=int,
     )
     parser.add_argument(
