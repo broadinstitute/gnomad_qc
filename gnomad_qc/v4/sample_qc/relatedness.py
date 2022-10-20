@@ -15,6 +15,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     get_cuking_output_path,
     get_joint_qc,
     joint_qc_meta,
+    pc_relate_pca_scores,
     pca_related_samples_to_drop,
     pca_samples_rankings,
     relatedness,
@@ -50,7 +51,7 @@ def main(args):
         )
         logger.warning(
             "This printed command assumes that the cuKING directory is in the same "
-            "location where the command is being run!"
+            "location where the command is being run and that $PROJECT_ID is set!"
         )
         print(
             textwrap.dedent(
@@ -63,7 +64,7 @@ def main(args):
                     --input-uri={cuking_input_path} \\
                     --output-uri={cuking_output_path} \\
                     --requester-pays-project=$PROJECT_ID \\
-                    --kin-threshold={args.min_kin_cutoff} \\
+                    --kin-threshold={min_emission_kinship} \\
                     --split-factor={args.cuking_split_factor} &&
                 cd ..
                 """
@@ -324,6 +325,7 @@ if __name__ == "__main__":
         default=2048,
         type=int,
     )
+
     parser.add_argument(
         "--compute-related-samples-to-drop",
         help="Determine the minimal set of related samples to prune.",
@@ -347,6 +349,15 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    if args.print_cuking_command and (
+        args.prepare_cuking_inputs
+        or args.create_cuking_relatedness_table
+        or args.compute_related_samples_to_drop
+    ):
+        parser.error(
+            "--print-cuking-command can't be used simultaneously with other run modes."
+        )
 
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
