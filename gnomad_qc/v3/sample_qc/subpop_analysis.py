@@ -32,7 +32,6 @@ from gnomad_qc.v3.resources.sample_qc import (
 )
 from gnomad_qc.v3.sample_qc.sample_qc import assign_pops
 
-
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",

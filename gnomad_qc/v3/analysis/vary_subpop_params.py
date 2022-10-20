@@ -14,7 +14,6 @@ from gnomad_qc.v3.resources.sample_qc import subpop_outliers
 from gnomad_qc.v3.sample_qc.sample_qc import ancestry_pca_scores, assign_pops
 from gnomad_qc.v3.sample_qc.subpop_analysis import CURATED_SUBPOPS
 
-
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
