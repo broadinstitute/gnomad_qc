@@ -529,7 +529,7 @@ def assign_pops(
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`
     :param pop: Population that the PCA was restricted to. When set to None, the PCA on the full dataset is returned
     :param curated_subpops: List of the subpops that are accepted as known labels for the pop. If not specified, all values of subpop_description will be used as known labels when inferring subpops.
-    :param additional_samples_to_drop: Table of additional samples to drop when training the random forest model
+    :param additional_samples_to_drop: Optional table of additional samples to drop when training the random forest model
     :param high_quality: Whether the file includes PCA info for only high-quality samples
     :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`
     :param seed: Random seed
@@ -542,7 +542,7 @@ def assign_pops(
     ).ht()
 
     project_meta_ht = project_meta.ht()[pop_pca_scores_ht.key]
-    if additional_samples_to_drop:
+    if additional_samples_to_drop is not None:
         samples_to_drop = hl.literal(additional_samples_to_drop.s.collect())
 
     if pop is not None:
@@ -562,7 +562,7 @@ def assign_pops(
                 subpop_description=project_meta_ht.subpop_description
             )
 
-        if additional_samples_to_drop:
+        if additional_samples_to_drop is not None:
             pop_pca_scores_ht = pop_pca_scores_ht.annotate(
                 subpop_description=hl.or_missing(
                     ~samples_to_drop.contains(pop_pca_scores_ht.s),

@@ -45,13 +45,14 @@ def main(args):  # noqa: D103
         merged = []
 
         if args.remove_outliers:
-            if not file_exists(subpop_outliers(pop).path):
-                raise DataException(
-                    f"The --remove-outliers option was used, but a Table of outlier samples does not exist for population {pop} at {subpop_outliers(pop).path}"
-                )
-                outliers_ht = subpop_outliers(pop).ht()
-            else:
-                outliers_ht = None
+            check_file_exists_raise_error(
+                subpop_outliers(pop).path, 
+                error_if_not_exists=True, 
+                error_if_not_exists_msg=f"The --remove-outliers option was used, but a Table of outlier samples does not exist for population {pop} at {subpop_outliers(pop).path}"
+            )
+            outliers_ht = subpop_outliers(pop).ht()
+        else:
+            outliers_ht = None
 
         # Run assign pops for each test combination of values in min_prob_list and
         # max_prop_mislabeled_list
