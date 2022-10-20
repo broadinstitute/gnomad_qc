@@ -625,7 +625,7 @@ def assign_pops(
     if pop is not None:
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             withheld_sample=hl.is_defined(pop_pca_scores_ht.subpop_description)
-            & (~hl.is_defined(pop_pca_scores_ht.training_pop)) 
+            & (~hl.is_defined(pop_pca_scores_ht.training_pop))
         )
     else:
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
