@@ -4,8 +4,6 @@ from typing import List, Optional
 
 import hail as hl
 from gnomad.resources.resource_utils import (
-    BaseResource,
-    DataException,
     TableResource,
     VariantDatasetResource,
     VersionedTableResource,
