@@ -71,7 +71,11 @@ def main(args):
         )
         return
 
-    hl.init(log="/relatedness.log", default_reference="GRCh38")
+    hl.init(
+        log="/relatedness.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
 
     try:
         if args.prepare_cuking_inputs:
