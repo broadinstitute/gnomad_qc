@@ -9,7 +9,7 @@ from gnomad.resources.resource_utils import DataException
 from gnomad.sample_qc.ancestry import run_pca_with_relateds
 from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad.utils.annotations import get_adj_expr
-from gnomad.utils.file_utils import file_exists
+from gnomad.utils.file_utils import check_file_exists_raise_error
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.v3.resources import release_sites
@@ -31,6 +31,7 @@ from gnomad_qc.v3.resources.sample_qc import (
     subpop_qc,
 )
 from gnomad_qc.v3.sample_qc.sample_qc import assign_pops
+
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -274,6 +275,21 @@ def main(args):  # noqa: D103
             logger.info("Filtering MT to chromosome 20")
             mt = mt.filter_rows(mt.locus.contig == "chr20")
 
+        if args.remove_outliers:
+            check_file_exists_raise_error(
+                subpop_outliers(pop).path,
+                error_if_not_exists=True,
+                error_if_not_exists_msg=(
+                    "The --remove-outliers option was used, but a Table of outlier"
+                    f" samples does not exist for population {pop} at"
+                    f" {subpop_outliers(pop).path}. Outliers should be manually"
+                    " determined after visualizing the output of --run_subpop_pca."
+                ),
+            )
+            outliers_ht = subpop_outliers(pop).ht()
+        else:
+            outliers_ht = None
+
         # Write out the densified MT
         if args.make_full_subpop_qc_mt:
             logger.info("Generating densified MT to use for all subpop analyses...")
@@ -326,17 +342,6 @@ def main(args):  # noqa: D103
                 )
             if high_quality:
                 mt = mt.filter_cols(mt.high_quality)
-            if args.remove_outliers:
-                if not file_exists(subpop_outliers(pop).path):
-                    raise DataException(
-                        "The --remove-outlier option was used, but a Table of outlier"
-                        f" samples does not exist for population {pop} at"
-                        f" {subpop_outliers(pop).path}"
-                    )
-
-                outliers_ht = subpop_outliers(pop).ht()
-            else:
-                outliers_ht = None
 
             logger.info("Generating PCs for subpops...")
             relateds_ht = pca_related_samples_to_drop.ht()
