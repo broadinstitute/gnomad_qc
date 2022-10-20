@@ -11,9 +11,9 @@ from gnomad.utils.slack import slack_notifications
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import get_checkpoint_path, get_logging_path
 from gnomad_qc.v4.resources.sample_qc import (
-    cuking_input_path,
-    cuking_output_path,
-    joint_qc,
+    get_cuking_input_path,
+    get_cuking_output_path,
+    get_joint_qc,
     joint_qc_meta,
     pca_related_samples_to_drop,
     pca_samples_rankings,
@@ -31,6 +31,13 @@ def main(args):
     """Compute relatedness estimates among pairs of samples in the callset."""
     test = args.test
     overwrite = args.overwrite
+    min_emission_kinship = args.min_emission_kinship
+
+    joint_qc_mt = get_joint_qc(test=test)
+    cuking_input_path = get_cuking_input_path(test=test)
+    cuking_output_path = get_cuking_output_path(test=test)
+    cuking_relatedness_ht = relatedness(test=test)
+    pc_relate_relatedness_ht = relatedness("pc_relate", test=test)
 
     if args.print_cuking_command:
         if (
@@ -56,8 +63,8 @@ def main(args):
                     --location=us-central1 \\
                     --project-id=$PROJECT_ID \\
                     --tag-name=$(git describe --tags) \\
-                    --input-uri={cuking_input_path(test=test)} \\
-                    --output-uri={cuking_output_path(test=test)} \\
+                    --input-uri={cuking_input_path} \\
+                    --output-uri={cuking_output_path} \\
                     --requester-pays-project=$PROJECT_ID \\
                     --kin-threshold={args.min_kin_cutoff} \\
                     --split-factor={args.cuking_split_factor} &&
@@ -74,8 +81,8 @@ def main(args):
             parquet_uri = cuking_input_path(test=test)
             check_file_exists_raise_error(parquet_uri, not overwrite)
             mt_to_cuking_inputs(
-                mt=joint_qc(test=test).mt(),
-                parquet_uri=parquet_uri,
+                mt=joint_qc_mt.mt(),
+                parquet_uri=cuking_input_path,
                 overwrite=overwrite,
             )
 
