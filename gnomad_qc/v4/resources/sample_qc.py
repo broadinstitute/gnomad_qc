@@ -190,7 +190,7 @@ v4_predetermined_qc = VersionedMatrixTableResource(
 )
 
 
-def joint_qc(test: bool = False) -> VersionedMatrixTableResource:
+def get_joint_qc(test: bool = False) -> VersionedMatrixTableResource:
     """
     Get the dense MatrixTableResource at final joint v3 and v4 QC sites.
 
@@ -480,7 +480,7 @@ pop = VersionedTableResource(
 )
 
 
-def cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def get_cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
     Return the path containing the input files read by cuKING.
 
@@ -494,7 +494,7 @@ def cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) -> str
     return f"{qc_temp_prefix(version)}cuking_input{'_test' if test else ''}.parquet"
 
 
-def cuking_output_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def get_cuking_output_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
     Return the path containing the output files written by cuKING.
 
