@@ -1,6 +1,6 @@
 """Script containing generic resources."""
 import logging
-from typing import List, Union
+from typing import List, Optional
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -11,6 +11,7 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
     VersionedVariantDatasetResource,
 )
+from gnomad.utils.file_utils import check_file_exists_raise_error
 
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION
 from gnomad_qc.v4.resources.meta import meta
@@ -313,4 +314,60 @@ def calling_intervals(
     if interval_name == "intersection":
         return TableResource(
             f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.intersection.interval_list.ht"
+        )
+
+
+def check_resource_existence(
+    input_pipeline_step: Optional[str] = None,
+    output_pipeline_step: Optional[str] = None,
+    input_resources: Optional[List] = None,
+    output_resources: Optional[List] = None,
+    overwrite: bool = False,
+) -> None:
+    """
+    Check whether the existence of all input and output resources.
+
+    If any of the input resources (`input_resources`) don't exist, an error will be
+    raised indicating which input resources are missing.
+
+    If any of the output resources (`output_resources`) already exist and the
+    `overwrite` parameter is set to True, an error will be raised indicating which
+    output resources already exist.
+
+    If no parameters are passed to the function, nothing is done.
+
+    :param input_pipeline_step: The pipeline step that generates input files. Default
+        is None.
+    :param output_pipeline_step: The pipeline step that generates output files. Default
+        is None.
+    :param input_resources: List of input resources or paths to check the existence of.
+        Default is None.
+    :param output_resources: List of output resources or paths to check the existence
+        of. Default is None.
+    :param overwrite: The overwrite parameter used when writing the output files.
+        Default is None.
+    :return: None.
+    """
+    # Check if the input resources exist
+    if input_pipeline_step and input_resources:
+        check_file_exists_raise_error(
+            [r if isinstance(r, str) else r.path for r in input_resources],
+            error_if_not_exists=True,
+            error_if_not_exists_msg=(
+                f"Not all input resources exist. Please add {input_pipeline_step} to "
+                "the command line. The following files are missing: "
+            ),
+        )
+
+    # Check if the output resources exist when `overwrite` is False
+    if not overwrite and output_pipeline_step and output_resources:
+        check_file_exists_raise_error(
+            [r if isinstance(r, str) else r.path for r in output_resources],
+            error_if_exists=True,
+            error_if_exists_msg=(
+                "Some of the output resources that will be created by "
+                f"{output_pipeline_step} already exist and the --overwrite argument "
+                f"was not set. Please rerun {output_pipeline_step} with --overwrite. "
+                "The following files already exist: "
+            ),
         )
