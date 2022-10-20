@@ -9,7 +9,7 @@ from gnomad.utils.file_utils import check_file_exists_raise_error
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.basics import get_checkpoint_path, get_logging_path
+from gnomad_qc.v4.resources.basics import check_resource_existence, get_logging_path
 from gnomad_qc.v4.resources.sample_qc import (
     get_cuking_input_path,
     get_cuking_output_path,
@@ -40,17 +40,14 @@ def main(args):
     pc_relate_relatedness_ht = relatedness("pc_relate", test=test)
 
     if args.print_cuking_command:
-        if (
-            args.prepare_cuking_inputs
-            or args.create_relatedness_table
-            or args.compute_related_samples_to_drop
-        ):
-            raise ValueError(
-                "--print-cuking-command can't be used simultaneously with other run "
-                "modes."
-            )
-
-        logger.warning("Make sure that $PROJECT_ID is set!")
+        check_resource_existence(
+            input_pipeline_step="--prepare-cuking-inputs",
+            input_resources=[cuking_input_path],
+        )
+        logger.info(
+            "Printing a command that can be used to submit a Cloud Batch job to run "
+            "cuKING on the files created by --prepare-cuking-inputs."
+        )
         logger.warning(
             "This printed command assumes that the cuKING directory is in the same "
             "location where the command is being run!"
@@ -77,9 +74,18 @@ def main(args):
     hl.init(log="/relatedness.log", default_reference="GRCh38")
 
     try:
-        if args.prepare_inputs:
-            parquet_uri = cuking_input_path(test=test)
-            check_file_exists_raise_error(parquet_uri, not overwrite)
+        if args.prepare_cuking_inputs:
+            logger.info(
+                "Converting joint dense QC MatrixTable to a Parquet format suitable "
+                "for cuKING."
+            )
+            check_resource_existence(
+                input_pipeline_step="generate_qc_mt.py --generate-qc-mt",
+                output_pipeline_step="--prepare-cuking-inputs",
+                input_resources=[joint_qc_mt],
+                output_resources=[cuking_input_path],
+                overwrite=overwrite,
+            )
             mt_to_cuking_inputs(
                 mt=joint_qc_mt.mt(),
                 parquet_uri=cuking_input_path,
@@ -87,10 +93,63 @@ def main(args):
             )
 
         if args.create_cuking_relatedness_table:
-            check_file_exists_raise_error(relatedness(test=test).path, not overwrite)
-            ht = cuking_outputs_to_ht(parquet_uri=cuking_output_path(test=test))
+            logger.info("Converting cuKING outputs to Hail Table.")
+            check_resource_existence(
+                input_pipeline_step="--print-cuking-command",
+                output_pipeline_step="--create-cuking-relatedness-table",
+                input_resources=[cuking_output_path],
+                output_resources=[cuking_relatedness_ht],
+                overwrite=overwrite,
+            )
+
+            ht = cuking_outputs_to_ht(parquet_uri=cuking_output_path)
             ht = ht.repartition(args.relatedness_n_partitions)
-            ht.write(relatedness(test=test).path, overwrite=overwrite)
+            ht.write(cuking_relatedness_ht.path, overwrite=overwrite)
+
+        if args.run_pc_relate_pca:
+            logger.info("Running PCA for PC-Relate")
+            check_resource_existence(
+                input_pipeline_step="generate_qc_mt.py --generate-qc-mt",
+                output_pipeline_step="--run-pc-relate-pca",
+                input_resources=[joint_qc_mt],
+                output_resources=[pc_relate_pca_scores],
+                overwrite=overwrite,
+            )
+            eig, scores, _ = hl.hwe_normalized_pca(
+                joint_qc_mt.mt().GT, k=args.n_pca_pcs, compute_loadings=False
+            )
+            scores.write(pc_relate_pca_scores.path, overwrite=overwrite)
+
+        if args.create_pc_relate_relatedness_table:
+            logger.info("Running PC-Relate")
+            logger.warning(
+                "PC-relate requires SSDs and doesn't work with preemptible workers!"
+            )
+            check_resource_existence(
+                input_pipeline_step=(
+                    "generate_qc_mt.py --generate-qc-mt and --run-pc-relate-pca"
+                ),
+                output_pipeline_step="--create-pc-relate-relatedness-table",
+                input_resources=[joint_qc_mt, pc_relate_pca_scores],
+                output_resources=[pc_relate_relatedness_ht],
+                overwrite=overwrite,
+            )
+            mt = joint_qc_mt.mt()
+            ht = hl.pc_relate(
+                mt.GT,
+                min_individual_maf=args.min_individual_maf,
+                scores_expr=pc_relate_pca_scores.ht()[mt.col_key].scores[
+                    : args.n_pc_relate_pcs
+                ],
+                block_size=args.block_size,
+                min_kinship=min_emission_kinship,
+                statistics="all",
+            )
+            ht = ht.annotate_globals(
+                min_individual_maf=args.min_individual_maf,
+                min_emission_kinship=min_emission_kinship,
+            )
+            ht.write(pc_relate_relatedness_ht.path, overwrite=overwrite)
 
         if args.compute_related_samples_to_drop:
             # compute_related_samples_to_drop uses a rank Table as a tie breaker when
