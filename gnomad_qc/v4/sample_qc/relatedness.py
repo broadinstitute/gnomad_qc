@@ -56,6 +56,7 @@ def main(args):
                     --location=us-central1 \\
                     --project-id=$PROJECT_ID \\
                     --tag-name=$(git describe --tags) \\
+                    --service-account=cuking@$PROJECT_ID.iam.gserviceaccount.com \\
                     --input-uri={cuking_input_path(test=test)} \\
                     --output-uri={cuking_output_path(test=test)} \\
                     --requester-pays-project=$PROJECT_ID \\
