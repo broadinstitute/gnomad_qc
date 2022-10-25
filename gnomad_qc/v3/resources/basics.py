@@ -96,7 +96,7 @@ def get_gnomad_v3_mt(
     """
     logger.warning(
         "The raw v3.1 sparse MatrixTable has been deleted. This function now calls "
-        "'get_gnomad_v3_vds' and turns the VariantDataset it into a sparse MatrixTable."
+        "'get_gnomad_v3_vds' and turns the VariantDataset into a sparse MatrixTable."
         " We recommend direct use of the VariantDataset by calling 'get_gnomad_v3_vds' "
         "instead."
     )
