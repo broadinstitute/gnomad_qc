@@ -2,6 +2,7 @@
 
 disable=
   unused-wildcard-import,
+  invalid-unary-operand-type,
   # Ignore refactor and convention categories
   R,
   C

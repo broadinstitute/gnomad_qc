@@ -269,11 +269,7 @@ def compute_hard_filters(
         # Remove samples with ambiguous sex assignments
         sex_ht = sex.ht()[ht.key]
         hard_filters["ambiguous_sex"] = sex_ht.sex_karyotype == "ambiguous"
-        hard_filters[
-            "sex_aneuploidy"
-        ] = ~hl.set(  # pylint: disable=invalid-unary-operand-type
-            {"ambiguous", "XX", "XY"}
-        ).contains(
+        hard_filters["sex_aneuploidy"] = ~hl.set({"ambiguous", "XX", "XY"}).contains(
             sex_ht.sex_karyotype
         )
 
@@ -598,9 +594,7 @@ def assign_pops(
         if additional_samples_to_drop is not None:
             pop_pca_scores_ht = pop_pca_scores_ht.annotate(
                 training_pop=hl.or_missing(
-                    ~samples_to_drop.contains(  # pylint: disable=invalid-unary-operand-type
-                        pop_pca_scores_ht.s
-                    ),
+                    ~samples_to_drop.contains(pop_pca_scores_ht.s),
                     pop_pca_scores_ht.training_pop,
                 )
             )
