@@ -18,7 +18,7 @@ logger.setLevel(logging.INFO)
 
 
 def get_gnomad_v3_vds(
-    split=False,
+    split: bool = False,
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
     samples_meta: bool = False,
@@ -76,7 +76,7 @@ def get_gnomad_v3_vds(
 
 
 def get_gnomad_v3_mt(
-    split=False,
+    split: bool = False,
     key_by_locus_and_alleles: bool = False,
     remove_hard_filtered_samples: bool = True,
     release_only: bool = False,
@@ -128,11 +128,12 @@ def get_gnomad_v3_mt(
     else:
         vds = get_gnomad_v3_vds(
             split=split,
+            remove_hard_filtered_samples=remove_hard_filtered_samples,
             release_only=release_only,
             samples_meta=samples_meta,
         )
         mt = hl.vds.to_merged_sparse_mt(vds)
-        if remove_hard_filtered_samples:
+        if not key_by_locus_and_alleles:
             mt = mt.key_rows_by(mt.locus)
 
     return mt
