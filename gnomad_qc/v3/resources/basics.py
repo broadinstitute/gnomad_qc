@@ -1,14 +1,78 @@
 # noqa: D100
+import logging
 
 import hail as hl
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
+    VariantDatasetResource,
     VersionedMatrixTableResource,
+    VersionedVariantDatasetResource,
 )
 
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, CURRENT_VERSION
 from gnomad_qc.v3.resources.meta import meta
 from gnomad_qc.v3.resources.sample_qc import hard_filtered_samples
+
+logger = logging.getLogger("basic_resources")
+logger.setLevel(logging.INFO)
+
+
+def get_gnomad_v3_vds(
+    split=False,
+    remove_hard_filtered_samples: bool = True,
+    release_only: bool = False,
+    samples_meta: bool = False,
+) -> hl.vds.VariantDataset:
+    """
+    Get gnomAD VariantDataset with desired filtering and metadata annotations.
+
+    :param split: Perform split on VDS - Note: this will perform a split on the VDS
+        rather than grab an already split VDS
+    :param remove_hard_filtered_samples: Whether to remove samples that failed hard
+        filters (only relevant after sample QC)
+    :param release_only: Whether to filter the VDS to only samples available for
+        release (can only be used if metadata is present)
+    :param samples_meta: Whether to add metadata to VDS variant_data in 'meta' column
+    :return: gnomAD v3 dataset with chosen annotations and filters
+    """
+    vds = gnomad_v3_genotypes_vds.vds()
+
+    if remove_hard_filtered_samples:
+        vds = hl.vds.filter_samples(
+            vds,
+            hard_filtered_samples.ht(),
+            keep=False,
+        )
+
+    if samples_meta or release_only:
+        meta_ht = meta.ht()
+        if release_only:
+            vds = hl.vds.filter_samples(
+                vds,
+                meta_ht.filter(meta_ht.release),
+            )
+
+        if samples_meta:
+            vd = vds.variant_data
+            vds = hl.vds.VariantDataset(
+                vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
+            )
+
+    if split:
+        vd = vds.variant_data
+        vd = vd.annotate_rows(
+            n_unsplit_alleles=hl.len(vd.alleles),
+            mixed_site=(hl.len(vd.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(vd.alleles[0], a), vd.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
+        )
+        vd = hl.experimental.sparse_split_multi(vd, filter_changed_loci=True)
+        vds = hl.vds.VariantDataset(
+            vds.reference_data,
+            vd,
+        )
+
+    return vds
 
 
 def get_gnomad_v3_mt(
@@ -30,46 +94,51 @@ def get_gnomad_v3_mt(
     :param test: Whether to use the test MT instead of the full v3 MT
     :return: gnomAD v3 dataset with chosen annotations and filters
     """
+    logger.warning(
+        "The raw v3.1 sparse MatrixTable has been deleted. This function now calls "
+        "'get_gnomad_v3_vds' and turns the VariantDataset it into a sparse MatrixTable."
+        " We recommend direct use of the VariantDataset by calling 'get_gnomad_v3_vds' "
+        "instead."
+    )
+
     if test:
         mt = gnomad_v3_testset.mt()
-    else:
-        mt = gnomad_v3_genotypes.mt()
-
-    if key_by_locus_and_alleles:
-        mt = hl.MatrixTable(
-            hl.ir.MatrixKeyRowsBy(
-                mt._mir, ["locus", "alleles"], is_sorted=True
-            )  # Prevents hail from running sort on genotype MT which is already sorted by a unique locus
-        )
-
-    if remove_hard_filtered_samples:
-        mt = mt.filter_cols(
-            hl.is_missing(
-                hard_filtered_samples.versions[CURRENT_VERSION].ht()[mt.col_key]
+        if key_by_locus_and_alleles:
+            # Prevents hail from running sort on genotype MT which is already sorted
+            # by a unique locus
+            mt = hl.MatrixTable(
+                hl.ir.MatrixKeyRowsBy(mt._mir, ["locus", "alleles"], is_sorted=True)
             )
+        if remove_hard_filtered_samples:
+            mt = mt.filter_cols(hl.is_missing(hard_filtered_samples.ht()[mt.col_key]))
+        if samples_meta or release_only:
+            meta_ht = meta.ht()
+            if samples_meta:
+                mt = mt.annotate_cols(meta=meta_ht[mt.col_key])
+            if release_only:
+                mt = mt.filter_cols(meta_ht[mt.col_key].release)
+        if split:
+            mt = mt.annotate_rows(
+                n_unsplit_alleles=hl.len(mt.alleles),
+                mixed_site=(hl.len(mt.alleles) > 2)
+                & hl.any(lambda a: hl.is_indel(mt.alleles[0], a), mt.alleles[1:])
+                & hl.any(lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:]),
+            )
+            mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+    else:
+        vds = get_gnomad_v3_vds(
+            split=split,
+            release_only=release_only,
+            samples_meta=samples_meta,
         )
-
-    if samples_meta:
-        mt = mt.annotate_cols(meta=meta.versions[CURRENT_VERSION].ht()[mt.col_key])
-
-        if release_only:
-            mt = mt.filter_cols(mt.meta.release)
-
-    elif release_only:
-        mt = mt.filter_cols(meta.versions[CURRENT_VERSION].ht()[mt.col_key].release)
-
-    if split:
-        mt = mt.annotate_rows(
-            n_unsplit_alleles=hl.len(mt.alleles),
-            mixed_site=(hl.len(mt.alleles) > 2)
-            & hl.any(lambda a: hl.is_indel(mt.alleles[0], a), mt.alleles[1:])
-            & hl.any(lambda a: hl.is_snp(mt.alleles[0], a), mt.alleles[1:]),
-        )
-        mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+        mt = hl.vds.to_merged_sparse_mt(vds)
+        if remove_hard_filtered_samples:
+            mt = mt.key_rows_by(mt.locus)
 
     return mt
 
 
+# NOTE: These have been removed, use the VariantDataset!
 _gnomad_v3_genotypes = {
     "3": MatrixTableResource(
         "gs://gnomad/raw/hail-0.2/mt/genomes_v3/gnomad_genomes_v3.repartitioned.mt"
@@ -79,6 +148,15 @@ _gnomad_v3_genotypes = {
     ),
 }
 
+
+# The same raw VDS is used for v3.1.1, v3.1.2, and v3.1
+gnomad_v3_genotypes_vds = VersionedVariantDatasetResource(
+    CURRENT_VERSION,
+    {"3.1": VariantDatasetResource("gs://gnomad/v3.1/raw/gnomad_v3.1.vds")},
+)
+
+
+# NOTE: These have been removed, use the VariantDataset!
 # The same raw MT is used for v3.1.1, v3.1.2, and v3.1
 gnomad_v3_genotypes = VersionedMatrixTableResource(
     CURRENT_VERSION,
