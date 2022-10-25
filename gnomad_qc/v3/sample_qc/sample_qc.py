@@ -561,7 +561,7 @@ def assign_pops(
         if additional_samples_to_drop is not None:
             pop_pca_scores_ht = pop_pca_scores_ht.annotate(
                 subpop_description=hl.or_missing(
-                    ~samples_to_drop.contains(pop_pca_scores_ht.s),
+                    ~samples_to_drop.contains(pop_pca_scores_ht.s),  # pylint: disable=invalid-unary-operand-type
                     pop_pca_scores_ht.subpop_description,
                 )
             )
