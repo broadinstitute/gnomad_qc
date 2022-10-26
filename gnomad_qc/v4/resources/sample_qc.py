@@ -347,6 +347,24 @@ def relatedness(method: str = "cuking", test: bool = False):
     )
 
 
+def ibd(test: bool = False):
+    """
+    Get VersionedTableResource for identity-by-descent (ibd) on cuKING related pairs.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/gnomad.exomes.v{version}.ibd.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
 # Sex chromosome coverage aggregate stats MT.
 sex_chr_coverage = VersionedMatrixTableResource(
     CURRENT_VERSION,
