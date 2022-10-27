@@ -85,9 +85,9 @@ def _get_ancestry_pca_ht_path(
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
     :return: Path to requested ancestry PCA file.
     """
-
-    return f"{get_sample_qc_root(version,test,data_type)}/gnomad.{data_type}.v{version}.pca_{part}{'_without_unreleasable_samples' if remove_unreleasable_samples else ''}.ht"
-
+    return (
+        f"{get_sample_qc_root(version,test,data_type)}/gnomad.{data_type}.v{version}.pca_{part}{'_without_unreleasable_samples' if remove_unreleasable_samples else ''}.ht"
+    )
 
 
 def ancestry_pca_loadings(
@@ -535,7 +535,6 @@ def pop_tsv_path(
     data_type: str = "joint",
     only_train_on_hgdp_tgp: bool = False,
 ) -> str:
-
     """
     Path to tab delimited file indicating inferred sample populations.
 
@@ -545,7 +544,9 @@ def pop_tsv_path(
     :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Default is False.
     :return: String path to sample populations
     """
-    return f"{get_sample_qc_root(version,test,data_type)}/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}RF_pop_assignments.txt.gz"
+    return (
+        f"{get_sample_qc_root(version,test,data_type)}/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}RF_pop_assignments.txt.gz"
+    )
 
 
 def pop_rf_path(
@@ -563,7 +564,9 @@ def pop_rf_path(
     :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Default is False.
     :return: String path to sample pop RF model
     """
-    return f"{get_sample_qc_root(version,test, data_type)}/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}pop.RF_fit.pickle"
+    return (
+        f"{get_sample_qc_root(version,test, data_type)}/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}pop.RF_fit.pickle"
+    )
 
 
 def get_pop_ht(

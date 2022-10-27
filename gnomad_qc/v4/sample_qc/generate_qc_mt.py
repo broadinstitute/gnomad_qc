@@ -291,7 +291,6 @@ def main(args):
                 n_partitions=args.n_partitions,
                 block_size=args.block_size,
             )
-
             mt.write(joint_qc(test=test).path, overwrite=overwrite)
 
         if args.generate_qc_meta:
