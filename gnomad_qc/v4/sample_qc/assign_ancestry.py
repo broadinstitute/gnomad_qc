@@ -8,8 +8,6 @@ import hail as hl
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
 from gnomad.utils.slack import slack_notifications
 
-
-from gnomad_qc.v3.resources.sample_qc import release_related_samples_to_drop
 from gnomad_qc.v4.resources.basics import get_checkpoint_path
 from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_eigenvalues,
@@ -21,6 +19,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     pca_related_samples_to_drop,
     pop_rf_path,
     pop_tsv_path,
+    release_related_samples_to_drop,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
