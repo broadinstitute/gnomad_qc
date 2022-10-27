@@ -1,14 +1,16 @@
+# noqa: D100
+
 import argparse
 import logging
 
 import hail as hl
 import pandas as pd
-
-from gnomad.utils.file_utils import file_exists
+from gnomad.utils.file_utils import check_file_exists_raise_error
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
 from gnomad_qc.v3.resources.meta import meta
+from gnomad_qc.v3.resources.sample_qc import subpop_outliers
 from gnomad_qc.v3.sample_qc.sample_qc import ancestry_pca_scores, assign_pops
 from gnomad_qc.v3.sample_qc.subpop_analysis import CURATED_SUBPOPS
 
@@ -26,12 +28,15 @@ def main(args):  # noqa: D103
     high_quality = args.high_quality
 
     try:
-        if not file_exists(
-            ancestry_pca_scores(include_unreleasable_samples, high_quality, pop).path
-        ):
-            logger.warning(
-                "PCs have not yet been computed for the supplied parameters. Please run subpop_analysis.py with the desired parameters for `include_unreleasable_samples`, `high_quality`, and `pop`"
-            )
+        check_file_exists_raise_error(
+            ancestry_pca_scores(include_unreleasable_samples, high_quality, pop).path,
+            error_if_not_exists=True,
+            error_if_not_exists_msg=(
+                "PCs have not yet been computed for the supplied parameters. Please run"
+                " subpop_analysis.py with the desired parameters for"
+                " `include_unreleasable_samples`, `high_quality`, and `pop`."
+            ),
+        )
 
         # Read in metadata
         meta_ht = meta.ht()
@@ -39,7 +44,22 @@ def main(args):  # noqa: D103
         # Initiate lists for storing results
         merged = []
 
-        # Run assign pops for each test combination of values in min_prob_list and max_prop_mislabeled_list
+        if args.remove_outliers:
+            check_file_exists_raise_error(
+                subpop_outliers(pop).path,
+                error_if_not_exists=True,
+                error_if_not_exists_msg=(
+                    "The --remove-outliers option was used, but a Table of outlier"
+                    f" samples does not exist for population {pop} at"
+                    f" {subpop_outliers(pop).path}"
+                ),
+            )
+            outliers_ht = subpop_outliers(pop).ht()
+        else:
+            outliers_ht = None
+
+        # Run assign pops for each test combination of values in min_prob_list and
+        # max_prop_mislabeled_list
         for min_prob in args.min_prob_list:
             for (
                 max_proportion_mislabeled_training_samples
@@ -57,6 +77,7 @@ def main(args):  # noqa: D103
                     withhold_prop=args.withhold_prop,
                     pop=pop,
                     curated_subpops=CURATED_SUBPOPS[pop],
+                    additional_samples_to_drop=outliers_ht,
                     high_quality=high_quality,
                     missing_label="Other",
                 )
@@ -65,7 +86,7 @@ def main(args):  # noqa: D103
                 ht = joint_pca_ht.filter(joint_pca_ht.evaluation_sample)
 
                 # Calculate number of mislabeled samples
-                # NOTE: `training_pop` is the known label for the sample, but could have been used for either training or evaluation
+                # NOTE: `training_pop` is the known label for the sample, but could have been used for either training or evaluation # noqa
                 total = ht.count()
                 mislabelled = ht.aggregate(
                     hl.agg.count_where(ht.training_pop != ht.subpop)
@@ -76,7 +97,8 @@ def main(args):  # noqa: D103
                 # Definitions:
                 # TP = Samples where `training_pop` equals assigned `subpop`
                 # FP = Samples where `training_pop` does not equal assigned `subpop` and `subpop` is not `Other`
-                # FN = Samples where `training_pop` does not equal assigned `subpop` and `subpop` is `Other`
+                # FN = Samples where `training_pop` does not equal assigned `subpop` and
+                # `subpop` is `Other`
 
                 ht = ht.annotate(
                     result_status=hl.case()
@@ -112,7 +134,9 @@ def main(args):  # noqa: D103
         results_ht = hl.Table.parallelize(
             hl.literal(
                 merged,
-                "array<struct{min_prob: float, max_proportion_mislabeled_training_samples: float, percent_correct: float, TP: int, FP: int, FN: int, error_rate: float}>",
+                "array<struct{min_prob: float,"
+                " max_proportion_mislabeled_training_samples: float, percent_correct:"
+                " float, TP: int, FP: int, FN: int, error_rate: float}>",
             )
         )
 
@@ -142,7 +166,10 @@ def main(args):  # noqa: D103
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="This script generates a Table with precision and recall results to test the performance of subpop assignment"
+        description=(
+            "This script generates a Table with precision and recall results to test"
+            " the performance of subpop assignment"
+        )
     )
     parser.add_argument(
         "--slack-channel",
@@ -153,7 +180,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--pop",
-        help="Population to test (need to first run subpop_analysis.py with this `pop`)",
+        help=(
+            "Population to test (need to first run subpop_analysis.py with this `pop`)"
+        ),
         type=str,
     )
 
@@ -179,7 +208,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--max-prop-mislabeled-list",
-        help="List of maximum number of training samples that can be mislabelled to test for subpop assignment",
+        help=(
+            "List of maximum number of training samples that can be mislabelled to test"
+            " for subpop assignment"
+        ),
         type=float,
         nargs="+",
         default=[1],
@@ -193,7 +225,15 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--withhold-prop",
-        help="Proportion of training pop samples to withhold from training, all samples will be kept if this flag is not used. NOTE: 20 percent of the training samples are used for evaluation, withholding samples will put aside a certain proportion of samples before splitting the remainder into training and evaluation. Setting a value for `withhold-prop` is recommended if values are supplied to `max-prop-mislabeled-list` in order to produce a reasonable PR curve when using iterations.",
+        help=(
+            "Proportion of training pop samples to withhold from training, all samples"
+            " will be kept if this flag is not used. NOTE: 20 percent of the training"
+            " samples are used for evaluation, withholding samples will put aside a"
+            " certain proportion of samples before splitting the remainder into"
+            " training and evaluation. Setting a value for `withhold-prop` is"
+            " recommended if values are supplied to `max-prop-mislabeled-list` in order"
+            " to produce a reasonable PR curve when using iterations."
+        ),
         type=float,
         default=None,
     )
@@ -205,6 +245,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--high-quality",
         help="Filter to only high-quality samples when computing the PCA",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--remove-outliers",
+        help=(
+            "Whether to remove outliers when training the random forest model. Outliers"
+            " are manually determined after visualizing the PC plots"
+        ),
         action="store_true",
     )
 

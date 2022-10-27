@@ -1,29 +1,41 @@
+"""
+Script to create a dense MatrixTable filtered to a diverse set of variants for relatedness/ancestry PCA using CCDG, gnomAD v3, and UK Biobank.
+
+The variant set was determined using this script:
+https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py
+
+The full gnomAD v4 VariantDataset and v4 sparse MatrixTable are filtered to these sites and then densified. The resulting
+MatrixTables are merged and additional allele frequency and callrate filters are applied, then LD-pruning is
+performed.
+
+Additionally, the script creates a joint v3 and v4 metadata file for use in relatedness/ancestry PCA.
+"""
 import argparse
 import logging
 from typing import Union
 
-from gnomad.sample_qc.pipeline import get_qc_mt
-from gnomad.utils.annotations import annotate_adj, get_adj_expr
-from gnomad.utils.slack import slack_notifications
 import hail as hl
+from gnomad.sample_qc.pipeline import get_qc_mt
+from gnomad.utils.annotations import annotate_adj
+from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v4.resources.basics import (
     get_checkpoint_path,
-    get_logging_path,
     get_gnomad_v4_vds,
+    get_logging_path,
 )
 from gnomad_qc.v4.resources.meta import project_meta as v4_meta
 from gnomad_qc.v4.resources.sample_qc import (
     get_predetermined_qc,
     hard_filtered_samples,
+    joint_qc,
     joint_qc_meta,
     predetermined_qc_sites,
-    joint_qc,
     sample_chr20_mean_dp,
 )
-from gnomad_qc.slack_creds import slack_token
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("generate_qc_mt")
@@ -74,6 +86,7 @@ def generate_qc_mt(
     min_inbreeding_coeff_threshold: float = -0.8,
     ld_r2: float = 0.1,
     n_partitions: int = 1000,
+    block_size: int = 2048,
 ) -> hl.MatrixTable:
     """
     Generate combined gnomAD v3 and v4 QC MatrixTable for use in relatedness and ancestry inference.
@@ -86,6 +99,7 @@ def generate_qc_mt(
     :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to retain variant in QC MatrixTable.
     :param ld_r2: LD-pruning cutoff.
     :param n_partitions: Number of partitions to repartition the MT to before LD pruning.
+    :param block_size: Block size parameter to use for LD pruning.
     :return: MatrixTable of sites that pass QC filters.
     """
     v3_count = v3_mt.count()
@@ -94,7 +108,7 @@ def generate_qc_mt(
         "Number of (variants, samples) in the v3.1 MatrixTable: %s...", v3_count
     )
     logger.info("Number of (variants, samples) in the v4 MatrixTable: %s...", v4_count)
-    # Remove v4 hard filtered samples
+    # Remove v4 hard filtered samples.
     v4_mt = v4_mt.anti_join_cols(hard_filtered_samples.ht())
 
     samples_in_both = v4_mt.cols().semi_join(v3_mt.cols())
@@ -115,7 +129,8 @@ def generate_qc_mt(
     )
 
     logger.info(
-        "Performing a union of the v3.1 and v4 predetermined QC site MatrixTable columns..."
+        "Performing a union of the v3.1 and v4 predetermined QC site MatrixTable"
+        " columns..."
     )
     mt = v3_mt.union_cols(v4_mt)
 
@@ -129,14 +144,16 @@ def generate_qc_mt(
         min_af=min_af,
         min_callrate=min_callrate,
         min_inbreeding_coeff_threshold=min_inbreeding_coeff_threshold,
-        min_hardy_weinberg_threshold=None,  # Already filtered from the initial set of QC variants
+        min_hardy_weinberg_threshold=None,
+        # Already filtered from the initial set of QC variants.
         apply_hard_filters=False,
         ld_r2=ld_r2,
         checkpoint_path=cp_path,
-        filter_lcr=False,  # Already filtered from the initial set of QC variants
-        filter_decoy=False,  # Doesn't exist for hg38
-        filter_segdup=False,  # Already filtered from the initial set of QC variants
+        filter_lcr=False,  # Already filtered from the initial set of QC variants.
+        filter_decoy=False,  # Doesn't exist for hg38.
+        filter_segdup=False,  # Already filtered from the initial set of QC variants.
         n_partitions=n_partitions,
+        block_size=block_size,
     )
     logger.info(
         "Number of pre LD-pruned QC sites in gnomAD v3 + v4: %d...",
@@ -216,12 +233,13 @@ def generate_qc_meta_ht() -> hl.Table:
 
 
 def main(args):
+    """Create a dense MT of a diverse set of variants for relatedness/ancestry PCA."""
     hl.init(
         log="/generate_qc_mt.log",
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    # NOTE: remove this flag when the new shuffle method is the default. This is necessary for hail 0.2.97.
+    # NOTE: remove this flag when the new shuffle method is the default. This is necessary for hail 0.2.97. # noqa
     hl._set_flags(use_new_shuffle="1")
 
     overwrite = args.overwrite
@@ -230,7 +248,7 @@ def main(args):
 
     try:
         if args.create_v3_filtered_dense_mt:
-            # Note: This command removes hard filtered samples
+            # NOTE: This command removes hard filtered samples.
             mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, test=test)
             mt = create_filtered_dense_mt(mt, split=True)
             mt = mt.checkpoint(
@@ -238,13 +256,15 @@ def main(args):
                 overwrite=overwrite,
             )
             logger.info(
-                "Number of predetermined QC variants found in the gnomAD v3 MatrixTable: %d...",
+                "Number of predetermined QC variants found in the gnomAD v3"
+                " MatrixTable: %d...",
                 mt.count_rows(),
             )
 
         if args.create_v4_filtered_dense_mt:
-            # Note: This subset dense MatrixTable was created before the final hard filtering was determined
-            # Hard filtering is performed in `generate_qc_mt` before applying variant filters
+            # NOTE: This subset dense MatrixTable was created before the final hard filtering was determined. # noqa
+            # Hard filtering is performed in `generate_qc_mt` before applying variant
+            # filters.
             vds = get_gnomad_v4_vds(
                 split=True, remove_hard_filtered_samples=False, test=test
             )
@@ -269,13 +289,10 @@ def main(args):
                 min_inbreeding_coeff_threshold=args.min_inbreeding_coeff_threshold,
                 ld_r2=ld_r2,
                 n_partitions=args.n_partitions,
+                block_size=args.block_size,
             )
-            mt.write(
-                get_checkpoint_path("dense_ld_prune_qc_mt.test", mt=True)
-                if test
-                else joint_qc.path,
-                overwrite=overwrite,
-            )
+
+            mt.write(joint_qc(test=test).path, overwrite=overwrite)
 
         if args.generate_qc_meta:
             generate_qc_meta_ht().write(joint_qc_meta.path, overwrite=overwrite)
@@ -292,17 +309,26 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--create-v3-filtered-dense-mt",
-        help="Create a dense MatrixTable from the raw gnomAD v3.1 sparse MatrixTable filtered to predetermined QC variants.",
+        help=(
+            "Create a dense MatrixTable from the raw gnomAD v3.1 sparse MatrixTable"
+            " filtered to predetermined QC variants."
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--create-v4-filtered-dense-mt",
-        help="Create a dense MatrixTable from the raw gnomAD v4 VariantDataset filtered to predetermined QC variants.",
+        help=(
+            "Create a dense MatrixTable from the raw gnomAD v4 VariantDataset filtered"
+            " to predetermined QC variants."
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--generate-qc-mt",
-        help="Create the final merged gnomAD v3 + v4 QC MatrixTable with all specified filters and LD-pruning.",
+        help=(
+            "Create the final merged gnomAD v3 + v4 QC MatrixTable with all specified"
+            " filters and LD-pruning."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -338,6 +364,12 @@ if __name__ == "__main__":
         "--n-partitions",
         help="Desired number of partitions for output QC MatrixTable.",
         default=1000,
+        type=int,
+    )
+    parser.add_argument(
+        "--block-size",
+        help="Block size parameter to use for LD pruning.",
+        default=2048,
         type=int,
     )
     parser.add_argument(

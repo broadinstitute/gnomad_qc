@@ -1,10 +1,11 @@
+# noqa: D100
+
 import argparse
 import logging
 import sys
 from typing import Optional
 
 import hail as hl
-
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.resources.resource_utils import DataException
 from gnomad.utils.file_utils import file_exists
@@ -39,7 +40,7 @@ def generate_final_filter_ht(
     vqsr_ht: hl.Table = None,
 ) -> hl.Table:
     """
-    Prepares finalized filtering model given a filtering HT from `rf.apply_rf_model` or VQSR and cutoffs for filtering.
+    Prepare finalized filtering model given a filtering HT from `rf.apply_rf_model` or VQSR and cutoffs for filtering.
 
     .. note::
 
@@ -69,29 +70,34 @@ def generate_final_filter_ht(
     """
     if snp_bin_cutoff is not None and snp_score_cutoff is not None:
         raise ValueError(
-            "snp_bin_cutoff and snp_score_cutoff are mutually exclusive, please only supply one SNP filtering cutoff."
+            "snp_bin_cutoff and snp_score_cutoff are mutually exclusive, please only"
+            " supply one SNP filtering cutoff."
         )
 
     if indel_bin_cutoff is not None and indel_score_cutoff is not None:
         raise ValueError(
-            "indel_bin_cutoff and indel_score_cutoff are mutually exclusive, please only supply one indel filtering cutoff."
+            "indel_bin_cutoff and indel_score_cutoff are mutually exclusive, please"
+            " only supply one indel filtering cutoff."
         )
 
     if snp_bin_cutoff is None and snp_score_cutoff is None:
         raise ValueError(
-            "One (and only one) of the parameters snp_bin_cutoff and snp_score_cutoff must be supplied."
+            "One (and only one) of the parameters snp_bin_cutoff and snp_score_cutoff"
+            " must be supplied."
         )
 
     if indel_bin_cutoff is None and indel_score_cutoff is None:
         raise ValueError(
-            "One (and only one) of the parameters indel_bin_cutoff and indel_score_cutoff must be supplied."
+            "One (and only one) of the parameters indel_bin_cutoff and"
+            " indel_score_cutoff must be supplied."
         )
 
     if (snp_bin_cutoff is not None or indel_bin_cutoff is not None) and (
         aggregated_bin_ht is None or bin_id is None
     ):
         raise ValueError(
-            "If using snp_bin_cutoff or indel_bin_cutoff, both aggregated_bin_ht and bin_id must be supplied"
+            "If using snp_bin_cutoff or indel_bin_cutoff, both aggregated_bin_ht and"
+            " bin_id must be supplied"
         )
 
     # Determine SNP and indel score cutoffs if given bin instead of score
@@ -133,7 +139,8 @@ def generate_final_filter_ht(
         indel_cutoff_global = hl.struct(min_score=indel_score_cutoff)
 
     logger.info(
-        f"Using a SNP score cutoff of {snp_score_cutoff} and an indel score cutoff of {indel_score_cutoff}."
+        f"Using a SNP score cutoff of {snp_score_cutoff} and an indel score cutoff of"
+        f" {indel_score_cutoff}."
     )
 
     # Add filters to HT
@@ -230,7 +237,7 @@ def generate_final_filter_ht(
     return ht
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/variant_qc_finalize.log")
 
     ht = get_score_bins(
@@ -253,7 +260,10 @@ def main(args):
         freq_ht = release_sites().ht()
         freq_ht = freq_ht.select("freq", InbreedingCoeff=freq_ht.info.InbreedingCoeff)
     else:
-        raise DataException("There is no frequency HT or release sites HT available for the current release!")
+        raise DataException(
+            "There is no frequency HT or release sites HT available for the current"
+            " release!"
+        )
 
     ht = ht.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
     freq_idx = freq_ht[ht.key]
@@ -270,8 +280,11 @@ def main(args):
         )
         # Note: (freq_idx.freq[1].AF == 0) is actually already filtered out, only focus on variants where all samples
         # are homozygous alternate for the variant.
-        # If this is monoallelic in gnomAD and monoallelic in HGDP + 1KG/TGP mark it as monoallelic
-        mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) & (hgdp_tgp_freq_idx.freq[1].AF == 1)
+        # If this is monoallelic in gnomAD and monoallelic in HGDP + 1KG/TGP mark
+        # it as monoallelic
+        mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) & (
+            hgdp_tgp_freq_idx.freq[1].AF == 1
+        )
     else:
         ac0_filter_expr = freq_idx.freq[0].AC == 0
         mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0)
@@ -279,7 +292,9 @@ def main(args):
     aggregated_bin_path = get_score_bins(args.model_id, aggregated=True).path
     if not file_exists(aggregated_bin_path):
         sys.exit(
-            f"Could not find binned HT for model: {args.model_id} ({aggregated_bin_path}). Please run create_ranked_scores.py for that hash."
+            "Could not find binned HT for model:"
+            f" {args.model_id} ({aggregated_bin_path}). Please run"
+            " create_ranked_scores.py for that hash."
         )
     aggregated_bin_ht = get_score_bins(args.model_id, aggregated=True).ht()
 
@@ -351,14 +366,18 @@ if __name__ == "__main__":
     parser.add_argument("--model_id", help="Filtering model ID to use.")
     parser.add_argument(
         "--model_name",
-        help="Filtering model name to use in the filters field ('VQSR', 'AS_VQSR', or 'RF').",
+        help=(
+            "Filtering model name to use in the filters field ('VQSR', 'AS_VQSR', or"
+            " 'RF')."
+        ),
         choices=["AS_VQSR", "VQSR", "RF"],
     )
     parser.add_argument(
         "--score_name",
         help=(
-            "What to rename the filtering score annotation. This will be used in place of 'score' in the "
-            "release HT info struct and the INFO field of the VCF (e.g. 'RF', 'AS_VQSLOD')."
+            "What to rename the filtering score annotation. This will be used in place"
+            " of 'score' in the release HT info struct and the INFO field of the VCF"
+            " (e.g. 'RF', 'AS_VQSLOD')."
         ),
     )
     parser.add_argument(
@@ -370,7 +389,10 @@ if __name__ == "__main__":
     snp_cutoff = parser.add_mutually_exclusive_group(required=True)
     snp_cutoff.add_argument(
         "--snp_bin_cutoff",
-        help="RF or VQSR score bin to use as cutoff for SNPs. Value should be between 1 and 100.",
+        help=(
+            "RF or VQSR score bin to use as cutoff for SNPs. Value should be between 1"
+            " and 100."
+        ),
         type=float,
     )
     snp_cutoff.add_argument(
@@ -381,7 +403,10 @@ if __name__ == "__main__":
     indel_cutoff = parser.add_mutually_exclusive_group(required=True)
     indel_cutoff.add_argument(
         "--indel_bin_cutoff",
-        help="RF or VQSR score bin to use as cutoff for indels. Value should be between 1 and 100.",
+        help=(
+            "RF or VQSR score bin to use as cutoff for indels. Value should be between"
+            " 1 and 100."
+        ),
         type=float,
     )
     indel_cutoff.add_argument(
@@ -397,8 +422,9 @@ if __name__ == "__main__":
     parser.add_argument(  # NOTE: This was required for v3.1 to grab the SOR annotation, we now compute this in `get_site_info_expr`
         "--vqsr_model_id",
         help=(
-            "If a VQSR model ID is provided, a 'vqsr' annotation will be added to the final filter Table containing AS_VQSLOD "
-            ", AS_culprit, NEGATIVE_TRAIN_SITE and POSITIVE_TRAIN_SITE."
+            "If a VQSR model ID is provided, a 'vqsr' annotation will be added to the"
+            " final filter Table containing AS_VQSLOD , AS_culprit, NEGATIVE_TRAIN_SITE"
+            " and POSITIVE_TRAIN_SITE."
         ),
         default="vqsr_alleleSpecificTrans",
         choices=["vqsr_classic", "vqsr_alleleSpecific", "vqsr_alleleSpecificTrans"],
@@ -406,7 +432,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--hgdp_tgp_subset",
-        help="Use HGDP + 1KG/TGP score binned filter Table instead of the full gnomAD Table.",
+        help=(
+            "Use HGDP + 1KG/TGP score binned filter Table instead of the full gnomAD"
+            " Table."
+        ),
         action="store_true",
     )
     args = parser.parse_args()

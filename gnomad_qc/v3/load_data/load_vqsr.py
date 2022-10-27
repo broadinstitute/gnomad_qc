@@ -1,11 +1,13 @@
+# noqa: D100
+
 import argparse
 import logging
 from typing import Optional
 
 import hail as hl
-
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import split_info_annotation
+
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_vqsr_filters
 
@@ -22,7 +24,8 @@ def import_vqsr(
     import_header_path: Optional[str] = None,
 ) -> None:
     """
-    Imports vqsr site vcf into a HT
+    Import VQSR site VCF into a HT.
+
     :param vqsr_path: Path to input vqsr site vcf. This can be specified as Hadoop glob patterns
     :param vqsr_type: One of `classic`, `alleleSpecific` (allele specific) or `alleleSpecificTrans`
         (allele specific with transmitted singletons)
@@ -31,7 +34,6 @@ def import_vqsr(
     :param import_header_path: Optional path to a header file to use for import
     :return: None
     """
-
     logger.info(f"Importing VQSR annotations for {vqsr_type} VQSR...")
     mt = hl.import_vcf(
         vqsr_path,
@@ -73,11 +75,12 @@ def import_vqsr(
     )
     split_count = ht.count()
     logger.info(
-        f"Found {unsplit_count} unsplit and {split_count} split variants with VQSR annotations"
+        f"Found {unsplit_count} unsplit and {split_count} split variants with VQSR"
+        " annotations"
     )
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/load_data.log", default_reference="GRCh38")
 
     import_vqsr(
@@ -91,7 +94,10 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--vqsr_vcf_path", help="Path to VQSR VCF. Can be specified as Hadoop glob patterns")
+    parser.add_argument(
+        "--vqsr_vcf_path",
+        help="Path to VQSR VCF. Can be specified as Hadoop glob patterns",
+    )
     parser.add_argument(
         "--vqsr_type",
         help="Type of VQSR corresponding to the VQSR VCF being loaded",
@@ -115,7 +121,8 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--slack_channel", help="Slack channel to post results and notifications to",
+        "--slack_channel",
+        help="Slack channel to post results and notifications to",
     )
     args = parser.parse_args()
 

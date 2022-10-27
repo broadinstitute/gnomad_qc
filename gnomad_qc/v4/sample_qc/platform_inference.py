@@ -1,20 +1,17 @@
+"""Script to assign platforms based on per interval fraction of bases over DP 0 PCA results using HDBSCAN."""
 import argparse
 import logging
 
 import hail as hl
-
-from gnomad.sample_qc.platform import (
-    assign_platform_from_pcs,
-    run_platform_pca,
-)
+from gnomad.sample_qc.platform import assign_platform_from_pcs, run_platform_pca
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import (
     get_checkpoint_path,
-    gnomad_v4_testset_meta,
     get_logging_path,
+    gnomad_v4_testset_meta,
 )
 from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_samples_no_sex,
@@ -31,12 +28,13 @@ logger.setLevel(logging.INFO)
 
 
 def main(args):
+    """Assign platforms based on PCA of per interval fraction of bases over DP 0."""
     hl.init(
         log="/platform_pca.log",
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    # NOTE: remove this flag when the new shuffle method is the default
+    # NOTE: remove this flag when the new shuffle method is the default.
     hl._set_flags(use_new_shuffle="1")
 
     calling_interval_name = args.calling_interval_name
@@ -57,10 +55,12 @@ def main(args):
                     mt = hl.read_matrix_table(test_coverage_path)
                 else:
                     raise FileNotFoundError(
-                        f"The test interval coverage MatrixTable does not exist for calling interval "
-                        f"{calling_interval_name} and interval padding {calling_interval_padding}. "
-                        f"Please run --compute_coverage with the --test argument and needed "
-                        f"--calling_interval_name/--calling_interval_padding arguments."
+                        "The test interval coverage MatrixTable does not exist for"
+                        f" calling interval {calling_interval_name} and interval"
+                        f" padding {calling_interval_padding}. Please run"
+                        " --compute_coverage with the --test argument and needed"
+                        " --calling_interval_name/--calling_interval_padding"
+                        " arguments."
                     )
             else:
                 mt = interval_coverage.mt()
@@ -80,13 +80,14 @@ def main(args):
             mt = mt.filter_rows(mt.interval.start.in_autosome())
 
             logger.info(
-                "Annotating interval coverage MatrixTable with 'callrate' defined as fraction over dp 0..."
+                "Annotating interval coverage MatrixTable with 'callrate' defined as"
+                " fraction over dp 0..."
             )
-            # Default `hl.vds.interval_coverage` will return a list for `fraction_over_dp_threshold` where the
-            # second element is dp >= 1 (dp > 0)
+            # Default `hl.vds.interval_coverage` will return a list for
+            # `fraction_over_dp_threshold` where the second element is dp >= 1 (dp > 0).
             mt = mt.annotate_entries(callrate=mt.fraction_over_dp_threshold[1])
 
-            # NOTE: added None binarization_threshold parameter to be consistent with runs before this parameter existed
+            # NOTE: added None binarization_threshold parameter to be consistent with runs before this parameter existed. # noqa
             eigenvalues, scores_ht, loadings_ht = run_platform_pca(
                 mt, binarization_threshold=None, n_pcs=args.n_platform_pcs
             )
@@ -134,11 +135,13 @@ def main(args):
                     scores_ht = hl.read_table(test_scores_path)
                 else:
                     raise FileNotFoundError(
-                        f"The test platform PCA Table does not exist for calling interval "
-                        f"{calling_interval_name} and interval padding {calling_interval_padding}. "
-                        f"Please run hard_filters.py --compute-coverage and platform_inference.py --run-platform-pca "
-                        f"with the --test argument and needed --calling-interval-name/--calling-interval-padding "
-                        f"arguments."
+                        "The test platform PCA Table does not exist for calling"
+                        f" interval {calling_interval_name} and interval padding"
+                        f" {calling_interval_padding}. Please run hard_filters.py"
+                        " --compute-coverage and platform_inference.py"
+                        " --run-platform-pca with the --test argument and needed"
+                        " --calling-interval-name/--calling-interval-padding"
+                        " arguments."
                     )
             else:
                 scores_ht = platform_pca_scores.ht()
@@ -149,7 +152,7 @@ def main(args):
                 hdbscan_min_samples=hdbscan_min_samples,
             )
 
-            # Make sure hdbscan_min_samples is not None before annotating globals
+            # Make sure hdbscan_min_samples is not None before annotating globals.
             if not hdbscan_min_samples:
                 hdbscan_min_samples = hdbscan_min_cluster_size
             else:
@@ -190,21 +193,30 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--calling-interval-name",
-        help="Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'.",
+        help=(
+            "Name of calling intervals to use for interval coverage. One of: 'ukb',"
+            " 'broad', or 'intersection'."
+        ),
         type=str,
         choices=["ukb", "broad", "intersection"],
         default="intersection",
     )
     parser.add_argument(
         "--calling-interval-padding",
-        help="Number of base pair padding to use on the calling intervals. One of 0 or 50 bp.",
+        help=(
+            "Number of base pair padding to use on the calling intervals. One of 0 or"
+            " 50 bp."
+        ),
         type=int,
         choices=[0, 50],
         default=50,
     )
     parser.add_argument(
         "--run-platform-pca",
-        help="Runs platform PCA (assumes coverage MatrixTable was computed, --compute-coverage).",
+        help=(
+            "Runs platform PCA (assumes coverage MatrixTable was computed,"
+            " --compute-coverage)."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -215,7 +227,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--assign-platforms",
-        help="Assigns platforms based on per interval fraction of bases over DP 0 PCA results using HDBSCAN.",
+        help=(
+            "Assigns platforms based on per interval fraction of bases over DP 0 PCA"
+            " results using HDBSCAN."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -226,7 +241,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--hdbscan-min-samples",
-        help="Minimum samples parameter for HDBSCAN. If not specified, --hdbscan-min-cluster-size is used.",
+        help=(
+            "Minimum samples parameter for HDBSCAN. If not specified,"
+            " --hdbscan-min-cluster-size is used."
+        ),
         type=int,
         required=False,
     )

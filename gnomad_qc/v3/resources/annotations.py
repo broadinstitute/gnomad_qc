@@ -1,3 +1,5 @@
+# noqa: D100
+
 from typing import Optional
 
 from gnomad.resources.grch37.gnomad import EXOME_RELEASES, GENOME_RELEASES
@@ -21,7 +23,7 @@ from gnomad_qc.v3.resources.constants import (
 
 def _annotations_root(version: str = CURRENT_VERSION) -> str:
     """
-    Get root path to the variant annotation files
+    Get root path to the variant annotation files.
 
     :param version: Version of annotation path to return
     :return: root path of the variant annotation files
@@ -31,12 +33,11 @@ def _annotations_root(version: str = CURRENT_VERSION) -> str:
 
 def get_info(split: bool = True) -> VersionedTableResource:
     """
-    Gets the gnomAD v3 info TableResource
+    Get the gnomAD v3 info TableResource.
 
     :param split: Whether to return the split or multi-allelic version of the resource
     :return: gnomAD v3 info VersionedTableResource
     """
-
     return VersionedTableResource(
         CURRENT_VERSION,
         {
@@ -51,10 +52,12 @@ def get_info(split: bool = True) -> VersionedTableResource:
 
 
 def get_vqsr_filters(
-    model_id: str, split: bool = True, finalized: bool = False,
+    model_id: str,
+    split: bool = True,
+    finalized: bool = False,
 ) -> VersionedTableResource:
     """
-    Gets the specified VQSR filtering annotation resource.
+    Get the specified VQSR filtering annotation resource.
 
     :param model_id: VQSR filtering model id
     :param split: Split or multi-allelic version of the filtering file
@@ -79,7 +82,7 @@ def get_vqsr_filters(
 
 def info_vcf_path(version: str = CURRENT_VERSION) -> str:
     """
-    Path to sites VCF (input information for running VQSR)
+    Path to sites VCF (input information for running VQSR).
 
     :param version: Version of annotation path to return
     :return: String for the path to the info VCF
@@ -91,13 +94,15 @@ def get_transmitted_singleton_vcf_path(
     adj: bool = False, version: str = CURRENT_VERSION
 ) -> str:
     """
-    Provides the path to the transmitted singleton VCF used as input to VQSR
+    Provide the path to the transmitted singleton VCF used as input to VQSR.
 
     :param bool adj: Whether to use adj genotypes
     :param version: Version of transmitted singleton VCF path to return
     :return:
     """
-    return f'{_annotations_root(version)}/transmitted_singletons_{"adj" if adj else "raw"}.vcf.bgz'
+    return (
+        f'{_annotations_root(version)}/transmitted_singletons_{"adj" if adj else "raw"}.vcf.bgz'
+    )
 
 
 last_END_position = VersionedTableResource(
@@ -170,7 +175,9 @@ allele_data = VersionedTableResource(
 
 
 def get_freq(
-    version: str = None, subset: Optional[str] = None, het_nonref_patch: bool = False,
+    version: str = None,
+    subset: Optional[str] = None,
+    het_nonref_patch: bool = False,
 ) -> VersionedTableResource:
     """
     Get the frequency annotation table for a specified release.
@@ -199,7 +206,8 @@ def get_freq(
         for s in subset.split("-"):
             if s not in SUBSETS:
                 raise DataException(
-                    f"{subset} subset is not one of the following official subsets: {SUBSETS}"
+                    f"{subset} subset is not one of the following official subsets:"
+                    f" {SUBSETS}"
                 )
 
     return VersionedTableResource(
@@ -252,10 +260,13 @@ def get_freq_comparison(
         or f"{version2}_{data_type2}" not in versions
     ):
         raise DataException(
-            f"One of the versions/datatypes supplied doesn't exist. Possible options are: {versions}"
+            "One of the versions/datatypes supplied doesn't exist. Possible options"
+            f" are: {versions}"
         )
 
-    ht_path = f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq{'.logistic_regression' if logistic_regression else ''}.ht"
+    ht_path = (
+        f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq{'.logistic_regression' if logistic_regression else ''}.ht"
+    )
     if version1 in RELEASES:
         ht_path = f"{_annotations_root(version1)}/{ht_path}"
     else:

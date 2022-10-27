@@ -1,9 +1,10 @@
+# noqa: D100
+
 import argparse
 import logging
 from pprint import pformat
 
 import hail as hl
-
 from gnomad.resources.grch38.reference_data import clinvar, telomeres_and_centromeres
 from gnomad.utils.filtering import filter_low_conf_regions, filter_to_clinvar_pathogenic
 from gnomad.utils.slack import slack_notifications
@@ -16,6 +17,7 @@ from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources import (
+    TRUTH_SAMPLES,
     allele_data,
     fam_stats,
     get_binned_concordance,
@@ -27,7 +29,6 @@ from gnomad_qc.v3.resources import (
     get_rf_result,
     get_score_bins,
     get_vqsr_filters,
-    TRUTH_SAMPLES,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -37,7 +38,7 @@ logger.setLevel(logging.INFO)
 
 def create_bin_ht(model_id: str, n_bins: int, hgdp_tgp_subset: bool) -> hl.Table:
     """
-    Creates a table with bin annotations added for a RF or VQSR run and writes it to its correct location in annotations.
+    Create a table with bin annotations added for a RF or VQSR run and writes it to its correct location in annotations.
 
     :param model_id: Which variant QC model (RF or VQSR model ID) to annotate with bin
     :param n_bins: Number of bins to bin the data into
@@ -70,7 +71,8 @@ def create_bin_ht(model_id: str, n_bins: int, hgdp_tgp_subset: bool) -> hl.Table
     else:
         if hgdp_tgp_subset:
             raise ValueError(
-                "The hgdp_tgp_subset option is only relevant for VQSR models in all v3 releases."
+                "The hgdp_tgp_subset option is only relevant for VQSR models in all v3"
+                " releases."
             )
 
         ht = get_rf_result(model_id=model_id).ht()
@@ -100,15 +102,20 @@ def create_bin_ht(model_id: str, n_bins: int, hgdp_tgp_subset: bool) -> hl.Table
 
 def create_aggregated_bin_ht(model_id: str) -> hl.Table:
     """
-    Aggregates variants into bins, grouped by `bin_id` (rank, bi-allelic, etc.), contig, and `snv`, `bi_allelic`,
-    and `singleton` status, using previously annotated bin information.
+    Aggregate variants into bins using previously annotated bin information.
+
+    Variants are grouped by:
+        -'bin_id' (rank, bi-allelic, etc.)
+        -'contig'
+        -'snv'
+        -'bi_allelic'
+        -'singleton'
 
     For each bin, aggregates statistics needed for evaluation plots.
 
     :param str model_id: Which variant QC model (RF or VQSR model ID) to group
     :return: Table of aggregate statistics by bin
     """
-
     ht = get_score_bins(model_id, aggregated=False).ht()
 
     # Count variants for ranking
@@ -133,7 +140,8 @@ def create_aggregated_bin_ht(model_id: str) -> hl.Table:
 
     logger.info(f"Creating grouped bin table...")
     grouped_binned_ht = compute_grouped_binned_ht(
-        ht, checkpoint_path=get_checkpoint_path(f"grouped_bin_{model_id}"),
+        ht,
+        checkpoint_path=get_checkpoint_path(f"grouped_bin_{model_id}"),
     )
 
     logger.info(f"Aggregating grouped bin table...")
@@ -146,7 +154,7 @@ def create_aggregated_bin_ht(model_id: str) -> hl.Table:
     return agg_ht
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/variant_qc_evaluation.log")
 
     if args.create_bin_ht:
@@ -197,7 +205,8 @@ def main(args):
 
         # Checkpoint to prevent needing to go through the large table a second time
         mt = mt.checkpoint(
-            get_checkpoint_path("truth_samples", mt=True), overwrite=args.overwrite,
+            get_checkpoint_path("truth_samples", mt=True),
+            overwrite=args.overwrite,
         )
 
         for truth_sample in TRUTH_SAMPLES:
@@ -207,13 +216,15 @@ def main(args):
                 hl.agg.any(truth_sample_mt.GT.is_non_ref())
             )
             truth_sample_mt.naive_coalesce(args.n_partitions).write(
-                get_callset_truth_data(truth_sample).path, overwrite=args.overwrite,
+                get_callset_truth_data(truth_sample).path,
+                overwrite=args.overwrite,
             )
 
     if args.merge_with_truth_data:
         for truth_sample in TRUTH_SAMPLES:
             logger.info(
-                f"Creating a merged table with callset truth sample and truth data for {truth_sample}..."
+                "Creating a merged table with callset truth sample and truth data for"
+                f" {truth_sample}..."
             )
 
             # Load truth data
@@ -235,7 +246,8 @@ def main(args):
     if args.bin_truth_sample_concordance:
         for truth_sample in TRUTH_SAMPLES:
             logger.info(
-                f"Creating binned concordance table for {truth_sample} for model {args.model_id}"
+                f"Creating binned concordance table for {truth_sample} for model"
+                f" {args.model_id}"
             )
             ht = get_callset_truth_data(truth_sample, mt=False).ht()
 
@@ -255,7 +267,8 @@ def main(args):
             )
 
             logger.info(
-                "Loading HT containing RF or VQSR scores annotated with a bin based on the rank of score..."
+                "Loading HT containing RF or VQSR scores annotated with a bin based on"
+                " the rank of score..."
             )
             metric_ht = get_score_bins(args.model_id, aggregated=False).ht()
             ht = ht.filter(hl.is_defined(metric_ht[ht.key]))
@@ -280,20 +293,26 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--model_id", help="Model ID.", required=False,
+        "--model_id",
+        help="Model ID.",
+        required=False,
     )
     parser.add_argument(
         "--hgdp_tgp_subset",
         help=(
-            "Use HGDP + 1KG/TGP subset raw allele count as a filter in `create_bin_ht` instead of the full gnomAD raw "
-            "allele count. Only relevant to VQSR because VQSR was used for filtering in all v3 releases. This is needed"
-            "only for the HGDP + 1KG/TGP subset release and is not used in evaluation."
+            "Use HGDP + 1KG/TGP subset raw allele count as a filter in `create_bin_ht`"
+            " instead of the full gnomAD raw allele count. Only relevant to VQSR"
+            " because VQSR was used for filtering in all v3 releases. This is"
+            " neededonly for the HGDP + 1KG/TGP subset release and is not used in"
+            " evaluation."
         ),
         action="store_true",
     )
     parser.add_argument(
         "--create_bin_ht",
-        help="When set, creates file annotated with bin based on rank of VQSR/RF score.",
+        help=(
+            "When set, creates file annotated with bin based on rank of VQSR/RF score."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -303,7 +322,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--create_aggregated_bin_ht",
-        help="When set, creates a file with aggregate counts of variants based on bins.",
+        help=(
+            "When set, creates a file with aggregate counts of variants based on bins."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -325,12 +346,18 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--merge_with_truth_data",
-        help="Computes a table for each truth sample comparing the truth sample in the callset vs the truth.",
+        help=(
+            "Computes a table for each truth sample comparing the truth sample in the"
+            " callset vs the truth."
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--bin_truth_sample_concordance",
-        help="Merges concordance results (callset vs. truth) for a given truth sample with bins from specified model",
+        help=(
+            "Merges concordance results (callset vs. truth) for a given truth sample"
+            " with bins from specified model"
+        ),
         action="store_true",
     )
 

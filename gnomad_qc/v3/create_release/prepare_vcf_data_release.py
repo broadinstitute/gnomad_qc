@@ -1,54 +1,51 @@
+# noqa: D100
+
 import argparse
 import logging
 import pickle
 from typing import Dict, List, Optional, Set, Union
 
 import hail as hl
-
-from gnomad.sample_qc.ancestry import POP_NAMES
+from gnomad.assessment.validity_checks import validate_release_t, vcf_field_check
 from gnomad.resources.grch38.gnomad import (
     COHORTS_WITH_POP_STORED_AS_SUBPOP,
     HGDP_POPS,
-    TGP_POPS,
-    TGP_POP_NAMES,
     POPS,
     SEXES,
     SUBSETS,
+    TGP_POP_NAMES,
+    TGP_POPS,
 )
 from gnomad.resources.resource_utils import DataException
+from gnomad.sample_qc.ancestry import POP_NAMES
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import remove_fields_from_constant
-from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
 from gnomad.utils.vcf import (
-    add_as_info_dict,
-    adjust_vcf_incompatible_types,
     ALLELE_TYPE_FIELDS,
     AS_FIELDS,
     AS_VQSR_FIELDS,
-    build_vcf_export_reference,
-    create_label_groups,
     ENTRIES,
     FAF_POPS,
     FORMAT_DICT,
     HISTS,
-    INFO_DICT,
     IN_SILICO_ANNOTATIONS_INFO_DICT,
-    rekey_new_reference,
-    make_hist_bin_edges_expr,
-    make_hist_dict,
-    make_info_dict,
-    make_vcf_filter_dict,
+    INFO_DICT,
     REGION_FLAG_FIELDS,
     RF_FIELDS,
     SITE_FIELDS,
     VQSR_FIELDS,
+    add_as_info_dict,
+    adjust_vcf_incompatible_types,
+    build_vcf_export_reference,
+    create_label_groups,
+    make_hist_bin_edges_expr,
+    make_hist_dict,
+    make_info_dict,
+    make_vcf_filter_dict,
+    rekey_new_reference,
 )
+from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
 from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
-
-from gnomad.assessment.validity_checks import (
-    validate_release_t,
-    vcf_field_check,
-)
 
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v3.resources.release import (
@@ -87,12 +84,14 @@ SITE_FIELDS = remove_fields_from_constant(SITE_FIELDS, MISSING_SITES_FIELDS)
 MISSING_AS_FIELDS = ["AS_VarDP"]
 AS_FIELDS = remove_fields_from_constant(AS_FIELDS, MISSING_AS_FIELDS)
 
-# Make subset list (used in properly filling out VCF header descriptions and naming VCF info fields)
+# Make subset list (used in properly filling out VCF header descriptions
+# and naming VCF info fields)
 SUBSET_LIST_FOR_VCF = SUBSETS.copy()
 SUBSET_LIST_FOR_VCF.append("")
 
 # Remove cohorts that have subpop frequencies stored as pop frequencies
-# Inclusion of these subsets significantly increases the size of storage in the VCFs because of the many subpops
+# Inclusion of these subsets significantly increases the size of storage
+# in the VCFs because of the many subpops
 SUBSET_LIST_FOR_VCF = remove_fields_from_constant(
     SUBSET_LIST_FOR_VCF, COHORTS_WITH_POP_STORED_AS_SUBPOP
 )
@@ -133,7 +132,10 @@ FORMAT_DICT.update(
         "RGQ": {
             "Number": "1",
             "Type": "Integer",
-            "Description": "Unconditional reference genotype confidence, encoded as a phred quality -10*log10 p(genotype call is wrong)",
+            "Description": (
+                "Unconditional reference genotype confidence, encoded as a phred"
+                " quality -10*log10 p(genotype call is wrong)"
+            ),
         }
     }
 )
@@ -167,8 +169,11 @@ def populate_subset_info_dict(
     label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
     """
-    Call `make_info_dict` to populate INFO dictionary with specific sexes, population names, and filtering allele
-    frequency (faf) pops for the requested subset.
+    Call `make_info_dict` to populate INFO dictionary for the requested `subset`.
+
+    Creates:
+        - INFO fields for AC, AN, AF, nhomalt for each combination of sample population, sex both for adj and raw data
+        - INFO fields for filtering allele frequency (faf) annotations
 
     :param subset: Sample subset in dataset.
     :param description_text: Text describing the sample subset that should be added to the INFO description.
@@ -178,7 +183,6 @@ def populate_subset_info_dict(
     :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
     :return: Dictionary containing Subset specific INFO header fields.
     """
-
     vcf_info_dict = {}
     faf_label_groups = create_label_groups(pops=faf_pops, sexes=sexes)
     for label_group in faf_label_groups:
@@ -234,8 +238,7 @@ def populate_info_dict(
     label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
     """
-    Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary with specific sexes, population names,
-    and filtering allele frequency (faf) pops.
+    Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary.
 
     Used during VCF export.
 
@@ -312,7 +315,8 @@ def populate_info_dict(
 
 
 def make_info_expr(
-    t: Union[hl.MatrixTable, hl.Table], hist_prefix: str = "",
+    t: Union[hl.MatrixTable, hl.Table],
+    hist_prefix: str = "",
 ) -> Dict[str, hl.expr.Expression]:
     """
     Make Hail expression for variant annotations to be included in VCF INFO field.
@@ -357,7 +361,9 @@ def make_info_expr(
         vcf_info_dict.update(hist_dict)
 
         if "dp" in hist:
-            vcf_info_dict.update({f"{hist}_n_larger": t[hist_type][hist].n_larger},)
+            vcf_info_dict.update(
+                {f"{hist}_n_larger": t[hist_type][hist].n_larger},
+            )
 
     # Add in silico annotations to info dict
     vcf_info_dict["cadd_raw_score"] = t["cadd"]["raw_score"]
@@ -365,7 +371,8 @@ def make_info_expr(
 
     vcf_info_dict["revel_score"] = t["revel"]["revel_score"]
 
-    # In the v3.1 release in silico files this was max_ds, but changed to splice_ai_score in releases after v3.1
+    # In the v3.1 release in silico files this was max_ds, but changed to
+    # splice_ai_score in releases after v3.1
     vcf_info_dict["splice_ai_max_ds"] = t["splice_ai"]["splice_ai_score"]
     vcf_info_dict["splice_ai_consequence"] = t["splice_ai"]["splice_consequence"]
 
@@ -382,8 +389,9 @@ def unfurl_nested_annotations(
     entries_to_remove: Set[str] = None,
 ) -> [hl.expr.StructExpression, Set[str]]:
     """
-    Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays, where the
-    values of the dictionary are Hail Expressions describing how to access the corresponding values.
+    Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays.
+
+    The values of the returned dictionary are Hail Expressions describing how to access the corresponding values.
 
     .. note::
 
@@ -418,7 +426,8 @@ def unfurl_nested_annotations(
 
     if (gnomad_full_release + subset_release + gnomad_full_for_subset) != 1:
         raise ValueError(
-            "One and only one of gnomad_full_release, subset_release, or gnomad_full_for_subset must be set to True"
+            "One and only one of gnomad_full_release, subset_release, or"
+            " gnomad_full_for_subset must be set to True"
         )
 
     prefix = ""
@@ -427,7 +436,8 @@ def unfurl_nested_annotations(
     if gnomad_full_for_subset:
         prefix = "gnomad_"
 
-    # Set variables to locate necessary fields, compute freq index dicts, and compute faf index dict
+    # Set variables to locate necessary fields, compute freq index dicts, and
+    # compute faf index dict
     if subset_release:
         freq = "hgdp_tgp_freq"
         freq_idx = hl.eval(t.globals["hgdp_tgp_freq_index_dict"])
@@ -570,11 +580,13 @@ def prepare_vcf_ht(
             "Unfurling nested gnomAD frequency annotations and add to INFO field..."
         )
         info_struct, freq_entries_to_remove = unfurl_nested_annotations(
-            ht, entries_to_remove=freq_entries_to_remove,
+            ht,
+            entries_to_remove=freq_entries_to_remove,
         )
     else:
         logger.info(
-            "Unfurling nested gnomAD subset frequency annotations and add to INFO field..."
+            "Unfurling nested gnomAD subset frequency annotations and add to INFO"
+            " field..."
         )
         info_struct, freq_entries_to_remove = unfurl_nested_annotations(
             ht,
@@ -639,7 +651,8 @@ def prepare_vcf_ht(
         )
     else:
         ht = ht.annotate_globals(
-            vep_csq_header=vep_csq_header, freq_entries_to_remove=hl.empty_set(hl.tstr),
+            vep_csq_header=vep_csq_header,
+            freq_entries_to_remove=hl.empty_set(hl.tstr),
         )
 
     # Select relevant fields for VCF export
@@ -725,7 +738,8 @@ def cleanup_ht_for_vcf_export(
     :param drop_hists: Optional list of histograms to drop from the VCF export.
     :return: Table ready for export to VCF and a list of fixed row annotations needed for the VCF header check.
     """
-    # NOTE: For v4 we should just avoid generating any histograms that we will not need rather than dropping them
+    # NOTE: For v4 we should just avoid generating any histograms that we will
+    # not need rather than dropping them
     logger.info(
         "Dropping histograms and frequency entries that are not needed in VCF..."
     )
@@ -749,14 +763,15 @@ def cleanup_ht_for_vcf_export(
 
     logger.info("Adjusting VCF incompatible types...")
     # Reformat AS_SB_TABLE for use in adjust_vcf_incompatible_types
-    # TODO: Leaving for v3, but should reformat the original AS_SB_TABLE annotation when it's written for v4
+    # TODO: Leaving for v3, but should reformat the original AS_SB_TABLE annotation when it's written for v4 # noqa
     ht = ht.annotate(
         info=ht.info.annotate(
             AS_SB_TABLE=hl.array([ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]])
         )
     )
 
-    # The Table is already split so there are no annotations that need to be pipe delimited
+    # The Table is already split so there are no annotations that need to be
+    # pipe delimited
     ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
 
     return ht, new_row_annots
@@ -807,7 +822,7 @@ def build_parameter_dict(
             "ht": release_sites().ht(),
         }
         # Downsampling and subset entries to remove from VCF's freq export
-        # Note: Need to extract the non-standard downsamplings from the freq_meta struct to the FREQ_ENTRIES_TO_REMOVE
+        # Note: Need to extract the non-standard downsamplings from the freq_meta struct to the FREQ_ENTRIES_TO_REMOVE # noqa
         freq_entries_to_remove = {
             str(x["downsampling"])
             for x in hl.eval(parameter_dict["ht"].freq_meta)
@@ -821,9 +836,10 @@ def build_parameter_dict(
     return parameter_dict
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(
-        log="/vcf_release.log", default_reference="GRCh38",
+        log="/vcf_release.log",
+        default_reference="GRCh38",
     )
     hgdp_tgp = args.hgdp_tgp_subset
     chromosome = args.export_chromosome
@@ -846,7 +862,7 @@ def main(args):
                 vcf_info_reorder=parameter_dict["vcf_info_reorder"],
             )
 
-            # Note: Checkpoint saves time for the final export by not needing to run the VCF HT prep on each chromosome
+            # Note: Checkpoint saves time for the final export by not needing to run the VCF HT prep on each chromosome # noqa
             logger.info(
                 "Checkpointing prepared VCF HT for validity checks and export..."
             )
@@ -858,7 +874,8 @@ def main(args):
         if args.prepare_vcf_header_dict or args.validity_check or args.export_vcf:
             if not file_exists(parameter_dict["temp_ht_path"]):
                 raise DataException(
-                    "The intermediate HT output doesn't exist, 'prepare_vcf_ht' needs to be run to create this file"
+                    "The intermediate HT output doesn't exist, 'prepare_vcf_ht' needs"
+                    " to be run to create this file"
                 )
             prepared_vcf_ht = hl.read_table(parameter_dict["temp_ht_path"])
 
@@ -877,15 +894,17 @@ def main(args):
                 subset_list=parameter_dict["subsets"],
                 pops=parameter_dict["pops"],
                 filtering_model_field=parameter_dict["filtering_model_field"],
-                # NOTE: This is not currently on the 3.1.1 (or earlier) Table, but will be on the 3.1.2 Table
-                inbreeding_coeff_cutoff=INBREEDING_COEFF_HARD_CUTOFF,  # parameter_dict["ht"].inbreeding_coeff_cutoff,
+                # NOTE: This is not currently on the 3.1.1 (or earlier) Table, but will be on the 3.1.2 Table # noqa
+                # parameter_dict["ht"].inbreeding_coeff_cutoff,
+                inbreeding_coeff_cutoff=INBREEDING_COEFF_HARD_CUTOFF,
             )
             if not hgdp_tgp:
                 header_dict.pop("format")
 
             logger.info("Saving header dict to pickle...")
             with hl.hadoop_open(
-                release_header_path(hgdp_tgp_subset=hgdp_tgp), "wb",
+                release_header_path(hgdp_tgp_subset=hgdp_tgp),
+                "wb",
             ) as p:
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -906,7 +925,8 @@ def main(args):
         if args.export_vcf:
             logger.info("Loading VCF header dict...")
             with hl.hadoop_open(
-                release_header_path(hgdp_tgp_subset=hgdp_tgp), "rb",
+                release_header_path(hgdp_tgp_subset=hgdp_tgp),
+                "rb",
             ) as f:
                 header_dict = pickle.load(f)
 
@@ -924,9 +944,15 @@ def main(args):
 
             if hgdp_tgp:
                 logger.info(
-                    "Loading the HGDP + TGP subset MT and annotating with the prepared VCF HT for VCF export..."
+                    "Loading the HGDP + TGP subset MT and annotating with the prepared"
+                    " VCF HT for VCF export..."
                 )
-                t = hgdp_tgp_subset(dense=True).mt().select_rows().select_entries(*ENTRIES)
+                t = (
+                    hgdp_tgp_subset(dense=True)
+                    .mt()
+                    .select_rows()
+                    .select_entries(*ENTRIES)
+                )
                 t = t.annotate_rows(**prepared_vcf_ht[t.row_key])
             else:
                 t = prepared_vcf_ht
@@ -939,10 +965,13 @@ def main(args):
 
             logger.info(f"Exporting chromosome {chromosome}....")
             if args.test:
-                output_path = f"{qc_temp_prefix()}gnomad.genomes_vcf_test{'hgdp_tgp_subset' if hgdp_tgp else ''}.vcf.bgz"
+                output_path = (
+                    f"{qc_temp_prefix()}gnomad.genomes_vcf_test{'hgdp_tgp_subset' if hgdp_tgp else ''}.vcf.bgz"
+                )
             else:
                 output_path = release_vcf_path(
-                    contig=chromosome, hgdp_tgp_subset=hgdp_tgp,
+                    contig=chromosome,
+                    hgdp_tgp_subset=hgdp_tgp,
                 )
 
             hl.export_vcf(
@@ -961,17 +990,21 @@ def main(args):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "--hgdp_tgp_subset",
-        help="Use HGDP + 1KG/TGP subset Matrix table instead of the gnomAD release Table",
+        help=(
+            "Use HGDP + 1KG/TGP subset Matrix table instead of the gnomAD release Table"
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--test",
-        help="Create release files using only 2 partitions on chr20, chrX, and chrY for testing purposes",
+        help=(
+            "Create release files using only 2 partitions on chr20, chrX, and chrY for"
+            " testing purposes"
+        ),
         action="store_true",
     )
     parser.add_argument(

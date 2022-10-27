@@ -1,3 +1,5 @@
+# noqa: D100
+
 VERSIONS = ["3", "3.1"]
 CURRENT_VERSION = "3.1"
 

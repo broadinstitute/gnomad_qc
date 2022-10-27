@@ -2,5 +2,9 @@
 
 disable=
   unused-wildcard-import,
+  invalid-unary-operand-type,
+  # Ignore refactor and convention categories
   R,
   C
+
+ignore-paths=^gnomad_qc/v2/.*$

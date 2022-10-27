@@ -1,19 +1,21 @@
-from gnomad.sample_qc.relatedness import get_duplicated_samples, infer_families
-from gnomad.utils.slack import slack_notifications
-from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v2.resources.sample_qc import *
-from gnomad_qc.v2.resources import CURRENT_FAM, fam_path, get_gnomad_data
+import argparse
+import logging
+import random
+import sys
+from collections import Counter
+from datetime import datetime
+from typing import Dict, List, Set, Tuple
+
+import hail as hl
 import numpy as np
 import pandas as pd
-import random
-from datetime import datetime
+from gnomad.sample_qc.relatedness import get_duplicated_samples, infer_families
+from gnomad.utils.slack import slack_notifications
 from pyspark.sql import SQLContext
-import argparse
-import sys
-import hail as hl
-from typing import Dict, List, Set, Tuple
-from collections import Counter
-import logging
+
+from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v2.resources import CURRENT_FAM, fam_path, get_gnomad_data
+from gnomad_qc.v2.resources.sample_qc import *
 
 logger = logging.getLogger("create_fam")
 
@@ -33,7 +35,6 @@ class GnomADRelatedData:
         self._dups = None
         self._sample_to_dups = None
 
-
     @property
     def kin_ht(self) -> hl.Table:
         """
@@ -44,8 +45,11 @@ class GnomADRelatedData:
         """
         if self._kin_ht is None:
             kin_ht = hl.read_table(relatedness_ht_path)
-            kin_ht = kin_ht.filter((kin_ht.i.data_type == self.data_type) & (kin_ht.j.data_type == self.data_type))
-            kin_ht = kin_ht.annotate(i=kin_ht.i.s, j=kin_ht.j.s).key_by('i', 'j')
+            kin_ht = kin_ht.filter(
+                (kin_ht.i.data_type == self.data_type)
+                & (kin_ht.j.data_type == self.data_type)
+            )
+            kin_ht = kin_ht.annotate(i=kin_ht.i.s, j=kin_ht.j.s).key_by("i", "j")
             self._kin_ht = kin_ht
         return self._kin_ht
 
@@ -58,11 +62,10 @@ class GnomADRelatedData:
         :rtype: DataFrame
         """
         if self._meta_pd is None:
-            qc_ht = hl.read_table(qc_ht_path(self.data_type, part='hard_filters'))
-            self._meta_pd = qc_ht.select(qc_ht.s,
-                                   qc_ht.project_id,
-                                   qc_ht.is_female
-                                   ).to_pandas()
+            qc_ht = hl.read_table(qc_ht_path(self.data_type, part="hard_filters"))
+            self._meta_pd = qc_ht.select(
+                qc_ht.s, qc_ht.project_id, qc_ht.is_female
+            ).to_pandas()
         return self._meta_pd
 
     @property
@@ -74,7 +77,9 @@ class GnomADRelatedData:
         :rtype: dict of str -> str
         """
         if self._sample_project is None:
-            self._sample_project = {row.s: row.project_id for row in self.meta_pd.itertuples()}
+            self._sample_project = {
+                row.s: row.project_id for row in self.meta_pd.itertuples()
+            }
         return self._sample_project
 
     @property
@@ -88,7 +93,6 @@ class GnomADRelatedData:
         if self._dups is None:
             self._dups = get_duplicated_samples(self.kin_ht)
         return self._dups
-
 
     @property
     def sample_to_dups(self) -> Dict[str, Set[str]]:
@@ -107,8 +111,7 @@ class GnomADRelatedData:
 
 
 def get_dup_trios(
-        pedigree: hl.Pedigree,
-        sample_to_dups: Dict[str, Set[str]]
+    pedigree: hl.Pedigree, sample_to_dups: Dict[str, Set[str]]
 ) -> pd.DataFrame:
     """
     Given a pedigree and a set of duplicate samples for each sample, creates a dataframe with one row per combination of duplicate samples.
@@ -136,20 +139,17 @@ def get_dup_trios(
                 if trio.mat_id in sample_to_dups:
                     mat_dup.extend(sample_to_dups[trio.mat_id])
                 for mat_id in mat_dup:
-                    dup_trios.append((trio_id,
-                                      s,
-                                      trio.fam_id,
-                                      pat_id,
-                                      mat_id,
-                                      trio.is_female))
+                    dup_trios.append(
+                        (trio_id, s, trio.fam_id, pat_id, mat_id, trio.is_female)
+                    )
 
-    return pd.DataFrame(dup_trios, columns=['trio_id','s','fam_id','pat_id','mat_id','is_female'])
+    return pd.DataFrame(
+        dup_trios, columns=["trio_id", "s", "fam_id", "pat_id", "mat_id", "is_female"]
+    )
 
 
 def pick_duplicates(
-        dup_trios: pd.DataFrame,
-        rank_pd: pd.DataFrame,
-        sample_project: Dict[str, str]
+    dup_trios: pd.DataFrame, rank_pd: pd.DataFrame, sample_project: Dict[str, str]
 ) -> pd.DataFrame:
     """
 
@@ -166,57 +166,90 @@ def pick_duplicates(
     """
 
     # Add rank for each sample
-    rank = rank_pd.set_index('s')
-    dup_trios = dup_trios.set_index('s', drop=False).join(rank).rename(columns={'rank': 'rank_s'})
-    dup_trios = dup_trios.set_index('pat_id', drop=False).join(rank).rename(columns={'rank': 'rank_pat'})
-    dup_trios = dup_trios.set_index('mat_id', drop=False).join(rank).rename(columns={'rank': 'rank_mat'})
+    rank = rank_pd.set_index("s")
+    dup_trios = (
+        dup_trios.set_index("s", drop=False)
+        .join(rank)
+        .rename(columns={"rank": "rank_s"})
+    )
+    dup_trios = (
+        dup_trios.set_index("pat_id", drop=False)
+        .join(rank)
+        .rename(columns={"rank": "rank_pat"})
+    )
+    dup_trios = (
+        dup_trios.set_index("mat_id", drop=False)
+        .join(rank)
+        .rename(columns={"rank": "rank_mat"})
+    )
     dup_trios.reset_index()
 
-    #Add trio-rank
-    dup_trios['rank_trio'] = dup_trios.rank_s + dup_trios.rank_pat + dup_trios.rank_mat
+    # Add trio-rank
+    dup_trios["rank_trio"] = dup_trios.rank_s + dup_trios.rank_pat + dup_trios.rank_mat
 
     # Add project for each sample
     dup_trios = dup_trios.merge(
-            dup_trios.apply(lambda row: pd.Series({
-                'proj_s': sample_project[row.s],
-                'proj_pat': sample_project[row.pat_id],
-                'proj_mat': sample_project[row.mat_id]
-            }), axis=1),
-            left_index=True, right_index=True
-        )
+        dup_trios.apply(
+            lambda row: pd.Series(
+                {
+                    "proj_s": sample_project[row.s],
+                    "proj_pat": sample_project[row.pat_id],
+                    "proj_mat": sample_project[row.mat_id],
+                }
+            ),
+            axis=1,
+        ),
+        left_index=True,
+        right_index=True,
+    )
 
     # Annotate project with max number of samples in the trio
     def annotate_trio_project_stats(row):
-        max_project = Counter([row.proj_s, row.proj_pat, row.proj_mat]).most_common(1)[0]
-        return pd.Series({
-            'max_project': max_project[0],
-            'n_samples_project': max_project[1]
-        })
+        max_project = Counter([row.proj_s, row.proj_pat, row.proj_mat]).most_common(1)[
+            0
+        ]
+        return pd.Series(
+            {"max_project": max_project[0], "n_samples_project": max_project[1]}
+        )
 
     dup_trios = dup_trios.merge(
-            dup_trios.apply(annotate_trio_project_stats, axis=1),
-            left_index=True, right_index=True
-        )
+        dup_trios.apply(annotate_trio_project_stats, axis=1),
+        left_index=True,
+        right_index=True,
+    )
 
     # Annotate the family-level count of complete trios for each trio
     def annotate_proj_per_fam(df):
         df = df[df.n_samples_project == 3]
-        return pd.DataFrame(list(Counter(df.max_project).items()), columns=['fam_project', 'n_fam_project'])
+        return pd.DataFrame(
+            list(Counter(df.max_project).items()),
+            columns=["fam_project", "n_fam_project"],
+        )
 
-    proj_fam = dup_trios.groupby(dup_trios.fam_id).apply(annotate_proj_per_fam).reset_index()
-    dup_trios = pd.merge(dup_trios, proj_fam, how='left', left_on=['fam_id','max_project'], right_on=['fam_id','fam_project'])
+    proj_fam = (
+        dup_trios.groupby(dup_trios.fam_id).apply(annotate_proj_per_fam).reset_index()
+    )
+    dup_trios = pd.merge(
+        dup_trios,
+        proj_fam,
+        how="left",
+        left_on=["fam_id", "max_project"],
+        right_on=["fam_id", "fam_project"],
+    )
 
     # For each trio, keep a single set of dups based on
     # 1. Max number of samples in the trio in the same project
     # 2. Max number of trios in the family in the same project
     # 3. Rank of samples in the trio
-    return dup_trios.groupby(dup_trios.trio_id).apply(lambda df: df.sort_values(by=['n_samples_project', 'n_fam_project', 'rank_trio'], ascending=[False, False, True])[0:1])
+    return dup_trios.groupby(dup_trios.trio_id).apply(
+        lambda df: df.sort_values(
+            by=["n_samples_project", "n_fam_project", "rank_trio"],
+            ascending=[False, False, True],
+        )[0:1]
+    )
 
 
-def ped_to_pandas(
-        ped: hl.Pedigree,
-        complete_trios: bool = True
-) -> pd.DataFrame:
+def ped_to_pandas(ped: hl.Pedigree, complete_trios: bool = True) -> pd.DataFrame:
     """
 
     Creates a pandas dataframe from a hail pedigree.
@@ -229,14 +262,15 @@ def ped_to_pandas(
     """
     trios = ped.complete_trios() if complete_trios else ped.trios()
     return pd.DataFrame(
-        [(trio.fam_id, trio.s, trio.is_female, trio.pat_id, trio.mat_id) for trio in trios],
-        columns=['fam_id', 's', 'is_female', 'pat_id', 'mat_id']
+        [
+            (trio.fam_id, trio.s, trio.is_female, trio.pat_id, trio.mat_id)
+            for trio in trios
+        ],
+        columns=["fam_id", "s", "is_female", "pat_id", "mat_id"],
     )
 
 
-def pandas_to_ped(
-        ped_pd: pd.DataFrame
-):
+def pandas_to_ped(ped_pd: pd.DataFrame):
     """
     Creates a Hail Pedigree object from trios stored as rows in a DataFrame.
     Input columns should contain 'fam_id', 's', 'is_female', 'pat_id', 'mat_id'
@@ -245,13 +279,24 @@ def pandas_to_ped(
     :return: Pedigree
     :rtype: Pedigree
     """
-    return hl.Pedigree([hl.Trio(s=row.s, is_female=row.is_female, pat_id=row.pat_id, mat_id=row.mat_id, fam_id=str(row.fam_id)) for row in ped_pd.itertuples()])
+    return hl.Pedigree(
+        [
+            hl.Trio(
+                s=row.s,
+                is_female=row.is_female,
+                pat_id=row.pat_id,
+                mat_id=row.mat_id,
+                fam_id=str(row.fam_id),
+            )
+            for row in ped_pd.itertuples()
+        ]
+    )
 
 
 def merge_pedigree_pandas(
     pedigrees: List[Tuple[str, pd.DataFrame]],
     sample_to_dups: Dict[str, Set[str]],
-    group_by_fam: bool = False
+    group_by_fam: bool = False,
 ) -> pd.DataFrame:
     """
 
@@ -277,15 +322,22 @@ def merge_pedigree_pandas(
     """
 
     def consolidate_names(ped_name, ped_pd, sample_main_name):
-        new_names_pd = ped_pd.apply(lambda row: pd.Series({
-            's': sample_main_name[row.s],
-            'pat_id': sample_main_name[row.pat_id],
-            'mat_id': sample_main_name[row.mat_id],
-        }), axis=1)
-        ped_pd = ped_pd.rename(columns={c: f'{c}_origin' for c in ['s', 'pat_id', 'mat_id']})
-        ped_pd['ped_name'] = ped_name
+        new_names_pd = ped_pd.apply(
+            lambda row: pd.Series(
+                {
+                    "s": sample_main_name[row.s],
+                    "pat_id": sample_main_name[row.pat_id],
+                    "mat_id": sample_main_name[row.mat_id],
+                }
+            ),
+            axis=1,
+        )
+        ped_pd = ped_pd.rename(
+            columns={c: f"{c}_origin" for c in ["s", "pat_id", "mat_id"]}
+        )
+        ped_pd["ped_name"] = ped_name
         ped_pd = ped_pd.merge(new_names_pd, left_index=True, right_index=True)
-        return ped_pd.set_index(['s', 'pat_id', 'mat_id'])
+        return ped_pd.set_index(["s", "pat_id", "mat_id"])
 
     # Create a directed samples -> dup dict
     sample_main_name = {}
@@ -300,28 +352,37 @@ def merge_pedigree_pandas(
                         sample_main_name[s_name] = s
 
     # Consolidate names and concatenate dataframes
-    ped_pd = pd.concat([consolidate_names(ped_name, current_ped_pd, sample_main_name) for ped_name, current_ped_pd in pedigrees])
+    ped_pd = pd.concat(
+        [
+            consolidate_names(ped_name, current_ped_pd, sample_main_name)
+            for ped_name, current_ped_pd in pedigrees
+        ]
+    )
 
     if group_by_fam:
-        ped_pd = ped_pd.groupby(['s', 'pat_id', 'mat_id']).apply(lambda df: pd.Series({
-            'is_female': list(df.is_female)[0],
-            'fam_id': ",".join(df.fam_id),
-            'ped_name': ",".join(df.ped_name),
-            's_origin': ",".join(df.s_origin),
-            'pat_id_origin': ",".join(df.pat_id_origin),
-            'mat_id_origin': ",".join(df.pat_id_origin),
-            'sex_inconsistent': len(set(df.is_female)) > 1
-        }))
+        ped_pd = ped_pd.groupby(["s", "pat_id", "mat_id"]).apply(
+            lambda df: pd.Series(
+                {
+                    "is_female": list(df.is_female)[0],
+                    "fam_id": ",".join(df.fam_id),
+                    "ped_name": ",".join(df.ped_name),
+                    "s_origin": ",".join(df.s_origin),
+                    "pat_id_origin": ",".join(df.pat_id_origin),
+                    "mat_id_origin": ",".join(df.pat_id_origin),
+                    "sex_inconsistent": len(set(df.is_female)) > 1,
+                }
+            )
+        )
 
     ped_pd = ped_pd.reset_index()
     return ped_pd
 
 
 def add_pedigree_meta(
-        ped_pd: pd.DataFrame,
-        kin_ht: hl.Table = None,
-        meta_pd: pd.DataFrame = None,
-        mendel_per_sample_ht: hl.Table = None,
+    ped_pd: pd.DataFrame,
+    kin_ht: hl.Table = None,
+    meta_pd: pd.DataFrame = None,
+    mendel_per_sample_ht: hl.Table = None,
 ) -> pd.DataFrame:
     """
 
@@ -339,49 +400,63 @@ def add_pedigree_meta(
     """
     if mendel_per_sample_ht is not None:
         mv_per_sample_pd = mendel_per_sample_ht.to_pandas()
-        ped_pd = ped_pd.set_index(['s', 'fam_id']).join(mv_per_sample_pd.set_index(['s', 'fam_id']))
+        ped_pd = ped_pd.set_index(["s", "fam_id"]).join(
+            mv_per_sample_pd.set_index(["s", "fam_id"])
+        )
         ped_pd = ped_pd.reset_index()
 
     if meta_pd is not None:
-        meta_pd = meta_pd.set_index('s')
-        ped_pd = ped_pd.set_index('s', drop=False).join(
-            meta_pd.rename(columns={col: f'{col}_s' for col in meta_pd.columns }), rsuffix="_meta")
-        ped_pd = ped_pd.set_index('mat_id', drop=False).join(
-            meta_pd.rename(columns={col: f'{col}_mat' for col in meta_pd.columns }), rsuffix="_meta")
-        ped_pd = ped_pd.set_index('pat_id', drop=False).join(
-            meta_pd.rename(columns={col: f'{col}_pat' for col in meta_pd.columns }), rsuffix="_meta")
+        meta_pd = meta_pd.set_index("s")
+        ped_pd = ped_pd.set_index("s", drop=False).join(
+            meta_pd.rename(columns={col: f"{col}_s" for col in meta_pd.columns}),
+            rsuffix="_meta",
+        )
+        ped_pd = ped_pd.set_index("mat_id", drop=False).join(
+            meta_pd.rename(columns={col: f"{col}_mat" for col in meta_pd.columns}),
+            rsuffix="_meta",
+        )
+        ped_pd = ped_pd.set_index("pat_id", drop=False).join(
+            meta_pd.rename(columns={col: f"{col}_pat" for col in meta_pd.columns}),
+            rsuffix="_meta",
+        )
         ped_pd = ped_pd.reset_index(drop=True)
 
     if kin_ht is not None:
-        ped_samples = hl.literal({s for s in list(ped_pd.s) + list(ped_pd.mat_id) + list(ped_pd.pat_id)})
-        kin = {tuple(sorted((row.i, row.j))): (row.kin, row.ibd2) for row in kin_ht.filter(ped_samples.contains(kin_ht.i) & ped_samples.contains(kin_ht.j)).collect()}
+        ped_samples = hl.literal(
+            {s for s in list(ped_pd.s) + list(ped_pd.mat_id) + list(ped_pd.pat_id)}
+        )
+        kin = {
+            tuple(sorted((row.i, row.j))): (row.kin, row.ibd2)
+            for row in kin_ht.filter(
+                ped_samples.contains(kin_ht.i) & ped_samples.contains(kin_ht.j)
+            ).collect()
+        }
 
         def get_kin(row):
             s_pat_kin = kin.get(tuple(sorted((row.s, row.pat_id))))
             s_mat_kin = kin.get(tuple(sorted((row.s, row.mat_id))))
             pat_mat_kin = kin.get(tuple(sorted((row.mat_id, row.pat_id))))
 
-            return pd.Series({
-                's_pat_kin': s_pat_kin[0] if s_pat_kin is not None else None,
-                's_pat_ibd2': s_pat_kin[1] if s_pat_kin is not None else None,
-                's_mat_kin': s_mat_kin[0] if s_mat_kin is not None else None,
-                's_mat_ibd2': s_mat_kin[1] if s_mat_kin is not None else None,
-                'pat_mat_kin': pat_mat_kin[0] if pat_mat_kin is not None else None,
-                'pat_mat_ibd2': pat_mat_kin[1] if pat_mat_kin is not None else None
-            })
+            return pd.Series(
+                {
+                    "s_pat_kin": s_pat_kin[0] if s_pat_kin is not None else None,
+                    "s_pat_ibd2": s_pat_kin[1] if s_pat_kin is not None else None,
+                    "s_mat_kin": s_mat_kin[0] if s_mat_kin is not None else None,
+                    "s_mat_ibd2": s_mat_kin[1] if s_mat_kin is not None else None,
+                    "pat_mat_kin": pat_mat_kin[0] if pat_mat_kin is not None else None,
+                    "pat_mat_ibd2": pat_mat_kin[1] if pat_mat_kin is not None else None,
+                }
+            )
 
         ped_pd = ped_pd.merge(
-            ped_pd.apply(get_kin, axis=1),
-            left_index=True, right_index=True
+            ped_pd.apply(get_kin, axis=1), left_index=True, right_index=True
         )
 
     return ped_pd
 
 
 def create_fake_pedigree(
-        n: int,
-        sample_list: List[str],
-        real_pedigree: hl.Pedigree = None
+    n: int, sample_list: List[str], real_pedigree: hl.Pedigree = None
 ) -> hl.Pedigree:
     """
 
@@ -400,9 +475,14 @@ def create_fake_pedigree(
 
     probands = set()
     if real_pedigree is not None:
-        probands = {trio.s for trio in real_pedigree.trios}.intersection(set(sample_list))
+        probands = {trio.s for trio in real_pedigree.trios}.intersection(
+            set(sample_list)
+        )
         if len(probands) == len(sample_list):
-            raise ValueError("Full sample list for fake trios generation needs to include samples that aren't probands in the real trios.")
+            raise ValueError(
+                "Full sample list for fake trios generation needs to include samples"
+                " that aren't probands in the real trios."
+            )
 
     fake_trios = []
     for i in range(n):
@@ -413,13 +493,15 @@ def create_fake_pedigree(
 
         probands.add(s)
 
-        fake_trios.append(hl.Trio(
-            s=s,
-            pat_id=pat_id,
-            mat_id=mat_id,
-            fam_id=str(str(i+1)),
-            is_female=True
-        ))
+        fake_trios.append(
+            hl.Trio(
+                s=s,
+                pat_id=pat_id,
+                mat_id=mat_id,
+                fam_id=str(str(i + 1)),
+                is_female=True,
+            )
+        )
 
     return hl.Pedigree(fake_trios)
 
@@ -435,18 +517,24 @@ def infer_ped(related_data: GnomADRelatedData) -> None:
     :return: Nothing
     :rtype: None
     """
-    
+
     logger.info(f"Inferring pedigree for {related_data.data_type}")
     sex = {row.s: row.is_female for row in related_data.meta_pd.itertuples()}
     dups_to_remove = {s for d in related_data.dups for s in list(d)[1:]}
 
     raw_ped = infer_families(related_data.kin_ht, sex, dups_to_remove)
-    logger.info(f"Found {len(raw_ped.complete_trios())} complete trios in {related_data.data_type}.")
+    logger.info(
+        f"Found {len(raw_ped.complete_trios())} complete trios in"
+        f" {related_data.data_type}."
+    )
 
     # Create dataframe with all combinations of dups
     dup_trios_pd = get_dup_trios(raw_ped, related_data.sample_to_dups)
-    logger.info(f"Found {len(dup_trios_pd)} trios combinations with dups in {related_data.data_type}.")
-    with hl.hadoop_open(dup_pedigree_tsv_path(related_data.data_type), 'w') as out:
+    logger.info(
+        f"Found {len(dup_trios_pd)} trios combinations with dups in"
+        f" {related_data.data_type}."
+    )
+    with hl.hadoop_open(dup_pedigree_tsv_path(related_data.data_type), "w") as out:
         dup_trios_pd.to_csv(out, sep="\t", index=False)
 
 
@@ -461,19 +549,29 @@ def select_dups(related_data: GnomADRelatedData) -> None:
     :return: Nothing
     :rtype: None
     """
-    dup_trios_pd = hl.import_table(dup_pedigree_tsv_path(related_data.data_type), impute=True).to_pandas()
+    dup_trios_pd = hl.import_table(
+        dup_pedigree_tsv_path(related_data.data_type), impute=True
+    ).to_pandas()
 
-    rank_ht = hl.import_table(rank_annotations_path('joint'), impute=True)
+    rank_ht = hl.import_table(rank_annotations_path("joint"), impute=True)
     rank_ht = rank_ht.filter(rank_ht.data_type == related_data.data_type)
     rank_pd = rank_ht.select(rank_ht.s, rank_ht.rank).to_pandas()
 
     raw_trios = pick_duplicates(dup_trios_pd, rank_pd, related_data.sample_project)
     raw_ped = pandas_to_ped(raw_trios)
-    logger.info(f"Generated {len(raw_ped.complete_trios())} complete trios after optimizing families in {related_data.data_type}.")
+    logger.info(
+        f"Generated {len(raw_ped.complete_trios())} complete trios after optimizing"
+        f" families in {related_data.data_type}."
+    )
     raw_ped.write(raw_fam_path(related_data.data_type))
 
 
-def create_meta(related_data: GnomADRelatedData, fake_fam_prop: float, old_version: str, overwrite: bool) -> None:
+def create_meta(
+    related_data: GnomADRelatedData,
+    fake_fam_prop: float,
+    old_version: str,
+    overwrite: bool,
+) -> None:
     """
     Creates and writes a dataframe with metadata to evaluate gnomAD trios from the raw ped file.
     In order to compare the raw ped, metadata is also generated for:
@@ -491,43 +589,75 @@ def create_meta(related_data: GnomADRelatedData, fake_fam_prop: float, old_versi
     raw_ped = hl.Pedigree.read(raw_fam_path(related_data.data_type), delimiter="\\t")
 
     n_fake_trios = int(fake_fam_prop * len(raw_ped.complete_trios()))
-    logger.info(f"Generating fake pedigree with {n_fake_trios} trios for {related_data.data_type}")
-    fake_fams = create_fake_pedigree(n_fake_trios, list(related_data.meta_pd.s), raw_ped)
+    logger.info(
+        f"Generating fake pedigree with {n_fake_trios} trios for"
+        f" {related_data.data_type}"
+    )
+    fake_fams = create_fake_pedigree(
+        n_fake_trios, list(related_data.meta_pd.s), raw_ped
+    )
 
     fake_fams.write(fake_fam_path(related_data.data_type))
 
     logger.info(f"Running mendel_errors on {related_data.data_type}")
 
-    # Run mendel errors on families made of random samples to establish expectation in non-trios:
-    pedigrees = [('new', raw_ped),
-                 ('old', hl.Pedigree.read(fam_path(related_data.data_type, version=old_version), delimiter="\\t")),
-                 ('fake', hl.Pedigree.read(fake_fam_path(related_data.data_type), delimiter="\\t"))]
+    # Run mendel errors on families made of random samples to establish
+    # expectation in non-trios:
+    pedigrees = [
+        ("new", raw_ped),
+        (
+            "old",
+            hl.Pedigree.read(
+                fam_path(related_data.data_type, version=old_version), delimiter="\\t"
+            ),
+        ),
+        (
+            "fake",
+            hl.Pedigree.read(fake_fam_path(related_data.data_type), delimiter="\\t"),
+        ),
+    ]
 
-    ped_pd = merge_pedigree_pandas([(name, ped_to_pandas(ped)) for name, ped in pedigrees],
-                                   related_data.sample_to_dups,
-                                   True)
+    ped_pd = merge_pedigree_pandas(
+        [(name, ped_to_pandas(ped)) for name, ped in pedigrees],
+        related_data.sample_to_dups,
+        True,
+    )
 
     # Run mendel_errors
     all_ped = pandas_to_ped(ped_pd)
     gnomad = get_gnomad_data(related_data.data_type)
-    fam_samples = hl.literal({s for trio in all_ped.trios for s in [trio.s, trio.mat_id, trio.pat_id]})
+    fam_samples = hl.literal(
+        {s for trio in all_ped.trios for s in [trio.s, trio.mat_id, trio.pat_id]}
+    )
     gnomad = gnomad.filter_cols(fam_samples.contains(gnomad.s))
-    all_errors, per_fam, per_sample, _ = hl.mendel_errors(gnomad['GT'], all_ped)
+    all_errors, per_fam, per_sample, _ = hl.mendel_errors(gnomad["GT"], all_ped)
 
-    all_errors.write(sample_qc_mendel_ht_path(related_data.data_type, "all_errors"), overwrite=overwrite)
-    per_fam.write(sample_qc_mendel_ht_path(related_data.data_type, "per_fam"), overwrite=overwrite)
-    per_sample.write(sample_qc_mendel_ht_path(related_data.data_type, "per_sample"), overwrite=overwrite)
+    all_errors.write(
+        sample_qc_mendel_ht_path(related_data.data_type, "all_errors"),
+        overwrite=overwrite,
+    )
+    per_fam.write(
+        sample_qc_mendel_ht_path(related_data.data_type, "per_fam"), overwrite=overwrite
+    )
+    per_sample.write(
+        sample_qc_mendel_ht_path(related_data.data_type, "per_sample"),
+        overwrite=overwrite,
+    )
 
     # Merge all metadata
-    ped_pd = add_pedigree_meta(ped_pd=ped_pd,
-                               meta_pd=related_data.meta_pd,
-                               kin_ht=related_data.kin_ht,
-                               mendel_per_sample_ht=per_sample)
+    ped_pd = add_pedigree_meta(
+        ped_pd=ped_pd,
+        meta_pd=related_data.meta_pd,
+        kin_ht=related_data.kin_ht,
+        mendel_per_sample_ht=per_sample,
+    )
 
     # Write merged pedigrees as HT
     sql_context = SQLContext(hl.spark_context())
-    hl.Table.from_spark(sql_context.createDataFrame(ped_pd)).write(merged_pedigrees_ht_path(related_data.data_type), overwrite=overwrite)
-    
+    hl.Table.from_spark(sql_context.createDataFrame(ped_pd)).write(
+        merged_pedigrees_ht_path(related_data.data_type), overwrite=overwrite
+    )
+
 
 def create_ped(related_data: GnomADRelatedData, new_version: str, max_mv_z: int = 3):
     """
@@ -541,84 +671,153 @@ def create_ped(related_data: GnomADRelatedData, new_version: str, max_mv_z: int 
     :rtype: None
     """
     raw_ped = hl.Pedigree.read(raw_fam_path(related_data.data_type), delimiter="\\t")
-    logger.info(f"Loaded raw {related_data.data_type} pedigree containing {len(raw_ped.trios)} trios")
+    logger.info(
+        f"Loaded raw {related_data.data_type} pedigree containing"
+        f" {len(raw_ped.trios)} trios"
+    )
 
     # Filter families
-    ped_meta = hl.read_table(merged_pedigrees_ht_path(related_data.data_type)).to_pandas()
+    ped_meta = hl.read_table(
+        merged_pedigrees_ht_path(related_data.data_type)
+    ).to_pandas()
 
-    ped_meta = ped_meta[ped_meta.ped_name.str.contains('new')]
+    ped_meta = ped_meta[ped_meta.ped_name.str.contains("new")]
     mean_errors = np.mean(ped_meta.errors)
     std_errors = np.std(ped_meta.errors)
 
     filtered_s = set(ped_meta[ped_meta.errors > mean_errors + max_mv_z * std_errors].s)
 
     # Write final fam file
-    final_ped = hl.Pedigree([trio for trio in raw_ped.trios if trio.s not in filtered_s])
+    final_ped = hl.Pedigree(
+        [trio for trio in raw_ped.trios if trio.s not in filtered_s]
+    )
     final_ped.write(fam_path(related_data.data_type, version=new_version))
 
-    logger.info(f"Wrote final {related_data.data_type} pedigree with {len(final_ped.trios)} trios.")
+    logger.info(
+        f"Wrote final {related_data.data_type} pedigree with"
+        f" {len(final_ped.trios)} trios."
+    )
 
 
 def main(args):
-
     data_types = []
     if args.exomes:
-        data_types.append('exomes')
+        data_types.append("exomes")
     if args.genomes:
-        data_types.append('genomes')
+        data_types.append("genomes")
 
     for data_type in data_types:
-
         related_data = GnomADRelatedData(data_type)
 
         # Infer families from the data
         if args.infer_ped:
             infer_ped(related_data)
 
-        #Select duplicates and write raw ped file
+        # Select duplicates and write raw ped file
         if args.select_dups:
             select_dups(related_data)
 
-        #Create trio metadata for evaluation
+        # Create trio metadata for evaluation
         if args.create_meta:
-            create_meta(related_data, fake_fam_prop=args.fake_fam_prop, old_version=args.old_version, overwrite=args.overwrite)
+            create_meta(
+                related_data,
+                fake_fam_prop=args.fake_fam_prop,
+                old_version=args.old_version,
+                overwrite=args.overwrite,
+            )
 
-        #Apply mendel errors threshold and create final ped file
+        # Apply mendel errors threshold and create final ped file
         if args.create_ped:
-            create_ped(related_data, max_mv_z=args.max_mv_z, new_version=args.new_version)
+            create_ped(
+                related_data, max_mv_z=args.max_mv_z, new_version=args.new_version
+            )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--overwrite', help='Overwrite pre-existing data', action='store_true')
-    parser.add_argument('--exomes', help='Use exomes data.', action='store_true')
-    parser.add_argument('--genomes', help='Use genomes data.', action='store_true')
-    parser.add_argument('--slack_channel', help='Slack channel to post results and notifications to.')
+    parser.add_argument(
+        "--overwrite", help="Overwrite pre-existing data", action="store_true"
+    )
+    parser.add_argument("--exomes", help="Use exomes data.", action="store_true")
+    parser.add_argument("--genomes", help="Use genomes data.", action="store_true")
+    parser.add_argument(
+        "--slack_channel", help="Slack channel to post results and notifications to."
+    )
 
-    infer_ped_grp = parser.add_argument_group('Pedigree inference')
-    infer_ped_grp.add_argument('--infer_ped', help='Infer pedigrees and create a table with all trios with all duplicates.', action='store_true')
+    infer_ped_grp = parser.add_argument_group("Pedigree inference")
+    infer_ped_grp.add_argument(
+        "--infer_ped",
+        help="Infer pedigrees and create a table with all trios with all duplicates.",
+        action="store_true",
+    )
 
-    select_dup_grp = parser.add_argument_group('Select duplicates')
-    select_dup_grp.add_argument('--select_dups', help='Select a single duplicate sample for each trio, optimizing for (1) number of trio/family members within the same project, and (2) rank in sampleqc list.', action='store_true')
+    select_dup_grp = parser.add_argument_group("Select duplicates")
+    select_dup_grp.add_argument(
+        "--select_dups",
+        help=(
+            "Select a single duplicate sample for each trio, optimizing for (1) number"
+            " of trio/family members within the same project, and (2) rank in sampleqc"
+            " list."
+        ),
+        action="store_true",
+    )
 
-    meta_grp = parser.add_argument_group('Pedigree quality control (metadata creation)')
-    meta_grp.add_argument('--fake_fam_prop', help='Number of fake trios to generate as a proportion of the total number of trios found in the data. (default=0.1)', default=0.1, type=float)
-    meta_grp.add_argument('--create_meta', help='Creates a HT with metadata (mendel error, kinship, sample meta) about trios (old, new and fake to allow for comparison).', action='store_true')
-    meta_grp.add_argument('--old_version', help='Version for the old data. (default=current version specified in resources)', default=CURRENT_FAM)
+    meta_grp = parser.add_argument_group("Pedigree quality control (metadata creation)")
+    meta_grp.add_argument(
+        "--fake_fam_prop",
+        help=(
+            "Number of fake trios to generate as a proportion of the total number of"
+            " trios found in the data. (default=0.1)"
+        ),
+        default=0.1,
+        type=float,
+    )
+    meta_grp.add_argument(
+        "--create_meta",
+        help=(
+            "Creates a HT with metadata (mendel error, kinship, sample meta) about"
+            " trios (old, new and fake to allow for comparison)."
+        ),
+        action="store_true",
+    )
+    meta_grp.add_argument(
+        "--old_version",
+        help=(
+            "Version for the old data. (default=current version specified in resources)"
+        ),
+        default=CURRENT_FAM,
+    )
 
-    final_ped_grp = parser.add_argument_group('Pedigree filtering (final pedigree generation)')
-    final_ped_grp.add_argument('--create_ped', help='Creates filtered pedigree file for downstream usage', action='store_true')
-    final_ped_grp.add_argument('--new_version', help="Version for the new data. (default='YYYY-MM-DD')", default=datetime.today().strftime('%Y-%m-%d'))
-    final_ped_grp.add_argument('--max_mv_z', help='Max number of std devs above the mean number of MVs in inferred trios to keep trio. (default=3)', default=3, type=int)
+    final_ped_grp = parser.add_argument_group(
+        "Pedigree filtering (final pedigree generation)"
+    )
+    final_ped_grp.add_argument(
+        "--create_ped",
+        help="Creates filtered pedigree file for downstream usage",
+        action="store_true",
+    )
+    final_ped_grp.add_argument(
+        "--new_version",
+        help="Version for the new data. (default='YYYY-MM-DD')",
+        default=datetime.today().strftime("%Y-%m-%d"),
+    )
+    final_ped_grp.add_argument(
+        "--max_mv_z",
+        help=(
+            "Max number of std devs above the mean number of MVs in inferred trios to"
+            " keep trio. (default=3)"
+        ),
+        default=3,
+        type=int,
+    )
 
     args = parser.parse_args()
     if not args.exomes and not args.genomes:
-        sys.exit('Error: At least one of --exomes or --genomes must be specified.')
+        sys.exit("Error: At least one of --exomes or --genomes must be specified.")
 
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
             main(args)
     else:
         main(args)
-

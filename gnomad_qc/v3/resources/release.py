@@ -1,3 +1,5 @@
+# noqa: D100
+
 from typing import Optional
 
 from gnomad.resources.grch38.gnomad import public_release
@@ -12,8 +14,8 @@ from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v3.resources.basics import qc_temp_prefix
 from gnomad_qc.v3.resources.constants import (
-    CURRENT_RELEASE,
     CURRENT_HGDP_TGP_RELEASE,
+    CURRENT_RELEASE,
     HGDP_TGP_RELEASES,
     RELEASES,
 )
@@ -21,7 +23,8 @@ from gnomad_qc.v3.resources.constants import (
 
 def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
     """
-    Returns path to file containing ANNOTATIONS_HISTS dictionary.
+    Return path to file containing ANNOTATIONS_HISTS dictionary.
+
     Dictionary contains histogram values for each metric.
     For example, "InbreedingCoeff": [-0.25, 0.25, 50].
 
@@ -67,7 +70,9 @@ def release_ht_path(
         else:
             return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
     else:
-        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}{'.patch' if het_nonref_patch else ''}.sites.ht"
+        return (
+            f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}{'.patch' if het_nonref_patch else ''}.sites.ht"
+        )
 
 
 def release_sites(
@@ -110,7 +115,6 @@ def release_vcf_path(
         sites VCF path
     :return: Filepath for the desired VCF
     """
-
     if release_version is None:
         release_version = (
             CURRENT_HGDP_TGP_RELEASE if hgdp_tgp_subset else CURRENT_RELEASE
@@ -119,7 +123,8 @@ def release_vcf_path(
     if hgdp_tgp_subset:
         if release_version not in HGDP_TGP_RELEASES:
             raise DataException(
-                f"{release_version} is not one of the available releases for the HGP + 1KG/TGP subset: {HGDP_TGP_RELEASES}"
+                f"{release_version} is not one of the available releases for the HGP +"
+                f" 1KG/TGP subset: {HGDP_TGP_RELEASES}"
             )
         subset = "hgdp_tgp"
     else:
@@ -154,7 +159,8 @@ def release_header_path(
     if hgdp_tgp_subset:
         if release_version not in HGDP_TGP_RELEASES:
             raise DataException(
-                f"{release_version} is not one of the available releases for the HGP + 1KG/TGP subset: {HGDP_TGP_RELEASES}"
+                f"{release_version} is not one of the available releases for the HGP +"
+                f" 1KG/TGP subset: {HGDP_TGP_RELEASES}"
             )
         subset = "_hgdp_tgp"
 
@@ -175,9 +181,12 @@ def append_to_vcf_header_path(
     """
     if release_version == "3.0":
         raise DataException(
-            "Extra fields to append to VCF header TSV only exists for releases after v3!"
+            "Extra fields to append to VCF header TSV only exists for releases"
+            " after v3!"
         )
-    return f"gs://gnomad/release/{release_version}/vcf/genomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
+    return (
+        f"gs://gnomad/release/{release_version}/vcf/genomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
+    )
 
 
 def hgdp_tgp_subset(
@@ -190,7 +199,6 @@ def hgdp_tgp_subset(
     :param test: If true, will return the annotation resource for testing purposes
     :return: MatrixTableResource for specific subset
     """
-
     return VersionedMatrixTableResource(
         default_version=CURRENT_HGDP_TGP_RELEASE,
         versions={
@@ -234,4 +242,6 @@ def hgdp_tgp_subset_sample_tsv(
     :param test: If true, will return the sample tsv path for testing purposes
     :return: Path to file
     """
-    return f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/tsv/'}gnomad.genomes.v{release}.hgdp_1kg_subset_sample_meta.tsv.bgz"
+    return (
+        f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/tsv/'}gnomad.genomes.v{release}.hgdp_1kg_subset_sample_meta.tsv.bgz"
+    )

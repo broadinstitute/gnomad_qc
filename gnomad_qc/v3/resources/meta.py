@@ -1,3 +1,5 @@
+# noqa: D100
+
 import hail as hl
 from gnomad.resources.resource_utils import (
     PedigreeResource,
@@ -6,17 +8,13 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v3.resources.constants import (
-    CURRENT_VERSION,
-    CURRENT_RELEASE,
-    RELEASES,
-)
+from gnomad_qc.v3.resources.constants import CURRENT_RELEASE, CURRENT_VERSION, RELEASES
 
 
 # Samples metadata
 def _meta_root_path(version: str = CURRENT_RELEASE) -> str:
     """
-    Retrieves the path to the root metadata directory
+    Retrieve the path to the root metadata directory.
 
     :param version: gnomAD release version
     :return: String representation of the path to the root metadata directory
@@ -28,7 +26,7 @@ def meta_tsv_path(
     version: str = CURRENT_RELEASE, meta_version: str = CURRENT_VERSION
 ) -> str:
     """
-    Gets the path to the finalized sample metadata information after sample QC
+    Get the path to the finalized sample metadata information after sample QC.
 
     :param version: gnomAD release version
     :param meta_version: metadata version to return
@@ -64,13 +62,15 @@ _project_meta_versions = {
 
 _pedigree_versions = {
     "3.1": PedigreeResource(
-        "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1.fam", delimiter="\t",
+        "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1.fam",
+        delimiter="\t",
     ),
     "3.1_raw": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_raw.fam", delimiter="\t"
     ),
     "3": PedigreeResource(
-        "gs://gnomad/metadata/genomes_v3/gnomad_v3.fam", delimiter="\t",
+        "gs://gnomad/metadata/genomes_v3/gnomad_v3.fam",
+        delimiter="\t",
     ),
     "3_raw": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3/gnomad_v3_raw.fam", delimiter="\t"
@@ -80,13 +80,15 @@ _pedigree_versions = {
 
 _trios_versions = {
     "3.1": PedigreeResource(
-        "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_trios.fam", delimiter="\t",
+        "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_trios.fam",
+        delimiter="\t",
     ),
     "3.1_raw": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3.1/gnomad_v3.1_trios_raw.fam", delimiter="\t"
     ),
     "3": PedigreeResource(
-        "gs://gnomad/metadata/genomes_v3/gnomad_v3_trios.fam", delimiter="\t",
+        "gs://gnomad/metadata/genomes_v3/gnomad_v3_trios.fam",
+        delimiter="\t",
     ),
     "3_raw": PedigreeResource(
         "gs://gnomad/metadata/genomes_v3/gnomad_v3_trios_raw.fam", delimiter="\t"

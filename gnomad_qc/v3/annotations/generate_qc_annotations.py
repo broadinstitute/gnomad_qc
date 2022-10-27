@@ -1,8 +1,9 @@
+# noqa: D100
+
 import argparse
 import logging
 
 import hail as hl
-
 from gnomad.sample_qc.relatedness import generate_trio_stats_expr
 from gnomad.utils.annotations import (
     add_variant_type,
@@ -13,10 +14,10 @@ from gnomad.utils.annotations import (
 from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
-    get_as_info_expr,
-    get_site_info_expr,
     INFO_INT32_SUM_AGG_FIELDS,
     INFO_SUM_AGG_FIELDS,
+    get_as_info_expr,
+    get_site_info_expr,
     split_info_annotation,
     split_lowqual_annotation,
 )
@@ -28,13 +29,13 @@ from gnomad_qc.v3.resources.annotations import (
     allele_data,
     fam_stats,
     get_info,
+    get_transmitted_singleton_vcf_path,
     info_vcf_path,
     qc_ac,
     vep,
 )
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import trios
-from gnomad_qc.v3.resources.annotations import get_transmitted_singleton_vcf_path
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -46,7 +47,7 @@ logger.setLevel(logging.INFO)
 
 def compute_info() -> hl.Table:
     """
-    Computes a HT with the typical GATK AS and site-level info fields as well as ACs and lowqual fields.
+    Compute a HT with the typical GATK AS and site-level info fields as well as ACs and lowqual fields.
 
     Note that this table doesn't split multi-allelic sites.
 
@@ -140,7 +141,7 @@ def compute_info() -> hl.Table:
 
 def split_info() -> hl.Table:
     """
-    Generates an info table that splits multi-allelic sites from the multi-allelic info table.
+    Generate an info table that splits multi-allelic sites from the multi-allelic info table.
 
     :return: Info table with split multi-allelics
     :rtype: Table
@@ -161,8 +162,13 @@ def split_info() -> hl.Table:
 
 def generate_allele_data(ht: hl.Table) -> hl.Table:
     """
-    Returns bi-allelic sites HT with the following annotations:
-     - allele_data (nonsplit_alleles, has_star, variant_type, and n_alt_alleles)
+    Return bi-allelic sites HT with an 'allele_data' annotation.
+
+    'allele_data' is a struct with the following information:
+        - nonsplit_alleles
+        - has_star
+        - variant_type
+        - n_alt_alleles
 
     :param Table ht: Full unsplit HT
     :return: Table with allele data annotations
@@ -193,7 +199,7 @@ def generate_allele_data(ht: hl.Table) -> hl.Table:
 
 def generate_ac(mt: hl.MatrixTable) -> hl.Table:
     """
-    Creates Table containing allele counts per variant.
+    Create Table containing allele counts per variant.
 
     Returns table containing the following annotations:
         - `ac_qc_samples_raw`: Allele count of high quality samples
@@ -247,7 +253,8 @@ def generate_fam_stats(mt: hl.MatrixTable, fam_file: str) -> hl.Table:
 
     mt = mt.filter_cols(hl.is_defined(fam_ht[mt.col_key]))
     logger.info(
-        f"Generating family stats using {mt.count_cols()} samples from {len(ped.trios)} trios."
+        f"Generating family stats using {mt.count_cols()} samples from"
+        f" {len(ped.trios)} trios."
     )
 
     mt = filter_to_autosomes(mt)
@@ -262,7 +269,10 @@ def generate_fam_stats(mt: hl.MatrixTable, fam_file: str) -> hl.Table:
         **generate_trio_stats_expr(
             mt,
             transmitted_strata={"raw": True, "adj": trio_adj},
-            de_novo_strata={"raw": True, "adj": trio_adj,},
+            de_novo_strata={
+                "raw": True,
+                "adj": trio_adj,
+            },
             proband_is_female_expr=mt.is_female,
         )
     ).rows()
@@ -274,7 +284,7 @@ def generate_fam_stats(mt: hl.MatrixTable, fam_file: str) -> hl.Table:
 
 def export_transmitted_singletons_vcf():
     """
-    Exports the transmitted singleton Table to a VCF.
+    Export the transmitted singleton Table to a VCF.
 
     :return: None
     """
@@ -302,7 +312,7 @@ def export_transmitted_singletons_vcf():
 
 def run_vep(vep_version: str = "101") -> hl.Table:
     """
-    Returns a table with a VEP annotation for each variant in the raw MatrixTable.
+    Return a table with a VEP annotation for each variant in the raw MatrixTable.
 
     :param vep_version: Version of VEPed context Table to use in `vep_or_lookup_vep`
     :return: VEPed Table
@@ -318,7 +328,7 @@ def run_vep(vep_version: str = "101") -> hl.Table:
     return ht
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(default_reference="GRCh38", log="/qc_annotations.log")
 
     if args.compute_info:
@@ -379,7 +389,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--generate_ac",
-        help="Creates a table with ACs for QC, unrelated QC and release samples (raw and adj)",
+        help=(
+            "Creates a table with ACs for QC, unrelated QC and release samples (raw and"
+            " adj)"
+        ),
         action="store_true",
     )
     parser.add_argument(

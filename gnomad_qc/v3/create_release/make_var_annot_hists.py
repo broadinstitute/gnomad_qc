@@ -1,3 +1,5 @@
+# noqa: D100
+
 import argparse
 import json
 import logging
@@ -15,7 +17,6 @@ from gnomad_qc.v3.resources.release import (
     release_ht_path,
 )
 
-
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
@@ -26,7 +27,7 @@ logger.setLevel(logging.INFO)
 
 LOG10_ANNOTATIONS = ["AS_VarDP", "QUALapprox", "AS_QUALapprox"]
 """
-List of annotations to log scale when creating histograms. 
+List of annotations to log scale when creating histograms.
 """
 
 
@@ -34,7 +35,7 @@ def create_frequency_bins_expr_inbreeding(
     AF: hl.expr.NumericExpression,
 ) -> hl.expr.StringExpression:
     """
-    Creates bins for frequencies in preparation for aggregating QUAL by frequency bin.
+    Create bins for frequencies in preparation for aggregating QUAL by frequency bin.
 
     Uses bins of < 0.0005 and >= 0.0005
 
@@ -54,19 +55,20 @@ def create_frequency_bins_expr_inbreeding(
     return bin_expr
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(default_reference="GRCh38", log="/variant_histograms.log")
 
     logger.info("Loading ANNOTATIONS_HISTS dictionary...")
     if not file_exists(annotation_hists_path()):
         raise DataException(
-            "Annotation hists JSON file not found. Need to create this JSON before running script!"
+            "Annotation hists JSON file not found. Need to create this JSON before"
+            " running script!"
         )
 
     with hl.hadoop_open(annotation_hists_path()) as a:
         ANNOTATIONS_HISTS = json.loads(a.read())
 
-    # NOTE: histogram aggregations on these metrics are done on the entire callset (not just PASS variants), on raw data
+    # NOTE: histogram aggregations on these metrics are done on the entire callset (not just PASS variants), on raw data # noqa
     ht = hl.read_table(release_ht_path(public=False))
     ht = ht.select(freq=ht.freq, info=ht.info.select(*ANNOTATIONS_HISTS))
 
@@ -80,10 +82,11 @@ def main(args):
     hist_ranges_expr = get_annotations_hists(ht, ANNOTATIONS_HISTS, LOG10_ANNOTATIONS)
 
     # Evaluate minimum and maximum values for each metric of interest to help determine the bounds of the hists
-    # NOTE: Run this first, then update values in annotation_hists_path JSON as necessary
+    # NOTE: Run this first, then update values in annotation_hists_path JSON as necessary # noqa
     if args.determine_bounds:
         logger.info(
-            "Evaluating minimum and maximum values for each metric of interest. Maximum values capped at 1e10."
+            "Evaluating minimum and maximum values for each metric of interest. Maximum"
+            " values capped at 1e10."
         )
         minmax_dict = {}
         for metric in ANNOTATIONS_HISTS:
@@ -99,8 +102,8 @@ def main(args):
         logger.info(f"Metrics bounds: {minmax}")
     else:
         logger.info(
-            "Aggregating hists over ranges defined in the annotation_hists_path JSON file. --determine_bounds can "
-            "be used to help define these ranges..."
+            "Aggregating hists over ranges defined in the annotation_hists_path JSON"
+            " file. --determine_bounds can be used to help define these ranges..."
         )
         hists = ht.aggregate(
             hl.array(
@@ -134,13 +137,17 @@ def main(args):
             _localize=False,
         )
 
-        # Defining hist range and bins for allele frequency groups because they needed different ranges
+        # Defining hist range and bins for allele frequency groups because they
+        # needed different ranges
         ht = ht.annotate(af_bin=create_frequency_bins_expr_inbreeding(AF=ht.freq[1].AF))
         inbreeding_hists = [
             ht.aggregate(
                 hl.agg.filter(
                     ht.af_bin == x,
-                    hl.agg.hist(ht.info.InbreedingCoeff, *inbreeding_bin_ranges[x],),
+                    hl.agg.hist(
+                        ht.info.InbreedingCoeff,
+                        *inbreeding_bin_ranges[x],
+                    ),
                 )
             ).annotate(metric="InbreedingCoeff" + "-" + x)
             for x in inbreeding_bin_ranges
@@ -162,7 +169,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--determine_bounds",
-        help="Determine min/max values for each variant metric and prints them to stdout (to be used in hand-tooled histogram ranges). Note that this should only be run if the defaults do not result in well-behaved histograms.",
+        help=(
+            "Determine min/max values for each variant metric and prints them to stdout"
+            " (to be used in hand-tooled histogram ranges). Note that this should only"
+            " be run if the defaults do not result in well-behaved histograms."
+        ),
         action="store_true",
     )
     parser.add_argument(

@@ -1,12 +1,13 @@
+# noqa: D100
+
 import argparse
 import json
 import logging
 import sys
-from typing import List, Optional, Union
 import uuid
+from typing import List, Optional, Union
 
 import hail as hl
-
 from gnomad.resources.grch38.reference_data import (
     get_truth_ht,
     telomeres_and_centromeres,
@@ -24,7 +25,6 @@ from gnomad.variant_qc.random_forest import (
 )
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources.basics import get_checkpoint_path
 from gnomad_qc.v3.resources.annotations import (
     allele_data,
     fam_stats,
@@ -33,6 +33,7 @@ from gnomad_qc.v3.resources.annotations import (
     get_vqsr_filters,
     qc_ac,
 )
+from gnomad_qc.v3.resources.basics import get_checkpoint_path
 from gnomad_qc.v3.resources.variant_qc import (
     get_rf_annotations,
     get_rf_model_path,
@@ -77,7 +78,7 @@ def create_rf_ht(
     checkpoint_path: Optional[str] = None,
 ) -> hl.Table:
     """
-    Creates a Table with all necessary annotations for the random forest model.
+    Create a Table with all necessary annotations for the random forest model.
 
     Annotations that are included:
 
@@ -104,7 +105,6 @@ def create_rf_ht(
     :return: Hail Table ready for RF
     :rtype: Table
     """
-
     group = "adj" if adj else "raw"
 
     ht = get_info(split=True).ht()
@@ -161,9 +161,11 @@ def create_rf_ht(
     if impute_features:
         ht = median_impute_features(ht, {"variant_type": ht.variant_type})
 
-    summary = ht.group_by("omni", "mills", "transmitted_singleton",).aggregate(
-        n=hl.agg.count()
-    )
+    summary = ht.group_by(
+        "omni",
+        "mills",
+        "transmitted_singleton",
+    ).aggregate(n=hl.agg.count())
     logger.info("Summary of truth data annotations:")
     summary.show(20)
 
@@ -183,7 +185,7 @@ def train_rf(
     test_intervals: Union[str, List[str]] = "chr20",
 ):
     """
-    Train random forest model using `train_rf_model`
+    Train random forest model using `train_rf_model`.
 
     :param ht: Table containing annotations needed for RF training, built with `create_rf_ht`
     :param fp_to_tp: Ratio of FPs to TPs for creating the RF model. If set to 0, all training examples are used.
@@ -253,7 +255,7 @@ def train_rf(
     return ht, rf_model
 
 
-def main(args):
+def main(args):  # noqa: D103
     hl.init(log="/variant_qc_random_forest.log")
 
     if args.list_rf_runs:
@@ -268,7 +270,8 @@ def main(args):
             checkpoint_path=get_checkpoint_path("rf_annotation"),
         )
         ht.write(
-            get_rf_annotations(args.adj).path, overwrite=args.overwrite,
+            get_rf_annotations(args.adj).path,
+            overwrite=args.overwrite,
         )
         logger.info(f"Completed annotation wrangling for random forests model training")
 
@@ -292,7 +295,8 @@ def main(args):
         )
 
         ht = ht.checkpoint(
-            get_rf_training(model_id=model_id).path, overwrite=args.overwrite,
+            get_rf_training(model_id=model_id).path,
+            overwrite=args.overwrite,
         )
 
         logger.info("Adding run to RF run list")
@@ -315,7 +319,9 @@ def main(args):
 
         logger.info("Saving RF model")
         save_model(
-            rf_model, get_rf_model_path(model_id=model_id), overwrite=args.overwrite,
+            rf_model,
+            get_rf_model_path(model_id=model_id),
+            overwrite=args.overwrite,
         )
 
     else:
@@ -331,7 +337,8 @@ def main(args):
         logger.info("Finished applying RF model")
         ht = ht.annotate_globals(rf_model_id=model_id)
         ht = ht.checkpoint(
-            get_rf_result(model_id=model_id).path, overwrite=args.overwrite,
+            get_rf_result(model_id=model_id).path,
+            overwrite=args.overwrite,
         )
 
         ht_summary = ht.group_by(
@@ -352,14 +359,20 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--model_id",
-        help="Model ID. Created by --train_rf and only needed for --apply_rf without running --train_rf.",
+        help=(
+            "Model ID. Created by --train_rf and only needed for --apply_rf without"
+            " running --train_rf."
+        ),
         required=False,
     )
 
     actions = parser.add_argument_group("Actions")
     actions.add_argument(
         "--list_rf_runs",
-        help="Lists all previous RF runs, along with their model ID, parameters and testing results.",
+        help=(
+            "Lists all previous RF runs, along with their model ID, parameters and"
+            " testing results."
+        ),
         action="store_true",
     )
     actions.add_argument(
@@ -388,13 +401,19 @@ if __name__ == "__main__":
     rf_params = parser.add_argument_group("Random Forest parameters")
     rf_params.add_argument(
         "--fp_to_tp",
-        help="Ratio of FPs to TPs for training the RF model. If 0, all training examples are used. (default=1.0)",
+        help=(
+            "Ratio of FPs to TPs for training the RF model. If 0, all training examples"
+            " are used. (default=1.0)"
+        ),
         default=1.0,
         type=float,
     )
     rf_params.add_argument(
         "--test_intervals",
-        help='The specified interval(s) will be held out for testing and evaluation only. (default to "chr20")',
+        help=(
+            "The specified interval(s) will be held out for testing and evaluation"
+            ' only. (default to "chr20")'
+        ),
         nargs="+",
         type=str,
         default="chr20",
@@ -421,7 +440,10 @@ if __name__ == "__main__":
     )
     training_params.add_argument(
         "--vqsr_model_id",
-        help="If a VQSR model ID is provided the VQSR training annotations will be used for training.",
+        help=(
+            "If a VQSR model ID is provided the VQSR training annotations will be used"
+            " for training."
+        ),
         default="vqsr_alleleSpecificTrans",
         choices=["vqsr_classic", "vqsr_alleleSpecific", "vqsr_alleleSpecificTrans"],
         type=str,
@@ -446,12 +468,14 @@ if __name__ == "__main__":
 
     if not args.model_id and not args.train_rf and args.apply_rf:
         sys.exit(
-            "Error: --model_id is required when running --apply_rf without running --train_rf too."
+            "Error: --model_id is required when running --apply_rf without running"
+            " --train_rf too."
         )
 
     if args.model_id and args.train_rf:
         sys.exit(
-            "Error: --model_id and --train_rf are mutually exclusive. --train_rf will generate a run model ID."
+            "Error: --model_id and --train_rf are mutually exclusive. --train_rf will"
+            " generate a run model ID."
         )
 
     if args.slack_channel:

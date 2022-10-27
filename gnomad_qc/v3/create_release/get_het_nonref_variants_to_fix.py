@@ -1,23 +1,23 @@
-# NOTE:
-# This script is needed for the v3.1.2 release to correct a problem discovered in the gnomAD v3.1 release.
-# The fix we implemented to correct a technical artifact creating the depletion of homozygous alternate genotypes
-# was not performed correctly in situations where samples that were individually heterozygous non-reference had both
-# a heterozygous and homozygous alternate call at the same locus.
+"""
+This script is needed for the v3.1.2 release to correct a problem discovered in the gnomAD v3.1 release.
+
+The fix we implemented to correct a technical artifact creating the depletion of homozygous alternate genotypes
+was not performed correctly in situations where samples that were individually heterozygous non-reference had both
+a heterozygous and homozygous alternate call at the same locus.
+"""
 
 import argparse
 import logging
 
 import hail as hl
-
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import densify_sites
 from gnomad.utils.vcf import SPARSE_ENTRIES
 
+from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.resources.annotations import last_END_position
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.release import release_sites
-from gnomad_qc.v3.resources.annotations import last_END_position
-from gnomad_qc.slack_creds import slack_token
-
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -27,16 +27,15 @@ logger = logging.getLogger("get_impacted_variants")
 logger.setLevel(logging.INFO)
 
 
-def main(args):
-    """
-    Script used to get variants impacted by homalt hotfix.
-    """
-
+def main(args):  # noqa: D103
+    """Script used to get variants impacted by homalt hotfix."""
     hl.init(log="/get_impacted_variants.log", default_reference="GRCh38")
 
     logger.info("Reading sparse MT and metadata table with release only samples...")
     mt = get_gnomad_v3_mt(
-        key_by_locus_and_alleles=True, samples_meta=True, release_only=True,
+        key_by_locus_and_alleles=True,
+        samples_meta=True,
+        release_only=True,
     ).select_entries(*SPARSE_ENTRIES)
 
     if args.test:
@@ -44,7 +43,8 @@ def main(args):
         mt = mt._filter_partitions(range(2))
 
     logger.info(
-        "Adding annotation for whether original genotype (pre-splitting multiallelics) is het nonref..."
+        "Adding annotation for whether original genotype (pre-splitting multiallelics)"
+        " is het nonref..."
     )
     # Adding a Boolean for whether a sample had a heterozygous non-reference genotype
     # Need to add this prior to splitting MT to make sure these genotypes
@@ -73,14 +73,18 @@ def main(args):
     # Thus, it doesn't matter that `sites_ht` has already been split
     # NOTE: set semi_join_rows to False here because the sites_HT is small
     mt = densify_sites(
-        mt, sites_ht, last_END_position.versions["3.1"].ht(), semi_join_rows=False,
+        mt,
+        sites_ht,
+        last_END_position.versions["3.1"].ht(),
+        semi_join_rows=False,
     )
     mt = mt.filter_rows(
         (hl.len(mt.alleles) > 1) & (hl.is_defined(sites_ht[mt.row_key]))
     )
 
     logger.info(
-        "Writing out dense MT with only het nonref calls that may have been incorrectly adjusted with the homalt hotfix..."
+        "Writing out dense MT with only het nonref calls that may have been incorrectly"
+        " adjusted with the homalt hotfix..."
     )
     if args.test:
         mt.write(
@@ -94,7 +98,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
