@@ -15,7 +15,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
     ancestry_pca_scores,
-    get_joint_qc_mt,
+    joint_qc,
     get_pop_ht,
     joint_qc_meta,
     pca_related_samples_to_drop,
@@ -44,7 +44,7 @@ def run_pca(
     :return: Eigenvalues, scores and loadings from PCA.
     """
     logger.info("Running population PCA")
-    qc_mt = get_joint_qc_mt(test=test).mt()
+    qc_mt = joint_qc(test=test).mt()
     joint_meta = joint_qc_meta.ht()
     samples_to_drop = related_samples_to_drop.select()
 
@@ -401,7 +401,7 @@ def main(args):
             _read_if_exists=not overwrite,
         )
         pop_ht.transmute(
-            **{f"PC{i}": pop_ht.pca_scores[i - 1] for i in pop_pcs}
+            **{f"PC{j}": pop_ht.pca_scores[i] for i, j in enumerate(pop_pcs)}
         ).export(pop_tsv_path(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp))
 
         with hl.hadoop_open(
