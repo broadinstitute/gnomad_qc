@@ -302,7 +302,6 @@ def assign_pops(
                 # arg for PR curves
                 else prop_mislabeled_samples
             )
-            logger.info("%d mislabeled samples.", mislabeled)
 
     pop_ht = pop_ht.annotate(
         original_training_pop=pop_pca_scores_ht[pop_ht.key].original_training_pop
