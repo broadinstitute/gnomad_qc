@@ -112,7 +112,6 @@ def main(args):
         )
 
     vds = get_gnomad_v3_vds(
-        key_by_locus_and_alleles=True,
         remove_hard_filtered_samples=hard_filter,
         release_only=release_only,
     )
