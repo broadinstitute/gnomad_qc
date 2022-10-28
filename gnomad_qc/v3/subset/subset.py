@@ -213,7 +213,7 @@ def main(args):
             )
             mt = mt.annotate_rows(info=mt.info.annotate(**ht[mt.row_key].info))
 
-            if args.vds:
+            if vds:
                 vd = vds.variant_data
                 vd = vd.annotate_rows(info=vd.info.annotate(**ht[vd.row_key].info))
                 vds = hl.vds.VariantDataset(vds.reference_data, vd)
