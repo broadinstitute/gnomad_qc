@@ -1,172 +1,50 @@
+"""Script to filter the gnomAD v3 VDS to a subset of specified samples with optional sample QC and variant QC annotations."""
 import argparse
 import logging
-import sys
+from typing import Dict, List
 
 import hail as hl
+from gnomad.utils.annotations import get_adj_expr
 
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds
 from gnomad_qc.v3.resources.meta import meta as metadata
-from gnomad_qc.v3.resources.annotations import get_info
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.release import release_sites
-from gnomad.resources.grch38.gnomad import GENOME_POPS
-from gnomad.utils.filtering import subset_samples_and_variants
-from gnomad.utils.annotations import annotate_adj
+from gnomad_qc.v3.resources.sample_qc import hard_filtered_samples
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s: %(message)s",
-    datefmt="%m/%d/%Y %I:%M:%S %p",
-)
+logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-HEADER_DICT = {
-    "format": {
-        "GT": {"Description": "Genotype", "Number": "1", "Type": "String"},
-        "AD": {
-            "Description": "Allelic depths for the ref and alt alleles in the order listed",
-            "Number": "R",
-            "Type": "Integer",
-        },
-        "DP": {
-            "Description": "Approximate read depth",
-            "Number": "1",
-            "Type": "Integer",
-        },
-        "GQ": {
-            "Description": "Phred-scaled confidence that the genotype assignment is correct. Value is the difference between the second lowest PL and the lowest PL (always normalized to 0).",
-            "Number": "1",
-            "Type": "Integer",
-        },
-        "MIN_DP": {
-            "Description": "Minimum DP observed within the GVCF block",
-            "Number": "1",
-            "Type": "Integer",
-        },
-        "PGT": {
-            "Description": "Physical phasing haplotype information, describing how the alternate alleles are phased in relation to one another",
-            "Number": "1",
-            "Type": "String",
-        },
-        "PID": {
-            "Description": "Physical phasing ID information, where each unique ID within a given sample (but not across samples) connects records within a phasing group",
-            "Number": "1",
-            "Type": "String",
-        },
-        "PL": {
-            "Description": "Normalized, phred-scaled likelihoods for genotypes as defined in the VCF specification",
-            "Number": "G",
-            "Type": "Integer",
-        },
-        "SB": {
-            "Description": "Per-sample component statistics which comprise the Fisher's exact test to detect strand bias. Values are: depth of reference allele on forward strand, depth of reference allele on reverse strand, depth of alternate allele on forward strand, depth of alternate allele on reverse strand.",
-            "Number": "4",
-            "Type": "Integer",
-        },
-        "RGQ": {"Description": ""},
-        },
-    "info": {
-        "AS_ReadPosRankSum": {
-            "Description": "Allele-specific Z-score from Wilcoxon rank sum test of each alternate vs. reference read position bias"
-        },
-        "AS_MQRankSum": {
-            "Description": "Allele-specific Z-score from Wilcoxon rank sum test of alternate vs. reference read mapping qualities"
-        },
-        "AS_RAW_MQ": {
-            "Description": "Allele-specific raw root mean square of the mapping quality of reads across all samples"
-        },
-        "AS_QUALapprox": {
-            "Description": "Allele-specific sum of PL[0] values; used to approximate the QUAL score"
-        },
-        "AS_MQ_DP": {
-            "Description": "Allele-specific depth over variant samples for better MQ calculation"
-        },
-        "AS_VarDP": {
-            "Description": "Allele-specific (informative) depth over variant genotypes -- including ref, RAW format"
-        },
-        "AS_MQ": {
-            "Description": "Allele-specific root mean square of the mapping quality of reads across all samples"
-        },
-        "AS_QD": {
-            "Description": "Allele-specific variant call confidence normalized by depth of sample reads supporting a variant"
-        },
-        "AS_FS": {
-            "Description": "Allele-specific Phred-scaled p-value of Fisher's exact test for strand bias"
-        },
-        "AS_SB_TABLE": {
-            "Description": "Allele-specific forward/reverse read counts for strand bias tests"
-        },
-        "ReadPosRankSum": {
-            "Description": "Z-score from Wilcoxon rank sum test of alternate vs. reference read position bias"
-        },
-        "MQRankSum": {
-            "Description": "Z-score from Wilcoxon rank sum test of alternate vs. reference read mapping qualities"
-        },
-        "RAW_MQ": {
-            "Description": "Raw root mean square of the mapping quality of reads across all samples"
-        },
-        "QUALapprox": {
-            "Description": "Sum of PL[0] values; used to approximate the QUAL score"
-        },
-        "MQ_DP": {
-            "Description": "Depth over variant samples for better MQ calculation"
-        },
-        "VarDP": {"Description": "(informative) depth over variant genotypes"},
-        "SB": {
-            "Description": "Per-sample component statistics which comprise the Fisher's Exact Test to detect strand bias."
-        },
-        "MQ": {
-            "Description": "Root mean square of the mapping quality of reads across all samples"
-        },
-        "QD": {
-            "Description": "Variant call confidence normalized by depth of sample reads supporting a variant"
-        },
-        "FS": {
-            "Description": "Phred-scaled p-value of Fisher's exact test for strand bias"
-        },
-    },
-}
+VARIANT_QC_ANNOTATIONS = [
+    "freq",
+    "raw_qual_hists",
+    "popmax",
+    "qual_hists",
+    "faf",
+    "rsid",
+    "filters",
+    "info",
+    "vep",
+    "vqsr",
+    "region_flag",
+    "allele_info",
+    "age_hist_het",
+    "age_hist_hom",
+    "cadd",
+    "revel",
+    "splice_ai",
+    "primate_ai",
+]
 
 
-def format_info_for_vcf(ht) -> hl.Table:
+def compute_partitions(
+    mt, entry_size=3.5, partition_size=128000000, min_partitions=20
+) -> int:  # TODO: move to gnomad_methods
     """
-    Formats gnomAD MT fields with types that are not condusive to vcf export
+    Compute a very rough estimate for the optimal number of partitions in a MT.
 
-    :param ht: Table to reformat
-    :return: Reformatted Table
-    """
-    logger.info("Formatting the info hail table for VCF export")
-    for f, ft in ht.info.dtype.items():
-        if ft == hl.dtype("int64"):
-            ht = ht.annotate(
-                info=ht.info.annotate(**{f: hl.int32(hl.min(2 ** 31 - 1, ht.info[f]))}) # TODO: add warning that number being capped
-            )
-        elif ft == hl.dtype("float64"):
-            ht = ht.annotate(
-                info=ht.info.annotate(
-                    **{f: hl.float32(hl.min(2 ** 31 - 1, ht.info[f]))}
-                )
-            )
-        elif ft == hl.dtype("array<int64>"):
-            ht = ht.annotate(
-                info=ht.info.annotate(
-                    **{f: ht.info[f].map(lambda x: hl.int32(hl.min(2 ** 31 - 1, x)))}
-                )
-            )
-        elif ft == hl.dtype("array<float64>"):
-            ht = ht.annotate(
-                info=ht.info.annotate(
-                    **{f: ht.info[f].map(lambda x: hl.float32(hl.min(2 ** 31 - 1, x)))}
-                )
-            )
-    return ht
-
-
-def compute_partitions(mt, entry_size=3.5, partition_size=128000000, min_partitions=20) -> int:  # TODO: move to gnomad_methods
-    """
-    Computes a very rough estimate for the optimal number of partitions in a MT
-     using a the hail recommended partition size of 128MB and the rough estimate
-     of 3.5B per entry in the gnomAD sparse MT.
+    This uses the hail recommended partition size of 128MB and the rough estimate
+    of 3.5B per entry in the gnomAD sparse MT.
 
     :param mt: MatrixTable that will be resized
     :param entry_size: Average size in bytes that a single entry requires , defaults to 3.5
@@ -177,187 +55,253 @@ def compute_partitions(mt, entry_size=3.5, partition_size=128000000, min_partiti
     rows, columns = mt.count()
     mt_disk_est = rows * columns * entry_size
     n_partitions = hl.eval(hl.max(int(mt_disk_est / partition_size), min_partitions))
-    return n_partitions 
+    return n_partitions
+
+
+def make_variant_qc_annotations_dict(
+    key_expr: hl.expr.StructExpression,
+    vqc_annotations: List[str] = VARIANT_QC_ANNOTATIONS,
+) -> Dict[str, hl.expr.Expression]:
+    """
+    Make a dictionary of gnomAD release annotation expressions to annotate onto the subsetted data.
+
+    :param release_ht: The hail table containing desired annotations.
+    :param key_expr: Key to join annotations on.
+    :param vqc_annotations: List of desired annotations from the release HT.
+    :return: Dictionary containing Hail experssions to annotate onto subset.
+    """
+    ht = release_sites().ht()
+    selected_variant_qc_annotations = {}
+    for ann in vqc_annotations:
+        if ann in VARIANT_QC_ANNOTATIONS:
+            selected_variant_qc_annotations.update([(ann, ht[key_expr][ann])])
+        else:
+            raise ValueError(
+                f"{ann} is not an annotation in the release HT. Possible annotations"
+                f" are {VARIANT_QC_ANNOTATIONS}"
+            )
+    return selected_variant_qc_annotations
 
 
 def main(args):
-    hl.init(log="/subset.log", default_reference="GRCh38")
-    pop = args.pop
-    subset = args.subset
+    """Filter the gnomAD v3 VDS to a subset of specified samples."""
+    hl.init(
+        log="/subset.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp/subset_v3",
+    )
+
     hard_filter = args.hard_filter_samples
     release_only = args.release_only
-    header_dict = HEADER_DICT
+    output_path = args.output_path
+    vds = args.vds
+    dense_mt = args.dense_mt
+    split_multi = args.split_multi
+    subset_call_stats = args.subset_call_stats
+    variant_qc_annotations = args.variant_qc_annotations
+    pass_only = args.pass_only
+    n_partitions = args.num_partitions
 
-    mt = get_gnomad_v3_mt(
-        key_by_locus_and_alleles=True, remove_hard_filtered_samples=hard_filter, release_only=release_only
-    )
-    info_ht = get_info().ht()
-    info_ht = info_ht.annotate(info=info_ht.info.drop('AC', 'AC_raw')) # Note: AC and AC_raw are computed over all gnomAD samples
-    info_ht = format_info_for_vcf(info_ht)
+    if variant_qc_annotations and not split_multi:
+        logger.warning("Cannot add variant QC annotations to unsplit multiallelics.")
 
-    # Flatten SB if it is an array of arrays
-    if "SB" in info_ht.info and not isinstance(
-        info_ht.info.SB, hl.expr.ArrayNumericExpression
-    ):
-        info_ht = info_ht.annotate(
-            info=info_ht.info.annotate(SB=hl.flatten(info_ht.info.SB))
+    if n_partitions and vds:
+        raise ValueError(
+            "Number of partitions argument is not supported for VDS output at this"
+            " time."
         )
 
-    meta = metadata.ht()
+    vds = get_gnomad_v3_vds(
+        key_by_locus_and_alleles=True,
+        remove_hard_filtered_samples=hard_filter,
+        release_only=release_only,
+    )
 
-    if pop:
-        logger.info(f"Subsetting samples to {pop} population")
-        mt = mt.filter_cols(meta[mt.col_key].pop == pop)
+    if args.test:
+        vds = hl.vds.VariantDataset(
+            vds.reference_data._filter_partitions(range(2)),
+            vds.variant_data._filter_partitions(range(2)),
+        )
 
-    if subset:
-        mt = subset_samples_and_variants(mt, subset, sparse=True, gt_expr="LGT") 
+    subset_ht = hl.import_table(args.subset_samples)
+    vds = hl.vds.filter_samples(vds, subset_ht, remove_dead_alleles=True)
+    logger.info(
+        "Final number of samples being kept in the VDS: %d.",
+        vds.variant_data.count_cols(),
+    )
 
-    if args.export_meta:
+    if split_multi:
+        logger.info("Splitting multiallelics.")
+        vd = vds.variant_data
+        vd = vd.annotate_rows(
+            n_unsplit_alleles=hl.len(vd.alleles),
+            mixed_site=(hl.len(vd.alleles) > 2)
+            & hl.any(lambda a: hl.is_indel(vd.alleles[0], a), vd.alleles[1:])
+            & hl.any(lambda a: hl.is_snp(vd.alleles[0], a), vd.alleles[1:]),
+        )
+        vds = hl.vds.split_multi(
+            hl.vds.VariantDataset(vds.reference_data, vd), filter_changed_loci=True
+        )
+
+    if dense_mt or subset_call_stats or variant_qc_annotations or pass_only:
+        mt = hl.vds.to_dense_mt(vds)
+
+        if variant_qc_annotations or pass_only:
+            logger.info("Adding gnomAD variant QC annotations.")
+            if not split_multi:
+                logger.info(
+                    "Only biallelic variants will be annotated with variant QC"
+                    " annotations."
+                )
+            ht = release_sites().ht()
+            if pass_only:
+                mt = mt.filter_rows(ht[mt.row_key].filters.contains("PASS"))
+            if variant_qc_annotations:
+                mt = mt.annotate_rows(
+                    **make_variant_qc_annotations_dict(
+                        mt.row_key, variant_qc_annotations
+                    )
+                )
+                if vds:
+                    vd = vds.variant_data
+                    vd = vd.annotate_rows(
+                        **make_variant_qc_annotations_dict(
+                            vd.row_key, variant_qc_annotations
+                        )
+                    )
+                    vds = hl.vds.VariantDataset(vds.reference_data, vd)
+
+        if subset_call_stats:
+            logger.info("Adding subset callstats.")
+            if not split_multi:
+                mt = mt.annotate_entries(
+                    GT=hl.experimental.lgt_to_gt(mt.LGT, mt.LA),
+                    adj=get_adj_expr(
+                        mt.LGT,
+                        mt.GQ,
+                        mt.DP,
+                        mt.LAD,
+                    ),
+                )
+            else:
+                mt = mt.annotate_entries(
+                    adj=get_adj_expr(
+                        mt.GT,
+                        mt.GQ,
+                        mt.DP,
+                        mt.AD,
+                    ),
+                )
+
+            ht = mt.annotate_rows(
+                subset_callstats_raw=hl.agg.call_stats(mt.GT, mt.alleles),
+                subset_callstats_adj=hl.agg.filter(
+                    mt.adj, hl.agg.call_stats(mt.GT, mt.alleles)
+                ),
+            ).rows()
+            ht = ht.select(
+                info=hl.struct(
+                    AC_raw=ht.subset_callstats_raw.AC[1:],
+                    AN_raw=ht.subset_callstats_raw.AN,
+                    AF_raw=ht.subset_callstats_raw.AF[1:],
+                    nhomalt_raw=ht.subset_callstats_raw.homozygote_count[1:],
+                    AC=ht.subset_callstats_adj.AC[1:],
+                    AN=ht.subset_callstats_adj.AN,
+                    AF=ht.subset_callstats_adj.AF[1:],
+                    nhomalt=ht.subset_callstats_adj.homozygote_count[1:],
+                )
+            )
+            mt = mt.annotate_rows(info=mt.info.annotate(**ht[mt.row_key].info))
+
+            if args.vds:
+                vd = vds.variant_data
+                vd = vd.annotate_rows(info=vd.info.annotate(**ht[vd.row_key].info))
+                vds = hl.vds.VariantDataset(vds.reference_data, vd)
+
+    if dense_mt:
+        partitions = compute_partitions(mt) if not n_partitions else n_partitions
+        logger.info(
+            "Naive coalescing to %i partitions and writing output MT.", partitions
+        )
+        mt.naive_coalesce(partitions).write(
+            f"{output_path}/subset.mt", overwrite=args.overwrite
+        )
+
+    if vds:
+        vds.write(f"{output_path}/subset.vds", overwrite=args.overwrite)
+
+    if args.add_sample_qc:
+        logger.info("Exporting subset's metadata.")
+        meta = metadata.ht()
         meta = meta.semi_join(mt.cols())
-        meta.export(f"{args.output_path}/metadata.tsv.bgz")
-
-    logger.info("Splitting multi-allelics and densifying")
-    mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
-    mt = hl.experimental.densify(mt)
-
-    
-    mt = mt.filter_rows(hl.len(mt.alleles) > 1) # Note: This step is sparse-specific, removing monoallelic sites after densifying
-    mt = mt.filter_rows(hl.agg.any(mt.GT.is_non_ref()))
-
-    mt = mt.drop(mt.gvcf_info) # Note: gvcf_info is sparse-specific 
-    mt = mt.annotate_rows(info=info_ht[mt.row_key].info)
-
-    if args.subset_call_stats:
-        logger.info("Adding subset callstats")
-        mt = mt.annotate_rows(subset_callstats_raw=hl.agg.call_stats(mt.GT, mt.alleles))     
-        mt = mt.annotate_rows(info=mt.info.annotate(AC_raw=mt.subset_callstats_raw.AC[1],
-                                                    AN_raw=mt.subset_callstats_raw.AN,
-                                                    AF_raw=hl.float32(mt.subset_callstats_raw.AF[1])))
-        mt = mt.drop('subset_callstats_raw')
-        mt = annotate_adj(mt)
-        mt = mt.annotate_rows(subset_callstats_adj=hl.agg.filter(mt.adj, hl.agg.call_stats(mt.GT, mt.alleles)))
-        mt = mt.annotate_rows(info=mt.info.annotate(AC=mt.subset_callstats_adj.AC[1],
-                                                    AN=mt.subset_callstats_adj.AN,
-                                                    AF=hl.float32(mt.subset_callstats_adj.AF[1])))
-        mt = mt.drop('subset_callstats_adj', 'adj')
-        header_dict['info'].update({
-            "AC_raw": 
-                {
-                "Number": "A",
-                "Description": "Alternate allele count in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
-                },
-            "AN_raw": 
-                {
-                "Number": "1",
-                "Description": "Total number of alleles in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
-                },
-            "AF_raw": {
-                "Number": "A",
-                "Description": "Alternate allele frequency in subset before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
-                },
-            "AC": {
-                "Number": "A",
-                "Description": "Alternate allele count in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
-                },
-            "AN": {
-                "Number": "1",
-                "Description": "Total number of alleles in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)"
-                },
-            "AF": {
-                "Number": "A",
-                "Description": "Alternate allele frequency in subset after filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
-                }
-            }
-        )
-    
-    if args.add_gnomad_freqs:
-        logger.info("Adding gnomAD callstats")
-        freq_ht = release_sites().ht().select("freq")
-        mt = mt.annotate_rows(info=mt.info.annotate(gnomAD_AC=freq_ht[mt.row_key].freq[0].AC, 
-                                                    gnomAD_AN=freq_ht[mt.row_key].freq[0].AN,
-                                                    gnomAD_AF=hl.float32(freq_ht[mt.row_key].freq[0].AF),
-                                                    gnomAD_AC_raw=freq_ht[mt.row_key].freq[1].AC, 
-                                                    gnomAD_AN_raw=freq_ht[mt.row_key].freq[1].AN,
-                                                    gnomAD_AF_raw=hl.float32(freq_ht[mt.row_key].freq[1].AF)))
-        header_dict['info'].update({
-            "gnomAD_AC": {
-                "Number": "A",
-                "Description": "High quality alternate allele count in gnomAD after filtering out low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
-                },
-            "gnomAD_AN": {
-                "Number": "1",
-                "Description": "High quality allele number. The total number of called alleles in gnomAD after filtering out low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
-                },
-            "gnomAD_AF": {
-                "Number": "A",
-                "Description": "High quality alternate allele frequency in gnomAD after filtering out low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
-                },
-            "gnomAD_AC_raw": {
-                "Number": "A",
-                "Description": "Raw alternate allele count in gnomAD before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
-                }, 
-            "gnomAD_AN_raw": {
-                "Number": "1",
-                "Description": "Raw allele number. The total number of called alleles in gnomAD before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
-                },
-            "gnomAD_AF_raw": {
-                "Number": "A",
-                "Description": "Raw alternate allele frequency in gnomAD before filtering of low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het calls)",
-                }
-            }
-        )
-
-    mt = mt.checkpoint("gs://gnomad-tmp/gnomad_subsetting_checkpoint.mt", overwrite=True)
-    partitions = (
-        compute_partitions(mt) if not args.num_vcf_shards else args.num_vcf_shards
-    )
-    logger.info(f"Naive coalescing to {partitions}")
-
-    mt = mt.naive_coalesce(partitions)
-
-    if args.checkpoint_path:
-        mt = mt.checkpoint(args.checkpoint_path, overwrite=True)
-
-    logger.info("Exporting VCF")
-    hl.export_vcf(
-        mt,
-        f"{args.output_path}/sharded_vcf.bgz",
-        parallel="header_per_shard",
-        metadata=header_dict,
-    )
+        if hard_filter:
+            meta = meta.filter(hl.is_missing(hard_filtered_samples.ht()[meta.key]))
+        if release_only:
+            meta = meta.filter(meta.release)
+        meta.export(f"{output_path}/metadata.tsv.bgz")
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(
-        description="This script subsets gnomAD using a list of samples or population"
-    )
-
-    parser.add_argument(
-        "-s", "--subset", help="Path to a text file with sample IDs for subsetting and a header: s"
-    )
-    parser.add_argument("--pop", help=f"Subset to a specific population", choices=GENOME_POPS) 
-    parser.add_argument(
-        "--export-meta", help="Pull sample subset metadata and export to a .tsv", action="store_true"
+        description="This script subsets gnomAD v3 using a list of samples."
     )
     parser.add_argument(
-        "--output-path", help="Output file path for subsetted VCF, do not include file", required=True,
+        "-s",
+        "--subset-samples",
+        help="Path to a text file with sample IDs for subsetting and a header: s.",
+        required=True,
     )
-    parser.add_argument("--num-vcf-shards", help="Number of shards in output VCF", type=int)
-    parser.add_argument("--checkpoint-path", help="Path to final mt checkpoint")
-    parser.add_argument("--hard-filter-samples", help="Removes hard filtered samples", action="store_true")
-    parser.add_argument("--release-only", help="Keep release samples only", action="store_true")
-    parser.add_argument("--subset-call-stats", help="Adds subset callstats, AC, AN, AF", action="store_true")
-    parser.add_argument("--add-gnomad-freqs", help="Adds gnomAD's adj and raw callstats", action="store_true")
+    parser.add_argument(
+        "--split-multi",
+        help="Whether to split multi-allelic variants.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--dense-mt", help="Whether to make a dense MT.", action="store_true"
+    )
+    parser.add_argument("--vds", help="Whether to make a VDS.", action="store_true")
+    parser.add_argument(
+        "--output-path",
+        help="Output file path for subsetted file, do not include file.",
+        required=True,
+    )
+    parser.add_argument(
+        "--num-partitions", help="Number of partitions in output file.", type=int
+    )
+    parser.add_argument(
+        "--hard-filter-samples",
+        help="Removes hard filtered samples.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--release-only", help="Keep release samples only.", action="store_true"
+    )
+    parser.add_argument(
+        "--subset-call-stats",
+        help="Adds subset callstats, AC, AN, AF",
+        action="store_true",
+    )
+    parser.add_argument("--add-sample-qc", help="Export sample QC from metadata file.")
+    parser.add_argument(
+        "--variant-qc-annotations",
+        help="Annotate exported file with these gnomAD's variant QC annotations.",
+        default=VARIANT_QC_ANNOTATIONS,
+        type=list,
+        nargs="+",
+    )
     parser.add_argument(
         "-o",
         "--overwrite",
-        help="Overwrite all data from this subset (default: False)",
+        help="Overwrite outputs if they exist.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--pass-only",
+        help=(
+            "Keep only the variants that passed variant QC, i.e. the filter field is"
+            " PASS."
+        ),
         action="store_true",
     )
     args = parser.parse_args()
-
-    if not (args.subset or args.pop):
-        sys.exit('Error: At least subset path or population must be specified')
-
     main(args)
