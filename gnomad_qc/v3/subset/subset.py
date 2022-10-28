@@ -295,6 +295,7 @@ if __name__ == "__main__":
         help="Overwrite outputs if they exist.",
         action="store_true",
     )
+    parser.add_argument("--vds", help="Output subset file in the hail VDS format.")
     parser.add_argument(
         "--pass-only",
         help=(
@@ -303,5 +304,6 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
+    parser.add_argument("--test", help="Run on test dataset.")
     args = parser.parse_args()
     main(args)
