@@ -81,8 +81,6 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    # NOTE: remove this flag when the new shuffle method is the default
-    # hl._set_flags(use_new_shuffle="1")
 
     try:
         if args.prepare_cuking_inputs:
@@ -219,6 +217,7 @@ def main(args):
                 min_individual_maf=args.min_individual_maf,
                 min_emission_kinship=min_emission_kinship,
             )
+            ht = ht.repartition(args.relatedness_n_partitions)
             ht.write(pc_relate_relatedness_ht.path, overwrite=overwrite)
 
         if args.compute_related_samples_to_drop:
@@ -301,7 +300,7 @@ if __name__ == "__main__":
     relatedness_estimate_args.add_argument(
         "--relatedness-n-partitions",
         help="Number of desired partitions for the relatedness Table.",
-        default=50,
+        default=100,
         type=int,
     )
 
@@ -439,6 +438,9 @@ if __name__ == "__main__":
     if args.print_cuking_command and (
         args.prepare_cuking_inputs
         or args.create_cuking_relatedness_table
+        or args.run_ibd_on_cuking_pairs
+        or args.run_pc_relate_pca
+        or args.create_pc_relate_relatedness_table
         or args.compute_related_samples_to_drop
     ):
         parser.error(
