@@ -5,11 +5,12 @@ import logging
 
 import hail as hl
 import pandas as pd
-from gnomad.utils.file_utils import file_exists
+from gnomad.utils.file_utils import check_file_exists_raise_error
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
 from gnomad_qc.v3.resources.meta import meta
+from gnomad_qc.v3.resources.sample_qc import subpop_outliers
 from gnomad_qc.v3.sample_qc.sample_qc import ancestry_pca_scores, assign_pops
 from gnomad_qc.v3.sample_qc.subpop_analysis import CURATED_SUBPOPS
 
@@ -27,20 +28,35 @@ def main(args):  # noqa: D103
     high_quality = args.high_quality
 
     try:
-        if not file_exists(
-            ancestry_pca_scores(include_unreleasable_samples, high_quality, pop).path
-        ):
-            logger.warning(
+        check_file_exists_raise_error(
+            ancestry_pca_scores(include_unreleasable_samples, high_quality, pop).path,
+            error_if_not_exists=True,
+            error_if_not_exists_msg=(
                 "PCs have not yet been computed for the supplied parameters. Please run"
                 " subpop_analysis.py with the desired parameters for"
-                " `include_unreleasable_samples`, `high_quality`, and `pop`"
-            )
+                " `include_unreleasable_samples`, `high_quality`, and `pop`."
+            ),
+        )
 
         # Read in metadata
         meta_ht = meta.ht()
 
         # Initiate lists for storing results
         merged = []
+
+        if args.remove_outliers:
+            check_file_exists_raise_error(
+                subpop_outliers(pop).path,
+                error_if_not_exists=True,
+                error_if_not_exists_msg=(
+                    "The --remove-outliers option was used, but a Table of outlier"
+                    f" samples does not exist for population {pop} at"
+                    f" {subpop_outliers(pop).path}"
+                ),
+            )
+            outliers_ht = subpop_outliers(pop).ht()
+        else:
+            outliers_ht = None
 
         # Run assign pops for each test combination of values in min_prob_list and
         # max_prop_mislabeled_list
@@ -61,6 +77,7 @@ def main(args):  # noqa: D103
                     withhold_prop=args.withhold_prop,
                     pop=pop,
                     curated_subpops=CURATED_SUBPOPS[pop],
+                    additional_samples_to_drop=outliers_ht,
                     high_quality=high_quality,
                     missing_label="Other",
                 )
@@ -228,6 +245,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--high-quality",
         help="Filter to only high-quality samples when computing the PCA",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--remove-outliers",
+        help=(
+            "Whether to remove outliers when training the random forest model. Outliers"
+            " are manually determined after visualizing the PC plots"
+        ),
         action="store_true",
     )
 

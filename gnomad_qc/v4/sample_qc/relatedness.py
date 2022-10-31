@@ -67,6 +67,8 @@ def main(args):
                     --tag-name=$(git describe --tags) \\
                     --input-uri={cuking_input_path} \\
                     --output-uri={cuking_output_path} \\
+                    --service-account=cuking@$PROJECT_ID.iam.gserviceaccount.com \\
+                    --write-success-file \\
                     --requester-pays-project=$PROJECT_ID \\
                     --kin-threshold={min_emission_kinship} \\
                     --split-factor={args.cuking_split_factor} &&
