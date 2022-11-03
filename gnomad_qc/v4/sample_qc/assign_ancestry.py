@@ -2,13 +2,14 @@
 import argparse
 import logging
 import pickle
-from typing import Any, List, Tuple, Union
+from typing import Any, List, Tuple
 
 import hail as hl
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.v4.resources.basics import get_checkpoint_path
+from gnomad_qc.v4.resources.sample_qc import pca_related_samples_to_drop  # ???
 from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
@@ -16,10 +17,8 @@ from gnomad_qc.v4.resources.sample_qc import (
     get_pop_ht,
     joint_qc,
     joint_qc_meta,
-    pca_related_samples_to_drop,
     pop_rf_path,
     pop_tsv_path,
-    release_related_samples_to_drop,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -174,7 +173,7 @@ def assign_pops(
     of `max_number_mislabeled_training_samples` or `max_proportion_mislabeled_training_samples` can be set.
 
     :param min_prob: Minimum RF probability for pop assignment.
-    :param include_unreleasable_samples: Whether unreleasable were included in PCA.
+    :param include_unreleasable_samples: Whether unreleasable samples were included in PCA.
     :param max_number_mislabeled_training_samples: If set, run the population assignment until the number of mislabeled training samples is less than this number threshold.
     :param max_proportion_mislabeled_training_samples: If set, run the population assignment until the number of mislabeled training samples is less than this proportion threshold.
     :param pcs: List of PCs to use in the RF.
@@ -329,7 +328,7 @@ def write_pca_results(
     pop_pca_scores_ht: hl.Table,
     pop_pca_loadings_ht: hl.Table,
     overwrite: hl.bool = False,
-    removed_unreleasables: hl.bool = True,
+    included_unreleasables: hl.bool = False,
     test: hl.bool = False,
 ):
     """
@@ -339,7 +338,7 @@ def write_pca_results(
     :param pop_pca_scores_ht: Table of scores returned by run_pca.
     :param pop_pca_loadings_ht: Table of loadings returned by run_pca.
     :param overwrite: Whether to overwrite an existing file.
-    :param removed_unreleasables: Whether run_pca removed unreleasable samples.
+    :param included_unreleasables: Whether run_pca included unreleasable samples.
     :param test: Whether the test QC MT was used in the PCA.
     :return: None
     """
@@ -350,15 +349,15 @@ def write_pca_results(
         )
     )
     pop_pca_eigenvalues_ht.write(
-        ancestry_pca_eigenvalues(removed_unreleasables, test).path,
+        ancestry_pca_eigenvalues(included_unreleasables, test).path,
         overwrite=overwrite,
     )
     pop_pca_scores_ht.write(
-        ancestry_pca_scores(removed_unreleasables, test).path,
+        ancestry_pca_scores(included_unreleasables, test).path,
         overwrite=overwrite,
     )
     pop_pca_loadings_ht.write(
-        ancestry_pca_loadings(removed_unreleasables, test).path,
+        ancestry_pca_loadings(included_unreleasables, test).path,
         overwrite=overwrite,
     )
 
@@ -378,7 +377,7 @@ def main(args):
 
     if args.run_pca:
         pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
-            release_related_samples_to_drop.ht(),
+            pca_related_samples_to_drop.ht(),
             include_unreleasable_samples,
             args.n_pcs,
             test,
