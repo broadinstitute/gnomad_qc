@@ -29,7 +29,7 @@ logger.setLevel(logging.INFO)
 
 def run_pca(
     related_samples_to_drop: hl.Table,
-    remove_unreleasable_samples: hl.bool = True,
+    include_unreleasable_samples: hl.bool = False,
     n_pcs: int = 30,
     test: hl.bool = False,
 ) -> Tuple[List[float], hl.Table, hl.Table]:
@@ -37,7 +37,7 @@ def run_pca(
     Run population PCA using `run_pca_with_relateds`.
 
     :param related_samples_to_drop: Table of related samples to drop from PCA run.
-    :param remove_unreleasable_samples: Should unreleasable samples be removed from the PCA.
+    :param include_unreleasable_samples: Should unreleasable samples be included in the PCA.
     :param n_pcs: Number of PCs to compute.
     :param test: Subset qc mt to small test dataset.
     :return: Eigenvalues, scores and loadings from PCA.
@@ -47,7 +47,7 @@ def run_pca(
     joint_meta = joint_qc_meta.ht()
     samples_to_drop = related_samples_to_drop.select()
 
-    if remove_unreleasable_samples:
+    if not include_unreleasable_samples:
         logger.info("Excluding unreleasable samples for PCA.")
         samples_to_drop = samples_to_drop.union(
             qc_mt.filter_cols(~joint_meta[qc_mt.col_key].releasable).cols().select()
@@ -80,7 +80,7 @@ def calculate_mislabeled_training(pop_ht: hl.Table, pop_field: str) -> [int, flo
 
 
 def prep_ht_for_rf(
-    remove_unreleasable_samples: bool = True,
+    include_unreleasable_samples: bool = False,
     withhold_prop: hl.float = None,
     seed: int = 24,
     test: bool = False,
@@ -89,14 +89,14 @@ def prep_ht_for_rf(
     """
     Prepare the PCA scores hail Table for the random forest population assignment runs.
 
-    :param remove_unreleasable_samples: Should unreleasable samples be remove in the PCA.
+    :param include_unreleasable_samples: Should unreleasable samples be included in the PCA.
     :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`.
     :param seed: Random seed, defaults to 24.
     :param test: Whether RF should run on the test QC MT.
     :param only_train_on_hgdp_tgp: Whether to train RF classifier using only the HGDP and 1KG populations. Default is False.
     :return Table with input for the random forest.
     """
-    pop_pca_scores_ht = ancestry_pca_scores(remove_unreleasable_samples, test).ht()
+    pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples, test).ht()
     joint_meta = joint_qc_meta.ht()[pop_pca_scores_ht.key]
 
     # TODO: Add code for subpopulations
@@ -153,7 +153,7 @@ def prep_ht_for_rf(
 
 def assign_pops(
     min_prob: float,
-    remove_unreleasable_samples: bool = True,
+    include_unreleasable_samples: bool = False,
     max_number_mislabeled_training_samples: int = None,
     max_proportion_mislabeled_training_samples: float = None,
     pcs: List[int] = list(range(1, 21)),
@@ -174,7 +174,7 @@ def assign_pops(
     of `max_number_mislabeled_training_samples` or `max_proportion_mislabeled_training_samples` can be set.
 
     :param min_prob: Minimum RF probability for pop assignment.
-    :param remove_unreleasable_samples: Whether unreleasable were removed from PCA.
+    :param include_unreleasable_samples: Whether unreleasable were included in PCA.
     :param max_number_mislabeled_training_samples: If set, run the population assignment until the number of mislabeled training samples is less than this number threshold.
     :param max_proportion_mislabeled_training_samples: If set, run the population assignment until the number of mislabeled training samples is less than this proportion threshold.
     :param pcs: List of PCs to use in the RF.
@@ -205,7 +205,7 @@ def assign_pops(
         max_mislabeled = None
 
     pop_pca_scores_ht = prep_ht_for_rf(
-        remove_unreleasable_samples,
+        include_unreleasable_samples,
         withhold_prop,
         seed,
         test,
@@ -308,7 +308,7 @@ def assign_pops(
     )
     pop_ht = pop_ht.annotate_globals(
         min_prob=min_prob,
-        remove_unreleasable_samples=remove_unreleasable_samples,
+        include_unreleasable_samples=include_unreleasable_samples,
         max_mislabeled=max_mislabeled,
         pop_assignment_iterations=pop_assignment_iter,
         pcs=pcs,
@@ -371,7 +371,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
 
-    remove_unreleasables = not args.include_unreleasable_samples
+    include_unreleasable_samples = args.include_unreleasable_samples
     overwrite = args.overwrite
     test = args.test
     only_train_on_hgdp_tgp = args.only_train_on_hgdp_tgp
@@ -379,7 +379,7 @@ def main(args):
     if args.run_pca:
         pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
             release_related_samples_to_drop.ht(),
-            remove_unreleasables,
+            include_unreleasable_samples,
             args.n_pcs,
             test,
         )
@@ -389,7 +389,7 @@ def main(args):
             pop_scores_ht,
             pop_loadings_ht,
             overwrite,
-            remove_unreleasables,
+            include_unreleasable_samples,
             test,
         )
 
@@ -397,7 +397,7 @@ def main(args):
         pop_pcs = args.pop_pcs
         pop_ht, pops_rf_model = assign_pops(
             args.min_pop_prob,
-            remove_unreleasables,
+            include_unreleasable_samples,
             max_number_mislabeled_training_samples=args.max_number_mislabeled_training_samples,
             max_proportion_mislabeled_training_samples=args.max_proportion_mislabeled_training_samples,
             pcs=pop_pcs,
@@ -432,7 +432,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--include-unreleasable-samples",
-        help="Remove unreleasable samples when computing PCA.",
+        help="Include unreleasable samples when computing PCA.",
         action="store_true",
     )
     parser.add_argument(
