@@ -72,7 +72,7 @@ def _get_platform_pca_ht_path(part: str, version: str = CURRENT_VERSION) -> str:
 def _get_ancestry_pca_ht_path(
     part: str,
     version: str = CURRENT_VERSION,
-    remove_unreleasable_samples: bool = True,
+    include_unreleasable_samples: bool = False,
     test: bool = False,
     data_type: str = "joint",
 ) -> str:
@@ -81,24 +81,24 @@ def _get_ancestry_pca_ht_path(
 
     :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores).
     :param version: Version of sample QC path to return.
-    :param remove_unreleasable_samples: Whether the PCA removed unreleasable samples.
+    :param include_unreleasable_samples: Whether the PCA included unreleasable samples.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
     :return: Path to requested ancestry PCA file.
     """
     return (
-        f"{get_sample_qc_root(version,test,data_type)}/gnomad.{data_type}.v{version}.pca_{part}{'_without_unreleasable_samples' if remove_unreleasable_samples else ''}.ht"
+        f"{get_sample_qc_root(version,test,data_type)}/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
     )
 
 
 def ancestry_pca_loadings(
-    remove_unreleasable_samples: bool = True,
+    include_unreleasable_samples: bool = False,
     test: bool = False,
     data_type: str = "joint",
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA loadings VersionedTableResource.
 
-    :param remove_unreleasable_samples: Whether to get the PCA loadings from the PCA that did not use unreleasable samples.
+    :param include_unreleasable_samples: Whether to get the PCA loadings from the PCA that used unreleasable samples.
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
     :return: Ancestry PCA loadings
@@ -108,7 +108,7 @@ def ancestry_pca_loadings(
         {
             version: TableResource(
                 _get_ancestry_pca_ht_path(
-                    "loadings", version, remove_unreleasable_samples, test, data_type
+                    "loadings", version, include_unreleasable_samples, test, data_type
                 )
             )
             for version in VERSIONS
@@ -117,14 +117,14 @@ def ancestry_pca_loadings(
 
 
 def ancestry_pca_scores(
-    remove_unreleasable_samples: bool = True,
+    include_unreleasable_samples: bool = False,
     test: bool = False,
     data_type: str = "joint",
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA scores VersionedTableResource.
 
-    :param remove_unreleasable_samples: Whether to get the PCA scores from the PCA that did not use unreleasable samples.
+    :param include_unreleasable_samples: Whether to get the PCA scores from the PCA that used unreleasable samples.
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
     :return: Ancestry PCA scores
@@ -134,7 +134,7 @@ def ancestry_pca_scores(
         {
             version: TableResource(
                 _get_ancestry_pca_ht_path(
-                    "scores", version, remove_unreleasable_samples, test, data_type
+                    "scores", version, include_unreleasable_samples, test, data_type
                 )
             )
             for version in VERSIONS
@@ -143,14 +143,14 @@ def ancestry_pca_scores(
 
 
 def ancestry_pca_eigenvalues(
-    remove_unreleasable_samples: bool = True,
+    include_unreleasable_samples: bool = False,
     test: bool = False,
     data_type: str = "joint",
 ) -> VersionedTableResource:
     """
     Get the ancestry PCA eigenvalues VersionedTableResource.
 
-    :param remove_unreleasable_samples: Whether to get the PCA eigenvalues from the PCA that did not use unreleasable samples.
+    :param include_unreleasable_samples: Whether to get the PCA eigenvalues from the PCA that used unreleasable samples.
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
     :return: Ancestry PCA eigenvalues
@@ -160,7 +160,11 @@ def ancestry_pca_eigenvalues(
         {
             version: TableResource(
                 _get_ancestry_pca_ht_path(
-                    "eigenvalues", version, remove_unreleasable_samples, test, data_type
+                    "eigenvalues",
+                    version,
+                    include_unreleasable_samples,
+                    test,
+                    data_type,
                 )
             )
             for version in VERSIONS
