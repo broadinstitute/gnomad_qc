@@ -9,7 +9,6 @@ from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relate
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.v4.resources.basics import get_checkpoint_path
-from gnomad_qc.v4.resources.sample_qc import pca_related_samples_to_drop  # ???
 from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
@@ -17,6 +16,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     get_pop_ht,
     joint_qc,
     joint_qc_meta,
+    pca_related_samples_to_drop,
     pop_rf_path,
     pop_tsv_path,
 )
@@ -377,7 +377,7 @@ def main(args):
 
     if args.run_pca:
         pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
-            pca_related_samples_to_drop.ht(),
+            pca_related_samples_to_drop().ht(),
             include_unreleasable_samples,
             args.n_pcs,
             test,
