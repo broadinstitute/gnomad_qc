@@ -323,13 +323,13 @@ def check_resource_existence(
     overwrite: bool = False,
 ) -> None:
     """
-    Check whether the existence of all input and output resources.
+    Check the existence of all specified input and output resources.
 
     If any of the input resources (`input_resources`) don't exist, an error will be
     raised indicating which input resources are missing.
 
     If any of the output resources (`output_resources`) already exist and the
-    `overwrite` parameter is set to True, an error will be raised indicating which
+    `overwrite` parameter is not set to True, an error will be raised indicating which
     output resources already exist.
 
     If no parameters are passed to the function, nothing is done.

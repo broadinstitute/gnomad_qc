@@ -347,7 +347,7 @@ def relatedness(method: str = "cuking", test: bool = False):
     )
 
 
-def ibd(test: bool = False):
+def ibd(test: bool = False) -> VersionedTableResource:
     """
     Get VersionedTableResource for identity-by-descent (ibd) on cuKING related pairs.
 
