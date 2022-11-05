@@ -46,8 +46,7 @@ def main(args):
 
     if args.print_cuking_command:
         check_resource_existence(
-            input_pipeline_step="--prepare-cuking-inputs",
-            input_resources=[cuking_input_path],
+            input_step_resources={"--prepare-cuking-inputs": [cuking_input_path]}
         )
         logger.info(
             "Printing a command that can be used to submit a Cloud Batch job to run "
@@ -91,10 +90,10 @@ def main(args):
                 "for cuKING."
             )
             check_resource_existence(
-                input_pipeline_step="generate_qc_mt.py --generate-qc-mt",
-                output_pipeline_step="--prepare-cuking-inputs",
-                input_resources=[joint_qc_mt],
-                output_resources=[cuking_input_path],
+                input_step_resources={
+                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt]
+                },
+                output_step_resources={"--prepare-cuking-inputs": [cuking_input_path]},
                 overwrite=overwrite,
             )
             mt_to_cuking_inputs(
@@ -106,10 +105,10 @@ def main(args):
         if args.create_cuking_relatedness_table:
             logger.info("Converting cuKING outputs to Hail Table.")
             check_resource_existence(
-                input_pipeline_step="--print-cuking-command",
-                output_pipeline_step="--create-cuking-relatedness-table",
-                input_resources=[cuking_output_path],
-                output_resources=[cuking_relatedness_ht],
+                input_step_resources={"--print-cuking-command": [cuking_output_path]},
+                output_step_resources={
+                    "--create-cuking-relatedness-table": [cuking_relatedness_ht]
+                },
                 overwrite=overwrite,
             )
 
@@ -123,13 +122,11 @@ def main(args):
                 args.ibd_min_cuking_kin,
             )
             check_resource_existence(
-                input_pipeline_step=(
-                    "generate_qc_mt.py --generate-qc-mt and "
-                    "--create-cuking-relatedness-table"
-                ),
-                output_pipeline_step="--run-ibd-on-cuking-pairs",
-                input_resources=[joint_qc_mt, cuking_relatedness_ht],
-                output_resources=[ibd_ht],
+                input_step_resources={
+                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt],
+                    "--create-cuking-relatedness-table": [cuking_relatedness_ht],
+                },
+                output_step_resources={"--run-ibd-on-cuking-pairs": [ibd_ht]},
                 overwrite=overwrite,
             )
             mt = joint_qc_mt.mt()
@@ -179,10 +176,10 @@ def main(args):
         if args.run_pc_relate_pca:
             logger.info("Running PCA for PC-Relate")
             check_resource_existence(
-                input_pipeline_step="generate_qc_mt.py --generate-qc-mt",
-                output_pipeline_step="--run-pc-relate-pca",
-                input_resources=[joint_qc_mt],
-                output_resources=[pc_relate_pca_scores],
+                input_step_resources={
+                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt]
+                },
+                output_step_resources={"--run-pc-relate-pca": [pc_relate_pca_scores]},
                 overwrite=overwrite,
             )
             eig, scores, _ = hl.hwe_normalized_pca(
@@ -196,12 +193,13 @@ def main(args):
                 "PC-relate requires SSDs and doesn't work with preemptible workers!"
             )
             check_resource_existence(
-                input_pipeline_step=(
-                    "generate_qc_mt.py --generate-qc-mt and --run-pc-relate-pca"
-                ),
-                output_pipeline_step="--create-pc-relate-relatedness-table",
-                input_resources=[joint_qc_mt, pc_relate_pca_scores],
-                output_resources=[pc_relate_relatedness_ht],
+                input_step_resources={
+                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt],
+                    "--run-pc-relate-pca": [pc_relate_pca_scores],
+                },
+                output_step_resources={
+                    "--create-pc-relate-relatedness-table": [pc_relate_relatedness_ht]
+                },
                 overwrite=overwrite,
             )
             mt = joint_qc_mt.mt()
@@ -346,22 +344,22 @@ if __name__ == "__main__":
         help="Convert the cuKING outputs to a standard Hail Table.",
         action="store_true",
     )
-    print_cuking_ibd = cuking_args.add_argument_group(
+    cuking_ibd = cuking_args.add_argument_group(
         "Run IBD on related pairs identified by cuKING",
         "Arguments used run IBD on related cuKING pairs.",
     )
-    print_cuking_ibd.add_argument(
+    cuking_ibd.add_argument(
         "--run-ibd-on-cuking-pairs",
         help="Run IBD on related pairs identified by cuKING.",
         action="store_true",
     )
-    print_cuking_ibd.add_argument(
+    cuking_ibd.add_argument(
         "--ibd-min-cuking-kin",
         help="Min cuKING kinship for pair to be included in IBD estimates.",
         default=0.16,
         type=float,
     )
-    print_cuking_ibd.add_argument(
+    cuking_ibd.add_argument(
         "--ibd-max-samples",
         help="Max number of samples to include in each IBD run.",
         default=10000,
@@ -396,7 +394,7 @@ if __name__ == "__main__":
     )
     run_pc_relate.add_argument(
         "--n-pc-relate-pcs",
-        help="Number of PCs to compute for PC-relate.",
+        help="Number of PCs to use in PC-relate.",
         type=int,
         default=10,
     )
