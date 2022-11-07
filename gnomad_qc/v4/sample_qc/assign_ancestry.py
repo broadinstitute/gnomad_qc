@@ -14,7 +14,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_loadings,
     ancestry_pca_scores,
     get_pop_ht,
-    joint_qc,
+    get_joint_qc,
     joint_qc_meta,
     pca_related_samples_to_drop,
     pop_rf_path,
@@ -42,7 +42,7 @@ def run_pca(
     :return: Eigenvalues, scores and loadings from PCA.
     """
     logger.info("Running population PCA")
-    qc_mt = joint_qc(test=test).mt()
+    qc_mt = get_joint_qc(test=test).mt()
     joint_meta = joint_qc_meta.ht()
     samples_to_drop = related_samples_to_drop.select()
 
