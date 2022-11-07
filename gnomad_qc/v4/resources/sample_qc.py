@@ -588,12 +588,9 @@ def get_pop_ht(
     :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Default is False.
     :return: TableResource of sample pops.
     """
-    if test:
-        return TableResource(
-            f"{get_sample_qc_root(version,test, data_type)}/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}pop.ht"
-        )
-    else:
-        return pop.versions[version]
+    return TableResource(
+        f"{get_sample_qc_root(version,test, data_type)}/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}pop.ht"
+    )
 
 
 def _import_related_samples_to_drop(**kwargs):
