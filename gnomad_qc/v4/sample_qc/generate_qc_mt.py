@@ -29,9 +29,9 @@ from gnomad_qc.v4.resources.basics import (
 )
 from gnomad_qc.v4.resources.meta import project_meta as v4_meta
 from gnomad_qc.v4.resources.sample_qc import (
+    get_joint_qc,
     get_predetermined_qc,
     hard_filtered_samples,
-    joint_qc,
     joint_qc_meta,
     predetermined_qc_sites,
     sample_chr20_mean_dp,
@@ -291,7 +291,7 @@ def main(args):
                 n_partitions=args.n_partitions,
                 block_size=args.block_size,
             )
-            mt.write(joint_qc(test=test).path, overwrite=overwrite)
+            mt.write(get_joint_qc(test=test).path, overwrite=overwrite)
 
         if args.generate_qc_meta:
             generate_qc_meta_ht().write(joint_qc_meta.path, overwrite=overwrite)
@@ -362,7 +362,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n-partitions",
         help="Desired number of partitions for output QC MatrixTable.",
-        default=1000,
+        default=5000,
         type=int,
     )
     parser.add_argument(

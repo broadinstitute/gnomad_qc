@@ -4,17 +4,21 @@ import logging
 import textwrap
 
 import hail as hl
+import networkx as nx
 from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
 from gnomad.utils.file_utils import check_file_exists_raise_error
 from gnomad.utils.slack import slack_notifications
+from hail.utils.misc import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.basics import get_checkpoint_path, get_logging_path
+from gnomad_qc.v4.resources.basics import check_resource_existence, get_logging_path
 from gnomad_qc.v4.resources.sample_qc import (
-    cuking_input_path,
-    cuking_output_path,
-    joint_qc,
+    get_cuking_input_path,
+    get_cuking_output_path,
+    get_joint_qc,
+    ibd,
     joint_qc_meta,
+    pc_relate_pca_scores,
     pca_related_samples_to_drop,
     pca_samples_rankings,
     relatedness,
@@ -31,22 +35,26 @@ def main(args):
     """Compute relatedness estimates among pairs of samples in the callset."""
     test = args.test
     overwrite = args.overwrite
+    min_emission_kinship = args.min_emission_kinship
+
+    joint_qc_mt = get_joint_qc(test=test)
+    cuking_input_path = get_cuking_input_path(test=test)
+    cuking_output_path = get_cuking_output_path(test=test)
+    cuking_relatedness_ht = relatedness(test=test)
+    ibd_ht = ibd(test=test)
+    pc_relate_relatedness_ht = relatedness("pc_relate", test=test)
 
     if args.print_cuking_command:
-        if (
-            args.prepare_cuking_inputs
-            or args.create_relatedness_table
-            or args.compute_related_samples_to_drop
-        ):
-            raise ValueError(
-                "--print-cuking-command can't be used simultaneously with other run "
-                "modes."
-            )
-
-        logger.warning("Make sure that $PROJECT_ID is set!")
+        check_resource_existence(
+            input_step_resources={"--prepare-cuking-inputs": [cuking_input_path]}
+        )
+        logger.info(
+            "Printing a command that can be used to submit a Cloud Batch job to run "
+            "cuKING on the files created by --prepare-cuking-inputs."
+        )
         logger.warning(
             "This printed command assumes that the cuKING directory is in the same "
-            "location where the command is being run!"
+            "location where the command is being run and that $PROJECT_ID is set!"
         )
         print(
             textwrap.dedent(
@@ -56,12 +64,12 @@ def main(args):
                     --location=us-central1 \\
                     --project-id=$PROJECT_ID \\
                     --tag-name=$(git describe --tags) \\
+                    --input-uri={cuking_input_path} \\
+                    --output-uri={cuking_output_path} \\
                     --service-account=cuking@$PROJECT_ID.iam.gserviceaccount.com \\
                     --write-success-file \\
-                    --input-uri={cuking_input_path(test=test)} \\
-                    --output-uri={cuking_output_path(test=test)} \\
                     --requester-pays-project=$PROJECT_ID \\
-                    --kin-threshold={args.min_kin_cutoff} \\
+                    --kin-threshold={min_emission_kinship} \\
                     --split-factor={args.cuking_split_factor} &&
                 cd ..
                 """
@@ -69,23 +77,148 @@ def main(args):
         )
         return
 
-    hl.init(log="/relatedness.log", default_reference="GRCh38")
+    hl.init(
+        log="/relatedness.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
 
     try:
-        if args.prepare_inputs:
-            parquet_uri = cuking_input_path(test=test)
-            check_file_exists_raise_error(parquet_uri, not overwrite)
+        if args.prepare_cuking_inputs:
+            logger.info(
+                "Converting joint dense QC MatrixTable to a Parquet format suitable "
+                "for cuKING."
+            )
+            check_resource_existence(
+                input_step_resources={
+                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt]
+                },
+                output_step_resources={"--prepare-cuking-inputs": [cuking_input_path]},
+                overwrite=overwrite,
+            )
             mt_to_cuking_inputs(
-                mt=joint_qc(test=test).mt(),
-                parquet_uri=parquet_uri,
+                mt=joint_qc_mt.mt(),
+                parquet_uri=cuking_input_path,
                 overwrite=overwrite,
             )
 
         if args.create_cuking_relatedness_table:
-            check_file_exists_raise_error(relatedness(test=test).path, not overwrite)
-            ht = cuking_outputs_to_ht(parquet_uri=cuking_output_path(test=test))
+            logger.info("Converting cuKING outputs to Hail Table.")
+            check_resource_existence(
+                input_step_resources={"--print-cuking-command": [cuking_output_path]},
+                output_step_resources={
+                    "--create-cuking-relatedness-table": [cuking_relatedness_ht]
+                },
+                overwrite=overwrite,
+            )
+
+            ht = cuking_outputs_to_ht(parquet_uri=cuking_output_path)
             ht = ht.repartition(args.relatedness_n_partitions)
-            ht.write(relatedness(test=test).path, overwrite=overwrite)
+            ht.write(cuking_relatedness_ht.path, overwrite=overwrite)
+
+        if args.run_ibd_on_cuking_pairs:
+            logger.info(
+                "Running IBD on cuKING pairs with kinship over %f.",
+                args.ibd_min_cuking_kin,
+            )
+            check_resource_existence(
+                input_step_resources={
+                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt],
+                    "--create-cuking-relatedness-table": [cuking_relatedness_ht],
+                },
+                output_step_resources={"--run-ibd-on-cuking-pairs": [ibd_ht]},
+                overwrite=overwrite,
+            )
+            mt = joint_qc_mt.mt()
+            ht = cuking_relatedness_ht.ht()
+            ht = ht.filter(ht.kin > args.ibd_min_cuking_kin)
+            ht = ht.checkpoint(new_temp_file("cuking_for_ibd", extension="ht"))
+            ht_i = ht.i.collect()
+            ht_j = ht.j.collect()
+            mt = mt.filter_cols(hl.literal(set(ht_i) | set(ht_j)).contains(mt.s))
+            mt = mt.checkpoint(new_temp_file("cuking_for_ibd", extension="mt"))
+
+            # Build a network from the list of pairs and extract the list of
+            # connected components
+            pair_graph = nx.Graph()
+            pair_graph.add_edges_from(list(zip(ht_i, ht_j)))
+            connected_samples = list(nx.connected_components(pair_graph))
+
+            ibd_hts = []
+            sample_subset = []
+            while connected_samples:
+                sample_subset.extend(connected_samples.pop())
+                if len(sample_subset) > args.ibd_max_samples or not connected_samples:
+                    print(len(ibd_hts))
+                    subset_ibd_ht = hl.identity_by_descent(
+                        mt.filter_cols(hl.literal(sample_subset).contains(mt.s))
+                    )
+                    subset_ibd_ht = subset_ibd_ht.filter(
+                        hl.is_defined(
+                            hl.coalesce(
+                                ht[subset_ibd_ht.i, subset_ibd_ht.j],
+                                ht[subset_ibd_ht.j, subset_ibd_ht.i],
+                            )
+                        )
+                    )
+                    ibd_hts.append(
+                        subset_ibd_ht.checkpoint(
+                            new_temp_file("relatedness_ibd_subset", extension="ht")
+                        )
+                    )
+                    sample_subset = []
+            full_ibd_ht = ibd_hts[0].union(*ibd_hts[1:])
+            full_ibd_ht = full_ibd_ht.annotate_globals(
+                ibd_min_cuking_kin=args.ibd_min_cuking_kin
+            )
+            full_ibd_ht.distinct().write(ibd_ht.path, overwrite=overwrite)
+
+        if args.run_pc_relate_pca:
+            logger.info("Running PCA for PC-Relate")
+            check_resource_existence(
+                input_step_resources={
+                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt]
+                },
+                output_step_resources={"--run-pc-relate-pca": [pc_relate_pca_scores]},
+                overwrite=overwrite,
+            )
+            eig, scores, _ = hl.hwe_normalized_pca(
+                joint_qc_mt.mt().GT, k=args.n_pca_pcs, compute_loadings=False
+            )
+            scores.write(pc_relate_pca_scores.path, overwrite=overwrite)
+
+        if args.create_pc_relate_relatedness_table:
+            logger.info("Running PC-Relate")
+            logger.warning(
+                "PC-relate requires SSDs and doesn't work with preemptible workers!"
+            )
+            check_resource_existence(
+                input_step_resources={
+                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt],
+                    "--run-pc-relate-pca": [pc_relate_pca_scores],
+                },
+                output_step_resources={
+                    "--create-pc-relate-relatedness-table": [pc_relate_relatedness_ht]
+                },
+                overwrite=overwrite,
+            )
+            mt = joint_qc_mt.mt()
+            ht = hl.pc_relate(
+                mt.GT,
+                min_individual_maf=args.min_individual_maf,
+                scores_expr=pc_relate_pca_scores.ht()[mt.col_key].scores[
+                    : args.n_pc_relate_pcs
+                ],
+                block_size=args.block_size,
+                min_kinship=min_emission_kinship,
+                statistics="all",
+            )
+            ht = ht.annotate_globals(
+                min_individual_maf=args.min_individual_maf,
+                min_emission_kinship=min_emission_kinship,
+            )
+            ht = ht.repartition(args.relatedness_n_partitions)
+            ht.write(pc_relate_relatedness_ht.path, overwrite=overwrite)
 
         if args.compute_related_samples_to_drop:
             # compute_related_samples_to_drop uses a rank Table as a tie breaker when
@@ -150,19 +283,49 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test", help="Use a test MatrixTableResource as input.", action="store_true"
     )
-    parser.add_argument(
+
+    relatedness_estimate_args = parser.add_argument_group(
+        "Common relatedness estimate arguments",
+        "Arguments relevant to both cuKING and PC-relate relatedness estimates.",
+    )
+    relatedness_estimate_args.add_argument(
+        "--min-emission-kinship",
+        help=(
+            "Minimum kinship threshold for emitting a pair of samples in the "
+            "relatedness output."
+        ),
+        default=0.05,
+        type=float,
+    )
+    relatedness_estimate_args.add_argument(
+        "--relatedness-n-partitions",
+        help="Number of desired partitions for the relatedness Table.",
+        default=100,
+        type=int,
+    )
+
+    cuking_args = parser.add_argument_group(
+        "cuKING specific relatedness arguments",
+        "Arguments specific to computing relatedness estimates using cuKING.",
+    )
+    cuking_args.add_argument(
         "--prepare-cuking-inputs",
         help=(
             "Converts the dense QC MatrixTable to a Parquet format suitable for cuKING."
         ),
         action="store_true",
     )
-    parser.add_argument(
+    print_cuking_cmd = cuking_args.add_argument_group(
+        "Print cuKING Cloud Batch job submission command",
+        "Arguments used to create the cuKING Cloud Batch job submission command "
+        "needed to run cuKING.",
+    )
+    print_cuking_cmd.add_argument(
         "--print-cuking-command",
         help="Print the command to submit a Cloud Batch job for running cuKING.",
         action="store_true",
     )
-    parser.add_argument(
+    print_cuking_cmd.add_argument(
         "--cuking-split-factor",
         help=(
             "Split factor to use for splitting the full relatedness matrix table "
@@ -176,26 +339,78 @@ if __name__ == "__main__":
         default=4,
         type=int,
     )
-    parser.add_argument(
-        "--min-kin-cutoff",
-        help=(
-            "Minimum kinship threshold for a pair of samples to be retained in the "
-            "cuKING output."
-        ),
-        default=0.05,
-        type=float,
-    )
-    parser.add_argument(
+    cuking_args.add_argument(
         "--create-cuking-relatedness-table",
         help="Convert the cuKING outputs to a standard Hail Table.",
         action="store_true",
     )
-    parser.add_argument(
-        "--relatedness-n-partitions",
-        help="Number of desired partitions for the relatedness Table.",
-        default=50,
+    cuking_ibd = cuking_args.add_argument_group(
+        "Run IBD on related pairs identified by cuKING",
+        "Arguments used run IBD on related cuKING pairs.",
+    )
+    cuking_ibd.add_argument(
+        "--run-ibd-on-cuking-pairs",
+        help="Run IBD on related pairs identified by cuKING.",
+        action="store_true",
+    )
+    cuking_ibd.add_argument(
+        "--ibd-min-cuking-kin",
+        help="Min cuKING kinship for pair to be included in IBD estimates.",
+        default=0.16,
+        type=float,
+    )
+    cuking_ibd.add_argument(
+        "--ibd-max-samples",
+        help="Max number of samples to include in each IBD run.",
+        default=10000,
         type=int,
     )
+
+    pc_relate_args = parser.add_argument_group(
+        "PC-relate specific relatedness arguments",
+        "Arguments specific to computing relatedness estimates using PC-relate.",
+    )
+    run_pca = pc_relate_args.add_argument_group(
+        "Run PCA for PC-relate", "Arguments used to run the PCA for PC-relate."
+    )
+    run_pca.add_argument(
+        "--run-pc-relate-pca",
+        help="Run PCA to generate the scores needed for PC-relate.",
+        action="store_true",
+    )
+    run_pca.add_argument(
+        "--n-pca-pcs",
+        help="Number of PCs to compute for PC-relate.",
+        type=int,
+        default=20,
+    )
+    run_pc_relate = pc_relate_args.add_argument_group(
+        "Run PC-relate", "Arguments used to run PC-relate."
+    )
+    run_pc_relate.add_argument(
+        "--create-pc-relate-relatedness-table",
+        help="Run PC-relate to create the PC-relate relatedness Table.",
+        action="store_true",
+    )
+    run_pc_relate.add_argument(
+        "--n-pc-relate-pcs",
+        help="Number of PCs to use in PC-relate.",
+        type=int,
+        default=10,
+    )
+    run_pc_relate.add_argument(
+        "--min-individual-maf",
+        help="The minimum individual-specific minor allele frequency.",
+        default=0.01,
+        type=float,
+    )
+    run_pc_relate.add_argument(
+        "--block-size",
+        help="Block size parameter to use for PC-relate.",
+        default=2048,
+        type=int,
+    )
+
     parser.add_argument(
         "--compute-related-samples-to-drop",
         help="Determine the minimal set of related samples to prune.",
@@ -219,6 +434,18 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    if args.print_cuking_command and (
+        args.prepare_cuking_inputs
+        or args.create_cuking_relatedness_table
+        or args.run_ibd_on_cuking_pairs
+        or args.run_pc_relate_pca
+        or args.create_pc_relate_relatedness_table
+        or args.compute_related_samples_to_drop
+    ):
+        parser.error(
+            "--print-cuking-command can't be used simultaneously with other run modes."
+        )
 
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):

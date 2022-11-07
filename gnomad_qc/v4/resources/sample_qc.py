@@ -190,7 +190,7 @@ v4_predetermined_qc = VersionedMatrixTableResource(
 )
 
 
-def joint_qc(test: bool = False) -> VersionedMatrixTableResource:
+def get_joint_qc(test: bool = False) -> VersionedMatrixTableResource:
     """
     Get the dense MatrixTableResource at final joint v3 and v4 QC sites.
 
@@ -347,6 +347,24 @@ def relatedness(method: str = "cuking", test: bool = False):
     )
 
 
+def ibd(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for identity-by-descent (ibd) on cuKING related pairs.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/gnomad.exomes.v{version}.ibd.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
 # Sex chromosome coverage aggregate stats MT.
 sex_chr_coverage = VersionedMatrixTableResource(
     CURRENT_VERSION,
@@ -480,7 +498,7 @@ pop = VersionedTableResource(
 )
 
 
-def cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def get_cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
     Return the path containing the input files read by cuKING.
 
@@ -494,7 +512,7 @@ def cuking_input_path(version: str = CURRENT_VERSION, test: bool = False) -> str
     return f"{qc_temp_prefix(version)}cuking_input{'_test' if test else ''}.parquet"
 
 
-def cuking_output_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def get_cuking_output_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
     Return the path containing the output files written by cuKING.
 
