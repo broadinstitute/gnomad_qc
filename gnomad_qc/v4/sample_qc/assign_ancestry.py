@@ -38,7 +38,7 @@ def run_pca(
     :param related_samples_to_drop: Table of related samples to drop from PCA run.
     :param include_unreleasable_samples: Should unreleasable samples be included in the PCA.
     :param n_pcs: Number of PCs to compute.
-    :param test: Subset qc mt to small test dataset.
+    :param test: Subset QC MT to small test dataset.
     :return: Eigenvalues, scores and loadings from PCA.
     """
     logger.info("Running population PCA")
@@ -61,9 +61,9 @@ def calculate_mislabeled_training(pop_ht: hl.Table, pop_field: str) -> [int, flo
     """
     Calculate the number and proportion of mislabeled training samples.
 
-    :param pop_ht: Table with assigned pops/subpops that is returned by `assign_population_pcs`
-    :param pop_field: Name of field in the Table containing the assigned pop/subpop
-    :return: The number and proportion of mislabeled training samples
+    :param pop_ht: Table with assigned pops/subpops that is returned by `assign_population_pcs`.
+    :param pop_field: Name of field in the Table containing the assigned pop/subpop.
+    :return: The number and proportion of mislabeled training samples.
     """
     n_mislabeled_samples = pop_ht.aggregate(
         hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
@@ -89,7 +89,7 @@ def prep_ht_for_rf(
     Prepare the PCA scores hail Table for the random forest population assignment runs.
 
     :param include_unreleasable_samples: Should unreleasable samples be included in the PCA.
-    :param withhold_prop: Proportion of training pop samples to withhold from training will keep all samples if `None`.
+    :param withhold_prop: Proportion of training pop samples to withhold from training. All samples are kept when set as `None`.
     :param seed: Random seed, defaults to 24.
     :param test: Whether RF should run on the test QC MT.
     :param only_train_on_hgdp_tgp: Whether to train RF classifier using only the HGDP and 1KG populations. Default is False.
@@ -470,7 +470,7 @@ if __name__ == "__main__":
             " that are mislabelled is under this number threshold. The basis of this"
             " decision should be rooted in the reliability of the samples' provided"
             " population label. Can't be used if"
-            " `max-proportion-mislabeled-training-samples` is already set"
+            " `max-proportion-mislabeled-training-samples` is already set."
         ),
         type=int,
         default=None,
@@ -482,7 +482,7 @@ if __name__ == "__main__":
             " that are mislabelled is under this proportion threshold. The basis of"
             " this decision should be rooted in the reliability of the samples'"
             " provided population label. Can't be used if"
-            " `max-number-mislabeled-training-samples` is already set"
+            " `max-number-mislabeled-training-samples` is already set."
         ),
         type=float,
         default=None,
