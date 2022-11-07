@@ -103,11 +103,13 @@ def prep_ht_for_rf(
     # Either train the RF with only HGDP and TGP or all known populations and
     # previously inferred pops in v3
     if only_train_on_hgdp_tgp:
+        logger.info("Training using HGDP and 1KG samples only...")
         training_pop = hl.or_missing(
             (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp),
             joint_meta.v3_meta.v3_project_pop,
         )
     else:
+        logger.info("Training using all v3 non-oth samples...")
         training_pop = (
             hl.case()
             .when(
