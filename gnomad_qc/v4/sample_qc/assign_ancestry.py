@@ -166,12 +166,13 @@ def assign_pops(
     """
     Use a random forest model to assign global population labels based on the results from `run_pca`.
 
-    The training data is the v3 project metadata's `project_pop` when defined, otherwise the v3 inferred population is used when it is defined with the exception of `oth`.
-    The method starts by inferring the pop on all samples, then comparing the training data to the inferred data,
-    removing the truth outliers and re-training. This is repeated until the number of truth samples is less than
-    or equal to `max_number_mislabeled_training_samples` or `max_proportion_mislabeled_training_samples`. Only one
-    of `max_number_mislabeled_training_samples` or `max_proportion_mislabeled_training_samples` can be set.
-
+    Training data is the v3 project metadata field `project_pop` when defined, otherwise, the v3 inferred population
+    with the exception of `oth`. Training data is restricted to 1KG and HGDP samples, if specified. The method assigns
+    a population label to all samples in the dataset. If a maximum number or proportion of mislabled samples is set and the number
+    of truth outliers exceeds this threshold, the outliers are removed from the training data, and the random
+    forest runs until the number of truth outliers is less than or equal to `max_number_mislabeled_training_samples` or
+    `max_proportion_mislabeled_training_samples`. Only one of `max_number_mislabeled_training_samples`
+    or `max_proportion_mislabeled_training_samples` can be set.
     :param min_prob: Minimum RF probability for pop assignment.
     :param include_unreleasable_samples: Whether unreleasable samples were included in PCA.
     :param max_number_mislabeled_training_samples: If set, run the population assignment until the number of mislabeled training samples is less than this number threshold.
@@ -377,7 +378,7 @@ def main(args):
 
     if args.run_pca:
         pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
-            pca_related_samples_to_drop().ht(),
+            pca_related_samples_to_drop().ht().key_by("s"),
             include_unreleasable_samples,
             args.n_pcs,
             test,
