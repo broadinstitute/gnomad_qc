@@ -380,7 +380,7 @@ def main(args):
 
     if args.run_pca:
         pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
-            pca_related_samples_to_drop().ht().key_by("s"),
+            pca_related_samples_to_drop().ht(),
             include_unreleasable_samples,
             args.n_pcs,
             test,
