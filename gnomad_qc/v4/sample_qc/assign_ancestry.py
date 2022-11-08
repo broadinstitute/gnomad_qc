@@ -170,7 +170,7 @@ def assign_pops(
 
     Training data is the v3 project metadata field `project_pop` when defined, otherwise, the v3 inferred population
     with the exception of `oth`. Training data is restricted to 1KG and HGDP samples, if specified. The method assigns
-    a population label to all samples in the dataset. If a maximum number or proportion of mislabled samples is set and the number
+    a population label to all samples in the dataset. If a maximum number or proportion of mislabeled samples is set and the number
     of truth outliers exceeds this threshold, the outliers are removed from the training data, and the random
     forest runs until the number of truth outliers is less than or equal to `max_number_mislabeled_training_samples` or
     `max_proportion_mislabeled_training_samples`. Only one of `max_number_mislabeled_training_samples`
