@@ -320,7 +320,7 @@ def get_predetermined_qc(
 # HT of pre LD pruned variants chosen from CCDG, gnomAD v3, and UKB variant info.
 # See: https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py
 predetermined_qc_sites = TableResource(
-    "gs://gnomad/v4.0/sample_qc/pre_ld_pruning_qc_variants.ht"
+    "gs://gnomad/v4.0/sample_qc/additional_resources/pre_ld_pruning_qc_variants.ht"
 )
 
 # gnomAD v3 dense MT of all predetermined possible QC sites `predetermined_qc_sites`.
@@ -722,7 +722,7 @@ sample_clinvar_count = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/gnomad.exomes.v{version}.clinvar.ht"
+            f"gs://gnomad/v{version}/sample_qc/additional_resources/gnomad.exomes.v{version}.clinvar.ht"
         )
         for version in VERSIONS
     },
