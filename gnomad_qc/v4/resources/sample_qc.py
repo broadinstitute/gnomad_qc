@@ -299,7 +299,7 @@ interval_qc_pass = VersionedTableResource(
 
 def get_predetermined_qc(
     version: str = CURRENT_VERSION, test: bool = False
-) -> VersionedMatrixTableResource:
+) -> MatrixTableResource:
     """
     Get the dense MatrixTableResource of all predetermined QC sites for the indicated gnomAD version.
 
@@ -351,7 +351,7 @@ def get_joint_qc(test: bool = False) -> VersionedMatrixTableResource:
         CURRENT_VERSION,
         {
             version: MatrixTableResource(
-                f"{get_sample_qc_root(version, test)}/qc_mt/gnomad.joint.v{version}.qc.mt"
+                f"{get_sample_qc_root(version, test, data_type='joint')}/qc_mt/gnomad.joint.v{version}.qc.mt"
             )
             for version in VERSIONS
         },
@@ -363,7 +363,7 @@ joint_qc_meta = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/qc_mt/gnomad.joint.v{version}.qc_meta.ht"
+            f"{get_sample_qc_root(version, data_type='joint')}/qc_mt/gnomad.joint.v{version}.qc_meta.ht"
         )
         for version in VERSIONS
     },
@@ -407,7 +407,7 @@ pc_relate_pca_scores = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/relatedness/gnomad.exomes.v{version}.pc_scores.ht"
+            f"{get_sample_qc_root(version, data_type='joint')}/relatedness/gnomad.joint.v{version}.pc_scores.ht"
         )
         for version in VERSIONS
     },
@@ -430,7 +430,7 @@ def relatedness(method: str = "cuking", test: bool = False):
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test)}/relatedness/gnomad.exomes.v{version}.relatedness.{method}.ht"
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.relatedness.{method}.ht"
             )
             for version in VERSIONS
         },
@@ -448,18 +448,11 @@ def ibd(test: bool = False) -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test)}/relatedness/gnomad.exomes.v{version}.ibd.ht"
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.ibd.ht"
             )
             for version in VERSIONS
         },
     )
-
-
-def _import_related_samples_to_drop(**kwargs):
-    ht = hl.import_table(**kwargs)
-    ht = ht.key_by(s=ht.f0)
-
-    return ht
 
 
 def pca_related_samples_to_drop(test: bool = False) -> VersionedTableResource:
@@ -473,7 +466,7 @@ def pca_related_samples_to_drop(test: bool = False) -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test)}/relatedness/gnomad.exomes.v{version}.related_samples_to_drop_for_pca.ht"
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.related_samples_to_drop_for_pca.ht"
             )
             for version in VERSIONS
         },
@@ -485,7 +478,7 @@ pca_samples_rankings = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{get_sample_qc_root(version)}/relatedness/gnomad.exomes.v{version}.pca_samples_ranking.ht"
+            f"{get_sample_qc_root(version, data_type='joint')}/relatedness/gnomad.joint.v{version}.pca_samples_ranking.ht"
         )
         for version in VERSIONS
     },
@@ -526,6 +519,7 @@ release_related_samples_to_drop = VersionedTableResource(
     },
 )
 
+
 ######################################################################
 # Ancestry inference resources
 ######################################################################
@@ -548,7 +542,7 @@ def _get_ancestry_pca_ht_path(
     :return: Path to requested ancestry PCA file.
     """
     return (
-        f"{get_sample_qc_root(version,test,data_type)}/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
+        f"{get_sample_qc_root(version, test, data_type)}/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
     )
 
 
@@ -650,7 +644,7 @@ def pop_tsv_path(
     :return: String path to sample populations
     """
     return (
-        f"{get_sample_qc_root(version,test,data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}RF_pop_assignments.txt.gz"
+        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}RF_pop_assignments.txt.gz"
     )
 
 
@@ -670,7 +664,7 @@ def pop_rf_path(
     :return: String path to sample pop RF model
     """
     return (
-        f"{get_sample_qc_root(version,test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}pop.RF_fit.pickle"
+        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}pop.RF_fit.pickle"
     )
 
 
@@ -690,7 +684,7 @@ def get_pop_ht(
     :return: TableResource of sample pops.
     """
     return TableResource(
-        f"{get_sample_qc_root(version,test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}pop.ht"
+        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}pop.ht"
     )
 
 
