@@ -6,7 +6,6 @@ import textwrap
 import hail as hl
 import networkx as nx
 from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
-from gnomad.utils.file_utils import check_file_exists_raise_error
 from gnomad.utils.slack import slack_notifications
 from hail.utils.misc import new_temp_file
 
@@ -31,6 +30,159 @@ logger = logging.getLogger("relatedness")
 logger.setLevel(logging.INFO)
 
 
+def compute_ibd(mt, relatedness_ht, ibd_min_cuking_kin, ibd_max_cuking_ibs0):
+    """
+    Add summary.
+
+    :param mt:
+    :param relatedness_ht:
+    :param ibd_min_cuking_kin:
+    :param ibd_max_cuking_ibs0:
+    :return:
+    """
+    ht = relatedness_ht.filter(
+        (relatedness_ht.kin > ibd_min_cuking_kin)
+        | (relatedness_ht.ibs0 < ibd_max_cuking_ibs0)
+    )
+    ht = ht.checkpoint(new_temp_file("cuking_for_ibd", extension="ht"))
+    ht_i = ht.i.collect()
+    ht_j = ht.j.collect()
+    mt = mt.filter_cols(hl.literal(set(ht_i) | set(ht_j)).contains(mt.s))
+    mt = mt.checkpoint(new_temp_file("cuking_for_ibd", extension="mt"))
+
+    # Build a network from the list of pairs and extract the list of
+    # connected components
+    pair_graph = nx.Graph()
+    pair_graph.add_edges_from(list(zip(ht_i, ht_j)))
+    connected_samples = list(nx.connected_components(pair_graph))
+
+    ibd_hts = []
+    sample_subset = []
+    while connected_samples:
+        sample_subset.extend(connected_samples.pop())
+        if len(sample_subset) > args.ibd_max_samples or not connected_samples:
+            subset_ibd_ht = hl.identity_by_descent(
+                mt.filter_cols(hl.literal(sample_subset).contains(mt.s))
+            )
+            subset_ibd_ht = subset_ibd_ht.filter(
+                hl.is_defined(
+                    hl.coalesce(
+                        ht[subset_ibd_ht.i, subset_ibd_ht.j],
+                        ht[subset_ibd_ht.j, subset_ibd_ht.i],
+                    )
+                )
+            )
+            ibd_hts.append(
+                subset_ibd_ht.checkpoint(
+                    new_temp_file("relatedness_ibd_subset", extension="ht")
+                )
+            )
+            sample_subset = []
+    full_ibd_ht = ibd_hts[0].union(*ibd_hts[1:])
+    full_ibd_ht = full_ibd_ht.annotate_globals(
+        ibd_min_cuking_kin=args.ibd_min_cuking_kin
+    )
+
+    return full_ibd_ht.distinct()
+
+
+def compute_rank_ht(rank_ht):
+    """
+    Add summary.
+
+    :param rank_ht:
+    :return:
+    """
+    rank_ht = rank_ht.select(
+        rank_ht.releasable,
+        rank_ht.chr20_mean_dp,
+        v3_release=hl.is_defined(rank_ht.v3_meta.v3_release)
+        & rank_ht.v3_meta.v3_release,
+        present_in_v3=hl.is_defined(rank_ht.v3_meta),
+    )
+
+    # Favor v3 release samples, then v4 samples over v3 non-release samples.
+    rank_ht = rank_ht.order_by(
+        hl.desc(rank_ht.v3_release),
+        hl.desc(rank_ht.releasable),
+        hl.asc(rank_ht.present_in_v3),
+        hl.desc(rank_ht.chr20_mean_dp),
+    ).add_index(name="rank")
+    rank_ht = rank_ht.key_by(rank_ht.s)
+    rank_ht = rank_ht.select(rank_ht.hard_filtered, rank_ht.rank)
+    return rank_ht
+
+
+def compute_related_samples_to_drop2(
+    relatedness_ht,
+    rank_ht,
+    second_degree_kin_cutoff,
+    must_keep=None,
+):
+    """
+    Add summary.
+
+    :param relatedness_ht:
+    :param rank_ht:
+    :param second_degree_kin_cutoff:
+    :param must_keep:
+    :return:
+    """
+    relatedness_ht = relatedness_ht.key_by(
+        i=relatedness_ht.i.annotate(rank=rank_ht[relatedness_ht.i.s].rank),
+        j=relatedness_ht.j.annotate(rank=rank_ht[relatedness_ht.j.s].rank),
+    )
+    relatedness_ht = relatedness_ht.filter(
+        relatedness_ht.kin > second_degree_kin_cutoff
+    )
+    related_pair_graph = nx.Graph()
+    related_pair_graph.add_edges_from(
+        list(zip(relatedness_ht.i.collect(), relatedness_ht.j.collect()))
+    )
+
+    def remove_related(g, must_keep=None):
+        to_remove = []
+        cant_remove = []
+        connected_samples = list(nx.connected_components(g))
+        for con in connected_samples:
+            if len(con) > 1:
+                con_idx = {i: s for i, s in enumerate(con)}
+                degree_rank_list = sorted(
+                    [(g.degree[s], s["rank"], i) for i, s in con_idx.items()]
+                )
+                last_i = len(degree_rank_list) - 1
+                last_s = con_idx[degree_rank_list[last_i][2]]
+                if must_keep is not None:
+                    while last_s.s in must_keep and last_i > 0:
+                        last_i -= 1
+                        last_s = con_idx[degree_rank_list[last_i][2]]
+                    if last_s.s in must_keep:
+                        all_s = [con_idx[s[2]].s for s in degree_rank_list]
+                        cant_remove.extend(all_s)
+                        last_s = None
+                        print(
+                            "MUST REMOVE ONE: \n\t",
+                            "\n\t ".join(
+                                map(str, [con_idx[s[2]] for s in degree_rank_list])
+                            ),
+                        )
+                if last_s is not None:
+                    to_remove.append(last_s)
+                    new_con = {con_idx[s[2]] for s in degree_rank_list[:-1]}
+                    if len(new_con) > 1:
+                        new_g = g.subgraph(new_con)
+                        to_remove.extend(remove_related(new_g))
+
+        return to_remove
+
+    return remove_related(
+        related_pair_graph,
+        must_keep=set(
+            joint_qc_meta.filter(joint_qc_meta.v3_meta.v3_release).s.collect()
+        ),
+    )
+
+
 def main(args):
     """Compute relatedness estimates among pairs of samples in the callset."""
     test = args.test
@@ -43,6 +195,8 @@ def main(args):
     cuking_relatedness_ht = relatedness(test=test)
     ibd_ht = ibd(test=test)
     pc_relate_relatedness_ht = relatedness("pc_relate", test=test)
+    pca_samples_rankings_ht = pca_samples_rankings(test=test)
+    pca_related_samples_to_drop_ht = pca_related_samples_to_drop(test=test)
 
     if args.print_cuking_command:
         check_resource_existence(
@@ -113,6 +267,7 @@ def main(args):
             )
 
             ht = cuking_outputs_to_ht(parquet_uri=cuking_output_path)
+            ht = ht.key_by(i=hl.struct(s=ht.i), j=hl.struct(s=ht.j))
             ht = ht.repartition(args.relatedness_n_partitions)
             ht.write(cuking_relatedness_ht.path, overwrite=overwrite)
 
@@ -129,49 +284,13 @@ def main(args):
                 output_step_resources={"--run-ibd-on-cuking-pairs": [ibd_ht]},
                 overwrite=overwrite,
             )
-            mt = joint_qc_mt.mt()
-            ht = cuking_relatedness_ht.ht()
-            ht = ht.filter(ht.kin > args.ibd_min_cuking_kin)
-            ht = ht.checkpoint(new_temp_file("cuking_for_ibd", extension="ht"))
-            ht_i = ht.i.collect()
-            ht_j = ht.j.collect()
-            mt = mt.filter_cols(hl.literal(set(ht_i) | set(ht_j)).contains(mt.s))
-            mt = mt.checkpoint(new_temp_file("cuking_for_ibd", extension="mt"))
 
-            # Build a network from the list of pairs and extract the list of
-            # connected components
-            pair_graph = nx.Graph()
-            pair_graph.add_edges_from(list(zip(ht_i, ht_j)))
-            connected_samples = list(nx.connected_components(pair_graph))
-
-            ibd_hts = []
-            sample_subset = []
-            while connected_samples:
-                sample_subset.extend(connected_samples.pop())
-                if len(sample_subset) > args.ibd_max_samples or not connected_samples:
-                    print(len(ibd_hts))
-                    subset_ibd_ht = hl.identity_by_descent(
-                        mt.filter_cols(hl.literal(sample_subset).contains(mt.s))
-                    )
-                    subset_ibd_ht = subset_ibd_ht.filter(
-                        hl.is_defined(
-                            hl.coalesce(
-                                ht[subset_ibd_ht.i, subset_ibd_ht.j],
-                                ht[subset_ibd_ht.j, subset_ibd_ht.i],
-                            )
-                        )
-                    )
-                    ibd_hts.append(
-                        subset_ibd_ht.checkpoint(
-                            new_temp_file("relatedness_ibd_subset", extension="ht")
-                        )
-                    )
-                    sample_subset = []
-            full_ibd_ht = ibd_hts[0].union(*ibd_hts[1:])
-            full_ibd_ht = full_ibd_ht.annotate_globals(
-                ibd_min_cuking_kin=args.ibd_min_cuking_kin
-            )
-            full_ibd_ht.distinct().write(ibd_ht.path, overwrite=overwrite)
+            compute_ibd(
+                joint_qc_mt.mt(),
+                cuking_relatedness_ht.ht(),
+                args.ibd_min_cuking_kin,
+                args.ibd_max_cuking_ibs0,
+            ).write(ibd_ht.path, overwrite=overwrite)
 
         if args.run_pc_relate_pca:
             logger.info("Running PCA for PC-Relate")
@@ -221,50 +340,43 @@ def main(args):
             ht.write(pc_relate_relatedness_ht.path, overwrite=overwrite)
 
         if args.compute_related_samples_to_drop:
-            # compute_related_samples_to_drop uses a rank Table as a tie breaker when
+            rel_method = args.relatedness_method_for_samples_to_drop
+            relatedness_ht = relatedness(rel_method, test=test)
+
+            # compute_related_samples_to_drop uses a rank Table as a tiebreaker when
             # pruning samples.
-            check_file_exists_raise_error(
-                [
-                    pca_samples_rankings.path,
-                    pca_related_samples_to_drop(test=test).path,
-                ],
-                not overwrite,
+            check_resource_existence(
+                input_step_resources={
+                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt],
+                    f"--create-{rel_method.replace('_', '-')}-relatedness-table": [
+                        relatedness_ht
+                    ],
+                },
+                output_step_resources={
+                    "--compute-related-samples-to-drop": [
+                        pca_samples_rankings_ht,
+                        pca_related_samples_to_drop_ht,
+                    ]
+                },
+                overwrite=overwrite,
             )
 
-            rank_ht = joint_qc_meta.ht()
-            rank_ht = rank_ht.select(
-                rank_ht.hard_filtered,
-                rank_ht.releasable,
-                rank_ht.chr20_mean_dp,
-                present_in_v3=hl.is_defined(rank_ht.v3_meta),
+            rank_ht = compute_rank_ht(
+                joint_qc_meta.ht().semi_join(joint_qc_mt.mt().cols())
+            )
+            rank_ht = rank_ht.checkpoint(
+                pca_samples_rankings_ht.path, overwrite=overwrite
             )
 
-            # Favor v3 release samples, then v4 samples over v3 non-release samples.
-            rank_ht = rank_ht.order_by(
-                hl.asc(rank_ht.hard_filtered),
-                hl.desc(rank_ht.present_in_v3 & rank_ht.releasable),
-                hl.desc(rank_ht.releasable),
-                hl.desc(rank_ht.chr20_mean_dp),
-            ).add_index(name="rank")
-            rank_ht = rank_ht.key_by(rank_ht.s)
-            rank_ht = rank_ht.select(rank_ht.hard_filtered, rank_ht.rank)
-            rank_ht = rank_ht.checkpoint(pca_samples_rankings.path, overwrite=overwrite)
-
-            samples_to_drop = compute_related_samples_to_drop(
-                relatedness(test=test).ht(),
+            samples_to_drop = compute_related_samples_to_drop2(
+                relatedness_ht.ht(),
                 rank_ht,
                 args.second_degree_kin_cutoff,
-                filtered_samples=hl.literal(
-                    rank_ht.aggregate(
-                        hl.agg.filter(
-                            rank_ht.hard_filtered, hl.agg.collect_as_set(rank_ht.s)
-                        )
-                    )
-                ),
             )
+            # TODO: Annotate globals?
             samples_to_drop = samples_to_drop.key_by(samples_to_drop.s)
             samples_to_drop.write(
-                pca_related_samples_to_drop(test=test).path, overwrite=overwrite
+                pca_related_samples_to_drop_ht.path, overwrite=overwrite
             )
 
     finally:
@@ -360,6 +472,16 @@ if __name__ == "__main__":
         type=float,
     )
     cuking_ibd.add_argument(
+        "--ibd-max-cuking-ibs0",
+        help=(
+            "Max cuKING IBS0 for pair to be included in IBD estimates. Note: This "
+            "default was determined from looking at the cuKING Kinship vs. IBS0 plot "
+            "for gnomAD v3 + gnomAD v4."
+        ),
+        default=50,
+        type=int,
+    )
+    cuking_ibd.add_argument(
         "--ibd-max-samples",
         help="Max number of samples to include in each IBD run.",
         default=10000,
@@ -410,22 +532,36 @@ if __name__ == "__main__":
         default=2048,
         type=int,
     )
-
-    parser.add_argument(
+    related_samples_to_drop = pc_relate_args.add_argument_group(
+        "Compute related samples to drop",
+        "Arguments used to determine related samples that should be dropped from "
+        "the ancestry PCA.",
+    )
+    related_samples_to_drop.add_argument(
         "--compute-related-samples-to-drop",
-        help="Determine the minimal set of related samples to prune.",
+        help="Determine the minimal set of related samples to prune for ancestry PCA.",
         action="store_true",
     )
-    parser.add_argument(
+    related_samples_to_drop.add_argument(
+        "--relatedness-method-for-samples-to-drop",
+        help=(
+            "Which relatedness method to use when determining related samples to drop. "
+            "Options are 'cuking' and 'pc_relate'. Default is 'cuking'."
+        ),
+        default="cuking",
+        type=str,
+        choices=["cuking", "pc_relate"],
+    )
+    related_samples_to_drop.add_argument(
         "--second-degree-kin-cutoff",
         help=(
             "Minimum kinship threshold for filtering a pair of samples with a second "
-            "degree relationship when filtering related individuals. Default is 0.1 "
-            "Bycroft et al. (2018) calculates a theoretical kinship of 0.08838835 "
-            "for a second degree relationship cutoff, but 0.1 was decided on after "
-            "evaluation of the distributions in gnomAD v3 and v4."
+            "degree relationship when filtering related individuals. Default is "
+            "0.08838835. Bycroft et al. (2018) calculates a theoretical kinship of "
+            "0.08838835 for a second degree relationship cutoff. This cutoff should"
+            "be determined by evaluation of the kinship distribution."
         ),
-        default=0.1,
+        default=0.08838835,
         type=float,
     )
     parser.add_argument(
