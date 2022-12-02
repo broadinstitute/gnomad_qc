@@ -40,6 +40,9 @@ def compute_ibd_on_cuking_pair_subset(
     """
     Run Hail's identity by descent on a subset of related pairs identified by cuKING.
 
+    The pairs that will get an identity by descent annotation are those where either
+    `ibd_min_cuking_kin` or `ibd_max_cuking_ibs0` are met.
+
     :param mt: QC MatrixTable.
     :param relatedness_ht: cuKING relatedness Table.
     :param ibd_min_cuking_kin: Minimum cuKING kinship for pair to be included in IBD
@@ -51,7 +54,7 @@ def compute_ibd_on_cuking_pair_subset(
     :return: Table containing identity by descent metrics on related sample pairs.
     """
     logger.info(
-        "Filtering the relatedness HT to pairs with cuKING kinship greater than %d or "
+        "Filtering the relatedness HT to pairs with cuKING kinship greater than %f or "
         "IBS0 less than %d for IBD annotation.",
         ibd_min_cuking_kin,
         ibd_max_cuking_ibs0,
@@ -115,15 +118,22 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
     """
     Add a rank to each sample for use when breaking maximal independent set ties.
 
-    Favor v3 release samples, then v4 samples over v3 non-release samples.
+    Favor v3 release samples, then v4 samples over v3 non-release samples, then
+    higher chr20 mean DP.
 
     :param ht: Table to add rank to.
     :return: Table containing sample ID and rank.
     """
+    ht = ht.select(
+        "releasable",
+        "chr20_mean_dp",
+        in_v3=hl.is_defined(ht.v3_meta),
+        in_v3_release=hl.is_defined(ht.v3_meta) & ht.v3_meta.v3_release,
+    )
     ht = ht.order_by(
-        hl.desc(hl.is_defined(ht.v3_meta.v3_release) & ht.v3_meta.v3_release),
+        hl.desc(ht.in_v3_release),
+        hl.asc(ht.in_v3),
         hl.desc(ht.releasable),
-        hl.asc(hl.is_defined(ht.v3_meta)),
         hl.desc(ht.chr20_mean_dp),
     ).add_index(name="rank")
     ht = ht.key_by(ht.s)
