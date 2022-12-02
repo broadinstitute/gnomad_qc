@@ -475,7 +475,7 @@ def pca_related_samples_to_drop(test: bool = False) -> VersionedTableResource:
 
 def pca_samples_rankings(test: bool = False) -> VersionedTableResource:
     """
-    Get the VersionedTableResource for ranking of all samples to use for remove relateds for PCA.
+    Get the VersionedTableResource for ranking of all samples to use for removing relateds for PCA.
 
     :param test: Whether to use a tmp path for a test resource.
     :return: VersionedTableResource.

@@ -72,7 +72,7 @@ def compute_ibd_on_cuking_pair_subset(
     connected_samples = list(nx.connected_components(pair_graph))
 
     logger.info(
-        "Looping through %d connected components that include a total of %d samples."
+        "Looping through %d connected components that include a total of %d samples. "
         "hl.identity_by_descent is run on at most %d samples at a time, where all "
         "samples from a connected component are in the same IBD run.",
         len(connected_samples),
@@ -293,7 +293,7 @@ def main(args):
             rel_method = args.relatedness_method_for_samples_to_drop
             relatedness_ht = relatedness(rel_method, test=test)
 
-            # compute_related_samples_to_drop uses a rank Table as a tiebreaker when
+            # Compute_related_samples_to_drop uses a rank Table as a tiebreaker when
             # pruning samples.
             check_resource_existence(
                 input_step_resources={
