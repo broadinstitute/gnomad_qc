@@ -25,6 +25,20 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("ancestry_assignment")
 logger.setLevel(logging.INFO)
 
+# Recommended pops to spike into HGDP and TGP training
+v4_pop_spike_dict = {
+    "Arab": "mid",
+    "Bedouin": "mid",
+    "Persian": "mid",
+    "Qatari": "mid",
+}
+
+v3_pop_spike_dict = {
+    "fin": "fin",
+    "ami": "ami",
+    "asj": "asj",
+}
+
 
 def run_pca(
     related_samples_to_drop: hl.Table,
@@ -65,10 +79,12 @@ def calculate_mislabeled_training(pop_ht: hl.Table, pop_field: str) -> [int, flo
     :param pop_field: Name of field in the Table containing the assigned pop/subpop.
     :return: The number and proportion of mislabeled training samples.
     """
+    logger.info("Calculating mislabeled training samples")
     n_mislabeled_samples = pop_ht.aggregate(
         hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
     )
 
+    logger.info("Counting where training pop is defined")
     defined_training_pops = pop_ht.aggregate(
         hl.agg.count_where(hl.is_defined(pop_ht.training_pop))
     )
@@ -84,6 +100,8 @@ def prep_ht_for_rf(
     seed: int = 24,
     test: bool = False,
     only_train_on_hgdp_tgp: bool = False,
+    v4_population_spike: List[str] = None,
+    v3_population_spike: List[str] = None,
 ) -> hl.Table:
     """
     Prepare the PCA scores hail Table for the random forest population assignment runs.
@@ -93,6 +111,8 @@ def prep_ht_for_rf(
     :param seed: Random seed, defaults to 24.
     :param test: Whether RF should run on the test QC MT.
     :param only_train_on_hgdp_tgp: Whether to train RF classifier using only the HGDP and 1KG populations. Default is False.
+    :param v4_population_spike: List of populations to spike into training. Must be in v4_population_spike dictionary. Default is None.
+    :param v3_population_spike: List of populations to spike into training. Must be in v3_population_spike dictionary. Default is None.
     :return Table with input for the random forest.
     """
     pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples, test).ht()
@@ -105,7 +125,8 @@ def prep_ht_for_rf(
     if only_train_on_hgdp_tgp:
         logger.info("Training using HGDP and 1KG samples only...")
         training_pop = hl.or_missing(
-            (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp),
+            (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp)
+            & (joint_meta.v3_meta.v3_project_pop != "oth"),
             joint_meta.v3_meta.v3_project_pop,
         )
     else:
@@ -113,7 +134,10 @@ def prep_ht_for_rf(
         training_pop = (
             hl.case()
             .when(
-                hl.is_defined(joint_meta.v3_meta.v3_project_pop),
+                (
+                    (hl.is_defined(joint_meta.v3_meta.v3_project_pop))
+                    & (joint_meta.v3_meta.v3_project_pop != "oth")
+                ),
                 joint_meta.v3_meta.v3_project_pop,
             )
             .when(
@@ -128,6 +152,65 @@ def prep_ht_for_rf(
         hgdp_or_tgp=joint_meta.v3_meta.v3_subsets.hgdp
         | joint_meta.v3_meta.v3_subsets.tgp,
     )
+    if v4_population_spike:
+        logger.info(
+            "Spiking v4 pops, %s, into the RF training data", v4_population_spike
+        )
+
+        pop_spiking = hl.dict(
+            [
+                (pop, v4_pop_spike_dict[pop])
+                for pop in v4_population_spike
+                if pop in v4_pop_spike_dict
+            ]
+        )
+
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+            training_pop=hl.case()
+            .when(
+                hl.is_defined(pop_pca_scores_ht.training_pop),
+                pop_pca_scores_ht.training_pop,
+            )
+            .when(
+                pop_spiking.contains(
+                    joint_qc_meta.ht()[pop_pca_scores_ht.key].v4_race_ethnicity
+                ),
+                pop_spiking[
+                    (joint_qc_meta.ht()[pop_pca_scores_ht.key].v4_race_ethnicity)
+                ],
+            )
+            .or_missing()
+        )
+
+    if v3_population_spike:
+        logger.info(
+            "Spiking v3 pops, %s, into the RF training data", v3_population_spike
+        )
+        pop_spiking = hl.dict(
+            [
+                (pop, v3_pop_spike_dict[pop])
+                for pop in v3_population_spike
+                if pop in v3_pop_spike_dict
+            ]
+        )
+
+        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
+            training_pop=hl.case()
+            .when(
+                hl.is_defined(pop_pca_scores_ht.training_pop),
+                pop_pca_scores_ht.training_pop,
+            )
+            .when(
+                pop_spiking.contains(
+                    joint_qc_meta.ht()[pop_pca_scores_ht.key].v3_meta.v3_project_pop
+                ),
+                pop_spiking[
+                    (joint_qc_meta.ht()[pop_pca_scores_ht.key].v3_meta.v3_project_pop)
+                ],
+            )
+            .or_missing()
+        )
+
     # Keep track of original training population labels, this is useful if
     # samples are withheld to create PR curves
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
@@ -137,6 +220,7 @@ def prep_ht_for_rf(
     # Use the withhold proportion to create PR curves for when the RF removes
     # samples because it will remove samples that are misclassified
     if withhold_prop:
+        logger.info("Withholding proportion is %s", withhold_prop)
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
             training_pop=hl.or_missing(
                 hl.is_defined(pop_pca_scores_ht.training_pop)
@@ -164,6 +248,8 @@ def assign_pops(
     test: bool = False,
     overwrite: bool = False,
     only_train_on_hgdp_tgp: bool = False,
+    v4_population_spike: List[str] = None,
+    v3_population_spike: List[str] = None,
 ) -> Tuple[hl.Table, Any]:
     """
     Use a random forest model to assign global population labels based on the results from `run_pca`.
@@ -186,6 +272,8 @@ def assign_pops(
     :param test: Whether running assigment on a test dataset.
     :param overwrite: Whether to overwrite existing files.
     :param only_train_on_hgdp_tgp: Whether to train the RF classifier using only the HGDP and 1KG populations. Defaults to False.
+    :param v4_population_spike: List of v4 populations to spike into the RF. Must be in v4_pop_spike dictionary. Defaults to None.
+    :param v3_population_spike: List of v3 populations to spike into the RF. Must be in v4_pop_spike dictionary. Defaults to None.
     :return: Table of pop assignments and the RF model.
     """
     logger.info("Assigning global population labels")
@@ -206,19 +294,24 @@ def assign_pops(
     else:
         max_mislabeled = None
 
+    logger.info("Prepping HT for RF.")
     pop_pca_scores_ht = prep_ht_for_rf(
         include_unreleasable_samples,
         withhold_prop,
         seed,
         test,
         only_train_on_hgdp_tgp,
+        v4_population_spike,
+        v3_population_spike,
     )
     pop_field = "pop"
     logger.info(
-        "Running RF using %d training examples",
+        "Running RF for the first time with PCs %s using %d training examples: %s",
+        pcs,
         pop_pca_scores_ht.aggregate(
             hl.agg.count_where(hl.is_defined(pop_pca_scores_ht.training_pop))
         ),
+        pop_pca_scores_ht.aggregate(hl.agg.counter(pop_pca_scores_ht.training_pop)),
     )
     # Run the pop RF for the first time
     pop_ht, pops_rf_model = assign_population_pcs(
@@ -229,7 +322,10 @@ def assign_pops(
         min_prob=min_prob,
         missing_label=missing_label,
     )
-
+    pop_ht = pop_ht.checkpoint(
+        get_checkpoint_path(f"assign_pops_rf_iter_1_pop_lots_of_loggers_{pcs[-1]}"),
+        overwrite=overwrite,
+    )
     # Calculate number and proportion of mislabeled samples
     n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(
         pop_ht, pop_field
@@ -243,7 +339,11 @@ def assign_pops(
         else prop_mislabeled_samples
     )
     pop_assignment_iter = 1
-
+    logger.info(
+        "The maximum number of samples with conflicting training and assigned labels"
+        " allowed is %s.",
+        str(max_mislabeled),
+    )
     # Rerun the RF until the number of mislabeled samples (known pop !=
     # assigned pop) is below our max mislabeled threshold. The basis of this
     # decision should be rooted in the reliability of the samples' provided
@@ -261,6 +361,10 @@ def assign_pops(
             pop_ht = pop_ht[pop_pca_scores_ht.key]
 
             # Remove mislabled samples from RF training unless they are from 1KG or HGDP
+            logger.info(
+                "Reannotating training pop after removing misclassified samples unless"
+                " part of HGDP or 1KG"
+            )
             pop_pca_scores_ht = pop_pca_scores_ht.annotate(
                 training_pop=hl.or_missing(
                     (
@@ -270,19 +374,21 @@ def assign_pops(
                     pop_pca_scores_ht.training_pop,
                 ),
             )
+            logger.info("Checkpointing reannotated scores ht")
             pop_pca_scores_ht = pop_pca_scores_ht.checkpoint(
                 get_checkpoint_path(
-                    f"assign_pops_rf_iter_{pop_assignment_iter}{'_test' if test else ''}"
+                    f"assign_pops_rf_iter_{pop_assignment_iter}{'_test' if test else ''}_lots_of_loggers"
                 ),
                 overwrite=overwrite,
             )
 
             logger.info(
-                "Running RF using %d training examples",
+                "Counted %d training examples",
                 pop_pca_scores_ht.aggregate(
                     hl.agg.count_where(hl.is_defined(pop_pca_scores_ht.training_pop))
                 ),
             )
+            logger.info("Rerunning gnomAD method's assign population_pcs")
             pop_ht, pops_rf_model = assign_population_pcs(
                 pop_pca_scores_ht,
                 pc_cols=pcs,
@@ -291,7 +397,13 @@ def assign_pops(
                 min_prob=min_prob,
                 missing_label=missing_label,
             )
-
+            logger.info("Completed gnomAD method's assign population_pcs")
+            pop_ht = pop_ht.checkpoint(
+                get_checkpoint_path(
+                    f"assign_pops_rf_iter_{pop_assignment_iter}{'_test' if test else ''}pop_ht_lots_of_loggers_pcs{pcs[-1]}"
+                ),
+                overwrite=overwrite,
+            )
             (
                 n_mislabeled_samples,
                 prop_mislabeled_samples,
@@ -314,8 +426,6 @@ def assign_pops(
         max_mislabeled=max_mislabeled,
         pop_assignment_iterations=pop_assignment_iter,
         pcs=pcs,
-        n_mislabeled_training_samples=n_mislabeled_samples,
-        prop_mislabeled_training_samples=prop_mislabeled_samples,
     )
     if withhold_prop:
         pop_ht = pop_ht.annotate_globals(withhold_prop=withhold_prop)
@@ -372,55 +482,69 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
+    try:
+        include_unreleasable_samples = args.include_unreleasable_samples
+        overwrite = args.overwrite
+        test = args.test
+        only_train_on_hgdp_tgp = args.only_train_on_hgdp_tgp
 
-    include_unreleasable_samples = args.include_unreleasable_samples
-    overwrite = args.overwrite
-    test = args.test
-    only_train_on_hgdp_tgp = args.only_train_on_hgdp_tgp
+        if args.run_pca:
+            pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
+                pca_related_samples_to_drop().ht(),
+                include_unreleasable_samples,
+                args.n_pcs,
+                test,
+            )
 
-    if args.run_pca:
-        pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
-            pca_related_samples_to_drop().ht(),
-            include_unreleasable_samples,
-            args.n_pcs,
-            test,
+            write_pca_results(
+                pop_eigenvalues,
+                pop_scores_ht,
+                pop_loadings_ht,
+                overwrite,
+                include_unreleasable_samples,
+                test,
+            )
+
+        if args.assign_pops:
+            pop_pcs = args.pop_pcs
+            pop_pcs = list(range(1, pop_pcs[0] + 1)) if len(pop_pcs) == 1 else pop_pcs
+            logger.info("Using following PCs: %s", pop_pcs)
+            pop_ht, pops_rf_model = assign_pops(
+                args.min_pop_prob,
+                include_unreleasable_samples,
+                max_number_mislabeled_training_samples=args.max_number_mislabeled_training_samples,
+                max_proportion_mislabeled_training_samples=args.max_proportion_mislabeled_training_samples,
+                pcs=pop_pcs,
+                withhold_prop=args.withhold_prop,
+                test=test,
+                overwrite=overwrite,
+                only_train_on_hgdp_tgp=only_train_on_hgdp_tgp,
+                v4_population_spike=args.v4_population_spike,
+                v3_population_spike=args.v3_population_spike,
+            )
+            logger.info("Writing pop ht...")
+            pop_ht = pop_ht.checkpoint(
+                get_pop_ht(
+                    test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp
+                ).path.replace(
+                    ".ht",
+                    f'.rf_w_{args.pop_pcs[0]}pcs_{args.min_pop_prob}_pop_prob_{hl.eval("v3_spike_"+hl.str("_").join(args.v3_population_spike)) if args.v3_population_spike else ""}{"v4_spike_"+hl.eval(hl.str("_").join(args.v4_population_spike)) if args.v4_population_spike else ""}.ht',
+                ),
+                overwrite=overwrite,
+                _read_if_exists=not overwrite,
+            )
+            # pop_ht.transmute(
+            #     **{f"PC{j}": pop_ht.pca_scores[i] for i, j in enumerate(pop_pcs)}
+            # ).export(pop_tsv_path(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp))
+
+            # with hl.hadoop_open(a
+            #     pop_rf_path(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp), "wb"
+            # ) as out:
+            #     pickle.dump(pops_rf_model, out)
+    finally:
+        hl.copy_log(
+            f'gs://gnomad-tmp-4day/ancestry_assignment/ancestry_assignment.rf_w_{args.pop_pcs}pcs_{args.min_pop_prob}_pop_prob_{"v3_spike_"+hl.str("_").join(args.v3_population_spike) if args.v3_population_spike else ""}{"v4_spike_"+hl.str("_").join(args.v4_population_spike) if args.v4_population_spike else ""}.log'
         )
-
-        write_pca_results(
-            pop_eigenvalues,
-            pop_scores_ht,
-            pop_loadings_ht,
-            overwrite,
-            include_unreleasable_samples,
-            test,
-        )
-
-    if args.assign_pops:
-        pop_pcs = args.pop_pcs
-        pop_ht, pops_rf_model = assign_pops(
-            args.min_pop_prob,
-            include_unreleasable_samples,
-            max_number_mislabeled_training_samples=args.max_number_mislabeled_training_samples,
-            max_proportion_mislabeled_training_samples=args.max_proportion_mislabeled_training_samples,
-            pcs=pop_pcs,
-            withhold_prop=args.withhold_prop,
-            test=test,
-            overwrite=overwrite,
-            only_train_on_hgdp_tgp=only_train_on_hgdp_tgp,
-        )
-        pop_ht = pop_ht.checkpoint(
-            get_pop_ht(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp).path,
-            overwrite=overwrite,
-            _read_if_exists=not overwrite,
-        )
-        pop_ht.transmute(
-            **{f"PC{j}": pop_ht.pca_scores[i] for i, j in enumerate(pop_pcs)}
-        ).export(pop_tsv_path(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp))
-
-        with hl.hadoop_open(
-            pop_rf_path(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp), "wb"
-        ) as out:
-            pickle.dump(pops_rf_model, out)
 
 
 if __name__ == "__main__":
@@ -444,10 +568,12 @@ if __name__ == "__main__":
         "--pop-pcs",
         help=(
             "List of PCs to use for ancestry assignment. The values provided should be"
-            " 1-based. Defaults to 20 PCs"
+            " 1-based. If a single integer is passed, the script assumes this"
+            " represents the total PCs to use e.g. --pop-pcs=6 will use PCs"
+            " 1,2,3,4,5,and 6. Defaults to 20 PCs."
         ),
-        default=list(range(1, 21)),
-        type=list,
+        default=20,  # list(range(1, 21)),
+        type=int,
         nargs="+",
     )
     parser.add_argument(
@@ -504,6 +630,18 @@ if __name__ == "__main__":
         "--only-train-on-hgdp-tgp",
         help="Whether to train RF classifier using only the HGDP and TGP populations.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--v4-population-spike",
+        help="List of v4 populations to spike into the RF training populations.",
+        type=str,
+        nargs="+",
+    )
+    parser.add_argument(
+        "--v3-population-spike",
+        help="List of v3 populations to spike into the RF training populations.",
+        type=str,
+        nargs="+",
     )
 
     args = parser.parse_args()
