@@ -2,7 +2,7 @@
 import argparse
 import logging
 import math
-from typing import List
+from typing import List, Optional
 
 import hail as hl
 import pandas as pd
@@ -21,6 +21,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     get_pop_ht,
     get_sample_qc,
     hard_filtered_samples,
+    platform,
     regressed_metrics,
     stratified_metrics,
 )
@@ -31,7 +32,10 @@ logger.setLevel(logging.INFO)
 
 
 def apply_stratified_filters(
-    sample_qc_ht: hl.Table, filtering_qc_metrics: List[str]
+    sample_qc_ht: hl.Table,
+    filtering_qc_metrics: List[str],
+    pop_ht: Optional[hl.Table] = None,
+    platform_ht: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
     Use population stratified QC metrics to determine what samples are outliers and should be filtered.
@@ -54,16 +58,19 @@ def apply_stratified_filters(
         "Computing stratified QC metrics filters using metrics: "
         + ", ".join(filtering_qc_metrics)
     )
-    sample_qc_ht = sample_qc_ht.annotate(qc_pop=get_pop_ht().ht()[sample_qc_ht.key].pop)
-    sample_qc_ht = sample_qc_ht.filter(
-        hl.is_missing(hard_filtered_samples.ht()[sample_qc_ht.key])
-    )
+
+    strata = {}
+    if pop_ht is not None:
+        strata["pop"] = pop_ht[sample_qc_ht.key].qc_pop
+    if platform_ht is not None:
+        strata["platform"] = platform_ht[sample_qc_ht.key].qc_platform
+
     stratified_metrics_ht = compute_stratified_metrics_filter(
         sample_qc_ht,
         qc_metrics={
             metric: sample_qc_ht.sample_qc[metric] for metric in filtering_qc_metrics
         },
-        strata={"qc_pop": sample_qc_ht.qc_pop},
+        strata=strata,
         metric_threshold={"n_singleton": (4.0, 8.0)},
     )
     return stratified_metrics_ht
@@ -71,12 +78,13 @@ def apply_stratified_filters(
 
 def apply_regressed_filters(
     ht: hl.Table,
-    platform_ht,
-    project_meta_ht,
     filtering_qc_metrics: List[str],
-    include_unreleasable_samples: bool,
+    pop_scores_ht: Optional[hl.Table] = None,
+    platform_ht: Optional[hl.Table] = None,
+    project_meta_ht: Optional[hl.Table] = None,
     pop_n_pcs: int = 16,
     platform_n_pcs: int = 9,
+    include_unreleasable_samples: bool = False,
 ) -> hl.Table:
     """
     Compute sample QC metrics residuals after regressing out population PCs and determine what samples are outliers that should be filtered.
@@ -97,18 +105,28 @@ def apply_regressed_filters(
     :return: Table with stratified metrics and filters
     :rtype: hl.Table
     """
-    ht = ht.annotate(
-        pop_scores=ancestry_pca_scores(include_unreleasable_samples)
-        .ht()[ht.key]
-        .scores,
-        platform_scores=platform_ht[ht.key].scores,
-        releasable=project_meta_ht[ht.key].project_meta.releasable,
-    )
+    if pop_scores_ht is None and platform_ht is None:
+        ValueError(
+            "At least one of 'pop_scores_ht' or 'platform_ht' must be specified!"
+        )
+
+    ann_args = {}
+    if pop_scores_ht is not None:
+        ann_args["pop_scores"] = pop_scores_ht[ht.key].scores
+    if platform_ht is not None:
+        ann_args["platform_scores"] = platform_ht[ht.key].scores
+    if not include_unreleasable_samples:
+        ann_args["releasable"] = project_meta_ht[ht.key].project_meta.releasable
+
+    ht = ht.annotate(**ann_args)
+
     ht = compute_qc_metrics_residuals(
         ht,
         pc_scores=ht.pop_scores[:pop_n_pcs] + ht.platform_scores[:platform_n_pcs],
         qc_metrics={metric: ht[metric] for metric in filtering_qc_metrics},
-        regression_sample_inclusion_expr=ht.releasable,
+        regression_sample_inclusion_expr=None
+        if include_unreleasable_samples
+        else ht.releasable,
     )
     stratified_metrics_ht = compute_stratified_metrics_filter(
         ht,
@@ -250,24 +268,61 @@ def main(args):
     )
     test = args.test
     overwrite = args.overwrite
+    filtering_qc_metrics = args.filtering_qc_metrics.split(",")
+    population_correction = args.population_correction
+    platform_correction = args.platform_correction
+    pop_ht = get_pop_ht(test=test).ht()
+    pop_scores_ht = ancestry_pca_scores(
+        include_unreleasable_samples=args.include_unreleasable_samples,
+        test=test,
+    ).ht()
+    platform_ht = platform.ht()  # get_platform_ht(test=test).ht()
 
-    if args.apply_stratified_filters or args.apply_regressed_filters:
-        filtering_qc_metrics = args.filtering_qc_metrics.split(",")
-        sample_qc_ht = get_sample_qc("bi_allelic").ht()
+    sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
 
-        if args.apply_regressed_filters:
-            n_pcs = args.regress_n_pcs
-            apply_regressed_filters(
-                sample_qc_ht,
-                filtering_qc_metrics,
-                args.include_unreleasable_samples,
-                n_pcs,
-            ).write(regressed_metrics.path, overwrite=args.overwrite)
-        else:
-            apply_stratified_filters(
-                sample_qc_ht,
-                filtering_qc_metrics,
-            ).write(stratified_metrics.path, overwrite=args.overwrite)
+    # Convert tuples to lists so we can find the index of the passed threshold.
+    sample_qc_ht = sample_qc_ht.annotate(
+        **{
+            f"bases_dp_over_{hl.eval(sample_qc_ht.dp_bins[i])}": sample_qc_ht.bases_over_dp_threshold[
+                i
+            ]
+            for i in range(len(sample_qc_ht.dp_bins))
+        },
+    )
+    sample_qc_ht = sample_qc_ht.filter(
+        hl.is_missing(hard_filtered_samples.ht()[sample_qc_ht.key])
+    )
+    sample_qc_ht = sample_qc_ht.annotate(
+        r_snp_indel=sample_qc_ht.n_snp
+        / (sample_qc_ht.n_insertion + sample_qc_ht.n_deletion)
+    )
+
+    if args.apply_regressed_filters:
+        if not population_correction:
+            regress_pop_n_pcs = None
+        if not platform_correction:
+            regress_platform_n_pcs = None
+        apply_regressed_filters(
+            sample_qc_ht,
+            pop_scores_ht,
+            filtering_qc_metrics,
+            regress_pop_n_pcs=regress_pop_n_pcs,
+            regress_platform_n_pcs=regress_platform_n_pcs,
+        ).write(regressed_metrics.path, overwrite=overwrite)
+
+    if args.apply_stratified_filters:
+        if not population_correction:
+            pop_ht = None
+        if not platform_correction:
+            platform_ht = None
+        apply_stratified_filters(
+            sample_qc_ht,
+            filtering_qc_metrics,
+            pop_ht,
+            platform_ht,
+        ).write(stratified_metrics.path, overwrite=overwrite)
+
+    # if args.apply_nearest_neighbor_filters:
 
 
 if __name__ == "__main__":
