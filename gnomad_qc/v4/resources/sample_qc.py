@@ -473,16 +473,23 @@ def pca_related_samples_to_drop(test: bool = False) -> VersionedTableResource:
     )
 
 
-# Ranking of all samples based on quality metrics. Used to remove relateds for PCA.
-pca_samples_rankings = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version, data_type='joint')}/relatedness/gnomad.joint.v{version}.pca_samples_ranking.ht"
-        )
-        for version in VERSIONS
-    },
-)
+def pca_samples_rankings(test: bool = False) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for ranking of all samples to use for removing relateds for PCA.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.pca_samples_ranking.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
 
 # Ranking of all release samples based on quality metrics. Used to remove relateds for
 # release.
