@@ -131,7 +131,7 @@ CURATED_SUBPOPS = {
     ],
 }
 """
-Manually curated list of which subpopulations to include within each global population. Manual curation was needed as some known subpop labels may be inaccurate, especially those that are cohort-level annotations.
+Manually curated list of which subpopulations to include within each global population. Manual curation was needed as some known subpop labels may be inaccurate, especially those that are cohort-level annotations from collaborator metadata.
 For example, curation is needed to remove "Costa Rican" and "Indigenous American" subpops from the list of known subpops for the East Asian population.
 """
 
@@ -263,22 +263,22 @@ def filter_subpop_qc(
 def drop_small_subpops(
     ht: hl.Table,
     min_additional_subpop_samples: int = None,
-    missing_label: str = "Other",
+    unassigned_label: str = "Other",  # make param in args
 ) -> hl.Table:
     """
     Drop small subpops from final subpop inference results.
 
     .. note::
 
-        Samples within a dropped subpop will be reassigned to 'missing_label'. Small subpops are those below 'min_additional_subpop_samples' and criteria is based on the source of the known labels:
+        Samples within a dropped subpop will be reassigned to 'unassigned_label'. Small subpops are those below 'min_additional_subpop_samples' and criteria is based on the source of the known labels:
         -If the known labels came exclusively from hgdp and/or tgp, require newly assigned samples (n_newly_assigned) > min_additional_subpop_samples
-        -If the known labels came exclusively from a cohort source, require the sum of comfirmed and newly assigned samples (n_assigned) > min_additional_subpop_samples
-        -If known labels came from both hgdp/tgp and cohort sources, require n_assigned minus confirmed hgdp_tgp samples > min_additional_subpop_samples
+        -If the known labels came exclusively from a collaborator metadata source, require the sum of comfirmed and newly assigned samples (n_assigned) > min_additional_subpop_samples
+        -If known labels came from both hgdp/tgp and collaborator metadata  sources, require n_assigned minus confirmed hgdp_tgp samples > min_additional_subpop_samples
 
     :param ht: Table containing subpop inference results (under annotation name 'subpop').
     :param min_additional_subpop_samples: Minimum additional samples required to include subpop in final inference results. Default is 100.
-    :param missing_label: Label for samples for which inferred subpop label will be dropped. Default is 'Other'.
-    :return: Table with final inference results in which samples belonging to small subpops have been reassigned to 'missing_label'.
+    :param unassigned_label: Label for samples for which inferred subpop label will be dropped. Default is 'Other'.
+    :return: Table with final inference results in which samples belonging to small subpops have been reassigned to 'unassigned_label'.
     """
     # For each training_pop, count the number of samples with known labels and the number of hgdp_tgp samples correctly assigned to their known label
     known_label_counts_ht = ht.group_by(ht.training_pop).aggregate(
@@ -303,10 +303,10 @@ def drop_small_subpops(
         .key_by("subpop")
     )
 
-    # Annotate whether known labels came from an hgdp or tgp sample, a cohort annotation, or a "mix" of both
+    # Annotate whether known labels came from an hgdp or tgp sample, a collaborator metadata annotation, or a "mix" of both
     label_source_ht = ht.group_by(ht.training_pop).aggregate(
         hgdp_or_tgp_source=hl.agg.count_where(ht.hgdp_or_tgp),
-        cohort_source=hl.agg.count_where(~ht.hgdp_or_tgp),
+        collab_source=hl.agg.count_where(~ht.hgdp_or_tgp),
     )
 
     label_source_ht = label_source_ht.annotate(
@@ -314,11 +314,11 @@ def drop_small_subpops(
             hl.case()
             .when(
                 (label_source_ht.hgdp_or_tgp_source > 0)
-                & (label_source_ht.cohort_source > 0),
+                & (label_source_ht.collab_source > 0),
                 "mix",
             )
             .when(label_source_ht.hgdp_or_tgp_source > 0, "hgdp_tgp_only")
-            .default("cohort_source")
+            .default("collab_source")
         )
     ).key_by("training_pop")
 
@@ -337,7 +337,7 @@ def drop_small_subpops(
                 True,
             )
             .when(
-                (counts_subpops_ht.known_label_source == "cohort_source")
+                (counts_subpops_ht.known_label_source == "collab_source")
                 & (counts_subpops_ht.n_assigned >= min_additional_subpop_samples),
                 True,
             )
@@ -354,7 +354,7 @@ def drop_small_subpops(
     )
     counts_subpops_ht = counts_subpops_ht.filter(
         hl.is_defined(counts_subpops_ht.training_pop)
-        & (counts_subpops_ht.training_pop != "Other")
+        & (counts_subpops_ht.training_pop != unassigned_label)
     )
 
     # Create a dictionary with 'training_pop' as key and whether or not to keep samples inferred as belonging to the subpop as values
@@ -364,14 +364,13 @@ def drop_small_subpops(
         ).collect()
     )
 
-    # Annotate final subpop inference results ("inferred_subpop"), always keeping known labels from HGDP/1KG, and keeping inferred labels only if the number of additional subpops exceeed or equal 'min_additional_subpop_samples'
+    # Keep inferred labels only if the number of additional subpops exceeed or equal 'min_additional_subpop_samples'
     ht = ht.annotate(
-        inferred_subpop=(
-            hl.case()
-            .when(ht.hgdp_or_tgp, ht.training_pop)
-            .when(subpop_decisions.get(ht.subpop), ht.subpop)
-        ).or_missing()
+        subpop=(
+            hl.if_else(subpop_decisions.get(ht.subpop), ht.subpop, unassigned_label)
+        )
     )
+
     return ht
 
 
@@ -379,6 +378,7 @@ def main(args):  # noqa: D103
     pop = args.pop
     include_unreleasable_samples = args.include_unreleasable_samples
     high_quality = args.high_quality
+    unassigned_label = args.unassigned_label
 
     try:
         # Read in the raw mt
@@ -513,7 +513,7 @@ def main(args):  # noqa: D103
                 curated_subpops=CURATED_SUBPOPS[pop],
                 additional_samples_to_drop=outliers_ht,
                 high_quality=high_quality,
-                missing_label="Other",
+                missing_label=unassigned_label,
             )
 
             # Add metadata to subpop inference results
@@ -537,8 +537,18 @@ def main(args):  # noqa: D103
                     args.min_additional_subpop_samples,
                 )
                 joint_pca_ht = drop_small_subpops(
-                    joint_pca_ht, args.min_additional_subpop_samples
+                    joint_pca_ht, args.min_additional_subpop_samples, unassigned_label
                 )
+
+            # Annotate final subpop inference results ("inferred_subpop"), always keeping known labels from HGDP/1KG
+            joint_pca_ht = joint_pca_ht.annotate(
+                subpop=(
+                    hl.case()
+                    .when(joint_pca_ht.hgdp_or_tgp, joint_pca_ht.subpop_description)
+                    .when(hl.is_defined(joint_pca_ht.subpop), joint_pca_ht.subpop)
+                    .default(unassigned_label)
+                )
+            )
 
             joint_pca_ht.write(assigned_subpops(pop).path, overwrite=args.overwrite)
 
@@ -732,6 +742,15 @@ if __name__ == "__main__":
         ),
         type=int,
         default=None,
+    )
+    parser.add_argument(
+        "--unassigned-label",
+        help=(
+            "Label for samples for that are not classified into a particular subpop."
+            " Default is 'Other'"
+        ),
+        type=str,
+        default="Other",
     )
 
     args = parser.parse_args()
