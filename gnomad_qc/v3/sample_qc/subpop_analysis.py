@@ -263,7 +263,7 @@ def filter_subpop_qc(
 def drop_small_subpops(
     ht: hl.Table,
     min_additional_subpop_samples: int = None,
-    unassigned_label: str = "Other",  # make param in args
+    unassigned_label: str = "Other",
 ) -> hl.Table:
     """
     Drop small subpops from final subpop inference results.
@@ -540,7 +540,7 @@ def main(args):  # noqa: D103
                     joint_pca_ht, args.min_additional_subpop_samples, unassigned_label
                 )
 
-            # Annotate final subpop inference results ("inferred_subpop"), always keeping known labels from HGDP/1KG
+            # Annotate final subpop inference results, always keeping known labels from HGDP/1KG
             joint_pca_ht = joint_pca_ht.annotate(
                 subpop=(
                     hl.case()
@@ -747,7 +747,7 @@ if __name__ == "__main__":
         "--unassigned-label",
         help=(
             "Label for samples for that are not classified into a particular subpop."
-            " Default is 'Other'"
+            " Default is 'Other'."
         ),
         type=str,
         default="Other",
