@@ -271,16 +271,16 @@ def drop_small_subpops(
     .. note::
 
         Samples within a dropped subpop will be reassigned to 'unassigned_label'. Small subpops are those below 'min_additional_subpop_samples' and criteria is based on the source of the known labels:
-        -If the known labels came exclusively from hgdp and/or tgp, require newly assigned samples (n_newly_assigned) > min_additional_subpop_samples
-        -If the known labels came exclusively from a collaborator metadata source, require the sum of comfirmed and newly assigned samples (n_assigned) > min_additional_subpop_samples
-        -If known labels came from both hgdp/tgp and collaborator metadata  sources, require n_assigned minus confirmed hgdp_tgp samples > min_additional_subpop_samples
+            - If the known labels came exclusively from HGDP and/or TGP(1000 Genomes Project), require newly assigned samples (n_newly_assigned) > min_additional_subpop_samples
+            - If the known labels came exclusively from a collaborator metadata source, require the sum of confirmed and newly assigned samples (n_assigned) > min_additional_subpop_samples
+            - If known labels came from both HGDP/TGP and collaborator metadata sources, require the sum of confirmed and newly assigned samples (n_assigned) minus confirmed HGDP/TGP samples (confirmed_hgdp_tgp) > min_additional_subpop_samples
 
     :param ht: Table containing subpop inference results (under annotation name 'subpop').
     :param min_additional_subpop_samples: Minimum additional samples required to include subpop in final inference results. Default is 100.
-    :param unassigned_label: Label for samples for which inferred subpop label will be dropped. Default is 'Other'.
+    :param unassigned_label: Label to use for samples for which inferred subpop label will be dropped. Default is 'Other'.
     :return: Table with final inference results in which samples belonging to small subpops have been reassigned to 'unassigned_label'.
     """
-    # For each training_pop, count the number of samples with known labels and the number of hgdp_tgp samples correctly assigned to their known label
+    # For each training_pop, count the number of samples with known labels and the number of hgdp_or_tgp samples correctly assigned to their known label
     known_label_counts_ht = ht.group_by(ht.training_pop).aggregate(
         n_known_labels=hl.agg.count(),
         confirmed_hgdp_tgp=hl.agg.count_where(
@@ -291,7 +291,7 @@ def drop_small_subpops(
         ),
     )
 
-    # For each subpop, count the number of samples assigned to that subpop overall, as well as newly assgined samples (did not have a known label)
+    # For each subpop, count the number of samples assigned to that subpop overall, as well as newly assigned samples (did not have a known label)
     assigned_counts_ht = (
         ht.group_by(ht.subpop)
         .aggregate(
@@ -303,7 +303,7 @@ def drop_small_subpops(
         .key_by("subpop")
     )
 
-    # Annotate whether known labels came from an hgdp or tgp sample, a collaborator metadata annotation, or a "mix" of both
+    # Annotate whether known labels came from an hgdp_or_tgp sample, a collaborator metadata annotation, or a "mix" of both
     label_source_ht = ht.group_by(ht.training_pop).aggregate(
         hgdp_or_tgp_source=hl.agg.count_where(ht.hgdp_or_tgp),
         collab_source=hl.agg.count_where(~ht.hgdp_or_tgp),
@@ -364,7 +364,7 @@ def drop_small_subpops(
         ).collect()
     )
 
-    # Keep inferred labels only if the number of additional subpops exceeed or equal 'min_additional_subpop_samples'
+    # Keep inferred labels only if the number of additional subpops exceeds or equals 'min_additional_subpop_samples'
     ht = ht.annotate(
         subpop=(
             hl.if_else(subpop_decisions.get(ht.subpop), ht.subpop, unassigned_label)
