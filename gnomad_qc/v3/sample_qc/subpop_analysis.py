@@ -271,9 +271,9 @@ def drop_small_subpops(
     .. note::
 
         Samples within a dropped subpop will be reassigned to 'unassigned_label'. Small subpops are those below 'min_additional_subpop_samples' and criteria is based on the source of the known labels:
-            - If the known labels came exclusively from HGDP and/or TGP(1000 Genomes Project), require newly assigned samples (n_newly_assigned) > min_additional_subpop_samples
-            - If the known labels came exclusively from a collaborator metadata source, require the sum of confirmed and newly assigned samples (n_assigned) > min_additional_subpop_samples
-            - If known labels came from both HGDP/TGP and collaborator metadata sources, require the sum of confirmed and newly assigned samples (n_assigned) minus confirmed HGDP/TGP samples (confirmed_hgdp_tgp) > min_additional_subpop_samples
+            - If the known labels came exclusively from HGDP and/or TGP(1000 Genomes Project), require newly assigned samples (n_newly_assigned) >= min_additional_subpop_samples
+            - If the known labels came exclusively from a collaborator metadata source, require the sum of confirmed and newly assigned samples (n_assigned) >= min_additional_subpop_samples
+            - If known labels came from both HGDP/TGP and collaborator metadata sources, require the sum of confirmed and newly assigned samples (n_assigned) minus confirmed HGDP/TGP samples (n_confirmed_hgdp_tgp) >= min_additional_subpop_samples
 
     :param ht: Table containing subpop inference results (under annotation name 'subpop').
     :param min_additional_subpop_samples: Minimum additional samples required to include subpop in final inference results. Default is 100.
@@ -283,7 +283,7 @@ def drop_small_subpops(
     # For each training_pop, count the number of samples with known labels and the number of hgdp_or_tgp samples correctly assigned to their known label
     known_label_counts_ht = ht.group_by(ht.training_pop).aggregate(
         n_known_labels=hl.agg.count(),
-        confirmed_hgdp_tgp=hl.agg.count_where(
+        n_confirmed_hgdp_tgp=hl.agg.count_where(
             hl.is_defined(ht.training_pop)
             & hl.is_defined(ht.subpop)
             & (ht.subpop == ht.training_pop)
@@ -292,35 +292,27 @@ def drop_small_subpops(
     )
 
     # For each subpop, count the number of samples assigned to that subpop overall, as well as newly assigned samples (did not have a known label)
-    assigned_counts_ht = (
-        ht.group_by(ht.subpop)
-        .aggregate(
-            n_assigned=hl.agg.count(),
-            n_newly_assigned=hl.agg.count_where(
-                ~ht.training_sample & ~ht.evaluation_sample & hl.is_defined(ht.subpop)
-            ),
-        )
-        .key_by("subpop")
+    assigned_counts_ht = ht.group_by(ht.subpop).aggregate(
+        n_assigned=hl.agg.count(),
+        n_newly_assigned=hl.agg.count_where(
+            ~ht.training_sample & ~ht.evaluation_sample & hl.is_defined(ht.subpop)
+        ),
     )
 
     # Annotate whether known labels came from an hgdp_or_tgp sample, a collaborator metadata annotation, or a "mix" of both
     label_source_ht = ht.group_by(ht.training_pop).aggregate(
-        hgdp_or_tgp_source=hl.agg.count_where(ht.hgdp_or_tgp),
-        collab_source=hl.agg.count_where(~ht.hgdp_or_tgp),
+        n_hgdp_or_tgp_source=hl.agg.count_where(ht.hgdp_or_tgp),
+        n_collab_source=hl.agg.count_where(~ht.hgdp_or_tgp),
     )
 
-    label_source_ht = label_source_ht.annotate(
+    label_source_ht = ht.group_by(ht.training_pop).aggregate(
         known_label_source=(
             hl.case()
-            .when(
-                (label_source_ht.hgdp_or_tgp_source > 0)
-                & (label_source_ht.collab_source > 0),
-                "mix",
-            )
-            .when(label_source_ht.hgdp_or_tgp_source > 0, "hgdp_tgp_only")
-            .default("collab_source")
+            .when(hl.agg.all(ht.hgdp_or_tgp), "hgdp_tgp_only")
+            .when(hl.agg.all(~ht.hgdp_or_tgp), "collab_source")
+            .default("mix")
         )
-    ).key_by("training_pop")
+    )
 
     # Join the Table of known label counts with the Table of assigned subpop counts and label source
     counts_subpops_ht = known_label_counts_ht.join(
@@ -344,7 +336,8 @@ def drop_small_subpops(
             .when(
                 (counts_subpops_ht.known_label_source == "mix")
                 & (
-                    counts_subpops_ht.n_assigned - counts_subpops_ht.confirmed_hgdp_tgp
+                    counts_subpops_ht.n_assigned
+                    - counts_subpops_ht.n_confirmed_hgdp_tgp
                     >= min_additional_subpop_samples
                 ),
                 True,
@@ -371,6 +364,10 @@ def drop_small_subpops(
         )
     )
 
+    ht = ht.annotate_globals(
+        min_additional_subpop_samples=min_additional_subpop_samples
+    )
+
     return ht
 
 
@@ -378,6 +375,7 @@ def main(args):  # noqa: D103
     pop = args.pop
     include_unreleasable_samples = args.include_unreleasable_samples
     high_quality = args.high_quality
+    min_additional_subpop_samples = args.min_additional_subpop_samples
     unassigned_label = args.unassigned_label
 
     try:
@@ -531,13 +529,13 @@ def main(args):  # noqa: D103
 
             joint_pca_ht = joint_pca_ht.annotate(**meta_ht[joint_pca_ht.key])
 
-            if args.min_additional_subpop_samples:
+            if min_additional_subpop_samples:
                 logger.info(
                     "Dropping small subpops (subpops with < %d samples added) ...",
-                    args.min_additional_subpop_samples,
+                    min_additional_subpop_samples,
                 )
                 joint_pca_ht = drop_small_subpops(
-                    joint_pca_ht, args.min_additional_subpop_samples, unassigned_label
+                    joint_pca_ht, min_additional_subpop_samples, unassigned_label
                 )
 
             # Annotate final subpop inference results, always keeping known labels from HGDP/1KG
