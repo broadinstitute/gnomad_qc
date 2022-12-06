@@ -2,7 +2,7 @@
 import argparse
 import logging
 import math
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import hail as hl
 import pandas as pd
@@ -56,7 +56,6 @@ def apply_stratified_filters(
     :param sample_qc_ht: Sample QC HT
     :param filtering_qc_metrics: Specific metrics to compute
     :return: Table with stratified metrics and filters
-    :rtype: hl.Table
     """
     logger.info(
         "Computing stratified QC metrics filters using metrics: "
@@ -105,8 +104,9 @@ def apply_regressed_filters(
     the regression
     :param n_pcs: Number of population PCs to use in regression
     :return: Table with stratified metrics and filters
-    :rtype: hl.Table
     """
+    # TODO: add option to only regress out population, and do this regression
+    # per platform
     if pop_scores_ht is None and platform_ht is None:
         ValueError(
             "At least one of 'pop_scores_ht' or 'platform_ht' must be specified!"
@@ -184,6 +184,8 @@ def determine_nearest_neighbors(
     :param n_trees:
     :return:
     """
+    # TODO: add option to stratify nearest neighbors by platform
+
     ht = ht.annotate(
         pop_scores=pop_scores_ht[ht.key].scores,
         # platform=platform_ht[ht.key].platform,
@@ -272,29 +274,122 @@ def determine_nearest_neighbors(
 
 
 def get_nearest_neighbors_median_and_mad(
+    ht: hl.Table,
     nn_ht: hl.Table,
-    sample_qc_ht: hl.Table,
     filtering_qc_metrics: List[str],
 ):
     """
     Add module docstring.
 
+    :param ht:
     :param nn_ht:
-    :param sample_qc_ht:
     :param filtering_qc_metrics:
     :return:
     """
-    explode_nbrs_ht = nn_ht.explode("nearest_neighbors", name="nbr")
-    explode_nbrs_ht = explode_nbrs_ht.annotate(**sample_qc_ht[explode_nbrs_ht.nbr])
+    nn_ht = nn_ht.explode("nearest_neighbors", name="nbr")
+    nn_ht = nn_ht.annotate(**ht[nn_ht.nbr])
 
     agg_expr = hl.struct(
         **{
-            metric: get_median_and_mad_expr(explode_nbrs_ht[metric])
+            metric: get_median_and_mad_expr(nn_ht[metric])
             for metric in filtering_qc_metrics
         }
     )
 
-    return explode_nbrs_ht.group_by("s").aggregate(**agg_expr)
+    return nn_ht.group_by("s").aggregate(**agg_expr)
+
+
+def compute_nearest_neighbor_metrics_filter(
+    ht: hl.Table,
+    nn_ht: hl.Table,
+    qc_metrics: Dict[str, hl.expr.NumericExpression],
+    lower_threshold: float = 4.0,
+    upper_threshold: float = 4.0,
+    metric_threshold: Optional[Dict[str, Tuple[float, float]]] = None,
+    filter_name: str = "qc_metrics_filters",
+) -> hl.Table:
+    """
+    Compute median, MAD, and upper and lower thresholds for each metric used in outlier filtering.
+
+    :param ht: HT containing relevant sample QC metric annotations
+    :param qc_metrics: list of metrics (name and expr) for which to compute the critical values for filtering outliers
+    :param lower_threshold: Lower MAD threshold
+    :param upper_threshold: Upper MAD threshold
+    :param metric_threshold: Can be used to specify different (lower, upper) thresholds for one or more metrics
+    :param filter_name: Name of resulting filters annotation
+    :return: Table grouped by strata, with upper and lower threshold values computed for each sample QC metric
+    """
+    _metric_threshold = {
+        metric: (lower_threshold, upper_threshold) for metric in qc_metrics
+    }
+    if metric_threshold is not None:
+        _metric_threshold.update(metric_threshold)
+
+    ht = ht.select(**qc_metrics)
+    median_mad_ht = get_nearest_neighbors_median_and_mad(ht, nn_ht, qc_metrics)
+
+    ht = ht.annotate(
+        qc_metrics_stats=hl.struct(
+            **{
+                metric: hl.bind(
+                    lambda x: x.annotate(
+                        lower=x.median - _metric_threshold[metric][0] * x.mad,
+                        upper=x.median + _metric_threshold[metric][1] * x.mad,
+                    ),
+                    median_mad_ht[ht.key][metric],
+                )
+                for metric in qc_metrics
+            }
+        )
+    )
+
+    ht = ht.transmute(
+        **{
+            f"fail_{metric}": (ht[metric] <= ht.qc_metrics_stats[metric].lower)
+            | (ht[metric] >= ht.qc_metrics_stats[metric].upper)
+            for metric in qc_metrics
+        }
+    )
+    ht = ht.annotate(
+        **{
+            filter_name: hl.set(
+                hl.filter(
+                    lambda x: hl.is_defined(x),
+                    [
+                        hl.or_missing(ht[f"fail_{metric}"], metric)
+                        for metric in qc_metrics
+                    ],
+                )
+            )
+        }
+    )
+    return ht
+
+
+def apply_nearest_neighbors_filters(
+    sample_qc_ht: hl.Table,
+    nn_ht: hl.Table,
+    filtering_qc_metrics: List[str],
+) -> hl.Table:
+    """
+    Compute sample QC metrics residuals after regressing out population PCs and determine what samples are outliers that should be filtered.
+
+    :param sample_qc_ht:
+    :param nn_ht:
+    :param filtering_qc_metrics:
+    :return:
+    """
+    logger.info(
+        "Computing stratified QC metrics filters using metrics: "
+        + ", ".join(filtering_qc_metrics)
+    )
+
+    return compute_nearest_neighbor_metrics_filter(
+        sample_qc_ht,
+        nn_ht,
+        qc_metrics={metric: sample_qc_ht[metric] for metric in filtering_qc_metrics},
+        metric_threshold={"n_singleton": (4.0, 8.0)},
+    )
 
 
 def main(args):
@@ -381,8 +476,14 @@ def main(args):
             distance_metric=args.distance_metric,
             use_approximation=args.use_nearest_neighbors_approximation,
             n_trees=args.n_trees,
-        ).write(nearest_neighbors.path, overwrite=overwrite)
-    # if args.apply_nearest_neighbor_filters:
+        ).write(nearest_neighbors(test=test).path, overwrite=overwrite)
+
+    if args.apply_nearest_neighbor_filters:
+        ht = apply_nearest_neighbors_filters(
+            sample_qc_ht, nearest_neighbors(test=test).ht(), filtering_qc_metrics
+        )
+        ht.show()
+        ht.describe()
 
 
 if __name__ == "__main__":
