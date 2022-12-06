@@ -6,6 +6,7 @@ from typing import List, Optional
 
 import hail as hl
 import pandas as pd
+from annoy import AnnoyIndex
 from gnomad.sample_qc.filtering import (
     compute_qc_metrics_residuals,
     compute_stratified_metrics_filter,
@@ -21,6 +22,8 @@ from gnomad_qc.v4.resources.sample_qc import (
     get_pop_ht,
     get_sample_qc,
     hard_filtered_samples,
+    joint_qc_meta,
+    nearest_neighbors,
     platform,
     regressed_metrics,
     stratified_metrics,
@@ -67,9 +70,7 @@ def apply_stratified_filters(
 
     stratified_metrics_ht = compute_stratified_metrics_filter(
         sample_qc_ht,
-        qc_metrics={
-            metric: sample_qc_ht.sample_qc[metric] for metric in filtering_qc_metrics
-        },
+        qc_metrics={metric: sample_qc_ht[metric] for metric in filtering_qc_metrics},
         strata=strata,
         metric_threshold={"n_singleton": (4.0, 8.0)},
     )
@@ -82,8 +83,8 @@ def apply_regressed_filters(
     pop_scores_ht: Optional[hl.Table] = None,
     platform_ht: Optional[hl.Table] = None,
     project_meta_ht: Optional[hl.Table] = None,
-    pop_n_pcs: int = 16,
-    platform_n_pcs: int = 9,
+    regress_pop_n_pcs: int = 16,
+    regress_platform_n_pcs: int = 9,
     include_unreleasable_samples: bool = False,
 ) -> hl.Table:
     """
@@ -110,19 +111,28 @@ def apply_regressed_filters(
             "At least one of 'pop_scores_ht' or 'platform_ht' must be specified!"
         )
 
+    pc_scores = None
     ann_args = {}
     if pop_scores_ht is not None:
-        ann_args["pop_scores"] = pop_scores_ht[ht.key].scores
+        ann_args["pop_scores"] = pc_scores = pop_scores_ht[ht.key].scores[
+            :regress_pop_n_pcs
+        ]
     if platform_ht is not None:
-        ann_args["platform_scores"] = platform_ht[ht.key].scores
+        ann_args["platform_scores"] = platform_ht[ht.key].scores[
+            :regress_platform_n_pcs
+        ]
+        if pc_scores is None:
+            pc_scores = ann_args["platform_scores"]
+        else:
+            pc_scores = pc_scores.extend(ann_args["platform_scores"])
     if not include_unreleasable_samples:
-        ann_args["releasable"] = project_meta_ht[ht.key].project_meta.releasable
+        ann_args["releasable"] = project_meta_ht[ht.key].releasable
 
+    ann_args["pc_scores"] = pc_scores
     ht = ht.annotate(**ann_args)
-
     ht = compute_qc_metrics_residuals(
         ht,
-        pc_scores=ht.pop_scores[:pop_n_pcs] + ht.platform_scores[:platform_n_pcs],
+        pc_scores=ht.pc_scores,
         qc_metrics={metric: ht[metric] for metric in filtering_qc_metrics},
         regression_sample_inclusion_expr=None
         if include_unreleasable_samples
@@ -140,8 +150,8 @@ def apply_regressed_filters(
     ht = ht.annotate(**stratified_metrics_ht[ht.key])
     ht = ht.annotate_globals(
         **stratified_metrics_ht.index_globals(),
-        pop_n_pcs=pop_n_pcs,
-        platform_n_pcs=platform_n_pcs,
+        regress_pop_n_pcs=regress_pop_n_pcs,
+        regress_platform_n_pcs=regress_platform_n_pcs,
     )
 
     return ht
@@ -149,55 +159,66 @@ def apply_regressed_filters(
 
 def determine_nearest_neighbors(
     ht,
-    platform_ht,
-    project_meta_ht,
+    pop_scores_ht: Optional[hl.Table] = None,
+    # platform_ht: Optional[hl.Table] = None,
     n_pcs: int = 16,
     n_neighbors: int = 50,
     n_jobs: int = -2,
-    include_unreleasable_samples: bool = False,
+    add_neighbor_distances: bool = False,
+    distance_metric: str = "euclidean",
+    use_approximation: bool = False,
+    n_trees: int = 50,
 ):
     """
     Add module docstring.
 
     :param ht:
-    :param platform_ht:
-    :param project_meta_ht:
+    :param pop_scores_ht:
     :param n_pcs:
     :param n_neighbors:
     :param n_jobs:
-    :param include_unreleasable_samples:
+    :param add_neighbor_distances:
+    :param distance_metric:
+    :param use_approximation:
+    :param n_trees:
     :return:
     """
-    # TODO: Filter HT to what we need before pd export
     ht = ht.annotate(
-        pop_scores=ancestry_pca_scores(include_unreleasable_samples)
-        .ht()[ht.key]
-        .scores,
-        platform=platform_ht[ht.key].platform,
-        releasable=project_meta_ht[ht.key].project_meta.releasable,
+        pop_scores=pop_scores_ht[ht.key].scores,
+        # platform=platform_ht[ht.key].platform,
     )
     ht = ht.filter(hl.is_defined(ht.pop_scores))
+    ht = ht.select(**{f"PC{i}": ht.pop_scores[i - 1] for i in range(1, n_pcs + 1)})
     pop_scores_pd = ht.to_pandas()
     pop_scores_pd_s = pop_scores_pd.s
     pop_scores_pd = pop_scores_pd[[f"PC{i}" for i in range(1, n_pcs + 1)]]
 
-    vals = pop_scores_pd.values
-    nbrs = NearestNeighbors(n_neighbors=n_neighbors, n_jobs=n_jobs)
-    nbrs.fit(vals)
-    distances, indexes = nbrs.kneighbors(vals)
+    if use_approximation:
+        nbrs = AnnoyIndex(n_pcs, distance_metric)
+        for i, row in pop_scores_pd.iterrows():
+            nbrs.add_item(i, row)
+        nbrs.build(n_trees, n_jobs=n_jobs)
 
-    # Format neighbor distances as a Hail Table
-    distances_pd = pd.DataFrame(distances)
-    distances_pd = distances_pd.rename(
-        columns={i: f"nbrs_{i}" for i in range(n_neighbors)}
-    )
-    distances_pd = pd.concat([pop_scores_pd_s, distances_pd], axis=1)
-    distances_ht = hl.Table.from_pandas(distances_pd, key=["s"])
-    distances_ht = distances_ht.transmute(
-        nearest_neighbor_dists=hl.array(
-            [distances_ht[f"nbrs_{str(i)}"] for i in range(n_neighbors)]
+        indexes = []
+        for i in range(pop_scores_pd.shape[0]):
+            indexes.append(
+                nbrs.get_nns_by_item(
+                    i, n_neighbors, include_distances=add_neighbor_distances
+                )
+            )
+
+        if add_neighbor_distances:
+            distances = [d for i, d in indexes]
+            indexes = [i for i, d in indexes]
+    else:
+        vals = pop_scores_pd.values
+        nbrs = NearestNeighbors(
+            n_neighbors=n_neighbors, n_jobs=n_jobs, metric=distance_metric
         )
-    )
+        nbrs.fit(vals)
+        indexes = nbrs.kneighbors(vals, return_distance=add_neighbor_distances)
+        if add_neighbor_distances:
+            distances, indexes = indexes
 
     # Format neighbor indexes as a Hail Table
     indexes_pd = pd.DataFrame(indexes)
@@ -212,14 +233,31 @@ def determine_nearest_neighbors(
         )
     )
 
-    # Join neighbor distances Table and indexes Table
-    nbrs_ht = distances_ht.join(indexes_ht)
-    nbrs_ht = nbrs_ht.add_index()
+    if add_neighbor_distances:
+        # Format neighbor distances as a Hail Table
+        distances_pd = pd.DataFrame(distances)
+        print(distances_pd)
+        distances_pd = distances_pd.rename(
+            columns={i: f"nbrs_{i}" for i in range(n_neighbors)}
+        )
+        distances_pd = pd.concat([pop_scores_pd_s, distances_pd], axis=1)
+        distances_ht = hl.Table.from_pandas(distances_pd, key=["s"])
+        distances_ht = distances_ht.transmute(
+            nearest_neighbor_dists=hl.array(
+                [distances_ht[f"nbrs_{str(i)}"] for i in range(n_neighbors)]
+            )
+        )
+
+        # Join neighbor distances Table and indexes Table
+        nbrs_ht = indexes_ht.join(distances_ht)
+    else:
+        nbrs_ht = indexes_ht
 
     # Add nearest_neighbors annotation
+    nbrs_ht = nbrs_ht.add_index()
     explode_nbrs_ht = nbrs_ht.key_by("idx").explode("nearest_neighbor_idxs")
     explode_nbrs_ht = explode_nbrs_ht.annotate(
-        nbr=explode_nbrs_ht[hl.int64(explode_nbrs_ht.nbrs_indexes)].s
+        nbr=explode_nbrs_ht[hl.int64(explode_nbrs_ht.nearest_neighbor_idxs)].s
     )
     explode_nbrs_ht = explode_nbrs_ht.group_by("s").aggregate(
         nearest_neighbors=hl.agg.collect_as_set(explode_nbrs_ht.nbr)
@@ -227,7 +265,6 @@ def determine_nearest_neighbors(
     nbrs_ht = nbrs_ht.annotate(
         nearest_neighbors=explode_nbrs_ht[nbrs_ht.key].nearest_neighbors
     )
-
     nbrs_ht = nbrs_ht.annotate_globals(n_pcs=n_pcs, n_neighbors=n_neighbors)
 
     return nbrs_ht
@@ -268,17 +305,21 @@ def main(args):
     )
     test = args.test
     overwrite = args.overwrite
+    regress_pop_n_pcs = args.regress_pop_n_pcs
+    regress_platform_n_pcs = args.regress_platform_n_pcs
     filtering_qc_metrics = args.filtering_qc_metrics.split(",")
     population_correction = args.population_correction
     platform_correction = args.platform_correction
-    pop_ht = get_pop_ht(test=test).ht()
+    # pop_ht = get_pop_ht(test=test).ht()
+    pop_ht = hl.read_table(
+        "gs://gnomad/v4.0/sample_qc/joint/ancestry_inference/gnomad.joint.v4.0.hgdp_tgp_training.pop.rf_w_16pcs_0.75_pop_prob.ht"
+    )
     pop_scores_ht = ancestry_pca_scores(
         include_unreleasable_samples=args.include_unreleasable_samples,
-        test=test,
     ).ht()
     platform_ht = platform.ht()  # get_platform_ht(test=test).ht()
 
-    sample_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
+    sample_qc_ht = get_sample_qc("bi_allelic").ht()
 
     # Convert tuples to lists so we can find the index of the passed threshold.
     sample_qc_ht = sample_qc_ht.annotate(
@@ -297,6 +338,9 @@ def main(args):
         / (sample_qc_ht.n_insertion + sample_qc_ht.n_deletion)
     )
 
+    if test:
+        sample_qc_ht = sample_qc_ht.sample(0.01)
+
     if args.apply_regressed_filters:
         if not population_correction:
             regress_pop_n_pcs = None
@@ -304,8 +348,10 @@ def main(args):
             regress_platform_n_pcs = None
         apply_regressed_filters(
             sample_qc_ht,
-            pop_scores_ht,
             filtering_qc_metrics,
+            pop_scores_ht,
+            platform_ht,
+            joint_qc_meta.ht(),
             regress_pop_n_pcs=regress_pop_n_pcs,
             regress_platform_n_pcs=regress_platform_n_pcs,
         ).write(regressed_metrics.path, overwrite=overwrite)
@@ -322,6 +368,19 @@ def main(args):
             platform_ht,
         ).write(stratified_metrics.path, overwrite=overwrite)
 
+    if args.determine_nearest_neighbors:
+        determine_nearest_neighbors(
+            sample_qc_ht,
+            pop_scores_ht,
+            # platform_ht,
+            n_pcs=args.nearest_neighbors_pop_n_pcs,
+            n_neighbors=args.n_nearest_neighbors,
+            n_jobs=args.n_jobs,
+            add_neighbor_distances=args.get_neighbor_distances,
+            distance_metric=args.distance_metric,
+            use_approximation=args.use_nearest_neighbors_approximation,
+            n_trees=args.n_trees,
+        ).write(nearest_neighbors.path, overwrite=overwrite)
     # if args.apply_nearest_neighbor_filters:
 
 
@@ -337,7 +396,7 @@ if __name__ == "__main__":
         "--test", help="Use a test MatrixTableResource as input.", action="store_true"
     )
     parser.add_argument(
-        "--filtering_qc_metrics",
+        "--filtering-qc-metrics",
         help="List of QC metrics for filtering.",
         default=",".join(
             [
@@ -354,22 +413,94 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
-        "--apply_stratified_filters",
+        "--population-correction",
+        help="",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--platform-correction",
+        help="",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--include-unreleasable-samples",
+        help="",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--apply-stratified-filters",
         help="Compute per pop filtering.",
         action="store_true",
     )
     parser.add_argument(
-        "--apply_regressed_filters",
+        "--apply-regressed-filters",
         help="Computes qc_metrics adjusted for pop.",
         action="store_true",
     )
     parser.add_argument(
-        "--regress_n_pcs",
-        help="Number of PCs to use for qc metric regressions",
+        "--regress-pop-n-pcs",
+        help="Number of population PCs to use for qc metric regressions",
+        default=16,
+        type=int,
+    )
+    parser.add_argument(
+        "--regress-platform-n-pcs",
+        help="Number of platform PCs to use for qc metric regressions",
+        default=9,
+        type=int,
+    )
+    parser.add_argument(
+        "--determine-nearest-neighbors",
+        help="",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--nearest-neighbors-pop-n-pcs",
+        help="",
+        default=16,
+        type=int,
+    )
+    parser.add_argument(
+        "--n-nearest-neighbors",
+        help="",
+        default=50,
+        type=int,
+    )
+    parser.add_argument(
+        "--n-jobs",
+        help="",
+        default=-1,
+        type=int,
+    )
+    parser.add_argument(
+        "--get-neighbor-distances",
+        help="",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--distance-metric",
+        help="",
+        default="euclidean",
+        type=str,
+        # choices=[],
+    )
+    parser.add_argument(
+        "--use-nearest-neighbors-approximation",
+        help="",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--n-trees",
+        help="",
         default=10,
         type=int,
     )
 
+    parser.add_argument(
+        "--apply-nearest-neighbor-filters",
+        help="",
+        action="store_true",
+    )
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
