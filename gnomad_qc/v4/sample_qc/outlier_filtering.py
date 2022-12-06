@@ -24,9 +24,10 @@ from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_samples,
     joint_qc_meta,
     nearest_neighbors,
+    nearest_neighbors_filtering,
     platform,
-    regressed_metrics,
-    stratified_metrics,
+    regressed_filtering,
+    stratified_filtering,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -354,7 +355,7 @@ def main(args):
             joint_qc_meta.ht(),
             regress_pop_n_pcs=regress_pop_n_pcs,
             regress_platform_n_pcs=regress_platform_n_pcs,
-        ).write(regressed_metrics.path, overwrite=overwrite)
+        ).write(regressed_filtering(test=test).path, overwrite=overwrite)
 
     if args.apply_stratified_filters:
         if not population_correction:
@@ -366,7 +367,7 @@ def main(args):
             filtering_qc_metrics,
             pop_ht,
             platform_ht,
-        ).write(stratified_metrics.path, overwrite=overwrite)
+        ).write(stratified_filtering(test=test).path, overwrite=overwrite)
 
     if args.determine_nearest_neighbors:
         determine_nearest_neighbors(
