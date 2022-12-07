@@ -263,7 +263,7 @@ def filter_subpop_qc(
 def drop_small_subpops(
     ht: hl.Table,
     min_additional_subpop_samples: int = None,
-    unassigned_label: str = "Other",
+    unassigned_label: str = "remaining",
 ) -> hl.Table:
     """
     Drop small subpops from final subpop inference results.
@@ -277,7 +277,7 @@ def drop_small_subpops(
 
     :param ht: Table containing subpop inference results (under annotation name 'subpop').
     :param min_additional_subpop_samples: Minimum additional samples required to include subpop in final inference results. Default is 100.
-    :param unassigned_label: Label to use for samples for which inferred subpop label will be dropped. Default is 'Other'.
+    :param unassigned_label: Label to use for samples for which inferred subpop label will be dropped. Default is 'remaining'.
     :return: Table with final inference results in which samples belonging to small subpops have been reassigned to 'unassigned_label'.
     """
     # For each training_pop, count the number of samples with known labels and the number of hgdp_or_tgp samples correctly assigned to their known label
@@ -353,7 +353,7 @@ def drop_small_subpops(
     # Create a dictionary with 'training_pop' as key and whether or not to keep samples inferred as belonging to the subpop as values
     subpop_decisions = hl.dict(
         hl.tuple(
-            [counts_subpops_ht.training_pop, counts_subpops_ht.keep_subpop]
+            [counts_subpops_ht.training_pop, hl.coalesce(counts_subpops_ht.keep_subpop, False)]
         ).collect()
     )
 
@@ -745,10 +745,10 @@ if __name__ == "__main__":
         "--unassigned-label",
         help=(
             "Label for samples for that are not classified into a particular subpop."
-            " Default is 'Other'."
+            " Default is 'remaining'."
         ),
         type=str,
-        default="Other",
+        default="remaining",
     )
 
     args = parser.parse_args()
