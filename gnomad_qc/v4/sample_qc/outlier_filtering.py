@@ -479,11 +479,9 @@ def main(args):
         ).write(nearest_neighbors(test=test).path, overwrite=overwrite)
 
     if args.apply_nearest_neighbor_filters:
-        ht = apply_nearest_neighbors_filters(
+        apply_nearest_neighbors_filters(
             sample_qc_ht, nearest_neighbors(test=test).ht(), filtering_qc_metrics
-        )
-        ht.show()
-        ht.describe()
+        ).write(nearest_neighbors_filtering(test=test).path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
