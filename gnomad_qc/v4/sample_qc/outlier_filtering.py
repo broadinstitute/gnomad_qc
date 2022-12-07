@@ -6,14 +6,13 @@ from typing import Dict, List, Optional, Tuple
 
 import hail as hl
 import pandas as pd
-from annoy import AnnoyIndex
 from gnomad.sample_qc.filtering import (
     compute_qc_metrics_residuals,
     compute_stratified_metrics_filter,
+    determine_nearest_neighbors,
 )
 from gnomad.utils.gen_stats import get_median_and_mad_expr
 from gnomad.utils.slack import slack_notifications
-from sklearn.neighbors import NearestNeighbors
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import check_resource_existence
@@ -156,121 +155,6 @@ def apply_regressed_filters(
     )
 
     return ht
-
-
-def determine_nearest_neighbors(
-    ht,
-    pop_scores_ht: Optional[hl.Table] = None,
-    # platform_ht: Optional[hl.Table] = None,
-    n_pcs: int = 16,
-    n_neighbors: int = 50,
-    n_jobs: int = -2,
-    add_neighbor_distances: bool = False,
-    distance_metric: str = "euclidean",
-    use_approximation: bool = False,
-    n_trees: int = 50,
-):
-    """
-    Add module docstring.
-
-    :param ht:
-    :param pop_scores_ht:
-    :param n_pcs:
-    :param n_neighbors:
-    :param n_jobs:
-    :param add_neighbor_distances:
-    :param distance_metric:
-    :param use_approximation:
-    :param n_trees:
-    :return:
-    """
-    # TODO: add option to stratify nearest neighbors by platform
-
-    ht = ht.annotate(
-        pop_scores=pop_scores_ht[ht.key].scores,
-        # platform=platform_ht[ht.key].platform,
-    )
-    ht = ht.filter(hl.is_defined(ht.pop_scores))
-    ht = ht.select(**{f"PC{i}": ht.pop_scores[i - 1] for i in range(1, n_pcs + 1)})
-    pop_scores_pd = ht.to_pandas()
-    pop_scores_pd_s = pop_scores_pd.s
-    pop_scores_pd = pop_scores_pd[[f"PC{i}" for i in range(1, n_pcs + 1)]]
-
-    if use_approximation:
-        nbrs = AnnoyIndex(n_pcs, distance_metric)
-        for i, row in pop_scores_pd.iterrows():
-            nbrs.add_item(i, row)
-        nbrs.build(n_trees, n_jobs=n_jobs)
-
-        indexes = []
-        for i in range(pop_scores_pd.shape[0]):
-            indexes.append(
-                nbrs.get_nns_by_item(
-                    i, n_neighbors, include_distances=add_neighbor_distances
-                )
-            )
-
-        if add_neighbor_distances:
-            distances = [d for i, d in indexes]
-            indexes = [i for i, d in indexes]
-    else:
-        vals = pop_scores_pd.values
-        nbrs = NearestNeighbors(
-            n_neighbors=n_neighbors, n_jobs=n_jobs, metric=distance_metric
-        )
-        nbrs.fit(vals)
-        indexes = nbrs.kneighbors(vals, return_distance=add_neighbor_distances)
-        if add_neighbor_distances:
-            distances, indexes = indexes
-
-    # Format neighbor indexes as a Hail Table
-    indexes_pd = pd.DataFrame(indexes)
-    indexes_pd = pd.concat([pop_scores_pd_s, indexes_pd], axis=1)
-    indexes_pd = indexes_pd.rename(
-        columns={i: f"nbrs_index_{i}" for i in range(n_neighbors)}
-    )
-    indexes_ht = hl.Table.from_pandas(indexes_pd, key=["s"])
-    indexes_ht = indexes_ht.transmute(
-        nearest_neighbor_idxs=hl.array(
-            [indexes_ht[f"nbrs_index_{i}"] for i in range(n_neighbors)]
-        )
-    )
-
-    if add_neighbor_distances:
-        # Format neighbor distances as a Hail Table
-        distances_pd = pd.DataFrame(distances)
-        print(distances_pd)
-        distances_pd = distances_pd.rename(
-            columns={i: f"nbrs_{i}" for i in range(n_neighbors)}
-        )
-        distances_pd = pd.concat([pop_scores_pd_s, distances_pd], axis=1)
-        distances_ht = hl.Table.from_pandas(distances_pd, key=["s"])
-        distances_ht = distances_ht.transmute(
-            nearest_neighbor_dists=hl.array(
-                [distances_ht[f"nbrs_{str(i)}"] for i in range(n_neighbors)]
-            )
-        )
-
-        # Join neighbor distances Table and indexes Table
-        nbrs_ht = indexes_ht.join(distances_ht)
-    else:
-        nbrs_ht = indexes_ht
-
-    # Add nearest_neighbors annotation
-    nbrs_ht = nbrs_ht.add_index()
-    explode_nbrs_ht = nbrs_ht.key_by("idx").explode("nearest_neighbor_idxs")
-    explode_nbrs_ht = explode_nbrs_ht.annotate(
-        nbr=explode_nbrs_ht[hl.int64(explode_nbrs_ht.nearest_neighbor_idxs)].s
-    )
-    explode_nbrs_ht = explode_nbrs_ht.group_by("s").aggregate(
-        nearest_neighbors=hl.agg.collect_as_set(explode_nbrs_ht.nbr)
-    )
-    nbrs_ht = nbrs_ht.annotate(
-        nearest_neighbors=explode_nbrs_ht[nbrs_ht.key].nearest_neighbors
-    )
-    nbrs_ht = nbrs_ht.annotate_globals(n_pcs=n_pcs, n_neighbors=n_neighbors)
-
-    return nbrs_ht
 
 
 def get_nearest_neighbors_median_and_mad(
@@ -611,5 +495,6 @@ if __name__ == "__main__":
             main(args)
     else:
         main(args)
+
 # Add platforms or platform PCs somehow
 # Add interval QC options? Redo sample QC after interval filtering?
