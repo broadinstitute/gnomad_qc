@@ -34,11 +34,18 @@ logger = logging.getLogger("outlier_filtering")
 logger.setLevel(logging.INFO)
 
 
-def apply_stratified_filters(
+def apply_filtering_method(
     sample_qc_ht: hl.Table,
     filtering_qc_metrics: List[str],
+    method: str = "stratified",
+    pop_scores_ht: Optional[hl.Table] = None,
     pop_ht: Optional[hl.Table] = None,
     platform_ht: Optional[hl.Table] = None,
+    regress_pop_n_pcs: int = 16,
+    regress_platform_n_pcs: int = 9,
+    include_unreleasable_samples: bool = False,
+    project_meta_ht: Optional[hl.Table] = None,
+    nn_ht: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
     Use population stratified QC metrics to determine what samples are outliers and should be filtered.
@@ -52,42 +59,7 @@ def apply_stratified_filters(
         Default left and right MAD for `compute_stratified_metrics_filter` is 4, we modify this for n_singleton to be
         (4.0, 8.0)
 
-    :param sample_qc_ht: Sample QC HT
-    :param filtering_qc_metrics: Specific metrics to compute
-    :return: Table with stratified metrics and filters
-    """
-    logger.info(
-        "Computing stratified QC metrics filters using metrics: "
-        + ", ".join(filtering_qc_metrics)
-    )
-
-    strata = {}
-    if pop_ht is not None:
-        strata["pop"] = pop_ht[sample_qc_ht.key].qc_pop
-    if platform_ht is not None:
-        strata["platform"] = platform_ht[sample_qc_ht.key].qc_platform
-
-    stratified_metrics_ht = compute_stratified_metrics_filter(
-        sample_qc_ht,
-        qc_metrics={metric: sample_qc_ht[metric] for metric in filtering_qc_metrics},
-        strata=strata,
-        metric_threshold={"n_singleton": (4.0, 8.0)},
-    )
-    return stratified_metrics_ht
-
-
-def apply_regressed_filters(
-    ht: hl.Table,
-    filtering_qc_metrics: List[str],
-    pop_scores_ht: Optional[hl.Table] = None,
-    platform_ht: Optional[hl.Table] = None,
-    project_meta_ht: Optional[hl.Table] = None,
-    regress_pop_n_pcs: int = 16,
-    regress_platform_n_pcs: int = 9,
-    include_unreleasable_samples: bool = False,
-) -> hl.Table:
-    """
-    Compute sample QC metrics residuals after regressing out population PCs and determine what samples are outliers that should be filtered.
+        Compute sample QC metrics residuals after regressing out population PCs and determine what samples are outliers that should be filtered.
 
     .. note::
 
@@ -101,86 +73,102 @@ def apply_regressed_filters(
     :param filtering_qc_metrics: Specific metrics to compute
     :param include_unreleasable_samples: Should unreleasable samples be included in
     the regression
-    :param n_pcs: Number of population PCs to use in regression
+
+    :param sample_qc_ht: Sample QC HT
+    :param filtering_qc_metrics: Specific metrics to compute
     :return: Table with stratified metrics and filters
     """
-    # TODO: add option to only regress out population, and do this regression
-    # per platform
-    if pop_scores_ht is None and platform_ht is None:
-        ValueError(
-            "At least one of 'pop_scores_ht' or 'platform_ht' must be specified!"
+    if method == "stratified":
+        logger.info(
+            "Computing stratified QC metrics filters using metrics: "
+            + ", ".join(filtering_qc_metrics)
         )
 
-    pc_scores = None
-    ann_args = {}
-    if pop_scores_ht is not None:
-        ann_args["pop_scores"] = pc_scores = pop_scores_ht[ht.key].scores[
-            :regress_pop_n_pcs
-        ]
-    if platform_ht is not None:
-        ann_args["platform_scores"] = platform_ht[ht.key].scores[
-            :regress_platform_n_pcs
-        ]
-        if pc_scores is None:
-            pc_scores = ann_args["platform_scores"]
-        else:
-            pc_scores = pc_scores.extend(ann_args["platform_scores"])
-    if not include_unreleasable_samples:
-        ann_args["releasable"] = project_meta_ht[ht.key].releasable
+        strata = {}
+        if pop_ht is not None:
+            strata["pop"] = pop_ht[sample_qc_ht.key].qc_pop
+        if platform_ht is not None:
+            strata["platform"] = platform_ht[sample_qc_ht.key].qc_platform
 
-    ann_args["pc_scores"] = pc_scores
-    ht = ht.annotate(**ann_args)
-    ht = compute_qc_metrics_residuals(
-        ht,
-        pc_scores=ht.pc_scores,
-        qc_metrics={metric: ht[metric] for metric in filtering_qc_metrics},
-        regression_sample_inclusion_expr=None
-        if include_unreleasable_samples
-        else ht.releasable,
-    )
-    stratified_metrics_ht = compute_stratified_metrics_filter(
-        ht,
-        qc_metrics=dict(ht.row_value),
-        metric_threshold={
-            "n_singleton_residual": (math.inf, 8.0),
-            "r_het_hom_var_residual": (math.inf, 4.0),
-        },
-    )
+        stratified_metrics_ht = compute_stratified_metrics_filter(
+            sample_qc_ht,
+            qc_metrics={
+                metric: sample_qc_ht[metric] for metric in filtering_qc_metrics
+            },
+            strata=strata,
+            metric_threshold={"n_singleton": (4.0, 8.0)},
+        )
+    elif method == "regressed":
+        # TODO: add option to only regress out population, and do this regression
+        # per platform
+        if pop_scores_ht is None and platform_ht is None:
+            ValueError(
+                "At least one of 'pop_scores_ht' or 'platform_ht' must be specified!"
+            )
 
-    ht = ht.annotate(**stratified_metrics_ht[ht.key])
-    ht = ht.annotate_globals(
-        **stratified_metrics_ht.index_globals(),
-        regress_pop_n_pcs=regress_pop_n_pcs,
-        regress_platform_n_pcs=regress_platform_n_pcs,
-    )
+        pc_scores = None
+        ann_args = {}
+        if pop_scores_ht is not None:
+            ann_args["pop_scores"] = pc_scores = pop_scores_ht[ht.key].scores[
+                :regress_pop_n_pcs
+            ]
+        if platform_ht is not None:
+            ann_args["platform_scores"] = platform_ht[ht.key].scores[
+                :regress_platform_n_pcs
+            ]
+            if pc_scores is None:
+                pc_scores = ann_args["platform_scores"]
+            else:
+                pc_scores = pc_scores.extend(ann_args["platform_scores"])
+        if not include_unreleasable_samples:
+            ann_args["releasable"] = project_meta_ht[ht.key].releasable
 
-    return ht
+        ann_args["pc_scores"] = pc_scores
+        ht = ht.annotate(**ann_args)
+        ht = compute_qc_metrics_residuals(
+            ht,
+            pc_scores=ht.pc_scores,
+            qc_metrics={metric: ht[metric] for metric in filtering_qc_metrics},
+            regression_sample_inclusion_expr=None
+            if include_unreleasable_samples
+            else ht.releasable,
+        )
+        stratified_metrics_ht = compute_stratified_metrics_filter(
+            ht,
+            qc_metrics=dict(ht.row_value),
+            metric_threshold={
+                "n_singleton_residual": (math.inf, 8.0),
+                "r_het_hom_var_residual": (math.inf, 4.0),
+            },
+        )
 
+        ht = ht.annotate(**stratified_metrics_ht[ht.key])
+        ht = ht.annotate_globals(
+            **stratified_metrics_ht.index_globals(),
+            regress_pop_n_pcs=regress_pop_n_pcs,
+            regress_platform_n_pcs=regress_platform_n_pcs,
+        )
+    elif method == "nearest neighbor":
+        logger.info(
+            "Computing stratified QC metrics filters using metrics: "
+            + ", ".join(filtering_qc_metrics)
+        )
 
-def get_nearest_neighbors_median_and_mad(
-    ht: hl.Table,
-    nn_ht: hl.Table,
-    filtering_qc_metrics: List[str],
-):
-    """
-    Add module docstring.
+        return compute_nearest_neighbor_metrics_filter(
+            sample_qc_ht,
+            nn_ht,
+            qc_metrics={
+                metric: sample_qc_ht[metric] for metric in filtering_qc_metrics
+            },
+            metric_threshold={"n_singleton": (4.0, 8.0)},
+        )
+    else:
+        raise ValueError(
+            f"Filtering method {method} is not valid, method must be one of "
+            "'stratified', 'regressed', or 'nearest neighbor'!"
+        )
 
-    :param ht:
-    :param nn_ht:
-    :param filtering_qc_metrics:
-    :return:
-    """
-    nn_ht = nn_ht.explode("nearest_neighbors", name="nbr")
-    nn_ht = nn_ht.annotate(**ht[nn_ht.nbr])
-
-    agg_expr = hl.struct(
-        **{
-            metric: get_median_and_mad_expr(nn_ht[metric])
-            for metric in filtering_qc_metrics
-        }
-    )
-
-    return nn_ht.group_by("s").aggregate(**agg_expr)
+    return stratified_metrics_ht
 
 
 def compute_nearest_neighbor_metrics_filter(
@@ -203,6 +191,10 @@ def compute_nearest_neighbor_metrics_filter(
     :param filter_name: Name of resulting filters annotation
     :return: Table grouped by strata, with upper and lower threshold values computed for each sample QC metric
     """
+    # Different
+    nn_ht = nn_ht.explode("nearest_neighbors", name="nbr")
+    nn_ht = nn_ht.annotate(**ht[nn_ht.nbr])
+
     _metric_threshold = {
         metric: (lower_threshold, upper_threshold) for metric in qc_metrics
     }
@@ -210,7 +202,11 @@ def compute_nearest_neighbor_metrics_filter(
         _metric_threshold.update(metric_threshold)
 
     ht = ht.select(**qc_metrics)
-    median_mad_ht = get_nearest_neighbors_median_and_mad(ht, nn_ht, qc_metrics)
+
+    median_mad_ht = nn_ht.group_by("s").aggregate(
+        **{metric: get_median_and_mad_expr(nn_ht[metric]) for metric in qc_metrics}
+    )
+    ####
 
     ht = ht.annotate(
         qc_metrics_stats=hl.struct(
@@ -227,53 +223,25 @@ def compute_nearest_neighbor_metrics_filter(
         )
     )
 
+    # Different
+    metrics_stats_expr = ht.qc_metrics_stats
+    ###
+
     ht = ht.transmute(
         **{
-            f"fail_{metric}": (ht[metric] <= ht.qc_metrics_stats[metric].lower)
-            | (ht[metric] >= ht.qc_metrics_stats[metric].upper)
+            f"fail_{metric}": (ht[metric] <= metrics_stats_expr[metric].lower)
+            | (ht[metric] >= metrics_stats_expr[metric].upper)
             for metric in qc_metrics
         }
     )
-    ht = ht.annotate(
-        **{
-            filter_name: hl.set(
-                hl.filter(
-                    lambda x: hl.is_defined(x),
-                    [
-                        hl.or_missing(ht[f"fail_{metric}"], metric)
-                        for metric in qc_metrics
-                    ],
-                )
-            )
-        }
-    )
-    return ht
-
-
-def apply_nearest_neighbors_filters(
-    sample_qc_ht: hl.Table,
-    nn_ht: hl.Table,
-    filtering_qc_metrics: List[str],
-) -> hl.Table:
-    """
-    Compute sample QC metrics residuals after regressing out population PCs and determine what samples are outliers that should be filtered.
-
-    :param sample_qc_ht:
-    :param nn_ht:
-    :param filtering_qc_metrics:
-    :return:
-    """
-    logger.info(
-        "Computing stratified QC metrics filters using metrics: "
-        + ", ".join(filtering_qc_metrics)
+    stratified_filters = hl.set(
+        hl.filter(
+            lambda x: hl.is_defined(x),
+            [hl.or_missing(ht[f"fail_{metric}"], metric) for metric in qc_metrics],
+        )
     )
 
-    return compute_nearest_neighbor_metrics_filter(
-        sample_qc_ht,
-        nn_ht,
-        qc_metrics={metric: sample_qc_ht[metric] for metric in filtering_qc_metrics},
-        metric_threshold={"n_singleton": (4.0, 8.0)},
-    )
+    return ht.annotate(**{filter_name: stratified_filters})
 
 
 def main(args):
