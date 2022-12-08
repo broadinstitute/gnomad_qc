@@ -76,6 +76,23 @@ def apply_filtering_method(
     :param filtering_qc_metrics: Specific metrics to compute
     :return: Table with stratified metrics and filters
     """
+    # Convert tuples to lists, so we can find the index of the passed threshold.
+    sample_qc_ht = sample_qc_ht.annotate(
+        **{
+            f"bases_dp_over_{hl.eval(sample_qc_ht.dp_bins[i])}": sample_qc_ht.bases_over_dp_threshold[
+                i
+            ]
+            for i in range(len(sample_qc_ht.dp_bins))
+        },
+    )
+    sample_qc_ht = sample_qc_ht.filter(
+        hl.is_missing(hard_filtered_samples.ht()[sample_qc_ht.key])
+    )
+    sample_qc_ht = sample_qc_ht.annotate(
+        r_snp_indel=sample_qc_ht.n_snp
+        / (sample_qc_ht.n_insertion + sample_qc_ht.n_deletion)
+    )
+
     if method == "stratified":
         logger.info(
             "Computing stratified QC metrics filters using metrics: "
@@ -190,38 +207,40 @@ def main(args):
     filtering_qc_metrics = args.filtering_qc_metrics.split(",")
     population_correction = args.population_correction
     platform_correction = args.platform_correction
-    # pop_ht = get_pop_ht(test=test).ht()
-    pop_ht = hl.read_table(
+    sample_qc_ht = get_sample_qc("bi_allelic")
+    # pop_ht = get_pop_ht(test=test)
+    from gnomad.resources.resource_utils import TableResource
+
+    pop_ht = TableResource(
         "gs://gnomad/v4.0/sample_qc/joint/ancestry_inference/gnomad.joint.v4.0.hgdp_tgp_training.pop.rf_w_16pcs_0.75_pop_prob.ht"
     )
     pop_scores_ht = ancestry_pca_scores(
-        include_unreleasable_samples=args.include_unreleasable_samples,
-    ).ht()
-    platform_ht = platform.ht()  # get_platform_ht(test=test).ht()
-
-    sample_qc_ht = get_sample_qc("bi_allelic").ht()
-
-    # Convert tuples to lists so we can find the index of the passed threshold.
-    sample_qc_ht = sample_qc_ht.annotate(
-        **{
-            f"bases_dp_over_{hl.eval(sample_qc_ht.dp_bins[i])}": sample_qc_ht.bases_over_dp_threshold[
-                i
-            ]
-            for i in range(len(sample_qc_ht.dp_bins))
-        },
+        include_unreleasable_samples=args.include_unreleasable_samples
     )
-    sample_qc_ht = sample_qc_ht.filter(
-        hl.is_missing(hard_filtered_samples.ht()[sample_qc_ht.key])
-    )
-    sample_qc_ht = sample_qc_ht.annotate(
-        r_snp_indel=sample_qc_ht.n_snp
-        / (sample_qc_ht.n_insertion + sample_qc_ht.n_deletion)
+    platform_ht = platform
+    nn_ht = nearest_neighbors(test=test)
+
+    check_resource_existence(
+        input_step_resources={
+            "hard_filters.py --sample-qc": [sample_qc_ht],
+        }
     )
 
+    sample_qc_ht = sample_qc_ht.ht()
     if test:
         sample_qc_ht = sample_qc_ht.sample(0.01)
 
     if args.apply_regressed_filters:
+        output = regressed_filtering(test=test)
+        check_resource_existence(
+            input_step_resources={
+                "assign_ancestry.py --run-pca": [pop_scores_ht],
+                "assign_ancestry.py --assign-pops": [platform_ht],
+                "platform_inference.py --assign-platforms": [joint_qc_meta],
+            },
+            output_step_resources={"--apply-regressed-filters": [output]},
+            overwrite=overwrite,
+        )
         if not population_correction:
             regress_pop_n_pcs = None
         if not platform_correction:
@@ -231,14 +250,23 @@ def main(args):
             sample_qc_ht,
             filtering_qc_metrics,
             method="regressed",
-            pop_scores_ht=pop_scores_ht,
-            platform_ht=platform_ht,
+            pop_scores_ht=pop_scores_ht.ht(),
+            platform_ht=platform_ht.ht(),
             regress_pop_n_pcs=regress_pop_n_pcs,
             regress_platform_n_pcs=regress_platform_n_pcs,
             project_meta_ht=joint_qc_meta.ht(),
-        ).write(regressed_filtering(test=test).path, overwrite=overwrite)
+        ).write(output.path, overwrite=overwrite)
 
     if args.apply_stratified_filters:
+        output = stratified_filtering(test=test)
+        check_resource_existence(
+            input_step_resources={
+                "assign_ancestry.py --assign-pops": [pop_ht],
+                "platform_inference.py --assign-platforms": [platform_ht],
+            },
+            output_step_resources={"--apply-stratified-filters": [output]},
+            overwrite=overwrite,
+        )
         if not population_correction:
             pop_ht = None
         if not platform_correction:
@@ -248,18 +276,26 @@ def main(args):
             sample_qc_ht,
             filtering_qc_metrics,
             method="stratified",
-            pop_ht=pop_ht,
-            platform_ht=platform_ht,
-        ).write(stratified_filtering(test=test).path, overwrite=overwrite)
+            pop_ht=pop_ht.ht(),
+            platform_ht=platform_ht.ht(),
+        ).write(output.path, overwrite=overwrite)
 
     if args.determine_nearest_neighbors:
+        check_resource_existence(
+            input_step_resources={
+                "assign_ancestry.py --run-pca": [pop_scores_ht],
+                "platform_inference.py --assign-platforms": [platform_ht],
+            },
+            output_step_resources={"--determine-nearest-neighbors": [nn_ht]},
+            overwrite=overwrite,
+        )
         if platform_correction:
-            strata = {"platform": platform_ht[sample_qc_ht.key].qc_platform}
+            strata = {"platform": platform_ht.ht()[sample_qc_ht.key].qc_platform}
         else:
             strata = None
         determine_nearest_neighbors(
             sample_qc_ht,
-            pop_scores_ht[sample_qc_ht.key].scores,
+            pop_scores_ht.ht()[sample_qc_ht.key].scores,
             strata=strata,
             n_pcs=args.nearest_neighbors_pop_n_pcs,
             n_neighbors=args.n_nearest_neighbors,
@@ -268,15 +304,21 @@ def main(args):
             distance_metric=args.distance_metric,
             use_approximation=args.use_nearest_neighbors_approximation,
             n_trees=args.n_trees,
-        ).write(nearest_neighbors(test=test).path, overwrite=overwrite)
+        ).write(nn_ht.path, overwrite=overwrite)
 
     if args.apply_nearest_neighbor_filters:
+        output = nearest_neighbors_filtering(test=test)
+        check_resource_existence(
+            input_step_resources={"--determine-nearest-neighbors": [nn_ht]},
+            output_step_resources={"--apply-nearest-neighbor": [output]},
+            overwrite=overwrite,
+        )
         apply_filtering_method(
             sample_qc_ht,
             filtering_qc_metrics,
             method="nearest neighbors",
-            nn_ht=nearest_neighbors(test=test).ht(),
-        ).write(nearest_neighbors_filtering(test=test).path, overwrite=overwrite)
+            nn_ht=nn_ht.ht(),
+        ).write(output.path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
