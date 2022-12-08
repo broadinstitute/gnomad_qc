@@ -270,7 +270,7 @@ def drop_small_subpops(
 
     .. note::
 
-        Samples within a dropped subpop will be reassigned to 'unassigned_label'. Small subpops are those below 'min_additional_subpop_samples' and criteria is based on the source of the known labels:
+        Samples within a dropped subpop will be reassigned to `unassigned_label`. Small subpops are those below `min_additional_subpop_samples` and criteria is based on the source of the known labels:
             - If the known labels came exclusively from HGDP and/or TGP(1000 Genomes Project), require newly assigned samples (n_newly_assigned) >= min_additional_subpop_samples
             - If the known labels came exclusively from a collaborator metadata source, require the sum of confirmed and newly assigned samples (n_assigned) >= min_additional_subpop_samples
             - If known labels came from both HGDP/TGP and collaborator metadata sources, require the sum of confirmed and newly assigned samples (n_assigned) minus confirmed HGDP/TGP samples (n_confirmed_hgdp_tgp) >= min_additional_subpop_samples
