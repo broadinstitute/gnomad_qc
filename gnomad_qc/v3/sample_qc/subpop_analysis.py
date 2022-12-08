@@ -280,8 +280,8 @@ def drop_small_subpops(
     :param unassigned_label: Label to use for samples for which inferred subpop label will be dropped. Default is 'remaining'.
     :return: Table with final inference results in which samples belonging to small subpops have been reassigned to `unassigned_label`.
     """
-    # For each training_pop, count the number of samples with known labels and 
-    # the number of hgdp_or_tgp samples correctly assigned to their known 
+    # For each training_pop, count the number of samples with known labels and
+    # the number of hgdp_or_tgp samples correctly assigned to their known
     # label
     known_label_counts_ht = ht.group_by(ht.training_pop).aggregate(
         n_known_labels=hl.agg.count(),
@@ -293,7 +293,7 @@ def drop_small_subpops(
         ),
     )
 
-    # For each subpop, count the number of samples assigned to that subpop 
+    # For each subpop, count the number of samples assigned to that subpop
     # overall, as well as newly assigned samples (did not have a known label)
     assigned_counts_ht = ht.group_by(ht.subpop).aggregate(
         n_assigned=hl.agg.count(),
@@ -302,7 +302,7 @@ def drop_small_subpops(
         ),
     )
 
-    # Annotate whether known labels came from an hgdp_or_tgp sample, a 
+    # Annotate whether known labels came from an hgdp_or_tgp sample, a
     # collaborator metadata annotation, or a "mix" of both
     label_source_ht = ht.group_by(ht.training_pop).aggregate(
         known_label_source=(
@@ -313,7 +313,7 @@ def drop_small_subpops(
         )
     )
 
-    # Join the Table of known label counts with the Table of assigned subpop 
+    # Join the Table of known label counts with the Table of assigned subpop
     # counts and label source
     counts_subpops_ht = known_label_counts_ht.join(
         assigned_counts_ht, how="outer"
@@ -350,7 +350,7 @@ def drop_small_subpops(
         & (counts_subpops_ht.training_pop != unassigned_label)
     )
 
-    # Create a dictionary with 'training_pop' as key and whether or not to 
+    # Create a dictionary with 'training_pop' as key and whether or not to
     # keep samples inferred as belonging to the subpop as values
     subpop_decisions = hl.dict(
         hl.tuple(
@@ -361,7 +361,7 @@ def drop_small_subpops(
         ).collect()
     )
 
-    # Keep inferred labels only if the number of additional subpops exceeds or 
+    # Keep inferred labels only if the number of additional subpops exceeds or
     # equals 'min_additional_subpop_samples'
     ht = ht.annotate(
         subpop=(
@@ -543,7 +543,7 @@ def main(args):  # noqa: D103
                     joint_pca_ht, min_additional_subpop_samples, unassigned_label
                 )
 
-            # Annotate final subpop inference results, always keeping known labels 
+            # Annotate final subpop inference results, always keeping known labels
             # from HGDP/1KG
             joint_pca_ht = joint_pca_ht.annotate(
                 subpop=(
