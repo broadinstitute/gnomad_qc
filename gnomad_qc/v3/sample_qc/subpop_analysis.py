@@ -301,11 +301,6 @@ def drop_small_subpops(
 
     # Annotate whether known labels came from an hgdp_or_tgp sample, a collaborator metadata annotation, or a "mix" of both
     label_source_ht = ht.group_by(ht.training_pop).aggregate(
-        n_hgdp_or_tgp_source=hl.agg.count_where(ht.hgdp_or_tgp),
-        n_collab_source=hl.agg.count_where(~ht.hgdp_or_tgp),
-    )
-
-    label_source_ht = ht.group_by(ht.training_pop).aggregate(
         known_label_source=(
             hl.case()
             .when(hl.agg.all(ht.hgdp_or_tgp), "hgdp_tgp_only")
@@ -353,7 +348,10 @@ def drop_small_subpops(
     # Create a dictionary with 'training_pop' as key and whether or not to keep samples inferred as belonging to the subpop as values
     subpop_decisions = hl.dict(
         hl.tuple(
-            [counts_subpops_ht.training_pop, hl.coalesce(counts_subpops_ht.keep_subpop, False)]
+            [
+                counts_subpops_ht.training_pop,
+                hl.coalesce(counts_subpops_ht.keep_subpop, False),
+            ]
         ).collect()
     )
 
