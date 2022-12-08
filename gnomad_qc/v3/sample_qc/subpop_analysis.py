@@ -278,7 +278,7 @@ def drop_small_subpops(
     :param ht: Table containing subpop inference results (under annotation name 'subpop').
     :param min_additional_subpop_samples: Minimum additional samples required to include subpop in final inference results. Default is 100.
     :param unassigned_label: Label to use for samples for which inferred subpop label will be dropped. Default is 'remaining'.
-    :return: Table with final inference results in which samples belonging to small subpops have been reassigned to 'unassigned_label'.
+    :return: Table with final inference results in which samples belonging to small subpops have been reassigned to `unassigned_label`.
     """
     # For each training_pop, count the number of samples with known labels and the number of hgdp_or_tgp samples correctly assigned to their known label
     known_label_counts_ht = ht.group_by(ht.training_pop).aggregate(
