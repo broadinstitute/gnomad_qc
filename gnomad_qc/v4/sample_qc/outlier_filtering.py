@@ -96,7 +96,7 @@ def apply_regressed_filtering_method(
     regress_pop_n_pcs: int = 16,
     regress_platform_n_pcs: int = 9,
     regression_include_unreleasable: bool = False,
-    per_platform: bool = False,
+    regress_per_platform: bool = False,
     project_meta_ht: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
@@ -133,7 +133,7 @@ def apply_regressed_filtering_method(
         ValueError(
             "At least one of 'pop_scores_ht' or 'platform_ht' must be specified!"
         )
-    if per_platform and (pop_scores_ht is None or platform_ht is None):
+    if regress_per_platform and (pop_scores_ht is None or platform_ht is None):
         ValueError(
             "When using 'per_platform', 'pop_scores_ht' and 'platform_ht' must "
             "both be specified!"
@@ -151,7 +151,7 @@ def apply_regressed_filtering_method(
         )
         log_str.append("pop PCs")
     if platform_ht is not None:
-        if per_platform:
+        if regress_per_platform:
             strata["platform"] = platform_ht[sample_qc_ht.key].qc_platform
             log_str.append("is stratified by platform")
         else:
@@ -191,6 +191,7 @@ def apply_regressed_filtering_method(
         **filter_ht.index_globals(),
         regress_pop_n_pcs=regress_pop_n_pcs,
         regress_platform_n_pcs=regress_platform_n_pcs,
+        regress_per_platform=regress_per_platform,
     )
 
     return filter_ht
@@ -263,11 +264,7 @@ def main(args):
     # TODO: Add interval QC options? Redo sample QC after interval filtering?
     test = args.test
     overwrite = args.overwrite
-    regress_pop_n_pcs = args.regress_pop_n_pcs
-    regress_platform_n_pcs = args.regress_platform_n_pcs
     filtering_qc_metrics = args.filtering_qc_metrics.split(",")
-    population_correction = args.population_correction
-    platform_correction = args.platform_correction
     sample_qc_ht = get_sample_qc("bi_allelic")
     # pop_ht = get_pop_ht(test=test)
     from gnomad.resources.resource_utils import TableResource
@@ -279,7 +276,13 @@ def main(args):
         include_unreleasable_samples=args.regression_include_unreleasable
     )
     platform_ht = platform
-    nn_ht = nearest_neighbors(test=test)
+    nn_per_platform = args.nn_per_platform
+    nn_approximation = args.use_nearest_neighbors_approximation
+    nn_ht = nearest_neighbors(
+        test=test,
+        platform_stratified=nn_per_platform,
+        approximation=nn_approximation,
+    )
 
     check_resource_existence(
         input_step_resources={
@@ -288,7 +291,8 @@ def main(args):
     )
 
     # Convert tuples to lists, so we can find the index of the passed threshold.
-    sample_qc_ht = sample_qc_ht.ht().annotate(
+    sample_qc_ht = sample_qc_ht.ht()
+    sample_qc_ht = sample_qc_ht.annotate(
         **{
             f"bases_dp_over_{hl.eval(sample_qc_ht.dp_bins[i])}": sample_qc_ht.bases_over_dp_threshold[
                 i
@@ -311,7 +315,17 @@ def main(args):
         sample_qc_ht = sample_qc_ht.sample(0.01)
 
     if args.apply_regressed_filters:
-        output = regressed_filtering(test=test)
+        regress_pop_n_pcs = args.regress_pop_n_pcs
+        regress_platform_n_pcs = args.regress_platform_n_pcs
+        regress_per_platform = args.regress_per_platform
+        regress_population = args.regress_population
+        regress_platform = args.regress_platform
+        output = regressed_filtering(
+            test=test,
+            pop_pc_regressed=regress_population,
+            platform_pc_regressed=regress_platform,
+            platform_stratified=regress_per_platform,
+        )
         check_resource_existence(
             input_step_resources={
                 "assign_ancestry.py --run-pca": [pop_scores_ht],
@@ -321,9 +335,9 @@ def main(args):
             output_step_resources={"--apply-regressed-filters": [output]},
             overwrite=overwrite,
         )
-        if not population_correction:
+        if not regress_population:
             regress_pop_n_pcs = None
-        if not platform_correction:
+        if not regress_platform:
             regress_platform_n_pcs = None
 
         apply_regressed_filtering_method(
@@ -333,11 +347,18 @@ def main(args):
             platform_ht=platform_ht.ht(),
             regress_pop_n_pcs=regress_pop_n_pcs,
             regress_platform_n_pcs=regress_platform_n_pcs,
+            regress_per_platform=regress_per_platform,
             project_meta_ht=joint_qc_meta.ht(),
         ).write(output.path, overwrite=overwrite)
 
     if args.apply_stratified_filters:
-        output = stratified_filtering(test=test)
+        stratify_population = args.stratify_population
+        stratify_platform = args.stratify_platform
+        output = stratified_filtering(
+            test=test,
+            pop_stratified=stratify_population,
+            platform_stratified=stratify_platform,
+        )
         check_resource_existence(
             input_step_resources={
                 "assign_ancestry.py --assign-pops": [pop_ht],
@@ -346,9 +367,9 @@ def main(args):
             output_step_resources={"--apply-stratified-filters": [output]},
             overwrite=overwrite,
         )
-        if not population_correction:
+        if not stratify_population:
             pop_ht = None
-        if not platform_correction:
+        if not stratify_platform:
             platform_ht = None
 
         apply_stratified_filtering_method(
@@ -367,7 +388,7 @@ def main(args):
             output_step_resources={"--determine-nearest-neighbors": [nn_ht]},
             overwrite=overwrite,
         )
-        if platform_correction:
+        if nn_per_platform:
             strata = {"platform": platform_ht.ht()[sample_qc_ht.key].qc_platform}
         else:
             strata = None
@@ -380,7 +401,7 @@ def main(args):
             n_jobs=args.n_jobs,
             add_neighbor_distances=args.get_neighbor_distances,
             distance_metric=args.distance_metric,
-            use_approximation=args.use_nearest_neighbors_approximation,
+            use_approximation=nn_approximation,
             n_trees=args.n_trees,
         ).write(nn_ht.path, overwrite=overwrite)
 
@@ -435,13 +456,13 @@ if __name__ == "__main__":
         help="Compute per pop filtering.",
         action="store_true",
     )
-    parser.add_argument(
-        "--population-correction",
+    stratified_args.add_argument(
+        "--stratify-population",
         help="",
         action="store_true",
     )
-    parser.add_argument(
-        "--platform-correction",
+    stratified_args.add_argument(
+        "--stratify-platform",
         help="",
         action="store_true",
     )
@@ -455,15 +476,24 @@ if __name__ == "__main__":
         action="store_true",
     )
     regressed_args.add_argument(
+        "--regress-population",
+        help="",
+        action="store_true",
+    )
+    regressed_args.add_argument(
+        "--regress-platform",
+        help="",
+        action="store_true",
+    )
+    regressed_args.add_argument(
         "--regression-include-unreleasable",
         help="",
         action="store_true",
     )
-
     regressed_args.add_argument(
         "--regress-pop-n-pcs",
         help="Number of population PCs to use for qc metric regressions",
-        default=16,
+        default=30,
         type=int,
     )
     regressed_args.add_argument(
@@ -491,6 +521,12 @@ if __name__ == "__main__":
         "--nearest-neighbors-pop-n-pcs",
         help="",
         default=16,
+        type=int,
+    )
+    regressed_args.add_argument(
+        "--nn-per-platform",
+        help="Number of platform PCs to use for qc metric regressions",
+        default=9,
         type=int,
     )
     nn_args.add_argument(
