@@ -142,32 +142,35 @@ def apply_regressed_filtering_method(
         "Computing QC metrics outlier filters with PC regression, using metrics: %s",
         ", ".join(qc_metrics),
     )
-    ann_args = {"scores": hl.empty_array(hl.tfloat64)}
+    ann_expr = {"scores": hl.empty_array(hl.tfloat64)}
+    global_expr = {}
     log_str = []
-    strata = None
     if pop_scores_ht is not None:
-        ann_args["scores"] = ann_args["scores"].extend(
+        ann_expr["scores"] = ann_expr["scores"].extend(
             pop_scores_ht[sample_qc_ht.key].scores[:regress_pop_n_pcs]
         )
         log_str.append("pop PCs")
+        global_expr["regress_pop_n_pcs"] = regress_pop_n_pcs
     if platform_ht is not None:
         if regress_per_platform:
-            strata["platform"] = platform_ht[sample_qc_ht.key].qc_platform
+            ann_expr["platform"] = platform_ht[sample_qc_ht.key].qc_platform
             log_str.append("is stratified by platform")
         else:
-            ann_args["scores"] = ann_args["scores"].extend(
+            ann_expr["scores"] = ann_expr["scores"].extend(
                 platform_ht[sample_qc_ht.key].scores[:regress_platform_n_pcs]
             )
             log_str.append("platform PCs")
-    logger.info(
-        "QC metric residuals are being computed using a regression with %s.",
-        "and ".join(log_str),
-    )
+            global_expr["regress_platform_n_pcs"] = regress_platform_n_pcs
 
     if not regression_include_unreleasable:
-        ann_args["releasable"] = project_meta_ht[sample_qc_ht.key].releasable
+        ann_expr["releasable"] = project_meta_ht[sample_qc_ht.key].releasable
 
-    sample_qc_ht = sample_qc_ht.annotate(**ann_args)
+    sample_qc_ht = sample_qc_ht.annotate(**ann_expr)
+
+    logger.info(
+        "QC metric residuals are being computed using a regression with %s.",
+        " and ".join(log_str),
+    )
     sample_qc_ht = compute_qc_metrics_residuals(
         sample_qc_ht,
         pc_scores=sample_qc_ht.scores,
@@ -175,7 +178,7 @@ def apply_regressed_filtering_method(
         regression_sample_inclusion_expr=None
         if regression_include_unreleasable
         else sample_qc_ht.releasable,
-        strata=strata,
+        strata={"platform": sample_qc_ht.platform} if regress_per_platform else None,
     )
     filter_ht = compute_stratified_metrics_filter(
         sample_qc_ht,
@@ -189,8 +192,7 @@ def apply_regressed_filtering_method(
     sample_qc_ht = sample_qc_ht.annotate(**filter_ht[sample_qc_ht.key])
     filter_ht = sample_qc_ht.annotate_globals(
         **filter_ht.index_globals(),
-        regress_pop_n_pcs=regress_pop_n_pcs,
-        regress_platform_n_pcs=regress_platform_n_pcs,
+        **global_expr,
         regress_per_platform=regress_per_platform,
     )
 
@@ -444,6 +446,8 @@ if __name__ == "__main__":
                 "r_het_hom_var",
                 "n_transition",
                 "n_transversion",
+                "r_ti_tv_singleton",
+                "r_snp_indel",
             ]
         ),
     )
@@ -505,8 +509,7 @@ if __name__ == "__main__":
     regressed_args.add_argument(
         "--regress-per-platform",
         help="Number of platform PCs to use for qc metric regressions",
-        default=9,
-        type=int,
+        action="store_true",
     )
     nn_args = parser.add_argument_group(
         "",
@@ -520,14 +523,13 @@ if __name__ == "__main__":
     nn_args.add_argument(
         "--nearest-neighbors-pop-n-pcs",
         help="",
-        default=16,
+        default=30,
         type=int,
     )
     regressed_args.add_argument(
         "--nn-per-platform",
         help="Number of platform PCs to use for qc metric regressions",
-        default=9,
-        type=int,
+        action="store_true",
     )
     nn_args.add_argument(
         "--n-nearest-neighbors",
