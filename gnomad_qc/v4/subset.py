@@ -188,6 +188,9 @@ def main(args):
             "Keeping %d samples using the list of terra workspaces.", subset_ht.count()
         )
 
+    if args.subset_samples:
+        subset_ht = subset_ht.key_by("s")
+
     if args.include_ukb_200k:
         ukb_subset_ht = meta_ht.filter(
             (meta_ht.project_meta.terra_workspace == "ukbb_wholeexomedataset")
@@ -272,6 +275,10 @@ def main(args):
                     nhomalt=ht.subset_callstats_adj.homozygote_count[1:],
                 )
             )
+            ht = ht.checkpoint(
+                f"{output_path}/subset_callstats{'.split' if args.split_multi else ''}.ht",
+                overwrite=args.overwrite,
+            )
             ht = adjust_vcf_incompatible_types(ht)
             mt = mt.annotate_rows(info=ht[mt.row_key].info)
 
@@ -286,11 +293,15 @@ def main(args):
         # TODO: add num-vcf-shards where no sharding happens if this is not set.
         if args.vcf:
             mt = mt.drop("gvcf_info")
-            header_dict["info"] = SUBSET_CALLSTATS_INFO_DICT
+            if args.subset_call_stats:
+                mt = mt.drop("adj")
+                header_dict["info"] = SUBSET_CALLSTATS_INFO_DICT
             hl.export_vcf(
                 mt,
-                f"{output_path}.bgz",
+                f"{output_path}/subset.vcf.bgz",
                 metadata=header_dict,
+                parallel="header_per_shard",
+                tabix=True,
             )
 
     if args.vds:
@@ -308,6 +319,7 @@ def main(args):
         meta_ht = meta_ht.annotate(
             project_meta=meta_ht.project_meta.drop(*data_to_drop)
         )
+        meta_ht = meta_ht.checkpoint(f"{output_path}/metadata.ht")
         meta_ht.export(f"{output_path}/metadata.tsv.bgz")
 
 
