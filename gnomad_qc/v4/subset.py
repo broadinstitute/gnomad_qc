@@ -319,7 +319,9 @@ def main(args):
         meta_ht = meta_ht.annotate(
             project_meta=meta_ht.project_meta.drop(*data_to_drop)
         )
-        meta_ht = meta_ht.checkpoint(f"{output_path}/metadata.ht")
+        meta_ht = meta_ht.checkpoint(
+            f"{output_path}/metadata.ht", overwrite=args.overwrite
+        )
         meta_ht.export(f"{output_path}/metadata.tsv.bgz")
 
 
