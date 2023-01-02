@@ -423,10 +423,15 @@ def assign_pops(
     pop_ht = pop_ht.annotate_globals(
         min_prob=min_prob,
         include_unreleasable_samples=include_unreleasable_samples,
-        max_mislabeled=max_mislabeled,
         pop_assignment_iterations=pop_assignment_iter,
         pcs=pcs,
     )
+
+    if max_mislabeled:
+        pop_ht = pop_ht.annotate_globals(
+            max_mislabeled=max_mislabeled,
+        )
+
     if withhold_prop:
         pop_ht = pop_ht.annotate_globals(withhold_prop=withhold_prop)
         pop_ht = pop_ht.annotate(
@@ -488,6 +493,21 @@ def main(args):
         test = args.test
         only_train_on_hgdp_tgp = args.only_train_on_hgdp_tgp
 
+        if (
+            args.max_number_mislabeled_training_samples is not None
+            and args.max_proportion_mislabeled_training_samples is not None
+        ):
+            raise ValueError(
+                "Only one of max_number_mislabeled_training_samples or"
+                " max_proportion_mislabeled_training_samples can be set"
+            )
+        elif args.max_proportion_mislabeled_training_samples is not None:
+            max_mislabeled = args.max_proportion_mislabeled_training_samples
+        elif args.max_number_mislabeled_training_samples is not None:
+            max_mislabeled = args.max_number_mislabeled_training_samples
+        else:
+            max_mislabeled = None
+
         if args.run_pca:
             pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
                 pca_related_samples_to_drop().ht(),
@@ -528,22 +548,25 @@ def main(args):
                     test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp
                 ).path.replace(
                     ".ht",
-                    f'.rf_w_{args.pop_pcs[0]}pcs_{args.min_pop_prob}_pop_prob_{hl.eval("v3_spike_"+hl.str("_").join(args.v3_population_spike)) if args.v3_population_spike else ""}{"v4_spike_"+hl.eval(hl.str("_").join(args.v4_population_spike)) if args.v4_population_spike else ""}.ht',
+                    f'.rf_w_{args.pop_pcs[0]}pcs_{args.min_pop_prob}_pop_prob_{max_mislabeled+"max_mislabeled_" if max_mislabeled else "no_max"}{hl.eval("v3_spike_"+hl.str("_").join(args.v3_population_spike)) if args.v3_population_spike else ""}{"v4_spike_"+hl.eval(hl.str("_").join(args.v4_population_spike)) if args.v4_population_spike else ""}.ht',
                 ),
                 overwrite=overwrite,
                 _read_if_exists=not overwrite,
             )
-            # pop_ht.transmute(
-            #     **{f"PC{j}": pop_ht.pca_scores[i] for i, j in enumerate(pop_pcs)}
-            # ).export(pop_tsv_path(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp))
+            pop_ht.transmute(
+                **{f"PC{j}": pop_ht.pca_scores[i] for i, j in enumerate(pop_pcs)}
+            ).export(
+                pop_tsv_path(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp)
+            )
 
-            # with hl.hadoop_open(a
-            #     pop_rf_path(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp), "wb"
-            # ) as out:
-            #     pickle.dump(pops_rf_model, out)
+            with hl.hadoop_open(
+                pop_rf_path(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp),
+                "wb",
+            ) as out:
+                pickle.dump(pops_rf_model, out)
     finally:
         hl.copy_log(
-            f'gs://gnomad-tmp-4day/ancestry_assignment/ancestry_assignment.rf_w_{args.pop_pcs}pcs_{args.min_pop_prob}_pop_prob_{"v3_spike_"+hl.str("_").join(args.v3_population_spike) if args.v3_population_spike else ""}{"v4_spike_"+hl.str("_").join(args.v4_population_spike) if args.v4_population_spike else ""}.log'
+            f'gs://gnomad-tmp-4day/ancestry_assignment/ancestry_assignment.rf_w_{args.pop_pcs[0]}pcs_{args.min_pop_prob}_pop_prob_{max_mislabeled+"max_mislabeled_" if max_mislabeled else "no_max"}{hl.eval("v3_spike_"+hl.str("_").join(args.v3_population_spike)) if args.v3_population_spike else ""}{"v4_spike_"+hl.eval(hl.str("_").join(args.v4_population_spike)) if args.v4_population_spike else ""}.log'
         )
 
 
