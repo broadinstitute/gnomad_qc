@@ -707,6 +707,10 @@ def stratified_filtering(
     Get VersionedTableResource for stratified platform/population-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
+    :param pop_stratified: Whether to get resource that includes population
+        stratification in stratified outlier filtering.
+    :param platform_stratified: Whether to get resource that includes platform
+        stratification in stratified outlier filtering.
     :return: VersionedTableResource.
     """
     postfix = ""
@@ -736,6 +740,12 @@ def regressed_filtering(
     Get VersionedTableResource for regression platform/population-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
+    :param pop_pc_regressed: Whether to get resource that includes population PCs in
+        regression filtering.
+    :param platform_pc_regressed: Whether to get resource that includes platform PCs in
+        regression filtering.
+    :param platform_stratified: Whether to get resource that includes platform
+        stratification in regression filtering.
     :param include_unreleasable_samples: Whether the PCA included unreleasable samples.
     :return: VersionedTableResource.
     """
@@ -768,6 +778,10 @@ def nearest_neighbors(
     Get VersionedTableResource for population PCA nearest neighbors.
 
     :param test: Whether to use a tmp path for a test resource.
+    :param platform_stratified: Whether to get resource that includes platform
+        stratified nearest neighbors.
+    :param approximation: Whether to get resource that is approximate nearest
+        neighbors.
     :return: VersionedTableResource.
     """
     postfix = ""
