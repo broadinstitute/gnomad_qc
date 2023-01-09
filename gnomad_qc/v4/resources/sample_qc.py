@@ -730,11 +730,13 @@ def regressed_filtering(
     pop_pc_regressed: bool = False,
     platform_pc_regressed: bool = False,
     platform_stratified: bool = False,
+    include_unreleasable_samples: bool = False,
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for regression platform/population-based metrics filtering.
 
     :param test: Whether to use a tmp path for a test resource.
+    :param include_unreleasable_samples: Whether the PCA included unreleasable samples.
     :return: VersionedTableResource.
     """
     postfix = ""
@@ -744,6 +746,8 @@ def regressed_filtering(
         postfix += ".platform_pc_regressed"
     if platform_stratified:
         postfix += ".platform_stratified"
+    if include_unreleasable_samples:
+        postfix += ".include_unreleasable_samples"
     return VersionedTableResource(
         CURRENT_VERSION,
         {
