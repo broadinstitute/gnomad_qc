@@ -51,7 +51,7 @@ def apply_stratified_filtering_method(
         Default left and right MAD for `compute_stratified_metrics_filter` is 4. We
         modify this for 'n_singleton' to be (math.inf, 8.0) and for
         'r_het_hom_var' and 'r_ti_tv_singleton' to be (math.inf, 4.0). The
-        math.inf is used to prevent a lower cutoff for these metrics.
+        math.inf (infinity) is used to prevent a lower cutoff for these metrics.
 
     :param sample_qc_ht: Sample QC HT.
     :param qc_metrics: Specific metrics to use for outlier detection.
@@ -107,7 +107,7 @@ def apply_regressed_filtering_method(
         - Include `platform_ht`: Regress platform PCs only and determine outliers for
           each metric in `qc_metrics`.
         - Include `pop_ht` and `platform_ht`: Regress both population PCs and platform
-          PCs determine outliers for each metric in `qc_metrics`.
+          PCs and determine outliers for each metric in `qc_metrics`.
         - For all of the above filtering options, there is also a `regress_per_platform`
           option, which will stratify the dataset by platform before performing the
           regression and outlier filtering.
@@ -123,7 +123,7 @@ def apply_regressed_filtering_method(
         Default left and right MAD for `compute_stratified_metrics_filter` is 4. We
         modify this for 'n_singleton_residual' to be (math.inf, 8.0) and for
         'r_het_hom_var_residual' and 'r_ti_tv_singleton_residual' to be (math.inf, 4.0).
-        The math.inf is used to prevent a lower cutoff for these metrics.
+        The math.inf (infinity) is used to prevent a lower cutoff for these metrics.
 
     :param sample_qc_ht: Sample QC HT.
     :param qc_metrics: Specific metrics to use for outlier detection.
@@ -140,7 +140,7 @@ def apply_regressed_filtering_method(
         the regression. Default is False.
     :param project_meta_ht: Optional project meta Table that must be supplied if
         'regression_include_unreleasable' is False. By default, this Table should be
-        included.
+        included (because the default for `regression_include_unreleasable` is False).
     :return: Table with regression residuals and outlier filters.
     """
     if pop_ht is None and platform_ht is None:
@@ -311,7 +311,7 @@ def main(args):
             for i in range(len(sample_qc_ht.dp_bins))
         },
     )
-    # Exclude hard filtered samples from the sample QC MT.
+    # Exclude hard filtered samples from the sample QC Table.
     # They should not be included in the metric distribution stats.
     sample_qc_ht = sample_qc_ht.filter(
         hl.is_missing(hard_filtered_samples.ht()[sample_qc_ht.key])
