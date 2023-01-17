@@ -92,7 +92,7 @@ def apply_regressed_filtering_method(
     qc_metrics: List[str],
     pop_ht: Optional[hl.Table] = None,
     platform_ht: Optional[hl.Table] = None,
-    regress_pop_n_pcs: int = 16,
+    regress_pop_n_pcs: int = 30,
     regress_platform_n_pcs: int = 9,
     regress_per_platform: bool = False,
     regression_include_unreleasable: bool = False,
@@ -131,7 +131,7 @@ def apply_regressed_filtering_method(
     :param platform_ht: Optional Table with platform annotation 'qc_platform' and
         platform PCA scores annotation 'scores'.
     :param regress_pop_n_pcs: Number of population PCA scores to use in regression.
-        Default is 16.
+        Default is 30.
     :param regress_platform_n_pcs: Number of platform PCA scores to use in regression.
         Default is 9.
     :param regress_per_platform: Whether to perform the regression per platform.
@@ -279,15 +279,15 @@ def main(args):
     )
     test = args.test
     overwrite = args.overwrite
-    filtering_qc_metrics = args.filtering_qc_metrics.split(",")
+    filtering_qc_metrics = args.filtering_qc_metrics
     sample_qc_ht = get_sample_qc("bi_allelic")
     pop_ht = get_pop_ht()
-    # from gnomad.resources.resource_utils import TableResource
-    # pop_ht = TableResource(
-    #    "gs://gnomad/v4.0/sample_qc/joint/ancestry_inference/gnomad.joint.v4.0.hgdp_tgp_training.pop.rf_w_16pcs_0.75_pop_prob.ht"
-    # )
+    include_unreleasable_samples = args.regression_include_unreleasable
+    pop_scores_ht = ancestry_pca_scores(
+        include_unreleasable_samples=include_unreleasable_samples
+    )
     platform_ht = platform
-    nn_per_platform = args.nn_per_platform
+    nn_per_platform = args.nearest_neighbor_per_platform
     nn_approximation = args.use_nearest_neighbors_approximation
     nn_ht = nearest_neighbors(
         test=test,
@@ -301,7 +301,8 @@ def main(args):
         }
     )
 
-    # Convert tuples to lists, so we can find the index of the passed threshold.
+    # Convert each element of `bases_over_dp_threshold` to an annotation with a name
+    # that contains the DP threshold.
     sample_qc_ht = sample_qc_ht.ht()
     sample_qc_ht = sample_qc_ht.annotate(
         **{
@@ -323,7 +324,7 @@ def main(args):
     )
 
     if test:
-        sample_qc_ht = sample_qc_ht.sample(0.01)
+        sample_qc_ht = sample_qc_ht.sample(0.01, seed=args.seed)
 
     if args.apply_regressed_filters:
         regress_pop_n_pcs = args.regress_pop_n_pcs
@@ -331,10 +332,6 @@ def main(args):
         regress_per_platform = args.regress_per_platform
         regress_population = args.regress_population
         regress_platform = args.regress_platform
-        include_unreleasable_samples = args.regression_include_unreleasable
-        pop_scores_ht = ancestry_pca_scores(
-            include_unreleasable_samples=include_unreleasable_samples
-        )
         output = regressed_filtering(
             test=test,
             pop_pc_regressed=regress_population,
@@ -450,23 +447,29 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
+        "--seed",
+        help="Random seed for making random test dataset.",
+        type=int,
+        default=24,
+    )
+    parser.add_argument(
         "--filtering-qc-metrics",
         help="List of sample QC metrics to use for filtering.",
-        default=",".join(
-            [
-                "n_snp",
-                "n_singleton",
-                "r_ti_tv",
-                "r_insertion_deletion",
-                "n_insertion",
-                "n_deletion",
-                "r_het_hom_var",
-                "n_transition",
-                "n_transversion",
-                "r_ti_tv_singleton",
-                "r_snp_indel",
-            ]
-        ),
+        default=[
+            "n_snp",
+            "n_singleton",
+            "r_ti_tv",
+            "r_insertion_deletion",
+            "n_insertion",
+            "n_deletion",
+            "r_het_hom_var",
+            "n_transition",
+            "n_transversion",
+            "r_ti_tv_singleton",
+            "r_snp_indel",
+        ],
+        type=list,
+        nargs="+",
     )
 
     stratified_args = parser.add_argument_group(
@@ -547,7 +550,7 @@ if __name__ == "__main__":
         type=int,
     )
     nn_args.add_argument(
-        "--nn-per-platform",
+        "--nearest-neighbor-per-platform",
         help=(
             "Stratify samples by platform assignment when determining the population "
             "PC nearest neighbors."
