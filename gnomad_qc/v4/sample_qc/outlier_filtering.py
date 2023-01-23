@@ -361,7 +361,7 @@ def main(args):
             regress_pop_n_pcs=regress_pop_n_pcs,
             regress_platform_n_pcs=regress_platform_n_pcs,
             regress_per_platform=regress_per_platform,
-            include_unreleasable_samples=include_unreleasable_samples,
+            regression_include_unreleasable=include_unreleasable_samples,
             project_meta_ht=joint_qc_meta.ht(),
         ).write(output.path, overwrite=overwrite)
 
