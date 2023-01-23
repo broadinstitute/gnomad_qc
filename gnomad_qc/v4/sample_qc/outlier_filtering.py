@@ -627,6 +627,17 @@ if __name__ == "__main__":
         help="Apply nearest neighbors outlier filtering method.",
         action="store_true",
     )
+
+    final_filter_args = parser.add_argument_group(
+        "Create finalized outlier filtering Table.",
+        "Arguments for finalizing outlier filtering.",
+    )
+    final_filter_args.add_argument(
+        "--create-finalized-outlier-filter",
+        help="Apply nearest neighbors outlier filtering method.",
+        action="store_true",
+    )
+
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
