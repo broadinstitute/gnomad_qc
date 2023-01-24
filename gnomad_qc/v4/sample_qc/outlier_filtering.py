@@ -365,20 +365,18 @@ def create_finalized_outlier_filter_ht(
     else:
         raise ValueError("'ensemble_operator' must be one of: 'and' or 'or'!")
 
-    def ensemble_func(
-        x: hl.SetExpression,
-        y: hl.SetExpression,
-        ensemble_operator: str = ensemble_operator,
-    ) -> hl.SetExpression:
+    def ensemble_func(x: hl.SetExpression, y: hl.SetExpression) -> hl.SetExpression:
         """
-        Combine sets `x` and `y` using `ensemble_operator`.
+        Combine sets `x` and `y`.
 
         If x is missing return `y`.
 
+        Logical operator for combination is determined by external `ensemble_operator`
+        variable. Uses set intersection when `ensemble_operator` is 'and', and set
+        union when `ensemble_operator` is or.
+
         :param x: Input set to combine with `y`.
         :param y: Input set to combine with `x`.
-        :param ensemble_operator: Logical operator to use for combining sets. 'and'
-            uses set intersection, 'or' uses set union.
         :return: Combined SetExpression.
         """
         return (
