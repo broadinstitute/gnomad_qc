@@ -16,6 +16,7 @@ from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import check_resource_existence
 from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_scores,
+    finalized_outlier_filtering,
     get_pop_ht,
     get_sample_qc,
     hard_filtered_samples,
@@ -405,7 +406,7 @@ def main(args):
         include_unreleasable_samples=include_unreleasable_samples
     )
     platform_ht = platform
-    nn_per_platform = args.nearest_neighbor_per_platform
+    nn_per_platform = args.nearest_neighbors_per_platform
     nn_approximation = args.use_nearest_neighbors_approximation
     nn_ht = nearest_neighbors(
         test=test,
@@ -418,31 +419,8 @@ def main(args):
             "hard_filters.py --sample-qc": [sample_qc_ht],
         }
     )
-
-    # Convert each element of `bases_over_dp_threshold` to an annotation with a name
-    # that contains the DP threshold.
-    sample_qc_ht = sample_qc_ht.ht()
-    sample_qc_ht = sample_qc_ht.annotate(
-        **{
-            f"bases_dp_over_{hl.eval(sample_qc_ht.dp_bins[i])}": sample_qc_ht.bases_over_dp_threshold[
-                i
-            ]
-            for i in range(len(sample_qc_ht.dp_bins))
-        },
-    )
-    # Exclude hard filtered samples from the sample QC Table.
-    # They should not be included in the metric distribution stats.
-    sample_qc_ht = sample_qc_ht.filter(
-        hl.is_missing(hard_filtered_samples.ht()[sample_qc_ht.key])
-    )
-    # Add 'r_snp_indel' annotation the sample QC HT.
-    sample_qc_ht = sample_qc_ht.annotate(
-        r_snp_indel=sample_qc_ht.n_snp
-        / (sample_qc_ht.n_insertion + sample_qc_ht.n_deletion)
-    )
-
-    if test:
-        sample_qc_ht = sample_qc_ht.sample(0.01, seed=args.seed)
+    sample_qc_ht = get_sample_qc_ht(sample_qc_ht.ht(), test=test, seed=args.seed)
+    finalized_outlier_input_resources = {}
 
     if args.apply_regressed_filters:
         regress_pop_n_pcs = args.regress_pop_n_pcs
@@ -457,31 +435,34 @@ def main(args):
             platform_stratified=regress_per_platform,
             include_unreleasable_samples=include_unreleasable_samples,
         )
-        check_resource_existence(
-            input_step_resources={
-                "assign_ancestry.py --run-pca": [pop_scores_ht],
-                "assign_ancestry.py --assign-pops": [platform_ht],
-                "platform_inference.py --assign-platforms": [joint_qc_meta],
-            },
-            output_step_resources={"--apply-regressed-filters": [output]},
-            overwrite=overwrite,
-        )
-        if not regress_population:
-            regress_pop_n_pcs = None
-        if not regress_platform:
-            regress_platform_n_pcs = None
+        if args.create_finalized_outlier_filter:
+            finalized_outlier_input_resources["--apply-regressed-filters"] = [output]
+        else:
+            check_resource_existence(
+                input_step_resources={
+                    "assign_ancestry.py --run-pca": [pop_scores_ht],
+                    "assign_ancestry.py --assign-pops": [platform_ht],
+                    "platform_inference.py --assign-platforms": [joint_qc_meta],
+                },
+                output_step_resources={"--apply-regressed-filters": [output]},
+                overwrite=overwrite,
+            )
+            if not regress_population:
+                regress_pop_n_pcs = None
+            if not regress_platform:
+                regress_platform_n_pcs = None
 
-        apply_regressed_filtering_method(
-            sample_qc_ht,
-            filtering_qc_metrics,
-            pop_ht=pop_scores_ht.ht(),
-            platform_ht=platform_ht.ht(),
-            regress_pop_n_pcs=regress_pop_n_pcs,
-            regress_platform_n_pcs=regress_platform_n_pcs,
-            regress_per_platform=regress_per_platform,
-            include_unreleasable_samples=include_unreleasable_samples,
-            project_meta_ht=joint_qc_meta.ht(),
-        ).write(output.path, overwrite=overwrite)
+            apply_regressed_filtering_method(
+                sample_qc_ht,
+                filtering_qc_metrics,
+                pop_ht=pop_scores_ht.ht(),
+                platform_ht=platform_ht.ht(),
+                regress_pop_n_pcs=regress_pop_n_pcs,
+                regress_platform_n_pcs=regress_platform_n_pcs,
+                regress_per_platform=regress_per_platform,
+                regression_include_unreleasable=include_unreleasable_samples,
+                project_meta_ht=joint_qc_meta.ht(),
+            ).write(output.path, overwrite=overwrite)
 
     if args.apply_stratified_filters:
         stratify_population = args.stratify_population
@@ -491,25 +472,28 @@ def main(args):
             pop_stratified=stratify_population,
             platform_stratified=stratify_platform,
         )
-        check_resource_existence(
-            input_step_resources={
-                "assign_ancestry.py --assign-pops": [pop_ht],
-                "platform_inference.py --assign-platforms": [platform_ht],
-            },
-            output_step_resources={"--apply-stratified-filters": [output]},
-            overwrite=overwrite,
-        )
-        if not stratify_population:
-            pop_ht = None
-        if not stratify_platform:
-            platform_ht = None
+        if args.create_finalized_outlier_filter:
+            finalized_outlier_input_resources["--apply-stratified-filters"] = [output]
+        else:
+            check_resource_existence(
+                input_step_resources={
+                    "assign_ancestry.py --assign-pops": [pop_ht],
+                    "platform_inference.py --assign-platforms": [platform_ht],
+                },
+                output_step_resources={"--apply-stratified-filters": [output]},
+                overwrite=overwrite,
+            )
+            if not stratify_population:
+                pop_ht = None
+            if not stratify_platform:
+                platform_ht = None
 
-        apply_stratified_filtering_method(
-            sample_qc_ht,
-            filtering_qc_metrics,
-            pop_ht=pop_ht.ht(),
-            platform_ht=platform_ht.ht(),
-        ).write(output.path, overwrite=overwrite)
+            apply_stratified_filtering_method(
+                sample_qc_ht,
+                filtering_qc_metrics,
+                pop_ht=pop_ht.ht(),
+                platform_ht=platform_ht.ht(),
+            ).write(output.path, overwrite=overwrite)
 
     if args.determine_nearest_neighbors:
         check_resource_existence(
@@ -539,15 +523,39 @@ def main(args):
 
     if args.apply_nearest_neighbor_filters:
         output = nearest_neighbors_filtering(test=test)
+        if args.create_finalized_outlier_filter:
+            finalized_outlier_input_resources["--apply-nearest-neighbor"] = [output]
+        else:
+            check_resource_existence(
+                input_step_resources={"--determine-nearest-neighbors": [nn_ht]},
+                output_step_resources={"--apply-nearest-neighbor": [output]},
+                overwrite=overwrite,
+            )
+            apply_nearest_neighbor_filtering_method(
+                sample_qc_ht,
+                filtering_qc_metrics,
+                nn_ht=nn_ht.ht(),
+            ).write(output.path, overwrite=overwrite)
+
+    if args.create_finalized_outlier_filter:
+        if len(finalized_outlier_input_resources) == 0:
+            ValueError(
+                "At least one filtering method and relevant options must be supplied "
+                "when using '--create-finalized-outlier-filter'"
+            )
+        output = finalized_outlier_filtering(test=test)
         check_resource_existence(
-            input_step_resources={"--determine-nearest-neighbors": [nn_ht]},
-            output_step_resources={"--apply-nearest-neighbor": [output]},
+            input_step_resources=finalized_outlier_input_resources,
+            output_step_resources={"--create-finalized-outlier-filter": [output]},
             overwrite=overwrite,
         )
-        apply_nearest_neighbor_filtering_method(
-            sample_qc_ht,
-            filtering_qc_metrics,
-            nn_ht=nn_ht.ht(),
+        create_finalized_outlier_filter_ht(
+            {
+                k.replace("--apply", "").replace("-", "_"): v[0].ht()
+                for k, v in finalized_outlier_input_resources.items()
+            },
+            qc_metrics=args.final_filtering_qc_metrics,
+            ensemble_operator=args.ensemble_method_logical_operator,
         ).write(output.path, overwrite=overwrite)
 
 
