@@ -77,7 +77,7 @@ def get_sample_qc_ht(
         / (sample_qc_ht.n_insertion + sample_qc_ht.n_deletion)
     )
 
-    return sample_qc_ht
+    return sample_qc_ht.select_globals()
 
 
 def apply_stratified_filtering_method(
@@ -122,7 +122,7 @@ def apply_stratified_filtering_method(
         strata["platform"] = platform_ht[sample_qc_ht.key].qc_platform
     logger.info("Outlier filtering is stratified by: %s", ", ".join(strata.keys()))
     filter_ht = compute_stratified_metrics_filter(
-        sample_qc_ht.select_globals(),
+        sample_qc_ht,
         qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
         strata=strata,
         metric_threshold={
