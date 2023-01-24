@@ -97,7 +97,7 @@ def apply_stratified_filtering_method(
     :return: Table with stratified metrics and filters.
     """
     if pop_ht is None and platform_ht is None:
-        ValueError(
+        raise ValueError(
             "At least one of 'pop_scores_ht' or 'platform_ht' must be specified!"
         )
     logger.info(
@@ -181,14 +181,14 @@ def apply_regressed_filtering_method(
     :return: Table with regression residuals and outlier filters.
     """
     if pop_ht is None and platform_ht is None:
-        ValueError("At least one of 'pop_ht' or 'platform_ht' must be specified!")
+        raise ValueError("At least one of 'pop_ht' or 'platform_ht' must be specified!")
     if regress_per_platform and (pop_ht is None or platform_ht is None):
-        ValueError(
+        raise ValueError(
             "When using 'per_platform', 'pop_ht' and 'platform_ht' must "
             "both be specified!"
         )
     if not regression_include_unreleasable and project_meta_ht is None:
-        ValueError(
+        raise ValueError(
             "When 'regression_include_unreleasable' is False, 'project_meta_ht' must "
             "be specified!"
         )
@@ -337,7 +337,7 @@ def create_finalized_outlier_filter_ht(
         elif ensemble_operator == "or":
             return x.union(y)
         else:
-            ValueError("'ensemble_operator' must be one of: 'and' or 'or'!")
+            raise ValueError("'ensemble_operator' must be one of: 'and' or 'or'!")
 
     hts = []
     for filter_method, ht in finalized_outlier_hts.items():
@@ -539,7 +539,7 @@ def main(args):
 
     if args.create_finalized_outlier_filter:
         if len(finalized_outlier_input_resources) == 0:
-            ValueError(
+            raise ValueError(
                 "At least one filtering method and relevant options must be supplied "
                 "when using '--create-finalized-outlier-filter'"
             )
