@@ -2,7 +2,7 @@
 import argparse
 import logging
 import math
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import hail as hl
 from gnomad.sample_qc.filtering import (
@@ -304,6 +304,88 @@ def apply_nearest_neighbor_filtering_method(
     )
 
     return filter_ht
+
+
+def create_finalized_outlier_filter_ht(
+    finalized_outlier_hts: Dict[str, hl.Table],
+    qc_metrics: List[str],
+    ensemble_operator: str = "and",
+):
+    """
+    Add description.
+
+    :param finalized_outlier_hts:
+    :param qc_metrics:
+    :param ensemble_operator:
+    :return:
+    """
+
+    def ensemble_func(x, y):
+        """
+        Add description.
+
+        :param x:
+        :param y:
+        :return:
+        """
+        if x is None:
+            return y
+
+        if ensemble_operator == "and":
+            return x.intersection(y)
+        elif ensemble_operator == "or":
+            return x.union(y)
+        else:
+            ValueError("'ensemble_operator' must be one of: 'and' or 'or'!")
+
+    hts = []
+    for filter_method, ht in finalized_outlier_hts.items():
+        annotations = list(ht.row.keys())
+        annotations_keep = {}
+        qc_metrics_filters_keep = {}
+
+        for m in qc_metrics:
+            if f"fail_{m}" in annotations:
+                annotations_keep.add(f"fail_{m}")
+                qc_metrics_filters_keep.add(m)
+            elif f"fail_{m}_residual" in annotations:
+                annotations_keep.add(f"{m}_residual")
+                annotations_keep.add(f"fail_{m}_residual")
+                qc_metrics_filters_keep.add(m)
+            else:
+                raise ValueError(
+                    f"The following metric is not found in the Table(s) provided for "
+                    f"outlier filtering finalization."
+                )
+        qc_metrics_filters_keep = hl.literal(qc_metrics_filters_keep)
+        ht = ht.select(
+            *annotations_keep,
+            qc_metrics_filters=(
+                qc_metrics_filters_keep
+                & ht.qc_metrics_filters.map(lambda x: x.replace("_residual", ""))
+            ),
+        )
+        ht = ht.annotate(**{filter_method: ht[ht.key]})
+        ht = ht.annotate_globals(**{f"{filter_method}_globals": ht[ht.key]})
+        hts.append(ht)
+
+    ht = hl.Table.multi_way_zip_join(
+        hts, data_field_name="data_field_name", global_field_name="global_field_name"
+    )
+
+    ht = ht.annotate(
+        qc_metrics_filters=hl.fold(
+            ensemble_func,
+            None,
+            [
+                ht[filter_method]["qc_metrics_filters"]
+                for filter_method in finalized_outlier_hts
+            ],
+        )
+    )
+    ht = ht.annotated(outlier_filtered=hl.len(ht.qc_metrics_filters) > 0)
+
+    return ht
 
 
 def main(args):
