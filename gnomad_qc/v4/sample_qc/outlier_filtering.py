@@ -550,7 +550,7 @@ if __name__ == "__main__":
         type=int,
     )
     nn_args.add_argument(
-        "--nearest-neighbor-per-platform",
+        "--nearest-neighbors-per-platform",
         help=(
             "Stratify samples by platform assignment when determining the population "
             "PC nearest neighbors."
