@@ -418,12 +418,16 @@ def create_finalized_outlier_filter_ht(
 
         # If residuals are annotated on the filtering Table, re-annotate under
         # 'qc_metrics_residuals' rather than keeping them top level
+        select_expr = {}
         if residual_annotations_keep:
-            select_expr = {
-                "qc_metrics_residuals": ht[ht.key].select(*residual_annotations_keep)
-            }
-        else:
-            select_expr = {}
+            select_expr["qc_metrics_residuals"] = ht[ht.key].select(
+                *residual_annotations_keep
+            )
+
+        # Nearest neighbors filtering has 'qc_metrics_stats' as a row annotation
+        # instead of a global annotation. This adds it to the final Table.
+        if "qc_metrics_stats" in ht.row:
+            select_expr["qc_metrics_stats"] = ht.qc_metrics_stats
 
         # Group all filter fail annotations under 'qc_metrics_fail' rather than
         # keeping them top level
