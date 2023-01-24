@@ -634,8 +634,43 @@ if __name__ == "__main__":
     )
     final_filter_args.add_argument(
         "--create-finalized-outlier-filter",
-        help="Apply nearest neighbors outlier filtering method.",
+        help=(
+            "Create the finalized outlier filtering Table. To specify filtering method "
+            "to use for the finalized outlier filtering Table, use the parameter "
+            "options from that method. e.g. To use the stratified outlier filtering "
+            "with population stratification include the following arguments: "
+            "--apply-stratified-filters --stratify-population. If an ensemble between "
+            "two methods is desired, include arguments for both. The filtering Table "
+            "for each method requested must already exist, the outlier filtering will "
+            "not be rerun."
+        ),
         action="store_true",
+    )
+    final_filter_args.add_argument(
+        "--final-filtering-qc-metrics",
+        help=(
+            "List of sample QC metrics to use for the finalized outlier filtering. "
+            "Note: This must be the same as, or a subset of `--filtering-qc-metrics` "
+            "used when generating the filtering Table(s) desired for final filtering."
+        ),
+        default=[
+            "r_ti_tv",
+            "r_insertion_deletion",
+            "r_het_hom_var",
+            "r_ti_tv_singleton",
+        ],
+        type=list,
+        nargs="+",
+    )
+    final_filter_args.add_argument(
+        "--ensemble-method-logical-operator",
+        help=(
+            "Logical operator to use for combining filtering methods for the ensemble "
+            "method."
+        ),
+        type=str,
+        default="and",
+        choices=["and", "or"],
     )
 
     parser.add_argument(
