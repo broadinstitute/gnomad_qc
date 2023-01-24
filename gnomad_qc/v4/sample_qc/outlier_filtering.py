@@ -373,7 +373,7 @@ def create_finalized_outlier_filter_ht(
 
         Logical operator for combination is determined by external `ensemble_operator`
         variable. Uses set intersection when `ensemble_operator` is 'and', and set
-        union when `ensemble_operator` is or.
+        union when `ensemble_operator` is 'or'.
 
         :param x: Input set to combine with `y`.
         :param y: Input set to combine with `x`.
