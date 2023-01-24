@@ -2,6 +2,7 @@
 import argparse
 import logging
 import math
+from collections import defaultdict
 from typing import Dict, List, Optional
 
 import hail as hl
@@ -33,17 +34,27 @@ logger = logging.getLogger("outlier_filtering")
 logger.setLevel(logging.INFO)
 
 
-def get_sample_qc_ht(sample_qc_ht: hl.Table, test: bool = False, seed: int = 24):
+def get_sample_qc_ht(
+    sample_qc_ht: hl.Table, test: bool = False, seed: int = 24
+) -> hl.Table:
     """
-    Add description.
+    Get sample QC Table with modifications needed for outlier filtering.
 
-    :param sample_qc_ht:
-    :param test:
-    :param seed:
-    :return:
+    The following modifications are made:
+        - Add 'r_snp_indel' metric
+        - Convert each element of `bases_over_dp_threshold` to a top level annotation
+          with 'bases_dp_over_{dp_threshold}'
+        - Exclude hard filtered samples
+        - Sample 1% of the dataset id `test` is True
+
+    :param sample_qc_ht: Sample QC Table.
+    :param test: Whether to filter the input Table to a random sample of 1% of the
+        dataset. Default is False.
+    :param seed: Random seed for making test dataset. Default is 24.
+    :return: Sample QC Table for outlier filtering.
     """
     if test:
-        sample_qc_ht = sample_qc_ht.sample(0.01, seed=args.seed)
+        sample_qc_ht = sample_qc_ht.sample(0.01, seed=seed)
 
     # Convert each element of `bases_over_dp_threshold` to an annotation with a name
     # that contains the DP threshold.
@@ -111,7 +122,7 @@ def apply_stratified_filtering_method(
         strata["platform"] = platform_ht[sample_qc_ht.key].qc_platform
     logger.info("Outlier filtering is stratified by: %s", ", ".join(strata.keys()))
     filter_ht = compute_stratified_metrics_filter(
-        sample_qc_ht,
+        sample_qc_ht.select_globals(),
         qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
         strata=strata,
         metric_threshold={
@@ -248,7 +259,7 @@ def apply_regressed_filtering_method(
     )
 
     sample_qc_res_ht = sample_qc_res_ht.annotate(**filter_ht[sample_qc_res_ht.key])
-    filter_ht = sample_qc_res_ht.annotate_globals(
+    filter_ht = sample_qc_res_ht.select_globals(
         **filter_ht.index_globals(),
         **global_expr,
         regress_per_platform=regress_per_platform,
@@ -303,6 +314,7 @@ def apply_nearest_neighbor_filtering_method(
         },
         comparison_sample_expr=sample_qc_ht.nearest_neighbors,
     )
+    filter_ht = filter_ht.select_globals(**nn_ht.index_globals())
 
     return filter_ht
 
@@ -311,80 +323,162 @@ def create_finalized_outlier_filter_ht(
     finalized_outlier_hts: Dict[str, hl.Table],
     qc_metrics: List[str],
     ensemble_operator: str = "and",
-):
+) -> hl.Table:
     """
-    Add description.
+    Create the finalized outlier filtering Table.
 
-    :param finalized_outlier_hts:
-    :param qc_metrics:
-    :param ensemble_operator:
-    :return:
+    .. note::
+
+        `qc_metrics` must be the same as, or a subset of the original QC metrics used
+        to create each Table in `finalized_outlier_hts`.
+
+    Tables included in `finalized_outlier_hts` are reformatted to include only
+    information from metrics in`qc_metrics`, and the 'qc_metrics_filters' annotation
+    is modified to include only metrics in `qc_metrics`.
+
+    If `finalized_outlier_hts` includes multiple Tables, the reformatted Table
+    annotations are grouped under top level annotations specified by the keys of
+    `finalized_outlier_hts`. The following annotations are also added:
+        - `qc_metrics_fail` - includes the combined (using `ensemble_operator`) outlier
+          fail boolean for each metric.
+        - `qc_metrics_filters` - The combined set of qc metrics that a sample is an
+          outlier for using `ensemble_operator` for the combination ('and' uses set
+          intersection, 'or' uses set union).
+
+    Finally, an `outlier_filtered` annotation is added indicating if a sample has any
+    metrics in `qc_metrics_filters`.
+
+    :param finalized_outlier_hts: Dictionary containing Tables to use for the finalized
+        outlier filtering, keyed by a string to use as a top level annotation to group
+        the annotations and global annotations under.
+    :param qc_metrics: List of sample QC metrics to use for the finalized outlier
+        filtering.
+    :param ensemble_operator: Logical operator to use for combining filtering methods
+        when multiple Tables are in `finalized_outlier_hts`. Options are ['or', 'and'].
+         Default is 'and'.
+    :return: Finalized outlier filtering Table.
     """
+    if ensemble_operator == "and":
+        fail_combine_func = hl.all
+    elif ensemble_operator == "or":
+        fail_combine_func = hl.any
+    else:
+        raise ValueError("'ensemble_operator' must be one of: 'and' or 'or'!")
 
-    def ensemble_func(x, y):
+    def ensemble_func(
+        x: hl.SetExpression,
+        y: hl.SetExpression,
+        ensemble_operator: str = ensemble_operator,
+    ) -> hl.SetExpression:
         """
-        Add description.
+        Combine sets `x` and `y` using `ensemble_operator`.
 
-        :param x:
-        :param y:
-        :return:
+        If x is missing return `y`.
+
+        :param x: Input set to combine with `y`.
+        :param y: Input set to combine with `x`.
+        :param ensemble_operator: Logical operator to use for combining sets. 'and'
+            uses set intersection, 'or' uses set union.
+        :return: Combined SetExpression.
         """
-        if x is None:
-            return y
+        return (
+            hl.case()
+            .when(hl.is_missing(x), y)
+            .when(ensemble_operator == "and", x.intersection(y))
+            .when(ensemble_operator == "or", x.union(y))
+            .or_missing()
+        )
 
-        if ensemble_operator == "and":
-            return x.intersection(y)
-        elif ensemble_operator == "or":
-            return x.union(y)
-        else:
-            raise ValueError("'ensemble_operator' must be one of: 'and' or 'or'!")
-
+    num_methods = len(finalized_outlier_hts)
     hts = []
+    fail_map = defaultdict(dict)
     for filter_method, ht in finalized_outlier_hts.items():
-        annotations = list(ht.row.keys())
-        annotations_keep = {}
-        qc_metrics_filters_keep = {}
+        logger.info(
+            "Reformatting Hail Table for %s outlier filtering method...", filter_method
+        )
 
+        # Determine the annotations that should be kept in the final filter Table
+        annotations = list(ht.row.keys())
+        fail_annotations_keep = set([])
+        residual_annotations_keep = set([])
+        qc_metrics_filters_keep = set([])
         for m in qc_metrics:
             if f"fail_{m}" in annotations:
-                annotations_keep.add(f"fail_{m}")
+                fail_map[filter_method][m] = f"fail_{m}"
+                fail_annotations_keep.add(f"fail_{m}")
                 qc_metrics_filters_keep.add(m)
             elif f"fail_{m}_residual" in annotations:
-                annotations_keep.add(f"{m}_residual")
-                annotations_keep.add(f"fail_{m}_residual")
+                fail_map[filter_method][m] = f"fail_{m}_residual"
+                residual_annotations_keep.add(f"{m}_residual")
+                fail_annotations_keep.add(f"fail_{m}_residual")
                 qc_metrics_filters_keep.add(m)
             else:
                 raise ValueError(
                     f"The following metric is not found in the Table(s) provided for "
                     f"outlier filtering finalization."
                 )
-        qc_metrics_filters_keep = hl.literal(qc_metrics_filters_keep)
-        ht = ht.select(
-            *annotations_keep,
-            qc_metrics_filters=(
-                qc_metrics_filters_keep
-                & ht.qc_metrics_filters.map(lambda x: x.replace("_residual", ""))
+
+        # If residuals are annotated on the filtering Table, re-annotate under
+        # 'qc_metrics_residuals' rather than keeping them top level
+        if residual_annotations_keep:
+            select_expr = {
+                "qc_metrics_residuals": ht[ht.key].select(*residual_annotations_keep)
+            }
+        else:
+            select_expr = {}
+
+        # Group all filter fail annotations under 'qc_metrics_fail' rather than
+        # keeping them top level
+        select_expr.update(
+            {
+                "qc_metrics_fail": ht[ht.key].select(*fail_annotations_keep),
+                "qc_metrics_filters": (
+                    hl.literal(qc_metrics_filters_keep)
+                    & ht.qc_metrics_filters.map(lambda x: x.replace("_residual", ""))
+                ),
+            }
+        )
+        ht = ht.select(**select_expr)
+
+        # If an ensemble method is requested, group all Table annotations under a
+        # filtering method annotation rather than keeping it top level. This is needed
+        # for joining requested filtering method Tables.
+        if num_methods > 1:
+            ht = ht.select(**{filter_method: ht[ht.key]})
+            ht = ht.select_globals(**{f"{filter_method}_globals": ht.index_globals()})
+            hts.append(ht)
+
+    # If an ensemble method is requested, join all filtering Tables, and make top level
+    # annotations for 'qc_metrics_fail' and 'qc_metrics_filters' based on the
+    # combination of all methods using 'ensemble_operator' as the combination method.
+    if num_methods > 1:
+        ht = hts[0]
+        for ht2 in hts[1:]:
+            ht = ht.join(ht2, how="outer")
+
+        ht = ht.annotate(
+            qc_metrics_fail=hl.struct(
+                **{
+                    m: fail_combine_func(
+                        [
+                            ht[f]["qc_metrics_fail"][fail_map[f][m]]
+                            for f in finalized_outlier_hts
+                        ]
+                    )
+                    for m in qc_metrics
+                }
+            ),
+            qc_metrics_filters=hl.fold(
+                ensemble_func,
+                hl.missing(hl.tset(hl.tstr)),
+                [ht[f]["qc_metrics_filters"] for f in finalized_outlier_hts],
             ),
         )
-        ht = ht.annotate(**{filter_method: ht[ht.key]})
-        ht = ht.annotate_globals(**{f"{filter_method}_globals": ht[ht.key]})
-        hts.append(ht)
 
-    ht = hl.Table.multi_way_zip_join(
-        hts, data_field_name="data_field_name", global_field_name="global_field_name"
+    ht = ht.annotate(outlier_filtered=hl.len(ht.qc_metrics_filters) > 0)
+    ht = ht.annotate_globals(
+        filter_qc_metrics=qc_metrics, ensemble_combination_operator=ensemble_operator
     )
-
-    ht = ht.annotate(
-        qc_metrics_filters=hl.fold(
-            ensemble_func,
-            None,
-            [
-                ht[filter_method]["qc_metrics_filters"]
-                for filter_method in finalized_outlier_hts
-            ],
-        )
-    )
-    ht = ht.annotated(outlier_filtered=hl.len(ht.qc_metrics_filters) > 0)
 
     return ht
 
@@ -524,11 +618,13 @@ def main(args):
     if args.apply_nearest_neighbor_filters:
         output = nearest_neighbors_filtering(test=test)
         if args.create_finalized_outlier_filter:
-            finalized_outlier_input_resources["--apply-nearest-neighbor"] = [output]
+            finalized_outlier_input_resources["--apply-nearest-neighbor-filters"] = [
+                output
+            ]
         else:
             check_resource_existence(
                 input_step_resources={"--determine-nearest-neighbors": [nn_ht]},
-                output_step_resources={"--apply-nearest-neighbor": [output]},
+                output_step_resources={"--apply-nearest-neighbor-filters": [output]},
                 overwrite=overwrite,
             )
             apply_nearest_neighbor_filtering_method(
@@ -551,7 +647,7 @@ def main(args):
         )
         create_finalized_outlier_filter_ht(
             {
-                k.replace("--apply", "").replace("-", "_"): v[0].ht()
+                k.replace("--apply-", "").replace("-", "_"): v[0].ht()
                 for k, v in finalized_outlier_input_resources.items()
             },
             qc_metrics=args.final_filtering_qc_metrics,
