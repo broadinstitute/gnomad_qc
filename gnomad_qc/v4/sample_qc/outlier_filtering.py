@@ -32,6 +32,42 @@ logger = logging.getLogger("outlier_filtering")
 logger.setLevel(logging.INFO)
 
 
+def get_sample_qc_ht(sample_qc_ht: hl.Table, test: bool = False, seed: int = 24):
+    """
+    Add description.
+
+    :param sample_qc_ht:
+    :param test:
+    :param seed:
+    :return:
+    """
+    if test:
+        sample_qc_ht = sample_qc_ht.sample(0.01, seed=args.seed)
+
+    # Convert each element of `bases_over_dp_threshold` to an annotation with a name
+    # that contains the DP threshold.
+    sample_qc_ht = sample_qc_ht.annotate(
+        **{
+            f"bases_dp_over_{hl.eval(sample_qc_ht.dp_bins[i])}": sample_qc_ht.bases_over_dp_threshold[
+                i
+            ]
+            for i in range(len(sample_qc_ht.dp_bins))
+        },
+    )
+    # Exclude hard filtered samples from the sample QC Table.
+    # They should not be included in the metric distribution stats.
+    sample_qc_ht = sample_qc_ht.filter(
+        hl.is_missing(hard_filtered_samples.ht()[sample_qc_ht.key])
+    )
+    # Add 'r_snp_indel' annotation the sample QC HT.
+    sample_qc_ht = sample_qc_ht.annotate(
+        r_snp_indel=sample_qc_ht.n_snp
+        / (sample_qc_ht.n_insertion + sample_qc_ht.n_deletion)
+    )
+
+    return sample_qc_ht
+
+
 def apply_stratified_filtering_method(
     sample_qc_ht: hl.Table,
     qc_metrics: List[str],
