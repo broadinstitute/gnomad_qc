@@ -698,27 +698,142 @@ def get_pop_ht(
 ######################################################################
 # Outlier detection resources
 ######################################################################
-# Results of running population-based metrics filtering.
-stratified_metrics = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/outlier_detection/gnomad.exomes.v{version}.stratified_metrics.ht"
-        )
-        for version in VERSIONS
-    },
-)
+def stratified_filtering(
+    test: bool = False,
+    pop_stratified: bool = False,
+    platform_stratified: bool = False,
+) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for stratified platform/population-based metrics filtering.
 
-# Results of running regressed metrics filtering.
-regressed_metrics = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/outlier_detection/gnomad.exomes.v{version}.regressed_metrics.ht"
-        )
-        for version in VERSIONS
-    },
-)
+    :param test: Whether to use a tmp path for a test resource.
+    :param pop_stratified: Whether to get resource that includes population
+        stratification in stratified outlier filtering.
+    :param platform_stratified: Whether to get resource that includes platform
+        stratification in stratified outlier filtering.
+    :return: VersionedTableResource.
+    """
+    postfix = ""
+    if pop_stratified:
+        postfix += ".pop_stratified"
+    if platform_stratified:
+        postfix += ".platform_stratified"
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.stratified_filtering{postfix}.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def regressed_filtering(
+    test: bool = False,
+    pop_pc_regressed: bool = False,
+    platform_pc_regressed: bool = False,
+    platform_stratified: bool = False,
+    include_unreleasable_samples: bool = False,
+) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for regression platform/population-based metrics filtering.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :param pop_pc_regressed: Whether to get resource that includes population PCs in
+        regression filtering.
+    :param platform_pc_regressed: Whether to get resource that includes platform PCs in
+        regression filtering.
+    :param platform_stratified: Whether to get resource that includes platform
+        stratification in regression filtering.
+    :param include_unreleasable_samples: Whether the PCA included unreleasable samples.
+    :return: VersionedTableResource.
+    """
+    postfix = ""
+    if pop_pc_regressed:
+        postfix += ".pop_pc_regressed"
+    if platform_pc_regressed:
+        postfix += ".platform_pc_regressed"
+    if platform_stratified:
+        postfix += ".platform_stratified"
+    if include_unreleasable_samples:
+        postfix += ".include_unreleasable_samples"
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.regressed_filtering{postfix}.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def nearest_neighbors(
+    test: bool = False,
+    platform_stratified: bool = False,
+    approximation: bool = False,
+) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for population PCA nearest neighbors.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :param platform_stratified: Whether to get resource that includes platform
+        stratified nearest neighbors.
+    :param approximation: Whether to get resource that is approximate nearest
+        neighbors.
+    :return: VersionedTableResource.
+    """
+    postfix = ""
+    if platform_stratified:
+        postfix += ".platform_stratified"
+    if approximation:
+        postfix += ".approximation"
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.nearest_neighbors{postfix}.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def nearest_neighbors_filtering(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for nearest neighbors platform/population-based metrics filtering.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.nearest_neighbors_filtering.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def finalized_outlier_filtering(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for the finalized outlier filtering.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.final_outlier_filtering.ht"
+            )
+            for version in VERSIONS
+        },
+    )
 
 
 ######################################################################
