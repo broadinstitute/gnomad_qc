@@ -16,10 +16,11 @@ from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources.meta import meta, project_meta
 from gnomad_qc.v4.resources.sample_qc import (
+    finalized_outlier_filtering,
+    get_pop_ht,
     get_sample_qc,
     hard_filtered_samples,
     pca_related_samples_to_drop,
-    pop,
     relatedness,
     release_related_samples_to_drop,
     sex,
@@ -72,8 +73,8 @@ def reformat_hard_filters_ht() -> hl.Table:
     return ht
 
 
-def reformat_relatedness_ht(ht) -> hl.Table:
-    rel_ht = get_relatedness_set_ht(relatedness.ht())
+def reformat_relatedness_ht(ht, method: str = "cuking") -> hl.Table:
+    rel_ht = get_relatedness_set_ht(relatedness(method).ht())
 
     # Annotating meta HT with related filter booleans.
     # Any sample that is hard filtered will have missing values for these bools.
@@ -93,14 +94,14 @@ def reformat_relatedness_ht(ht) -> hl.Table:
     }
     ht = ht.select(
         "sample_filters",
-        relatedness_inference_relationships=rel_ht[ht.key].relationships,
+        # relatedness_inference_relationships=rel_ht[ht.key].relationships,
     )
     ht = ht.annotate(
         sample_filters=ht.sample_filters.annotate(
             **{
                 f"{k}_{rel}": hl.or_missing(
                     ~ht.sample_filters.hard_filtered,
-                    v & ht.relatedness_inference_relationships.contains(rel_val),
+                    v,  # & ht.relatedness_inference_relationships.contains(rel_val),
                 )
                 for rel, rel_val in rel_dict.items()
                 for k, v in rel_set_expr_dict.items()
@@ -119,7 +120,7 @@ def reformat_outlier_filtering_ht() -> hl.Table:
 
     :return:
     """
-    ht = outlier_filtering.ht()
+    ht = finalized_outlier_filtering().ht()
     ht = ht.transmute(
         sample_filters=ht.sample_filters.annotate(
             **{x: ht[x] for x in ht.row if x.startswith("fail_")},
@@ -223,14 +224,15 @@ def main(args):
     logging_statement = "Reading in the {}"
 
     logger.info(
-        "Loading metadata file with subset, age, and releasable information to begin"
-        " creation of the meta HT"
+        "Loading project metadata file with subset, age, and releasable information to "
+        "begin creation of the meta HT"
     )
     ht = get_gnomad_v4_vds(remove_hard_filtered_samples=False).variant_data.cols()
 
     logger.info(logging_statement.format("project meta HT"))
     ann_expr = name_me(ht, project_meta.ht())
 
+    # TODO: Add platform
     logger.info(logging_statement.format("sex HT"))
     ann_ht = reformat_sex_imputation_ht()
     ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
@@ -242,7 +244,10 @@ def main(args):
     global_expr = global_expr.annotate(**ann_ht.index_globals())
 
     logger.info(logging_statement.format("population PCA HT"))
-    ann_ht = pop.ht()
+    # ann_ht = get_pop_ht().ht()
+    ann_ht = hl.read_table(
+        "gs://gnomad/v4.0/sample_qc/joint/ancestry_inference/gnomad.joint.v4.0.hgdp_tgp_training.pop.rf_w_16pcs_0.75_pop_prob.ht"
+    )
     ann_expr = ann_expr.annotate(
         population_inference=name_me(ht, ann_ht, sample_count_match=False)
     )
@@ -255,10 +260,11 @@ def main(args):
     ann_expr = ann_expr.annotate(**name_me(ht, ann_ht, sample_count_match=False))
     global_expr = global_expr.annotate(**ann_ht.index_globals())
 
-    logger.info(logging_statement.format("PCA related samples to drop HT"))
-    ann_ht = reformat_relatedness_ht()
-    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
-    global_expr = global_expr.annotate(**ann_ht.index_globals())
+    # logger.info(logging_statement.format("PCA related samples to drop HT"))
+    # TODO: Start back up here
+    # ann_ht = reformat_relatedness_ht(ht)
+    # ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
+    # global_expr = global_expr.annotate(**ann_ht.index_globals())
 
     # TODO: what to add for outlier filtering?
     logger.info(logging_statement.format("outlier HT"))
