@@ -1,6 +1,7 @@
 """Add description."""
 import argparse
 import logging
+from typing import List, Optional
 
 import hail as hl
 from gnomad.assessment.validity_checks import compare_row_counts
@@ -13,7 +14,7 @@ from gnomad.sample_qc.relatedness import (
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import all_ukb_samples_to_remove, get_gnomad_v4_vds
 from gnomad_qc.v4.resources.meta import meta, project_meta
 from gnomad_qc.v4.resources.sample_qc import (
     finalized_outlier_filtering,
@@ -177,9 +178,9 @@ def get_relationship_filter_expr(
 
 def name_me(
     left_ht: hl.Table,
-    # left_key: str,
     right_ht: hl.Table,
-    # right_key: str,
+    left_missing_approved: Optional[List[str]] = None,
+    right_missing_approved: Optional[List[str]] = None,
     sample_count_match: bool = True,
 ) -> hl.Table:
     """
@@ -188,10 +189,7 @@ def name_me(
     Also prints warning if sample counts are not the same.
 
     :param Table left_ht: Left Table to be joined
-    :param str left_key: Key of left Table
     :param Table right_ht: Right Table to be joined
-    :param str right_key: Key of right Table
-    :param str join_type: Type of join
     :param bool sample_count_match: Are the sample counts expected to match in the tables
     :return: Table with annotations
     :rtype: Table
@@ -200,20 +198,42 @@ def name_me(
         logger.warning("Sample counts in left and right tables do not match!")
 
         in_left_not_right = left_ht.anti_join(right_ht)
+        if right_missing_approved:
+            in_left_not_right = in_left_not_right.filter(
+                hl.literal(set(right_missing_approved)).contains(in_left_not_right.s),
+                keep=False,
+            )
         if in_left_not_right.count() != 0:
             logger.warning(
                 f"The following {in_left_not_right.count()} samples are found in the"
-                " left HT, but are not found in the right HT"
+                " left HT, but are not found in the right HT or in the approved"
+                " missing list:"
             )
             in_left_not_right.select().show(n=-1)
+        elif right_missing_approved:
+            logger.info(
+                "All samples found in the left HT, but not found in the right HT, are "
+                "in the approved missing list."
+            )
 
         in_right_not_left = right_ht.anti_join(left_ht)
+        if left_missing_approved:
+            in_right_not_left = in_right_not_left.filter(
+                hl.literal(set(left_missing_approved)).contains(in_right_not_left.s),
+                keep=False,
+            )
         if in_right_not_left.count() != 0:
             logger.warning(
                 f"The following {in_right_not_left.count()} samples are found in the"
-                " right HT, but are not found in left HT"
+                " right HT, but are not found in left HT or in the approved"
+                " missing list:"
             )
             in_right_not_left.select().show(n=-1)
+        elif left_missing_approved:
+            logger.info(
+                "All samples found in the right HT, but not found in the left HT, are "
+                "in the approved missing list."
+            )
 
     return right_ht[left_ht.key]
 
@@ -221,26 +241,38 @@ def name_me(
 def main(args):
     """Add description."""
     hl.init(log="/hail.log", default_reference="GRCh38")
-    logging_statement = "Reading in the {}"
+    logging_statement = "Reading in the {}.\n\n"
 
-    logger.info(
-        "Loading project metadata file with subset, age, and releasable information to "
-        "begin creation of the meta HT"
-    )
+    # Get list of UKB samples that should be removed.
+    removed_ukb_samples = hl.import_table(
+        all_ukb_samples_to_remove, no_header=True
+    ).f0.collect()
+
+    logger.info("Loading the VDS columns to begin creation of the meta HT.\n\n")
     ht = get_gnomad_v4_vds(remove_hard_filtered_samples=False).variant_data.cols()
 
+    # Note: 71 samples are found in the right HT, but are not found in left HT. They
+    #  overlap with the UKB withheld samples indicating they were not removed when the
+    #  metadata HT was created. Is this expected?
     logger.info(logging_statement.format("project meta HT"))
-    ann_expr = name_me(ht, project_meta.ht())
+    ann_expr = name_me(ht, project_meta.ht(), left_missing_approved=removed_ukb_samples)
+
+    logger.info(logging_statement.format("sample QC HT"))
+    ann_ht = get_sample_qc("bi_allelic").ht()
+    ann_expr = ann_expr.annotate(
+        sample_qc=name_me(ht, ann_ht, left_missing_approved=removed_ukb_samples)
+    )
+    global_expr = ann_ht.index_globals()
+
+    return
+
+    # What other hard filtering Tables should be added? Conamination,
+    # callrate, chr20 ...
 
     # TODO: Add platform
     logger.info(logging_statement.format("sex HT"))
     ann_ht = reformat_sex_imputation_ht()
     ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
-    global_expr = ann_ht.index_globals()
-
-    logger.info(logging_statement.format("sample QC HT"))
-    ann_ht = get_sample_qc("bi_allelic").ht()
-    ann_expr = ann_expr.annotate(sample_qc=name_me(ht, ann_ht))
     global_expr = global_expr.annotate(**ann_ht.index_globals())
 
     logger.info(logging_statement.format("population PCA HT"))
