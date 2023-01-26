@@ -57,32 +57,43 @@ Format:
     },
 """
 CONFIG = {
-    "1kg": {
-        "path": "gs://seqr-reference-data/GRCh37/1kg/1kg.wgs.phase3.20130502.GRCh37_sites.ht",
-        "select": {
-            "AC": "info.AC#",
-            "AF": "info.AF#",
-            "AN": "info.AN",
-            "POPMAX_AF": "POPMAX_AF",
-        },
-        "field_name": "g1k",
+    "dbsnp": {
+        "ht": dbsnp.ht(),
+        "select": ["rsid"],
     },
-    "dbnsfp": {
-        "path": "gs://seqr-reference-data/GRCh37/dbNSFP/v2.9.3/dbNSFP2.9.3_variant.ht",
+    "filters": {
+        "ht": final_filter().ht(),
         "select": [
-            "SIFT_pred",
-            "Polyphen2_HVAR_pred",
-            "MutationTaster_pred",
-            "FATHMM_pred",
-            "MetaSVM_pred",
-            "REVEL_score",
-            "GERP_RS",
-            "phastCons100way_vertebrate",
+            "filters",
+            "vqsr",
+            {
+                "allele_info": {
+                    "variant_type": "info.variant_type",
+                    "allele_type": "info.allele_type",
+                    "n_alt_alleles": "info.n_alt_alleles",
+                    "was_mixed": "info.was_mixed",
+                }
+            },
         ],
+        "field_name": "Filters",
     },
-    "primate_ai": {
-        "path": "gs://seqr-reference-data/GRCh38/primate_ai/PrimateAI_scores_v0.2.liftover_grch38.ht",
-        "select": {"score": "info.score"},
+    "in_silico": {
+        "ht": analyst_annotations.ht(),
+        "select": ["cadd", "revel", "splice_ai", "primate_ai"],
+    },
+    "info": {
+        "ht": get_info().ht(),
+        "select": SITE_FIELDS + AS_FIELDS,
+    },
+    "freq": {
+        "ht": get_freq().ht(),
+        "select": ["freq", "faf", "popmax"],
+    },
+    "vep": {
+        "ht": vep.ht(),
+        # TODO: custom select -- drop 100% missing? Module to do this after all
+        # annotations added
+        "select": ["vep"],
     },
     "gnomad_exomes": {
         "path": "gs://gcp-public-data--gnomad/release/2.1.1/liftover_grch38/ht/exomes/gnomad.exomes.r2.1.1.sites.liftover_grch38.ht",
@@ -157,12 +168,17 @@ def get_select_fields(selects, base_ht):
     return select_fields
 
 
-def get_ht(dataset, _intervals):
+def get_ht(dataset, _intervals, test):
     """Return the appropriate deduped hail table with selects applied."""
     config = CONFIG[dataset]
     ht_path = config["path"]
     logger.info("Reading in %s", dataset)
     base_ht = hl.read_table(ht_path, _intervals=_intervals)
+
+    if test:
+        base_ht = hl.filter_intervals(
+            base_ht, [hl.parse_locus_interval("chr1:1-1000000")]
+        )
 
     if config.get("filter"):
         base_ht = base_ht.filter(config["filter"](base_ht))
@@ -180,16 +196,22 @@ def get_ht(dataset, _intervals):
     return base_ht.select(**select_query).distinct()
 
 
-def join_hts(base_dataset, datasets, new_partition_percent, coverage_datasets=[]):
+def join_hts(base_dataset, datasets, new_partition_percent, test, coverage_datasets=[]):
     """Get a list of hail tables and combine into an outer join."""
-    logger.info("Reading in %s to determine partition intervals", base_dataset)
+    logger.info(
+        "Reading in %s to determine partition intervals for efficient join",
+        base_dataset,
+    )
     base_ht_path = CONFIG[base_dataset]["path"]
     base_ht = hl.read_table(base_ht_path)
     partition_intervals = base_ht.calculate_new_partitions(
         base_ht.n_partitions() * new_partition_percent
     )
 
-    hts = [get_ht(dataset, _intervals=partition_intervals) for dataset in datasets]
+    hts = [
+        get_ht(dataset, _intervals=partition_intervals, test=test)
+        for dataset in datasets
+    ]
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "outer")), hts)
 
     # Annotate coverages.
@@ -210,48 +232,63 @@ def join_hts(base_dataset, datasets, new_partition_percent, coverage_datasets=[]
     return joined_ht
 
 
-def run(args):
+def main(args):
     """Create release ht."""
     hl.init(
         log="/create_release_ht.log",
         tmp_dir="gs://gnomad-tmp",
         default_reference="GRCh38",
     )
-    joined_ht = join_hts(
+    ht = join_hts(
         [
-            "cadd",
-            "1kg",
-            "mpc",
-            "eigen",
-            "dbnsfp",
-            "topmed",
-            "primate_ai",
-            "splice_ai",
-            "exac",
-            "gnomad_genomes",
-            "gnomad_exomes",
-            "geno2mp",
+            "dbsnp",
+            "final_filters",
+            "freq",
+            "info",
+            "in_silico",
+            "vep",
         ],
         ["gnomad_genome_coverage", "gnomad_exome_coverage"],
         args.version,
         args.new_partition_percent,
+        args.test,
     )
+    ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
+    ht = ht.filter(hl.is_defined(ht.filters))
+
     output_path = os.path.join(OUTPUT_TEMPLATE.format(version=VERSION))
-    logger.info("Writing to %s", output_path)
-    joined_ht.write(os.path.join(output_path))
+    logger.info("Writing out release HT to %s", output_path)
+    ht = ht.checkpoint(
+        qc_temp_prefix() + "release/gnomad.genomes.sites.test.ht"
+        if args.test
+        else release_sites().path,
+        args.overwrite,
+    )
+
+    logger.info("Final variant count: %d", ht.count())
+    ht.describe()
+    ht.show()
+    ht.write(output_path)
 
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-v", "--version", help="The version of gnomAD.", default=VERSION, required=True
-    )
-    parser.add_argument(
         "--new-partition-percent",
         help="Percent of start dataset partitions to use for release HT. Default is 1.1 (110%)",
         default=1.1,
     )
-    args = parser.parse_args()
+    parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
+    parser.add_argument(
+        "-v", "--version", help="The version of gnomAD.", default=VERSION, required=True
+    )
+    parser.add_argument(
+        "-t",
+        "--test",
+        help="Runs a test on the first two partitions of the HT.",
+        action="store_true",
+    )
 
-    run(args)
+    args = parser.parse_args()
+    main(args)
