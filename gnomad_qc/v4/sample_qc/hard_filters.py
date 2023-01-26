@@ -26,6 +26,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_samples_no_sex,
     interval_coverage,
     sample_chr20_mean_dp,
+    sample_qc_mt_callrate,
     sex,
     v4_predetermined_qc,
 )
@@ -364,21 +365,23 @@ def main(args):
                 overwrite=overwrite,
             )
 
-        if args.compute_qc_mt_callrate:  # TODO: add option
+        if args.compute_qc_mt_callrate:
             mt = v4_predetermined_qc.mt()
             num_samples = mt.count_cols()
 
-            # Filter predetermined QC variants to only common variants (AF > 0.0001)
-            # with high site callrate ( > 0.99) for ADJ genotypes.
+            # Filter predetermined QC variants to AF > qc_mt_callrate_min_af
+            # with site callrate > qc_mt_callrate_min_site_callrate for ADJ genotypes.
             mt = annotate_adj(mt)
-            # TODO: Parameterize#Parameterize
             mt = mt.filter_rows(
                 hl.agg.filter(
                     hl.is_defined(mt.GT) & mt.adj,
-                    ((hl.agg.count() / num_samples) > 0.99)
+                    (
+                        (hl.agg.count() / num_samples)
+                        > args.qc_mt_callrate_min_site_callrate
+                    )
                     & (
                         (hl.agg.sum(mt.GT.n_alt_alleles()) / (hl.agg.count() * 2))
-                        > 0.0001
+                        > args.qc_mt_callrate_min_af
                     ),
                 )
             )
@@ -390,7 +393,7 @@ def main(args):
             ).cols().write(
                 get_checkpoint_path("test_gnomad.exomes.qc_mt_callrate")
                 if test
-                else sample_qc_mt_callrate.path,  # TODO: add resource
+                else sample_qc_mt_callrate.path,
                 overwrite=overwrite,
             )
         # add globals
@@ -404,7 +407,7 @@ def main(args):
                 )
             else:
                 chr20_mean_dp_ht = sample_chr20_mean_dp.ht()
-                qc_mt_callrate_ht = ample_qc_mt_callrate.ht()
+                qc_mt_callrate_ht = sample_qc_mt_callrate.ht()
 
             if args.include_sex_filter:
                 hard_filter_path = hard_filtered_samples.path
@@ -540,6 +543,35 @@ if __name__ == "__main__":
             " results."
         ),
         action="store_true",
+    )
+    parser.add_argument(
+        "--compute-qc-mt-callrate",
+        help=(
+            "Compute per sample callrate on the predetermined QC variants after "
+            "filtering to common variants (AF > --qc-mt-callrate-min-af) with high "
+            "site callrate ( > --qc-mt-callrate-min-site-callrate) for ADJ genotypes."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--qc-mt-callrate-min-af",
+        default=0.0001,
+        type=float,
+        help=(
+            "Filtering threshold to use for minimum variant allele frequency when "
+            "computing sample callrate on the predetermined QC variants "
+            "(--compute-qc-mt-callrate). Default is 0.0001."
+        ),
+    )
+    parser.add_argument(
+        "--qc-mt-callrate-min-site-callrate",
+        default=0.99,
+        type=float,
+        help=(
+            "Filtering threshold to use for minimum site ADJ callrate when computing "
+            "sample callrate on predetermined QC variants (--compute-qc-mt-callrate). "
+            "Default is 0.99."
+        ),
     )
     parser.add_argument(
         "--compute-hard-filters",
