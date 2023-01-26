@@ -45,7 +45,7 @@ def get_sample_qc_ht(
         - Convert each element of `bases_over_dp_threshold` to a top level annotation
           with 'bases_dp_over_{dp_threshold}'
         - Exclude hard filtered samples
-        - Sample 1% of the dataset id `test` is True
+        - Sample 1% of the dataset if `test` is True
 
     :param sample_qc_ht: Sample QC Table.
     :param test: Whether to filter the input Table to a random sample of 1% of the
@@ -341,7 +341,7 @@ def create_finalized_outlier_filter_ht(
     `finalized_outlier_hts`. The following annotations are also added:
         - `qc_metrics_fail` - includes the combined (using `ensemble_operator`) outlier
           fail boolean for each metric.
-        - `qc_metrics_filters` - The combined set of qc metrics that a sample is an
+        - `qc_metrics_filters` - The combined set of QC metrics that a sample is an
           outlier for using `ensemble_operator` for the combination ('and' uses set
           intersection, 'or' uses set union).
 
