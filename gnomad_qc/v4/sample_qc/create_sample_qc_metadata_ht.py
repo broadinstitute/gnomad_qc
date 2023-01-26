@@ -17,18 +17,21 @@ from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import all_ukb_samples_to_remove, get_gnomad_v4_vds
 from gnomad_qc.v4.resources.meta import meta, project_meta
 from gnomad_qc.v4.resources.sample_qc import (
+    contamination,
     finalized_outlier_filtering,
     get_pop_ht,
     get_sample_qc,
     hard_filtered_samples,
     pca_related_samples_to_drop,
+    platform,
     relatedness,
     release_related_samples_to_drop,
+    sample_chr20_mean_dp,
     sex,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
-logger = logging.getLogger("sample_qc")
+logger = logging.getLogger("sample_metadata")
 logger.setLevel(logging.INFO)
 
 
@@ -240,7 +243,7 @@ def name_me(
 
 def main(args):
     """Add description."""
-    hl.init(log="/hail.log", default_reference="GRCh38")
+    hl.init(log="/sample_metadata.log", default_reference="GRCh38")
     logging_statement = "Reading in the {}.\n\n"
 
     # Get list of UKB samples that should be removed.
@@ -257,6 +260,8 @@ def main(args):
     logger.info(logging_statement.format("project meta HT"))
     ann_expr = name_me(ht, project_meta.ht(), left_missing_approved=removed_ukb_samples)
 
+    # Note: the withdrawn UKB list was updated after the sample QC HT creation, so the
+    #  sample QC HT has 5 samples more in it than the final sample list.
     logger.info(logging_statement.format("sample QC HT"))
     ann_ht = get_sample_qc("bi_allelic").ht()
     ann_expr = ann_expr.annotate(
@@ -264,12 +269,31 @@ def main(args):
     )
     global_expr = ann_ht.index_globals()
 
+    logger.info(logging_statement.format("contamination approximation HT"))
+    ann_ht = contamination.ht()
+    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
+    global_expr = global_expr.annotate(**ann_ht.index_globals())
+
+    logger.info(logging_statement.format("chr20 sample mean DP HT"))
+    ann_ht = sample_chr20_mean_dp.ht()
+    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
+
     return
 
-    # What other hard filtering Tables should be added? Conamination,
-    # callrate, chr20 ...
+    logger.info(logging_statement.format("sample QC MT callrate HT"))
+    ann_ht = sample_qc_mt_callrate.ht()
+    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
+    global_expr = global_expr.annotate(**ann_ht.index_globals())
 
-    # TODO: Add platform
+    logger.info(logging_statement.format("platform assignment HT"))
+    ann_ht = platform.ht()
+    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
+    global_expr = global_expr.annotate(**ann_ht.index_globals())
+
+    # TODO: How to handle PCs, different number in tables than used?
+    # TODO: Add more nearest neighbor info?
+    # TODO: Add trio info?
+
     logger.info(logging_statement.format("sex HT"))
     ann_ht = reformat_sex_imputation_ht()
     ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
