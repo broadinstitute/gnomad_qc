@@ -128,6 +128,7 @@ def reformat_outlier_filtering_ht() -> hl.Table:
     :return:
     """
     ht = finalized_outlier_filtering().ht()
+    ht.show()
     ht = ht.transmute(
         sample_filters=ht.sample_filters.annotate(
             **{x: ht[x] for x in ht.row if x.startswith("fail_")},
@@ -200,6 +201,7 @@ def name_me(
     :return: Table with annotations
     :rtype: Table
     """
+    # TODO: Do we want a logger if sample_count_match is False?
     if sample_count_match and not compare_row_counts(left_ht, right_ht):
         logger.warning("Sample counts in left and right tables do not match!")
 
@@ -310,6 +312,11 @@ def main(args):
     )
     global_expr = global_expr.annotate(**ann_ht.index_globals())
 
+    logger.info(logging_statement.format("hard filters HT"))
+    ann_ht = reformat_hard_filters_ht()
+    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht, sample_count_match=False))
+    global_expr = global_expr.annotate(**ann_ht.index_globals())
+
     logger.info(logging_statement.format("population PCA HT"))
     # ann_ht = get_pop_ht().ht()
     ann_ht = hl.read_table(
@@ -327,24 +334,12 @@ def main(args):
         population_inference_pca_metrics=ann_ht.index_globals()
     )
 
-    return
-    # TODO: How to handle PCs, different number in tables than used?
-    # TODO: Add more nearest neighbor info?
-    # TODO: Add trio info?
-    # TODO: joint that has v3 info?
-
-    logger.info(logging_statement.format("hard filters HT"))
-    ann_ht = reformat_hard_filters_ht()
-    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht, sample_count_match=False))
-    global_expr = global_expr.annotate(**ann_ht.index_globals())
-
     # logger.info(logging_statement.format("PCA related samples to drop HT"))
     # TODO: Start back up here
     # ann_ht = reformat_relatedness_ht(ht)
     # ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
     # global_expr = global_expr.annotate(**ann_ht.index_globals())
 
-    # TODO: what to add for outlier filtering?
     logger.info(logging_statement.format("outlier HT"))
     ann_ht = reformat_outlier_filtering_ht()
     ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
@@ -374,6 +369,13 @@ def main(args):
     ht.describe()
     ht.summarize()
     logger.info(f"Final sample count: {ht.count()}")
+
+    return
+    # TODO: How to handle PCs, different number in tables than used?
+    # TODO: Add more nearest neighbor info?
+    # TODO: Add trio info?
+    # TODO: joint that has v3 info?
+
 
 
 if __name__ == "__main__":
