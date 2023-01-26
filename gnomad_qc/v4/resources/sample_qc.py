@@ -83,6 +83,17 @@ sample_chr20_mean_dp = VersionedTableResource(
     },
 )
 
+# Sample callrate on variants in the v4 precomputed QC MT.
+sample_qc_mt_callrate = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        version: TableResource(
+            f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.sample_qc_mt_callrate.ht"
+        )
+        for version in VERSIONS
+    },
+)
+
 # Sample contamination estimate Table.
 contamination = VersionedTableResource(
     CURRENT_VERSION,
