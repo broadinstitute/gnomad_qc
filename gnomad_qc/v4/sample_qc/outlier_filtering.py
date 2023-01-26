@@ -65,7 +65,7 @@ def get_sample_qc_ht(
             ]
             for i in range(len(sample_qc_ht.dp_bins))
         },
-    )
+    ).drop("bases_over_gq_threshold")
     # Exclude hard filtered samples from the sample QC Table.
     # They should not be included in the metric distribution stats.
     sample_qc_ht = sample_qc_ht.filter(
@@ -365,7 +365,7 @@ def create_finalized_outlier_filter_ht(
     else:
         raise ValueError("'ensemble_operator' must be one of: 'and' or 'or'!")
 
-    def ensemble_func(x: hl.SetExpression, y: hl.SetExpression) -> hl.SetExpression:
+    def _ensemble_func(x: hl.SetExpression, y: hl.SetExpression) -> hl.SetExpression:
         """
         Combine sets `x` and `y`.
 
@@ -412,8 +412,8 @@ def create_finalized_outlier_filter_ht(
                 qc_metrics_filters_keep.add(m)
             else:
                 raise ValueError(
-                    f"The following metric is not found in the Table(s) provided for "
-                    f"outlier filtering finalization."
+                    "The following metric is not found in the Table(s) provided for "
+                    f"outlier filtering finalization: {m}."
                 )
 
         # If residuals are annotated on the filtering Table, re-annotate under
@@ -442,7 +442,7 @@ def create_finalized_outlier_filter_ht(
         )
         ht = ht.select(**select_expr)
 
-        # If an ensemble method is requested, group all Table annotations under a
+        # If multiple filtering Tables are provided, group all Table annotations under a
         # filtering method annotation rather than keeping it top level. This is needed
         # for joining requested filtering method Tables.
         if num_methods > 1:
@@ -450,8 +450,8 @@ def create_finalized_outlier_filter_ht(
             ht = ht.select_globals(**{f"{filter_method}_globals": ht.index_globals()})
             hts.append(ht)
 
-    # If an ensemble method is requested, join all filtering Tables, and make top level
-    # annotations for 'qc_metrics_fail' and 'qc_metrics_filters' based on the
+    # If multiple filtering Tables are provided, join all filtering Tables, and make
+    # top level annotations for 'qc_metrics_fail' and 'qc_metrics_filters' based on the
     # combination of all methods using 'ensemble_operator' as the combination method.
     if num_methods > 1:
         ht = hts[0]
@@ -471,7 +471,7 @@ def create_finalized_outlier_filter_ht(
                 }
             ),
             qc_metrics_filters=hl.fold(
-                ensemble_func,
+                _ensemble_func,
                 hl.missing(hl.tset(hl.tstr)),
                 [ht[f]["qc_metrics_filters"] for f in finalized_outlier_hts],
             ),
@@ -495,6 +495,7 @@ def main(args):
     test = args.test
     overwrite = args.overwrite
     filtering_qc_metrics = args.filtering_qc_metrics
+    create_finalized_outlier_filter = args.create_finalized_outlier_filter
     sample_qc_ht = get_sample_qc("bi_allelic")
     pop_ht = get_pop_ht()
     include_unreleasable_samples = args.regression_include_unreleasable
@@ -531,7 +532,7 @@ def main(args):
             platform_stratified=regress_per_platform,
             include_unreleasable_samples=include_unreleasable_samples,
         )
-        if args.create_finalized_outlier_filter:
+        if create_finalized_outlier_filter:
             finalized_outlier_input_resources["--apply-regressed-filters"] = [output]
         else:
             check_resource_existence(
@@ -568,7 +569,7 @@ def main(args):
             pop_stratified=stratify_population,
             platform_stratified=stratify_platform,
         )
-        if args.create_finalized_outlier_filter:
+        if create_finalized_outlier_filter:
             finalized_outlier_input_resources["--apply-stratified-filters"] = [output]
         else:
             check_resource_existence(
@@ -619,7 +620,7 @@ def main(args):
 
     if args.apply_nearest_neighbor_filters:
         output = nearest_neighbors_filtering(test=test)
-        if args.create_finalized_outlier_filter:
+        if create_finalized_outlier_filter:
             finalized_outlier_input_resources["--apply-nearest-neighbor-filters"] = [
                 output
             ]
@@ -635,7 +636,7 @@ def main(args):
                 nn_ht=nn_ht.ht(),
             ).write(output.path, overwrite=overwrite)
 
-    if args.create_finalized_outlier_filter:
+    if create_finalized_outlier_filter:
         if len(finalized_outlier_input_resources) == 0:
             raise ValueError(
                 "At least one filtering method and relevant options must be supplied "
