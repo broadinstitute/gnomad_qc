@@ -22,11 +22,14 @@ from gnomad_qc.v4.resources.sample_qc import (
     get_pop_ht,
     get_sample_qc,
     hard_filtered_samples,
+    hard_filtered_samples_no_sex,
+    joint_qc_meta,
     pca_related_samples_to_drop,
     platform,
     relatedness,
     release_related_samples_to_drop,
     sample_chr20_mean_dp,
+    sample_qc_mt_callrate,
     sex,
 )
 
@@ -251,6 +254,15 @@ def main(args):
         all_ukb_samples_to_remove, no_header=True
     ).f0.collect()
 
+    # Get list of hard filtered samples before sex imputation.
+    hf_samples_no_sex = hard_filtered_samples_no_sex.ht().s.collect()
+
+    # Get list of hard filtered samples with sex imputation.
+    hf_samples = hard_filtered_samples.ht().s.collect()
+
+    # Get list of v3 samples (expected in relatedness and pop).
+    v3_samples = joint_qc_meta.ht().s.collect()
+
     logger.info("Loading the VDS columns to begin creation of the meta HT.\n\n")
     ht = get_gnomad_v4_vds(remove_hard_filtered_samples=False).variant_data.cols()
 
@@ -278,25 +290,24 @@ def main(args):
     ann_ht = sample_chr20_mean_dp.ht()
     ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
 
-    return
-
     logger.info(logging_statement.format("sample QC MT callrate HT"))
     ann_ht = sample_qc_mt_callrate.ht()
     ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
     global_expr = global_expr.annotate(**ann_ht.index_globals())
 
     logger.info(logging_statement.format("platform assignment HT"))
+    hard_filtered_samples_no_sex.ht().s.collect()
     ann_ht = platform.ht()
-    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
+    ann_expr = ann_expr.annotate(
+        **name_me(ht, ann_ht, right_missing_approved=hf_samples_no_sex)
+    )
     global_expr = global_expr.annotate(**ann_ht.index_globals())
-
-    # TODO: How to handle PCs, different number in tables than used?
-    # TODO: Add more nearest neighbor info?
-    # TODO: Add trio info?
 
     logger.info(logging_statement.format("sex HT"))
     ann_ht = reformat_sex_imputation_ht()
-    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
+    ann_expr = ann_expr.annotate(
+        **name_me(ht, ann_ht, right_missing_approved=hf_samples_no_sex)
+    )
     global_expr = global_expr.annotate(**ann_ht.index_globals())
 
     logger.info(logging_statement.format("population PCA HT"))
@@ -305,11 +316,22 @@ def main(args):
         "gs://gnomad/v4.0/sample_qc/joint/ancestry_inference/gnomad.joint.v4.0.hgdp_tgp_training.pop.rf_w_16pcs_0.75_pop_prob.ht"
     )
     ann_expr = ann_expr.annotate(
-        population_inference=name_me(ht, ann_ht, sample_count_match=False)
+        population_inference=name_me(
+            ht,
+            ann_ht,
+            left_missing_approved=v3_samples,
+            right_missing_approved=hf_samples,
+        )
     )
     global_expr = global_expr.annotate(
         population_inference_pca_metrics=ann_ht.index_globals()
     )
+
+    return
+    # TODO: How to handle PCs, different number in tables than used?
+    # TODO: Add more nearest neighbor info?
+    # TODO: Add trio info?
+    # TODO: joint that has v3 info?
 
     logger.info(logging_statement.format("hard filters HT"))
     ann_ht = reformat_hard_filters_ht()
