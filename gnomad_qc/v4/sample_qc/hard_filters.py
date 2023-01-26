@@ -5,7 +5,7 @@ import logging
 import hail as hl
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
-from gnomad.utils.annotations import bi_allelic_expr
+from gnomad.utils.annotations import annotate_adj, bi_allelic_expr
 from gnomad.utils.filtering import add_filters_expr, filter_to_adj, filter_to_autosomes
 from gnomad.utils.slack import slack_notifications
 
@@ -109,6 +109,7 @@ def compute_hard_filters(
     test: bool = False,
     chr20_mean_dp_ht: hl.Table = None,
     min_cov: int = None,
+    qc_mt_callrate_ht: hl.Table = None,
     min_qc_mt_adj_callrate: float = None,
 ) -> hl.Table:
     """
@@ -132,6 +133,7 @@ def compute_hard_filters(
     :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full dataset.
     :param chr20_mean_dp_ht: Table containing the per sample chromosome 20 mean DP.
     :param min_cov: Filtering threshold to use for chr20 coverage.
+    :param qc_mt_callrate_ht: Table containing the per sample QC MatrixTable callrate.
     :param min_qc_mt_adj_callrate: Filtering threshold to use for sample callrate computed on only predetermined QC
         variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering.
     :return: Table of hard filtered samples.
@@ -228,27 +230,13 @@ def compute_hard_filters(
         hard_filters["low_coverage"] = chr20_mean_dp_ht[ht.key].chr20_mean_dp < min_cov
 
     if min_qc_mt_adj_callrate is not None:
-        mt = v4_predetermined_qc.mt()
-        num_samples = mt.count_cols()
-        # Filter predetermined QC variants to only common variants (AF > 0.0001)
-        # with high site callrate ( > 0.99) for ADJ genotypes.
-        mt = filter_to_adj(mt)
-        mt = mt.filter_rows(
-            ((hl.agg.count_where(hl.is_defined(mt.GT)) / num_samples) > 0.99)
-            & (
-                (
-                    hl.agg.sum(mt.GT.n_alt_alleles())
-                    / (hl.agg.count_where(hl.is_defined(mt.GT)) * 2)
-                )
-                > 0.0001
+        if qc_mt_callrate_ht is None:
+            raise ValueError(
+                "If a QC MatrixTable adj sample callrate threshold is supplied, a QC "
+                "MatrixTable sample callrate Table must be supplied too."
             )
-        )
-        num_variants = mt.count_rows()
-        callrate_ht = mt.annotate_cols(
-            callrate_adj=hl.agg.count_where(hl.is_defined(mt.GT)) / num_variants
-        ).cols()
         hard_filters["low_adj_callrate"] = (
-            callrate_ht[ht.key].callrate_adj < min_qc_mt_adj_callrate
+            qc_mt_callrate_ht[ht.key].callrate_adj < min_qc_mt_adj_callrate
         )
 
     if include_sex_filter:
@@ -376,13 +364,47 @@ def main(args):
                 overwrite=overwrite,
             )
 
+        if args.compute_qc_mt_callrate:  # TODO: add option
+            mt = v4_predetermined_qc.mt()
+            num_samples = mt.count_cols()
+
+            # Filter predetermined QC variants to only common variants (AF > 0.0001)
+            # with high site callrate ( > 0.99) for ADJ genotypes.
+            mt = annotate_adj(mt)
+            # TODO: Parameterize#Parameterize
+            mt = mt.filter_rows(
+                hl.agg.filter(
+                    hl.is_defined(mt.GT) & mt.adj,
+                    ((hl.agg.count() / num_samples) > 0.99)
+                    & (
+                        (hl.agg.sum(mt.GT.n_alt_alleles()) / (hl.agg.count() * 2))
+                        > 0.0001
+                    ),
+                )
+            )
+            num_variants = mt.count_rows()
+            mt.annotate_cols(
+                callrate=hl.agg.count_where(hl.is_defined(mt.GT)) / num_variants,
+                callrate_adj=hl.agg.count_where(hl.is_defined(mt.GT) & mt.adj)
+                / num_variants,
+            ).cols().write(
+                get_checkpoint_path("test_gnomad.exomes.qc_mt_callrate")
+                if test
+                else sample_qc_mt_callrate.path,  # TODO: add resource
+                overwrite=overwrite,
+            )
+        # add globals
         if args.compute_hard_filters:
             if test:
                 chr20_mean_dp_ht = hl.read_table(
                     get_checkpoint_path("test_gnomad.exomes.chr20_mean_dp")
                 )
+                qc_mt_callrate_ht = hl.read_table(
+                    get_checkpoint_path("test_gnomad.exomes.qc_mt_callrate")
+                )
             else:
                 chr20_mean_dp_ht = sample_chr20_mean_dp.ht()
+                qc_mt_callrate_ht = ample_qc_mt_callrate.ht()
 
             if args.include_sex_filter:
                 hard_filter_path = hard_filtered_samples.path
@@ -408,6 +430,7 @@ def main(args):
                 test,
                 chr20_mean_dp_ht,
                 args.min_cov,
+                qc_mt_callrate_ht,
                 args.min_qc_mt_adj_callrate,
             )
             ht = ht.checkpoint(hard_filter_path, overwrite=overwrite)
