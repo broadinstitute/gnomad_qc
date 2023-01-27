@@ -818,6 +818,24 @@ def nearest_neighbors_filtering(test: bool = False) -> VersionedTableResource:
     )
 
 
+def finalized_outlier_filtering(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for the finalized outlier filtering.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.final_outlier_filtering.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
 ######################################################################
 # Other resources
 ######################################################################
