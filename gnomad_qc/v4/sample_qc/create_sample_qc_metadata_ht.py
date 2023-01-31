@@ -274,98 +274,107 @@ def main(args):
     # Get list of v3 samples (expected in relatedness and pop).
     v3_samples = joint_qc_meta.ht().s.collect()
 
-    sample_qc_tables = {
-        # Note: 71 samples are found in the right HT, but are not found in left HT.
-        #  They overlap with the UKB withheld samples indicating they were not removed
-        #  when the metadata HT was created. Is this expected?
-        "project meta": {
-            "right_ht": project_meta.ht(),
-            "left_missing_approved": removed_ukb_samples,
-        },
-        # Note: the withdrawn UKB list was updated after the sample QC HT creation, so
-        #  the sample QC HT has 5 samples more in it than the final sample list.
-        "sample QC": {
-            "right_ht": get_sample_qc("bi_allelic").ht(),
-            "ann_label": "sample_qc",
-            "global_label": "sample_qc_parameters",
-            "left_missing_approved": removed_ukb_samples,
-        },
-        # TODO: Number of PCs will be 9 because that is what was used, should we modify to
-        #  have all 30 PCs, or add all 30 PCs to another annotation, or only keep the 9
-        #  since that is all that was used?
-        "platform assignment": {
-            "right_ht": platform.ht().drop("gq_thresholds"),
-            "ann_label": "platform_inference",
-            "global_label": "platform_inference_parameters",
-            "right_missing_approved": hf_samples_no_sex,
-        },
-        # TODO: Keep or drop is_female?
-        # TODO: Should it be a struct with raw and adj or id this OK?
-        #  chrx_frac_hom_alt: float64,
-        #  chrx_frac_hom_alt_adj: float64,
-        "sex imputation": {
-            "right_ht": reformat_sex_imputation_ht(),
-            "right_missing_approved": hf_samples_no_sex,
-        },
-        "hard_filter_metrics": {
-            "contamination approximation": {
-                "right_ht": contamination.ht(),
-                "global_label": "contamination_approximation_parameters",
-            },
-            "chr20 sample mean DP": {
-                "right_ht": sample_chr20_mean_dp.ht().drop("gq_thresholds"),
-                "global_label": "chr20_mean_dp_parameters",
-            },
-            # TODO: Should it be a struct with raw and adj or id this OK
-            #  sample_qc_mt_callrate: float64,
-            #  sample_qc_mt_callrate_adj: float64
-            "sample QC MT callrate": {
-                "right_ht": sample_qc_mt_callrate.ht(),
-                "global_label": "sample_qc_mt_callrate_parameters",
-            },
-        },
-        # TODO: How to handle PCs, different number in tables than used?
-        # TODO: How to specify pop PC table to use?
-        "population inference": {
-            # "right_ht": get_pop_ht().ht(),
-            "right_ht": hl.read_table(
-                "gs://gnomad/v4.0/sample_qc/joint/ancestry_inference/gnomad.joint.v4.0.hgdp_tgp_training.pop.rf_w_16pcs_0.75_pop_prob.ht"
-            ),
-            "ann_label": "population_inference",
-            "global_label": "population_inference_parameters",
-            "left_missing_approved": v3_samples,
-            "right_missing_approved": hf_samples,
-        },
-    }
-
     logger.info("Loading the VDS columns to begin creation of the meta HT.")
     ht = get_gnomad_v4_vds(remove_hard_filtered_samples=False).variant_data.cols()
 
-    hard_filter_metrics_expr = None
-    hard_filter_global_expr = None
-    for logger_str, parameters in hard_filter_metric_tables.items():
-        hard_filter_metrics_expr, hard_filter_global_expr = name_me(
-            ht,
-            **parameters,
-            ann_expr=hard_filter_metrics_expr,
-            global_expr=hard_filter_global_expr,
-            logger_str=logger_str,
-        )
+    # Note: 71 samples are found in the right HT, but are not found in left HT.
+    #  They overlap with the UKB withheld samples indicating they were not removed
+    #  when the metadata HT was created. Is this expected?
+    ann_expr, global_expr = name_me(
+        ht,
+        project_meta.ht(),
+        logger_str="project meta",
+        left_missing_approved=removed_ukb_samples,
+    )
 
-    ann_expr = None
-    global_expr = None
-    for logger_str, parameters in sample_qc_tables.items():
-        for logger_str, parameters in sample_qc_tables.items():
-            ann_expr, global_expr = name_me(
-                ht,
-                **parameters,
-                ann_expr=ann_expr,
-                global_expr=global_expr,
-                logger_str=logger_str,
-            )
+    # Note: the withdrawn UKB list was updated after the sample QC HT creation, so
+    #  the sample QC HT has 5 samples more in it than the final sample list.
+    ann_expr, global_expr = name_me(
+        ht,
+        get_sample_qc("bi_allelic").ht(),
+        ann_expr=ann_expr,
+        ann_label="sample_qc",
+        global_expr=global_expr,
+        global_label="sample_qc_parameters",
+        logger_str="sample QC",
+        left_missing_approved=removed_ukb_samples,
+    )
+
+    # TODO: Number of PCs will be 9 because that is what was used, should we modify to
+    #  have all 30 PCs, or add all 30 PCs to another annotation, or only keep the 9
+    #  since that is all that was used?
+    ann_expr, global_expr = name_me(
+        ht,
+        platform.ht().drop("gq_thresholds"),
+        ann_expr=ann_expr,
+        ann_label="platform_inference",
+        global_expr=global_expr,
+        global_label="platform_inference_parameters",
+        logger_str="platform assignment",
+        right_missing_approved=hf_samples_no_sex,
+    )
+
+    # TODO: Keep or drop is_female?
+    # TODO: Should it be a struct with raw and adj or id this OK?
+    #  chrx_frac_hom_alt: float64,
+    #  chrx_frac_hom_alt_adj: float64,
+    ann_expr, global_expr = name_me(
+        ht,
+        reformat_sex_imputation_ht(),
+        ann_expr=ann_expr,
+        global_expr=global_expr,
+        logger_str="sex imputation",
+        right_missing_approved=hf_samples_no_sex,
+    )
+
+    hard_filter_metrics_expr, hard_filter_global_expr = name_me(
+        ht,
+        contamination.ht(),
+        global_label="contamination_approximation_parameters",
+        logger_str="contamination approximation",
+    )
+
+    hard_filter_metrics_expr, hard_filter_global_expr = name_me(
+        ht,
+        sample_chr20_mean_dp.ht().drop("gq_thresholds"),
+        ann_expr=hard_filter_metrics_expr,
+        global_expr=hard_filter_global_expr,
+        global_label="chr20_mean_dp_parameters",
+        logger_str="chr20 sample mean DP",
+    )
+
+    # TODO: Should it be a struct with raw and adj or id this OK
+    #  sample_qc_mt_callrate: float64,
+    #  sample_qc_mt_callrate_adj: float64
+    hard_filter_metrics_expr, hard_filter_global_expr = name_me(
+        ht,
+        sample_qc_mt_callrate.ht(),
+        ann_expr=hard_filter_metrics_expr,
+        global_expr=hard_filter_global_expr,
+        global_label="sample_qc_mt_callrate_parameters",
+        logger_str="sample QC MT callrate",
+    )
 
     ann_expr = ann_expr.annotate(hard_filter_metrics=hard_filter_metrics_expr)
     global_expr = global_expr.annotate(hard_filter_parameters=hard_filter_global_expr)
+
+    # TODO: How to handle PCs, different number in tables than used?
+    # TODO: How to specify pop PC table to use?
+    ann_expr, global_expr = name_me(
+        ht,
+        # get_pop_ht().ht(),
+        hl.read_table(
+            "gs://gnomad/v4.0/sample_qc/joint/ancestry_inference/gnomad.joint.v4.0"
+            ".hgdp_tgp_training.pop.rf_w_16pcs_0.75_pop_prob.ht"
+        ),
+        ann_expr=ann_expr,
+        ann_label="population_inference",
+        global_expr=global_expr,
+        global_label="population_inference_parameters",
+        logger_str="population inference",
+        left_missing_approved=v3_samples,
+        right_missing_approved=hf_samples,
+    )
 
     # TODO: rerun to get the callrate cutoff global annotation on the Table. Confirm
     #  results are identical otherwise
