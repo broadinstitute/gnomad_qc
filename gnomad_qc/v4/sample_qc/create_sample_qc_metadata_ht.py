@@ -61,20 +61,17 @@ def reformat_hard_filters_ht() -> hl.Table:
 
     ht_ex = ht.explode(ht.hard_filters)
     hard_filters = ht_ex.aggregate(hl.agg.collect_as_set(ht_ex.hard_filters))
-    ht = ht.transmute(
-        sample_filters=hl.struct(
-            **{
-                v: hl.if_else(
-                    hl.is_defined(ht.hard_filters),
-                    ht.hard_filters.contains(v),
-                    False,
-                )
-                for v in hard_filters
-            },
-            hard_filters=ht.hard_filters,
-            hard_filtered=hl.is_defined(ht.hard_filters)
-            & (hl.len(ht.hard_filters) > 0),
-        )
+    ht = ht.select(
+        **{
+            v: hl.if_else(
+                hl.is_defined(ht.hard_filters),
+                ht.hard_filters.contains(v),
+                False,
+            )
+            for v in hard_filters
+        },
+        hard_filters=ht.hard_filters,
+        hard_filtered=hl.is_defined(ht.hard_filters) & (hl.len(ht.hard_filters) > 0),
     )
 
     return ht
@@ -118,24 +115,6 @@ def reformat_relatedness_ht(ht, method: str = "cuking") -> hl.Table:
 
     logger.info("Adding relatedness globals (cutoffs)")
     ht = ht.annotate_globals(relatedness_inference_cutoffs=ht.index_globals())
-
-    return ht
-
-
-def reformat_outlier_filtering_ht() -> hl.Table:
-    """
-
-    :return:
-    """
-    ht = finalized_outlier_filtering().ht()
-    ht.show()
-    ht = ht.transmute(
-        sample_filters=ht.sample_filters.annotate(
-            **{x: ht[x] for x in ht.row if x.startswith("fail_")},
-            qc_metrics_filters=ht.qc_metrics_filters,
-        )
-    )
-    ht = ht.select_globals(outlier_detection_metrics=ht.index_globals())
 
     return ht
 
@@ -186,6 +165,11 @@ def get_relationship_filter_expr(
 def name_me(
     left_ht: hl.Table,
     right_ht: hl.Table,
+    logger_str=None,
+    ann_expr=None,
+    ann_label=None,
+    global_expr=None,
+    global_label=None,
     left_missing_approved: Optional[List[str]] = None,
     right_missing_approved: Optional[List[str]] = None,
     sample_count_match: bool = True,
@@ -201,181 +185,244 @@ def name_me(
     :return: Table with annotations
     :rtype: Table
     """
-    # TODO: Do we want a logger if sample_count_match is False?
-    if sample_count_match and not compare_row_counts(left_ht, right_ht):
-        logger.warning("Sample counts in left and right tables do not match!")
+    if logger_str is not None:
+        logger.info("\n\nAnnotating with the %s Table.", logger_str)
 
-        in_left_not_right = left_ht.anti_join(right_ht)
-        if right_missing_approved:
-            in_left_not_right = in_left_not_right.filter(
-                hl.literal(set(right_missing_approved)).contains(in_left_not_right.s),
-                keep=False,
-            )
-        if in_left_not_right.count() != 0:
-            logger.warning(
-                f"The following {in_left_not_right.count()} samples are found in the"
-                " left HT, but are not found in the right HT or in the approved"
-                " missing list:"
-            )
-            in_left_not_right.select().show(n=-1)
-        elif right_missing_approved:
-            logger.info(
-                "All samples found in the left HT, but not found in the right HT, are "
-                "in the approved missing list."
-            )
+    if sample_count_match:
+        if not compare_row_counts(left_ht, right_ht):
+            logger.warning("Sample counts in left and right tables do not match!")
 
-        in_right_not_left = right_ht.anti_join(left_ht)
-        if left_missing_approved:
-            in_right_not_left = in_right_not_left.filter(
-                hl.literal(set(left_missing_approved)).contains(in_right_not_left.s),
-                keep=False,
-            )
-        if in_right_not_left.count() != 0:
-            logger.warning(
-                f"The following {in_right_not_left.count()} samples are found in the"
-                " right HT, but are not found in left HT or in the approved"
-                " missing list:"
-            )
-            in_right_not_left.select().show(n=-1)
-        elif left_missing_approved:
-            logger.info(
-                "All samples found in the right HT, but not found in the left HT, are "
-                "in the approved missing list."
-            )
+            in_left_not_right = left_ht.anti_join(right_ht)
+            if right_missing_approved:
+                in_left_not_right = in_left_not_right.filter(
+                    hl.literal(set(right_missing_approved)).contains(
+                        in_left_not_right.s
+                    ),
+                    keep=False,
+                )
+            if in_left_not_right.count() != 0:
+                logger.warning(
+                    f"The following {in_left_not_right.count()} samples are found in "
+                    "the left HT, but are not found in the right HT or in the "
+                    "approved missing list:"
+                )
+                in_left_not_right.select().show(n=-1)
+            elif right_missing_approved:
+                logger.info(
+                    "All samples found in the left HT, but not found in the right HT, "
+                    "are in the approved missing list."
+                )
 
-    return right_ht[left_ht.key]
+            in_right_not_left = right_ht.anti_join(left_ht)
+            if left_missing_approved:
+                in_right_not_left = in_right_not_left.filter(
+                    hl.literal(set(left_missing_approved)).contains(
+                        in_right_not_left.s
+                    ),
+                    keep=False,
+                )
+            if in_right_not_left.count() != 0:
+                logger.warning(
+                    f"The following {in_right_not_left.count()} samples are found in "
+                    "the right HT, but are not found in left HT or in the approved "
+                    "missing list:"
+                )
+                in_right_not_left.select().show(n=-1)
+            elif left_missing_approved:
+                logger.info(
+                    "All samples found in the right HT, but not found in the left HT, "
+                    "are in the approved missing list."
+                )
+        else:
+            logger.info("Sample counts match.")
+    else:
+        logger.info("No sample count check requested.")
+
+    if ann_label is None:
+        if ann_expr is None:
+            ann_expr = right_ht[left_ht.key]
+        else:
+            ann_expr = ann_expr.annotate(**right_ht[left_ht.key])
+    else:
+        if ann_expr is None:
+            ann_expr = hl.struct()
+        ann_expr = ann_expr.annotate(**{ann_label: right_ht[left_ht.key]})
+
+    if global_expr is None:
+        global_expr = hl.struct()
+
+    if global_label is None:
+        global_expr = global_expr.annotate(**right_ht.index_globals())
+    else:
+        global_expr = global_expr.annotate(**{global_label: right_ht.index_globals()})
+
+    return ann_expr, global_expr
 
 
 def main(args):
     """Add description."""
     hl.init(log="/sample_metadata.log", default_reference="GRCh38")
-    logging_statement = "Reading in the {}.\n\n"
 
     # Get list of UKB samples that should be removed.
     removed_ukb_samples = hl.import_table(
         all_ukb_samples_to_remove, no_header=True
     ).f0.collect()
-
     # Get list of hard filtered samples before sex imputation.
     hf_samples_no_sex = hard_filtered_samples_no_sex.ht().s.collect()
-
     # Get list of hard filtered samples with sex imputation.
     hf_samples = hard_filtered_samples.ht().s.collect()
-
     # Get list of v3 samples (expected in relatedness and pop).
     v3_samples = joint_qc_meta.ht().s.collect()
 
-    logger.info("Loading the VDS columns to begin creation of the meta HT.\n\n")
+    sample_qc_tables = {
+        # Note: 71 samples are found in the right HT, but are not found in left HT.
+        #  They overlap with the UKB withheld samples indicating they were not removed
+        #  when the metadata HT was created. Is this expected?
+        "project meta": {
+            "right_ht": project_meta.ht(),
+            "left_missing_approved": removed_ukb_samples,
+        },
+        # Note: the withdrawn UKB list was updated after the sample QC HT creation, so
+        #  the sample QC HT has 5 samples more in it than the final sample list.
+        "sample QC": {
+            "right_ht": get_sample_qc("bi_allelic").ht(),
+            "ann_label": "sample_qc",
+            "global_label": "sample_qc_parameters",
+            "left_missing_approved": removed_ukb_samples,
+        },
+        # TODO: Number of PCs will be 9 because that is what was used, should we modify to
+        #  have all 30 PCs, or add all 30 PCs to another annotation, or only keep the 9
+        #  since that is all that was used?
+        "platform assignment": {
+            "right_ht": platform.ht().drop("gq_thresholds"),
+            "ann_label": "platform_inference",
+            "global_label": "platform_inference_parameters",
+            "right_missing_approved": hf_samples_no_sex,
+        },
+        # TODO: Keep or drop is_female?
+        # TODO: Should it be a struct with raw and adj or id this OK?
+        #  chrx_frac_hom_alt: float64,
+        #  chrx_frac_hom_alt_adj: float64,
+        "sex imputation": {
+            "right_ht": reformat_sex_imputation_ht(),
+            "right_missing_approved": hf_samples_no_sex,
+        },
+        "hard_filter_metrics": {
+            "contamination approximation": {
+                "right_ht": contamination.ht(),
+                "global_label": "contamination_approximation_parameters",
+            },
+            "chr20 sample mean DP": {
+                "right_ht": sample_chr20_mean_dp.ht().drop("gq_thresholds"),
+                "global_label": "chr20_mean_dp_parameters",
+            },
+            # TODO: Should it be a struct with raw and adj or id this OK
+            #  sample_qc_mt_callrate: float64,
+            #  sample_qc_mt_callrate_adj: float64
+            "sample QC MT callrate": {
+                "right_ht": sample_qc_mt_callrate.ht(),
+                "global_label": "sample_qc_mt_callrate_parameters",
+            },
+        },
+        # TODO: How to handle PCs, different number in tables than used?
+        # TODO: How to specify pop PC table to use?
+        "population inference": {
+            # "right_ht": get_pop_ht().ht(),
+            "right_ht": hl.read_table(
+                "gs://gnomad/v4.0/sample_qc/joint/ancestry_inference/gnomad.joint.v4.0.hgdp_tgp_training.pop.rf_w_16pcs_0.75_pop_prob.ht"
+            ),
+            "ann_label": "population_inference",
+            "global_label": "population_inference_parameters",
+            "left_missing_approved": v3_samples,
+            "right_missing_approved": hf_samples,
+        },
+    }
+
+    logger.info("Loading the VDS columns to begin creation of the meta HT.")
     ht = get_gnomad_v4_vds(remove_hard_filtered_samples=False).variant_data.cols()
 
-    # Note: 71 samples are found in the right HT, but are not found in left HT. They
-    #  overlap with the UKB withheld samples indicating they were not removed when the
-    #  metadata HT was created. Is this expected?
-    logger.info(logging_statement.format("project meta HT"))
-    ann_expr = name_me(ht, project_meta.ht(), left_missing_approved=removed_ukb_samples)
-
-    # Note: the withdrawn UKB list was updated after the sample QC HT creation, so the
-    #  sample QC HT has 5 samples more in it than the final sample list.
-    logger.info(logging_statement.format("sample QC HT"))
-    ann_ht = get_sample_qc("bi_allelic").ht()
-    ann_expr = ann_expr.annotate(
-        sample_qc=name_me(ht, ann_ht, left_missing_approved=removed_ukb_samples)
-    )
-    global_expr = ann_ht.index_globals()
-
-    logger.info(logging_statement.format("contamination approximation HT"))
-    ann_ht = contamination.ht()
-    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
-    global_expr = global_expr.annotate(**ann_ht.index_globals())
-
-    logger.info(logging_statement.format("chr20 sample mean DP HT"))
-    ann_ht = sample_chr20_mean_dp.ht()
-    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
-
-    logger.info(logging_statement.format("sample QC MT callrate HT"))
-    ann_ht = sample_qc_mt_callrate.ht()
-    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
-    global_expr = global_expr.annotate(**ann_ht.index_globals())
-
-    logger.info(logging_statement.format("platform assignment HT"))
-    hard_filtered_samples_no_sex.ht().s.collect()
-    ann_ht = platform.ht()
-    ann_expr = ann_expr.annotate(
-        **name_me(ht, ann_ht, right_missing_approved=hf_samples_no_sex)
-    )
-    global_expr = global_expr.annotate(**ann_ht.index_globals())
-
-    logger.info(logging_statement.format("sex HT"))
-    ann_ht = reformat_sex_imputation_ht()
-    ann_expr = ann_expr.annotate(
-        **name_me(ht, ann_ht, right_missing_approved=hf_samples_no_sex)
-    )
-    global_expr = global_expr.annotate(**ann_ht.index_globals())
-
-    logger.info(logging_statement.format("hard filters HT"))
-    ann_ht = reformat_hard_filters_ht()
-    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht, sample_count_match=False))
-    global_expr = global_expr.annotate(**ann_ht.index_globals())
-
-    logger.info(logging_statement.format("population PCA HT"))
-    # ann_ht = get_pop_ht().ht()
-    ann_ht = hl.read_table(
-        "gs://gnomad/v4.0/sample_qc/joint/ancestry_inference/gnomad.joint.v4.0.hgdp_tgp_training.pop.rf_w_16pcs_0.75_pop_prob.ht"
-    )
-    ann_expr = ann_expr.annotate(
-        population_inference=name_me(
+    hard_filter_metrics_expr = None
+    hard_filter_global_expr = None
+    for logger_str, parameters in hard_filter_metric_tables.items():
+        hard_filter_metrics_expr, hard_filter_global_expr = name_me(
             ht,
-            ann_ht,
-            left_missing_approved=v3_samples,
-            right_missing_approved=hf_samples,
+            **parameters,
+            ann_expr=hard_filter_metrics_expr,
+            global_expr=hard_filter_global_expr,
+            logger_str=logger_str,
         )
-    )
-    global_expr = global_expr.annotate(
-        population_inference_pca_metrics=ann_ht.index_globals()
+
+    ann_expr = None
+    global_expr = None
+    for logger_str, parameters in sample_qc_tables.items():
+        for logger_str, parameters in sample_qc_tables.items():
+            ann_expr, global_expr = name_me(
+                ht,
+                **parameters,
+                ann_expr=ann_expr,
+                global_expr=global_expr,
+                logger_str=logger_str,
+            )
+
+    ann_expr = ann_expr.annotate(hard_filter_metrics=hard_filter_metrics_expr)
+    global_expr = global_expr.annotate(hard_filter_parameters=hard_filter_global_expr)
+
+    # TODO: rerun to get the callrate cutoff global annotation on the Table. Confirm
+    #  results are identical otherwise
+    sample_filters_expr, global_expr = name_me(
+        ht,
+        reformat_hard_filters_ht(),
+        logger_str="hard filters",
+        ann_expr=ann_expr,
+        global_expr=global_expr,
+        sample_count_match=False,
     )
 
+    # TODO: Add relationship expression code.
+    # TODO: Where to compute the release related samples to drop?
     # logger.info(logging_statement.format("PCA related samples to drop HT"))
-    # TODO: Start back up here
     # ann_ht = reformat_relatedness_ht(ht)
     # ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
     # global_expr = global_expr.annotate(**ann_ht.index_globals())
 
-    logger.info(logging_statement.format("outlier HT"))
-    ann_ht = reformat_outlier_filtering_ht()
-    ann_expr = ann_expr.annotate(**name_me(ht, ann_ht))
-    global_expr = global_expr.annotate(**ann_ht.index_globals())
+    sample_filters_expr, global_expr = name_me(
+        ht,
+        finalized_outlier_filtering().ht(),
+        logger_str="outlier detection",
+        ann_expr=sample_filters_expr,
+        global_expr=global_expr,
+        global_label="outlier_detection_parameters",
+        right_missing_approved=hf_samples,
+        left_missing_approved=removed_ukb_samples,
+    )
+    ann_expr = ann_expr.annotate(sample_filters=sample_filters_expr)
 
     ht = ht.annotate(**ann_expr)
-    ht = ht.annotate_gobals(**global_expr)
+    ht = ht.annotate_globals(**global_expr)
 
     logger.info("Annotating high_quality field")
     ht = ht.annotate(
         high_quality=~ht.sample_filters.hard_filtered
-        & (hl.len(ht.sample_filters.qc_metrics_filters) == 0)
+        & ~ht.sample_filters.outlier_filtered
     )
 
     logger.info("Annotating releasable field")
     ht = ht.annotate(
         release=ht.project_meta.releasable
         & ht.high_quality
-        & ~ht.sample_filters.release_related
+        # & ~ht.sample_filters.release_related
     )
 
-    ht = ht.checkpoint(
-        meta.path, overwrite=args.overwrite, _read_if_exists=not args.overwrite
-    )
+    # ht = ht.checkpoint(meta.path, overwrite=args.overwrite)
 
-    logger.info(f"Release sample counts:{ht.aggregate(hl.agg.count_where(ht.release))}")
+    # logger.info(f"Release sample counts:{ht.aggregate(hl.agg.count_where(ht.release))}")
     ht.describe()
-    ht.summarize()
-    logger.info(f"Final sample count: {ht.count()}")
+    # ht.summarize()
+    # logger.info(f"Final sample count: {ht.count()}")
 
-    return
-    # TODO: How to handle PCs, different number in tables than used?
     # TODO: Add more nearest neighbor info?
     # TODO: Add trio info?
     # TODO: joint that has v3 info?
-
 
 
 if __name__ == "__main__":
@@ -383,12 +430,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--overwrite",
         help="Overwrite all data from this subset (default: False)",
-        action="store_true",
-    )
-
-    parser.add_argument(
-        "--regressed_metrics_outlier",
-        help="Should metadata HT use regression outlier model.",
         action="store_true",
     )
 
