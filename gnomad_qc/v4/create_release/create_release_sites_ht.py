@@ -1,12 +1,15 @@
 # noqa: D100
+
 import argparse
 import logging
-import os
 from datetime import datetime
 from functools import reduce
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import POPS, POPS_STORED_AS_SUBPOPS, SUBSETS
+from gnomad.resources.grch38.gnomad import (
+    SUBSETS,  # TODO: Update gnomAD_methods to dict: key version, value subsets
+)
+from gnomad.resources.grch38.gnomad import POPS, POPS_STORED_AS_SUBPOPS  # SUBPOPS,
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
     lcr_intervals,
@@ -15,7 +18,7 @@ from gnomad.resources.grch38.reference_data import (
 from gnomad.resources.resource_utils import DataException
 from gnomad.utils.annotations import missing_callstats_expr, region_flag_expr
 from gnomad.utils.file_utils import file_exists
-from gnomad.utils.release import make_freq_index_dict
+from gnomad.utils.release import make_freq_index_dict  # TODO: Update to have subsets
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
 from gnomad.utils.vep import VEP_CSQ_HEADER
@@ -39,6 +42,20 @@ logging.basicConfig(
 logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
+# Remove InbreedingCoeff from allele-specific fields (processed separately
+# from other fields)
+AS_FIELDS.remove("InbreedingCoeff")
+AS_FIELDS.remove("AS_SOR")
+SITE_FIELDS.remove("SOR")
+
+# Add fine-resolution populations specific to 1KG/TGP and HGDP to gnomAD sub-populationss; used to create frequency index dictionary
+# SUBPOPS.extend(POPS_STORED_AS_SUBPOPS)
+# Add sub-populations to standard gnomAD pops; used to create frequency index dictionary
+# POPS.extend(SUBPOPS)
+# Add 'global' tag used to distinguish cohort-wide vs. subset annotations
+# in frequency index dictionary
+POPS.extend(["global"])
+
 VERSION = "4.0.0"  # passed arg
 OUTPUT_TEMPLATE = (
     "gs://gnomad-tmp/gnomad/v{version}/release/ht/release_sites_v{version}.ht"
@@ -59,47 +76,38 @@ Format:
 CONFIG = {
     "dbsnp": {
         "ht": dbsnp.ht(),
+        "path": dbsnp.path,
         "select": ["rsid"],
     },
     "filters": {
         "ht": final_filter().ht(),
-        "select": [
-            "filters",
-            "vqsr",
-            {
-                "allele_info": {
-                    "variant_type": "info.variant_type",
-                    "allele_type": "info.allele_type",
-                    "n_alt_alleles": "info.n_alt_alleles",
-                    "was_mixed": "info.was_mixed",
-                }
-            },
-        ],
-        "field_name": "Filters",
+        "path": final_filter().path,
+        "custom_select": "custom_filters_select",
     },
-    "in_silico": {
-        "ht": analyst_annotations.ht(),
-        "select": ["cadd", "revel", "splice_ai", "primate_ai"],
-    },
+    #    "in_silico": {
+    #        "ht": analyst_annotations["3.1.2"].ht(),
+    #        "select": ["cadd", "revel", "splice_ai", "primate_ai"],
+    #    },
     "info": {
         "ht": get_info().ht(),
-        "select": SITE_FIELDS + AS_FIELDS,
+        "path": get_info().path,
+        "select": {field: "info." + field for field in SITE_FIELDS + AS_FIELDS},
+        "field_name": "info",
     },
     "freq": {
-        "ht": get_freq().ht(),
-        "select": ["freq", "faf", "popmax"],
+        "ht": get_freq(het_nonref_patch=True).ht(),
+        "path": get_freq(het_nonref_patch=True).path,
+        "select": ["freq", "faf", "popmax", "qual_hists", "raw_qual_hists"],
     },
-    "vep": {
-        "ht": vep.ht(),
-        # TODO: custom select -- drop 100% missing? Module to do this after all
-        # annotations added
-        "select": ["vep"],
-    },
-    "gnomad_exomes": {
-        "path": "gs://gcp-public-data--gnomad/release/2.1.1/liftover_grch38/ht/exomes/gnomad.exomes.r2.1.1.sites.liftover_grch38.ht",
-        "custom_select": "custom_gnomad_select_v2",
-    },
+    #    "vep": {
+    #        "ht": vep.ht(),
+    # TODO: custom select -- drop 100% missing? Module to do this after all
+    # annotations added
+    #        "select": ["vep"],
+    #    },
 }
+
+VERSION = "testing"
 
 # Remove InbreedingCoeff from allele-specific fields (processed separately
 # from other fields)
@@ -113,36 +121,29 @@ POPS.extend(POPS_STORED_AS_SUBPOPS)
 POPS.extend(["global"])
 
 
-def custom_gnomad_select_v2(ht):
+def custom_filters_select(ht):
     """
-    Select for public gnomad v2 dataset (which we did not generate).
+    Select gnomad filter HT fields for release dataset.
 
-    Extract fields like 'AF', 'AN', and generates 'hemi'.
+    Extract fields like 'filters', 'vqsr', and generates 'alelle_info' struct.
     :param ht: hail table
     :return: select expression dict
     """
     selects = {}
-    global_idx = hl.eval(ht.globals.freq_index_dict["gnomad"])
-    selects["AF"] = ht.freq[global_idx].AF
-    selects["AN"] = ht.freq[global_idx].AN
-    selects["AC"] = ht.freq[global_idx].AC
-    selects["Hom"] = ht.freq[global_idx].homozygote_count
-
-    selects["AF_POPMAX_OR_GLOBAL"] = hl.or_else(
-        ht.popmax[ht.globals.popmax_index_dict["gnomad"]].AF, ht.freq[global_idx].AF
-    )
-    selects["FAF_AF"] = ht.faf[ht.globals.popmax_index_dict["gnomad"]].faf95
-    selects["Hemi"] = hl.if_else(
-        ht.locus.in_autosome_or_par(),
-        0,
-        ht.freq[ht.globals.freq_index_dict["gnomad_male"]].AC,
+    selects["filters"] = ht.filters
+    selects["vqsr"] = ht.vqsr
+    selects["allele_info"] = hl.struct(
+        variant_type=ht.variant_type,
+        allele_type=ht.allele_type,
+        n_alt_alleles=ht.n_alt_alleles,
+        was_mixed=ht.was_mixed,
     )
     return selects
 
 
 def get_select_fields(selects, base_ht):
     """
-    Take in a select config and base_ht and generatee a select dict from traversing the base_ht and extracting annotations.
+    Take in a select config and base_ht and generate a select dict from traversing the base_ht and extracting annotations.
 
     If '#' is included at the end of a select field, the appropriate biallelic position will be selected (e.g. 'x#' -> x[base_ht.a_index-1].
     :param selects: mapping or list of selections
@@ -177,7 +178,8 @@ def get_ht(dataset, _intervals, test):
 
     if test:
         base_ht = hl.filter_intervals(
-            base_ht, [hl.parse_locus_interval("chr1:1-1000000")]
+            base_ht,
+            [hl.parse_locus_interval("chr1:1-1000000", reference_genome="GRCh38")],
         )
 
     if config.get("filter"):
@@ -189,14 +191,25 @@ def get_ht(dataset, _intervals, test):
         custom_select_fn_str = config["custom_select"]
         select_fields = {**select_fields, **globals()[custom_select_fn_str](base_ht)}
 
-    field_name = config.get("field_name") or dataset
-    select_query = {field_name: hl.struct(**select_fields)}
+    if config.get("field_name"):
+        field_name = config.get("field_name")
+        select_query = {field_name: hl.struct(**select_fields)}
+    else:
+        select_query = select_fields
 
     logger.info("%s", select_fields)
+    logger.info("%s", dataset)
     return base_ht.select(**select_query).distinct()
 
 
-def join_hts(base_dataset, datasets, new_partition_percent, test, coverage_datasets=[]):
+def join_hts(
+    base_dataset,
+    datasets,
+    new_partition_percent,
+    test,
+    version=VERSION,
+    coverage_datasets=[],
+):
     """Get a list of hail tables and combine into an outer join."""
     logger.info(
         "Reading in %s to determine partition intervals for efficient join",
@@ -204,7 +217,10 @@ def join_hts(base_dataset, datasets, new_partition_percent, test, coverage_datas
     )
     base_ht_path = CONFIG[base_dataset]["path"]
     base_ht = hl.read_table(base_ht_path)
-    partition_intervals = base_ht.calculate_new_partitions(
+    base_ht = hl.filter_intervals(
+        base_ht, [hl.parse_locus_interval("chr1:1-1000000", reference_genome="GRCh38")]
+    )
+    partition_intervals = base_ht._calculate_new_partitions(
         base_ht.n_partitions() * new_partition_percent
     )
 
@@ -212,7 +228,7 @@ def join_hts(base_dataset, datasets, new_partition_percent, test, coverage_datas
         get_ht(dataset, _intervals=partition_intervals, test=test)
         for dataset in datasets
     ]
-    joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "outer")), hts)
+    joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
     # Annotate coverages.
     for coverage_dataset in coverage_datasets:
@@ -223,10 +239,10 @@ def join_hts(base_dataset, datasets, new_partition_percent, test, coverage_datas
         k: v["path"] for k, v in CONFIG.items() if k in datasets + coverage_datasets
     }
     # Add metadata, but also removes previous globals.
-    joined_ht = joined_ht.select_globals(
+    joined_ht = joined_ht.annotate_globals(
         date=datetime.now().isoformat(),
         datasets=hl.dict(included_dataset),
-        version=VERSION,
+        version=version,
     )
     joined_ht.describe()
     return joined_ht
@@ -248,18 +264,20 @@ def main(args):
             "in_silico",
             "vep",
         ],
-        ["gnomad_genome_coverage", "gnomad_exome_coverage"],
         args.version,
         args.new_partition_percent,
         args.test,
+        ["gnomad_genome_coverage", "gnomad_exome_coverage"],
     )
+
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters))
 
     output_path = os.path.join(OUTPUT_TEMPLATE.format(version=VERSION))
     logger.info("Writing out release HT to %s", output_path)
     ht = ht.checkpoint(
-        qc_temp_prefix() + "release/gnomad.genomes.sites.test.ht"
+        # qc_temp_prefix() + /release/gnomad.genomes.sites.test.ht"
+        "gs://gnomad-tmp-4day/mwilson/release/gnomad.genomes.sites.test.ht"
         if args.test
         else release_sites().path,
         args.overwrite,
