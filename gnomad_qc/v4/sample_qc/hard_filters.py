@@ -125,6 +125,12 @@ def compute_hard_filters(
                 chr_20_dp_threshold=min_cov
             )
         )
+    if min_qc_mt_adj_callrate is not None:
+        ht = ht.annotate_globals(
+            hard_filter_cutoffs=ht.hard_filter_cutoffs.annotate(
+                min_qc_mt_adj_callrate=min_qc_mt_adj_callrate
+            )
+        )
 
     hard_filters = dict()
     sample_qc_metric_hard_filters = dict()
@@ -350,11 +356,19 @@ def main(args):
                 )
             )
             num_variants = mt.count_rows()
-            mt.annotate_cols(
-                callrate=hl.agg.count_where(hl.is_defined(mt.GT)) / num_variants,
-                callrate_adj=hl.agg.count_where(hl.is_defined(mt.GT) & mt.adj)
+            ht = mt.annotate_cols(
+                sample_qc_mt_callrate=hl.agg.count_where(hl.is_defined(mt.GT))
                 / num_variants,
-            ).cols().write(
+                sample_qc_mt_callrate_adj=hl.agg.count_where(
+                    hl.is_defined(mt.GT) & mt.adj
+                )
+                / num_variants,
+            ).cols()
+            ht = ht.annotate_globals(
+                min_af=args.qc_mt_callrate_min_af,
+                min_site_callrate=args.qc_mt_callrate_min_site_callrate,
+            )
+            ht.write(
                 get_checkpoint_path("test_gnomad.exomes.qc_mt_callrate")
                 if test
                 else sample_qc_mt_callrate.path,
