@@ -208,7 +208,6 @@ def join_hts(
     new_partition_percent,
     test,
     version=VERSION,
-    coverage_datasets=[],
 ):
     """Get a list of hail tables and combine into an outer join."""
     logger.info(
@@ -230,14 +229,8 @@ def join_hts(
     ]
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
-    # Annotate coverages.
-    for coverage_dataset in coverage_datasets:
-        joined_ht = annotate_coverages(joined_ht, coverage_dataset)
-
     # Track the dataset we've added as well as the source path.
-    included_dataset = {
-        k: v["path"] for k, v in CONFIG.items() if k in datasets + coverage_datasets
-    }
+    included_dataset = {k: v["path"] for k, v in CONFIG.items() if k in datasets}
     # Add metadata, but also removes previous globals.
     joined_ht = joined_ht.annotate_globals(
         date=datetime.now().isoformat(),
@@ -267,7 +260,6 @@ def main(args):
         args.version,
         args.new_partition_percent,
         args.test,
-        ["gnomad_genome_coverage", "gnomad_exome_coverage"],
     )
 
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
