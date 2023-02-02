@@ -338,11 +338,7 @@ def main(args):
     # Checkpoint to a temp location to prevent class too large error.
     ht = ht.checkpoint(new_temp_file("sample_qc_meta", extension="ht"), overwrite=True)
 
-    # ann_ht = get_pop_ht(only_train_on_hgdp_tgp=args.use_pop_only_train_on_hgdp_tgp).ht()
-    ann_ht = hl.read_table(
-        "gs://gnomad/v4.0/sample_qc/joint/ancestry_inference/gnomad.joint.v4.0"
-        ".hgdp_tgp_training.pop.rf_w_16pcs_0.75_pop_prob.ht"
-    )
+    ann_ht = get_pop_ht(only_train_on_hgdp_tgp=args.use_pop_only_train_on_hgdp_tgp).ht()
     ht = add_annotations(
         ht, ann_ht, "population inference", ht_missing=v3_s, ann_ht_missing=hf_s
     )
