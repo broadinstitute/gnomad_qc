@@ -178,7 +178,7 @@ def annotate_relatedness(ht, method: str = "cuking") -> hl.Table:
     }
     rel_set_expr_dict = {
         "release": hl.is_defined(release_related_samples_to_drop.ht()[ht.key]),
-        "all_samples": hl.is_defined(pca_related_samples_to_drop.ht()[ht.key]),
+        "all_samples": hl.is_defined(pca_related_samples_to_drop().ht()[ht.key]),
     }
     ht = ht.annotate(
         **{
