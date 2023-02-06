@@ -144,6 +144,9 @@ def custom_filters_select(ht):
         n_alt_alleles=ht.n_alt_alleles,
         was_mixed=ht.was_mixed,
     )
+    selects["info"] = hl.struct(
+        singleton=ht.singleton,
+    )
     return selects
 
 
@@ -171,9 +174,21 @@ def custom_info_select(ht):
     :return: select expression dict
     """
     selects = {}
-    selects["info"] = hl.struct(
-        **{field: ht.info[field] for field in SITE_FIELDS + AS_FIELDS}
-    )
+
+    filters = final_filter().ht()[ht.key]
+    filters_info_fields = [
+        "singleton",
+        "transmitted_singleton",
+        "omni",
+        "mills",
+        "monoallelic",
+    ]
+    filters_info_dict = {field: filters[field] for field in filters_info_fields}
+
+    info_dict = {field: ht.info[field] for field in SITE_FIELDS + AS_FIELDS}
+    info_dict.update(filters_info_dict)
+
+    selects["info"] = hl.struct(**info_dict)
     selects["was_split"] = ht.was_split
     selects["a_index"] = ht.a_index
     return selects
@@ -272,11 +287,13 @@ def join_hts(base_dataset, datasets, new_partition_percent, test, version=VERSIO
 
     # Track the dataset we've added as well as the source path.
     included_dataset = {k: v["path"] for k, v in CONFIG.items() if k in datasets}
-    # Add metadata, but also removes previous globals.
+    # Add metadata
     joined_ht = joined_ht.annotate_globals(
         date=datetime.now().isoformat(),
         datasets=hl.dict(included_dataset),
         version=version,
+        # TODO: README=field definitions
+        # TODO: tool versions= dict of tool versions (spliceAI,CADD, REVEL)
     )
     joined_ht.describe()
     return joined_ht
