@@ -92,8 +92,7 @@ CONFIG = {
     "info": {
         "ht": get_info().ht(),
         "path": get_info().path,
-        "select": {field: "info." + field for field in SITE_FIELDS + AS_FIELDS},
-        "field_name": "info",
+        "custom_select": "custom_info_select",
     },
     "freq": {
         "ht": get_freq(het_nonref_patch=True).ht(),
@@ -164,6 +163,22 @@ def custom_subset_select(ht):
     return selects
 
 
+def custom_info_select(ht):
+    """
+    Select fields from info hail Table for release.
+
+    :param ht: hail table
+    :return: select expression dict
+    """
+    selects = {}
+    selects["info"] = hl.struct(
+        **{field: ht.info[field] for field in SITE_FIELDS + AS_FIELDS}
+    )
+    selects["was_split"] = ht.was_split
+    selects["a_index"] = ht.a_index
+    return selects
+
+
 def get_select_fields(selects, base_ht):
     """
     Take in a select config and base_ht and generate a select dict from traversing the base_ht and extracting annotations.
@@ -186,8 +201,15 @@ def get_select_fields(selects, base_ht):
     return select_fields
 
 
-def get_ht(dataset, _intervals, test):
-    """Return the appropriate deduped hail table with selects applied."""
+def get_ht(dataset, _intervals, test) -> hl.Table:
+    """
+    Return the appropriate hail table with selects applied.
+
+    :param dataset: Hail Table to join.
+    :param _intervals: Intervals for reading in hail Table.
+    :param test: Whether call is for a test run.
+    :return: Hail Table with fields to select.
+    """
     config = CONFIG[dataset]
     ht_path = config["path"]
     logger.info("Reading in %s", dataset)
@@ -216,17 +238,19 @@ def get_ht(dataset, _intervals, test):
 
     logger.info("%s", select_fields)
     logger.info("%s", dataset)
-    return base_ht.select(**select_query).distinct()
+    return base_ht.select(**select_query)
 
 
-def join_hts(
-    base_dataset,
-    datasets,
-    new_partition_percent,
-    test,
-    version=VERSION,
-):
-    """Get a list of hail tables and combine into an outer join."""
+def join_hts(base_dataset, datasets, new_partition_percent, test, version=VERSION):
+    """
+    Outer join a list of hail tables.
+
+    :param base_dataset: Dataset to use for interval partitioning.
+    :param datasets: List of datasets to join.
+    :param new_partition_percent: Percent of base_dataset partitions used for final release hail Table.
+    :param test: Whether this is for a test run.
+    :param version: Version of release.
+    """
     logger.info(
         "Reading in %s to determine partition intervals for efficient join",
         base_dataset,
@@ -262,7 +286,7 @@ def main(args):
     """Create release ht."""
     hl.init(
         log="/create_release_ht.log",
-        tmp_dir="gs://gnomad-tmp",
+        tmp_dir="gs://gnomad-tmp-4day",
         default_reference="GRCh38",
     )
     ht = join_hts(
@@ -271,9 +295,9 @@ def main(args):
             "final_filters",
             "freq",
             "info",
-            "in_silico",
+            # "in_silico",
             "subsets",
-            "vep",
+            # "vep",
         ],
         args.version,
         args.new_partition_percent,
