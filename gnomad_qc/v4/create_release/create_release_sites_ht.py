@@ -58,8 +58,9 @@ POPS.extend(["global"])
 
 VERSION = "4.0.0"  # passed arg
 OUTPUT_TEMPLATE = (
-    "gs://gnomad-tmp/gnomad/v{version}/release/ht/release_sites_v{version}.ht"
+    f"gs://gnomad-tmp/gnomad/v{version}/release/ht/release_sites_v{version}.ht"
 )
+
 
 """
 Configurations of dataset to combine.
@@ -84,10 +85,10 @@ CONFIG = {
         "path": final_filter().path,
         "custom_select": "custom_filters_select",
     },
-    #    "in_silico": {
-    #        "ht": analyst_annotations["3.1.2"].ht(),
-    #        "select": ["cadd", "revel", "splice_ai", "primate_ai"],
-    #    },
+    #   "in_silico": {
+    #       "ht": analyst_annotations.ht(),
+    #       "select": ["cadd", "revel", "splice_ai", "primate_ai"],
+    #   },
     "info": {
         "ht": get_info().ht(),
         "path": get_info().path,
@@ -99,10 +100,16 @@ CONFIG = {
         "path": get_freq(het_nonref_patch=True).path,
         "select": ["freq", "faf", "popmax", "qual_hists", "raw_qual_hists"],
     },
+    "subsets": {
+        "ht": get_freq(het_nonref_patch=True).ht(),
+        "path": get_freq(het_nonref_patch=True).path,
+        "custom_select": "custom_subset_select",
+        "field_name": "subsets",
+    },
     #    "vep": {
     #        "ht": vep.ht(),
     # TODO: custom select -- drop 100% missing? Module to do this after all
-    # annotations added
+    # annotations added?
     #        "select": ["vep"],
     #    },
 }
@@ -141,11 +148,26 @@ def custom_filters_select(ht):
     return selects
 
 
+def custom_subset_select(ht):
+    """
+    Select release subset field using freq HT AN value.
+
+    :param ht: hail table
+    :return: select expression dict
+    """
+    selects = {
+        subset: hl.if_else(
+            ht.freq[ht.freq_index_dict[f"{subset}-adj"]].AN > 0, True, False
+        )
+        for subset in SUBSETS
+    }
+    return selects
+
+
 def get_select_fields(selects, base_ht):
     """
     Take in a select config and base_ht and generate a select dict from traversing the base_ht and extracting annotations.
 
-    If '#' is included at the end of a select field, the appropriate biallelic position will be selected (e.g. 'x#' -> x[base_ht.a_index-1].
     :param selects: mapping or list of selections
     :param base_ht: base_ht to traverse
     :return: select mapping from annotation name to base_ht annotation
@@ -159,12 +181,7 @@ def get_select_fields(selects, base_ht):
                 # Grab the field and continually select it from the hail table.
                 ht = base_ht
                 for attr in val.split("."):
-                    # Select from multi-allelic list.
-                    if attr.endswith("#"):
-                        attr = attr[:-1]
-                        ht = ht[attr][base_ht.a_index - 1]
-                    else:
-                        ht = ht[attr]
+                    ht = ht[attr]
                 select_fields[key] = ht
     return select_fields
 
@@ -255,6 +272,7 @@ def main(args):
             "freq",
             "info",
             "in_silico",
+            "subsets",
             "vep",
         ],
         args.version,
@@ -265,7 +283,7 @@ def main(args):
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters))
 
-    output_path = os.path.join(OUTPUT_TEMPLATE.format(version=VERSION))
+    output_path = OUTPUT_TEMPLATE
     logger.info("Writing out release HT to %s", output_path)
     ht = ht.checkpoint(
         # qc_temp_prefix() + /release/gnomad.genomes.sites.test.ht"
