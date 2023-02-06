@@ -45,16 +45,6 @@ logger.setLevel(logging.INFO)
 # Remove InbreedingCoeff from allele-specific fields (processed separately
 # from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
-AS_FIELDS.remove("AS_SOR")
-SITE_FIELDS.remove("SOR")
-
-# Add fine-resolution populations specific to 1KG/TGP and HGDP to gnomAD sub-populationss; used to create frequency index dictionary
-# SUBPOPS.extend(POPS_STORED_AS_SUBPOPS)
-# Add sub-populations to standard gnomAD pops; used to create frequency index dictionary
-# POPS.extend(SUBPOPS)
-# Add 'global' tag used to distinguish cohort-wide vs. subset annotations
-# in frequency index dictionary
-POPS.extend(["global"])
 
 VERSION = "4.0.0"  # passed arg
 OUTPUT_TEMPLATE = (
@@ -144,9 +134,6 @@ def custom_filters_select(ht):
         n_alt_alleles=ht.n_alt_alleles,
         was_mixed=ht.was_mixed,
     )
-    selects["info"] = hl.struct(
-        singleton=ht.singleton,
-    )
     return selects
 
 
@@ -168,7 +155,7 @@ def custom_subset_select(ht):
 
 def custom_info_select(ht):
     """
-    Select fields from info hail Table for release.
+    Select fields for info hail Table annotation in release.
 
     :param ht: hail table
     :return: select expression dict
@@ -182,6 +169,8 @@ def custom_info_select(ht):
         "omni",
         "mills",
         "monoallelic",
+        "AS_VQSLOD",
+        "SOR",
     ]
     filters_info_dict = {field: filters[field] for field in filters_info_fields}
 
@@ -196,7 +185,7 @@ def custom_info_select(ht):
 
 def get_select_fields(selects, base_ht):
     """
-    Take in a select config and base_ht and generate a select dict from traversing the base_ht and extracting annotations.
+    Generate a select dict from traversing the base_ht and extracting annotations.
 
     :param selects: mapping or list of selections
     :param base_ht: base_ht to traverse
