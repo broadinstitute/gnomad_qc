@@ -292,7 +292,6 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
 
     if "custom_select" in config:
         custom_select_fn = config["custom_select"]
-        # TODO: Look into calling value instead of manipulating string
         select_fields = {**select_fields, **custom_select_fn(base_ht)}
 
     if config.get("field_name"):
@@ -338,13 +337,11 @@ def join_hts(base_table, tables, new_partition_percent, test, version=VERSION):
     # Track the dataset we've added as well as the source path.
     included_dataset = {k: v["path"] for k, v in CONFIG.items() if k in tables}
 
-    # TODO: Update how globals are annotated so each source only passes desired globals
     joined_ht = joined_ht.annotate_globals(
         date=datetime.now().isoformat(),
         datasets=hl.dict(included_dataset),
         version=version,
         # TODO: README=field definitions
-        # TODO: tool versions= dict of tool versions (spliceAI,CADD, REVEL)
     )
     joined_ht.describe()
     return joined_ht
