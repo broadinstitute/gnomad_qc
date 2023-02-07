@@ -9,7 +9,6 @@ import hail as hl
 from gnomad.resources.grch38.gnomad import (
     SUBSETS,  # TODO: Update gnomAD_methods to dict: key version, value subsets
 )
-from gnomad.resources.grch38.gnomad import POPS, POPS_STORED_AS_SUBPOPS  # SUBPOPS,
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
     lcr_intervals,
@@ -18,7 +17,7 @@ from gnomad.resources.grch38.reference_data import (
 from gnomad.resources.resource_utils import DataException
 from gnomad.utils.annotations import missing_callstats_expr, region_flag_expr
 from gnomad.utils.file_utils import file_exists
-from gnomad.utils.release import make_freq_index_dict  # TODO: Update to have subsets
+from gnomad.utils.release import make_freq_index_dict
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
 from gnomad.utils.vep import VEP_CSQ_HEADER
@@ -50,6 +49,14 @@ VERSION = "4.0.0"  # passed arg
 OUTPUT_TEMPLATE = (
     f"gs://gnomad-tmp/gnomad/v{version}/release/ht/release_sites_v{version}.ht"
 )
+TABLES_FOR_RELEASE = [
+    "dbsnp",
+    "final_filters",
+    "freq",
+    "info",
+    "subsets",
+    "region_flags",
+]  # "in_silico", "vep",]
 
 
 """
@@ -101,6 +108,11 @@ CONFIG = {
     # annotations added?
     #        "select": ["vep"],
     #    },
+    "region_flags": {
+        "ht": get_freq(het_nonref_patch=True).ht(),
+        "path": get_freq(het_nonref_patch=True).path,
+        "custom_select": "custom_region_flags_select",
+    },
 }
 
 VERSION = "testing"
@@ -109,12 +121,23 @@ VERSION = "testing"
 # from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
 
-# Add fine-resolution populations specific to 1KG/TGP and HGDP to standard
-# gnomAD pops; used to create frequency index dictionary
-POPS.extend(POPS_STORED_AS_SUBPOPS)
-# Add 'global' tag used to distinguish cohort-wide vs. subset annotations
-# in frequency index dictionary
-POPS.extend(["global"])
+
+def custom_region_flags_select(ht):
+    """
+    Select region flags for release.
+
+    :param ht: hail Table.
+    :return: select expression dict
+    """
+    selects = {}
+    selects = {
+        "region_flags": region_flag_expr(
+            ht,
+            non_par=False,  # TODO: Konrad initially said to remove nonpar flag from HT because it's an easy hail operation, do we still want this?
+            prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
+        )
+    }
+    return selects
 
 
 def custom_filters_select(ht):
@@ -122,8 +145,8 @@ def custom_filters_select(ht):
     Select gnomad filter HT fields for release dataset.
 
     Extract fields like 'filters', 'vqsr', and generates 'alelle_info' struct.
-    :param ht: hail table
-    :return: select expression dict
+    :param ht: hail table.
+    :return: select expression dict.
     """
     selects = {}
     selects["filters"] = ht.filters
@@ -162,17 +185,19 @@ def custom_info_select(ht):
     """
     selects = {}
 
-    filters = final_filter().ht()[ht.key]
+    filters_ht = final_filter().ht()
+    filters = filters_ht[ht.key]
     filters_info_fields = [
         "singleton",
         "transmitted_singleton",
         "omni",
         "mills",
         "monoallelic",
-        "AS_VQSLOD",
         "SOR",
     ]
     filters_info_dict = {field: filters[field] for field in filters_info_fields}
+    score_name = hl.eval(filters_ht.filtering_model.score_name)
+    filters_info_dict.update({**{f"{score_name}": filters[f"{score_name}"]}})
 
     info_dict = {field: ht.info[field] for field in SITE_FIELDS + AS_FIELDS}
     info_dict.update(filters_info_dict)
@@ -180,6 +205,7 @@ def custom_info_select(ht):
     selects["info"] = hl.struct(**info_dict)
     selects["was_split"] = ht.was_split
     selects["a_index"] = ht.a_index
+    # TODO: InbreedingCoeff
     return selects
 
 
@@ -240,42 +266,41 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
     else:
         select_query = select_fields
 
-    logger.info("%s", select_fields)
-    logger.info("%s", dataset)
+    logger.info("%s", dataset)  # TODO: Remove after testing
+    logger.info("%s", select_fields)  # TODO: Remove after testing
     return base_ht.select(**select_query)
 
 
-def join_hts(base_dataset, datasets, new_partition_percent, test, version=VERSION):
+def join_hts(base_table, tables, new_partition_percent, test, version=VERSION):
     """
     Outer join a list of hail tables.
 
-    :param base_dataset: Dataset to use for interval partitioning.
-    :param datasets: List of datasets to join.
-    :param new_partition_percent: Percent of base_dataset partitions used for final release hail Table.
+    :param base_table: Dataset to use for interval partitioning.
+    :param tables: List of tables to join.
+    :param new_partition_percent: Percent of base_table partitions used for final release hail Table.
     :param test: Whether this is for a test run.
     :param version: Version of release.
     """
     logger.info(
         "Reading in %s to determine partition intervals for efficient join",
-        base_dataset,
+        base_table,
     )
-    base_ht_path = CONFIG[base_dataset]["path"]
+    base_ht_path = CONFIG[base_table]["path"]
     base_ht = hl.read_table(base_ht_path)
-    base_ht = hl.filter_intervals(
-        base_ht, [hl.parse_locus_interval("chr1:1-1000000", reference_genome="GRCh38")]
-    )
+    if test:
+        base_ht = hl.filter_intervals(
+            base_ht,
+            [hl.parse_locus_interval("chr1:1-1000000", reference_genome="GRCh38")],
+        )
     partition_intervals = base_ht._calculate_new_partitions(
         base_ht.n_partitions() * new_partition_percent
     )
 
-    hts = [
-        get_ht(dataset, _intervals=partition_intervals, test=test)
-        for dataset in datasets
-    ]
+    hts = [get_ht(table, _intervals=partition_intervals, test=test) for table in tables]
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
     # Track the dataset we've added as well as the source path.
-    included_dataset = {k: v["path"] for k, v in CONFIG.items() if k in datasets}
+    included_dataset = {k: v["path"] for k, v in CONFIG.items() if k in tables}
     # Add metadata
     joined_ht = joined_ht.annotate_globals(
         date=datetime.now().isoformat(),
@@ -296,15 +321,8 @@ def main(args):
         default_reference="GRCh38",
     )
     ht = join_hts(
-        [
-            "dbsnp",
-            "final_filters",
-            "freq",
-            "info",
-            # "in_silico",
-            "subsets",
-            # "vep",
-        ],
+        args.base_table,
+        args.tables_for_join,
         args.version,
         args.new_partition_percent,
         args.test,
@@ -346,6 +364,18 @@ if __name__ == "__main__":
         "--test",
         help="Runs a test on the first two partitions of the HT.",
         action="store_true",
+    )
+    parser.add_argument(
+        "-j",
+        "--tables-for-join",
+        help="Tables to join for release",
+        default=TABLES_FOR_RELEASE,
+    )
+    parser.add_argument(
+        "-b",
+        "--base-table",
+        help="Base table for interval partition calculation.",
+        default="freq",
     )
 
     args = parser.parse_args()
