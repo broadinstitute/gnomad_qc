@@ -65,10 +65,10 @@ Format:
 '<Name of dataset>': {
         'path': 'gs://path/to/hailtable.ht',
         'select': '<Optional list of fields to select or dict of new field name to location of old field
-            in the reference dataset. If '#' is at the end, we know to select the appropriate biallelic
-            using the a_index.>',
+            in the dataset.>',
         'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
         'custom_select': '<Optional function name of custom select function>',
+        'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>
     },
 """
 CONFIG = {
@@ -76,20 +76,31 @@ CONFIG = {
         "ht": dbsnp.ht(),
         "path": dbsnp.path,
         "select": ["rsid"],
+        "select_globals": {
+            "dbsnp_version": "version",
+        },  # TODO: confirm this exists
     },
     "filters": {
         "ht": final_filter().ht(),
         "path": final_filter().path,
         "custom_select": "custom_filters_select",
+        "select_globals": {
+            "filter_name": "score_name",
+        },
     },
     #   "in_silico": {
     #       "ht": analyst_annotations.ht(),
+    #       "path": analyst_annotations.path
     #       "select": ["cadd", "revel", "splice_ai", "primate_ai"],
+    #       "select_globals": ["cadd_version", "revel_version", },
     #   },
     "info": {
         "ht": get_info().ht(),
         "path": get_info().path,
         "custom_select": "custom_info_select",
+        "select_globals": [
+            "age_distribution",
+        ],
     },
     "freq": {
         "ht": get_freq(het_nonref_patch=True).ht(),
@@ -102,6 +113,12 @@ CONFIG = {
             "raw_qual_hists",
             "age_hist_het",
             "age_hist_hom",
+        ],
+        "select_globals": [
+            "freq_meta",
+            "freq_index_dict",
+            "faf_meta",
+            "faf_index_dict",
         ],
     },
     "subsets": {
@@ -119,7 +136,12 @@ CONFIG = {
     "region_flags": {
         "ht": get_freq(het_nonref_patch=True).ht(),
         "path": get_freq(het_nonref_patch=True).path,
-        "custom_select": "custom_region_flags_select",
+        "custom_select": custom_region_flags_select,
+    },
+    "release": {
+        "ht": release_sites().ht(),
+        "path": release_sites().path,
+        "select": "**",
     },
 }
 
@@ -141,7 +163,7 @@ def custom_region_flags_select(ht):
     selects = {
         "region_flags": region_flag_expr(
             ht,
-            non_par=False,  # TODO: Konrad initially said to remove nonpar flag from HT because it's an easy hail operation, do we still want this?
+            non_par=True,
             prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         )
     }
@@ -262,10 +284,18 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
     if config.get("filter"):
         base_ht = base_ht.filter(config["filter"](base_ht))
 
+    if config.get("select_globals"):
+        selected_global_fields = get_select_fields(
+            config.get("select_globals"), base_ht
+        )
+        base_ht = base_ht.select_globals(**selected_global_fields)
+
     # 'select' and 'custom_select's to generate dict.
     select_fields = get_select_fields(config.get("select"), base_ht)
+
     if "custom_select" in config:
         custom_select_fn_str = config["custom_select"]
+        # TODO: Look into calling value instead of manipulating string
         select_fields = {**select_fields, **globals()[custom_select_fn_str](base_ht)}
 
     if config.get("field_name"):
@@ -305,11 +335,13 @@ def join_hts(base_table, tables, new_partition_percent, test, version=VERSION):
     )
 
     hts = [get_ht(table, _intervals=partition_intervals, test=test) for table in tables]
+    # TODO: Would and intermediate chekcpoint be helpful here?
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
     # Track the dataset we've added as well as the source path.
     included_dataset = {k: v["path"] for k, v in CONFIG.items() if k in tables}
-    # Add metadata
+
+    # TODO: Update how globals are annotated so each source only passes desired globals
     joined_ht = joined_ht.annotate_globals(
         date=datetime.now().isoformat(),
         datasets=hl.dict(included_dataset),
