@@ -378,12 +378,15 @@ if __name__ == "__main__":
         "--tables-for-join",
         help="Tables to join for release",
         default=TABLES_FOR_RELEASE,
+        type=str,
+        nargs="+",
     )
     parser.add_argument(
         "-b",
         "--base-table",
         help="Base table for interval partition calculation.",
         default="freq",
+        choices=TABLES_FOR_RELEASE,
     )
 
     args = parser.parse_args()
