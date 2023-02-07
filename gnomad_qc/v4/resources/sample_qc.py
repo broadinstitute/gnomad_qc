@@ -243,7 +243,9 @@ ploidy = VersionedTableResource(
 
 
 # Sex imputation results.
-def get_ploidy_cutoff_json_path(version: str = CURRENT_VERSION, test: bool = False):
+def get_ploidy_cutoff_json_path(
+    version: str = CURRENT_VERSION, test: bool = False
+) -> str:
     """
     Get the sex karyotype ploidy cutoff JSON path for the indicated gnomAD version.
 
