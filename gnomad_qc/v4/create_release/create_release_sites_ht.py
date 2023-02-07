@@ -84,7 +84,7 @@ CONFIG = {
         "ht": final_filter().ht(),
         "path": final_filter().path,
         "select": ["filters", "vqsr"],
-        "custom_select": "custom_filters_select",
+        "custom_select": custom_filters_select,
         "select_globals": ["filtering_model"],
     },
     #   "in_silico": {
@@ -96,7 +96,7 @@ CONFIG = {
     "info": {
         "ht": get_info().ht(),
         "path": get_info().path,
-        "custom_select": "custom_info_select",
+        "custom_select": custom_info_select,
         "select_globals": [
             "age_distribution",
         ],
@@ -123,7 +123,7 @@ CONFIG = {
     "subsets": {
         "ht": get_freq(het_nonref_patch=True).ht(),
         "path": get_freq(het_nonref_patch=True).path,
-        "custom_select": "custom_subset_select",
+        "custom_select": custom_subset_select,
         "field_name": "subsets",
     },
     #    "vep": {
@@ -291,9 +291,9 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
     select_fields = get_select_fields(config.get("select"), base_ht)
 
     if "custom_select" in config:
-        custom_select_fn_str = config["custom_select"]
+        custom_select_fn = config["custom_select"]
         # TODO: Look into calling value instead of manipulating string
-        select_fields = {**select_fields, **globals()[custom_select_fn_str](base_ht)}
+        select_fields = {**select_fields, **custom_select_fn(base_ht)}
 
     if config.get("field_name"):
         field_name = config.get("field_name")
