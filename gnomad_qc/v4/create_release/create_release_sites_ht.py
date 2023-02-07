@@ -94,7 +94,15 @@ CONFIG = {
     "freq": {
         "ht": get_freq(het_nonref_patch=True).ht(),
         "path": get_freq(het_nonref_patch=True).path,
-        "select": ["freq", "faf", "popmax", "qual_hists", "raw_qual_hists"],
+        "select": [
+            "freq",
+            "faf",
+            "popmax",
+            "qual_hists",
+            "raw_qual_hists",
+            "age_hist_het",
+            "age_hist_hom",
+        ],
     },
     "subsets": {
         "ht": get_freq(het_nonref_patch=True).ht(),
