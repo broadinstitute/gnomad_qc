@@ -2,25 +2,30 @@
 import argparse
 import logging
 import textwrap
+from typing import Optional
 
 import hail as hl
 import networkx as nx
-from gnomad.sample_qc.relatedness import compute_related_samples_to_drop
+from gnomad.sample_qc.relatedness import (
+    compute_related_samples_to_drop,
+    get_slope_int_relationship_expr,
+)
 from gnomad.utils.slack import slack_notifications
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import check_resource_existence, get_logging_path
 from gnomad_qc.v4.resources.sample_qc import (
+    finalized_outlier_filtering,
     get_cuking_input_path,
     get_cuking_output_path,
     get_joint_qc,
     ibd,
     joint_qc_meta,
     pc_relate_pca_scores,
-    pca_related_samples_to_drop,
-    pca_samples_rankings,
+    related_samples_to_drop,
     relatedness,
+    sample_rankings,
 )
 from gnomad_qc.v4.sample_qc.cuKING.cuking_outputs_to_ht import cuking_outputs_to_ht
 from gnomad_qc.v4.sample_qc.cuKING.mt_to_cuking_inputs import mt_to_cuking_inputs
@@ -114,7 +119,7 @@ def compute_ibd_on_cuking_pair_subset(
     return full_ibd_ht.distinct()
 
 
-def compute_rank_ht(ht: hl.Table) -> hl.Table:
+def compute_rank_ht(ht: hl.Table, filter_ht: Optional[hl.Table] = None) -> hl.Table:
     """
     Add a rank to each sample for use when breaking maximal independent set ties.
 
@@ -130,15 +135,27 @@ def compute_rank_ht(ht: hl.Table) -> hl.Table:
         in_v3=hl.is_defined(ht.v3_meta),
         in_v3_release=hl.is_defined(ht.v3_meta) & ht.v3_meta.v3_release,
     )
-    ht = ht.order_by(
-        hl.desc(ht.in_v3_release),
-        hl.asc(ht.in_v3),
-        hl.desc(ht.releasable),
-        hl.desc(ht.chr20_mean_dp),
-    ).add_index(name="rank")
+    rank_order = []
+    ht_select = ["rank"]
+    if filter_ht is not None:
+        ht = ht.annotate(
+            filtered=hl.coalesce(filter_ht[ht.key].outlier_filtered, False)
+        )
+        rank_order = [ht.filtered]
+        ht_select.append("filtered")
+
+    rank_order.extend(
+        [
+            hl.desc(ht.in_v3_release),
+            hl.asc(ht.in_v3),
+            hl.desc(ht.releasable),
+            hl.desc(ht.chr20_mean_dp),
+        ]
+    )
+    ht = ht.order_by(*rank_order).add_index(name="rank")
     ht = ht.key_by(ht.s)
 
-    return ht.select(ht.rank)
+    return ht.select(*ht_select)
 
 
 def main(args):
@@ -146,16 +163,17 @@ def main(args):
     test = args.test
     overwrite = args.overwrite
     min_emission_kinship = args.min_emission_kinship
-    second_degree_kin_cutoff = args.second_degree_kin_cutoff
 
     joint_qc_mt = get_joint_qc(test=test)
     cuking_input_path = get_cuking_input_path(test=test)
     cuking_output_path = get_cuking_output_path(test=test)
-    cuking_relatedness_ht = relatedness(test=test)
+    cuking_relatedness_ht = relatedness("cuking", test=test)
     ibd_ht = ibd(test=test)
     pc_relate_relatedness_ht = relatedness("pc_relate", test=test)
-    pca_samples_rankings_ht = pca_samples_rankings(test=test)
-    pca_related_samples_to_drop_ht = pca_related_samples_to_drop(test=test)
+    release = args.release
+    sample_rankings_ht = sample_rankings(test=test, release=release)
+    related_samples_to_drop_ht = related_samples_to_drop(test=test, release=release)
+    final_relatedness_ht = relatedness(test=test)
 
     if args.print_cuking_command:
         check_resource_existence(
@@ -299,36 +317,99 @@ def main(args):
             ht = ht.repartition(args.relatedness_n_partitions)
             ht.write(pc_relate_relatedness_ht.path, overwrite=overwrite)
 
-        if args.compute_related_samples_to_drop:
-            rel_method = args.relatedness_method_for_samples_to_drop
+        if args.finalize_relatedness_ht:
+            rel_method = args.finalize_relatedness_method
+            second_degree_kin_cutoff = args.second_degree_kin_cutoff
+
             relatedness_ht = relatedness(rel_method, test=test)
 
-            # Compute_related_samples_to_drop uses a rank Table as a tiebreaker when
-            # pruning samples.
             check_resource_existence(
                 input_step_resources={
-                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt],
-                    "generate_qc_mt.py --generate-qc-meta": [joint_qc_meta],
                     f"--create-{rel_method.replace('_', '-')}-relatedness-table": [
                         relatedness_ht
                     ],
                 },
                 output_step_resources={
+                    "--finalize-relatedness-ht": [final_relatedness_ht]
+                },
+                overwrite=overwrite,
+            )
+            relatedness_ht = relatedness_ht.ht()
+            if rel_method == "pc-relate":
+                y_expr = relatedness_ht.ibd0
+                ibd1_expr = relatedness_ht.ibd1
+            else:
+                y_expr = relatedness_ht.ibs0 / relatedness_ht.ibs2
+                ibd1_expr = None
+            relatedness_ht = relatedness_ht.annotate(
+                relationship=get_slope_int_relationship_expr(
+                    kin_x_expr=relatedness_ht.kin,
+                    y_expr=y_expr,
+                    parent_child_max_ibd0=args.parent_child_max_ibd0,
+                    first_degree_lower_cutoff_slope=args.first_degree_lower_cutoff_slope,
+                    first_degree_lower_cutoff_intercept=args.first_degree_lower_cutoff_intercept,
+                    second_degree_upper_cutoff_slope=args.second_degree_upper_cutoff_slope,
+                    second_degree_upper_cutoff_intercept=args.second_degree_upper_cutoff_intercept,
+                    duplicate_twin_min_kin=args.duplicate_twin_min_kin,
+                    second_degree_min_kin=second_degree_kin_cutoff,
+                    ibd1_expr=ibd1_expr,
+                    dup_twin_ibd1_min=args.dup_twin_ibd1_min,
+                    dup_twin_ibd1_max=args.dup_twin_ibd1_max,
+                )
+            )
+            relatedness_ht = relatedness_ht.annotate_globals(
+                relationship_cutoffs=hl.struct(
+                    parent_child_max_ibd0=args.parent_child_max_ibd0,
+                    first_degree_lower_cutoff_slope=args.first_degree_lower_cutoff_slope,
+                    first_degree_lower_cutoff_intercept=args.first_degree_lower_cutoff_intercept,
+                    second_degree_upper_cutoff_slope=args.second_degree_upper_cutoff_slope,
+                    second_degree_upper_cutoff_intercept=args.second_degree_upper_cutoff_intercept,
+                    duplicate_twin_min_kin=args.duplicate_twin_min_kin,
+                    second_degree_kin_cutoff=second_degree_kin_cutoff,
+                    dup_twin_ibd1_min=args.dup_twin_ibd1_min,
+                    dup_twin_ibd1_max=args.dup_twin_ibd1_max,
+                )
+            )
+            relatedness_ht.write(final_relatedness_ht.path, overwrite=overwrite)
+
+        if args.compute_related_samples_to_drop:
+            input_step_resources = {
+                "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt],
+                "generate_qc_mt.py --generate-qc-meta": [joint_qc_meta],
+                "--finalize-relatedness-ht": [final_relatedness_ht],
+            }
+            if release:
+                filter_ht = finalized_outlier_filtering()
+                input_step_resources[
+                    "outlier_filtering.py --create-finalized-outlier-filter"
+                ] = [filter_ht]
+
+            # Compute_related_samples_to_drop uses a rank Table as a tiebreaker when
+            # pruning samples.
+            check_resource_existence(
+                input_step_resources=input_step_resources,
+                output_step_resources={
                     "--compute-related-samples-to-drop": [
-                        pca_samples_rankings_ht,
-                        pca_related_samples_to_drop_ht,
+                        sample_rankings_ht,
+                        related_samples_to_drop_ht,
                     ]
                 },
                 overwrite=overwrite,
             )
             joint_qc_meta_ht = joint_qc_meta.ht()
             rank_ht = compute_rank_ht(
-                joint_qc_meta_ht.semi_join(joint_qc_mt.mt().cols())
+                joint_qc_meta_ht.semi_join(joint_qc_mt.mt().cols()),
+                filter_ht=filter_ht.ht() if release else None,
             )
-            rank_ht = rank_ht.checkpoint(
-                pca_samples_rankings_ht.path, overwrite=overwrite
-            )
-            relatedness_ht = relatedness_ht.ht()
+            rank_ht = rank_ht.checkpoint(sample_rankings_ht.path, overwrite=overwrite)
+            filtered_samples = None
+            if release:
+                filtered_samples = rank_ht.aggregate(
+                    hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s)),
+                    _localize=False,
+                )
+            relatedness_ht = final_relatedness_ht.ht()
+            second_degree_kin_cutoff = hl.eval(relatedness_ht.second_degree_kin_cutoff)
             relatedness_ht = relatedness_ht.key_by(
                 i=relatedness_ht.i.s, j=relatedness_ht.j.s
             )
@@ -343,16 +424,17 @@ def main(args):
                 relatedness_ht,
                 rank_ht,
                 second_degree_kin_cutoff,
+                filtered_samples=filtered_samples,
                 keep_samples=v3_release_samples,
                 keep_samples_when_related=True,
             )
             samples_to_drop_ht = samples_to_drop_ht.annotate_globals(
                 keep_samples=v3_release_samples,
                 second_degree_kin_cutoff=second_degree_kin_cutoff,
-                relatedness_method=rel_method,
             )
+
             samples_to_drop_ht.write(
-                pca_related_samples_to_drop_ht.path, overwrite=overwrite
+                related_samples_to_drop_ht.path, overwrite=overwrite
             )
 
     finally:
@@ -508,27 +590,24 @@ if __name__ == "__main__":
         default=2048,
         type=int,
     )
-    related_samples_to_drop = pc_relate_args.add_argument_group(
-        "Compute related samples to drop",
-        "Arguments used to determine related samples that should be dropped from "
-        "the ancestry PCA.",
-    )
-    related_samples_to_drop.add_argument(
-        "--compute-related-samples-to-drop",
-        help="Determine the minimal set of related samples to prune for ancestry PCA.",
+
+    finalize = parser.add_argument_group("", "")
+    finalize.add_argument(
+        "--finalize-relatedness-ht",
+        help="",
         action="store_true",
     )
-    related_samples_to_drop.add_argument(
-        "--relatedness-method-for-samples-to-drop",
+    finalize.add_argument(
+        "--finalize-relatedness-method",
         help=(
-            "Which relatedness method to use when determining related samples to drop. "
-            "Options are 'cuking' and 'pc_relate'. Default is 'cuking'."
+            "Which relatedness method to use for finalized relatedness Table. Options "
+            "are 'cuking' and 'pc_relate'. Default is 'cuking'."
         ),
         default="cuking",
         type=str,
         choices=["cuking", "pc_relate"],
     )
-    related_samples_to_drop.add_argument(
+    finalize.add_argument(
         "--second-degree-kin-cutoff",
         help=(
             "Minimum kinship threshold for filtering a pair of samples with a second "
@@ -540,6 +619,71 @@ if __name__ == "__main__":
         default=0.08838835,
         type=float,
     )
+    finalize.add_argument(
+        "--parent-child-max-ibd0",
+        help="",
+        default=5.2e-5,
+        type=float,
+    )
+    finalize.add_argument(
+        "--first-degree-lower-cutoff-slope",
+        help="",
+        default=-1e-2,
+        type=float,
+    )
+    finalize.add_argument(
+        "--first-degree-lower-cutoff-intercept",
+        help="",
+        default=2.2e-3,
+        type=float,
+    )
+    finalize.add_argument(
+        "--second-degree-upper-cutoff-slope",
+        help="",
+        default=-1.9e-3,
+        type=float,
+    )
+    finalize.add_argument(
+        "--second-degree-upper-cutoff-intercept",
+        help="",
+        default=5.8e-4,
+        type=float,
+    )
+    finalize.add_argument(
+        "--duplicate-twin-min-kin",
+        help="",
+        default=0.42,
+        type=float,
+    )
+    finalize.add_argument(
+        "--dup-twin-ibd1-min",
+        help="",
+        default=-0.15,
+        type=float,
+    )
+    finalize.add_argument(
+        "--dup-twin-ibd1-max",
+        help="",
+        default=0.1,
+        type=float,
+    )
+
+    drop_related_samples = pc_relate_args.add_argument_group(
+        "Compute related samples to drop",
+        "Arguments used to determine related samples that should be dropped from "
+        "the ancestry PCA.",
+    )
+    drop_related_samples.add_argument(
+        "--compute-related-samples-to-drop",
+        help="Determine the minimal set of related samples to prune for ancestry PCA.",
+        action="store_true",
+    )
+    drop_related_samples.add_argument(
+        "--release",
+        help="",
+        action="store_true",
+    )
+
     parser.add_argument(
         "--slack-channel",
         help="Slack channel to post results and notifications to.",
@@ -553,6 +697,7 @@ if __name__ == "__main__":
         or args.run_ibd_on_cuking_pairs
         or args.run_pc_relate_pca
         or args.create_pc_relate_relatedness_table
+        or args.finalize_relatedness_ht
         or args.compute_related_samples_to_drop
     ):
         parser.error(
