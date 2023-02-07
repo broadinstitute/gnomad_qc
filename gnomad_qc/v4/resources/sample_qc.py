@@ -1,4 +1,6 @@
 """Script containing sample QC related resources."""
+from typing import Optional
+
 import hail as hl
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
@@ -414,23 +416,30 @@ pc_relate_pca_scores = VersionedTableResource(
 )
 
 
-def relatedness(method: str = "cuking", test: bool = False):
+def relatedness(
+    method: Optional[str] = None, test: bool = False
+) -> VersionedTableResource:
     """
     Get the VersionedTableResource for relatedness results.
 
-    :param method: Method of relatedness inference to return VersionedTableResource for.
-        One of 'cuking' or 'pc_relate'.
+    :param method: Optional method of relatedness inference to return
+        VersionedTableResource for. One of 'cuking' or 'pc_relate' if set. Default is
+        None, which will return the finalized relatedness Table.
     :param test: Whether to use a tmp path for a test resource.
     :return: VersionedTableResource.
     """
-    if method not in {"cuking", "pc_relate"}:
-        raise ValueError("method must be one of 'cuking' or 'pc_relate'!")
+    if method is None:
+        method = ""
+    else:
+        if method not in {"cuking", "pc_relate"}:
+            raise ValueError("method must be one of 'cuking' or 'pc_relate'!")
+        method = f".{method}"
 
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.relatedness.{method}.ht"
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.relatedness{method}.ht"
             )
             for version in VERSIONS
         },
