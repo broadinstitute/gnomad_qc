@@ -78,15 +78,14 @@ CONFIG = {
         "select": ["rsid"],
         "select_globals": {
             "dbsnp_version": "version",
-        },  # TODO: confirm this exists
+        },
     },
     "filters": {
         "ht": final_filter().ht(),
         "path": final_filter().path,
+        "select": ["filters", "vqsr"],
         "custom_select": "custom_filters_select",
-        "select_globals": {
-            "filter_name": "score_name",
-        },
+        "select_globals": ["filtering_model"],
     },
     #   "in_silico": {
     #       "ht": analyst_annotations.ht(),
@@ -179,8 +178,6 @@ def custom_filters_select(ht):
     :return: select expression dict.
     """
     selects = {}
-    selects["filters"] = ht.filters
-    selects["vqsr"] = ht.vqsr
     selects["allele_info"] = hl.struct(
         variant_type=ht.variant_type,
         allele_type=ht.allele_type,
