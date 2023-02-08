@@ -46,7 +46,7 @@ logger.setLevel(logging.INFO)
 # from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
 
-VERSION = "4.0.0"  # passed arg
+VERSION = "4.0.0"  # TODO: Import release from repo but overwrite in argparse if present
 
 TABLES_FOR_RELEASE = [
     "dbsnp",
@@ -83,7 +83,7 @@ CONFIG = {
         "path": final_filter().path,
         "select": ["filters", "vqsr"],
         "custom_select": custom_filters_select,
-        "select_globals": ["filtering_model"],
+        "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
     },
     #   "in_silico": {
     #       "ht": analyst_annotations.ht(),
@@ -140,8 +140,6 @@ CONFIG = {
         "select": "**",
     },
 }
-
-VERSION = "testing"
 
 # Remove InbreedingCoeff from allele-specific fields (processed separately
 # from other fields)
@@ -207,9 +205,10 @@ def custom_info_select(ht):
     :param ht: hail table
     :return: select expression dict
     """
-    selects = {}
+    freq_ht = CONFIG.get("freq")["ht"]
+    freq_info_dict = {"InbreedingCoeff": freq_ht[ht.key]["InbreedingCoeff"]}
 
-    filters_ht = final_filter().ht()
+    filters_ht = CONFIG.get("filters")["ht"]
     filters = filters_ht[ht.key]
     filters_info_fields = [
         "singleton",
@@ -225,10 +224,10 @@ def custom_info_select(ht):
 
     info_dict = {field: ht.info[field] for field in SITE_FIELDS + AS_FIELDS}
     info_dict.update(filters_info_dict)
+    info_dict.update(freq_info_dict)
 
-    selects["info"] = hl.struct(**info_dict)
+    selects = {"info": hl.struct(**info_dict)}
 
-    # TODO: InbreedingCoeff
     return selects
 
 
@@ -306,7 +305,6 @@ def join_hts(base_table, tables, new_partition_percent, test):
     :param tables: List of tables to join.
     :param new_partition_percent: Percent of base_table partitions used for final release hail Table.
     :param test: Whether this is for a test run.
-    :param version: Version of release.
     """
     logger.info(
         "Reading in %s to determine partition intervals for efficient join",
