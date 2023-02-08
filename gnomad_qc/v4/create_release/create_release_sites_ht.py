@@ -48,6 +48,8 @@ AS_FIELDS.remove("InbreedingCoeff")
 
 VERSION = "4.0.0"  # TODO: Import release from repo but overwrite in argparse if present
 
+FIELD_DESCRIPTIONS = {}
+
 TABLES_FOR_RELEASE = [
     "dbsnp",
     "final_filters",
@@ -201,6 +203,9 @@ def custom_subset_select(ht):
 def custom_info_select(ht):
     """
     Select fields for info hail Table annotation in release.
+
+    The info field requires fields from the freq HT and the filters HT
+    so those are pulled in here along with all info HT fields.
 
     :param ht: hail table
     :return: select expression dict
