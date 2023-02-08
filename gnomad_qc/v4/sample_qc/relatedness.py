@@ -417,7 +417,9 @@ def main(args):
                     _localize=False,
                 )
             relatedness_ht = final_relatedness_ht.ht()
-            second_degree_kin_cutoff = hl.eval(relatedness_ht.second_degree_kin_cutoff)
+            second_degree_kin_cutoff = hl.eval(
+                relatedness_ht.relationship_cutoffs.second_degree_min_kin
+            )
             relatedness_ht = relatedness_ht.key_by(
                 i=relatedness_ht.i.s, j=relatedness_ht.j.s
             )
