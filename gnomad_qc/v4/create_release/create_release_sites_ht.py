@@ -41,14 +41,13 @@ logging.basicConfig(
 logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
+
 # Remove InbreedingCoeff from allele-specific fields (processed separately
 # from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
 
 VERSION = "4.0.0"  # passed arg
-OUTPUT_TEMPLATE = (
-    f"gs://gnomad-tmp/gnomad/v{version}/release/ht/release_sites_v{version}.ht"
-)
+
 TABLES_FOR_RELEASE = [
     "dbsnp",
     "final_filters",
@@ -64,10 +63,9 @@ Configurations of dataset to combine.
 Format:
 '<Name of dataset>': {
         'path': 'gs://path/to/hailtable.ht',
-        'select': '<Optional list of fields to select or dict of new field name to location of old field
-            in the dataset.>',
+        'select': '<Optional list of fields to select or dict of new field name to location of old fieldin the dataset.>',
         'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
-        'custom_select': '<Optional function name of custom select function>',
+        'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
         'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>
     },
 """
@@ -96,10 +94,9 @@ CONFIG = {
     "info": {
         "ht": get_info().ht(),
         "path": get_info().path,
+        "select": ["was_split", "a_index"],
         "custom_select": custom_info_select,
-        "select_globals": [
-            "age_distribution",
-        ],
+        "select_globals": ["age_distribution", "age_info_dict", "age_meta"],
     },
     "freq": {
         "ht": get_freq(het_nonref_patch=True).ht(),
@@ -128,9 +125,9 @@ CONFIG = {
     },
     #    "vep": {
     #        "ht": vep.ht(),
-    # TODO: custom select -- drop 100% missing? Module to do this after all
-    # annotations added?
+    # TODO: drop 100% missing? Module to do this after all annotations added?
     #        "select": ["vep"],
+    # "select_globals": ["vep_version"],
     #    },
     "region_flags": {
         "ht": get_freq(het_nonref_patch=True).ht(),
@@ -230,8 +227,7 @@ def custom_info_select(ht):
     info_dict.update(filters_info_dict)
 
     selects["info"] = hl.struct(**info_dict)
-    selects["was_split"] = ht.was_split
-    selects["a_index"] = ht.a_index
+
     # TODO: InbreedingCoeff
     return selects
 
@@ -278,9 +274,6 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
             [hl.parse_locus_interval("chr1:1-1000000", reference_genome="GRCh38")],
         )
 
-    if config.get("filter"):
-        base_ht = base_ht.filter(config["filter"](base_ht))
-
     if config.get("select_globals"):
         selected_global_fields = get_select_fields(
             config.get("select_globals"), base_ht
@@ -305,7 +298,7 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
     return base_ht.select(**select_query)
 
 
-def join_hts(base_table, tables, new_partition_percent, test, version=VERSION):
+def join_hts(base_table, tables, new_partition_percent, test):
     """
     Outer join a list of hail tables.
 
@@ -340,8 +333,6 @@ def join_hts(base_table, tables, new_partition_percent, test, version=VERSION):
     joined_ht = joined_ht.annotate_globals(
         date=datetime.now().isoformat(),
         datasets=hl.dict(included_dataset),
-        version=version,
-        # TODO: README=field definitions
     )
     joined_ht.describe()
     return joined_ht
@@ -354,10 +345,10 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
         default_reference="GRCh38",
     )
+
     ht = join_hts(
         args.base_table,
         args.tables_for_join,
-        args.version,
         args.new_partition_percent,
         args.test,
     )
@@ -365,8 +356,15 @@ def main(args):
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters))
 
-    output_path = OUTPUT_TEMPLATE
-    logger.info("Writing out release HT to %s", output_path)
+    ht = ht.annotate_globals(
+        gnomad_qc_version=args.gnomad_qc_version,
+        # TODO: See if we can pull this from the cluster
+        gnomad_methods_version=args.gnomad_methods_version,
+        README=FIELD_DESCRIPTIONS,  # TODO: Make version dict for this?
+        version=args.version,
+    )
+
+    logger.info("Writing out release HT to %s", release_sites().path)
     ht = ht.checkpoint(
         # qc_temp_prefix() + /release/gnomad.genomes.sites.test.ht"
         "gs://gnomad-tmp-4day/mwilson/release/gnomad.genomes.sites.test.ht"
@@ -378,7 +376,6 @@ def main(args):
     logger.info("Final variant count: %d", ht.count())
     ht.describe()
     ht.show()
-    ht.write(output_path)
 
 
 if __name__ == "__main__":
@@ -413,6 +410,22 @@ if __name__ == "__main__":
         help="Base table for interval partition calculation.",
         default="freq",
         choices=TABLES_FOR_RELEASE,
+    )
+    parser.add_argument(
+        "-o",
+        "--overwrite",
+        help="Overwrite existing HT.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--gnomad-qc-version",
+        help="Version of gnomAD QC repo",
+        required=True,
+    )
+    parser.add_argument(
+        "--gnomad-methods-version",
+        help="Version of gnomAD methods repo",
+        required=True,
     )
 
     args = parser.parse_args()
