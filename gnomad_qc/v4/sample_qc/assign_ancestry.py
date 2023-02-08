@@ -27,7 +27,7 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("ancestry_assignment")
 logger.setLevel(logging.INFO)
 
-# Create dictionary with pontential pops to use for training (with v4 race/ethnicity as key and corresponding pop as value)
+# Create dictionary with potential pops to use for training (with v4 race/ethnicity as key and corresponding pop as value)
 v4_pop_spike_dict = {
     "Arab": "mid",
     "Bedouin": "mid",
@@ -35,7 +35,7 @@ v4_pop_spike_dict = {
     "Qatari": "mid",
 }
 
-# Create dictionary with pontential v3 pops to use for training
+# Create dictionary with potential v3 pops to use for training
 v3_pop_spike_dict = {
     "fin": "fin",
     "ami": "ami",
@@ -48,7 +48,7 @@ v3_pop_spike_dict = {
     "mid": "mid",
 }
 
-# Create dictionary with v3 pops as keys and approved cohorts to use for training for those pops as keys
+# Create dictionary with v3 pops as keys and approved cohorts to use for training for those pops as values
 v3_spike_projects = hl.literal(
     {
         "asj": ["Jewish_Genome_Project"],
@@ -245,7 +245,7 @@ def prep_ht_for_rf(
         # TODO: Add code to account for missing research project
         joint_qc_meta = joint_qc_meta.annotate(v3=v3_meta[joint_qc_meta.key])
 
-        # Filter to only pre-determined list of v3 cohorts for the v3 spike-ins.
+        # Filter to only pre-determined list of v3 cohorts for the v3 spike-ins
         joint_qc_meta = joint_qc_meta.filter(
             v3_spike_projects.contains(joint_qc_meta.v3_meta.v3_project_pop)
         )
