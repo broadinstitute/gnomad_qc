@@ -651,7 +651,7 @@ if __name__ == "__main__":
             "Slope of the line to use as a lower cutoff for second degree relatives "
             "and siblings from parent-child pairs."
         ),
-        default=-1e-2,
+        default=-1.9e-3,
         type=float,
     )
     finalize.add_argument(
@@ -660,7 +660,7 @@ if __name__ == "__main__":
             "Intercept of the line to use as a lower cutoff for second degree "
             "relatives and siblings from parent-child pairs."
         ),
-        default=2.2e-3,
+        default=5.8e-4,
         type=float,
     )
     finalize.add_argument(
@@ -669,7 +669,7 @@ if __name__ == "__main__":
             "Slope of the line to use as an upper cutoff for second degree relatives "
             "and a lower cutoff for siblings."
         ),
-        default=-1.9e-3,
+        default=-1e-2,
         type=float,
     )
     finalize.add_argument(
@@ -678,7 +678,7 @@ if __name__ == "__main__":
             "Intercept of the line to use as an upper cutoff for second degree "
             "relatives and a lower cutoff for siblings."
         ),
-        default=5.8e-4,
+        default=2.2e-3,
         type=float,
     )
     finalize.add_argument(
