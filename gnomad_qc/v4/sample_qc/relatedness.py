@@ -126,7 +126,12 @@ def compute_rank_ht(ht: hl.Table, filter_ht: Optional[hl.Table] = None) -> hl.Ta
     Favor v3 release samples, then v4 samples over v3 non-release samples, then
     higher chr20 mean DP.
 
+    If `filter_ht` is provided, rank based on filtering 'outlier_filtered' annotation
+    first.
+
     :param ht: Table to add rank to.
+    :param filter_ht: Optional Table with 'outlier_filtered' annotation to be used in
+        ranking.
     :return: Table containing sample ID and rank.
     """
     ht = ht.select(
@@ -334,41 +339,44 @@ def main(args):
                 },
                 overwrite=overwrite,
             )
+            relatedness_args = {
+                "parent_child_max_y": args.parent_child_max_ibd0_or_ibs0_over_ibs2,
+                "second_degree_sibling_lower_cutoff_slope": args.second_degree_sibling_lower_cutoff_slope,
+                "second_degree_sibling_lower_cutoff_intercept": args.second_degree_sibling_lower_cutoff_intercept,
+                "second_degree_upper_sibling_lower_cutoff_slope": args.second_degree_upper_sibling_lower_cutoff_slope,
+                "second_degree_upper_sibling_lower_cutoff_intercept": args.second_degree_upper_sibling_lower_cutoff_intercept,
+                "duplicate_twin_min_kin": args.duplicate_twin_min_kin,
+                "second_degree_min_kin": second_degree_kin_cutoff,
+            }
             relatedness_ht = relatedness_ht.ht()
             if rel_method == "pc-relate":
                 y_expr = relatedness_ht.ibd0
                 ibd1_expr = relatedness_ht.ibd1
+                parent_child_max_label = "parent_child_max_ibd0"
             else:
                 y_expr = relatedness_ht.ibs0 / relatedness_ht.ibs2
                 ibd1_expr = None
+                parent_child_max_label = "parent_child_max_ibs0_over_ibs2"
+                relatedness_args.update(
+                    {
+                        "duplicate_twin_ibd1_min": args.duplicate_twin_ibd1_min,
+                        "duplicate_twin_ibd1_max": args.duplicate_twin_ibd1_max,
+                    }
+                )
             relatedness_ht = relatedness_ht.annotate(
                 relationship=get_slope_int_relationship_expr(
-                    kin_x_expr=relatedness_ht.kin,
+                    kin_expr=relatedness_ht.kin,
                     y_expr=y_expr,
-                    parent_child_max_ibd0=args.parent_child_max_ibd0,
-                    first_degree_lower_cutoff_slope=args.first_degree_lower_cutoff_slope,
-                    first_degree_lower_cutoff_intercept=args.first_degree_lower_cutoff_intercept,
-                    second_degree_upper_cutoff_slope=args.second_degree_upper_cutoff_slope,
-                    second_degree_upper_cutoff_intercept=args.second_degree_upper_cutoff_intercept,
-                    duplicate_twin_min_kin=args.duplicate_twin_min_kin,
-                    second_degree_min_kin=second_degree_kin_cutoff,
+                    **relatedness_args,
                     ibd1_expr=ibd1_expr,
-                    dup_twin_ibd1_min=args.dup_twin_ibd1_min,
-                    dup_twin_ibd1_max=args.dup_twin_ibd1_max,
                 )
             )
+            relatedness_args[parent_child_max_label] = relatedness_args.pop(
+                "parent_child_max_y"
+            )
             relatedness_ht = relatedness_ht.annotate_globals(
-                relationship_cutoffs=hl.struct(
-                    parent_child_max_ibd0=args.parent_child_max_ibd0,
-                    first_degree_lower_cutoff_slope=args.first_degree_lower_cutoff_slope,
-                    first_degree_lower_cutoff_intercept=args.first_degree_lower_cutoff_intercept,
-                    second_degree_upper_cutoff_slope=args.second_degree_upper_cutoff_slope,
-                    second_degree_upper_cutoff_intercept=args.second_degree_upper_cutoff_intercept,
-                    duplicate_twin_min_kin=args.duplicate_twin_min_kin,
-                    second_degree_kin_cutoff=second_degree_kin_cutoff,
-                    dup_twin_ibd1_min=args.dup_twin_ibd1_min,
-                    dup_twin_ibd1_max=args.dup_twin_ibd1_max,
-                )
+                relationship_inference_method=rel_method,
+                relationship_cutoffs=hl.struct(**relatedness_args),
             )
             relatedness_ht.write(final_relatedness_ht.path, overwrite=overwrite)
 
@@ -591,7 +599,13 @@ if __name__ == "__main__":
         type=int,
     )
 
-    finalize = parser.add_argument_group("", "")
+    finalize = parser.add_argument_group(
+        "Finalize relatedness specific arguments",
+        "Arguments specific to creating the final relatedness Table including adding a "
+        "'relationship' annotation for each pair. Note: The defaults provided for the "
+        "slope and intercept cutoffs were determined from visualization of the "
+        "cuking kinship distribution and the IBS0/IBS2 vs. kinship plot.",
+    )
     finalize.add_argument(
         "--finalize-relatedness-ht",
         help="",
@@ -620,58 +634,81 @@ if __name__ == "__main__":
         type=float,
     )
     finalize.add_argument(
-        "--parent-child-max-ibd0",
-        help="",
+        "--parent-child-max-ibd0-or-ibs0-over-ibs2",
+        help=(
+            "Maximum value of IBD0 (if '--finalize-relatedness-method' is 'pc_relate') "
+            "or IBS0/IBS2 (if '--finalize-relatedness-method' is 'cuking') for a "
+            "parent-child pair."
+        ),
         default=5.2e-5,
         type=float,
     )
     finalize.add_argument(
-        "--first-degree-lower-cutoff-slope",
-        help="",
+        "--second-degree-sibling-lower-cutoff-slope",
+        help=(
+            "Slope of the line to use as a lower cutoff for second degree relatives "
+            "and siblings from parent-child pairs."
+        ),
         default=-1e-2,
         type=float,
     )
     finalize.add_argument(
-        "--first-degree-lower-cutoff-intercept",
-        help="",
+        "--second-degree-sibling-lower-cutoff-intercept",
+        help=(
+            "Intercept of the line to use as a lower cutoff for second degree "
+            "relatives and siblings from parent-child pairs."
+        ),
         default=2.2e-3,
         type=float,
     )
     finalize.add_argument(
-        "--second-degree-upper-cutoff-slope",
-        help="",
+        "--second-degree-upper-sibling-lower-cutoff-slope",
+        help=(
+            "Slope of the line to use as an upper cutoff for second degree relatives "
+            "and a lower cutoff for siblings."
+        ),
         default=-1.9e-3,
         type=float,
     )
     finalize.add_argument(
-        "--second-degree-upper-cutoff-intercept",
-        help="",
+        "--second-degree-upper-sibling-lower-cutoff-intercept",
+        help=(
+            "Intercept of the line to use as an upper cutoff for second degree "
+            "relatives and a lower cutoff for siblings."
+        ),
         default=5.8e-4,
         type=float,
     )
     finalize.add_argument(
         "--duplicate-twin-min-kin",
-        help="",
+        help="Minimum kinship for duplicate or twin pairs.",
         default=0.42,
         type=float,
     )
     finalize.add_argument(
-        "--dup-twin-ibd1-min",
-        help="",
+        "--duplicate-twin-ibd1-min",
+        help=(
+            "Minimum IBD1 cutoff for duplicate or twin pairs. Only used when "
+            "'--finalize-relatedness-method' is 'pc_relate'. Note: the min is used "
+            "because pc_relate can output large negative values in some corner cases."
+        ),
         default=-0.15,
         type=float,
     )
     finalize.add_argument(
-        "--dup-twin-ibd1-max",
-        help="",
+        "--duplicate-twin-ibd1-max",
+        help=(
+            "Maximum IBD1 cutoff for duplicate or twin pairs. Only used when "
+            "'--finalize-relatedness-method' is 'pc_relate'."
+        ),
         default=0.1,
         type=float,
     )
 
-    drop_related_samples = pc_relate_args.add_argument_group(
+    drop_related_samples = parser.add_argument_group(
         "Compute related samples to drop",
         "Arguments used to determine related samples that should be dropped from "
-        "the ancestry PCA.",
+        "the ancestry PCA or release.",
     )
     drop_related_samples.add_argument(
         "--compute-related-samples-to-drop",
@@ -680,7 +717,10 @@ if __name__ == "__main__":
     )
     drop_related_samples.add_argument(
         "--release",
-        help="",
+        help=(
+            "Whether to determine related samples to drop for the release based on "
+            "outlier filtering of sample QC metrics."
+        ),
         action="store_true",
     )
 
