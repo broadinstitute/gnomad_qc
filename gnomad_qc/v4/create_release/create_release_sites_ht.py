@@ -143,10 +143,6 @@ CONFIG = {
     },
 }
 
-# Remove InbreedingCoeff from allele-specific fields (processed separately
-# from other fields)
-AS_FIELDS.remove("InbreedingCoeff")
-
 
 def custom_region_flags_select(ht):
     """
