@@ -8,7 +8,9 @@ import hail as hl
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
 from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.basics import get_checkpoint_path
+from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
@@ -25,7 +27,7 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("ancestry_assignment")
 logger.setLevel(logging.INFO)
 
-# Recommended pops to spike into HGDP and TGP training
+# Create dictionary with pontential pops to use for training (with v4 race/ethnicity as key and corresponding pop as value)
 v4_pop_spike_dict = {
     "Arab": "mid",
     "Bedouin": "mid",
@@ -33,11 +35,48 @@ v4_pop_spike_dict = {
     "Qatari": "mid",
 }
 
+# Create dictionary with pontential v3 pops to use for training
 v3_pop_spike_dict = {
     "fin": "fin",
     "ami": "ami",
     "asj": "asj",
+    "amr": "amr",
+    "afr": "afr",
+    "sas": "sas",
+    "eas": "eas",
+    "nfe": "nfe",
+    "mid": "mid",
 }
+
+# Create dictionary with v3 pops as keys and approved cohorts to use for training for those pops as keys
+v3_spike_projects = hl.literal(
+    {
+        "asj": ["Jewish_Genome_Project"],
+        "ami": ["NHLBI_WholeGenome_Sequencing"],
+        "afr": ["TOPMED_Tishkoff_Cardiometabolics_Phase4"],
+        "amr": [
+            "PAGE: Global Reference Panel",
+            "PAGE: Multiethnic Cohort (MEC)",
+            "CostaRica",
+        ],
+        "eas": ["osaka"],
+        "sas": ["CCDG_PROMIS", "TOPMED_Saleheen_PROMIS_Phase4"],
+        "fin": [
+            "G4L Initiative Stanley Center",
+            "WGSPD3_Palotie_FinnishBP_THL_WGS",
+            "WGSPD3_Palotie_Finnish_WGS",
+            "WGSPD3_Palotie_Finnish_WGS_December2018",
+        ],
+        "nfe": [
+            "Estonia_University of Tartu_Whole Genome Sequencing",
+            "CCDG_Atrial_Fibrillation_Munich",
+            "CCDG_Atrial_Fibrillation_Norway",
+            "CCDG_Atrial_Fibrillation_Sweden",
+            "Estonia_University of Tartu_Whole Genome Sequencing",
+            "WGSPD",
+        ],
+    }
+)
 
 
 def run_pca(
@@ -116,36 +155,41 @@ def prep_ht_for_rf(
     :return Table with input for the random forest.
     """
     pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples, test).ht()
+    from gnomad_qc.v4.resources.sample_qc import joint_qc_meta
+
     joint_meta = joint_qc_meta.ht()[pop_pca_scores_ht.key]
 
-    # TODO: Add code for subpopulations
+    hgdp_tgp_outliers = hgdp_tgp_pop_outliers.ht()
+    hgdp_tgp_outliers = hgdp_tgp_outliers.s.collect()
 
-    # Either train the RF with only HGDP and TGP or all known populations and
-    # previously inferred pops in v3
+    # TODO: Add code for subpopulations
+    # Either train the RF with only HGDP and TGP, or HGDP and TGP and all v2 known labels
     if only_train_on_hgdp_tgp:
         logger.info("Training using HGDP and 1KG samples only...")
         training_pop = hl.or_missing(
             (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp)
-            & (joint_meta.v3_meta.v3_project_pop != "oth"),
+            & (joint_meta.v3_meta.v3_project_pop != "oth")
+            & (~hl.literal(hgdp_tgp_outliers).contains(pop_pca_scores_ht.s)),
             joint_meta.v3_meta.v3_project_pop,
         )
     else:
-        logger.info("Training using all v3 non-oth samples...")
-        training_pop = (
-            hl.case()
-            .when(
-                (
-                    (hl.is_defined(joint_meta.v3_meta.v3_project_pop))
-                    & (joint_meta.v3_meta.v3_project_pop != "oth")
-                ),
-                joint_meta.v3_meta.v3_project_pop,
-            )
-            .when(
-                joint_meta.v3_meta.v3_population_inference.pop != "oth",
-                joint_meta.v3_meta.v3_population_inference.pop,
-            )
-            .or_missing()  # TODO: Do we want a case for v2 known pops after v3 inferred?
-        )  # TODO: Analysis of where v2_pop does not agree with v3 assigned pop
+        logger.info(
+            "Training using HGDP and 1KG samples and all v2 samples with known pops..."
+        )
+        training_pop = hl.if_else(
+            (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp)
+            & (joint_meta.v3_meta.v3_project_pop != "oth")
+            & (~hl.literal(hgdp_tgp_outliers).contains(pop_pca_scores_ht.s)),
+            joint_meta.v3_meta.v3_project_pop,
+            hl.if_else(
+                (hl.is_defined(joint_meta.v2_meta.v2_known_pop))
+                & (hl.is_missing(joint_meta.v3_meta.v3_subsets.hgdp)),
+                joint_meta.v2_meta.v2_known_pop,
+                hl.null(hl.tstr),
+                missing_false=True,
+            ),
+            missing_false=True,
+        )
 
     pop_pca_scores_ht = pop_pca_scores_ht.annotate(
         training_pop=training_pop,
@@ -160,8 +204,9 @@ def prep_ht_for_rf(
         pop_spiking = hl.dict(
             [
                 (pop, v4_pop_spike_dict[pop])
-                for pop in v4_population_spike
                 if pop in v4_pop_spike_dict
+                else ValueError(f"Supplied pop: {pop} is not in v4_pop_spike_dict")
+                for pop in v4_population_spike
             ]
         )
 
@@ -189,9 +234,25 @@ def prep_ht_for_rf(
         pop_spiking = hl.dict(
             [
                 (pop, v3_pop_spike_dict[pop])
-                for pop in v3_population_spike
                 if pop in v3_pop_spike_dict
+                else ValueError(f"Supplied pop: {pop} is not in v3_pop_spike_dict")
+                for pop in v3_population_spike
             ]
+        )
+
+        joint_qc_meta = joint_qc_meta.ht()
+        v3_meta = v3_meta.ht()
+        # TODO: Add code to account for missing research project
+        joint_qc_meta = joint_qc_meta.annotate(v3=v3_meta[joint_qc_meta.key])
+
+        # Filter to only pre-determined list of v3 cohorts for the v3 spike-ins.
+        joint_qc_meta = joint_qc_meta.filter(
+            v3_spike_projects.contains(joint_qc_meta.v3_meta.v3_project_pop)
+        )
+        joint_qc_meta = joint_qc_meta.filter(
+            v3_spike_projects[joint_qc_meta.v3_meta.v3_project_pop].contains(
+                joint_qc_meta.v3.project_meta.research_project
+            )
         )
 
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
@@ -202,10 +263,10 @@ def prep_ht_for_rf(
             )
             .when(
                 pop_spiking.contains(
-                    joint_qc_meta.ht()[pop_pca_scores_ht.key].v3_meta.v3_project_pop
+                    joint_qc_meta[pop_pca_scores_ht.key].v3_meta.v3_project_pop
                 ),
                 pop_spiking[
-                    (joint_qc_meta.ht()[pop_pca_scores_ht.key].v3_meta.v3_project_pop)
+                    (joint_qc_meta[pop_pca_scores_ht.key].v3_meta.v3_project_pop)
                 ],
             )
             .or_missing()
@@ -425,6 +486,8 @@ def assign_pops(
         include_unreleasable_samples=include_unreleasable_samples,
         pop_assignment_iterations=pop_assignment_iter,
         pcs=pcs,
+        v3_population_spike=v3_population_spike,
+        v4_population_spike=v4_population_spike,
     )
 
     if max_mislabeled:
@@ -482,11 +545,6 @@ def write_pca_results(
 
 def main(args):
     """Assign global ancestry labels to samples."""
-    hl.init(
-        log="/assign_ancestry.log",
-        default_reference="GRCh38",
-        tmp_dir="gs://gnomad-tmp-4day",
-    )
     try:
         include_unreleasable_samples = args.include_unreleasable_samples
         overwrite = args.overwrite
@@ -548,7 +606,7 @@ def main(args):
                     test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp
                 ).path.replace(
                     ".ht",
-                    f'.rf_w_{args.pop_pcs[0]}pcs_{args.min_pop_prob}_pop_prob_{max_mislabeled+"max_mislabeled_" if max_mislabeled else "no_max"}{hl.eval("v3_spike_"+hl.str("_").join(args.v3_population_spike)) if args.v3_population_spike else ""}{"v4_spike_"+hl.eval(hl.str("_").join(args.v4_population_spike)) if args.v4_population_spike else ""}.ht',
+                    f'.rf_w_{args.pop_pcs[0]}pcs_{args.min_pop_prob}_pop_prob_{max_mislabeled+"max_mislabeled_" if max_mislabeled else "no_max"}{hl.eval("_v3_spike_"+hl.str("_").join(args.v3_population_spike)) if args.v3_population_spike else ""}{"_v4_spike_"+hl.eval(hl.str("_").join(args.v4_population_spike)) if args.v4_population_spike else ""}.ht',
                 ),
                 overwrite=overwrite,
                 _read_if_exists=not overwrite,
@@ -566,7 +624,7 @@ def main(args):
                 pickle.dump(pops_rf_model, out)
     finally:
         hl.copy_log(
-            f'gs://gnomad-tmp-4day/ancestry_assignment/ancestry_assignment.rf_w_{args.pop_pcs[0]}pcs_{args.min_pop_prob}_pop_prob_{max_mislabeled+"max_mislabeled_" if max_mislabeled else "no_max"}{hl.eval("v3_spike_"+hl.str("_").join(args.v3_population_spike)) if args.v3_population_spike else ""}{"v4_spike_"+hl.eval(hl.str("_").join(args.v4_population_spike)) if args.v4_population_spike else ""}.log'
+            f'gs://gnomad-tmp-4day/ancestry_assignment/ancestry_assignment.rf_w_{args.pop_pcs[0]}pcs_{args.min_pop_prob}_pop_prob_{max_mislabeled+"max_mislabeled_" if max_mislabeled else "no_max"}{hl.eval("_v3_spike_"+hl.str("_").join(args.v3_population_spike)) if args.v3_population_spike else ""}{"_v4_spike_"+hl.eval(hl.str("_").join(args.v4_population_spike)) if args.v4_population_spike else ""}.log'
         )
 
 
@@ -595,7 +653,7 @@ if __name__ == "__main__":
             " represents the total PCs to use e.g. --pop-pcs=6 will use PCs"
             " 1,2,3,4,5,and 6. Defaults to 20 PCs."
         ),
-        default=20,  # list(range(1, 21)),
+        default=20,
         type=int,
         nargs="+",
     )
