@@ -7,6 +7,7 @@ from typing import Optional
 import hail as hl
 import networkx as nx
 from gnomad.sample_qc.relatedness import (
+    DUPLICATE_OR_TWINS,
     compute_related_samples_to_drop,
     get_slope_int_relationship_expr,
 )
@@ -333,6 +334,7 @@ def main(args):
                     f"--create-{rel_method.replace('_', '-')}-relatedness-table": [
                         relatedness_ht
                     ],
+                    "generate_qc_mt.py --generate-qc-meta": [joint_qc_meta],
                 },
                 output_step_resources={
                     "--finalize-relatedness-ht": [final_relatedness_ht]
@@ -378,6 +380,32 @@ def main(args):
                 relationship_inference_method=rel_method,
                 relationship_cutoffs=hl.struct(**relatedness_args),
             )
+            joint_qc_meta_ht = joint_qc_meta.ht()
+            relatedness_ht = relatedness_ht.key_by(
+                i=relatedness_ht.i.annotate(
+                    data_type=joint_qc_meta_ht[relatedness_ht.i.s].data_type
+                ),
+                j=relatedness_ht.j.annotate(
+                    data_type=joint_qc_meta_ht[relatedness_ht.j.s].data_type
+                ),
+            )
+            gnomad_v3_duplicate_expr = (
+                relatedness_ht.relationship == DUPLICATE_OR_TWINS
+            ) & (
+                hl.set({relatedness_ht.i.data_type, relatedness_ht.j.data_type})
+                == hl.set({"genomes", "exomes"})
+            )
+            gnomad_v3_release_expr = hl.coalesce(
+                joint_qc_meta_ht[relatedness_ht.i.s].v3_meta.v3_release
+                | joint_qc_meta_ht[relatedness_ht.j.s].v3_meta.v3_release,
+                False,
+            )
+            relatedness_ht = relatedness_ht.annotate(
+                gnomad_v3_duplicate=gnomad_v3_duplicate_expr,
+                gnomad_v3_release_duplicate=gnomad_v3_duplicate_expr
+                & gnomad_v3_release_expr,
+            )
+
             relatedness_ht.write(final_relatedness_ht.path, overwrite=overwrite)
 
         if args.compute_related_samples_to_drop:
