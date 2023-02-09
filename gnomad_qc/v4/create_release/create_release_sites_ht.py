@@ -49,7 +49,7 @@ SITE_FIELDS.remove("SOR")
 
 VERSION = "4.0.0"  # TODO: Import release from repo but overwrite in argparse if present
 
-FIELD_DESCRIPTIONS = {}
+FIELD_DESCRIPTIONS = {"test": "test"}
 
 TABLES_FOR_RELEASE = [
     "dbsnp",
@@ -329,7 +329,8 @@ CONFIG = {
     "release": {
         "ht": release_sites().ht(),
         "path": release_sites().path,
-        "select": "**",
+        "select": [r for r in release_sites().ht()._row],
+        "select_globals": [g for g in release_sites().ht()._global],
     },
 }
 
