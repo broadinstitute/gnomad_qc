@@ -14,22 +14,17 @@ from gnomad.resources.grch38.reference_data import (
     lcr_intervals,
     seg_dup_intervals,
 )
-from gnomad.resources.resource_utils import DataException
-from gnomad.utils.annotations import missing_callstats_expr, region_flag_expr
-from gnomad.utils.file_utils import file_exists
-from gnomad.utils.release import make_freq_index_dict
+from gnomad.utils.annotations import region_flag_expr
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
-from gnomad.utils.vep import VEP_CSQ_HEADER
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources.annotations import (
-    analyst_annotations,
+from gnomad_qc.v4.resources.annotations import (  # analyst_annotations,
     get_freq,
     get_info,
     vep,
 )
-from gnomad_qc.v4.resources.basics import get_checkpoint_path, qc_temp_prefix
+from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v4.resources.release import release_sites
 from gnomad_qc.v4.resources.variant_qc import final_filter
@@ -254,6 +249,7 @@ Format:
         'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>
     },
 """
+
 CONFIG = {
     "dbsnp": {
         "ht": dbsnp.ht(),
@@ -283,8 +279,8 @@ CONFIG = {
         "custom_select": custom_info_select,
     },
     "freq": {
-        "ht": get_freq(het_nonref_patch=True).ht(),
-        "path": get_freq(het_nonref_patch=True).path,
+        "ht": get_freq().ht(),
+        "path": get_freq().path,
         "select": [
             "freq",
             "faf",
@@ -305,8 +301,8 @@ CONFIG = {
         ],
     },
     "subsets": {
-        "ht": get_freq(het_nonref_patch=True).ht(),
-        "path": get_freq(het_nonref_patch=True).path,
+        "ht": get_freq().ht(),
+        "path": get_freq().path,
         "custom_select": custom_subset_select,
         "field_name": "subsets",
     },
@@ -317,8 +313,8 @@ CONFIG = {
     # "select_globals": ["vep_version"],
     #    },
     "region_flags": {
-        "ht": get_freq(het_nonref_patch=True).ht(),
-        "path": get_freq(het_nonref_patch=True).path,
+        "ht": get_freq().ht(),
+        "path": get_freq().path,
         "custom_select": custom_region_flags_select,
     },
     "release": {
@@ -348,15 +344,15 @@ def main(args):
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters))
 
-    tables_globals = [
+    t_globals = [
         get_select_fields(CONFIG.get(table)["select_globals"], ht)
-        for table in args.tables_for_join
-        if "select_globals" in CONFIG.get(table)
+        for t in args.tables_for_join
+        if "select_globals" in CONFIG.get(t)
     ]
-    tables_globals = reduce(lambda a, b: dict(a, **b), tables_globals)
+    t_globals = reduce(lambda a, b: dict(a, **b), t_globals)
 
     ht = ht.annotate_globals(
-        **tables_globals,
+        **t_globals,
         gnomad_qc_version=args.gnomad_qc_version,
         # TODO: See if we can pull this from the cluster
         gnomad_methods_version=args.gnomad_methods_version,
@@ -366,8 +362,7 @@ def main(args):
 
     logger.info("Writing out release HT to %s", release_sites().path)
     ht = ht.checkpoint(
-        # qc_temp_prefix() + /release/gnomad.genomes.sites.test.ht"
-        "gs://gnomad-tmp-4day/mwilson/release/gnomad.genomes.sites.test.ht"
+        qc_temp_prefix() + "/release / gnomad.genomes.sites.test.ht"
         if args.test
         else release_sites().path,
         args.overwrite,
