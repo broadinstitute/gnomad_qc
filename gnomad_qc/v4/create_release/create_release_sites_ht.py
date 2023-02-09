@@ -139,6 +139,22 @@ def custom_info_select(ht):
     return selects
 
 
+def get_selected_global_fields(ht):
+    """
+    Generate a dictionary of globals to select by checking the configs of all tables joined.
+
+    :param ht: Final joined HT with globals.
+    """
+    t_globals = [
+        get_select_fields(CONFIG.get(table)["select_globals"], ht)
+        for t in args.tables_for_join
+        if "select_globals" in CONFIG.get(t)
+    ]
+    t_globals = reduce(lambda a, b: dict(a, **b), t_globals)
+
+    return t_globals
+
+
 def get_select_fields(selects, base_ht):
     """
     Generate a select dict from traversing the base_ht and extracting annotations.
@@ -256,7 +272,7 @@ CONFIG = {
         "path": dbsnp.path,
         "select": ["rsid"],
         "select_globals": {
-            "dbsnp_version": "version",  # TODO: Need to make add global to this table with version
+            "dbsnp_version": "version",  # TODO: Need to add global to this table with version
         },
     },
     "filters": {
@@ -306,12 +322,12 @@ CONFIG = {
         "custom_select": custom_subset_select,
         "field_name": "subsets",
     },
-    #    "vep": {
-    #        "ht": vep.ht(),
+    # "vep": {
+    #   "ht": vep.ht(),
     # TODO: drop 100% missing? Module to do this after all annotations added?
-    #        "select": ["vep"],
-    # "select_globals": ["vep_version"],
-    #    },
+    #   "select": ["vep"],
+    #   "select_globals": ["vep_version"],
+    # },
     "region_flags": {
         "ht": get_freq().ht(),
         "path": get_freq().path,
@@ -344,12 +360,7 @@ def main(args):
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters))
 
-    t_globals = [
-        get_select_fields(CONFIG.get(table)["select_globals"], ht)
-        for t in args.tables_for_join
-        if "select_globals" in CONFIG.get(t)
-    ]
-    t_globals = reduce(lambda a, b: dict(a, **b), t_globals)
+    t_globals = get_selected_global_fields(ht)
 
     ht = ht.annotate_globals(
         **t_globals,
