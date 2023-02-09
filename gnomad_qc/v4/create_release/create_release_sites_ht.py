@@ -286,7 +286,6 @@ CONFIG = {
         "path": get_info().path,
         "select": ["was_split", "a_index"],
         "custom_select": custom_info_select,
-        "select_globals": ["age_distribution", "age_info_dict", "age_meta"],
     },
     "freq": {
         "ht": get_freq(het_nonref_patch=True).ht(),
