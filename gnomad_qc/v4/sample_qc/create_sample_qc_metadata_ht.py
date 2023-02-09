@@ -152,7 +152,7 @@ def get_relationship_filter_expr(
     )
 
 
-def annotate_relatedness(ht, method: str = "cuking") -> hl.Table:
+def annotate_relatedness(ht: hl.Table) -> hl.Table:
     """
     Annotate Table with relatedness information for the combined meta Table.
 
@@ -163,13 +163,17 @@ def annotate_relatedness(ht, method: str = "cuking") -> hl.Table:
     These related filter annotations are provided for all samples and release only
     samples.
 
-    :param method: Relatedness method to load for the `related` annotation.
+    :param ht: Input Table to annotate.
     :return: Reformatted relatedness Table.
     """
-    # TODO: We don't have a 'relationship' annotation on this Table yet so this might
-    #  change, but this is close to what was in v3.1 and will be similar.
-    rel_ht = get_relatedness_set_ht(relatedness(method).ht())
-    ht = ht.select(relatedness_inference_relationships=rel_ht[ht.key].relationships)
+    rel_ht = get_relatedness_set_ht(relatedness().ht())
+    ht = ht.select(
+        relatedness_inference=hl.struct(
+            relationships=rel_ht[ht.key].relationships,
+            # gnomad_v3_duplicate=rel_ht[h],
+            # TODO: should we add v3 relationships split from the relationships set?
+        )
+    )
     rel_dict = {
         "related": hl.null(hl.tbool),
         "duplicate_or_twin": DUPLICATE_OR_TWINS,
@@ -396,16 +400,6 @@ if __name__ == "__main__":
         "--overwrite",
         help="Overwrite all data from this subset (default: False)",
         action="store_true",
-    )
-    parser.add_argument(
-        "--relatedness-method",
-        help=(
-            "Which relatedness method to use when determining related samples. "
-            "Options are 'cuking' and 'pc_relate'. Default is 'cuking'."
-        ),
-        default="cuking",
-        type=str,
-        choices=["cuking", "pc_relate"],
     )
     parser.add_argument(
         "--use-pop-only-train-on-hgdp-tgp",
