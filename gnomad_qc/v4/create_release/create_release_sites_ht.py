@@ -45,6 +45,7 @@ logger.setLevel(logging.INFO)
 # Remove InbreedingCoeff from allele-specific fields (processed separately
 # from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
+SITE_FIELDS.remove("SOR")
 
 VERSION = "4.0.0"  # TODO: Import release from repo but overwrite in argparse if present
 
@@ -52,96 +53,12 @@ FIELD_DESCRIPTIONS = {}
 
 TABLES_FOR_RELEASE = [
     "dbsnp",
-    "final_filters",
+    "filters",
     "freq",
     "info",
     "subsets",
     "region_flags",
 ]  # "in_silico", "vep",]
-
-
-"""
-Configurations of dataset to combine.
-Format:
-'<Name of dataset>': {
-        'path': 'gs://path/to/hailtable.ht',
-        'select': '<Optional list of fields to select or dict of new field name to location of old fieldin the dataset.>',
-        'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
-        'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
-        'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>
-    },
-"""
-CONFIG = {
-    "dbsnp": {
-        "ht": dbsnp.ht(),
-        "path": dbsnp.path,
-        "select": ["rsid"],
-        "select_globals": {
-            "dbsnp_version": "version",
-        },
-    },
-    "filters": {
-        "ht": final_filter().ht(),
-        "path": final_filter().path,
-        "select": ["filters", "vqsr"],
-        "custom_select": custom_filters_select,
-        "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
-    },
-    #   "in_silico": {
-    #       "ht": analyst_annotations.ht(),
-    #       "path": analyst_annotations.path
-    #       "select": ["cadd", "revel", "splice_ai", "primate_ai"],
-    #       "select_globals": ["cadd_version", "revel_version", },
-    #   },
-    "info": {
-        "ht": get_info().ht(),
-        "path": get_info().path,
-        "select": ["was_split", "a_index"],
-        "custom_select": custom_info_select,
-        "select_globals": ["age_distribution", "age_info_dict", "age_meta"],
-    },
-    "freq": {
-        "ht": get_freq(het_nonref_patch=True).ht(),
-        "path": get_freq(het_nonref_patch=True).path,
-        "select": [
-            "freq",
-            "faf",
-            "popmax",
-            "qual_hists",
-            "raw_qual_hists",
-            "age_hist_het",
-            "age_hist_hom",
-        ],
-        "select_globals": [
-            "freq_meta",
-            "freq_index_dict",
-            "faf_meta",
-            "faf_index_dict",
-        ],
-    },
-    "subsets": {
-        "ht": get_freq(het_nonref_patch=True).ht(),
-        "path": get_freq(het_nonref_patch=True).path,
-        "custom_select": custom_subset_select,
-        "field_name": "subsets",
-    },
-    #    "vep": {
-    #        "ht": vep.ht(),
-    # TODO: drop 100% missing? Module to do this after all annotations added?
-    #        "select": ["vep"],
-    # "select_globals": ["vep_version"],
-    #    },
-    "region_flags": {
-        "ht": get_freq(het_nonref_patch=True).ht(),
-        "path": get_freq(het_nonref_patch=True).path,
-        "custom_select": custom_region_flags_select,
-    },
-    "release": {
-        "ht": release_sites().ht(),
-        "path": release_sites().path,
-        "select": "**",
-    },
-}
 
 
 def custom_region_flags_select(ht):
@@ -274,12 +191,6 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
             [hl.parse_locus_interval("chr1:1-1000000", reference_genome="GRCh38")],
         )
 
-    if config.get("select_globals"):
-        selected_global_fields = get_select_fields(
-            config.get("select_globals"), base_ht
-        )
-        base_ht = base_ht.select_globals(**selected_global_fields)
-
     # 'select' and 'custom_select's to generate dict.
     select_fields = get_select_fields(config.get("select"), base_ht)
 
@@ -287,7 +198,7 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
         custom_select_fn = config["custom_select"]
         select_fields = {**select_fields, **custom_select_fn(base_ht)}
 
-    if config.get("field_name"):
+    if "field_name" in config:
         field_name = config.get("field_name")
         select_query = {field_name: hl.struct(**select_fields)}
     else:
@@ -337,6 +248,93 @@ def join_hts(base_table, tables, new_partition_percent, test):
     return joined_ht
 
 
+"""
+Configurations of dataset to combine.
+Format:
+'<Name of dataset>': {
+        'path': 'gs://path/to/hailtable.ht',
+        'select': '<Optional list of fields to select or dict of new field name to location of old fieldin the dataset.>',
+        'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
+        'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
+        'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>
+    },
+"""
+CONFIG = {
+    "dbsnp": {
+        "ht": dbsnp.ht(),
+        "path": dbsnp.path,
+        "select": ["rsid"],
+        "select_globals": {
+            "dbsnp_version": "version",  # TODO: Need to make add global to this table with version
+        },
+    },
+    "filters": {
+        "ht": final_filter().ht(),
+        "path": final_filter().path,
+        "select": ["filters", "vqsr"],
+        "custom_select": custom_filters_select,
+        "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
+    },
+    #   "in_silico": {
+    #       "ht": analyst_annotations.ht(),
+    #       "path": analyst_annotations.path
+    #       "select": ["cadd", "revel", "splice_ai", "primate_ai"],
+    #       "select_globals": ["cadd_version", "revel_version", },
+    #   },
+    "info": {
+        "ht": get_info().ht(),
+        "path": get_info().path,
+        "select": ["was_split", "a_index"],
+        "custom_select": custom_info_select,
+        "select_globals": ["age_distribution", "age_info_dict", "age_meta"],
+    },
+    "freq": {
+        "ht": get_freq(het_nonref_patch=True).ht(),
+        "path": get_freq(het_nonref_patch=True).path,
+        "select": [
+            "freq",
+            "faf",
+            "popmax",
+            "qual_hists",
+            "raw_qual_hists",
+            "age_hist_het",
+            "age_hist_hom",
+        ],
+        "select_globals": [
+            "freq_meta",
+            "freq_index_dict",
+            "faf_meta",
+            "faf_index_dict",
+            "age_meta",
+            "age_index_dict",
+            "age_distribution",
+        ],
+    },
+    "subsets": {
+        "ht": get_freq(het_nonref_patch=True).ht(),
+        "path": get_freq(het_nonref_patch=True).path,
+        "custom_select": custom_subset_select,
+        "field_name": "subsets",
+    },
+    #    "vep": {
+    #        "ht": vep.ht(),
+    # TODO: drop 100% missing? Module to do this after all annotations added?
+    #        "select": ["vep"],
+    # "select_globals": ["vep_version"],
+    #    },
+    "region_flags": {
+        "ht": get_freq(het_nonref_patch=True).ht(),
+        "path": get_freq(het_nonref_patch=True).path,
+        "custom_select": custom_region_flags_select,
+    },
+    "release": {
+        "ht": release_sites().ht(),
+        "path": release_sites().path,
+        "select": "**",
+    },
+}
+
+
 def main(args):
     """Create release ht."""
     hl.init(
@@ -355,7 +353,15 @@ def main(args):
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters))
 
+    tables_globals = [
+        get_select_fields(CONFIG.get(table)["select_globals"], ht)
+        for table in args.tables_for_join
+        if "select_globals" in CONFIG.get(table)
+    ]
+    tables_globals = reduce(lambda a, b: dict(a, **b), tables_globals)
+
     ht = ht.annotate_globals(
+        **tables_globals,
         gnomad_qc_version=args.gnomad_qc_version,
         # TODO: See if we can pull this from the cluster
         gnomad_methods_version=args.gnomad_methods_version,
