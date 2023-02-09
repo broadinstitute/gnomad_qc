@@ -19,7 +19,8 @@ from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import (  # analyst_annotations,
+from gnomad_qc.v4.resources.annotations import (
+    analyst_annotations,
     get_freq,
     get_info,
     vep,
@@ -40,6 +41,8 @@ logger.setLevel(logging.INFO)
 # (processed separately from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
 SITE_FIELDS.remove("SOR")
+# TODO: Update this in another PR -- should be able to use mostly all the
+# fields in the v3 README.md
 FIELD_DESCRIPTIONS = {"test": "test"}
 TABLES_FOR_RELEASE = [
     "dbsnp",
@@ -139,14 +142,14 @@ def custom_info_select(ht):
     return selects
 
 
-def get_selected_global_fields(ht):
+def get_select_global_fields(ht):
     """
     Generate a dictionary of globals to select by checking the configs of all tables joined.
 
     :param ht: Final joined HT with globals.
     """
     t_globals = [
-        get_select_fields(CONFIG.get(table)["select_globals"], ht)
+        get_select_fields(CONFIG.get(t)["select_globals"], ht)
         for t in args.tables_for_join
         if "select_globals" in CONFIG.get(t)
     ]
@@ -210,8 +213,6 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
     else:
         select_query = select_fields
 
-    logger.info("%s", dataset)  # TODO: Remove after testing
-    logger.info("%s", select_fields)  # TODO: Remove after testing
     return base_ht.select(**select_query)
 
 
@@ -240,7 +241,7 @@ def join_hts(base_table, tables, new_partition_percent, test):
     )
 
     hts = [get_ht(table, _intervals=partition_intervals, test=test) for table in tables]
-    # TODO: Would and intermediate chekcpoint be helpful here?
+    # TODO: Check with hail if an intermediate checkpoint be helpful here?
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
     # Track the dataset we've added as well as the source path.
@@ -282,12 +283,14 @@ CONFIG = {
         "custom_select": custom_filters_select,
         "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
     },
-    #   "in_silico": {
-    #       "ht": analyst_annotations.ht(),
-    #       "path": analyst_annotations.path
-    #       "select": ["cadd", "revel", "splice_ai", "primate_ai"],
-    #       "select_globals": ["cadd_version", "revel_version", },
-    #   },
+    "in_silico": {
+        "ht": analyst_annotations.ht(),
+        "path": analyst_annotations.path,
+        # TODO: Update these once we knew which tools we will be usings
+        "select": ["cadd", "revel", "splice_ai", "primate_ai"],
+        # TODO: Update these once we knew which tools we will be usings
+        "select_globals": ["cadd_version", "revel_version"],
+    },
     "info": {
         "ht": get_info().ht(),
         "path": get_info().path,
@@ -322,12 +325,12 @@ CONFIG = {
         "custom_select": custom_subset_select,
         "field_name": "subsets",
     },
-    # "vep": {
-    #   "ht": vep.ht(),
-    # TODO: drop 100% missing? Module to do this after all annotations added?
-    #   "select": ["vep"],
-    #   "select_globals": ["vep_version"],
-    # },
+    "vep": {
+        "ht": vep.ht(),
+        # TODO: drop 100% missing? Module to do this after all annotations added?
+        "select": ["vep"],
+        "select_globals": ["vep_version"],  # TODO: Confirm or add this is a global
+    },
     "region_flags": {
         "ht": get_freq().ht(),
         "path": get_freq().path,
@@ -360,7 +363,7 @@ def main(args):
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters))
 
-    t_globals = get_selected_global_fields(ht)
+    t_globals = get_select_global_fields(ht)
 
     ht = ht.annotate_globals(
         **t_globals,
@@ -398,6 +401,8 @@ if __name__ == "__main__":
         "--version",
         help="The version of gnomAD.",
         default=CURRENT_RELEASE,
+        # TODO: Consider using this for iterative releases - requires restructing
+        # of config select fields where there are changes
         required=True,
     )
     parser.add_argument(
@@ -437,6 +442,13 @@ if __name__ == "__main__":
         help="Version of gnomAD methods repo",
         required=True,
     )
+    parser.add_argument(
+        "--slack_channel", help="Slack channel to post results and notifications to."
+    )
 
     args = parser.parse_args()
-    main(args)
+    if args.slack_channel:
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
+    else:
+        main(args)
