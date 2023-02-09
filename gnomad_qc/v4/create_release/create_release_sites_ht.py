@@ -41,8 +41,8 @@ logger.setLevel(logging.INFO)
 # (processed separately from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
 SITE_FIELDS.remove("SOR")
-# TODO: Update this in another PR -- should be able to use mostly all the
-# fields in the v3 README.md
+# TODO: Update this field descriptions dict in another PR -- should be able to use mostly all the
+# fields in the v3 README.md -- link to freq array FAQ in freq
 FIELD_DESCRIPTIONS = {"test": "test"}
 TABLES_FOR_RELEASE = [
     "dbsnp",
@@ -51,7 +51,9 @@ TABLES_FOR_RELEASE = [
     "info",
     "subsets",
     "region_flags",
-]  # "in_silico", "vep",]
+    "in_silico",
+    "vep",
+]
 
 
 def custom_region_flags_select(ht):
@@ -200,7 +202,6 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
             [hl.parse_locus_interval("chr1:1-1000000", reference_genome="GRCh38")],
         )
 
-    # 'select' and 'custom_select's to generate dict.
     select_fields = get_select_fields(config.get("select"), base_ht)
 
     if "custom_select" in config:
