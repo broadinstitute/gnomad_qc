@@ -29,10 +29,10 @@ from gnomad_qc.v3.resources.annotations import (
     get_info,
     vep,
 )
-from gnomad_qc.v3.resources.basics import get_checkpoint_path, qc_temp_prefix
-from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v3.resources.release import release_sites
-from gnomad_qc.v3.resources.variant_qc import final_filter
+from gnomad_qc.v4.resources.basics import get_checkpoint_path, qc_temp_prefix
+from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
+from gnomad_qc.v4.resources.release import release_sites
+from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -41,16 +41,11 @@ logging.basicConfig(
 logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
-
-# Remove InbreedingCoeff from allele-specific fields (processed separately
-# from other fields)
+# Remove InbreedingCoeff from allele-specific fields and SOR from SITE
+# (processed separately from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
 SITE_FIELDS.remove("SOR")
-
-VERSION = "4.0.0"  # TODO: Import release from repo but overwrite in argparse if present
-
 FIELD_DESCRIPTIONS = {"test": "test"}
-
 TABLES_FOR_RELEASE = [
     "dbsnp",
     "filters",
@@ -393,7 +388,11 @@ if __name__ == "__main__":
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     parser.add_argument(
-        "-v", "--version", help="The version of gnomAD.", default=VERSION, required=True
+        "-v",
+        "--version",
+        help="The version of gnomAD.",
+        default=CURRENT_RELEASE,
+        required=True,
     )
     parser.add_argument(
         "-t",
