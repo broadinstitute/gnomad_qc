@@ -13,18 +13,28 @@ from gnomad.sample_qc.relatedness import (
 
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v3.resources.meta import meta, ped_mendel_errors, pedigree, trios
 from gnomad_qc.v3.resources.sample_qc import (
     duplicates,
-    get_relatedness_annotated_ht,
-    release_samples_rankings,
+    finalized_outlier_filtering,
+    ped_mendel_errors,
+    pedigree,
+    relatedness,
+    sample_rankings,
     sex,
+    trios,
 )
 
-logger = logging.getLogger("create_fam")
+logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+logger = logging.getLogger("identify_trios")
+logger.setLevel(logging.INFO)
 
 
-def run_mendel_errors() -> hl.Table:  # noqa: D103
+def run_mendel_errors() -> hl.Table:
+    """
+    Add description.
+
+    :return:
+    """
     meta_ht = meta.ht()
     ped = pedigree.versions[f"{CURRENT_RELEASE}_raw"].pedigree()
     logger.info(f"Running Mendel errors for {len(ped.trios)} trios.")
@@ -65,7 +75,12 @@ def run_mendel_errors() -> hl.Table:  # noqa: D103
     return mendel_errors
 
 
-def run_infer_families() -> hl.Pedigree:  # noqa: D103
+def run_infer_families() -> hl.Pedigree:
+    """
+    Add description.
+
+    :return:
+    """
     logger.info("Inferring families")
     ped = infer_families(get_relatedness_annotated_ht(), sex.ht(), duplicates.ht())
 
@@ -90,7 +105,13 @@ def run_infer_families() -> hl.Pedigree:  # noqa: D103
     )
 
 
-def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:  # noqa: D103
+def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:
+    """
+    Add description.
+
+    :param ped:
+    :return:
+    """
     trios_per_fam = defaultdict(list)
     for trio in ped.trios:
         trios_per_fam[trio.fam_id].append(trio)
@@ -109,7 +130,16 @@ def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:  # noqa: D103
 
 def filter_ped(
     raw_ped: hl.Pedigree, mendel: hl.Table, max_dnm: int, max_mendel: int
-) -> hl.Pedigree:  # noqa: D103
+) -> hl.Pedigree:
+    """
+    Add description.
+
+    :param raw_ped:
+    :param mendel:
+    :param max_dnm:
+    :param max_mendel:
+    :return:
+    """
     mendel = mendel.filter(mendel.fam_id.startswith("fake"))
     mendel_by_s = (
         mendel.group_by(mendel.s)
@@ -135,15 +165,26 @@ def filter_ped(
     return hl.Pedigree([trio for trio in raw_ped.trios if trio.s in good_trios])
 
 
-def main(args):  # noqa: D103
-    hl.init(default_reference="GRCh38")
+def main(args):
+    """Add description."""
+    hl.init(
+        log="/identify_trios.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
+    joint = args.joint
+    data_type = "joint" if joint else "exomes"
 
-    if args.find_dups:
-        # TODO: Where to do the release ranking?
+    if args.find_duplicates:
         logger.info("Selecting best duplicate per duplicated sample set")
-        dups = get_duplicated_samples(get_relatedness_annotated_ht())
-        dups_ht = get_duplicated_samples_ht(dups, release_samples_rankings.ht())
-        dups_ht.write(duplicates.path, overwrite=args.overwrite)
+        ht = relatedness().ht()
+        if not joint:
+            ht = ht.filter((ht.i.data_type == "exomes") & (ht.j.data_type == "exomes"))
+
+        ht = get_duplicated_samples_ht(
+            get_duplicated_samples(ht), sample_rankings().ht()
+        )
+        ht.write(duplicates(data_type=data_type).path, overwrite=args.overwrite)
 
     if args.infer_families:
         ped = run_infer_families()
@@ -169,11 +210,18 @@ def main(args):  # noqa: D103
 
 
 if __name__ == "__main__":
-    """Add description."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite",
         help="Overwrite all data from this subset (default: False)",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--joint",
+        help=(
+            "Whether to include both v3 genomes and v4 exomes. Default is only v4 "
+            "exomes."
+        ),
         action="store_true",
     )
     parser.add_argument(
