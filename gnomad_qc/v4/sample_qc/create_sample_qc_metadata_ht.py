@@ -8,6 +8,7 @@ from gnomad.assessment.validity_checks import compare_row_counts
 from gnomad.sample_qc.relatedness import (
     DUPLICATE_OR_TWINS,
     PARENT_CHILD,
+    SECOND_DEGREE_RELATIVES,
     SIBLINGS,
     UNRELATED,
 )
@@ -45,10 +46,8 @@ logger.setLevel(logging.INFO)
 #  modify to have all 30 PCs, or add all 30 PCs to another annotation, or only keep the
 #  9 since that is all that was used?
 # TODO: Keep or drop is_female from sex HT?
-# TODO: Add relatedness relationship expression code.
 # TODO: Modify for any changes to get_pop_ht, ideally we change so that there is a
 #  single final pop HT that keeps track of the parameters used.
-# TODO: Where to compute the release related samples to drop?
 # TODO: Add more nearest neighbor info?
 # TODO: Add trio info?
 # TODO: joint that has v3 info?
@@ -119,35 +118,55 @@ def get_relatedness_set_ht(relatedness_ht: hl.Table) -> hl.Table:
         sample pair (i, j).
     :return: Table keyed by sample (s) with all relationships annotated as a set.
     """
-    relatedness_ht = relatedness_ht.filter(relatedness_ht.relationship != UNRELATED)
-    relatedness_ht = relatedness_ht.select("relationship", s=relatedness_ht.i.s).union(
-        relatedness_ht.select("relationship", s=relatedness_ht.j.s)
+    # TODO: should we add v3 relationships to the relationships set, or have a
+    #  different annotation for that?
+    relatedness_ht = relatedness_ht.filter(
+        (relatedness_ht.relationship != UNRELATED)
+        & (relatedness_ht.i.data_type == "exomes")
+        & (relatedness_ht.j.data_type == "exomes")
+    )
+    relatedness_ht = relatedness_ht.select(
+        "relationship", s=relatedness_ht.i.s, pair=relatedness_ht.j.s
+    ).union(
+        relatedness_ht.select(
+            "relationship", s=relatedness_ht.j.s, pair=relatedness_ht.i.s
+        )
     )
     relatedness_ht = relatedness_ht.group_by(relatedness_ht.s).aggregate(
-        relationships=hl.agg.collect_as_set(relatedness_ht.relationship)
+        relationships=hl.agg.group_by(
+            relatedness_ht.relationship, hl.agg.collect_as_set(relatedness_ht.pair)
+        )
     )
+
     return relatedness_ht
 
 
 def get_relationship_filter_expr(
     hard_filtered_expr: hl.expr.BooleanExpression,
-    relationship: str,
+    related_drop_expr: hl.expr.BooleanExpression,
     relationship_set: hl.expr.SetExpression,
+    relationship: str,
 ) -> hl.expr.builders.CaseBuilder:
     """
     Return case statement to populate relatedness filters in sample_filters struct.
 
     :param hard_filtered_expr: Boolean for whether sample was hard filtered.
-    :param relationship: Relationship to check for. One of DUPLICATE_OR_TWINS,
-        PARENT_CHILD, or SIBLINGS.
+    :param related_drop_expr: Boolean for whether sample was filtered due to
+        relatedness.
     :param relationship_set: Set containing all possible relationship strings for
         sample.
+    :param relationship: Relationship to check for. One of DUPLICATE_OR_TWINS,
+        PARENT_CHILD, SIBLINGS, or SECOND_DEGREE_RELATIVES.
     :return: Case statement used to population sample_filters related filter field.
     """
     return (
         hl.case()
-        .when(hard_filtered_expr, hl.null(hl.tbool))
-        .when(hl.is_defined(relationship_set), relationship_set.contains(relationship))
+        .when(hard_filtered_expr, hl.missing(hl.tbool))
+        .when(relationship == SECOND_DEGREE_RELATIVES, related_drop_expr)
+        .when(
+            hl.is_defined(relationship_set) & related_drop_expr,
+            relationship_set.contains(relationship),
+        )
         .default(False)
     )
 
@@ -163,43 +182,61 @@ def annotate_relatedness(ht: hl.Table) -> hl.Table:
     These related filter annotations are provided for all samples and release only
     samples.
 
-    :param ht: Input Table to annotate.
-    :return: Reformatted relatedness Table.
+    :param ht: Sample QC filter Table to add relatedness filter annotations to.
+    :return:
     """
-    rel_ht = get_relatedness_set_ht(relatedness().ht())
-    ht = ht.select(
-        relatedness_inference=hl.struct(
-            relationships=rel_ht[ht.key].relationships,
-            # gnomad_v3_duplicate=rel_ht[h],
-            # TODO: should we add v3 relationships split from the relationships set?
+    relatedness_ht = hl.read_table(
+        "gs://gnomad/v4.0/sample_qc/joint/relatedness/gnomad.joint.v4.0.relatedness.ht"
+    )  # relatedness().ht()
+    relatedness_inference_cutoffs = relatedness_ht.index_globals()
+
+    logger.info("Creating gnomAD v3/v4 overlap annotation Table...")
+    v3_duplicate_ht = relatedness_ht.filter(relatedness_ht.gnomad_v3_duplicate)
+    v3_duplicate_ht = v3_duplicate_ht.key_by(
+        s=hl.if_else(
+            v3_duplicate_ht.i.data_type == "exomes",
+            v3_duplicate_ht.i.s,
+            v3_duplicate_ht.j.s,
         )
     )
+    v3_duplicate_ht = v3_duplicate_ht.select(
+        "gnomad_v3_duplicate", "gnomad_v3_release_duplicate"
+    )
+
+    logger.info("Aggregating sample relationship information...")
+    relationships_expr = get_relatedness_set_ht(relatedness_ht)[ht.key].relationships
+    relatedness_ht = ht.annotate(
+        relatedness_inference=hl.struct(
+            relationships=relationships_expr,
+            **v3_duplicate_ht[ht.key],
+        )
+    )
+    relatedness_ht = relatedness_ht.annotate_globals(
+        relatedness_inference_cutoffs=relatedness_inference_cutoffs
+    )
+
+    logger.info("Annotating input Table with relationship filters...")
     rel_dict = {
-        "related": hl.null(hl.tbool),
+        "related": SECOND_DEGREE_RELATIVES,
         "duplicate_or_twin": DUPLICATE_OR_TWINS,
         "parent_child": PARENT_CHILD,
         "sibling": SIBLINGS,
     }
     rel_set_expr_dict = {
-        "release": hl.is_defined(release_related_samples_to_drop.ht()[ht.key]),
+        #    "release": hl.is_defined(release_related_samples_to_drop.ht()[ht.key]),
         "all_samples": hl.is_defined(pca_related_samples_to_drop().ht()[ht.key]),
     }
-    ht = ht.annotate(
+    sample_filters_ht = ht.annotate(
         **{
             f"{k}_{rel}": get_relationship_filter_expr(
-                ht.hard_filtered,
-                rel_val,
-                v,
+                ht.hard_filtered, v, relationships_expr, rel_val
             )
             for rel, rel_val in rel_dict.items()
             for k, v in rel_set_expr_dict.items()
         }
     )
 
-    logger.info("Adding relatedness globals (cutoffs)")
-    ht = ht.annotate_globals(relatedness_inference_cutoffs=rel_ht.index_globals())
-
-    return ht
+    return sample_filters_ht, relatedness_ht
 
 
 def add_annotations(
@@ -339,13 +376,17 @@ def main(args):
     ann_ht = get_hard_filter_metric_ht(vds_sample_ht)
     ht = add_annotations(ht, ann_ht, "hard filter metrics")
 
-    # Checkpoint to a temp location to prevent class too large error.
-    ht = ht.checkpoint(new_temp_file("sample_qc_meta", extension="ht"), overwrite=True)
+    # ann_ht = get_pop_ht(only_train_on_hgdp_tgp=args.use_pop_only_train_on_hgdp_tgp).ht()
 
-    ann_ht = get_pop_ht(only_train_on_hgdp_tgp=args.use_pop_only_train_on_hgdp_tgp).ht()
+    ann_ht = hl.read_table(
+        "gs://gnomad/v4.0/sample_qc/joint/ancestry_inference/gnomad.joint.v4.0.hgdp_tgp_training.pop.rf_w_20pcs_0.75_pop_prob_no_max_v3_spike_fin_eas_amr_afr_asj_nfe_sas_ami_v4_spike_Arab_Persian.ht"
+    )
     ht = add_annotations(
         ht, ann_ht, "population inference", ht_missing=v3_s, ann_ht_missing=hf_s
     )
+
+    # Checkpoint to a temp location to prevent class too large error.
+    ht = ht.checkpoint(new_temp_file("sample_qc_meta", extension="ht"), overwrite=True)
 
     sample_filters_ht = add_annotations(
         vds_sample_ht,
@@ -356,33 +397,38 @@ def main(args):
         sample_count_match=False,
     )
 
-    sample_filters_ht = annotate_relatedness(sample_filters_ht, args.relatedness_method)
+    logger.info("\n\nAnnotating relatedness sample filters.")
+    sample_filters_ht, relatedness_ht = annotate_relatedness(sample_filters_ht)
+
+    ht = add_annotations(
+        ht,
+        relatedness_ht,
+        "relatedness inference",
+    )
 
     sample_filters_ht = add_annotations(
         sample_filters_ht,
         finalized_outlier_filtering().ht(),
         "outlier detection",
         ann_top_level=True,
-        ht_missing=hf_s,
-        ann_ht_missing=ukb_remove,
+        ht_missing=ukb_remove,
+        ann_ht_missing=hf_s,
     )
     ht = ht.annotate(sample_filters=sample_filters_ht[ht.key])
-    ht = ht.transmute(
-        relatedness_inference_relationships=ht.sample_filters.relatedness_inference_relationships
-    )
     ht = ht.annotate_globals(**sample_filters_ht.index_globals())
 
-    logger.info("Annotating high_quality field")
+    logger.info("\n\nAnnotating high_quality field.")
     ht = ht.annotate(
         high_quality=~ht.sample_filters.hard_filtered
         & ~ht.sample_filters.outlier_filtered
     )
 
-    logger.info("Annotating releasable field")
+    logger.info("\n\nAnnotating releasable field.")
     ht = ht.annotate(
         release=ht.project_meta.releasable
         & ht.high_quality
-        & ~ht.sample_filters.release_related
+        & ~ht.sample_filters.all_samples_related
+        # & ~ht.sample_filters.release_related
     )
 
     ht = ht.checkpoint(meta.path, overwrite=args.overwrite)
