@@ -14,8 +14,8 @@ from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
-from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v3.resources.sample_qc import (
+from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
+from gnomad_qc.v4.resources.sample_qc import (
     duplicates,
     finalized_outlier_filtering,
     ped_mendel_errors,
@@ -177,12 +177,12 @@ def main(args):
     joint = args.joint
     data_type = "joint" if joint else "exomes"
 
-    if args.find_duplicates:
+    if args.identify_duplicates:
         logger.info("Selecting best duplicate per duplicated sample set")
         ht = relatedness().ht()
         if not joint:
             ht = ht.filter((ht.i.data_type == "exomes") & (ht.j.data_type == "exomes"))
-
+        ht = ht.key_by(i=ht.i.s, j=ht.j.s)
         ht = get_duplicated_samples_ht(
             get_duplicated_samples(ht), sample_rankings().ht()
         )
@@ -230,7 +230,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--find_dups",
+        "--identify_duplicates",
         help=(
             "Creates a table with duplicate samples indicating which one is the best to"
             " use."
@@ -253,13 +253,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max_dnm",
         help="Maximum number of raw de novo mutations for real trios",
-        defaut=2200,
+        default=2200,
         type=int,
     )
     parser.add_argument(
         "--max_mendel",
         help="Maximum number of raw Mendel errors for real trios",
-        defaut=3750,
+        default=3750,
         type=int,
     )
 
