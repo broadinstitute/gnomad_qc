@@ -10,7 +10,9 @@ from gnomad.sample_qc.relatedness import (
     get_duplicated_samples_ht,
     infer_families,
 )
+from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v3.resources.sample_qc import (
@@ -217,6 +219,9 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
+        "--slack-channel", help="Slack channel to post results and notifications to."
+    )
+    parser.add_argument(
         "--joint",
         help=(
             "Whether to include both v3 genomes and v4 exomes. Default is only v4 "
@@ -258,4 +263,10 @@ if __name__ == "__main__":
         type=int,
     )
 
-    main(parser.parse_args())
+    args = parser.parse_args()
+
+    if args.slack_channel:
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
+    else:
+        main(args)
