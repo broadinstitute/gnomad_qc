@@ -11,6 +11,7 @@ from gnomad.sample_qc.relatedness import (
     infer_families,
 )
 from gnomad.utils.slack import slack_notifications
+from gnomad.utils.vcf import SEXES
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
@@ -78,36 +79,6 @@ def run_mendel_errors() -> hl.Table:
     return mendel_errors
 
 
-def run_infer_families() -> hl.Pedigree:
-    """
-    Add description.
-
-    :return:
-    """
-    logger.info("Inferring families")
-    ped = infer_families(get_relatedness_annotated_ht(), sex.ht(), duplicates.ht())
-
-    # Remove all trios containing any QC-filtered sample
-    meta_ht = meta.ht()
-    filtered_samples = meta_ht.aggregate(
-        hl.agg.filter(
-            (hl.len(meta_ht.qc_metrics_filters) > 0)
-            | hl.or_else(hl.len(meta_ht.hard_filters) > 0, False),
-            hl.agg.collect_as_set(meta_ht.s),
-        )
-    )
-
-    return hl.Pedigree(
-        trios=[
-            trio
-            for trio in ped.trios
-            if trio.s not in filtered_samples
-            and trio.pat_id not in filtered_samples
-            and trio.mat_id not in filtered_samples
-        ]
-    )
-
-
 def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:
     """
     Add description.
@@ -168,6 +139,33 @@ def filter_ped(
     return hl.Pedigree([trio for trio in raw_ped.trios if trio.s in good_trios])
 
 
+def get_filter_relatedness_ht(joint: bool = False) -> hl.Table:
+    """
+    Add description.
+
+    :param joint:
+    :return:
+    """
+    ht = relatedness().ht()
+    filter_ht = finalized_outlier_filtering().ht()
+    if joint:
+        joint_qc_meta_ht = joint_qc_meta.ht()
+        filter_ht = joint_qc_meta_ht.annotate(
+            outlier_filtered=filter_ht[joint_qc_meta_ht.key].outlier_filtered
+        )
+    else:
+        ht = ht.filter((ht.i.data_type == "exomes") & (ht.j.data_type == "exomes"))
+    ht = ht.key_by(i=ht.i.s, j=ht.j.s)
+
+    # Remove all pairs with a QC-filtered sample
+    ht = ht.filter(
+        filter_ht[ht.i].outlier_filtered | filter_ht[ht.j].outlier_filtered,
+        keep=False,
+    )
+
+    return ht
+
+
 def main(args):
     """Add description."""
     hl.init(
@@ -180,32 +178,29 @@ def main(args):
 
     if args.identify_duplicates:
         logger.info("Selecting best duplicate per duplicated sample set")
-        ht = relatedness().ht()
-        # Remove all pairs with a QC-filtered sample
-        filter_ht = finalized_outlier_filtering().ht()
-        if not joint:
-            ht = ht.filter((ht.i.data_type == "exomes") & (ht.j.data_type == "exomes"))
-        else:
-            joint_qc_meta_ht = joint_qc_meta.ht()
-            filter_ht = joint_qc_meta_ht.annotate(
-                outlier_filtered=filter_ht[joint_qc_meta_ht.key].outlier_filtered
-            )
-        ht = ht.key_by(i=ht.i.s, j=ht.j.s)
-        # Remove all pairs with a QC-filtered sample
-        ht = ht.filter(
-            filter_ht[ht.i].outlier_filtered | filter_ht[ht.j].outlier_filtered,
-            keep=False,
-        )
         ht = get_duplicated_samples_ht(
-            get_duplicated_samples(ht), sample_rankings().ht()
+            get_duplicated_samples(get_filter_relatedness_ht(joint)),
+            sample_rankings().ht(),
         )
         ht.write(duplicates(data_type=data_type).path, overwrite=args.overwrite)
 
     if args.infer_families:
-        ped = run_infer_families()
-        ped.write(pedigree.versions[f"{CURRENT_RELEASE}_raw"].path)
+        # TODO: For v2, project info was used in trio determination, do we want to do that also?
+        #  https://github.com/broadinstitute/gnomad_qc/blob/0df3e1be3cf20cdda71c9f2d9a23089e7a4c79de/gnomad_qc/v2/sample_qc/create_fam.py#L157
+        logger.info("Inferring families")
+        sex_ht = sex.ht()
+        # TODO: This is the easiest way to make this work with infer_families, but let
+        #  me know if it would be better to change infer_families instead
+        sex_ht = sex_ht.filter(hl.literal(SEXES).contains(sex_ht.sex_karyotype))
+        sex_ht = sex_ht.annotate(is_female=sex_ht.sex_karyotype == "XX")
+        ped = infer_families(
+            get_filter_relatedness_ht(joint),
+            sex_ht,
+            duplicates(data_type=data_type).ht(),
+        )
+        ped.write(pedigree(data_type=data_type, finalized=False).path)
         raw_trios = families_to_trios(ped)
-        raw_trios.write(trios.versions[f"{CURRENT_RELEASE}_raw"].path)
+        raw_trios.write(trios(data_type=data_type, finalized=False).path)
 
     if args.run_mendel_errors:
         mendel_errors = run_mendel_errors()
