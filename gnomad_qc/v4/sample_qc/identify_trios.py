@@ -243,19 +243,19 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--identify_duplicates",
+        "--identify-duplicates",
         help=(
             "Creates a table with duplicate samples indicating which one is the best to"
             " use."
         ),
         action="store_true",
     )
-    parser.add_argument("--infer_families", help="Infers families", action="store_true")
+    parser.add_argument("--infer-families", help="Infers families", action="store_true")
     parser.add_argument(
-        "--run_mendel_errors", help="Runs mendel errors", action="store_true"
+        "--run-mendel-errors", help="Runs mendel errors", action="store_true"
     )
     parser.add_argument(
-        "--finalize_ped",
+        "--finalize-ped",
         help=(
             "Creates a final ped file by excluding families where the number of Mendel"
             " errors or de novos are higher than those specified in --max_dnm and"
@@ -264,13 +264,13 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--max_dnm",
+        "--max-dnm",
         help="Maximum number of raw de novo mutations for real trios",
         default=2200,
         type=int,
     )
     parser.add_argument(
-        "--max_mendel",
+        "--max-mendel",
         help="Maximum number of raw Mendel errors for real trios",
         default=3750,
         type=int,
