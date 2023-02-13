@@ -158,7 +158,6 @@ def prep_ht_for_rf(
     global joint_qc_meta
     global v3_meta
 
-
     joint_meta = joint_qc_meta.ht()[pop_pca_scores_ht.key]
 
     hgdp_tgp_outliers = hgdp_tgp_pop_outliers.ht()
@@ -499,7 +498,7 @@ def assign_pops(
         include_unreleasable_samples=include_unreleasable_samples,
         pop_assignment_iterations=pop_assignment_iter,
         pcs=pcs,
-        only_train_on_hgdp_tgp = only_train_on_hgdp_tgp,
+        only_train_on_hgdp_tgp=only_train_on_hgdp_tgp,
         v3_population_spike=v3_population_spike,
         v4_population_spike=v4_population_spike,
     )
@@ -635,7 +634,7 @@ def main(args):
                 pickle.dump(pops_rf_model, out)
     finally:
         hl.copy_log(
-            f'gs://gnomad-tmp-4day/ancestry_assignment/ancestry_assignment.rf.log'
+            f"gs://gnomad-tmp-4day/ancestry_assignment/ancestry_assignment.rf.log"
         )
 
 
