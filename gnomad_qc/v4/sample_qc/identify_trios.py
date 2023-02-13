@@ -18,6 +18,7 @@ from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v4.resources.sample_qc import (
     duplicates,
     finalized_outlier_filtering,
+    joint_qc_meta,
     ped_mendel_errors,
     pedigree,
     relatedness,
@@ -180,9 +181,21 @@ def main(args):
     if args.identify_duplicates:
         logger.info("Selecting best duplicate per duplicated sample set")
         ht = relatedness().ht()
+        # Remove all pairs with a QC-filtered sample
+        filter_ht = finalized_outlier_filtering().ht()
         if not joint:
             ht = ht.filter((ht.i.data_type == "exomes") & (ht.j.data_type == "exomes"))
+        else:
+            joint_qc_meta_ht = joint_qc_meta.ht()
+            filter_ht = joint_qc_meta_ht.annotate(
+                outlier_filtered=filter_ht[joint_qc_meta_ht.key].outlier_filtered
+            )
         ht = ht.key_by(i=ht.i.s, j=ht.j.s)
+        # Remove all pairs with a QC-filtered sample
+        ht = ht.filter(
+            filter_ht[ht.i].outlier_filtered | filter_ht[ht.j].outlier_filtered,
+            keep=False,
+        )
         ht = get_duplicated_samples_ht(
             get_duplicated_samples(ht), sample_rankings().ht()
         )
