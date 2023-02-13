@@ -155,7 +155,9 @@ def prep_ht_for_rf(
     :return Table with input for the random forest.
     """
     pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples, test).ht()
-    from gnomad_qc.v4.resources.sample_qc import joint_qc_meta
+    global joint_qc_meta
+    global v3_meta
+
 
     joint_meta = joint_qc_meta.ht()[pop_pca_scores_ht.key]
 
@@ -242,7 +244,18 @@ def prep_ht_for_rf(
 
         joint_qc_meta = joint_qc_meta.ht()
         v3_meta = v3_meta.ht()
-        # TODO: Add code to account for missing research project
+
+        # Annotate research project for eas samples from Osaka
+        v3_meta = v3_meta.annotate(
+            project_meta=v3_meta.project_meta.annotate(
+                research_project=hl.if_else(
+                    (v3_meta.project_meta.project_pop == "eas")
+                    & (v3_meta.s.startswith("JPNW")),
+                    "osaka",
+                    v3_meta.project_meta.research_project,
+                )
+            )
+        )
         joint_qc_meta = joint_qc_meta.annotate(v3=v3_meta[joint_qc_meta.key])
 
         # Filter to only pre-determined list of v3 cohorts for the v3 spike-ins
@@ -486,6 +499,7 @@ def assign_pops(
         include_unreleasable_samples=include_unreleasable_samples,
         pop_assignment_iterations=pop_assignment_iter,
         pcs=pcs,
+        only_train_on_hgdp_tgp = only_train_on_hgdp_tgp,
         v3_population_spike=v3_population_spike,
         v4_population_spike=v4_population_spike,
     )
@@ -604,10 +618,7 @@ def main(args):
             pop_ht = pop_ht.checkpoint(
                 get_pop_ht(
                     test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp
-                ).path.replace(
-                    ".ht",
-                    f'.rf_w_{args.pop_pcs[0]}pcs_{args.min_pop_prob}_pop_prob_{max_mislabeled+"max_mislabeled_" if max_mislabeled else "no_max"}{hl.eval("_v3_spike_"+hl.str("_").join(args.v3_population_spike)) if args.v3_population_spike else ""}{"_v4_spike_"+hl.eval(hl.str("_").join(args.v4_population_spike)) if args.v4_population_spike else ""}.ht',
-                ),
+                ).path,
                 overwrite=overwrite,
                 _read_if_exists=not overwrite,
             )
@@ -624,7 +635,7 @@ def main(args):
                 pickle.dump(pops_rf_model, out)
     finally:
         hl.copy_log(
-            f'gs://gnomad-tmp-4day/ancestry_assignment/ancestry_assignment.rf_w_{args.pop_pcs[0]}pcs_{args.min_pop_prob}_pop_prob_{max_mislabeled+"max_mislabeled_" if max_mislabeled else "no_max"}{hl.eval("_v3_spike_"+hl.str("_").join(args.v3_population_spike)) if args.v3_population_spike else ""}{"_v4_spike_"+hl.eval(hl.str("_").join(args.v4_population_spike)) if args.v4_population_spike else ""}.log'
+            f'gs://gnomad-tmp-4day/ancestry_assignment/ancestry_assignment.rf.log'
         )
 
 
