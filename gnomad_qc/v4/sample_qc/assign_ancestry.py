@@ -7,10 +7,9 @@ from typing import Any, List, Tuple
 import hail as hl
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
 from gnomad.utils.slack import slack_notifications
-
+from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.basics import get_checkpoint_path
-from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
