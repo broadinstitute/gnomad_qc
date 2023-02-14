@@ -389,11 +389,13 @@ def main(args):
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--new-partition-percent",
-        help="Percent of start dataset partitions to use for release HT. Default is 1.1 (110%)",
+        help=(
+            "Percent of start dataset partitions to use for release HT. Default is 1.1"
+            " (110%)"
+        ),
         default=1.1,
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
