@@ -204,19 +204,19 @@ def main(args):
 
     if args.run_mendel_errors:
         mendel_errors = run_mendel_errors()
-        mendel_errors.write(ped_mendel_errors.path, overwrite=args.overwrite)
+        mendel_errors.write(ped_mendel_errors().path, overwrite=args.overwrite)
 
     if args.finalize_ped:
         final_ped = filter_ped(
-            pedigree.versions[f"{CURRENT_RELEASE}_raw"].pedigree,
-            ped_mendel_errors.ht(),
+            pedigree(finalized=False).pedigree,
+            ped_mendel_errors().ht(),
             args.max_dnm,
             args.max_mendel,
         )
-        final_ped.write(pedigree.path)
+        final_ped.write(pedigree().path)
 
         final_trios = families_to_trios(final_ped)
-        final_trios.write(trios.path)
+        final_trios.write(trios().path)
 
 
 if __name__ == "__main__":
