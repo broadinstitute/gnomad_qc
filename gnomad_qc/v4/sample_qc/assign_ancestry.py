@@ -2,11 +2,11 @@
 import argparse
 import logging
 import pickle
-from typing import Any, List, Tuple
+from typing import Any, List, Optional, Tuple
 
 import hail as hl
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
-from gnomad.utils.slack import slack_notifications
+#from gnomad.utils.slack import slack_notifications
 from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.basics import get_checkpoint_path
@@ -64,7 +64,12 @@ V3_SPIKE_PROJECTS = {
 }
 
 """
-Dictionary with v3 pops as keys and approved cohorts to use for training for those pops as values.
+Dictionary with v3 pops as keys and approved cohorts to use for training for those pops as values. Decisions were made based on results of analysis to determine which v3 samples/cohorts to use as training samples (per sample calculating the mean distance to all samples in a given population, and an alternative calculating per sample the mean distance limited to only HGDP/1KG samples in each population).
+Projects that were excluding based on these analyses are:
+afr: NHLBI_WholeGenome_Sequencing
+ami: Pedigree-Based Whole Genome Sequencing of Affective and Psychotic Disorders
+amr: NHLBI_WholeGenome_Sequencing
+amr: PAGE: Women''s Health Initiative (WHI)
 """
 
 
@@ -103,7 +108,7 @@ def prep_ht_for_rf(
     include_unreleasable_samples: bool = False,
     seed: int = 24,
     test: bool = False,
-    only_train_on_hgdp_tgp: bool = False,
+    include_v2_known_in_training: bool = False,
     v4_population_spike: Optional[List[str]] = None,
     v3_population_spike: Optional[List[str]] = None,
 ) -> hl.Table:
@@ -117,7 +122,7 @@ def prep_ht_for_rf(
     :param include_unreleasable_samples: Should unreleasable samples be included in the PCA.
     :param seed: Random seed, defaults to 24.
     :param test: Whether RF should run on the test QC MT.
-    :param only_train_on_hgdp_tgp: Whether to train RF classifier using only the HGDP and 1KG populations. Default is False.
+    :param include_v2_known_in_training: Whether to train RF classifier using v2 known pop labels. Default is False.
     :param v4_population_spike: Optional List of populations to spike into training. Must be in v4_population_spike dictionary. Default is None.
     :param v3_population_spike: Optional List of populations to spike into training. Must be in v3_population_spike dictionary. Default is None.
     :return Table with input for the random forest.
@@ -131,29 +136,23 @@ def prep_ht_for_rf(
     # Collect sample names of hgdp/tgp outliers to remove (these are outliers found by Alicia Martin's group during pop-specific PCA analyses as well as one duplicate sample)
     hgdp_tgp_outliers = hl.literal(hgdp_tgp_pop_outliers.ht().s.collect())
 
-    # TODO: Add code for subpopulations
-    if only_train_on_hgdp_tgp:
-        logger.info("Training using HGDP and 1KG samples only...")
-        training_pop = hl.or_missing(
-            (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp)
-            & (joint_meta.v3_meta.v3_project_pop != "oth")  # Not using v3_project_pop="oth" samples as these are the samples from Oceania (there are only a few known Oceania samples and in past inference analyses no new samples are inferred as belonging to this group)
-            & ~hgdp_tgp_outliers.contains(pop_pca_scores_ht.s),
-            joint_meta.v3_meta.v3_project_pop,
-        )
-    else:
-        logger.info(
-            "Training using HGDP and 1KG samples and all v2 samples with known pops..."
-        )
+
+    training_pop = hl.or_missing(
+        (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp)
+        & (joint_meta.v3_meta.v3_project_pop != "oth")  # Not using v3_project_pop="oth" samples as these are the samples from Oceania (there are only a few known Oceania samples and in past inference analyses no new samples are inferred as belonging to this group)
+        & ~hgdp_tgp_outliers.contains(pop_pca_scores_ht.s),
+        joint_meta.v3_meta.v3_project_pop,
+    )
+
+    if include_v2_known_in_training:
         training_pop = hl.if_else(
-            (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp)
-            & (joint_meta.v3_meta.v3_project_pop != "oth") # Not using v3_project_pop="oth" samples as these are the samples from Oceania (there are only a few known Oceania samples and in past inference analyses no new samples are inferred as belonging to this group)
-            & (~hl.literal(hgdp_tgp_outliers).contains(pop_pca_scores_ht.s)),
-            joint_meta.v3_meta.v3_project_pop,
+            hl.is_defined(training_pop),
+            training_pop,
             hl.if_else(
                 (hl.is_defined(joint_meta.v2_meta.v2_known_pop))
                 & (hl.is_missing(joint_meta.v3_meta.v3_subsets.hgdp)),
                 joint_meta.v2_meta.v2_known_pop,
-                hl.null(hl.tstr),
+                hl.missing(hl.tstr),
                 missing_false=True,
             ),
             missing_false=True,
@@ -164,6 +163,7 @@ def prep_ht_for_rf(
         hgdp_or_tgp=joint_meta.v3_meta.v3_subsets.hgdp
         | joint_meta.v3_meta.v3_subsets.tgp,
     )
+
     if v4_population_spike:
         logger.info(
             "Spiking v4 pops, %s, into the RF training data...", v4_population_spike
@@ -211,6 +211,7 @@ def prep_ht_for_rf(
         joint_qc_meta = joint_qc_meta.ht()
         v3_meta = v3_meta.ht()
 
+        # TODO: Edit code once the joint QC is updated
         # Annotate research project for eas samples from Osaka
         v3_meta = v3_meta.annotate(
             project_meta=v3_meta.project_meta.annotate(
@@ -244,9 +245,8 @@ def prep_ht_for_rf(
                 pop_spiking.contains(
                     joint_qc_meta[pop_pca_scores_ht.key].v3_meta.v3_project_pop
                 ),
-                pop_spiking[
                     (joint_qc_meta[pop_pca_scores_ht.key].v3_meta.v3_project_pop)
-                ],
+                ,
             )
             .or_missing()
         )
@@ -268,7 +268,7 @@ def assign_pops(
     seed: int = 24,
     test: bool = False,
     overwrite: bool = False,
-    only_train_on_hgdp_tgp: bool = False,
+    include_v2_known_in_training: bool = False,
     v4_population_spike: Optional[List[str]] = None,
     v3_population_spike: Optional[List[str]] = None,
 ) -> Tuple[hl.Table, Any]:
@@ -285,7 +285,7 @@ def assign_pops(
     :param seed: Random seed, defaults to 24.
     :param test: Whether running assigment on a test dataset.
     :param overwrite: Whether to overwrite existing files.
-    :param only_train_on_hgdp_tgp: Whether to train the RF classifier using only the HGDP and 1KG populations. Defaults to False.
+    :param include_v2_known_in_training: Whether to train RF classifier using v2 known pop labels. Default is False.
     :param v4_population_spike: Optional List of v4 populations to spike into the RF. Must be in v4_pop_spike dictionary. Defaults to None.
     :param v3_population_spike: Optional List of v3 populations to spike into the RF. Must be in v4_pop_spike dictionary. Defaults to None.
     :return: Table of pop assignments and the RF model.
@@ -295,7 +295,7 @@ def assign_pops(
         include_unreleasable_samples,
         seed,
         test,
-        only_train_on_hgdp_tgp,
+        include_v2_known_in_training,
         v4_population_spike,
         v3_population_spike,
     )
@@ -330,7 +330,7 @@ def assign_pops(
         min_prob=min_prob,
         include_unreleasable_samples=include_unreleasable_samples,
         pcs=pcs,
-        only_train_on_hgdp_tgp=only_train_on_hgdp_tgp,
+        include_v2_known_in_training=include_v2_known_in_training,
         v3_population_spike=v3_population_spike,
         v4_population_spike=v4_population_spike,
     )
@@ -392,7 +392,7 @@ def main(args):
         include_unreleasable_samples = args.include_unreleasable_samples
         overwrite = args.overwrite
         test = args.test
-        only_train_on_hgdp_tgp = args.only_train_on_hgdp_tgp
+        include_v2_known_in_training = args.include_v2_known_in_training
 
         if args.run_pca:
             pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
@@ -421,7 +421,7 @@ def main(args):
                 pcs=pop_pcs,
                 test=test,
                 overwrite=overwrite,
-                only_train_on_hgdp_tgp=only_train_on_hgdp_tgp,
+                include_v2_known_in_training=include_v2_known_in_training,
                 v4_population_spike=args.v4_population_spike,
                 v3_population_spike=args.v3_population_spike,
             )
@@ -435,7 +435,7 @@ def main(args):
             )
 
             with hl.hadoop_open(
-                pop_rf_path(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp),
+                pop_rf_path(test=test),
                 "wb",
             ) as out:
                 pickle.dump(pops_rf_model, out)
@@ -491,8 +491,8 @@ if __name__ == "__main__":
         "--overwrite", help="Overwrite output files.", action="store_true"
     )
     parser.add_argument(
-        "--only-train-on-hgdp-tgp",
-        help="Whether to train RF classifier using only the HGDP and TGP populations.",
+        "--include-v2-known-in-training",
+        help="Whether to train RF classifier using v2 known pop labels. Default is False.",
         action="store_true",
     )
     parser.add_argument(
@@ -508,6 +508,13 @@ if __name__ == "__main__":
         type=str,
         nargs="+",
         choices=["asj", "ami", "afr", "amr", "eas", "sas", "fin", "nfe"]
+    )
+    parser.add_argument(
+        "--min-prob-decisions-json",
+        help=(
+            "Optional path to JSON file containing decisions on minimum RF prob for pop assignment to use per each ancestry group. "
+        ),
+        type=str,
     )
 
 
