@@ -638,7 +638,7 @@ if __name__ == "__main__":
     )
     finalize.add_argument(
         "--finalize-relatedness-ht",
-        help="",
+        help="Whether to finalize the relatedness HT.",
         action="store_true",
     )
     finalize.add_argument(

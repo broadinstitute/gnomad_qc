@@ -470,7 +470,11 @@ def related_samples_to_drop(
     test: bool = False, release: bool = True
 ) -> VersionedTableResource:
     """
-    Get the VersionedTableResource for samples to drop for PCA due to them being related.
+    Get the VersionedTableResource for samples to drop for PCA or release.
+    
+    Default to returning the VersionedTableResource for samples to drop for release. 
+    If release is set to false, retrieve the VersionedTableResource of related samples to 
+    remove for PCA.
 
     :param test: Whether to use a tmp path for a test resource.
     :param release: Whether to return resource for related samples to drop for the
@@ -490,7 +494,11 @@ def related_samples_to_drop(
 
 def sample_rankings(test: bool = False, release: bool = True) -> VersionedTableResource:
     """
-    Get the VersionedTableResource for ranking of all samples to use for removing relateds for PCA.
+    Get the VersionedTableResource for sample rankings for release or PCA.
+    
+    Default to returning the VersionedTableResource for release sample rankings. If release 
+    is set to false, retrieve the VersionedTableResource of sample rankings for removing
+    relateds for PCA.
 
     :param test: Whether to use a tmp path for a test resource.
     :param release: Whether to return resource for ranking of all samples based on
