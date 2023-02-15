@@ -128,8 +128,8 @@ def prep_ht_for_rf(
     seed: int = 24,
     test: bool = False,
     only_train_on_hgdp_tgp: bool = False,
-    v4_population_spike: List[str] = None,
-    v3_population_spike: List[str] = None,
+    v4_population_spike: Optional[List[str]] = None,
+    v3_population_spike: Optional[List[str]] = None,
 ) -> hl.Table:
     """
     Prepare the PCA scores hail Table for the random forest population assignment runs.
@@ -139,8 +139,8 @@ def prep_ht_for_rf(
     :param seed: Random seed, defaults to 24.
     :param test: Whether RF should run on the test QC MT.
     :param only_train_on_hgdp_tgp: Whether to train RF classifier using only the HGDP and 1KG populations. Default is False.
-    :param v4_population_spike: List of populations to spike into training. Must be in v4_population_spike dictionary. Default is None.
-    :param v3_population_spike: List of populations to spike into training. Must be in v3_population_spike dictionary. Default is None.
+    :param v4_population_spike: Optional List of populations to spike into training. Must be in v4_population_spike dictionary. Default is None.
+    :param v3_population_spike: Optional List of populations to spike into training. Must be in v3_population_spike dictionary. Default is None.
     :return Table with input for the random forest.
     """
     pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples, test).ht()
@@ -149,8 +149,7 @@ def prep_ht_for_rf(
 
     joint_meta = joint_qc_meta.ht()[pop_pca_scores_ht.key]
 
-    hgdp_tgp_outliers = hgdp_tgp_pop_outliers.ht()
-    hgdp_tgp_outliers = hgdp_tgp_outliers.s.collect()
+    hgdp_tgp_outliers = hl.literal(hgdp_tgp_pop_outliers.ht().s.collect())
 
     # TODO: Add code for subpopulations
     # Either train the RF with only HGDP and TGP, or HGDP and TGP and all v2 known labels
@@ -159,7 +158,7 @@ def prep_ht_for_rf(
         training_pop = hl.or_missing(
             (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp)
             & (joint_meta.v3_meta.v3_project_pop != "oth")
-            & (~hl.literal(hgdp_tgp_outliers).contains(pop_pca_scores_ht.s)),
+            & ~hgdp_tgp_outliers.contains(pop_pca_scores_ht.s),
             joint_meta.v3_meta.v3_project_pop,
         )
     else:
@@ -188,7 +187,7 @@ def prep_ht_for_rf(
     )
     if v4_population_spike:
         logger.info(
-            "Spiking v4 pops, %s, into the RF training data", v4_population_spike
+            "Spiking v4 pops, %s, into the RF training data...", v4_population_spike
         )
 
         pop_spiking = hl.dict(
@@ -310,8 +309,8 @@ def assign_pops(
     test: bool = False,
     overwrite: bool = False,
     only_train_on_hgdp_tgp: bool = False,
-    v4_population_spike: List[str] = None,
-    v3_population_spike: List[str] = None,
+    v4_population_spike: Optional[List[str]] = None,
+    v3_population_spike: Optional[List[str]] = None,
 ) -> Tuple[hl.Table, Any]:
     """
     Use a random forest model to assign global population labels based on the results from `run_pca`.
@@ -334,8 +333,8 @@ def assign_pops(
     :param test: Whether running assigment on a test dataset.
     :param overwrite: Whether to overwrite existing files.
     :param only_train_on_hgdp_tgp: Whether to train the RF classifier using only the HGDP and 1KG populations. Defaults to False.
-    :param v4_population_spike: List of v4 populations to spike into the RF. Must be in v4_pop_spike dictionary. Defaults to None.
-    :param v3_population_spike: List of v3 populations to spike into the RF. Must be in v4_pop_spike dictionary. Defaults to None.
+    :param v4_population_spike: Optional List of v4 populations to spike into the RF. Must be in v4_pop_spike dictionary. Defaults to None.
+    :param v3_population_spike: Optional List of v3 populations to spike into the RF. Must be in v4_pop_spike dictionary. Defaults to None.
     :return: Table of pop assignments and the RF model.
     """
     logger.info("Assigning global population labels")
@@ -356,7 +355,7 @@ def assign_pops(
     else:
         max_mislabeled = None
 
-    logger.info("Prepping HT for RF.")
+    logger.info("Prepping HT for RF...")
     pop_pca_scores_ht = prep_ht_for_rf(
         include_unreleasable_samples,
         withhold_prop,
