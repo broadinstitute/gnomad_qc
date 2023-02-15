@@ -124,7 +124,6 @@ def calculate_mislabeled_training(pop_ht: hl.Table, pop_field: str) -> [int, flo
 
 def prep_ht_for_rf(
     include_unreleasable_samples: bool = False,
-    withhold_prop: hl.float = None,
     seed: int = 24,
     test: bool = False,
     only_train_on_hgdp_tgp: bool = False,
@@ -135,7 +134,6 @@ def prep_ht_for_rf(
     Prepare the PCA scores hail Table for the random forest population assignment runs.
 
     :param include_unreleasable_samples: Should unreleasable samples be included in the PCA.
-    :param withhold_prop: Proportion of training pop samples to withhold from training. All samples are kept when set as `None`.
     :param seed: Random seed, defaults to 24.
     :param test: Whether RF should run on the test QC MT.
     :param only_train_on_hgdp_tgp: Whether to train RF classifier using only the HGDP and 1KG populations. Default is False.
@@ -278,32 +276,13 @@ def prep_ht_for_rf(
         original_training_pop=pop_pca_scores_ht.training_pop,
     )
 
-    # Use the withhold proportion to create PR curves for when the RF removes
-    # samples because it will remove samples that are misclassified
-    if withhold_prop:
-        logger.info("Withholding proportion is %s", withhold_prop)
-        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
-            training_pop=hl.or_missing(
-                hl.is_defined(pop_pca_scores_ht.training_pop)
-                & hl.rand_bool(1.0 - withhold_prop, seed=seed),
-                pop_pca_scores_ht.training_pop,
-            )
-        )
-
-        pop_pca_scores_ht = pop_pca_scores_ht.annotate(
-            withheld_sample=hl.is_defined(pop_pca_scores_ht.original_training_pop)
-            & (~hl.is_defined(pop_pca_scores_ht.training_pop))
-        )
     return pop_pca_scores_ht
 
 
 def assign_pops(
     min_prob: float,
     include_unreleasable_samples: bool = False,
-    max_number_mislabeled_training_samples: int = None,
-    max_proportion_mislabeled_training_samples: float = None,
     pcs: List[int] = list(range(1, 21)),
-    withhold_prop: float = None,
     missing_label: str = "remaining",
     seed: int = 24,
     test: bool = False,
@@ -315,19 +294,11 @@ def assign_pops(
     """
     Use a random forest model to assign global population labels based on the results from `run_pca`.
 
-    Training data is the v3 project metadata field `project_pop` when defined, otherwise, the v3 inferred population
-    with the exception of `oth`. Training data is restricted to 1KG and HGDP samples, if specified. The method assigns
-    a population label to all samples in the dataset. If a maximum number or proportion of mislabeled samples is set and the number
-    of truth outliers exceeds this threshold, the outliers are removed from the training data, and the random
-    forest runs until the number of truth outliers is less than or equal to `max_number_mislabeled_training_samples` or
-    `max_proportion_mislabeled_training_samples`. Only one of `max_number_mislabeled_training_samples`
-    or `max_proportion_mislabeled_training_samples` can be set.
+    Training data is the known label for HGDP and 1KG samples and all v2 samples with known pops unless specificied to restrict only to 1KG and HGDP samples. The method assigns
+    a population label to all samples in the dataset.
     :param min_prob: Minimum RF probability for pop assignment.
     :param include_unreleasable_samples: Whether unreleasable samples were included in PCA.
-    :param max_number_mislabeled_training_samples: If set, run the population assignment until the number of mislabeled training samples is less than this number threshold.
-    :param max_proportion_mislabeled_training_samples: If set, run the population assignment until the number of mislabeled training samples is less than this proportion threshold.
     :param pcs: List of PCs to use in the RF.
-    :param withhold_prop: Proportion of training pop samples to withhold from training. Keep all samples if `None`.
     :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`.
     :param seed: Random seed, defaults to 24.
     :param test: Whether running assigment on a test dataset.
@@ -337,28 +308,9 @@ def assign_pops(
     :param v3_population_spike: Optional List of v3 populations to spike into the RF. Must be in v4_pop_spike dictionary. Defaults to None.
     :return: Table of pop assignments and the RF model.
     """
-    logger.info("Assigning global population labels")
-
-    logger.info("Checking passed args...")
-    if (
-        max_number_mislabeled_training_samples is not None
-        and max_proportion_mislabeled_training_samples is not None
-    ):
-        raise ValueError(
-            "Only one of max_number_mislabeled_training_samples or"
-            " max_proportion_mislabeled_training_samples can be set"
-        )
-    elif max_proportion_mislabeled_training_samples is not None:
-        max_mislabeled = max_proportion_mislabeled_training_samples
-    elif max_number_mislabeled_training_samples is not None:
-        max_mislabeled = max_number_mislabeled_training_samples
-    else:
-        max_mislabeled = None
-
     logger.info("Prepping HT for RF...")
     pop_pca_scores_ht = prep_ht_for_rf(
         include_unreleasable_samples,
-        withhold_prop,
         seed,
         test,
         only_train_on_hgdp_tgp,
@@ -387,96 +339,7 @@ def assign_pops(
         get_checkpoint_path(f"assign_pops_rf_iter_1_pop_lots_of_loggers_{pcs[-1]}"),
         overwrite=overwrite,
     )
-    # Calculate number and proportion of mislabeled samples
-    n_mislabeled_samples, prop_mislabeled_samples = calculate_mislabeled_training(
-        pop_ht, pop_field
-    )
 
-    mislabeled = (
-        n_mislabeled_samples
-        if max_number_mislabeled_training_samples
-        # TODO: Run analysis on what makes sense as input here, utilize withhold
-        # arg for PR curves
-        else prop_mislabeled_samples
-    )
-    pop_assignment_iter = 1
-    logger.info(
-        "The maximum number of samples with conflicting training and assigned labels"
-        " allowed is %s.",
-        str(max_mislabeled),
-    )
-    # Rerun the RF until the number of mislabeled samples (known pop !=
-    # assigned pop) is below our max mislabeled threshold. The basis of this
-    # decision should be rooted in the reliability of the samples' provided
-    # population label.
-    if max_mislabeled:
-        while mislabeled > max_mislabeled:
-            pop_assignment_iter += 1
-            logger.info(
-                "Found %i(%d%%) training samples labeled differently from their known"
-                " pop. Re-running assignment without them.",
-                n_mislabeled_samples,
-                round(prop_mislabeled_samples * 100, 2),
-            )
-
-            pop_ht = pop_ht[pop_pca_scores_ht.key]
-
-            # Remove mislabled samples from RF training unless they are from 1KG or HGDP
-            logger.info(
-                "Reannotating training pop after removing misclassified samples unless"
-                " part of HGDP or 1KG"
-            )
-            pop_pca_scores_ht = pop_pca_scores_ht.annotate(
-                training_pop=hl.or_missing(
-                    (
-                        (pop_ht.training_pop == pop_ht[pop_field])
-                        | (pop_pca_scores_ht.hgdp_or_tgp)
-                    ),
-                    pop_pca_scores_ht.training_pop,
-                ),
-            )
-            logger.info("Checkpointing reannotated scores ht")
-            pop_pca_scores_ht = pop_pca_scores_ht.checkpoint(
-                get_checkpoint_path(
-                    f"assign_pops_rf_iter_{pop_assignment_iter}{'_test' if test else ''}_lots_of_loggers"
-                ),
-                overwrite=overwrite,
-            )
-
-            logger.info(
-                "Counted %d training examples",
-                pop_pca_scores_ht.aggregate(
-                    hl.agg.count_where(hl.is_defined(pop_pca_scores_ht.training_pop))
-                ),
-            )
-            logger.info("Rerunning gnomAD method's assign population_pcs")
-            pop_ht, pops_rf_model = assign_population_pcs(
-                pop_pca_scores_ht,
-                pc_cols=pcs,
-                known_col="training_pop",
-                output_col=pop_field,
-                min_prob=min_prob,
-                missing_label=missing_label,
-            )
-            logger.info("Completed gnomAD method's assign population_pcs")
-            pop_ht = pop_ht.checkpoint(
-                get_checkpoint_path(
-                    f"assign_pops_rf_iter_{pop_assignment_iter}{'_test' if test else ''}pop_ht_lots_of_loggers_pcs{pcs[-1]}"
-                ),
-                overwrite=overwrite,
-            )
-            (
-                n_mislabeled_samples,
-                prop_mislabeled_samples,
-            ) = calculate_mislabeled_training(pop_ht, pop_field)
-
-            mislabeled = (
-                n_mislabeled_samples
-                if max_number_mislabeled_training_samples
-                # TODO: Run analysis on what makes sense as input here, utilize withhold
-                # arg for PR curves
-                else prop_mislabeled_samples
-            )
 
     pop_ht = pop_ht.annotate(
         original_training_pop=pop_pca_scores_ht[pop_ht.key].original_training_pop
@@ -484,7 +347,6 @@ def assign_pops(
     pop_ht = pop_ht.annotate_globals(
         min_prob=min_prob,
         include_unreleasable_samples=include_unreleasable_samples,
-        pop_assignment_iterations=pop_assignment_iter,
         pcs=pcs,
         only_train_on_hgdp_tgp=only_train_on_hgdp_tgp,
         v3_population_spike=v3_population_spike,
@@ -494,12 +356,6 @@ def assign_pops(
     if max_mislabeled:
         pop_ht = pop_ht.annotate_globals(
             max_mislabeled=max_mislabeled,
-        )
-
-    if withhold_prop:
-        pop_ht = pop_ht.annotate_globals(withhold_prop=withhold_prop)
-        pop_ht = pop_ht.annotate(
-            withheld_sample=pop_pca_scores_ht[pop_ht.key].withheld_sample
         )
 
     return pop_ht, pops_rf_model
@@ -552,21 +408,6 @@ def main(args):
         test = args.test
         only_train_on_hgdp_tgp = args.only_train_on_hgdp_tgp
 
-        if (
-            args.max_number_mislabeled_training_samples is not None
-            and args.max_proportion_mislabeled_training_samples is not None
-        ):
-            raise ValueError(
-                "Only one of max_number_mislabeled_training_samples or"
-                " max_proportion_mislabeled_training_samples can be set"
-            )
-        elif args.max_proportion_mislabeled_training_samples is not None:
-            max_mislabeled = args.max_proportion_mislabeled_training_samples
-        elif args.max_number_mislabeled_training_samples is not None:
-            max_mislabeled = args.max_number_mislabeled_training_samples
-        else:
-            max_mislabeled = None
-
         if args.run_pca:
             pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
                 pca_related_samples_to_drop().ht(),
@@ -591,10 +432,7 @@ def main(args):
             pop_ht, pops_rf_model = assign_pops(
                 args.min_pop_prob,
                 include_unreleasable_samples,
-                max_number_mislabeled_training_samples=args.max_number_mislabeled_training_samples,
-                max_proportion_mislabeled_training_samples=args.max_proportion_mislabeled_training_samples,
                 pcs=pop_pcs,
-                withhold_prop=args.withhold_prop,
                 test=test,
                 overwrite=overwrite,
                 only_train_on_hgdp_tgp=only_train_on_hgdp_tgp,
@@ -655,40 +493,6 @@ if __name__ == "__main__":
         help="Minimum RF prob for pop assignment. Defaults to 0.75.",
         default=0.75,
         type=float,
-    )
-    parser.add_argument(
-        "--withhold-prop",
-        help=(
-            "Proportion of training samples to withhold from pop assignment RF"
-            " training. All samples with known labels will be used for training if this"
-            " flag is not used."
-        ),
-        type=float,
-    )
-    mislabel_parser = parser.add_mutually_exclusive_group(required=False)
-    mislabel_parser.add_argument(
-        "--max-number-mislabeled-training-samples",
-        help=(
-            "If set, run the population assignment until number of training samples"
-            " that are mislabelled is under this number threshold. The basis of this"
-            " decision should be rooted in the reliability of the samples' provided"
-            " population label. Can't be used if"
-            " `max-proportion-mislabeled-training-samples` is already set."
-        ),
-        type=int,
-        default=None,
-    )
-    mislabel_parser.add_argument(
-        "--max-proportion-mislabeled-training-samples",
-        help=(
-            "If set, run the population assignment until number of training samples"
-            " that are mislabelled is under this proportion threshold. The basis of"
-            " this decision should be rooted in the reliability of the samples'"
-            " provided population label. Can't be used if"
-            " `max-number-mislabeled-training-samples` is already set."
-        ),
-        type=float,
-        default=None,
     )
     parser.add_argument(
         "--slack-channel",
