@@ -19,37 +19,24 @@ from gnomad_qc.v4.resources.sample_qc import (
     joint_qc_meta,
     pca_related_samples_to_drop,
     pop_rf_path,
-    pop_tsv_path,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("ancestry_assignment")
 logger.setLevel(logging.INFO)
 
-# Create dictionary with potential pops to use for training (with v4 race/ethnicity as key and corresponding pop as value)
-v4_pop_spike_dict = {
+
+V4_POP_SPIKE_DICT = {
     "Arab": "mid",
     "Bedouin": "mid",
     "Persian": "mid",
     "Qatari": "mid",
 }
+"""
+Dictionary with potential pops to use for training (with v4 race/ethnicity as key and corresponding pop as value).
+"""
 
-# Create dictionary with potential v3 pops to use for training
-v3_pop_spike_dict = {
-    "fin": "fin",
-    "ami": "ami",
-    "asj": "asj",
-    "amr": "amr",
-    "afr": "afr",
-    "sas": "sas",
-    "eas": "eas",
-    "nfe": "nfe",
-    "mid": "mid",
-}
-
-# Create dictionary with v3 pops as keys and approved cohorts to use for training for those pops as values
-v3_spike_projects = hl.literal(
-    {
+V3_SPIKE_PROJECTS = {
         "asj": ["Jewish_Genome_Project"],
         "ami": ["NHLBI_WholeGenome_Sequencing"],
         "afr": ["TOPMED_Tishkoff_Cardiometabolics_Phase4"],
@@ -74,8 +61,11 @@ v3_spike_projects = hl.literal(
             "Estonia_University of Tartu_Whole Genome Sequencing",
             "WGSPD",
         ],
-    }
-)
+}
+
+"""
+Dictionary with v3 pops as keys and approved cohorts to use for training for those pops as values.
+"""
 
 
 def run_pca(
@@ -203,9 +193,9 @@ def prep_ht_for_rf(
 
         pop_spiking = hl.dict(
             [
-                (pop, v4_pop_spike_dict[pop])
-                if pop in v4_pop_spike_dict
-                else ValueError(f"Supplied pop: {pop} is not in v4_pop_spike_dict")
+                (pop, V4_POP_SPIKE_DICT[pop])
+                if pop in V4_POP_SPIKE_DICT
+                else ValueError(f"Supplied pop: {pop} is not in V4_POP_SPIKE_DICT")
                 for pop in v4_population_spike
             ]
         )
@@ -233,9 +223,9 @@ def prep_ht_for_rf(
         )
         pop_spiking = hl.dict(
             [
-                (pop, v3_pop_spike_dict[pop])
-                if pop in v3_pop_spike_dict
-                else ValueError(f"Supplied pop: {pop} is not in v3_pop_spike_dict")
+                (pop, V3_SPIKE_PROJECTS[pop])
+                if pop in V3_SPIKE_PROJECTS
+                else ValueError(f"Supplied pop: {pop} is not in V3_SPIKE_PROJECTS")
                 for pop in v3_population_spike
             ]
         )
@@ -258,10 +248,10 @@ def prep_ht_for_rf(
 
         # Filter to only pre-determined list of v3 cohorts for the v3 spike-ins
         joint_qc_meta = joint_qc_meta.filter(
-            v3_spike_projects.contains(joint_qc_meta.v3_meta.v3_project_pop)
+            hl.literal(V3_SPIKE_PROJECTS).contains(joint_qc_meta.v3_meta.v3_project_pop)
         )
         joint_qc_meta = joint_qc_meta.filter(
-            v3_spike_projects[joint_qc_meta.v3_meta.v3_project_pop].contains(
+            hl.literal(V3_SPIKE_PROJECTS)[joint_qc_meta.v3_meta.v3_project_pop].contains(
                 joint_qc_meta.v3.project_meta.research_project
             )
         )
@@ -619,11 +609,6 @@ def main(args):
                 ).path,
                 overwrite=overwrite,
                 _read_if_exists=not overwrite,
-            )
-            pop_ht.transmute(
-                **{f"PC{j}": pop_ht.pca_scores[i] for i, j in enumerate(pop_pcs)}
-            ).export(
-                pop_tsv_path(test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp)
             )
 
             with hl.hadoop_open(
