@@ -99,29 +99,6 @@ def run_pca(
     return run_pca_with_relateds(qc_mt, samples_to_drop, n_pcs=n_pcs)
 
 
-def calculate_mislabeled_training(pop_ht: hl.Table, pop_field: str) -> [int, float]:
-    """
-    Calculate the number and proportion of mislabeled training samples.
-
-    :param pop_ht: Table with assigned pops/subpops that is returned by `assign_population_pcs`.
-    :param pop_field: Name of field in the Table containing the assigned pop/subpop.
-    :return: The number and proportion of mislabeled training samples.
-    """
-    logger.info("Calculating mislabeled training samples")
-    n_mislabeled_samples = pop_ht.aggregate(
-        hl.agg.count_where(pop_ht.training_pop != pop_ht[pop_field])
-    )
-
-    logger.info("Counting where training pop is defined")
-    defined_training_pops = pop_ht.aggregate(
-        hl.agg.count_where(hl.is_defined(pop_ht.training_pop))
-    )
-
-    prop_mislabeled_samples = n_mislabeled_samples / defined_training_pops
-
-    return n_mislabeled_samples, prop_mislabeled_samples
-
-
 def prep_ht_for_rf(
     include_unreleasable_samples: bool = False,
     seed: int = 24,
@@ -132,6 +109,10 @@ def prep_ht_for_rf(
 ) -> hl.Table:
     """
     Prepare the PCA scores hail Table for the random forest population assignment runs.
+
+
+    Either train the RF with only HGDP and TGP, or HGDP and TGP and all v2 known labels. Can also specify list of pops with known v3/v4 labels to include (v3_population_spike/v4_population_spike) for training. Pops supplied for v4 are specified by race/ethnicity and converted to a ancestry group using V4_POP_SPIKE_DICT.
+
 
     :param include_unreleasable_samples: Should unreleasable samples be included in the PCA.
     :param seed: Random seed, defaults to 24.
@@ -147,15 +128,15 @@ def prep_ht_for_rf(
 
     joint_meta = joint_qc_meta.ht()[pop_pca_scores_ht.key]
 
+    # Collect sample names of hgdp/tgp outliers to remove (these are outliers found by Alicia Martin's group during pop-specific PCA analyses as well as one duplicate sample)
     hgdp_tgp_outliers = hl.literal(hgdp_tgp_pop_outliers.ht().s.collect())
 
     # TODO: Add code for subpopulations
-    # Either train the RF with only HGDP and TGP, or HGDP and TGP and all v2 known labels
     if only_train_on_hgdp_tgp:
         logger.info("Training using HGDP and 1KG samples only...")
         training_pop = hl.or_missing(
             (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp)
-            & (joint_meta.v3_meta.v3_project_pop != "oth")
+            & (joint_meta.v3_meta.v3_project_pop != "oth")  # Not using v3_project_pop="oth" samples as these are the samples from Oceania (there are only a few known Oceania samples and in past inference analyses no new samples are inferred as belonging to this group)
             & ~hgdp_tgp_outliers.contains(pop_pca_scores_ht.s),
             joint_meta.v3_meta.v3_project_pop,
         )
@@ -165,7 +146,7 @@ def prep_ht_for_rf(
         )
         training_pop = hl.if_else(
             (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp)
-            & (joint_meta.v3_meta.v3_project_pop != "oth")
+            & (joint_meta.v3_meta.v3_project_pop != "oth") # Not using v3_project_pop="oth" samples as these are the samples from Oceania (there are only a few known Oceania samples and in past inference analyses no new samples are inferred as belonging to this group)
             & (~hl.literal(hgdp_tgp_outliers).contains(pop_pca_scores_ht.s)),
             joint_meta.v3_meta.v3_project_pop,
             hl.if_else(
@@ -294,8 +275,9 @@ def assign_pops(
     """
     Use a random forest model to assign global population labels based on the results from `run_pca`.
 
-    Training data is the known label for HGDP and 1KG samples and all v2 samples with known pops unless specificied to restrict only to 1KG and HGDP samples. The method assigns
-    a population label to all samples in the dataset.
+    Training data is the known label for HGDP and 1KG samples and all v2 samples with known pops unless specificied to restrict only to 1KG and HGDP samples. Can also specify a list of pops with known v3/v4 labels to include (v3_population_spike/v4_population_spike) for training. Pops supplied for v4 are specified by race/ethnicity and converted to a ancestry group using V4_POP_SPIKE_DICT. The method assigns
+    a population label to all samples in the dataset. 
+
     :param min_prob: Minimum RF probability for pop assignment.
     :param include_unreleasable_samples: Whether unreleasable samples were included in PCA.
     :param pcs: List of PCs to use in the RF.
@@ -326,7 +308,7 @@ def assign_pops(
         ),
         pop_pca_scores_ht.aggregate(hl.agg.counter(pop_pca_scores_ht.training_pop)),
     )
-    # Run the pop RF for the first time
+    # Run the pop RF.
     pop_ht, pops_rf_model = assign_population_pcs(
         pop_pca_scores_ht,
         pc_cols=pcs,
@@ -353,9 +335,13 @@ def assign_pops(
         v4_population_spike=v4_population_spike,
     )
 
-    if max_mislabeled:
+    if v3_population_spike:
         pop_ht = pop_ht.annotate_globals(
-            max_mislabeled=max_mislabeled,
+            v3_population_spike=v3_population_spike,
+        )
+    if v4_population_spike:
+        pop_ht = pop_ht.annotate_globals(
+            v4_population_spike=v4_population_spike,
         )
 
     return pop_ht, pops_rf_model
