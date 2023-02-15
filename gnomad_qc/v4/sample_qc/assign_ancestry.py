@@ -6,7 +6,8 @@ from typing import Any, List, Optional, Tuple
 
 import hail as hl
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
-#from gnomad.utils.slack import slack_notifications
+
+# from gnomad.utils.slack import slack_notifications
 from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.basics import get_checkpoint_path
@@ -37,30 +38,30 @@ Dictionary with potential pops to use for training (with v4 race/ethnicity as ke
 """
 
 V3_SPIKE_PROJECTS = {
-        "asj": ["Jewish_Genome_Project"],
-        "ami": ["NHLBI_WholeGenome_Sequencing"],
-        "afr": ["TOPMED_Tishkoff_Cardiometabolics_Phase4"],
-        "amr": [
-            "PAGE: Global Reference Panel",
-            "PAGE: Multiethnic Cohort (MEC)",
-            "CostaRica",
-        ],
-        "eas": ["osaka"],
-        "sas": ["CCDG_PROMIS", "TOPMED_Saleheen_PROMIS_Phase4"],
-        "fin": [
-            "G4L Initiative Stanley Center",
-            "WGSPD3_Palotie_FinnishBP_THL_WGS",
-            "WGSPD3_Palotie_Finnish_WGS",
-            "WGSPD3_Palotie_Finnish_WGS_December2018",
-        ],
-        "nfe": [
-            "Estonia_University of Tartu_Whole Genome Sequencing",
-            "CCDG_Atrial_Fibrillation_Munich",
-            "CCDG_Atrial_Fibrillation_Norway",
-            "CCDG_Atrial_Fibrillation_Sweden",
-            "Estonia_University of Tartu_Whole Genome Sequencing",
-            "WGSPD",
-        ],
+    "asj": ["Jewish_Genome_Project"],
+    "ami": ["NHLBI_WholeGenome_Sequencing"],
+    "afr": ["TOPMED_Tishkoff_Cardiometabolics_Phase4"],
+    "amr": [
+        "PAGE: Global Reference Panel",
+        "PAGE: Multiethnic Cohort (MEC)",
+        "CostaRica",
+    ],
+    "eas": ["osaka"],
+    "sas": ["CCDG_PROMIS", "TOPMED_Saleheen_PROMIS_Phase4"],
+    "fin": [
+        "G4L Initiative Stanley Center",
+        "WGSPD3_Palotie_FinnishBP_THL_WGS",
+        "WGSPD3_Palotie_Finnish_WGS",
+        "WGSPD3_Palotie_Finnish_WGS_December2018",
+    ],
+    "nfe": [
+        "Estonia_University of Tartu_Whole Genome Sequencing",
+        "CCDG_Atrial_Fibrillation_Munich",
+        "CCDG_Atrial_Fibrillation_Norway",
+        "CCDG_Atrial_Fibrillation_Sweden",
+        "Estonia_University of Tartu_Whole Genome Sequencing",
+        "WGSPD",
+    ],
 }
 
 """
@@ -136,10 +137,11 @@ def prep_ht_for_rf(
     # Collect sample names of hgdp/tgp outliers to remove (these are outliers found by Alicia Martin's group during pop-specific PCA analyses as well as one duplicate sample)
     hgdp_tgp_outliers = hl.literal(hgdp_tgp_pop_outliers.ht().s.collect())
 
-
     training_pop = hl.or_missing(
         (joint_meta.v3_meta.v3_subsets.hgdp | joint_meta.v3_meta.v3_subsets.tgp)
-        & (joint_meta.v3_meta.v3_project_pop != "oth")  # Not using v3_project_pop="oth" samples as these are the samples from Oceania (there are only a few known Oceania samples and in past inference analyses no new samples are inferred as belonging to this group)
+        & (
+            joint_meta.v3_meta.v3_project_pop != "oth"
+        )  # Not using v3_project_pop="oth" samples as these are the samples from Oceania (there are only a few known Oceania samples and in past inference analyses no new samples are inferred as belonging to this group)
         & ~hgdp_tgp_outliers.contains(pop_pca_scores_ht.s),
         joint_meta.v3_meta.v3_project_pop,
     )
@@ -230,9 +232,9 @@ def prep_ht_for_rf(
             hl.literal(V3_SPIKE_PROJECTS).contains(joint_qc_meta.v3_meta.v3_project_pop)
         )
         joint_qc_meta = joint_qc_meta.filter(
-            hl.literal(V3_SPIKE_PROJECTS)[joint_qc_meta.v3_meta.v3_project_pop].contains(
-                joint_qc_meta.v3.project_meta.research_project
-            )
+            hl.literal(V3_SPIKE_PROJECTS)[
+                joint_qc_meta.v3_meta.v3_project_pop
+            ].contains(joint_qc_meta.v3.project_meta.research_project)
         )
 
         pop_pca_scores_ht = pop_pca_scores_ht.annotate(
@@ -245,8 +247,7 @@ def prep_ht_for_rf(
                 pop_spiking.contains(
                     joint_qc_meta[pop_pca_scores_ht.key].v3_meta.v3_project_pop
                 ),
-                    (joint_qc_meta[pop_pca_scores_ht.key].v3_meta.v3_project_pop)
-                ,
+                (joint_qc_meta[pop_pca_scores_ht.key].v3_meta.v3_project_pop),
             )
             .or_missing()
         )
@@ -276,7 +277,7 @@ def assign_pops(
     Use a random forest model to assign global population labels based on the results from `run_pca`.
 
     Training data is the known label for HGDP and 1KG samples and all v2 samples with known pops unless specificied to restrict only to 1KG and HGDP samples. Can also specify a list of pops with known v3/v4 labels to include (v3_population_spike/v4_population_spike) for training. Pops supplied for v4 are specified by race/ethnicity and converted to a ancestry group using V4_POP_SPIKE_DICT. The method assigns
-    a population label to all samples in the dataset. 
+    a population label to all samples in the dataset.
 
     :param min_prob: Minimum RF probability for pop assignment.
     :param include_unreleasable_samples: Whether unreleasable samples were included in PCA.
@@ -321,7 +322,6 @@ def assign_pops(
         get_checkpoint_path(f"assign_pops_rf_iter_1_pop_lots_of_loggers_{pcs[-1]}"),
         overwrite=overwrite,
     )
-
 
     pop_ht = pop_ht.annotate(
         original_training_pop=pop_pca_scores_ht[pop_ht.key].original_training_pop
@@ -425,6 +425,46 @@ def main(args):
                 v4_population_spike=args.v4_population_spike,
                 v3_population_spike=args.v3_population_spike,
             )
+
+            if min_prob_decisions_json:
+                with hl.hadoop_open(min_prob_decisions_json, "r") as d:
+                    min_prob_decisions = json.load(d)
+                logger.info(
+                    "Using min prob decisions per ancestry group: %s",
+                    min_prob_decisions,
+                )
+
+                pop_ht = pop_ht.annotate(
+                    most_likely_pop=hl.rbind(
+                        hl.sorted(
+                            [
+                                hl.struct(pop=x[-3:], prob=pop_ht[x])
+                                for x in pop_ht.row
+                                if x.startswith("prob_")
+                            ],
+                            key=lambda el: el[1],
+                            reverse=True,
+                        ),
+                        lambda pop_probs: hl.struct(
+                            pop=pop_probs[0][0],
+                            prob=pop_probs[0][1],
+                            second_prob=pop_probs[1][1],
+                            prob_diff=pop_probs[0][1] - pop_probs[1][1],
+                        ),
+                    )
+                )
+
+                pop_ht = pop_ht.annotate(
+                    pop=hl.if_else(
+                        pop_ht.most_likely_pop.prob
+                        > hl.literal(min_prob_decisions).get(
+                            pop_ht.most_likely_pop.pop
+                        ),
+                        pop_ht.most_likely_pop.pop,
+                        missing_label,
+                    )
+                )
+
             logger.info("Writing pop ht...")
             pop_ht = pop_ht.checkpoint(
                 get_pop_ht(
@@ -492,7 +532,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--include-v2-known-in-training",
-        help="Whether to train RF classifier using v2 known pop labels. Default is False.",
+        help=(
+            "Whether to train RF classifier using v2 known pop labels. Default is"
+            " False."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -500,23 +543,23 @@ if __name__ == "__main__":
         help="List of v4 populations to spike into the RF training populations.",
         type=str,
         nargs="+",
-        choices=["Arab", "Bedouin", "Persian", "Qatari"]
+        choices=["Arab", "Bedouin", "Persian", "Qatari"],
     )
     parser.add_argument(
         "--v3-population-spike",
         help="List of v3 populations to spike into the RF training populations.",
         type=str,
         nargs="+",
-        choices=["asj", "ami", "afr", "amr", "eas", "sas", "fin", "nfe"]
+        choices=["asj", "ami", "afr", "amr", "eas", "sas", "fin", "nfe"],
     )
     parser.add_argument(
         "--min-prob-decisions-json",
         help=(
-            "Optional path to JSON file containing decisions on minimum RF prob for pop assignment to use per each ancestry group. "
+            "Optional path to JSON file containing decisions on minimum RF prob for pop"
+            " assignment to use per each ancestry group instead of 'min-pop-prob'."
         ),
         type=str,
     )
-
 
     args = parser.parse_args()
 
