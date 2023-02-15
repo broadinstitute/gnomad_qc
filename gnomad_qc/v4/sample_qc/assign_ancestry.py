@@ -604,7 +604,7 @@ def main(args):
             logger.info("Writing pop ht...")
             pop_ht = pop_ht.checkpoint(
                 get_pop_ht(
-                    test=test, only_train_on_hgdp_tgp=only_train_on_hgdp_tgp
+                    test=test,
                 ).path,
                 overwrite=overwrite,
                 _read_if_exists=not overwrite,
@@ -710,13 +710,16 @@ if __name__ == "__main__":
         help="List of v4 populations to spike into the RF training populations.",
         type=str,
         nargs="+",
+        choices=["Arab", "Bedouin", "Persian", "Qatari"]
     )
     parser.add_argument(
         "--v3-population-spike",
         help="List of v3 populations to spike into the RF training populations.",
         type=str,
         nargs="+",
+        choices=["asj", "ami", "afr", "amr", "eas", "sas", "fin", "nfe"]
     )
+
 
     args = parser.parse_args()
 
