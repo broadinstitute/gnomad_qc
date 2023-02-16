@@ -164,27 +164,135 @@ def compute_rank_ht(ht: hl.Table, filter_ht: Optional[hl.Table] = None) -> hl.Ta
     return ht.select(*ht_select)
 
 
+def get_relatedness_resources(test, release):
+    joint_qc_mt = get_joint_qc(test=test)
+    joint_qc_mt_input = {
+        "generate_qc_mt.py --generate-qc-mt": {"joint_qc_mt": joint_qc_mt}
+    }
+    relatedness_pipeline = PipelineResourceCollection(
+        pipeline_name="relatedness", pipeline_resources={"joint_qc_mt": joint_qc_mt}
+    )
+    prepare_cuking_inputs = PipelineStepResourceCollection(
+        "--prepare-cuking-inputs",
+        output_resources={"cuking_input_path": get_cuking_input_path(test=test)},
+        input_resources=joint_qc_mt_input,
+    )
+    print_cuking_command = PipelineStepResourceCollection(
+        "--print-cuking-command",
+        previous_pipeline_steps=[prepare_cuking_inputs],
+    )
+    create_cuking_relatedness_table = PipelineStepResourceCollection(
+        "--create-cuking-relatedness-table",
+        previous_pipeline_steps=[print_cuking_command],
+        input_resources={
+            "--print-cuking-command": {
+                "cuking_output_path": get_cuking_output_path(test=test)
+            }
+        },
+        output_resources={"cuking_relatedness_ht": relatedness("cuking", test=test)},
+    )
+    run_ibd_on_cuking_pairs = PipelineStepResourceCollection(
+        "--run-ibd-on-cuking-pairs",
+        previous_pipeline_steps=[create_cuking_relatedness_table],
+        add_input_resources=joint_qc_mt_input,
+        output_resources={"ibd_ht": ibd(test=test)},
+    )
+    run_pc_relate_pca = PipelineStepResourceCollection(
+        "--run-pc-relate-pca",
+        input_resources=joint_qc_mt_input,
+        output_resources={"pc_relate_pca_scores": pc_relate_pca_scores},
+    )
+
+    def __init__(
+        self,
+        test: bool,
+        release: bool,
+        relatedness_method: str,
+        overwrite: bool = False,
+    ):
+        self.joint_qc_mt = get_joint_qc(test=test)
+        self.cuking_input_path = get_cuking_input_path(test=test)
+        self.cuking_output_path = get_cuking_output_path(test=test)
+        self.cuking_relatedness_ht = relatedness("cuking", test=test)
+        self.ibd_ht = ibd(test=test)
+        self.pc_relate_relatedness_ht = relatedness("pc_relate", test=test)
+        self.sample_rankings_ht = sample_rankings(test=test, release=release)
+        self.related_samples_to_drop_ht = related_samples_to_drop(
+            test=test, release=release
+        )
+        self.final_relatedness_ht = relatedness(test=test)
+        self.outlier_filter_ht = finalized_outlier_filtering()
+        self.relatedness_ht = relatedness(
+            relatedness_method.replace("_", "-"), test=test
+        )
+        self.overwrite = overwrite
+
+        pipeline_input_output_dict = {
+            "run_pc_relate_pca": {
+                "input_step_resources": {
+                    "generate_qc_mt.py --generate-qc-mt": [self.joint_qc_mt]
+                },
+                "output_step_resources": {
+                    "--run-pc-relate-pca": [self.pc_relate_pca_scores]
+                },
+            },
+            "create_pc_relate_relatedness_table": {
+                "input_step_resources": {
+                    "generate_qc_mt.py --generate-qc-mt": [self.joint_qc_mt],
+                    "--run-pc-relate-pca": [self.pc_relate_pca_scores],
+                },
+                "output_step_resources": {
+                    "--create-pc-relate-relatedness-table": [
+                        self.pc_relate_relatedness_ht
+                    ]
+                },
+            },
+            "finalize_relatedness_ht": {
+                "input_step_resources": {
+                    f"--create-{relatedness_method.replace('_', '-')}-relatedness-table": [
+                        self.relatedness_ht
+                    ],
+                    "generate_qc_mt.py --generate-qc-meta": [self.joint_qc_meta],
+                },
+                "output_step_resources": {
+                    "--finalize-relatedness-ht": [self.final_relatedness_ht]
+                },
+            },
+            "compute_related_samples_to_drop": {
+                "input_step_resources": {
+                    "generate_qc_mt.py --generate-qc-mt": [self.joint_qc_mt],
+                    "generate_qc_mt.py --generate-qc-meta": [self.joint_qc_meta],
+                    "--finalize-relatedness-ht": [self.final_relatedness_ht],
+                },
+                "output_step_resources": {
+                    "--compute-related-samples-to-drop": [
+                        self.sample_rankings_ht,
+                        self.related_samples_to_drop_ht,
+                    ]
+                },
+            },
+        }
+        if release:
+            pipeline_input_output_dict["compute_related_samples_to_drop"][
+                "input_step_resources"
+            ]["outlier_filtering.py --create-finalized-outlier-filter"] = [
+                self.outlier_filter_ht
+            ]
+
+
 def main(args):
     """Compute relatedness estimates among pairs of samples in the callset."""
     test = args.test
     overwrite = args.overwrite
     min_emission_kinship = args.min_emission_kinship
-
-    joint_qc_mt = get_joint_qc(test=test)
-    cuking_input_path = get_cuking_input_path(test=test)
-    cuking_output_path = get_cuking_output_path(test=test)
-    cuking_relatedness_ht = relatedness("cuking", test=test)
-    ibd_ht = ibd(test=test)
-    pc_relate_relatedness_ht = relatedness("pc_relate", test=test)
     release = args.release
-    sample_rankings_ht = sample_rankings(test=test, release=release)
-    related_samples_to_drop_ht = related_samples_to_drop(test=test, release=release)
-    final_relatedness_ht = relatedness(test=test)
+    rel_method = args.finalize_relatedness_method
+    second_degree_kin_cutoff = args.second_degree_kin_cutoff
+
+    resources = RelatednessResources(test, release, rel_method)
 
     if args.print_cuking_command:
-        check_resource_existence(
-            input_step_resources={"--prepare-cuking-inputs": [cuking_input_path]}
-        )
+        resources.check_resource_existance("print_cuking_command")
         logger.info(
             "Printing a command that can be used to submit a Cloud Batch job to run "
             "cuKING on the files created by --prepare-cuking-inputs."
@@ -201,8 +309,8 @@ def main(args):
                     --location=us-central1 \\
                     --project-id=$PROJECT_ID \\
                     --tag-name=$(git describe --tags) \\
-                    --input-uri={cuking_input_path} \\
-                    --output-uri={cuking_output_path} \\
+                    --input-uri={resources.cuking_input_path} \\
+                    --output-uri={resources.cuking_output_path} \\
                     --service-account=cuking@$PROJECT_ID.iam.gserviceaccount.com \\
                     --write-success-file \\
                     --requester-pays-project=$PROJECT_ID \\
@@ -226,67 +334,40 @@ def main(args):
                 "Converting joint dense QC MatrixTable to a Parquet format suitable "
                 "for cuKING."
             )
-            check_resource_existence(
-                input_step_resources={
-                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt]
-                },
-                output_step_resources={"--prepare-cuking-inputs": [cuking_input_path]},
-                overwrite=overwrite,
-            )
+            resources.check_resource_existance("prepare_cuking_inputs")
             mt_to_cuking_inputs(
-                mt=joint_qc_mt.mt(),
-                parquet_uri=cuking_input_path,
+                mt=resources.joint_qc_mt.mt(),
+                parquet_uri=resources.cuking_input_path,
                 overwrite=overwrite,
             )
 
         if args.create_cuking_relatedness_table:
             logger.info("Converting cuKING outputs to Hail Table.")
-            check_resource_existence(
-                input_step_resources={"--print-cuking-command": [cuking_output_path]},
-                output_step_resources={
-                    "--create-cuking-relatedness-table": [cuking_relatedness_ht]
-                },
-                overwrite=overwrite,
-            )
-
-            ht = cuking_outputs_to_ht(parquet_uri=cuking_output_path)
+            resources.check_resource_existance("create_cuking_relatedness_table")
+            ht = cuking_outputs_to_ht(parquet_uri=resources.cuking_output_path)
             ht = ht.key_by(i=hl.struct(s=ht.i), j=hl.struct(s=ht.j))
             ht = ht.repartition(args.relatedness_n_partitions)
-            ht.write(cuking_relatedness_ht.path, overwrite=overwrite)
+            ht.write(resources.cuking_relatedness_ht.path, overwrite=overwrite)
 
         if args.run_ibd_on_cuking_pairs:
             logger.info(
                 "Running IBD on cuKING pairs with kinship over %f.",
                 args.ibd_min_cuking_kin,
             )
-            check_resource_existence(
-                input_step_resources={
-                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt],
-                    "--create-cuking-relatedness-table": [cuking_relatedness_ht],
-                },
-                output_step_resources={"--run-ibd-on-cuking-pairs": [ibd_ht]},
-                overwrite=overwrite,
-            )
-
+            resources.check_resource_existance("run_ibd_on_cuking_pairs")
             compute_ibd_on_cuking_pair_subset(
-                joint_qc_mt.mt(),
-                cuking_relatedness_ht.ht(),
+                resources.joint_qc_mt.mt(),
+                resources.cuking_relatedness_ht.ht(),
                 args.ibd_min_cuking_kin,
                 args.ibd_max_cuking_ibs0,
                 args.ibd_max_samples,
-            ).write(ibd_ht.path, overwrite=overwrite)
+            ).write(resources.ibd_ht.path, overwrite=overwrite)
 
         if args.run_pc_relate_pca:
             logger.info("Running PCA for PC-Relate")
-            check_resource_existence(
-                input_step_resources={
-                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt]
-                },
-                output_step_resources={"--run-pc-relate-pca": [pc_relate_pca_scores]},
-                overwrite=overwrite,
-            )
+            resources.check_resource_existance("run_pc_relate_pca")
             eig, scores, _ = hl.hwe_normalized_pca(
-                joint_qc_mt.mt().GT, k=args.n_pca_pcs, compute_loadings=False
+                resources.joint_qc_mt.mt().GT, k=args.n_pca_pcs, compute_loadings=False
             )
             scores.write(pc_relate_pca_scores.path, overwrite=overwrite)
 
@@ -295,17 +376,9 @@ def main(args):
             logger.warning(
                 "PC-relate requires SSDs and doesn't work with preemptible workers!"
             )
-            check_resource_existence(
-                input_step_resources={
-                    "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt],
-                    "--run-pc-relate-pca": [pc_relate_pca_scores],
-                },
-                output_step_resources={
-                    "--create-pc-relate-relatedness-table": [pc_relate_relatedness_ht]
-                },
-                overwrite=overwrite,
-            )
-            mt = joint_qc_mt.mt()
+            resources.check_resource_existance("create_pc_relate_relatedness_table")
+
+            mt = resources.joint_qc_mt.mt()
             ht = hl.pc_relate(
                 mt.GT,
                 min_individual_maf=args.min_individual_maf,
@@ -321,26 +394,10 @@ def main(args):
                 min_emission_kinship=min_emission_kinship,
             )
             ht = ht.repartition(args.relatedness_n_partitions)
-            ht.write(pc_relate_relatedness_ht.path, overwrite=overwrite)
+            ht.write(resources.pc_relate_relatedness_ht.path, overwrite=overwrite)
 
         if args.finalize_relatedness_ht:
-            rel_method = args.finalize_relatedness_method
-            second_degree_kin_cutoff = args.second_degree_kin_cutoff
-
-            relatedness_ht = relatedness(rel_method, test=test)
-
-            check_resource_existence(
-                input_step_resources={
-                    f"--create-{rel_method.replace('_', '-')}-relatedness-table": [
-                        relatedness_ht
-                    ],
-                    "generate_qc_mt.py --generate-qc-meta": [joint_qc_meta],
-                },
-                output_step_resources={
-                    "--finalize-relatedness-ht": [final_relatedness_ht]
-                },
-                overwrite=overwrite,
-            )
+            resources.check_resource_existance("finalize_relatedness_ht")
             relatedness_args = {
                 "parent_child_max_y": args.parent_child_max_ibd0_or_ibs0_over_ibs2,
                 "second_degree_sibling_lower_cutoff_slope": args.second_degree_sibling_lower_cutoff_slope,
@@ -350,7 +407,7 @@ def main(args):
                 "duplicate_twin_min_kin": args.duplicate_twin_min_kin,
                 "second_degree_min_kin": second_degree_kin_cutoff,
             }
-            relatedness_ht = relatedness_ht.ht()
+            relatedness_ht = resources.relatedness_ht.ht()
             if rel_method == "pc-relate":
                 y_expr = relatedness_ht.ibd0
                 ibd1_expr = relatedness_ht.ibd1
@@ -406,45 +463,29 @@ def main(args):
                 & gnomad_v3_release_expr,
             )
 
-            relatedness_ht.write(final_relatedness_ht.path, overwrite=overwrite)
+            relatedness_ht.write(
+                resources.final_relatedness_ht.path, overwrite=overwrite
+            )
 
         if args.compute_related_samples_to_drop:
-            input_step_resources = {
-                "generate_qc_mt.py --generate-qc-mt": [joint_qc_mt],
-                "generate_qc_mt.py --generate-qc-meta": [joint_qc_meta],
-                "--finalize-relatedness-ht": [final_relatedness_ht],
-            }
-            if release:
-                filter_ht = finalized_outlier_filtering()
-                input_step_resources[
-                    "outlier_filtering.py --create-finalized-outlier-filter"
-                ] = [filter_ht]
-
+            resources.check_resource_existance("compute_related_samples_to_drop")
+            joint_qc_meta_ht = joint_qc_meta.ht()
             # Compute_related_samples_to_drop uses a rank Table as a tiebreaker when
             # pruning samples.
-            check_resource_existence(
-                input_step_resources=input_step_resources,
-                output_step_resources={
-                    "--compute-related-samples-to-drop": [
-                        sample_rankings_ht,
-                        related_samples_to_drop_ht,
-                    ]
-                },
-                overwrite=overwrite,
-            )
-            joint_qc_meta_ht = joint_qc_meta.ht()
             rank_ht = compute_rank_ht(
-                joint_qc_meta_ht.semi_join(joint_qc_mt.mt().cols()),
-                filter_ht=filter_ht.ht() if release else None,
+                joint_qc_meta_ht.semi_join(resources.joint_qc_mt.mt().cols()),
+                filter_ht=resources.filter_ht.ht() if release else None,
             )
-            rank_ht = rank_ht.checkpoint(sample_rankings_ht.path, overwrite=overwrite)
+            rank_ht = rank_ht.checkpoint(
+                resources.sample_rankings_ht.path, overwrite=overwrite
+            )
             filtered_samples = None
             if release:
                 filtered_samples = rank_ht.aggregate(
                     hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s)),
                     _localize=False,
                 )
-            relatedness_ht = final_relatedness_ht.ht()
+            relatedness_ht = resources.final_relatedness_ht.ht()
             second_degree_kin_cutoff = hl.eval(
                 relatedness_ht.relationship_cutoffs.second_degree_min_kin
             )
@@ -472,7 +513,7 @@ def main(args):
             )
 
             samples_to_drop_ht.write(
-                related_samples_to_drop_ht.path, overwrite=overwrite
+                resources.related_samples_to_drop_ht.path, overwrite=overwrite
             )
 
     finally:

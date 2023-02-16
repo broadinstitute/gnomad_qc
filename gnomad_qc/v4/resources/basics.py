@@ -366,3 +366,62 @@ def check_resource_existence(
                     f"rerun {step} with --overwrite. The following files already exist:"
                 ),
             )
+
+
+class PipelineStepResourceCollection:
+    def __init__(
+        self,
+        step_name,
+        previous_pipeline_steps=[],
+        output_resources=None,
+        input_resources=None,
+        pipeline_name=None,
+    ):
+        self.pipeline_name = pipeline_name
+        self.pipeline_step = step_name
+        self.previous_steps = previous_pipeline_steps
+
+        if output_resources is not None:
+            for name, resource in output_resources.items():
+                setattr(self, name, resource)
+
+            output_resources = {self.pipeline_step: output_resources.values()}
+
+        self.output_resources = output_resources
+
+        if input_resources is not None:
+            self.set_input_resources(input_resources)
+        else:
+            input_resources = {}
+            for step in previous_pipeline_steps:
+                input_resources[step.pipeline_step] = step.output_resources
+
+        self.input_resources = input_resources
+
+    def set_input_resources(self, input_resources):
+        self.input_resources = input_resources
+
+    def check_resource_existance(self, overwrite=False):
+        check_resource_existence(
+            input_step_resources=self.input_resources,
+            output_step_resources=self.output_resources,
+            overwrite=overwrite,
+        )
+
+    # TODO: set overwrite somehow in another way
+
+
+class PipelineResourceCollection:
+    def __init__(self, pipeline_name, pipeline_steps=[], pipeline_resources=None):
+        self.pipeline_name = pipeline_name
+        self.pipeline_steps = []
+        for step in pipeline_steps:
+            self.add_step(step)
+
+        if pipeline_resources is not None:
+            for name, resource in pipeline_resources.items():
+                setattr(self, name, resource)
+
+    def add_step(self, step):
+        step.pipeline_name = self.pipeline_name
+        self.pipeline_steps.append(step)
