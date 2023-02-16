@@ -422,7 +422,7 @@ def assign_pop_with_per_pop_probs(
     pop_ht = pop_ht.annotate(
         pop=hl.if_else(
             pop_ht.most_likely_pop.prob
-            > hl.literal(min_prob_decisions).get(pop_ht.most_likely_pop.pop),
+            >= hl.literal(min_prob_decisions).get(pop_ht.most_likely_pop.pop),
             pop_ht.most_likely_pop.pop,
             missing_label,
         )
