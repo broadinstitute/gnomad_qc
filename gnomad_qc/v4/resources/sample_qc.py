@@ -455,53 +455,56 @@ def ibd(test: bool = False) -> VersionedTableResource:
     )
 
 
-def pca_related_samples_to_drop(test: bool = False) -> VersionedTableResource:
+def related_samples_to_drop(
+    test: bool = False, release: bool = True
+) -> VersionedTableResource:
     """
-    Get the VersionedTableResource for samples to drop for PCA due to them being related.
+    Get the VersionedTableResource for samples to drop for release or ancestry PCA.
+
+    Default to returning the VersionedTableResource for samples to drop for release.
+    If release is set to False, retrieve the VersionedTableResource of related samples
+    to remove for ancestry PCA.
 
     :param test: Whether to use a tmp path for a test resource.
+    :param release: Whether to return resource for related samples to drop for the
+        release based on outlier filtering of sample QC metrics.
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.related_samples_to_drop_for_pca.ht"
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.related_samples_to_drop.{'release' if release else 'pca'}.ht"
             )
             for version in VERSIONS
         },
     )
 
 
-def pca_samples_rankings(test: bool = False) -> VersionedTableResource:
+def sample_rankings(test: bool = False, release: bool = True) -> VersionedTableResource:
     """
-    Get the VersionedTableResource for ranking of all samples to use for removing relateds for PCA.
+    Get the VersionedTableResource for sample rankings for release or ancestry PCA.
+
+    Default to returning the VersionedTableResource for release sample rankings. If
+    release is set to False, retrieve the VersionedTableResource of sample rankings for
+    removing relateds for PCA.
 
     :param test: Whether to use a tmp path for a test resource.
+    :param release: Whether to return resource for ranking of all samples based on
+        outlier filtering of sample QC metrics. Used to determine related samples to
+        drop for the release.
     :return: VersionedTableResource.
     """
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.pca_samples_ranking.ht"
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.samples_ranking.{'release' if release else 'pca'}.ht"
             )
             for version in VERSIONS
         },
     )
 
-
-# Ranking of all release samples based on quality metrics. Used to remove relateds for
-# release.
-release_samples_rankings = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/relatedness/gnomad.exomes.v{version}.release_samples_ranking.ht"
-        )
-        for version in VERSIONS
-    },
-)
 
 # Duplicated (or twin) samples.
 duplicates = VersionedTableResource(
@@ -509,18 +512,6 @@ duplicates = VersionedTableResource(
     {
         version: TableResource(
             f"{get_sample_qc_root(version)}/relatedness/gnomad.exomes.v{version}.duplicates.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-
-# Related samples to drop for release
-release_related_samples_to_drop = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/relatedness/gnomad.exomes.v{version}.related_release_samples_to_drop.ht"
         )
         for version in VERSIONS
     },
