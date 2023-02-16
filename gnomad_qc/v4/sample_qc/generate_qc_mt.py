@@ -181,7 +181,7 @@ def generate_qc_meta_ht() -> hl.Table:
             # Annotate research project for eas samples from Osaka
             v3_research_project=hl.if_else(
                 (v3_meta_ht.project_meta.project_pop == "eas")
-                & (v3_meta.s.startswith("JPNW")),
+                & (v3_meta_ht.s.startswith("JPNW")),
                 "osaka",
                 v3_meta_ht.project_meta.research_project,
             ),
