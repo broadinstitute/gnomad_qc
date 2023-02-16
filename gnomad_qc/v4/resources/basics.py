@@ -375,9 +375,12 @@ class PipelineStepResourceCollection:
         previous_pipeline_steps=[],
         output_resources=None,
         input_resources=None,
+        add_input_resources=None,
         pipeline_name=None,
+        overwrite=None,
     ):
         self.pipeline_name = pipeline_name
+        self.overwrite = overwrite
         self.pipeline_step = step_name
         self.previous_steps = previous_pipeline_steps
 
@@ -398,30 +401,55 @@ class PipelineStepResourceCollection:
 
         self.input_resources = input_resources
 
-    def set_input_resources(self, input_resources):
-        self.input_resources = input_resources
+        if add_input_resources is not None:
+            add_input_resources(self, add_input_resources)
 
-    def check_resource_existance(self, overwrite=False):
+    def add_input_resources(self, input_resources):
+        self.input_resources.update(input_resources)
+
+    def check_resource_existance(self, overwrite=None):
+        if overwrite is None:
+            if self.overwrite is None:
+                overwrite = False
+            else:
+                overwrite = self.overwrite
+
         check_resource_existence(
             input_step_resources=self.input_resources,
             output_step_resources=self.output_resources,
             overwrite=overwrite,
         )
 
-    # TODO: set overwrite somehow in another way
-
 
 class PipelineResourceCollection:
-    def __init__(self, pipeline_name, pipeline_steps=[], pipeline_resources=None):
+    def __init__(
+        self,
+        pipeline_name,
+        pipeline_steps={},
+        pipeline_resources=None,
+        overwrite=None,
+    ):
         self.pipeline_name = pipeline_name
-        self.pipeline_steps = []
-        for step in pipeline_steps:
-            self.add_step(step)
+        self.pipeline_steps = {}
+        self.add_steps(pipeline_steps)
+        self.overwrite = overwrite
 
         if pipeline_resources is not None:
             for name, resource in pipeline_resources.items():
                 setattr(self, name, resource)
 
-    def add_step(self, step):
-        step.pipeline_name = self.pipeline_name
-        self.pipeline_steps.append(step)
+    def add_steps(self, steps):
+        for step_name, step in steps:
+            step.pipeline_name = self.pipeline_name
+            step.overwrite = self.overwrite
+            setattr(self, step_name, step)
+        self.pipeline_steps.update(steps)
+
+    def check_resource_existance(self, step, overwrite=None):
+        if overwrite is None:
+            if self.overwrite is None:
+                overwrite = False
+            else:
+                overwrite = self.overwrite
+
+        self.pipeline_steps[step].check_resource_existance(overwrite=overwrite)
