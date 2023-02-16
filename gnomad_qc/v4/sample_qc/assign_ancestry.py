@@ -1,13 +1,14 @@
 """Script to assign global ancestry labels to samples using known v3 population labels or TGP and HGDP labels."""
 import argparse
+import json
 import logging
 import pickle
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import hail as hl
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
 
-# from gnomad.utils.slack import slack_notifications
+from gnomad.utils.slack import slack_notifications
 from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.basics import get_checkpoint_path
@@ -386,6 +387,51 @@ def write_pca_results(
     )
 
 
+def assign_pop_with_per_pop_probs(
+    pop_ht: hl.Table,
+    min_prob_decisions: Dict[str, float],
+    missing_label: str = "remaining",
+) -> hl.Table:
+    """
+    Assign samples to populations based on population-specific minimum RF probabilities.
+
+    :param pop_ht: Table containing results of population inference.
+    :param min_prob_decisions: Dictionary with population as key, and minimum FR probability required to assign a sample to that population as value.
+    :param missing_label: Label for samples for which the assignment probability is smaller than required minimum probability.
+    :return: Table with 'pop' annotation based on supplied per pop min probabilities rather than 'min-pop-prob'..
+    """
+    pop_ht = pop_ht.annotate(
+        most_likely_pop=hl.rbind(
+            hl.sorted(
+                [
+                    hl.struct(pop=x[-3:], prob=pop_ht[x])
+                    for x in pop_ht.row
+                    if x.startswith("prob_")
+                ],
+                key=lambda el: el[1],
+                reverse=True,
+            ),
+            lambda pop_probs: hl.struct(
+                pop=pop_probs[0][0],
+                prob=pop_probs[0][1],
+                second_prob=pop_probs[1][1],
+                prob_diff=pop_probs[0][1] - pop_probs[1][1],
+            ),
+        )
+    )
+    pop_ht = pop_ht.annotate(
+        pop=hl.if_else(
+            pop_ht.most_likely_pop.prob
+            > hl.literal(min_prob_decisions).get(pop_ht.most_likely_pop.pop),
+            pop_ht.most_likely_pop.pop,
+            missing_label,
+        )
+    )
+    pop_ht = pop_ht.annotate_globals(min_prob_decisions=min_prob_decisions)
+
+    return pop_ht
+
+
 def main(args):
     """Assign global ancestry labels to samples."""
     try:
@@ -426,44 +472,15 @@ def main(args):
                 v3_population_spike=args.v3_population_spike,
             )
 
-            if min_prob_decisions_json:
-                with hl.hadoop_open(min_prob_decisions_json, "r") as d:
+            if args.min_prob_decisions_json:
+                with hl.hadoop_open(args.min_prob_decisions_json, "r") as d:
                     min_prob_decisions = json.load(d)
                 logger.info(
                     "Using min prob decisions per ancestry group: %s",
                     min_prob_decisions,
                 )
 
-                pop_ht = pop_ht.annotate(
-                    most_likely_pop=hl.rbind(
-                        hl.sorted(
-                            [
-                                hl.struct(pop=x[-3:], prob=pop_ht[x])
-                                for x in pop_ht.row
-                                if x.startswith("prob_")
-                            ],
-                            key=lambda el: el[1],
-                            reverse=True,
-                        ),
-                        lambda pop_probs: hl.struct(
-                            pop=pop_probs[0][0],
-                            prob=pop_probs[0][1],
-                            second_prob=pop_probs[1][1],
-                            prob_diff=pop_probs[0][1] - pop_probs[1][1],
-                        ),
-                    )
-                )
-
-                pop_ht = pop_ht.annotate(
-                    pop=hl.if_else(
-                        pop_ht.most_likely_pop.prob
-                        > hl.literal(min_prob_decisions).get(
-                            pop_ht.most_likely_pop.pop
-                        ),
-                        pop_ht.most_likely_pop.pop,
-                        missing_label,
-                    )
-                )
+                pop_ht = assign_pop_with_per_pop_probs(pop_ht, min_prob_decisions)
 
             logger.info("Writing pop ht...")
             pop_ht = pop_ht.checkpoint(
