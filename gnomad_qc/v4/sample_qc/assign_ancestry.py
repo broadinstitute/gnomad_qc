@@ -396,7 +396,7 @@ def assign_pop_with_per_pop_probs(
     Assign samples to populations based on population-specific minimum RF probabilities.
 
     :param pop_ht: Table containing results of population inference.
-    :param min_prob_decisions: Dictionary with population as key, and minimum FR probability required to assign a sample to that population as value.
+    :param min_prob_decisions: Dictionary with population as key, and minimum RF probability required to assign a sample to that population as value.
     :param missing_label: Label for samples for which the assignment probability is smaller than required minimum probability.
     :return: Table with 'pop' annotation based on supplied per pop min probabilities rather than 'min-pop-prob'..
     """
