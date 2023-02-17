@@ -2,7 +2,7 @@
 import argparse
 import logging
 import textwrap
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 import hail as hl
 import networkx as nx
@@ -40,6 +40,50 @@ logger = logging.getLogger("relatedness")
 logger.setLevel(logging.INFO)
 
 DATA_TYPES = {"genomes", "exomes"}
+
+
+def print_cuking_command(
+    cuking_input_path: str,
+    cuking_output_path: str,
+    min_emission_kinship: float = 0.5,
+    cuking_split_factor: int = 4,
+) -> None:
+    """
+    Add description.
+
+    :param cuking_input_path:
+    :param cuking_output_path:
+    :param min_emission_kinship:
+    :param cuking_split_factor:
+    :return:
+    """
+    logger.info(
+        "Printing a command that can be used to submit a Cloud Batch job to run "
+        "cuKING on the files created by --prepare-cuking-inputs."
+    )
+    logger.warning(
+        "This printed command assumes that the cuKING directory is in the same "
+        "location where the command is being run and that $PROJECT_ID is set!"
+    )
+    print(
+        textwrap.dedent(
+            f"""\
+             cd cuKING && \\
+             ./cloud_batch_submit.py \\
+                 --location=us-central1 \\
+                 --project-id=$PROJECT_ID \\
+                 --tag-name=$(git describe --tags) \\
+                 --input-uri={cuking_input_path} \\
+                 --output-uri={cuking_output_path} \\
+                 --service-account=cuking@$PROJECT_ID.iam.gserviceaccount.com \\
+                 --write-success-file \\
+                 --requester-pays-project=$PROJECT_ID \\
+                 --kin-threshold={min_emission_kinship} \\
+                 --split-factor={cuking_split_factor} &&
+             cd ..
+             """
+        )
+    )
 
 
 def compute_ibd_on_cuking_pair_subset(
@@ -126,17 +170,31 @@ def compute_ibd_on_cuking_pair_subset(
     return full_ibd_ht.distinct()
 
 
-def finalize_relatedness_ht(ht, meta_ht, relatedness_method, relatedness_args):
+def finalize_relatedness_ht(
+    ht: hl.Table,
+    meta_ht: hl.Table,
+    relatedness_method: str,
+    relatedness_args: Dict[str, float],
+) -> hl.Table:
+    """
+    Add description.
+
+    :param ht:
+    :param meta_ht:
+    :param relatedness_method:
+    :param relatedness_args:
+    :return:
+    """
     if relatedness_method == "pc-relate":
         y_expr = ht.ibd0
         ibd1_expr = ht.ibd1
-        parent_child_max_label = "parent_child_max_ibd0"
+        parent_child_max_ann = "parent_child_max_ibd0"
         relatedness_args.pop("duplicate_twin_ibd1_min")
         relatedness_args.pop("duplicate_twin_ibd1_max")
     else:
         y_expr = ht.ibs0 / ht.ibs2
         ibd1_expr = None
-        parent_child_max_label = "parent_child_max_ibs0_over_ibs2"
+        parent_child_max_ann = "parent_child_max_ibs0_over_ibs2"
 
     ht = ht.annotate(
         relationship=get_slope_int_relationship_expr(
@@ -146,9 +204,7 @@ def finalize_relatedness_ht(ht, meta_ht, relatedness_method, relatedness_args):
             ibd1_expr=ibd1_expr,
         )
     )
-    relatedness_args[parent_child_max_label] = relatedness_args.pop(
-        "parent_child_max_y"
-    )
+    relatedness_args[parent_child_max_ann] = relatedness_args.pop("parent_child_max_y")
     ht = ht.annotate_globals(
         relationship_inference_method=relatedness_method,
         relationship_cutoffs=hl.struct(**relatedness_args),
@@ -216,7 +272,69 @@ def compute_rank_ht(ht: hl.Table, filter_ht: Optional[hl.Table] = None) -> hl.Ta
     return ht.select(*ht_select)
 
 
-def get_relatedness_resources(test, release, relatedness_method, overwrite):
+def run_compute_related_samples_to_drop(
+    ht: hl.Table,
+    meta_ht: hl.Table,
+    filter_ht: hl.Table,
+    release: bool,
+) -> Tuple[hl.Table, hl.Table]:
+    """
+    Add summary.
+
+    :param ht:
+    :param meta_ht:
+    :param filter_ht:
+    :param release:
+    :return:
+    """
+    # Compute_related_samples_to_drop uses a rank Table as a tiebreaker when
+    # pruning samples.
+    rank_ht = compute_rank_ht(meta_ht, filter_ht=filter_ht if release else None)
+    rank_ht = rank_ht.checkpoint(new_temp_file("rank", extension="ht"))
+
+    filtered_samples = None
+    if release:
+        filtered_samples = rank_ht.aggregate(
+            hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s)),
+            _localize=False,
+        )
+    second_degree_kin_cutoff = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
+    ht = ht.key_by(i=ht.i.s, j=ht.j.s)
+    v3_release_samples = meta_ht.aggregate(
+        hl.agg.filter(meta_ht.v3_meta.v3_release, hl.agg.collect_as_set(meta_ht.s)),
+        _localize=False,
+    )
+    samples_to_drop_ht = compute_related_samples_to_drop(
+        ht,
+        rank_ht,
+        second_degree_kin_cutoff,
+        filtered_samples=filtered_samples,
+        keep_samples=v3_release_samples,
+        keep_samples_when_related=True,
+    )
+    samples_to_drop_ht = samples_to_drop_ht.annotate_globals(
+        keep_samples=v3_release_samples,
+        second_degree_kin_cutoff=second_degree_kin_cutoff,
+    )
+
+    return rank_ht, samples_to_drop_ht
+
+
+def get_relatedness_resources(
+    test: bool,
+    release: bool,
+    relatedness_method: str,
+    overwrite: bool,
+) -> PipelineResourceCollection:
+    """
+    Add description.
+
+    :param test:
+    :param release:
+    :param relatedness_method:
+    :param overwrite:
+    :return:
+    """
     joint_qc_mt = get_joint_qc(test=test)
     joint_qc_mt_input = {
         "generate_qc_mt.py --generate-qc-mt": {"joint_qc_mt": joint_qc_mt}
@@ -331,32 +449,11 @@ def main(args):
     if args.print_cuking_command:
         res = relatedness_resources.print_cuking_command
         res.check_resource_existance()
-        logger.info(
-            "Printing a command that can be used to submit a Cloud Batch job to run "
-            "cuKING on the files created by --prepare-cuking-inputs."
-        )
-        logger.warning(
-            "This printed command assumes that the cuKING directory is in the same "
-            "location where the command is being run and that $PROJECT_ID is set!"
-        )
-        print(
-            textwrap.dedent(
-                f"""\
-                cd cuKING && \\
-                ./cloud_batch_submit.py \\
-                    --location=us-central1 \\
-                    --project-id=$PROJECT_ID \\
-                    --tag-name=$(git describe --tags) \\
-                    --input-uri={res.cuking_input_path} \\
-                    --output-uri={res.cuking_output_path} \\
-                    --service-account=cuking@$PROJECT_ID.iam.gserviceaccount.com \\
-                    --write-success-file \\
-                    --requester-pays-project=$PROJECT_ID \\
-                    --kin-threshold={min_emission_kinship} \\
-                    --split-factor={args.cuking_split_factor} &&
-                cd ..
-                """
-            )
+        print_cuking_command(
+            res.cuking_input_path,
+            res.cuking_output_path,
+            min_emission_kinship,
+            args.cuking_split_factor,
         )
         return
 
@@ -452,57 +549,21 @@ def main(args):
                 "duplicate_twin_ibd1_min": args.duplicate_twin_ibd1_min,
                 "duplicate_twin_ibd1_max": args.duplicate_twin_ibd1_max,
             }
-            relatedness_ht = res.relatedness_ht.ht()
-            relatedness_ht.write(res.final_relatedness_ht.path, overwrite=overwrite)
+            finalize_relatedness_ht(
+                res.relatedness_ht.ht(), joint_qc_meta_ht, rel_method, relatedness_args
+            ).write(res.final_relatedness_ht.path, overwrite=overwrite)
 
         if args.compute_related_samples_to_drop:
             res = relatedness_resources.compute_related_samples_to_drop
             res.check_resource_existance()
-            # Compute_related_samples_to_drop uses a rank Table as a tiebreaker when
-            # pruning samples.
-            rank_ht = compute_rank_ht(
+            rank_ht, drop_ht = run_compute_related_samples_to_drop(
+                res.final_relatedness_ht.ht(),
                 joint_qc_meta_ht.semi_join(joint_qc_mt.cols()),
-                filter_ht=res.filter_ht.ht() if release else None,
+                res.filter_ht.ht(),
+                release,
             )
-            rank_ht = rank_ht.checkpoint(
-                res.sample_rankings_ht.path, overwrite=overwrite
-            )
-            filtered_samples = None
-            if release:
-                filtered_samples = rank_ht.aggregate(
-                    hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s)),
-                    _localize=False,
-                )
-            relatedness_ht = res.final_relatedness_ht.ht()
-            second_degree_kin_cutoff = hl.eval(
-                relatedness_ht.relationship_cutoffs.second_degree_min_kin
-            )
-            relatedness_ht = relatedness_ht.key_by(
-                i=relatedness_ht.i.s, j=relatedness_ht.j.s
-            )
-            v3_release_samples = joint_qc_meta_ht.aggregate(
-                hl.agg.filter(
-                    joint_qc_meta_ht.v3_meta.v3_release,
-                    hl.agg.collect_as_set(joint_qc_meta_ht.s),
-                ),
-                _localize=False,
-            )
-            samples_to_drop_ht = compute_related_samples_to_drop(
-                relatedness_ht,
-                rank_ht,
-                second_degree_kin_cutoff,
-                filtered_samples=filtered_samples,
-                keep_samples=v3_release_samples,
-                keep_samples_when_related=True,
-            )
-            samples_to_drop_ht = samples_to_drop_ht.annotate_globals(
-                keep_samples=v3_release_samples,
-                second_degree_kin_cutoff=second_degree_kin_cutoff,
-            )
-
-            samples_to_drop_ht.write(
-                res.related_samples_to_drop_ht.path, overwrite=overwrite
-            )
+            rank_ht.write(res.sample_rankings_ht.path, overwrite=overwrite)
+            drop_ht.write(res.related_samples_to_drop_ht.path, overwrite=overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
