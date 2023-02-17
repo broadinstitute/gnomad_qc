@@ -43,7 +43,101 @@ AS_FIELDS.remove("InbreedingCoeff")
 SITE_FIELDS.remove("SOR")
 # TODO: Update this field descriptions dict in another PR -- should be able to use mostly all the
 # fields in the v3 README.md -- link to freq array FAQ in freq
-FIELD_DESCRIPTIONS = {"test": "test"}
+FIELD_DESCRIPTIONS = {
+    "Globals": {
+        "freq_meta": {
+            "definition": (
+                "Allele frequency metadata. An ordered list containing the frequency"
+                " aggregation group for each element of the ‘freq’ array row"
+                " annotation."
+            )
+        },
+        "freq_index_dict": {
+            "defintion": (
+                "Dictionary keyed by specified label grouping combinations (group:"
+                " adj/raw, ancestry_group: gnomAD inferred global ancestry group, sex:"
+                " sex karyotype), with values describing the corresponding index of"
+                " each grouping entry in the ‘freq’ array row annotation."
+            )
+        },
+        "faf_index_dict": {
+            "definition": (
+                "Dictionary keyed by specified label grouping combinations (group:"
+                " adj/raw, pop: gnomAD inferred global population, sex: sex karyotype),"
+                " with values describing the corresponding index of each grouping entry"
+                " in the filtering allele frequency (‘faf’) row annotation."
+            )
+        },
+        "faf_meta": {
+            "definition": (
+                "Filtering allele frequency metadata. An ordered list containing the"
+                " frequency aggregation group for each element of the ‘faf’ array row"
+                " annotation."
+            )
+        },
+        "vep_version": {"definition": "VEP version that was run on the callset."},
+        "vep_csq_header": {"definition": " VEP header for VCF export."},
+        "dbsnp_version": {"definition": "dbSNP version used in the callset."},
+        "cadd_version": {"definition": "CADD version used in the callset."},
+        "revel_version": {"definition": "REVEL version used in the callset."},
+        "spliceai_version": {"definition": "SpliceAI version used in the callset."},
+        "primateai_version": {"definition": "PrimateAI version used in the callset."},
+        "filtering_model": {
+            "definition": "The variant filtering model used and its specific cutoffs.",
+            "subfields": {
+                "model_name": {
+                    "definition": (
+                        "Variant filtering model name used in the 'filters' row"
+                        " annotation, indicating the variant was filtered by this model"
+                        " during variant QC."
+                    )
+                },
+                "score_name": {
+                    "definition": (
+                        "Annotation name of the score used for variant filtering."
+                    )
+                },
+                "snv_cutoff": {
+                    "definition": "SNV filtering cutoff information.",
+                    "subfields": {
+                        "bin": {"definition": "Filtering percentile cutoff for SNVs."},
+                        "min_score": {
+                            "definition": (
+                                "Minimum score at SNV filtering percentile cutoff."
+                            )
+                        },
+                    },
+                },
+                "indel_cutoff": {
+                    "definition": "Indel filtering cutoff information.",
+                    "subfields": {
+                        "bin": {
+                            "definition": "Filtering percentile cutoff for indels."
+                        },
+                        "min_score": {
+                            "definition": (
+                                "Minimum score at indel filtering percentile cutoff."
+                            )
+                        },
+                    },
+                },
+                "model_id": {
+                    "definition": (
+                        "Variant filtering model ID for score data (used for"
+                        " internal specification of the model)."
+                    )
+                },
+                "snv_training_variables": (
+                    "Variant annotations used as features in the SNV filtering model."
+                ),
+                "indel_training_variables": (
+                    "Variant annotations used as features in the indel filtering model."
+                ),
+            },
+        },
+    },
+}
+
 TABLES_FOR_RELEASE = [
     "dbsnp",
     "filters",
