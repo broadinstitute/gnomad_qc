@@ -343,17 +343,14 @@ def get_most_likely_pop_expr(
     return most_likely_pop_expr, prob_ann
 
 
-def compute_precision_recall(
-    ht: hl.Table,
-    num_pr_points: int = 1000,
-) -> hl.Table:
+def compute_precision_recall(ht: hl.Table, num_pr_points: int = 1000) -> hl.Table:
     """
     Create Table with false positives (FP), true positives (TP), false negatives (FN), precision, and recall.
 
     Includes population specific calculations.
 
     :param ht: Input population inference Table with random forest probabilities.
-    :param num_pr_points: Number of min prob cutoffs to compute metrics for.
+    :param num_pr_points: Number of min prob cutoffs to compute PR metrics for.
     :return: Table with FP, TP, FN, precision, and recall.
     """
     # Use only RF evaluation samples to compute metrics.
@@ -404,12 +401,20 @@ def infer_per_pop_min_rf_probs(
     ht: hl.Table, min_recall: float = 0.99, min_precision: float = 0.99
 ) -> Dict[str, Dict[str, float]]:
     """
-    Add summary.
+    Infer per ancestry group minimum RF probabilities from precision and recall values.
 
-    :param ht:
-    :param min_recall:
-    :param min_precision:
-    :return:
+    Minimum recall (`min_recall`) is used to choose per ancestry group minimum RF
+    probabilities. This `min_recall` cutoff is applied first, and if the chosen minimum
+    RF probabilities cutoff results in a precision lower than `min_precision`, the
+    minimum RF probabilities with the highest recall that meets `min_precision` is
+    used.
+
+    :param ht: Precision recall Table returned by `compute_precision_recall`.
+    :param min_recall: Minimum recall value to choose per ancestry group minimum RF
+        probabilities. Default is 0.99.
+    :param min_precision: Minimum precision value to choose per ancestry group minimum
+        RF probabilities. Default is 0.99.
+    :return: Dictionary of per pop min probability cutoffs `min_prob_cutoff`.
     """
     # Get list of all populations.
     pops = hl.eval(ht.pops)
@@ -609,12 +614,19 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--compute-precision-recall",
-        help="",
+        help=(
+            "Compute precision and recall for the RF model using evaluation samples. "
+            "This is computed for all evaluation samples as well as per population."
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--number-pr-points",
-        help="",
+        help=(
+            "Number of min prob cutoffs to compute PR metrics for. e.g. 1000 will "
+            "compute PR metrics for min prob of 0 to 1 in increments of 0.001. Default "
+            "is 1000."
+        ),
         default=1000,
         type=int,
     )
@@ -624,24 +636,41 @@ if __name__ == "__main__":
             "Apply per ancestry group minimum RF probabilities for finalized pop "
             "assignment instead of using '--min-pop-prob' for all samples. There must "
             "be a JSON file located in the path defined by the "
-            "'per_pop_min_rf_probs_json_path' resource."
+            "'per_pop_min_rf_probs_json_path' resource, or "
+            "'--infer-per-pop-min-rf-probs' must be used."
         ),
         action="store_true",
     )
     parser.add_argument(
         "--infer-per-pop-min-rf-probs",
-        help="",
+        help=(
+            "Whether to infer per ancestry group minimum RF probabilities and write "
+            "them out to 'per_pop_min_rf_probs_json_path' before determining the "
+            "finalized pop assignment."
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--min-recall",
-        help="",
+        help=(
+            "Minimum recall value to choose per ancestry group minimum RF "
+            "probabilities. This cutoff is applied first, and if the chosen cutoff "
+            "results in a precision lower than '--min-precision', the minimum RF "
+            "probabilities with the highest recall that meets '--min-precision' is "
+            "used. Default is 0.99."
+        ),
         default=0.99,
         type=float,
     )
     parser.add_argument(
         "--min-precision",
-        help="",
+        help=(
+            "Minimum precision value to choose per ancestry group minimum RF "
+            "probabilities. This cutoff is applied if the chosen minimum RF "
+            "probabilities cutoff using '--min-recall' results in a precision lower "
+            "than this value. The minimum RF probabilities with the highest recall "
+            "that meets '--min-precision' is used. Default is 0.99."
+        ),
         default=0.99,
         type=float,
     )
