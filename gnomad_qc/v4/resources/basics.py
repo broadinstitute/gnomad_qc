@@ -392,17 +392,15 @@ class PipelineStepResourceCollection:
 
         self.output_resources = output_resources
 
-        if input_resources is not None:
-            self.set_input_resources(input_resources)
-        else:
+        if input_resources is None:
             input_resources = {}
             for step in previous_pipeline_steps:
-                input_resources[step.pipeline_step] = step.output_resources
+                input_resources.update(step.output_resources)
 
         self.input_resources = input_resources
 
         if add_input_resources is not None:
-            add_input_resources(self, add_input_resources)
+            self.add_input_resources(add_input_resources)
 
     def add_input_resources(self, input_resources):
         self.input_resources.update(input_resources)
@@ -439,7 +437,7 @@ class PipelineResourceCollection:
                 setattr(self, name, resource)
 
     def add_steps(self, steps):
-        for step_name, step in steps:
+        for step_name, step in steps.items():
             step.pipeline_name = self.pipeline_name
             step.overwrite = self.overwrite
             setattr(self, step_name, step)

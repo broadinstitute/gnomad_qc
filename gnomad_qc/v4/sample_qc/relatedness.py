@@ -442,7 +442,9 @@ def main(args):
     rel_method = args.finalize_relatedness_method
     second_degree_kin_cutoff = args.second_degree_kin_cutoff
 
-    relatedness_resources = get_relatedness_resources(test, release, rel_method)
+    relatedness_resources = get_relatedness_resources(
+        test, release, rel_method, overwrite
+    )
     joint_qc_mt = relatedness_resources.joint_qc_mt.mt()
     joint_qc_meta_ht = relatedness_resources.joint_qc_meta.ht()
 
