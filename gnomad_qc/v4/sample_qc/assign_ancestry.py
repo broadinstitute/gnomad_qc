@@ -181,10 +181,10 @@ def prep_ht_for_rf(
         # Filter to only pre-determined list of v3 cohorts for the v3 spike-ins
         training_pop = hl.coalesce(
             training_pop,
-            hl.or_else(
+            hl.or_missing(
                 hl.literal(V3_SPIKE_PROJECTS)
-                .get(joint_meta_ht.v3_meta.v3_project_pop, hl.empty_set(hl.tstr))
-                .contains(joint_meta_ht.project_meta.research_project),
+                .get(joint_meta_ht.v3_meta.v3_project_pop, hl.empty_array(hl.tstr))
+                .contains(joint_meta_ht.v3_meta.v3_research_project),
                 joint_meta_ht.v3_meta.v3_project_pop,
             ),
         )
@@ -327,7 +327,7 @@ def get_most_likely_pop_expr(
     :return: Struct Expression with 'pop' and 'prob' for the highest RF probability.
     """
     # Get list of all population RF probability annotations.
-    prob_ann = [(x, x.split("prob_")[-1]) for x in ht.row if x.startswith("prob_")]
+    prob_ann = [(x.split("prob_")[-1], x) for x in ht.row if x.startswith("prob_")]
 
     # Sort a list of all population RF probabilities and keep the highest as the most
     # likely pop.
@@ -363,21 +363,21 @@ def compute_precision_recall(ht: hl.Table, num_pr_points: int = 1000) -> hl.Tabl
     ht = ht.annotate(
         min_prob_cutoff=hl.literal(list(range(num_pr_points))) / float(num_pr_points)
     )
-    ht = ht.explode(ht.idx)
+    ht = ht.explode(ht.min_prob_cutoff)
 
     # For each 'pop', filter to any sample that has 'pop' as the known population or
     # most likely population based on RF probabilities.
     pops = [None] + [pop for pop, _ in prob_ann]
 
-    pr_agg = {}
+    pr_agg = hl.struct()
     for pop in pops:
         # Group by min_prob_cutoffs and aggregate to get TP, FP, and FN per
         # min_prob_cutoffs.
         meet_cutoff = ht.most_likely_pop.prob >= ht.min_prob_cutoff
-        is_most_likely_pop = ht.most_likely_pop.pop == pop
-        is_training_pop = ht.training_pop == pop
         same_training_most_likely_pop = ht.training_pop == ht.most_likely_pop.pop
         if pop:
+            is_most_likely_pop = ht.most_likely_pop.pop == pop
+            is_training_pop = ht.training_pop == pop
             tp = hl.agg.count_where(meet_cutoff & is_most_likely_pop & is_training_pop)
             fp = hl.agg.count_where(meet_cutoff & is_most_likely_pop & ~is_training_pop)
             fn = hl.agg.count_where(is_training_pop & ~meet_cutoff)
@@ -388,8 +388,10 @@ def compute_precision_recall(ht: hl.Table, num_pr_points: int = 1000) -> hl.Tabl
 
         precision = tp / (tp + fp)
         recall = tp / (tp + fn)
-        agg = {"TP": tp, "FP": fp, "FN": fn, "precision": precision, "recall": recall}
-        pr_agg.update({pop: agg} if pop else agg)
+        agg = hl.struct(TP=tp, FP=fp, FN=fn, precision=precision, recall=recall)
+        if pop:
+            agg = hl.struct(**{pop: agg})
+        pr_agg = pr_agg.annotate(**agg)
 
     ht = ht.group_by("min_prob_cutoff").aggregate(**pr_agg)
     ht = ht.annotate_globals(pops=[pop for pop, _ in prob_ann])
@@ -417,19 +419,32 @@ def infer_per_pop_min_rf_probs(
     :return: Dictionary of per pop min probability cutoffs `min_prob_cutoff`.
     """
     # Get list of all populations.
-    pops = hl.eval(ht.pops)
-
+    pops = hl.eval(ht.index_globals().pops)
     min_prob_per_pop = {}
     for pop in pops:
         pr_vals = hl.tuple(
-            ht[pop].min_prob_cutoff, ht[pop].precision, ht[pop].recall
+            [ht.min_prob_cutoff, ht[pop].precision, ht[pop].recall]
         ).collect()
         min_probs, precisions, recalls = map(list, zip(*pr_vals))
 
-        idx = next(x for x, r in reversed(list(enumerate(recalls))) if r >= min_recall)
+        try:
+            idx = next(
+                x for x, r in reversed(list(enumerate(recalls))) if r >= min_recall
+            )
+        except StopIteration:
+            raise ValueError(
+                f"Recall never reaches {min_recall} for {pop}. Recall values are: "
+                f"{recalls}"
+            )
         precision_cutoff = precisions[idx]
         if precision_cutoff < min_precision:
-            idx = next(x for x, p in enumerate(precisions) if p >= min_precision)
+            try:
+                idx = next(x for x, p in enumerate(precisions) if p >= min_precision)
+            except StopIteration:
+                raise ValueError(
+                    f"Precision never reaches {min_precision} for {pop}. Precision "
+                    f"values are: {precisions}"
+                )
         min_prob_per_pop[pop] = {
             "precision_cutoff": precisions[idx],
             "recall_cutoff": recalls[idx],
@@ -453,13 +468,10 @@ def assign_pop_with_per_pop_probs(
     :return: Table with 'pop' annotation based on supplied per pop min probabilities.
     """
     min_prob_cutoffs = hl.literal(min_prob_cutoffs)
-    most_likely_pop_expr, _ = get_most_likely_pop_expr(pop_ht)
+    pop_prob, _ = get_most_likely_pop_expr(pop_ht)
+    pop = pop_prob.pop
     pop_ht = pop_ht.annotate(
-        pop=hl.if_else(
-            most_likely_pop_expr.prob >= min_prob_cutoffs.get(most_likely_pop_expr.pop),
-            most_likely_pop_expr.pop,
-            missing_label,
-        )
+        pop=hl.if_else(pop_prob.prob >= min_prob_cutoffs.get(pop), pop, missing_label)
     )
     pop_ht = pop_ht.annotate_globals(min_prob_cutoffs=min_prob_cutoffs)
 
@@ -468,6 +480,11 @@ def assign_pop_with_per_pop_probs(
 
 def main(args):
     """Assign global ancestry labels to samples."""
+    hl.init(
+        log="/assign_ancestry.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
     try:
         include_unreleasable_samples = args.include_unreleasable_samples
         overwrite = args.overwrite
@@ -493,7 +510,9 @@ def main(args):
 
         if args.assign_pops:
             pop_pcs = args.pop_pcs
-            pop_pcs = list(range(1, pop_pcs[0] + 1)) if len(pop_pcs) == 1 else pop_pcs
+            pop_pcs = (
+                list(range(1, pop_pcs + 1)) if isinstance(pop_pcs, int) else pop_pcs
+            )
             logger.info("Using following PCs: %s", pop_pcs)
             pop_ht, pops_rf_model = assign_pops(
                 args.min_pop_prob,
@@ -525,16 +544,24 @@ def main(args):
             pop = get_pop_ht(test=test)
             if args.infer_per_pop_min_rf_probs:
                 min_probs = infer_per_pop_min_rf_probs(
-                    pop.ht(),
+                    get_pop_pr_ht(test=test).ht(),
                     min_recall=args.min_recall,
                     min_precision=args.min_precision,
                 )
+                logger.info(
+                    "Per ancestry group min prob cutoff inference: %s", min_probs
+                )
+                min_probs = {
+                    pop: cutoff["min_prob_cutoff"] for pop, cutoff in min_probs.items()
+                }
                 with hl.hadoop_open(per_pop_min_rf_probs_json_path(), "w") as d:
                     d.write(json.dumps(min_probs))
 
             with hl.hadoop_open(per_pop_min_rf_probs_json_path(), "r") as d:
                 min_probs = json.load(d)
-            logger.info("Using min prob decisions per ancestry group: %s", min_probs)
+            logger.info(
+                "Using te following min prob cutoff per ancestry group: %s", min_probs
+            )
             pop_ht = pop.ht().checkpoint(new_temp_file("pop_ht", extension="ht"))
             pop_ht = assign_pop_with_per_pop_probs(pop_ht, min_probs)
             pop_ht.write(pop.path, overwrite=overwrite)
@@ -547,6 +574,16 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--slack-channel",
+        help="Slack channel to post results and notifications to.",
+    )
+    parser.add_argument(
+        "--test", help="Run script on test dataset.", action="store_true"
+    )
+    parser.add_argument(
+        "--overwrite", help="Overwrite output files.", action="store_true"
+    )
     parser.add_argument("--run-pca", help="Compute ancestry PCA", action="store_true")
     parser.add_argument(
         "--n-pcs",
@@ -579,16 +616,6 @@ if __name__ == "__main__":
         help="Minimum RF prob for pop assignment. Defaults to 0.75.",
         default=0.75,
         type=float,
-    )
-    parser.add_argument(
-        "--slack-channel",
-        help="Slack channel to post results and notifications to.",
-    )
-    parser.add_argument(
-        "--test", help="Run script on test dataset.", action="store_true"
-    )
-    parser.add_argument(
-        "--overwrite", help="Overwrite output files.", action="store_true"
     )
     parser.add_argument(
         "--include-v2-known-in-training",
