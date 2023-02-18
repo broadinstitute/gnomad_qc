@@ -165,9 +165,11 @@ def prep_ht_for_rf(
         if len(v4_spike_err) > 0:
             raise ValueError(f"Pops: {v4_spike_err}, are not in V4_POP_SPIKE_DICT")
 
+        v4_population_spike = {r: V4_POP_SPIKE_DICT[r] for r in v4_population_spike}
+
         training_pop = hl.coalesce(
             training_pop,
-            hl.literal(V4_POP_SPIKE_DICT).get(joint_meta_ht.v4_race_ethnicity),
+            hl.literal(v4_population_spike).get(joint_meta_ht.v4_race_ethnicity),
         )
 
     if v3_population_spike:
