@@ -237,7 +237,7 @@ def assign_pops(
     )
     pop_field = "pop"
     logger.info(
-        "Running RF for the first time with PCs %s using %d training examples: %s",
+        "Running RF with PCs %s using %d training examples: %s",
         pcs,
         pop_pca_scores_ht.aggregate(
             hl.agg.count_where(hl.is_defined(pop_pca_scores_ht.training_pop))
