@@ -16,9 +16,9 @@ from gnomad_qc.v4.resources.sample_qc import (
     get_joint_qc,
     get_pop_ht,
     joint_qc_meta,
-    pca_related_samples_to_drop,
     pop_rf_path,
     pop_tsv_path,
+    related_samples_to_drop,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -380,7 +380,7 @@ def main(args):
 
     if args.run_pca:
         pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
-            pca_related_samples_to_drop().ht(),
+            related_samples_to_drop(release=False).ht(),
             include_unreleasable_samples,
             args.n_pcs,
             test,

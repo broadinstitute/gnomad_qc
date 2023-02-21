@@ -18,9 +18,9 @@ from gnomad_qc.v4.resources.sample_qc import (
     ibd,
     joint_qc_meta,
     pc_relate_pca_scores,
-    pca_related_samples_to_drop,
-    pca_samples_rankings,
+    related_samples_to_drop,
     relatedness,
+    sample_rankings,
 )
 from gnomad_qc.v4.sample_qc.cuKING.cuking_outputs_to_ht import cuking_outputs_to_ht
 from gnomad_qc.v4.sample_qc.cuKING.mt_to_cuking_inputs import mt_to_cuking_inputs
@@ -154,8 +154,8 @@ def main(args):
     cuking_relatedness_ht = relatedness(test=test)
     ibd_ht = ibd(test=test)
     pc_relate_relatedness_ht = relatedness("pc_relate", test=test)
-    pca_samples_rankings_ht = pca_samples_rankings(test=test)
-    pca_related_samples_to_drop_ht = pca_related_samples_to_drop(test=test)
+    samples_rankings_ht = sample_rankings(release=False, test=test)
+    related_samples_to_drop_ht = related_samples_to_drop(release=False, test=test)
 
     if args.print_cuking_command:
         check_resource_existence(
@@ -315,8 +315,8 @@ def main(args):
                 },
                 output_step_resources={
                     "--compute-related-samples-to-drop": [
-                        pca_samples_rankings_ht,
-                        pca_related_samples_to_drop_ht,
+                        samples_rankings_ht,
+                        related_samples_to_drop_ht,
                     ]
                 },
                 overwrite=overwrite,
@@ -325,9 +325,7 @@ def main(args):
             rank_ht = compute_rank_ht(
                 joint_qc_meta_ht.semi_join(joint_qc_mt.mt().cols())
             )
-            rank_ht = rank_ht.checkpoint(
-                pca_samples_rankings_ht.path, overwrite=overwrite
-            )
+            rank_ht = rank_ht.checkpoint(samples_rankings_ht.path, overwrite=overwrite)
             relatedness_ht = relatedness_ht.ht()
             relatedness_ht = relatedness_ht.key_by(
                 i=relatedness_ht.i.s, j=relatedness_ht.j.s
@@ -352,7 +350,7 @@ def main(args):
                 relatedness_method=rel_method,
             )
             samples_to_drop_ht.write(
-                pca_related_samples_to_drop_ht.path, overwrite=overwrite
+                related_samples_to_drop_ht.path, overwrite=overwrite
             )
 
     finally:
