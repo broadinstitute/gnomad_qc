@@ -117,7 +117,7 @@ def prep_ht_for_rf(
     """
     Prepare the PCA scores hail Table for the random forest population assignment runs.
 
-    Either train the RF with only HGDP and TGP, or HGDP and TGP and all v2 known labels. Can also specify list of pops with known v3/v4 labels to include (v3_population_spike/v4_population_spike) for training. Pops supplied for v4 are specified by race/ethnicity and converted to a ancestry group using V4_POP_SPIKE_DICT.
+    Either train the RF with only HGDP and TGP, or HGDP and TGP and all v2 known labels. Can also specify list of pops with known v3/v4 labels to include (v3_population_spike/v4_population_spike) for training. Pops supplied for v4 are specified by race/ethnicity and converted to an ancestry group using V4_POP_SPIKE_DICT.
 
     :param include_unreleasable_samples: Should unreleasable samples be included in the PCA.
     :param test: Whether RF should run on the test QC MT.
