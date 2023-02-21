@@ -41,10 +41,8 @@ logger.setLevel(logging.INFO)
 # (processed separately from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
 SITE_FIELDS.remove("SOR")
-# TODO: Update this field descriptions dict in another PR -- should be able to use mostly all the
-# fields in the v3 README.md -- link to freq array FAQ in freq
 FIELD_DESCRIPTIONS = {
-    "Globals": {
+    "Global fieldss": {
         "freq_meta": {
             "definition": (
                 "Allele frequency metadata. An ordered list containing the frequency"
@@ -57,7 +55,11 @@ FIELD_DESCRIPTIONS = {
                 "Dictionary keyed by specified label grouping combinations (group:"
                 " adj/raw, ancestry_group: gnomAD inferred global ancestry group, sex:"
                 " sex karyotype), with values describing the corresponding index of"
-                " each grouping entry in the ‘freq’ array row annotation."
+                " each grouping entry in the ‘freq’ array row annotation. Please visit"
+                " our FAQ, 'How do I access the gnomAD Hail Table frequency"
+                " annotation?' on our site"
+                " https://gnomad.broadinstitute.org/help#technical-details for"
+                " instructions on using this annotation."
             )
         },
         "faf_index_dict": {
@@ -135,8 +137,252 @@ FIELD_DESCRIPTIONS = {
                 ),
             },
         },
+        "age_distribution": {
+            "defintion": "Callset-wide age histogram calculated on release samples.",
+            "subfields": {
+                "bin_edges": {"defintion": "Bin edges for the age histogram."},
+                "bin_freq": {
+                    "definition": (
+                        "Bin frequencies for the age histogram. This is the number of"
+                        " records found in each bin."
+                    )
+                },
+                "n_smaller": {
+                    "definition": (
+                        "Count of age values falling below lowest histogram bin edge."
+                    )
+                },
+                "n_larger": {
+                    "definition": (
+                        "Count of age values falling above highest histogram bin edge."
+                    )
+                },
+            },
+        },
+        "age_index_dict": {
+            "definition": (
+                "Dictionary keyed by specified subset with values describing the"
+                " corresponding index of each subset entry in the 'age_hist_het' and"
+                " 'age_hist_hom' array row annotation."
+            )
+        },
+        "age_meta": {
+            "definition": (
+                "Age metadata. An ordered list containing the groups for each"
+                " element of the 'age_hist_het' and 'age_hist_hom' array row"
+                " annotation."
+            )
+        },
+        "freq_sample_count": {
+            "definition": (
+                "A sample count per sample grouping defined in the 'freq_meta' global"
+                " annotation."
+            )
+        },
+    },
+    "Row fields": {
+        "locus": {
+            "definition": "Variant locus. Contains contig and position information."
+        },
+        "alleles": {"definition": "Variant Alleles."},
+        "freq": {
+            "definition": (
+                "Array of allele frequency information (AC, AN, AF, homozygote count)"
+                " for each frequency aggregation group in the gnomAD release."
+            ),
+            "subfields": {
+                "AC": {"definition": "Alternate allele count in release."},
+                "AF": {
+                    "definition": "Alternate allele frequency, (AC/AN), in release."
+                },
+                "AN": {"definition": "Total number of alleles in release."},
+                "homozygote_count": {
+                    "definition": (
+                        " Count of homozygous alternate individuals in release."
+                    )
+                },
+            },
+        },
+        "raw_qual_hists": {
+            "definition": (
+                "Genotype quality metric histograms for all genotypes as opposed to"
+                " high quality genotypes."
+            ),
+            "subfields": {
+                "gq_hist_all": {
+                    "definition": "Histogram for GQ calculated on all genotypes.",
+                    "subfields": {
+                        "bin_edges": {
+                            "definition": (
+                                "Bin edges for the GQ histogram calculated on all"
+                                " genotypes are:"
+                                " 0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100."
+                            ),
+                            "bin_freq": {
+                                "definition": (
+                                    "Bin frequencies for the GQ histogram calculated on"
+                                    " all genotypes. The number of records found in"
+                                    " each bin."
+                                )
+                            },
+                            "n_smaller": {
+                                "definition": (
+                                    "Count of GQ values falling below lowest histogram"
+                                    " bin edge, for GQ calculated on all genotypes."
+                                )
+                            },
+                            "n_larger": {
+                                "definition": (
+                                    "Count of GQ values falling above highest histogram"
+                                    " bin edge, for GQ calculated on all genotypes."
+                                )
+                            },
+                        },
+                    },
+                },
+                "dp_hist_all": {
+                    "definition": "Histogram for DP calculated on all genotypes.",
+                    "subfields": {
+                        "bin_edges": {
+                            "definition": (
+                                "Bin edges for the DP histogram calculated on all"
+                                " genotypes are:"
+                                " 0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100"
+                            )
+                        },
+                        "bin_freq": {
+                            "definition": (
+                                "Bin frequencies for the DP histogram calculated on all"
+                                " genotypes. The number of records found in each bin."
+                            )
+                        },
+                        "n_smaller": {
+                            "definition": (
+                                "Count of DP values falling below lowest histogram bin"
+                                " edge, for DP calculated on all genotypes."
+                            )
+                        },
+                        "n_larger": {
+                            "definition": (
+                                "Count of DP values falling above highest histogram bin"
+                                " edge, for DP calculated on all genotypes."
+                            )
+                        },
+                    },
+                },
+                "gq_hist_alt": {
+                    "definition": (
+                        " Histogram for GQ in heterozygous individuals calculated on"
+                        " all genotypes."
+                    ),
+                    "subfields": {
+                        "bin_edges": {
+                            "definition": (
+                                "Bin edges for the histogram of GQ in heterozygous"
+                                " individuals calculated on all genotypes are:"
+                                " 0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100"
+                            )
+                        },
+                        "bin_freq": {
+                            "definition": (
+                                "Bin frequencies for the histogram of GQ in"
+                                " heterozygous individuals calculated on all genotypes."
+                                " The number of records found in each bin."
+                            )
+                        },
+                        "n_smaller": {
+                            "definition": (
+                                "Count of GQ values in heterozygous individuals falling"
+                                " below lowest histogram bin edge, calculated on all"
+                                " genotypes."
+                            )
+                        },
+                        "n_larger": {
+                            "definition": (
+                                "Count of GQ values in heterozygous individuals falling"
+                                " above highest histogram bin edge, calculated on all"
+                                " genotypes."
+                            )
+                        },
+                    },
+                },
+                "dp_hist_alt": {
+                    "definition": (
+                        " Histogram for DP in heterozygous individuals calculated on"
+                        " all genotypes."
+                    ),
+                    "subfields": {
+                        "bin_edges": {
+                            "definition": (
+                                "Bin edges for the histogram of DP in heterozygous"
+                                " individuals calculated on all genotypes are:"
+                                " 0|5|10|15|20|25|30|35|40|45|50|55|60|65|70|75|80|85|90|95|100"
+                            )
+                        },
+                        "bin_freq": {
+                            "definition": (
+                                "Bin frequencies for the histogram of DP in"
+                                " heterozygous individuals calculated on all genotypes."
+                                " The number of records found in each bin."
+                            )
+                        },
+                        "n_smaller": {
+                            "definition": (
+                                "Count of DP values in heterozygous individuals falling"
+                                " below lowest histogram bin edge, calculated on all"
+                                " genotypes."
+                            )
+                        },
+                        "n_larger": {
+                            "definition": (
+                                "Count of DP values in heterozygous individuals falling"
+                                " above highest histogram bin edge, calculated on all"
+                                " genotypes."
+                            )
+                        },
+                    },
+                },
+                "ab_hist_alt": {
+                    "definition": (
+                        "Histogram for AB in heterozygous individuals calculated on all"
+                        " genotypes."
+                    ),
+                    "subfields": {
+                        "bin_edges": {
+                            "definition": (
+                                "Bin edges for the histogram of AB in heterozygous"
+                                " individuals calculated on all genotypes are:"
+                                " 0.00|0.05|0.10|0.15|0.20|0.25|0.30|0.35|0.40|0.45|0.50|0.55|0.60|0.65|0.70|0.75|0.80|0.85|0.90|0.95|1.00."
+                            )
+                        },
+                        "bin_freq": {
+                            "definition": (
+                                "Bin frequencies for the histogram of AB in"
+                                " heterozygous individuals calculated on all genotypes."
+                                " The number of records found in each bin."
+                            )
+                        },
+                        "n_smaller": {
+                            "definition": (
+                                "CCount of AB values in heterozygous individuals"
+                                " falling below lowest histogram bin edge, calculated"
+                                " on all genotypes."
+                            )
+                        },
+                        "n_larger": {
+                            "definition": (
+                                "Count of AB values in heterozygous individuals falling"
+                                " above highest histogram bin edge, calculated on all"
+                                " genotypes."
+                            )
+                        },
+                    },
+                },
+            },
+        },
     },
 }
+
 
 TABLES_FOR_RELEASE = [
     "dbsnp",
