@@ -258,10 +258,6 @@ def assign_pops(
         min_prob=min_prob,
         missing_label=missing_label,
     )
-    pop_ht = pop_ht.checkpoint(
-        get_checkpoint_path(f"assign_pops_rf_iter_1_pop_lots_of_loggers_{pcs[-1]}"),
-        overwrite=overwrite,
-    )
 
     pop_ht = pop_ht.annotate_globals(
         min_prob=min_prob,
