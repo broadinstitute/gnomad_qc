@@ -662,6 +662,36 @@ def get_pop_ht(
     )
 
 
+def get_pop_pr_ht(
+    version: str = CURRENT_VERSION,
+    test: bool = False,
+    data_type: str = "joint",
+):
+    """
+    Get the TableResource of ancestry inference precision and recall values.
+
+    :param version: Version of pop PR TableResource to return.
+    :param test: Whether to use the test version of the pop PR TableResource.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: TableResource of ancestry inference PR values.
+    """
+    return TableResource(
+        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop_pr.ht"
+    )
+
+
+def per_pop_min_rf_probs_json_path(version: str = CURRENT_VERSION):
+    """
+    Get path to JSON file containing per ancestry group minimum RF probabilities.
+
+    :param version: Version of the JSON to return.
+    :return: Path to per ancestry group minimum RF probabilities JSON.
+    """
+    return (
+        f"{get_sample_qc_root(version, data_type='joint')}/ancestry_inference/gnomad.joint.v{version}.pop_min_probs.json"
+    )
+
+
 ######################################################################
 # Outlier detection resources
 ######################################################################
