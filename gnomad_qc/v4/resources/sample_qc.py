@@ -407,15 +407,22 @@ def get_cuking_output_path(version: str = CURRENT_VERSION, test: bool = False) -
     return f"{qc_temp_prefix(version)}cuking_output{'_test' if test else ''}.parquet"
 
 
-pc_relate_pca_scores = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version, data_type='joint')}/relatedness/gnomad.joint.v{version}.pc_scores.ht"
-        )
-        for version in VERSIONS
-    },
-)
+def pc_relate_pca_scores(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for PCA scores for use in PC-Relate.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.pc_scores.ht"
+            )
+            for version in VERSIONS
+        },
+    )
 
 
 def relatedness(
