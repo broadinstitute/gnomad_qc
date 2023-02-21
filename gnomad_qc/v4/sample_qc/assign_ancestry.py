@@ -122,7 +122,7 @@ def prep_ht_for_rf(
     :param include_unreleasable_samples: Should unreleasable samples be included in the PCA.
     :param test: Whether RF should run on the test QC MT.
     :param include_v2_known_in_training: Whether to train RF classifier using v2 known pop labels. Default is False.
-    :param v4_population_spike: Optional List of populations to spike into training. Must be in v4_population_spike dictionary. Default is None.
+    :param v4_population_spike: Optional List of populations to spike into training. Must be in V4_POP_SPIKE_DICT dictionary. Default is None.
     :param v3_population_spike: Optional List of populations to spike into training. Must be in V3_SPIKE_PROJECTS dictionary. Default is None.
     :return Table with input for the random forest.
     """
