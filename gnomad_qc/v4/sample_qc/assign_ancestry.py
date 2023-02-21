@@ -7,8 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import hail as hl
 from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relateds
-
 from gnomad.utils.slack import slack_notifications
+
 from gnomad_qc.v3.resources.meta import meta as v3_meta
 from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.basics import get_checkpoint_path
@@ -19,8 +19,9 @@ from gnomad_qc.v4.resources.sample_qc import (
     get_joint_qc,
     get_pop_ht,
     joint_qc_meta,
-    pca_related_samples_to_drop,
     pop_rf_path,
+    pop_tsv_path,
+    related_samples_to_drop,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -133,7 +134,9 @@ def prep_ht_for_rf(
 
     joint_meta = joint_qc_meta.ht()[pop_pca_scores_ht.key]
 
-    # Collect sample names of hgdp/tgp outliers to remove (these are outliers found by Alicia Martin's group during pop-specific PCA analyses as well as one duplicate sample)
+    # Collect sample names of hgdp/tgp outliers to remove (these are outliers
+    # found by Alicia Martin's group during pop-specific PCA analyses as well
+    # as one duplicate sample)
     hgdp_tgp_outliers = hl.literal(hgdp_tgp_pop_outliers.ht().s.collect())
 
     training_pop = hl.or_missing(
@@ -440,7 +443,7 @@ def main(args):
 
         if args.run_pca:
             pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
-                pca_related_samples_to_drop().ht(),
+                related_samples_to_drop(release=False).ht(),
                 include_unreleasable_samples,
                 args.n_pcs,
                 test,

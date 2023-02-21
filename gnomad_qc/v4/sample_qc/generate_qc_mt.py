@@ -166,6 +166,7 @@ def generate_qc_mt(
 def generate_qc_meta_ht() -> hl.Table:
     """
     Combine v3 and v4 sample metadata into a single Table for relatedness and population inference.
+
     :return: Table with v3 and v4 sample metadata
     """
     v3_meta_ht = v3_meta.ht()
@@ -179,8 +180,8 @@ def generate_qc_meta_ht() -> hl.Table:
         v3_meta=hl.struct(
             # Annotate research project for eas samples from Osaka
             v3_research_project=hl.if_else(
-                (v3_meta.project_meta.project_pop == "eas")
-                & (v3_meta.s.startswith("JPNW")),
+                (v3_meta_ht.project_meta.project_pop == "eas")
+                & (v3_meta_ht.s.startswith("JPNW")),
                 "osaka",
                 v3_meta_ht.project_meta.research_project,
             ),
