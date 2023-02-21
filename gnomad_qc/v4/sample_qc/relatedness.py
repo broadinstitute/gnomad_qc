@@ -49,12 +49,19 @@ def print_cuking_command(
     cuking_split_factor: int = 4,
 ) -> None:
     """
-    Add description.
+    Print the command to submit a Cloud Batch job for running cuKING.
 
-    :param cuking_input_path:
-    :param cuking_output_path:
-    :param min_emission_kinship:
-    :param cuking_split_factor:
+    :param cuking_input_path: Path to the cuKING input Parquet files.
+    :param cuking_output_path:Path to the cuKING output Parquet files.
+    :param min_emission_kinship: Minimum kinship threshold for emitting a pair of
+        samples in the relatedness output.
+    :param cuking_split_factor: Split factor to use for splitting the full relatedness
+        matrix table into equally sized submatrices that are computed independently to
+        parallelize the relatedness computation and decrease the memory requirements.
+        For example, to halve memory requirements, the full matrix can be split into
+        equally sized submatrices (i.e. a 'split factor' of 4). Only the
+        'upper triangular' submatrices need to be evaluated due to the symmetry of the
+        relatedness matrix, leading to 10 shards. Default is 4.
     :return:
     """
     logger.info(
@@ -177,14 +184,52 @@ def finalize_relatedness_ht(
     relatedness_args: Dict[str, float],
 ) -> hl.Table:
     """
-    Add description.
+    Create the finalized relatedness Table including adding a 'relationship' annotation for each pair.
 
-    :param ht:
-    :param meta_ht:
-    :param relatedness_method:
-    :param relatedness_args:
+    The `relatedness_args` dictionary should have the following keys:
+        - 'second_degree_kin_cutoff': Minimum kinship threshold for filtering a pair of
+          samples with a second degree relationship when filtering related individuals.
+          Default is 0.08838835. Bycroft et al. (2018) calculates a theoretical kinship
+          of 0.08838835 for a second degree relationship cutoff. This cutoff should be
+          determined by evaluation of the kinship distribution.
+        - 'parent_child_max_ibd0_or_ibs0_over_ibs2': Maximum value of IBD0 (if
+          `relatedness_method` is 'pc_relate') or IBS0/IBS2 (if `relatedness_method` is
+          'cuking') for a parent-child pair.
+        - 'second_degree_sibling_lower_cutoff_slope': Slope of the line to use as a
+          lower cutoff for second degree relatives and siblings from parent-child pairs.
+        - 'second_degree_sibling_lower_cutoff_intercept': Intercept of the line to use
+          as a lower cutoff for second degree relatives and siblings from parent-child
+          pairs.
+        - 'second_degree_upper_sibling_lower_cutoff_slope': Slope of the line to use as
+          an upper cutoff for second degree relatives and a lower cutoff for siblings.
+        - 'second_degree_upper_sibling_lower_cutoff_intercept': Intercept of the line to
+          use as an upper cutoff for second degree relatives and a lower cutoff for
+          siblings.
+        - 'duplicate_twin_min_kin': Minimum kinship for duplicate or twin pairs.
+        - 'duplicate_twin_ibd1_min': Minimum IBD1 cutoff for duplicate or twin pairs.
+          Only used when `relatedness_method` is 'pc_relate'. Note: the min is used
+          because pc_relate can output large negative values in some corner cases.
+        - 'duplicate_twin_ibd1_max': Maximum IBD1 cutoff for duplicate or twin pairs.
+          Only used when `relatedness_method` is 'pc_relate'.
+
+    The following annotations are added to `ht`:
+        - 'relationship': Relationship annotation for the pair. Returned by
+          `get_slope_int_relationship_expr`.
+        - 'gnomad_v3_duplicate': Whether the sample is a duplicate of a sample found in
+          the gnomAD v3.1 genomes.
+        - 'gnomad_v3_release_duplicate': Whether the sample is a duplicate of a sample found in
+          the gnomAD v3.1 relase genomes.
+
+    :param ht: Input relatedness Table.
+    :param meta_ht: Input metadata Table. Used to add v3 overlap annotations.
+    :param relatedness_method: Which relatedness method to use for finalized
+        relatedness Table. Options are 'cuking' and 'pc_relate'. Default is 'cuking'.
+    :param relatedness_args: Dictionary of arguments to be passed to
+        `get_slope_int_relationship_expr`.
     :return:
     """
+    if relatedness_method not in {"cuking", "pc-relate"}:
+        raise ValueError("`relatedness_method` must be 'cuking' or 'pc_relate'!")
     if relatedness_method == "pc-relate":
         y_expr = ht.ibd0
         ibd1_expr = ht.ibd1
@@ -336,6 +381,9 @@ def get_relatedness_resources(
     :return:
     """
     joint_qc_mt = get_joint_qc(test=test)
+
+    # Adding resources from previous scripts that are used by multiple steps in the
+    # relatedness inference pipeline.
     joint_qc_mt_input = {
         "generate_qc_mt.py --generate-qc-mt": {"joint_qc_mt": joint_qc_mt}
     }
@@ -343,12 +391,14 @@ def get_relatedness_resources(
         "generate_qc_mt.py --generate-qc-meta": {"joint_qc_meta": joint_qc_meta}
     }
 
+    # Initialize relatedness pipeline resource collection
     relatedness_pipeline = PipelineResourceCollection(
         pipeline_name="relatedness",
         pipeline_resources={"joint_qc_mt": joint_qc_mt, "joint_qc_meta": joint_qc_meta},
         overwrite=overwrite,
     )
 
+    # Create resource collection for each step of the relatedness pipeline.
     prepare_cuking_inputs = PipelineStepResourceCollection(
         "--prepare-cuking-inputs",
         output_resources={"cuking_input_path": get_cuking_input_path(test=test)},
@@ -417,6 +467,7 @@ def get_relatedness_resources(
         },
     )
 
+    # Add all steps to the relatedness pipeline resource collection.
     relatedness_pipeline.add_steps(
         {
             "prepare_cuking_inputs": prepare_cuking_inputs,

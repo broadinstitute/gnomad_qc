@@ -1,4 +1,5 @@
 """Script containing generic resources."""
+from collections import defaultdict
 import logging
 from typing import Dict, List, Optional
 
@@ -383,27 +384,36 @@ class PipelineStepResourceCollection:
         self.overwrite = overwrite
         self.pipeline_step = step_name
         self.previous_steps = previous_pipeline_steps
+        self._output_resource_dict = output_resources
 
         if output_resources is not None:
-            for name, resource in output_resources.items():
-                setattr(self, name, resource)
-
+            self._add_output_resource_attributes(output_resources)
             output_resources = {self.pipeline_step: output_resources.values()}
 
         self.output_resources = output_resources
 
-        self.input_resources = {}
+        self.input_resources = defaultdict(list)
         if input_resources is None:
             for step in previous_pipeline_steps:
                 self.input_resources.update(step.output_resources)
+                self._add_output_resource_attributes(step._output_resource_dict)
         else:
             self.add_input_resources(input_resources)
 
         if add_input_resources is not None:
             self.add_input_resources(add_input_resources)
 
+    def _add_output_resource_attributes(self, output_resources):
+        for name, resource in output_resources.items():
+            setattr(self, name, resource)
+
     def add_input_resources(self, input_resources):
-        self.input_resources.update(input_resources)
+        for step, resources in input_resources.items():
+            if isinstance(resources, dict):
+                for name, resource in resources.items():
+                    setattr(self, name, resource)
+                resources = resources.values()
+            self.input_resources[step].extend(resources)
 
     def check_resource_existance(self, overwrite=None):
         if overwrite is None:
@@ -411,7 +421,6 @@ class PipelineStepResourceCollection:
                 overwrite = False
             else:
                 overwrite = self.overwrite
-
         check_resource_existence(
             input_step_resources=self.input_resources,
             output_step_resources=self.output_resources,
