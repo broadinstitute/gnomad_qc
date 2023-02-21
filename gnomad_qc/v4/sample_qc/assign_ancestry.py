@@ -347,7 +347,7 @@ def get_most_likely_pop_expr(
     return most_likely_pop_expr, prob_ann
 
 
-def compute_precision_recall(ht: hl.Table, num_pr_points: int = 1000) -> hl.Table:
+def compute_precision_recall(ht: hl.Table, num_pr_points: int = 100) -> hl.Table:
     """
     Create Table with false positives (FP), true positives (TP), false negatives (FN), precision, and recall.
 
@@ -654,11 +654,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--number-pr-points",
         help=(
-            "Number of min prob cutoffs to compute PR metrics for. e.g. 1000 will "
-            "compute PR metrics for min prob of 0 to 1 in increments of 0.001. Default "
-            "is 1000."
+            "Number of min prob cutoffs to compute PR metrics for. e.g. 100 will "
+            "compute PR metrics for min prob of 0 to 1 in increments of 0.01. Default "
+            "is 100."
         ),
-        default=1000,
+        default=100,
         type=int,
     )
     parser.add_argument(
