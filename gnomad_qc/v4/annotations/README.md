@@ -4,7 +4,7 @@
 
 CADD (Rentzsch et al., Nucleic Acids Research, 2018), a score predicting deleteriousness for both SNVs and indels. Listed on the browser are the CADD Phred scores, which range from 1 to 99, based on the rank of each variant relative to all possible 8.6 billion substitutions in the human reference genome. Higher scores are predicted to be more deleterious/damaging. Variants in gnomAD v3.1.1 were annotated with CADD v1.6. Pre-computed CADD scores are available [here](https://cadd.gs.washington.edu/download).
 
-For gnomAD v4 release, we used the latest CADD v1.6 post-release 1 (released on Mar 22, 2021) to compute a score for the new indels (~32,561,253). The following command was used to generate the small VCF files: 
+For gnomAD v4 release, we used the latest CADD v1.6 post-release 1 (released on Mar 22, 2021) to compute a score for the new indels (~32,561,253). The following Hail commands were used to generate 1000 small VCF files: 
 
 ```commandline
 import hail as hl
@@ -20,12 +20,8 @@ indels = split_ht.filter(hl.is_indel(split_ht.alleles[0], split_ht.alleles[1]))
 v3_ht = public_release("genomes").ht()
 
 v4_new_indels = indels.anti_join(v3_ht)
-
-
 v4_new_indels = v4_new_indels.checkpoint("gs://gnomad-tmp/qin/gnomad_v4_new_indels.split.ht", overwrite=True) # Checkpoint the matrix table to disk by writing and reading using a fast, but less space-efficient codec.
-
 v4_new_indels = hl.read_table("gs://gnomad-tmp/qin/gnomad_v4_new_indels.split.ht", _n_partitions=1000)
-
 hl.export_vcf(v4_new_indels,'gs://gnomad-tmp/qin/gnomad_v4_new_indels_small.vcf.bgz', parallel="header_per_shard") 
 ```
 
