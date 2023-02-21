@@ -441,12 +441,9 @@ def main(args):
     release = args.release
     rel_method = args.finalize_relatedness_method
     second_degree_kin_cutoff = args.second_degree_kin_cutoff
-
     relatedness_resources = get_relatedness_resources(
         test, release, rel_method, overwrite
     )
-    joint_qc_mt = relatedness_resources.joint_qc_mt.mt()
-    joint_qc_meta_ht = relatedness_resources.joint_qc_meta.ht()
 
     if args.print_cuking_command:
         res = relatedness_resources.print_cuking_command
@@ -464,6 +461,9 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
+
+    joint_qc_mt = relatedness_resources.joint_qc_mt.mt()
+    joint_qc_meta_ht = relatedness_resources.joint_qc_meta.ht()
 
     try:
         if args.prepare_cuking_inputs:

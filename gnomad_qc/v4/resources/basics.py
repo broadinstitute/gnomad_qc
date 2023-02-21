@@ -392,12 +392,12 @@ class PipelineStepResourceCollection:
 
         self.output_resources = output_resources
 
+        self.input_resources = {}
         if input_resources is None:
-            input_resources = {}
             for step in previous_pipeline_steps:
-                input_resources.update(step.output_resources)
-
-        self.input_resources = input_resources
+                self.input_resources.update(step.output_resources)
+        else:
+            self.add_input_resources(input_resources)
 
         if add_input_resources is not None:
             self.add_input_resources(add_input_resources)
