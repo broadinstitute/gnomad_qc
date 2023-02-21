@@ -564,7 +564,7 @@ def main(args):
             with hl.hadoop_open(per_pop_min_rf_probs_json_path(), "r") as d:
                 min_probs = json.load(d)
             logger.info(
-                "Using te following min prob cutoff per ancestry group: %s", min_probs
+                "Using the following min prob cutoff per ancestry group: %s", min_probs
             )
             pop_ht = pop.ht().checkpoint(new_temp_file("pop_ht", extension="ht"))
             pop_ht = assign_pop_with_per_pop_probs(pop_ht, min_probs)
