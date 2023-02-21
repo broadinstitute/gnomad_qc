@@ -141,6 +141,9 @@ def prep_ht_for_rf(
             False,
         )
     )
+    # Note: Excluding v3_project_pop="oth" samples from training. These are samples from
+    #  Oceania and there are only a few known Oceania samples, and in past inference
+    #  analyses no new samples are inferred as belonging to this group.
     training_pop = hl.or_missing(
         joint_meta_ht.hgdp_or_tgp
         & (joint_meta_ht.v3_meta.v3_project_pop != "oth")
