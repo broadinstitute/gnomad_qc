@@ -626,31 +626,10 @@ def ancestry_pca_eigenvalues(
     )
 
 
-def pop_tsv_path(
-    version: str = CURRENT_VERSION,
-    test: bool = False,
-    data_type: str = "joint",
-    only_train_on_hgdp_tgp: bool = False,
-) -> str:
-    """
-    Path to tab delimited file indicating inferred sample populations.
-
-    :param version: gnomAD Version
-    :param test: Whether the RF assignment used a test dataset.
-    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Default is False.
-    :return: String path to sample populations
-    """
-    return (
-        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}RF_pop_assignments.txt.gz"
-    )
-
-
 def pop_rf_path(
     version: str = CURRENT_VERSION,
     test: bool = False,
     data_type: str = "joint",
-    only_train_on_hgdp_tgp: bool = False,
 ) -> str:
     """
     Path to RF model used for inferring sample populations.
@@ -658,11 +637,10 @@ def pop_rf_path(
     :param version: gnomAD Version
     :param test: Whether the RF assignment was from a test dataset.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Default is False.
     :return: String path to sample pop RF model
     """
     return (
-        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}pop.RF_fit.pickle"
+        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop.RF_fit.pickle"
     )
 
 
@@ -670,7 +648,6 @@ def get_pop_ht(
     version: str = CURRENT_VERSION,
     test: bool = False,
     data_type: str = "joint",
-    only_train_on_hgdp_tgp: bool = False,
 ):
     """
     Get the TableResource of samples' inferred population for the indicated gnomAD version.
@@ -678,11 +655,40 @@ def get_pop_ht(
     :param version: Version of pop TableResource to return.
     :param test: Whether to use the test version of the pop TableResource.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Default is False.
     :return: TableResource of sample pops.
     """
     return TableResource(
-        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}pop.ht"
+        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop.ht"
+    )
+
+
+def get_pop_pr_ht(
+    version: str = CURRENT_VERSION,
+    test: bool = False,
+    data_type: str = "joint",
+):
+    """
+    Get the TableResource of ancestry inference precision and recall values.
+
+    :param version: Version of pop PR TableResource to return.
+    :param test: Whether to use the test version of the pop PR TableResource.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: TableResource of ancestry inference PR values.
+    """
+    return TableResource(
+        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop_pr.ht"
+    )
+
+
+def per_pop_min_rf_probs_json_path(version: str = CURRENT_VERSION):
+    """
+    Get path to JSON file containing per ancestry group minimum RF probabilities.
+
+    :param version: Version of the JSON to return.
+    :return: Path to per ancestry group minimum RF probabilities JSON.
+    """
+    return (
+        f"{get_sample_qc_root(version, data_type='joint')}/ancestry_inference/gnomad.joint.v{version}.pop_min_probs.json"
     )
 
 
