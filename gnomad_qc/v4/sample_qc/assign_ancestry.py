@@ -510,9 +510,7 @@ def main(args):
 
         if args.assign_pops:
             pop_pcs = args.pop_pcs
-            pop_pcs = (
-                list(range(1, pop_pcs + 1)) if isinstance(pop_pcs, int) else pop_pcs
-            )
+            pop_pcs = list(range(1, pop_pcs[0] + 1)) if len(pop_pcs) == 1 else pop_pcs
             logger.info("Using following PCs: %s", pop_pcs)
             pop_ht, pops_rf_model = assign_pops(
                 args.min_pop_prob,
@@ -607,7 +605,7 @@ if __name__ == "__main__":
             " represents the total PCs to use e.g. --pop-pcs=6 will use PCs"
             " 1,2,3,4,5,and 6. Defaults to 20 PCs."
         ),
-        default=20,
+        default=[20],
         type=int,
         nargs="+",
     )
