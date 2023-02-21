@@ -131,7 +131,7 @@ CURATED_SUBPOPS = {
     ],
 }
 """
-Manually curated list of which subpopulations to include within each global population. Manual curation was needed as some known subpop labels may be inaccurate, especially those that are cohort-level annotations.
+Manually curated list of which subpopulations to include within each global population. Manual curation was needed as some known subpop labels may be inaccurate, especially those that are cohort-level annotations from collaborator metadata.
 For example, curation is needed to remove "Costa Rican" and "Indigenous American" subpops from the list of known subpops for the East Asian population.
 """
 
@@ -260,10 +260,128 @@ def filter_subpop_qc(
     return pop_qc_mt
 
 
+def drop_small_subpops(
+    ht: hl.Table,
+    min_additional_subpop_samples: int = None,
+    unassigned_label: str = "remaining",
+) -> hl.Table:
+    """
+    Drop small subpops from final subpop inference results.
+
+    .. note::
+
+        Samples within a dropped subpop will be reassigned to `unassigned_label`. Small subpops are those below `min_additional_subpop_samples` and criteria is based on the source of the known labels:
+            - If the known labels came exclusively from HGDP and/or TGP(1000 Genomes Project), require newly assigned samples (n_newly_assigned) >= min_additional_subpop_samples
+            - If the known labels came exclusively from a collaborator metadata source, require the sum of confirmed and newly assigned samples (n_assigned) >= min_additional_subpop_samples
+            - If known labels came from both HGDP/TGP and collaborator metadata sources, require the sum of confirmed and newly assigned samples (n_assigned) minus confirmed HGDP/TGP samples (n_confirmed_hgdp_tgp) >= min_additional_subpop_samples
+
+    :param ht: Table containing subpop inference results (under annotation name 'subpop').
+    :param min_additional_subpop_samples: Minimum additional samples required to include subpop in final inference results. Default is 100.
+    :param unassigned_label: Label to use for samples for which inferred subpop label will be dropped. Default is 'remaining'.
+    :return: Table with final inference results in which samples belonging to small subpops have been reassigned to `unassigned_label`.
+    """
+    # For each training_pop, count the number of samples with known labels and
+    # the number of hgdp_or_tgp samples correctly assigned to their known
+    # label
+    known_label_counts_ht = ht.group_by(ht.training_pop).aggregate(
+        n_known_labels=hl.agg.count(),
+        n_confirmed_hgdp_tgp=hl.agg.count_where(
+            hl.is_defined(ht.training_pop)
+            & hl.is_defined(ht.subpop)
+            & (ht.subpop == ht.training_pop)
+            & ht.hgdp_or_tgp
+        ),
+    )
+
+    # For each subpop, count the number of samples assigned to that subpop
+    # overall, as well as newly assigned samples (did not have a known label)
+    assigned_counts_ht = ht.group_by(ht.subpop).aggregate(
+        n_assigned=hl.agg.count(),
+        n_newly_assigned=hl.agg.count_where(
+            ~ht.training_sample & ~ht.evaluation_sample & hl.is_defined(ht.subpop)
+        ),
+    )
+
+    # Annotate whether known labels came from an hgdp_or_tgp sample, a
+    # collaborator metadata annotation, or a "mix" of both
+    label_source_ht = ht.group_by(ht.training_pop).aggregate(
+        known_label_source=(
+            hl.case()
+            .when(hl.agg.all(ht.hgdp_or_tgp), "hgdp_tgp_only")
+            .when(hl.agg.all(~ht.hgdp_or_tgp), "collab_source")
+            .default("mix")
+        )
+    )
+
+    # Join the Table of known label counts with the Table of assigned subpop
+    # counts and label source
+    counts_subpops_ht = known_label_counts_ht.join(
+        assigned_counts_ht, how="outer"
+    ).join(label_source_ht, how="outer")
+
+    # Annotate which subpops to keep in the final inference results
+    counts_subpops_ht = counts_subpops_ht.annotate(
+        keep_subpop=(
+            hl.case()
+            .when(
+                (counts_subpops_ht.known_label_source == "hgdp_tgp_only")
+                & (counts_subpops_ht.n_newly_assigned >= min_additional_subpop_samples),
+                True,
+            )
+            .when(
+                (counts_subpops_ht.known_label_source == "collab_source")
+                & (counts_subpops_ht.n_assigned >= min_additional_subpop_samples),
+                True,
+            )
+            .when(
+                (counts_subpops_ht.known_label_source == "mix")
+                & (
+                    counts_subpops_ht.n_assigned
+                    - counts_subpops_ht.n_confirmed_hgdp_tgp
+                    >= min_additional_subpop_samples
+                ),
+                True,
+            )
+            .default(False)
+        )
+    )
+    counts_subpops_ht = counts_subpops_ht.filter(
+        hl.is_defined(counts_subpops_ht.training_pop)
+        & (counts_subpops_ht.training_pop != unassigned_label)
+    )
+
+    # Create a dictionary with 'training_pop' as key and whether or not to
+    # keep samples inferred as belonging to the subpop as values
+    subpop_decisions = hl.dict(
+        hl.tuple(
+            [
+                counts_subpops_ht.training_pop,
+                hl.coalesce(counts_subpops_ht.keep_subpop, False),
+            ]
+        ).collect()
+    )
+
+    # Keep inferred labels only if the number of additional subpops exceeds or
+    # equals 'min_additional_subpop_samples'
+    ht = ht.annotate(
+        subpop=(
+            hl.if_else(subpop_decisions.get(ht.subpop), ht.subpop, unassigned_label)
+        )
+    )
+
+    ht = ht.annotate_globals(
+        min_additional_subpop_samples=min_additional_subpop_samples
+    )
+
+    return ht
+
+
 def main(args):  # noqa: D103
     pop = args.pop
     include_unreleasable_samples = args.include_unreleasable_samples
     high_quality = args.high_quality
+    min_additional_subpop_samples = args.min_additional_subpop_samples
+    unassigned_label = args.unassigned_label
 
     try:
         # Read in the raw mt
@@ -398,7 +516,42 @@ def main(args):  # noqa: D103
                 curated_subpops=CURATED_SUBPOPS[pop],
                 additional_samples_to_drop=outliers_ht,
                 high_quality=high_quality,
-                missing_label="Other",
+                missing_label=unassigned_label,
+            )
+
+            # Add metadata to subpop inference results
+            meta_ht = meta.ht()
+
+            meta_ht = meta_ht.select(
+                meta_ht.project_meta.subpop_description,
+                meta_ht.project_meta.research_project,
+                meta_ht.project_meta.project_id,
+                meta_ht.project_meta.title,
+                meta_ht.project_meta.broad_external,
+                meta_ht.project_meta.releasable,
+                hgdp_or_tgp=meta_ht.subsets.hgdp | meta_ht.subsets.tgp,
+            )
+
+            joint_pca_ht = joint_pca_ht.annotate(**meta_ht[joint_pca_ht.key])
+
+            if min_additional_subpop_samples:
+                logger.info(
+                    "Dropping small subpops (subpops with < %d samples added) ...",
+                    min_additional_subpop_samples,
+                )
+                joint_pca_ht = drop_small_subpops(
+                    joint_pca_ht, min_additional_subpop_samples, unassigned_label
+                )
+
+            # Annotate final subpop inference results, always keeping known labels
+            # from HGDP/1KG
+            joint_pca_ht = joint_pca_ht.annotate(
+                subpop=(
+                    hl.case()
+                    .when(joint_pca_ht.hgdp_or_tgp, joint_pca_ht.subpop_description)
+                    .when(hl.is_defined(joint_pca_ht.subpop), joint_pca_ht.subpop)
+                    .default(unassigned_label)
+                )
             )
 
             joint_pca_ht.write(assigned_subpops(pop).path, overwrite=args.overwrite)
@@ -411,26 +564,26 @@ def main(args):  # noqa: D103
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description=(
-            "This script generates a QC MT and PCA scores to use for subpop analyses"
+            "This script generates a QC MT and PCA scores to use for subpop analyses."
         )
     )
     parser.add_argument(
         "--slack-channel",
-        help="Slack channel to post results and notifications to",
+        help="Slack channel to post results and notifications to.",
     )
     parser.add_argument(
-        "--overwrite", help="Overwrites existing files", action="store_true"
+        "--overwrite", help="Overwrites existing files.", action="store_true"
     )
     parser.add_argument(
         "--test",
-        help="Runs a test of the code on only chr20 of the raw gnomAD v3 MT",
+        help="Runs a test of the code on only chr20 of the raw gnomAD v3 MT.",
         action="store_true",
     )
     parser.add_argument(
         "--make-full-subpop-qc-mt",
         help=(
             "Runs function to create dense MT to use as QC MT for all subpop analyses."
-            " This uses --min-popmax-af to determine variants that need to be retained"
+            " This uses --min-popmax-af to determine variants that need to be retained."
         ),
         action="store_true",
     )
@@ -438,7 +591,7 @@ if __name__ == "__main__":
         "--min-popmax-af",
         help=(
             "Minimum population max variant allele frequency to retain a variant for"
-            " the subpop QC MT"
+            " the subpop QC MT."
         ),
         type=float,
         default=0.001,
@@ -447,7 +600,7 @@ if __name__ == "__main__":
         "--run-filter-subpop-qc",
         help=(
             "Runs function to filter the QC MT to a certain subpop specified by --pop"
-            " argument"
+            " argument."
         ),
         action="store_true",
     )
@@ -455,7 +608,7 @@ if __name__ == "__main__":
         "--pop",
         help=(
             "Population to which the subpop QC MT should be filtered when generating"
-            " the PCA data"
+            " the PCA data."
         ),
         type=str,
     )
@@ -464,13 +617,13 @@ if __name__ == "__main__":
         help=(
             "Runs function to generate PCA data for a certain population specified by"
             " --pop argument and based on variants in the subpop QC MT created using"
-            " the --run-filter-subpop-qc argument"
+            " the --run-filter-subpop-qc argument."
         ),
         action="store_true",
     )
     parser.add_argument(
         "--n-pcs",
-        help="Number of PCs to compute",
+        help="Number of PCs to compute.",
         type=int,
         default=20,
     )
@@ -478,7 +631,7 @@ if __name__ == "__main__":
         "--min-af",
         help=(
             "Minimum population variant allele frequency to retain variant in QC MT"
-            " when generating the PCA data"
+            " when generating the PCA data."
         ),
         type=float,
         default=0.001,
@@ -487,20 +640,20 @@ if __name__ == "__main__":
         "--min-inbreeding-coeff-threshold",
         help=(
             "Minimum site inbreeding coefficient to keep a variant when generating the"
-            " PCA data"
+            " PCA data."
         ),
         type=float,
         default=-0.25,
     )
     parser.add_argument(
         "--min-hardy-weinberg-threshold",
-        help="Minimum site HW test p-value to keep when generating the PCA data",
+        help="Minimum site HW test p-value to keep when generating the PCA data.",
         type=float,
         default=1e-8,
     )
     parser.add_argument(
         "--ld-r2",
-        help="Minimum r2 to keep when LD-pruning",
+        help="Minimum r2 to keep when LD-pruning.",
         type=float,
         default=0.1,
     )
@@ -510,14 +663,14 @@ if __name__ == "__main__":
             "Optional number of partitions to repartition the MT to before running LD"
             " pruning. Repartitioning to fewer partitions is useful after filtering out"
             " many variants to avoid errors regarding 'maximal_independent_set may run"
-            " out of memory' while LD pruning"
+            " out of memory' while LD pruning."
         ),
         type=int,
         default=None,
     )
     parser.add_argument(
         "--block-size",
-        help="Optional block size to use for LD pruning",
+        help="Optional block size to use for LD pruning.",
         type=int,
         default=None,
     )
@@ -525,28 +678,28 @@ if __name__ == "__main__":
         "--remove-outliers",
         help=(
             "Whether to remove outliers when generating the PCA data. Outliers are"
-            " manually determined after visualizing the PC plots"
+            " manually determined after visualizing the PC plots."
         ),
         action="store_true",
     )
     parser.add_argument(
         "--include-unreleasable-samples",
-        help="Includes unreleasable samples for computing PCA",
+        help="Includes unreleasable samples for computing PCA.",
         action="store_true",
     )
     parser.add_argument(
         "--high-quality",
-        help="Filter to only high-quality samples when generating the PCA data",
+        help="Filter to only high-quality samples when generating the PCA data.",
         action="store_true",
     )
     parser.add_argument(
         "--assign-subpops",
-        help="Runs function to assign subpops",
+        help="Runs function to assign subpops.",
         action="store_true",
     )
     parser.add_argument(
         "--min-prob",
-        help="Minimum RF probability for subpop assignment",
+        help="Minimum RF probability for subpop assignment.",
         type=float,
         default=0.90,
     )
@@ -554,24 +707,24 @@ if __name__ == "__main__":
         "--withhold-prop",
         help=(
             "Proportion of training pop samples to withhold from training, all samples"
-            " will be kept if this flag is not used"
+            " will be kept if this flag is not used."
         ),
         type=float,
         default=None,
     )
     parser.add_argument(
         "--pcs",
-        help="List of PCs to use in the subpop RF assignment",
+        help="List of PCs to use in the subpop RF assignment.",
         type=int,
         nargs="+",
-        default=list(range(1, 20)),
+        default=list(range(1, 21)),
     )
     mislabel_parser = parser.add_mutually_exclusive_group(required=True)
     mislabel_parser.add_argument(
         "--max-number-mislabeled-training-samples",
         help=(
             "Maximum number of training samples that can be mislabelled. Can't be used"
-            " if `max-proportion-mislabeled-training-samples` is already set"
+            " if `max-proportion-mislabeled-training-samples` is already set."
         ),
         type=int,
         default=None,
@@ -580,10 +733,28 @@ if __name__ == "__main__":
         "--max-proportion-mislabeled-training-samples",
         help=(
             "Maximum proportion of training samples that can be mislabelled. Can't be"
-            " used if `max-number-mislabeled-training-samples` is already set"
+            " used if `max-number-mislabeled-training-samples` is already set."
         ),
         type=float,
         default=None,
+    )
+    parser.add_argument(
+        "--min-additional-subpop-samples",
+        help=(
+            "Minimum additional samples required to include subpop in final inference"
+            " results. Default is None."
+        ),
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
+        "--unassigned-label",
+        help=(
+            "Label for samples for that are not classified into a particular subpop."
+            " Default is 'remaining'."
+        ),
+        type=str,
+        default="remaining",
     )
 
     args = parser.parse_args()

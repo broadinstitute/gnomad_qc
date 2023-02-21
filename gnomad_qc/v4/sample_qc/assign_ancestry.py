@@ -20,9 +20,9 @@ from gnomad_qc.v4.resources.sample_qc import (
     get_pop_ht,
     get_pop_pr_ht,
     joint_qc_meta,
-    pca_related_samples_to_drop,
     per_pop_min_rf_probs_json_path,
     pop_rf_path,
+    related_samples_to_drop,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -259,7 +259,6 @@ def assign_pops(
         get_checkpoint_path(f"assign_pops_rf_iter_1_pop_lots_of_loggers_{pcs[-1]}"),
         overwrite=overwrite,
     )
-    # Is this needed?
 
     pop_ht = pop_ht.annotate_globals(
         min_prob=min_prob,
@@ -495,7 +494,7 @@ def main(args):
 
         if args.run_pca:
             pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
-                pca_related_samples_to_drop().ht(),
+                related_samples_to_drop(release=False).ht(),
                 include_unreleasable_samples,
                 args.n_pcs,
                 test,
