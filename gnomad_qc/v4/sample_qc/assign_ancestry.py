@@ -68,7 +68,7 @@ V3_SPIKE_PROJECTS = {
 }
 """
 Dictionary with v3 pops as keys and approved cohorts to use for training for those pops as values. Decisions were made based on results of analysis to determine which v3 samples/cohorts to use as training samples (per sample calculating the mean distance to all samples in a given population, and an alternative calculating per sample the mean distance limited to only HGDP/1KG samples in each population).
-Projects that were excluding based on these analyses are:
+Projects that were excluded based on this analysis are:
 afr: NHLBI_WholeGenome_Sequencing
 ami: Pedigree-Based Whole Genome Sequencing of Affective and Psychotic Disorders
 amr: NHLBI_WholeGenome_Sequencing
