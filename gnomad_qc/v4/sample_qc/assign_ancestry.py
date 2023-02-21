@@ -20,7 +20,6 @@ from gnomad_qc.v4.resources.sample_qc import (
     get_pop_ht,
     joint_qc_meta,
     pop_rf_path,
-    pop_tsv_path,
     related_samples_to_drop,
 )
 
