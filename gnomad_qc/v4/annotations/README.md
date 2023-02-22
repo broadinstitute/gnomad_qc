@@ -2,9 +2,9 @@
 
 ## CADD
 
-CADD (Rentzsch et al., Nucleic Acids Research, 2018), a score predicting deleteriousness for both SNVs and indels. Listed on the browser are the CADD Phred scores, which range from 1 to 99, based on the rank of each variant relative to all possible 8.6 billion substitutions in the human reference genome. Higher scores are predicted to be more deleterious/damaging. Variants in gnomAD v3.1.1 were annotated with CADD v1.6. Pre-computed CADD scores are available [here](https://cadd.gs.washington.edu/download).
+CADD (Rentzsch et al., Nucleic Acids Research, 2018), is a score predicting deleteriousness for both SNVs and indels. The gnomAD browser displays the CADD Phred scores, which range from 1 to 99, based on the rank of each variant relative to all possible 8.6 billion substitutions in the human reference genome. Higher scores are predicted to be more deleterious/damaging. Variants in gnomAD v3.1.1 were annotated with CADD v1.6. Pre-computed CADD scores are available [here](https://cadd.gs.washington.edu/download).
 
-For gnomAD v4 release, we used the latest CADD v1.6 post-release 1 (released on Mar 22, 2021) to compute a score for the new indels (~32,561,253). The following Hail commands were used to generate 1000 small VCF files: 
+For the gnomAD v4 release, we used the latest CADD v1.6 post-release 1 (released on Mar 22, 2021) to compute a score for indels new to the release (~32,560,253). The following Hail commands were used to generate 1000 small VCF files: 
 
 ```commandline
 import hail as hl
@@ -45,7 +45,7 @@ for file in *.pre.vcf.gz; do
 done
 ```
 
-The CADD was installed with the 216G annotation file downloaded on an attached disk to a 224-core n2d-highcpu VM on google cloud (note: in order to avoid the loss of annotation file when switching between machine types for the scaling and debugging purpose, the installation on an attached disk is recommended; also we need to ask for a reasonable size of bootable disk for the intermediate files created during the run, in /tmp/tmp.* by default). Since CADD requires only one core to run for each VCF file, we parallelize it for 215 VCF files at the same time: 
+CADD was installed with the 216G annotation file downloaded on an attached disk to a 224-core n2d-highcpu VM on google cloud (note: in order to avoid the loss of the annotation file when switching between machine types for scaling and debugging purposes, installation on an attached disk is recommended; also we needed to ask for a reasonable size of bootable disk for the intermediate files created during the run, in /tmp/tmp.* by default). Since CADD requires only one core to run for each VCF file, we parallelized it for 215 VCF files at the same time: 
 
 ```commandline
 nohup cat parallel.list | parallel -j215 time /mnt/disks/qin/cadd/CADD-scripts-1.6.post1/CADD.sh {} > ../run_parallel215.log 2>&1 &
