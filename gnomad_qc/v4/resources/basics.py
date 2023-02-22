@@ -459,6 +459,13 @@ class PipelineStepResourceCollection:
         if add_input_resources is not None:
             self.add_input_resources(add_input_resources)
 
+    def __getattr__(self, name: str) -> None:
+        """Raise AttributeError with modified message if the attribute is not found."""
+        AttributeError(
+            f"Pipeline step {self.pipeline_step} has no resource attribute named"
+            f" {name}!"
+        )
+
     def _add_output_resource_attributes(
         self,
         output_resources: Optional[
@@ -565,6 +572,13 @@ class PipelineResourceCollection:
         if pipeline_resources is not None:
             for name, resource in pipeline_resources.items():
                 setattr(self, name, resource)
+
+    def __getattr__(self, name: str) -> None:
+        """Raise AttributeError with modified message if the attribute is not found."""
+        AttributeError(
+            f"Pipeline {self.pipeline_name} has no resource or pipeline step attribute"
+            f" named {name}!"
+        )
 
     def add_steps(self, steps: Dict[str, PipelineStepResourceCollection]) -> None:
         """
