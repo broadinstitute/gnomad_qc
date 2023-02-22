@@ -27,7 +27,7 @@ from gnomad_qc.v4.resources.annotations import (
 )
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v4.resources.release import release_sites
+from gnomad_qc.v4.resources.release import FIELD_DESCRIPTIONS, release_sites
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(
@@ -41,6 +41,7 @@ logger.setLevel(logging.INFO)
 # (processed separately from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
 SITE_FIELDS.remove("SOR")
+<<<<<<< HEAD
 
 """
 Configurations of FIELD DESCRIPTION dictionary.
@@ -1063,6 +1064,8 @@ FIELD_DESCRIPTIONS = {
 }
 
 
+=======
+>>>>>>> eb58740 (Move field description dict to resources)
 TABLES_FOR_RELEASE = [
     "dbsnp",
     "filters",
@@ -1390,7 +1393,7 @@ def main(args):
         gnomad_qc_version=args.gnomad_qc_version,
         # TODO: See if we can pull this from the cluster
         gnomad_methods_version=args.gnomad_methods_version,
-        README=FIELD_DESCRIPTIONS,  # TODO: Make version dict for this?
+        README=FIELD_DESCRIPTIONS,  # TODO: Make version dict for this and have it live in methods?
         version=args.version,
     )
 
