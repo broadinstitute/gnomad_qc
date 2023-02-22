@@ -45,7 +45,7 @@ for file in *.pre.vcf.gz; do
 done
 ```
 
-The CADD was installed with the 216G annotation file downloaded on an attached disk to a 224-core n2d-highcpu VM on google cloud (note: in order to avoid the loss of annotation file when switching between machine types for the scaling and debugging purpose, the installation on an attached disk is recommended; also we need to ask for a reasonable size of bootable disk for the intermediate files created during the run, in /tmp/tmp.* by default). Since CADD requires only one core to run for each VCF file, we parallelize it for 215 VCF files at the same time: 
+CADD was installed with the 216G annotation file downloaded on an attached disk to a 224-core n2d-highcpu VM on google cloud (note: in order to avoid the loss of the annotation file when switching between machine types for scaling and debugging purposes, installation on an attached disk is recommended; also we needed to ask for a reasonable size of bootable disk for the intermediate files created during the run, in /tmp/tmp.* by default). Since CADD requires only one core to run for each VCF file, we parallelized it for 215 VCF files at the same time: 
 
 ```commandline
 nohup cat parallel.list | parallel -j215 time /mnt/disks/qin/cadd/CADD-scripts-1.6.post1/CADD.sh {} > ../run_parallel215.log 2>&1 &
