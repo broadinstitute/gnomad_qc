@@ -217,8 +217,8 @@ def finalize_relatedness_ht(
           `get_slope_int_relationship_expr`.
         - 'gnomad_v3_duplicate': Whether the sample is a duplicate of a sample found in
           the gnomAD v3.1 genomes.
-        - 'gnomad_v3_release_duplicate': Whether the sample is a duplicate of a sample found in
-          the gnomAD v3.1 relase genomes.
+        - 'gnomad_v3_release_duplicate': Whether the sample is a duplicate of a sample
+          found in the gnomAD v3.1 release genomes.
 
     :param ht: Input relatedness Table.
     :param meta_ht: Input metadata Table. Used to add v3 overlap annotations.
@@ -226,7 +226,7 @@ def finalize_relatedness_ht(
         relatedness Table. Options are 'cuking' and 'pc_relate'. Default is 'cuking'.
     :param relatedness_args: Dictionary of arguments to be passed to
         `get_slope_int_relationship_expr`.
-    :return:
+    :return: Finalized relatedness Table
     """
     if relatedness_method not in {"cuking", "pc_relate"}:
         raise ValueError("`relatedness_method` must be 'cuking' or 'pc_relate'!")
@@ -320,18 +320,32 @@ def compute_rank_ht(ht: hl.Table, filter_ht: Optional[hl.Table] = None) -> hl.Ta
 def run_compute_related_samples_to_drop(
     ht: hl.Table,
     meta_ht: hl.Table,
-    filter_ht: hl.Table,
-    release: bool,
+    release: bool = False,
+    filter_ht: Optional[hl.Table] = None,
 ) -> Tuple[hl.Table, hl.Table]:
     """
-    Add summary.
+    Determine the minimal set of related samples to prune for ancestry PCA or release.
 
-    :param ht:
-    :param meta_ht:
-    :param filter_ht:
-    :param release:
-    :return:
+    Runs `compute_related_samples_to_drop` in gnomad_methods after computing the
+    sample rankings using `compute_rank_ht`.
+
+    When `release` is True, `filter_ht` is used to rank samples based on filtering
+    'outlier_filtered' annotation, favoring those that are not filtered. These samples
+    will also be included in the returned `samples_to_drop_ht` Table.
+
+    :param ht: Input relatedness Table.
+    :param meta_ht: Metadata Table with `v3_meta.v3_release`, `releasable`,
+        `chr20_mean_dp` annotations to be used in ranking and filtering of related
+        individuals.
+    :param release: Whether to determine related samples to drop for the release based
+        on outlier filtering of sample QC metrics. `filter_ht` must be supplied.
+    :param filter_ht: Optional Table with outlier filtering of sample QC metrics to
+        use if `release` is True.
+    :return: Table with sample rank and a Table with related samples to drop.
     """
+    if release and filter_ht is None:
+        raise ValueError("'filter_ht' must be supplied when 'release' is True!")
+
     # Compute_related_samples_to_drop uses a rank Table as a tiebreaker when
     # pruning samples.
     rank_ht = compute_rank_ht(meta_ht, filter_ht=filter_ht if release else None)
@@ -372,13 +386,16 @@ def get_relatedness_resources(
     overwrite: bool,
 ) -> PipelineResourceCollection:
     """
-    Add description.
+    Get PipelineResourceCollection for all resources needed in the relatedness pipeline.
 
-    :param test:
-    :param release:
-    :param relatedness_method:
-    :param overwrite:
-    :return:
+    :param test: Whether to gather all resources for the test dataset.
+    :param release: Whether to get release resource for
+        'compute-related-samples-to-drop' step of the relatedness pipeline.
+    :param relatedness_method: The relatedness method to use for
+        'finalize-relatedness-ht' resources.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :return: PipelineResourceCollection containing resources for all steps of the
+        relatedness inference pipeline.
     """
     joint_qc_mt = get_joint_qc(test=test)
 
@@ -444,8 +461,7 @@ def get_relatedness_resources(
         output_resources={"final_relatedness_ht": relatedness(test=test)},
     )
     finalize_relatedness_ht.relatedness_ht = getattr(
-        finalize_relatedness_ht,
-        f"{relatedness_method}_relatedness_ht"
+        finalize_relatedness_ht, f"{relatedness_method}_relatedness_ht"
     )
     compute_related_samples_to_drop = PipelineStepResourceCollection(
         "--compute-related-samples-to-drop",
@@ -616,8 +632,8 @@ def main(args):
             rank_ht, drop_ht = run_compute_related_samples_to_drop(
                 res.final_relatedness_ht.ht(),
                 joint_qc_meta_ht.semi_join(joint_qc_mt.cols()),
-                res.outlier_filter_ht.ht() if release else None,
                 release,
+                res.outlier_filter_ht.ht() if release else None,
             )
             rank_ht.write(res.sample_rankings_ht.path, overwrite=overwrite)
             drop_ht.write(res.related_samples_to_drop_ht.path, overwrite=overwrite)
@@ -889,7 +905,10 @@ if __name__ == "__main__":
     )
     drop_related_samples.add_argument(
         "--compute-related-samples-to-drop",
-        help="Determine the minimal set of related samples to prune for ancestry PCA.",
+        help=(
+            "Determine the minimal set of related samples to prune for ancestry PCA or "
+            "release if '--release' is used."
+        ),
         action="store_true",
     )
     drop_related_samples.add_argument(

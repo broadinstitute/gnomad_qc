@@ -1,10 +1,12 @@
 """Script containing generic resources."""
-from collections import defaultdict
 import logging
-from typing import Dict, List, Optional
+from collections import defaultdict
+from typing import Dict, List, Optional, Self, Type, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
+    BaseResource,
+    BaseVersionedResource,
     TableResource,
     VariantDatasetResource,
     VersionedTableResource,
@@ -370,16 +372,70 @@ def check_resource_existence(
 
 
 class PipelineStepResourceCollection:
+    """A collection of resources used in a specific step of a gnomad_qc pipeline."""
+
     def __init__(
         self,
-        step_name,
-        previous_pipeline_steps=[],
-        output_resources=None,
-        input_resources=None,
-        add_input_resources=None,
-        pipeline_name=None,
-        overwrite=None,
-    ):
+        step_name: str,
+        previous_pipeline_steps: List = [Self],
+        output_resources: Optional[
+            Dict[str, Union[str, Type[BaseResource], Type[BaseVersionedResource]]]
+        ] = None,
+        input_resources: Optional[
+            Dict[
+                str,
+                Union[
+                    Dict[
+                        str, Union[str, Type[BaseResource], Type[BaseVersionedResource]]
+                    ],
+                    List[Union[str, Type[BaseResource], Type[BaseVersionedResource]]],
+                ],
+            ]
+        ] = None,
+        add_input_resources: Optional[
+            Dict[
+                str,
+                Union[
+                    Dict[
+                        str, Union[str, Type[BaseResource], Type[BaseVersionedResource]]
+                    ],
+                    List[Union[str, Type[BaseResource], Type[BaseVersionedResource]]],
+                ],
+            ]
+        ] = None,
+        pipeline_name: Optional[str] = None,
+        overwrite: Optional[bool] = None,
+    ) -> None:
+        """
+        Construct all the necessary attributes for the object.
+
+        :param step_name: Name to be assigned to current step. The recommendation is to
+            use the step's argparse call as the name.
+        :param previous_pipeline_steps: Previous steps of the pipeline that have input
+            needed for the current step. Default is an empty List.
+        :param output_resources: Optional Dictionary of the pipeline step's output
+            resources. Keyed by the name to use as an attribute name and with the
+            associated resource as the value.
+        :param input_resources: Optional Dictionary of the pipeline step's input
+            resources. Keyed by a string used to describe where the resource comes
+            from or is created for example "generate_qc_mt.py --generate-qc-meta". The
+            Values can be either a list of resources, or a Dictionary keyed by each
+            resource's name (use as an attribute name) and with the associated resource
+            as the value. By default, the output from steps listed in
+            `previous_pipeline_steps` will be used as input resources to this step, but
+            if input_resources is supplied, then only those resources will be used.
+        :param add_input_resources: Optional Dictionary of additional input resources
+            to add for this step on top of either `input_resources` or the output from
+            steps listed in `previous_pipeline_steps`. Keyed by a string used to
+            describe where the resource comes from or is created for example:
+            "generate_qc_mt.py --generate-qc-meta". The Values can be either a list of
+            resources, or a Dictionary keyed by each resource's name (use as an
+            attribute name) and with the associated resource as the value.
+        :param pipeline_name: Optional name of the full pipeline this step belongs to.
+        :param overwrite: Whether these resources can be overwritten. Used in
+            `check_resource_existance`.
+        :return: None.
+        """
         self.pipeline_name = pipeline_name
         self.overwrite = overwrite
         self.pipeline_step = step_name
@@ -403,11 +459,48 @@ class PipelineStepResourceCollection:
         if add_input_resources is not None:
             self.add_input_resources(add_input_resources)
 
-    def _add_output_resource_attributes(self, output_resources):
+    def _add_output_resource_attributes(
+        self,
+        output_resources: Optional[
+            Dict[str, Union[str, Type[BaseResource], Type[BaseVersionedResource]]]
+        ],
+    ) -> None:
+        """
+        Add output resources as class attributes.
+
+        :param output_resources: Dictionary of the pipeline step's output resources.
+            Keyed by the name to use as an attribute name and with the associated
+            resource as the value.
+        :return: None.
+        """
         for name, resource in output_resources.items():
             setattr(self, name, resource)
 
-    def add_input_resources(self, input_resources):
+    def add_input_resources(
+        self,
+        input_resources: Optional[
+            Dict[
+                str,
+                Union[
+                    Dict[
+                        str, Union[str, Type[BaseResource], Type[BaseVersionedResource]]
+                    ],
+                    List[Union[str, Type[BaseResource], Type[BaseVersionedResource]]],
+                ],
+            ]
+        ],
+    ) -> None:
+        """
+        Add input resources to the pipeline step.
+
+        :param input_resources: Dictionary of resources to add as input for this
+            pipeline step. Keyed by a string used to describe where the resource comes
+            from or is created for example: "generate_qc_mt.py --generate-qc-meta". The
+            Values can be either a list of resources, or a Dictionary keyed by each
+            resource's name (use as an attribute name) and with the associated resource
+            as the value.
+        :return: None.
+        """
         for step, resources in input_resources.items():
             if isinstance(resources, dict):
                 for name, resource in resources.items():
@@ -415,7 +508,16 @@ class PipelineStepResourceCollection:
                 resources = resources.values()
             self.input_resources[step].extend(resources)
 
-    def check_resource_existance(self, overwrite=None):
+    def check_resource_existance(self, overwrite: bool = None) -> None:
+        """
+        Check for existence of input and output resources.
+
+        An error is returned if input resources don't exist, or if overwrite is False
+        and an output resource does exist.
+
+        :param overwrite: Whether these resources can be overwritten.
+        :return: None.
+        """
         if overwrite is None:
             if self.overwrite is None:
                 overwrite = False
@@ -429,13 +531,32 @@ class PipelineStepResourceCollection:
 
 
 class PipelineResourceCollection:
+    """A collection of PipelineStepResourceCollection used in a gnomad_qc pipeline."""
+
     def __init__(
         self,
-        pipeline_name,
-        pipeline_steps={},
-        pipeline_resources=None,
-        overwrite=None,
-    ):
+        pipeline_name: str,
+        pipeline_steps: Dict[str, PipelineStepResourceCollection] = {},
+        pipeline_resources: Optional[
+            Dict[str, Union[str, Type[BaseResource], Type[BaseVersionedResource]]]
+        ] = None,
+        overwrite: bool = None,
+    ) -> None:
+        """
+        Construct all the necessary attributes for the object.
+
+        :param pipeline_name: Name of the pipeline.
+        :param pipeline_steps: Dictionary of all steps of the pipeline Keyed by a name
+            to use for the step (added as an attribute of the object) and with the
+            associated PipelineStepResourceCollection as the Value. Default is an empty
+            Dictionary.
+        :param pipeline_resources: Optional Dictionary of resources used by multiple
+            steps of the pipeline. Keyed by the name to use as an attribute name and
+            with the associated resource as the value.
+        :param overwrite: Whether these resources can be overwritten. Used in
+            `check_resource_existance`.
+        :return: None.
+        """
         self.pipeline_name = pipeline_name
         self.pipeline_steps = {}
         self.add_steps(pipeline_steps)
@@ -445,14 +566,36 @@ class PipelineResourceCollection:
             for name, resource in pipeline_resources.items():
                 setattr(self, name, resource)
 
-    def add_steps(self, steps):
+    def add_steps(self, steps: Dict[str, PipelineStepResourceCollection]) -> None:
+        """
+        Add PipelineStepResourceCollections to the object.
+
+        :param steps: Dictionary of steps to add to the pipeline Keyed by a name
+            to use for the step (added as an attribute of the object) and with the
+            associated PipelineStepResourceCollection as the Value.
+        :return: None.
+        """
         for step_name, step in steps.items():
             step.pipeline_name = self.pipeline_name
             step.overwrite = self.overwrite
             setattr(self, step_name, step)
         self.pipeline_steps.update(steps)
 
-    def check_resource_existance(self, step, overwrite=None):
+    def check_resource_existance(
+        self, step: str, overwrite: Optional[bool] = None
+    ) -> None:
+        """
+        Check for existence of input and output resources.
+
+        An error is returned if input resources don't exist, or if overwrite is False
+        and an output resource does exist.
+
+        :param step: Name of step to check resource existence of.
+        :param overwrite: Whether these resources can be overwritten. By default, the
+            class attribute of overwrite will be used if it exists, otherwise overwrite
+            will be set to False.
+        :return: None.
+        """
         if overwrite is None:
             if self.overwrite is None:
                 overwrite = False
