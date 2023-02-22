@@ -1,7 +1,7 @@
 """Script containing generic resources."""
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional, Self, Type, Union
+from typing import Dict, List, Optional, Type, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -377,7 +377,7 @@ class PipelineStepResourceCollection:
     def __init__(
         self,
         step_name: str,
-        previous_pipeline_steps: List = [Self],
+        previous_pipeline_steps: List = [],
         output_resources: Optional[
             Dict[str, Union[str, Type[BaseResource], Type[BaseVersionedResource]]]
         ] = None,
