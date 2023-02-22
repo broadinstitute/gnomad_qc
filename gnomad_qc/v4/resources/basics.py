@@ -1,12 +1,10 @@
 """Script containing generic resources."""
 import logging
 from collections import defaultdict
-from typing import Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
-    BaseResource,
-    BaseVersionedResource,
     TableResource,
     VariantDatasetResource,
     VersionedTableResource,
@@ -378,30 +376,10 @@ class PipelineStepResourceCollection:
         self,
         step_name: str,
         previous_pipeline_steps: List = [],
-        output_resources: Optional[
-            Dict[str, Union[str, Type[BaseResource], Type[BaseVersionedResource]]]
-        ] = None,
-        input_resources: Optional[
-            Dict[
-                str,
-                Union[
-                    Dict[
-                        str, Union[str, Type[BaseResource], Type[BaseVersionedResource]]
-                    ],
-                    List[Union[str, Type[BaseResource], Type[BaseVersionedResource]]],
-                ],
-            ]
-        ] = None,
+        output_resources: Optional[Dict[str, Any]] = None,
+        input_resources: Optional[Dict[str, Union[Dict[str, Any], List[Any]]]] = None,
         add_input_resources: Optional[
-            Dict[
-                str,
-                Union[
-                    Dict[
-                        str, Union[str, Type[BaseResource], Type[BaseVersionedResource]]
-                    ],
-                    List[Union[str, Type[BaseResource], Type[BaseVersionedResource]]],
-                ],
-            ]
+            Dict[str, Union[Dict[str, Any], List[Any]]]
         ] = None,
         pipeline_name: Optional[str] = None,
         overwrite: Optional[bool] = None,
@@ -468,9 +446,7 @@ class PipelineStepResourceCollection:
 
     def _add_output_resource_attributes(
         self,
-        output_resources: Optional[
-            Dict[str, Union[str, Type[BaseResource], Type[BaseVersionedResource]]]
-        ],
+        output_resources: Dict[str, Any],
     ) -> None:
         """
         Add output resources as class attributes.
@@ -485,17 +461,7 @@ class PipelineStepResourceCollection:
 
     def add_input_resources(
         self,
-        input_resources: Optional[
-            Dict[
-                str,
-                Union[
-                    Dict[
-                        str, Union[str, Type[BaseResource], Type[BaseVersionedResource]]
-                    ],
-                    List[Union[str, Type[BaseResource], Type[BaseVersionedResource]]],
-                ],
-            ]
-        ],
+        input_resources: Dict[str, Union[Dict[str, Any], List[Any]]],
     ) -> None:
         """
         Add input resources to the pipeline step.
@@ -544,9 +510,7 @@ class PipelineResourceCollection:
         self,
         pipeline_name: str,
         pipeline_steps: Dict[str, PipelineStepResourceCollection] = {},
-        pipeline_resources: Optional[
-            Dict[str, Union[str, Type[BaseResource], Type[BaseVersionedResource]]]
-        ] = None,
+        pipeline_resources: Optional[Dict[str, Any]] = None,
         overwrite: bool = None,
     ) -> None:
         """
