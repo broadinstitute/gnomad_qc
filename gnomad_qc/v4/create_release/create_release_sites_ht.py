@@ -1047,6 +1047,18 @@ FIELD_DESCRIPTIONS = {
                 },
             },
         },
+        "subsets": {
+            "definition": "Subsets a variant is found in.",
+            "subfields": {
+                "ukb": {"definition": "If a variant is in the UK Biobank subset."},
+                "non-ukb": {
+                    "definition": "If a variant is in the non-UK Biobank subset."
+                },
+                "non-topmed": {
+                    "definition": "If a variant is found in the non-TOPMed subset."
+                },
+            },
+        },
     },
 }
 
