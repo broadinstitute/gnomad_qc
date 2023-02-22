@@ -187,7 +187,7 @@ def finalize_relatedness_ht(
     Create the finalized relatedness Table including adding a 'relationship' annotation for each pair.
 
     The `relatedness_args` dictionary should have the following keys:
-        - 'second_degree_kin_cutoff': Minimum kinship threshold for filtering a pair of
+        - 'second_degree_min_kin': Minimum kinship threshold for filtering a pair of
           samples with a second degree relationship when filtering related individuals.
           Default is 0.08838835. Bycroft et al. (2018) calculates a theoretical kinship
           of 0.08838835 for a second degree relationship cutoff. This cutoff should be
@@ -357,7 +357,7 @@ def run_compute_related_samples_to_drop(
             hl.agg.filter(rank_ht.filtered, hl.agg.collect_as_set(rank_ht.s)),
             _localize=False,
         )
-    second_degree_kin_cutoff = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
+    second_degree_min_kin = hl.eval(ht.relationship_cutoffs.second_degree_min_kin)
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
     v3_release_samples = meta_ht.aggregate(
         hl.agg.filter(meta_ht.v3_meta.v3_release, hl.agg.collect_as_set(meta_ht.s)),
@@ -366,14 +366,14 @@ def run_compute_related_samples_to_drop(
     samples_to_drop_ht = compute_related_samples_to_drop(
         ht,
         rank_ht,
-        second_degree_kin_cutoff,
+        second_degree_min_kin,
         filtered_samples=filtered_samples,
         keep_samples=v3_release_samples,
         keep_samples_when_related=True,
     )
     samples_to_drop_ht = samples_to_drop_ht.annotate_globals(
         keep_samples=v3_release_samples,
-        second_degree_kin_cutoff=second_degree_kin_cutoff,
+        second_degree_min_kin=second_degree_min_kin,
     )
 
     return rank_ht, samples_to_drop_ht
@@ -511,7 +511,7 @@ def main(args):
     min_emission_kinship = args.min_emission_kinship
     release = args.release
     rel_method = args.finalize_relatedness_method
-    second_degree_kin_cutoff = args.second_degree_kin_cutoff
+    second_degree_min_kin = args.second_degree_min_kin
     relatedness_resources = get_relatedness_resources(
         test, release, rel_method, overwrite
     )
@@ -618,7 +618,7 @@ def main(args):
                 "second_degree_upper_sibling_lower_cutoff_slope": args.second_degree_upper_sibling_lower_cutoff_slope,
                 "second_degree_upper_sibling_lower_cutoff_intercept": args.second_degree_upper_sibling_lower_cutoff_intercept,
                 "duplicate_twin_min_kin": args.duplicate_twin_min_kin,
-                "second_degree_min_kin": second_degree_kin_cutoff,
+                "second_degree_min_kin": second_degree_min_kin,
                 "duplicate_twin_ibd1_min": args.duplicate_twin_ibd1_min,
                 "duplicate_twin_ibd1_max": args.duplicate_twin_ibd1_max,
             }
@@ -815,7 +815,7 @@ if __name__ == "__main__":
         choices=["cuking", "pc_relate"],
     )
     finalize.add_argument(
-        "--second-degree-kin-cutoff",
+        "--second-degree-min-kin",
         help=(
             "Minimum kinship threshold for filtering a pair of samples with a second "
             "degree relationship when filtering related individuals. Default is "
