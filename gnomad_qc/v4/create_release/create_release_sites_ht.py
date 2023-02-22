@@ -41,8 +41,24 @@ logger.setLevel(logging.INFO)
 # (processed separately from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
 SITE_FIELDS.remove("SOR")
+
+"""
+Configurations of FIELD DESCRIPTION dictionary.
+Format:
+'Globals fields': {
+    '<Name of global annotation>': {
+            'definition': 'Explanation of global annotation.',
+            'subfields': '<Dict of subfields and their definitions.>',
+        },
+'Row fields': {
+    '<Name of row annotation>': {
+            'definition': 'Explanation of row annotation.',
+            'subfields': '<Dict of subfields and their definitions.>',
+        },
+"""
+
 FIELD_DESCRIPTIONS = {
-    "Global fieldss": {
+    "Global fields": {
         "freq_meta": {
             "definition": (
                 "Allele frequency metadata. An ordered list containing the frequency"
@@ -809,6 +825,224 @@ FIELD_DESCRIPTIONS = {
                         " site, computed as 1 - (the number of heterozygous genotypes)"
                         " / (the number of heterozygous genotypes expected under"
                         " Hardy-Weinberg equilibrium)."
+                    )
+                },
+            },
+        },
+        "vep": {
+            "definition": (
+                "Consequence annotations from Ensembl VEP. More details about VEP"
+                " output is described at"
+                " https://useast.ensembl.org/info/docs/tools/vep/vep_formats.html#output."
+                " VEP was run using the LOFTEE plugin and information about the"
+                " additional LOFTEE annotations can be found at"
+                " https://github.com/konradjk/loftee."
+            )
+        },
+        "vqsr": {  # TODO: Update to RF struct if Variant QC uses it
+            "definition": "VQSR related variant annotations.",
+            "subfields": {
+                "AS_VQSLOD": {
+                    "definition": (
+                        "Allele-specific log-odds ratio of being a true variant versus"
+                        " being a false positive under the trained VQSR Gaussian"
+                        " mixture model."
+                    )
+                },
+                "AS_culprit": {
+                    "definition": (
+                        "Allele-specific worst-performing annotation in the VQSR"
+                        " Gaussian mixture model."
+                    )
+                },
+                "NEGATIVE_TRAIN_SITE": {
+                    "definition": (
+                        "Variant was used to build the negative training set of"
+                        " low-quality variants for VQSR."
+                    )
+                },
+                "POSITIVE_TRAIN_SITE": {
+                    "definition": (
+                        "Variant was used to build the positive training set of"
+                        " high-quality variants for VQSR."
+                    )
+                },
+            },
+        },
+        "region_flag": {
+            "definition": "Struct containing flags for problematic regions.",
+            "subfields": {
+                "lcr": {"definition": "Variant falls within a low complexity region."},
+                "segdup": {
+                    "definition": "Variant falls within a segmental duplication region."
+                },
+                "nonpar": {
+                    "definiton": "Variant falls within a non-pseudoautosomal region."
+                },
+            },
+        },
+        "allele_info": {
+            "definition": "Allele information.",
+            "subfields": {
+                "variant_type": {
+                    "defintion": (
+                        "Variant type (snv, indel, multi-snv, multi-indel, or mixed)."
+                    )
+                },
+                "allele_type": {
+                    "defintion": "Allele type (snv, insertion, deletion, or mixed)."
+                },
+                "n_alt_alleles": {
+                    "defintion": (
+                        "Total number of alternate alleles observed at variant locus."
+                    )
+                },
+                "was_mixed": {"defintion": "Variant type was mixed."},
+            },
+        },
+        "age_hist_het": {
+            "definition": (
+                "A list of age histogram information for all heterozygous release"
+                " samples calculated on high quality genotypes. One entry for the"
+                " callset and each subset."
+            ),
+            "subfields": {
+                "bin_edges": {"definition": "Bin edges for the age histogram."},
+                "bin_freq": {
+                    "definition": (
+                        "Bin frequencies for the age histogram. This is the number of"
+                        " records found in each bin."
+                    )
+                },
+                "n_smaller": {
+                    "definition": (
+                        "Count of age values falling below lowest histogram bin edge."
+                    )
+                },
+                "n_larger": {
+                    "definition": (
+                        "Count of age values falling above highest histogram bin edge."
+                    )
+                },
+            },
+        },
+        "age_hist_hom": {
+            "definition": (
+                "A list of age histogram information for all homozygous release"
+                " samples calculated on high quality genotypes. One entry for the"
+                " callset and each subset."
+            ),
+            "subfields": {
+                "bin_edges": {"definition": "Bin edges for the age histogram."},
+                "bin_freq": {
+                    "definition": (
+                        "Bin frequencies for the age histogram. This is the number of"
+                        " records found in each bin."
+                    )
+                },
+                "n_smaller": {
+                    "definition": (
+                        "Count of age values falling below lowest histogram bin edge."
+                    )
+                },
+                "n_larger": {
+                    "definition": (
+                        "Count of age values falling above highest histogram bin edge."
+                    )
+                },
+            },
+        },
+        "cadd": {
+            "definition": (
+                "Combined Annotation Depenedent Depletion tool for scoring the"
+                " deleteriousness of single nucleotide variants as well as"
+                " insertion/deletions variants in the human genome."
+            ),
+            "subfields": {
+                "phred": {
+                    "definition": (
+                        "Cadd Phred-like scores ('scaled C-scores') ranging from 1 to"
+                        " 99, based on the rank of each variant relative to all"
+                        " possible 8.6 billion substitutions in the human reference"
+                        " genome. Larger values are more deleterious."
+                    )
+                },
+                "raw_score": {
+                    "definition": (
+                        "Raw CADD scores are interpretable as the extent to which the"
+                        " annotation profile for a given variant suggests that the"
+                        " variant is likely to be 'observed' (negative values) vs"
+                        " 'simulated' (positive values). Larger values are more"
+                        " deleterious."
+                    )
+                },
+                "has_duplicate": {  # TODO: Confirm this is still in schema, v3.1 removed because 100% missing
+                    "definition": (
+                        "Whether the variant has more than one CADD score associated"
+                        " with it."
+                    )
+                },
+            },
+        },
+        "revel": {
+            "definition": (
+                "An ensemble method for predicting the pathogenicity of rare missense"
+                " variants."
+            ),
+            "subfields": {
+                "revel_score": {
+                    "defintion": (
+                        "dbNSFP's Revel score from 0 to 1. Variants with higher scores"
+                        " are predicted to be more likely to be deleterious."
+                    )
+                },
+                "has_duplicate": {
+                    "defintion": (
+                        "Whether the variant has more than one revel_score associated"
+                        " with it."
+                    )
+                },
+            },
+        },
+        "splice_ai": {  # TODO: Confirm which splice tool we're using and add appropriate fields, i.e. are we using both spliceAI and pangolin?
+            "definition": "A deep learning-based tool to identify splice variants.",
+            "subfeilds": {
+                "splice_ai": {
+                    "definition": (
+                        "The maximum delta score, interpreted as the probability of the"
+                        " variant being splice-altering."
+                    )
+                },
+                "splice_consequence": {
+                    "definition": (
+                        "The consequence term associated with the max delta score in"
+                        " 'splice_ai_max_ds'."
+                    )
+                },
+                "has_duplicate": {
+                    "definition": (
+                        "Whether the variant has more than one splice_ai score"
+                        " associated with it."
+                    )
+                },
+            },
+        },
+        "primate_ai": {
+            "definition": (
+                "A deep residual neural network for classifying the pathogenicity of"
+                " missense mutations."
+            ),
+            "subfields": {
+                "primate_ai_score": {
+                    "definition": (
+                        "PrimateAI's deleteriousness score from 0 (less deleterious) to"
+                        " 1 (more deleterious)."
+                    )
+                },
+                "has_duplicate": {
+                    "definition": (
+                        "Whether the variant has more than one primate_ai_score"
+                        " associated with it."
                     )
                 },
             },
