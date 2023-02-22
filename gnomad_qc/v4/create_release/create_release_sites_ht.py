@@ -603,6 +603,216 @@ FIELD_DESCRIPTIONS = {
                 },
             },
         },
+        "faf": {
+            "definition": "Filtering allele frequency.",
+            "subfields": {
+                "faf95": {
+                    "definition": (
+                        "Filtering allele frequency (using Poisson 95% confidence"
+                        " interval)"
+                    )
+                },
+                "faf99": {
+                    "definition": (
+                        "Filtering allele frequency (using Poisson 99% confidence"
+                        " interval)"
+                    )
+                },
+                "faf_data_type": {
+                    "definition": (
+                        "The data type, exome or genome, of the filtering allele"
+                        " frequency."
+                    )
+                },
+            },
+        },
+        "a_index": {
+            "defintion": (
+                "The original index of this alternate allele in the multiallelic"
+                " representation (1 is the first alternate allele or the only alternate"
+                " allele in a biallelic variant)."
+            )
+        },
+        "was_split": {
+            "defintion": (
+                "True if this variant was originally multiallelic, otherwise False."
+            )
+        },
+        "rsid": {
+            "definition": (
+                "dbSNP reference SNP identification (rsID) numbers. See dbsnp_version"
+                " global annotation for version."
+            )
+        },
+        "filters": {
+            "definition": (  # TODO: This list may need to be updated depending on Variant QC
+                "Variant filters; AC0: Allele count is zero after filtering out"
+                " low-confidence genotypes (GQ < 20; DP < 10; and AB < 0.2 for het"
+                " calls), AS_VQSR: Failed allele-specific VQSR filtering thresholds of"
+                " -2.7739 for SNPs and -1.0606 for indels, InbreedingCoeff: GATK"
+                " InbreedingCoeff < -0.3, PASS: Passed all variant filters."
+            )
+        },
+        "info": {
+            "definition": (
+                "Struct containing typical GATK allele-specific (AS) info fields and"
+                " additional variant QC fields."
+            ),
+            "subfields": {
+                "QUALapprox": {
+                    "definition": (
+                        "Sum of PL[0] values; used to approximate the QUAL score."
+                    )
+                },
+                "SB": {
+                    "definition": (
+                        "Per-sample component statistics which comprise the Fisher's"
+                        " exact test to detect strand bias. Values are: depth of"
+                        " reference allele on forward strand, depth of reference allele"
+                        " on reverse strand, depth of alternate allele on forward"
+                        " strand, depth of alternate allele on reverse strand."
+                    )
+                },
+                "MQ": {
+                    "definition": (
+                        "Root mean square of the mapping quality of reads across all"
+                        " samples."
+                    )
+                },
+                "MQRankSum": {
+                    "definition": (
+                        "Z-score from Wilcoxon rank sum test of alternate vs. reference"
+                        " read mapping qualities."
+                    )
+                },
+                "VarDP": {
+                    "definition": (
+                        "Depth over variant genotypes (does not include depth of"
+                        " reference samples)."
+                    )
+                },
+                "AS_ReadPosRankSum": {
+                    "definition": (
+                        "Allele-specific z-score from Wilcoxon rank sum test of"
+                        " alternate vs. reference read position bias."
+                    )
+                },
+                "AS_pab_max": {
+                    "definition": (
+                        "Maximum p-value over callset for binomial test of observed"
+                        " allele balance for a heterozygous genotype, given expectation"
+                        " of 0.5."
+                    )
+                },
+                "AS_QD": {
+                    "definition": (
+                        "Allele-specific variant call confidence normalized by depth of"
+                        " sample reads supporting a variant."
+                    )
+                },
+                "AS_MQ": {
+                    "definition": (
+                        "Allele-specific root mean square of the mapping quality of"
+                        " reads across all samples."
+                    )
+                },
+                "QD": {
+                    "definition": (
+                        "Variant call confidence normalized by depth of sample reads"
+                        " supporting a variant."
+                    )
+                },
+                "AS_MQRankSum": {
+                    "definition": (
+                        "Allele-specific z-score from Wilcoxon rank sum test of"
+                        " alternate vs. reference read mapping qualities."
+                    )
+                },
+                "FS": {
+                    "definition": (
+                        "Phred-scaled p-value of Fisher's exact test for strand bias."
+                    )
+                },
+                "AS_FS": {
+                    "definition": (
+                        "Allele-specific phred-scaled p-value of Fisher's exact test"
+                        " for strand bias."
+                    )
+                },
+                "ReadPosRankSum": {
+                    "definition": (
+                        "Z-score from Wilcoxon rank sum test of alternate vs. reference"
+                        " read position bias."
+                    )
+                },
+                "AS_QUALapprox": {
+                    "definition": (
+                        "Allele-specific sum of PL[0] values; used to approximate the"
+                        " QUAL score."
+                    )
+                },
+                "AS_SB_TABLE": {
+                    "definition": (
+                        "Allele-specific forward/reverse read counts for strand bias"
+                        " tests."
+                    )
+                },
+                "AS_VarDP": {
+                    "definition": (
+                        "Allele-specific depth over variant genotypes (does not include"
+                        " depth of reference samples)."
+                    )
+                },
+                "AS_SOR": {
+                    "definition": (
+                        "Allele-specific strand bias estimated by the symmetric odds"
+                        " ratio test."
+                    )
+                },
+                "SOR": {
+                    "definition": (
+                        "Strand bias estimated by the symmetric odds ratio test."
+                    )
+                },
+                "singleton": {"definition": "Variant is seen once in the callset."},
+                "transmitted_singleton": {
+                    "definition": (
+                        "Variant was a callset-wide doubleton that was transmitted"
+                        " within a family from a parent to a child (i.e., a singleton"
+                        " amongst unrelated samples in cohort)."
+                    )
+                },
+                "omni": {
+                    "definition": (
+                        "Variant is present on the Omni 2.5 genotyping array and found"
+                        " in 1000 Genomes data."
+                    )
+                },
+                "mills": {
+                    "definition": "Indel is present in the Mills and Devine data."
+                },
+                "monoallelic": {
+                    "definition": (
+                        "All samples are homozygous alternate for the variant."
+                    )
+                },
+                "AS_VQSLOD": {
+                    "definition": (
+                        "Allele-specific log-odds ratio of being a true variant versus"
+                        " being a false positive under the trained VQSR Gaussian"
+                        " mixture model."
+                    )
+                },
+                "InbreedingCoeff": {
+                    "definition": (
+                        "Inbreeding coefficient, the excess heterozygosity at a variant"
+                        " site, computed as 1 - (the number of heterozygous genotypes)"
+                        " / (the number of heterozygous genotypes expected under"
+                        " Hardy-Weinberg equilibrium)."
+                    )
+                },
+            },
+        },
     },
 }
 
