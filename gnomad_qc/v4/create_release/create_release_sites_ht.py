@@ -928,9 +928,9 @@ FIELD_DESCRIPTIONS = {
         },
         "age_hist_hom": {
             "definition": (
-                "A list of age histogram information for all homozygous release"
-                " samples calculated on high quality genotypes. One entry for the"
-                " callset and each subset."
+                "A list of age histogram information for all homozygous (and hemizygous"
+                " on sex chromosomes) release samples calculated on high quality"
+                " genotypes. One entry for the callset and each subset."
             ),
             "subfields": {
                 "bin_edges": {"definition": "Bin edges for the age histogram."},
