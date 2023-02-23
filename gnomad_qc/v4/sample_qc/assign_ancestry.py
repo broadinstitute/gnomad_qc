@@ -581,6 +581,7 @@ def main(args):
                     pop_ht.pop,
                 )
             )
+            pop_ht = pop_ht.checkpoint(new_temp_file("pop_ht_rem", extension="ht"))
             pop_ht.write(get_pop_ht(test=test).path, overwrite=overwrite)
 
     finally:
