@@ -575,7 +575,7 @@ def main(args):
             pop_ht = get_pop_ht(test=test).ht()
             # There are 5 exomes that are reassigned from amish to remaining
             pop_ht = pop_ht.annotate(
-                new_pop=hl.if_else(
+                pop=hl.if_else(
                     (pop_ht.pop == "ami") & exome_samples.contains(pop_ht.s),
                     "remaining",
                     pop_ht.pop,
