@@ -4,7 +4,7 @@
 
 CADD (Rentzsch et al., Nucleic Acids Research, 2018), is a score predicting deleteriousness for both SNVs and indels. The gnomAD browser displays the CADD Phred scores, which range from 1 to 99, based on the rank of each variant relative to all possible 8.6 billion substitutions in the human reference genome. Higher scores are predicted to be more deleterious/damaging. Variants in gnomAD v3.1.1 were annotated with CADD v1.6. Pre-computed CADD scores are available [here](https://cadd.gs.washington.edu/download).
 
-For the gnomAD v4 release, we used the latest CADD v1.6 post-release 1 (released on Mar 22, 2021) to compute a score for indels new to the release (~32,561,253). The following Hail commands were used to generate 1000 small VCF files: 
+For the gnomAD v4 release, we used the latest CADD v1.6 post-release 1 (released on Mar 22, 2021) to compute a score for indels new to the release (~32,560,253). The following Hail commands were used to generate 1000 small VCF files: 
 
 ```commandline
 import hail as hl
