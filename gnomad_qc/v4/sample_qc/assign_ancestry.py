@@ -564,6 +564,28 @@ def main(args):
             pop_ht = assign_pop_with_per_pop_probs(pop_ht, min_probs)
             pop_ht.write(pop.path, overwrite=overwrite)
 
+        # TODO: Parameterize a cutoff to apply to all pops and decide which
+        #  filters to incorporate beforehand. This was needed for gnomAD v4.0
+        #  because there were only 5 exomes assigned to 'ami'.
+        if args.set_ami_exomes_to_remaining:
+            logger.info("Reassigning exomes inferred as 'ami' to 'remaining'...")
+            joint_meta = joint_qc_meta.ht()
+            exome_samples = hl.literal(
+                joint_meta.filter(joint_meta.data_type == "exomes").s.collect()
+            )
+            pop_ht = get_pop_ht(test=test).ht()
+            # In gnomAD v4.0, there are 5 exomes that are reassigned from amish to
+            # remaining.
+            pop_ht = pop_ht.annotate(
+                pop=hl.if_else(
+                    (pop_ht.pop == "ami") & exome_samples.contains(pop_ht.s),
+                    "remaining",
+                    pop_ht.pop,
+                )
+            )
+            pop_ht = pop_ht.checkpoint(new_temp_file("pop_ht_rem", extension="ht"))
+            pop_ht.write(get_pop_ht(test=test).path, overwrite=overwrite)
+
     finally:
         hl.copy_log(
             f"gs://gnomad-tmp-4day/ancestry_assignment/ancestry_assignment.rf.log"
@@ -698,6 +720,16 @@ if __name__ == "__main__":
         ),
         default=0.99,
         type=float,
+    )
+    parser.add_argument(
+        "--set-ami-exomes-to-remaining",
+        help=(
+            "Whether to change the ancestry group for any exomes inferred as 'ami' to"
+            " 'remaining'. Should be used in cases where only a few exomes were"
+            " inferred as amish to avoid having ancestry groups with only a few"
+            " samples."
+        ),
+        action="store_true",
     )
 
     args = parser.parse_args()
