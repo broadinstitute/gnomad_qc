@@ -1,7 +1,7 @@
 """Script to merge the output of all sample QC modules into a single Table."""
 import argparse
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import hail as hl
 from gnomad.assessment.validity_checks import compare_row_counts
@@ -80,7 +80,7 @@ def get_hard_filter_metric_ht(ht) -> hl.Table:
     return ht
 
 
-def get_sample_filter_ht(ht) -> hl.Table:
+def get_sample_filter_ht(ht, ukb_remove, hf_s) -> hl.Table:
     """
     Combine ..... into a single Table.
 
@@ -88,7 +88,7 @@ def get_sample_filter_ht(ht) -> hl.Table:
     :return: Table with hard filter metric annotations added.
     """
     sample_filters_ht = add_annotations(
-        vds_sample_ht,
+        ht,
         get_hard_filters_ht(),
         "hard filters",
         ann_top_level=True,
@@ -116,9 +116,6 @@ def get_sample_filter_ht(ht) -> hl.Table:
     sample_filters_ht = sample_filters_ht.checkpoint(
         new_temp_file("sample_qc_meta", extension="ht"), overwrite=True
     )
-
-    for label, ann_ht in hard_filter_metric_hts.items():
-        ht = add_annotations(ht, ann_ht, label, ann_top_level=True)
 
     return ht
 
@@ -149,7 +146,10 @@ def get_hard_filters_ht() -> hl.Table:
     return ht
 
 
-def get_relatedness_dict_ht(relatedness_ht: hl.Table) -> hl.Table:
+def get_relatedness_dict_ht(
+    ht: hl.Table,
+    filter_exprs: Dict[str, hl.expr.BooleanExpression] = None,
+) -> hl.Table:
     """
     Parse relatedness Table to get every relationship (except UNRELATED) per sample.
 
@@ -157,38 +157,48 @@ def get_relatedness_dict_ht(relatedness_ht: hl.Table) -> hl.Table:
     key is the relationship and the value is a set of all samples with that
     relationship to the given sample.
 
-    :param relatedness_ht: Table with inferred relationship information. Keyed by
-        sample pair (i, j).
+    :param ht: Table with inferred relationship information. Keyed by sample pair (i, j).
+    :param filter_exprs: Optional dictionary of filter expressions to apply to `ht`
+        before creating the 'relationships' annotations. Keyed by the postfix to add to
+        'relationships' as the annotation label, and with boolean expressions as the
+        values. By default, no additional filtering is applied, and a single
+        'relationships' annotation is created.
     :return: Table keyed by sample (s) with all relationships annotated as a dict.
     """
-    # TODO: should we add v3 relationships to the relationships set, or have a
-    #  different annotation for that?
-    # Filter to only exome-exome pairs that are related (second-degree or closer).
-    relatedness_ht = relatedness_ht.filter(
-        (relatedness_ht.relationship != UNRELATED)
-        & (relatedness_ht.i.data_type == "exomes")
-        & (relatedness_ht.j.data_type == "exomes")
+    if filter_exprs is None:
+        filter_exprs = {"": True}
+
+    # Add annotations for the relationship of each item in filter_expr.
+    ht = ht.annotate(
+        **{
+            f"_relationship{label}": hl.or_missing(expr, ht.relationship)
+            for label, expr in filter_exprs
+        }
     )
+
+    # Filter to only pairs that are related (second-degree or closer).
+    ht = ht.filter(ht.relationship != UNRELATED)
+
     # Build a Table of relationships duplicating the info for each pair. Pair (i, j)
     # will have two rows, one for (s: i.s, pair: j.s) and one for (s: j.s, pair: i.s).
-    relatedness_ht = relatedness_ht.select(
-        "relationship", s=relatedness_ht.i.s, pair=relatedness_ht.j.s
-    ).union(
-        relatedness_ht.select(
-            "relationship", s=relatedness_ht.j.s, pair=relatedness_ht.i.s
-        )
+    ht = ht.select("relationship", s=ht.i.s, pair=ht.j.s).union(
+        ht.select("relationship", s=ht.j.s, pair=ht.i.s)
     )
+
     # Group the Table by the sample name (s) and aggregate to get a relationships
     # dictionary per sample. The dictionary is built by grouping the relationship
     # annotation (becomes the key) and collecting the set of all samples (value) with
-    # each relationship.
-    relatedness_ht = relatedness_ht.group_by(relatedness_ht.s).aggregate(
-        relationships=hl.agg.group_by(
-            relatedness_ht.relationship, hl.agg.collect_as_set(relatedness_ht.pair)
-        )
+    # each relationship. Each item in filter_expr has its own annotation.
+    ht = ht.group_by(ht.s).aggregate(
+        **{
+            f"relationships{label}": hl.agg.group_by(
+                ht[f"_relationship{label}"], hl.agg.collect_as_set(ht.pair)
+            )
+            for label, expr in filter_exprs
+        }
     )
 
-    return relatedness_ht
+    return ht
 
 
 def get_relationship_filter_expr(
@@ -221,7 +231,7 @@ def get_relationship_filter_expr(
     )
 
 
-def annotate_relationships(ht: hl.Table) -> hl.Table:
+def annotate_relationships(ht: hl.Table, outlier_filter_ht: hl.Table) -> hl.Table:
     """
     Get relatedness relationship annotations for the combined meta Table.
 
@@ -235,6 +245,8 @@ def annotate_relationships(ht: hl.Table) -> hl.Table:
         - gnomad_v3_release_duplicate: Sample is in the gnomAD v3.1 release.
 
     :param ht: Sample QC filter Table to add relatedness filter annotations to.
+    :param outlier_filter_ht: Table with 'outlier_filtered' annotation indicating if a
+        sample was filtered during outlier detection on sample QC metrics.
     :return: Table with related filters added and Table with relationship and gnomad v3
         overlap information.
     """
@@ -254,7 +266,19 @@ def annotate_relationships(ht: hl.Table) -> hl.Table:
     )
 
     logger.info("Aggregating sample relationship information...")
-    ht = get_relatedness_dict_ht(ht)
+    # TODO: should we add v3 relationships to the relationships set, or have a
+    #  different annotation for that?
+    # Use a filter to only exome-exome pairs passing hard filtering (all pairs in the
+    # relatedness Table pass hard filtering) for 'relationships' annotation and to only
+    # exome-exome pairs passing both hard-filtering and outlier filtering for
+    # 'relationships_high_quality' annotation.
+    exome_filter_expr = (ht.i.data_type == "exomes") & (ht.j.data_type == "exomes")
+    filter_expr = {
+        "": exome_filter_expr,
+        "_high_quality": exome_filter_expr
+        & ~outlier_filter_ht[ht.key].outlier_filtered,
+    }
+    ht = get_relatedness_dict_ht(ht, filter_expr)
     ht = ht.annotate(**v3_duplicate_ht[ht.key])
     ht = ht.select_globals(**relatedness_inference_parameters)
 
@@ -269,24 +293,26 @@ def annotate_relatedness_filters(ht: hl.Table) -> hl.Table:
     `relatedness_filters` struct:
         - related: Whether the sample was filtered for second-degree (or closer)
           relatedness in the ancestry inference PCA.
-        - duplicate_or_twin: Whether the sample has a duplicate or twin among all
+        - duplicate_or_twin: Whether the filtered sample has a duplicate or twin among
+          all samples that are not hard-filtered.
+        - parent_child: Whether the filtered sample has a parent or child among all
           samples that are not hard-filtered.
-        - parent_child: Whether the sample has a parent or child among all samples that
-          are not hard-filtered.
-        - sibling: Whether the sample has a sibling among all samples that are not
-          hard-filtered.
+        - sibling: Whether the filtered sample has a sibling among all samples that are
+          not hard-filtered.
         - Any sample in `ht` that is hard-filtered will have a missing value for these
           annotations.
 
-    These related filter annotations are also provided for release filtered samples:
-        - release_related: Whether the sample was filtered for second-degree (or closer)
-          relatedness in the final release.
-        - release_duplicate_or_twin: Whether the sample has a duplicate or twin among
-          all samples that are not hard-filtered or outlier-filtered.
-        - release_parent_child: Whether the sample has a parent or child among all
+    These related filter annotations are also provided for release filtered samples
+    added to the input `ht` under a `release_relatedness_filters` struct::
+        - related: Whether the release filtered sample was filtered for
+          second-degree (or closer) relatedness in the final release.
+        - duplicate_or_twin: Whether the release filtered sample has a
+          duplicate or twin among all samples that are not hard-filtered or
+          outlier-filtered.
+        - parent_child: Whether the release filtered sample has a parent or
+          child among all samples that are not hard-filtered or outlier-filtered.
+        - sibling: Whether the release filtered sample has a sibling among all
           samples that are not hard-filtered or outlier-filtered.
-        - release_sibling: Whether the sample has a sibling among all samples that
-          are not hard-filtered or outlier-filtered.
         - Any sample in `ht` that is hard-filtered or outlier-filtered will have a
           missing value for these annotations.
 
@@ -301,22 +327,29 @@ def annotate_relatedness_filters(ht: hl.Table) -> hl.Table:
         "parent_child": PARENT_CHILD,
         "sibling": SIBLINGS,
     }
-    # TODO: Is this doing what I want it to do? I need to build the relationships dict
-    #  2 times I think. One for all samples and one for just the release samples.
-    rel_set_expr_dict = {
-        "release_": hl.is_defined(release_related_samples_to_drop.ht()[ht.key]),
-        "": hl.is_defined(pca_related_samples_to_drop().ht()[ht.key]),
-    }
     sample_filters_ht = ht.annotate(
         relatedness_filters=hl.struct(
             **{
-                f"{k}{rel}": get_relationship_filter_expr(
-                    ht.hard_filtered, v, ht.relationships, rel_val
+                rel: get_relationship_filter_expr(
+                    ht.hard_filtered,
+                    hl.is_defined(pca_related_samples_to_drop().ht()[ht.key]),
+                    ht.relationships,
+                    rel_val,
                 )
                 for rel, rel_val in rel_dict.items()
-                for k, v in rel_set_expr_dict.items()
             }
-        )
+        ),
+        release_relatedness_filters=hl.struct(
+            **{
+                rel: get_relationship_filter_expr(
+                    ht.outlier_filtered,
+                    hl.is_defined(release_related_samples_to_drop.ht()[ht.key]),
+                    ht.relationships_high_quality,
+                    rel_val,
+                )
+                for rel, rel_val in rel_dict.items()
+            }
+        ),
     )
 
     return sample_filters_ht
@@ -463,8 +496,14 @@ def main(args):
             "ht_missing": v3_s,
             "ann_ht_missing": hf_s,
         },
-        "relatedness_inference": {"ann_ht": annotate_relationships(relatedness().ht())},
-        "sample_filters": {"ann_ht": get_sample_filter_ht(vds_sample_ht)},
+        "relatedness_inference": {
+            "ann_ht": annotate_relationships(
+                relatedness().ht(), finalized_outlier_filtering().ht()
+            )
+        },
+        "sample_filters": {
+            "ann_ht": get_sample_filter_ht(vds_sample_ht, ukb_remove, hf_s)
+        },
     }
 
     for label, ann_params in config.items():
