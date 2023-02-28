@@ -308,9 +308,9 @@ def apply_nearest_neighbor_filtering_method(
         sample_qc_ht,
         qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
         metric_threshold={
-            "n_singleton_residual": (math.inf, 8.0),
-            "r_het_hom_var_residual": (math.inf, 4.0),
-            "r_ti_tv_singleton_residual": (math.inf, 4.0),
+            "n_singleton": (math.inf, 8.0),
+            "r_het_hom_var": (math.inf, 4.0),
+            "r_ti_tv_singleton": (math.inf, 4.0),
         },
         comparison_sample_expr=sample_qc_ht.nearest_neighbors,
     )

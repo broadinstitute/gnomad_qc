@@ -18,7 +18,7 @@ Enable the necessary services:
 gcloud services enable \
     artifactregistry.googleapis.com \
     batch.googleapis.com \
-    cloudbuild.googleapis.com 
+    cloudbuild.googleapis.com
 ```
 
 Create an Artifact Registry repository for Docker images:
