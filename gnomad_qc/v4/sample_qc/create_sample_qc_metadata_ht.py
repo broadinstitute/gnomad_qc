@@ -26,10 +26,9 @@ from gnomad_qc.v4.resources.sample_qc import (
     hard_filtered_samples,
     hard_filtered_samples_no_sex,
     joint_qc_meta,
-    pca_related_samples_to_drop,
     platform,
+    related_samples_to_drop,
     relatedness,
-    release_related_samples_to_drop,
     sample_chr20_mean_dp,
     sample_qc_mt_callrate,
     sex,
@@ -251,7 +250,7 @@ def annotate_relationships(ht: hl.Table, outlier_filter_ht: hl.Table) -> hl.Tabl
         overlap information.
     """
     relatedness_inference_parameters = ht.index_globals()
-
+    ht.describe()
     logger.info("Creating gnomAD v3/v4 overlap annotation Table...")
     v3_duplicate_ht = ht.filter(ht.gnomad_v3_duplicate)
     v3_duplicate_ht = v3_duplicate_ht.key_by(
@@ -332,7 +331,7 @@ def annotate_relatedness_filters(ht: hl.Table) -> hl.Table:
             **{
                 rel: get_relationship_filter_expr(
                     ht.hard_filtered,
-                    hl.is_defined(pca_related_samples_to_drop().ht()[ht.key]),
+                    hl.is_defined(related_samples_to_drop(release=False).ht()[ht.key]),
                     ht.relationships,
                     rel_val,
                 )
@@ -343,7 +342,7 @@ def annotate_relatedness_filters(ht: hl.Table) -> hl.Table:
             **{
                 rel: get_relationship_filter_expr(
                     ht.outlier_filtered,
-                    hl.is_defined(release_related_samples_to_drop.ht()[ht.key]),
+                    hl.is_defined(related_samples_to_drop(release=True).ht()[ht.key]),
                     ht.relationships_high_quality,
                     rel_val,
                 )
