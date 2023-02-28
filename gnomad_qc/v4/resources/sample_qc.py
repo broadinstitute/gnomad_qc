@@ -1,4 +1,6 @@
 """Script containing sample QC related resources."""
+from typing import Optional
+
 import hail as hl
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
@@ -252,7 +254,9 @@ ploidy = VersionedTableResource(
 
 
 # Sex imputation results.
-def get_ploidy_cutoff_json_path(version: str = CURRENT_VERSION, test: bool = False):
+def get_ploidy_cutoff_json_path(
+    version: str = CURRENT_VERSION, test: bool = False
+) -> str:
     """
     Get the sex karyotype ploidy cutoff JSON path for the indicated gnomAD version.
 
@@ -414,34 +418,48 @@ def get_cuking_output_path(version: str = CURRENT_VERSION, test: bool = False) -
     return f"{qc_temp_prefix(version)}cuking_output{'_test' if test else ''}.parquet"
 
 
-pc_relate_pca_scores = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version, data_type='joint')}/relatedness/gnomad.joint.v{version}.pc_scores.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-
-def relatedness(method: str = "cuking", test: bool = False):
+def pc_relate_pca_scores(test: bool = False) -> VersionedTableResource:
     """
-    Get the VersionedTableResource for relatedness results.
+    Get VersionedTableResource for PCA scores for use in PC-Relate.
 
-    :param method: Method of relatedness inference to return VersionedTableResource for.
-        One of 'cuking' or 'pc_relate'.
     :param test: Whether to use a tmp path for a test resource.
     :return: VersionedTableResource.
     """
-    if method not in {"cuking", "pc_relate"}:
-        raise ValueError("method must be one of 'cuking' or 'pc_relate'!")
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.pc_scores.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def relatedness(
+    method: Optional[str] = None, test: bool = False
+) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for relatedness results.
+
+    :param method: Optional method of relatedness inference to return
+        VersionedTableResource for. One of 'cuking' or 'pc_relate' if set. Default is
+        None, which will return the finalized relatedness Table.
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    if method is None:
+        method = ""
+    else:
+        if method not in {"cuking", "pc_relate"}:
+            raise ValueError("method must be one of 'cuking' or 'pc_relate'!")
+        method = f".{method}"
 
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.relatedness.{method}.ht"
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.relatedness{method}.ht"
             )
             for version in VERSIONS
         },
