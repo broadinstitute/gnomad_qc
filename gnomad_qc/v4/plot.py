@@ -570,8 +570,7 @@ def box_plot_strat_pop_platform(
     strat_cutoff_dict = hl.eval(strat_pop_platform_ht.qc_metrics_stats)
     strat = list(strat_cutoff_dict.keys())
     strat_pops = sorted(set([strata[0] for strata in strat]) - {None})
-    strat_platform = list(set([strata[1] for strata in strat]) - {None})
-    strat_platform.sort()
+    strat_platform = sorted(set([strata[1] for strata in strat]) - {None})
 
     order = []
     for platform in strat_platform:
@@ -635,8 +634,7 @@ def box_plot_regress_pop_strat_platform(
     strat_cutoff_dict = hl.eval(strat_pop_platform_ht.qc_metrics_stats)
     strat = list(strat_cutoff_dict.keys())
     strat_pops = sorted(set([strata[0] for strata in strat]) - {None})
-    strat_platform = list(set([strata[1] for strata in strat]) - {None})
-    strat_platform.sort()
+    strat_platform = sorted(set([strata[1] for strata in strat]) - {None})
 
     order = []
     for platform in strat_platform:
@@ -711,8 +709,7 @@ def box_plot_regress_pop_platform(
     strat_cutoff_dict = hl.eval(strat_pop_platform_ht.qc_metrics_stats)
     strat = list(strat_cutoff_dict.keys())
     strat_pops = sorted(set([strata[0] for strata in strat]) - {None})
-    strat_platform = list(set([strata[1] for strata in strat]) - {None})
-    strat_platform.sort()
+    strat_platform = sorted(set([strata[1] for strata in strat]) - {None})
 
     order = []
     for platform in strat_platform:
@@ -1523,7 +1520,7 @@ def get_nn_hists(
                     & ~outlier_ht[f"{prefix2}fail_{metric}_residual"],
                     hl.agg.collect(outlier_ht.s),
                 )
-                for metric in outlier_metrics
+                for metric in qc_metrics
             },
             fail_both={
                 metric: hl.agg.filter(
@@ -1531,7 +1528,7 @@ def get_nn_hists(
                     & outlier_ht[f"{prefix2}fail_{metric}_residual"],
                     hl.agg.collect(outlier_ht.s),
                 )
-                for metric in outlier_metrics
+                for metric in qc_metrics
             },
             fail_residual={
                 metric: hl.agg.filter(
@@ -1539,7 +1536,7 @@ def get_nn_hists(
                     & outlier_ht[f"{prefix2}fail_{metric}_residual"],
                     hl.agg.collect(outlier_ht.s),
                 )
-                for metric in outlier_metrics
+                for metric in qc_metrics
             },
             fail_nn={
                 metric: hl.agg.filter(
@@ -1547,7 +1544,7 @@ def get_nn_hists(
                     & ~outlier_ht[f"{prefix2}fail_{metric}_residual"],
                     hl.agg.collect(outlier_ht.s),
                 )
-                for metric in outlier_metrics
+                for metric in qc_metrics
             },
         )
     )
