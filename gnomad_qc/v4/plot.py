@@ -427,6 +427,7 @@ def my_pair_plot(
     title=None,
     file_name=None,
     use_fig_if_exists=False,
+    add_kde_plot=True,
 ):
     if (
         use_fig_if_exists
@@ -488,7 +489,8 @@ def my_pair_plot(
     else:
         g = g.map_upper(col_nan_scatter, hue=df[hue], hue_order=["False", "True"])
 
-    g = g.map_lower(kdeplot_catch_error)
+    if add_kde_plot:
+        g = g.map_lower(kdeplot_catch_error)
     g = g.map_diag(my_hist, cutoffs=cutoffs)
 
     for i, ax_r in enumerate(g.axes):
@@ -996,6 +998,7 @@ def pair_plot_regress_pop_strat_platform(
     tmp_dir_prefix=tmp_prefix,
     plot_dir_prefix="",
     use_fig_if_exists=False,
+    add_kde_plot=True,
 ):
     custom_params = {"axes.spines.right": False, "axes.spines.top": False}
     sns.set_theme(style="ticks", rc=custom_params)
@@ -1048,6 +1051,7 @@ def pair_plot_regress_pop_strat_platform(
             title=f"Platform: {strata[0]}",
             file_name=f"{plot_dir_prefix}.regress_pop_strat_platform.{strata[0]}",
             use_fig_if_exists=use_fig_if_exists,
+            add_kde_plot=add_kde_plot,
         )
 
         tab.set_title(i + 1, f"{strata[0]}")
@@ -1064,6 +1068,7 @@ def pair_plot_regress_pop_platform(
     tmp_dir_prefix=tmp_prefix,
     plot_dir_prefix="",
     use_fig_if_exists=False,
+    add_kde_plot=True,
 ):
     custom_params = {"axes.spines.right": False, "axes.spines.top": False}
     sns.set_theme(style="ticks", rc=custom_params)
@@ -1104,6 +1109,7 @@ def pair_plot_regress_pop_platform(
         hue="fail_regress_pop_platform",
         file_name=f"{plot_dir_prefix}.regress_pop_platform",
         use_fig_if_exists=use_fig_if_exists,
+        add_kde_plot=add_kde_plot,
     )
 
 
