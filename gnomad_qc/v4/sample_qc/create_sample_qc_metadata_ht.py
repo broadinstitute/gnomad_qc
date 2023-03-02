@@ -44,7 +44,6 @@ logger.setLevel(logging.INFO)
 #  platform Table the number of PCs will be 9 because that is what was used, should we
 #  modify to have all 30 PCs, or add all 30 PCs to another annotation, or only keep the
 #  9 since that is all that was used?
-# TODO: Keep or drop is_female from sex HT?
 # TODO: Add more nearest neighbor info?
 # TODO: Add trio info?
 # TODO: joint that has v3 info?
