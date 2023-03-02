@@ -82,11 +82,18 @@ def get_hard_filter_metric_ht(ht) -> hl.Table:
     return ht
 
 
-def get_sample_filter_ht(ht, relationship_ht, ukb_remove, hf_s) -> hl.Table:
+def get_sample_filter_ht(
+    ht: hl.Table, relationship_ht: hl.Table, ukb_remove: List[str], hf_s: List[str]
+) -> hl.Table:
     """
-    Combine ..... into a single Table.
+    Combine sample filters into a single Table to be added to the metadata Table.
+
+    Includes hard-filters, sample QC outlier filters, and relatedness filters.
 
     :param ht: Input Table to add annotations to.
+    :param relationship_ht: Table with relationships annotations.
+    :param ukb_remove: List of UKB samples that have been removed from the v4 VDS.
+    :param hf_s: List of hard-filtered samples.
     :return: Table with hard filter metric annotations added.
     """
     ht = add_annotations(
