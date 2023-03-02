@@ -158,12 +158,6 @@ def compute_hard_filters(
                 chr_20_dp_threshold=min_cov
             )
         )
-    if min_qc_mt_adj_callrate is not None:
-        ht = ht.annotate_globals(
-            hard_filter_cutoffs=ht.hard_filter_cutoffs.annotate(
-                min_qc_mt_adj_callrate=min_qc_mt_adj_callrate
-            )
-        )
 
     hard_filters = dict()
     sample_qc_metric_hard_filters = dict()
@@ -244,6 +238,11 @@ def compute_hard_filters(
             )
         hard_filters["low_adj_callrate"] = (
             qc_mt_callrate_ht[ht.key].callrate_adj < min_qc_mt_adj_callrate
+        )
+        ht = ht.annotate_globals(
+            hard_filter_cutoffs=ht.hard_filter_cutoffs.annotate(
+                min_qc_mt_adj_callrate=min_qc_mt_adj_callrate
+            )
         )
 
     if include_sex_filter:
@@ -347,7 +346,9 @@ def main(args):
                 else contamination.path,
                 overwrite=overwrite,
             )
+
         if args.compute_chr20_mean_dp:
+            # TODO: Add drop of `gq_thresholds` for future versions.
             if test:
                 coverage_mt = hl.read_matrix_table(
                     get_checkpoint_path(
@@ -410,7 +411,7 @@ def main(args):
                 else sample_qc_mt_callrate.path,
                 overwrite=overwrite,
             )
-        # add globals
+
         if args.compute_hard_filters:
             if test:
                 chr20_mean_dp_ht = hl.read_table(
