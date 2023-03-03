@@ -371,4 +371,6 @@ class PipelineResourceCollection:
             else:
                 overwrite = self.overwrite
 
+        # TODO: When revisiting, if this is kept, throw an error message here that
+        #  tells you the available steps in the pipeline collection object.
         self.pipeline_steps[step].check_resource_existence(overwrite=overwrite)
