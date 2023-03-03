@@ -631,7 +631,7 @@ def main(args):
             res.check_resource_existence()
             rank_ht, drop_ht = run_compute_related_samples_to_drop(
                 res.final_relatedness_ht.ht(),
-                joint_qc_meta_ht.semi_join(joint_qc_mt.cols()),
+                joint_qc_meta_ht.select_globals().semi_join(joint_qc_mt.cols()),
                 release,
                 res.outlier_filter_ht.ht() if release else None,
             )
