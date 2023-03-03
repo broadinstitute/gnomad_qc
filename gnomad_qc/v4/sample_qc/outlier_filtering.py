@@ -13,8 +13,8 @@ from gnomad.sample_qc.filtering import (
 )
 from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.basics import check_resource_existence
 from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_scores,
     finalized_outlier_filtering,

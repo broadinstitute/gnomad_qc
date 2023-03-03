@@ -14,12 +14,12 @@ from gnomad.sample_qc.relatedness import (
 from gnomad.utils.slack import slack_notifications
 from hail.utils.misc import new_temp_file
 
-from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.basics import (
+from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
-    get_logging_path,
 )
+from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v4.resources.basics import get_logging_path
 from gnomad_qc.v4.resources.sample_qc import (
     finalized_outlier_filtering,
     get_cuking_input_path,
@@ -52,7 +52,7 @@ def print_cuking_command(
     Print the command to submit a Cloud Batch job for running cuKING.
 
     :param cuking_input_path: Path to the cuKING input Parquet files.
-    :param cuking_output_path:Path to the cuKING output Parquet files.
+    :param cuking_output_path: Path to the cuKING output Parquet files.
     :param min_emission_kinship: Minimum kinship threshold for emitting a pair of
         samples in the relatedness output.
     :param cuking_split_factor: Split factor to use for splitting the full relatedness
@@ -330,8 +330,9 @@ def run_compute_related_samples_to_drop(
     sample rankings using `compute_rank_ht`.
 
     When `release` is True, `filter_ht` is used to rank samples based on filtering
-    'outlier_filtered' annotation, favoring those that are not filtered. These samples
-    will also be included in the returned `samples_to_drop_ht` Table.
+    'outlier_filtered' annotation, favoring those that are not filtered. The 'filter_ht'
+    'outlier_filtered' samples will also be included in the returned
+    `samples_to_drop_ht` Table.
 
     :param ht: Input relatedness Table.
     :param meta_ht: Metadata Table with `v3_meta.v3_release`, `releasable`,
@@ -372,7 +373,6 @@ def run_compute_related_samples_to_drop(
         keep_samples_when_related=True,
     )
     samples_to_drop_ht = samples_to_drop_ht.annotate_globals(
-        keep_samples=v3_release_samples,
         second_degree_min_kin=second_degree_min_kin,
     )
 
@@ -423,49 +423,55 @@ def get_relatedness_resources(
     )
     print_cuking_command = PipelineStepResourceCollection(
         "--print-cuking-command",
-        previous_pipeline_steps=[prepare_cuking_inputs],
         output_resources={"cuking_output_path": get_cuking_output_path(test=test)},
+        pipeline_input_steps=[prepare_cuking_inputs],
     )
     create_cuking_relatedness_table = PipelineStepResourceCollection(
         "--create-cuking-relatedness-table",
-        previous_pipeline_steps=[print_cuking_command],
         output_resources={"cuking_relatedness_ht": relatedness("cuking", test=test)},
+        pipeline_input_steps=[print_cuking_command],
     )
     run_ibd_on_cuking_pairs = PipelineStepResourceCollection(
         "--run-ibd-on-cuking-pairs",
-        previous_pipeline_steps=[create_cuking_relatedness_table],
-        add_input_resources=joint_qc_mt_input,
         output_resources={"ibd_ht": ibd(test=test)},
+        pipeline_input_steps=[create_cuking_relatedness_table],
+        add_input_resources=joint_qc_mt_input,
     )
     run_pc_relate_pca = PipelineStepResourceCollection(
         "--run-pc-relate-pca",
-        input_resources=joint_qc_mt_input,
         output_resources={"pc_relate_pca_scores": pc_relate_pca_scores(test=test)},
+        input_resources=joint_qc_mt_input,
     )
     create_pc_relate_relatedness_table = PipelineStepResourceCollection(
         "--create-pc-relate-relatedness-table",
-        previous_pipeline_steps=[run_pc_relate_pca],
-        add_input_resources=joint_qc_mt_input,
         output_resources={
             "pc_relate_relatedness_ht": relatedness("pc_relate", test=test)
         },
+        pipeline_input_steps=[run_pc_relate_pca],
+        add_input_resources=joint_qc_mt_input,
     )
     finalize_relatedness_ht = PipelineStepResourceCollection(
         "--finalize-relatedness-ht",
-        previous_pipeline_steps=[
+        output_resources={"final_relatedness_ht": relatedness(test=test)},
+        pipeline_input_steps=[
             create_cuking_relatedness_table
             if relatedness_method == "cuking"
             else create_pc_relate_relatedness_table
         ],
         add_input_resources=joint_qc_meta_input,
-        output_resources={"final_relatedness_ht": relatedness(test=test)},
     )
     finalize_relatedness_ht.relatedness_ht = getattr(
         finalize_relatedness_ht, f"{relatedness_method}_relatedness_ht"
     )
     compute_related_samples_to_drop = PipelineStepResourceCollection(
         "--compute-related-samples-to-drop",
-        previous_pipeline_steps=[finalize_relatedness_ht],
+        output_resources={
+            "sample_rankings_ht": sample_rankings(test=test, release=release),
+            "related_samples_to_drop_ht": related_samples_to_drop(
+                test=test, release=release
+            ),
+        },
+        pipeline_input_steps=[finalize_relatedness_ht],
         add_input_resources={
             **joint_qc_mt_input,
             **joint_qc_meta_input,
@@ -477,12 +483,6 @@ def get_relatedness_resources(
                 }
                 if release
                 else {}
-            ),
-        },
-        output_resources={
-            "sample_rankings_ht": sample_rankings(test=test, release=release),
-            "related_samples_to_drop_ht": related_samples_to_drop(
-                test=test, release=release
             ),
         },
     )
@@ -518,7 +518,7 @@ def main(args):
 
     if args.print_cuking_command:
         res = relatedness_resources.print_cuking_command
-        res.check_resource_existance()
+        res.check_resource_existence()
         print_cuking_command(
             res.cuking_input_path,
             res.cuking_output_path,
@@ -543,7 +543,7 @@ def main(args):
                 "for cuKING."
             )
             res = relatedness_resources.prepare_cuking_inputs
-            res.check_resource_existance()
+            res.check_resource_existence()
             mt_to_cuking_inputs(
                 mt=joint_qc_mt,
                 parquet_uri=res.cuking_input_path,
@@ -553,7 +553,7 @@ def main(args):
         if args.create_cuking_relatedness_table:
             logger.info("Converting cuKING outputs to Hail Table.")
             res = relatedness_resources.create_cuking_relatedness_table
-            res.check_resource_existance()
+            res.check_resource_existence()
             ht = cuking_outputs_to_ht(parquet_uri=res.cuking_output_path)
             ht = ht.key_by(i=hl.struct(s=ht.i), j=hl.struct(s=ht.j))
             ht = ht.repartition(args.relatedness_n_partitions)
@@ -565,7 +565,7 @@ def main(args):
                 args.ibd_min_cuking_kin,
             )
             res = relatedness_resources.run_ibd_on_cuking_pairs
-            res.check_resource_existance()
+            res.check_resource_existence()
             compute_ibd_on_cuking_pair_subset(
                 joint_qc_mt,
                 res.cuking_relatedness_ht.ht(),
@@ -577,7 +577,7 @@ def main(args):
         if args.run_pc_relate_pca:
             logger.info("Running PCA for PC-Relate")
             res = relatedness_resources.run_pc_relate_pca
-            res.check_resource_existance()
+            res.check_resource_existence()
             eig, scores, _ = hl.hwe_normalized_pca(
                 joint_qc_mt.GT, k=args.n_pca_pcs, compute_loadings=False
             )
@@ -589,7 +589,7 @@ def main(args):
                 "PC-relate requires SSDs and doesn't work with preemptible workers!"
             )
             res = relatedness_resources.create_pc_relate_relatedness_table
-            res.check_resource_existance()
+            res.check_resource_existence()
 
             ht = hl.pc_relate(
                 joint_qc_mt.GT,
@@ -610,7 +610,7 @@ def main(args):
 
         if args.finalize_relatedness_ht:
             res = relatedness_resources.finalize_relatedness_ht
-            res.check_resource_existance()
+            res.check_resource_existence()
             relatedness_args = {
                 "parent_child_max_y": args.parent_child_max_ibd0_or_ibs0_over_ibs2,
                 "second_degree_sibling_lower_cutoff_slope": args.second_degree_sibling_lower_cutoff_slope,
@@ -628,7 +628,7 @@ def main(args):
 
         if args.compute_related_samples_to_drop:
             res = relatedness_resources.compute_related_samples_to_drop
-            res.check_resource_existance()
+            res.check_resource_existence()
             rank_ht, drop_ht = run_compute_related_samples_to_drop(
                 res.final_relatedness_ht.ht(),
                 joint_qc_meta_ht.semi_join(joint_qc_mt.cols()),
