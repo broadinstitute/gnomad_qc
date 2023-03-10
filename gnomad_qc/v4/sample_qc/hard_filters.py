@@ -55,10 +55,12 @@ def compute_sample_qc(n_partitions: int = 500, test: bool = False) -> hl.Table:
     sample_qc_ht = compute_stratified_sample_qc(
         vds,
         strata={
-            "bi_allelic": bi_allelic_expr(vds.variant_data),
-            "multi_allelic": ~bi_allelic_expr(vds.variant_data),
+            # "bi_allelic": bi_allelic_expr(vds.variant_data),
+            # "multi_allelic": ~bi_allelic_expr(vds.variant_data),
+            "under_three_alt_alleles": vds.variant_data.n_unsplit_alleles < 4,
+            "three_or_more_alt_alleles": vds.variant_data.n_unsplit_alleles >= 4,
         },
-        tmp_ht_prefix=get_sample_qc(test=test).path[:-3],
+        tmp_ht_prefix=get_sample_qc(test=test).path[:-4],
         gt_col="GT",
     )
 
