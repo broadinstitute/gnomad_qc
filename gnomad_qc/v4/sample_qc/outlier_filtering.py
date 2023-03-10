@@ -12,6 +12,7 @@ from gnomad.sample_qc.filtering import (
     determine_nearest_neighbors,
 )
 from gnomad.utils.slack import slack_notifications
+from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.slack_creds import slack_token
@@ -128,7 +129,6 @@ def apply_stratified_filtering_method(
         metric_threshold={
             "n_singleton": (math.inf, 8.0),
             "r_het_hom_var": (math.inf, 4.0),
-            "r_ti_tv_singleton": (math.inf, 4.0),
         },
     )
 
@@ -251,7 +251,6 @@ def apply_regressed_filtering_method(
         metric_threshold={
             "n_singleton_residual": (math.inf, 8.0),
             "r_het_hom_var_residual": (math.inf, 4.0),
-            "r_ti_tv_singleton_residual": (math.inf, 4.0),
         },
         strata={"platform": sample_qc_ht[sample_qc_res_ht.key].platform}
         if regress_per_platform
@@ -310,7 +309,6 @@ def apply_nearest_neighbor_filtering_method(
         metric_threshold={
             "n_singleton_residual": (math.inf, 8.0),
             "r_het_hom_var_residual": (math.inf, 4.0),
-            "r_ti_tv_singleton_residual": (math.inf, 4.0),
         },
         comparison_sample_expr=sample_qc_ht.nearest_neighbors,
     )
@@ -495,8 +493,12 @@ def main(args):
     test = args.test
     overwrite = args.overwrite
     filtering_qc_metrics = args.filtering_qc_metrics
+    add_r_ti_tv_singleton_filter = (
+        args.apply_n_singleton_filter_to_r_ti_tv_singleton
+        and ("r_ti_tv_singleton" in filtering_qc_metrics)
+    )
     create_finalized_outlier_filter = args.create_finalized_outlier_filter
-    sample_qc_ht = get_sample_qc("bi_allelic")
+    sample_qc_ht = get_sample_qc("under_three_alt_alleles")
     pop_ht = get_pop_ht()
     include_unreleasable_samples = args.regression_include_unreleasable
     pop_scores_ht = ancestry_pca_scores(
@@ -544,6 +546,19 @@ def main(args):
                 output_step_resources={"--apply-regressed-filters": [output]},
                 overwrite=overwrite,
             )
+            if add_r_ti_tv_singleton_filter:
+                check_resource_existence(
+                    input_step_resources={
+                        "using add_r_ti_tv_singleton_filter requires a first run of --apply-regressed-filters without it and with n_singleton included": [
+                            output
+                        ],
+                    },
+                )
+                filter_ht = output.ht().checkpoint(
+                    new_temp_file("regressed_filters", extension="ht")
+                )
+                qc_metrics_stats = hl.eval(filter_ht.qc_metrics_stats)
+                filter_ht
             if not regress_population:
                 regress_pop_n_pcs = None
             if not regress_platform:
@@ -695,6 +710,11 @@ if __name__ == "__main__":
         ],
         type=list,
         nargs="+",
+    )
+    parser.add_argument(
+        "--apply-n-singleton-filter-to-r-ti-tv-singleton",
+        help=".",
+        action="store_true",
     )
 
     stratified_args = parser.add_argument_group(
