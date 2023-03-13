@@ -485,12 +485,12 @@ def my_pair_plot(
         df[hue] = df[hue].map({True: "True", False: "False"})
     g = sns.PairGrid(df, diag_sharey=False, dropna=True)
     if hue is None:
-        g = g.map_upper(col_nan_scatter)
+        g = g.map_lower(col_nan_scatter)
     else:
-        g = g.map_upper(col_nan_scatter, hue=df[hue], hue_order=["False", "True"])
+        g = g.map_lower(col_nan_scatter, hue=df[hue], hue_order=["False", "True"])
 
     if add_kde_plot:
-        g = g.map_lower(kdeplot_catch_error)
+        g = g.map_upper(kdeplot_catch_error)
     g = g.map_diag(my_hist, cutoffs=cutoffs)
 
     for i, ax_r in enumerate(g.axes):
@@ -923,6 +923,7 @@ def pair_plot_strat_pop_platform(
     strat_pops=None,
     plot_dir_prefix="",
     use_fig_if_exists=False,
+    add_kde_plot=True,
 ):
     custom_params = {"axes.spines.right": False, "axes.spines.top": False}
     sns.set_theme(style="ticks", rc=custom_params)
@@ -982,6 +983,7 @@ def pair_plot_strat_pop_platform(
                     f"{plot_dir_prefix}.strat_pop_platform.{strata[0]}_{strata[1]}"
                 ),
                 use_fig_if_exists=use_fig_if_exists,
+                add_kde_plot=add_kde_plot
             )
 
             tab.set_title(i + 1, strata[1])
@@ -1439,6 +1441,37 @@ def get_tables_only(
     return tables_pop_platform, tables_pop, tables_platform
 
 
+def plot_pcs(ht: hl.Table, pca_scores_expr, pcs, label: str, pop_colormap,
+             collect_all: bool):
+    tabs = []
+    for pc_i, pc_j in pcs:
+        plot = hl.plot.scatter(
+            pca_scores_expr[pc_i - 1],
+            pca_scores_expr[pc_j - 1],
+            xlabel=f'PC{pc_i}',
+            ylabel=f'PC{pc_j}',
+            label={f'{label}': ht[f'{label}'], },
+            hover_fields={
+                's': ht.s,
+                'pop': ht.pop,
+            },
+            collect_all=collect_all,
+            colors={f'{label}': pop_colormap, },
+        )
+
+        plot.xaxis.axis_label_text_font_size = "20pt"
+        plot.yaxis.axis_label_text_font_size = "20pt"
+        plot.legend.label_text_font_size = '20pt'
+
+        tabs.append(
+            Panel(
+                title=f'PC{pc_i} vs PC{pc_j}',
+                child=plot
+            )
+        )
+    return Tabs(tabs=tabs)
+
+
 def upset_plot(
     ht,
     cols_to_keep=None,
@@ -1446,6 +1479,8 @@ def upset_plot(
     min_subset_size=50,
     strip_prefix=True,
     figsize=(45, 10),
+    output_tab=None,
+    file_name="",
 ):
     custom_params = {"axes.spines.right": False, "axes.spines.top": False}
     sns.set_theme(style="ticks", rc=custom_params)
@@ -1478,12 +1513,13 @@ def upset_plot(
         element_size=None,
     )
     # plt.show()
-    my_stringIObytes = io.BytesIO()
-    plt.savefig(my_stringIObytes, format="png", bbox_inches="tight")
-    my_stringIObytes.seek(0)
-    img_data = base64.b64encode(my_stringIObytes.read()).decode()
-    plt.close(fig)
-    head = """<html>
+    if output_tab is None:
+        my_stringIObytes = io.BytesIO()
+        plt.savefig(my_stringIObytes, format="png", bbox_inches="tight")
+        my_stringIObytes.seek(0)
+        img_data = base64.b64encode(my_stringIObytes.read()).decode()
+        plt.close(fig)
+        head = """<html>
 <style>
 #upsetplot img{
     max-width: unset;
@@ -1500,8 +1536,14 @@ def upset_plot(
 """.format(
         img_data
     )
-    display_html(head, raw=True)
-
+        display_html(head, raw=True)
+    else:
+        plt.savefig(f"plot_pngs/upset_{file_name}.png", bbox_inches="tight")
+        fig = plt.gcf()
+        plt.close(fig)
+        output_tab.append_display_data(
+            Image(f"plot_pngs/upset_{file_name}.png")
+        )
 
 def get_nn_hists(
     outlier_ht,
@@ -1607,7 +1649,8 @@ def get_nn_hists(
             (upper_cutoff, "purple"),
         ]:
             if (
-                (intercept != math.inf)
+                not pd.isna(intercept)
+                and (intercept != math.inf)
                 and (intercept != -math.inf)
                 and (intercept is not None)
                 and (intercept is not None)
@@ -1634,6 +1677,10 @@ def get_nn_hists(
         pass_fail_type=outlier_ht.sample_info[1],
     )
     # outlier_ht.describe()
+    if "r_ti_tv_singleton" in qc_metrics:
+        outlier_ht = outlier_ht.annotate(
+            r_ti_tv_singleton=outlier_ht.r_ti_tv_singleton_nn
+        )
     outlier_ht = outlier_ht.select(
         *qc_metrics,
         qc_metrics_stats=hl.coalesce(
