@@ -140,8 +140,8 @@ def apply_regressed_filtering_method(
     qc_metrics: List[str],
     pop_ht: Optional[hl.Table] = None,
     platform_ht: Optional[hl.Table] = None,
-    regress_pop_n_pcs: int = 30,
-    regress_platform_n_pcs: int = 9,
+    regress_pop_n_pcs: Optional[int] = 30,
+    regress_platform_n_pcs: Optional[int] = 9,
     regress_per_platform: bool = False,
     regression_include_unreleasable: bool = False,
     project_meta_ht: Optional[hl.Table] = None,
@@ -315,6 +315,208 @@ def apply_nearest_neighbor_filtering_method(
     filter_ht = filter_ht.select_globals(**nn_ht.index_globals())
 
     return filter_ht
+
+
+def apply_n_singleton_filter_to_r_ti_tv_singleton(
+    ht: hl.Table,
+    sample_qc_ht: hl.Table,
+    filtering_method: str,
+    pop_ht: hl.Table = None,
+    platform_ht: hl.Table = None,
+    pop_scores_ht: hl.Table = None,
+    project_meta_ht: hl.Table = None,
+    nn_ht: hl.Table = None,
+):
+    """
+    Add summary.
+
+    :param ht:
+    :param sample_qc_ht:
+    :param filtering_method:
+    :param pop_ht:
+    :param platform_ht:
+    :param pop_scores_ht:
+    :param project_meta_ht:
+    :param nn_ht:
+    :return:
+    """
+    # TODO: add check for filtering method options
+    filtering_qc_metrics = ["r_ti_tv_singleton"]
+    ht_globals = hl.eval(ht.index_globals())
+    empty_stats_struct = hl.struct(
+        median=hl.missing(hl.tfloat64),
+        mad=hl.missing(hl.tfloat64),
+        lower=hl.missing(hl.tfloat64),
+        upper=hl.missing(hl.tfloat64),
+    )
+    if filtering_method != "nearest_neighbors":
+        qc_metrics_stats = ht_globals["qc_metrics_stats"]
+
+    if filtering_method == "stratified":
+        medians = hl.literal(
+            {
+                strat: cutoff_dict["n_singleton"].median
+                for strat, cutoff_dict in qc_metrics_stats.items()
+                if cutoff_dict["n_singleton"].median is not None
+            }
+        )
+        sample_qc_ht = sample_qc_ht.annotate(
+            n_singleton_median=medians.get((sample_qc_ht.pop, sample_qc_ht.platform))
+        )
+        sample_qc_ht = sample_qc_ht.filter(
+            hl.is_defined(sample_qc_ht.n_singleton_median)
+            & (sample_qc_ht.n_singleton > sample_qc_ht.n_singleton_median)
+        )
+
+        new_ht = apply_stratified_filtering_method(
+            sample_qc_ht,
+            filtering_qc_metrics,
+            pop_ht=pop_ht,
+            platform_ht=platform_ht,
+        )
+
+        new_qc_metrics_stats = hl.eval(new_ht.qc_metrics_stats)
+        for strata in qc_metrics_stats:
+            stats = dict(qc_metrics_stats[strata])
+            if strata in new_qc_metrics_stats:
+                for m, v in new_qc_metrics_stats[strata].items():
+                    stats[strata][m] = v
+            else:
+                stats[strata]["r_ti_tv_singleton"] = empty_stats_struct
+            qc_metrics_stats[strata] = hl.struct(**stats)
+
+        new_idx = new_ht[ht.key]
+        ht = ht.annotate(
+            n_singleton_median_filtered=hl.is_defined(new_idx),
+            fail_r_ti_tv_singleton=hl.coalesce(new_idx.fail_r_ti_tv_singleton, False),
+            qc_metrics_filters=(
+                (ht.qc_metrics_filters - hl.set(filtering_qc_metrics))
+                | hl.coalesce(new_idx.qc_metrics_filters, hl.empty_set(hl.tstr))
+            ),
+        )
+        ht = ht.annotate_globals(qc_metrics_stats=hl.literal(qc_metrics_stats))
+
+    elif filtering_method == "regress_pop_strat_platform":
+        medians = hl.literal(
+            {
+                strat: cutoff_dict["n_singleton_residual"].median
+                for strat, cutoff_dict in qc_metrics_stats.items()
+                if cutoff_dict[f"n_singleton_residual"].median is not None
+            }
+        )
+        sample_qc_ht = ht.annotate(
+            n_singleton_median=medians.get((sample_qc_ht[ht.key].platform,))
+        )
+        sample_qc_ht = sample_qc_ht.filter(
+            hl.is_defined(sample_qc_ht.n_singleton_median)
+            & (sample_qc_ht.n_singleton_residual > sample_qc_ht.n_singleton_median)
+        )
+
+        new_ht = apply_regressed_filtering_method(
+            sample_qc_ht.select_globals(),
+            filtering_qc_metrics,
+            pop_ht=pop_scores_ht,
+            platform_ht=platform_ht,
+            regress_pop_n_pcs=ht_globals.get("regress_pop_n_pcs"),
+            regress_platform_n_pcs=ht_globals.get("regress_platform_n_pcs"),
+            regress_per_platform=ht_globals.get("regress_per_platform"),
+            regression_include_unreleasable=False,
+            project_meta_ht=project_meta_ht,
+        )
+
+        new_qc_metrics_stats = hl.eval(new_ht.qc_metrics_stats)
+        for strata in qc_metrics_stats:
+            stats = dict(qc_metrics_stats[strata])
+            if strata in new_qc_metrics_stats:
+                for m, v in new_qc_metrics_stats[strata].items():
+                    stats[strata][m] = v
+            else:
+                stats[strata]["r_ti_tv_singleton_residual"] = empty_stats_struct
+            for m in strata:
+                if strata[m].median is None:
+                    strata[m] = empty_stats_struct
+            qc_metrics_stats[strata] = hl.struct(**stats)
+
+        new_idx = new_ht[ht.key]
+        ht = ht.annotate(
+            n_singleton_median_filtered=hl.is_defined(new_idx),
+            fail_r_ti_tv_singleton_residual=hl.coalesce(
+                new_idx.fail_r_ti_tv_singleton_residual, False
+            ),
+            r_ti_tv_singleton_residual=new_idx.r_ti_tv_singleton_residual,
+            qc_metrics_filters=(
+                (ht.qc_metrics_filters - hl.set({"r_ti_tv_singleton_residual"}))
+                | hl.coalesce(new_idx.qc_metrics_filters, hl.empty_set(hl.tstr))
+            ),
+        )
+        ht = ht.annotate_globals(qc_metrics_stats=hl.literal(qc_metrics_stats))
+
+    elif filtering_method == "regress_pop_platform":
+        medians = qc_metrics_stats.n_singleton_residual.median
+        sample_qc_ht = ht.filter(ht.n_singleton_residual > medians)
+
+        new_ht = apply_regressed_filtering_method(
+            sample_qc_ht.select_globals(),
+            filtering_qc_metrics,
+            pop_ht=pop_scores_ht,
+            platform_ht=platform_ht,
+            regress_pop_n_pcs=ht_globals.get("regress_pop_n_pcs"),
+            regress_platform_n_pcs=ht_globals.get("regress_platform_n_pcs"),
+            regress_per_platform=ht_globals.get("regress_per_platform"),
+            regression_include_unreleasable=False,
+            project_meta_ht=project_meta_ht,
+        )
+
+        new_qc_metrics_stats = hl.eval(new_ht.qc_metrics_stats)
+        stats = dict(qc_metrics_stats)
+        stats["r_ti_tv_singleton_residual"] = new_qc_metrics_stats[
+            "r_ti_tv_singleton_residual"
+        ]
+        qc_metrics_stats = hl.struct(**stats)
+
+        new_idx = new_ht[ht.key]
+        ht = ht.annotate(
+            n_singleton_median_filtered=hl.is_defined(new_idx),
+            fail_r_ti_tv_singleton_residual=hl.coalesce(
+                new_idx.fail_r_ti_tv_singleton_residual, False
+            ),
+            r_ti_tv_singleton_residual=new_idx.r_ti_tv_singleton_residual,
+            qc_metrics_filters=(
+                (ht.qc_metrics_filters - hl.set({"r_ti_tv_singleton_residual"}))
+                | hl.coalesce(new_idx.qc_metrics_filters, hl.empty_set(hl.tstr))
+            ),
+        )
+        ht = ht.annotate_globals(qc_metrics_stats=hl.literal(qc_metrics_stats))
+
+    elif filtering_method == "nearest_neighbors":
+        sample_qc_ht = sample_qc_ht.filter(
+            sample_qc_ht.n_singleton
+            > ht[sample_qc_ht.key].qc_metrics_stats.n_singleton.median
+        )
+        new_ht = apply_nearest_neighbor_filtering_method(
+            sample_qc_ht,
+            filtering_qc_metrics,
+            nn_ht=nn_ht,
+        )
+        new_idx = new_ht[ht.key]
+        ht = ht.annotate(
+            n_singleton_median_filtered=hl.is_defined(new_idx),
+            fail_r_ti_tv_singleton=hl.coalesce(new_idx.fail_r_ti_tv_singleton, False),
+            qc_metrics_filters=(
+                (ht.qc_metrics_filters - hl.set({"r_ti_tv_singleton"}))
+                | hl.coalesce(new_idx.qc_metrics_filters, hl.empty_set(hl.tstr))
+            ),
+            qc_metrics_stats=ht.qc_metrics_stats.annotate(
+                r_ti_tv_singleton=hl.coalesce(
+                    new_idx.qc_metrics_stats.r_ti_tv_singleton,
+                    ht.qc_metrics_stats.r_ti_tv_singleton,
+                )
+            ),
+        )
+    else:
+        raise ValueError("Method not valid")
+
+    return ht
 
 
 def create_finalized_outlier_filter_ht(
@@ -493,7 +695,7 @@ def main(args):
     test = args.test
     overwrite = args.overwrite
     filtering_qc_metrics = args.filtering_qc_metrics
-    add_r_ti_tv_singleton_filter = (
+    apply_r_ti_tv_singleton_filter = (
         args.apply_n_singleton_filter_to_r_ti_tv_singleton
         and ("r_ti_tv_singleton" in filtering_qc_metrics)
     )
@@ -546,25 +748,12 @@ def main(args):
                 output_step_resources={"--apply-regressed-filters": [output]},
                 overwrite=overwrite,
             )
-            if add_r_ti_tv_singleton_filter:
-                check_resource_existence(
-                    input_step_resources={
-                        "using add_r_ti_tv_singleton_filter requires a first run of --apply-regressed-filters without it and with n_singleton included": [
-                            output
-                        ],
-                    },
-                )
-                filter_ht = output.ht().checkpoint(
-                    new_temp_file("regressed_filters", extension="ht")
-                )
-                qc_metrics_stats = hl.eval(filter_ht.qc_metrics_stats)
-                filter_ht
             if not regress_population:
                 regress_pop_n_pcs = None
             if not regress_platform:
                 regress_platform_n_pcs = None
 
-            apply_regressed_filtering_method(
+            ht = apply_regressed_filtering_method(
                 sample_qc_ht,
                 filtering_qc_metrics,
                 pop_ht=pop_scores_ht.ht(),
@@ -574,7 +763,10 @@ def main(args):
                 regress_per_platform=regress_per_platform,
                 regression_include_unreleasable=include_unreleasable_samples,
                 project_meta_ht=joint_qc_meta.ht(),
-            ).write(output.path, overwrite=overwrite)
+            )
+            if apply_r_ti_tv_singleton_filter:
+                ht = apply_n_singleton_filter_to_r_ti_tv_singleton(ht)
+            ht.write(output.path, overwrite=overwrite)
 
     if args.apply_stratified_filters:
         stratify_population = args.stratify_population
@@ -600,12 +792,19 @@ def main(args):
             if not stratify_platform:
                 platform_ht = None
 
-            apply_stratified_filtering_method(
+            ht = apply_stratified_filtering_method(
                 sample_qc_ht,
                 filtering_qc_metrics,
                 pop_ht=pop_ht.ht(),
                 platform_ht=platform_ht.ht(),
-            ).write(output.path, overwrite=overwrite)
+            )
+            if apply_r_ti_tv_singleton_filter:
+                ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
+                    ht,
+                    filtering_method="stratified",
+                )
+
+            ht.write(output.path, overwrite=overwrite)
 
     if args.determine_nearest_neighbors:
         check_resource_existence(
@@ -645,11 +844,17 @@ def main(args):
                 output_step_resources={"--apply-nearest-neighbor-filters": [output]},
                 overwrite=overwrite,
             )
-            apply_nearest_neighbor_filtering_method(
+            ht = apply_nearest_neighbor_filtering_method(
                 sample_qc_ht,
                 filtering_qc_metrics,
                 nn_ht=nn_ht.ht(),
-            ).write(output.path, overwrite=overwrite)
+            )
+            if apply_r_ti_tv_singleton_filter:
+                ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
+                    ht,
+                    filtering_method="nearest_neighbors",
+                )
+            ht.write(output.path, overwrite=overwrite)
 
     if create_finalized_outlier_filter:
         if len(finalized_outlier_input_resources) == 0:
