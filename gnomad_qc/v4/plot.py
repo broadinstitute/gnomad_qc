@@ -924,10 +924,11 @@ def pair_plot_strat_pop_platform(
     plot_dir_prefix="",
     use_fig_if_exists=False,
     add_kde_plot=True,
+    fail_filter_name="fail_strat_pop_platform",
 ):
     custom_params = {"axes.spines.right": False, "axes.spines.top": False}
     sns.set_theme(style="ticks", rc=custom_params)
-    plt.rcParams["figure.dpi"] = 200
+    plt.rcParams["figure.dpi"] = 100
     plt.rcParams["figure.figsize"] = figsize
     strat_cutoff_dict = hl.eval(strat_pop_platform_ht.qc_metrics_stats)
     # print(strat_cutoff_dict)
@@ -971,12 +972,12 @@ def pair_plot_strat_pop_platform(
         for i, (strat_ht_cutoff, output_tab) in enumerate(zip(hts, outputs[1:])):
             ht_strata, cutoffs, strata = strat_ht_cutoff
             ht_strata = ht_strata.select(
-                "fail_strat_pop_platform", *[m[0] for m in pair_plot_metrics]
+                fail_filter_name, *[m[0] for m in pair_plot_metrics]
             )
             my_pair_plot(
                 ht_strata,
                 cutoffs,
-                hue="fail_strat_pop_platform",
+                hue=fail_filter_name,
                 output_tab=output_tab,
                 title=f"Pop: {strata[0]}, Platform: {strata[1]}",
                 file_name=(
@@ -1001,10 +1002,11 @@ def pair_plot_regress_pop_strat_platform(
     plot_dir_prefix="",
     use_fig_if_exists=False,
     add_kde_plot=True,
+    fail_filter_name="fail_regress_pop_strat_platform",
 ):
     custom_params = {"axes.spines.right": False, "axes.spines.top": False}
     sns.set_theme(style="ticks", rc=custom_params)
-    plt.rcParams["figure.dpi"] = 200
+    plt.rcParams["figure.dpi"] = 150
     plt.rcParams["figure.figsize"] = figsize
     strat_cutoff_dict = hl.eval(regress_pop_strat_platform_ht.qc_metrics_stats)
     strat = list(strat_cutoff_dict.keys())
@@ -1043,12 +1045,12 @@ def pair_plot_regress_pop_strat_platform(
     for i, (strat_ht_cutoff, output_tab) in enumerate(zip(hts, outputs[1:])):
         ht_strata, cutoffs, strata = strat_ht_cutoff
         ht_strata = ht_strata.select(
-            "fail_regress_pop_strat_platform", *[m[0] for m in renamed_metrics]
+            fail_filter_name, *[m[0] for m in renamed_metrics]
         )
         my_pair_plot(
             ht_strata,
             cutoffs,
-            hue="fail_regress_pop_strat_platform",
+            hue=fail_filter_name,
             output_tab=output_tab,
             title=f"Platform: {strata[0]}",
             file_name=f"{plot_dir_prefix}.regress_pop_strat_platform.{strata[0]}",
@@ -1059,6 +1061,86 @@ def pair_plot_regress_pop_strat_platform(
         tab.set_title(i + 1, f"{strata[0]}")
 
     display(tab)
+
+def pair_plot_regress_pop_strat_platform_strat_pop(
+    outlier_ht,
+    regress_pop_strat_platform_ht,
+    pair_plot_metrics,
+    strat_pops=None,
+    read_if_exists=True,
+    figsize=(30, 30),
+    tmp_dir_prefix=tmp_prefix,
+    plot_dir_prefix="",
+    use_fig_if_exists=False,
+    add_kde_plot=True,
+    fail_filter_name="regress_pop_strat_platform",
+):
+    custom_params = {"axes.spines.right": False, "axes.spines.top": False}
+    sns.set_theme(style="ticks", rc=custom_params)
+    plt.rcParams["figure.dpi"] = 100
+    plt.rcParams["figure.figsize"] = figsize
+    strat_cutoff_dict = hl.eval(regress_pop_strat_platform_ht.qc_metrics_stats)
+    strat = list(strat_cutoff_dict.keys())
+
+    if strat_pops is None:
+        strat_pops = list(set([strata[0] for strata in strat]) - {None})
+    strat_pops.sort()
+
+    strat_platform = sorted(set([strata[0] for strata in strat]) - {None})
+
+    renamed_metrics = [
+        (
+            "regress_pop_strat_platform_redo_regression|" + m[0] + "_residual",
+            "regress_pop_strat_platform_redo_regression|" + m[1] + "_residual",
+        )
+        for m in pair_plot_metrics
+    ]
+
+    for pop in strat_pops:
+        outputs = [widgets.Output()]
+        hts = []
+        for platform in strat_platform:
+            strata = (pop, platform)
+            cutoff_strata = (platform,)
+            if cutoff_strata not in strat_cutoff_dict:
+                continue
+            cutoffs = strat_cutoff_dict[cutoff_strata]
+            cutoffs = {"regress_pop_strat_platform_redo_regression|" + m: cutoffs[m] for m in cutoffs}
+            ht_strata = outlier_ht.filter(
+                (outlier_ht.pop == strata[0]) & (outlier_ht.platform == strata[1]) & (outlier_ht.r_insertion_deletion < 1)
+            )
+            ht_strata = ht_strata.repartition(50).checkpoint(
+                f"{tmp_dir_prefix}regress_pop_strat_platform_ht_{strata[0]}.{strata[1]}.ht",
+                _read_if_exists=read_if_exists,
+                overwrite=not read_if_exists,
+            )
+            if ht_strata.count() > 1:
+                outputs.append(widgets.Output())
+                hts.append((ht_strata, cutoffs, strata))
+
+        tab = widgets.Tab(children=outputs)
+
+        for i, (strat_ht_cutoff, output_tab) in enumerate(zip(hts, outputs[1:])):
+            ht_strata, cutoffs, strata = strat_ht_cutoff
+            ht_strata = ht_strata.select(
+                fail_filter_name, *[m[0] for m in renamed_metrics]
+            )
+            my_pair_plot(
+                ht_strata,
+                cutoffs,
+                hue=fail_filter_name,
+                output_tab=output_tab,
+                title=f"Pop: {strata[0]}, Platform: {strata[1]}",
+                file_name=f"{plot_dir_prefix}.regress_pop_strat_platform.{strata[0]}.{strata[1]}",
+                use_fig_if_exists=use_fig_if_exists,
+                add_kde_plot=add_kde_plot,
+            )
+
+            tab.set_title(i + 1, f"{strata[1]}")
+
+        display(tab)
+
+
 
 
 def pair_plot_regress_pop_platform(
@@ -1074,7 +1156,7 @@ def pair_plot_regress_pop_platform(
 ):
     custom_params = {"axes.spines.right": False, "axes.spines.top": False}
     sns.set_theme(style="ticks", rc=custom_params)
-    plt.rcParams["figure.dpi"] = 200
+    plt.rcParams["figure.dpi"] = 150
     plt.rcParams["figure.figsize"] = figsize
     strat_cutoff_dict = hl.eval(regress_pop_platform_ht.qc_metrics_stats)
     strat_cutoff_dict = {
@@ -1122,6 +1204,7 @@ def get_hist_plots_regress_pop_strat_platform(
     qc_metrics=list(outlier_metrics),
     figsize=(30, 10),
     bins=100,
+    hist_only=False,
 ):
     custom_params = {"axes.spines.right": False, "axes.spines.top": False}
     sns.set_theme(style="ticks", rc=custom_params)
@@ -1177,47 +1260,48 @@ def get_hist_plots_regress_pop_strat_platform(
 
     for i, metric in enumerate([f"{metric}_residual" for metric in qc_metrics]):
         curve_dict = {}
-        fail_table = (
-            sample_qc_fail_pd.groupby(cols)[metric].value_counts().unstack().fillna(0)
-        )
-        # fail_table = fail_table.rename_axis(mapper="None")
-        fail_table.columns = ["Pass", "Fail"]
-        fail_table["Pct_fail"] = (fail_table["Fail"] / fail_table.sum(axis=1)) * 100
-        decimals = pd.Series([0, 0, 2], index=["Pass", "Fail", "Pct_fail"])
-        fail_table["Pass"] = pd.to_numeric(fail_table["Pass"], downcast="integer")
-        fail_table["Fail"] = pd.to_numeric(fail_table["Fail"], downcast="integer")
-        fail_table = fail_table.round(2)  # (decimals)
-        tables_pop_platform.append((metric, fail_table))
+        if not hist_only:
+            fail_table = (
+                sample_qc_fail_pd.groupby(cols)[metric].value_counts().unstack().fillna(0)
+            )
+            # fail_table = fail_table.rename_axis(mapper="None")
+            fail_table.columns = ["Pass", "Fail"]
+            fail_table["Pct_fail"] = (fail_table["Fail"] / fail_table.sum(axis=1)) * 100
+            decimals = pd.Series([0, 0, 2], index=["Pass", "Fail", "Pct_fail"])
+            fail_table["Pass"] = pd.to_numeric(fail_table["Pass"], downcast="integer")
+            fail_table["Fail"] = pd.to_numeric(fail_table["Fail"], downcast="integer")
+            fail_table = fail_table.round(2)  # (decimals)
+            tables_pop_platform.append((metric, fail_table))
 
-        fail_table = (
-            sample_qc_fail_pd.groupby(["pop"])[metric]
-            .value_counts()
-            .unstack()
-            .fillna(0)
-        )
-        # fail_table = fail_table.rename_axis(mapper="None")
-        fail_table.columns = ["Pass", "Fail"]
-        fail_table["Pct_fail"] = (fail_table["Fail"] / fail_table.sum(axis=1)) * 100
-        decimals = pd.Series([0, 0, 2], index=["Pass", "Fail", "Pct_fail"])
-        fail_table["Pass"] = pd.to_numeric(fail_table["Pass"], downcast="integer")
-        fail_table["Fail"] = pd.to_numeric(fail_table["Fail"], downcast="integer")
-        fail_table = fail_table.round(2)  # (decimals)
-        tables_pop.append((metric, fail_table))
+            fail_table = (
+                sample_qc_fail_pd.groupby(["pop"])[metric]
+                .value_counts()
+                .unstack()
+                .fillna(0)
+            )
+            # fail_table = fail_table.rename_axis(mapper="None")
+            fail_table.columns = ["Pass", "Fail"]
+            fail_table["Pct_fail"] = (fail_table["Fail"] / fail_table.sum(axis=1)) * 100
+            decimals = pd.Series([0, 0, 2], index=["Pass", "Fail", "Pct_fail"])
+            fail_table["Pass"] = pd.to_numeric(fail_table["Pass"], downcast="integer")
+            fail_table["Fail"] = pd.to_numeric(fail_table["Fail"], downcast="integer")
+            fail_table = fail_table.round(2)  # (decimals)
+            tables_pop.append((metric, fail_table))
 
-        fail_table = (
-            sample_qc_fail_pd.groupby(["platform"])[metric]
-            .value_counts()
-            .unstack()
-            .fillna(0)
-        )
-        # fail_table = fail_table.rename_axis(mapper="None")
-        fail_table.columns = ["Pass", "Fail"]
-        fail_table["Pct_fail"] = (fail_table["Fail"] / fail_table.sum(axis=1)) * 100
-        decimals = pd.Series([0, 0, 2], index=["Pass", "Fail", "Pct_fail"])
-        fail_table["Pass"] = pd.to_numeric(fail_table["Pass"], downcast="integer")
-        fail_table["Fail"] = pd.to_numeric(fail_table["Fail"], downcast="integer")
-        fail_table = fail_table.round(2)  # (decimals)
-        tables_platform.append((metric, fail_table))
+            fail_table = (
+                sample_qc_fail_pd.groupby(["platform"])[metric]
+                .value_counts()
+                .unstack()
+                .fillna(0)
+            )
+            # fail_table = fail_table.rename_axis(mapper="None")
+            fail_table.columns = ["Pass", "Fail"]
+            fail_table["Pct_fail"] = (fail_table["Fail"] / fail_table.sum(axis=1)) * 100
+            decimals = pd.Series([0, 0, 2], index=["Pass", "Fail", "Pct_fail"])
+            fail_table["Pass"] = pd.to_numeric(fail_table["Pass"], downcast="integer")
+            fail_table["Fail"] = pd.to_numeric(fail_table["Fail"], downcast="integer")
+            fail_table = fail_table.round(2)  # (decimals)
+            tables_platform.append((metric, fail_table))
 
         o = outputs[i + 1]
         g = sns.FacetGrid(
@@ -1242,7 +1326,8 @@ def get_hist_plots_regress_pop_strat_platform(
 
     display(tab)
 
-    return tables_pop_platform, tables_pop, tables_platform
+    if not hist_only:
+        return tables_pop_platform, tables_pop, tables_platform
 
 
 def get_hist_plots_regress_pop_platform(
