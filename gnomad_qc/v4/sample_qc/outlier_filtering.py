@@ -518,16 +518,14 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     # annotation needs to be updated with the new medians and cutoffs for
     # 'update_metric'.
     if filtering_method == "nearest_neighbors":
-        ann_expr = {
-            "qc_metrics_stats": ht.qc_metrics_stats.annotate(
-                **{
-                    update_metric: hl.coalesce(
-                        ht_idx.qc_metrics_stats[update_metric],
-                        ht.qc_metrics_stats[update_metric],
-                    )
-                }
-            ),
-        }
+        ann_expr["qc_metrics_stats"] = ht.qc_metrics_stats.annotate(
+            **{
+                update_metric: hl.coalesce(
+                    ht_idx.qc_metrics_stats[update_metric],
+                    ht.qc_metrics_stats[update_metric],
+                )
+            }
+        )
 
     ht = ht.annotate(**ann_expr)
 
@@ -1054,7 +1052,7 @@ if __name__ == "__main__":
     nn_args.add_argument(
         "--nearest-neighbors-pop-n-pcs",
         help="Number of population PCs to use for nearest neighbor determination.",
-        default=30,
+        default=20,
         type=int,
     )
     nn_args.add_argument(
