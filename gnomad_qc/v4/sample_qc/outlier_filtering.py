@@ -140,7 +140,6 @@ def apply_filter(
         )
 
     # Apply the n_singleton median filter for the r_ti_tv_singleton filter.
-    # TODO: Add check for n_singleton in qc_metrics.
     if apply_r_ti_tv_singleton_filter:
         ht = ht.checkpoint(new_temp_file("outlier_filtering", extension="ht"))
         ann_exprs = {ann.split("_expr")[0]: expr for ann, expr in ann_exprs.items()}
@@ -397,7 +396,12 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     **kwargs: Any,
 ):
     """
-    Add summary.
+    Apply n_singleton median sample filter and update the r_ti_tv_singleton outlier filtering.
+
+    This function takes a Table (`ht`) returned from one of the filtering functions:
+    `apply_stratified_filtering_method`, `apply_regressed_filtering_method`, or
+    `apply_nearest_neighbor_filtering_method`. `ht` must have filtering information for
+    `n_singletons` and `r_ti_tv_singletons` or their residuals f
 
     :param ht:
     :param sample_qc_ht:
@@ -405,17 +409,16 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     :param ann_exprs:
     :return:
     """
-    # TODO: Add filtering_method check.
+    filtering_methods = {"stratified", "regressed", "nearest_neighbors"}
+    if filtering_method not in filtering_methods:
+        raise ValueError(
+            f"Filtering method must be one of: {','.join(filtering_methods)}"
+        )
+
     # Setup repeatedly used variables.
     median_filter_metric = "n_singleton"
     update_metric = "r_ti_tv_singleton"
     filtering_qc_metrics = [update_metric]
-    empty_stats_struct = hl.struct(
-        median=hl.missing(hl.tfloat64),
-        mad=hl.missing(hl.tfloat64),
-        lower=hl.missing(hl.tfloat64),
-        upper=hl.missing(hl.tfloat64),
-    )
 
     # Annotate the sample QC Table with annotations provided in 'ann_expr'.
     sample_qc_ht = sample_qc_ht.annotate(**ann_exprs)
@@ -477,24 +480,34 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     # For all filtering methods other than nearest_neighbors, the global
     # 'qc_metrics_stats' needs to be updated for the 'update_metric'.
     if filtering_method != "nearest_neighbors":
-        updated_stats = hl.eval(filter_ht.qc_metrics_stats)
+        updated_stats = filter_ht.index_globals().qc_metrics_stats
         if strata is None:
-            stats = dict(qc_metrics_stats)
-            stats[update_metric] = updated_stats[update_metric]
-            qc_metrics_stats = hl.struct(**stats)
+            ann_global_expr = {update_metric: updated_stats[update_metric]}
         else:
-            for strat in qc_metrics_stats:
-                stats = dict(qc_metrics_stats[strat])
-                update_metric_stat = empty_stats_struct
-                if strat in updated_stats:
-                    update_metric_stat = updated_stats[strat][update_metric]
-                stats[update_metric] = update_metric_stat
-                for metric in stats:
-                    if stats[metric].median is None:
-                        stats[metric] = empty_stats_struct
-                qc_metrics_stats[strat] = hl.struct(**stats)
+            ann_global_expr = {
+                strat: {
+                    **ht.qc_metrics_stats[strat],
+                    **{
+                        update_metric: updated_stats[strat].get(
+                            update_metric,
+                            hl.struct(
+                                median=hl.missing(hl.tfloat64),
+                                mad=hl.missing(hl.tfloat64),
+                                lower=hl.missing(hl.tfloat64),
+                                upper=hl.missing(hl.tfloat64),
+                            ),
+                        )
+                    },
+                }
+                for strat in hl.eval(ht.qc_metrics_stats.keys())
+                if strat in hl.eval(updated_stats.keys())
+            }
 
-        ht = ht.annotate_globals(qc_metrics_stats=hl.literal(qc_metrics_stats))
+        print(ht.qc_metrics_stats)
+        print(ann_global_expr)
+        ht = ht.annotate_globals(
+            qc_metrics_stats=hl.struct(**ht.qc_metrics_stats, **ann_global_expr)
+        )
 
     # For all filtering methods: add a sample annotation indicating whether the sample
     # was included in the updated outlier filtering, update the 'fail_{update_metric}'
@@ -841,10 +854,16 @@ def main(args):
     )
     overwrite = args.overwrite
     filtering_qc_metrics = args.filtering_qc_metrics
-    apply_r_ti_tv_singleton_filter = (
-        args.apply_n_singleton_filter_to_r_ti_tv_singleton
-        and ("r_ti_tv_singleton" in filtering_qc_metrics)
-    )
+    apply_r_ti_tv_singleton_filter = args.apply_n_singleton_filter_to_r_ti_tv_singleton
+
+    if args.apply_n_singleton_filter_to_r_ti_tv_singleton:
+        err_msg = (
+            "'--apply-n-singleton-filter-to-r-ti-tv-singleton' flag is set, but {} is "
+            "not in requested 'filtering_qc_metrics'!"
+        )
+        for metric in {"n_singleton", "r_ti_tv_singleton"}:
+            if metric not in filtering_qc_metrics:
+                raise ValueError(err_msg.format(metric))
 
     outlier_resources = get_outlier_filtering_resources(args)
     pop_ht = outlier_resources.pop_ht.ht()
