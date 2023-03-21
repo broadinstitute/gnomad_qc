@@ -3,7 +3,7 @@ import argparse
 import logging
 import math
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import hail as hl
 from gnomad.sample_qc.filtering import (
@@ -14,7 +14,10 @@ from gnomad.sample_qc.filtering import (
 from gnomad.utils.slack import slack_notifications
 from hail.utils.misc import new_temp_file
 
-from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_scores,
@@ -81,11 +84,78 @@ def get_sample_qc_ht(
     return sample_qc_ht.select_globals()
 
 
+def apply_filter(
+    sample_qc_ht: hl.Table,
+    qc_metrics: List[str],
+    filtering_method: str,
+    apply_r_ti_tv_singleton_filter: bool = False,
+    pop_scores_ht: Optional[hl.Table] = None,
+    pop_ht: Optional[hl.Table] = None,
+    platform_ht: Optional[hl.Table] = None,
+    project_meta_ht: Optional[hl.Table] = None,
+    **kwargs: Any,
+) -> hl.Table:
+    """
+    Apply one of stratified, regressed, or nearest neighbors outlier filtering method.
+
+    :param sample_qc_ht:
+    :param qc_metrics:
+    :param filtering_method:
+    :param apply_r_ti_tv_singleton_filter:
+    :param pop_scores_ht:
+    :param pop_ht:
+    :param platform_ht:
+    :param project_meta_ht:
+    :param kwargs:
+    :return:
+    """
+    # Create dict of expression parameters needed in filtering method.
+    ann_exprs = {}
+    if pop_ht is not None:
+        ann_exprs["pop_expr"] = pop_ht[sample_qc_ht.key].pop
+    if platform_ht is not None:
+        ann_exprs["platform_expr"] = platform_ht[sample_qc_ht.key].qc_platform
+        if filtering_method == "regressed":
+            ann_exprs["platform_scores_expr"] = platform_ht[sample_qc_ht.key].scores
+    if pop_scores_ht is not None:
+        ann_exprs["pop_scores_expr"] = pop_scores_ht[sample_qc_ht.key].scores
+    if project_meta_ht is not None:
+        ann_exprs["releasable_expr"] = project_meta_ht[sample_qc_ht.key].releasable
+
+    # Run filtering method using defined expressions, and any other passed parameters.
+    if filtering_method == "stratified":
+        ht = apply_stratified_filtering_method(
+            sample_qc_ht, qc_metrics, **ann_exprs, **kwargs
+        )
+    elif filtering_method == "regressed":
+        ht = apply_regressed_filtering_method(
+            sample_qc_ht, qc_metrics, **ann_exprs, **kwargs
+        )
+    elif filtering_method == "nearest_neighbors":
+        ht = apply_nearest_neighbor_filtering_method(sample_qc_ht, qc_metrics, **kwargs)
+    else:
+        raise ValueError(
+            "'filtering_method' must be one of: 'stratified', 'regressed', "
+            "'nearest_neighbors'!"
+        )
+
+    # Apply the n_singleton median filter for the r_ti_tv_singleton filter.
+    # TODO: Add check for n_singleton in qc_metrics.
+    if apply_r_ti_tv_singleton_filter:
+        ht = ht.checkpoint(new_temp_file("outlier_filtering", extension="ht"))
+        ann_exprs = {ann.split("_expr")[0]: expr for ann, expr in ann_exprs.items()}
+        ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
+            ht, sample_qc_ht, filtering_method, ann_exprs, **kwargs
+        )
+
+    return ht
+
+
 def apply_stratified_filtering_method(
     sample_qc_ht: hl.Table,
     qc_metrics: List[str],
-    pop_ht: Optional[hl.Table] = None,
-    platform_ht: Optional[hl.Table] = None,
+    pop_expr: Optional[hl.expr.StringExpression] = None,
+    platform_expr: Optional[hl.expr.StringExpression] = None,
 ) -> hl.Table:
     """
     Use population stratified QC metrics to determine what samples are outliers and should be filtered.
@@ -99,28 +169,29 @@ def apply_stratified_filtering_method(
 
         Default left and right MAD for `compute_stratified_metrics_filter` is 4. We
         modify this for 'n_singleton' to be (math.inf, 8.0) and for
-        'r_het_hom_var' and 'r_ti_tv_singleton' to be (math.inf, 4.0). The
-        math.inf (infinity) is used to prevent a lower cutoff for these metrics.
+        'r_het_hom_var' to be (math.inf, 4.0). The math.inf (infinity) is used to
+        prevent a lower cutoff for these metrics.
 
     :param sample_qc_ht: Sample QC HT.
     :param qc_metrics: Specific metrics to use for outlier detection.
-    :param pop_ht: Optional Table with population assignment annotation 'pop'.
-    :param platform_ht: Optional Table with platform annotation 'qc_platform'.
+    :param pop_expr: Optional expression with population assignment.
+    :param platform_expr: Optional expression with platform assignment.
     :return: Table with stratified metrics and filters.
     """
-    if pop_ht is None and platform_ht is None:
+    if pop_expr is None and platform_expr is None:
         raise ValueError(
-            "At least one of 'pop_scores_ht' or 'platform_ht' must be specified!"
+            "At least one of 'pop_expr' or 'platform_expr' must be specified!"
         )
     logger.info(
         "Computing QC metrics outlier filters with stratification, using metrics: %s",
         ", ".join(qc_metrics),
     )
     strata = {}
-    if pop_ht is not None:
-        strata["pop"] = pop_ht[sample_qc_ht.key].pop
-    if platform_ht is not None:
-        strata["platform"] = platform_ht[sample_qc_ht.key].qc_platform
+    if pop_expr is not None:
+        strata["pop"] = pop_expr
+    if platform_expr is not None:
+        strata["platform"] = platform_expr
+
     logger.info("Outlier filtering is stratified by: %s", ", ".join(strata.keys()))
     filter_ht = compute_stratified_metrics_filter(
         sample_qc_ht,
@@ -138,24 +209,25 @@ def apply_stratified_filtering_method(
 def apply_regressed_filtering_method(
     sample_qc_ht: hl.Table,
     qc_metrics: List[str],
-    pop_ht: Optional[hl.Table] = None,
-    platform_ht: Optional[hl.Table] = None,
+    pop_scores_expr: Optional[hl.expr.ArrayExpression] = None,
+    platform_scores_expr: Optional[hl.expr.ArrayExpression] = None,
+    platform_expr: Optional[hl.expr.StringExpression] = None,
+    releasable_expr: Optional[hl.expr.BooleanExpression] = None,
     regress_pop_n_pcs: Optional[int] = 30,
     regress_platform_n_pcs: Optional[int] = 9,
     regress_per_platform: bool = False,
     regression_include_unreleasable: bool = False,
-    project_meta_ht: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
     Compute sample QC metrics residuals after regressing out specified PCs and determine what samples are outliers that should be filtered.
 
     The following are all possible filtering options:
-        - Include `pop_ht`: Regress population PCs only and determine outliers for each
-          metric in `qc_metrics`.
-        - Include `platform_ht`: Regress platform PCs only and determine outliers for
-          each metric in `qc_metrics`.
-        - Include `pop_ht` and `platform_ht`: Regress both population PCs and platform
-          PCs and determine outliers for each metric in `qc_metrics`.
+        - Include `pop_scores_expr`: Regress population PCs only and determine outliers
+          for each metric in `qc_metrics`.
+        - Include `platform_scores_expr`: Regress platform PCs only and determine
+          outliers for each metric in `qc_metrics`.
+        - Include `pop_scores_expr` and `platform_scores_expr`: Regress both population
+          PCs and platform PCs and determine outliers for each metric in `qc_metrics`.
         - For all of the above filtering options, there is also a `regress_per_platform`
           option, which will stratify the dataset by platform before performing the
           regression and outlier filtering.
@@ -170,14 +242,18 @@ def apply_regressed_filtering_method(
 
         Default left and right MAD for `compute_stratified_metrics_filter` is 4. We
         modify this for 'n_singleton_residual' to be (math.inf, 8.0) and for
-        'r_het_hom_var_residual' and 'r_ti_tv_singleton_residual' to be (math.inf, 4.0).
-        The math.inf (infinity) is used to prevent a lower cutoff for these metrics.
+        'r_het_hom_var_residual' to be (math.inf, 4.0). The math.inf (infinity) is used
+        to prevent a lower cutoff for these metrics.
 
     :param sample_qc_ht: Sample QC HT.
     :param qc_metrics: Specific metrics to use for outlier detection.
-    :param pop_ht: Optional Table with population PCA scores annotation 'scores'.
-    :param platform_ht: Optional Table with platform annotation 'qc_platform' and
-        platform PCA scores annotation 'scores'.
+    :param pop_scores_expr: Optional expression with population PCA scores.
+    :param platform_scores_expr: Optional expression with platform PCA scores.
+    :param platform_expr: Optional expression with platform assignment.
+    :param releasable_expr: Optional expression indicating whether a sample is
+        releasable. This must be supplied if 'regression_include_unreleasable' is False.
+        By default, this expression should be included (because the default for
+        `regression_include_unreleasable` is False).
     :param regress_pop_n_pcs: Number of population PCA scores to use in regression.
         Default is 30.
     :param regress_platform_n_pcs: Number of platform PCA scores to use in regression.
@@ -186,21 +262,20 @@ def apply_regressed_filtering_method(
         Default is False.
     :param regression_include_unreleasable: Whether to include unreleasable samples in
         the regression. Default is False.
-    :param project_meta_ht: Optional project meta Table that must be supplied if
-        'regression_include_unreleasable' is False. By default, this Table should be
-        included (because the default for `regression_include_unreleasable` is False).
     :return: Table with regression residuals and outlier filters.
     """
-    if pop_ht is None and platform_ht is None:
-        raise ValueError("At least one of 'pop_ht' or 'platform_ht' must be specified!")
-    if regress_per_platform and (pop_ht is None or platform_ht is None):
+    if pop_scores_expr is None and platform_expr is None:
         raise ValueError(
-            "When using 'per_platform', 'pop_ht' and 'platform_ht' must "
-            "both be specified!"
+            "At least one of 'pop_scores_expr' or 'platform_scores_expr' must be "
+            "specified!"
         )
-    if not regression_include_unreleasable and project_meta_ht is None:
+    if regress_per_platform and platform_expr is None:
         raise ValueError(
-            "When 'regression_include_unreleasable' is False, 'project_meta_ht' must "
+            "When using 'regress_per_platform', 'platform_expr' must be specified!"
+        )
+    if not regression_include_unreleasable and releasable_expr is None:
+        raise ValueError(
+            "When 'regression_include_unreleasable' is False, 'releasable_expr' must "
             "be specified!"
         )
     logger.info(
@@ -210,25 +285,23 @@ def apply_regressed_filtering_method(
     ann_expr = {"scores": hl.empty_array(hl.tfloat64)}
     global_expr = {}
     log_str = []
-    if pop_ht is not None:
+    if pop_scores_expr is not None:
         ann_expr["scores"] = ann_expr["scores"].extend(
-            pop_ht[sample_qc_ht.key].scores[:regress_pop_n_pcs]
+            pop_scores_expr[:regress_pop_n_pcs]
         )
         log_str.append("pop PCs")
         global_expr["regress_pop_n_pcs"] = regress_pop_n_pcs
-    if platform_ht is not None:
-        if regress_per_platform:
-            ann_expr["platform"] = platform_ht[sample_qc_ht.key].qc_platform
-            log_str.append("is stratified by platform")
-        else:
-            ann_expr["scores"] = ann_expr["scores"].extend(
-                platform_ht[sample_qc_ht.key].scores[:regress_platform_n_pcs]
-            )
-            log_str.append("platform PCs")
-            global_expr["regress_platform_n_pcs"] = regress_platform_n_pcs
-
+    if regress_per_platform:
+        ann_expr["platform"] = platform_expr
+        log_str.append("is stratified by platform")
+    elif platform_scores_expr is not None:
+        ann_expr["scores"] = ann_expr["scores"].extend(
+            platform_scores_expr[:regress_platform_n_pcs]
+        )
+        log_str.append("platform PCs")
+        global_expr["regress_platform_n_pcs"] = regress_platform_n_pcs
     if not regression_include_unreleasable:
-        ann_expr["releasable"] = project_meta_ht[sample_qc_ht.key].releasable
+        ann_expr["releasable"] = releasable_expr
 
     sample_qc_ht = sample_qc_ht.annotate(**ann_expr)
 
@@ -256,7 +329,6 @@ def apply_regressed_filtering_method(
         if regress_per_platform
         else None,
     )
-
     sample_qc_res_ht = sample_qc_res_ht.annotate(**filter_ht[sample_qc_res_ht.key])
     filter_ht = sample_qc_res_ht.select_globals(
         **filter_ht.index_globals(),
@@ -321,11 +393,8 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     ht: hl.Table,
     sample_qc_ht: hl.Table,
     filtering_method: str,
-    pop_ht: hl.Table = None,
-    platform_ht: hl.Table = None,
-    pop_scores_ht: hl.Table = None,
-    project_meta_ht: hl.Table = None,
-    nn_ht: hl.Table = None,
+    ann_exprs: Dict[str, hl.expr.Expression],
+    **kwargs: Any,
 ):
     """
     Add summary.
@@ -333,14 +402,11 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     :param ht:
     :param sample_qc_ht:
     :param filtering_method:
-    :param pop_ht:
-    :param platform_ht:
-    :param pop_scores_ht:
-    :param project_meta_ht:
-    :param nn_ht:
+    :param ann_exprs:
     :return:
     """
-    # TODO: add check for filtering method options
+    # TODO: Add filtering_method check.
+    # Setup repeatedly used variables.
     median_filter_metric = "n_singleton"
     update_metric = "r_ti_tv_singleton"
     filtering_qc_metrics = [update_metric]
@@ -350,15 +416,39 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
         lower=hl.missing(hl.tfloat64),
         upper=hl.missing(hl.tfloat64),
     )
-    ht_globals = hl.eval(ht.index_globals())
 
-    if filtering_method != "nearest_neighbors":
+    # Annotate the sample QC Table with annotations provided in 'ann_expr'.
+    sample_qc_ht = sample_qc_ht.annotate(**ann_exprs)
+
+    # Extract the strata annotations from input Table globals (pop and/or platform
+    # if present).
+    ht_globals = hl.eval(ht.index_globals())
+    if "strata" in ht_globals:
+        strata = ht_globals["strata"]
+    else:
+        strata = None
+
+    # If filtering method is 'nearest_neighbors', the 'qc_metrics_stats' is per sample,
+    # so it is stored in the rows of 'ht' instead of the globals.
+    if filtering_method == "nearest_neighbors":
+        qc_metrics_stats = ht[sample_qc_ht.key].qc_metrics_stats
+    else:
         qc_metrics_stats = ht_globals["qc_metrics_stats"]
+
+    # If the filtering method is 'regressed', the metrics will have '_residual' on the
+    # end of the annotation name and be stored in 'ht' instead of 'sample_qc_ht'.
     if filtering_method == "regressed":
         median_filter_metric += "_residual"
+        median_filter_metric_expr = ht[sample_qc_ht.key][median_filter_metric]
         update_metric += "_residual"
+    else:
+        median_filter_metric_expr = sample_qc_ht[median_filter_metric]
 
-    if filtering_method == "stratified":
+    # Determine the expression for median cutoffs of 'median_filter_metric'.
+    # When stratification is applied, 'qc_metrics_stats' has a median value per strata.
+    if median_filter_metric in qc_metrics_stats:
+        median_expr = qc_metrics_stats[median_filter_metric].median
+    else:
         medians = hl.literal(
             {
                 strat: cutoff_dict[median_filter_metric].median
@@ -366,145 +456,78 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
                 if cutoff_dict[median_filter_metric].median is not None
             }
         )
-        sample_qc_ht = sample_qc_ht.annotate(
-            median=medians.get((sample_qc_ht.pop, sample_qc_ht.platform))
-        )
-        sample_qc_ht = sample_qc_ht.filter(
-            hl.is_defined(sample_qc_ht.median)
-            & (sample_qc_ht[median_filter_metric] > sample_qc_ht.median)
-        )
+        median_expr = medians.get(hl.tuple([sample_qc_ht[x] for x in strata]))
 
-        new_ht = apply_stratified_filtering_method(
-            sample_qc_ht,
-            filtering_qc_metrics,
-            pop_ht=pop_ht,
-            platform_ht=platform_ht,
-        )
+    # Filter 'sample_qc_ht' to only samples that have 'median_filter_metric' greater
+    # than the 'median_expr'. These are the only samples that should be included in the
+    # updated outlier filtering.
+    sample_qc_ht = sample_qc_ht.filter(
+        median_filter_metric_expr > median_expr
+    ).select_globals()
 
-        new_qc_metrics_stats = hl.eval(new_ht.qc_metrics_stats)
-        for strata in qc_metrics_stats:
-            stats = dict(qc_metrics_stats[strata])
-            if strata in new_qc_metrics_stats:
-                for m, v in new_qc_metrics_stats[strata].items():
-                    stats[strata][m] = v
-            else:
-                stats[strata][update_metric] = empty_stats_struct
-            qc_metrics_stats[strata] = hl.struct(**stats)
+    filter_ht = apply_filter(
+        filtering_method=filtering_method,
+        sample_qc_ht=sample_qc_ht,
+        qc_metrics=filtering_qc_metrics,
+        apply_r_ti_tv_singleton_filter=False,
+        **{f"{ann}_expr": sample_qc_ht[ann] for ann in ann_exprs},
+        **kwargs,
+    )
 
-        ht = ht.annotate_globals(qc_metrics_stats=hl.literal(qc_metrics_stats))
-
-        new_idx = new_ht[ht.key]
-        ann_expr = {
-            f"{median_filter_metric}_median_filtered": hl.is_defined(new_idx),
-            f"fail_{update_metric}": hl.coalesce(
-                new_idx[f"fail_{update_metric}"], False
-            ),
-            "qc_metrics_filters": (
-                (ht.qc_metrics_filters - hl.set(filtering_qc_metrics))
-                | hl.coalesce(new_idx.qc_metrics_filters, hl.empty_set(hl.tstr))
-            ),
-        }
-
-    elif filtering_method == "regressed":
-        platform_stratified = ht_globals.get("regress_per_platform")
-
-        if platform_stratified:
-            medians = hl.literal(
-                {
-                    strat: cutoff_dict[median_filter_metric].median
-                    for strat, cutoff_dict in qc_metrics_stats.items()
-                    if cutoff_dict[median_filter_metric].median is not None
-                }
-            )
-            sample_qc_ht = ht.annotate(
-                median=medians.get((sample_qc_ht[ht.key].platform,))
-            )
-            sample_qc_ht = sample_qc_ht.filter(
-                hl.is_defined(sample_qc_ht.median)
-                & (sample_qc_ht[median_filter_metric] > sample_qc_ht.median)
-            )
-        else:
-            medians = qc_metrics_stats[median_filter_metric].median
-            sample_qc_ht = ht.filter(ht[median_filter_metric] > medians)
-
-        new_ht = apply_regressed_filtering_method(
-            sample_qc_ht.select_globals(),
-            filtering_qc_metrics,
-            pop_ht=pop_scores_ht,
-            platform_ht=platform_ht,
-            regress_pop_n_pcs=ht_globals.get("regress_pop_n_pcs"),
-            regress_platform_n_pcs=ht_globals.get("regress_platform_n_pcs"),
-            regress_per_platform=ht_globals.get("regress_per_platform"),
-            regression_include_unreleasable=False,
-            project_meta_ht=project_meta_ht,
-        )
-
-        if platform_stratified:
-            new_qc_metrics_stats = hl.eval(new_ht.qc_metrics_stats)
-            for strata in qc_metrics_stats:
-                stats = dict(qc_metrics_stats[strata])
-                if strata in new_qc_metrics_stats:
-                    for m, v in new_qc_metrics_stats[strata].items():
-                        stats[strata][m] = v
-                else:
-                    stats[strata][update_metric] = empty_stats_struct
-                for m in strata:
-                    if strata[m].median is None:
-                        strata[m] = empty_stats_struct
-                qc_metrics_stats[strata] = hl.struct(**stats)
-
-        else:
-            new_qc_metrics_stats = hl.eval(new_ht.qc_metrics_stats)
+    # For all filtering methods other than nearest_neighbors, the global
+    # 'qc_metrics_stats' needs to be updated for the 'update_metric'.
+    if filtering_method != "nearest_neighbors":
+        updated_stats = hl.eval(filter_ht.qc_metrics_stats)
+        if strata is None:
             stats = dict(qc_metrics_stats)
-            stats[update_metric] = new_qc_metrics_stats[update_metric]
+            stats[update_metric] = updated_stats[update_metric]
             qc_metrics_stats = hl.struct(**stats)
+        else:
+            for strat in qc_metrics_stats:
+                stats = dict(qc_metrics_stats[strat])
+                update_metric_stat = empty_stats_struct
+                if strat in updated_stats:
+                    update_metric_stat = updated_stats[strat][update_metric]
+                stats[update_metric] = update_metric_stat
+                for metric in stats:
+                    if stats[metric].median is None:
+                        stats[metric] = empty_stats_struct
+                qc_metrics_stats[strat] = hl.struct(**stats)
 
         ht = ht.annotate_globals(qc_metrics_stats=hl.literal(qc_metrics_stats))
 
-        new_idx = new_ht[ht.key]
-        ann_expr = {
-            f"{median_filter_metric}_median_filtered": hl.is_defined(new_idx),
-            f"fail_{update_metric}": hl.coalesce(
-                new_idx[f"fail_{update_metric}"], False
-            ),
-            update_metric: new_idx[update_metric],
-            "qc_metrics_filters": (
-                (ht.qc_metrics_filters - hl.set({update_metric}))
-                | hl.coalesce(new_idx.qc_metrics_filters, hl.empty_set(hl.tstr))
-            ),
-        }
+    # For all filtering methods: add a sample annotation indicating whether the sample
+    # was included in the updated outlier filtering, update the 'fail_{update_metric}'
+    # annotation, and remove 'update_metric' from 'qc_metrics_filters' if no longer
+    # filtered or add it if the sample would now be filtered.
+    ht_idx = filter_ht[ht.key]
+    ann_expr = {
+        f"{median_filter_metric}_median_filtered": hl.is_defined(ht_idx),
+        f"fail_{update_metric}": hl.coalesce(ht_idx[f"fail_{update_metric}"], False),
+        "qc_metrics_filters": (
+            (ht.qc_metrics_filters - hl.set({update_metric}))
+            | hl.coalesce(ht_idx.qc_metrics_filters, hl.empty_set(hl.tstr))
+        ),
+    }
 
-    elif filtering_method == "nearest_neighbors":
-        sample_qc_ht = sample_qc_ht.filter(
-            sample_qc_ht[median_filter_metric]
-            > ht[sample_qc_ht.key].qc_metrics_stats[median_filter_metric].median
-        )
-        new_ht = apply_nearest_neighbor_filtering_method(
-            sample_qc_ht,
-            filtering_qc_metrics,
-            nn_ht=nn_ht,
-        )
-        new_idx = new_ht[ht.key]
+    # For the 'regressed' filtering method, residuals were recomputed, so update them.
+    if filtering_method == "regressed":
+        ann_expr[update_metric] = ht_idx[update_metric]
+
+    # For the 'nearest_neighbors' filtering method, the per sample 'qc_metrics_stats'
+    # annotation needs to be updated with the new medians and cutoffs for
+    # 'update_metric'.
+    if filtering_method == "nearest_neighbors":
         ann_expr = {
-            f"{median_filter_metric}_median_filtered": hl.is_defined(new_idx),
-            f"fail_{update_metric}": hl.coalesce(
-                new_idx[f"fail_{update_metric}"], False
-            ),
-            "qc_metrics_filters": (
-                (ht.qc_metrics_filters - hl.set({update_metric}))
-                | hl.coalesce(new_idx.qc_metrics_filters, hl.empty_set(hl.tstr))
-            ),
             "qc_metrics_stats": ht.qc_metrics_stats.annotate(
                 **{
                     update_metric: hl.coalesce(
-                        new_idx.qc_metrics_stats[update_metric],
+                        ht_idx.qc_metrics_stats[update_metric],
                         ht.qc_metrics_stats[update_metric],
                     )
                 }
             ),
         }
-    else:
-        raise ValueError("Method not valid")
 
     ht = ht.annotate(**ann_expr)
 
@@ -677,6 +700,140 @@ def create_finalized_outlier_filter_ht(
     return ht
 
 
+def get_outlier_filtering_resources(
+    args: argparse.Namespace,
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the outlier pipeline.
+
+    :param args: argparse Namespace for arguments passed to the outlier_filtering.py
+        script.
+    :return: PipelineResourceCollection containing resources for all steps of the
+        outlier filtering pipeline.
+    """
+    test = args.test
+    overwrite = args.overwrite
+    include_unreleasable_samples = args.regression_include_unreleasable
+
+    # Adding resources from previous scripts that are used by multiple steps in the
+    # outlier filtering pipeline.
+    sample_qc_ht = get_sample_qc("under_three_alt_alleles")
+
+    pop_ht = get_pop_ht()
+    pop_scores_ht = ancestry_pca_scores(
+        include_unreleasable_samples=include_unreleasable_samples
+    )
+
+    sample_qc_input = {
+        "hard_filters.py --sample-qc": {"sample_qc_ht": sample_qc_ht},
+    }
+    pop_scores_input = {
+        "assign_ancestry.py --run-pca": {"pop_scores_ht": pop_scores_ht}
+    }
+    pop_assign_input = {"assign_ancestry.py --assign-pops": {"pop_ht": pop_ht}}
+    platform_input = {
+        "platform_inference.py --assign-platforms": {"platform_ht": platform}
+    }
+    joint_qc_meta_input = {
+        "generate_qc_mt.py --generate-qc-meta": {"joint_qc_meta": joint_qc_meta}
+    }
+
+    # Initialize outlier filtering pipeline resource collection.
+    outlier_filtering_pipeline = PipelineResourceCollection(
+        pipeline_name="relatedness",
+        pipeline_resources={
+            "pop_scores_ht": pop_scores_ht,
+            "pop_ht": pop_ht,
+            "platform_ht": platform,
+            "joint_qc_meta": joint_qc_meta,
+            "sample_qc_ht": sample_qc_ht,
+        },
+        overwrite=overwrite,
+    )
+
+    # Create resource collection for each step of the outlier filtering pipeline.
+    apply_regressed_filters = PipelineStepResourceCollection(
+        "--apply-regressed-filters",
+        output_resources={
+            "regressed_filter_ht": regressed_filtering(
+                test=test,
+                pop_pc_regressed=args.regress_population,
+                platform_pc_regressed=args.regress_platform,
+                platform_stratified=args.regress_per_platform,
+                include_unreleasable_samples=include_unreleasable_samples,
+            )
+        },
+        input_resources={
+            **sample_qc_input,
+            **pop_scores_input,
+            **pop_assign_input,
+            **platform_input,
+            **joint_qc_meta_input,
+        },
+    )
+    apply_stratified_filters = PipelineStepResourceCollection(
+        "--apply-stratified-filters",
+        output_resources={
+            "stratified_filter_ht": stratified_filtering(
+                test=test,
+                pop_stratified=args.stratify_population,
+                platform_stratified=args.stratify_platform,
+            )
+        },
+        input_resources={**sample_qc_input, **pop_assign_input, **platform_input},
+    )
+    determine_nearest_neighbors = PipelineStepResourceCollection(
+        "--determine-nearest-neighbors",
+        output_resources={
+            "nn_ht": nearest_neighbors(
+                test=test,
+                platform_stratified=args.nearest_neighbors_per_platform,
+                approximation=args.use_nearest_neighbors_approximation,
+            )
+        },
+        input_resources={**sample_qc_input, **pop_assign_input, **platform_input},
+    )
+    apply_nearest_neighbor_filters = PipelineStepResourceCollection(
+        "--apply-nearest-neighbor-filters",
+        output_resources={"nn_filter_ht": nearest_neighbors_filtering(test=test)},
+        pipeline_input_steps=[determine_nearest_neighbors],
+        add_input_resources=sample_qc_input,
+    )
+
+    finalized_input_steps = []
+    if args.apply_regressed_filters:
+        finalized_input_steps.append(apply_regressed_filters)
+    if args.apply_stratified_filters:
+        finalized_input_steps.append(apply_stratified_filters)
+    if args.apply_nearest_neighbor_filters:
+        finalized_input_steps.append(apply_nearest_neighbor_filters)
+
+    if len(finalized_input_steps) == 0:
+        raise ValueError(
+            "At least one filtering method and relevant options must be supplied "
+            "when using '--create-finalized-outlier-filter'"
+        )
+
+    create_finalized_outlier_filter = PipelineStepResourceCollection(
+        "--create-finalized-outlier-filter",
+        output_resources={"finalized_ht": finalized_outlier_filtering(test=test)},
+        pipeline_input_steps=finalized_input_steps,
+    )
+
+    # Add all steps to the outlier filtering pipeline resource collection.
+    outlier_filtering_pipeline.add_steps(
+        {
+            "apply_regressed_filters": apply_regressed_filters,
+            "apply_stratified_filters": apply_stratified_filters,
+            "determine_nearest_neighbors": determine_nearest_neighbors,
+            "apply_nearest_neighbor_filters": apply_nearest_neighbor_filters,
+            "create_finalized_outlier_filter": create_finalized_outlier_filter,
+        }
+    )
+
+    return outlier_filtering_pipeline
+
+
 def main(args):
     """Determine sample QC metric outliers that should be filtered."""
     hl.init(
@@ -684,131 +841,63 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    test = args.test
     overwrite = args.overwrite
     filtering_qc_metrics = args.filtering_qc_metrics
     apply_r_ti_tv_singleton_filter = (
         args.apply_n_singleton_filter_to_r_ti_tv_singleton
         and ("r_ti_tv_singleton" in filtering_qc_metrics)
     )
-    create_finalized_outlier_filter = args.create_finalized_outlier_filter
-    sample_qc_ht = get_sample_qc("under_three_alt_alleles")
-    pop_ht = get_pop_ht()
-    include_unreleasable_samples = args.regression_include_unreleasable
-    pop_scores_ht = ancestry_pca_scores(
-        include_unreleasable_samples=include_unreleasable_samples
-    )
-    platform_ht = platform
-    nn_per_platform = args.nearest_neighbors_per_platform
-    nn_approximation = args.use_nearest_neighbors_approximation
-    nn_ht = nearest_neighbors(
-        test=test,
-        platform_stratified=nn_per_platform,
-        approximation=nn_approximation,
-    )
 
-    check_resource_existence(
-        input_step_resources={
-            "hard_filters.py --sample-qc": [sample_qc_ht],
-        }
+    outlier_resources = get_outlier_filtering_resources(args)
+    pop_ht = outlier_resources.pop_ht.ht()
+    platform_ht = outlier_resources.platform_ht.ht()
+    pop_scores_ht = outlier_resources.pop_scores_ht.ht()
+    joint_qc_meta_ht = outlier_resources.joint_qc_meta.ht()
+    sample_qc_ht = get_sample_qc_ht(
+        outlier_resources.sample_qc_ht.ht(), test=args.test, seed=args.seed
     )
-    sample_qc_ht = get_sample_qc_ht(sample_qc_ht.ht(), test=test, seed=args.seed)
-    finalized_outlier_input_resources = {}
 
     if args.apply_regressed_filters:
-        regress_pop_n_pcs = args.regress_pop_n_pcs
-        regress_platform_n_pcs = args.regress_platform_n_pcs
-        regress_per_platform = args.regress_per_platform
-        regress_population = args.regress_population
-        regress_platform = args.regress_platform
-        output = regressed_filtering(
-            test=test,
-            pop_pc_regressed=regress_population,
-            platform_pc_regressed=regress_platform,
-            platform_stratified=regress_per_platform,
-            include_unreleasable_samples=include_unreleasable_samples,
-        )
-        if create_finalized_outlier_filter:
-            finalized_outlier_input_resources["--apply-regressed-filters"] = [output]
-        else:
-            check_resource_existence(
-                input_step_resources={
-                    "assign_ancestry.py --run-pca": [pop_scores_ht],
-                    "assign_ancestry.py --assign-pops": [platform_ht],
-                    "platform_inference.py --assign-platforms": [joint_qc_meta],
-                },
-                output_step_resources={"--apply-regressed-filters": [output]},
-                overwrite=overwrite,
-            )
-            if not regress_population:
-                regress_pop_n_pcs = None
-            if not regress_platform:
-                regress_platform_n_pcs = None
+        res = outlier_resources.apply_regressed_filters
+        res.check_resource_existence()
 
-            ht = apply_regressed_filtering_method(
-                sample_qc_ht,
-                filtering_qc_metrics,
-                pop_ht=pop_scores_ht.ht(),
-                platform_ht=platform_ht.ht(),
-                regress_pop_n_pcs=regress_pop_n_pcs,
-                regress_platform_n_pcs=regress_platform_n_pcs,
-                regress_per_platform=regress_per_platform,
-                regression_include_unreleasable=include_unreleasable_samples,
-                project_meta_ht=joint_qc_meta.ht(),
-            )
-            if apply_r_ti_tv_singleton_filter:
-                ht = apply_n_singleton_filter_to_r_ti_tv_singleton(ht)
-            ht.write(output.path, overwrite=overwrite)
+        apply_filter(
+            filtering_method="regressed",
+            apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
+            sample_qc_ht=sample_qc_ht,
+            qc_metrics=filtering_qc_metrics,
+            pop_scores_ht=pop_scores_ht,
+            platform_ht=platform_ht,
+            regress_pop_n_pcs=(
+                args.regress_pop_n_pcs if args.regress_population else None
+            ),
+            regress_platform_n_pcs=(
+                args.regress_platform_n_pcs if args.regress_platform else None
+            ),
+            regress_per_platform=args.regress_per_platform,
+            regression_include_unreleasable=args.regression_include_unreleasable,
+            project_meta_ht=joint_qc_meta_ht,
+        ).write(res.regressed_filter_ht.path, overwrite=overwrite)
 
     if args.apply_stratified_filters:
-        stratify_population = args.stratify_population
-        stratify_platform = args.stratify_platform
-        output = stratified_filtering(
-            test=test,
-            pop_stratified=stratify_population,
-            platform_stratified=stratify_platform,
-        )
-        if create_finalized_outlier_filter:
-            finalized_outlier_input_resources["--apply-stratified-filters"] = [output]
-        else:
-            check_resource_existence(
-                input_step_resources={
-                    "assign_ancestry.py --assign-pops": [pop_ht],
-                    "platform_inference.py --assign-platforms": [platform_ht],
-                },
-                output_step_resources={"--apply-stratified-filters": [output]},
-                overwrite=overwrite,
-            )
-            if not stratify_population:
-                pop_ht = None
-            if not stratify_platform:
-                platform_ht = None
+        res = outlier_resources.apply_stratified_filters
+        res.check_resource_existence()
 
-            ht = apply_stratified_filtering_method(
-                sample_qc_ht,
-                filtering_qc_metrics,
-                pop_ht=pop_ht.ht(),
-                platform_ht=platform_ht.ht(),
-            )
-            if apply_r_ti_tv_singleton_filter:
-                ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
-                    ht,
-                    filtering_method="stratified",
-                )
-
-            ht.write(output.path, overwrite=overwrite)
+        apply_filter(
+            filtering_method="stratified",
+            apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
+            sample_qc_ht=sample_qc_ht,
+            qc_metrics=filtering_qc_metrics,
+            pop_ht=pop_ht if args.stratify_population else None,
+            platform_ht=platform_ht if args.stratify_platform else None,
+        ).write(res.stratified_filter_ht.path, overwrite=overwrite)
 
     if args.determine_nearest_neighbors:
-        check_resource_existence(
-            input_step_resources={
-                "assign_ancestry.py --run-pca": [pop_scores_ht],
-                "platform_inference.py --assign-platforms": [platform_ht],
-            },
-            output_step_resources={"--determine-nearest-neighbors": [nn_ht]},
-            overwrite=overwrite,
-        )
-        if nn_per_platform:
-            strata = {"platform": platform_ht.ht()[sample_qc_ht.key].qc_platform}
+        res = outlier_resources.determine_nearest_neighbors
+        res.check_resource_existence()
+
+        if args.nearest_neighbors_per_platform:
+            strata = {"platform": res.platform_ht.ht()[sample_qc_ht.key].qc_platform}
         else:
             strata = None
         determine_nearest_neighbors(
@@ -820,54 +909,31 @@ def main(args):
             n_jobs=args.n_jobs,
             add_neighbor_distances=args.get_neighbor_distances,
             distance_metric=args.distance_metric,
-            use_approximation=nn_approximation,
+            use_approximation=args.use_nearest_neighbors_approximation,
             n_trees=args.n_trees,
-        ).write(nn_ht.path, overwrite=overwrite)
+        ).write(res.nn_ht.path, overwrite=overwrite)
 
     if args.apply_nearest_neighbor_filters:
-        output = nearest_neighbors_filtering(test=test)
-        if create_finalized_outlier_filter:
-            finalized_outlier_input_resources["--apply-nearest-neighbor-filters"] = [
-                output
-            ]
-        else:
-            check_resource_existence(
-                input_step_resources={"--determine-nearest-neighbors": [nn_ht]},
-                output_step_resources={"--apply-nearest-neighbor-filters": [output]},
-                overwrite=overwrite,
-            )
-            ht = apply_nearest_neighbor_filtering_method(
-                sample_qc_ht,
-                filtering_qc_metrics,
-                nn_ht=nn_ht.ht(),
-            )
-            if apply_r_ti_tv_singleton_filter:
-                ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
-                    ht,
-                    filtering_method="nearest_neighbors",
-                )
-            ht.write(output.path, overwrite=overwrite)
+        res = outlier_resources.apply_nearest_neighbor_filters
+        res.check_resource_existence()
 
-    if create_finalized_outlier_filter:
-        if len(finalized_outlier_input_resources) == 0:
-            raise ValueError(
-                "At least one filtering method and relevant options must be supplied "
-                "when using '--create-finalized-outlier-filter'"
-            )
-        output = finalized_outlier_filtering(test=test)
-        check_resource_existence(
-            input_step_resources=finalized_outlier_input_resources,
-            output_step_resources={"--create-finalized-outlier-filter": [output]},
-            overwrite=overwrite,
-        )
+        apply_filter(
+            filtering_method="nearest_neighbors",
+            apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter,
+            sample_qc_ht=sample_qc_ht,
+            qc_metrics=filtering_qc_metrics,
+            nn_ht=res.nn_ht.ht(),
+        ).write(res.nn_filter_ht.path, overwrite=overwrite)
+
+    if args.create_finalized_outlier_filter:
+        res = outlier_resources.create_finalized_outlier_filter
+        res.check_resource_existence()
+
         create_finalized_outlier_filter_ht(
-            {
-                k.replace("--apply-", "").replace("-", "_"): v[0].ht()
-                for k, v in finalized_outlier_input_resources.items()
-            },
+            res.input_resources,
             qc_metrics=args.final_filtering_qc_metrics,
             ensemble_operator=args.ensemble_method_logical_operator,
-        ).write(output.path, overwrite=overwrite)
+        ).write(res.finalized_ht.path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
@@ -880,7 +946,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--test",
-        help="Test filtering using a random sample of 1% of the dataset.",
+        help="Test filtering using a random sample of 1%% of the dataset.",
         action="store_true",
     )
     parser.add_argument(
@@ -1008,7 +1074,7 @@ if __name__ == "__main__":
     nn_args.add_argument(
         "--n-jobs",
         help=(
-            "Number of threads to use when finding the nearest neighbors. Default"
+            "Number of threads to use when finding the nearest neighbors. Default "
             "is -1 which uses the number of CPUs on the head node -1."
         ),
         default=-1,
