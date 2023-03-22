@@ -119,8 +119,8 @@ def apply_filter(
             ann_exprs["platform_scores_expr"] = platform_ht[sample_qc_ht.key].scores
     if pop_scores_ht is not None:
         ann_exprs["pop_scores_expr"] = pop_scores_ht[sample_qc_ht.key].scores
-    if project_meta_ht is not None:
-        ann_exprs["releasable_expr"] = project_meta_ht[sample_qc_ht.key].releasable
+    # if project_meta_ht is not None:
+    #    ann_exprs["releasable_expr"] = project_meta_ht[sample_qc_ht.key].releasable
 
     # Run filtering method using defined expressions, and any other passed parameters.
     if filtering_method == "stratified":
@@ -211,11 +211,11 @@ def apply_regressed_filtering_method(
     pop_scores_expr: Optional[hl.expr.ArrayExpression] = None,
     platform_scores_expr: Optional[hl.expr.ArrayExpression] = None,
     platform_expr: Optional[hl.expr.StringExpression] = None,
-    releasable_expr: Optional[hl.expr.BooleanExpression] = None,
+    # releasable_expr: Optional[hl.expr.BooleanExpression] = None,
     regress_pop_n_pcs: Optional[int] = 30,
     regress_platform_n_pcs: Optional[int] = 9,
     regress_per_platform: bool = False,
-    regression_include_unreleasable: bool = False,
+    # regression_include_unreleasable: bool = False,
 ) -> hl.Table:
     """
     Compute sample QC metrics residuals after regressing out specified PCs and determine what samples are outliers that should be filtered.
@@ -272,11 +272,11 @@ def apply_regressed_filtering_method(
         raise ValueError(
             "When using 'regress_per_platform', 'platform_expr' must be specified!"
         )
-    if not regression_include_unreleasable and releasable_expr is None:
-        raise ValueError(
-            "When 'regression_include_unreleasable' is False, 'releasable_expr' must "
-            "be specified!"
-        )
+    # if not regression_include_unreleasable and releasable_expr is None:
+    #    raise ValueError(
+    #        "When 'regression_include_unreleasable' is False, 'releasable_expr' must "
+    #        "be specified!"
+    #    )
     logger.info(
         "Computing QC metrics outlier filters with PC regression, using metrics: %s",
         ", ".join(qc_metrics),
@@ -299,8 +299,8 @@ def apply_regressed_filtering_method(
         )
         log_str.append("platform PCs")
         global_expr["regress_platform_n_pcs"] = regress_platform_n_pcs
-    if not regression_include_unreleasable:
-        ann_expr["releasable"] = releasable_expr
+    # if not regression_include_unreleasable:
+    #    ann_expr["releasable"] = releasable_expr
 
     sample_qc_ht = sample_qc_ht.annotate(**ann_expr)
 
@@ -312,9 +312,9 @@ def apply_regressed_filtering_method(
         sample_qc_ht,
         pc_scores=sample_qc_ht.scores,
         qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
-        regression_sample_inclusion_expr=None
-        if regression_include_unreleasable
-        else sample_qc_ht.releasable,
+        # regression_sample_inclusion_expr=None,
+        # if regression_include_unreleasable
+        # else sample_qc_ht.releasable,
         strata={"platform": sample_qc_ht.platform} if regress_per_platform else None,
     )
     filter_ht = compute_stratified_metrics_filter(
@@ -333,7 +333,7 @@ def apply_regressed_filtering_method(
         **filter_ht.index_globals(),
         **global_expr,
         regress_per_platform=regress_per_platform,
-        regression_include_unreleasable=regression_include_unreleasable,
+        # regression_include_unreleasable=regression_include_unreleasable,
     )
 
     return filter_ht
@@ -524,9 +524,8 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     # 'qc_metrics_stats' needs to be updated for the 'update_metric'.
     if filtering_method != "nearest_neighbors":
         updated_stats = hl.eval(filter_ht.qc_metrics_stats)
-        # qc_metrics_stats = hl.eval(ht.qc_metrics_stats)
         if strata is None:
-            qc_metrics_stats[update_metric] = updated_stats[update_metric]
+            qc_metrics_stats.annotate(**{update_metric: updated_stats[update_metric]})
         else:
             for strat in qc_metrics_stats:
                 update_stats_struct = empty_stats_struct
@@ -536,8 +535,6 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
                     )
                 qc_metrics_stats[strat].annotate(**{update_metric: update_stats_struct})
 
-        print(ht.qc_metrics_stats)
-        print(qc_metrics_stats)
         ht = ht.annotate_globals(qc_metrics_stats=qc_metrics_stats)
 
     # For all filtering methods: add a sample annotation indicating whether the sample
@@ -831,6 +828,7 @@ def get_outlier_filtering_resources(
                 test=test,
                 platform_stratified=args.nearest_neighbors_per_platform,
                 approximation=args.use_nearest_neighbors_approximation,
+                include_unreleasable_samples=args.nearest_neighbors_include_unreleasable,
             )
         },
         input_resources={**sample_qc_input, **pop_assign_input, **platform_input},
@@ -850,7 +848,7 @@ def get_outlier_filtering_resources(
     if args.apply_nearest_neighbor_filters:
         finalized_input_steps.append(apply_nearest_neighbor_filters)
 
-    if len(finalized_input_steps) == 0:
+    if args.create_finalized_outlier_filter and len(finalized_input_steps) == 0:
         raise ValueError(
             "At least one filtering method and relevant options must be supplied "
             "when using '--create-finalized-outlier-filter'"
@@ -896,6 +894,10 @@ def main(args):
             if metric not in filtering_qc_metrics:
                 raise ValueError(err_msg.format(metric))
 
+    nn_include_unreleasable = args.nearest_neighbors_include_unreleasable
+    # filtering_include_unreleasable = args.filtering_include_unreleasable
+    # if nn_include_unreleasable or filtering_include_unreleasable:
+
     outlier_resources = get_outlier_filtering_resources(args)
     pop_ht = outlier_resources.pop_ht.ht()
     platform_ht = outlier_resources.platform_ht.ht()
@@ -904,6 +906,7 @@ def main(args):
     sample_qc_ht = get_sample_qc_ht(
         outlier_resources.sample_qc_ht.ht(), test=args.test, seed=args.seed
     )
+    sample_qc_ht = sample_qc_ht.filter(joint_qc_meta_ht[sample_qc_ht.key].releasable)
 
     if args.apply_regressed_filters:
         res = outlier_resources.apply_regressed_filters
@@ -923,7 +926,7 @@ def main(args):
                 args.regress_platform_n_pcs if args.regress_platform else None
             ),
             regress_per_platform=args.regress_per_platform,
-            regression_include_unreleasable=args.regression_include_unreleasable,
+            # regression_include_unreleasable=args.regression_include_unreleasable,
             project_meta_ht=joint_qc_meta_ht,
         ).write(res.regressed_filter_ht.path, overwrite=overwrite)
 
@@ -944,13 +947,18 @@ def main(args):
         res = outlier_resources.determine_nearest_neighbors
         res.check_resource_existence()
 
+        if nn_include_unreleasable:
+            ht = sample_qc_ht
+        else:
+            ht = sample_qc_ht.filter(joint_qc_meta_ht[sample_qc_ht.key].releasable)
+
         if args.nearest_neighbors_per_platform:
-            strata = {"platform": res.platform_ht.ht()[sample_qc_ht.key].qc_platform}
+            strata = {"platform": res.platform_ht.ht()[ht.key].qc_platform}
         else:
             strata = None
         determine_nearest_neighbors(
-            sample_qc_ht,
-            pop_scores_ht.ht()[sample_qc_ht.key].scores,
+            ht,
+            pop_scores_ht[ht.key].scores,
             strata=strata,
             n_pcs=args.nearest_neighbors_pop_n_pcs,
             n_neighbors=args.n_nearest_neighbors,
@@ -1075,7 +1083,7 @@ if __name__ == "__main__":
     regressed_args.add_argument(
         "--regress-pop-n-pcs",
         help="Number of population PCs to use for sample QC metric regressions.",
-        default=30,
+        default=20,
         type=int,
     )
     regressed_args.add_argument(
@@ -1111,6 +1119,11 @@ if __name__ == "__main__":
             "Stratify samples by platform assignment when determining the population "
             "PC nearest neighbors."
         ),
+        action="store_true",
+    )
+    nn_args.add_argument(
+        "--nearest-neighbors-include-unreleasable",
+        help="Include unreleasable samples in the nearest neighbors determination.",
         action="store_true",
     )
     nn_args.add_argument(

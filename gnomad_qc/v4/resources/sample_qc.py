@@ -788,6 +788,7 @@ def nearest_neighbors(
     test: bool = False,
     platform_stratified: bool = False,
     approximation: bool = False,
+    include_unreleasable_samples: bool = False,
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for population PCA nearest neighbors.
@@ -797,6 +798,8 @@ def nearest_neighbors(
         stratified nearest neighbors.
     :param approximation: Whether to get resource that is approximate nearest
         neighbors.
+    :param include_unreleasable_samples: Whether to get resource that included
+        unreleasable samples in nearest neighbors determination.
     :return: VersionedTableResource.
     """
     postfix = ""
@@ -804,6 +807,8 @@ def nearest_neighbors(
         postfix += ".platform_stratified"
     if approximation:
         postfix += ".approximation"
+    if include_unreleasable_samples:
+        postfix += ".include_unreleasable_samples"
     return VersionedTableResource(
         CURRENT_VERSION,
         {
