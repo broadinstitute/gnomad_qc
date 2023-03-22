@@ -273,3 +273,14 @@ def get_freq_comparison(
         ht_path = f"gs://gnomad/annotations/hail-0.2/ht/{data_type1}/{ht_path}"
 
     return TableResource(ht_path)
+
+
+vrs_annotations = VersionedTableResource(
+    CURRENT_VERSION,
+    {
+        release: TableResource(
+            f"{_annotations_root(release)}/gnomad_genomes_v{release}_vrs.ht"
+        )
+        for release in VERSIONS
+    },
+)
