@@ -400,8 +400,45 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
 
     This function takes a Table (`ht`) returned from one of the filtering functions:
     `apply_stratified_filtering_method`, `apply_regressed_filtering_method`, or
-    `apply_nearest_neighbor_filtering_method`. `ht` must have filtering information for
-    `n_singletons` and `r_ti_tv_singletons` or their residuals f
+    `apply_nearest_neighbor_filtering_method`, which must include filtering information
+    for 'n_singleton' or 'n_singleton_residuals'. Median values for 'n_singleton' or
+    'n_singleton_residuals' are extracted from 'qc_metrics_stats' in `ht`.
+    'qc_metrics_stats' takes different forms depending on `filtering_method` and the
+    use of 'strata' (defined as a global on `ht` if used) in filtering (described
+    below). Then the `sample_qc_ht` is filtered to only samples with 'n_singleton'
+    (or 'n_singleton_residuals') > the median in 'qc_metrics_stats' that is relevant to
+    the sample. This filtered `sample_qc_ht` is rerun through the filtering function
+    for `filtering_method` using only 'r_ti_tv_singleton', and `ht` is updated with new
+    global and row values relevant to 'r_ti_tv_singleton' filtering.
+
+    If `filtering_method` is 'stratified':
+        - 'strata' is defined as a global annotation on `ht` in the form:
+          tuple<str, ...> where the number of string elements in the tuple depends on
+          the number of strata.
+        - 'qc_metrics_stats' is defined as a global annotation on `ht` in the form:
+          dict<strata, struct {
+            metric: struct {
+              'median': float64, 'mad': float64, 'lower': float64, 'upper': float64
+            }
+          }>
+    If `filtering_method` is 'regressed':
+        - 'qc_metrics_stats' is defined as a global annotation on `ht.
+        - If platform stratification was performed, the 'strata' global annotation is
+          tuple<'platform'>, and 'qc_metrics_stats' is in the same form as described
+          for 'stratified', except metric -> metric_residual.
+        - If there was no platform stratification, 'qc_metrics_stats' is in the form:
+          struct {
+            metric_residual: struct {
+              'median': float64, 'mad': float64, 'lower': float64, 'upper': float64
+            }
+          }
+    If `filtering_method` is 'nearest_neighbor':
+        - 'qc_metrics_stats' is defined as a row annotation on `ht` in the form:
+          struct {
+            metric: struct {
+              'median': float64, 'mad': float64, 'lower': float64, 'upper': float64
+            }
+          }
 
     :param ht:
     :param sample_qc_ht:
@@ -419,6 +456,12 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     median_filter_metric = "n_singleton"
     update_metric = "r_ti_tv_singleton"
     filtering_qc_metrics = [update_metric]
+    empty_stats_struct = hl.struct(
+        median=hl.missing(hl.tfloat64),
+        mad=hl.missing(hl.tfloat64),
+        lower=hl.missing(hl.tfloat64),
+        upper=hl.missing(hl.tfloat64),
+    )
 
     # Annotate the sample QC Table with annotations provided in 'ann_expr'.
     sample_qc_ht = sample_qc_ht.annotate(**ann_exprs)
@@ -480,34 +523,22 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     # For all filtering methods other than nearest_neighbors, the global
     # 'qc_metrics_stats' needs to be updated for the 'update_metric'.
     if filtering_method != "nearest_neighbors":
-        updated_stats = filter_ht.index_globals().qc_metrics_stats
+        updated_stats = hl.eval(filter_ht.qc_metrics_stats)
+        # qc_metrics_stats = hl.eval(ht.qc_metrics_stats)
         if strata is None:
-            ann_global_expr = {update_metric: updated_stats[update_metric]}
+            qc_metrics_stats[update_metric] = updated_stats[update_metric]
         else:
-            ann_global_expr = {
-                strat: {
-                    **ht.qc_metrics_stats[strat],
-                    **{
-                        update_metric: updated_stats[strat].get(
-                            update_metric,
-                            hl.struct(
-                                median=hl.missing(hl.tfloat64),
-                                mad=hl.missing(hl.tfloat64),
-                                lower=hl.missing(hl.tfloat64),
-                                upper=hl.missing(hl.tfloat64),
-                            ),
-                        )
-                    },
-                }
-                for strat in hl.eval(ht.qc_metrics_stats.keys())
-                if strat in hl.eval(updated_stats.keys())
-            }
+            for strat in qc_metrics_stats:
+                update_stats_struct = empty_stats_struct
+                if strat in updated_stats:
+                    update_stats_struct = updated_stats[strat].get(
+                        update_metric, empty_stats_struct
+                    )
+                qc_metrics_stats[strat].annotate(**{update_metric: update_stats_struct})
 
         print(ht.qc_metrics_stats)
-        print(ann_global_expr)
-        ht = ht.annotate_globals(
-            qc_metrics_stats=hl.struct(**ht.qc_metrics_stats, **ann_global_expr)
-        )
+        print(qc_metrics_stats)
+        ht = ht.annotate_globals(qc_metrics_stats=qc_metrics_stats)
 
     # For all filtering methods: add a sample annotation indicating whether the sample
     # was included in the updated outlier filtering, update the 'fail_{update_metric}'
