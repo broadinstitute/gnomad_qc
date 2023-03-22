@@ -274,6 +274,7 @@ def get_freq_comparison(
 
     return TableResource(ht_path)
 
+
 vrs_annotations = VersionedTableResource(
     CURRENT_VERSION,
     {
