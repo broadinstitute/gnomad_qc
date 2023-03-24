@@ -1010,6 +1010,7 @@ def pair_plot_regress_pop_strat_platform(
     add_kde_plot=True,
     fail_filter_name="fail_regress_pop_strat_platform",
     strat_platform=None,
+    hue_order=["False", "True"],
 ):
     custom_params = {"axes.spines.right": False, "axes.spines.top": False}
     sns.set_theme(style="ticks", rc=custom_params)
@@ -1062,6 +1063,7 @@ def pair_plot_regress_pop_strat_platform(
             file_name=f"{plot_dir_prefix}.regress_pop_strat_platform.{strata[0]}",
             use_fig_if_exists=use_fig_if_exists,
             add_kde_plot=add_kde_plot,
+            hue_order=hue_order
         )
 
         tab.set_title(i + 1, f"{strata[0]}")
