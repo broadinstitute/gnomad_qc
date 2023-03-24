@@ -43,10 +43,10 @@ AS_FIELDS.remove("InbreedingCoeff")
 
 # Add fine-resolution populations specific to 1KG/TGP and HGDP to standard
 # gnomAD pops; used to create frequency index dictionary
-POPS.extend(POPS_STORED_AS_SUBPOPS)
+POPS["v3"].extend(POPS_STORED_AS_SUBPOPS)
 # Add 'global' tag used to distinguish cohort-wide vs. subset annotations
 # in frequency index dictionary
-POPS.extend(["global"])
+POPS["v3"].extend(["global"])
 
 
 def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
@@ -301,7 +301,7 @@ def main(args):  # noqa: D103
     freq_ht = freq_ht.annotate_globals(
         freq_index_dict=make_freq_index_dict(
             freq_meta=hl.eval(freq_ht.freq_meta),
-            pops=POPS,
+            pops=POPS["v3"],
             downsamplings=hl.eval(global_freq_ht.downsamplings),
         )
     )
