@@ -216,7 +216,7 @@ def main(args):  # noqa: D103
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
-            pops = POPS
+            pops = POPS["v3"]
             if n_subsets_use_subpops:
                 pops = POPS_STORED_AS_SUBPOPS
 
