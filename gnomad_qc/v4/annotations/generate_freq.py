@@ -152,12 +152,11 @@ def main(args):  # noqa: D103
             mt,
             sex_expr=mt.sex_karyotype,
             pop_expr=mt.pop,
+            downsamplings=DOWNSAMPLINGS,
             additional_strata_expr={
                 "gatk_version": mt.gatk_version
-            },  # TODO: Flip to version and update gnomad_methods to expand this
+            },  # TODO: Update gnomad_methods to expand this
         )
-        # TODO: Add annotation for "if you applied homalt hot fix for this
-        # variant, how many genotypes would change"
 
         mt = annotate_homalt_gt_change(mt)
 
