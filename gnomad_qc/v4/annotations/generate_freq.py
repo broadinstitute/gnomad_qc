@@ -57,14 +57,12 @@ logger.setLevel(logging.INFO)
 def annotate_homalt_gt_change(
     mt: hl.MatrixTable,
     ab_cutoff: hl.tfloat = 0.9,
-    af_threshold: hl.tfloat = 0.01,
 ) -> hl.MatrixTable:
     """
     Annotate the MatrixTable rows with the count of genotypes which would change if the homalt depletion fix was implemented.
 
     :param mt: Hail MatrixTable to annotate.
     :param ab_cutoff: Alelle balance threshold at which the GT changes to homalt. Default is 0.9.
-    :param af_threshold: Allele frequency cutoff for variants that need the hom alt fix. Default is 0.01
     :return mt:
     """
     logger.info("Annotating high AB hets...")
@@ -76,7 +74,6 @@ def annotate_homalt_gt_change(
             & (mt.AD[1] / mt.DP > ab_cutoff)
         )
     )
-
     return mt
 
 
