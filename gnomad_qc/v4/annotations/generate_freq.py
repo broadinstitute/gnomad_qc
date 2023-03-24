@@ -79,7 +79,7 @@ def annotate_homalt_gt_change(
 
 def annotate_gatk_version(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
-    Annotate MAtrixTable's samples with HaplotypeCaller's GATK version.
+    Annotate MatrixTable's samples with HaplotypeCaller's GATK version. GATK hom alt depletion fix has been in since GATK version 4.1.4.1.
 
     :param mt: Hail MatrixTable to annotate.
     :return mt:
@@ -91,7 +91,6 @@ def annotate_gatk_version(mt: hl.MatrixTable) -> hl.MatrixTable:
     ).key_by(
         "s"
     )  # TODO: Discuss if this should be a resource or annotation on metadata, misssing GATK version info for UKB samples
-    fixed_versions = hl.set(["4.1.4.1", "4.1.8.0"])
     mt = mt.annotate_cols(
         gatk_version=hl.case()
         .when(hl.is_defined(mt.gatk_version), mt.gatk_version)
@@ -106,18 +105,14 @@ def main(args):  # noqa: D103
     subsets = (
         args.subsets
     )  # TODO: Determine if splitting subset freq from whole callset agg
-    include_non_release = (
-        args.include_non_release
-    )  # TODO: Discuss if non-release samples will be included in calculating AF for homalt fix # THEY WILL NOT ONLY RUN AF CALCULATION ON RELEASABLE SAMPLES
-
     hl.init(
         log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
     vds = get_gnomad_v4_vds(
-        split=True, release_only=not include_non_release, test=args.test
-    )  # TODO: Do we need to filter to test here? Is this anymore performant?
+        split=True, test=args.test
+    )  # TODO: Update to release = True once outlier filtering is complete
     meta_ht = meta.ht()
 
     if args.test:
@@ -130,17 +125,6 @@ def main(args):  # noqa: D103
         logger.info(
             "Test VDS has %s variants in DRD2 in %s samples...", variants, samples
         )
-
-    # if include_non_release:
-    #     all_sample_count = vds.variant_data.count()[1]
-    #     hq_samples = sample_meta.filter(sample_meta.high_quality)
-    #     vds = hl.vds.filter_samples(vds, hq_samples)
-    #     filtered_sample_count = vds.variant_data.count()[1]
-    #     logger.info(
-    #         "VDS has been filtered from %s samples to %s high quality samples...",
-    #         all_sample_count,
-    #         filtered_sample_count,
-    #     )
 
     if args.calculate_gatk_af_diff:
         logger.info(
@@ -198,11 +182,6 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
-    )
-    parser.add_argument(
-        "--include-non-release",
-        help="Includes un-releasable samples in the frequency calculations.",
-        action="store_true",
     )
     parser.add_argument(
         "--subsets", help="Subsets to run frequency calculation on.", choices=SUBSETS
