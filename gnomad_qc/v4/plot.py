@@ -428,6 +428,7 @@ def my_pair_plot(
     file_name=None,
     use_fig_if_exists=False,
     add_kde_plot=True,
+    hue_order=["False", "True"],
 ):
     if (
         use_fig_if_exists
@@ -481,13 +482,14 @@ def my_pair_plot(
         except np.linalg.LinAlgError:
             pass
 
-    if hue is not None:
-        df[hue] = df[hue].map({True: "True", False: "False"})
+    # if hue is not None:
+    #    df[hue] = df[hue].map({True: "True", False: "False"})
+
     g = sns.PairGrid(df, diag_sharey=False, dropna=True)
     if hue is None:
         g = g.map_lower(col_nan_scatter)
     else:
-        g = g.map_lower(col_nan_scatter, hue=df[hue], hue_order=["False", "True"])
+        g = g.map_lower(col_nan_scatter, hue=df[hue], hue_order=hue_order)
 
     if add_kde_plot:
         g = g.map_upper(kdeplot_catch_error)
@@ -921,10 +923,12 @@ def pair_plot_strat_pop_platform(
     figsize=(30, 30),
     tmp_dir_prefix=tmp_prefix,
     strat_pops=None,
+    strat_platform=None,
     plot_dir_prefix="",
     use_fig_if_exists=False,
     add_kde_plot=True,
     fail_filter_name="fail_strat_pop_platform",
+    hue_order=["False", "True"],
 ):
     custom_params = {"axes.spines.right": False, "axes.spines.top": False}
     sns.set_theme(style="ticks", rc=custom_params)
@@ -937,7 +941,8 @@ def pair_plot_strat_pop_platform(
     if strat_pops is None:
         strat_pops = list(set([strata[0] for strata in strat]) - {None})
     strat_pops.sort()
-    strat_platform = sorted(set([strata[1] for strata in strat]) - {None})
+    if strat_platform is None:
+        strat_platform = sorted(set([strata[1] for strata in strat]) - {None})
 
     # print(strat_pops)
     # print(strat_platform)
@@ -984,7 +989,8 @@ def pair_plot_strat_pop_platform(
                     f"{plot_dir_prefix}.strat_pop_platform.{strata[0]}_{strata[1]}"
                 ),
                 use_fig_if_exists=use_fig_if_exists,
-                add_kde_plot=add_kde_plot
+                add_kde_plot=add_kde_plot,
+                hue_order=hue_order,
             )
 
             tab.set_title(i + 1, strata[1])
@@ -1003,6 +1009,7 @@ def pair_plot_regress_pop_strat_platform(
     use_fig_if_exists=False,
     add_kde_plot=True,
     fail_filter_name="fail_regress_pop_strat_platform",
+    strat_platform=None,
 ):
     custom_params = {"axes.spines.right": False, "axes.spines.top": False}
     sns.set_theme(style="ticks", rc=custom_params)
@@ -1010,7 +1017,8 @@ def pair_plot_regress_pop_strat_platform(
     plt.rcParams["figure.figsize"] = figsize
     strat_cutoff_dict = hl.eval(regress_pop_strat_platform_ht.qc_metrics_stats)
     strat = list(strat_cutoff_dict.keys())
-    strat_platform = sorted(set([strata[0] for strata in strat]) - {None})
+    if strat_platform is None:
+        strat_platform = sorted(set([strata[0] for strata in strat]) - {None})
 
     renamed_metrics = [
         (
@@ -1044,9 +1052,7 @@ def pair_plot_regress_pop_strat_platform(
 
     for i, (strat_ht_cutoff, output_tab) in enumerate(zip(hts, outputs[1:])):
         ht_strata, cutoffs, strata = strat_ht_cutoff
-        ht_strata = ht_strata.select(
-            fail_filter_name, *[m[0] for m in renamed_metrics]
-        )
+        ht_strata = ht_strata.select(fail_filter_name, *[m[0] for m in renamed_metrics])
         my_pair_plot(
             ht_strata,
             cutoffs,
@@ -1061,6 +1067,7 @@ def pair_plot_regress_pop_strat_platform(
         tab.set_title(i + 1, f"{strata[0]}")
 
     display(tab)
+
 
 def pair_plot_regress_pop_strat_platform_strat_pop(
     outlier_ht,
@@ -1090,8 +1097,8 @@ def pair_plot_regress_pop_strat_platform_strat_pop(
 
     renamed_metrics = [
         (
-            "regress_pop_strat_platform_redo_regression|" + m[0] + "_residual",
-            "regress_pop_strat_platform_redo_regression|" + m[1] + "_residual",
+            "regress_pop_strat_platform|" + m[0] + "_residual",
+            "regress_pop_strat_platform|" + m[1] + "_residual",
         )
         for m in pair_plot_metrics
     ]
@@ -1105,9 +1112,11 @@ def pair_plot_regress_pop_strat_platform_strat_pop(
             if cutoff_strata not in strat_cutoff_dict:
                 continue
             cutoffs = strat_cutoff_dict[cutoff_strata]
-            cutoffs = {"regress_pop_strat_platform_redo_regression|" + m: cutoffs[m] for m in cutoffs}
+            cutoffs = {"regress_pop_strat_platform|" + m: cutoffs[m] for m in cutoffs}
             ht_strata = outlier_ht.filter(
-                (outlier_ht.pop == strata[0]) & (outlier_ht.platform == strata[1]) & (outlier_ht.r_insertion_deletion < 1)
+                (outlier_ht.pop == strata[0])
+                & (outlier_ht.platform == strata[1])
+                & (outlier_ht.r_insertion_deletion < 1)
             )
             ht_strata = ht_strata.repartition(50).checkpoint(
                 f"{tmp_dir_prefix}regress_pop_strat_platform_ht_{strata[0]}.{strata[1]}.ht",
@@ -1139,8 +1148,6 @@ def pair_plot_regress_pop_strat_platform_strat_pop(
             tab.set_title(i + 1, f"{strata[1]}")
 
         display(tab)
-
-
 
 
 def pair_plot_regress_pop_platform(
@@ -1262,7 +1269,10 @@ def get_hist_plots_regress_pop_strat_platform(
         curve_dict = {}
         if not hist_only:
             fail_table = (
-                sample_qc_fail_pd.groupby(cols)[metric].value_counts().unstack().fillna(0)
+                sample_qc_fail_pd.groupby(cols)[metric]
+                .value_counts()
+                .unstack()
+                .fillna(0)
             )
             # fail_table = fail_table.rename_axis(mapper="None")
             fail_table.columns = ["Pass", "Fail"]
@@ -1526,34 +1536,34 @@ def get_tables_only(
     return tables_pop_platform, tables_pop, tables_platform
 
 
-def plot_pcs(ht: hl.Table, pca_scores_expr, pcs, label: str, pop_colormap,
-             collect_all: bool):
+def plot_pcs(
+    ht: hl.Table, pca_scores_expr, pcs, label: str, pop_colormap, collect_all: bool
+):
     tabs = []
     for pc_i, pc_j in pcs:
         plot = hl.plot.scatter(
             pca_scores_expr[pc_i - 1],
             pca_scores_expr[pc_j - 1],
-            xlabel=f'PC{pc_i}',
-            ylabel=f'PC{pc_j}',
-            label={f'{label}': ht[f'{label}'], },
+            xlabel=f"PC{pc_i}",
+            ylabel=f"PC{pc_j}",
+            label={
+                f"{label}": ht[f"{label}"],
+            },
             hover_fields={
-                's': ht.s,
-                'pop': ht.pop,
+                "s": ht.s,
+                "pop": ht.pop,
             },
             collect_all=collect_all,
-            colors={f'{label}': pop_colormap, },
+            colors={
+                f"{label}": pop_colormap,
+            },
         )
 
         plot.xaxis.axis_label_text_font_size = "20pt"
         plot.yaxis.axis_label_text_font_size = "20pt"
-        plot.legend.label_text_font_size = '20pt'
+        plot.legend.label_text_font_size = "20pt"
 
-        tabs.append(
-            Panel(
-                title=f'PC{pc_i} vs PC{pc_j}',
-                child=plot
-            )
-        )
+        tabs.append(Panel(title=f"PC{pc_i} vs PC{pc_j}", child=plot))
     return Tabs(tabs=tabs)
 
 
@@ -1619,16 +1629,15 @@ def upset_plot(
 <div id="upsetplot">""" + """<img src="data:image/png;base64,{}"></div>
 </html>
 """.format(
-        img_data
-    )
+            img_data
+        )
         display_html(head, raw=True)
     else:
         plt.savefig(f"plot_pngs/upset_{file_name}.png", bbox_inches="tight")
         fig = plt.gcf()
         plt.close(fig)
-        output_tab.append_display_data(
-            Image(f"plot_pngs/upset_{file_name}.png")
-        )
+        output_tab.append_display_data(Image(f"plot_pngs/upset_{file_name}.png"))
+
 
 def get_nn_hists(
     outlier_ht,
