@@ -96,7 +96,7 @@ def apply_filter(
     **kwargs: Any,
 ) -> hl.Table:
     """
-    Apply one of stratified, regressed, or nearest neighbors outlier filtering method.
+    Apply stratified, regressed, or nearest neighbors outlier filtering method.
 
     :param sample_qc_ht:
     :param qc_metrics:
@@ -1113,7 +1113,7 @@ if __name__ == "__main__":
         default=20,
         type=int,
     )
-    nn_args.add_argument(
+    nn_per_platform = nn_args.add_argument(
         "--nearest-neighbors-per-platform",
         help=(
             "Stratify samples by platform assignment when determining the population "
@@ -1121,7 +1121,7 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
-    nn_args.add_argument(
+    nn_include_unreleasable = nn_args.add_argument(
         "--nearest-neighbors-include-unreleasable",
         help="Include unreleasable samples in the nearest neighbors determination.",
         action="store_true",
@@ -1164,7 +1164,7 @@ if __name__ == "__main__":
             "dot",
         ],
     )
-    nn_args.add_argument(
+    nn_approx = nn_args.add_argument(
         "--use-nearest-neighbors-approximation",
         help=(
             "Whether to use the package Annoy to determine approximate nearest "
@@ -1196,6 +1196,13 @@ if __name__ == "__main__":
         help="Apply nearest neighbors outlier filtering method.",
         action="store_true",
     )
+    # Indicate that the --nearest-neighbors-per-platform,
+    # --nearest-neighbors-include-unreleasable and
+    # --use-nearest-neighbors-approximation options apply to the
+    # "nn_filter_args" argument group as well as the "nn_args" group.
+    nn_filter_args._group_actions.append(nn_per_platform)
+    nn_filter_args._group_actions.append(nn_include_unreleasable)
+    nn_filter_args._group_actions.append(nn_approx)
 
     final_filter_args = parser.add_argument_group(
         "Create finalized outlier filtering Table.",
