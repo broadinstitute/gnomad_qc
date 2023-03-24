@@ -54,6 +54,32 @@ logger = logging.getLogger("gnomAD_frequency")
 logger.setLevel(logging.INFO)
 
 
+def annotate_homalt_gt_change(
+    mt: hl.MatrixTable,
+    ab_cutoff: hl.tfloat = 0.9,
+    af_threshold: hl.tfloat = 0.01,
+) -> hl.MatrixTable:
+    """
+    Annotate the MatrixTable rows with the count of genotypes which would change if the homalt depletion fix was implemented.
+
+    :param mt: Hail MatrixTable to annotate.
+    :param ab_cutoff: Alelle balance threshold at which the GT changes to homalt. Default is 0.9.
+    :param af_threshold: Allele frequency cutoff for variants that need the hom alt fix. Default is 0.01
+    :return mt:
+    """
+    logger.info("Annotating high AB hets...")
+    mt = mt.annotate_entries(
+        het_high_ab=(
+            mt.GT.is_het()
+            # Skip adjusting genotypes if sample originally had a het nonref genotype
+            & ~mt.GT.is_het_non_ref()
+            & (mt.AD[1] / mt.DP > ab_cutoff)
+        )
+    )
+
+    return mt
+
+
 def annotate_gatk_version(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
     Annotate MAtrixTable's samples with HaplotypeCaller's GATK version.
@@ -63,28 +89,20 @@ def annotate_gatk_version(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
     logger.info("Annotating MT with GATK version if it exists....")
     meta_ht = meta.ht()
-    gatk_ht = hl.import_table(
-        "gs://gnomad-tmp-4day/batch/mwilson/v4_sample_htc_versions_322.txt"
+    gatk_ht = hl.read_table(
+        "gs://gnomad-mwilson/v4/homalt_depletion/v4_sample_htc_versions.ht"
     ).key_by(
         "s"
     )  # TODO: Discuss if this should be a resource or annotation on metadata, misssing GATK version info for UKB samples
     fixed_versions = hl.set(["4.1.4.1", "4.1.8.0"])
     mt = mt.annotate_cols(
-        gatk_version=hl.or_missing(
-            hl.is_defined(gatk_ht[mt.col_key].gatk_version),
-            gatk_ht[mt.col_key].gatk_version,
-        )
-    )
-    mt = mt.annotate_cols(
-        gatk_fix=hl.case()
-        .when(fixed_versions.contains(mt.gatk_version), "has-gatk-fix")
-        .when(~fixed_versions.contains(mt.gatk_version), "no-gatk-fix")
+        gatk_version=hl.case()
+        .when(hl.is_defined(mt.gatk_version), mt.gatk_version)
         .when(hl.is_defined(meta_ht[mt.col_key].project_meta.ukb_meta.ukb_batch), "ukb")
         .or_missing()
     )
+    logger.info(mt.aggregate_cols(hl.agg.counter(mt.gatk_version)))  # Validity check
     return mt
-    # Ok cool so the annotate_freq function wants the entries to be annotated with "adj" -- this is the high quality GT I mentioned
-    # And we don't have that yet, right?
 
 
 def main(args):  # noqa: D103
@@ -93,7 +111,7 @@ def main(args):  # noqa: D103
     )  # TODO: Determine if splitting subset freq from whole callset agg
     include_non_release = (
         args.include_non_release
-    )  # TODO: Discuss if non-release samples will be included in calculating AF for homalt fix
+    )  # TODO: Discuss if non-release samples will be included in calculating AF for homalt fix # THEY WILL NOT ONLY RUN AF CALCULATION ON RELEASABLE SAMPLES
 
     hl.init(
         log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",
@@ -109,7 +127,7 @@ def main(args):  # noqa: D103
         logger.info("Filtering to DRD2 in test VDS for testing purposes...")
         test_interval = [
             hl.parse_locus_interval("chr11:113409605-113475691")
-        ]  # NOTE: test on gene DRD2
+        ]  # NOTE: test on gene DRD2 for now, will update to chr22 when original PR goes in
         vds = hl.vds.filter_intervals(vds, test_interval)
         variants, samples = vds.variant_data.count()
         logger.info(
@@ -134,6 +152,8 @@ def main(args):  # noqa: D103
         )
         mt = hl.vds.to_dense_mt(vds)
         mt = annotate_gatk_version(mt)
+
+        # Make this a module that can be recalled in the main for all chrs
         mt = mt.annotate_cols(
             sex_karyotype=meta_ht[mt.col_key].sex_imputation.sex_karyotype,
             pop=meta_ht[mt.col_key].population_inference.pop,
@@ -141,7 +161,7 @@ def main(args):  # noqa: D103
 
         logger.info("Computing adj and sex adjusted genotypes...")
         mt = mt.annotate_entries(
-            GT=adjusted_sex_ploidy_expr(  # TODO: Not needed just yet but we will
+            GT=adjusted_sex_ploidy_expr(  # NOTE: Not needed just yet but we will
                 mt.locus, mt.GT, mt.sex_karyotype
             ),
         )
@@ -151,18 +171,24 @@ def main(args):  # noqa: D103
             mt,
             sex_expr=mt.sex_karyotype,
             pop_expr=mt.pop,
-            additional_strata_expr={"gatk_fix": mt.gatk_fix},
+            additional_strata_expr={
+                "gatk_version": mt.gatk_version
+            },  # TODO: Flip to version and update gnomad_methods to expand this
         )
+        # TODO: Add annotation for "if you applied homalt hot fix for this
+        # variant, how many genotypes would change"
+
+        mt = annotate_homalt_gt_change(mt)
 
     logger.info("Checkpointing MatrixTable...")
     mt = mt.checkpoint("gs://gnomad-tmp-4day/freq/test_freq_aggs.mt", overwrite=True)
+    mt = mt.annotate_rows(high_ab_hets=hl.agg.count_where(mt.het_high_ab))
+    mt = mt.checkpoint("gs://gnomad-tmp-4day/freq/test_freq_aggs2.mt", overwrite=True)
 
     # Validity checking
     mt.rows().show()
     mt.cols().show()
-    mt.aggregate_cols(
-        hl.agg.counter(mt.gatk_fix)
-    )  # Qin: I don't see the counts, maybe we have to use .aggregate instead of aggregate_cols?
+    print(mt.aggregate_cols(hl.agg.counter(mt.gatk_fix)))
 
 
 if __name__ == "__main__":
