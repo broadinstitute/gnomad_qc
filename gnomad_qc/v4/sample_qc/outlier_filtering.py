@@ -911,7 +911,6 @@ def main(args):
                 args.regress_platform_n_pcs if args.regress_platform else None
             ),
             regress_per_platform=args.regress_per_platform,
-            project_meta_ht=joint_qc_meta_ht,
         )
         ht.annotate_globals(
             include_unreleasable_samples=include_unreleasable_samples
