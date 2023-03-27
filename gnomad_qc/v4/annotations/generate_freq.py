@@ -93,7 +93,10 @@ def annotate_gatk_version(mt: hl.MatrixTable) -> hl.MatrixTable:
     )  # TODO: Discuss if this should be a resource or annotation on metadata, misssing GATK version info for UKB samples
     mt = mt.annotate_cols(
         gatk_version=hl.case()
-        .when(hl.is_defined(mt.gatk_version), mt.gatk_version)
+        .when(
+            hl.is_defined(gatk_ht[mt.col_key].gatk_version),
+            gatk_ht[mt.col_key].gatk_version,
+        )
         .when(hl.is_defined(meta_ht[mt.col_key].project_meta.ukb_meta.ukb_batch), "ukb")
         .or_missing()
     )
@@ -152,7 +155,7 @@ def main(args):  # noqa: D103
             mt,
             sex_expr=mt.sex_karyotype,
             pop_expr=mt.pop,
-            downsamplings=DOWNSAMPLINGS,
+            downsamplings=DOWNSAMPLINGS["v4"],
             additional_strata_expr={
                 "gatk_version": mt.gatk_version
             },  # TODO: Update gnomad_methods to expand this
@@ -168,7 +171,6 @@ def main(args):  # noqa: D103
     # Validity checking
     mt.rows().show()
     mt.cols().show()
-    print(mt.aggregate_cols(hl.agg.counter(mt.gatk_fix)))
 
 
 if __name__ == "__main__":
@@ -183,7 +185,9 @@ if __name__ == "__main__":
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
     parser.add_argument(
-        "--subsets", help="Subsets to run frequency calculation on.", choices=SUBSETS
+        "--subsets",
+        help="Subsets to run frequency calculation on.",
+        choices=SUBSETS["v4"],
     )
     parser.add_argument(
         "--calculate-gatk-af-diff",
