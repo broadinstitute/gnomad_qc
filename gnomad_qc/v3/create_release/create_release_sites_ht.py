@@ -48,6 +48,8 @@ POPS.extend(POPS_STORED_AS_SUBPOPS)
 # in frequency index dictionary
 POPS.extend(["global"])
 
+SUBSETS = SUBSETS["v3"]
+
 
 def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
     """
@@ -282,7 +284,7 @@ def main(args):  # noqa: D103
             pre_process_subset_freq(
                 subset, global_freq_ht, het_nonref_patch=args.het_nonref_patch
             )
-            for subset in SUBSETS["v3"]
+            for subset in SUBSETS
         ]
 
     logger.info("Concatenating subset frequencies...")
@@ -389,7 +391,7 @@ if __name__ == "__main__":
             "Specify subsets on which to run test, e.g. '--test_subsets non_v2"
             " non_topmed'"
         ),
-        default=SUBSETS["v3"],
+        default=SUBSETS,
         nargs="+",
     )
     parser.add_argument(

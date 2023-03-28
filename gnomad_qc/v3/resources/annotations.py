@@ -20,6 +20,8 @@ from gnomad_qc.v3.resources.constants import (
     VERSIONS,
 )
 
+SUBSETS = SUBSETS["v3"]
+
 
 def _annotations_root(version: str = CURRENT_VERSION) -> str:
     """
@@ -204,10 +206,10 @@ def get_freq(
 
     if subset is not None:
         for s in subset.split("-"):
-            if s not in SUBSETS["v3"]:
+            if s not in SUBSETS:
                 raise DataException(
                     f"{subset} subset is not one of the following official subsets:"
-                    f" {SUBSETS['v3']}"
+                    f" {SUBSETS}"
                 )
 
     return VersionedTableResource(

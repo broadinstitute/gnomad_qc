@@ -3,8 +3,6 @@ from typing import Optional
 
 from gnomad.resources.grch37.gnomad import EXOME_RELEASES, GENOME_RELEASES
 from gnomad.resources.grch38.gnomad import SUBSETS
-
-# TODO: Add a V4_SUBSETS to replace SUBSETS (currently includes tgp and hgdp which are not relevant for v4) # noqa
 from gnomad.resources.resource_utils import (
     DataException,
     TableResource,
@@ -12,6 +10,8 @@ from gnomad.resources.resource_utils import (
 )
 
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
+
+SUBSETS = SUBSETS["v4"]
 
 
 def _annotations_root(version: str = CURRENT_VERSION) -> str:
@@ -173,10 +173,10 @@ def get_freq(
     """
     if subset is not None:
         for s in subset.split("-"):
-            if s not in SUBSETS["v4"]:
+            if s not in SUBSETS:
                 raise DataException(
                     f"{subset} subset is not one of the following official subsets:"
-                    f" {SUBSETS['v4']}"
+                    f" {SUBSETS}"
                 )
 
     return VersionedTableResource(
