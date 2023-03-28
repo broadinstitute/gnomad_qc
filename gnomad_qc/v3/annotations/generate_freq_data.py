@@ -271,7 +271,7 @@ def main(args):  # noqa: D103
                 mt,
                 sex_expr=mt.meta.sex_imputation.sex_karyotype,
                 pop_expr=mt.meta.population_inference.pop,
-                downsamplings=DOWNSAMPLINGS,
+                downsamplings=DOWNSAMPLINGS["v3"],
             )
             # Remove all loci with raw AC=0
             mt = mt.filter_rows(mt.freq[1].AC > 0)
