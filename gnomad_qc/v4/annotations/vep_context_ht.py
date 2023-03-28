@@ -4,9 +4,13 @@ import logging
 import os
 
 import hail as hl
+from gnomad.resources.config import (
+    GnomadPublicResourceSource,
+    gnomad_public_resource_configuration,
+)
 from gnomad.resources.grch38.reference_data import vep_context
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vep import get_vep_help, vep_or_lookup_vep
+from gnomad.utils.vep import VEP_CONFIG_PATH, get_vep_help
 
 from gnomad_qc.slack_creds import slack_token
 
@@ -28,16 +32,16 @@ def main(args):
         ht = ht._filter_partitions(range(2))
 
     ht = ht.drop("vep", "vep_proc_id")
-    ht = vep_or_lookup_vep(ht, vep_version.vep_version)
-    vep_config_path = "file:///vep_data/vep-gcloud.json"
-    vep_help = get_vep_help(vep_config_path)
+    ht = hl.vep(ht, VEP_CONFIG_PATH)
+    vep_help = get_vep_help(VEP_CONFIG_PATH)
 
-    with hl.hadoop_open(vep_config_path) as vep_config_file:
+    with hl.hadoop_open(VEP_CONFIG_PATH) as vep_config_file:
         vep_config = vep_config_file.read()
 
     ht = ht.annotate_globals(
         version=f"v{vep_version}", vep_help=vep_help, vep_config=vep_config
     )
+    gnomad_public_resource_configuration.source = GnomadPublicResourceSource.GNOMAD
     out_vep_path = vep_context.versions[vep_version].path
     if args.test:
         ht.write(
