@@ -104,6 +104,54 @@ def annotate_gatk_version(mt: hl.MatrixTable) -> hl.MatrixTable:
     return mt
 
 
+def calculate_gatk_af_diff(mt: hl.MatrixTable) -> hl.MatrixTable:
+    """
+    Calculate the allele frequencies across specified groups to determine AF differences.
+
+    This will run on ancestry group, sex, GATK version and also annotate with the
+    number of high allele balance het per variant.
+
+    :param mt: MatrixTable to run test on.
+    """
+    logger.info(
+        "Densifying VDS and determining frequency differences across GATK versions..."
+    )
+    mt = hl.vds.to_dense_mt(vds)
+    mt = annotate_gatk_version(mt)
+
+    # Make this a module that can be recalled in the main for all chrs
+    mt = mt.annotate_cols(
+        sex_karyotype=meta_ht[mt.col_key].sex_imputation.sex_karyotype,
+        pop=meta_ht[mt.col_key].population_inference.pop,
+    )
+
+    logger.info("Computing adj and sex adjusted genotypes...")
+    mt = mt.annotate_entries(
+        GT=adjusted_sex_ploidy_expr(  # NOTE: Not needed just yet but we will
+            mt.locus, mt.GT, mt.sex_karyotype
+        ),
+    )
+    mt = annotate_adj(mt)
+    logger.info("Annotating frequency...")
+    mt = annotate_freq(
+        mt,
+        sex_expr=mt.sex_karyotype,
+        pop_expr=mt.pop,
+        downsamplings=DOWNSAMPLINGS["v4"],
+        additional_strata_expr={"gatk_version": mt.gatk_version},
+        additional_strata_grouping_expr={
+            "pop": mt.pop
+        },  # TODO: Update gnomad_methods to expand this
+    )
+
+    mt = annotate_homalt_gt_change(mt)
+    mt = mt.checkpoint(
+        "gs://gnomad-tmp-4day/freq/test_freq_aggs.mt", overwrite=True
+    )  # TODO: Update to temp path
+    mt = mt.annotate_rows(high_ab_hets=hl.agg.count_where(mt.het_high_ab))
+    return mt
+
+
 def main(args):  # noqa: D103
     subsets = (
         args.subsets
@@ -130,47 +178,10 @@ def main(args):  # noqa: D103
         )
 
     if args.calculate_gatk_af_diff:
-        logger.info(
-            "Densifying VDS and determining frequency differences across GATK"
-            " versions..."
-        )
-        mt = hl.vds.to_dense_mt(vds)
-        mt = annotate_gatk_version(mt)
-
-        # Make this a module that can be recalled in the main for all chrs
-        mt = mt.annotate_cols(
-            sex_karyotype=meta_ht[mt.col_key].sex_imputation.sex_karyotype,
-            pop=meta_ht[mt.col_key].population_inference.pop,
-        )
-
-        logger.info("Computing adj and sex adjusted genotypes...")
-        mt = mt.annotate_entries(
-            GT=adjusted_sex_ploidy_expr(  # NOTE: Not needed just yet but we will
-                mt.locus, mt.GT, mt.sex_karyotype
-            ),
-        )
-        mt = annotate_adj(mt)
-        logger.info("Annotating frequency...")
-        mt = annotate_freq(
-            mt,
-            sex_expr=mt.sex_karyotype,
-            pop_expr=mt.pop,
-            downsamplings=DOWNSAMPLINGS["v4"],
-            additional_strata_expr={
-                "gatk_version": mt.gatk_version
-            },  # TODO: Update gnomad_methods to expand this
-        )
-
-        mt = annotate_homalt_gt_change(mt)
+        mt = calculate_gatk_af_diff(mt)
 
     logger.info("Checkpointing MatrixTable...")
-    mt = mt.checkpoint("gs://gnomad-tmp-4day/freq/test_freq_aggs.mt", overwrite=True)
-    mt = mt.annotate_rows(high_ab_hets=hl.agg.count_where(mt.het_high_ab))
     mt = mt.checkpoint("gs://gnomad-tmp-4day/freq/test_freq_aggs2.mt", overwrite=True)
-
-    # Validity checking
-    mt.rows().show()
-    mt.cols().show()
 
 
 if __name__ == "__main__":
