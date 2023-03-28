@@ -50,6 +50,7 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("compare_freq")
 logger.setLevel(logging.INFO)
 
+POPS = POPS["v3"]
 POPS_MAP = {
     "v2_exomes": {pop.lower() for pop in EXOME_POPS},
     "v2_genomes": {pop.lower() for pop in GENOME_POPS},

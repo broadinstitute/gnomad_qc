@@ -37,6 +37,9 @@ logging.basicConfig(
 logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
+POPS = POPS["v3"]
+SUBSETS = SUBSETS["v3"]
+
 # Remove InbreedingCoeff from allele-specific fields (processed separately
 # from other fields)
 AS_FIELDS.remove("InbreedingCoeff")
@@ -47,8 +50,6 @@ POPS.extend(POPS_STORED_AS_SUBPOPS)
 # Add 'global' tag used to distinguish cohort-wide vs. subset annotations
 # in frequency index dictionary
 POPS.extend(["global"])
-
-SUBSETS = SUBSETS["v3"]
 
 
 def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
