@@ -41,6 +41,9 @@ def main(args):
     ht = ht.annotate_globals(
         version=f"v{vep_version}", vep_help=vep_help, vep_config=vep_config
     )
+
+    # Switch gnomAD public resource source to get path in
+    # gs://gnomad-public-requester-pays to write to.
     gnomad_public_resource_configuration.source = GnomadPublicResourceSource.GNOMAD
     out_vep_path = vep_context.versions[vep_version].path
     if args.test:
