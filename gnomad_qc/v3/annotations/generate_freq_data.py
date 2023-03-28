@@ -48,6 +48,10 @@ logging.basicConfig(
 logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
 
+DOWNSAMPLINGS = DOWNSAMPLINGS["v3"]
+POPS = POPS["v3"]
+SUBSETS = SUBSETS["v3"]
+
 
 def main(args):  # noqa: D103
     subsets = args.subsets
