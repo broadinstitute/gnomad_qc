@@ -37,6 +37,9 @@ logging.basicConfig(
 logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
+POPS = POPS["v3"]
+SUBSETS = SUBSETS["v3"]
+
 # Remove InbreedingCoeff from allele-specific fields (processed separately
 # from other fields)
 AS_FIELDS.remove("InbreedingCoeff")

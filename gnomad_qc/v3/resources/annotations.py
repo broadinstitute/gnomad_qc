@@ -20,6 +20,8 @@ from gnomad_qc.v3.resources.constants import (
     VERSIONS,
 )
 
+SUBSETS = SUBSETS["v3"]
+
 
 def _annotations_root(version: str = CURRENT_VERSION) -> str:
     """
