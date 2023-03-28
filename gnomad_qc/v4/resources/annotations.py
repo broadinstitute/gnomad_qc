@@ -173,10 +173,10 @@ def get_freq(
     """
     if subset is not None:
         for s in subset.split("-"):
-            if s not in SUBSETS:
+            if s not in SUBSETS["v4"]:
                 raise DataException(
                     f"{subset} subset is not one of the following official subsets:"
-                    f" {SUBSETS}"
+                    f" {SUBSETS['v4']}"
                 )
 
     return VersionedTableResource(

@@ -86,7 +86,7 @@ AS_FIELDS = remove_fields_from_constant(AS_FIELDS, MISSING_AS_FIELDS)
 
 # Make subset list (used in properly filling out VCF header descriptions
 # and naming VCF info fields)
-SUBSET_LIST_FOR_VCF = SUBSETS.copy()
+SUBSET_LIST_FOR_VCF = SUBSETS["v3"].copy()
 SUBSET_LIST_FOR_VCF.append("")
 
 # Remove cohorts that have subpop frequencies stored as pop frequencies
@@ -229,7 +229,7 @@ def populate_info_dict(
     bin_edges: Dict[str, str],
     age_hist_data: str = None,
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
-    subset_list: List[str] = SUBSETS,
+    subset_list: List[str] = SUBSETS["v3"],
     subset_pops: Dict[str, str] = POPS,
     gnomad_pops: Dict[str, str] = POPS,
     faf_pops: Dict[str, str] = FAF_POPS,
@@ -912,7 +912,7 @@ def main(args):  # noqa: D103
             logger.info("Beginning validity checks on the prepared VCF HT...")
             validate_release_t(
                 prepared_vcf_ht,
-                subsets=["gnomad"] if hgdp_tgp else SUBSETS,
+                subsets=["gnomad"] if hgdp_tgp else SUBSETS["v3"],
                 metric_first_field=False if hgdp_tgp else True,
                 sample_sum_sets_and_pops=parameter_dict["sample_sum_sets_and_pops"],
                 missingness_threshold=0.5,

@@ -282,7 +282,7 @@ def main(args):  # noqa: D103
             pre_process_subset_freq(
                 subset, global_freq_ht, het_nonref_patch=args.het_nonref_patch
             )
-            for subset in SUBSETS
+            for subset in SUBSETS["v3"]
         ]
 
     logger.info("Concatenating subset frequencies...")
@@ -389,7 +389,7 @@ if __name__ == "__main__":
             "Specify subsets on which to run test, e.g. '--test_subsets non_v2"
             " non_topmed'"
         ),
-        default=SUBSETS,
+        default=SUBSETS["v3"],
         nargs="+",
     )
     parser.add_argument(
