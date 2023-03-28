@@ -216,7 +216,7 @@ def main(args):  # noqa: D103
 
             # NOTE: no FAFs or popmax needed for subsets
             mt = mt.select_rows("freq")
-            pops = POPS["v3"]
+            pops = POPS
             if n_subsets_use_subpops:
                 pops = POPS_STORED_AS_SUBPOPS
 
@@ -271,7 +271,7 @@ def main(args):  # noqa: D103
                 mt,
                 sex_expr=mt.meta.sex_imputation.sex_karyotype,
                 pop_expr=mt.meta.population_inference.pop,
-                downsamplings=DOWNSAMPLINGS["v3"],
+                downsamplings=DOWNSAMPLINGS,
             )
             # Remove all loci with raw AC=0
             mt = mt.filter_rows(mt.freq[1].AC > 0)

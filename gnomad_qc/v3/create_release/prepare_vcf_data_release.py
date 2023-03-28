@@ -112,7 +112,7 @@ MISSING_INFO_FIELDS = (
 )
 
 # Remove unnecessary pop names from POP_NAMES dict
-POPS = {pop: POP_NAMES[pop] for pop in POPS["v3"]}
+POPS = {pop: POP_NAMES[pop] for pop in POPS}
 
 # Remove unnecessary pop names from FAF_POPS dict
 FAF_POPS = {pop: POP_NAMES[pop] for pop in FAF_POPS}

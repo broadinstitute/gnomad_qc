@@ -53,7 +53,7 @@ logger.setLevel(logging.INFO)
 POPS_MAP = {
     "v2_exomes": {pop.lower() for pop in EXOME_POPS},
     "v2_genomes": {pop.lower() for pop in GENOME_POPS},
-    "v3_genomes": {pop.lower() for pop in POPS["v3"]},
+    "v3_genomes": {pop.lower() for pop in POPS},
 }
 POP_FORMAT = {
     "v2_exomes": "gnomad_{}",
