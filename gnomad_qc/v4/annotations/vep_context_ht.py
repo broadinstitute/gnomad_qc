@@ -75,7 +75,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--vep-version",
-        help="Version of VEPed context Table to use in 'vep_or_lookup_vep'.",
+        help="Version of VEP the context Table is being annotated with.",
         action="store_true",
         default="105",
     )
