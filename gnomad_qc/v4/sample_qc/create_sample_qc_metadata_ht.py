@@ -277,7 +277,7 @@ def annotate_relationships(ht: hl.Table, outlier_filter_ht: hl.Table) -> hl.Tabl
     logger.info("Aggregating sample relationship information...")
     # TODO: should we add v3 relationships to the relationships set, or have a
     #  different annotation for that?
-    # Use a filter to only exome-exome pairs passing hard filtering (all pairs in the
+    # Filter to only exome-exome pairs passing hard filtering (all pairs in the
     # relatedness Table pass hard filtering) for 'relationships' annotation and to only
     # exome-exome pairs passing both hard-filtering and outlier filtering for
     # 'relationships_high_quality' annotation.
