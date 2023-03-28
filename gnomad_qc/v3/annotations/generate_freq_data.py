@@ -48,6 +48,8 @@ logging.basicConfig(
 logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
 
+SUBSETS = SUBSETS["v3"]
+
 
 def main(args):  # noqa: D103
     subsets = args.subsets
@@ -63,7 +65,7 @@ def main(args):  # noqa: D103
         invalid_subsets = []
         n_subsets_use_subpops = 0
         for s in subsets:
-            if s not in SUBSETS["v3"]:
+            if s not in SUBSETS:
                 invalid_subsets.append(s)
             if s in COHORTS_WITH_POP_STORED_AS_SUBPOP:
                 n_subsets_use_subpops += 1
@@ -71,14 +73,14 @@ def main(args):  # noqa: D103
         if invalid_subsets:
             raise ValueError(
                 f"{', '.join(invalid_subsets)} subset(s) are not one of the following"
-                f" official subsets: {SUBSETS['v3']}"
+                f" official subsets: {SUBSETS}"
             )
         if n_subsets_use_subpops & (n_subsets_use_subpops != len(subsets)):
             raise ValueError(
                 "Cannot combine cohorts that use subpops in frequency calculations"
                 f" {COHORTS_WITH_POP_STORED_AS_SUBPOP} "
                 "with cohorts that use pops in frequency calculations"
-                f" {[s for s in SUBSETS['v3'] if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
+                f" {[s for s in SUBSETS if s not in COHORTS_WITH_POP_STORED_AS_SUBPOP]}."
             )
     if args.hgdp_tgp_subset and not file_exists(hgdp_tgp_subset_annotations().path):
         raise DataException(
@@ -370,7 +372,7 @@ if __name__ == "__main__":
         "--subsets",
         help="List of subsets for which to generate combined frequency data.",
         nargs="*",
-        choices=SUBSETS["v3"],
+        choices=SUBSETS,
     )
     parser.add_argument(
         "--hgdp_tgp_subset",
