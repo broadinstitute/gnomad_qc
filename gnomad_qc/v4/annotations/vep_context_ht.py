@@ -31,10 +31,17 @@ def main(args):
     if args.test:
         ht = ht._filter_partitions(range(2))
 
-    ht = ht.drop("vep", "vep_proc_id")
-    ht = hl.vep(ht, VEP_CONFIG_PATH)
-    vep_help = get_vep_help(VEP_CONFIG_PATH)
+    # Drop the 'vep' annotation which will be replaced by the new vep version.
+    # In the vep 101 context HT we stored the 'vep_proc_id' annotation, so we need to
+    # drop it if it is present.
+    if "vep_proc_id" in list(ht.row):
+        ht = ht.drop("vep", "vep_proc_id")
+    else:
+        ht = ht.drop("vep")
 
+    ht = hl.vep(ht, VEP_CONFIG_PATH)
+
+    vep_help = get_vep_help(VEP_CONFIG_PATH)
     with hl.hadoop_open(VEP_CONFIG_PATH) as vep_config_file:
         vep_config = vep_config_file.read()
 
