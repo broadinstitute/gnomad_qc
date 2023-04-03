@@ -555,14 +555,6 @@ if __name__ == "__main__":
         choices=SUBSETS["v4"],
     )
     parser.add_argument(
-        "--add-gatk-freqs",
-        help=(
-            "Add GATK version to frequency groupings, i.e. calculate frequencies by"
-            " GATK version."
-        ),
-        action="store_true",
-    )
-    parser.add_argument(
         "--get-freq-and-high-ab",
         help="Calculate frequencies and high AB sites per frequency grouping.",
         action="store_true",
