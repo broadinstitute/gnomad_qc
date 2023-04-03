@@ -24,9 +24,11 @@ def generate_hists(mt: hl.MatrixTable) -> hl.Table:
     :return: Table with histograms.
     """
     meta = get_gnomad_meta("genomes")
-    meta = meta.key_by(s=(meta.project_id + "_" + meta.s).replace("\W+", "_"))
+    meta = meta.key_by(
+        s=(meta.project_id + "_" + meta.s).replace("\W+", "_")
+    )  # TODO: Determine if we need this line or not, Harrison said meta should be 1:1
     mt = mt.annotate_cols(
-        age=meta[mt.col_key].age, in_v2=hl.is_defined(meta[mt.col_key])
+        age=meta[mt.col_key].age, in_v3=hl.is_defined(meta[mt.col_key])
     )
 
     logger.info(
@@ -82,7 +84,7 @@ def main(args):
 
     hists_ht = generate_hists(mt)
     hists_ht.write(
-        sv_age_and_gq_hists,
+        sv_age_and_gq_hists.ht(),
         overwrite=args.overwrite,
     )
 
