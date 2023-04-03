@@ -2,6 +2,7 @@
 import argparse
 import logging
 
+import hail as hl
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
