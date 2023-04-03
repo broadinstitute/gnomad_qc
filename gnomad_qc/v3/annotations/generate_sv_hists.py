@@ -4,6 +4,7 @@ import logging
 
 from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import sv_age_and_gq_hists
 from gnomad_qc.v3.resources.basics import (
     gnomad_sv_release_samples_list_path,
