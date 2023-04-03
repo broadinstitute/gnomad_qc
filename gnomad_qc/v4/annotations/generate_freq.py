@@ -361,17 +361,20 @@ def annotate_high_ab_hets_by_group_membership(
     """
     mt = mt.annotate_rows(
         high_ab_hets_by_group_membership=hl.agg.array_agg(
-            lambda x: hl.agg.count_where(
-                (mt.group_membership[x])  # Doesn't work
-                & (high_ab_het_expr(mt, gatk_expr, ab_cutoff, gatk_versions_to_fix))
+            lambda i: hl.agg.filter(
+                mt.group_membership[i]
+                & needs_high_ab_het_fix_expr(
+                    mt, gatk_expr, ab_cutoff, gatk_versions_to_fix
+                ),
+                hl.agg.count(),
             ),
-            mt.group_membership,
+            hl.range(hl.len(mt.group_membership)),
         )
     )
     return mt
 
 
-def high_ab_het_expr(
+def needs_high_ab_het_fix_expr(
     mt: hl.MatrixTable,
     gatk_expr: hl.expr.StringExpression,
     ab_cutoff: hl.float = 0.9,
@@ -395,7 +398,6 @@ def high_ab_het_expr(
         & (mt.AD[1] / mt.DP > ab_cutoff)
         & (gatk_versions_to_fix.contains(gatk_expr))
     )
-    return mt
 
 
 def annotate_gatk_version(mt: hl.MatrixTable) -> hl.MatrixTable:
@@ -523,7 +525,7 @@ def main(args):  # noqa: D103
         ht = hom_alt_depletion_fix(ht, af_threshold)
 
     logger.info("Checkpointing frequency table...")
-    ht = ht.select("freq")  # , "high_ab_hets")
+    ht = ht.select("freq", "high_ab_hets_by_group_membership")
     ht = ht.checkpoint(
         f"gs://gnomad-tmp-4day/freq/test_freq_aggs{'adjusted' if args.adjust_freqs else ''}2.ht",
         overwrite=True,
