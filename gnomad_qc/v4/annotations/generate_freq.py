@@ -344,7 +344,34 @@ def annotate_non_ref_het(vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
     return vds
 
 
-def annotate_high_ab_hets(
+def annotate_high_ab_hets_by_group_membership(
+    mt: hl.MatrixTable,
+    gatk_expr: hl.expr.StringExpression,
+    ab_cutoff: hl.float = 0.9,
+    gatk_versions_to_fix: hl.expr.SetExpression = hl.set(["4.0.10.1", "4.1.0.0"]),
+) -> hl.MatrixTable:
+    """
+    Annotate high AB hets by group membership.
+
+    :param mt: MatrixTable to annotate high AB hets onto.
+    :param gatk_expr: GATK version expression.
+    :param ab_cutoff: Allele balance cutoff for hom alt depletion fix. Defaults to 0.9
+    :param gatk_versions_to_fix: GATK versions that need the hom alt depletion fix. Defaults to hl.set(["4.0.10.1", "4.1.0.0"])
+    :return: _description_
+    """
+    mt = mt.annotate_rows(
+        high_ab_hets_by_group_membership=hl.agg.array_agg(
+            lambda x: hl.agg.count_where(
+                (mt.group_membership[x])  # Doesn't work
+                & (high_ab_het_expr(mt, gatk_expr, ab_cutoff, gatk_versions_to_fix))
+            ),
+            mt.group_membership,
+        )
+    )
+    return mt
+
+
+def high_ab_het_expr(
     mt: hl.MatrixTable,
     gatk_expr: hl.expr.StringExpression,
     ab_cutoff: hl.float = 0.9,
@@ -362,13 +389,11 @@ def annotate_high_ab_hets(
     :return mt:
     """
     logger.info("Annotating high AB hets...")
-    mt = mt.annotate_rows(  # TODO:Make this check grouper membership and tally in array
-        high_ab_hets=hl.agg.count_where(
-            mt.GT.is_het()
-            & ~mt._het_non_ref  # Skip adjusting genotypes if sample originally had a het nonref genotype
-            & (mt.AD[1] / mt.DP > ab_cutoff)
-            & (gatk_versions_to_fix.contains(gatk_expr))
-        )
+    return (
+        mt.GT.is_het()
+        & ~mt._het_non_ref  # Skip adjusting genotypes if sample originally had a het nonref genotype
+        & (mt.AD[1] / mt.DP > ab_cutoff)
+        & (gatk_versions_to_fix.contains(gatk_expr))
     )
     return mt
 
@@ -422,8 +447,6 @@ def main(args):  # noqa: D103
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    hl._set_flags(use_new_shuffle="1")
-    hl._set_flags(no_whole_stage_codegen="1")
     # TODO: Update to release = True once outlier filtering is complete,
     # possibly sample_meta=True if added
     vds = get_gnomad_v4_vds(test=test)
@@ -491,7 +514,7 @@ def main(args):  # noqa: D103
                 f"gs://gnomad-tmp-4day/freq/test_freq_aggs_pre_ab2.mt",
                 _read_if_exists=True,
             )
-        mt = annotate_high_ab_hets(mt, gatk_expr=mt.gatk_version)
+        mt = annotate_high_ab_hets_by_group_membership(mt, gatk_expr=mt.gatk_version)
         ht = mt.rows()
 
     if args.adjust_freqs:
@@ -500,7 +523,7 @@ def main(args):  # noqa: D103
         ht = hom_alt_depletion_fix(ht, af_threshold)
 
     logger.info("Checkpointing frequency table...")
-    ht = ht.select("freq", "high_ab_hets")
+    ht = ht.select("freq")  # , "high_ab_hets")
     ht = ht.checkpoint(
         f"gs://gnomad-tmp-4day/freq/test_freq_aggs{'adjusted' if args.adjust_freqs else ''}2.ht",
         overwrite=True,
