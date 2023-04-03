@@ -92,11 +92,6 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--import_vcf",
-        help="Imports gnomAD SV VCF and writes it as MT.",
-        action="store_true",
-    )
-    parser.add_argument(
         "--generate_hists", help="Generate age and GQ histograms", action="store_true"
     )
     parser.add_argument(
