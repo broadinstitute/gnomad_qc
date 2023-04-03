@@ -203,3 +203,9 @@ def get_logging_path(name: str, version: str = CURRENT_RELEASE) -> str:
     :return: Output log path
     """
     return f"{qc_temp_prefix(version)}{name}.log"
+
+
+# Resources need for SV histogram generation
+gnomad_sv_vcf_path = "gs://talkowski-sv-gnomad-output/zero/Releasable_freeze1_202303/gnomAD.v3.SV.*.vcf.gz"
+gnomad_sv_release_samples_list_path = "gs://talkowski-sv-gnomad-output/zero/Releasable_freeze1_202303/gnomAD.v3.SV.releasable.samples"
+temp_gnomad_sv_mt_path = f"{qc_temp_prefix}/gnomad_v3_sv_data/gnomad_v3_sv_temp.mt"
