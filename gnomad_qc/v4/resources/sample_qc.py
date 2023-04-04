@@ -56,7 +56,7 @@ def get_sample_qc(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type)}/hard_filtering/gnomad.{data_type}.v{version}.sample_qc_all_{'' if strat == 'all' else strat}.ht"
+                f"{get_sample_qc_root(version, test, data_type)}/hard_filtering/gnomad.{data_type}.v{version}.sample_qc_all{'' if strat == 'all' else f'_{strat}'}.ht"
             )
             for version in VERSIONS
         },
