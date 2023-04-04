@@ -12,7 +12,7 @@ from gnomad_qc.v3.resources.basics import (
     gnomad_sv_vcf_path,
     temp_gnomad_sv_mt_path,
 )
-from gnomad_qc.v3.resources.meta import get_gnomad_meta
+from gnomad_qc.v3.resources.meta import meta
 
 logger = logging.getLogger("generate_gnomad_sv_histograms")
 
@@ -24,7 +24,7 @@ def generate_hists(mt: hl.MatrixTable) -> hl.Table:
     :param mt: gnomAD SV MatrixTable.
     :return: Table with histograms.
     """
-    meta = get_gnomad_meta("genomes")
+    meta = meta.ht()
     meta = meta.key_by(
         s=(meta.project_id + "_" + meta.s).replace("\W+", "_")
     )  # TODO: Determine if we need this line or not, Harrison said meta should be 1:1
