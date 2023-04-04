@@ -124,9 +124,7 @@ def apply_filter(
 
     # Run filtering method using defined expressions, and any other passed parameters.
     if filtering_method == "stratified":
-        ht = apply_stratified_filtering_method(
-            sample_qc_ht, qc_metrics, **ann_exprs, **kwargs
-        )
+        ht = apply_stratified_filtering_method(sample_qc_ht, qc_metrics, **ann_exprs)
     elif filtering_method == "regressed":
         ht = apply_regressed_filtering_method(
             sample_qc_ht, qc_metrics, **ann_exprs, **kwargs
