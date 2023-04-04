@@ -1035,8 +1035,9 @@ if __name__ == "__main__":
         "--apply-n-singleton-filter-to-r-ti-tv-singleton",
         help=(
             "Whether to apply the filtering method to only samples with: Number of "
-            "singletons (or n_singleton residuals) > median(comparison group number of "
-            "singletons/n_singleton residuals)."
+            "singletons (or n_singleton residuals) > median(number of "
+            "singletons/n_singleton residuals) where the median is computed on only "
+            "samples within the same strata or on only the 50 nearest neighbors."
         ),
         action="store_true",
     )
