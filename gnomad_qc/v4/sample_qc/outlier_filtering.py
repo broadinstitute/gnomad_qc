@@ -432,7 +432,7 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     filtering_methods = {"stratified", "regressed", "nearest_neighbors"}
     if filtering_method not in filtering_methods:
         raise ValueError(
-            f"Filtering method must be one of: {','.join(filtering_methods)}"
+            f"Filtering method must be one of: {', '.join(filtering_methods)}"
         )
 
     # Setup repeatedly used variables.
@@ -726,7 +726,7 @@ def get_outlier_filtering_resources(
     args: argparse.Namespace,
 ) -> PipelineResourceCollection:
     """
-    Get PipelineResourceCollection for all resources needed in the outlier pipeline.
+    Get PipelineResourceCollection for all resources needed in the outlier filtering pipeline.
 
     :param args: argparse Namespace for arguments passed to the outlier_filtering.py
         script.
