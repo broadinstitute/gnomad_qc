@@ -35,12 +35,26 @@ logger = logging.getLogger("hard_filters")
 logger.setLevel(logging.INFO)
 
 
-def compute_sample_qc(n_partitions: int = 500, test: bool = False) -> hl.Table:
+def compute_sample_qc(
+    n_partitions: int = 500,
+    test: bool = False,
+    n_alt_alleles_strata: int = 3,
+    n_alt_alleles_strata_name: str = "three",
+) -> hl.Table:
     """
     Perform sample QC on the raw split matrix table using `compute_stratified_sample_qc`.
 
     :param n_partitions: Number of partitions to write the output sample QC HT to.
     :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full dataset.
+    :param n_alt_alleles_strata: Number of alternative alleles to stratify sample QC on.
+        For example `n_alt_alleles_strata` = 2 will stratify 'bi-allelic' and
+        'multi-allelic'. `n_alt_alleles_strata` = 3 will stratify under 3 alt alleles
+        and 3 or more alt alleles. Default is 3.
+    :param n_alt_alleles_strata_name: Name to use for number of alternative allele
+        stratification, where strata names are 'under_{n_alt_alleles_strata_name}_alt_alleles'
+        and '{n_alt_alleles_strata_name}_or_more_alt_alleles'. This is not used when
+        `n_alt_alleles_strata` = 2, and instead uses 'bi-allelic' and 'multi-allelic'.
+        Default is 'three'.
     :return: Table containing sample QC metrics.
     """
     logger.info("Computing sample QC")
@@ -51,16 +65,24 @@ def compute_sample_qc(n_partitions: int = 500, test: bool = False) -> hl.Table:
     vds = hl.vds.filter_intervals(
         vds, intervals=telomeres_and_centromeres.ht(), keep=False
     )
-
+    if n_alt_alleles_strata < 2:
+        raise ValueError("'n_alt_alleles_strata' must be greater than or equal to 2!")
+    elif n_alt_alleles_strata == 2:
+        strata = {
+            "bi_allelic": bi_allelic_expr(vds.variant_data),
+            "multi_allelic": ~bi_allelic_expr(vds.variant_data),
+        }
+    else:
+        strata = {
+            f"under_{n_alt_alleles_strata_name}_alt_alleles": vds.variant_data.n_unsplit_alleles
+            <= n_alt_alleles_strata,
+            f"{n_alt_alleles_strata_name}_or_more_alt_alleles": vds.variant_data.n_unsplit_alleles
+            > n_alt_alleles_strata,
+        }
     sample_qc_ht = compute_stratified_sample_qc(
         vds,
-        strata={
-            # "bi_allelic": bi_allelic_expr(vds.variant_data),
-            # "multi_allelic": ~bi_allelic_expr(vds.variant_data),
-            "under_three_alt_alleles": vds.variant_data.n_unsplit_alleles < 4,
-            "three_or_more_alt_alleles": vds.variant_data.n_unsplit_alleles >= 4,
-        },
-        tmp_ht_prefix=get_sample_qc(test=test).path[:-4],
+        strata=strata,
+        tmp_ht_prefix=get_sample_qc(test=test).path[:-3],
         gt_col="GT",
     )
 
@@ -262,7 +284,10 @@ def main(args):
     try:
         if args.sample_qc:
             compute_sample_qc(
-                n_partitions=args.sample_qc_n_partitions, test=test
+                n_partitions=args.sample_qc_n_partitions,
+                test=test,
+                n_alt_alleles_strata=args.n_alt_alleles_strata,
+                n_alt_alleles_strata_name=args.n_alt_alleles_strata_name,
             ).write(get_sample_qc(test=test).path, overwrite=overwrite)
 
         if args.compute_coverage:
@@ -400,6 +425,29 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--sample-qc", help="Compute Hail's VDS sample QC metrics.", action="store_true"
+    )
+    parser.add_argument(
+        "--n-alt-alleles-strata",
+        help=(
+            "Number of alternative alleles to stratify sample QC on. For example "
+            "'n_alt_alleles_strata' = 2 will stratify 'bi-allelic' and 'multi-allelic'."
+            " 'n_alt_alleles_strata' = 3 will stratify under 3 alt alleles and 3 or "
+            "more alt alleles. Default is 3."
+        ),
+        type=int,
+        default=3,
+    )
+    parser.add_argument(
+        "--n-alt-alleles-strata-name",
+        help=(
+            "Name to use for number of alternative allele stratification, where strata "
+            "names are 'under_{n_alt_alleles_strata_name}_alt_alleles' and "
+            "'{n_alt_alleles_strata_name}_or_more_alt_alleles'. This is not used when "
+            "`n_alt_alleles_strata` = 2, and instead uses 'bi-allelic' and "
+            "'multi-allelic'. Default is 'three'."
+        ),
+        type=str,
+        default="three",
     )
     parser.add_argument(
         "--sample-qc-n-partitions",
