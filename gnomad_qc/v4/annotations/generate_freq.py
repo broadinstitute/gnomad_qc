@@ -15,7 +15,7 @@ import hail as hl
 from gnomad.resources.grch38.gnomad import (
     SUBSETS,  # TODO: subsets will be changed to UKB, non-UKB,
 )
-from gnomad.resources.grch38.gnomad import (  # TODO: Update these values in gnomad_methods for v4
+from gnomad.resources.grch38.gnomad import (
     DOWNSAMPLINGS,
     POPS,
     POPS_TO_REMOVE_FOR_POPMAX,
@@ -359,6 +359,7 @@ def annotate_high_ab_hets_by_group_membership(
     :param gatk_versions_to_fix: GATK versions that need the hom alt depletion fix. Defaults to hl.set(["4.0.10.1", "4.1.0.0"])
     :return: _description_
     """
+    logger.info("Annotating number of high AB het sites in each freq group...")
     mt = mt.annotate_rows(
         high_ab_hets_by_group_membership=hl.agg.array_agg(
             lambda i: hl.agg.filter(
@@ -391,12 +392,12 @@ def needs_high_ab_het_fix_expr(
     :param gatk_versions_to_fix: Set of GATK versions impacted by hom alt depletion. Default is {"4.0.10.1", "4.1.0.0"}.
     :return mt:
     """
-    logger.info("Annotating high AB hets...")
     return (
-        mt.GT.is_het()
-        & ~mt._het_non_ref  # Skip adjusting genotypes if sample originally had a het nonref genotype
-        & (mt.AD[1] / mt.DP > ab_cutoff)
+        (mt.AD[1] / mt.DP > ab_cutoff)
+        & mt.adj
+        & mt.GT.is_het_ref()
         & (gatk_versions_to_fix.contains(gatk_expr))
+        # & ~mt._het_non_ref  # Skip adjusting genotypes if sample originally had a het nonref genotype
     )
 
 
@@ -475,8 +476,8 @@ def main(args):  # noqa: D103
             logger.info("Filtering to chromosome %s...")
             vds = hl.vds.filter_chromosomes(vds, keep=f"chr{chrom}")
 
-    logger.info("Annotating non_ref hets pre-split...")
-    vds = annotate_non_ref_het(vds)
+    # logger.info("Annotating non_ref hets pre-split...")
+    # vds = annotate_non_ref_het(vds)
 
     # if args.subsets:
     #     vds = hl.vds.filter_samples(
@@ -506,16 +507,10 @@ def main(args):  # noqa: D103
             mt,
             sex_expr=mt.meta.sex_imputation.sex_karyotype,
             pop_expr=mt.meta.population_inference.pop,
-            downsamplings=DOWNSAMPLINGS["v4"],
+            # downsamplings=DOWNSAMPLINGS["v4"],
             additional_strata_expr={"gatk_version": mt.gatk_version},
             additional_strata_grouping_expr={"pop": mt.meta.population_inference.pop},
         )
-        if test:  # remove after testing
-            logger.info("Checkpointing or reading in mt if exists...")
-            mt = mt.checkpoint(
-                f"gs://gnomad-tmp-4day/freq/test_freq_aggs_pre_ab2.mt",
-                _read_if_exists=True,
-            )
         mt = annotate_high_ab_hets_by_group_membership(mt, gatk_expr=mt.gatk_version)
         ht = mt.rows()
 
