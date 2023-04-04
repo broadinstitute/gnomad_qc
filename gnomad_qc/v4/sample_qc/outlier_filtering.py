@@ -762,7 +762,7 @@ def get_outlier_filtering_resources(
 
     # Initialize outlier filtering pipeline resource collection.
     outlier_filtering_pipeline = PipelineResourceCollection(
-        pipeline_name="relatedness",
+        pipeline_name="outlier_filtering",
         pipeline_resources={
             "pop_scores_ht": pop_scores_ht,
             "pop_ht": pop_ht,
