@@ -869,13 +869,15 @@ def main(args):
     include_unreleasable_samples = args.include_unreleasable_samples
 
     if args.apply_n_singleton_filter_to_r_ti_tv_singleton:
-        err_msg = (
-            "'--apply-n-singleton-filter-to-r-ti-tv-singleton' flag is set, but {} is "
-            "not in requested 'filtering_qc_metrics'!"
-        )
+        err_msg = ""
         for metric in {"n_singleton", "r_ti_tv_singleton"}:
             if metric not in filtering_qc_metrics:
-                raise ValueError(err_msg.format(metric))
+                err_msg += (
+                    "'--apply-n-singleton-filter-to-r-ti-tv-singleton' flag is set, but"
+                    f" {metric} is not in requested 'filtering_qc_metrics'!\n"
+                )
+        if err_msg:
+            raise ValueError(err_msg)
 
     outlier_resources = get_outlier_filtering_resources(args)
     pop_ht = outlier_resources.pop_ht.ht()
