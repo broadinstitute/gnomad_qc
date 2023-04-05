@@ -397,7 +397,7 @@ def needs_high_ab_het_fix_expr(
         & mt.adj
         & mt.GT.is_het_ref()
         & (gatk_versions_to_fix.contains(gatk_expr))
-        # & ~mt._het_non_ref  # Skip adjusting genotypes if sample originally had a het nonref genotype
+        & ~mt._het_non_ref  # Skip adjusting genotypes if sample originally had a het nonref genotype
     )
 
 
@@ -435,6 +435,29 @@ def hom_alt_depletion_fix(ht: hl.Table, af_threshold: float = 0.01) -> hl.Table:
     :return: Hail Table with adjusted frequencies.
     """
     # TODO: Adjust freq AC array using high_ab_het array
+    return ht
+
+
+def subtract_high_ab_hets_from_ac(ht: hl.Table, af_threshold: float = 0.01) -> hl.Table:
+    """
+    Subtract the number of AB het sites from  AC when the site AF is above the af threshold.
+
+    :param ht: Hail Table containing freq and high_ab_het annotations.
+    :return: Hail Table with adjusted AC.
+    """
+    ht = ht.annotate(
+        ab_adjusted_freq=hl.if_else(
+            ht.freq[0].AF > af_threshold,
+            hl.map(
+                lambda x, y: hl.struct(
+                    AC=x.AC - y, AF=x.AF, AN=x.AN, homozygote_count=x.homozygote_count
+                ),
+                ht.freq,
+                ht.high_ab_hets_by_group_membership,
+            ),
+            ht.freq,
+        )
+    )
     return ht
 
 
@@ -476,8 +499,8 @@ def main(args):  # noqa: D103
             logger.info("Filtering to chromosome %s...")
             vds = hl.vds.filter_chromosomes(vds, keep=f"chr{chrom}")
 
-    # logger.info("Annotating non_ref hets pre-split...")
-    # vds = annotate_non_ref_het(vds)
+    logger.info("Annotating non_ref hets pre-split...")
+    vds = annotate_non_ref_het(vds)
 
     # if args.subsets:
     #     vds = hl.vds.filter_samples(
