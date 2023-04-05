@@ -155,7 +155,9 @@ allele_data = VersionedTableResource(
 
 
 def get_freq(
-    version: str = CURRENT_VERSION, subset: Optional[str] = None
+    version: str = CURRENT_VERSION,
+    subset: Optional[str] = None,
+    hom_alt_adjustment=False,
 ) -> VersionedTableResource:
     """
     Get the frequency annotation table for a specified release.
@@ -163,6 +165,7 @@ def get_freq(
     :param version: Version of annotation path to return
     :param subset: One of the official subsets of the specified release (e.g., non_neuro, non_cancer,
         controls_and_biobanks) or a combination of them split by '-'
+    :param hom_alt_adjustment: Whether to return the frequency table before the hom alt adjustment
     :return: Hail Table containing subset or overall cohort frequency annotations
     """
     if subset is not None:
@@ -177,7 +180,7 @@ def get_freq(
         version,
         {
             version: TableResource(
-                f"{_annotations_root(version)}/gnomad.exomes.v{version}.frequencies{'.' + subset if subset else ''}.ht"
+                f"{_annotations_root(version)}/gnomad.exomes.v{version}.frequencies{'.' + subset if subset else ''}{'.hom_alt_adjusted' if hom_alt_adjustment else ''}.ht"
             )
             for version in VERSIONS
         },

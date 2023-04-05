@@ -426,7 +426,7 @@ def annotate_gatk_version(mt: hl.MatrixTable) -> hl.MatrixTable:
     return mt
 
 
-def hom_alt_depletion_fix(ht: hl.Table, af_threshold: float = 0.01) -> hl.Table:
+def subtract_high_ab_hets_from_ac(ht: hl.Table, af_threshold: float = 0.01) -> hl.Table:
     """
     Correct frequencies at sites with an AF greater than the af_threshold.
 
@@ -434,30 +434,27 @@ def hom_alt_depletion_fix(ht: hl.Table, af_threshold: float = 0.01) -> hl.Table:
     :param af_threshold: AF threshold at which to correct frequency. Default is 0.01.
     :return: Hail Table with adjusted frequencies.
     """
-    # TODO: Adjust freq AC array using high_ab_het array
-    return ht
-
-
-def subtract_high_ab_hets_from_ac(ht: hl.Table, af_threshold: float = 0.01) -> hl.Table:
-    """
-    Subtract the number of AB het sites from  AC when the site AF is above the af threshold.
-
-    :param ht: Hail Table containing freq and high_ab_het annotations.
-    :return: Hail Table with adjusted AC.
-    """
+    # WE have a frequency array for each group, so we need to adjust each group's
+    # frequency entry individually by substracting that groups high AB het count from the AC,
+    # and calculating the new AF
+    # test file: gs://gnomad-tmp-4day/freq/test_freq_aggs_high_ab_hets.ht
     ht = ht.annotate(
         ab_adjusted_freq=hl.if_else(
-            ht.freq[0].AF > af_threshold,
+            ht.freq[0].AF < af_threshold,
+            ht.freq,
             hl.map(
-                lambda x, y: hl.struct(
-                    AC=x.AC - y, AF=x.AF, AN=x.AN, homozygote_count=x.homozygote_count
+                lambda f, g: hl.struct(
+                    AC=hl.int32(f.AC - g),
+                    AF=hl.if_else(f.AN > 0, (f.AC - g) / f.AN, hl.missing(hl.tfloat64)),
+                    AN=f.AN,
+                    homozygote_count=f.homozygote_count,
                 ),
                 ht.freq,
                 ht.high_ab_hets_by_group_membership,
             ),
-            ht.freq,
         )
     )
+
     return ht
 
 
@@ -467,6 +464,7 @@ def main(args):  # noqa: D103
     test = args.test
     chrom = args.chrom
     af_threshold = args.af_threshold
+    adjust_freqs = args.adjust_freqs
 
     hl.init(
         log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",
@@ -536,19 +534,21 @@ def main(args):  # noqa: D103
         )
         mt = annotate_high_ab_hets_by_group_membership(mt, gatk_expr=mt.gatk_version)
         ht = mt.rows()
+        ht = ht.select("freq", "high_ab_hets_by_group_membership")
+        ht = ht.checkpoint(get_freq(hom_alt_adjustment=adjust_freqs))
 
-    if args.adjust_freqs:
+    if adjust_freqs:
         # TODO: This should apply fix given the AF threshold and adjusts the
         # frequencies using the list created above
-        ht = hom_alt_depletion_fix(ht, af_threshold)
+        ht = hl.read_table(get_freq(hom_alt_adjustment=adjust_freqs))
+        ht = subtract_high_ab_hets_from_ac(ht, af_threshold)
 
     logger.info("Checkpointing frequency table...")
     ht = ht.select("freq", "high_ab_hets_by_group_membership")
-    ht = ht.checkpoint(
-        f"gs://gnomad-tmp-4day/freq/test_freq_aggs{'adjusted' if args.adjust_freqs else ''}2.ht",
-        overwrite=True,
+    ht = ht.write(
+        get_freq(hom_alt_adjustment=adjust_freqs),
+        overwrite=args.overwrite,
     )
-    ht.show()
 
 
 if __name__ == "__main__":
