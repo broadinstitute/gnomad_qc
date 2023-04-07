@@ -157,6 +157,7 @@ allele_data = VersionedTableResource(
 def get_freq(
     version: str = CURRENT_VERSION,
     subset: Optional[str] = None,
+    test: bool = False,
     hom_alt_adjustment=False,
 ) -> VersionedTableResource:
     """
@@ -180,7 +181,7 @@ def get_freq(
         version,
         {
             version: TableResource(
-                f"{_annotations_root(version)}/gnomad.exomes.v{version}.frequencies{'.' + subset if subset else ''}{'.hom_alt_adjusted' if hom_alt_adjustment else ''}.ht"
+                f"{'gs://gnomad-tmp-4day/freq/' if test else _annotations_root(version)}/gnomad.exomes.v{version}.frequencies{'.' + subset if subset else ''}{'.hom_alt_adjusted' if hom_alt_adjustment else ''}.ht"
             )
             for version in VERSIONS
         },
