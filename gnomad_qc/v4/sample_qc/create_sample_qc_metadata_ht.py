@@ -90,7 +90,7 @@ def get_hard_filters_ht(ht: hl.Table) -> hl.Table:
 
     # If the sample doesn't have chimera data, it can't be filtered based on chimeras,
     # so it should have a missing value instead of False.
-    no_chimera_expr = hl.missing(project_meta.ht()[ht.key].bam_metrics.chimeras_rate)
+    no_chimera_expr = hl.is_missing(project_meta.ht()[ht.key].bam_metrics.chimeras_rate)
     ann_expr = {
         "chimera": hl.if_else(
             no_chimera_expr,
