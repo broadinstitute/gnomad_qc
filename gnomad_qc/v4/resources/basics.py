@@ -124,7 +124,12 @@ def get_gnomad_v4_vds(
 
     logger.info("Total number of UKB samples to exclude: %d", len(withdrawn_ids))
 
-    vds = hl.vds.filter_samples(vds, withdrawn_ids, keep=False, remove_dead_alleles=True)
+    vds = hl.vds.filter_samples(
+        vds, 
+        withdrawn_ids, 
+        keep=False, 
+        remove_dead_alleles=True,
+    )
 
     # Log number of UKB samples removed from the VDS.
     n_samples_after_exclusion = vds.variant_data.count_cols()
