@@ -1011,9 +1011,12 @@ def main(args):
     if args.create_finalized_outlier_filter:
         res = outlier_resources.create_finalized_outlier_filter
         res.check_resource_existence()
-
+        # Reformat input step names for use as annotation labels.
         ht = create_finalized_outlier_filter_ht(
-            res.input_resources,
+            {
+                k.split("--apply-")[1].replace("-", "_"): v[0].ht()
+                for k, v in res.input_resources.items()
+            },
             qc_metrics=args.final_filtering_qc_metrics,
             ensemble_operator=args.ensemble_method_logical_operator,
         )
