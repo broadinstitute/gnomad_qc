@@ -1,6 +1,8 @@
 """Script to merge the output of all sample QC modules into a single Table."""
 import argparse
 import logging
+from datetime import datetime
+from functools import reduce
 from typing import Dict, List, Optional
 
 import hail as hl
@@ -47,6 +49,8 @@ logger.setLevel(logging.INFO)
 # TODO: Add more nearest neighbor info?
 # TODO: Add trio info?
 # TODO: joint that has v3 info?
+
+
 def get_sex_imputation_ht() -> hl.Table:
     """
     Load and reformat sex imputation Table for annotation on the combined meta Table.
@@ -60,96 +64,60 @@ def get_sex_imputation_ht() -> hl.Table:
     return ht
 
 
-def get_hard_filter_metric_ht(ht) -> hl.Table:
-    """
-    Combine sample contamination, chr20 mean DP, and QC MT callrate into a single Table.
-
-    :param ht: Input Table to add annotations to.
-    :return: Table with hard filter metric annotations added.
-    """
-    # TODO: Add drop of `gq_thresholds` to the sample_chr20_mean_dp code.
-    hard_filter_metric_hts = {
-        "contamination_approximation": contamination.ht(),
-        "chr20_sample_mean_dp": sample_chr20_mean_dp.ht().drop("gq_thresholds"),
-        "sample_qc_mt_callrate": sample_qc_mt_callrate.ht(),
-    }
-    for ann in hard_filter_metric_hts:
-        ht = add_annotations(
-            {"ht": ht}, {ann: hard_filter_metric_hts[ann]}, ann_top_level=True
-        )
-
-    return ht
-
-
-def get_sample_filter_ht(
-    ht: hl.Table, relationship_ht: hl.Table, ukb_remove: List[str], hf_s: List[str]
-) -> hl.Table:
-    """
-    Combine sample filters into a single Table to be added to the metadata Table.
-
-    Includes hard-filters, sample QC outlier filters, and relatedness filters.
-
-    :param ht: Input Table to add annotations to.
-    :param relationship_ht: Table with relationships annotations.
-    :param ukb_remove: List of UKB samples that have been removed from the v4 VDS.
-    :param hf_s: List of hard-filtered samples.
-    :return: Table with hard filter metric annotations added.
-    """
-    ht = add_annotations(
-        {"ht": ht},
-        {"hard_filters": get_hard_filters_ht()},
-        ann_top_level=True,
-        global_top_level=True,
-        sample_count_match=False,
-    )
-
-    ht = add_annotations(
-        {"ht": ht},
-        {"outlier_detection": finalized_outlier_filtering().ht()},
-        ann_top_level=True,
-        ht_missing=ukb_remove,
-        ann_ht_missing=hf_s,
-    )
-
-    # Checkpoint to a temp location to prevent class too large error.
-    ht = ht.checkpoint(new_temp_file("quality_filters", extension="ht"), overwrite=True)
-
-    ht = add_annotations(
-        {"ht": ht},
-        {
-            "relatedness_filters": annotate_relatedness_filters(
-                ht.select_globals(), relationship_ht
-            )
-        },
-        ann_top_level=True,
-        global_top_level=True,
-    )
-
-    return ht
-
-
-def get_hard_filters_ht() -> hl.Table:
+def get_hard_filters_ht(ht: hl.Table) -> hl.Table:
     """
     Load and reformat hard-filters Table for annotation on the combined meta Table.
 
+    :param: Input HT to add hard-filter annotations to.
     :return: Reformatted hard-filters Table.
     """
-    ht = hard_filtered_samples.ht()
+    # Get hard filtered samples before sex imputation.
+    hf_no_sex_s = hl.literal(hard_filtered_samples_no_sex.ht().s.collect())
 
-    ht_ex = ht.explode(ht.hard_filters)
-    hard_filters = ht_ex.aggregate(hl.agg.collect_as_set(ht_ex.hard_filters))
-    ht = ht.select(
-        **{
-            v: hl.if_else(
-                hl.is_defined(ht.hard_filters),
-                ht.hard_filters.contains(v),
-                False,
-            )
-            for v in hard_filters
-        },
-        hard_filters=ht.hard_filters,
-        hard_filtered=hl.is_defined(ht.hard_filters) & (hl.len(ht.hard_filters) > 0),
+    hf_ht = hard_filtered_samples.ht()
+    hf_ht = hf_ht.annotate(hf_no_sex=hf_no_sex_s.contains(hf_ht.s))
+
+    hf_explode_ht = hf_ht.explode(hf_ht.hard_filters)
+    filters = hf_explode_ht.aggregate(
+        hl.agg.group_by(
+            hl.if_else(hf_explode_ht.hf_no_sex, "hf_no_sex", "hf_sex"),
+            hl.agg.collect_as_set(hf_explode_ht.hard_filters),
+        )
     )
+
+    hf = hf_ht[ht.key]
+    hf_expr = hf.hard_filters
+
+    # If the sample doesn't have chimera data, it can't be filtered based on chimeras,
+    # so it should have a missing value instead of False.
+    no_chimera_expr = hl.missing(project_meta.ht()[ht.key].bam_metrics.chimeras_rate)
+    ann_expr = {
+        "chimera": hl.if_else(
+            no_chimera_expr,
+            hl.missing(hl.tbool),
+            hl.or_else(hf_expr.contains("chimera"), False),
+        )
+    }
+    for f in filters["hf_no_sex"] - {"chimera"}:
+        ann_expr[f] = hl.or_else(hf_expr.contains(f), False)
+
+    # If the sample was filtered before sex imputation, it should have a missing value
+    # for the sex imputation filters.
+    for f in filters["hf_sex"]:
+        ann_expr[f] = hl.if_else(
+            hf.hf_no_sex,
+            hl.missing(hl.tbool),
+            hl.or_else(hf_expr.contains(f), False),
+            missing_false=True,
+        )
+
+    ann_expr["hard_filters"] = hl.or_else(
+        hf_expr, hl.empty_set(hf_expr.dtype.element_type)
+    )
+    ann_expr["hard_filtered"] = hl.or_else(hl.len(hf_expr) > 0, False)
+
+    ht = ht.annotate(**ann_expr)
+    ht = ht.checkpoint(new_temp_file("hard_filters", extension="ht"), overwrite=True)
 
     return ht
 
@@ -200,8 +168,11 @@ def get_relatedness_dict_ht(
     # each relationship. Each item in filter_expr has its own annotation.
     ht = ht.group_by(ht.s).aggregate(
         **{
-            f"relationships{label}": hl.agg.group_by(
-                ht[f"_relationship{label}"], hl.agg.collect_as_set(ht.pair)
+            f"relationships{label}": hl.agg.filter(
+                hl.is_defined(ht[f"_relationship{label}"]),
+                hl.agg.group_by(
+                    ht[f"_relationship{label}"], hl.agg.collect_as_set(ht.pair)
+                ),
             )
             for label in filter_exprs
         }
@@ -270,13 +241,11 @@ def annotate_relationships(ht: hl.Table, outlier_filter_ht: hl.Table) -> hl.Tabl
             v3_duplicate_ht.j.s,
         )
     )
-    v3_duplicate_ht = v3_duplicate_ht.select(
-        "gnomad_v3_duplicate", "gnomad_v3_release_duplicate"
-    )
 
     logger.info("Aggregating sample relationship information...")
     # TODO: should we add v3 relationships to the relationships set, or have a
     #  different annotation for that?
+
     # Filter to only exome-exome pairs passing hard filtering (all pairs in the
     # relatedness Table pass hard filtering) for 'relationships' annotation and to only
     # exome-exome pairs passing both hard-filtering and outlier filtering for
@@ -288,16 +257,40 @@ def annotate_relationships(ht: hl.Table, outlier_filter_ht: hl.Table) -> hl.Tabl
         & ~outlier_filter_ht[ht.i.s].outlier_filtered
         & ~outlier_filter_ht[ht.j.s].outlier_filtered,
     }
-    ht = get_relatedness_dict_ht(ht, filter_expr)
-    ht = ht.annotate(**v3_duplicate_ht[ht.key])
-    ht = ht.select_globals(**relatedness_inference_parameters)
+    rel_dict_ht = get_relatedness_dict_ht(ht, filter_expr)
 
-    ht = ht.checkpoint(new_temp_file("relationships", extension="ht"), overwrite=True)
+    # Use the outlier HT samples as a base HT to annotate the relatedness info on
+    # because it includes all samples that pass hard filters, which is what was used
+    # in relatedness inference. rel_dict_ht only includes samples with relatedness info,
+    # and we want to make sure all samples that went through relatedness inference have
+    # empty relationship dictionaries, and are False for v3 duplicate bools.
+    ht = outlier_filter_ht.select()
+    ht = ht.annotate(
+        **{
+            r: hl.bind(
+                lambda x: hl.or_else(
+                    x, hl.empty_dict(x.dtype.key_type, x.dtype.value_type)
+                ),
+                rel_dict_ht[ht.key][r],
+            )
+            for r in rel_dict_ht.row_value
+        },
+        **{
+            r: hl.or_else(v3_duplicate_ht[ht.key][r], False)
+            for r in ["gnomad_v3_duplicate", "gnomad_v3_release_duplicate"]
+        },
+    )
+    ht = ht.select_globals(**relatedness_inference_parameters)
 
     return ht
 
 
-def annotate_relatedness_filters(ht: hl.Table, relationship_ht: hl.Table) -> hl.Table:
+def annotate_relatedness_filters(
+    ht: hl.Table,
+    relationship_ht: hl.Table,
+    hard_filtered_expr: hl.expr.BooleanExpression,
+    outlier_filtered_expr: hl.expr.BooleanExpression,
+) -> hl.Table:
     """
     Get relatedness filtering Table for the combined meta Table.
 
@@ -330,6 +323,10 @@ def annotate_relatedness_filters(ht: hl.Table, relationship_ht: hl.Table) -> hl.
 
     :param ht: Sample QC filter Table to add relatedness filter annotations to.
     :param relationship_ht: Table with relationships annotations.
+    :param hard_filtered_expr: Boolean Expression indicating whether the sample was
+        hard filtered.
+    :param outlier_filtered_expr: Boolean Expression indicating whether the sample was
+        outlier filtered.
     :return: Table with related filters added and Table with relationship and gnomad v3
         overlap information.
     """
@@ -340,11 +337,11 @@ def annotate_relatedness_filters(ht: hl.Table, relationship_ht: hl.Table) -> hl.
         "sibling": SIBLINGS,
     }
     relationships = relationship_ht[ht.key]
-    sample_filters_ht = ht.annotate(
+    relatedness_filters_ht = ht.annotate(
         relatedness_filters=hl.struct(
             **{
                 rel: get_relationship_filter_expr(
-                    ht.hard_filtered,
+                    hard_filtered_expr,
                     hl.is_defined(related_samples_to_drop(release=False).ht()[ht.key]),
                     relationships.relationships,
                     rel_val,
@@ -355,7 +352,7 @@ def annotate_relatedness_filters(ht: hl.Table, relationship_ht: hl.Table) -> hl.
         release_relatedness_filters=hl.struct(
             **{
                 rel: get_relationship_filter_expr(
-                    ht.outlier_filtered,
+                    outlier_filtered_expr,
                     hl.is_defined(related_samples_to_drop(release=True).ht()[ht.key]),
                     relationships.relationships_high_quality,
                     rel_val,
@@ -365,40 +362,39 @@ def annotate_relatedness_filters(ht: hl.Table, relationship_ht: hl.Table) -> hl.
         ),
     )
 
-    return sample_filters_ht
+    return relatedness_filters_ht
 
 
 def add_annotations(
-    ht: Dict[str, hl.Table],
-    ann_ht: Dict[str, hl.Table],
+    base_ht: hl.Table,
+    ann_ht: hl.Table,
+    ann_label: str,
     ann_top_level: bool = False,
     global_top_level: bool = False,
-    ht_missing: Optional[List[str]] = None,
+    base_ht_missing: Optional[List[str]] = None,
     ann_ht_missing: Optional[List[str]] = None,
     sample_count_match: bool = True,
 ) -> hl.Table:
     """
-    Annotate `ht` with contents of `ann_ht` and optionally check that sample counts match.
+    Annotate `base_ht` with contents of `ann_ht` and optionally check that sample counts match.
 
-    :param ht: Table to annotate.
-    :param ann_ht: Table with annotations to add to `ht`.
+    :param base_ht: Table to annotate.
+    :param ann_ht: Table with annotations to add to `base_ht`.
+    :param ann_label: Label to use for Struct annotation of `ann_ht` on `base_ht` if
+        `ann_top_level` is True. Also used and for logging message describing
+        annotations being added.
     :param ann_top_level: Whether to add all annotations on `ann_ht` to the top level
-        of `ht` instead of grouping them under a new annotation, `label`.
+        of `base_ht` instead of grouping them under a new annotation, `ann_label`.
     :param global_top_level: Whether to add all global annotations on `ann_ht` to the
-        top level instead of grouping them under a new annotation, `label`_parameters.
-    :param ht_missing: Optional list of approved samples missing from `ht`, but
-        present in `ann_ht`.
+        top level instead of grouping them under a new annotation, `ann_label`_parameters.
+    :param base_ht_missing: Optional list of approved samples missing from `base_ht`,
+        but present in `ann_ht`.
     :param ann_ht_missing: Optional list of approved samples missing from `ann_ht`, but
-        present in `ht`.
+        present in `base_ht`.
     :param sample_count_match: Check whether the sample counts match in the two input
         tables. Default is True.
     :return: Table with additional annotations.
     """
-    if len(ht) != 1 or len(ann_ht) != 1:
-        raise ValueError("Both input dicts `ht` and `ann_ht` must be of length 1!")
-
-    ht_label, ht = list(ht.items())[0]
-    ann_label, ann_ht = list(ann_ht.items())[0]
     logger.info("\n\nAnnotating with the %s Table.", ann_label)
 
     def _sample_check(
@@ -437,25 +433,181 @@ def add_annotations(
             )
 
     if sample_count_match:
-        if not compare_row_counts(ht, ann_ht):
+        if not compare_row_counts(base_ht, ann_ht):
             logger.warning("Sample counts in Tables do not match!")
-            _sample_check(ht, ann_ht, ann_ht_missing, ht_label, ann_label)
-            _sample_check(ann_ht, ht, ht_missing, ann_label, ht_label)
+            _sample_check(base_ht, ann_ht, ann_ht_missing, "input", ann_label)
+            _sample_check(ann_ht, base_ht, base_ht_missing, ann_label, "input")
         else:
             logger.info("Sample counts match.")
     else:
         logger.info("No sample count check requested.")
 
-    ann = ann_ht[ht.key]
+    ann = ann_ht[base_ht.key]
     global_ann = ann_ht.index_globals()
     if not ann_top_level:
-        ann = {ann_label: ann_ht[ht.key]}
+        ann = {ann_label: ann_ht[base_ht.key]}
     if not global_top_level:
         global_ann = {f"{ann_label}_parameters": ann_ht.index_globals()}
 
-    ht = ht.annotate(**ann)
+    ht = base_ht.annotate(**ann)
     ht = ht.annotate_globals(**global_ann)
+
     return ht
+
+
+def get_sample_filter_ht(base_ht: hl.Table, relationship_ht: hl.Table) -> hl.Table:
+    """
+    Combine sample filters into a single Table to be added to the metadata Table.
+
+    Includes hard-filters, sample QC outlier filters, and relatedness filters.
+
+    :param base_ht: Input Table to add annotations to.
+    :param relationship_ht: Table with relationships annotations.
+    :return: Table with hard filter metric annotations added.
+    """
+    logger.info("Combining sample filters Tables for 'sample_filters' struct.")
+    # Get list of UKB samples that should be removed.
+    ukb_remove = hl.import_table(all_ukb_samples_to_remove, no_header=True).f0.collect()
+    # Get list of hard filtered samples with sex imputation.
+    hf_s = hard_filtered_samples.ht().s.collect()
+
+    hard_filters_ht = get_hard_filters_ht(base_ht)
+    outlier_filters_ht = finalized_outlier_filtering().ht()
+    relatedness_filters_ht = annotate_relatedness_filters(
+        ht=base_ht,
+        relationship_ht=relationship_ht,
+        hard_filtered_expr=hard_filters_ht[base_ht.key].hard_filtered,
+        outlier_filtered_expr=outlier_filters_ht[base_ht.key].outlier_filtered,
+    )
+    sample_filters = {
+        "hard_filters": {
+            "ann_ht": hard_filters_ht,
+            "global_top_level": True,
+        },
+        "outlier_detection": {
+            "ann_ht": outlier_filters_ht,
+            "base_ht_missing": ukb_remove,
+            "ann_ht_missing": hf_s,
+        },
+        "relatedness_filters": {
+            "ann_ht": relatedness_filters_ht,
+            "global_top_level": True,
+        },
+    }
+
+    sample_filters = [
+        {**ann_params, **{"ann_label": ann, "ann_top_level": True}}
+        for ann, ann_params in sample_filters.items()
+    ]
+    sample_filters_ht = reduce(
+        lambda ht, ann_params: add_annotations(ht, **ann_params),
+        [base_ht] + sample_filters,
+    )
+    sample_filters_ht = sample_filters_ht.checkpoint(
+        new_temp_file("sample_filters", extension="ht"), overwrite=True
+    )
+
+    return sample_filters_ht
+
+
+def get_hard_filter_metric_ht(base_ht: hl.Table) -> hl.Table:
+    """
+    Combine sample contamination, chr20 mean DP, and QC MT callrate into a single Table.
+
+    :param base_ht: Input Table to add annotations to.
+    :return: Table with hard filter metric annotations added.
+    """
+    logger.info("Combining hard-filter metric Tables for 'hard_filter_metrics' struct.")
+
+    # TODO: Add drop of `gq_thresholds` to the sample_chr20_mean_dp code.
+    hard_filter_metrics = {
+        "contamination_approximation": contamination.ht(),
+        "chr20_sample_mean_dp": sample_chr20_mean_dp.ht().drop("gq_thresholds"),
+        "sample_qc_mt_callrate": sample_qc_mt_callrate.ht(),
+    }
+    hard_filter_metrics = [
+        {"ann_ht": ann_ht, "ann_label": ann, "ann_top_level": True}
+        for ann, ann_ht in hard_filter_metrics.items()
+    ]
+    hard_filter_metrics_ht = reduce(
+        lambda ht, ann_params: add_annotations(ht, **ann_params),
+        [base_ht] + hard_filter_metrics,
+    )
+
+    return hard_filter_metrics_ht
+
+
+def get_sample_qc_meta_ht(base_ht: hl.Table) -> hl.Table:
+    """
+    Combine all sample QC metadata Tables into a single Table.
+
+    :param base_ht: Input Table to add all sample QC annotations to.
+    :return: Table with all sample QC annotation Tables added to `base_ht`.
+    """
+    # Get list of UKB samples that should be removed.
+    ukb_remove = hl.import_table(all_ukb_samples_to_remove, no_header=True).f0.collect()
+    # Get list of hard filtered samples before sex imputation.
+    hf_no_sex_s = hard_filtered_samples_no_sex.ht().s.collect()
+    # Get list of hard filtered samples with sex imputation.
+    hf_s = hard_filtered_samples.ht().s.collect()
+    # Get list of v3 samples (expected in relatedness and pop).
+    v3_s = joint_qc_meta.ht().s.collect()
+
+    hard_filter_metrics_ht = get_hard_filter_metric_ht(base_ht)
+    relatedness_inference_ht = annotate_relationships(
+        relatedness().ht(), finalized_outlier_filtering().ht()
+    )
+    sample_filters_ht = get_sample_filter_ht(base_ht, relatedness_inference_ht)
+
+    sample_qc_meta = {
+        "project_meta": {
+            "ann_ht": project_meta.ht(),
+            "ann_top_level": True,
+            "global_top_level": True,
+            # Note: 71 samples are found in the project meta HT, but are not found in
+            #  the loaded VDS. They overlap with the UKB withheld samples indicating
+            #  they were not removed when the project metadata HT was created.
+            "base_ht_missing": ukb_remove,
+        },
+        "sample_qc": {
+            "ann_ht": get_sample_qc("bi_allelic").ht(),
+            # Note: the withdrawn UKB list was updated after the sample QC HT creation,
+            #  so the sample QC HT has 5 samples more in it than the loaded VDS.
+            "base_ht_missing": ukb_remove,
+        },
+        "platform_inference": {
+            # TODO: Add drop of `gq_thresholds` to the platform_inference code.
+            "ann_ht": platform.ht().drop("gq_thresholds"),
+            "ann_ht_missing": hf_no_sex_s,
+        },
+        "sex_imputation": {
+            # TODO: Add drop of `is_female` to the sex_inference code.
+            "ann_ht": get_sex_imputation_ht().drop("is_female"),
+            "ann_ht_missing": hf_no_sex_s,
+        },
+        "hard_filter_metrics": {"ann_ht": hard_filter_metrics_ht},
+        "population_inference": {
+            "ann_ht": get_pop_ht().ht(),
+            "base_ht_missing": v3_s,
+            "ann_ht_missing": hf_s,
+        },
+        "relatedness_inference": {
+            "ann_ht": relatedness_inference_ht,
+            "sample_count_match": False,
+        },
+        "sample_filters": {"ann_ht": sample_filters_ht},
+    }
+
+    sample_qc_meta = [
+        {**ann_params, **{"ann_label": ann}}
+        for ann, ann_params in sample_qc_meta.items()
+    ]
+    sample_qc_meta_ht = reduce(
+        lambda ht, ann_params: add_annotations(ht, **ann_params),
+        [base_ht] + sample_qc_meta,
+    )
+
+    return sample_qc_meta_ht
 
 
 def main(args):
@@ -466,89 +618,24 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
 
-    # Get list of UKB samples that should be removed.
-    ukb_remove = hl.import_table(all_ukb_samples_to_remove, no_header=True).f0.collect()
-    # Get list of hard filtered samples before sex imputation.
-    hf_no_sex_s = hard_filtered_samples_no_sex.ht().s.collect()
-    # Get list of hard filtered samples with sex imputation.
-    hf_s = hard_filtered_samples.ht().s.collect()
-    # Get list of v3 samples (expected in relatedness and pop).
-    v3_s = joint_qc_meta.ht().s.collect()
-
     logger.info("Loading the VDS columns to begin creation of the meta HT.")
     vds = get_gnomad_v4_vds(remove_hard_filtered_samples=False)
-    vds_sample_ht = vds.variant_data.cols().select().select_globals()
-    relatedness_inference_ht = annotate_relationships(
-        relatedness().ht(), finalized_outlier_filtering().ht()
-    )
-
-    # Note: 71 samples are found in the right HT, but are not found in left HT.
-    #  They overlap with the UKB withheld samples indicating they were not removed
-    #  when the metadata HT was created.
-    ht = add_annotations(
-        {"vds_sample_ht": vds_sample_ht},
-        {"project_meta": project_meta.ht()},
-        ann_top_level=True,
-        global_top_level=True,
-        ht_missing=ukb_remove,
-    )
-    # Note: the withdrawn UKB list was updated after the sample QC HT creation, so
-    #  the sample QC HT has 5 samples more in it than the final sample list.
-    ht = add_annotations(
-        {"vds_sample_ht": ht},
-        {"sample_qc": get_sample_qc("bi_allelic").ht()},
-        ht_missing=ukb_remove,
-    )
-    # TODO: Add drop of `gq_thresholds` to the platform_inference code.
-    ht = add_annotations(
-        {"vds_sample_ht": ht},
-        {"platform_inference": platform.ht().drop("gq_thresholds")},
-        ann_ht_missing=hf_no_sex_s,
-    )
-    # TODO: Add drop of `is_female` to the sex_inference code.
-    ht = add_annotations(
-        {"vds_sample_ht": ht},
-        {"sex_imputation": get_sex_imputation_ht().drop("is_female")},
-        ann_ht_missing=hf_no_sex_s,
-    )
-    ht = add_annotations(
-        {"vds_sample_ht": ht},
-        {"hard_filter_metrics": get_hard_filter_metric_ht(vds_sample_ht)},
-    )
-    ht = add_annotations(
-        {"vds_sample_ht": ht},
-        {"population_inference": get_pop_ht().ht()},
-        ht_missing=v3_s,
-        ann_ht_missing=hf_s,
-    )
-    ht = add_annotations(
-        {"vds_sample_ht": ht},
-        {"relatedness_inference": relatedness_inference_ht},
-        sample_count_match=False,
-    )
-    # Checkpoint to a temp location to prevent class too large error.
-    ht = ht.checkpoint(new_temp_file("sample_qc_meta", extension="ht"), overwrite=True)
-    ht = add_annotations(
-        {"vds_sample_ht": ht},
-        {
-            "sample_filters": get_sample_filter_ht(
-                vds_sample_ht, relatedness_inference_ht, ukb_remove, hf_s
-            )
-        },
-    )
+    ht = get_sample_qc_meta_ht(vds.variant_data.cols().select().select_globals())
 
     logger.info("\n\nAnnotating high_quality field and releasable field.")
-    high_quality_expr = (
-        ~ht.sample_filters.hard_filtered & ~ht.sample_filters.outlier_filtered
-    )
-    ht = ht.annotate(
-        high_quality=high_quality_expr,
-        release=ht.project_meta.releasable
-        & high_quality_expr
-        & ~ht.sample_filters.release_relatedness_filters.related,
-    )
+    hq_expr = ~ht.sample_filters.hard_filtered & ~ht.sample_filters.outlier_filtered
 
+    ht = ht.annotate(
+        high_quality=hq_expr,
+        release=(
+            ht.project_meta.releasable
+            & hq_expr
+            & ~ht.sample_filters.release_relatedness_filters.related
+        ),
+    )
+    ht = ht.annotate_globals(date=datetime.now().isoformat())
     ht = ht.checkpoint(meta.path, overwrite=args.overwrite)
+
     logger.info(
         "Release sample count: %s", ht.aggregate(hl.agg.count_where(ht.release))
     )
