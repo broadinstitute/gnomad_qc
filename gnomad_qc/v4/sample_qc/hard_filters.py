@@ -73,6 +73,15 @@ def compute_sample_qc(
             "multi_allelic": ~bi_allelic_expr(vds.variant_data),
         }
     else:
+        # n_unsplit_alleles includes the reference allele. So, for example, if
+        # spliting at 3 alt alleles (n_alt_alleles_strata = 3) the stratification will
+        # be:
+        # - Under 3 alt alleles (under_three_alt_alleles), which is the same as under 4
+        # total alleles (n_unsplit_alleles < 4), and the same as less than or equal to
+        # 3 total alleles (n_unsplit_alleles <= 3).
+        # - 3 or more alt alleles (three_or_more_alt_alleles), which is the same as 4
+        # or more total alleles (n_unsplit_alleles >= 4), and the same as greater than
+        # 3 total alleles (n_unsplit_alleles > 3).
         strata = {
             f"under_{n_alt_alleles_strata_name}_alt_alleles": vds.variant_data.n_unsplit_alleles
             <= n_alt_alleles_strata,
