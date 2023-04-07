@@ -247,6 +247,7 @@ def main(args):  # noqa: D103
         adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
     )
 
+    final_fields = []
     if args.get_freq_and_high_ab:
         logger.info("Annotating frequencies...")
         mt = annotate_freq(
@@ -259,19 +260,18 @@ def main(args):  # noqa: D103
         )
         mt = annotate_high_ab_hets_by_group_membership(mt, gatk_expr=mt.gatk_version)
         ht = mt.rows()
-        ht = ht.select("freq", "high_ab_hets_by_group_membership")
-        ht = ht.checkpoint(get_freq(hom_alt_adjustment=adjust_freqs))
+        final_fields = ["freq", "high_ab_hets_by_group_membership"]
 
     if adjust_freqs:
         # TODO: This should apply fix given the AF threshold and adjusts the
         # frequencies using the list created above
-        ht = hl.read_table(get_freq(hom_alt_adjustment=adjust_freqs))
         ht = subtract_high_ab_hets_from_ac(ht, af_threshold)
+        final_fields.append("ab_adjusted_freq")
 
-    logger.info("Checkpointing frequency table...")
-    ht = ht.select("freq", "high_ab_hets_by_group_membership")
+    logger.info("Writing frequency table...")
+    ht = ht.select(*final_fields)
     ht = ht.write(
-        get_freq(hom_alt_adjustment=adjust_freqs),
+        get_freq(hom_alt_adjustment=adjust_freqs, test=test).path,
         overwrite=args.overwrite,
     )
 
