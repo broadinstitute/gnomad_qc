@@ -709,14 +709,14 @@ def create_finalized_outlier_filter_ht(
         if num_methods > 1:
             ht = ht.select(**{filter_method: ht[ht.key]})
             filter_globals = ht.index_globals()
-            if "qc_metrics_stats":
+            if "qc_metrics_stats" in filter_globals:
                 filter_globals.annotate(
                     qc_metrics_stats=_update_globals(
                         filter_globals.qc_metrics_stats,
                         [x.split("fail_")[1] for x in fail_annotations_keep],
                     )
                 )
-            if "lms":
+            if "lms" in filter_globals:
                 filter_globals.annotate(
                     lms=_update_globals(filter_globals.lms, qc_metrics_filters_keep)
                 )
