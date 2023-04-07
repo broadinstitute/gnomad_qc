@@ -709,19 +709,23 @@ def create_finalized_outlier_filter_ht(
         if num_methods > 1:
             ht = ht.select(**{filter_method: ht[ht.key]})
             filter_globals = ht.index_globals()
-            if "qc_metrics_stats" in filter_globals:
-                filter_globals.annotate(
-                    qc_metrics_stats=_update_globals(
-                        filter_globals.qc_metrics_stats,
+            updated_globals = {}
+            for g in filter_globals:
+                if g == "qc_metrics_stats":
+                    update_g = _update_globals(
+                        filter_globals[g],
                         [x.split("fail_")[1] for x in fail_annotations_keep],
                     )
-                )
-            if "lms" in filter_globals:
-                filter_globals.annotate(
-                    lms=_update_globals(filter_globals.lms, qc_metrics_filters_keep)
-                )
+                elif g == "lms":
+                    update_g = _update_globals(
+                        filter_globals[g],
+                        qc_metrics_filters_keep,
+                    )
+                else:
+                    update_g = filter_globals[g]
+                updated_globals[g] = update_g
 
-            ht = ht.select_globals(**{f"{filter_method}_globals": filter_globals})
+            ht = ht.select_globals(**{f"{filter_method}_globals": updated_globals})
             hts.append(ht)
 
     # If multiple filtering Tables are provided, join all filtering Tables, and make
