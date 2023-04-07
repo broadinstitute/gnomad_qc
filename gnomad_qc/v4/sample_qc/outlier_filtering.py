@@ -666,7 +666,7 @@ def create_finalized_outlier_filter_ht(
         # Nearest neighbors filtering has 'qc_metrics_stats' as a row annotation
         # instead of a global annotation. This adds it to the final Table.
         if "qc_metrics_stats" in ht.row:
-            select_expr["qc_metrics_stats"] = ht.qc_metrics_stats
+            select_expr["qc_metrics_stats"] = ht.qc_metrics_stats.select(*qc_metrics)
 
         # Group all filter fail annotations under 'qc_metrics_fail' rather than
         # keeping them top level
