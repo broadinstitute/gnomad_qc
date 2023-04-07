@@ -352,7 +352,7 @@ def annotate_relatedness_filters(
         release_relatedness_filters=hl.struct(
             **{
                 rel: get_relationship_filter_expr(
-                    outlier_filtered_expr,
+                    hard_filtered_expr | outlier_filtered_expr,
                     hl.is_defined(related_samples_to_drop(release=True).ht()[ht.key]),
                     relationships.relationships_high_quality,
                     rel_val,
