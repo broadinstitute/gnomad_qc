@@ -64,7 +64,7 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
 
     :return: Prepared metadata Table.
     """
-    meta = meta.ht().key_by()
+    sample_meta = meta.ht().key_by()
 
     # NOTE: some 1KG samples were already in v3.0 (SV data) and were given a new prefix in v3.1(meta)
     # To access the correct metadata using the SV sample list, we need to update the v3.1 meta IDs
@@ -77,29 +77,31 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
             "v3.1::HG00732": "HG00732",
         }
     )
-    meta = meta.transmute(
-        s=hl.if_else(s_updates.contains(meta.s), s_updates[meta.s], meta.s)
-    )
+    sample_meta = sample_meta.transmute(
+        s=hl.if_else(
+            s_updates.contains(sample_meta.s), s_updates[sample_meta.s], sample_meta.s
+        )
+    ).key_by("s")
 
     # NOTE: Add age to sample list. Most age data is stored as integers in 'age' annotation, # noqa
     #  but for a select number of samples, age is stored as a bin range and 'age_alt' # noqa
     #  corresponds to an integer in the middle of the bin # noqa
     sv_list = sv_list.annotate(
         age=hl.if_else(
-            hl.is_defined(meta[sv_list.s].project_meta.age),
-            meta[sv_list.s].project_meta.age,
-            meta[sv_list.s].project_meta.age_alt,
+            hl.is_defined(sample_meta[sv_list.s].project_meta.age),
+            sample_meta[sv_list.s].project_meta.age,
+            sample_meta[sv_list.s].project_meta.age_alt,
         ),
-        release=meta[sv_list.s].release,
+        release=sample_meta[sv_list.s].release,
     )
     logger.info(
         "%i out of %i samples in the SV sample list have a defined age.",
-        sv_list.filter(sv_list.age).count(),
+        sv_list.filter(hl.is_defined(sv_list.age)).count(),
         sv_list.count(),
     )
     logger.info(
         "%i out of %i samples in the SV sample list are in the core release",
-        sv_list.filter(sv_list.release).count(),
+        sv_list.filter(hl.is_defined(sv_list.release)).count(),
         sv_list.count(),
     )
     return sv_list
