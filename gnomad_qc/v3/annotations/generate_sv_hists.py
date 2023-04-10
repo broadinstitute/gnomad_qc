@@ -25,11 +25,19 @@ def generate_hists(mt: hl.MatrixTable) -> hl.Table:
     :return: Table with histograms.
     """
     meta = meta.ht()
-    meta = meta.key_by(
-        s=(meta.project_id + "_" + meta.s).replace("\W+", "_")
-    )  # TODO: Determine if we need this line or not, Harrison said meta should be 1:1
+    logger.info(
+        "Found %i samples in metadata with age data.",
+        meta.aggregate_cols(hl.agg.count_where(hl.is_defined(meta.age | meta.age_alt))),
+    )
+    meta.count()  # TODO: Determine if we need this line or not, Harrison said meta should be 1:1
     mt = mt.annotate_cols(
-        age=meta[mt.col_key].age, in_v3=hl.is_defined(meta[mt.col_key])
+        age=hl.if_else(
+            hl.is_defined(meta[mt.col_key].project_meta.age),
+            meta[mt.col_key].project_meta.age,
+            meta[mt.col_key].project_meta.age_alt,
+            # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples, age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin # noqa
+        ),
+        in_v3=hl.is_defined(meta[mt.col_key]),
     )
 
     logger.info(
