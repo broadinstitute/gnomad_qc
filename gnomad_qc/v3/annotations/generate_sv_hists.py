@@ -24,27 +24,6 @@ def generate_hists(mt: hl.MatrixTable) -> hl.Table:
     :param mt: gnomAD SV MatrixTable.
     :return: Table with histograms.
     """
-    meta = meta.ht()
-    logger.info(
-        "Found %i samples in metadata with age data.",
-        meta.aggregate_cols(hl.agg.count_where(hl.is_defined(meta.age | meta.age_alt))),
-    )
-    meta.count()  # TODO: Determine if we need this line or not, Harrison said meta should be 1:1
-    mt = mt.annotate_cols(
-        age=hl.if_else(
-            hl.is_defined(meta[mt.col_key].project_meta.age),
-            meta[mt.col_key].project_meta.age,
-            meta[mt.col_key].project_meta.age_alt,
-            # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples, age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin # noqa
-        ),
-        in_v3=hl.is_defined(meta[mt.col_key]),
-    )
-
-    logger.info(
-        "Found %i samples with age data.",
-        mt.aggregate_cols(hl.agg.count_where(hl.is_defined(mt.age))),
-    )
-
     hists = mt.select_rows(
         age_hist_het=hl.or_missing(
             ~mt.filters.contains("MULTIALLELIC"),
@@ -79,6 +58,53 @@ def generate_hists(mt: hl.MatrixTable) -> hl.Table:
     return hists
 
 
+def get_sample_age(sv_list: hl.Table) -> hl.Table:
+    """
+    Annotate sample list Table with age for generating histograms.
+
+    :return: Prepared metadata Table.
+    """
+    meta = meta.ht().key_by()
+
+    # NOTE: some 1KG samples were already in v3.0 (SV data) and were given a new prefix in v3.1(meta)
+    # To access the correct metadata using the SV sample list, we need to update the v3.1 meta IDs
+    # to match the SV list Table.
+    s_updates = hl.dict(
+        {
+            "v3.1::HG00512": "HG00512",
+            "v3.1::HG00513": "HG00513",
+            "v3.1::HG00731": "HG00731",
+            "v3.1::HG00732": "HG00732",
+        }
+    )
+    meta = meta.transmute(
+        s=hl.if_else(s_updates.contains(meta.s), s_updates[meta.s], meta.s)
+    )
+
+    # NOTE: Add age to sample list. Most age data is stored as integers in 'age' annotation, # noqa
+    #  but for a select number of samples, age is stored as a bin range and 'age_alt' # noqa
+    #  corresponds to an integer in the middle of the bin # noqa
+    sv_list = sv_list.annotate(
+        age=hl.if_else(
+            hl.is_defined(meta[sv_list.s].project_meta.age),
+            meta[sv_list.s].project_meta.age,
+            meta[sv_list.s].project_meta.age_alt,
+        ),
+        release=meta[sv_list.s].release,
+    )
+    logger.info(
+        "%i out of %i samples in the SV sample list have a defined age.",
+        sv_list.filter(sv_list.age).count(),
+        sv_list.count(),
+    )
+    logger.info(
+        "%i out of %i samples in the SV sample list are in the core release",
+        sv_list.filter(sv_list.release).count(),
+        sv_list.count(),
+    )
+    return sv_list
+
+
 def main(args):
     """Generate age and GQ histograms for gnomAD SVs."""
     hl.init(
@@ -87,14 +113,25 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day/",
     )
     mt = hl.import_vcf(gnomad_sv_vcf_path, force_bgz=True, min_partitions=300)
-    meta = hl.import_table(gnomad_sv_release_samples_list_path, force=True)
-    meta = meta.transmute(s=meta.f0).key_by("s")
-    mt = mt.annotate_cols(release=hl.is_defined(meta[mt.col_key]))
+
+    if args.test:
+        logger.info("Running on chr22 only for testing purposes.")
+        test_interval = [hl.parse_locus_interval("chr22")]
+        mt = hl.filter_intervals(mt, test_interval)
+
+    sv_list = hl.import_table(
+        gnomad_sv_release_samples_list_path, force=True, no_header=True
+    )
+    sv_list = sv_list.transmute(s=sv_list.f0).key_by("s")
+    sv_list = get_sample_age(sv_list)
+    mt = mt.annotate_cols(**sv_list[mt.col_key])
     mt = mt.checkpoint(temp_gnomad_sv_mt_path, overwrite=args.overwrite)
 
     hists_ht = generate_hists(mt)
     hists_ht.write(
-        sv_age_and_gq_hists.ht(),
+        temp_gnomad_sv_mt_path.replace(".mt", ".hists.ht")
+        if args.test
+        else sv_age_and_gq_hists.path,
         overwrite=args.overwrite,
     )
 
@@ -102,12 +139,10 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--generate_hists", help="Generate age and GQ histograms", action="store_true"
-    )
-    parser.add_argument(
         "--slack_channel", help="Slack channel to post results and notifications to."
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
+    parser.add_argument("--test", help="Test run", action="store_true")
     args = parser.parse_args()
 
     if args.slack_channel:
