@@ -175,7 +175,7 @@ class PipelineStepResourceCollection:
         self._output_resource_dict = output_resources
 
         self._add_output_resource_attributes(output_resources)
-        output_resources = {self.pipeline_step: output_resources.values()}
+        output_resources = {self.pipeline_step: list(output_resources.values())}
 
         self.output_resources = output_resources
 
@@ -248,7 +248,7 @@ class PipelineStepResourceCollection:
             if isinstance(resources, dict):
                 for name, resource in resources.items():
                     setattr(self, name, resource)
-                resources = resources.values()
+                resources = list(resources.values())
             self.input_resources[step].extend(resources)
 
     def check_resource_existence(self, overwrite: bool = None) -> None:

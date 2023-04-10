@@ -3,7 +3,7 @@ import argparse
 import logging
 import math
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import hail as hl
 from gnomad.sample_qc.filtering import (
@@ -666,7 +666,9 @@ def create_finalized_outlier_filter_ht(
         # Nearest neighbors filtering has 'qc_metrics_stats' as a row annotation
         # instead of a global annotation. This adds it to the final Table.
         if "qc_metrics_stats" in ht.row:
-            select_expr["qc_metrics_stats"] = ht.qc_metrics_stats
+            select_expr["qc_metrics_stats"] = ht.qc_metrics_stats.select(
+                *qc_metrics_filters_keep
+            )
 
         # Group all filter fail annotations under 'qc_metrics_fail' rather than
         # keeping them top level
@@ -681,12 +683,49 @@ def create_finalized_outlier_filter_ht(
         )
         ht = ht.select(**select_expr)
 
+        def _update_globals(
+            global_ann: Union[hl.struct, hl.dict],
+            metrics_keep: List[str],
+        ) -> Union[hl.struct, hl.dict]:
+            """
+            Update a global annotation to have values for only the requested metrics.
+
+            :param global_ann: Dict or Struct for global annotation to modify.
+            :param metrics_keep: Metrics to keep in the global annotation.
+            :return: Updated global annotation Dict or Struct.
+            """
+            if isinstance(global_ann, hl.tstruct):
+                global_ann = global_ann.select(*metrics_keep)
+            else:
+                global_ann = {
+                    s: hl.struct(**{x: global_ann[s][x] for x in metrics_keep})
+                    for s in hl.eval(global_ann.keys())
+                }
+            return global_ann
+
         # If multiple filtering Tables are provided, group all Table annotations under a
         # filtering method annotation rather than keeping it top level. This is needed
         # for joining requested filtering method Tables.
         if num_methods > 1:
             ht = ht.select(**{filter_method: ht[ht.key]})
-            ht = ht.select_globals(**{f"{filter_method}_globals": ht.index_globals()})
+            filter_globals = ht.index_globals()
+            updated_globals = {}
+            for g in filter_globals:
+                if g == "qc_metrics_stats":
+                    update_g = _update_globals(
+                        filter_globals[g],
+                        [x.split("fail_")[1] for x in fail_annotations_keep],
+                    )
+                elif g == "lms":
+                    update_g = _update_globals(
+                        filter_globals[g],
+                        qc_metrics_filters_keep,
+                    )
+                else:
+                    update_g = filter_globals[g]
+                updated_globals[g] = update_g
+
+            ht = ht.select_globals(**{f"{filter_method}_globals": updated_globals})
             hts.append(ht)
 
     # If multiple filtering Tables are provided, join all filtering Tables, and make
@@ -976,9 +1015,12 @@ def main(args):
     if args.create_finalized_outlier_filter:
         res = outlier_resources.create_finalized_outlier_filter
         res.check_resource_existence()
-
+        # Reformat input step names for use as annotation labels.
         ht = create_finalized_outlier_filter_ht(
-            res.input_resources,
+            {
+                k.split("--apply-")[1].replace("-", "_"): v[0].ht()
+                for k, v in res.input_resources.items()
+            },
             qc_metrics=args.final_filtering_qc_metrics,
             ensemble_operator=args.ensemble_method_logical_operator,
         )
