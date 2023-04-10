@@ -79,7 +79,8 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day/",
     )
     mt = hl.import_vcf(gnomad_sv_vcf_path, force_bgz=True, min_partitions=300)
-    meta = hl.import_table(gnomad_sv_release_samples_list_path, force=True, key="s")
+    meta = hl.import_table(gnomad_sv_release_samples_list_path, force=True)
+    meta = meta.transmute(s=meta.f0).key_by("s")
     mt = mt.annotate_cols(release=hl.is_defined(meta[mt.col_key]))
     mt = mt.checkpoint(temp_gnomad_sv_mt_path, overwrite=args.overwrite)
 
