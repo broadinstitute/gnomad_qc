@@ -934,7 +934,12 @@ def main(args):
             joint_qc_meta_ht[sample_qc_ht.key].releasable
         )
 
-    if args.apply_regressed_filters:
+    if args.create_finalized_outlier_filter and args.use_existing_filter_tables:
+        rerun_filtering = False
+    else:
+        rerun_filtering = True
+
+    if args.apply_regressed_filters and rerun_filtering:
         res = outlier_resources.apply_regressed_filters
         res.check_resource_existence()
 
@@ -957,7 +962,7 @@ def main(args):
             include_unreleasable_samples=include_unreleasable_samples
         ).write(res.regressed_filter_ht.path, overwrite=overwrite)
 
-    if args.apply_stratified_filters:
+    if args.apply_stratified_filters and rerun_filtering:
         res = outlier_resources.apply_stratified_filters
         res.check_resource_existence()
 
@@ -978,7 +983,7 @@ def main(args):
         res.check_resource_existence()
 
         if args.nearest_neighbors_per_platform:
-            strata = {"platform": res.platform_ht.ht()[ht.key].qc_platform}
+            strata = {"platform": res.platform_ht.ht()[sample_qc_ht.key].qc_platform}
         else:
             strata = None
         ht = determine_nearest_neighbors(
@@ -997,7 +1002,7 @@ def main(args):
             include_unreleasable_samples=include_unreleasable_samples
         ).write(res.nn_ht.path, overwrite=overwrite)
 
-    if args.apply_nearest_neighbor_filters:
+    if args.apply_nearest_neighbor_filters and rerun_filtering:
         res = outlier_resources.apply_nearest_neighbor_filters
         res.check_resource_existence()
 
@@ -1257,6 +1262,15 @@ if __name__ == "__main__":
             "two methods is desired, include arguments for both. The filtering Table "
             "for each method requested must already exist, the outlier filtering will "
             "not be rerun."
+        ),
+        action="store_true",
+    )
+    final_filter_args.add_argument(
+        "--use-existing-filter-tables",
+        help=(
+            "Whether to use existing filter Tables if they exist instead of re-running "
+            "any specified filtering methods before creating the finalized outlier "
+            "filtering Table."
         ),
         action="store_true",
     )
