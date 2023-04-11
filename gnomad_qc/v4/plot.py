@@ -489,9 +489,6 @@ def my_pair_plot(
     if hue is None:
         g = g.map_lower(col_nan_scatter)
     else:
-        print(df)
-        print(hue)
-        print(hue_order)
         g = g.map_lower(col_nan_scatter, hue=df[hue], hue_order=hue_order)
 
     if add_kde_plot:
@@ -1050,12 +1047,6 @@ def pair_plot_regress_pop_strat_platform(
     for i, (strat_ht_cutoff, output_tab) in enumerate(zip(hts, outputs[1:])):
         ht_strata, cutoffs, strata = strat_ht_cutoff
         ht_strata = ht_strata.select(fail_filter_name, *[m[0] for m in renamed_metrics])
-        ht_strata.describe()
-        ht_strata.show()
-        print(cutoffs)
-        print(fail_filter_name)
-        print(strata[0])
-        print(hue_order)
         my_pair_plot(
             ht_strata,
             cutoffs,
@@ -1831,7 +1822,6 @@ def get_nn_hists(
         fig, axs = plt.subplots(ncols=4, nrows=5, figsize=(25, 25))
         for k, df_row in enumerate(hist_data):
             for j, df in enumerate(df_row):
-                print(df)
                 upper_cutoff = df["qc_metrics_stats.upper"].iat[0]
                 lower_cutoff = df["qc_metrics_stats.lower"].iat[0]
                 sample_metric_val = df[metric].iat[0]
