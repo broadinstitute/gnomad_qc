@@ -470,6 +470,10 @@ def get_sample_filter_ht(base_ht: hl.Table, relationship_ht: hl.Table) -> hl.Tab
     ukb_remove = hl.import_table(all_ukb_samples_to_remove, no_header=True).f0.collect()
     # Get list of hard filtered samples with sex imputation.
     hf_s = hard_filtered_samples.ht().s.collect()
+    # Get list of unreleasable samples, the outlier filtering Table only includes
+    # releasable samples.
+    meta_ht = project_meta.ht()
+    unreleasable_s = meta_ht.filter(~meta_ht.project_meta.releasable).s.collect()
 
     hard_filters_ht = get_hard_filters_ht(base_ht)
     outlier_filters_ht = finalized_outlier_filtering().ht()
@@ -487,7 +491,7 @@ def get_sample_filter_ht(base_ht: hl.Table, relationship_ht: hl.Table) -> hl.Tab
         "outlier_detection": {
             "ann_ht": outlier_filters_ht,
             "base_ht_missing": ukb_remove,
-            "ann_ht_missing": hf_s,
+            "ann_ht_missing": hf_s + unreleasable_s,
         },
         "relatedness_filters": {
             "ann_ht": relatedness_filters_ht,
