@@ -574,7 +574,7 @@ def get_sample_qc_meta_ht(base_ht: hl.Table) -> hl.Table:
             "base_ht_missing": ukb_remove,
         },
         "sample_qc": {
-            "ann_ht": get_sample_qc("bi_allelic").ht(),
+            "ann_ht": get_sample_qc("under_three_alt_alleles").ht(),
             # Note: the withdrawn UKB list was updated after the sample QC HT creation,
             #  so the sample QC HT has 5 samples more in it than the loaded VDS.
             "base_ht_missing": ukb_remove,
