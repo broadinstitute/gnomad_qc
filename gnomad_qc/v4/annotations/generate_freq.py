@@ -137,7 +137,7 @@ def annotate_gatk_version(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
     meta_ht = meta.ht()
     gatk_ht = hl.read_table(
-        "gs://gnomad-mwilson/v4/homalt_depletion/v4_sample_htc_versions.ht"
+        "gs://gnomad-tmp/freq/v4_sample_htc_versions.ht"
     ).key_by(
         "s"
     )  # TODO: Discuss if this should be a resource or annotation on metadata, misssing GATK version info for UKB samples
@@ -180,6 +180,39 @@ def subtract_high_ab_hets_from_ac(ht: hl.Table, af_threshold: float = 0.01) -> h
 
     return ht
 
+def generate_faf_popmax(ht: hl.Table) -> hl.Table:
+    """
+    Computing filtering allele frequencies and popmax with the AB-ajusted frequencies.
+    :param ht: Hail Table containing freq, ab_adjusted_freq, high_ab_het annotations.
+    :return: Hail Table with faf & popmax.
+    """
+    faf, faf_meta = faf_expr(
+        ht.ab_adjusted_freq, ht.freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX
+    )
+    ht = ht.select(
+        "freq",
+        "high_ab_hets_by_group_membership",
+        "ab_adjusted_freq",
+        faf=faf,
+        popmax=pop_max_expr(
+            ht.ab_adjusted_freq,
+            ht.freq_meta,
+            POPS_TO_REMOVE_FOR_POPMAX),
+    )
+    ht = ht.annotate_globals(
+        faf_meta=faf_meta,
+        faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-"),
+    )
+    ht = ht.annotate(
+        popmax=ht.popmax.annotate(
+            faf95=ht.faf[
+                ht.faf_meta.index(
+                    lambda x: x.values() == ["adj", ht.popmax.pop]
+                )
+            ].faf95
+        )
+    )
+    return ht
 
 def main(args):  # noqa: D103
     # TODO: Determine if splitting subset freq from whole callset agg
@@ -245,7 +278,6 @@ def main(args):  # noqa: D103
         adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
     )
 
-    final_fields = []
     if args.get_freq_and_high_ab:
         logger.info("Annotating frequencies...")
         mt = annotate_freq(
@@ -258,19 +290,21 @@ def main(args):  # noqa: D103
         )
         mt = annotate_high_ab_hets_by_group_membership(mt, gatk_expr=mt.gatk_version)
         ht = mt.rows()
-        final_fields = ["freq", "high_ab_hets_by_group_membership"]
 
     if adjust_freqs:
         # TODO: This should apply fix given the AF threshold and adjusts the
         # frequencies using the list created above
-        ht = subtract_high_ab_hets_from_ac(ht, af_threshold)
-        final_fields.append("ab_adjusted_freq")
+        ht = subtract_high_ab_hets_from_ac(ht, af_threshold) # TODO: if not assign parameters, there will
+
+    if args.faf_popmax:
+        logger.info("computing FAF & popmax...")
+        ht = generate_faf_popmax(ht)
 
     logger.info("Writing frequency table...")
-    ht = ht.select(*final_fields)
     ht = ht.write(
-        get_freq(hom_alt_adjustment=adjust_freqs, test=test).path,
-        overwrite=args.overwrite,
+        #get_freq(hom_alt_adjustment=adjust_freqs, test=test).path, #TODO: not woking for me, maybe have to install our branch for starting a cluster?
+        "gs://gnomad-tmp/qin/test_freq.ht",
+        overwrite=True,
     )
 
 
@@ -305,6 +339,14 @@ if __name__ == "__main__":
         help=(
             "Adjust each frequency entry to account for homozygous alternate depletion"
             " present in GATK versions released prior to 4.1.4.1."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--faf-popmax",
+        help=(
+            "compute filtering allele frequency and population that has the highest AF "
+            "based on the adjusted allele frequency"
         ),
         action="store_true",
     )
