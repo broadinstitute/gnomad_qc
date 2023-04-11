@@ -1032,7 +1032,9 @@ def pair_plot_regress_pop_strat_platform(
             continue
         cutoffs = strat_cutoff_dict[strata]
         cutoffs = {"regress_pop_strat_platform|" + m: cutoffs[m] for m in cutoffs}
-        ht_strata = outlier_ht.filter(outlier_ht.platform == strata[0])
+        ht_strata = outlier_ht.filter(
+            (outlier_ht.platform == strata[0]) & (outlier_ht.r_insertion_deletion < 1)
+        )
         ht_strata = ht_strata.repartition(50).checkpoint(
             f"{tmp_dir_prefix}regress_pop_strat_platform_ht_{strata[0]}.ht",
             _read_if_exists=read_if_exists,
