@@ -13,9 +13,7 @@ from typing import (  # TODO: REMOVE WITH ANNOTATE_FREQ
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import (
-    SUBSETS,  # TODO: subsets will be changed to UKB, non-UKB,
-)
-from gnomad.resources.grch38.gnomad import (
+    SUBSETS,  # TODO: subsets will be changed to UKB, non-UKB, non-TopMed
     DOWNSAMPLINGS,
     POPS,
     POPS_TO_REMOVE_FOR_POPMAX,
