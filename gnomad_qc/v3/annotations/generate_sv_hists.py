@@ -14,7 +14,13 @@ from gnomad_qc.v3.resources.basics import (
 )
 from gnomad_qc.v3.resources.meta import meta
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s: %(message)s",
+    datefmt="%m/%d/%Y %I:%M:%S %p",
+)
 logger = logging.getLogger("generate_gnomad_sv_histograms")
+logger.setLevel(logging.INFO)
 
 
 def generate_hists(mt: hl.MatrixTable) -> hl.Table:
@@ -24,6 +30,7 @@ def generate_hists(mt: hl.MatrixTable) -> hl.Table:
     :param mt: gnomAD SV MatrixTable.
     :return: Table with histograms.
     """
+    logger.info("Generating histograms for age and GQ...")
     hists = mt.select_rows(
         age_hist_het=hl.or_missing(
             ~mt.filters.contains("MULTIALLELIC"),
@@ -64,6 +71,7 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
 
     :return: Prepared metadata Table.
     """
+    logger.info("Annotating sample list with age...")
     sample_meta = meta.ht().key_by()
 
     # NOTE: some 1KG samples were already in v3.0 (SV data) and were given a new prefix in v3.1(meta)
@@ -114,18 +122,26 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day/",
     )
+    logger.info("Running generate_gnomad_sv_histograms.py...")
     mt = hl.import_vcf(gnomad_sv_vcf_path, force_bgz=True, min_partitions=300)
-
+    logger.info("VCF variable and sample count are %i ", mt.count())
     if args.test:
         logger.info("Running on chr22 only for testing purposes.")
-        test_interval = [hl.parse_locus_interval("chr22")]
-        mt = hl.filter_intervals(mt, test_interval)
+        hl.filter_intervals(mt, [hl.parse_locus_interval("chr22")])
+        logger.info(
+            "Imported VCF with %i variants and %i samples",
+            mt.count_rows(),
+            mt.count_cols(),
+        )
 
+    logger.info("Importing sample list...")
     sv_list = hl.import_table(
         gnomad_sv_release_samples_list_path, force=True, no_header=True
     )
     sv_list = sv_list.transmute(s=sv_list.f0).key_by("s")
     sv_list = get_sample_age(sv_list)
+
+    logger.info("Checkpoint SV MT...")
     mt = mt.annotate_cols(**sv_list[mt.col_key])
     mt = mt.checkpoint(temp_gnomad_sv_mt_path, overwrite=args.overwrite)
 
