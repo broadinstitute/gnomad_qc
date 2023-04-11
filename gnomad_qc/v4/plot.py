@@ -489,6 +489,9 @@ def my_pair_plot(
     if hue is None:
         g = g.map_lower(col_nan_scatter)
     else:
+        print(df)
+        print(hue)
+        print(hue_order)
         g = g.map_lower(col_nan_scatter, hue=df[hue], hue_order=hue_order)
 
     if add_kde_plot:
@@ -625,8 +628,6 @@ def box_plot_strat_pop_platform(
 
 def box_plot_regress_pop_strat_platform(
     outlier_ht,
-    strat_pop_platform_ht,
-    metric_labels,
     pair_plot_metrics,
     figsize=(30, 10),
 ):
@@ -634,17 +635,22 @@ def box_plot_regress_pop_strat_platform(
     sns.set_theme(style="ticks", rc=custom_params)
     plt.rcParams["figure.dpi"] = 200
     plt.rcParams["figure.figsize"] = figsize
-    tabs = []
-    strat_cutoff_dict = hl.eval(strat_pop_platform_ht.qc_metrics_stats)
-    strat = list(strat_cutoff_dict.keys())
-    strat_pops = sorted(set([strata[0] for strata in strat]) - {None})
-    strat_platform = sorted(set([strata[1] for strata in strat]) - {None})
+    strat_pops = outlier_ht.aggregate(
+        hl.agg.filter(
+            hl.is_defined(outlier_ht.pop), hl.agg.collect_as_set(outlier_ht.pop)
+        )
+    )
+    strat_platform = outlier_ht.aggregate(
+        hl.agg.filter(
+            hl.is_defined(outlier_ht.platform),
+            hl.agg.collect_as_set(outlier_ht.platform),
+        )
+    )
 
     order = []
     for platform in strat_platform:
         for pop in strat_pops:
-            if (pop, platform) in strat:
-                order.append(pop + " / " + platform)
+            order.append(pop + " / " + platform)
 
     outputs = []
     outputs.append(widgets.Output())
@@ -653,13 +659,10 @@ def box_plot_regress_pop_strat_platform(
 
     tab = widgets.Tab(children=outputs)
     for i, m in enumerate([m[0] for m in pair_plot_metrics]):
-        plot_grid = []
         ht_strata_pd = outlier_ht.select(
             f"regress_pop_strat_platform|{m}_residual", "pop", "platform"
-        ).to_pandas()  # ,
-        # pop_platform=outlier_ht.pop + " / " + outlier_ht.platform).to_pandas()
+        ).to_pandas()
         o = outputs[i + 1]
-        # fig, ax = plt.subplots(figsize=(8, 60))
         g = sns.catplot(
             data=ht_strata_pd,
             x=f"regress_pop_strat_platform|{m}_residual",
@@ -675,13 +678,9 @@ def box_plot_regress_pop_strat_platform(
             sharex=False,
             sharey=False,
         )
-        # g = sns.boxplot(data=ht_strata_pd, x=f"regress_pop_strat_platform|{
-        # m}_residual", y="pop_platform", showfliers = False, ax=ax, hue="pop",
-        # order=order, hue_order=strat_pops, dodge = False)
         for i, ax_r in enumerate(g.axes.flatten()):
             ax_r.xaxis.set_label_text(f"{m}_residual", visible=True)
-        # g.set(title=f"{m}_residual")
-        # plt.show()
+
         file_name = str(uuid.uuid4())
         plt.savefig(
             f"plot_pngs/{m}_box_plot_regress_pop_strat_platform_{file_name}.png",
@@ -692,7 +691,6 @@ def box_plot_regress_pop_strat_platform(
         o.append_display_data(
             Image(f"plot_pngs/{m}_box_plot_regress_pop_strat_platform_{file_name}.png")
         )
-        # tab.set_title(i+1, f"{m}_residual")
         tab.set_title(i + 1, m)
 
     display(tab)
@@ -1037,9 +1035,7 @@ def pair_plot_regress_pop_strat_platform(
             continue
         cutoffs = strat_cutoff_dict[strata]
         cutoffs = {"regress_pop_strat_platform|" + m: cutoffs[m] for m in cutoffs}
-        ht_strata = outlier_ht.filter(
-            (outlier_ht.platform == strata[0]) & (outlier_ht.r_insertion_deletion < 1)
-        )
+        ht_strata = outlier_ht.filter(outlier_ht.platform == strata[0])
         ht_strata = ht_strata.repartition(50).checkpoint(
             f"{tmp_dir_prefix}regress_pop_strat_platform_ht_{strata[0]}.ht",
             _read_if_exists=read_if_exists,
@@ -1054,6 +1050,12 @@ def pair_plot_regress_pop_strat_platform(
     for i, (strat_ht_cutoff, output_tab) in enumerate(zip(hts, outputs[1:])):
         ht_strata, cutoffs, strata = strat_ht_cutoff
         ht_strata = ht_strata.select(fail_filter_name, *[m[0] for m in renamed_metrics])
+        ht_strata.describe()
+        ht_strata.show()
+        print(cutoffs)
+        print(fail_filter_name)
+        print(strata[0])
+        print(hue_order)
         my_pair_plot(
             ht_strata,
             cutoffs,
@@ -1063,7 +1065,7 @@ def pair_plot_regress_pop_strat_platform(
             file_name=f"{plot_dir_prefix}.regress_pop_strat_platform.{strata[0]}",
             use_fig_if_exists=use_fig_if_exists,
             add_kde_plot=add_kde_plot,
-            hue_order=hue_order
+            hue_order=hue_order,
         )
 
         tab.set_title(i + 1, f"{strata[0]}")
@@ -1773,10 +1775,10 @@ def get_nn_hists(
         pass_fail_type=outlier_ht.sample_info[1],
     )
     # outlier_ht.describe()
-    if "r_ti_tv_singleton" in qc_metrics:
-        outlier_ht = outlier_ht.annotate(
-            r_ti_tv_singleton=outlier_ht.r_ti_tv_singleton_nn
-        )
+    # if "r_ti_tv_singleton" in qc_metrics:
+    #    outlier_ht = outlier_ht.annotate(
+    #        r_ti_tv_singleton=outlier_ht.r_ti_tv_singleton_nn
+    #    )
     outlier_ht = outlier_ht.select(
         *qc_metrics,
         qc_metrics_stats=hl.coalesce(
