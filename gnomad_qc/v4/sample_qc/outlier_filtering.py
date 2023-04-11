@@ -496,7 +496,7 @@ def main(args):
     overwrite = args.overwrite
     filtering_qc_metrics = args.filtering_qc_metrics
     create_finalized_outlier_filter = args.create_finalized_outlier_filter
-    sample_qc_ht = get_sample_qc("bi_allelic")
+    sample_qc_ht = get_sample_qc("under_three_alt_alleles")
     pop_ht = get_pop_ht()
     include_unreleasable_samples = args.regression_include_unreleasable
     pop_scores_ht = ancestry_pca_scores(
