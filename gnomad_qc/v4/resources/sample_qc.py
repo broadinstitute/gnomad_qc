@@ -58,7 +58,7 @@ def get_sample_qc(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type)}/hard_filtering/gnomad.{data_type}.v{version}.sample_qc_all_{'' if strat == 'all' else strat}.ht"
+                f"{get_sample_qc_root(version, test, data_type)}/hard_filtering/gnomad.{data_type}.v{version}.sample_qc_all{'' if strat == 'all' else f'_{strat}'}.ht"
             )
             for version in VERSIONS
         },
@@ -409,15 +409,22 @@ def get_cuking_output_path(version: str = CURRENT_VERSION, test: bool = False) -
     return f"{qc_temp_prefix(version)}cuking_output{'_test' if test else ''}.parquet"
 
 
-pc_relate_pca_scores = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version, data_type='joint')}/relatedness/gnomad.joint.v{version}.pc_scores.ht"
-        )
-        for version in VERSIONS
-    },
-)
+def pc_relate_pca_scores(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for PCA scores for use in PC-Relate.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='joint')}/relatedness/gnomad.joint.v{version}.pc_scores.ht"
+            )
+            for version in VERSIONS
+        },
+    )
 
 
 def relatedness(
@@ -472,7 +479,11 @@ def related_samples_to_drop(
     test: bool = False, release: bool = True
 ) -> VersionedTableResource:
     """
-    Get the VersionedTableResource for samples to drop for PCA due to them being related.
+    Get the VersionedTableResource for samples to drop for release or ancestry PCA.
+
+    Default to returning the VersionedTableResource for samples to drop for release.
+    If release is set to False, retrieve the VersionedTableResource of related samples
+    to remove for ancestry PCA.
 
     :param test: Whether to use a tmp path for a test resource.
     :param release: Whether to return resource for related samples to drop for the
@@ -492,7 +503,11 @@ def related_samples_to_drop(
 
 def sample_rankings(test: bool = False, release: bool = True) -> VersionedTableResource:
     """
-    Get the VersionedTableResource for ranking of all samples to use for removing relateds for PCA.
+    Get the VersionedTableResource for sample rankings for release or ancestry PCA.
+
+    Default to returning the VersionedTableResource for release sample rankings. If
+    release is set to False, retrieve the VersionedTableResource of sample rankings for
+    removing relateds for PCA.
 
     :param test: Whether to use a tmp path for a test resource.
     :param release: Whether to return resource for ranking of all samples based on
@@ -619,31 +634,10 @@ def ancestry_pca_eigenvalues(
     )
 
 
-def pop_tsv_path(
-    version: str = CURRENT_VERSION,
-    test: bool = False,
-    data_type: str = "joint",
-    only_train_on_hgdp_tgp: bool = False,
-) -> str:
-    """
-    Path to tab delimited file indicating inferred sample populations.
-
-    :param version: gnomAD Version
-    :param test: Whether the RF assignment used a test dataset.
-    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Default is False.
-    :return: String path to sample populations
-    """
-    return (
-        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}RF_pop_assignments.txt.gz"
-    )
-
-
 def pop_rf_path(
     version: str = CURRENT_VERSION,
     test: bool = False,
     data_type: str = "joint",
-    only_train_on_hgdp_tgp: bool = False,
 ) -> str:
     """
     Path to RF model used for inferring sample populations.
@@ -651,11 +645,10 @@ def pop_rf_path(
     :param version: gnomAD Version
     :param test: Whether the RF assignment was from a test dataset.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Default is False.
     :return: String path to sample pop RF model
     """
     return (
-        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}pop.RF_fit.pickle"
+        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop.RF_fit.pickle"
     )
 
 
@@ -663,7 +656,6 @@ def get_pop_ht(
     version: str = CURRENT_VERSION,
     test: bool = False,
     data_type: str = "joint",
-    only_train_on_hgdp_tgp: bool = False,
 ):
     """
     Get the TableResource of samples' inferred population for the indicated gnomAD version.
@@ -671,11 +663,40 @@ def get_pop_ht(
     :param version: Version of pop TableResource to return.
     :param test: Whether to use the test version of the pop TableResource.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :param only_train_on_hgdp_tgp: Whether the RF classifier trained using only the HGDP and 1KG populations. Default is False.
     :return: TableResource of sample pops.
     """
     return TableResource(
-        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.{'hgdp_tgp_training.' if only_train_on_hgdp_tgp else ''}pop.ht"
+        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop.ht"
+    )
+
+
+def get_pop_pr_ht(
+    version: str = CURRENT_VERSION,
+    test: bool = False,
+    data_type: str = "joint",
+):
+    """
+    Get the TableResource of ancestry inference precision and recall values.
+
+    :param version: Version of pop PR TableResource to return.
+    :param test: Whether to use the test version of the pop PR TableResource.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: TableResource of ancestry inference PR values.
+    """
+    return TableResource(
+        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop_pr.ht"
+    )
+
+
+def per_pop_min_rf_probs_json_path(version: str = CURRENT_VERSION):
+    """
+    Get path to JSON file containing per ancestry group minimum RF probabilities.
+
+    :param version: Version of the JSON to return.
+    :return: Path to per ancestry group minimum RF probabilities JSON.
+    """
+    return (
+        f"{get_sample_qc_root(version, data_type='joint')}/ancestry_inference/gnomad.joint.v{version}.pop_min_probs.json"
     )
 
 
@@ -757,6 +778,7 @@ def nearest_neighbors(
     test: bool = False,
     platform_stratified: bool = False,
     approximation: bool = False,
+    include_unreleasable_samples: bool = False,
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for population PCA nearest neighbors.
@@ -766,6 +788,8 @@ def nearest_neighbors(
         stratified nearest neighbors.
     :param approximation: Whether to get resource that is approximate nearest
         neighbors.
+    :param include_unreleasable_samples: Whether to get resource that included
+        unreleasable samples in nearest neighbors determination.
     :return: VersionedTableResource.
     """
     postfix = ""
@@ -773,6 +797,8 @@ def nearest_neighbors(
         postfix += ".platform_stratified"
     if approximation:
         postfix += ".approximation"
+    if include_unreleasable_samples:
+        postfix += ".include_unreleasable_samples"
     return VersionedTableResource(
         CURRENT_VERSION,
         {
