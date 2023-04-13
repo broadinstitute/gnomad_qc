@@ -8,8 +8,9 @@ from gnomad.utils.slack import slack_notifications
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import sv_age_and_gq_hists
 from gnomad_qc.v3.resources.basics import (
+    gnomad_sv_autosome_vcf_paths,
     gnomad_sv_release_samples_list_path,
-    gnomad_sv_vcf_path,
+    gnomad_sv_sex_vcf_paths,
     temp_gnomad_sv_mt_path,
 )
 from gnomad_qc.v3.resources.meta import meta
@@ -59,7 +60,8 @@ def generate_hists(mt: hl.MatrixTable) -> hl.Table:
                 f"{hist}_n_larger": hists[hist].n_larger,
             }
         )
-
+    # TODO: Check with browser team if they want to keep the format of the
+    # histograms as is or if we can store bin edges as globals
     hists = hists.select(**hist_expr)
 
     return hists
@@ -71,7 +73,6 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
 
     :return: Prepared metadata Table.
     """
-    logger.info("Annotating sample list with age...")
     sample_meta = meta.ht().key_by()
 
     # NOTE: some 1KG samples were already in v3.0 (SV data) and were given a new prefix in v3.1(meta)
@@ -109,10 +110,35 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
     )
     logger.info(
         "%i out of %i samples in the SV sample list are in the core release",
-        sv_list.filter(hl.is_defined(sv_list.release)).count(),
+        sv_list.filter(sv_list.release).count(),
         sv_list.count(),
     )
     return sv_list
+
+
+def get_sex_and_autosome_mt() -> hl.MatrixTable:
+    """Read in and union autosome and sex chromosome VCFs."""
+    logger.info("Importing VCFs...")
+    s_mt = hl.import_vcf(
+        gnomad_sv_sex_vcf_paths,
+        reference_genome="GRCh38",
+        min_partitions=300,
+        force_bgz=True,
+    )
+    # NOTE: The sex chromosome VCFs have an extra "PAR" field that needs to
+    # be dropped in order to union with the autosome VCFs
+    s_mt = s_mt.annotate_rows(info=s_mt.info.drop("PAR"))
+    a_mt = hl.import_vcf(
+        gnomad_sv_autosome_vcf_paths,
+        reference_genome="GRCh38",
+        min_partitions=300,
+        force_bgz=True,
+    )
+    mt = s_mt.union_rows(a_mt)
+    logger.info(
+        "Imported VCF with %i variants and %i samples", mt.count_rows(), mt.count_cols()
+    )
+    return mt
 
 
 def main(args):
@@ -123,11 +149,10 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day/",
     )
     logger.info("Running generate_gnomad_sv_histograms.py...")
-    mt = hl.import_vcf(gnomad_sv_vcf_path, force_bgz=True, min_partitions=300)
-    logger.info("VCF variable and sample count are %i ", mt.count())
+    mt = get_sex_and_autosome_mt()
     if args.test:
         logger.info("Running on chr22 only for testing purposes.")
-        hl.filter_intervals(mt, [hl.parse_locus_interval("chr22")])
+        mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr22")])
         logger.info(
             "Imported VCF with %i variants and %i samples",
             mt.count_rows(),
@@ -139,6 +164,8 @@ def main(args):
         gnomad_sv_release_samples_list_path, force=True, no_header=True
     )
     sv_list = sv_list.transmute(s=sv_list.f0).key_by("s")
+
+    logger.info("Annotating sample list with age...")
     sv_list = get_sample_age(sv_list)
 
     logger.info("Checkpoint SV MT...")
