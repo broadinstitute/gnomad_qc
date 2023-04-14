@@ -881,7 +881,8 @@ def pedigree(
         CURRENT_VERSION,
         {
             version: PedigreeResource(
-                f"{get_sample_qc_root(version, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.families{'' if finalized else '.raw'}.fam"
+                f"{get_sample_qc_root(version, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.families{'' if finalized else '.raw'}.fam",
+                delimiter="\t",
             )
             for version in VERSIONS
         },
