@@ -137,7 +137,7 @@ def filter_ped(
     return hl.Pedigree([trio for trio in raw_ped.trios if trio.s in good_trios])
 
 
-def get_filter_relatedness_ht(joint: bool = False) -> hl.Table:
+def get_filtered_relatedness_ht(joint: bool = False) -> hl.Table:
     """
     Add description.
 
@@ -153,6 +153,7 @@ def get_filter_relatedness_ht(joint: bool = False) -> hl.Table:
         )
     else:
         ht = ht.filter((ht.i.data_type == "exomes") & (ht.j.data_type == "exomes"))
+
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
 
     # Remove all pairs with a QC-filtered sample
@@ -177,7 +178,7 @@ def main(args):
     if args.identify_duplicates:
         logger.info("Selecting best duplicate per duplicated sample set")
         ht = get_duplicated_samples_ht(
-            get_duplicated_samples(get_filter_relatedness_ht(joint)),
+            get_duplicated_samples(get_filtered_relatedness_ht(joint)),
             sample_rankings().ht(),
         )
         ht.write(duplicates(data_type=data_type).path, overwrite=args.overwrite)
@@ -192,7 +193,7 @@ def main(args):
         sex_ht = sex_ht.filter(hl.literal(SEXES).contains(sex_ht.sex_karyotype))
         sex_ht = sex_ht.annotate(is_female=sex_ht.sex_karyotype == "XX")
         ped = infer_families(
-            get_filter_relatedness_ht(joint),
+            get_filtered_relatedness_ht(joint),
             sex_ht,
             duplicates(data_type=data_type).ht(),
         )
