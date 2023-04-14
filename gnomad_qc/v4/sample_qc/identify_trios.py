@@ -12,10 +12,11 @@ from gnomad.sample_qc.relatedness import (
 )
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import SEXES
+from hail.utils.misc import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
-from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.sample_qc import (
     duplicates,
     finalized_outlier_filtering,
@@ -33,49 +34,46 @@ logger = logging.getLogger("identify_trios")
 logger.setLevel(logging.INFO)
 
 
-def run_mendel_errors() -> hl.Table:
+# TODO: change to make fake pedigree, save it, then run mendle errors.
+def run_mendel_errors(fake_fam_prop: float = 0.01, test: bool = False) -> hl.Table:
     """
     Add description.
 
     :return:
     """
     meta_ht = meta.ht()
-    ped = pedigree.versions[f"{CURRENT_RELEASE}_raw"].pedigree()
-    logger.info(f"Running Mendel errors for {len(ped.trios)} trios.")
+    ped = pedigree(finalized=False).pedigree()
 
+    n_fake_trios = int(fake_fam_prop * len(ped.complete_trios()))
+    logger.info("Generating fake pedigree with %i trios.", n_fake_trios)
     fake_ped = create_fake_pedigree(
-        n=100,
-        sample_list=list(
-            meta_ht.aggregate(
-                hl.agg.filter(
-                    hl.rand_bool(0.01)
-                    & (
-                        (hl.len(meta_ht.qc_metrics_filters) == 0)
-                        & hl.or_else(hl.len(meta_ht.hard_filters) == 0, False)
-                    ),
-                    hl.agg.collect_as_set(meta_ht.s),
-                )
-            )
-        ),
+        n=n_fake_trios,
+        sample_list=list(meta_ht.filter(meta_ht.high_quality).s.collect()),
         real_pedigree=ped,
     )
     merged_ped = hl.Pedigree(trios=ped.trios + fake_ped.trios)
+    ped_samples = [s for t in merged_ped.trios for s in [t.s, t.pat_id, t.mat_id]]
 
-    ped_samples = hl.literal(
-        set(
-            [s for trio in merged_ped.trios for s in [trio.s, trio.pat_id, trio.mat_id]]
+    vds = get_gnomad_v4_vds(split=True)
+    if test:
+        vds = hl.vds.VariantDataset(
+            vds.reference_data._filter_partitions(range(5)),
+            vds.variant_data._filter_partitions(range(5)),
         )
+    else:
+        vds = hl.vds.filter_chromosomes(
+            vds, keep="chr20"
+        )  # TODO: should we filter to only chr20 like we did in v3, or grab the whole thing since this is exomes (still probably just want autosomes)?
+
+    vds = hl.vds.filter_samples(vds, ped_samples)
+    mt = hl.vds.to_dense_mt(vds)
+    mt = mt.select_entries("GT").checkpoint(
+        new_temp_file("mendel_errors_chr20", extension="mt")
     )
-    mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True)
-    mt = mt.filter_cols(ped_samples.contains(mt.s))
-    mt = hl.filter_intervals(
-        mt, [hl.parse_locus_interval("chr20", reference_genome="GRCh38")]
-    )
-    mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
-    mt = mt.select_entries("GT", "END")
-    mt = hl.experimental.densify(mt)
-    mt = mt.filter_rows(hl.len(mt.alleles) == 2)
+
+    logger.info(f"Running Mendel errors for {len(ped.trios)} trios.")
     mendel_errors, _, _, _ = hl.mendel_errors(mt["GT"], merged_ped)
+
     return mendel_errors
 
 
