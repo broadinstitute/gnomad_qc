@@ -849,13 +849,13 @@ def finalized_outlier_filtering(test: bool = False) -> VersionedTableResource:
 ######################################################################
 # Trio identification resources
 ######################################################################
-def duplicates(data_type: str = "exomes") -> VersionedTableResource:
+def duplicates() -> VersionedTableResource:
     """
     Get the VersionedTableResource for duplicated (or twin) samples.
 
-    :param data_type: Data type, e.g. "exomes" or "joint".
     :return: VersionedTableResource.
     """
+    data_type = "exomes"
     return VersionedTableResource(
         CURRENT_VERSION,
         {
@@ -867,16 +867,14 @@ def duplicates(data_type: str = "exomes") -> VersionedTableResource:
     )
 
 
-def pedigree(
-    data_type: str = "exomes", finalized: bool = True
-) -> VersionedPedigreeResource:
+def pedigree(finalized: bool = True) -> VersionedPedigreeResource:
     """
     Get the VersionedPedigreeResource for ........
 
-    :param data_type: Data type, e.g. "exomes" or "joint".
     :param finalized: Whether to return the finalized pedigree resource.
     :return: VersionedPedigreeResource.
     """
+    data_type = "exomes"
     return VersionedPedigreeResource(
         CURRENT_VERSION,
         {
@@ -889,16 +887,14 @@ def pedigree(
     )
 
 
-def trios(
-    data_type: str = "exomes", finalized: bool = True
-) -> VersionedPedigreeResource:
+def trios(finalized: bool = True) -> VersionedPedigreeResource:
     """
     Get the VersionedPedigreeResource for ........
 
-    :param data_type: Data type, e.g. "exomes" or "joint".
     :param finalized: Whether to return the finalized pedigree resource.
     :return: VersionedPedigreeResource.
     """
+    data_type = "exomes"
     return VersionedPedigreeResource(
         CURRENT_VERSION,
         {
@@ -910,13 +906,13 @@ def trios(
     )
 
 
-def ped_mendel_errors(data_type: str = "exomes") -> VersionedTableResource:
+def ped_mendel_errors() -> VersionedTableResource:
     """
     Get the VersionedTableResource for ........
 
-    :param data_type: Data type, e.g. "exomes" or "joint".
     :return: VersionedTableResource.
     """
+    data_type = "exomes"
     return VersionedTableResource(
         CURRENT_VERSION,
         {

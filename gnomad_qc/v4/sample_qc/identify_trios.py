@@ -172,16 +172,14 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    joint = args.joint
-    data_type = "joint" if joint else "exomes"
 
     if args.identify_duplicates:
         logger.info("Selecting best duplicate per duplicated sample set")
         ht = get_duplicated_samples_ht(
-            get_duplicated_samples(get_filtered_relatedness_ht(joint)),
+            get_duplicated_samples(get_filtered_relatedness_ht()),
             sample_rankings().ht(),
         )
-        ht.write(duplicates(data_type=data_type).path, overwrite=args.overwrite)
+        ht.write(duplicates().path, overwrite=args.overwrite)
 
     if args.infer_families:
         # TODO: For v2, project info was used in trio determination, do we want to do that also?
@@ -193,16 +191,16 @@ def main(args):
         sex_ht = sex_ht.filter(hl.literal(SEXES).contains(sex_ht.sex_karyotype))
         sex_ht = sex_ht.annotate(is_female=sex_ht.sex_karyotype == "XX")
         ped = infer_families(
-            get_filtered_relatedness_ht(joint),
+            get_filtered_relatedness_ht(),
             sex_ht,
-            duplicates(data_type=data_type).ht(),
+            duplicates().ht(),
         )
         ped.write(pedigree(data_type=data_type, finalized=False).path)
         raw_trios = families_to_trios(ped)
         raw_trios.write(trios(data_type=data_type, finalized=False).path)
 
     if args.run_mendel_errors:
-        mendel_errors = run_mendel_errors()
+        mendel_errors = run_mendel_errors(pedigree(finalized=False).pedigree())
         mendel_errors.write(ped_mendel_errors().path, overwrite=args.overwrite)
 
     if args.finalize_ped:
@@ -228,14 +226,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
-    parser.add_argument(
-        "--joint",
-        help=(
-            "Whether to include both v3 genomes and v4 exomes. Default is only v4 "
-            "exomes."
-        ),
-        action="store_true",
-    )
+
+    select_dup_grp = parser.add_argument_group("Select duplicates")
     parser.add_argument(
         "--identify-duplicates",
         help=(
