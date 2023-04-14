@@ -20,7 +20,6 @@ from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.sample_qc import (
     duplicates,
     finalized_outlier_filtering,
-    joint_qc_meta,
     ped_mendel_errors,
     pedigree,
     relatedness,
@@ -137,23 +136,15 @@ def filter_ped(
     return hl.Pedigree([trio for trio in raw_ped.trios if trio.s in good_trios])
 
 
-def get_filtered_relatedness_ht(joint: bool = False) -> hl.Table:
+def get_filtered_relatedness_ht() -> hl.Table:
     """
     Add description.
 
-    :param joint:
     :return:
     """
     ht = relatedness().ht()
     filter_ht = finalized_outlier_filtering().ht()
-    if joint:
-        joint_qc_meta_ht = joint_qc_meta.ht()
-        filter_ht = joint_qc_meta_ht.annotate(
-            outlier_filtered=filter_ht[joint_qc_meta_ht.key].outlier_filtered
-        )
-    else:
-        ht = ht.filter((ht.i.data_type == "exomes") & (ht.j.data_type == "exomes"))
-
+    ht = ht.filter((ht.i.data_type == "exomes") & (ht.j.data_type == "exomes"))
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
 
     # Remove all pairs with a QC-filtered sample
