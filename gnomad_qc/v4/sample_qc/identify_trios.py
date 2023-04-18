@@ -257,7 +257,7 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
     )
     create_fake_pedigree = PipelineStepResourceCollection(
         "--create-fake-pedigree",
-        output_resources={"fake_ped": pedigree(fake=True)},
+        output_resources={"fake_ped": pedigree(finalized=False, fake=True)},
         pipeline_input_steps=[infer_families],
     )
 
