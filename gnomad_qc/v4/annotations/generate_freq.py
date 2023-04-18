@@ -234,6 +234,27 @@ def compute_age_hist(mt: hl.MatrixTable) -> hl.MatrixTable:
     )
     return mt
 
+def annotate_quality_metrics_hist(mt: hl.MatrixTable) -> hl.MatrixTable:
+    """
+    Annotate quality metrics histograms
+    """
+    mt = mt.annotate_rows(
+        qual_hists=qual_hist_expr(mt.GT, mt.GQ, mt.DP, mt.AD, mt.adj)
+    )
+    mt = mt.annotate_rows(
+        qual_hists=hl.Struct(
+            **{
+                i.replace("_adj", ""): mt.qual_hists[i]
+                for i in mt.qual_hists
+                if "_adj" in i
+            }
+        ),
+        raw_qual_hists=hl.Struct(
+            **{i: mt.qual_hists[i] for i in mt.qual_hists if "_adj" not in i}
+        ),
+    )
+    return mt
+
 def generate_faf_popmax(ht: hl.Table) -> hl.Table:
     """
     Computing filtering allele frequencies and popmax with the AB-ajusted frequencies.
@@ -369,6 +390,10 @@ def main(args):  # noqa: D103
     logger.info("Computing age histograms for each variant...")
     mt = compute_age_hist(mt)
     # TODO: this needs to be output somewhere.
+
+    logger.info("Annotating quality metrics histograms...")
+    mt = annotate_quality_metrics_hist(mt)
+    ht = mt.rows()
 
     if args.faf_popmax:
         logger.info("computing FAF & popmax...")
