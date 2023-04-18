@@ -867,19 +867,30 @@ def duplicates() -> VersionedTableResource:
     )
 
 
-def pedigree(finalized: bool = True) -> VersionedPedigreeResource:
+def pedigree(
+    finalized: bool = True, fake: bool = False, test: bool = False
+) -> VersionedPedigreeResource:
     """
     Get the VersionedPedigreeResource for ........
 
     :param finalized: Whether to return the finalized pedigree resource.
+    :param test: Whether to use a tmp path for a test resource. This is only an option
+        for the finalized pedigree, which depends on `ped_mendel_errors`.
     :return: VersionedPedigreeResource.
     """
+    if finalized and fake:
+        raise ValueError("Only one of 'finalized' or 'fake' can be True!")
+    if test and not finalized:
+        raise ValueError(
+            "The test pedigree is only available for the finalized pedigree because it "
+            "depends on filtering using `ped_mendel_errors` which has a test option!"
+        )
     data_type = "exomes"
     return VersionedPedigreeResource(
         CURRENT_VERSION,
         {
             version: PedigreeResource(
-                f"{get_sample_qc_root(version, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.families{'' if finalized else '.raw'}.fam",
+                f"{get_sample_qc_root(version, test, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.families{'' if finalized else '.raw'}.fam",
                 delimiter="\t",
             )
             for version in VERSIONS
@@ -887,26 +898,33 @@ def pedigree(finalized: bool = True) -> VersionedPedigreeResource:
     )
 
 
-def trios(finalized: bool = True) -> VersionedPedigreeResource:
+def trios(finalized: bool = True, test: bool = False) -> VersionedPedigreeResource:
     """
     Get the VersionedPedigreeResource for ........
 
     :param finalized: Whether to return the finalized pedigree resource.
+    :param test: Whether to use a tmp path for a test resource. This is only an option
+        for the finalized pedigree, which depends on `ped_mendel_errors`.
     :return: VersionedPedigreeResource.
     """
+    if test and not finalized:
+        raise ValueError(
+            "The test pedigree is only available for the finalized pedigree because it "
+            "depends on filtering using `ped_mendel_errors` which has a test option!"
+        )
     data_type = "exomes"
     return VersionedPedigreeResource(
         CURRENT_VERSION,
         {
             version: PedigreeResource(
-                f"{get_sample_qc_root(version, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.trios{'' if finalized else '.raw'}.fam"
+                f"{get_sample_qc_root(version, test, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.trios{'' if finalized else '.raw'}.fam"
             )
             for version in VERSIONS
         },
     )
 
 
-def ped_mendel_errors() -> VersionedTableResource:
+def ped_mendel_errors(test: bool = False) -> VersionedTableResource:
     """
     Get the VersionedTableResource for ........
 
@@ -917,7 +935,7 @@ def ped_mendel_errors() -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.ped_chr20_mendel_errors.ht"
+                f"{get_sample_qc_root(version, test, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.mendel_errors.samples.ht"
             )
             for version in VERSIONS
         },
