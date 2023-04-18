@@ -214,6 +214,26 @@ def set_high_ab_het_to_hom_alt(
         )
     )
 
+def compute_age_hist(mt: hl.MatrixTable) -> hl.MatrixTable:
+    """
+    Compute age histograms for each variant
+    """
+    mt = mt.annotate_cols(
+        age=hl.if_else(
+            hl.is_defined(mt.meta.project_meta.age),
+            mt.meta.project_meta.age,
+            hl.missing(hl.tfloat64), # NOTE by QH: age_alt doesn't exist, set to missing
+            # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples, age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin # noqa
+        )
+    )
+    mt = mt.annotate_rows(**age_hists_expr(mt.adj, mt.GT, mt.age))
+
+    # Compute callset-wide age histogram global
+    mt = mt.annotate_globals(
+        age_distribution=mt.aggregate_cols(hl.agg.hist(mt.age, 30, 80, 10))
+    )
+    return mt
+
 def generate_faf_popmax(ht: hl.Table) -> hl.Table:
     """
     Computing filtering allele frequencies and popmax with the AB-ajusted frequencies.
@@ -345,6 +365,10 @@ def main(args):  # noqa: D103
     mt = mt.annotate_rows(
         InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT)
     )
+
+    logger.info("Computing age histograms for each variant...")
+    mt = compute_age_hist(mt)
+    # TODO: this needs to be output somewhere.
 
     if args.faf_popmax:
         logger.info("computing FAF & popmax...")
