@@ -1,4 +1,4 @@
-"""Add description."""
+"""Script to identify trios from relatedness data and filter based on Mendel errors and de novos."""
 import argparse
 import logging
 from collections import Counter, defaultdict
@@ -39,10 +39,10 @@ logger.setLevel(logging.INFO)
 
 def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:
     """
-    Add description.
+    Convert a pedigree with families to a pedigree with only one trio per family.
 
-    :param ped:
-    :return:
+    :param ped: Pedigree with families.
+    :return: Pedigree with only one trio per family.
     """
     trios_per_fam = defaultdict(list)
     for trio in ped.trios:
@@ -60,9 +60,11 @@ def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:
 
 def filter_relatedness_ht(ht: hl.Table, filter_ht: hl.Table) -> hl.Table:
     """
-    Add description.
+    Filter relatedness Table to only include pairs of samples that are both exomes and not QC-filtered.
 
-    :return:
+    :param ht: Relatedness Table.
+    :param filter_ht: Outlier filtering Table.
+    :return: Filtered relatedness Table.
     """
     ht = ht.filter((ht.i.data_type == "exomes") & (ht.j.data_type == "exomes"))
     ht = ht.key_by(i=ht.i.s, j=ht.j.s)
@@ -82,7 +84,11 @@ def run_create_fake_pedigree(
     """
     Generate a fake pedigree with `fake_fam_prop` of the number of trios in `ped`.
 
-    :return:
+    :param ped: Pedigree to use for generating fake pedigree.
+    :param filter_ht: Outlier filtering Table.
+    :param fake_fam_prop: Proportion of trios in `ped` to use for generating fake
+        pedigree. Default is 0.01.
+    :return: Fake pedigree.
     """
     n_fake_trios = int(fake_fam_prop * len(ped.complete_trios()))
     logger.info("Generating fake pedigree with %i trios.", n_fake_trios)
@@ -99,9 +105,13 @@ def run_mendel_errors(
     ped: hl.Pedigree, fake_ped: hl.Pedigree, test: bool = False
 ) -> hl.Table:
     """
-    Add description.
+    Run Hail's `mendel_errors` on the VDS subset to samples in `ped` and `fake_ped`.
 
-    :return:
+    :param ped: Inferred pedigree.
+    :param fake_ped: Fake pedigree.
+    :param test: Whether to run on five partitions of the VDS for testing. Default is
+        False.
+    :return: Table with Mendel errors.
     """
     merged_ped = hl.Pedigree(trios=ped.trios + fake_ped.trios)
     ped_samples = [s for t in merged_ped.trios for s in [t.s, t.pat_id, t.mat_id]]
@@ -131,7 +141,7 @@ def run_mendel_errors(
 
 
 def filter_ped(
-    raw_ped: hl.Pedigree,
+    ped: hl.Pedigree,
     mendel: hl.Table,
     max_mendel_z: Optional[int] = 3,
     max_de_novo_z: Optional[int] = 3,
@@ -139,15 +149,15 @@ def filter_ped(
     max_de_novo: Optional[int] = None,
 ) -> hl.Pedigree:
     """
-    Add description.
+    Filter a pedigree based on Mendel errors and de novo metrics.
 
-    :param raw_ped:
-    :param mendel:
-    :param max_de_novo_z:
-    :param max_mendel_z:
-    :param max_de_novo:
-    :param max_mendel:
-    :return:
+    :param ped: Pedigree to filter.
+    :param mendel: Table with Mendel errors.
+    :param max_mendel_z: Optional maximum z-score for Mendel error metrics. Default is 3.
+    :param max_de_novo_z: Optional maximum z-score for de novo metrics. Default is 3.
+    :param max_mendel: Optional maximum Mendel error count. Default is None.
+    :param max_de_novo: Optional maximum de novo count. Default is None.
+    :return: Filtered pedigree.
     """
     z_metrics = []
     max_metrics = []
@@ -204,13 +214,15 @@ def filter_ped(
         hl.agg.filter(filter_expr, hl.agg.collect(mendel_by_s.s))
     )
     logger.info("Found %i trios passing filters.", len(trios))
-    return hl.Pedigree([trio for trio in raw_ped.trios if trio.s in trios])
+    return hl.Pedigree([trio for trio in ped.trios if trio.s in trios])
 
 
 def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the trio identification pipeline.
 
+    :param overwrite: Whether to overwrite existing resources.
+    :param test: Whether to use test resources.
     :return: PipelineResourceCollection containing resources for all steps of the
         trio identification pipeline.
     """
@@ -260,13 +272,11 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
         output_resources={"fake_ped": pedigree(finalized=False, fake=True)},
         pipeline_input_steps=[infer_families],
     )
-
     run_mendel_errors = PipelineStepResourceCollection(
         "--run-mendel-errors",
         output_resources={"mendel_err_ht": ped_mendel_errors(test)},
         pipeline_input_steps=[infer_families, create_fake_pedigree],
     )
-
     finalize_ped = PipelineStepResourceCollection(
         "--finalize-ped",
         output_resources={
@@ -291,7 +301,7 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
 
 
 def main(args):
-    """Add description."""
+    """Identify trios and filter based on Mendel errors and de novos."""
     hl.init(
         log="/identify_trios.log",
         default_reference="GRCh38",
@@ -318,7 +328,7 @@ def main(args):
         logger.info("Inferring families")
         res = trio_resources.infer_families
         res.check_resource_existence()
-        sex_ht = res.sex.ht()
+        sex_ht = res.sex_ht.ht()
         sex_ht = sex_ht.filter(hl.literal(SEXES).contains(sex_ht.sex_karyotype))
         sex_ht = sex_ht.annotate(is_female=sex_ht.sex_karyotype == "XX")
         ped = infer_families(rel_ht, sex_ht, res.dup_ht.ht())
@@ -408,9 +418,9 @@ if __name__ == "__main__":
         "--fake-fam-prop",
         help=(
             "Number of fake trios to generate as a proportion of the total number of"
-            " trios found in the data. Default is 0.1."
+            " trios found in the data. Default is 0.01."
         ),
-        default=0.1,
+        default=0.01,
         type=float,
     )
 
