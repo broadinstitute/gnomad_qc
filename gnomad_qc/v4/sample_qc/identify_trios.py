@@ -123,8 +123,8 @@ def run_mendel_errors(
             vds.variant_data._filter_partitions(range(5)),
         )
     else:
-        # TODO: should we filter to only chr20 like we did in v3, or grab the whole
-        #  thing since this is exomes (still probably just want autosomes)?
+        # TODO: should we filter to only chr20 like we did in v3, or grab all autosomes
+        #  since this is exomes instead of genomes?
         vds = hl.vds.filter_chromosomes(vds, keep="chr20")
 
     vds = hl.vds.filter_samples(vds, ped_samples)
@@ -134,7 +134,7 @@ def run_mendel_errors(
     )
 
     logger.info(f"Running Mendel errors for {len(ped.trios)} trios.")
-    # TODO: save other metrics or only sample mendel errors?
+    # TODO: Should we save other metrics Tables or only sample mendel errors?
     mendel_errors, _, _, _ = hl.mendel_errors(mt["GT"], merged_ped)
 
     return mendel_errors
@@ -333,8 +333,10 @@ def main(args):
         sex_ht = sex_ht.annotate(is_female=sex_ht.sex_karyotype == "XX")
         ped = infer_families(rel_ht, sex_ht, res.dup_ht.ht())
         ped.write(res.raw_ped.path)
-        # TODO: add options, remove all trios with more than one offspring in the
-        #  family, or keep a random one from each family?
+        # TODO: add options for how to handle multiple trios in a family. I think v2
+        #  removed all trios with more than one offspring in the family. v3 kept the
+        #  first one in the pedigree. We could keep a random one from each family
+        #  instead of only grabbing the first one.
         families_to_trios(ped).write(res.raw_trios.path)
 
     if args.create_fake_pedigree:
