@@ -340,6 +340,11 @@ def main(args):  # noqa: D103
     # using the adjusted allele frequencies to fix the het to hom alt
     mt = set_high_ab_het_to_hom_alt(mt, gatk_expr=mt.gatk_version)
 
+    logger.info("Calculating InbreedingCoeff...")
+    # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify # noqa
+    mt = mt.annotate_rows(
+        InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT)
+    )
 
     if args.faf_popmax:
         logger.info("computing FAF & popmax...")
