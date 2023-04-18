@@ -193,6 +193,9 @@ def generate_faf_popmax(ht: hl.Table) -> hl.Table:
         "freq",
         "high_ab_hets_by_group_membership",
         "ab_adjusted_freq",
+        "InbreedingCoeff",
+        "qual_hists",
+        "raw_qual_hists",
         faf=faf,
         popmax=pop_max_expr(
             ht.ab_adjusted_freq,
