@@ -79,7 +79,7 @@ def filter_relatedness_ht(ht: hl.Table, filter_ht: hl.Table) -> hl.Table:
 
 
 def run_create_fake_pedigree(
-    ped: hl.Pedigree, filter_ht: hl.Table, fake_fam_prop: float = 0.01
+    ped: hl.Pedigree, filter_ht: hl.Table, fake_fam_prop: float = 0.1
 ) -> hl.Pedigree:
     """
     Generate a fake pedigree with `fake_fam_prop` of the number of trios in `ped`.
@@ -87,7 +87,7 @@ def run_create_fake_pedigree(
     :param ped: Pedigree to use for generating fake pedigree.
     :param filter_ht: Outlier filtering Table.
     :param fake_fam_prop: Proportion of trios in `ped` to use for generating fake
-        pedigree. Default is 0.01.
+        pedigree. Default is 0.1.
     :return: Fake pedigree.
     """
     n_fake_trios = int(fake_fam_prop * len(ped.complete_trios()))
@@ -116,29 +116,25 @@ def run_mendel_errors(
     merged_ped = hl.Pedigree(trios=ped.trios + fake_ped.trios)
     ped_samples = [s for t in merged_ped.trios for s in [t.s, t.pat_id, t.mat_id]]
 
-    # TODO: repartition on read?
-    vds = get_gnomad_v4_vds(split=True, n_partitions=100000)
+    logger.info(f"Sub-setting VDS to %i samples.", len(ped_samples))
+    # Partition VDS on read to a larger number of partitions to speed up computation.
+    vds = get_gnomad_v4_vds(split=True, n_partitions=150000, remove_dead_alleles=False)
     if test:
         vds = hl.vds.VariantDataset(
             vds.reference_data._filter_partitions(range(5)),
             vds.variant_data._filter_partitions(range(5)),
         )
     else:
-        # TODO: should we filter to only chr20 like we did in v3, or grab all autosomes
-        #  since this is exomes instead of genomes?
         vds = hl.vds.filter_chromosomes(vds, keep="chr20")
 
     vds = hl.vds.filter_samples(vds, ped_samples)
     mt = hl.vds.to_dense_mt(vds)
-    mt = mt.select_entries("GT").checkpoint(
-        new_temp_file("mendel_errors_chr20", extension="mt")
-    )
+    mt = mt.select_entries("GT")
 
-    logger.info(f"Running Mendel errors for {len(ped.trios)} trios.")
-    # TODO: Should we save other metrics Tables or only sample mendel errors?
-    mendel_errors, _, _, _ = hl.mendel_errors(mt["GT"], merged_ped)
+    logger.info(f"Running Mendel errors for %s trios.", len(ped.trios))
+    mendel_err_ht, _, _, _ = hl.mendel_errors(mt["GT"], merged_ped)
 
-    return mendel_errors
+    return mendel_err_ht
 
 
 def filter_ped(
@@ -387,8 +383,8 @@ if __name__ == "__main__":
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
 
-    identify_dup = parser.add_argument_group("Duplicate identification")
-    identify_dup.add_argument(
+    identify_dup_args = parser.add_argument_group("Duplicate identification")
+    identify_dup_args.add_argument(
         "--identify-duplicates",
         help=(
             "Create a table with duplicate samples indicating which one is the best to"
@@ -399,8 +395,8 @@ if __name__ == "__main__":
         action="store_true",
     )
 
-    inter_fam = parser.add_argument_group("Pedigree inference")
-    inter_fam.add_argument(
+    inter_fam_args = parser.add_argument_group("Pedigree inference")
+    inter_fam_args.add_argument(
         "--infer-families",
         help=(
             "Infer families and trios using the relatedness Table and duplicate Table."
@@ -408,8 +404,8 @@ if __name__ == "__main__":
         action="store_true",
     )
 
-    fake_ped = parser.add_argument_group("Fake pedigree creation")
-    fake_ped.add_argument(
+    fake_ped_args = parser.add_argument_group("Fake pedigree creation")
+    fake_ped_args.add_argument(
         "--create-fake-pedigree",
         help=(
             "Create a fake pedigree from unrelated samples in the data for comparison "
@@ -417,26 +413,26 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
-    fake_ped.add_argument(
+    fake_ped_args.add_argument(
         "--fake-fam-prop",
         help=(
             "Number of fake trios to generate as a proportion of the total number of"
-            " trios found in the data. Default is 0.01."
+            " trios found in the data. Default is 0.1."
         ),
-        default=0.01,
+        default=0.1,
         type=float,
     )
 
-    mendel_err = parser.add_argument_group("Mendel error calculation")
-    mendel_err.add_argument(
+    mendel_err_args = parser.add_argument_group("Mendel error calculation")
+    mendel_err_args.add_argument(
         "--run-mendel-errors",
         help="Calculate mendel errors for the inferred and fake pedigrees.",
         action="store_true",
     )
-    finalize_ped = parser.add_argument_group(
+    finalize_ped_args = parser.add_argument_group(
         "Pedigree filtering for final pedigree generation"
     )
-    finalize_ped.add_argument(
+    finalize_ped_args.add_argument(
         "--finalize-ped",
         help=(
             "Create final families/trios ped files by excluding trios where the number "
@@ -448,7 +444,7 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
-    finalize_ped.add_argument(
+    finalize_ped_args.add_argument(
         "--max-mendel-z",
         help=(
             "Max number of standard deviations above the mean Mendel errors across "
@@ -457,7 +453,7 @@ if __name__ == "__main__":
         default=3,
         type=int,
     )
-    finalize_ped.add_argument(
+    finalize_ped_args.add_argument(
         "--max-de-novo-z",
         help=(
             "Max number of standard deviations above the mean de novos across inferred "
@@ -466,12 +462,12 @@ if __name__ == "__main__":
         default=3,
         type=int,
     )
-    finalize_ped.add_argument(
+    finalize_ped_args.add_argument(
         "--max-mendel",
         help="Maximum number of raw Mendel errors for real trios.",
         type=int,
     )
-    finalize_ped.add_argument(
+    finalize_ped_args.add_argument(
         "--max-de-novo",
         help="Maximum number of raw de novo mutations for real trios.",
         type=int,
