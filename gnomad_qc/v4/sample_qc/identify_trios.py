@@ -116,7 +116,8 @@ def run_mendel_errors(
     merged_ped = hl.Pedigree(trios=ped.trios + fake_ped.trios)
     ped_samples = [s for t in merged_ped.trios for s in [t.s, t.pat_id, t.mat_id]]
 
-    vds = get_gnomad_v4_vds(split=True)
+    # TODO: repartition on read?
+    vds = get_gnomad_v4_vds(split=True, n_partitions=100000)
     if test:
         vds = hl.vds.VariantDataset(
             vds.reference_data._filter_partitions(range(5)),
