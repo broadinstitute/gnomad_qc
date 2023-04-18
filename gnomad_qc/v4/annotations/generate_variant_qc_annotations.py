@@ -380,20 +380,20 @@ def main(args):  # noqa: D103
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--slack_channel", help="Slack channel to post results and notifications to."
+        "--slack-channel", help="Slack channel to post results and notifications to."
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
 
-    parser.add_argument("--compute_info", help="Computes info HT.", action="store_true")
-    parser.add_argument("--split_info", help="Splits info HT.", action="store_true")
+    parser.add_argument("--compute-info", help="Computes info HT.", action="store_true")
+    parser.add_argument("--split-info", help="Splits info HT.", action="store_true")
     parser.add_argument(
-        "--export_info_vcf", help="Export info as VCF.", action="store_true"
+        "--export-info-vcf", help="Export info as VCF.", action="store_true"
     )
     parser.add_argument(
-        "--generate_allele_data", help="Calculates allele data.", action="store_true"
+        "--generate-allele-data", help="Calculates allele data.", action="store_true"
     )
     parser.add_argument(
-        "--generate_ac",
+        "--generate-ac",
         help=(
             "Creates a table with ACs for QC, unrelated QC and release samples (raw and"
             " adj)."
@@ -401,18 +401,18 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--generate_fam_stats",
+        "--generate-fam-stats",
         help="Creates a table with transmitted allele counts and de novo counts.",
         action="store_true",
     )
     parser.add_argument(
-        "--export_transmitted_singletons_vcf",
+        "--export-transmitted-singletons-vcf",
         help="Exports transmitted singletons to VCF files.",
         action="store_true",
     )
     parser.add_argument("--vep", help="Generates vep annotations.", action="store_true")
     parser.add_argument(
-        "--vep_version",
+        "--vep-version",
         help="Version of VEPed context Table to use in vep_or_lookup_vep.",
         action="store_true",
         default="101",
