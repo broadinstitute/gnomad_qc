@@ -105,13 +105,13 @@ def run_mendel_errors(
     ped: hl.Pedigree, fake_ped: hl.Pedigree, test: bool = False
 ) -> hl.Table:
     """
-    Run Hail's `mendel_errors` on the VDS subset to samples in `ped` and `fake_ped`.
+    Run Hail's `mendel_errors` on chr20 of the VDS subset to samples in `ped` and `fake_ped`.
 
     :param ped: Inferred pedigree.
     :param fake_ped: Fake pedigree.
     :param test: Whether to run on five partitions of the VDS for testing. Default is
         False.
-    :return: Table with Mendel errors.
+    :return: Table with Mendel errors on chr20.
     """
     merged_ped = hl.Pedigree(trios=ped.trios + fake_ped.trios)
     ped_samples = [s for t in merged_ped.trios for s in [t.s, t.pat_id, t.mat_id]]
@@ -139,7 +139,7 @@ def run_mendel_errors(
 
 def filter_ped(
     ped: hl.Pedigree,
-    mendel: hl.Table,
+    mendel_ht: hl.Table,
     max_mendel_z: Optional[int] = 3,
     max_de_novo_z: Optional[int] = 3,
     max_mendel: Optional[int] = None,
@@ -149,7 +149,7 @@ def filter_ped(
     Filter a pedigree based on Mendel errors and de novo metrics.
 
     :param ped: Pedigree to filter.
-    :param mendel: Table with Mendel errors.
+    :param mendel_ht: Table with Mendel errors.
     :param max_mendel_z: Optional maximum z-score for Mendel error metrics. Default is 3.
     :param max_de_novo_z: Optional maximum z-score for de novo metrics. Default is 3.
     :param max_mendel: Optional maximum Mendel error count. Default is None.
@@ -171,14 +171,14 @@ def filter_ped(
             else:
                 z_metrics.append(m)
 
-    mendel = mendel.filter(mendel.fam_id.startswith("fake"))
+    mendel_ht = mendel_ht.filter(mendel_ht.fam_id.startswith("fake"), keep=False)
     mendel_by_s = (
-        mendel.group_by(mendel.s)
+        mendel_ht.group_by(mendel_ht.s)
         .aggregate(
-            fam_id=hl.agg.take(mendel.fam_id, 1)[0],
+            fam_id=hl.agg.take(mendel_ht.fam_id, 1)[0],
             n_mendel=hl.agg.count(),
             n_de_novo=hl.agg.count_where(
-                mendel.mendel_code == 2
+                mendel_ht.mendel_code == 2
             ),  # Code 2 is parents are hom ref, child is het
         )
         .checkpoint(new_temp_file("filter_ped", extension="ht"))
@@ -189,7 +189,7 @@ def filter_ped(
         z_stats_expr[m] = hl.agg.stats(mendel_by_s[f"n_{m}"])
 
     filter_expr = hl.literal(True)
-    z_stats = mendel_by_s.aggregate(**z_stats_expr)
+    z_stats = mendel_by_s.aggregate(hl.struct(**z_stats_expr))
     for m in ["mendel", "de_novo"]:
         if m in z_stats:
             max_m_z = locals()[f"max_{m}_z"]
@@ -426,7 +426,7 @@ if __name__ == "__main__":
     mendel_err_args = parser.add_argument_group("Mendel error calculation")
     mendel_err_args.add_argument(
         "--run-mendel-errors",
-        help="Calculate mendel errors for the inferred and fake pedigrees.",
+        help="Calculate mendel errors for the inferred and fake pedigrees on chr20.",
         action="store_true",
     )
     finalize_ped_args = parser.add_argument_group(
