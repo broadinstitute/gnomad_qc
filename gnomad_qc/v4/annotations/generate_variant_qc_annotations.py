@@ -25,7 +25,7 @@ from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from gnomad.utils.vep import vep_or_lookup_vep
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources.annotations import (
+from gnomad_qc.v4.resources.annotations import (
     allele_data,
     fam_stats,
     get_info,
@@ -34,8 +34,8 @@ from gnomad_qc.v3.resources.annotations import (
     qc_ac,
     vep,
 )
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
-from gnomad_qc.v3.resources.meta import trios
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.meta import trios
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -55,10 +55,7 @@ def compute_info() -> hl.Table:
     :return: Table with info fields
     :rtype: Table
     """
-    mt = get_gnomad_v3_mt(
-        key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
-    )
-
+    vds = get_gnomad_v4_vds()
     mt = mt.filter_rows((hl.len(mt.alleles) > 1))
     mt = mt.transmute_entries(**mt.gvcf_info)
     mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
