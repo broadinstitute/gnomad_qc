@@ -1,4 +1,4 @@
-# noqa: D100
+"""Script to generate annotations for variant QC on gnomAD v4."""
 
 import argparse
 import logging
@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+# TODO: is there any reason to also compute info per platform?
 def compute_info() -> hl.Table:
     """
     Compute a HT with the typical GATK AS and site-level info fields as well as ACs and lowqual fields.
