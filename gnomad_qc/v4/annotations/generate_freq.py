@@ -180,6 +180,40 @@ def subtract_high_ab_hets_from_ac(ht: hl.Table, af_threshold: float = 0.01) -> h
 
     return ht
 
+# TODO: not sure if this step will be very expensive, may need to combine with functions
+def set_high_ab_het_to_hom_alt(
+        mt: hl.MatrixTable,
+        gatk_expr: hl.expr.StringExpression,
+        ab_cutoff: hl.float = 0.9,
+        af_cutoff: float = 0.01,
+        gatk_versions_to_fix: hl.expr.SetExpression = hl.set(["4.0.10.1", "4.1.0.0"]),
+) -> hl.MatrixTable:
+    """
+    Adjust MT genotypes with temporary fix for the depletion of homozygous alternate genotypes.
+
+    More details about the problem can be found on the gnomAD blog:
+    https://gnomad.broadinstitute.org/blog/2020-10-gnomad-v3-1-new-content-methods-annotations-and-data-availability/#tweaks-and-updates
+
+    :param mt: Input MT that needs hom alt genotype fix
+    :param het_non_ref_expr: Expression indicating whether the original genotype (pre split multi) is het non ref
+    :param af_expr: Allele frequency expression to determine which variants need the hom alt fix
+    :param af_cutoff: Allele frequency cutoff for variants that need the hom alt fix. Default is 0.01
+    :param ab_cutoff: Allele balance cutoff to determine which genotypes need the hom alt fix. Default is 0.9
+    :return: MatrixTable with genotypes adjusted for the hom alt depletion fix
+    """
+    return mt.annotate_entries(
+        GT=hl.if_else(
+            (mt.AD[1] / mt.DP > ab_cutoff)
+            & mt.adj
+            & mt.GT.is_het_ref()
+            & (gatk_versions_to_fix.contains(gatk_expr))
+            & ~mt._het_non_ref
+            & (mt.ab_adjusted_freq[0].AF < af_cutoff),
+            hl.call(1, 1),
+            mt.GT,
+        )
+    )
+
 def generate_faf_popmax(ht: hl.Table) -> hl.Table:
     """
     Computing filtering allele frequencies and popmax with the AB-ajusted frequencies.
@@ -298,6 +332,14 @@ def main(args):  # noqa: D103
         # TODO: This should apply fix given the AF threshold and adjusts the
         # frequencies using the list created above
         ht = subtract_high_ab_hets_from_ac(ht, af_threshold) # TODO: if not assign parameters, there will
+
+    logger.info(
+        "Setting het genotypes at sites with >1% AF (using adjusted frequencies) and "
+        "> 0.9 AB to homalt..."
+    )
+    # using the adjusted allele frequencies to fix the het to hom alt
+    mt = set_high_ab_het_to_hom_alt(mt, gatk_expr=mt.gatk_version)
+
 
     if args.faf_popmax:
         logger.info("computing FAF & popmax...")
