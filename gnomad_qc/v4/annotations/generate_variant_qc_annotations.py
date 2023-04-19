@@ -16,6 +16,10 @@ from gnomad.utils.sparse_mt import (
 )
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_info, info_vcf_path
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
@@ -46,6 +50,51 @@ def split_info(info_ht: hl.Table) -> hl.Table:
     return info_ht
 
 
+def get_variant_qc_annotation_resources(
+    test: bool, overwrite: bool
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the variant QC annotation pipeline.
+
+    :param test: Whether to gather all resources for testing.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :return: PipelineResourceCollection containing resources for all steps of the
+        variant QC annotation pipeline.
+    """
+    # Initialize variant QC annotation pipeline resource collection.
+    ann_pipeline = PipelineResourceCollection(
+        pipeline_name="variant_qc_annotation",
+        overwrite=overwrite,
+    )
+
+    # Create resource collection for each step of the variant QC annotation pipeline.
+    compute_info = PipelineStepResourceCollection(
+        "--compute-info",
+        output_resources={"info_ht": get_info(split=False, test=test)},
+    )
+    split_info_ann = PipelineStepResourceCollection(
+        "--split-info",
+        output_resources={"split_info_ht": get_info(test=test)},
+        pipeline_input_steps=[compute_info],
+    )
+    export_info_vcf = PipelineStepResourceCollection(
+        "--export-info-vcf",
+        output_resources={"info_vcf": info_vcf_path(test=test)},
+        pipeline_input_steps=[compute_info],
+    )
+
+    # Add all steps to the variant QC annotation pipeline resource collection.
+    ann_pipeline.add_steps(
+        {
+            "compute_info": compute_info,
+            "split_info": split_info_ann,
+            "export_info_vcf": export_info_vcf,
+        }
+    )
+
+    return ann_pipeline
+
+
 def main(args):
     """Generate all variant annotations needed for variant QC."""
     hl.init(
@@ -57,6 +106,7 @@ def main(args):
     test_n_partitions = args.test_n_partitions
     test = test_dataset or test_n_partitions
     overwrite = args.overwrite
+    resources = get_variant_qc_annotation_resources(test=test, overwrite=overwrite)
     mt = get_gnomad_v4_vds(test=test_dataset, high_quality_only=True).variant_data
 
     if test_n_partitions:
@@ -64,20 +114,21 @@ def main(args):
 
     if args.compute_info:
         # TODO: is there any reason to also compute info per platform?
+        res = resources.compute_info
+        res.check_resource_existence()
         default_compute_info(mt, site_annotations=True).write(
-            get_info(split=False, test=test).path, overwrite=overwrite
+            res.info_ht.path, overwrite=overwrite
         )
 
     if args.split_info:
-        split_info(get_info(split=False, test=test).ht()).write(
-            get_info(test=test).path, overwrite=overwrite
-        )
+        res = resources.split_info
+        res.check_resource_existence()
+        split_info(res.info_ht.ht()).write(res.split_info_ht.path, overwrite=overwrite)
 
     if args.export_info_vcf:
-        hl.export_vcf(
-            adjust_vcf_incompatible_types(get_info(split=False, test=test).ht()),
-            info_vcf_path(test=test),
-        )
+        res = resources.export_info_vcf
+        res.check_resource_existence()
+        hl.export_vcf(adjust_vcf_incompatible_types(res.info_ht.ht()), res.info_vcf)
 
 
 if __name__ == "__main__":
