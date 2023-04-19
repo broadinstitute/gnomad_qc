@@ -16,6 +16,7 @@ from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
     INFO_INT32_SUM_AGG_FIELDS,
     INFO_SUM_AGG_FIELDS,
+    default_compute_info,
     get_as_info_expr,
     get_site_info_expr,
     split_info_annotation,
@@ -43,98 +44,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-
-# TODO: is there any reason to also compute info per platform?
-def compute_info() -> hl.Table:
-    """
-    Compute a HT with the typical GATK AS and site-level info fields as well as ACs and lowqual fields.
-
-    Note that this table doesn't split multi-allelic sites.
-
-    :return: Table with info fields
-    :rtype: Table
-    """
-    vds = get_gnomad_v4_vds()
-    mt = mt.filter_rows((hl.len(mt.alleles) > 1))
-    mt = mt.transmute_entries(**mt.gvcf_info)
-    mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
-
-    # Compute AS and site level info expr
-    # Note that production defaults have changed:
-    # For new releases, the `RAWMQ_andDP` field replaces the `RAW_MQ` and `MQ_DP` fields
-    info_expr = get_site_info_expr(
-        mt,
-        sum_agg_fields=INFO_SUM_AGG_FIELDS + ["RAW_MQ"],
-        int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ["MQ_DP"],
-        array_sum_agg_fields=["SB"],
-    )
-    info_expr = info_expr.annotate(
-        **get_as_info_expr(
-            mt,
-            sum_agg_fields=INFO_SUM_AGG_FIELDS + ["RAW_MQ"],
-            int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ["MQ_DP"],
-            array_sum_agg_fields=["SB"],
-        )
-    )
-
-    # Add AC and AC_raw:
-    # First compute ACs for each non-ref allele, grouped by adj
-    grp_ac_expr = hl.agg.array_agg(
-        lambda ai: hl.agg.filter(
-            mt.LA.contains(ai),
-            hl.agg.group_by(
-                get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
-                hl.agg.sum(
-                    mt.LGT.one_hot_alleles(mt.LA.map(lambda x: hl.str(x)))[
-                        mt.LA.index(ai)
-                    ]
-                ),
-            ),
-        ),
-        mt.alt_alleles_range_array,
-    )
-
-    # Then, for each non-ref allele, compute
-    # AC as the adj group
-    # AC_raw as the sum of adj and non-adj groups
-    info_expr = info_expr.annotate(
-        AC_raw=grp_ac_expr.map(lambda i: hl.int32(i.get(True, 0) + i.get(False, 0))),
-        AC=grp_ac_expr.map(lambda i: hl.int32(i.get(True, 0))),
-    )
-
-    # Annotating raw MT with pab max
-    info_expr = info_expr.annotate(
-        AS_pab_max=hl.agg.array_agg(
-            lambda ai: hl.agg.filter(
-                mt.LA.contains(ai) & mt.LGT.is_het(),
-                hl.agg.max(
-                    hl.binom_test(
-                        mt.LAD[mt.LA.index(ai)], hl.sum(mt.LAD), 0.5, "two-sided"
-                    )
-                ),
-            ),
-            mt.alt_alleles_range_array,
-        )
-    )
-
-    info_ht = mt.select_rows(info=info_expr).rows()
-
-    # Add lowqual flag
-    info_ht = info_ht.annotate(
-        lowqual=get_lowqual_expr(
-            info_ht.alleles,
-            info_ht.info.QUALapprox,
-            # The indel het prior used for gnomad v3 was 1/10k bases (phred=40).
-            # This value is usually 1/8k bases (phred=39).
-            indel_phred_het_prior=40,
-        ),
-        AS_lowqual=get_lowqual_expr(
-            info_ht.alleles, info_ht.info.AS_QUALapprox, indel_phred_het_prior=40
-        ),
-    )
-
-    return info_ht.naive_coalesce(7500)
 
 
 def split_info() -> hl.Table:
@@ -328,9 +237,12 @@ def run_vep(vep_version: str = "101") -> hl.Table:
 
 def main(args):  # noqa: D103
     hl.init(default_reference="GRCh38", log="/qc_annotations.log")
-
+    mt = get_gnomad_v4_vds(test=args.test, high_quality_only=True).variant_data
     if args.compute_info:
-        compute_info().write(get_info(split=False).path, overwrite=args.overwrite)
+        # TODO: is there any reason to also compute info per platform?
+        default_compute_info(mt, site_annotations=True).write(
+            get_info(split=False).path, overwrite=args.overwrite
+        )
 
     if args.split_info:
         split_info().write(get_info(split=True).path, overwrite=args.overwrite)
