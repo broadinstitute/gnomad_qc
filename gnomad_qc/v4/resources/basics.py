@@ -22,6 +22,7 @@ def get_gnomad_v4_vds(
     split: bool = False,
     remove_hard_filtered_samples: bool = True,
     remove_hard_filtered_samples_no_sex: bool = False,
+    high_quality_only: bool = False,
     release_only: bool = False,
     test: bool = False,
     n_partitions: int = None,
@@ -32,6 +33,7 @@ def get_gnomad_v4_vds(
     :param split: Perform split on VDS - Note: this will perform a split on the VDS rather than grab an already split VDS
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after hard filtering is complete)
     :param remove_hard_filtered_samples_no_sex: Whether to remove samples that failed non sex inference hard filters (only relevant after pre-sex imputation hard filtering is complete)
+    :param high_quality_only: Whether to filter the VDS to only high quality samples (only relevant after outlier filtering is complete)
     :param release_only: Whether to filter the VDS to only samples available for release (can only be used if metadata is present)
     :param test: Whether to use the test VDS instead of the full v4 VDS
     :param n_partitions: Optional argument to read the VDS with a specific number of partitions
@@ -119,28 +121,40 @@ def get_gnomad_v4_vds(
         "Total number of UKB samples removed from the VDS: %d", n_samples_removed
     )
 
-    if remove_hard_filtered_samples or remove_hard_filtered_samples_no_sex:
+    if (
+        high_quality_only
+        or remove_hard_filtered_samples
+        or remove_hard_filtered_samples_no_sex
+    ):
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
-            if remove_hard_filtered_samples_no_sex:
-                hard_filter_expr = meta_ht.rand_sampling_meta.hard_filters_no_sex
+            if high_quality_only:
+                filter_expr = meta_ht.filter(meta_ht.high_quality)
+            elif remove_hard_filtered_samples_no_sex:
+                filter_expr = (
+                    hl.len(meta_ht.rand_sampling_meta.hard_filters_no_sex) == 0
+                )
             else:
-                hard_filter_expr = meta_ht.rand_sampling_meta.hard_filters
-            meta_ht = meta_ht.filter(hl.len(hard_filter_expr) == 0)
+                filter_expr = hl.len(meta_ht.rand_sampling_meta.hard_filters) == 0
+            meta_ht = meta_ht.filter(filter_expr)
             vds = hl.vds.filter_samples(vds, meta_ht)
         else:
             from gnomad_qc.v4.resources.sample_qc import (
+                finalized_outlier_filtering,
                 hard_filtered_samples,
                 hard_filtered_samples_no_sex,
             )
 
-            if remove_hard_filtered_samples:
-                hard_filter_ht = hard_filtered_samples.versions[CURRENT_VERSION].ht()
+            keep_samples = False
+            if high_quality_only:
+                filter_ht = finalized_outlier_filtering.versions[CURRENT_VERSION].ht()
+                filter_ht = filter_ht.filter(~filter_ht.outlier_filtered)
+                keep_samples = True
+            elif remove_hard_filtered_samples:
+                filter_ht = hard_filtered_samples.versions[CURRENT_VERSION].ht()
             else:
-                hard_filter_ht = hard_filtered_samples_no_sex.versions[
-                    CURRENT_VERSION
-                ].ht()
-            vds = hl.vds.filter_samples(vds, hard_filter_ht, keep=False)
+                filter_ht = hard_filtered_samples_no_sex.versions[CURRENT_VERSION].ht()
+            vds = hl.vds.filter_samples(vds, filter_ht, keep=keep_samples)
 
     if release_only:
         if test:
