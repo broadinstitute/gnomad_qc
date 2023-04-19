@@ -129,7 +129,7 @@ def get_gnomad_v4_vds(
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
             if high_quality_only:
-                filter_expr = meta_ht.filter(meta_ht.high_quality)
+                filter_expr = meta_ht.high_quality
             elif remove_hard_filtered_samples_no_sex:
                 filter_expr = (
                     hl.len(meta_ht.rand_sampling_meta.hard_filters_no_sex) == 0
