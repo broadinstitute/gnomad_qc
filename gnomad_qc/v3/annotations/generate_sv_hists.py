@@ -90,8 +90,8 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
     ).key_by("s")
 
     # NOTE: Add age to sample list. Most age data is stored as integers in 'age' annotation, # noqa
-    #  but for a select number of samples, age is stored as a bin range, and 'age_alt' # noqa
-    #  corresponds to an integer in the middle of the bin # noqa
+    #  but for a select number of samples, age was recorded as a bin range and store in  # noqa
+    #  the 'age_bin' annotation.'age_alt' corresponds to the average of the 'age_bin' edges # noqa
     sv_list = sv_list.annotate(
         age=hl.if_else(
             hl.is_defined(sample_meta[sv_list.s].project_meta.age),
