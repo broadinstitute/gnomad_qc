@@ -62,9 +62,7 @@ def generate_hists(mt: hl.MatrixTable) -> hl.Table:
         )
     # TODO: Check with browser team if they want to keep the format of the
     # histograms as is or if we can store bin edges as globals
-    hists = hists.select(**hist_expr)
-
-    return hists
+    return hists.select(**hist_expr)
 
 
 def get_sample_age(sv_list: hl.Table) -> hl.Table:
@@ -75,7 +73,7 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
     """
     sample_meta = meta.ht().key_by()
 
-    # NOTE: some 1KG samples were already in v3.0 (SV data) and were given a new prefix in v3.1(meta)
+    # NOTE: some 1KG samples were already in v3.0 (SV data) and were given a new prefix in v3.1 (meta)
     # To access the correct metadata using the SV sample list, we need to update the v3.1 meta IDs
     # to match the SV list Table.
     s_updates = hl.dict(
@@ -93,7 +91,7 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
     ).key_by("s")
 
     # NOTE: Add age to sample list. Most age data is stored as integers in 'age' annotation, # noqa
-    #  but for a select number of samples, age is stored as a bin range and 'age_alt' # noqa
+    #  but for a select number of samples, age is stored as a bin range, and 'age_alt' # noqa
     #  corresponds to an integer in the middle of the bin # noqa
     sv_list = sv_list.annotate(
         age=hl.if_else(
@@ -117,7 +115,11 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
 
 
 def get_sex_and_autosome_mt() -> hl.MatrixTable:
-    """Read in and union autosome and sex chromosome VCFs."""
+    """
+    Read in and union autosome and sex chromosome VCFs.
+    
+    :return: MatrixTable containing calls from autosome and sex chromosome VCFs.
+    """
     logger.info("Importing VCFs...")
     s_mt = hl.import_vcf(
         gnomad_sv_sex_vcf_paths,

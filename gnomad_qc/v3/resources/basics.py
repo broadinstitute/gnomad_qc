@@ -205,7 +205,7 @@ def get_logging_path(name: str, version: str = CURRENT_RELEASE) -> str:
     return f"{qc_temp_prefix(version)}{name}.log"
 
 
-# Resources need for SV histogram generation
+# Resources needed for SV histogram generation
 gnomad_sv_autosome_vcf_paths = [
     "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr1.vcf.gz",
     "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr2.vcf.gz",
