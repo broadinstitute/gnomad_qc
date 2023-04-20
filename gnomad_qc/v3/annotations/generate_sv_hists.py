@@ -33,19 +33,19 @@ def generate_hists(mt: hl.MatrixTable) -> hl.Table:
     logger.info("Generating histograms for age and GQ...")
     hists = mt.select_rows(
         age_hist_het=hl.or_missing(
-            ~mt.filters.contains("MULTIALLELIC"),
+            ~mt.info.MULTIALLELIC,
             hl.agg.filter(mt.GT.is_het(), hl.agg.hist(mt.age, 30, 80, 10)),
         ),
         age_hist_hom=hl.or_missing(
-            ~mt.filters.contains("MULTIALLELIC"),
+            ~mt.info.MULTIALLELIC,
             hl.agg.filter(mt.GT.is_hom_var(), hl.agg.hist(mt.age, 30, 80, 10)),
         ),
         gq_hist_alt=hl.or_missing(
-            ~mt.filters.contains("MULTIALLELIC"),
+            ~mt.info.MULTIALLELIC,
             hl.agg.filter(mt.GT.is_non_ref(), hl.agg.hist(mt.GQ, 0, 100, 20)),
         ),
         gq_hist_all=hl.or_missing(
-            ~mt.filters.contains("MULTIALLELIC"), hl.agg.hist(mt.GQ, 0, 100, 20)
+            ~mt.info.MULTIALLELIC, hl.agg.hist(mt.GQ, 0, 100, 20)
         ),
     ).rows()
 
@@ -100,16 +100,6 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
         ),
         release=sample_meta[sv_list.s].release,
     )
-    logger.info(
-        "%i out of %i samples in the SV sample list have a defined age.",
-        sv_list.filter(hl.is_defined(sv_list.age)).count(),
-        sv_list.count(),
-    )
-    logger.info(
-        "%i out of %i samples in the SV sample list are in the core release",
-        sv_list.filter(sv_list.release).count(),
-        sv_list.count(),
-    )
     return sv_list
 
 
@@ -143,9 +133,6 @@ def get_sex_and_autosome_mt() -> hl.MatrixTable:
         force_bgz=True,
     )
     mt = s_mt.union_rows(a_mt)
-    logger.info(
-        "Imported VCF with %i variants and %i samples", mt.count_rows(), mt.count_cols()
-    )
     return mt
 
 
@@ -179,6 +166,11 @@ def main(args):
     logger.info("Checkpoint SV MT...")
     mt = mt.annotate_cols(**sv_list[mt.col_key])
     mt = mt.checkpoint(temp_gnomad_sv_mt_path, overwrite=args.overwrite)
+    logger.info(
+        "Generating age and GQ histograms for %s variants and %s samples...",
+        mt.count_rows(),
+        mt.count_cols(),
+    )
 
     hists_ht = generate_hists(mt)
     hists_ht.write(
