@@ -8,9 +8,8 @@ from gnomad.utils.slack import slack_notifications
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import sv_age_and_gq_hists
 from gnomad_qc.v3.resources.basics import (
-    gnomad_sv_autosome_vcf_paths,
+    gnomad_sv_bucket_path,
     gnomad_sv_release_samples_list_path,
-    gnomad_sv_sex_vcf_paths,
     temp_gnomad_sv_mt_path,
 )
 from gnomad_qc.v3.resources.meta import meta
@@ -117,21 +116,28 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
 def get_sex_and_autosome_mt() -> hl.MatrixTable:
     """
     Read in and union autosome and sex chromosome VCFs.
-    
+
     :return: MatrixTable containing calls from autosome and sex chromosome VCFs.
     """
     logger.info("Importing VCFs...")
+    # NOTE: The sex chromosome VCFs have an extra "PAR" field that needs to
+    # be dropped in order to union with the autosome VCFs
+    sex_chr_vcf_paths = [
+        f"{gnomad_sv_bucket_path}/gnomAD.v3.SV.chr{s}.vcf.gz" for s in ("X", "Y")
+    ]
     s_mt = hl.import_vcf(
-        gnomad_sv_sex_vcf_paths,
+        sex_chr_vcf_paths,
         reference_genome="GRCh38",
         min_partitions=300,
         force_bgz=True,
     )
-    # NOTE: The sex chromosome VCFs have an extra "PAR" field that needs to
-    # be dropped in order to union with the autosome VCFs
     s_mt = s_mt.annotate_rows(info=s_mt.info.drop("PAR"))
+
+    autosomes_vcf_paths = [
+        f"{gnomad_sv_bucket_path}/gnomAD.v3.SV.chr{i}.vcf.gz" for i in range(1, 23)
+    ]
     a_mt = hl.import_vcf(
-        gnomad_sv_autosome_vcf_paths,
+        autosomes_vcf_paths,
         reference_genome="GRCh38",
         min_partitions=300,
         force_bgz=True,
@@ -176,9 +182,11 @@ def main(args):
 
     hists_ht = generate_hists(mt)
     hists_ht.write(
-        temp_gnomad_sv_mt_path.replace(".mt", ".hists.ht")
-        if args.test
-        else sv_age_and_gq_hists.path,
+        (
+            temp_gnomad_sv_mt_path.replace(".mt", ".hists.ht")
+            if args.test
+            else sv_age_and_gq_hists.path
+        ),
         overwrite=args.overwrite,
     )
 

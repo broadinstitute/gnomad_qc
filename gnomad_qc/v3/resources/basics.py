@@ -205,35 +205,17 @@ def get_logging_path(name: str, version: str = CURRENT_RELEASE) -> str:
     return f"{qc_temp_prefix(version)}{name}.log"
 
 
-# Resources needed for SV histogram generation
-gnomad_sv_autosome_vcf_paths = [
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr1.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr2.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr3.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr4.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr5.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr6.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr7.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr8.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr9.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr10.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr11.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr12.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr13.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr14.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr15.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr16.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr17.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr18.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr19.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr20.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr21.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chr22.vcf.gz",
-]
-gnomad_sv_sex_vcf_paths = [
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chrX.vcf.gz",
-    "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.chrY.vcf.gz",
-]
+# Resources need for SV histogram generation
+gnomad_sv_bucket_path = "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303"
+"""
+Path to bucket with gnomAD SV results (VCFs per chromosome).
 
-gnomad_sv_release_samples_list_path = "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303/gnomAD.v3.SV.releasable.samples"
-temp_gnomad_sv_mt_path = f"{qc_temp_prefix()}/gnomad_v3_sv_data/gnomad_v3_sv_temp.mt"
+Bucket also contains list of releasable samples (see below).
+"""
+
+gnomad_sv_release_samples_list_path = (
+    f"{gnomad_sv_bucket_path}/gnomAD.v3.SV.releasable.samples"
+)
+
+
+temp_gnomad_sv_mt_path = f"{qc_temp_prefix()}gnomad_v3_sv_data/gnomad_v3_sv_temp.mt"
