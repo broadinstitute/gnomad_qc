@@ -216,6 +216,3 @@ Bucket also contains list of releasable samples (see below).
 gnomad_sv_release_samples_list_path = (
     f"{gnomad_sv_bucket_path}/gnomAD.v3.SV.releasable.samples"
 )
-
-# Temporary path for testing gnomAD v3 SV histogram generation
-temp_gnomad_sv_mt_path = f"{qc_temp_prefix()}gnomad_v3_sv_data/gnomad_v3_sv_temp.mt"
