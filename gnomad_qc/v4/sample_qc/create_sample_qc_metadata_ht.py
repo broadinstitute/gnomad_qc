@@ -41,14 +41,21 @@ logger = logging.getLogger("sample_metadata")
 logger.setLevel(logging.INFO)
 
 
-# TODO: Add annotation documentation to globals
+# TODO: Add annotation documentation to globals. gnomad_production issue #898.
 # TODO: How to handle PCs in platform and population Tables? For example in the
 #  platform Table the number of PCs will be 9 because that is what was used, should we
 #  modify to have all 30 PCs, or add all 30 PCs to another annotation, or only keep the
-#  9 since that is all that was used?
-# TODO: Add more nearest neighbor info?
-# TODO: Add trio info?
-# TODO: joint that has v3 info?
+#  9 since that is all that was used? gnomad_production issue #899.
+# TODO: Add more nearest neighbor info? gnomad_production issue #900.
+# TODO: Add trio info? gnomad_production issue #901.
+# TODO: Should we have a joint HT that has v3 info? Including adding v3 relationships
+#  to the relationships set, or have different annotation for that. gnomad_production
+#  issue #902.
+# TODO: Add GATK version resource and an annotation for it. gnomad_production
+#  issue #903.
+# TODO: Add an annotation indicating a sample is a test sample like CHM.
+#  gnomad_production issue #905.
+# TODO: Add bi-allelic sample QC metrics. gnomad_production issue #906.
 
 
 def get_sex_imputation_ht() -> hl.Table:
@@ -243,9 +250,6 @@ def annotate_relationships(ht: hl.Table, outlier_filter_ht: hl.Table) -> hl.Tabl
     )
 
     logger.info("Aggregating sample relationship information...")
-    # TODO: should we add v3 relationships to the relationships set, or have a
-    #  different annotation for that?
-
     # Filter to only exome-exome pairs passing hard filtering (all pairs in the
     # relatedness Table pass hard filtering) for 'relationships' annotation and to only
     # exome-exome pairs passing both hard-filtering and outlier filtering for
@@ -523,7 +527,7 @@ def get_hard_filter_metric_ht(base_ht: hl.Table) -> hl.Table:
     """
     logger.info("Combining hard-filter metric Tables for 'hard_filter_metrics' struct.")
 
-    # TODO: Add drop of `gq_thresholds` to the sample_chr20_mean_dp code.
+    # NOTE: Forgot to drop the `gq_thresholds` in the sample_chr20_mean_dp code.
     hard_filter_metrics = {
         "contamination_approximation": contamination.ht(),
         "chr20_sample_mean_dp": sample_chr20_mean_dp.ht().drop("gq_thresholds"),
@@ -580,12 +584,12 @@ def get_sample_qc_meta_ht(base_ht: hl.Table) -> hl.Table:
             "base_ht_missing": ukb_remove,
         },
         "platform_inference": {
-            # TODO: Add drop of `gq_thresholds` to the platform_inference code.
+            # Note: Forgot to drop `gq_thresholds` in the platform_inference code.
             "ann_ht": platform.ht().drop("gq_thresholds"),
             "ann_ht_missing": hf_no_sex_s,
         },
         "sex_imputation": {
-            # TODO: Add drop of `is_female` to the sex_inference code.
+            # Note: Forgot to drop `is_female` in the sex_inference code.
             "ann_ht": get_sex_imputation_ht().drop("is_female"),
             "ann_ht_missing": hf_no_sex_s,
         },
