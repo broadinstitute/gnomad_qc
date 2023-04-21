@@ -2112,6 +2112,7 @@
                             "definition": "QC metrics for the sample's nearest neighbors.",
                             "subfields": {
                                 "r_ti_tv": {
+                                    "definition": "Transition : transversion (TiTv) ratio.",
                                     "subfields": {
                                         "median": {
                                             "definition": "Median transition : transversion (TiTv) ratio of nearest neighbors."
@@ -2128,6 +2129,7 @@
                                     }
                                 },
                                 "r_insertion_deletion": {
+                                    "definition": "Insertion : deletion ratio.",
                                     "subfields": {
                                         "median": {
                                             "definition": "Median insertion : deletion ratio of nearest neighbors."
@@ -2144,6 +2146,7 @@
                                     }
                                 },
                                 "r_het_hom_var": {
+                                    "definition": "Heterozygous : homozygous ratio.",
                                     "subfields": {
                                         "median": {
                                             "definition": "Median heterozygous : homozygous ratio of nearest neighbors."
@@ -2160,6 +2163,7 @@
                                     }
                                 },
                                 "r_ti_tv_singleton": {
+                                    "definition": "Singleton transition : transversion (TiTv) ratio.",
                                     "subfields": {
                                         "median": {
                                             "definition": "Median singleton transition : transversion (TiTv) ratio of nearest neighbors."
