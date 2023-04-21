@@ -126,6 +126,7 @@ def main(args):
             )
 
         if args.assign_platforms:
+            # TODO: Add drop of `gq_thresholds` for future versions.
             logger.info("Assigning platforms based on platform PCA clustering")
             if args.test:
                 test_scores_path = get_checkpoint_path(
