@@ -10,7 +10,6 @@ from gnomad_qc.v3.resources.annotations import sv_age_and_gq_hists
 from gnomad_qc.v3.resources.basics import (
     gnomad_sv_bucket_path,
     gnomad_sv_release_samples_list_path,
-    qc_temp_prefix,
 )
 from gnomad_qc.v3.resources.meta import meta
 
@@ -23,7 +22,7 @@ logger = logging.getLogger("generate_gnomad_sv_histograms")
 logger.setLevel(logging.INFO)
 
 # Temporary path for testing gnomAD v3 SV histogram generation
-temp_gnomad_sv_mt_path = f"{qc_temp_prefix()}gnomad_v3_sv_data/gnomad_v3_sv_temp.mt"
+temp_gnomad_sv_mt_path = "gs://gnomad-tmp-4day/gnomad_v3_sv_data/gnomad_v3_sv_temp.mt"
 
 
 def generate_hists(mt: hl.MatrixTable) -> hl.Table:
