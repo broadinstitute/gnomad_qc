@@ -8,8 +8,8 @@
                 },
                 "dp_bins": {
                     "definition": "Tuple containing cutoffs for depth (DP) scores."
-                },
-            },
+                }
+            }
         },
         "hard_filter_metrics_parameters": {
             "definition": "Parameters used during hard filtering.",
@@ -20,7 +20,7 @@
                         "dp_cutoff": {
                             "definition": "Minimum genotype depth to be included in contamination estimate calculation."
                         }
-                    },
+                    }
                 }
             },
             "chr20_sample_mean_dp_parameters": {
@@ -31,8 +31,8 @@
                     },
                     "calling_interval_padding": {
                         "definition": "Number of base pair padding used on the calling intervals. One of 0 or 50 bp."
-                    },
-                },
+                    }
+                }
             },
             "sample_qc_mt_callrate_parameters": {
                 "definition": "Parameters used to compute sample QC MT callrate.",
@@ -42,14 +42,16 @@
                     },
                     "min_site_callrate": {
                         "definition": "Filtering threshold to use for sample callrate computed on only predetermined QC variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering."
-                    },
-                },
-            },
+                    }
+                }
+            }
         },
         "hard_filter_cutoffs": {
             "definition": "Cutoffs used for hard-filtering samples prior to sample QC.",
             "subfields": {
-                "max_n_singleton": {"definition": "Maximum number of singletons."},
+                "max_n_singleton": {
+                    "definition": "Maximum number of singletons."
+                },
                 "max_r_het_hom_var": {
                     "definition": "Maximum ratio of heterozygous variants to homozygous variants."
                 },
@@ -67,8 +69,8 @@
                 },
                 "chr_20_dp_threshold": {
                     "definition": "Minimum mean depth over chromosome 20."
-                },
-            },
+                }
+            }
         },
         "sex_imputation_parameters": {
             "definition": "Parameters used during chromosomal sex imputation.",
@@ -120,8 +122,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_13": {
                             "definition": "Platform 13 X ploidies cutoffs.",
@@ -137,8 +139,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_1": {
                             "definition": "Platform 1 X ploidies cutoffs.",
@@ -154,8 +156,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_12": {
                             "definition": "Platform 12 X ploidies cutoffs.",
@@ -171,8 +173,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_4": {
                             "definition": "Platform 4 X ploidies cutoffs.",
@@ -188,8 +190,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_19": {
                             "definition": "Platform 19 X ploidies cutoffs.",
@@ -205,8 +207,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_18": {
                             "definition": "Platform 18 X ploidies cutoffs.",
@@ -222,8 +224,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_8": {
                             "definition": "Platform 8 X ploidies cutoffs.",
@@ -239,8 +241,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_10": {
                             "definition": "Platform 10 X ploidies cutoffs.",
@@ -256,8 +258,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_17": {
                             "definition": "Platform 17 X ploidies cutoffs.",
@@ -273,8 +275,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_0": {
                             "definition": "Platform 0 X ploidies cutoffs.",
@@ -290,8 +292,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_7": {
                             "definition": "Platform 7 X ploidies cutoffs.",
@@ -307,8 +309,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_2": {
                             "definition": "Platform 2 X ploidies cutoffs.",
@@ -324,8 +326,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_3": {
                             "definition": "Platform 3 X ploidies cutoffs.",
@@ -341,8 +343,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_9": {
                             "definition": "Platform 9 X ploidies cutoffs.",
@@ -358,8 +360,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_15": {
                             "definition": "Platform 15 X ploidies cutoffs.",
@@ -375,8 +377,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_14": {
                             "definition": "Platform 14 X ploidies cutoffs.",
@@ -392,8 +394,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_6": {
                             "definition": "Platform 6 X ploidies cutoffs.",
@@ -409,8 +411,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_5": {
                             "definition": "Platform 5 X ploidies cutoffs.",
@@ -426,8 +428,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_16": {
                             "definition": "Platform 16 X ploidies cutoffs.",
@@ -443,8 +445,8 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_11": {
                             "definition": "Platform 11 X ploidies cutoffs.",
@@ -460,10 +462,10 @@
                                 },
                                 "lower_cutoff_XXX": {
                                     "definition": "Lower cutoff for XXX ploidy."
-                                },
-                            },
-                        },
-                    },
+                                }
+                            }
+                        }
+                    }
                 },
                 "y_ploidy_cutoffs": {
                     "definition": "Y ploidy cutoffs for karyotype assignment per platform.",
@@ -479,8 +481,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_13": {
                             "definition": "Platform 13 Y ploidies cutoffs.",
@@ -493,8 +495,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_1": {
                             "definition": "Platform 1 Y ploidies cutoffs.",
@@ -507,8 +509,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_12": {
                             "definition": "Platform 12 Y ploidies cutoffs.",
@@ -521,8 +523,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_4": {
                             "definition": "Platform 4 Y ploidies cutoffs.",
@@ -535,8 +537,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_19": {
                             "definition": "Platform 19 Y ploidies cutoffs.",
@@ -549,8 +551,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_18": {
                             "definition": "Platform 18 Y ploidies cutoffs.",
@@ -563,8 +565,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_8": {
                             "definition": "Platform 8 Y ploidies cutoffs.",
@@ -577,8 +579,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_10": {
                             "definition": "Platform 10 Y ploidies cutoffs.",
@@ -591,8 +593,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_17": {
                             "definition": "Platform 17 Y ploidies cutoffs.",
@@ -605,8 +607,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_0": {
                             "definition": "Platform 0 Y ploidies cutoffs.",
@@ -619,8 +621,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_7": {
                             "definition": "Platform 7 Y ploidies cutoffs.",
@@ -633,8 +635,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_2": {
                             "definition": "Platform 2 Y ploidies cutoffs.",
@@ -647,8 +649,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_3": {
                             "definition": "Platform 3 Y ploidies cutoffs.",
@@ -661,8 +663,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_9": {
                             "definition": "Platform 9 Y ploidies cutoffs.",
@@ -675,8 +677,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_15": {
                             "definition": "Platform 15 Y ploidies cutoffs.",
@@ -689,8 +691,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_14": {
                             "definition": "Platform 14 Y ploidies cutoffs.",
@@ -703,8 +705,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_6": {
                             "definition": "Platform 6 Y ploidies cutoffs.",
@@ -717,8 +719,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_5": {
                             "definition": "Platform 5 Y ploidies cutoffs.",
@@ -731,8 +733,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_16": {
                             "definition": "Platform 16 Y ploidies cutoffs.",
@@ -745,8 +747,8 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_11": {
                             "definition": "Platform 11 Y ploidies cutoffs.",
@@ -759,10 +761,10 @@
                                 },
                                 "lower_cutoff_YY": {
                                     "definition": "Lower cutoff for YY ploidy."
-                                },
-                            },
-                        },
-                    },
+                                }
+                            }
+                        }
+                    }
                 },
                 "x_frac_hom_alt_cutoffs": {
                     "definition": "Cutoffs for the fraction homozygous alternate genotypes (hom-alt/(hom-alt + het)) on chromosome X per platform.",
@@ -778,8 +780,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_13": {
                             "definition": "Platform 13 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -792,8 +794,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_1": {
                             "definition": "Platform 1 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -806,8 +808,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_12": {
                             "definition": "Platform 12 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -820,8 +822,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_4": {
                             "definition": "Platform 4 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -834,8 +836,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_19": {
                             "definition": "Platform 19 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -848,8 +850,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_18": {
                             "definition": "Platform 18 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -862,8 +864,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_8": {
                             "definition": "Platform 8 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -876,8 +878,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_10": {
                             "definition": "Platform 10 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -890,8 +892,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_17": {
                             "definition": "Platform 17 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -904,8 +906,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_0": {
                             "definition": "Platform 0 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -918,8 +920,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_7": {
                             "definition": "Platform 7 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -932,8 +934,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_2": {
                             "definition": "Platform 2 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -946,8 +948,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_3": {
                             "definition": "Platform 3 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -960,8 +962,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_9": {
                             "definition": "Platform 9 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -974,8 +976,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_15": {
                             "definition": "Platform 15 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -988,8 +990,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_14": {
                             "definition": "Platform 14 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -1002,8 +1004,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_6": {
                             "definition": "Platform 6 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -1016,8 +1018,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_5": {
                             "definition": "Platform 5 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -1030,8 +1032,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_16": {
                             "definition": "Platform 16 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -1044,8 +1046,8 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
+                                }
+                            }
                         },
                         "platform_11": {
                             "definition": "Platform 11 fraction chromosome X homozygous alternate genotypes (hom-alt/(hom-alt + het)) cutoffs.",
@@ -1058,18 +1060,18 @@
                                 },
                                 "lower_cutoff_single_X": {
                                     "definition": "Lower cutoff for a single X."
-                                },
-                            },
-                        },
-                    },
-                },
-            },
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         },
         "relatedness_inference_parameters": {
             "definition": "Parameters used for relatedness inference.",
             "subfields": {
                 "relationship_inference_method": {
-                    "definition": "Which relatedness method to use for finalized relatedness Table. Options are 'cuking' and 'pc_relate'. ."
+                    "definition": "Which relatedness method to use for finalized relatedness Table. Options are 'cuking' and 'pc_relate'."
                 },
                 "relationship_cutoffs": {
                     "definition": "",
@@ -1100,10 +1102,10 @@
                         },
                         "parent_child_max_ibs0_over_ibs2": {
                             "definition": "Maximum value of IBD0 (if `relatedness_method` is 'pc_relate') or IBS0/IBS2 (if `relatedness_method` is 'cuking') for a parent-child pair."
-                        },
-                    },
-                },
-            },
+                        }
+                    }
+                }
+            }
         },
         "population_inference_parameters": {
             "definition": "Parameters to used to assign ancestry groups.",
@@ -1116,8 +1118,8 @@
                         },
                         "error_rate": {
                             "definition": "Random forests error rate on the training data for acestry group assignment."
-                        },
-                    },
+                        }
+                    }
                 },
                 "min_prob": {
                     "definition": "Minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to `Remaining`)."
@@ -1125,14 +1127,16 @@
                 "include_unreleasable_samples": {
                     "definition": "Whether unreleasable samples were included in PCA."
                 },
-                "pcs": {"definition": "List of PCs used in the RF."},
+                "pcs": {
+                    "definition": "List of PCs used in the RF."
+                },
                 "v3_population_spike": {
                     "definition": "List of v3 populations spiked into the RF training data."
                 },
                 "v4_population_spike": {
                     "definition": "List of v4 populations spiked into the RF training data."
-                },
-            },
+                }
+            }
         },
         "platform_inference_parameters": {
             "definition": "Parameters used during platform assignment.",
@@ -1141,7 +1145,7 @@
                     "definition": "HDBSCAN `min_cluster_size` parameter."
                 },
                 "hdbscan_min_samples": {
-                    "definition": " HDBSCAN `min_samples` parameter."
+                    "definition": "HDBSCAN `min_samples` parameter."
                 },
                 "n_pcs": {
                     "definition": "Number of platform PCs used for platform assignment."
@@ -1151,8 +1155,8 @@
                 },
                 "calling_interval_padding": {
                     "definition": "Number of base pair padding to use on the calling intervals. One of 0 or 50 bp."
-                },
-            },
+                }
+            }
         },
         "outlier_detection_parameters": {
             "definition": "The parameters used for filtering outlier samples by QC metrics.",
@@ -1163,76 +1167,6 @@
                         "lms": {
                             "definition": "Linear regression statistics for QC metrics.",
                             "subfields": {
-                                "n_snp": {
-                                    "definition": "SNP regression statistics.",
-                                    "subfields": {
-                                        "beta": {
-                                            "definition": "Estimated regression coefficient for each PC."
-                                        },
-                                        "standard_error": {
-                                            "definition": "Estimated standard error for each PC."
-                                        },
-                                        "t_stat": {
-                                            "definition": " t-statistic for each PC."
-                                        },
-                                        "p_value": {
-                                            "definition": " p-value for each PC."
-                                        },
-                                        "multiple_standard_error": {
-                                            "definition": "Estimated standard deviation of the random error."
-                                        },
-                                        "multiple_r_squared": {
-                                            "definition": "Coefficient of determination for nested models."
-                                        },
-                                        "adjusted_r_squared": {
-                                            "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
-                                        },
-                                        "f_stat": {
-                                            "definition": "F-statistic for nested models."
-                                        },
-                                        "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
-                                        },
-                                        "n": {
-                                            "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        },
-                                    },
-                                },
-                                "n_singleton": {
-                                    "definition": "Singleton regression statistics.",
-                                    "subfields": {
-                                        "beta": {
-                                            "definition": "Estimated regression coefficient for each PC."
-                                        },
-                                        "standard_error": {
-                                            "definition": "Estimated standard error for each PC."
-                                        },
-                                        "t_stat": {
-                                            "definition": " t-statistic for each PC."
-                                        },
-                                        "p_value": {
-                                            "definition": " p-value for each PC."
-                                        },
-                                        "multiple_standard_error": {
-                                            "definition": "Estimated standard deviation of the random error."
-                                        },
-                                        "multiple_r_squared": {
-                                            "definition": "Coefficient of determination for nested models."
-                                        },
-                                        "adjusted_r_squared": {
-                                            "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
-                                        },
-                                        "f_stat": {
-                                            "definition": "F-statistic for nested models."
-                                        },
-                                        "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
-                                        },
-                                        "n": {
-                                            "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        },
-                                    },
-                                },
                                 "r_ti_tv": {
                                     "definition": "Transition : transversion (TiTv) ratio regression statistics.",
                                     "subfields": {
@@ -1265,8 +1199,8 @@
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        },
-                                    },
+                                        }
+                                    }
                                 },
                                 "r_insertion_deletion": {
                                     "definition": "Insertion : deletion ratio regression statistics.",
@@ -1300,78 +1234,8 @@
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        },
-                                    },
-                                },
-                                "n_insertion": {
-                                    "definition": "Insertion regression statistics.",
-                                    "subfields": {
-                                        "beta": {
-                                            "definition": "Estimated regression coefficient for each PC."
-                                        },
-                                        "standard_error": {
-                                            "definition": "Estimated standard error for each PC."
-                                        },
-                                        "t_stat": {
-                                            "definition": " t-statistic for each PC."
-                                        },
-                                        "p_value": {
-                                            "definition": " p-value for each PC."
-                                        },
-                                        "multiple_standard_error": {
-                                            "definition": "Estimated standard deviation of the random error."
-                                        },
-                                        "multiple_r_squared": {
-                                            "definition": "Coefficient of determination for nested models."
-                                        },
-                                        "adjusted_r_squared": {
-                                            "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
-                                        },
-                                        "f_stat": {
-                                            "definition": "F-statistic for nested models."
-                                        },
-                                        "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
-                                        },
-                                        "n": {
-                                            "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        },
-                                    },
-                                },
-                                "n_deletion": {
-                                    "definition": "Deletion regression statistics.",
-                                    "subfields": {
-                                        "beta": {
-                                            "definition": "Estimated regression coefficient for each PC."
-                                        },
-                                        "standard_error": {
-                                            "definition": "Estimated standard error for each PC."
-                                        },
-                                        "t_stat": {
-                                            "definition": " t-statistic for each PC."
-                                        },
-                                        "p_value": {
-                                            "definition": " p-value for each PC."
-                                        },
-                                        "multiple_standard_error": {
-                                            "definition": "Estimated standard deviation of the random error."
-                                        },
-                                        "multiple_r_squared": {
-                                            "definition": "Coefficient of determination for nested models."
-                                        },
-                                        "adjusted_r_squared": {
-                                            "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
-                                        },
-                                        "f_stat": {
-                                            "definition": "F-statistic for nested models."
-                                        },
-                                        "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
-                                        },
-                                        "n": {
-                                            "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        },
-                                    },
+                                        }
+                                    }
                                 },
                                 "r_het_hom_var": {
                                     "definition": "Heterozygous : homozygous ratio regression statistics.",
@@ -1405,78 +1269,8 @@
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        },
-                                    },
-                                },
-                                "n_transition": {
-                                    "definition": "Transition regression statistics.",
-                                    "subfields": {
-                                        "beta": {
-                                            "definition": "Estimated regression coefficient for each PC."
-                                        },
-                                        "standard_error": {
-                                            "definition": "Estimated standard error for each PC."
-                                        },
-                                        "t_stat": {
-                                            "definition": " t-statistic for each PC."
-                                        },
-                                        "p_value": {
-                                            "definition": " p-value for each PC."
-                                        },
-                                        "multiple_standard_error": {
-                                            "definition": "Estimated standard deviation of the random error."
-                                        },
-                                        "multiple_r_squared": {
-                                            "definition": "Coefficient of determination for nested models."
-                                        },
-                                        "adjusted_r_squared": {
-                                            "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
-                                        },
-                                        "f_stat": {
-                                            "definition": "F-statistic for nested models."
-                                        },
-                                        "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
-                                        },
-                                        "n": {
-                                            "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        },
-                                    },
-                                },
-                                "n_transversion": {
-                                    "definition": "Transversion regression statistics.",
-                                    "subfields": {
-                                        "beta": {
-                                            "definition": "Estimated regression coefficient for each PC."
-                                        },
-                                        "standard_error": {
-                                            "definition": "Estimated standard error for each PC."
-                                        },
-                                        "t_stat": {
-                                            "definition": " t-statistic for each PC."
-                                        },
-                                        "p_value": {
-                                            "definition": " p-value for each PC."
-                                        },
-                                        "multiple_standard_error": {
-                                            "definition": "Estimated standard deviation of the random error."
-                                        },
-                                        "multiple_r_squared": {
-                                            "definition": "Coefficient of determination for nested models."
-                                        },
-                                        "adjusted_r_squared": {
-                                            "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
-                                        },
-                                        "f_stat": {
-                                            "definition": "F-statistic for nested models."
-                                        },
-                                        "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
-                                        },
-                                        "n": {
-                                            "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        },
-                                    },
+                                        }
+                                    }
                                 },
                                 "r_ti_tv_singleton": {
                                     "definition": "Singleton transition : transversion (TiTv) ratio regression statistics.",
@@ -1510,44 +1304,9 @@
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        },
-                                    },
-                                },
-                                "r_snp_indel": {
-                                    "definition": "SNP/InDel ratio regression statistics.",
-                                    "subfields": {
-                                        "beta": {
-                                            "definition": "Estimated regression coefficient for each PC."
-                                        },
-                                        "standard_error": {
-                                            "definition": "Estimated standard error for each PC."
-                                        },
-                                        "t_stat": {
-                                            "definition": " t-statistic for each PC."
-                                        },
-                                        "p_value": {
-                                            "definition": " p-value for each PC."
-                                        },
-                                        "multiple_standard_error": {
-                                            "definition": "Estimated standard deviation of the random error."
-                                        },
-                                        "multiple_r_squared": {
-                                            "definition": "Coefficient of determination for nested models."
-                                        },
-                                        "adjusted_r_squared": {
-                                            "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
-                                        },
-                                        "f_stat": {
-                                            "definition": "F-statistic for nested models."
-                                        },
-                                        "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
-                                        },
-                                        "n": {
-                                            "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        },
-                                    },
-                                },
+                                        }
+                                    }
+                                }
                             },
                             "qc_metrics_stats": {
                                 "definition": "The statistics generated for outlier filter cutoffs based on the residuals for each of the hail sample QC metrics.",
@@ -1566,8 +1325,8 @@
                                             },
                                             "upper": {
                                                 "definition": "The n_snp upper median absolute deviation threshold."
-                                            },
-                                        },
+                                            }
+                                        }
                                     },
                                     "n_singleton_residual": {
                                         "definition": "Singleton residuals statistics.",
@@ -1583,8 +1342,8 @@
                                             },
                                             "upper": {
                                                 "definition": "The n_singleton upper median absolute deviation threshold."
-                                            },
-                                        },
+                                            }
+                                        }
                                     },
                                     "r_ti_tv_residual": {
                                         "definition": "Transition/Transversion ratio residuals statistics.",
@@ -1600,8 +1359,8 @@
                                             },
                                             "upper": {
                                                 "definition": "The r_ti_tv upper median absolute deviation threshold."
-                                            },
-                                        },
+                                            }
+                                        }
                                     },
                                     "r_insertion_deletion_residual": {
                                         "definition": "Insertion/Deletion ratio residuals statistics.",
@@ -1617,8 +1376,8 @@
                                             },
                                             "upper": {
                                                 "definition": "The r_insertion_deletion upper median absolute deviation threshold."
-                                            },
-                                        },
+                                            }
+                                        }
                                     },
                                     "n_insertion_residual": {
                                         "definition": "Insertion residuals statistics.",
@@ -1634,8 +1393,8 @@
                                             },
                                             "upper": {
                                                 "definition": "The n_insertion upper median absolute deviation threshold."
-                                            },
-                                        },
+                                            }
+                                        }
                                     },
                                     "n_deletion_residual": {
                                         "definition": "Deletion residuals statistics.",
@@ -1651,8 +1410,8 @@
                                             },
                                             "upper": {
                                                 "definition": "The n_deletion upper median absolute deviation threshold."
-                                            },
-                                        },
+                                            }
+                                        }
                                     },
                                     "r_het_hom_var_residual": {
                                         "definition": "Het/HomVar ratio residuals statistics.",
@@ -1668,8 +1427,8 @@
                                             },
                                             "upper": {
                                                 "definition": "The r_het_hom_var upper median absolute deviation threshold."
-                                            },
-                                        },
+                                            }
+                                        }
                                     },
                                     "n_transition_residual": {
                                         "definition": "Transition residuals statistics.",
@@ -1685,8 +1444,8 @@
                                             },
                                             "upper": {
                                                 "definition": "The n_transition upper median absolute deviation threshold."
-                                            },
-                                        },
+                                            }
+                                        }
                                     },
                                     "n_transversion_residual": {
                                         "definition": "Transversion residuals statistics.",
@@ -1702,8 +1461,8 @@
                                             },
                                             "upper": {
                                                 "definition": "The n_transversion upper median absolute deviation threshold."
-                                            },
-                                        },
+                                            }
+                                        }
                                     },
                                     "r_ti_tv_singleton_residual": {
                                         "definition": "Transition/Transversion singleton ratio residuals statistics.",
@@ -1719,8 +1478,8 @@
                                             },
                                             "upper": {
                                                 "definition": "The r_ti_tv_singleton upper median absolute deviation threshold."
-                                            },
-                                        },
+                                            }
+                                        }
                                     },
                                     "r_snp_indel_residual": {
                                         "definition": "SNP/InDel ratio residuals statistics.",
@@ -1736,9 +1495,9 @@
                                             },
                                             "upper": {
                                                 "definition": "The r_snp_indel upper median absolute deviation threshold."
-                                            },
-                                        },
-                                    },
+                                            }
+                                        }
+                                    }
                                 },
                                 "regress_pop_n_pcs": {
                                     "definition": "Number of population PCA scores used in regression."
@@ -1748,10 +1507,10 @@
                                 },
                                 "regression_include_unreleasable": {
                                     "definition": "Whether  unreleasable samples we included in the regression."
-                                },
-                            },
+                                }
+                            }
                         }
-                    },
+                    }
                 },
                 "nearest_neighbor_filters_globals": {
                     "definition": "Filters used in nearest neighbor filterings.",
@@ -1761,20 +1520,22 @@
                         },
                         "n_neighbors": {
                             "definition": "Number of nearest neighbors reported for each sample."
-                        },
-                    },
-                },
-            },
+                        }
+                    }
+                }
+            }
         },
         "filter_qc_metrics": {
             "definition": "List of sample QC metrics used for the finalized outlier filtering. Note: This must be the same as, or a subset of `--filtering-qc-metrics` used when generating the filtering Table(s) desired for final filtering."
         },
         "ensemble_combination_operator": {
             "definition": "Logical operator to use for combining filtering methods for the ensemble method."
-        },
+        }
     },
     "rows": {
-        "s": {"definition": "Sample ID."},
+        "s": {
+            "definition": "Sample ID."
+        },
         "project_meta": {
             "definition": "Sample project metadata.",
             "subfields": {
@@ -1799,7 +1560,9 @@
                 "project": {
                     "definition": "Research project ID. For internal samples this will be the RP project ID, C project ID (antiquated), or G project ID (antiquated). C and G project IDs exist for older projects that began on-prem. For external samples, 'project' will typically be a short description of the cohort."
                 },
-                "subject_id": {"definition": "Collaborator-assigned sample ID."},
+                "subject_id": {
+                    "definition": "Collaborator-assigned sample ID."
+                },
                 "sm_id": {
                     "definition": "Sample ID (assigned by Broad Genomics Platform)."
                 },
@@ -1809,11 +1572,15 @@
                 "capture": {
                     "definition": "Technology used for sequencing the sample (e.g. Nextera)."
                 },
-                "sex": {"definition": "Project provided chromosomal sex."},
+                "sex": {
+                    "definition": "Project provided chromosomal sex."
+                },
                 "cram": {
                     "definition": "Path to cram at the time of metadata collection, if available."
                 },
-                "gvcf": {"definition": "Path to the original gVCF."},
+                "gvcf": {
+                    "definition": "Path to the original gVCF."
+                },
                 "disease_description": {
                     "definition": "Abbreviated description of the phenotype associated with the cohort to which the sample belongs (eg 'IBD')."
                 },
@@ -1829,7 +1596,9 @@
                 "controls": {
                     "definition": "Collaborator provided case or control status. Sometimes also determined by presence of 'case' or 'control' in the terra workspace name."
                 },
-                "age": {"definition": "Collaborator provided age in years (e.g. 25)."},
+                "age": {
+                    "definition": "Collaborator provided age in years (e.g. 25)."
+                },
                 "releasable": {
                     "definition": "Whether the sample has permissions for release. Releasable is not the same as 'release' ('release' means the sample was actually included in an official gnomAD release, the 'release' annotation is not included in this Table - it is added after sample QC)."
                 },
@@ -1926,7 +1695,7 @@
                     },
                     "v2_freemix": {
                         "definition": "Freemix value (verifyBamID defintion: Sequence-only estimate of contamination (0-1 scale)) from the gnomAD v2 callset."
-                    },
+                    }
                 },
                 "ukb_meta": {
                     "ukb_projected_pop": {
@@ -1948,7 +1717,7 @@
                         "definition": "True if the UKB sample should be withdrawn from the VDS and any analyses based on withdraw list for application 31063 on 02/22/2022."
                     },
                     "ukb_batch": {
-                        "definition": " Sample's data tranche (150K, 100K, 200K, 300K)."
+                        "definition": "Sample's data tranche (150K, 100K, 200K, 300K)."
                     },
                     "ukb_batch_num": {
                         "definition": "Numeric representation of batch. 0: 150K, 1: 100K, 2: 200K, 3: 300K."
@@ -1998,10 +1767,10 @@
                         },
                         "sex_karyotype": {
                             "definition": "Sample's sex karyotype (combined X and Y karyotype) from the UKB callset."
-                        },
-                    },
-                },
-            },
+                        }
+                    }
+                }
+            }
         },
         "bam_metrics": {
             "definition": "Sample metrics generated from the BAM.",
@@ -2029,15 +1798,21 @@
                 },
                 "median_insert_size": {
                     "definition": "Picard definition: The median insert size of all paired end reads where both ends mapped to the same chromosome. Note: the median insert size is not reliably reported in internal metadata - it is sometimes obtained from a coordinator-supplied file, from the Broad database via API request, or from a terra workspace."
-                },
-            },
+                }
+            }
         },
         "sample_qc": {
             "definition": "Metric's generated by hail's sample_qc module.",
             "subfields": {
-                "n_het": {"definition": "Number of heterozygous calls."},
-                "n_hom_var": {"definition": "Number of homozygous alternate calls."},
-                "n_non_ref": {"definition": "Number of homozygous reference calls."},
+                "n_het": {
+                    "definition": "Number of heterozygous calls."
+                },
+                "n_hom_var": {
+                    "definition": "Number of homozygous alternate calls."
+                },
+                "n_non_ref": {
+                    "definition": "Number of homozygous reference calls."
+                },
                 "n_singleton": {
                     "definition": "Number of private alleles. Reference alleles are never counted as singletons, even if every other allele at a site is non-reference."
                 },
@@ -2047,31 +1822,43 @@
                 "n_singleton_tv": {
                     "definition": "Number of singletons that are transversions."
                 },
-                "n_snp": {"definition": "Number of SNP alternate alleles."},
-                "n_insertion": {"definition": "Number of insertion alternate alleles."},
-                "n_deletion": {"definition": "Number of deletion alternate alleles."},
+                "n_snp": {
+                    "definition": "Number of SNP alternate alleles."
+                },
+                "n_insertion": {
+                    "definition": "Number of insertion alternate alleles."
+                },
+                "n_deletion": {
+                    "definition": "Number of deletion alternate alleles."
+                },
                 "n_transition": {
                     "definition": "Number of transition (A-G, C-T) alternate alleles."
                 },
                 "n_transversion": {
                     "definition": "Number of transversion alternate alleles."
                 },
-                "n_star": {"definition": "Number of star (upstream deletion) alleles."},
-                "r_ti_tv": {"definition": "Transition/Transversion ratio."},
+                "n_star": {
+                    "definition": "Number of star (upstream deletion) alleles."
+                },
+                "r_ti_tv": {
+                    "definition": "Transition/Transversion ratio."
+                },
                 "r_ti_tv_singleton": {
                     "definition": "Singleton Transition/Transversion ratio."
                 },
-                "r_het_hom_var": {"definition": "Het/HomVar call ratio."},
+                "r_het_hom_var": {
+                    "definition": "Het/HomVar call ratio."
+                },
                 "r_insertion_deletion": {
-                    "definition": " Insertion/Deletion allele ratio."
+                    "definition": "Insertion/Deletion allele ratio."
                 },
                 "bases_over_gq_threshold": {
                     "definition": "Number of bases in the interval over passed GQ thresholds."
                 },
                 "bases_over_dp_threshold": {
                     "definition": "Number of bases in the interval over passed DP thresholds."
-                },
-            },
+                }
+            }
         },
         "hard_filter_metrics": {
             "definition": "Annotations generated or used by hard-filtering.",
@@ -2079,14 +1866,16 @@
                 "mean_AB_snp_biallelic": {
                     "definition": "Mean biallelic SNP allele balance used during contamination estimation."
                 },
-                "chr20_mean_dp": {"definition": "Chromosome 20 mean DP."},
+                "chr20_mean_dp": {
+                    "definition": "Chromosome 20 mean DP."
+                },
                 "sample_qc_mt_callrate": {
                     "definition": "Sample callrate in the v4 precomputed QC MT."
                 },
                 "sample_qc_mt_callrate_adj": {
                     "definition": "Sample callrat for high-quality sites in the v4 precomputed QC MT."
-                },
-            },
+                }
+            }
         },
         "sex_imputation": {
             "definition": "Annotations generated or used in chromosomal sex inference.",
@@ -2098,7 +1887,7 @@
                     "definition": "Sample's mean depth across chromosome X."
                 },
                 "chrX_ploidy": {
-                    "definition": " Sample's chromosome X ploidy (chrX_mean_dp normalized using chr20_mean_dp)."
+                    "definition": "Sample's chromosome X ploidy (chrX_mean_dp normalized using chr20_mean_dp)."
                 },
                 "chrY_mean_dp": {
                     "definition": "Sample's mean depth across chromosome Y."
@@ -2121,8 +1910,12 @@
                 "platform": {
                     "definition": "Platform assigned during platform inference."
                 },
-                "X_karyotype": {"definition": "Sample's chromosome X karyotype."},
-                "Y_karyotype": {"definition": "Sample's chromosome Y karyotype."},
+                "X_karyotype": {
+                    "definition": "Sample's chromosome X karyotype."
+                },
+                "Y_karyotype": {
+                    "definition": "Sample's chromosome Y karyotype."
+                },
                 "sex_karyotype": {
                     "definition": "Sample's sex karyotype (combined X and Y karyotype)."
                 },
@@ -2140,10 +1933,10 @@
                         },
                         "observed_homs": {
                             "definition": "Observed number of homozygotes."
-                        },
-                    },
-                },
-            },
+                        }
+                    }
+                }
+            }
         },
         "relatedness_inference": {
             "definition": "Annotations used or generated by the relatedness inference module.",
@@ -2156,8 +1949,8 @@
                 },
                 "gnomad_v3_release_duplicate": {
                     "definition": "Whether sample is a duplicate of one of the v3 release samples."
-                },
-            },
+                }
+            }
         },
         "population_inference": {
             "definition": "Fields used during or generated by ancestry group inference.",
@@ -2168,7 +1961,9 @@
                 "pca_scores": {
                     "definition": "Sample's scores for each ancetry group PC."
                 },
-                "pop": {"definition": "Sample's inferred ancestry group label."},
+                "pop": {
+                    "definition": "Sample's inferred ancestry group label."
+                },
                 "prob_afr": {
                     "definition": "Random forest probability that the sample is of African/African American ancestry."
                 },
@@ -2204,8 +1999,8 @@
                 },
                 "original_training_pop": {
                     "definition": "Training ancestry group label necessary for RF evaluation."
-                },
-            },
+                }
+            }
         },
         "platform_inference": {
             "definition": "Annotations generated from platform inference.",
@@ -2213,8 +2008,10 @@
                 "scores": {
                     "definition": "Array of principal components analysis scores used whenassigning platforms with HBDSCAN."
                 },
-                "qc_platform": {"definition": "Inferred sequencing platform label."},
-            },
+                "qc_platform": {
+                    "definition": "Inferred sequencing platform label."
+                }
+            }
         },
         "sample_filters": {
             "definition": "Sample QC filters.",
@@ -2222,7 +2019,9 @@
                 "sex_aneuploidy": {
                     "definition": "Whether a sample was flagged for sex aneuploidy."
                 },
-                "chimera": {"definition": "Whether a sample was flagged for chimera."},
+                "chimera": {
+                    "definition": "Whether a sample was flagged for chimera."
+                },
                 "contamination": {
                     "definition": "Whether a sample was flagged for contamination."
                 },
@@ -2261,11 +2060,11 @@
                         },
                         "all_samples_sibling": {
                             "definition": "Whether a sample is a sibling to any sample in the raw callset."
-                        },
-                    },
+                        }
+                    }
                 },
                 "regressed_filters": {
-                    "definition": " Set of filters for regression/residual QC metric filtering.",
+                    "definition": "Set of filters for regression/residual QC metric filtering.",
                     "subfields": {
                         "qc_metrics_residuals": {
                             "definition": "QC Metric residuals after regressing out ancestry PCs.",
@@ -2281,8 +2080,8 @@
                                 },
                                 "r_ti_tv_singleton_residual": {
                                     "definition": "Singleton transition : transversion (TiTv) ratio residual."
-                                },
-                            },
+                                }
+                            }
                         },
                         "qc_metrics_fail": {
                             "definition": "Struct of sample QC metrics after regressing out ancestry PCs.",
@@ -2298,13 +2097,13 @@
                                 },
                                 "fail_r_ti_tv_singleton_residual": {
                                     "definition": "Whether the sample failed the singleton transition : transversion (TiTv) ratio residual filter."
-                                },
-                            },
+                                }
+                            }
                         },
                         "qc_metrics_filters": {
                             "definition": "Set of all sample QC metrics for which each sample was found to be an outlier after computing sample QC metrics using the Hail sample_qc() module and regressing out the ancestry assignment PCs."
-                        },
-                    },
+                        }
+                    }
                 },
                 "nearest_neighbor_filters": {
                     "definition": "Set of filters for nearest neighbors platform/population-based metrics filtering.",
@@ -2312,42 +2111,7 @@
                         "qc_metrics_stats": {
                             "definition": "QC metrics for the sample's nearest neighbors.",
                             "subfields": {
-                                "n_snp": {
-                                    "definition": "Number of SNPs.",
-                                    "subfields": {
-                                        "median": {
-                                            "definition": "Median number of SNPs of nearest neighbors."
-                                        },
-                                        "mad": {
-                                            "definition": "MAD of SNPs of nearest neighbors."
-                                        },
-                                        "lower": {
-                                            "definition": "Lower cutoff threshold of number of SNPs of nearest neighbors."
-                                        },
-                                        "upper": {
-                                            "definition": "Upper cutoff threshold of number of SNPs of nearest neighbors."
-                                        },
-                                    },
-                                },
-                                "n_singleton": {
-                                    "definition": "Number of singletons.",
-                                    "subfields": {
-                                        "median": {
-                                            "definition": "Median number of singletons of nearest neighbors."
-                                        },
-                                        "mad": {
-                                            "definition": "MAD of singletons of nearest neighbors."
-                                        },
-                                        "lower": {
-                                            "definition": "Lower cutoff threshold of number of singletons of nearest neighbors."
-                                        },
-                                        "upper": {
-                                            "definition": "Upper cutoff threshold of number of singletons of nearest neighbors."
-                                        },
-                                    },
-                                },
                                 "r_ti_tv": {
-                                    "definition": "Transition/Transversion ratio.",
                                     "subfields": {
                                         "median": {
                                             "definition": "Median transition : transversion (TiTv) ratio of nearest neighbors."
@@ -2360,11 +2124,10 @@
                                         },
                                         "upper": {
                                             "definition": "Upper cutoff threshold of transition : transversion (TiTv) ratio of nearest neighbors."
-                                        },
-                                    },
+                                        }
+                                    }
                                 },
                                 "r_insertion_deletion": {
-                                    "definition": "Insertion/Deletion ratio.",
                                     "subfields": {
                                         "median": {
                                             "definition": "Median insertion : deletion ratio of nearest neighbors."
@@ -2377,45 +2140,10 @@
                                         },
                                         "upper": {
                                             "definition": "Upper cutoff threshold of insertion : deletion ratio of nearest neighbors."
-                                        },
-                                    },
-                                },
-                                "n_insertion": {
-                                    "definition": "Number of insertions.",
-                                    "subfields": {
-                                        "median": {
-                                            "definition": "Median number of insertions of nearest neighbors."
-                                        },
-                                        "mad": {
-                                            "definition": "MAD of insertions of nearest neighbors."
-                                        },
-                                        "lower": {
-                                            "definition": "Lower cutoff threshold of number of insertions of nearest neighbors."
-                                        },
-                                        "upper": {
-                                            "definition": "Upper cutoff threshold of number of insertions of nearest neighbors."
-                                        },
-                                    },
-                                },
-                                "n_deletion": {
-                                    "definition": "Number of deletions.",
-                                    "subfields": {
-                                        "median": {
-                                            "definition": "Median number of deletions of nearest neighbors."
-                                        },
-                                        "mad": {
-                                            "definition": "MAD of deletions of nearest neighbors."
-                                        },
-                                        "lower": {
-                                            "definition": "Lower cutoff threshold of number of deletions of nearest neighbors."
-                                        },
-                                        "upper": {
-                                            "definition": "Upper cutoff threshold of number of deletions of nearest neighbors."
-                                        },
-                                    },
+                                        }
+                                    }
                                 },
                                 "r_het_hom_var": {
-                                    "definition": "Het/HomVar ratio.",
                                     "subfields": {
                                         "median": {
                                             "definition": "Median heterozygous : homozygous ratio of nearest neighbors."
@@ -2428,45 +2156,10 @@
                                         },
                                         "upper": {
                                             "definition": "Upper cutoff threshold of heterozygous : homozygous ratio of nearest neighbors."
-                                        },
-                                    },
-                                },
-                                "n_transition": {
-                                    "definition": "Number of transitions.",
-                                    "subfields": {
-                                        "median": {
-                                            "definition": "Median number of transitions of nearest neighbors."
-                                        },
-                                        "mad": {
-                                            "definition": "MAD of transitions of nearest neighbors."
-                                        },
-                                        "lower": {
-                                            "definition": "Lower cutoff threshold of number of transitions of nearest neighbors."
-                                        },
-                                        "upper": {
-                                            "definition": "Upper cutoff threshold of number of transitions of nearest neighbors."
-                                        },
-                                    },
-                                },
-                                "n_transversion": {
-                                    "definition": "Number of transversions.",
-                                    "subfields": {
-                                        "median": {
-                                            "definition": "Median number of transversions of nearest neighbors."
-                                        },
-                                        "mad": {
-                                            "definition": "MAD of transversions of nearest neighbors."
-                                        },
-                                        "lower": {
-                                            "definition": "Lower cutoff threshold of number of transversions of nearest neighbors."
-                                        },
-                                        "upper": {
-                                            "definition": "Upper cutoff threshold of number of transversions of nearest neighbors."
-                                        },
-                                    },
+                                        }
+                                    }
                                 },
                                 "r_ti_tv_singleton": {
-                                    "definition": "Transition/Traversion singleton ratio.",
                                     "subfields": {
                                         "median": {
                                             "definition": "Median singleton transition : transversion (TiTv) ratio of nearest neighbors."
@@ -2479,27 +2172,10 @@
                                         },
                                         "upper": {
                                             "definition": "Upper cutoff threshold of singleton transition : transversion (TiTv) ratio of nearest neighbors."
-                                        },
-                                    },
-                                },
-                                "r_snp_indel": {
-                                    "definition": "SNP/InDel ratio.",
-                                    "subfields": {
-                                        "median": {
-                                            "definition": "Median SNP/InDel ratio of nearest neighbors."
-                                        },
-                                        "mad": {
-                                            "definition": "MAD of SNP/InDel ratio of nearest neighbors."
-                                        },
-                                        "lower": {
-                                            "definition": "Lower cutoff threshold of SNP/InDel ratio of nearest neighbors."
-                                        },
-                                        "upper": {
-                                            "definition": "Upper cutoff threshold of ISNP/InDel ratio of nearest neighbors."
-                                        },
-                                    },
-                                },
-                            },
+                                        }
+                                    }
+                                }
+                            }
                         },
                         "qc_metrics_fail": {
                             "definition": "Set of sample QC metrics failed with nearest neighbors approach.",
@@ -2515,13 +2191,13 @@
                                 },
                                 "fail_r_insertion_deletion": {
                                     "definition": "Whether the sample failed the Insertion/Deletion ratio filter in the nearest neighbor approach."
-                                },
-                            },
+                                }
+                            }
                         },
                         "qc_metrics_filters": {
                             "definition": "Set of QC metric filters from the nearest neighbor approach."
-                        },
-                    },
+                        }
+                    }
                 },
                 "qc_metrics_fail": {
                     "definition": "The combined (using `ensemble_operator`) outlier fail boolean for each metric.",
@@ -2537,18 +2213,22 @@
                         },
                         "r_ti_tv_singleton": {
                             "definition": "Whether the sample failed the Transition/Transversion singleton."
-                        },
-                    },
+                        }
+                    }
                 },
                 "qc_metrics_filters": {
                     "definition": "The combined set of QC metrics that a sample is an outlier for using `ensemble_operator` for the combination."
                 },
                 "outlier_filtered": {
                     "definition": "Whether the sample was filtered as an outlier for QC metrics."
-                },
-            },
+                }
+            }
         },
-        "high_quality": {"definition": "Whether the sample passed all hard_filters."},
-        "release": {"definition": "Whether the sample is in the release."},
-    },
+        "high_quality": {
+            "definition": "Whether the sample passed all hard_filters."
+        },
+        "release": {
+            "definition": "Whether the sample is in the release."
+        }
+    }
 }
