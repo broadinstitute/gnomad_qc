@@ -56,7 +56,7 @@ def get_sample_qc(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type)}/hard_filtering/gnomad.{data_type}.v{version}.sample_qc_all_{'' if strat == 'all' else strat}.ht"
+                f"{get_sample_qc_root(version, test, data_type)}/hard_filtering/gnomad.{data_type}.v{version}.sample_qc_all{'' if strat == 'all' else f'_{strat}'}.ht"
             )
             for version in VERSIONS
         },
@@ -799,6 +799,7 @@ def nearest_neighbors(
     test: bool = False,
     platform_stratified: bool = False,
     approximation: bool = False,
+    include_unreleasable_samples: bool = False,
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for population PCA nearest neighbors.
@@ -808,6 +809,8 @@ def nearest_neighbors(
         stratified nearest neighbors.
     :param approximation: Whether to get resource that is approximate nearest
         neighbors.
+    :param include_unreleasable_samples: Whether to get resource that included
+        unreleasable samples in nearest neighbors determination.
     :return: VersionedTableResource.
     """
     postfix = ""
@@ -815,6 +818,8 @@ def nearest_neighbors(
         postfix += ".platform_stratified"
     if approximation:
         postfix += ".approximation"
+    if include_unreleasable_samples:
+        postfix += ".include_unreleasable_samples"
     return VersionedTableResource(
         CURRENT_VERSION,
         {
