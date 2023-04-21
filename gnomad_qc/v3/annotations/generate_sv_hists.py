@@ -10,7 +10,7 @@ from gnomad_qc.v3.resources.annotations import sv_age_and_gq_hists
 from gnomad_qc.v3.resources.basics import (
     gnomad_sv_bucket_path,
     gnomad_sv_release_samples_list_path,
-    temp_gnomad_sv_mt_path,
+    qc_temp_prefix,
 )
 from gnomad_qc.v3.resources.meta import meta
 
@@ -21,6 +21,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("generate_gnomad_sv_histograms")
 logger.setLevel(logging.INFO)
+
+# Temporary path for testing gnomAD v3 SV histogram generation
+temp_gnomad_sv_mt_path = f"{qc_temp_prefix()}gnomad_v3_sv_data/gnomad_v3_sv_temp.mt"
 
 
 def generate_hists(mt: hl.MatrixTable) -> hl.Table:
@@ -74,9 +77,10 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
     """
     sample_meta = meta.ht().key_by()
 
-    # NOTE: some 1KG samples were already in v3.0 (SV data) and were given a new prefix in v3.1 (meta)
-    # To access the correct metadata using the SV sample list, we need to update the v3.1 meta IDs
-    # to match the SV list Table.
+    # NOTE: some 1KG samples were already in v3.0 (SV data) and were given
+    # a new prefix in v3.1 (meta) to access the correct metadata using the
+    # SV sample list, we need to update the v3.1 meta IDs to match the SV
+    # list Table.
     s_updates = hl.dict(
         {
             "v3.1::HG00512": "HG00512",
@@ -101,6 +105,17 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
             sample_meta[sv_list.s].project_meta.age_alt,
         ),
         release=sample_meta[sv_list.s].release,
+    )
+
+    logger.info(
+        "%i out of %i samples in the SV sample list have a defined age.",
+        sv_list.filter(hl.is_defined(sv_list.age)).count(),
+        sv_list.count(),
+    )
+    logger.info(
+        "%i out of %i samples in the SV sample list are in the core release",
+        sv_list.filter(sv_list.release).count(),
+        sv_list.count(),
     )
     return sv_list
 
@@ -169,7 +184,7 @@ def main(args):
     mt = mt.annotate_cols(**sv_list[mt.col_key])
     mt = mt.checkpoint(temp_gnomad_sv_mt_path, overwrite=args.overwrite)
     logger.info(
-        "Generating age and GQ histograms for %s variants and %s samples...",
+        "Generating age and GQ histograms for %i variants and %i samples...",
         mt.count_rows(),
         mt.count_cols(),
     )
