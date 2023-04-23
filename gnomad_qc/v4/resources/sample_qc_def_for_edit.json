@@ -21,27 +21,27 @@
                             "definition": "Minimum genotype depth to be included in contamination estimate calculation."
                         }
                     }
-                }
-            },
-            "chr20_sample_mean_dp_parameters": {
-                "definition": "Parameters used to compute per sample mean DP on chromosome 20 using interval coverage results.",
-                "subfields": {
-                    "calling_interval_name": {
-                        "definition": "Name of calling intervals used for interval coverage. One of: 'ukb', 'broad', or 'intersection'."
-                    },
-                    "calling_interval_padding": {
-                        "definition": "Number of base pair padding used on the calling intervals. One of 0 or 50 bp."
+                },
+                "chr20_sample_mean_dp_parameters": {
+                    "definition": "Parameters used to compute per sample mean DP on chromosome 20 using interval coverage results.",
+                    "subfields": {
+                        "calling_interval_name": {
+                            "definition": "Name of calling intervals used for interval coverage. One of: 'ukb', 'broad', or 'intersection'."
+                        },
+                        "calling_interval_padding": {
+                            "definition": "Number of base pair padding used on the calling intervals. One of 0 or 50 bp."
+                        }
                     }
-                }
-            },
-            "sample_qc_mt_callrate_parameters": {
-                "definition": "Parameters used to compute sample QC MT callrate.",
-                "subfields": {
-                    "min_af": {
-                        "definition": "Minimum AF for inclusion in sample callrate computation."
-                    },
-                    "min_site_callrate": {
-                        "definition": "Filtering threshold to use for sample callrate computed on only predetermined QC variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering."
+                },
+                "sample_qc_mt_callrate_parameters": {
+                    "definition": "Parameters used to compute sample QC MT callrate.",
+                    "subfields": {
+                        "min_af": {
+                            "definition": "Minimum AF for inclusion in sample callrate computation."
+                        },
+                        "min_site_callrate": {
+                            "definition": "Filtering threshold to use for sample callrate computed on only predetermined QC variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering."
+                        }
                     }
                 }
             }
@@ -1130,6 +1130,12 @@
                 "pcs": {
                     "definition": "List of PCs used in the RF."
                 },
+                "include_v2_known_in_training": {
+                    "definition": ""
+                },
+                "min_prob_cutoffs": {
+                    "definition": ""
+                },
                 "v3_population_spike": {
                     "definition": "List of v3 populations spiked into the RF training data."
                 },
@@ -1158,343 +1164,229 @@
                 }
             }
         },
-        "outlier_detection_parameters": {
-            "definition": "The parameters used for filtering outlier samples by QC metrics.",
+        "sample_filters_parameters": {
+            "definition": "",
             "subfields": {
-                "regressed_filters_globals": {
-                    "definition": "The sample filter cutoffs determined by the residuals for each of the sample QC metrics after PCs computed during ancestry assignment were regressed out.",
+                "outlier_detection_parameters": {
+                    "definition": "The parameters used for filtering outlier samples by QC metrics.",
                     "subfields": {
-                        "lms": {
-                            "definition": "Linear regression statistics for QC metrics.",
+                        "regressed_filters_globals": {
+                            "definition": "The sample filter cutoffs determined by the residuals for each of the sample QC metrics after PCs computed during ancestry assignment were regressed out.",
                             "subfields": {
-                                "r_ti_tv": {
-                                    "definition": "Transition : transversion (TiTv) ratio regression statistics.",
+                                "lms": {
+                                    "definition": "Linear regression statistics for QC metrics.",
                                     "subfields": {
-                                        "beta": {
-                                            "definition": "Estimated regression coefficient for each PC."
+                                        "r_ti_tv": {
+                                            "definition": "Transition : transversion (TiTv) ratio regression statistics.",
+                                            "subfields": {
+                                                "beta": {
+                                                    "definition": "Estimated regression coefficient for each PC."
+                                                },
+                                                "standard_error": {
+                                                    "definition": "Estimated standard error for each PC."
+                                                },
+                                                "t_stat": {
+                                                    "definition": "t-statistic for each PC."
+                                                },
+                                                "p_value": {
+                                                    "definition": "p-value for each PC."
+                                                },
+                                                "multiple_standard_error": {
+                                                    "definition": "Estimated standard deviation of the random error."
+                                                },
+                                                "multiple_r_squared": {
+                                                    "definition": "Coefficient of determination for nested models."
+                                                },
+                                                "adjusted_r_squared": {
+                                                    "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
+                                                },
+                                                "f_stat": {
+                                                    "definition": "F-statistic for nested models."
+                                                },
+                                                "multiple_p_value": {
+                                                    "definition": "p-value for the F-test of nested models."
+                                                },
+                                                "n": {
+                                                    "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
+                                                }
+                                            }
                                         },
-                                        "standard_error": {
-                                            "definition": "Estimated standard error for each PC."
+                                        "r_insertion_deletion": {
+                                            "definition": "Insertion : deletion ratio regression statistics.",
+                                            "subfields": {
+                                                "beta": {
+                                                    "definition": "Estimated regression coefficient for each PC."
+                                                },
+                                                "standard_error": {
+                                                    "definition": "Estimated standard error for each PC."
+                                                },
+                                                "t_stat": {
+                                                    "definition": "t-statistic for each PC."
+                                                },
+                                                "p_value": {
+                                                    "definition": "p-value for each PC."
+                                                },
+                                                "multiple_standard_error": {
+                                                    "definition": "Estimated standard deviation of the random error."
+                                                },
+                                                "multiple_r_squared": {
+                                                    "definition": "Coefficient of determination for nested models."
+                                                },
+                                                "adjusted_r_squared": {
+                                                    "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
+                                                },
+                                                "f_stat": {
+                                                    "definition": "F-statistic for nested models."
+                                                },
+                                                "multiple_p_value": {
+                                                    "definition": "p-value for the F-test of nested models."
+                                                },
+                                                "n": {
+                                                    "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
+                                                }
+                                            }
                                         },
-                                        "t_stat": {
-                                            "definition": "t-statistic for each PC."
+                                        "r_het_hom_var": {
+                                            "definition": "Heterozygous : homozygous ratio regression statistics.",
+                                            "subfields": {
+                                                "beta": {
+                                                    "definition": "Estimated regression coefficient for each PC."
+                                                },
+                                                "standard_error": {
+                                                    "definition": "Estimated standard error for each PC."
+                                                },
+                                                "t_stat": {
+                                                    "definition": "t-statistic for each PC."
+                                                },
+                                                "p_value": {
+                                                    "definition": "p-value for each PC."
+                                                },
+                                                "multiple_standard_error": {
+                                                    "definition": "Estimated standard deviation of the random error."
+                                                },
+                                                "multiple_r_squared": {
+                                                    "definition": "Coefficient of determination for nested models."
+                                                },
+                                                "adjusted_r_squared": {
+                                                    "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
+                                                },
+                                                "f_stat": {
+                                                    "definition": "F-statistic for nested models."
+                                                },
+                                                "multiple_p_value": {
+                                                    "definition": "p-value for the F-test of nested models."
+                                                },
+                                                "n": {
+                                                    "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
+                                                }
+                                            }
                                         },
-                                        "p_value": {
-                                            "definition": "p-value for each PC."
-                                        },
-                                        "multiple_standard_error": {
-                                            "definition": "Estimated standard deviation of the random error."
-                                        },
-                                        "multiple_r_squared": {
-                                            "definition": "Coefficient of determination for nested models."
-                                        },
-                                        "adjusted_r_squared": {
-                                            "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
-                                        },
-                                        "f_stat": {
-                                            "definition": "F-statistic for nested models."
-                                        },
-                                        "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
-                                        },
-                                        "n": {
-                                            "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
+                                        "r_ti_tv_singleton": {
+                                            "definition": "Singleton transition : transversion (TiTv) ratio regression statistics.",
+                                            "subfields": {
+                                                "beta": {
+                                                    "definition": "Estimated regression coefficient for each PC."
+                                                },
+                                                "standard_error": {
+                                                    "definition": "Estimated standard error for each PC."
+                                                },
+                                                "t_stat": {
+                                                    "definition": "t-statistic for each PC."
+                                                },
+                                                "p_value": {
+                                                    "definition": "p-value for each PC."
+                                                },
+                                                "multiple_standard_error": {
+                                                    "definition": "Estimated standard deviation of the random error."
+                                                },
+                                                "multiple_r_squared": {
+                                                    "definition": "Coefficient of determination for nested models."
+                                                },
+                                                "adjusted_r_squared": {
+                                                    "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
+                                                },
+                                                "f_stat": {
+                                                    "definition": "F-statistic for nested models."
+                                                },
+                                                "multiple_p_value": {
+                                                    "definition": "p-value for the F-test of nested models."
+                                                },
+                                                "n": {
+                                                    "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
+                                                }
+                                            }
                                         }
                                     }
                                 },
-                                "r_insertion_deletion": {
-                                    "definition": "Insertion : deletion ratio regression statistics.",
+                                "qc_metrics_stats": {
+                                    "definition": "The statistics generated for outlier filter cutoffs based on the residuals for each of the hail sample QC metrics.",
                                     "subfields": {
-                                        "beta": {
-                                            "definition": "Estimated regression coefficient for each PC."
-                                        },
-                                        "standard_error": {
-                                            "definition": "Estimated standard error for each PC."
-                                        },
-                                        "t_stat": {
-                                            "definition": "t-statistic for each PC."
-                                        },
-                                        "p_value": {
-                                            "definition": "p-value for each PC."
-                                        },
-                                        "multiple_standard_error": {
-                                            "definition": "Estimated standard deviation of the random error."
-                                        },
-                                        "multiple_r_squared": {
-                                            "definition": "Coefficient of determination for nested models."
-                                        },
-                                        "adjusted_r_squared": {
-                                            "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
-                                        },
-                                        "f_stat": {
-                                            "definition": "F-statistic for nested models."
-                                        },
-                                        "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
-                                        },
-                                        "n": {
-                                            "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        }
-                                    }
-                                },
-                                "r_het_hom_var": {
-                                    "definition": "Heterozygous : homozygous ratio regression statistics.",
-                                    "subfields": {
-                                        "beta": {
-                                            "definition": "Estimated regression coefficient for each PC."
-                                        },
-                                        "standard_error": {
-                                            "definition": "Estimated standard error for each PC."
-                                        },
-                                        "t_stat": {
-                                            "definition": "t-statistic for each PC."
-                                        },
-                                        "p_value": {
-                                            "definition": "p-value for each PC."
-                                        },
-                                        "multiple_standard_error": {
-                                            "definition": "Estimated standard deviation of the random error."
-                                        },
-                                        "multiple_r_squared": {
-                                            "definition": "Coefficient of determination for nested models."
-                                        },
-                                        "adjusted_r_squared": {
-                                            "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
-                                        },
-                                        "f_stat": {
-                                            "definition": "F-statistic for nested models."
-                                        },
-                                        "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
-                                        },
-                                        "n": {
-                                            "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        }
-                                    }
-                                },
-                                "r_ti_tv_singleton": {
-                                    "definition": "Singleton transition : transversion (TiTv) ratio regression statistics.",
-                                    "subfields": {
-                                        "beta": {
-                                            "definition": "Estimated regression coefficient for each PC."
-                                        },
-                                        "standard_error": {
-                                            "definition": "Estimated standard error for each PC."
-                                        },
-                                        "t_stat": {
-                                            "definition": "t-statistic for each PC."
-                                        },
-                                        "p_value": {
-                                            "definition": "p-value for each PC."
-                                        },
-                                        "multiple_standard_error": {
-                                            "definition": "Estimated standard deviation of the random error."
-                                        },
-                                        "multiple_r_squared": {
-                                            "definition": "Coefficient of determination for nested models."
-                                        },
-                                        "adjusted_r_squared": {
-                                            "definition": "Adjusted multiple_r_squared taking into account degrees of freedom."
-                                        },
-                                        "f_stat": {
-                                            "definition": "F-statistic for nested models."
-                                        },
-                                        "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
-                                        },
-                                        "n": {
-                                            "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
-                                        }
-                                    }
-                                }
-                            },
-                            "qc_metrics_stats": {
-                                "definition": "The statistics generated for outlier filter cutoffs based on the residuals for each of the hail sample QC metrics.",
-                                "subfields": {
-                                    "n_snp_residual": {
-                                        "definition": "SNP residuals statistics.",
-                                        "subfields": {
-                                            "median": {
-                                                "definition": "The n_snp median."
-                                            },
-                                            "mad": {
-                                                "definition": "The n_snp median aboslute deviation(MAD)."
-                                            },
-                                            "lower": {
-                                                "definition": "The n_snp lower median absolute deviation threshold."
-                                            },
-                                            "upper": {
-                                                "definition": "The n_snp upper median absolute deviation threshold."
+                                        "r_ti_tv_residual": {
+                                            "definition": "Transition : transversion (TiTv) ratio residuals statistics.",
+                                            "subfields": {
+                                                "median": {
+                                                    "definition": "The transition : transversion (TiTv) ratio median."
+                                                },
+                                                "mad": {
+                                                    "definition": "The transition : transversion (TiTv) ratio median aboslute deviation(MAD)."
+                                                },
+                                                "lower": {
+                                                    "definition": "The transition : transversion (TiTv) ratio lower median absolute deviation threshold."
+                                                },
+                                                "upper": {
+                                                    "definition": "The transition : transversion (TiTv) ratio upper median absolute deviation threshold."
+                                                }
                                             }
-                                        }
-                                    },
-                                    "n_singleton_residual": {
-                                        "definition": "Singleton residuals statistics.",
-                                        "subfields": {
-                                            "median": {
-                                                "definition": "The n_singleton median."
-                                            },
-                                            "mad": {
-                                                "definition": "The n_singleton median aboslute deviation(MAD)."
-                                            },
-                                            "lower": {
-                                                "definition": "The n_singleton lower median absolute deviation threshold."
-                                            },
-                                            "upper": {
-                                                "definition": "The n_singleton upper median absolute deviation threshold."
+                                        },
+                                        "r_insertion_deletion_residual": {
+                                            "definition": "Insertion : deletion ratio residuals statistics.",
+                                            "subfields": {
+                                                "median": {
+                                                    "definition": "The insertion : deletion ratio median."
+                                                },
+                                                "mad": {
+                                                    "definition": "The insertion : deletion ratio median aboslute deviation(MAD)."
+                                                },
+                                                "lower": {
+                                                    "definition": "The insertion : deletion ratio lower median absolute deviation threshold."
+                                                },
+                                                "upper": {
+                                                    "definition": "The insertion : deletion ratio upper median absolute deviation threshold."
+                                                }
                                             }
-                                        }
-                                    },
-                                    "r_ti_tv_residual": {
-                                        "definition": "Transition/Transversion ratio residuals statistics.",
-                                        "subfields": {
-                                            "median": {
-                                                "definition": "The r_ti_tv median."
-                                            },
-                                            "mad": {
-                                                "definition": "The r_ti_tv median aboslute deviation(MAD)."
-                                            },
-                                            "lower": {
-                                                "definition": "The r_ti_tv lower median absolute deviation threshold."
-                                            },
-                                            "upper": {
-                                                "definition": "The r_ti_tv upper median absolute deviation threshold."
+                                        },
+                                        "r_het_hom_var_residual": {
+                                            "definition": "Heterozygous : homozygous ratio residuals statistics.",
+                                            "subfields": {
+                                                "median": {
+                                                    "definition": "The heterozygous : homozygous ratio median."
+                                                },
+                                                "mad": {
+                                                    "definition": "The heterozygous : homozygous ratio median aboslute deviation(MAD)."
+                                                },
+                                                "lower": {
+                                                    "definition": "The heterozygous : homozygous ratio lower median absolute deviation threshold."
+                                                },
+                                                "upper": {
+                                                    "definition": "The heterozygous : homozygous ratio upper median absolute deviation threshold."
+                                                }
                                             }
-                                        }
-                                    },
-                                    "r_insertion_deletion_residual": {
-                                        "definition": "Insertion/Deletion ratio residuals statistics.",
-                                        "subfields": {
-                                            "median": {
-                                                "definition": "The r_insertion_deletion median."
-                                            },
-                                            "mad": {
-                                                "definition": "The r_insertion_deletion median aboslute deviation(MAD)."
-                                            },
-                                            "lower": {
-                                                "definition": "The r_insertion_deletion lower median absolute deviation threshold."
-                                            },
-                                            "upper": {
-                                                "definition": "The r_insertion_deletion upper median absolute deviation threshold."
-                                            }
-                                        }
-                                    },
-                                    "n_insertion_residual": {
-                                        "definition": "Insertion residuals statistics.",
-                                        "subfields": {
-                                            "median": {
-                                                "definition": "The n_insertion median."
-                                            },
-                                            "mad": {
-                                                "definition": "The n_insertion median aboslute deviation(MAD)."
-                                            },
-                                            "lower": {
-                                                "definition": "The n_insertion lower median absolute deviation threshold."
-                                            },
-                                            "upper": {
-                                                "definition": "The n_insertion upper median absolute deviation threshold."
-                                            }
-                                        }
-                                    },
-                                    "n_deletion_residual": {
-                                        "definition": "Deletion residuals statistics.",
-                                        "subfields": {
-                                            "median": {
-                                                "definition": "The n_deletion median."
-                                            },
-                                            "mad": {
-                                                "definition": "The n_deletion median aboslute deviation(MAD)."
-                                            },
-                                            "lower": {
-                                                "definition": "The n_deletion lower median absolute deviation threshold."
-                                            },
-                                            "upper": {
-                                                "definition": "The n_deletion upper median absolute deviation threshold."
-                                            }
-                                        }
-                                    },
-                                    "r_het_hom_var_residual": {
-                                        "definition": "Het/HomVar ratio residuals statistics.",
-                                        "subfields": {
-                                            "median": {
-                                                "definition": "The r_het_hom_var median."
-                                            },
-                                            "mad": {
-                                                "definition": "The r_het_hom_var median aboslute deviation(MAD)."
-                                            },
-                                            "lower": {
-                                                "definition": "The r_het_hom_var lower median absolute deviation threshold."
-                                            },
-                                            "upper": {
-                                                "definition": "The r_het_hom_var upper median absolute deviation threshold."
-                                            }
-                                        }
-                                    },
-                                    "n_transition_residual": {
-                                        "definition": "Transition residuals statistics.",
-                                        "subfields": {
-                                            "median": {
-                                                "definition": "The n_transition median."
-                                            },
-                                            "mad": {
-                                                "definition": "The n_transition median aboslute deviation(MAD)."
-                                            },
-                                            "lower": {
-                                                "definition": "The n_transition lower median absolute deviation threshold."
-                                            },
-                                            "upper": {
-                                                "definition": "The n_transition upper median absolute deviation threshold."
-                                            }
-                                        }
-                                    },
-                                    "n_transversion_residual": {
-                                        "definition": "Transversion residuals statistics.",
-                                        "subfields": {
-                                            "median": {
-                                                "definition": "The n_transversion median."
-                                            },
-                                            "mad": {
-                                                "definition": "The n_transversion median aboslute deviation(MAD)."
-                                            },
-                                            "lower": {
-                                                "definition": "The n_transversion lower median absolute deviation threshold."
-                                            },
-                                            "upper": {
-                                                "definition": "The n_transversion upper median absolute deviation threshold."
-                                            }
-                                        }
-                                    },
-                                    "r_ti_tv_singleton_residual": {
-                                        "definition": "Transition/Transversion singleton ratio residuals statistics.",
-                                        "subfields": {
-                                            "median": {
-                                                "definition": "The r_ti_tv_singleton median."
-                                            },
-                                            "mad": {
-                                                "definition": "The r_ti_tv_singleton median aboslute deviation(MAD)."
-                                            },
-                                            "lower": {
-                                                "definition": "The r_ti_tv_singleton lower median absolute deviation threshold."
-                                            },
-                                            "upper": {
-                                                "definition": "The r_ti_tv_singleton upper median absolute deviation threshold."
-                                            }
-                                        }
-                                    },
-                                    "r_snp_indel_residual": {
-                                        "definition": "SNP/InDel ratio residuals statistics.",
-                                        "subfields": {
-                                            "median": {
-                                                "definition": "The r_snp_indel median."
-                                            },
-                                            "mad": {
-                                                "definition": "The r_snp_indel median aboslute deviation(MAD)."
-                                            },
-                                            "lower": {
-                                                "definition": "The r_snp_indel lower median absolute deviation threshold."
-                                            },
-                                            "upper": {
-                                                "definition": "The r_snp_indel upper median absolute deviation threshold."
+                                        },
+                                        "r_ti_tv_singleton_residual": {
+                                            "definition": "Singleton transition : transversion (TiTv) ratio residuals statistics.",
+                                            "subfields": {
+                                                "median": {
+                                                    "definition": "The singleton transition : transversion (TiTv) ratio median."
+                                                },
+                                                "mad": {
+                                                    "definition": "The singleton transition : transversion (TiTv) ratio median aboslute deviation(MAD)."
+                                                },
+                                                "lower": {
+                                                    "definition": "The singleton transition : transversion (TiTv) ratio lower median absolute deviation threshold."
+                                                },
+                                                "upper": {
+                                                    "definition": "The singleton transition : transversion (TiTv) ratio upper median absolute deviation threshold."
+                                                }
                                             }
                                         }
                                     }
@@ -1505,31 +1397,46 @@
                                 "regress_per_platform": {
                                     "definition": "If the regression per platform ran."
                                 },
-                                "regression_include_unreleasable": {
-                                    "definition": "Whether  unreleasable samples we included in the regression."
+                                "include_unreleasable_samples": {
+                                    "definition": "Whether unreleasable samples were included in the regression and filtering."
+                                },
+                                "qc_metrics": {
+                                    "definition": ""
+                                },
+                                "strata": {
+                                    "definition": ""
                                 }
                             }
-                        }
-                    }
-                },
-                "nearest_neighbor_filters_globals": {
-                    "definition": "Filters used in nearest neighbor filterings.",
-                    "subfields": {
-                        "n_pcs": {
-                            "definition": "Number of population PCs used for nearest neighbor determination."
                         },
-                        "n_neighbors": {
-                            "definition": "Number of nearest neighbors reported for each sample."
+                        "nearest_neighbor_filters_globals": {
+                            "definition": "Filters used in nearest neighbor filterings.",
+                            "subfields": {
+                                "n_pcs": {
+                                    "definition": "Number of population PCs used for nearest neighbor determination."
+                                },
+                                "n_neighbors": {
+                                    "definition": "Number of nearest neighbors reported for each sample."
+                                },
+                                "include_unreleasable_samples": {
+                                    "definition": "Whether unreleasable samples were included in the nearest neighbors identification and filtering."
+                                }
+                            }
+                        },
+                        "filter_qc_metrics": {
+                            "definition": "List of sample QC metrics used for the finalized outlier filtering. Note: This must be the same as, or a subset of `--filtering-qc-metrics` used when generating the filtering Table(s) desired for final filtering."
+                        },
+                        "ensemble_combination_operator": {
+                            "definition": "Logical operator to use for combining filtering methods for the ensemble method."
+                        },
+                        "include_unreleasable_samples": {
+                            "definition": "Whether  unreleasable samples were included in filtering."
                         }
                     }
                 }
             }
         },
-        "filter_qc_metrics": {
-            "definition": "List of sample QC metrics used for the finalized outlier filtering. Note: This must be the same as, or a subset of `--filtering-qc-metrics` used when generating the filtering Table(s) desired for final filtering."
-        },
-        "ensemble_combination_operator": {
-            "definition": "Logical operator to use for combining filtering methods for the ensemble method."
+        "date": {
+            "definition": ""
         }
     },
     "rows": {
@@ -1609,164 +1516,173 @@
                     "definition": "Remapping of 'primary_disease' into more general categories."
                 },
                 "v2_meta": {
-                    "v2_age": {
-                        "definition": "Last known sample age in gnomAD v2 metadata."
-                    },
-                    "v2_sex": {
-                        "definition": "Sample’s chromosomal sex in gnomAD v2 metadata."
-                    },
-                    "v2_hard_filters": {
-                        "definition": "Sample’s hard filters in gnomAD v2 (‘contamination’, ‘callrate’, ‘chimera’, ‘insert_size’, ‘coverage’, ‘ambiguous_sex’, and ‘sex_aneuploidy’)."
-                    },
-                    "v2_perm_filters": {
-                        "definition": "Permission filters in gnomad v2 ('tcga_tumor', 'tcga_barcode', 'tcga_below_30', 'specific_exclusion', 'esp', 'not_releasable', and 'syndip')."
-                    },
-                    "v2_pop_platform": {
-                        "definition": "Population- and platform-specific outlier filters from gnomAD v2."
-                    },
-                    "v2_related": {
-                        "definition": "Whether the sample was found to be related to another sample within gnomAD v2."
-                    },
-                    "v2_data_type": {
-                        "definition": "Sample datatype, exomes or genomes. Metadata from only gnomAD v2 exomes was merged into this v4 exome metadata Table."
-                    },
-                    "v2_product": {
-                        "definition": "Technology used within the Genomics Platform (e.g. PCR-Free Human WGS - 20x v1.1) from gnomAD v2 metadata."
-                    },
-                    "v2_product_simplified": {
-                        "definition": "Reduced list of sample products (‘v2_product’), where similar products are combined."
-                    },
-                    "v2_qc_platform": {
-                        "definition": "GnomAD v2 PCA imputed platform based on sample call rate."
-                    },
-                    "v2_project_id": {
-                        "definition": "GnomAD v2 project ID: RP project, C project ID (antiquated), or G project ID (antiquated). Will match ‘seq_project’ and ‘research_project_key’ if the project is in gnomAD v3 and began after cloud processing. C and G project IDs exist for older projects that began on-prem."
-                    },
-                    "v2_project_description": {
-                        "definition": "Text description of ‘v2_project_id’ (e.g. PROMIS, GTEx)."
-                    },
-                    "v2_internal": {
-                        "definition": "Whether or not the sample was processed at the Broad from gnomAD v2 metadata. If False, the sample was processed externally."
-                    },
-                    "v2_investigator": {
-                        "definition": "GnomAD v2 Collaborator, similar to ‘contact_pi’ which was used in gnomAD v3."
-                    },
-                    "v2_known_pop": {
-                        "definition": "Collaborator provided global population from gnomAD v2."
-                    },
-                    "v2_known_subpop": {
-                        "definition": "Collaborator provided subcontinental population from gnomAD v2."
-                    },
-                    "v2_pop": {
-                        "definition": "Sample's inferred global population label in gnomAD v2."
-                    },
-                    "v2_subpop": {
-                        "definition": "Sample's inferred subcontinental population label in gnomAD v2."
-                    },
-                    "v2_neuro": {
-                        "definition": "Whether the sample is in a neurology cohort and thus excluded from the v2 non-neuro subset. See gnomAD’s dataset selection for more information."
-                    },
-                    "v2_control": {
-                        "definition": "Whether the sample is a control in gnomAD v2. See gnomAD’s dataset selection for more information."
-                    },
-                    "v2_topmed": {
-                        "definition": "Whether the sample is a TOPMED sample in gnomAD v2. See gnomAD’s dataset selection for more information."
-                    },
-                    "v2_high_quality": {
-                        "definition": "Whether the sample is considered high-quality in gnomAD v2, i.e. sample does not have any hard filters or population and platform outlier filters."
-                    },
-                    "v2_release": {
-                        "definition": "Whether the sample is in the gnomAD v2 release (sample was high-quality and not related to any other sample in the v2 release dataset). The field equates to True if the sample is found in the v2/v3 relatedness HT with kinship coefficient > 0.4 (considered a duplicate), the v3 sample ID (‘s’ in this v3 dataset)) matches the previous v2 genome sample ID (‘s’ in the in the v2 dataset), or the newly added 1000 genome sample ID (‘s’ in the v3 dataset) matches a v2 exome sample ID (‘s’ in the v2 dataset) and the matching v2 exome was released."
-                    },
-                    "v2_release_2_0_2": {
-                        "definition": "Sample was included in the gnomAD v2.0.2 release."
-                    },
-                    "v2_f_stat": {
-                        "definition": "Inbreeding coefficient (excess heterozygosity) on chromosome X from the gnomAD v2 callset."
-                    },
-                    "v2_ambiguous_sex": {
-                        "definition": "Whether the sample was flagged for ambiguous sex in the gnomAD v2 callset."
-                    },
-                    "v2_sex_aneuploidy": {
-                        "definition": "Whether the sample was flagged for sex aneuploidy in the gnomAD v2 callset."
-                    },
-                    "v2_normalized_y_coverage": {
-                        "definition": "Normalized coverage on chromosome Y (normalized using chromosome 20) from the gnomAD v2 metadata."
-                    },
-                    "v2_freemix": {
-                        "definition": "Freemix value (verifyBamID defintion: Sequence-only estimate of contamination (0-1 scale)) from the gnomAD v2 callset."
+                    "definition": "",
+                    "subfields": {
+                        "v2_age": {
+                            "definition": "Last known sample age in gnomAD v2 metadata."
+                        },
+                        "v2_sex": {
+                            "definition": "Sampleâs chromosomal sex in gnomAD v2 metadata."
+                        },
+                        "v2_hard_filters": {
+                            "definition": "Sampleâs hard filters in gnomAD v2 (âcontaminationâ, âcallrateâ, âchimeraâ, âinsert_sizeâ, âcoverageâ, âambiguous_sexâ, and âsex_aneuploidyâ)."
+                        },
+                        "v2_perm_filters": {
+                            "definition": "Permission filters in gnomad v2 ('tcga_tumor', 'tcga_barcode', 'tcga_below_30', 'specific_exclusion', 'esp', 'not_releasable', and 'syndip')."
+                        },
+                        "v2_pop_platform_filters": {
+                            "definition": "Population- and platform-specific outlier filters from gnomAD v2."
+                        },
+                        "v2_related": {
+                            "definition": "Whether the sample was found to be related to another sample within gnomAD v2."
+                        },
+                        "v2_data_type": {
+                            "definition": "Sample datatype, exomes or genomes. Metadata from only gnomAD v2 exomes was merged into this v4 exome metadata Table."
+                        },
+                        "v2_product": {
+                            "definition": "Technology used within the Genomics Platform (e.g. PCR-Free Human WGS - 20x v1.1) from gnomAD v2 metadata."
+                        },
+                        "v2_product_simplified": {
+                            "definition": "Reduced list of sample products (âv2_productâ), where similar products are combined."
+                        },
+                        "v2_qc_platform": {
+                            "definition": "GnomAD v2 PCA imputed platform based on sample call rate."
+                        },
+                        "v2_project_id": {
+                            "definition": "GnomAD v2 project ID: RP project, C project ID (antiquated), or G project ID (antiquated). Will match âseq_projectâ and âresearch_project_keyâ if the project is in gnomAD v3 and began after cloud processing. C and G project IDs exist for older projects that began on-prem."
+                        },
+                        "v2_project_description": {
+                            "definition": "Text description of âv2_project_idâ (e.g. PROMIS, GTEx)."
+                        },
+                        "v2_internal": {
+                            "definition": "Whether or not the sample was processed at the Broad from gnomAD v2 metadata. If False, the sample was processed externally."
+                        },
+                        "v2_investigator": {
+                            "definition": "GnomAD v2 Collaborator, similar to âcontact_piâ which was used in gnomAD v3."
+                        },
+                        "v2_known_pop": {
+                            "definition": "Collaborator provided global population from gnomAD v2."
+                        },
+                        "v2_known_subpop": {
+                            "definition": "Collaborator provided subcontinental population from gnomAD v2."
+                        },
+                        "v2_pop": {
+                            "definition": "Sample's inferred global population label in gnomAD v2."
+                        },
+                        "v2_subpop": {
+                            "definition": "Sample's inferred subcontinental population label in gnomAD v2."
+                        },
+                        "v2_neuro": {
+                            "definition": "Whether the sample is in a neurology cohort and thus excluded from the v2 non-neuro subset. See gnomADâs dataset selection for more information."
+                        },
+                        "v2_control": {
+                            "definition": "Whether the sample is a control in gnomAD v2. See gnomADâs dataset selection for more information."
+                        },
+                        "v2_topmed": {
+                            "definition": "Whether the sample is a TOPMED sample in gnomAD v2. See gnomADâs dataset selection for more information."
+                        },
+                        "v2_high_quality": {
+                            "definition": "Whether the sample is considered high-quality in gnomAD v2, i.e. sample does not have any hard filters or population and platform outlier filters."
+                        },
+                        "v2_release": {
+                            "definition": "Whether the sample is in the gnomAD v2 release (sample was high-quality and not related to any other sample in the v2 release dataset). The field equates to True if the sample is found in the v2/v3 relatedness HT with kinship coefficient > 0.4 (considered a duplicate), the v3 sample ID (âsâ in this v3 dataset)) matches the previous v2 genome sample ID (âsâ in the in the v2 dataset), or the newly added 1000 genome sample ID (âsâ in the v3 dataset) matches a v2 exome sample ID (âsâ in the v2 dataset) and the matching v2 exome was released."
+                        },
+                        "v2_release_2_0_2": {
+                            "definition": "Sample was included in the gnomAD v2.0.2 release."
+                        },
+                        "v2_f_stat": {
+                            "definition": "Inbreeding coefficient (excess heterozygosity) on chromosome X from the gnomAD v2 callset."
+                        },
+                        "v2_ambiguous_sex": {
+                            "definition": "Whether the sample was flagged for ambiguous sex in the gnomAD v2 callset."
+                        },
+                        "v2_sex_aneuploidy": {
+                            "definition": "Whether the sample was flagged for sex aneuploidy in the gnomAD v2 callset."
+                        },
+                        "v2_normalized_y_coverage": {
+                            "definition": "Normalized coverage on chromosome Y (normalized using chromosome 20) from the gnomAD v2 metadata."
+                        },
+                        "v2_freemix": {
+                            "definition": "Freemix value (verifyBamID defintion: Sequence-only estimate of contamination (0-1 scale)) from the gnomAD v2 callset."
+                        }
                     }
                 },
                 "ukb_meta": {
-                    "ukb_projected_pop": {
-                        "definition": "Inferred population after projecting onto gnomAD population PCs for UKB samples."
-                    },
-                    "ukb_array_sex": {
-                        "definition": "Sample sex as inferred from genotype data for UKB samples."
-                    },
-                    "eid_26041": {
-                        "definition": "UK Biobank (UKB) sample ID from application 26041."
-                    },
-                    "eid_31063": {
-                        "definition": "UK Biobank (UKB) sample ID from application 31063."
-                    },
-                    "eid_48511": {
-                        "definition": "UK Biobank (UKB) sample ID from application 48511."
-                    },
-                    "ukb_withdraw": {
-                        "definition": "True if the UKB sample should be withdrawn from the VDS and any analyses based on withdraw list for application 31063 on 02/22/2022."
-                    },
-                    "ukb_batch": {
-                        "definition": "Sample's data tranche (150K, 100K, 200K, 300K)."
-                    },
-                    "ukb_batch_num": {
-                        "definition": "Numeric representation of batch. 0: 150K, 1: 100K, 2: 200K, 3: 300K."
-                    },
-                    "ukb_ambiguous_sex": {
-                        "definition": "Whether the sample was flagged for ambiguous sex in the UKB callset."
-                    },
-                    "ukb_sex_aneuploidy": {
-                        "definition": "Whether the sample was flagged for sex aneuploidy in the UKB callset."
-                    },
-                    "ukb_sex_imputation": {
-                        "is_female": {
-                            "definition": "Whether the sample was imputed female in the UKB callset (based on default values of Hail's impute_sex module)."
+                    "definition": "",
+                    "subfields": {
+                        "ukb_projected_pop": {
+                            "definition": "Inferred population after projecting onto gnomAD population PCs for UKB samples."
                         },
-                        "f_stat": {
-                            "definition": "Inbreeding coefficient (excess heterozygosity) on chromosome X from the UKB callset."
+                        "ukb_array_sex": {
+                            "definition": "Sample sex as inferred from genotype data for UKB samples."
                         },
-                        "n_called": {
-                            "definition": "Number of variants with a genotype call from the UKB callset."
+                        "eid_26041": {
+                            "definition": "UK Biobank (UKB) sample ID from application 26041."
                         },
-                        "expected_homs": {
-                            "definition": "Expected number of homozygotes from the UKB callset."
+                        "eid_31063": {
+                            "definition": "UK Biobank (UKB) sample ID from application 31063."
                         },
-                        "observed_homs": {
-                            "definition": "Observed number of homozygotes from the UKB callset."
+                        "eid_48511": {
+                            "definition": "UK Biobank (UKB) sample ID from application 48511."
                         },
-                        "chr20_mean_dp": {
-                            "definition": "Sample's mean depth across chromosome 20 from the UKB callset."
+                        "ukb_withdraw": {
+                            "definition": "True if the UKB sample should be withdrawn from the VDS and any analyses based on withdraw list for application 31063 on 02/22/2022."
                         },
-                        "chrX_mean_dp": {
-                            "definition": "Sample's mean depth across chromosome X from the UKB callset."
+                        "ukb_batch": {
+                            "definition": "Sample's data tranche (150K, 100K, 200K, 300K)."
                         },
-                        "chrY_mean_dp": {
-                            "definition": "Sample's mean depth across chromosome Y from the UKB callset."
+                        "ukb_batch_num": {
+                            "definition": "Numeric representation of batch. 0: 150K, 1: 100K, 2: 200K, 3: 300K."
                         },
-                        "chrX_ploidy": {
-                            "definition": "Sample's chromosome X ploidy (chrX_mean_dp normalized using chr20_mean_dp) from the UKB callset."
+                        "ukb_ambiguous_sex": {
+                            "definition": "Whether the sample was flagged for ambiguous sex in the UKB callset."
                         },
-                        "chrY_ploidy": {
-                            "definition": "Sample's chromosome Y ploidy (chrY_mean_dp normalized using chr20_mean_dp) from the UKB callset."
+                        "ukb_sex_aneuploidy": {
+                            "definition": "Whether the sample was flagged for sex aneuploidy in the UKB callset."
                         },
-                        "X_karyotype": {
-                            "definition": "Sample's chromosome X karyotype from the UKB callset."
-                        },
-                        "Y_karyotype": {
-                            "definition": "Sample's chromosome Y karyotype from the UKB callset."
-                        },
-                        "sex_karyotype": {
-                            "definition": "Sample's sex karyotype (combined X and Y karyotype) from the UKB callset."
+                        "ukb_sex_imputation": {
+                            "definition": "",
+                            "subfields": {
+                                "is_female": {
+                                    "definition": "Whether the sample was imputed female in the UKB callset (based on default values of Hail's impute_sex module)."
+                                },
+                                "f_stat": {
+                                    "definition": "Inbreeding coefficient (excess heterozygosity) on chromosome X from the UKB callset."
+                                },
+                                "n_called": {
+                                    "definition": "Number of variants with a genotype call from the UKB callset."
+                                },
+                                "expected_homs": {
+                                    "definition": "Expected number of homozygotes from the UKB callset."
+                                },
+                                "observed_homs": {
+                                    "definition": "Observed number of homozygotes from the UKB callset."
+                                },
+                                "chr20_mean_dp": {
+                                    "definition": "Sample's mean depth across chromosome 20 from the UKB callset."
+                                },
+                                "chrX_mean_dp": {
+                                    "definition": "Sample's mean depth across chromosome X from the UKB callset."
+                                },
+                                "chrY_mean_dp": {
+                                    "definition": "Sample's mean depth across chromosome Y from the UKB callset."
+                                },
+                                "chrX_ploidy": {
+                                    "definition": "Sample's chromosome X ploidy (chrX_mean_dp normalized using chr20_mean_dp) from the UKB callset."
+                                },
+                                "chrY_ploidy": {
+                                    "definition": "Sample's chromosome Y ploidy (chrY_mean_dp normalized using chr20_mean_dp) from the UKB callset."
+                                },
+                                "X_karyotype": {
+                                    "definition": "Sample's chromosome X karyotype from the UKB callset."
+                                },
+                                "Y_karyotype": {
+                                    "definition": "Sample's chromosome Y karyotype from the UKB callset."
+                                },
+                                "sex_karyotype": {
+                                    "definition": "Sample's sex karyotype (combined X and Y karyotype) from the UKB callset."
+                                }
+                            }
                         }
                     }
                 }
@@ -1904,9 +1820,6 @@
                 "chrx_frac_hom_alt_adj": {
                     "definition": "The fraction of high-quality homozygous alternate variants on chromosome X."
                 },
-                "is_female": {
-                    "definition": "Hail's impute sex boolean representation of XX."
-                },
                 "platform": {
                     "definition": "Platform assigned during platform inference."
                 },
@@ -1944,6 +1857,9 @@
                 "relationships": {
                     "definition": "Dictionary where key is relationship type and values are all sample IDs that have key relationship."
                 },
+                "relationships_high_quality": {
+                    "definition": ""
+                },
                 "gnomad_v3_duplicate": {
                     "definition": "Whether sample is a duplicate of one of all v3 samples."
                 },
@@ -1965,7 +1881,7 @@
                     "definition": "Sample's inferred ancestry group label."
                 },
                 "prob_afr": {
-                    "definition": "Random forest probability that the sample is of African/African American ancestry."
+                    "definition": "Random forest probability that the sample is of African/African-American ancestry."
                 },
                 "prob_ami": {
                     "definition": "Random forest probability that the sample is of Amish ancestry."
@@ -1996,9 +1912,6 @@
                 },
                 "training_sample": {
                     "definition": "Whether the sample was used in the Random Forest's training."
-                },
-                "original_training_pop": {
-                    "definition": "Training ancestry group label necessary for RF evaluation."
                 }
             }
         },
@@ -2047,19 +1960,36 @@
                     "definition": "Whether a sample failed hard filtering."
                 },
                 "relatedness_filters": {
-                    "definition": "Struct of relatedness filters.",
+                    "definition": "Struct of relatedness filters. Any sample that is hard-filtered will have a missing value for these annotations.",
                     "subfields": {
-                        "all_samples_related": {
-                            "definition": "Whether a sample is related to any sample in the raw callset."
+                        "related": {
+                            "definition": "Whether a sample was filtered for second-degree (or closer) relatedness in the ancestry inference PCA."
                         },
-                        "all_samples_duplicate_or_twin": {
-                            "definition": "Whether a sample is a duplicate or twin of any sample in the raw callset."
+                        "duplicate_or_twin": {
+                            "definition": "Whether a sample has a duplicate or twin among all samples that are not hard-filtered."
                         },
-                        "all_samples_parent_child": {
-                            "definition": "Whether a sample is part of a parent-child relationship with another sample in the raw callset."
+                        "parent_child": {
+                            "definition": "Whether a sample has a parent or child among all samples that are not hard-filtered."
                         },
-                        "all_samples_sibling": {
-                            "definition": "Whether a sample is a sibling to any sample in the raw callset."
+                        "sibling": {
+                            "definition": "Whether a sample has a sibling among all samples that are not hard-filtered."
+                        }
+                    }
+                },
+                "release_relatedness_filters": {
+                    "definition": "Struct of release sample relatedness filters. Any sample that is hard-filtered or outlier-filtered will have a missing value for these annotations.",
+                    "subfields": {
+                        "related": {
+                            "definition": "Whether a sample was filtered for second-degree (or closer) relatedness in the final release."
+                        },
+                        "duplicate_or_twin": {
+                            "definition": "Whether a release filtered sample has a duplicate or twin among all samples that are not hard-filtered or outlier-filtered."
+                        },
+                        "parent_child": {
+                            "definition": "Whether a release filtered sample has a parent or child among all samples that are not hard-filtered or outlier-filtered."
+                        },
+                        "sibling": {
+                            "definition": "Whether a release filtered sample has a sibling among all samples that are not hard-filtered or outlier-filtered."
                         }
                     }
                 },
