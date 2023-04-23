@@ -1522,10 +1522,10 @@
                             "definition": "Last known sample age in gnomAD v2 metadata."
                         },
                         "v2_sex": {
-                            "definition": "Sampleâs chromosomal sex in gnomAD v2 metadata."
+                            "definition": "Sample's chromosomal sex in gnomAD v2 metadata."
                         },
                         "v2_hard_filters": {
-                            "definition": "Sampleâs hard filters in gnomAD v2 (âcontaminationâ, âcallrateâ, âchimeraâ, âinsert_sizeâ, âcoverageâ, âambiguous_sexâ, and âsex_aneuploidyâ)."
+                            "definition": "Sample's hard filters in gnomAD v2 ('contamination', 'callrate', 'chimera', 'insert_size', 'coverage', 'ambiguous_sex', and 'sex_aneuploidy')."
                         },
                         "v2_perm_filters": {
                             "definition": "Permission filters in gnomad v2 ('tcga_tumor', 'tcga_barcode', 'tcga_below_30', 'specific_exclusion', 'esp', 'not_releasable', and 'syndip')."
@@ -1543,22 +1543,22 @@
                             "definition": "Technology used within the Genomics Platform (e.g. PCR-Free Human WGS - 20x v1.1) from gnomAD v2 metadata."
                         },
                         "v2_product_simplified": {
-                            "definition": "Reduced list of sample products (âv2_productâ), where similar products are combined."
+                            "definition": "Reduced list of sample products ('v2_product'), where similar products are combined."
                         },
                         "v2_qc_platform": {
                             "definition": "GnomAD v2 PCA imputed platform based on sample call rate."
                         },
                         "v2_project_id": {
-                            "definition": "GnomAD v2 project ID: RP project, C project ID (antiquated), or G project ID (antiquated). Will match âseq_projectâ and âresearch_project_keyâ if the project is in gnomAD v3 and began after cloud processing. C and G project IDs exist for older projects that began on-prem."
+                            "definition": "GnomAD v2 project ID: RP project, C project ID (antiquated), or G project ID (antiquated). Will match 'seq_project' and 'research_project_key' if the project is in gnomAD v3 and began after cloud processing. C and G project IDs exist for older projects that began on-prem."
                         },
                         "v2_project_description": {
-                            "definition": "Text description of âv2_project_idâ (e.g. PROMIS, GTEx)."
+                            "definition": "Text description of 'v2_project_id' (e.g. PROMIS, GTEx)."
                         },
                         "v2_internal": {
                             "definition": "Whether or not the sample was processed at the Broad from gnomAD v2 metadata. If False, the sample was processed externally."
                         },
                         "v2_investigator": {
-                            "definition": "GnomAD v2 Collaborator, similar to âcontact_piâ which was used in gnomAD v3."
+                            "definition": "GnomAD v2 Collaborator, similar to 'contact_pi' which was used in gnomAD v3."
                         },
                         "v2_known_pop": {
                             "definition": "Collaborator provided global population from gnomAD v2."
@@ -1573,19 +1573,19 @@
                             "definition": "Sample's inferred subcontinental population label in gnomAD v2."
                         },
                         "v2_neuro": {
-                            "definition": "Whether the sample is in a neurology cohort and thus excluded from the v2 non-neuro subset. See gnomADâs dataset selection for more information."
+                            "definition": "Whether the sample is in a neurology cohort and thus excluded from the v2 non-neuro subset. See gnomAD's dataset selection for more information."
                         },
                         "v2_control": {
-                            "definition": "Whether the sample is a control in gnomAD v2. See gnomADâs dataset selection for more information."
+                            "definition": "Whether the sample is a control in gnomAD v2. See gnomAD's dataset selection for more information."
                         },
                         "v2_topmed": {
-                            "definition": "Whether the sample is a TOPMED sample in gnomAD v2. See gnomADâs dataset selection for more information."
+                            "definition": "Whether the sample is a TOPMED sample in gnomAD v2. See gnomAD's dataset selection for more information."
                         },
                         "v2_high_quality": {
                             "definition": "Whether the sample is considered high-quality in gnomAD v2, i.e. sample does not have any hard filters or population and platform outlier filters."
                         },
                         "v2_release": {
-                            "definition": "Whether the sample is in the gnomAD v2 release (sample was high-quality and not related to any other sample in the v2 release dataset). The field equates to True if the sample is found in the v2/v3 relatedness HT with kinship coefficient > 0.4 (considered a duplicate), the v3 sample ID (âsâ in this v3 dataset)) matches the previous v2 genome sample ID (âsâ in the in the v2 dataset), or the newly added 1000 genome sample ID (âsâ in the v3 dataset) matches a v2 exome sample ID (âsâ in the v2 dataset) and the matching v2 exome was released."
+                            "definition": "Whether the sample is in the gnomAD v2 release (sample was high-quality and not related to any other sample in the v2 release dataset). The field equates to True if the sample is found in the v2/v3 relatedness HT with kinship coefficient > 0.4 (considered a duplicate), the v3 sample ID ('s' in this v3 dataset)) matches the previous v2 genome sample ID ('s' in the in the v2 dataset), or the newly added 1000 genome sample ID ('s' in the v3 dataset) matches a v2 exome sample ID ('s' in the v2 dataset) and the matching v2 exome was released."
                         },
                         "v2_release_2_0_2": {
                             "definition": "Sample was included in the gnomAD v2.0.2 release."
