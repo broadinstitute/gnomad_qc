@@ -64,13 +64,13 @@ def get_project_meta() -> hl.Table:
 
     # Add an annotation at the project_meta level indicating the sample belongs to UKB.
     project_meta_expr = ht.project_meta.annotate(
-        UKB_sample=ht.project_meta.project == "UKB"
+        ukb_sample=ht.project_meta.project == "UKBB"
     )
     # Add GATK version to project metadata.
     project_meta_expr = project_meta_expr.annotate(
         gatk_version=hl.or_else(
             gatk_versions.ht()[ht.key].gatk_version,
-            hl.or_missing(project_meta_expr.UKB_sample, "4.0.10.1"),
+            hl.or_missing(project_meta_expr.ukb_sample, "4.0.10.1"),
         )
     )
     # Add an annotation indicating whether the sample was processed with the fixed
