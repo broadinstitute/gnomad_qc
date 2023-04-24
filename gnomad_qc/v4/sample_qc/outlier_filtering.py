@@ -913,6 +913,8 @@ def main(args):
     filtering_qc_metrics = args.filtering_qc_metrics
     apply_r_ti_tv_singleton_filter = args.apply_n_singleton_filter_to_r_ti_tv_singleton
     include_unreleasable_samples = args.include_unreleasable_samples
+    nn_platform_stratified = args.nearest_neighbors_per_platform
+    nn_approximation = args.use_nearest_neighbors_approximation
 
     if args.apply_n_singleton_filter_to_r_ti_tv_singleton:
         err_msg = ""
@@ -987,7 +989,7 @@ def main(args):
         res = outlier_resources.determine_nearest_neighbors
         res.check_resource_existence()
 
-        if args.nearest_neighbors_per_platform:
+        if nn_platform_stratified:
             strata = {"platform": res.platform_ht.ht()[sample_qc_ht.key].qc_platform}
         else:
             strata = None
@@ -1000,7 +1002,7 @@ def main(args):
             n_jobs=args.n_jobs,
             add_neighbor_distances=args.get_neighbor_distances,
             distance_metric=args.distance_metric,
-            use_approximation=args.use_nearest_neighbors_approximation,
+            use_approximation=nn_approximation,
             n_trees=args.n_trees,
         )
         ht.annotate_globals(
@@ -1019,7 +1021,9 @@ def main(args):
             nn_ht=res.nn_ht.ht(),
         )
         ht.annotate_globals(
-            include_unreleasable_samples=include_unreleasable_samples
+            include_unreleasable_samples=include_unreleasable_samples,
+            nearest_neighbors_platform_stratified=nn_platform_stratified,
+            nearest_neighbors_approximation=nn_approximation,
         ).write(res.nn_filter_ht.path, overwrite=overwrite)
 
     if args.create_finalized_outlier_filter:
