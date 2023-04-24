@@ -14,6 +14,8 @@ from typing import (  # TODO: REMOVE WITH ANNOTATE_FREQ
 import hail as hl
 from gnomad.resources.grch38.gnomad import (
     SUBSETS,  # TODO: subsets will be changed to UKB, non-UKB, non-TopMed
+)
+from gnomad.resources.grch38.gnomad import (
     DOWNSAMPLINGS,
     POPS,
     POPS_TO_REMOVE_FOR_POPMAX,
@@ -136,9 +138,7 @@ def annotate_gatk_version(mt: hl.MatrixTable) -> hl.MatrixTable:
     :return mt:
     """
     meta_ht = meta.ht()
-    gatk_ht = hl.read_table(
-        "gs://gnomad-tmp/freq/v4_sample_htc_versions.ht"
-    ).key_by(
+    gatk_ht = hl.read_table("gs://gnomad-tmp/freq/v4_sample_htc_versions.ht").key_by(
         "s"
     )  # TODO: Discuss if this should be a resource or annotation on metadata, misssing GATK version info for UKB samples
     mt = mt.annotate_cols(
@@ -153,7 +153,9 @@ def annotate_gatk_version(mt: hl.MatrixTable) -> hl.MatrixTable:
     return mt
 
 
-def subtract_high_ab_hets_from_ac(ht: hl.Table, af_threshold: float = 0.01) -> hl.Table:
+def subtract_high_ab_hets_from_ac(
+    mt: hl.MatrixTable, af_threshold: float = 0.01
+) -> hl.Table:
     """
     Correct frequencies at sites with an AF greater than the af_threshold.
 
@@ -161,10 +163,10 @@ def subtract_high_ab_hets_from_ac(ht: hl.Table, af_threshold: float = 0.01) -> h
     :param af_threshold: AF threshold at which to correct frequency. Default is 0.01.
     :return: Hail Table with adjusted frequencies.
     """
-    ht = ht.annotate(
+    mt = mt.annotate_rows(
         ab_adjusted_freq=hl.if_else(
-            ht.freq[0].AF < af_threshold,
-            ht.freq,
+            mt.freq[0].AF < af_threshold,
+            mt.freq,
             hl.map(
                 lambda f, g: hl.struct(
                     AC=hl.int32(f.AC - g),
@@ -172,21 +174,22 @@ def subtract_high_ab_hets_from_ac(ht: hl.Table, af_threshold: float = 0.01) -> h
                     AN=f.AN,
                     homozygote_count=f.homozygote_count,
                 ),
-                ht.freq,
-                ht.high_ab_hets_by_group_membership,
+                mt.freq,
+                mt.high_ab_hets_by_group_membership,
             ),
         )
     )
 
-    return ht
+    return mt
+
 
 # TODO: not sure if this step will be very expensive, may need to combine with functions
 def set_high_ab_het_to_hom_alt(
-        mt: hl.MatrixTable,
-        gatk_expr: hl.expr.StringExpression,
-        ab_cutoff: hl.float = 0.9,
-        af_cutoff: float = 0.01,
-        gatk_versions_to_fix: hl.expr.SetExpression = hl.set(["4.0.10.1", "4.1.0.0"]),
+    mt: hl.MatrixTable,
+    gatk_expr: hl.expr.StringExpression,
+    ab_cutoff: hl.float = 0.9,
+    af_cutoff: float = 0.01,
+    gatk_versions_to_fix: hl.expr.SetExpression = hl.set(["4.0.10.1", "4.1.0.0"]),
 ) -> hl.MatrixTable:
     """
     Adjust MT genotypes with temporary fix for the depletion of homozygous alternate genotypes.
@@ -195,52 +198,48 @@ def set_high_ab_het_to_hom_alt(
     https://gnomad.broadinstitute.org/blog/2020-10-gnomad-v3-1-new-content-methods-annotations-and-data-availability/#tweaks-and-updates
 
     :param mt: Input MT that needs hom alt genotype fix
-    :param het_non_ref_expr: Expression indicating whether the original genotype (pre split multi) is het non ref
-    :param af_expr: Allele frequency expression to determine which variants need the hom alt fix
+    :param gatk_expr: Expression indicating which version of GATK a sample's gVCF was called with.
     :param af_cutoff: Allele frequency cutoff for variants that need the hom alt fix. Default is 0.01
     :param ab_cutoff: Allele balance cutoff to determine which genotypes need the hom alt fix. Default is 0.9
+    :param gatk_versions_to_fix: Set of GATK versions impacted by hom alt depletion. Default is {"4.0.10.1", "4.1.0.0"}.
     :return: MatrixTable with genotypes adjusted for the hom alt depletion fix
     """
     return mt.annotate_entries(
         GT=hl.if_else(
-            (mt.AD[1] / mt.DP > ab_cutoff)
-            & mt.adj
-            & mt.GT.is_het_ref()
-            & (gatk_versions_to_fix.contains(gatk_expr))
-            & ~mt._het_non_ref
+            needs_high_ab_het_fix_expr(mt, gatk_expr, ab_cutoff, gatk_versions_to_fix)
             & (mt.ab_adjusted_freq[0].AF < af_cutoff),
             hl.call(1, 1),
             mt.GT,
         )
     )
 
+
 def compute_age_hist(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
-    Compute age histograms for each variant
+    Compute age histograms for each variant.
+
+    :param mt: Input MT with age annotation.
+    :return: MatrixTable with age histogram annotations.
     """
-    mt = mt.annotate_cols(
-        age=hl.if_else(
-            hl.is_defined(mt.meta.project_meta.age),
-            mt.meta.project_meta.age,
-            hl.missing(hl.tfloat64), # NOTE by QH: age_alt doesn't exist, set to missing
-            # NOTE: most age data is stored as integers in 'age' annotation, but for a select number of samples, age is stored as a bin range and 'age_alt' corresponds to an integer in the middle of the bin # noqa
-        )
-    )
-    mt = mt.annotate_rows(**age_hists_expr(mt.adj, mt.GT, mt.age))
+    mt = mt.annotate_rows(**age_hists_expr(mt.adj, mt.GT, mt.meta.project_meta.age))
 
     # Compute callset-wide age histogram global
     mt = mt.annotate_globals(
-        age_distribution=mt.aggregate_cols(hl.agg.hist(mt.age, 30, 80, 10))
+        age_distribution=mt.aggregate_cols(
+            hl.agg.hist(mt.meta.project_meta.age, 30, 80, 10)
+        )
     )
     return mt
 
+
 def annotate_quality_metrics_hist(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
-    Annotate quality metrics histograms
+    Annotate quality metrics histograms.
+
+    :param mt: Input MT with age annotation.
+    :return: MatrixTable with age histogram annotations.
     """
-    mt = mt.annotate_rows(
-        qual_hists=qual_hist_expr(mt.GT, mt.GQ, mt.DP, mt.AD, mt.adj)
-    )
+    mt = mt.annotate_rows(qual_hists=qual_hist_expr(mt.GT, mt.GQ, mt.DP, mt.AD, mt.adj))
     mt = mt.annotate_rows(
         qual_hists=hl.Struct(
             **{
@@ -255,42 +254,36 @@ def annotate_quality_metrics_hist(mt: hl.MatrixTable) -> hl.MatrixTable:
     )
     return mt
 
-def generate_faf_popmax(ht: hl.Table) -> hl.Table:
+
+def generate_faf_popmax(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
-    Computing filtering allele frequencies and popmax with the AB-ajusted frequencies.
-    :param ht: Hail Table containing freq, ab_adjusted_freq, high_ab_het annotations.
-    :return: Hail Table with faf & popmax.
+    Compute filtering allele frequencies and popmax with the AB-adjusted frequencies.
+
+    :param mt: Hail Table containing freq, ab_adjusted_freq, high_ab_het annotations.
+    :return: Hail MatirxTable with faf & popmax annotations.
     """
     faf, faf_meta = faf_expr(
-        ht.ab_adjusted_freq, ht.freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX
+        mt.ab_adjusted_freq, mt.freq_meta, mt.locus, POPS_TO_REMOVE_FOR_POPMAX
     )
-    ht = ht.select(
-        "freq",
-        "high_ab_hets_by_group_membership",
-        "ab_adjusted_freq",
-        "InbreedingCoeff",
-        "qual_hists",
-        "raw_qual_hists",
+    mt = mt.select_rows(
         faf=faf,
         popmax=pop_max_expr(
-            ht.ab_adjusted_freq,
-            ht.freq_meta,
-            POPS_TO_REMOVE_FOR_POPMAX),
+            mt.ab_adjusted_freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX
+        ),
     )
-    ht = ht.annotate_globals(
+    mt = mt.annotate_globals(
         faf_meta=faf_meta,
         faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-"),
     )
-    ht = ht.annotate(
-        popmax=ht.popmax.annotate(
-            faf95=ht.faf[
-                ht.faf_meta.index(
-                    lambda x: x.values() == ["adj", ht.popmax.pop]
-                )
+    mt = mt.annotate_rows(
+        popmax=mt.popmax.annotate(
+            faf95=mt.faf[
+                mt.faf_meta.index(lambda x: x.values() == ["adj", mt.popmax.pop])
             ].faf95
         )
     )
-    return ht
+    return mt
+
 
 def main(args):  # noqa: D103
     # TODO: Determine if splitting subset freq from whole callset agg
@@ -309,6 +302,7 @@ def main(args):  # noqa: D103
     # possibly sample_meta=True if added
     vds = get_gnomad_v4_vds(test=test)
     meta_ht = meta.ht()
+    final_anns = []
 
     logger.info("Adding metadata to VDS variant data cols...")
     vds = hl.vds.VariantDataset(
@@ -367,42 +361,51 @@ def main(args):  # noqa: D103
             additional_strata_grouping_expr={"pop": mt.meta.population_inference.pop},
         )
         mt = annotate_high_ab_hets_by_group_membership(mt, gatk_expr=mt.gatk_version)
-        ht = mt.rows()
+        final_anns.append("freq", "high_ab_hets_by_group_membership")
 
     if adjust_freqs:
         # TODO: This should apply fix given the AF threshold and adjusts the
         # frequencies using the list created above
-        ht = subtract_high_ab_hets_from_ac(ht, af_threshold) # TODO: if not assign parameters, there will
+        mt = subtract_high_ab_hets_from_ac(mt, af_threshold)
+        final_anns.append(
+            "ab_adjusted_freq"
+        )  # NOTE: Do we want to keep original freqs?
 
-    logger.info(
-        "Setting het genotypes at sites with >1% AF (using adjusted frequencies) and "
-        "> 0.9 AB to homalt..."
-    )
-    # using the adjusted allele frequencies to fix the het to hom alt
-    mt = set_high_ab_het_to_hom_alt(mt, gatk_expr=mt.gatk_version)
+    if args.set_high_ab_het_to_hom_alt:
+        logger.info(
+            "Setting het genotypes at sites with >1% AF (using adjusted frequencies)"
+            " and > 0.9 AB to homalt..."
+        )
+        # using the adjusted allele frequencies to fix the het to hom alt
+        mt = set_high_ab_het_to_hom_alt(mt, gatk_expr=mt.gatk_version)
 
-    logger.info("Calculating InbreedingCoeff...")
-    # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify # noqa
-    mt = mt.annotate_rows(
-        InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT)
-    )
+    if args.calculate_inbreeding_coeff:
+        logger.info("Calculating InbreedingCoeff...")
+        # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify # noqa
+        mt = mt.annotate_rows(InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT))
+        final_anns.append("InbreedingCoeff")
 
-    logger.info("Computing age histograms for each variant...")
-    mt = compute_age_hist(mt)
-    # TODO: this needs to be output somewhere.
+    if args.calculate_hists:
+        logger.info("Computing age histograms for each variant...")
+        mt = compute_age_hist(mt)
+        final_anns.append("age_hist_het", "age_hist_hom")
+        # TODO: this needs to be output somewhere.
 
-    logger.info("Annotating quality metrics histograms...")
-    mt = annotate_quality_metrics_hist(mt)
-    ht = mt.rows()
+        logger.info("Annotating quality metrics histograms...")
+        mt = annotate_quality_metrics_hist(mt)
+        final_anns.append("qual_hists", "raw_qual_hists")
 
     if args.faf_popmax:
         logger.info("computing FAF & popmax...")
-        ht = generate_faf_popmax(ht)
+        mt = generate_faf_popmax(mt)
+        final_anns.append("faf", "popmax")
 
     logger.info("Writing frequency table...")
+    ht = mt.select_rows(final_anns)
     ht = ht.write(
-        #get_freq(hom_alt_adjustment=adjust_freqs, test=test).path, #TODO: not woking for me, maybe have to install our branch for starting a cluster?
-        "gs://gnomad-tmp/qin/test_freq.ht",
+        get_freq(
+            test=test, hom_alt_adjustment=adjust_freqs
+        ).path,  # TODO: not woking for me, maybe have to install our branch for starting a cluster?
         overwrite=True,
     )
 
@@ -442,14 +445,6 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--faf-popmax",
-        help=(
-            "compute filtering allele frequency and population that has the highest AF "
-            "based on the adjusted allele frequency"
-        ),
-        action="store_true",
-    )
-    parser.add_argument(
         "--af-threshold",
         help=(
             "Threshold at which to adjust site group frequencies at sites for"
@@ -458,6 +453,29 @@ if __name__ == "__main__":
         ),
         type=float,
         default=0.01,
+    )
+    parser.add_argument(
+        "--set-high-ab-het-to-hom-alt",
+        help="Set high AB hets to hom alt.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--calculate-inbreeding-coeff",
+        help="Calculate inbreeding coefficient.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--calculate-hists",
+        help="Calculate age histograms and quality metrics histograms.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--faf-popmax",
+        help=(
+            "compute filtering allele frequency and population that has the highest AF "
+            "based on the adjusted allele frequency"
+        ),
+        action="store_true",
     )
 
     args = parser.parse_args()
