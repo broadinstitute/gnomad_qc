@@ -51,8 +51,6 @@ logger.setLevel(logging.INFO)
 # TODO: Should we have a joint HT that has v3 info? Including adding v3 relationships
 #  to the relationships set, or have different annotation for that. gnomad_production
 #  issue #902.
-# TODO: Add GATK version resource and an annotation for it. gnomad_production
-#  issue #903.
 # TODO: Add an annotation indicating a sample is a test sample like CHM.
 #  gnomad_production issue #905.
 # TODO: Add bi-allelic sample QC metrics. gnomad_production issue #906.
