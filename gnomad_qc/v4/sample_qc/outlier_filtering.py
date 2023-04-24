@@ -728,7 +728,9 @@ def create_finalized_outlier_filter_ht(
                     update_g = filter_globals[g]
                 updated_globals[g] = update_g
 
-            ht = ht.select_globals(**{f"{filter_method}_globals": updated_globals})
+            ht = ht.select_globals(
+                **{f"{filter_method}_globals": hl.struct(**updated_globals)}
+            )
             hts.append(ht)
 
     # If multiple filtering Tables are provided, join all filtering Tables, and make
