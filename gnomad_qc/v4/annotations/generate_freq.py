@@ -1,15 +1,6 @@
 """Script to generate the frequency data annotations across v4 exomes."""  # TODO: Expand on script description once nearing completion.
 import argparse
 import logging
-from typing import (  # TODO: REMOVE WITH ANNOTATE_FREQ
-    Any,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Union,
-)
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import (
@@ -23,7 +14,6 @@ from gnomad.resources.grch38.gnomad import (
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
-    annotate_adj,
     annotate_freq,
     bi_allelic_site_inbreeding_expr,
     faf_expr,
@@ -364,8 +354,6 @@ def main(args):  # noqa: D103
         final_anns.append("freq", "high_ab_hets_by_group_membership")
 
     if adjust_freqs:
-        # TODO: This should apply fix given the AF threshold and adjusts the
-        # frequencies using the list created above
         mt = subtract_high_ab_hets_from_ac(mt, af_threshold)
         final_anns.append(
             "ab_adjusted_freq"
@@ -401,7 +389,7 @@ def main(args):  # noqa: D103
         final_anns.append("faf", "popmax")
 
     logger.info("Writing frequency table...")
-    ht = mt.select_rows(final_anns)
+    ht = mt.select_rows(*final_anns)
     ht = ht.write(
         get_freq(
             test=test, hom_alt_adjustment=adjust_freqs
