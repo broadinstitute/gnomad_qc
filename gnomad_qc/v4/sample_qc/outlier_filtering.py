@@ -146,6 +146,9 @@ def apply_filter(
         ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
             ht, sample_qc_ht, filtering_method, ann_exprs, **kwargs
         )
+    ht = ht.annotate_globals(
+        apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter
+    )
 
     return ht
 
