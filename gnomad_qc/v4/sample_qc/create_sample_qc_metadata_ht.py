@@ -19,7 +19,7 @@ from hail.utils.misc import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import all_ukb_samples_to_remove, get_gnomad_v4_vds
-from gnomad_qc.v4.resources.meta import meta, project_meta
+from gnomad_qc.v4.resources.meta import gatk_versions, meta, project_meta
 from gnomad_qc.v4.resources.sample_qc import (
     contamination,
     finalized_outlier_filtering,
@@ -56,6 +56,32 @@ logger.setLevel(logging.INFO)
 # TODO: Add an annotation indicating a sample is a test sample like CHM.
 #  gnomad_production issue #905.
 # TODO: Add bi-allelic sample QC metrics. gnomad_production issue #906.
+
+
+def get_project_meta() -> hl.Table:
+    """Load project-specific metadata Table and add GATK version."""
+    fixed_homalt_ver = hl.literal({"4.1.4.1", "4.1.8.0"})
+    ht = project_meta.ht()
+
+    # Add an annotation at the project_meta level indicating the sample belongs to UKB.
+    project_meta_expr = ht.project_meta.annotate(
+        UKB_sample=ht.project_meta.project == "UKB"
+    )
+    # Add GATK version to project metadata.
+    project_meta_expr = project_meta_expr.annotate(
+        gatk_version=hl.or_else(
+            gatk_versions.ht()[ht.key].gatk_version,
+            hl.or_missing(project_meta_expr.UKB_sample, "4.0.10.1"),
+        )
+    )
+    # Add an annotation indicating whether the sample was processed with the fixed
+    # homalt model.
+    project_meta_expr = project_meta_expr.annotate(
+        fixed_homalt_model=fixed_homalt_ver.contains(project_meta_expr.gatk_version),
+    )
+    ht = ht.annotate(project_meta=project_meta_expr)
+
+    return ht
 
 
 def get_sex_imputation_ht() -> hl.Table:
@@ -569,7 +595,7 @@ def get_sample_qc_meta_ht(base_ht: hl.Table) -> hl.Table:
 
     sample_qc_meta = {
         "project_meta": {
-            "ann_ht": project_meta.ht(),
+            "ann_ht": get_project_meta(),
             "ann_top_level": True,
             "global_top_level": True,
             # Note: 71 samples are found in the project meta HT, but are not found in
