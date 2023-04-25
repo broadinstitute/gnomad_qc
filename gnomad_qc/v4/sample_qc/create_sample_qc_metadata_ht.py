@@ -35,6 +35,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     sample_qc_mt_callrate,
     sex,
 )
+from gnomad_qc.v4.resources.variant_qc import NA12878, SYNDIP
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("sample_metadata")
@@ -51,8 +52,6 @@ logger.setLevel(logging.INFO)
 # TODO: Should we have a joint HT that has v3 info? Including adding v3 relationships
 #  to the relationships set, or have different annotation for that. gnomad_production
 #  issue #902.
-# TODO: Add an annotation indicating a sample is a test sample like CHM.
-#  gnomad_production issue #905.
 
 
 def get_project_meta() -> hl.Table:
@@ -540,12 +539,11 @@ def get_sample_filter_ht(base_ht: hl.Table, relationship_ht: hl.Table) -> hl.Tab
         [base_ht] + sample_filters,
     )
 
-    # Annotate control samples .
-    truth_samples = hl.literal([SYNDIP, NA12878])
-    left_ht = left_ht.annotate(
-        sample_filters=left_ht.sample_filters.annotate(
-            control=(truth_samples.contains(left_ht.s))
-        )
+    # Annotate control samples that are used in variant QC, but not included in the
+    # release.
+    control_samples = hl.literal({SYNDIP, NA12878})
+    sample_filters_ht = sample_filters_ht.annotate(
+        control=(control_samples.contains(sample_filters_ht.s))
     )
     sample_filters_ht = sample_filters_ht.checkpoint(
         new_temp_file("sample_filters", extension="ht"), overwrite=True
@@ -687,6 +685,7 @@ def main(args):
             ht.project_meta.releasable
             & hq_expr
             & ~ht.sample_filters.release_relatedness_filters.related
+            & ~ht.sample_filters.control
         ),
     )
     ht = ht.annotate_globals(date=datetime.now().isoformat())
