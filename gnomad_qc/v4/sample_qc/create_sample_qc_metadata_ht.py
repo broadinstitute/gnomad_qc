@@ -55,7 +55,6 @@ logger.setLevel(logging.INFO)
 #  issue #903.
 # TODO: Add an annotation indicating a sample is a test sample like CHM.
 #  gnomad_production issue #905.
-# TODO: Add bi-allelic sample QC metrics. gnomad_production issue #906.
 
 
 def get_sex_imputation_ht() -> hl.Table:
