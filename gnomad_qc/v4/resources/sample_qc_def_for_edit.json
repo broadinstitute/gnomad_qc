@@ -3,8 +3,12 @@
         "sample_qc_parameters": {
             "definition": "Parameters passed to hail's sample_qc module.",
             "subfields": {
-                "gq_bins": "Tuple containing cutoffs for genotype quality (GQ) scores.",
-                "dp_bins": "Tuple containing cutoffs for depth (DP) scores."
+                "gq_bins": {
+                    "definition": "Tuple containing cutoffs for genotype quality (GQ) scores."
+                },
+                "dp_bins": {
+                    "definition": "Tuple containing cutoffs for depth (DP) scores."
+                }
             }
         },
         "hard_filter_metrics_parameters": {
@@ -117,7 +121,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -134,7 +138,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -151,7 +155,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -168,7 +172,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -185,7 +189,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -202,7 +206,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -219,7 +223,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -236,7 +240,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -253,7 +257,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -270,7 +274,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -287,7 +291,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -304,7 +308,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -321,7 +325,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -338,7 +342,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -355,7 +359,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -372,7 +376,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -389,7 +393,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -406,7 +410,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -423,7 +427,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -440,7 +444,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         },
@@ -457,7 +461,7 @@
                                     "definition": "Upper cutoff for XX ploidy."
                                 },
                                 "lower_cutoff_XXX": {
-                                    "definition": "Lower cutoff for XXX ploidy"
+                                    "definition": "Lower cutoff for XXX ploidy."
                                 }
                             }
                         }
@@ -1067,10 +1071,10 @@
             "definition": "Parameters used for relatedness inference.",
             "subfields": {
                 "relationship_inference_method": {
-                    "definition": "Which relatedness method to use for finalized relatedness Table. Options are 'cuking' and 'pc_relate'. "
+                    "definition": "Which relatedness method to use for finalized relatedness Table. Options are 'cuking' and 'pc_relate'."
                 },
                 "relationship_cutoffs": {
-                    "definition": "",
+                    "definition": "Cutoffs for relatedness inference.",
                     "subfields": {
                         "second_degree_sibling_lower_cutoff_slope": {
                             "definition": "Slope of the line to use as a lower cutoff for second degree relatives and siblings from parent-child pairs."
@@ -1135,13 +1139,13 @@
             }
         },
         "platform_inference_parameters": {
-            "definition": "Parameters used during platform assignment",
+            "definition": "Parameters used during platform assignment.",
             "subfields": {
                 "hdbscan_min_cluster_size": {
                     "definition": "HDBSCAN `min_cluster_size` parameter."
                 },
                 "hdbscan_min_samples": {
-                    "definition": " HDBSCAN `min_samples` parameter"
+                    "definition": " HDBSCAN `min_samples` parameter."
                 },
                 "n_pcs": {
                     "definition": "Number of platform PCs used for platform assignment."
@@ -1173,10 +1177,10 @@
                                             "definition": "Estimated standard error for each PC."
                                         },
                                         "t_stat": {
-                                            "definition": " t-statistic for each PC."
+                                            "definition": "The t-statistic for each PC."
                                         },
                                         "p_value": {
-                                            "definition": " p-value for each PC."
+                                            "definition": "The p-value for each PC."
                                         },
                                         "multiple_standard_error": {
                                             "definition": "Estimated standard deviation of the random error."
@@ -1191,7 +1195,7 @@
                                             "definition": "F-statistic for nested models."
                                         },
                                         "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
+                                            "definition": "The p-value for the F-test of nested models."
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1208,10 +1212,10 @@
                                             "definition": "Estimated standard error for each PC."
                                         },
                                         "t_stat": {
-                                            "definition": " t-statistic for each PC."
+                                            "definition": "The t-statistic for each PC."
                                         },
                                         "p_value": {
-                                            "definition": " p-value for each PC."
+                                            "definition": "The p-value for each PC."
                                         },
                                         "multiple_standard_error": {
                                             "definition": "Estimated standard deviation of the random error."
@@ -1226,7 +1230,7 @@
                                             "definition": "F-statistic for nested models."
                                         },
                                         "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
+                                            "definition": "The p-value for the F-test of nested models."
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1243,10 +1247,10 @@
                                             "definition": "Estimated standard error for each PC."
                                         },
                                         "t_stat": {
-                                            "definition": " t-statistic for each PC."
+                                            "definition": "The t-statistic for each PC."
                                         },
                                         "p_value": {
-                                            "definition": " p-value for each PC."
+                                            "definition": "The p-value for each PC."
                                         },
                                         "multiple_standard_error": {
                                             "definition": "Estimated standard deviation of the random error."
@@ -1261,7 +1265,7 @@
                                             "definition": "F-statistic for nested models."
                                         },
                                         "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
+                                            "definition": "The p-value for the F-test of nested models."
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1278,10 +1282,10 @@
                                             "definition": "Estimated standard error for each PC."
                                         },
                                         "t_stat": {
-                                            "definition": " t-statistic for each PC."
+                                            "definition": "The t-statistic for each PC."
                                         },
                                         "p_value": {
-                                            "definition": " p-value for each PC."
+                                            "definition": "The p-value for each PC."
                                         },
                                         "multiple_standard_error": {
                                             "definition": "Estimated standard deviation of the random error."
@@ -1296,7 +1300,7 @@
                                             "definition": "F-statistic for nested models."
                                         },
                                         "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
+                                            "definition": "The p-value for the F-test of nested models."
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1313,10 +1317,10 @@
                                             "definition": "Estimated standard error for each PC."
                                         },
                                         "t_stat": {
-                                            "definition": " t-statistic for each PC."
+                                            "definition": "The t-statistic for each PC."
                                         },
                                         "p_value": {
-                                            "definition": " p-value for each PC."
+                                            "definition": "The p-value for each PC."
                                         },
                                         "multiple_standard_error": {
                                             "definition": "Estimated standard deviation of the random error."
@@ -1331,7 +1335,7 @@
                                             "definition": "F-statistic for nested models."
                                         },
                                         "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
+                                            "definition": "The p-value for the F-test of nested models."
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1348,10 +1352,10 @@
                                             "definition": "Estimated standard error for each PC."
                                         },
                                         "t_stat": {
-                                            "definition": " t-statistic for each PC."
+                                            "definition": "The t-statistic for each PC."
                                         },
                                         "p_value": {
-                                            "definition": " p-value for each PC."
+                                            "definition": "The p-value for each PC."
                                         },
                                         "multiple_standard_error": {
                                             "definition": "Estimated standard deviation of the random error."
@@ -1366,7 +1370,7 @@
                                             "definition": "F-statistic for nested models."
                                         },
                                         "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
+                                            "definition": "The p-value for the F-test of nested models."
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1383,10 +1387,10 @@
                                             "definition": "Estimated standard error for each PC."
                                         },
                                         "t_stat": {
-                                            "definition": " t-statistic for each PC."
+                                            "definition": "The t-statistic for each PC."
                                         },
                                         "p_value": {
-                                            "definition": " p-value for each PC."
+                                            "definition": "The p-value for each PC."
                                         },
                                         "multiple_standard_error": {
                                             "definition": "Estimated standard deviation of the random error."
@@ -1401,7 +1405,7 @@
                                             "definition": "F-statistic for nested models."
                                         },
                                         "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
+                                            "definition": "The p-value for the F-test of nested models."
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1418,10 +1422,10 @@
                                             "definition": "Estimated standard error for each PC."
                                         },
                                         "t_stat": {
-                                            "definition": " t-statistic for each PC."
+                                            "definition": "The t-statistic for each PC."
                                         },
                                         "p_value": {
-                                            "definition": " p-value for each PC."
+                                            "definition": "The p-value for each PC."
                                         },
                                         "multiple_standard_error": {
                                             "definition": "Estimated standard deviation of the random error."
@@ -1436,7 +1440,7 @@
                                             "definition": "F-statistic for nested models."
                                         },
                                         "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
+                                            "definition": "The p-value for the F-test of nested models."
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1453,10 +1457,10 @@
                                             "definition": "Estimated standard error for each PC."
                                         },
                                         "t_stat": {
-                                            "definition": " t-statistic for each PC."
+                                            "definition": "The t-statistic for each PC."
                                         },
                                         "p_value": {
-                                            "definition": " p-value for each PC."
+                                            "definition": "The p-value for each PC."
                                         },
                                         "multiple_standard_error": {
                                             "definition": "Estimated standard deviation of the random error."
@@ -1471,7 +1475,7 @@
                                             "definition": "F-statistic for nested models."
                                         },
                                         "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
+                                            "definition": "The p-value for the F-test of nested models."
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1488,10 +1492,10 @@
                                             "definition": "Estimated standard error for each PC."
                                         },
                                         "t_stat": {
-                                            "definition": " t-statistic for each PC."
+                                            "definition": "The t-statistic for each PC."
                                         },
                                         "p_value": {
-                                            "definition": " p-value for each PC."
+                                            "definition": "The p-value for each PC."
                                         },
                                         "multiple_standard_error": {
                                             "definition": "Estimated standard deviation of the random error."
@@ -1506,7 +1510,7 @@
                                             "definition": "F-statistic for nested models."
                                         },
                                         "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
+                                            "definition": "The p-value for the F-test of nested models."
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1523,10 +1527,10 @@
                                             "definition": "Estimated standard error for each PC."
                                         },
                                         "t_stat": {
-                                            "definition": " t-statistic for each PC."
+                                            "definition": "The t-statistic for each PC."
                                         },
                                         "p_value": {
-                                            "definition": " p-value for each PC."
+                                            "definition": "The p-value for each PC."
                                         },
                                         "multiple_standard_error": {
                                             "definition": "Estimated standard deviation of the random error."
@@ -1541,7 +1545,7 @@
                                             "definition": "F-statistic for nested models."
                                         },
                                         "multiple_p_value": {
-                                            "definition": "p-value for the F-test of nested models."
+                                            "definition": "The p-value for the F-test of nested models."
                                         },
                                         "n": {
                                             "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1781,233 +1785,242 @@
             "definition": "Sample project metadata.",
             "subfields": {
                 "terra_workspace": {
-                    "description": "Name of workspace to which sample belongs on Terra."
+                    "definition": "Name of workspace to which sample belongs on Terra."
                 },
                 "investigator": {
-                    "description": "Principal investigator who provided the sample to the Broad."
+                    "definition": "Principal investigator who provided the sample to the Broad."
                 },
                 "cohort": {
-                    "description": "Abbreviation/description of the cohort to which the sample belongs."
+                    "definition": "Abbreviation/description of the cohort to which the sample belongs."
                 },
                 "orsp_cg": {
-                    "description": "Consent group code (as assigned by Office of Sponsored Research)."
+                    "definition": "Consent group code (as assigned by Office of Sponsored Research)."
                 },
                 "consent": {
-                    "description": "Data use category (description of abbreviations can be found at https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4721915/)."
+                    "definition": "Data use category (description of abbreviations can be found at https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4721915/)."
                 },
                 "seq_id": {
-                    "description": "Combination of project and subject_id connected by '_'."
+                    "definition": "Combination of project and subject_id connected by '_'."
                 },
                 "project": {
-                    "description": "Research project ID. For internal samples this will be the RP project ID, C project ID (antiquated), or G project ID (antiquated). C and G project IDs exist for older projects that began on-prem. For external samples, 'project' will typically be a short description of the cohort."
+                    "definition": "Research project ID. For internal samples this will be the RP project ID, C project ID (antiquated), or G project ID (antiquated). C and G project IDs exist for older projects that began on-prem. For external samples, 'project' will typically be a short description of the cohort."
                 },
                 "subject_id": {
-                    "description": "Collaborator-assigned sample ID."
+                    "definition": "Collaborator-assigned sample ID."
                 },
                 "sm_id": {
-                    "description": "Sample ID (assigned by Broad Genomics Platform)."
+                    "definition": "Sample ID (assigned by Broad Genomics Platform)."
                 },
                 "pdo": {
-                    "description": "Genomics platform's product order in JIRA. Used to track the sample through the lab (e.g. PDO-13180)."
+                    "definition": "Genomics platform's product order in JIRA. Used to track the sample through the lab (e.g. PDO-13180)."
                 },
                 "capture": {
-                    "description": "Technology used for sequencing the sample (e.g. Nextera)."
+                    "definition": "Technology used for sequencing the sample (e.g. Nextera)."
                 },
                 "sex": {
-                    "description": "Project provided chromosomal sex."
+                    "definition": "Project provided chromosomal sex."
                 },
                 "cram": {
-                    "description": "Path to cram at the time of metadata collection, if available."
+                    "definition": "Path to cram at the time of metadata collection, if available."
                 },
                 "gvcf": {
-                    "description": "Path to the original gVCF."
+                    "definition": "Path to the original gVCF."
                 },
                 "disease_description": {
-                    "description": "Abbreviated description of the phenotype associated with the cohort to which the sample belongs (eg 'IBD')."
+                    "definition": "Abbreviated description of the phenotype associated with the cohort to which the sample belongs (eg 'IBD')."
                 },
                 "primary_disease": {
-                    "description": "Short description of the phenotype associated with the cohort to which the sample belongs, typically more descriptive than 'disease_description'."
+                    "definition": "Short description of the phenotype associated with the cohort to which the sample belongs, typically more descriptive than 'disease_description'."
                 },
                 "race_ethnicity": {
-                    "description": "Collaborator provided ethnicity of the sample."
+                    "definition": "Collaborator provided ethnicity of the sample."
                 },
                 "delivered_gvcf": {
-                    "description": "Path to which the reblocked gVCF was delivered. Note: this file may no longer exist."
+                    "definition": "Path to which the reblocked gVCF was delivered. Note: this file may no longer exist."
                 },
                 "controls": {
-                    "description": "Collaborator provided case or control status. Sometimes also determined by presence of 'case' or 'control' in the terra workspace name."
+                    "definition": "Collaborator provided case or control status. Sometimes also determined by presence of 'case' or 'control' in the terra workspace name."
                 },
                 "age": {
-                    "description": "Collaborator provided age in years (e.g. 25)."
+                    "definition": "Collaborator provided age in years (e.g. 25)."
                 },
                 "releasable": {
-                    "description": "Whether the sample has permissions for release. Releasable is not the same as 'release' ('release' means the sample was actually included in an official gnomAD release, the 'release' annotation is not included in this Table - it is added after sample QC)."
+                    "definition": "Whether the sample has permissions for release. Releasable is not the same as 'release' ('release' means the sample was actually included in an official gnomAD release, the 'release' annotation is not included in this Table - it is added after sample QC)."
                 },
                 "broad_external": {
-                    "description": "Whether the sample was processed at the Broad or externally."
+                    "definition": "Whether the sample was processed at the Broad or externally."
                 },
                 "remapped_primary_disease": {
-                    "description": "Remapping of 'primary_disease' into more general categories."
+                    "definition": "Remapping of 'primary_disease' into more general categories."
                 },
                 "v2_meta": {
-                    "v2_age": {
-                        "description": "Last known sample age in gnomAD v2 metadata."
-                    },
-                    "v2_sex": {
-                        "description": "Sample\u2019s chromosomal sex in gnomAD v2 metadata."
-                    },
-                    "v2_hard_filters": {
-                        "description": "Sample\u2019s hard filters in gnomAD v2 (\u2018contamination\u2019, \u2018callrate\u2019, \u2018chimera\u2019, \u2018insert_size\u2019, \u2018coverage\u2019, \u2018ambiguous_sex\u2019, and \u2018sex_aneuploidy\u2019)."
-                    },
-                    "v2_perm_filters": {
-                        "description": "Permission filters in gnomad v2 ('tcga_tumor', 'tcga_barcode', 'tcga_below_30', 'specific_exclusion', 'esp', 'not_releasable', and 'syndip')."
-                    },
-                    "v2_pop_platform": {
-                        "description": "Population- and platform-specific outlier filters from gnomAD v2."
-                    },
-                    "v2_related": {
-                        "description": "Whether the sample was found to be related to another sample within gnomAD v2."
-                    },
-                    "v2_data_type": {
-                        "description": "Sample datatype, exomes or genomes. Metadata from only gnomAD v2 exomes was merged into this v4 exome metadata Table"
-                    },
-                    "v2_product": {
-                        "description": "Technology used within the Genomics Platform (e.g. PCR-Free Human WGS - 20x v1.1) from gnomAD v2 metadata."
-                    },
-                    "v2_product_simplified": {
-                        "description": "Reduced list of sample products (\u2018v2_product\u2019), where similar products are combined."
-                    },
-                    "v2_qc_platform": {
-                        "description": "gnomAD v2 PCA imputed platform based on sample call rate."
-                    },
-                    "v2_project_id": {
-                        "description": "gnomAD v2 project ID: RP project, C project ID (antiquated), or G project ID (antiquated). Will match \u2018seq_project\u2019 and \u2018research_project_key\u2019 if the project is in gnomAD v3 and began after cloud processing. C and G project IDs exist for older projects that began on-prem."
-                    },
-                    "v2_project_description": {
-                        "description": "Text description of \u2018v2_project_id\u2019 (e.g. PROMIS, GTEx)."
-                    },
-                    "v2_internal": {
-                        "description": "Whether or not the sample was processed at the Broad from gnomAD v2 metadata. If False, the sample was processed externally."
-                    },
-                    "v2_investigator": {
-                        "description": "gnomAD v2 Collaborator, similar to \u2018contact_pi\u2019 which was used in gnomAD v3."
-                    },
-                    "v2_known_pop": {
-                        "description": "Collaborator provided global population from gnomAD v2."
-                    },
-                    "v2_known_subpop": {
-                        "description": "Collaborator provided subcontinental population from gnomAD v2."
-                    },
-                    "v2_pop": {
-                        "description": "Sample's inferred global population label in gnomAD v2."
-                    },
-                    "v2_subpop": {
-                        "description": "Sample's inferred subcontinental population label in gnomAD v2."
-                    },
-                    "v2_neuro": {
-                        "description": "Whether the sample is in a neurology cohort and thus excluded from the v2 non-neuro subset. See gnomAD\u2019s dataset selection for more information."
-                    },
-                    "v2_control": {
-                        "description": "Whether the sample is a control in gnomAD v2. See gnomAD\u2019s dataset selection for more information."
-                    },
-                    "v2_topmed": {
-                        "description": "Whether the sample is a TOPMED sample in gnomAD v2. See gnomAD\u2019s dataset selection for more information."
-                    },
-                    "v2_high_quality": {
-                        "description": "Whether the sample is considered high-quality in gnomAD v2, i.e. sample does not have any hard filters or population and platform outlier filters."
-                    },
-                    "v2_release": {
-                        "description": "Whether the sample is in the gnomAD v2 release (sample was high-quality and not related to any other sample in the v2 release dataset). The field equates to True if the sample is found in the v2/v3 relatedness HT with kinship coefficient > 0.4 (considered a duplicate), the v3 sample ID (\u2018s\u2019 in this v3 dataset)) matches the previous v2 genome sample ID (\u2018s\u2019 in the in the v2 dataset), or the newly added 1000 genome sample ID (\u2018s\u2019 in the v3 dataset) matches a v2 exome sample ID (\u2018s\u2019 in the v2 dataset) and the matching v2 exome was released."
-                    },
-                    "v2_release_2_0_2": {
-                        "description": "Sample was included in the gnomAD v2.0.2 release."
-                    },
-                    "v2_f_stat": {
-                        "description": "Inbreeding coefficient (excess heterozygosity) on chromosome X from the gnomAD v2 callset."
-                    },
-                    "v2_ambiguous_sex": {
-                        "description": "Whether the sample was flagged for ambiguous sex in the gnomAD v2 callset."
-                    },
-                    "v2_sex_aneuploidy": {
-                        "description": "Whether the sample was flagged for sex aneuploidy in the gnomAD v2 callset."
-                    },
-                    "v2_normalized_y_coverage": {
-                        "description": "Normalized coverage on chromosome Y (normalized using chromosome 20) from the gnomAD v2 metadata."
-                    },
-                    "v2_freemix": {
-                        "description": "Freemix value (verifyBamID defintion: Sequence-only estimate of contamination (0-1 scale)) from the gnomAD v2 callset."
+                    "definition": "gnomAD v2 metadata.",
+                    "subfields": {
+                        "v2_age": {
+                            "definition": "Last known sample age in gnomAD v2 metadata."
+                        },
+                        "v2_sex": {
+                            "definition": "Sample\u2019s chromosomal sex in gnomAD v2 metadata."
+                        },
+                        "v2_hard_filters": {
+                            "definition": "Sample\u2019s hard filters in gnomAD v2 (\u2018contamination\u2019, \u2018callrate\u2019, \u2018chimera\u2019, \u2018insert_size\u2019, \u2018coverage\u2019, \u2018ambiguous_sex\u2019, and \u2018sex_aneuploidy\u2019)."
+                        },
+                        "v2_perm_filters": {
+                            "definition": "Permission filters in gnomad v2 ('tcga_tumor', 'tcga_barcode', 'tcga_below_30', 'specific_exclusion', 'esp', 'not_releasable', and 'syndip')."
+                        },
+                        "v2_pop_platform": {
+                            "definition": "Population- and platform-specific outlier filters from gnomAD v2."
+                        },
+                        "v2_related": {
+                            "definition": "Whether the sample was found to be related to another sample within gnomAD v2."
+                        },
+                        "v2_data_type": {
+                            "definition": "Sample datatype, exomes or genomes. Metadata from only gnomAD v2 exomes was merged into this v4 exome metadata Table."
+                        },
+                        "v2_product": {
+                            "definition": "Technology used within the Genomics Platform (e.g. PCR-Free Human WGS - 20x v1.1) from gnomAD v2 metadata."
+                        },
+                        "v2_product_simplified": {
+                            "definition": "Reduced list of sample products (\u2018v2_product\u2019), where similar products are combined."
+                        },
+                        "v2_qc_platform": {
+                            "definition": "gnomAD v2 PCA imputed platform based on sample call rate."
+                        },
+                        "v2_project_id": {
+                            "definition": "gnomAD v2 project ID: RP project, C project ID (antiquated), or G project ID (antiquated). Will match \u2018seq_project\u2019 and \u2018research_project_key\u2019 if the project is in gnomAD v3 and began after cloud processing. C and G project IDs exist for older projects that began on-prem."
+                        },
+                        "v2_project_description": {
+                            "definition": "Text description of \u2018v2_project_id\u2019 (e.g. PROMIS, GTEx)."
+                        },
+                        "v2_internal": {
+                            "definition": "Whether or not the sample was processed at the Broad from gnomAD v2 metadata. If False, the sample was processed externally."
+                        },
+                        "v2_investigator": {
+                            "definition": "gnomAD v2 Collaborator, similar to \u2018contact_pi\u2019 which was used in gnomAD v3."
+                        },
+                        "v2_known_pop": {
+                            "definition": "Collaborator provided global population from gnomAD v2."
+                        },
+                        "v2_known_subpop": {
+                            "definition": "Collaborator provided subcontinental population from gnomAD v2."
+                        },
+                        "v2_pop": {
+                            "definition": "Sample's inferred global population label in gnomAD v2."
+                        },
+                        "v2_subpop": {
+                            "definition": "Sample's inferred subcontinental population label in gnomAD v2."
+                        },
+                        "v2_neuro": {
+                            "definition": "Whether the sample is in a neurology cohort and thus excluded from the v2 non-neuro subset. See gnomAD\u2019s dataset selection for more information."
+                        },
+                        "v2_control": {
+                            "definition": "Whether the sample is a control in gnomAD v2. See gnomAD\u2019s dataset selection for more information."
+                        },
+                        "v2_topmed": {
+                            "definition": "Whether the sample is a TOPMED sample in gnomAD v2. See gnomAD\u2019s dataset selection for more information."
+                        },
+                        "v2_high_quality": {
+                            "definition": "Whether the sample is considered high-quality in gnomAD v2, i.e. sample does not have any hard filters or population and platform outlier filters."
+                        },
+                        "v2_release": {
+                            "definition": "Whether the sample is in the gnomAD v2 release (sample was high-quality and not related to any other sample in the v2 release dataset). The field equates to True if the sample is found in the v2/v3 relatedness HT with kinship coefficient > 0.4 (considered a duplicate), the v3 sample ID (\u2018s\u2019 in this v3 dataset)) matches the previous v2 genome sample ID (\u2018s\u2019 in the in the v2 dataset), or the newly added 1000 genome sample ID (\u2018s\u2019 in the v3 dataset) matches a v2 exome sample ID (\u2018s\u2019 in the v2 dataset) and the matching v2 exome was released."
+                        },
+                        "v2_release_2_0_2": {
+                            "definition": "Sample was included in the gnomAD v2.0.2 release."
+                        },
+                        "v2_f_stat": {
+                            "definition": "Inbreeding coefficient (excess heterozygosity) on chromosome X from the gnomAD v2 callset."
+                        },
+                        "v2_ambiguous_sex": {
+                            "definition": "Whether the sample was flagged for ambiguous sex in the gnomAD v2 callset."
+                        },
+                        "v2_sex_aneuploidy": {
+                            "definition": "Whether the sample was flagged for sex aneuploidy in the gnomAD v2 callset."
+                        },
+                        "v2_normalized_y_coverage": {
+                            "definition": "Normalized coverage on chromosome Y (normalized using chromosome 20) from the gnomAD v2 metadata."
+                        },
+                        "v2_freemix": {
+                            "definition": "Freemix value (verifyBamID defintion: Sequence-only estimate of contamination (0-1 scale)) from the gnomAD v2 callset."
+                        }
                     }
                 },
                 "ukb_meta": {
-                    "ukb_projected_pop": {
-                        "description": "Inferred population after projecting onto gnomAD population PCs for UKB samples."
-                    },
-                    "ukb_array_sex": {
-                        "description": "Sample sex as inferred from genotype data for UKB samples."
-                    },
-                    "eid_26041": {
-                        "description": "UK Biobank (UKB) sample ID from application 26041."
-                    },
-                    "eid_31063": {
-                        "description": "UK Biobank (UKB) sample ID from application 31063."
-                    },
-                    "eid_48511": {
-                        "description": "UK Biobank (UKB) sample ID from application 48511."
-                    },
-                    "ukb_withdraw": {
-                        "description": "True if the UKB sample should be withdrawn from the VDS and any analyses based on withdraw list for application 31063 on 02/22/2022."
-                    },
-                    "ukb_batch": {
-                        "description": " Sample's data tranche (150K, 100K, 200K, 300K)."
-                    },
-                    "ukb_batch_num": {
-                        "description": "Numeric representation of batch. 0: 150K, 1: 100K, 2: 200K, 3: 300K."
-                    },
-                    "ukb_ambiguous_sex": {
-                        "description": "Whether the sample was flagged for ambiguous sex in the UKB callset."
-                    },
-                    "ukb_sex_aneuploidy": {
-                        "description": "Whether the sample was flagged for sex aneuploidy in the UKB callset."
-                    },
-                    "ukb_sex_imputation": {
-                        "is_female": {
-                            "description": "Whether the sample was imputed female in the UKB callset (based on default values of Hail's impute_sex module)."
+                    "definition": "UK Biobank (UKB) metadata.",
+                    "subfields": {
+                        "ukb_projected_pop": {
+                            "definition": "Inferred population after projecting onto gnomAD population PCs for UKB samples."
                         },
-                        "f_stat": {
-                            "description": "Inbreeding coefficient (excess heterozygosity) on chromosome X from the UKB callset."
+                        "ukb_array_sex": {
+                            "definition": "Sample sex as inferred from genotype data for UKB samples."
                         },
-                        "n_called": {
-                            "description": "Number of variants with a genotype call from the UKB callset."
+                        "eid_26041": {
+                            "definition": "UK Biobank (UKB) sample ID from application 26041."
                         },
-                        "expected_homs": {
-                            "description": "Expected number of homozygotes from the UKB callset."
+                        "eid_31063": {
+                            "definition": "UK Biobank (UKB) sample ID from application 31063."
                         },
-                        "observed_homs": {
-                            "description": "Observed number of homozygotes from the UKB callset."
+                        "eid_48511": {
+                            "definition": "UK Biobank (UKB) sample ID from application 48511."
                         },
-                        "chr20_mean_dp": {
-                            "description": "Sample's mean depth across chromosome 20 from the UKB callset."
+                        "ukb_withdraw": {
+                            "definition": "True if the UKB sample should be withdrawn from the VDS and any analyses based on withdraw list for application 31063 on 02/22/2022."
                         },
-                        "chrX_mean_dp": {
-                            "description": "Sample's mean depth across chromosome X from the UKB callset."
+                        "ukb_batch": {
+                            "definition": " Sample's data tranche (150K, 100K, 200K, 300K)."
                         },
-                        "chrY_mean_dp": {
-                            "description": "Sample's mean depth across chromosome Y from the UKB callset."
+                        "ukb_batch_num": {
+                            "definition": "Numeric representation of batch. 0: 150K, 1: 100K, 2: 200K, 3: 300K."
                         },
-                        "chrX_ploidy": {
-                            "description": "Sample's chromosome X ploidy (chrX_mean_dp normalized using chr20_mean_dp) from the UKB callset."
+                        "ukb_ambiguous_sex": {
+                            "definition": "Whether the sample was flagged for ambiguous sex in the UKB callset."
                         },
-                        "chrY_ploidy": {
-                            "description": "Sample's chromosome Y ploidy (chrY_mean_dp normalized using chr20_mean_dp) from the UKB callset."
+                        "ukb_sex_aneuploidy": {
+                            "definition": "Whether the sample was flagged for sex aneuploidy in the UKB callset."
                         },
-                        "X_karyotype": {
-                            "description": "Sample's chromosome X karyotype from the UKB callset."
-                        },
-                        "Y_karyotype": {
-                            "description": "Sample's chromosome Y karyotype from the UKB callset."
-                        },
-                        "sex_karyotype": {
-                            "description": "Sample's sex karyotype (combined X and Y karyotype) from the UKB callset."
+                        "ukb_sex_imputation": {
+                            "definition": "UKB sex imputation output.",
+                            "subfields": {
+                                "is_female": {
+                                    "definition": "Whether the sample was imputed female in the UKB callset (based on default values of Hail's impute_sex module)."
+                                },
+                                "f_stat": {
+                                    "definition": "Inbreeding coefficient (excess heterozygosity) on chromosome X from the UKB callset."
+                                },
+                                "n_called": {
+                                    "definition": "Number of variants with a genotype call from the UKB callset."
+                                },
+                                "expected_homs": {
+                                    "definition": "Expected number of homozygotes from the UKB callset."
+                                },
+                                "observed_homs": {
+                                    "definition": "Observed number of homozygotes from the UKB callset."
+                                },
+                                "chr20_mean_dp": {
+                                    "definition": "Sample's mean depth across chromosome 20 from the UKB callset."
+                                },
+                                "chrX_mean_dp": {
+                                    "definition": "Sample's mean depth across chromosome X from the UKB callset."
+                                },
+                                "chrY_mean_dp": {
+                                    "definition": "Sample's mean depth across chromosome Y from the UKB callset."
+                                },
+                                "chrX_ploidy": {
+                                    "definition": "Sample's chromosome X ploidy (chrX_mean_dp normalized using chr20_mean_dp) from the UKB callset."
+                                },
+                                "chrY_ploidy": {
+                                    "definition": "Sample's chromosome Y ploidy (chrY_mean_dp normalized using chr20_mean_dp) from the UKB callset."
+                                },
+                                "X_karyotype": {
+                                    "definition": "Sample's chromosome X karyotype from the UKB callset."
+                                },
+                                "Y_karyotype": {
+                                    "definition": "Sample's chromosome Y karyotype from the UKB callset."
+                                },
+                                "sex_karyotype": {
+                                    "definition": "Sample's sex karyotype (combined X and Y karyotype) from the UKB callset."
+                                }
+                            }
                         }
                     }
                 }
@@ -2017,28 +2030,28 @@
             "definition": "Sample metrics generated from the BAM.",
             "subfields": {
                 "contam_rate": {
-                    "description": "Freemix value (verifyBamID defintion: Sequence-only estimate of contamination (0-1 scale)). This value can be from either version 1 or version 2 of verifyBamID (version used has not been recorded)."
+                    "definition": "Freemix value (verifyBamID defintion: Sequence-only estimate of contamination (0-1 scale)). This value can be from either version 1 or version 2 of verifyBamID (version used has not been recorded)."
                 },
                 "target_bases_20x_rate": {
-                    "description": "Picard definition: The fraction of all target bases achieving 20X or greater coverage."
+                    "definition": "Picard definition: The fraction of all target bases achieving 20X or greater coverage."
                 },
                 "median_target_coverage": {
-                    "description": "Picard definition: The median coverage of a target region."
+                    "definition": "Picard definition: The median coverage of a target region."
                 },
                 "mean_target_coverage": {
-                    "description": "Picard definition: The mean coverage of a target region."
+                    "definition": "Picard definition: The mean coverage of a target region."
                 },
                 "target_bases_10x_rate": {
-                    "description": "Picard definition: The fraction of all target bases achieving 10X or greater coverage."
+                    "definition": "Picard definition: The fraction of all target bases achieving 10X or greater coverage."
                 },
                 "mean_insert_size": {
-                    "description": "Picard definition: The mean insert size of the core of the distribution."
+                    "definition": "Picard definition: The mean insert size of the core of the distribution."
                 },
                 "chimeras_rate": {
-                    "description": "Picard definition: The fraction of reads that map outside of a maximum insert size (usually 100kb) or that have the two ends mapping to different chromosomes."
+                    "definition": "Picard definition: The fraction of reads that map outside of a maximum insert size (usually 100kb) or that have the two ends mapping to different chromosomes."
                 },
                 "median_insert_size": {
-                    "description": "Picard definition: The median insert size of all paired end reads where both ends mapped to the same chromosome. Note: the median insert size is not reliably reported in internal metadata - it is sometimes obtained from a coordinator-supplied file, from the Broad database via API request, or from a terra workspace."
+                    "definition": "Picard definition: The median insert size of all paired end reads where both ends mapped to the same chromosome. Note: the median insert size is not reliably reported in internal metadata - it is sometimes obtained from a coordinator-supplied file, from the Broad database via API request, or from a terra workspace."
                 }
             }
         },
@@ -2119,7 +2132,7 @@
             }
         },
         "sex_imputation": {
-            "definition": "Annotations generated or used in chromosomal sex inference",
+            "definition": "Annotations generated or used in chromosomal sex inference.",
             "subfields": {
                 "var_data_chr20_mean_dp": {
                     "definition": "Mean depth on calling intervals on chromosome 20."
@@ -2140,10 +2153,10 @@
                     "definition": "Mean depth on calling intervals on normalization contig."
                 },
                 "chrx_frac_hom_alt": {
-                    "definition": "The fraction of homozygous alternate variants on chromosome X"
+                    "definition": "The fraction of homozygous alternate variants on chromosome X."
                 },
                 "chrx_frac_hom_alt_adj": {
-                    "definition": "the fraction of high-quality homozygous alternate variants on chromosome X"
+                    "definition": "The fraction of high-quality homozygous alternate variants on chromosome X."
                 },
                 "is_female": {
                     "definition": "Hail's impute sex boolean representation of XX."
@@ -2288,7 +2301,7 @@
                     "definition": "Whether a sample failed hard filtering."
                 },
                 "relatedness_filters": {
-                    "definition": "Struct of relatedness filters",
+                    "definition": "Struct of relatedness filters.",
                     "subfields": {
                         "all_samples_related": {
                             "definition": "Whether a sample is related to any sample in the raw callset."
@@ -2564,7 +2577,7 @@
                     }
                 },
                 "qc_metrics_fail": {
-                    "definition": "The combined (using `ensemble_operator`) outlier fail boolean for each metric",
+                    "definition": "The combined (using `ensemble_operator`) outlier fail boolean for each metric.",
                     "subfields": {
                         "r_ti_tv": {
                             "definition": "Whether the sample failed the Transition/Transversion ratio filter."
