@@ -532,14 +532,22 @@ def get_hard_filter_metric_ht(base_ht: hl.Table) -> hl.Table:
         "contamination_approximation": contamination.ht(),
         "chr20_sample_mean_dp": sample_chr20_mean_dp.ht().drop("gq_thresholds"),
         "sample_qc_mt_callrate": sample_qc_mt_callrate.ht(),
+        "bi_allelic_sample_qc": get_sample_qc("bi_allelic").ht(),
     }
     hard_filter_metrics = [
-        {"ann_ht": ann_ht, "ann_label": ann, "ann_top_level": True}
+        {
+            "ann_ht": ann_ht,
+            "ann_label": ann,
+            "ann_top_level": False if ann == "bi_allelic_sample_qc" else True,
+        }
         for ann, ann_ht in hard_filter_metrics.items()
     ]
     hard_filter_metrics_ht = reduce(
         lambda ht, ann_params: add_annotations(ht, **ann_params),
         [base_ht] + hard_filter_metrics,
+    )
+    hard_filter_metrics_ht = hard_filter_metrics_ht.checkpoint(
+        new_temp_file("hard_filter_metrics", extension="ht"), overwrite=True
     )
 
     return hard_filter_metrics_ht
