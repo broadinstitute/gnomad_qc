@@ -55,7 +55,6 @@ logger.setLevel(logging.INFO)
 #  issue #903.
 # TODO: Add an annotation indicating a sample is a test sample like CHM.
 #  gnomad_production issue #905.
-# TODO: Add bi-allelic sample QC metrics. gnomad_production issue #906.
 
 
 def get_sex_imputation_ht() -> hl.Table:
@@ -528,18 +527,30 @@ def get_hard_filter_metric_ht(base_ht: hl.Table) -> hl.Table:
     logger.info("Combining hard-filter metric Tables for 'hard_filter_metrics' struct.")
 
     # NOTE: Forgot to drop the `gq_thresholds` in the sample_chr20_mean_dp code.
+    # NOTE: Bi-allelic sample QC was used for hard-filtering instead of the under
+    # three alt alleles sample QC metrics which were used for outlier detection
+    # because we realized the large sample size significantly decreases the number of
+    # bi-allelic variants.
     hard_filter_metrics = {
         "contamination_approximation": contamination.ht(),
         "chr20_sample_mean_dp": sample_chr20_mean_dp.ht().drop("gq_thresholds"),
         "sample_qc_mt_callrate": sample_qc_mt_callrate.ht(),
+        "bi_allelic_sample_qc": get_sample_qc("bi_allelic").ht(),
     }
     hard_filter_metrics = [
-        {"ann_ht": ann_ht, "ann_label": ann, "ann_top_level": True}
+        {
+            "ann_ht": ann_ht,
+            "ann_label": ann,
+            "ann_top_level": False if ann == "bi_allelic_sample_qc" else True,
+        }
         for ann, ann_ht in hard_filter_metrics.items()
     ]
     hard_filter_metrics_ht = reduce(
         lambda ht, ann_params: add_annotations(ht, **ann_params),
         [base_ht] + hard_filter_metrics,
+    )
+    hard_filter_metrics_ht = hard_filter_metrics_ht.checkpoint(
+        new_temp_file("hard_filter_metrics", extension="ht"), overwrite=True
     )
 
     return hard_filter_metrics_ht
