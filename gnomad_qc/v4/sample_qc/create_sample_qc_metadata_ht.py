@@ -539,6 +539,14 @@ def get_sample_filter_ht(base_ht: hl.Table, relationship_ht: hl.Table) -> hl.Tab
         lambda ht, ann_params: add_annotations(ht, **ann_params),
         [base_ht] + sample_filters,
     )
+
+    # Annotate control samples .
+    truth_samples = hl.literal([SYNDIP, NA12878])
+    left_ht = left_ht.annotate(
+        sample_filters=left_ht.sample_filters.annotate(
+            control=(truth_samples.contains(left_ht.s))
+        )
+    )
     sample_filters_ht = sample_filters_ht.checkpoint(
         new_temp_file("sample_filters", extension="ht"), overwrite=True
     )
