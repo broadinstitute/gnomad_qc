@@ -16,7 +16,6 @@ from gnomad.resources.resource_utils import (
 
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
-# TODO: Confirm syndip name for v4 (copied current name from UKBB).
 SYNDIP = "CHMI_CHMI3_Nex1"
 """
 String representation for syndip truth sample
