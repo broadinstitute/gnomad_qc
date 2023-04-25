@@ -123,6 +123,7 @@ def get_hard_filters_ht(ht: hl.Table) -> hl.Table:
     ann_expr["hard_filtered"] = hl.or_else(hl.len(hf_expr) > 0, False)
 
     ht = ht.annotate(**ann_expr)
+    ht = ht.annotate_globals(**hf_ht.index_globals())
     ht = ht.checkpoint(new_temp_file("hard_filters", extension="ht"), overwrite=True)
 
     return ht
