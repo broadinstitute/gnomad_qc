@@ -59,7 +59,7 @@ logger.setLevel(logging.INFO)
 def get_project_meta() -> hl.Table:
     """
     Load project-specific metadata Table and add GATK version.
-    
+
     :return: GATK version annotated project metadata Table.
     """
     fixed_homalt_ver = hl.literal({"4.1.4.1", "4.1.8.0"})
