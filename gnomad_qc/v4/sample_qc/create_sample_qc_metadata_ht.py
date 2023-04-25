@@ -528,6 +528,10 @@ def get_hard_filter_metric_ht(base_ht: hl.Table) -> hl.Table:
     logger.info("Combining hard-filter metric Tables for 'hard_filter_metrics' struct.")
 
     # NOTE: Forgot to drop the `gq_thresholds` in the sample_chr20_mean_dp code.
+    # NOTE: Bi-allelic sample QC was used for hard-filtering instead of the under
+    # three alt alleles sample QC metrics which were used for outlier detection
+    # because we realized the large sample size significantly decreases the number of
+    # bi-allelic variants.
     hard_filter_metrics = {
         "contamination_approximation": contamination.ht(),
         "chr20_sample_mean_dp": sample_chr20_mean_dp.ht().drop("gq_thresholds"),
