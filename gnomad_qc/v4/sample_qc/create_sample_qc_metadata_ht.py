@@ -541,7 +541,7 @@ def get_sample_filter_ht(base_ht: hl.Table, relationship_ht: hl.Table) -> hl.Tab
 
     # Annotate control samples that are used in variant QC, but not included in the
     # release.
-    control_samples = hl.literal({s["s"] for s in TRUTH_SAMPLES})
+    control_samples = hl.literal({v["s"] for k, v in TRUTH_SAMPLES.items()})
     sample_filters_ht = sample_filters_ht.annotate(
         control=(control_samples.contains(sample_filters_ht.s))
     )
