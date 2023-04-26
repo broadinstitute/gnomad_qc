@@ -11,64 +11,23 @@
                 }
             }
         },
-        "hard_filter_metrics_parameters": {
-            "definition": "Parameters used during hard filtering.",
+        "platform_inference_parameters": {
+            "definition": "Parameters used during platform assignment.",
             "subfields": {
-                "contamination_approximation_parameters": {
-                    "definition": "Parameters used to compute contamination estimate as the mean of reference allele balances of high-quality (DP >= contam-dp-cutoff), autosomal, bi-allelic homozygous SNVs per sample.",
-                    "subfields": {
-                        "dp_cutoff": {
-                            "definition": "Minimum genotype depth to be included in contamination estimate calculation."
-                        }
-                    }
+                "hdbscan_min_cluster_size": {
+                    "definition": "HDBSCAN `min_cluster_size` parameter."
                 },
-                "chr20_sample_mean_dp_parameters": {
-                    "definition": "Parameters used to compute per sample mean DP on chromosome 20 using interval coverage results.",
-                    "subfields": {
-                        "calling_interval_name": {
-                            "definition": "Name of calling intervals used for interval coverage. One of: 'ukb', 'broad', or 'intersection'."
-                        },
-                        "calling_interval_padding": {
-                            "definition": "Number of base pair padding used on the calling intervals. One of 0 or 50 bp."
-                        }
-                    }
+                "hdbscan_min_samples": {
+                    "definition": "HDBSCAN `min_samples` parameter."
                 },
-                "sample_qc_mt_callrate_parameters": {
-                    "definition": "Parameters used to compute sample QC MatrixTable callrate.",
-                    "subfields": {
-                        "min_af": {
-                            "definition": "Minimum AF for inclusion in sample callrate computation."
-                        },
-                        "min_site_callrate": {
-                            "definition": "Filtering threshold to use for sample callrate computed on only predetermined QC variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering."
-                        }
-                    }
-                }
-            }
-        },
-        "hard_filter_cutoffs": {
-            "definition": "Cutoffs used for hard-filtering samples prior to sample QC.",
-            "subfields": {
-                "max_n_singleton": {
-                    "definition": "Maximum number of singletons."
+                "n_pcs": {
+                    "definition": "Number of platform PCs used for platform assignment."
                 },
-                "max_r_het_hom_var": {
-                    "definition": "Maximum ratio of heterozygous variants to homozygous variants."
+                "calling_interval_name": {
+                    "definition": "Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'."
                 },
-                "min_bases_dp_over_1": {
-                    "definition": "Minimum number of bases with a depth over 1."
-                },
-                "min_bases_dp_over_20": {
-                    "definition": "Minimum number of bases with a depth over 20."
-                },
-                "max_chimera": {
-                    "definition": "Maximum chimera (this is a proportion not a percent, e.g. 5% == 0.05, %5 != 5)."
-                },
-                "max_contamination_estimate": {
-                    "definition": "Maximum contamination estimate."
-                },
-                "chr_20_dp_threshold": {
-                    "definition": "Minimum mean depth over chromosome 20."
+                "calling_interval_padding": {
+                    "definition": "Number of base pair padding to use on the calling intervals. One of 0 or 50 bp."
                 }
             }
         },
@@ -1067,6 +1026,89 @@
                 }
             }
         },
+        "hard_filter_metrics_parameters": {
+            "definition": "Parameters used during hard filtering.",
+            "subfields": {
+                "contamination_approximation_parameters": {
+                    "definition": "Parameters used to compute contamination estimate as the mean of reference allele balances of high-quality (DP >= contam-dp-cutoff), autosomal, bi-allelic homozygous SNVs per sample.",
+                    "subfields": {
+                        "dp_cutoff": {
+                            "definition": "Minimum genotype depth to be included in contamination estimate calculation."
+                        }
+                    }
+                },
+                "chr20_sample_mean_dp_parameters": {
+                    "definition": "Parameters used to compute per sample mean DP on chromosome 20 using interval coverage results.",
+                    "subfields": {
+                        "calling_interval_name": {
+                            "definition": "Name of calling intervals used for interval coverage. One of: 'ukb', 'broad', or 'intersection'."
+                        },
+                        "calling_interval_padding": {
+                            "definition": "Number of base pair padding used on the calling intervals. One of 0 or 50 bp."
+                        }
+                    }
+                },
+                "sample_qc_mt_callrate_parameters": {
+                    "definition": "Parameters used to compute sample QC MatrixTable callrate.",
+                    "subfields": {
+                        "min_af": {
+                            "definition": "Minimum AF for inclusion in sample callrate computation."
+                        },
+                        "min_site_callrate": {
+                            "definition": "Filtering threshold to use for sample callrate computed on only predetermined QC variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering."
+                        }
+                    }
+                },
+                "bi_allelic_sample_qc_parameters": {
+                    "definition": "Parameters used to compute sample QC metrics on bi-allelic SNVs.",
+                    "subfields": {
+                        "gq_bins": {
+                            "definition": "Tuple containing cutoffs for genotype quality (GQ) scores."
+                        },
+                        "dp_bins": {
+                            "definition": "Tuple containing cutoffs for depth (DP) scores."
+                        }
+                    }
+                }
+            }
+        },
+        "population_inference_parameters": {
+            "definition": "Parameters to used to assign ancestry groups.",
+            "subfields": {
+                "assign_pops_from_pc_params": {
+                    "definition": "Parameters used in a random forest model to assign ancestry group labels based on the results of PCA.",
+                    "subfields": {
+                        "min_assignment_prob": {
+                            "definition": "Minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to `Remaining`)."
+                        },
+                        "error_rate": {
+                            "definition": "Random forests error rate on the training data for acestry group assignment."
+                        }
+                    }
+                },
+                "min_prob": {
+                    "definition": "Minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to `Remaining`)."
+                },
+                "include_unreleasable_samples": {
+                    "definition": "Whether unreleasable samples were included in PCA."
+                },
+                "pcs": {
+                    "definition": "List of PCs used in the RF."
+                },
+                "include_v2_known_in_training": {
+                    "definition": ""
+                },
+                "v3_population_spike": {
+                    "definition": "List of v3 populations spiked into the RF training data."
+                },
+                "v4_population_spike": {
+                    "definition": "List of v4 populations spiked into the RF training data."
+                },
+                "min_prob_cutoffs": {
+                    "definition": ""
+                }
+            }
+        },
         "relatedness_inference_parameters": {
             "definition": "Parameters used for relatedness inference.",
             "subfields": {
@@ -1107,66 +1149,35 @@
                 }
             }
         },
-        "population_inference_parameters": {
-            "definition": "Parameters to used to assign ancestry groups.",
-            "subfields": {
-                "assign_pops_from_pc_params": {
-                    "definition": "Parameters used in a random forest model to assign ancestry group labels based on the results of PCA.",
-                    "subfields": {
-                        "min_assignment_prob": {
-                            "definition": "Minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to `Remaining`)."
-                        },
-                        "error_rate": {
-                            "definition": "Random forests error rate on the training data for acestry group assignment."
-                        }
-                    }
-                },
-                "min_prob": {
-                    "definition": "Minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to `Remaining`)."
-                },
-                "include_unreleasable_samples": {
-                    "definition": "Whether unreleasable samples were included in PCA."
-                },
-                "pcs": {
-                    "definition": "List of PCs used in the RF."
-                },
-                "include_v2_known_in_training": {
-                    "definition": ""
-                },
-                "min_prob_cutoffs": {
-                    "definition": ""
-                },
-                "v3_population_spike": {
-                    "definition": "List of v3 populations spiked into the RF training data."
-                },
-                "v4_population_spike": {
-                    "definition": "List of v4 populations spiked into the RF training data."
-                }
-            }
-        },
-        "platform_inference_parameters": {
-            "definition": "Parameters used during platform assignment.",
-            "subfields": {
-                "hdbscan_min_cluster_size": {
-                    "definition": "HDBSCAN `min_cluster_size` parameter."
-                },
-                "hdbscan_min_samples": {
-                    "definition": "HDBSCAN `min_samples` parameter."
-                },
-                "n_pcs": {
-                    "definition": "Number of platform PCs used for platform assignment."
-                },
-                "calling_interval_name": {
-                    "definition": "Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or 'intersection'."
-                },
-                "calling_interval_padding": {
-                    "definition": "Number of base pair padding to use on the calling intervals. One of 0 or 50 bp."
-                }
-            }
-        },
         "sample_filters_parameters": {
             "definition": "",
             "subfields": {
+                "hard_filter_cutoffs": {
+                    "definition": "Cutoffs used for hard-filtering samples prior to sample QC.",
+                    "subfields": {
+                        "max_n_singleton": {
+                            "definition": "Maximum number of singletons."
+                        },
+                        "max_r_het_hom_var": {
+                            "definition": "Maximum ratio of heterozygous variants to homozygous variants."
+                        },
+                        "min_bases_dp_over_1": {
+                            "definition": "Minimum number of bases with a depth over 1."
+                        },
+                        "min_bases_dp_over_20": {
+                            "definition": "Minimum number of bases with a depth over 20."
+                        },
+                        "max_chimera": {
+                            "definition": "Maximum chimera (this is a proportion not a percent, e.g. 5% == 0.05, %5 != 5)."
+                        },
+                        "max_contamination_estimate": {
+                            "definition": "Maximum contamination estimate."
+                        },
+                        "chr_20_dp_threshold": {
+                            "definition": "Minimum mean depth over chromosome 20."
+                        }
+                    }
+                },
                 "outlier_detection_parameters": {
                     "definition": "The parameters used for filtering outlier samples by QC metrics.",
                     "subfields": {
@@ -1211,8 +1222,8 @@
                                                 }
                                             }
                                         },
-                                        "r_insertion_deletion": {
-                                            "definition": "Insertion : deletion ratio regression statistics.",
+                                        "r_ti_tv_singleton": {
+                                            "definition": "Singleton transition : transversion (TiTv) ratio regression statistics.",
                                             "subfields": {
                                                 "beta": {
                                                     "definition": "Estimated regression coefficient for each PC."
@@ -1281,8 +1292,8 @@
                                                 }
                                             }
                                         },
-                                        "r_ti_tv_singleton": {
-                                            "definition": "Singleton transition : transversion (TiTv) ratio regression statistics.",
+                                        "r_insertion_deletion": {
+                                            "definition": "Insertion : deletion ratio regression statistics.",
                                             "subfields": {
                                                 "beta": {
                                                     "definition": "Estimated regression coefficient for each PC."
@@ -1391,34 +1402,40 @@
                                         }
                                     }
                                 },
-                                "regress_pop_n_pcs": {
-                                    "definition": "Number of population PCA scores used in regression."
-                                },
-                                "regress_per_platform": {
-                                    "definition": "If the regression per platform ran."
-                                },
-                                "include_unreleasable_samples": {
-                                    "definition": "Whether unreleasable samples were included in the regression and filtering."
+                                "strata": {
+                                    "definition": ""
                                 },
                                 "qc_metrics": {
                                     "definition": ""
                                 },
-                                "strata": {
-                                    "definition": ""
+                                "regress_pop_n_pcs": {
+                                    "definition": "Number of population PCA scores used in regression."
+                                },
+                                "regress_per_platform": {
+                                    "definition": "Whether the regression per platform ran."
+                                },
+                                "apply_r_ti_tv_singleton_filter": {
+                                    "definition": "Whether the TiTv singleton filter was applied."
+                                },
+                                "include_unreleasable_samples": {
+                                    "definition": "Whether unreleasable samples were included in the regression and filtering."
                                 }
                             }
                         },
                         "nearest_neighbor_filters_globals": {
                             "definition": "Filters used in nearest neighbor filterings.",
                             "subfields": {
-                                "n_pcs": {
-                                    "definition": "Number of population PCs used for nearest neighbor determination."
-                                },
-                                "n_neighbors": {
-                                    "definition": "Number of nearest neighbors reported for each sample."
-                                },
                                 "include_unreleasable_samples": {
-                                    "definition": "Whether unreleasable samples were included in the nearest neighbors identification and filtering."
+                                    "definition": "Whether unreleasable samples were included in the regression and filtering."
+                                },
+                                "apply_r_ti_tv_singleton_filter": {
+                                    "definition": "Whether the TiTv singleton filter was applied."
+                                },
+                                "nearest_neighbors_platform_stratified": {
+                                    "definition": "Whether the nearest neighbor filtering was stratified by platform."
+                                },
+                                "nearest_neighbor_approximation": {
+                                    "definition": "Whether the nearest neighbor approximation used the Annoy nearest neighbor algorithm."
                                 }
                             }
                         },
