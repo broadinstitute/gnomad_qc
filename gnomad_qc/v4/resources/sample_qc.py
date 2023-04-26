@@ -913,7 +913,7 @@ def trios(fake: bool = False, test: bool = False) -> VersionedPedigreeResource:
         CURRENT_VERSION,
         {
             version: PedigreeResource(
-                f"{get_sample_qc_root(version, test, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.trios{'' if finalized else '.raw'}{'.fake' if fake else ''}.fam"
+                f"{get_sample_qc_root(version, test, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.trios{'.fake' if fake else ''}.fam"
             )
             for version in VERSIONS
         },

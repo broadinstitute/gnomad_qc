@@ -1,6 +1,7 @@
 """Script to identify trios from relatedness data and filter based on Mendel errors and de novos."""
 import argparse
 import logging
+import random
 from collections import Counter, defaultdict
 from typing import Optional
 
@@ -37,11 +38,12 @@ logger = logging.getLogger("identify_trios")
 logger.setLevel(logging.INFO)
 
 
-def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:
+def families_to_trios(ped: hl.Pedigree, seed: int = 24) -> hl.Pedigree:
     """
-    Convert a Pedigree with families to a Pedigree with only one trio per family.
+    Convert a Pedigree with families to a Pedigree with only one random trio per family.
 
     :param ped: Pedigree with families.
+    :param seed: Random seed for choosing trio to keep from each family. Default is 24.
     :return: Pedigree with only one trio per family.
     """
     trios_per_fam = defaultdict(list)
@@ -55,7 +57,8 @@ def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:
         message.append(f"{n_fam} with {n_trios} trios.")
     logger.info("\n".join(message))
 
-    return hl.Pedigree(trios=[t[0] for t in trios_per_fam.values()])
+    random.seed(seed)
+    return hl.Pedigree(trios=[random.choice(t) for t in trios_per_fam.values()])
 
 
 def filter_relatedness_ht(ht: hl.Table, filter_ht: hl.Table) -> hl.Table:
@@ -337,11 +340,6 @@ def main(args):
         sex_ht = sex_ht.annotate(is_female=sex_ht.sex_karyotype == "XX")
         ped = infer_families(rel_ht, sex_ht, res.dup_ht.ht())
         ped.write(res.raw_ped.path)
-        # TODO: add options for how to handle multiple trios in a family. I think v2
-        #  removed all trios with more than one offspring in the family. v3 kept the
-        #  first one in the pedigree. We could keep a random one from each family
-        #  instead of only grabbing the first one.
-        families_to_trios(ped)
 
     if args.create_fake_pedigree:
         res = trio_resources.create_fake_pedigree
@@ -371,7 +369,7 @@ def main(args):
             args.max_de_novo,
         )
         ped.write(res.final_ped.path)
-        families_to_trios(ped).write(res.final_trios.path)
+        families_to_trios(ped, args.seed).write(res.final_trios.path)
 
 
 if __name__ == "__main__":
@@ -478,6 +476,15 @@ if __name__ == "__main__":
         "--max-de-novo",
         help="Maximum number of raw de novo mutations for real trios.",
         type=int,
+    )
+    finalize_ped_args.add_argument(
+        "--seed",
+        help=(
+            "Random seed for choosing one random trio per family to keep after "
+            "filtering."
+        ),
+        type=int,
+        default=24,
     )
 
     args = parser.parse_args()
