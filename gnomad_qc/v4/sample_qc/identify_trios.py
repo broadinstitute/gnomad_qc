@@ -82,7 +82,7 @@ def run_create_fake_pedigree(
     ped: hl.Pedigree, filter_ht: hl.Table, fake_fam_prop: float = 0.1
 ) -> hl.Pedigree:
     """
-    Generate a fake pedigree with `fake_fam_prop` of the number of trios in `ped`.
+    Generate a fake pedigree with `fake_fam_prop` defining the proportion of the number of trios in `ped` to use.
 
     :param ped: Pedigree to use for generating fake pedigree.
     :param filter_ht: Outlier filtering Table.
@@ -371,12 +371,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--test",
-        help="Runs mendel errors on five partitions of the MT.",
+        help="Runs mendel errors on only five partitions of the MT.",
         action="store_true",
     )
     parser.add_argument(
         "--overwrite",
-        help="Overwrite all data from this subset (default: False)",
+        help="Overwrite all data from this subset (default: False).",
         action="store_true",
     )
     parser.add_argument(
@@ -389,7 +389,7 @@ if __name__ == "__main__":
         help=(
             "Create a table with duplicate samples indicating which one is the best to"
             " use based on the ranking of all samples after sample QC metric outlier "
-            "filtering of (ranking used to determine related samples to drop for the "
+            "filtering (ranking used to determine related samples to drop for the "
             "release)."
         ),
         action="store_true",
@@ -438,9 +438,9 @@ if __name__ == "__main__":
             "Create final families/trios ped files by excluding trios where the number "
             "of Mendel errors or de novos are outliers. Outliers can be defined as "
             "trios that have Mendel errors or de novos higher than those specified in "
-            "--max_mendel and --max_de_novo respectively. They can also be defined as "
+            "--max-mendel and --max-de-novo respectively. They can also be defined as "
             "trios that have Mendel errors or de novos higher than --max-mendel-z or "
-            "--max-de_novo-z standard deviations above the mean across inferred trios."
+            "--max-de-novo-z standard deviations above the mean across inferred trios."
         ),
         action="store_true",
     )

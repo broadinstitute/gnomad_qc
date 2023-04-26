@@ -853,7 +853,7 @@ def duplicates() -> VersionedTableResource:
     """
     Get the VersionedTableResource for duplicated (or twin) samples.
 
-    :return: VersionedTableResource.
+    :return: VersionedTableResource of duplicate samples.
     """
     data_type = "exomes"
     return VersionedTableResource(
@@ -877,7 +877,7 @@ def pedigree(
     :param fake: Whether to return the fake pedigree resource.
     :param test: Whether to use a tmp path for a test resource. This is only an option
         for the finalized pedigree, which depends on `ped_mendel_errors`.
-    :return: VersionedPedigreeResource.
+    :return: VersionedPedigreeResource of trio pedigree including multiple trios per family.
     """
     if finalized and fake:
         raise ValueError("Only one of 'finalized' or 'fake' can be True!")
@@ -909,7 +909,7 @@ def trios(
     :param fake: Whether to return the fake trio resource.
     :param test: Whether to use a tmp path for a test resource. This is only an option
         for the finalized pedigree, which depends on `ped_mendel_errors`.
-    :return: VersionedPedigreeResource.
+    :return: VersionedPedigreeResource of trio samples.
     """
     if finalized and fake:
         raise ValueError("Only one of 'finalized' or 'fake' can be True!")
@@ -935,7 +935,7 @@ def ped_mendel_errors(test: bool = False) -> VersionedTableResource:
     Get the VersionedTableResource for the number of mendel errors per trio.
 
     :param test: Whether to use a tmp path for a test resource.
-    :return: VersionedTableResource.
+    :return: VersionedTableResource of number of mendel errors per trio.
     """
     data_type = "exomes"
     return VersionedTableResource(
