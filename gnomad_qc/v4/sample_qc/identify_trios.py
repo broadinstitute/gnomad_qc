@@ -142,71 +142,81 @@ def filter_ped(
     mendel_ht: hl.Table,
     max_mendel_z: Optional[int] = 3,
     max_de_novo_z: Optional[int] = 3,
-    max_mendel: Optional[int] = None,
-    max_de_novo: Optional[int] = None,
+    max_mendel_n: Optional[int] = None,
+    max_de_novo_n: Optional[int] = None,
 ) -> hl.Pedigree:
     """
-    Filter a pedigree based on Mendel errors and de novo metrics.
+    Filter a Pedigree based on Mendel errors and de novo metrics.
 
     :param ped: Pedigree to filter.
     :param mendel_ht: Table with Mendel errors.
     :param max_mendel_z: Optional maximum z-score for Mendel error metrics. Default is 3.
     :param max_de_novo_z: Optional maximum z-score for de novo metrics. Default is 3.
-    :param max_mendel: Optional maximum Mendel error count. Default is None.
-    :param max_de_novo: Optional maximum de novo count. Default is None.
-    :return: Filtered pedigree.
+    :param max_mendel_n: Optional maximum Mendel error count. Default is None.
+    :param max_de_novo_n: Optional maximum de novo count. Default is None.
+    :return: Filtered Pedigree.
     """
-    z_metrics = []
-    max_metrics = []
-    for m in ["mendel", "de_novo"]:
-        max_m = locals()[f"max_{m}"]
-        if locals()[f"max_{m}_z"]:
-            if max_m:
-                logger.warning(
-                    "Both `max_%s_z` and `max_%s` are set. Using `max_%s` of %i!",
-                    *(m,) * 3,
-                    max_m,
-                )
-                max_metrics.append(m)
-            else:
-                z_metrics.append(m)
+    cutoffs = {
+        "mendel": (max_mendel_z, max_mendel_n),
+        "de_novo": (max_de_novo_z, max_de_novo_n),
+    }
 
+    # Check that only one of `max_mendel_z` or `max_mendel_n` and one of `max_de_novo_z`
+    # or `max_de_novo_n` are set. If both are set favor using the max number over max
+    # std dev.
+    cutoffs_by_method = defaultdict(dict)
+    for m, (max_z, max_n) in cutoffs.items():
+        if max_n:
+            if max_z:
+                logger.warning(
+                    "Both `max_%s_z` and `max_%s_n` are set. Using `max_%s_n` of %i!",
+                    *(m,) * 3,
+                    max_n,
+                )
+            cutoffs_by_method["n"][m] = max_n
+        elif max_z:
+            cutoffs_by_method["z"][m] = max_z
+
+    # Filter Mendel errors Table to only errors in inferred families not from the
+    # fake Pedigree.
     mendel_ht = mendel_ht.filter(mendel_ht.fam_id.startswith("fake"), keep=False)
+
+    # Aggregate Mendel errors Table by sample to get per sample mendel error and
+    # de novo counts.
     mendel_by_s = (
-        mendel_ht.group_by(mendel_ht.s)
+        mendel_ht.group_by(mendel_ht.s, mendel_ht.fam_id)
         .aggregate(
-            fam_id=hl.agg.take(mendel_ht.fam_id, 1)[0],
             n_mendel=hl.agg.count(),
-            n_de_novo=hl.agg.count_where(
-                mendel_ht.mendel_code == 2
-            ),  # Code 2 is parents are hom ref, child is het
+            # Code 2 is parents are hom ref, child is het.
+            n_de_novo=hl.agg.count_where(mendel_ht.mendel_code == 2),
         )
         .checkpoint(new_temp_file("filter_ped", extension="ht"))
     )
 
+    # Get aggregate stats (need mean and stdev) for each metric with std dev
+    # cutoffs set.
     z_stats_expr = {}
-    for m in z_metrics:
+    for m in cutoffs_by_method["z"]:
         z_stats_expr[m] = hl.agg.stats(mendel_by_s[f"n_{m}"])
-
-    filter_expr = hl.literal(True)
     z_stats = mendel_by_s.aggregate(hl.struct(**z_stats_expr))
-    for m in ["mendel", "de_novo"]:
-        if m in z_stats:
-            max_m_z = locals()[f"max_{m}_z"]
-            max_m = z_stats[m].mean + max_m_z * z_stats[m].stdev
-            logger.info(
-                "Filtering trios with more than %f %s errors (%i z-score)",
-                max_m,
-                m,
-                max_m_z,
-            )
-        elif m in max_metrics:
-            max_m = locals()[f"max_{m}"]
-            logger.info("Filtering trios with more than %f %s errors", max_m, m)
-        else:
-            continue
-        filter_expr &= mendel_by_s[f"n_{m}"] < max_m
 
+    # Build filter expression to filter metrics by requested metrics and methods.
+    filter_expr = hl.literal(True)
+    for m, max_z in cutoffs_by_method["z"].items():
+        max_n = z_stats[m].mean + max_z * z_stats[m].stdev
+        logger.info(
+            "Filtering trios with more than %f %s errors (%i z-score)",
+            max_n,
+            m,
+            max_z,
+        )
+        filter_expr &= mendel_by_s[f"n_{m}"] < max_n
+
+    for m, max_n in cutoffs_by_method["n"].items():
+        logger.info("Filtering trios with more than %f %s errors", max_n, m)
+        filter_expr &= mendel_by_s[f"n_{m}"] < max_n
+
+    # Filter inferred Pedigree to only trios that pass filters defined by `filter_expr`.
     trios = mendel_by_s.aggregate(
         hl.agg.filter(filter_expr, hl.agg.collect(mendel_by_s.s))
     )
