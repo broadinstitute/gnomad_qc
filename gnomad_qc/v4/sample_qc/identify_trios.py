@@ -39,7 +39,7 @@ logger.setLevel(logging.INFO)
 
 def families_to_trios(ped: hl.Pedigree) -> hl.Pedigree:
     """
-    Convert a pedigree with families to a pedigree with only one trio per family.
+    Convert a Pedigree with families to a Pedigree with only one trio per family.
 
     :param ped: Pedigree with families.
     :return: Pedigree with only one trio per family.
@@ -82,16 +82,16 @@ def run_create_fake_pedigree(
     ped: hl.Pedigree, filter_ht: hl.Table, fake_fam_prop: float = 0.1
 ) -> hl.Pedigree:
     """
-    Generate a fake pedigree with `fake_fam_prop` defining the proportion of the number of trios in `ped` to use.
+    Generate a fake Pedigree with `fake_fam_prop` defining the proportion of the number of trios in `ped` to use.
 
-    :param ped: Pedigree to use for generating fake pedigree.
+    :param ped: Pedigree to use for generating fake Pedigree.
     :param filter_ht: Outlier filtering Table.
     :param fake_fam_prop: Proportion of trios in `ped` to use for generating fake
-        pedigree. Default is 0.1.
-    :return: Fake pedigree.
+        Pedigree. Default is 0.1.
+    :return: Fake Pedigree.
     """
     n_fake_trios = int(fake_fam_prop * len(ped.complete_trios()))
-    logger.info("Generating fake pedigree with %i trios.", n_fake_trios)
+    logger.info("Generating fake Pedigree with %i trios.", n_fake_trios)
     fake_ped = create_fake_pedigree(
         n=n_fake_trios,
         sample_list=list(filter_ht.filter(filter_ht.outlier_filtered).s.collect()),
@@ -107,8 +107,8 @@ def run_mendel_errors(
     """
     Run Hail's `mendel_errors` on chr20 of the VDS subset to samples in `ped` and `fake_ped`.
 
-    :param ped: Inferred pedigree.
-    :param fake_ped: Fake pedigree.
+    :param ped: Inferred Pedigree.
+    :param fake_ped: Fake Pedigree.
     :param test: Whether to run on five partitions of the VDS for testing. Default is
         False.
     :return: Table with Mendel errors on chr20.
@@ -131,7 +131,7 @@ def run_mendel_errors(
     mt = hl.vds.to_dense_mt(vds)
     mt = mt.select_entries("GT")
 
-    logger.info(f"Running Mendel errors for %s trios.", len(ped.trios))
+    logger.info(f"Running Mendel errors for %s trios.", len(merged_ped.trios))
     mendel_err_ht, _, _, _ = hl.mendel_errors(mt["GT"], merged_ped)
 
     return mendel_err_ht
@@ -246,14 +246,14 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
         "relatedness.py --finalize-relatedness-ht": {"rel_ht": rel_ht},
     }
 
-    # Initialize outlier filtering pipeline resource collection.
+    # Initialize trio identification pipeline resource collection.
     trio_pipeline = PipelineResourceCollection(
         pipeline_name="identify_trios",
         pipeline_resources={"filter_ht": filter_ht, "rel_ht": rel_ht},
         overwrite=overwrite,
     )
 
-    # Create resource collection for each step of the outlier filtering pipeline.
+    # Create resource collection for each step of the trio identification pipeline.
     identify_duplicates = PipelineStepResourceCollection(
         "--identify-duplicates",
         output_resources={"dup_ht": duplicates()},
@@ -265,10 +265,7 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
     )
     infer_families = PipelineStepResourceCollection(
         "--infer-families",
-        output_resources={
-            "raw_ped": pedigree(finalized=False),
-            "raw_trios": trios(finalized=False),
-        },
+        output_resources={"raw_ped": pedigree(finalized=False)},
         pipeline_input_steps=[identify_duplicates],
         add_input_resources={
             "sex_inference.py --annotate-sex-karyotype": {"sex_ht": sex},
@@ -293,7 +290,7 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
         pipeline_input_steps=[infer_families, run_mendel_errors],
     )
 
-    # Add all steps to the outlier filtering pipeline resource collection.
+    # Add all steps to the trio identification pipeline resource collection.
     trio_pipeline.add_steps(
         {
             "identify_duplicates": identify_duplicates,
@@ -344,7 +341,7 @@ def main(args):
         #  removed all trios with more than one offspring in the family. v3 kept the
         #  first one in the pedigree. We could keep a random one from each family
         #  instead of only grabbing the first one.
-        families_to_trios(ped).write(res.raw_trios.path)
+        families_to_trios(ped)
 
     if args.create_fake_pedigree:
         res = trio_resources.create_fake_pedigree
@@ -414,12 +411,12 @@ if __name__ == "__main__":
         action="store_true",
     )
 
-    fake_ped_args = parser.add_argument_group("Fake pedigree creation")
+    fake_ped_args = parser.add_argument_group("Fake Pedigree creation")
     fake_ped_args.add_argument(
         "--create-fake-pedigree",
         help=(
-            "Create a fake pedigree from unrelated samples in the data for comparison "
-            "to the inferred pedigree."
+            "Create a fake Pedigree from unrelated samples in the data for comparison "
+            "to the inferred Pedigree."
         ),
         action="store_true",
     )
@@ -436,11 +433,11 @@ if __name__ == "__main__":
     mendel_err_args = parser.add_argument_group("Mendel error calculation")
     mendel_err_args.add_argument(
         "--run-mendel-errors",
-        help="Calculate mendel errors for the inferred and fake pedigrees on chr20.",
+        help="Calculate mendel errors for the inferred and fake Pedigrees on chr20.",
         action="store_true",
     )
     finalize_ped_args = parser.add_argument_group(
-        "Pedigree filtering for final pedigree generation"
+        "Pedigree filtering for final Pedigree generation"
     )
     finalize_ped_args.add_argument(
         "--finalize-ped",

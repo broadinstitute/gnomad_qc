@@ -883,7 +883,7 @@ def pedigree(
         raise ValueError("Only one of 'finalized' or 'fake' can be True!")
     if test and not finalized:
         raise ValueError(
-            "The test pedigree is only available for the finalized pedigree because it "
+            "The test Pedigree is only available for the finalized Pedigree because it "
             "depends on filtering using `ped_mendel_errors` which has a test option!"
         )
     data_type = "exomes"
@@ -899,25 +899,15 @@ def pedigree(
     )
 
 
-def trios(
-    finalized: bool = True, fake: bool = False, test: bool = False
-) -> VersionedPedigreeResource:
+def trios(fake: bool = False, test: bool = False) -> VersionedPedigreeResource:
     """
-    Get the VersionedPedigreeResource for trio samples.
+    Get the VersionedPedigreeResource for finalized trio samples.
 
-    :param finalized: Whether to return the finalized trio resource.
     :param fake: Whether to return the fake trio resource.
     :param test: Whether to use a tmp path for a test resource. This is only an option
-        for the finalized pedigree, which depends on `ped_mendel_errors`.
+        for the finalized Pedigree, which depends on `ped_mendel_errors`.
     :return: VersionedPedigreeResource of trio samples.
     """
-    if finalized and fake:
-        raise ValueError("Only one of 'finalized' or 'fake' can be True!")
-    if test and not finalized:
-        raise ValueError(
-            "The test pedigree is only available for the finalized pedigree because it "
-            "depends on filtering using `ped_mendel_errors` which has a test option!"
-        )
     data_type = "exomes"
     return VersionedPedigreeResource(
         CURRENT_VERSION,
