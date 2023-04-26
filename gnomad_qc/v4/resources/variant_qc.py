@@ -18,18 +18,28 @@ from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
 SYNDIP = "CHMI_CHMI3_Nex1"
 """
-String representation for syndip truth sample
+String representation for syndip truth sample.
 """
 
-NA12878 = "NA12878_1075619236"
+NA12878 = "ASC-4Set-1573S_NA12878@1075619236"
 """
-String representation for NA12878 truth sample
+String representation for NA12878 truth sample.
+"""
+
+UKB_NA12878 = "Coriell_NA12878_NA12878"
+"""
+String representation for the UKB Regeneron generated NA12878 truth sample.
 """
 
 TRUTH_SAMPLES = {
     "syndip": {"s": SYNDIP, "truth_mt": syndip, "hc_intervals": syndip_hc_intervals},
     "NA12878": {
         "s": NA12878,
+        "truth_mt": na12878_giab,
+        "hc_intervals": na12878_giab_hc_intervals,
+    },
+    "UKB_NA12878": {
+        "s": UKB_NA12878,
         "truth_mt": na12878_giab,
         "hc_intervals": na12878_giab_hc_intervals,
     },
