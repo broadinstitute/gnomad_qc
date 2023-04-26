@@ -1,9 +1,10 @@
 """Script to identify trios from relatedness data and filter based on Mendel errors and de novos."""
 import argparse
+import json
 import logging
 import random
 from collections import Counter, defaultdict
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 import hail as hl
 from gnomad.sample_qc.relatedness import (
@@ -25,6 +26,7 @@ from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources.sample_qc import (
     duplicates,
     finalized_outlier_filtering,
+    ped_filter_param_json_path,
     ped_mendel_errors,
     pedigree,
     relatedness,
@@ -147,7 +149,7 @@ def filter_ped(
     max_de_novo_z: Optional[int] = 3,
     max_mendel_n: Optional[int] = None,
     max_de_novo_n: Optional[int] = None,
-) -> hl.Pedigree:
+) -> Tuple[hl.Pedigree, Dict[str, Dict[str, int]]]:
     """
     Filter a Pedigree based on Mendel errors and de novo metrics.
 
@@ -157,7 +159,7 @@ def filter_ped(
     :param max_de_novo_z: Optional maximum z-score for de novo metrics. Default is 3.
     :param max_mendel_n: Optional maximum Mendel error count. Default is None.
     :param max_de_novo_n: Optional maximum de novo count. Default is None.
-    :return: Filtered Pedigree.
+    :return: Tuple of filtered Pedigree and dictionary of filtering parameters.
     """
     cutoffs = {
         "mendel": (max_mendel_z, max_mendel_n),
@@ -176,9 +178,9 @@ def filter_ped(
                     *(m,) * 3,
                     max_n,
                 )
-            cutoffs_by_method["n"][m] = max_n
+            cutoffs_by_method["count"][m] = max_n
         elif max_z:
-            cutoffs_by_method["z"][m] = max_z
+            cutoffs_by_method["stdev"][m] = max_z
 
     # Filter Mendel errors Table to only errors in inferred families not from the
     # fake Pedigree.
@@ -199,13 +201,13 @@ def filter_ped(
     # Get aggregate stats (need mean and stdev) for each metric with std dev
     # cutoffs set.
     z_stats_expr = {}
-    for m in cutoffs_by_method["z"]:
+    for m in cutoffs_by_method["stddev"]:
         z_stats_expr[m] = hl.agg.stats(mendel_by_s[f"n_{m}"])
     z_stats = mendel_by_s.aggregate(hl.struct(**z_stats_expr))
 
     # Build filter expression to filter metrics by requested metrics and methods.
     filter_expr = hl.literal(True)
-    for m, max_z in cutoffs_by_method["z"].items():
+    for m, max_z in cutoffs_by_method["stddev"].items():
         max_n = z_stats[m].mean + max_z * z_stats[m].stdev
         logger.info(
             "Filtering trios with more than %f %s errors (%i z-score)",
@@ -214,17 +216,19 @@ def filter_ped(
             max_z,
         )
         filter_expr &= mendel_by_s[f"n_{m}"] < max_n
+        cutoffs[m] = {"max_n": max_n, "max_z": max_z}
 
-    for m, max_n in cutoffs_by_method["n"].items():
+    for m, max_n in cutoffs_by_method["count"].items():
         logger.info("Filtering trios with more than %f %s errors", max_n, m)
         filter_expr &= mendel_by_s[f"n_{m}"] < max_n
+        cutoffs[m] = {"max_n": max_n}
 
     # Filter inferred Pedigree to only trios that pass filters defined by `filter_expr`.
     trios = mendel_by_s.aggregate(
         hl.agg.filter(filter_expr, hl.agg.collect(mendel_by_s.s))
     )
     logger.info("Found %i trios passing filters.", len(trios))
-    return hl.Pedigree([trio for trio in ped.trios if trio.s in trios])
+    return hl.Pedigree([trio for trio in ped.trios if trio.s in trios]), cutoffs
 
 
 def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollection:
@@ -289,6 +293,7 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
         output_resources={
             "final_ped": pedigree(test=test),
             "final_trios": trios(test=test),
+            "filter_json": ped_filter_param_json_path(test=test),
         },
         pipeline_input_steps=[infer_families, run_mendel_errors],
     )
@@ -360,7 +365,7 @@ def main(args):
     if args.finalize_ped:
         res = trio_resources.finalize_ped
         res.check_resource_existence()
-        ped = filter_ped(
+        ped, filters = filter_ped(
             res.raw_ped.pedigree(),
             res.mendel_err_ht.ht(),
             args.max_mendel_z,
@@ -370,6 +375,13 @@ def main(args):
         )
         ped.write(res.final_ped.path)
         families_to_trios(ped, args.seed).write(res.final_trios.path)
+
+        # Pedigree has no globals like a HT so write the parameters to a JSON file.
+        logger.info(
+            "Writing finalized pedigree filter dictionary to %s.", res.filter_json
+        )
+        with hl.hadoop_open(res.filter_json, "w") as d:
+            d.write(json.dumps(filters))
 
 
 if __name__ == "__main__":

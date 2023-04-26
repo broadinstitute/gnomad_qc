@@ -939,6 +939,17 @@ def ped_mendel_errors(test: bool = False) -> VersionedTableResource:
     )
 
 
+def ped_filter_param_json_path(version: str = CURRENT_VERSION, test: bool = False):
+    """
+    Get path to JSON file containing filters used to create the finalized Pedigree and trios resources.
+
+    :param version: Version of the JSON to return.
+    :param test: Whether to use a tmp path for a test resource.
+    :return: Path to Pedigree filter JSON.
+    """
+    return f"{get_sample_qc_root(version)}/relatedness/trios/gnomad.exomes.v{version}.ped_filters.json"
+
+
 ######################################################################
 # Other resources
 ######################################################################
