@@ -1074,7 +1074,7 @@
                     "definition": "Which relatedness method to use for finalized relatedness Table. Options are 'cuking' and 'pc_relate'."
                 },
                 "relationship_cutoffs": {
-                    "definition": "",
+                    "definition": "Cutoffs for relatedness inference.",
                     "subfields": {
                         "second_degree_sibling_lower_cutoff_slope": {
                             "definition": "Slope of the line to use as a lower cutoff for second degree relatives and siblings from parent-child pairs."
