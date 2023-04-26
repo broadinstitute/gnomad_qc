@@ -1460,6 +1460,35 @@
         "s": {
             "definition": "Sample ID."
         },
+        "bam_metrics": {
+            "definition": "Sample metrics generated from the BAM.",
+            "subfields": {
+                "contam_rate": {
+                    "definition": "Freemix value (verifyBamID defintion: Sequence-only estimate of contamination (0-1 scale)). This value can be from either version 1 or version 2 of verifyBamID (version used has not been recorded)."
+                },
+                "target_bases_20x_rate": {
+                    "definition": "Picard definition: The fraction of all target bases achieving 20X or greater coverage."
+                },
+                "median_target_coverage": {
+                    "definition": "Picard definition: The median coverage of a target region."
+                },
+                "mean_target_coverage": {
+                    "definition": "Picard definition: The mean coverage of a target region."
+                },
+                "target_bases_10x_rate": {
+                    "definition": "Picard definition: The fraction of all target bases achieving 10X or greater coverage."
+                },
+                "mean_insert_size": {
+                    "definition": "Picard definition: The mean insert size of the core of the distribution."
+                },
+                "chimeras_rate": {
+                    "definition": "Picard definition: The fraction of reads that map outside of a maximum insert size (usually 100kb) or that have the two ends mapping to different chromosomes."
+                },
+                "median_insert_size": {
+                    "definition": "Picard definition: The median insert size of all paired end reads where both ends mapped to the same chromosome. Note: the median insert size is not reliably reported in internal metadata - it is sometimes obtained from a coordinator-supplied file, from the Broad database via API request, or from a terra workspace."
+                }
+            }
+        },
         "project_meta": {
             "definition": "Sample project metadata.",
             "subfields": {
@@ -1522,15 +1551,6 @@
                 },
                 "age": {
                     "definition": "Collaborator provided age in years (e.g. 25)."
-                },
-                "releasable": {
-                    "definition": "Whether a sample has permissions for release. Releasable is not the same as 'release' ('release' means a sample was actually included in an official gnomAD release, the 'release' annotation is not included in this Table - it is added after sample QC)."
-                },
-                "broad_external": {
-                    "definition": "Whether a sample was processed at the Broad or externally."
-                },
-                "remapped_primary_disease": {
-                    "definition": "Remapping of 'primary_disease' into more general categories."
                 },
                 "v2_meta": {
                     "definition": "",
@@ -1624,6 +1644,9 @@
                         }
                     }
                 },
+                "remapped_primary_disease": {
+                    "definition": "Remapping of 'primary_disease' into more general categories."
+                },
                 "ukb_meta": {
                     "definition": "",
                     "subfields": {
@@ -1632,24 +1655,6 @@
                         },
                         "ukb_array_sex": {
                             "definition": "Sample sex as inferred from genotype data for UKB samples."
-                        },
-                        "eid_26041": {
-                            "definition": "UK Biobank (UKB) sample ID from application 26041."
-                        },
-                        "eid_31063": {
-                            "definition": "UK Biobank (UKB) sample ID from application 31063."
-                        },
-                        "eid_48511": {
-                            "definition": "UK Biobank (UKB) sample ID from application 48511."
-                        },
-                        "ukb_withdraw": {
-                            "definition": "True if the UKB sample should be withdrawn from the VDS and any analyses based on withdraw list for application 31063 on 02/22/2022."
-                        },
-                        "ukb_batch": {
-                            "definition": "Sample's data tranche (150K, 100K, 200K, 300K)."
-                        },
-                        "ukb_batch_num": {
-                            "definition": "Numeric representation of batch. 0: 150K, 1: 100K, 2: 200K, 3: 300K."
                         },
                         "ukb_ambiguous_sex": {
                             "definition": "Whether a sample was flagged for ambiguous sex in the UKB callset."
@@ -1700,37 +1705,41 @@
                                     "definition": "Sample's sex karyotype (combined X and Y karyotype) from the UKB callset."
                                 }
                             }
+                        },
+                        "eid_26041": {
+                            "definition": "UK Biobank (UKB) sample ID from application 26041."
+                        },
+                        "eid_31063": {
+                            "definition": "UK Biobank (UKB) sample ID from application 31063."
+                        },
+                        "eid_48511": {
+                            "definition": "UK Biobank (UKB) sample ID from application 48511."
+                        },
+                        "ukb_withdraw": {
+                            "definition": "True if the UKB sample should be withdrawn from the VDS and any analyses based on withdraw list for application 31063 on 02/22/2022."
+                        },
+                        "ukb_batch": {
+                            "definition": "Sample's data tranche (150K, 100K, 200K, 300K)."
+                        },
+                        "ukb_batch_num": {
+                            "definition": "Numeric representation of batch. 0: 150K, 1: 100K, 2: 200K, 3: 300K."
                         }
                     }
-                }
-            }
-        },
-        "bam_metrics": {
-            "definition": "Sample metrics generated from the BAM.",
-            "subfields": {
-                "contam_rate": {
-                    "definition": "Freemix value (verifyBamID defintion: Sequence-only estimate of contamination (0-1 scale)). This value can be from either version 1 or version 2 of verifyBamID (version used has not been recorded)."
                 },
-                "target_bases_20x_rate": {
-                    "definition": "Picard definition: The fraction of all target bases achieving 20X or greater coverage."
+                "releasable": {
+                    "definition": "Whether a sample has permissions for release. Releasable is not the same as 'release' ('release' means a sample was actually included in an official gnomAD release, the 'release' annotation is not included in this Table - it is added after sample QC)."
                 },
-                "median_target_coverage": {
-                    "definition": "Picard definition: The median coverage of a target region."
+                "broad_external": {
+                    "definition": "Whether a sample was processed at the Broad or externally."
                 },
-                "mean_target_coverage": {
-                    "definition": "Picard definition: The mean coverage of a target region."
+                "ukb_sample": {
+                    "definition": "Whether a sample is from the UK Biobank."
                 },
-                "target_bases_10x_rate": {
-                    "definition": "Picard definition: The fraction of all target bases achieving 10X or greater coverage."
+                "gatk_version": {
+                    "definition": "GATK version used to call the sample."
                 },
-                "mean_insert_size": {
-                    "definition": "Picard definition: The mean insert size of the core of the distribution."
-                },
-                "chimeras_rate": {
-                    "definition": "Picard definition: The fraction of reads that map outside of a maximum insert size (usually 100kb) or that have the two ends mapping to different chromosomes."
-                },
-                "median_insert_size": {
-                    "definition": "Picard definition: The median insert size of all paired end reads where both ends mapped to the same chromosome. Note: the median insert size is not reliably reported in internal metadata - it is sometimes obtained from a coordinator-supplied file, from the Broad database via API request, or from a terra workspace."
+                "fixed_homalt_model": {
+                    "definition": "Whether a sample is depleted for homozygous alternate calls."
                 }
             }
         },
@@ -1793,20 +1802,14 @@
                 }
             }
         },
-        "hard_filter_metrics": {
-            "definition": "Annotations generated or used during hard-filtering.",
+        "platform_inference": {
+            "definition": "Struct containing platform inference information. Platforms were assigned by applying a principal components analysis (PCA) on the per-sample per-interval fraction of bases over DP 0 and using HBDSCAN on those PCs to assign a platform.",
             "subfields": {
-                "mean_AB_snp_biallelic": {
-                    "definition": "Mean bi-allelic SNP allele balance used as a contamination estimate."
+                "scores": {
+                    "definition": "Array of principal components analysis scores used when assigning platforms with HBDSCAN."
                 },
-                "chr20_mean_dp": {
-                    "definition": "Chromosome 20 mean DP."
-                },
-                "sample_qc_mt_callrate": {
-                    "definition": "Sample callrate in the v4 precomputed QC MatrixTable."
-                },
-                "sample_qc_mt_callrate_adj": {
-                    "definition": "Sample callrate for high-quality genotypes in the v4 precomputed QC MatrixTable."
+                "qc_platform": {
+                    "definition": "Inferred sequencing platform label."
                 }
             }
         },
@@ -1868,20 +1871,79 @@
                 }
             }
         },
-        "relatedness_inference": {
-            "definition": "Struct containing information about a sample’s relatedness to other samples within the callset.",
+        "hard_filter_metrics": {
+            "definition": "Annotations generated or used during hard-filtering.",
             "subfields": {
-                "relationships": {
-                    "definition": "Dictionary of all relationships (second-degree or closer) a sample has with other samples in the dataset. The key is the relationship and the value is a set of all samples with that key relationship to the given sample."
+                "mean_AB_snp_biallelic": {
+                    "definition": "Mean bi-allelic SNP allele balance used as a contamination estimate."
                 },
-                "relationships_high_quality": {
-                    "definition": "Dictionary of all relationships (second-degree or closer) a high-quality sample has with other high-quality samples in the dataset. The key is the relationship and the value is a set of all high-quality samples with that key relationship to the given sample."
+                "chr20_mean_dp": {
+                    "definition": "Chromosome 20 mean DP."
                 },
-                "gnomad_v3_duplicate": {
-                    "definition": "Whether sample is a duplicate of one of all v3.1 samples passing hard-filtering."
+                "sample_qc_mt_callrate": {
+                    "definition": "Sample callrate in the v4 precomputed QC MatrixTable."
                 },
-                "gnomad_v3_release_duplicate": {
-                    "definition": "Whether sample is a duplicate of one of the v3.1 release samples."
+                "sample_qc_mt_callrate_adj": {
+                    "definition": "Sample callrate for high-quality genotypes in the v4 precomputed QC MatrixTable."
+                },
+                "bi_allelic_sample_qc": {
+                    "definition": "Sample QC metrics calculated from bi-allelic sites only.",
+                    "subfields": {
+                        "n_het": {
+                            "definition": "Number of heterozygous calls."
+                        },
+                        "n_hom_var": {
+                            "definition": "Number of homozygous alternate calls."
+                        },
+                        "n_non_ref": {
+                            "definition": "Number of homozygous reference calls."
+                        },
+                        "n_singleton": {
+                            "definition": "Number of private alleles. Reference alleles are never counted as singletons, even if every other allele at a site is non-reference."
+                        },
+                        "n_singleton_ti": {
+                            "definition": "Number of singletons that are transitions."
+                        },
+                        "n_singleton_tv": {
+                            "definition": "Number of singletons that are transversions."
+                        },
+                        "n_snp": {
+                            "definition": "Number of SNP alternate alleles."
+                        },
+                        "n_insertion": {
+                            "definition": "Number of insertion alternate alleles."
+                        },
+                        "n_deletion": {
+                            "definition": "Number of deletion alternate alleles."
+                        },
+                        "n_transition": {
+                            "definition": "Number of transition (A-G, C-T) alternate alleles."
+                        },
+                        "n_transversion": {
+                            "definition": "Number of transversion alternate alleles."
+                        },
+                        "n_star": {
+                            "definition": "Number of star (upstream deletion) alleles."
+                        },
+                        "r_ti_tv": {
+                            "definition": "Transition/Transversion ratio."
+                        },
+                        "r_ti_tv_singleton": {
+                            "definition": "Singleton Transition/Transversion ratio."
+                        },
+                        "r_het_hom_var": {
+                            "definition": "Het/HomVar call ratio."
+                        },
+                        "r_insertion_deletion": {
+                            "definition": "Insertion/Deletion allele ratio."
+                        },
+                        "bases_over_gq_threshold": {
+                            "definition": "Number of bases in the interval over passed GQ thresholds."
+                        },
+                        "bases_over_dp_threshold": {
+                            "definition": "Number of bases in the interval over passed DP thresholds."
+                        }
+                    }
                 }
             }
         },
@@ -1932,23 +1994,26 @@
                 }
             }
         },
-        "platform_inference": {
-            "definition": "Struct containing platform inference information. Platforms were assigned by applying a principal components analysis (PCA) on the per-sample per-interval fraction of bases over DP 0 and using HBDSCAN on those PCs to assign a platform.",
+        "relatedness_inference": {
+            "definition": "Struct containing information about a sample’s relatedness to other samples within the callset.",
             "subfields": {
-                "scores": {
-                    "definition": "Array of principal components analysis scores used when assigning platforms with HBDSCAN."
+                "relationships": {
+                    "definition": "Dictionary of all relationships (second-degree or closer) a sample has with other samples in the dataset. The key is the relationship and the value is a set of all samples with that key relationship to the given sample."
                 },
-                "qc_platform": {
-                    "definition": "Inferred sequencing platform label."
+                "relationships_high_quality": {
+                    "definition": "Dictionary of all relationships (second-degree or closer) a high-quality sample has with other high-quality samples in the dataset. The key is the relationship and the value is a set of all high-quality samples with that key relationship to the given sample."
+                },
+                "gnomad_v3_duplicate": {
+                    "definition": "Whether sample is a duplicate of one of all v3.1 samples passing hard-filtering."
+                },
+                "gnomad_v3_release_duplicate": {
+                    "definition": "Whether sample is a duplicate of one of the v3.1 release samples."
                 }
             }
         },
         "sample_filters": {
             "definition": "Sample QC filter annotations used for the release.",
             "subfields": {
-                "sex_aneuploidy": {
-                    "definition": "Whether a sample was flagged for sex aneuploidy."
-                },
                 "chimera": {
                     "definition": "Whether a sample was flagged for a high percent chimera: 'pct_chimeras' > 5%."
                 },
@@ -1964,51 +2029,20 @@
                 "low_adj_callrate": {
                     "definition": "Whether a sample was flagged for low callrate in high quality sites: 'sample_qc_mt_callrate_adj' < 0.8."
                 },
-                "ambiguous_sex": {
-                    "definition": "Whether a sample was flagged for ambiguous sex."
-                },
                 "failed_fingerprinting": {
                     "definition": "Whether a sample was flagged for failing fingerprinting."
+                },
+                "sex_aneuploidy": {
+                    "definition": "Whether a sample was flagged for sex aneuploidy."
+                },
+                "ambiguous_sex": {
+                    "definition": "Whether a sample was flagged for ambiguous sex."
                 },
                 "hard_filters": {
                     "definition": "The sample's set of hard filters it failed."
                 },
                 "hard_filtered": {
                     "definition": "Whether a sample failed hard filtering."
-                },
-                "relatedness_filters": {
-                    "definition": "Struct of relatedness filters. Any sample that is hard-filtered will have a missing value for these annotations.",
-                    "subfields": {
-                        "related": {
-                            "definition": "Whether a sample was filtered for second-degree (or closer) relatedness in the ancestry inference PCA."
-                        },
-                        "duplicate_or_twin": {
-                            "definition": "Whether a sample has a duplicate or twin among all samples that are not hard-filtered."
-                        },
-                        "parent_child": {
-                            "definition": "Whether a sample has a parent or child among all samples that are not hard-filtered."
-                        },
-                        "sibling": {
-                            "definition": "Whether a sample has a sibling among all samples that are not hard-filtered."
-                        }
-                    }
-                },
-                "release_relatedness_filters": {
-                    "definition": "Struct of release sample relatedness filters. Any sample that is hard-filtered or outlier-filtered will have a missing value for these annotations.",
-                    "subfields": {
-                        "related": {
-                            "definition": "Whether a sample was filtered for second-degree (or closer) relatedness in the final release."
-                        },
-                        "duplicate_or_twin": {
-                            "definition": "Whether a release filtered sample has a duplicate or twin among all samples that are not hard-filtered or outlier-filtered."
-                        },
-                        "parent_child": {
-                            "definition": "Whether a release filtered sample has a parent or child among all samples that are not hard-filtered or outlier-filtered."
-                        },
-                        "sibling": {
-                            "definition": "Whether a release filtered sample has a sibling among all samples that are not hard-filtered or outlier-filtered."
-                        }
-                    }
                 },
                 "regressed_filters": {
                     "definition": "Sample QC metric outlier filter information for the per platform ancestry PC regression/residual filtering approach.",
@@ -2075,20 +2109,20 @@
                                         }
                                     }
                                 },
-                                "r_insertion_deletion": {
-                                    "definition": "Insertion : deletion ratio.",
+                                "r_ti_tv_singleton": {
+                                    "definition": "Singleton transition : transversion (TiTv) ratio.",
                                     "subfields": {
                                         "median": {
-                                            "definition": "Median insertion : deletion ratio of nearest neighbors."
+                                            "definition": "Median singleton transition : transversion (TiTv) ratio of nearest neighbors."
                                         },
                                         "mad": {
-                                            "definition": "MAD of insertion : deletion ratio of nearest neighbors."
+                                            "definition": "MAD of singleton transition : transversion (TiTv) ratio of nearest neighbors."
                                         },
                                         "lower": {
-                                            "definition": "Lower cutoff threshold of insertion : deletion ratio of nearest neighbors."
+                                            "definition": "Lower cutoff threshold of singleton transition : transversion (TiTv) ratio of nearest neighbors."
                                         },
                                         "upper": {
-                                            "definition": "Upper cutoff threshold of insertion : deletion ratio of nearest neighbors."
+                                            "definition": "Upper cutoff threshold of singleton transition : transversion (TiTv) ratio of nearest neighbors."
                                         }
                                     }
                                 },
@@ -2109,20 +2143,20 @@
                                         }
                                     }
                                 },
-                                "r_ti_tv_singleton": {
-                                    "definition": "Singleton transition : transversion (TiTv) ratio.",
+                                "r_insertion_deletion": {
+                                    "definition": "Insertion : deletion ratio.",
                                     "subfields": {
                                         "median": {
-                                            "definition": "Median singleton transition : transversion (TiTv) ratio of nearest neighbors."
+                                            "definition": "Median insertion : deletion ratio of nearest neighbors."
                                         },
                                         "mad": {
-                                            "definition": "MAD of singleton transition : transversion (TiTv) ratio of nearest neighbors."
+                                            "definition": "MAD of insertion : deletion ratio of nearest neighbors."
                                         },
                                         "lower": {
-                                            "definition": "Lower cutoff threshold of singleton transition : transversion (TiTv) ratio of nearest neighbors."
+                                            "definition": "Lower cutoff threshold of insertion : deletion ratio of nearest neighbors."
                                         },
                                         "upper": {
-                                            "definition": "Upper cutoff threshold of singleton transition : transversion (TiTv) ratio of nearest neighbors."
+                                            "definition": "Upper cutoff threshold of insertion : deletion ratio of nearest neighbors."
                                         }
                                     }
                                 }
@@ -2131,17 +2165,17 @@
                         "qc_metrics_fail": {
                             "definition": "Struct of booleans for each sample QC metric indicating whether a sample was found to be an outlier in the per platform nearest neighbors approach.",
                             "subfields": {
-                                "fail_r_ti_tv": {
-                                    "definition": "Whether a sample failed the transition : transversion (TiTv) ratio filter in the per platform nearest neighbors approach."
-                                },
-                                "fail_r_insertion_deletion": {
-                                    "definition": "Whether a sample failed the insertion : deletion ratio filter in the per platform nearest neighbors approach."
-                                },
                                 "fail_r_het_hom_var": {
                                     "definition": "Whether a sample failed the heterozygous : homozygous ratio filter in the per platform nearest neighbors approach."
                                 },
                                 "fail_r_ti_tv_singleton": {
                                     "definition": "Whether a sample failed the singleton transition : transversion (TiTv) ratio filter in the per platform nearest neighbors approach."
+                                },
+                                "fail_r_ti_tv": {
+                                    "definition": "Whether a sample failed the transition : transversion (TiTv) ratio filter in the per platform nearest neighbors approach."
+                                },
+                                "fail_r_insertion_deletion": {
+                                    "definition": "Whether a sample failed the insertion : deletion ratio filter in the per platform nearest neighbors approach."
                                 }
                             }
                         },
@@ -2172,6 +2206,43 @@
                 },
                 "outlier_filtered": {
                     "definition": "Whether a sample was filtered as an outlier for QC metrics ('qc_metrics_filters' is not empty)."
+                },
+                "relatedness_filters": {
+                    "definition": "Struct of relatedness filters. Any sample that is hard-filtered will have a missing value for these annotations.",
+                    "subfields": {
+                        "related": {
+                            "definition": "Whether a sample was filtered for second-degree (or closer) relatedness in the ancestry inference PCA."
+                        },
+                        "duplicate_or_twin": {
+                            "definition": "Whether a sample has a duplicate or twin among all samples that are not hard-filtered."
+                        },
+                        "parent_child": {
+                            "definition": "Whether a sample has a parent or child among all samples that are not hard-filtered."
+                        },
+                        "sibling": {
+                            "definition": "Whether a sample has a sibling among all samples that are not hard-filtered."
+                        }
+                    }
+                },
+                "release_relatedness_filters": {
+                    "definition": "Struct of release sample relatedness filters. Any sample that is hard-filtered or outlier-filtered will have a missing value for these annotations.",
+                    "subfields": {
+                        "related": {
+                            "definition": "Whether a sample was filtered for second-degree (or closer) relatedness in the final release."
+                        },
+                        "duplicate_or_twin": {
+                            "definition": "Whether a release filtered sample has a duplicate or twin among all samples that are not hard-filtered or outlier-filtered."
+                        },
+                        "parent_child": {
+                            "definition": "Whether a release filtered sample has a parent or child among all samples that are not hard-filtered or outlier-filtered."
+                        },
+                        "sibling": {
+                            "definition": "Whether a release filtered sample has a sibling among all samples that are not hard-filtered or outlier-filtered."
+                        }
+                    }
+                },
+                "control": {
+                    "definition": "Whether a sample is a control sample."
                 }
             }
         },
