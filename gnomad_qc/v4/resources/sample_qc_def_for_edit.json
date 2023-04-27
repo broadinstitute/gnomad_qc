@@ -1960,31 +1960,31 @@
                     "definition": "Sample's inferred genetic ancestry group label."
                 },
                 "prob_afr": {
-                    "definition": "Random forest probability that a sample is of African/African-American ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the African/African-American genetic ancestry group."
                 },
                 "prob_ami": {
-                    "definition": "Random forest probability that a sample is of Amish ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the Amish genetic ancestry group."
                 },
                 "prob_amr": {
-                    "definition": "Random forest probability that a sample is of Admixed American ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the Admixed American genetic ancestry group."
                 },
                 "prob_asj": {
-                    "definition": "Random forest probability that a sample is of Ashkenazi Jewish ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the Ashkenazi Jewish genetic ancestry group."
                 },
                 "prob_eas": {
-                    "definition": "Random forest probability that a sample is of East Asian ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the East Asian genetic ancestry group."
                 },
                 "prob_fin": {
-                    "definition": "Random forest probability that a sample is of Finnish ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the Finnish genetic ancestry group."
                 },
                 "prob_mid": {
-                    "definition": "Random forest probability that a sample is of Middle Eastern ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the Middle Eastern genetic ancestry group."
                 },
                 "prob_nfe": {
-                    "definition": "Random forest probability that a sample is of Non-Finnish European ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the Non-Finnish European genetic ancestry group."
                 },
                 "prob_sas": {
-                    "definition": "Random forest probability that a sample is of South Asian ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the South Asian genetic ancestry group."
                 },
                 "evaluation_sample": {
                     "definition": "Whether a sample was used in the Random Forest's evaluation."
