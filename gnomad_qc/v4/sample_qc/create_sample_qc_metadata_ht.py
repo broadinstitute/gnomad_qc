@@ -697,7 +697,7 @@ def main(args):
     with hl.hadoop_open(get_sample_qc_field_def_json_path(), "r") as d:
         sample_qc_descriptions = json.load(d)
 
-    ht = ht.annotate_globals(
+    ht = ht.select_globals(
         global_annotation_descriptions=convert_heterogeneous_dict_to_struct(
             sample_qc_descriptions["globals"]
         ),
