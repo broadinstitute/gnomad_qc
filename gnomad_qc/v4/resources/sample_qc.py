@@ -889,5 +889,5 @@ def get_sample_qc_field_def_json_path(version: str) -> str:
     :return: Path to sample QC field definitions JSON.
     """
     return (
-        f"{get_sample_qc_root(version, data_type='joint')}/additional_resources/gnomad.joint.{version}.sample_qc_field_definitions.json"
+        f"{get_sample_qc_root(version, data_type='joint')}/additional_resources/gnomad.joint.v{version}.sample_qc_field_definitions.json"
     )
