@@ -42,6 +42,13 @@ _picard_metric_versions = {
     )
 }
 
+_gatk_versions = {
+    "4.0": TableResource(
+        path="gs://gnomad/v4.0/metadata/exomes/gnomad.exomes.v4.0.gatk_versions.ht"
+    )
+}
+
 meta = VersionedTableResource(CURRENT_VERSION, _meta_versions)
 project_meta = VersionedTableResource(CURRENT_VERSION, _project_meta_versions)
 picard_metrics = VersionedTableResource(CURRENT_VERSION, _picard_metric_versions)
+gatk_versions = VersionedTableResource(CURRENT_VERSION, _gatk_versions)
