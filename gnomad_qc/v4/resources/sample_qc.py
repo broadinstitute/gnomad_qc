@@ -847,13 +847,5 @@ sample_clinvar_count = VersionedTableResource(
     },
 )
 
-# Sample QC meta HT global and row annotation definitions
-sample_qc_field_defs_json = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"gs://gnomad/v{version}/sample_qc/additional_resources/gnomad.joint.v{version}.sample_qc_field_definitions.json"
-        )
-        for version in VERSIONS
-    },
-)
+# Sample QC meta HT global and row annotation definitions.
+sample_qc_field_defs_json = "gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.joint.v4.0.sample_qc_field_definitions.json"
