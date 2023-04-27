@@ -1,7 +1,6 @@
 """Script containing sample QC related resources."""
 from typing import Optional
 
-import hail as hl
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
     PedigreeResource,
