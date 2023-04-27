@@ -1105,7 +1105,7 @@
                     "definition": "List of v4 populations spiked into the RF training data."
                 },
                 "min_prob_cutoffs": {
-                    "definition": "The minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to `Remaining`)."
+                    "definition": "The minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to 'remaining')."
                 }
             }
         },
