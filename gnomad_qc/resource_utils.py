@@ -154,11 +154,11 @@ class PipelineStepResourceCollection:
             Values can be either a list of resources, or a Dictionary keyed by each
             resource's name (use as an attribute name) and with the associated resource
             as the value. By default, the output from steps listed in
-            `previous_pipeline_steps` will be used as input resources to this step, but
+            `pipeline_input_steps` will be used as input resources to this step, but
             if input_resources is supplied, then only those resources will be used.
         :param add_input_resources: Optional Dictionary of additional input resources
             to add for this step on top of either `input_resources` or the output from
-            steps listed in `previous_pipeline_steps`. Keyed by a string used to
+            steps listed in `pipeline_input_steps`. Keyed by a string used to
             describe where the resource comes from or is created for example:
             "generate_qc_mt.py --generate-qc-meta". The Values can be either a list of
             resources, or a Dictionary keyed by each resource's name (use as an
