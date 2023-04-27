@@ -1,10 +1,5 @@
 """Script containing metadata related resources."""
-from gnomad.resources.resource_utils import (
-    PedigreeResource,
-    TableResource,
-    VersionedPedigreeResource,
-    VersionedTableResource,
-)
+from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION
 
