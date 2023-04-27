@@ -848,7 +848,6 @@ sample_clinvar_count = VersionedTableResource(
 )
 
 
-# Sample QC meta HT global and row annotation definitions.
 def get_sample_qc_field_def_json_path(version: str) -> str:
     """
     Get path to JSON file containing sample QC metadata HT field definitions.
