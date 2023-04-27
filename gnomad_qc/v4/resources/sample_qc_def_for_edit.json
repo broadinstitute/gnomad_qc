@@ -1096,7 +1096,7 @@
                     "definition": "List of PCs used in the RF."
                 },
                 "include_v2_known_in_training": {
-                    "definition": ""
+                    "definition": "Whether v2 known populations were included in the RF training data."
                 },
                 "v3_population_spike": {
                     "definition": "List of v3 populations spiked into the RF training data."
@@ -1105,7 +1105,7 @@
                     "definition": "List of v4 populations spiked into the RF training data."
                 },
                 "min_prob_cutoffs": {
-                    "definition": ""
+                    "definition": "The minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to `Remaining`)."
                 }
             }
         },
@@ -1150,7 +1150,7 @@
             }
         },
         "sample_filters_parameters": {
-            "definition": "",
+            "definition": "Parameters used for sample filtering.",
             "subfields": {
                 "hard_filter_cutoffs": {
                     "definition": "Cutoffs used for hard-filtering samples prior to sample QC.",
@@ -1197,10 +1197,10 @@
                                                     "definition": "Estimated standard error for each PC."
                                                 },
                                                 "t_stat": {
-                                                    "definition": "t-statistic for each PC."
+                                                    "definition": "The t-statistic for each PC."
                                                 },
                                                 "p_value": {
-                                                    "definition": "p-value for each PC."
+                                                    "definition": "The p-value for each PC."
                                                 },
                                                 "multiple_standard_error": {
                                                     "definition": "Estimated standard deviation of the random error."
@@ -1215,7 +1215,7 @@
                                                     "definition": "F-statistic for nested models."
                                                 },
                                                 "multiple_p_value": {
-                                                    "definition": "p-value for the F-test of nested models."
+                                                    "definition": "The p-value for the F-test of nested models."
                                                 },
                                                 "n": {
                                                     "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1232,10 +1232,10 @@
                                                     "definition": "Estimated standard error for each PC."
                                                 },
                                                 "t_stat": {
-                                                    "definition": "t-statistic for each PC."
+                                                    "definition": "The t-statistic for each PC."
                                                 },
                                                 "p_value": {
-                                                    "definition": "p-value for each PC."
+                                                    "definition": "The p-value for each PC."
                                                 },
                                                 "multiple_standard_error": {
                                                     "definition": "Estimated standard deviation of the random error."
@@ -1250,7 +1250,7 @@
                                                     "definition": "F-statistic for nested models."
                                                 },
                                                 "multiple_p_value": {
-                                                    "definition": "p-value for the F-test of nested models."
+                                                    "definition": "The p-value for the F-test of nested models."
                                                 },
                                                 "n": {
                                                     "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1267,10 +1267,10 @@
                                                     "definition": "Estimated standard error for each PC."
                                                 },
                                                 "t_stat": {
-                                                    "definition": "t-statistic for each PC."
+                                                    "definition": "The t-statistic for each PC."
                                                 },
                                                 "p_value": {
-                                                    "definition": "p-value for each PC."
+                                                    "definition": "The p-value for each PC."
                                                 },
                                                 "multiple_standard_error": {
                                                     "definition": "Estimated standard deviation of the random error."
@@ -1285,7 +1285,7 @@
                                                     "definition": "F-statistic for nested models."
                                                 },
                                                 "multiple_p_value": {
-                                                    "definition": "p-value for the F-test of nested models."
+                                                    "definition": "The p-value for the F-test of nested models."
                                                 },
                                                 "n": {
                                                     "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1302,10 +1302,10 @@
                                                     "definition": "Estimated standard error for each PC."
                                                 },
                                                 "t_stat": {
-                                                    "definition": "t-statistic for each PC."
+                                                    "definition": "The t-statistic for each PC."
                                                 },
                                                 "p_value": {
-                                                    "definition": "p-value for each PC."
+                                                    "definition": "The p-value for each PC."
                                                 },
                                                 "multiple_standard_error": {
                                                     "definition": "Estimated standard deviation of the random error."
@@ -1320,7 +1320,7 @@
                                                     "definition": "F-statistic for nested models."
                                                 },
                                                 "multiple_p_value": {
-                                                    "definition": "p-value for the F-test of nested models."
+                                                    "definition": "The p-value for the F-test of nested models."
                                                 },
                                                 "n": {
                                                     "definition": "Number of samples included in the regression. A sample is included if and only if y, all elements of x, and weight (if set) are non-missing."
@@ -1403,10 +1403,10 @@
                                     }
                                 },
                                 "strata": {
-                                    "definition": ""
+                                    "definition": "Strata used in outlier filtering."
                                 },
                                 "qc_metrics": {
-                                    "definition": ""
+                                    "definition": "QC Metrics used in outlier filtering."
                                 },
                                 "regress_pop_n_pcs": {
                                     "definition": "Number of population PCA scores used in regression."
@@ -1453,7 +1453,7 @@
             }
         },
         "date": {
-            "definition": ""
+            "definition": "Date sample QC metadata HT was generated."
         }
     },
     "rows": {
@@ -1553,7 +1553,7 @@
                     "definition": "Collaborator provided age in years (e.g. 25)."
                 },
                 "v2_meta": {
-                    "definition": "",
+                    "definition": "Metadata from gnomAD v2.",
                     "subfields": {
                         "v2_age": {
                             "definition": "Last known sample age in gnomAD v2 metadata."
@@ -1648,7 +1648,7 @@
                     "definition": "Remapping of 'primary_disease' into more general categories."
                 },
                 "ukb_meta": {
-                    "definition": "",
+                    "definition": "UKB metadata.",
                     "subfields": {
                         "ukb_projected_pop": {
                             "definition": "Inferred population after projecting onto gnomAD population PCs for UKB samples."
@@ -1663,7 +1663,7 @@
                             "definition": "Whether a sample was flagged for sex aneuploidy in the UKB callset."
                         },
                         "ukb_sex_imputation": {
-                            "definition": "",
+                            "definition": "UKB sex imputation results.",
                             "subfields": {
                                 "is_female": {
                                     "definition": "Whether a sample was imputed female in the UKB callset (based on default values of Hail's impute_sex module)."
