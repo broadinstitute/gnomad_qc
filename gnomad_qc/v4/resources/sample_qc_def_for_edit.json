@@ -1,7 +1,7 @@
 {
     "globals": {
         "sample_qc_parameters": {
-            "definition": "Parameters passed to hail's sample_qc module.",
+            "definition": "Parameters passed to Hail's `sample_qc` module.",
             "subfields": {
                 "gq_bins": {
                     "definition": "Tuple containing cutoffs for genotype quality (GQ) scores."
@@ -35,25 +35,25 @@
             "definition": "Parameters used during chromosomal sex imputation.",
             "subfields": {
                 "normalization_contig": {
-                    "definition": "Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y."
+                    "definition": "Which autosomal chromosome was used for normalizing the coverage of chromosomes X and Y."
                 },
                 "variants_only_x_ploidy": {
-                    "definition": "Whether to use depth of variant data within calling intervals instead of reference data for chrX ploidy estimation."
+                    "definition": "Whether depth of variant data within calling intervals was used instead of reference data for chrX ploidy estimation."
                 },
                 "variants_only_y_ploidy": {
-                    "definition": "Whether to use depth of variant data within calling intervals instead of reference data for chrY ploidy estimation."
+                    "definition": "Whether depth of variant data within calling intervals was used instead of reference data for chrY ploidy estimation."
                 },
                 "variants_filter_lcr": {
-                    "definition": "Whether to filter out variants in LCR regions for variants only ploidy estimation and fraction of homozygous alternate variants on chromosome X."
+                    "definition": "Whether variants in LCR regions were filtered out of the variants only ploidy estimation and fraction of homozygous alternate variants on chromosome X."
                 },
                 "variants_segdup": {
-                    "definition": "Whether to filter out variants in segdup regions for variants only ploidy estimation and fraction of homozygous alternate variants on chromosome X."
+                    "definition": "Whether variants in segdup regions were filtered out of the variants only ploidy estimation and fraction of homozygous alternate variants on chromosome X."
                 },
                 "variants_filter_decoy": {
-                    "definition": "Whether to filter out variants in decoy regions for variants only ploidy estimation and fraction of homozygous alternate variants on chromosome X."
+                    "definition": "Whether variants in decoy regions were filtered out for variants only ploidy estimation and fraction of homozygous alternate variants on chromosome X."
                 },
                 "variants_snv_only": {
-                    "definition": "Whether to filter to only single nucleotide variants for variants only ploidy estimation and fraction of homozygous alternate variants on chromosome X."
+                    "definition": "Whether variants were filtered to only single nucleotide variants for variants only ploidy estimation and fraction of homozygous alternate variants on chromosome X."
                 },
                 "f_stat_cutoff": {
                     "definition": "F-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY are above cutoff."
@@ -62,7 +62,7 @@
                     "definition": "Minimum alternate allele frequency cutoff used to filter sites."
                 },
                 "f_stat_ukb_var": {
-                    "definition": "Whether to use UK Biobank high callrate (0.99) and common variants (UKB allele frequency > value specified by '--min-af') for f-stat computation instead of the sites determined by '--determine-fstat-sites'."
+                    "definition": "Whether UK Biobank high callrate (0.99) and common variants (UKB allele frequency > value specified by '--min-af') were used for f-stat computation instead of the sites determined by '--determine-fstat-sites'."
                 },
                 "x_ploidy_cutoffs": {
                     "definition": "X ploidy cutoffs for karyotype assignment per platform.",
@@ -1055,7 +1055,7 @@
                             "definition": "Minimum AF for inclusion in sample callrate computation."
                         },
                         "min_site_callrate": {
-                            "definition": "Filtering threshold to use for sample callrate computed on only predetermined QC variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering."
+                            "definition": "Filtering threshold used for sample callrate computed on only predetermined QC variants (predetermined using CCDG genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering."
                         }
                     }
                 },
@@ -1073,13 +1073,13 @@
             }
         },
         "population_inference_parameters": {
-            "definition": "Parameters to used to assign ancestry groups.",
+            "definition": "Parameters used to assign ancestry groups.",
             "subfields": {
                 "assign_pops_from_pc_params": {
                     "definition": "Parameters used in a random forest model to assign ancestry group labels based on the results of PCA.",
                     "subfields": {
                         "min_assignment_prob": {
-                            "definition": "Minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to `remaining`)."
+                            "definition": "Minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to 'remaining')."
                         },
                         "error_rate": {
                             "definition": "Random forests error rate on the training data for acestry group assignment."
@@ -1087,7 +1087,7 @@
                     }
                 },
                 "min_prob": {
-                    "definition": "Minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to `remaining`)."
+                    "definition": "Minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to 'remaining')."
                 },
                 "include_unreleasable_samples": {
                     "definition": "Whether unreleasable samples were included in PCA."
@@ -1105,7 +1105,7 @@
                     "definition": "List of v4 populations spiked into the RF training data."
                 },
                 "min_prob_cutoffs": {
-                    "definition": "The minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to `remaining`)."
+                    "definition": "The minimum probability of belonging to a given ancestry group for the ancestry group to be set (otherwise set to `Remaining`)."
                 }
             }
         },
@@ -1113,34 +1113,34 @@
             "definition": "Parameters used for relatedness inference.",
             "subfields": {
                 "relationship_inference_method": {
-                    "definition": "Which relatedness method to use for finalized relatedness Table. Options are 'cuking' and 'pc_relate'."
+                    "definition": "Which relatedness method was used for finalized relatedness Table. Options are 'cuking' and 'pc_relate'."
                 },
                 "relationship_cutoffs": {
                     "definition": "",
                     "subfields": {
                         "second_degree_sibling_lower_cutoff_slope": {
-                            "definition": "Slope of the line to use as a lower cutoff for second degree relatives and siblings from parent-child pairs."
+                            "definition": "Slope of the line used as a lower cutoff for second degree relatives and siblings from parent-child pairs."
                         },
                         "second_degree_sibling_lower_cutoff_intercept": {
-                            "definition": "Intercept of the line to use as a lower cutoff for second degree relatives and siblings from parent-child pairs."
+                            "definition": "Intercept of the line used as a lower cutoff for second degree relatives and siblings from parent-child pairs."
                         },
                         "second_degree_upper_sibling_lower_cutoff_slope": {
-                            "definition": "Slope of the line to use as an upper cutoff for second degree relatives and a lower cutoff for siblings."
+                            "definition": "Slope of the line used as an upper cutoff for second degree relatives and a lower cutoff for siblings."
                         },
                         "second_degree_upper_sibling_lower_cutoff_intercept": {
-                            "definition": "Intercept of the line to use as an upper cutoff for second degree relatives and a lower cutoff for siblings."
+                            "definition": "Intercept of the line used as an upper cutoff for second degree relatives and a lower cutoff for siblings."
                         },
                         "duplicate_twin_min_kin": {
                             "definition": "Minimum kinship for duplicate or twin pairs."
                         },
                         "second_degree_min_kin": {
-                            "definition": "Minimum kinship threshold for filtering a pair of samples with a second degree relationship when filtering related individuals. Default is 0.08838835. Bycroft et al. (2018) calculates a theoretical kinship of 0.08838835 for a second degree relationship cutoff. This cutoff should be determined by evaluation of the kinship distribution."
+                            "definition": "Minimum kinship threshold used to filter a pair of samples with a second degree relationship when filtering related individuals. This cutoff was determined by evaluation of the kinship distribution."
                         },
                         "duplicate_twin_ibd1_min": {
-                            "definition": "Minimum IBD1 cutoff for duplicate or twin pairs. Only used when `relatedness_method` is 'pc_relate'. Note: the min is used because pc_relate can output large negative values in some corner cases."
+                            "definition": "Minimum IBD1 cutoff for duplicate or twin pairs if `relatedness_method` is 'pc_relate'. Note: the min is used because pc_relate can output large negative values in some corner cases."
                         },
                         "duplicate_twin_ibd1_max": {
-                            "definition": "Maximum IBD1 cutoff for duplicate or twin pairs. Only used when `relatedness_method` is 'pc_relate'."
+                            "definition": "Maximum IBD1 cutoff for duplicate or twin pairs if `relatedness_method` is 'pc_relate'."
                         },
                         "parent_child_max_ibs0_over_ibs2": {
                             "definition": "Maximum value of IBD0 (if `relatedness_method` is 'pc_relate') or IBS0/IBS2 (if `relatedness_method` is 'cuking') for a parent-child pair."
@@ -1330,7 +1330,7 @@
                                     }
                                 },
                                 "qc_metrics_stats": {
-                                    "definition": "The statistics generated for outlier filter cutoffs based on the residuals for each of the hail sample QC metrics.",
+                                    "definition": "The statistics generated for outlier filter cutoffs based on the residuals for each of the Hail sample QC metrics.",
                                     "subfields": {
                                         "r_ti_tv_residual": {
                                             "definition": "Transition : transversion (TiTv) ratio residuals statistics.",
@@ -1440,13 +1440,13 @@
                             }
                         },
                         "filter_qc_metrics": {
-                            "definition": "List of sample QC metrics used for the finalized outlier filtering. Note: This must be the same as, or a subset of `--filtering-qc-metrics` used when generating the filtering Table(s) desired for final filtering."
+                            "definition": "List of sample QC metrics used for the finalized outlier filtering."
                         },
                         "ensemble_combination_operator": {
-                            "definition": "Logical operator to use for combining filtering methods for the ensemble method."
+                            "definition": "Logical operator used for combining filtering methods for the ensemble method."
                         },
                         "include_unreleasable_samples": {
-                            "definition": "Whether  unreleasable samples were included in filtering."
+                            "definition": "Whether unreleasable samples were included in filtering."
                         }
                     }
                 }
@@ -1744,7 +1744,7 @@
             }
         },
         "sample_qc": {
-            "definition": "Metric's generated by hail's sample_qc module.",
+            "definition": "Sample QC metrics generated by Hail's `sample_qc` module on variants with fewer than 3 alternate alleles.",
             "subfields": {
                 "n_het": {
                     "definition": "Number of heterozygous calls."
@@ -1820,25 +1820,25 @@
                     "definition": "Sample's mean depth of non-reference genotypes in calling intervals on chromosome 20."
                 },
                 "chrX_mean_dp": {
-                    "definition": "Sample's mean depth across calling intervals on chromosome X. If 'variants_only_x_ploidy' is True, only the depth of non-reference genotypes is used. Otherwise depth of reference blocks is also included in the mean."
+                    "definition": "Sample's mean depth across calling intervals on chromosome X. If 'sex_imputation_parameters.variants_only_x_ploidy' is True, only the depth of non-reference genotypes is used. Otherwise depth of reference blocks is also included in the mean."
                 },
                 "chrX_ploidy": {
-                    "definition": "Sample's chromosome X ploidy ('chrX_mean_dp' normalized using 'autosomal_mean_dp' or 'var_data_chr20_mean_dp' if 'variants_only_x_ploidy')."
+                    "definition": "Sample's chromosome X ploidy ('chrX_mean_dp' normalized using 'autosomal_mean_dp' or 'var_data_chr20_mean_dp' if 'sex_imputation_parameters.variants_only_x_ploidy')."
                 },
                 "chrY_mean_dp": {
-                    "definition": "Sample's mean depth across calling intervals on chromosome Y. If 'variants_only_y_ploidy' is True, only the depth of non-reference genotypes is used. Otherwise depth of reference blocks is also included in the mean."
+                    "definition": "Sample's mean depth across calling intervals on chromosome Y. If 'sex_imputation_parameters.variants_only_y_ploidy' is True, only the depth of non-reference genotypes is used. Otherwise depth of reference blocks is also included in the mean."
                 },
                 "chrY_ploidy": {
-                    "definition": "Sample's chromosome Y ploidy ('chrY_mean_dp' normalized using 'autosomal_mean_dp' or 'var_data_chr20_mean_dp' if 'variants_only_Y_ploidy')."
+                    "definition": "Sample's chromosome Y ploidy ('chrY_mean_dp' normalized using 'autosomal_mean_dp' or 'var_data_chr20_mean_dp' if 'sex_imputation_parameters.variants_only_Y_ploidy')."
                 },
                 "autosomal_mean_dp": {
-                    "definition": "Sample's mean depth across calling intervals on the normalization contig (defined by 'normalization_contig'). If 'variants_only_y_ploidy' is True, only the depth of non-reference genotypes is used. Otherwise depth of reference blocks is also included in the mean."
+                    "definition": "Sample's mean depth across calling intervals on the normalization contig (defined by 'sex_imputation_parameters.normalization_contig'). If 'sex_imputation_parameters.variants_only_y_ploidy' is True, only the depth of non-reference genotypes is used. Otherwise depth of reference blocks is also included in the mean."
                 },
                 "chrx_frac_hom_alt": {
                     "definition": "The fraction of homozygous alternate variants on chromosome X."
                 },
                 "chrx_frac_hom_alt_adj": {
-                    "definition": "Sample's fraction of high-quality homozygous alternate genotypes on chromosome X."
+                    "definition": "Sample's fraction of high-quality (GQ >= 20; DP >= 10; and AB >= 0.2 for het calls) homozygous alternate genotypes on chromosome X."
                 },
                 "platform": {
                     "definition": "Platform assigned during platform inference."
@@ -1884,7 +1884,7 @@
                     "definition": "Sample callrate in the v4 precomputed QC MatrixTable."
                 },
                 "sample_qc_mt_callrate_adj": {
-                    "definition": "Sample callrate for high-quality genotypes in the v4 precomputed QC MatrixTable."
+                    "definition": "Sample callrate for high-quality (GQ >= 20; DP >= 10; and AB >= 0.2 for het calls) genotypes in the v4 precomputed QC MatrixTable."
                 },
                 "bi_allelic_sample_qc": {
                     "definition": "Sample QC metrics calculated from bi-allelic sites only.",
@@ -1960,31 +1960,31 @@
                     "definition": "Sample's inferred genetic ancestry group label."
                 },
                 "prob_afr": {
-                    "definition": "Random forest probability that a sample is of African/African-American ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the African/African-American genetic ancestry group."
                 },
                 "prob_ami": {
-                    "definition": "Random forest probability that a sample is of Amish ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the Amish genetic ancestry group."
                 },
                 "prob_amr": {
-                    "definition": "Random forest probability that a sample is of Admixed American ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the Admixed American genetic ancestry group."
                 },
                 "prob_asj": {
-                    "definition": "Random forest probability that a sample is of Ashkenazi Jewish ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the Ashkenazi Jewish genetic ancestry group."
                 },
                 "prob_eas": {
-                    "definition": "Random forest probability that a sample is of East Asian ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the East Asian genetic ancestry group."
                 },
                 "prob_fin": {
-                    "definition": "Random forest probability that a sample is of Finnish ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the Finnish genetic ancestry group."
                 },
                 "prob_mid": {
-                    "definition": "Random forest probability that a sample is of Middle Eastern ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the Middle Eastern genetic ancestry group."
                 },
                 "prob_nfe": {
-                    "definition": "Random forest probability that a sample is of Non-Finnish European ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the Non-Finnish European genetic ancestry group."
                 },
                 "prob_sas": {
-                    "definition": "Random forest probability that a sample is of South Asian ancestry."
+                    "definition": "Random forest probability that the sample clusters with samples in the South Asian genetic ancestry group."
                 },
                 "evaluation_sample": {
                     "definition": "Whether a sample was used in the Random Forest's evaluation."
@@ -2027,7 +2027,7 @@
                     "definition": "Whether a sample was flagged for failing a Hail's `vds.sample_qc` module metric on bi-allelic variants: 'n_singleton' > 5000, 'r_het_hom_var' > 10, 'bases_dp_over_1' < 5e7, or 'bases_dp_over_20' < 4e7."
                 },
                 "low_adj_callrate": {
-                    "definition": "Whether a sample was flagged for low callrate in high quality sites: 'sample_qc_mt_callrate_adj' < 0.8."
+                    "definition": "Whether a sample was flagged for low callrate using high-quality genotypes (GQ >= 20; DP >= 10; and AB >= 0.2 for het calls): 'sample_qc_mt_callrate_adj' < 0.8."
                 },
                 "failed_fingerprinting": {
                     "definition": "Whether a sample was flagged for failing fingerprinting."
@@ -2242,15 +2242,15 @@
                     }
                 },
                 "control": {
-                    "definition": "Whether a sample is a control sample."
+                    "definition": "Whether a sample is used as a control sample in variant QC assesment. This includes a synthetic-diploid (syndip) sample (a mixture of DNA from two haploid CHM cell lines) and two NA12878 samples."
                 }
             }
         },
         "high_quality": {
-            "definition": "Whether a sample is considered high quality (no hard filter or sample QC metric outlier filter flags)."
+            "definition": "Whether a sample is considered high-quality (no hard filter or sample QC metric outlier filter flags)."
         },
         "release": {
-            "definition": "Whether a sample meets criteria for release (Permission to release, high quality, not to be excluded, and not related to any other sample in the release)."
+            "definition": "Whether a sample meets criteria for release (Permission to release, high-quality, not to be excluded, and not related to any other sample in the release)."
         }
     }
 }
