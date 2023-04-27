@@ -805,11 +805,11 @@ def get_outlier_filtering_resources(
     outlier_filtering_pipeline = PipelineResourceCollection(
         pipeline_name="outlier_filtering",
         pipeline_resources={
-            "pop_scores_ht": pop_scores_ht,
-            "pop_ht": pop_ht,
-            "platform_ht": platform,
-            "joint_qc_meta": joint_qc_meta,
-            "sample_qc_ht": sample_qc_ht,
+            **sample_qc_input,
+            **pop_scores_input,
+            **pop_assign_input,
+            **platform_input,
+            **joint_qc_meta_input,
         },
         overwrite=overwrite,
     )
@@ -921,6 +921,7 @@ def main(args):
             raise ValueError(err_msg)
 
     outlier_resources = get_outlier_filtering_resources(args)
+    outlier_resources.check_resource_existence()
     pop_ht = outlier_resources.pop_ht.ht()
     platform_ht = outlier_resources.platform_ht.ht()
     pop_scores_ht = outlier_resources.pop_scores_ht.ht()
