@@ -29,6 +29,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     finalized_outlier_filtering,
     get_pop_ht,
     get_sample_qc,
+    get_sample_qc_field_def_json_path,
     hard_filtered_samples,
     hard_filtered_samples_no_sex,
     joint_qc_meta,
@@ -36,7 +37,6 @@ from gnomad_qc.v4.resources.sample_qc import (
     related_samples_to_drop,
     relatedness,
     sample_chr20_mean_dp,
-    sample_qc_field_defs_json,
     sample_qc_mt_callrate,
     sex,
 )
@@ -694,7 +694,7 @@ def main(args):
     )
 
     # Add descriptions or the global and sample annotations to the Table globals.
-    with hl.hadoop_open(sample_qc_field_defs_json, "r") as d:
+    with hl.hadoop_open(get_sample_qc_field_def_json_path, "r") as d:
         sample_qc_descriptions = json.load(d)
 
     ht = ht.annotate_globals(
