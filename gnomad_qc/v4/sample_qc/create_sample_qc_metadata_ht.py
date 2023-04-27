@@ -1,5 +1,6 @@
 """Script to merge the output of all sample QC modules into a single Table."""
 import argparse
+import json
 import logging
 from datetime import datetime
 from functools import reduce
@@ -18,6 +19,9 @@ from gnomad.utils.slack import slack_notifications
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.create_release.create_hgdp_tgp_subset import (
+    convert_heterogeneous_dict_to_struct,
+)
 from gnomad_qc.v4.resources.basics import all_ukb_samples_to_remove, get_gnomad_v4_vds
 from gnomad_qc.v4.resources.meta import gatk_versions, meta, project_meta
 from gnomad_qc.v4.resources.sample_qc import (
@@ -32,6 +36,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     related_samples_to_drop,
     relatedness,
     sample_chr20_mean_dp,
+    sample_qc_field_defs_json,
     sample_qc_mt_callrate,
     sex,
 )
@@ -42,7 +47,6 @@ logger = logging.getLogger("sample_metadata")
 logger.setLevel(logging.INFO)
 
 
-# TODO: Add annotation documentation to globals. gnomad_production issue #898.
 # TODO: How to handle PCs in platform and population Tables? For example in the
 #  platform Table the number of PCs will be 9 because that is what was used, should we
 #  modify to have all 30 PCs, or add all 30 PCs to another annotation, or only keep the
@@ -688,7 +692,21 @@ def main(args):
             & ~ht.sample_filters.control
         ),
     )
-    ht = ht.annotate_globals(date=datetime.now().isoformat())
+
+    # Add descriptions or the global and sample annotations to the Table globals.
+    with hl.hadoop_open(sample_qc_field_defs_json, "r") as d:
+        sample_qc_descriptions = json.load(d)
+
+    ht = ht.annotate_globals(
+        global_annotation_descriptions=convert_heterogeneous_dict_to_struct(
+            sample_qc_descriptions["globals"]
+        ),
+        sample_annotation_descriptions=convert_heterogeneous_dict_to_struct(
+            sample_qc_descriptions["rows"]
+        ),
+        **ht.index_globals(),
+        date=datetime.now().isoformat(),
+    )
     ht = ht.checkpoint(meta.path, overwrite=args.overwrite)
 
     logger.info(
