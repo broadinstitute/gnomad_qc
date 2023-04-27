@@ -354,15 +354,18 @@ def main(args):  # noqa: D103
         final_anns.append("freq", "high_ab_hets_by_group_membership")
 
     if adjust_freqs:
+        logger.info("Adjusting frequencies by accounting for high AB hets...")
         mt = subtract_high_ab_hets_from_ac(mt, af_threshold)
         final_anns.append(
             "ab_adjusted_freq"
-        )  # NOTE: Do we want to keep original freqs?
+        )  # NOTE: Do we want to keep original freqs? If not, overwrite the freq ann
 
-    if args.set_high_ab_het_to_hom_alt:
+    if (
+        args.set_high_ab_het_to_hom_alt
+    ):  # NOTE: We want to avoid this if we can but to avoid need to change age hists and inbreeding coefficient methods
         logger.info(
             "Setting het genotypes at sites with >1% AF (using adjusted frequencies)"
-            " and > 0.9 AB to homalt..."
+            " and > 0.9 AB to homalt..."  # TODO: Update AF threshold once we analyze
         )
         # using the adjusted allele frequencies to fix the het to hom alt
         mt = set_high_ab_het_to_hom_alt(mt, gatk_expr=mt.gatk_version)
