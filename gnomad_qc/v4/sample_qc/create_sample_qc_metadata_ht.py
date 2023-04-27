@@ -65,7 +65,7 @@ def get_project_meta() -> hl.Table:
     :return: GATK version annotated project metadata Table.
     """
     fixed_homalt_ver = hl.literal({"4.1.4.1", "4.1.8.0"})
-    ht = project_meta.ht()
+    ht = project_meta.ht().select_globals()
 
     # Add an annotation at the project_meta level indicating the sample belongs to UKB.
     project_meta_expr = ht.project_meta.annotate(
@@ -694,7 +694,7 @@ def main(args):
     )
 
     # Add descriptions or the global and sample annotations to the Table globals.
-    with hl.hadoop_open(get_sample_qc_field_def_json_path, "r") as d:
+    with hl.hadoop_open(get_sample_qc_field_def_json_path(), "r") as d:
         sample_qc_descriptions = json.load(d)
 
     ht = ht.annotate_globals(
