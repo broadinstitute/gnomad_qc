@@ -848,7 +848,7 @@ sample_clinvar_count = VersionedTableResource(
 )
 
 
-def get_sample_qc_field_def_json_path(version: str) -> str:
+def get_sample_qc_field_def_json_path(version: str = CURRENT_VERSION) -> str:
     """
     Get path to JSON file containing sample QC metadata HT field definitions.
 
