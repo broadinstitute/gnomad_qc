@@ -411,7 +411,7 @@ def get_relatedness_resources(
     # Initialize relatedness pipeline resource collection
     relatedness_pipeline = PipelineResourceCollection(
         pipeline_name="relatedness",
-        pipeline_resources={"joint_qc_mt": joint_qc_mt, "joint_qc_meta": joint_qc_meta},
+        pipeline_resources={**joint_qc_mt_input, **joint_qc_meta_input},
         overwrite=overwrite,
     )
 

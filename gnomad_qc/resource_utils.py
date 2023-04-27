@@ -154,11 +154,11 @@ class PipelineStepResourceCollection:
             Values can be either a list of resources, or a Dictionary keyed by each
             resource's name (use as an attribute name) and with the associated resource
             as the value. By default, the output from steps listed in
-            `previous_pipeline_steps` will be used as input resources to this step, but
+            `pipeline_input_steps` will be used as input resources to this step, but
             if input_resources is supplied, then only those resources will be used.
         :param add_input_resources: Optional Dictionary of additional input resources
             to add for this step on top of either `input_resources` or the output from
-            steps listed in `previous_pipeline_steps`. Keyed by a string used to
+            steps listed in `pipeline_input_steps`. Keyed by a string used to
             describe where the resource comes from or is created for example:
             "generate_qc_mt.py --generate-qc-meta". The Values can be either a list of
             resources, or a Dictionary keyed by each resource's name (use as an
@@ -301,7 +301,9 @@ class PipelineResourceCollection:
         self,
         pipeline_name: str,
         pipeline_steps: Dict[str, PipelineStepResourceCollection] = {},
-        pipeline_resources: Optional[Dict[str, Any]] = None,
+        pipeline_resources: Optional[
+            Dict[str, Union[Dict[str, Any], List[Any]]]
+        ] = None,
         overwrite: bool = None,
     ) -> None:
         """
@@ -313,8 +315,11 @@ class PipelineResourceCollection:
             associated PipelineStepResourceCollection as the Value. Default is an empty
             Dictionary.
         :param pipeline_resources: Optional Dictionary of resources used by multiple
-            steps of the pipeline. Keyed by the name to use as an attribute name and
-            with the associated resource as the value.
+            steps of the pipeline. Keyed by a string used to describe where the
+            resource comes from or is created for example: "generate_qc_mt.py
+            --generate-qc-meta". The Values can be either a list of resources, or a
+            Dictionary keyed by each resource's name (used as an attribute name) with
+            the associated resource as the value.
         :param overwrite: Whether these resources can be overwritten. Used in
             `check_resource_existence`.
         :return: None.
@@ -323,10 +328,10 @@ class PipelineResourceCollection:
         self.pipeline_steps = {}
         self.add_steps(pipeline_steps)
         self.overwrite = overwrite
+        self.pipeline_resources = defaultdict(list)
 
         if pipeline_resources is not None:
-            for name, resource in pipeline_resources.items():
-                setattr(self, name, resource)
+            self.add_pipeline_resources(pipeline_resources)
 
     def __getattr__(self, name: str) -> None:
         """Raise AttributeError with modified message if the attribute is not found."""
@@ -334,6 +339,28 @@ class PipelineResourceCollection:
             f"Pipeline {self.pipeline_name} has no resource or pipeline step attribute"
             f" named {name}!"
         )
+
+    def add_pipeline_resources(
+        self,
+        pipeline_resources: Dict[str, Union[Dict[str, Any], List[Any]]],
+    ) -> None:
+        """
+        Add input resources to the pipeline step.
+
+        :param pipeline_resources: Dictionary of resources to add as input for this
+            pipeline step. Keyed by a string used to describe where the resource comes
+            from or is created for example: "generate_qc_mt.py --generate-qc-meta". The
+            Values can be either a list of resources, or a Dictionary keyed by each
+            resource's name (used as an attribute name) and with the associated resource
+            as the value.
+        :return: None.
+        """
+        for step, resources in pipeline_resources.items():
+            if isinstance(resources, dict):
+                for name, resource in resources.items():
+                    setattr(self, name, resource)
+                resources = list(resources.values())
+            self.pipeline_resources[step].extend(resources)
 
     def add_steps(self, steps: Dict[str, PipelineStepResourceCollection]) -> None:
         """
@@ -351,7 +378,7 @@ class PipelineResourceCollection:
         self.pipeline_steps.update(steps)
 
     def check_resource_existence(
-        self, step: str, overwrite: Optional[bool] = None
+        self, step: Optional[str] = None, overwrite: Optional[bool] = None
     ) -> None:
         """
         Check for existence of input and output resources.
@@ -359,18 +386,24 @@ class PipelineResourceCollection:
         An error is returned if input resources don't exist, or if overwrite is False
         and an output resource does exist.
 
-        :param step: Name of step to check resource existence of.
+        :param step: Optional name of step to check resource existence of. By default,
+            only the `pipeline_resources` are checked.
         :param overwrite: Whether these resources can be overwritten. By default, the
             class attribute of overwrite will be used if it exists, otherwise overwrite
             will be set to False.
         :return: None.
         """
+        check_resource_existence(
+            input_step_resources=self.pipeline_resources,
+        )
+
         if overwrite is None:
             if self.overwrite is None:
                 overwrite = False
             else:
                 overwrite = self.overwrite
 
-        # TODO: When revisiting, if this is kept, throw an error message here that
-        #  tells you the available steps in the pipeline collection object.
-        self.pipeline_steps[step].check_resource_existence(overwrite=overwrite)
+        if step:
+            # TODO: When revisiting, if this is kept, throw an error message here that
+            #  tells you the available steps in the pipeline collection object.
+            self.pipeline_steps[step].check_resource_existence(overwrite=overwrite)
