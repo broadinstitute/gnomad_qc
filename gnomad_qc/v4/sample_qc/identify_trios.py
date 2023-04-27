@@ -201,13 +201,14 @@ def filter_ped(
     # Get aggregate stats (need mean and stdev) for each metric with std dev
     # cutoffs set.
     z_stats_expr = {}
-    for m in cutoffs_by_method["stddev"]:
+    for m in cutoffs_by_method["stdev"]:
         z_stats_expr[m] = hl.agg.stats(mendel_by_s[f"n_{m}"])
     z_stats = mendel_by_s.aggregate(hl.struct(**z_stats_expr))
 
     # Build filter expression to filter metrics by requested metrics and methods.
     filter_expr = hl.literal(True)
-    for m, max_z in cutoffs_by_method["stddev"].items():
+    cutoffs = {}
+    for m, max_z in cutoffs_by_method["stdev"].items():
         max_n = z_stats[m].mean + max_z * z_stats[m].stdev
         logger.info(
             "Filtering trios with more than %f %s errors (%i z-score)",
@@ -244,19 +245,17 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
     # trio identification pipeline.
     rel_ht = relatedness()
     filter_ht = finalized_outlier_filtering()
-    filter_input = {
+    pipeline_resources = {
         "outlier_filtering.py --create-finalized-outlier-filter": {
             "filter_ht": filter_ht
         },
-    }
-    rel_input = {
         "relatedness.py --finalize-relatedness-ht": {"rel_ht": rel_ht},
     }
 
     # Initialize trio identification pipeline resource collection.
     trio_pipeline = PipelineResourceCollection(
         pipeline_name="identify_trios",
-        pipeline_resources={"filter_ht": filter_ht, "rel_ht": rel_ht},
+        pipeline_resources=pipeline_resources,
         overwrite=overwrite,
     )
 
@@ -323,6 +322,7 @@ def main(args):
     overwrite = args.overwrite
     test = args.test
     trio_resources = get_trio_resources(overwrite, test)
+    trio_resources.check_resource_existence()
     filter_ht = trio_resources.filter_ht.ht()
     rel_ht = filter_relatedness_ht(trio_resources.rel_ht.ht(), filter_ht)
 
@@ -465,18 +465,20 @@ if __name__ == "__main__":
         "--max-mendel-z",
         help=(
             "Max number of standard deviations above the mean Mendel errors across "
-            "inferred trios to keep a trio. Default is 3."
+            "inferred trios to keep a trio. If flag is set, default is 3."
         ),
-        default=3,
+        nargs="?",
+        const=3,
         type=int,
     )
     finalize_ped_args.add_argument(
         "--max-de-novo-z",
         help=(
             "Max number of standard deviations above the mean de novos across inferred "
-            "trios to keep a trio. Default is 3."
+            "trios to keep a trio. If flag is set, default is 3."
         ),
-        default=3,
+        nargs="?",
+        const=3,
         type=int,
     )
     finalize_ped_args.add_argument(
