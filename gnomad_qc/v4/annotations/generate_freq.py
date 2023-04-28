@@ -108,14 +108,12 @@ def needs_high_ab_het_fix_expr(
         (mt.AD[1] / mt.DP > ab_cutoff)
         & mt.adj
         & mt.GT.is_het_ref()
-        & mt.meta.project_meta.fixed_homalt_model
+        & ~mt.meta.project_meta.fixed_homalt_model
         & ~mt._het_non_ref  # Skip adjusting genotypes if sample originally had a het nonref genotype
     )
 
 
-def subtract_high_ab_hets_from_ac(
-    mt: hl.MatrixTable, af_threshold: float = 0.01
-) -> hl.Table:
+def correct_call_stats(mt: hl.MatrixTable, af_threshold: float = 0.01) -> hl.Table:
     """
     Correct frequencies at sites with an AF greater than the af_threshold.
 
@@ -129,10 +127,10 @@ def subtract_high_ab_hets_from_ac(
             mt.freq,
             hl.map(
                 lambda f, g: hl.struct(
-                    AC=hl.int32(f.AC - g),
-                    AF=hl.if_else(f.AN > 0, (f.AC - g) / f.AN, hl.missing(hl.tfloat64)),
+                    AC=hl.int32(f.AC + g),
+                    AF=hl.if_else(f.AN > 0, (f.AC + g) / f.AN, hl.missing(hl.tfloat64)),
                     AN=f.AN,
-                    homozygote_count=f.homozygote_count,
+                    homozygote_count=f.homozygote_count + g,
                 ),
                 mt.freq,
                 mt.high_ab_hets_by_group_membership,
@@ -163,7 +161,7 @@ def set_high_ab_het_to_hom_alt(
     return mt.annotate_entries(
         GT=hl.if_else(
             needs_high_ab_het_fix_expr(mt, ab_cutoff)
-            & (mt.ab_adjusted_freq[0].AF < af_cutoff),
+            & (mt.ab_adjusted_freq[0].AF > af_cutoff),
             hl.call(1, 1),
             mt.GT,
         )
@@ -279,7 +277,7 @@ def main(args):  # noqa: D103
             )
         else:
             logger.info("Filtering to chromosome %s...")
-            vds = hl.vds.filter_chromosomes(vds, keep=f"chr{chrom}")
+            vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
     logger.info("Annotating non_ref hets pre-split...")
     vds = annotate_non_ref_het(vds)
@@ -289,11 +287,11 @@ def main(args):  # noqa: D103
     #         vds,
     #     )  # TODO: Where is subset information coming meta.project_meta.ukb is defined for non-ukb and ukd, how do we determine non-topmed v3.1 meta did (topmed=ht.s.startswith("NWD"))
 
-    logger.info("Splitting VDS....")
+    logger.info("Splitting VDS....")  # TODO: Move this to get_gnomad_v4_vds
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
 
     logger.info("Densifying VDS...")
-    mt = hl.vds.to_dense_mt(vds)
+    mt = hl.vds.to_dense_mt(vds)  # TODO: Move this to get_gnomad_v4_vds
 
     logger.info("Computing adj and sex adjusted genotypes...")
     mt = mt.annotate_entries(
@@ -318,7 +316,7 @@ def main(args):  # noqa: D103
 
     if adjust_freqs:
         logger.info("Adjusting frequencies by accounting for high AB hets...")
-        mt = subtract_high_ab_hets_from_ac(mt, af_threshold)
+        mt = correct_call_stats(mt, af_threshold)
         final_anns.extend(
             ["ab_adjusted_freq"]
         )  # NOTE: Do we want to keep original freqs? If not, overwrite the freq ann
@@ -357,7 +355,7 @@ def main(args):  # noqa: D103
     mt.describe()
     logger.info(f"{final_anns} are the final annotations")
     ht = mt.rows()
-    ht = mt.select_rows(*final_anns)
+    ht = ht.select_rows(*final_anns)
     ht = ht.write(
         get_freq(test=test, hom_alt_adjustment=adjust_freqs, chr=chrom).path,
         overwrite=True,
