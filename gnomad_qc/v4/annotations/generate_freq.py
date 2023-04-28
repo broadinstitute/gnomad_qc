@@ -254,7 +254,7 @@ def main(args):  # noqa: D103
     )
     # TODO: Update to release = True once outlier filtering is complete,
     # possibly sample_meta=True if added
-    vds = get_gnomad_v4_vds(test=test)
+    vds = get_gnomad_v4_vds(test=test, release_only=True)
     meta_ht = meta.ht()
     final_anns = []
 
