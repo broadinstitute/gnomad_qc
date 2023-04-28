@@ -362,7 +362,7 @@ def main(args):  # noqa: D103
 
     if (
         args.set_high_ab_het_to_hom_alt
-    ):  # NOTE: We want to avoid this if we can but to avoid need to change age hists and inbreeding coefficient methods
+    ):  # NOTE: MW: We want to avoid this if we can but to avoid it will need to change age hists and inbreeding coefficient methods
         logger.info(
             "Setting het genotypes at sites with >1% AF (using adjusted frequencies)"
             " and > 0.9 AB to homalt..."  # TODO: Update AF threshold once we analyze
@@ -380,7 +380,6 @@ def main(args):  # noqa: D103
         logger.info("Computing age histograms for each variant...")
         mt = compute_age_hist(mt)
         final_anns.append("age_hist_het", "age_hist_hom")
-        # TODO: this needs to be output somewhere.
 
         logger.info("Annotating quality metrics histograms...")
         mt = annotate_quality_metrics_hist(mt)
@@ -394,9 +393,7 @@ def main(args):  # noqa: D103
     logger.info("Writing frequency table...")
     ht = mt.select_rows(*final_anns)
     ht = ht.write(
-        get_freq(
-            test=test, hom_alt_adjustment=adjust_freqs
-        ).path,  # TODO: not woking for me, maybe have to install our branch for starting a cluster?
+        get_freq(test=test, hom_alt_adjustment=adjust_freqs, chr=chrom).path,
         overwrite=True,
     )
 
