@@ -123,8 +123,7 @@ def correct_call_stats(mt: hl.MatrixTable, af_threshold: float = 0.01) -> hl.Tab
     """
     mt = mt.annotate_rows(
         ab_adjusted_freq=hl.if_else(
-            mt.freq[0].AF <= af_threshold,
-            mt.freq,
+            mt.freq[0].AF > af_threshold,
             hl.map(
                 lambda f, g: hl.struct(
                     AC=hl.int32(f.AC + g),
@@ -135,6 +134,7 @@ def correct_call_stats(mt: hl.MatrixTable, af_threshold: float = 0.01) -> hl.Tab
                 mt.freq,
                 mt.high_ab_hets_by_group_membership,
             ),
+            mt.freq,
         )
     )
 
