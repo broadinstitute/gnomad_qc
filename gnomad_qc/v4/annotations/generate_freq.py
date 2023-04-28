@@ -355,7 +355,7 @@ def main(args):  # noqa: D103
     mt.describe()
     logger.info(f"{final_anns} are the final annotations")
     ht = mt.rows()
-    ht = ht.select_rows(*final_anns)
+    ht = ht.select(*final_anns)
     ht = ht.write(
         get_freq(test=test, hom_alt_adjustment=adjust_freqs, chr=chrom).path,
         overwrite=True,
