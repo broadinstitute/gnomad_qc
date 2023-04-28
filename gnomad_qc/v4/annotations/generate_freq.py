@@ -65,17 +65,13 @@ def annotate_non_ref_het(vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
 
 def annotate_high_ab_hets_by_group_membership(
     mt: hl.MatrixTable,
-    gatk_expr: hl.expr.StringExpression,
     ab_cutoff: hl.float = 0.9,
-    gatk_versions_to_fix: hl.expr.SetExpression = hl.set(["4.0.10.1", "4.1.0.0"]),
 ) -> hl.MatrixTable:
     """
     Annotate high AB hets by group membership.
 
     :param mt: MatrixTable to annotate high AB hets onto.
-    :param gatk_expr: GATK version expression.
     :param ab_cutoff: Allele balance cutoff for hom alt depletion fix. Defaults to 0.9
-    :param gatk_versions_to_fix: GATK versions that need the hom alt depletion fix. Defaults to hl.set(["4.0.10.1", "4.1.0.0"])
     :return: _description_
     """
     logger.info("Annotating number of high AB het sites in each freq group...")
@@ -84,7 +80,8 @@ def annotate_high_ab_hets_by_group_membership(
             lambda i: hl.agg.filter(
                 mt.group_membership[i]
                 & needs_high_ab_het_fix_expr(
-                    mt, gatk_expr, ab_cutoff, gatk_versions_to_fix
+                    mt,
+                    ab_cutoff,
                 ),
                 hl.agg.count(),
             ),
@@ -96,9 +93,7 @@ def annotate_high_ab_hets_by_group_membership(
 
 def needs_high_ab_het_fix_expr(
     mt: hl.MatrixTable,
-    gatk_expr: hl.expr.StringExpression,
     ab_cutoff: hl.float = 0.9,
-    gatk_versions_to_fix: hl.expr.SetExpression = hl.set(["4.0.10.1", "4.1.0.0"]),
 ) -> hl.MatrixTable:
     """
     Annotate the MatrixTable rows with the count of high AB het genotypes per frequency sample grouping.
@@ -106,41 +101,16 @@ def needs_high_ab_het_fix_expr(
     This arrary allows the AC to be corrected with the homalt depletion fix.
 
     :param mt: Hail MatrixTable to annotate.
-    :param gatk_expr: Expression indicating which version of GATK a sample's gVCF was called with.
     :param ab_cutoff: Alelle balance threshold at which the GT changes to homalt. Default is 0.9.
-    :param gatk_versions_to_fix: Set of GATK versions impacted by hom alt depletion. Default is {"4.0.10.1", "4.1.0.0"}.
     :return mt:
     """
     return (
         (mt.AD[1] / mt.DP > ab_cutoff)
         & mt.adj
         & mt.GT.is_het_ref()
-        & (gatk_versions_to_fix.contains(gatk_expr))
+        & mt.meta.project_meta.fixed_homalt_model
         & ~mt._het_non_ref  # Skip adjusting genotypes if sample originally had a het nonref genotype
     )
-
-
-def annotate_gatk_version(mt: hl.MatrixTable) -> hl.MatrixTable:
-    """
-    Annotate MatrixTable's samples with HaplotypeCaller's GATK version. GATK hom alt depletion fix has been in since GATK version 4.1.4.1.
-
-    :param mt: Hail MatrixTable to annotate.
-    :return mt:
-    """
-    meta_ht = meta.ht()
-    gatk_ht = hl.read_table("gs://gnomad-tmp/freq/v4_sample_htc_versions.ht").key_by(
-        "s"
-    )  # TODO: Discuss if this should be a resource or annotation on metadata, misssing GATK version info for UKB samples
-    mt = mt.annotate_cols(
-        gatk_version=hl.case()
-        .when(
-            hl.is_defined(gatk_ht[mt.col_key].gatk_version),
-            gatk_ht[mt.col_key].gatk_version,
-        )
-        .when(hl.is_defined(meta_ht[mt.col_key].project_meta.ukb_meta.ukb_batch), "ukb")
-        .or_missing()
-    )
-    return mt
 
 
 def subtract_high_ab_hets_from_ac(
@@ -176,10 +146,8 @@ def subtract_high_ab_hets_from_ac(
 # TODO: not sure if this step will be very expensive, may need to combine with functions
 def set_high_ab_het_to_hom_alt(
     mt: hl.MatrixTable,
-    gatk_expr: hl.expr.StringExpression,
     ab_cutoff: hl.float = 0.9,
     af_cutoff: float = 0.01,
-    gatk_versions_to_fix: hl.expr.SetExpression = hl.set(["4.0.10.1", "4.1.0.0"]),
 ) -> hl.MatrixTable:
     """
     Adjust MT genotypes with temporary fix for the depletion of homozygous alternate genotypes.
@@ -188,15 +156,13 @@ def set_high_ab_het_to_hom_alt(
     https://gnomad.broadinstitute.org/blog/2020-10-gnomad-v3-1-new-content-methods-annotations-and-data-availability/#tweaks-and-updates
 
     :param mt: Input MT that needs hom alt genotype fix
-    :param gatk_expr: Expression indicating which version of GATK a sample's gVCF was called with.
     :param af_cutoff: Allele frequency cutoff for variants that need the hom alt fix. Default is 0.01
     :param ab_cutoff: Allele balance cutoff to determine which genotypes need the hom alt fix. Default is 0.9
-    :param gatk_versions_to_fix: Set of GATK versions impacted by hom alt depletion. Default is {"4.0.10.1", "4.1.0.0"}.
     :return: MatrixTable with genotypes adjusted for the hom alt depletion fix
     """
     return mt.annotate_entries(
         GT=hl.if_else(
-            needs_high_ab_het_fix_expr(mt, gatk_expr, ab_cutoff, gatk_versions_to_fix)
+            needs_high_ab_het_fix_expr(mt, ab_cutoff)
             & (mt.ab_adjusted_freq[0].AF < af_cutoff),
             hl.call(1, 1),
             mt.GT,
@@ -255,7 +221,7 @@ def generate_faf_popmax(mt: hl.MatrixTable) -> hl.MatrixTable:
     faf, faf_meta = faf_expr(
         mt.ab_adjusted_freq, mt.freq_meta, mt.locus, POPS_TO_REMOVE_FOR_POPMAX
     )
-    mt = mt.select_rows(
+    mt = mt.annotate_rows(
         faf=faf,
         popmax=pop_max_expr(
             mt.ab_adjusted_freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX
@@ -329,9 +295,6 @@ def main(args):  # noqa: D103
     logger.info("Densifying VDS...")
     mt = hl.vds.to_dense_mt(vds)
 
-    logger.info("Annotating GATK version for frequency groupings....")
-    mt = annotate_gatk_version(mt)
-
     logger.info("Computing adj and sex adjusted genotypes...")
     mt = mt.annotate_entries(
         GT=adjusted_sex_ploidy_expr(
@@ -347,17 +310,17 @@ def main(args):  # noqa: D103
             sex_expr=mt.meta.sex_imputation.sex_karyotype,
             pop_expr=mt.meta.population_inference.pop,
             # downsamplings=DOWNSAMPLINGS["v4"],
-            additional_strata_expr={"gatk_version": mt.gatk_version},
+            additional_strata_expr={"gatk_version": mt.meta.project_meta.gatk_version},
             additional_strata_grouping_expr={"pop": mt.meta.population_inference.pop},
         )
-        mt = annotate_high_ab_hets_by_group_membership(mt, gatk_expr=mt.gatk_version)
-        final_anns.append("freq", "high_ab_hets_by_group_membership")
+        mt = annotate_high_ab_hets_by_group_membership(mt)
+        final_anns.extend(["freq", "high_ab_hets_by_group_membership"])
 
     if adjust_freqs:
         logger.info("Adjusting frequencies by accounting for high AB hets...")
         mt = subtract_high_ab_hets_from_ac(mt, af_threshold)
-        final_anns.append(
-            "ab_adjusted_freq"
+        final_anns.extend(
+            ["ab_adjusted_freq"]
         )  # NOTE: Do we want to keep original freqs? If not, overwrite the freq ann
 
     if (
@@ -368,29 +331,32 @@ def main(args):  # noqa: D103
             " and > 0.9 AB to homalt..."  # TODO: Update AF threshold once we analyze
         )
         # using the adjusted allele frequencies to fix the het to hom alt
-        mt = set_high_ab_het_to_hom_alt(mt, gatk_expr=mt.gatk_version)
+        mt = set_high_ab_het_to_hom_alt(mt)
 
     if args.calculate_inbreeding_coeff:
         logger.info("Calculating InbreedingCoeff...")
         # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify # noqa
         mt = mt.annotate_rows(InbreedingCoeff=bi_allelic_site_inbreeding_expr(mt.GT))
-        final_anns.append("InbreedingCoeff")
+        final_anns.extend(["InbreedingCoeff"])
 
     if args.calculate_hists:
         logger.info("Computing age histograms for each variant...")
         mt = compute_age_hist(mt)
-        final_anns.append("age_hist_het", "age_hist_hom")
+        final_anns.extend(["age_hist_het", "age_hist_hom"])
 
         logger.info("Annotating quality metrics histograms...")
         mt = annotate_quality_metrics_hist(mt)
-        final_anns.append("qual_hists", "raw_qual_hists")
+        final_anns.extend(["qual_hists", "raw_qual_hists"])
 
     if args.faf_popmax:
         logger.info("computing FAF & popmax...")
         mt = generate_faf_popmax(mt)
-        final_anns.append("faf", "popmax")
+        final_anns.extend(["faf", "popmax"])
 
     logger.info("Writing frequency table...")
+    mt.describe()
+    logger.info(f"{final_anns} are the final annotations")
+    ht = mt.rows()
     ht = mt.select_rows(*final_anns)
     ht = ht.write(
         get_freq(test=test, hom_alt_adjustment=adjust_freqs, chr=chrom).path,
