@@ -370,7 +370,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--chrom",
         help="If passed, script will only run on passed chromosome.",
-        type=int,
     )
     parser.add_argument(
         "--overwrite", help="Overwrites existing files.", action="store_true"
