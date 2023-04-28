@@ -183,7 +183,7 @@ def get_freq(
         version,
         {
             version: TableResource(
-                f"{'gs://gnomad-tmp-4day/freq/' if test else _annotations_root(version)}/gnomad.exomes.v{version}{'.' + chr if chr else ''}.frequencies{'.' + subset if subset else ''}{'.hom_alt_adjusted' if hom_alt_adjustment else ''}.ht"
+                f"{'gs://gnomad-tmp-4day/freq' if test else _annotations_root(version)}/gnomad.exomes.v{version}{'.' + chr if chr else ''}.frequencies{'.' + subset if subset else ''}{'.hom_alt_adjusted' if hom_alt_adjustment else ''}.ht"
             )
             for version in VERSIONS
         },
