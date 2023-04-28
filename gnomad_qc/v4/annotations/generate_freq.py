@@ -307,7 +307,7 @@ def main(args):  # noqa: D103
             mt,
             sex_expr=mt.meta.sex_imputation.sex_karyotype,
             pop_expr=mt.meta.population_inference.pop,
-            # downsamplings=DOWNSAMPLINGS["v4"],
+            downsamplings=DOWNSAMPLINGS["v4"],
             additional_strata_expr={"gatk_version": mt.meta.project_meta.gatk_version},
             additional_strata_grouping_expr={"pop": mt.meta.population_inference.pop},
         )
@@ -370,6 +370,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--chrom",
         help="If passed, script will only run on passed chromosome.",
+        type="str",
     )
     parser.add_argument(
         "--overwrite", help="Overwrites existing files.", action="store_true"
