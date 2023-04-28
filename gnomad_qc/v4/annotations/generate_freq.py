@@ -276,7 +276,7 @@ def main(args):  # noqa: D103
                 "Test VDS has %s variants in DRD2 in %s samples...", variants, samples
             )
         else:
-            logger.info("Filtering to chromosome %s...")
+            logger.info("Filtering to chromosome %s...", chrom)
             vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
     logger.info("Annotating non_ref hets pre-split...")
@@ -358,7 +358,7 @@ def main(args):  # noqa: D103
     ht = ht.select(*final_anns)
     ht = ht.write(
         get_freq(test=test, hom_alt_adjustment=adjust_freqs, chr=chrom).path,
-        overwrite=True,
+        overwrite=args.overwrite,
     )
 
 
@@ -370,7 +370,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--chrom",
         help="If passed, script will only run on passed chromosome.",
-        type="str",
+        type=str,
     )
     parser.add_argument(
         "--overwrite", help="Overwrites existing files.", action="store_true"
