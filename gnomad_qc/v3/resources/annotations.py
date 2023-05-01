@@ -286,3 +286,8 @@ vrs_annotations = VersionedTableResource(
         for release in VERSIONS
     },
 )
+
+
+sv_age_and_gq_hists = TableResource(
+    f"{_annotations_root(version='3')}/gnomad_sv_v3.age_and_gq_hists.ht"
+)
