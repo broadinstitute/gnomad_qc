@@ -32,7 +32,7 @@ def _annotations_root(version: str = CURRENT_VERSION, test: bool = False) -> str
 
 def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
     """
-    Get the gnomAD v4 info TableResource.
+    Get the gnomAD v4 info VersionedTableResource.
 
     :param split: Whether to return the split or multi-allelic version of the resource.
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the

@@ -147,8 +147,8 @@ if __name__ == "__main__":
         const=2,
         type=int,
     )
-    parser.add_argument("--compute-info", help="Computes info HT.", action="store_true")
-    parser.add_argument("--split-info", help="Splits info HT.", action="store_true")
+    parser.add_argument("--compute-info", help="Compute info HT.", action="store_true")
+    parser.add_argument("--split-info", help="Split info HT.", action="store_true")
     parser.add_argument(
         "--export-info-vcf", help="Export info as VCF.", action="store_true"
     )
