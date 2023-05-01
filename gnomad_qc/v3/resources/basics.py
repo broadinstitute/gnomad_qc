@@ -177,7 +177,7 @@ def qc_temp_prefix(version: str = CURRENT_RELEASE) -> str:
     :param version: Version of annotation path to return
     :return: Path to bucket with temporary QC data
     """
-    return f"gs://gnomad-tmp/gnomad_v{version}_qc_data/"
+    return f"gs://gnomad-tmp-4day/gnomad_v{version}_qc_data/"
 
 
 def get_checkpoint_path(
@@ -203,3 +203,16 @@ def get_logging_path(name: str, version: str = CURRENT_RELEASE) -> str:
     :return: Output log path
     """
     return f"{qc_temp_prefix(version)}{name}.log"
+
+
+# Resources need for SV histogram generation
+gnomad_sv_bucket_path = "gs://talkowski-sv-gnomad-v3-release/Releasable_freeze1_202303"
+"""
+Path to bucket with gnomAD SV results (VCFs per chromosome).
+
+Bucket also contains list of releasable samples (see below).
+"""
+
+gnomad_sv_release_samples_list_path = (
+    f"{gnomad_sv_bucket_path}/gnomAD.v3.SV.releasable.samples"
+)

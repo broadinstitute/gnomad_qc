@@ -26,18 +26,28 @@ def get_gnomad_v4_vds(
     release_only: bool = False,
     test: bool = False,
     n_partitions: int = None,
+    remove_dead_alleles: bool = True,
 ) -> hl.vds.VariantDataset:
     """
     Get gnomAD v4 data with desired filtering and metadata annotations.
 
-    :param split: Perform split on VDS - Note: this will perform a split on the VDS rather than grab an already split VDS
-    :param remove_hard_filtered_samples: Whether to remove samples that failed hard filters (only relevant after hard filtering is complete)
-    :param remove_hard_filtered_samples_no_sex: Whether to remove samples that failed non sex inference hard filters (only relevant after pre-sex imputation hard filtering is complete)
-    :param high_quality_only: Whether to filter the VDS to only high quality samples (only relevant after outlier filtering is complete)
-    :param release_only: Whether to filter the VDS to only samples available for release (can only be used if metadata is present)
-    :param test: Whether to use the test VDS instead of the full v4 VDS
-    :param n_partitions: Optional argument to read the VDS with a specific number of partitions
-    :return: gnomAD v4 dataset with chosen annotations and filters
+    :param split: Perform split on VDS - Note: this will perform a split on the VDS
+        rather than grab an already split VDS.
+    :param remove_hard_filtered_samples: Whether to remove samples that failed hard
+        filters (only relevant after hard filtering is complete).
+    :param remove_hard_filtered_samples_no_sex: Whether to remove samples that failed
+        non sex inference hard filters (only relevant after pre-sex imputation hard
+        filtering is complete).
+    :param high_quality_only: Whether to filter the VDS to only high quality samples 
+        (only relevant after outlier filtering is complete).
+    :param release_only: Whether to filter the VDS to only samples available for
+        release (can only be used if metadata is present).
+    :param test: Whether to use the test VDS instead of the full v4 VDS.
+    :param n_partitions: Optional argument to read the VDS with a specific number of
+        partitions.
+    :param remove_dead_alleles: Whether to remove dead alleles from the VDS when
+        removing withdrawn UKB samples. Default is True.
+    :return: gnomAD v4 dataset with chosen annotations and filters.
     """
     if remove_hard_filtered_samples and remove_hard_filtered_samples_no_sex:
         raise ValueError(
@@ -110,7 +120,7 @@ def get_gnomad_v4_vds(
         vds,
         withdrawn_ids,
         keep=False,
-        remove_dead_alleles=True,
+        remove_dead_alleles=remove_dead_alleles,
     )
 
     # Log number of UKB samples removed from the VDS.

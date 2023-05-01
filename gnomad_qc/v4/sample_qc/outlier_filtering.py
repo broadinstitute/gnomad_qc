@@ -146,6 +146,9 @@ def apply_filter(
         ht = apply_n_singleton_filter_to_r_ti_tv_singleton(
             ht, sample_qc_ht, filtering_method, ann_exprs, **kwargs
         )
+    ht = ht.annotate_globals(
+        apply_r_ti_tv_singleton_filter=apply_r_ti_tv_singleton_filter
+    )
 
     return ht
 
@@ -725,7 +728,9 @@ def create_finalized_outlier_filter_ht(
                     update_g = filter_globals[g]
                 updated_globals[g] = update_g
 
-            ht = ht.select_globals(**{f"{filter_method}_globals": updated_globals})
+            ht = ht.select_globals(
+                **{f"{filter_method}_globals": hl.struct(**updated_globals)}
+            )
             hts.append(ht)
 
     # If multiple filtering Tables are provided, join all filtering Tables, and make
@@ -805,11 +810,11 @@ def get_outlier_filtering_resources(
     outlier_filtering_pipeline = PipelineResourceCollection(
         pipeline_name="outlier_filtering",
         pipeline_resources={
-            "pop_scores_ht": pop_scores_ht,
-            "pop_ht": pop_ht,
-            "platform_ht": platform,
-            "joint_qc_meta": joint_qc_meta,
-            "sample_qc_ht": sample_qc_ht,
+            **sample_qc_input,
+            **pop_scores_input,
+            **pop_assign_input,
+            **platform_input,
+            **joint_qc_meta_input,
         },
         overwrite=overwrite,
     )
@@ -908,6 +913,8 @@ def main(args):
     filtering_qc_metrics = args.filtering_qc_metrics
     apply_r_ti_tv_singleton_filter = args.apply_n_singleton_filter_to_r_ti_tv_singleton
     include_unreleasable_samples = args.include_unreleasable_samples
+    nn_platform_stratified = args.nearest_neighbors_per_platform
+    nn_approximation = args.use_nearest_neighbors_approximation
 
     if args.apply_n_singleton_filter_to_r_ti_tv_singleton:
         err_msg = ""
@@ -921,6 +928,7 @@ def main(args):
             raise ValueError(err_msg)
 
     outlier_resources = get_outlier_filtering_resources(args)
+    outlier_resources.check_resource_existence()
     pop_ht = outlier_resources.pop_ht.ht()
     platform_ht = outlier_resources.platform_ht.ht()
     pop_scores_ht = outlier_resources.pop_scores_ht.ht()
@@ -982,7 +990,7 @@ def main(args):
         res = outlier_resources.determine_nearest_neighbors
         res.check_resource_existence()
 
-        if args.nearest_neighbors_per_platform:
+        if nn_platform_stratified:
             strata = {"platform": res.platform_ht.ht()[sample_qc_ht.key].qc_platform}
         else:
             strata = None
@@ -995,7 +1003,7 @@ def main(args):
             n_jobs=args.n_jobs,
             add_neighbor_distances=args.get_neighbor_distances,
             distance_metric=args.distance_metric,
-            use_approximation=args.use_nearest_neighbors_approximation,
+            use_approximation=nn_approximation,
             n_trees=args.n_trees,
         )
         ht.annotate_globals(
@@ -1014,7 +1022,9 @@ def main(args):
             nn_ht=res.nn_ht.ht(),
         )
         ht.annotate_globals(
-            include_unreleasable_samples=include_unreleasable_samples
+            include_unreleasable_samples=include_unreleasable_samples,
+            nearest_neighbors_platform_stratified=nn_platform_stratified,
+            nearest_neighbors_approximation=nn_approximation,
         ).write(res.nn_filter_ht.path, overwrite=overwrite)
 
     if args.create_finalized_outlier_filter:

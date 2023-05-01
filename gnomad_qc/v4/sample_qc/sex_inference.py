@@ -901,6 +901,7 @@ def main(args):
             ploidy_ht.write(ploidy_ht_path, overwrite=overwrite)
 
         if args.annotate_sex_karyotype:
+            # TODO: Add drop of `is_female` in future versions.
             ploidy_ht = (
                 hl.read_table(get_checkpoint_path(f"ploidy_imputation"))
                 if test
