@@ -38,7 +38,7 @@ def get_gnomad_v4_vds(
     :param remove_hard_filtered_samples_no_sex: Whether to remove samples that failed
         non sex inference hard filters (only relevant after pre-sex imputation hard
         filtering is complete).
-    :param high_quality_only: Whether to filter the VDS to only high quality samples 
+    :param high_quality_only: Whether to filter the VDS to only high quality samples
         (only relevant after outlier filtering is complete).
     :param release_only: Whether to filter the VDS to only samples available for
         release (can only be used if metadata is present).
