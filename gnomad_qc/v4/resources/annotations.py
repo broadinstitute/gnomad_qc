@@ -14,29 +14,37 @@ from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 SUBSETS = SUBSETS["v4"]
 
 
-def _annotations_root(version: str = CURRENT_VERSION) -> str:
+def _annotations_root(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
     Get root path to the variant annotation files.
 
-    :param version: Version of annotation path to return
-    :return: Root path of the variant annotation files
+    :param version: Version of annotation path to return.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
+        full v4 VDS.
+    :return: Root path of the variant annotation files.
     """
-    return f"gs://gnomad/v{version}/annotations/exomes"
+    return (
+        f"gs://gnomad-tmp/gnomad_v{version}_testing/annotations/exomes"
+        if test
+        else f"gs://gnomad/v{version}/annotations/exomes"
+    )
 
 
-def get_info(split: bool = True) -> VersionedTableResource:
+def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
     """
-    Get the gnomAD v4 info TableResource.
+    Get the gnomAD v4 info VersionedTableResource.
 
-    :param split: Whether to return the split or multi-allelic version of the resource
-    :return: gnomAD v4 info VersionedTableResource
+    :param split: Whether to return the split or multi-allelic version of the resource.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
+        full v4 VDS.
+    :return: gnomAD v4 info VersionedTableResource.
     """
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             version: TableResource(
                 path=(
-                    f"{_annotations_root(version)}/gnomad.exomes.v{version}.info{'.split' if split else ''}.ht"
+                    f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info{'.split' if split else ''}.ht"
                 )
             )
             for version in VERSIONS
@@ -68,14 +76,18 @@ def get_vqsr_filters(
     )
 
 
-def info_vcf_path(version: str = CURRENT_VERSION) -> str:
+def info_vcf_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
     Path to sites VCF (input information for running VQSR).
 
-    :param version: Version of annotation path to return
-    :return: String for the path to the info VCF
+    :param version: Version of annotation path to return.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
+        full v4 VDS.
+    :return: String for the path to the info VCF.
     """
-    return f"{_annotations_root(version)}/gnomad.exomes.v{version}.info.vcf.bgz"
+    return (
+        f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.vcf.bgz"
+    )
 
 
 def get_transmitted_singleton_vcf_path(
