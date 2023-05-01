@@ -33,7 +33,7 @@ def generate_hists(mt: hl.MatrixTable) -> hl.Table:
     :return: Table with histograms.
     """
     logger.info("Generating histograms for age and GQ...")
-    # Remove multiallelic sites as recommended by the SV team
+    # Remove multiallelic CNV sites as recommended by the SV team
     # (too difficult to determine carriers vs non carriers at these sites)
     hists = mt.select_rows(
         age_hist_het=hl.or_missing(
@@ -96,7 +96,7 @@ def get_sample_age(sv_list: hl.Table) -> hl.Table:
 
     # NOTE: Add age to sample list. Most age data is stored as integers
     # in the 'age' annotation, but for a select number of samples, age
-    # was recorded as a bin range and stored in  the 'age_bin' annotation.
+    # was recorded as a bin range and stored in the 'age_bin' annotation.
     # 'age_alt' corresponds to the average of the 'age_bin' edges.
     sv_list = sv_list.annotate(
         age=hl.if_else(
