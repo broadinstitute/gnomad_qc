@@ -107,7 +107,13 @@ def main(args):
     test = test_dataset or test_n_partitions
     overwrite = args.overwrite
     resources = get_variant_qc_annotation_resources(test=test, overwrite=overwrite)
-    mt = get_gnomad_v4_vds(test=test_dataset, high_quality_only=True).variant_data
+    mt = get_gnomad_v4_vds(
+        test=test_dataset,
+        high_quality_only=True,
+        # Keep control/truth samples because they are used in variant QC.
+        high_quality_only_keep_controls=True,
+        annotate_meta=True,
+    ).variant_data
 
     if test_n_partitions:
         mt = mt._filter_partitions(range(test_n_partitions))
@@ -116,9 +122,14 @@ def main(args):
         # TODO: is there any reason to also compute info per platform?
         res = resources.compute_info
         res.check_resource_existence()
-        default_compute_info(mt, site_annotations=True).write(
-            res.info_ht.path, overwrite=overwrite
-        )
+        default_compute_info(
+            mt,
+            site_annotations=True,
+            ac_filter_groups={
+                "release": mt.meta.release,
+                "unrelated": ~mt.meta.sample_filters.relatedness_filters.related,
+            },
+        ).write(res.info_ht.path, overwrite=overwrite)
 
     if args.split_info:
         res = resources.split_info
