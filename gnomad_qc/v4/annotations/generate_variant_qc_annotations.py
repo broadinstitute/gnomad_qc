@@ -109,6 +109,24 @@ def main(args):
     resources = get_variant_qc_annotation_resources(test=test, overwrite=overwrite)
     mt = get_gnomad_v4_vds(test=test_dataset, high_quality_only=True).variant_data
 
+    mt.describe()
+    mt = mt._filter_partitions(range(20))
+    missing_stats = mt.annotate_cols(
+        defined_gvcf_info={
+            ann: hl.agg.count_where(hl.is_defined(mt.gvcf_info)) for ann in mt.gvcf_info
+        },
+        defined_gvcf_info_missing_stats={
+            ann: hl.agg.count_where(
+                hl.is_defined(mt.gvcf_info) & hl.is_missing(mt.gvcf_info[ann])
+            )
+            for ann in mt.gvcf_info
+        },
+    ).cols()
+    missing_stats = missing_stats.select(
+        "defined_gvcf_info", "defined_gvcf_info_missing_stats"
+    ).checkpoint("gs://gnomad-tmp-4day/julia/missing_stats_new2.ht", overwrite=True)
+    missing_stats.show()
+
     if test_n_partitions:
         mt = mt._filter_partitions(range(test_n_partitions))
 
