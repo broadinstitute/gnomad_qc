@@ -140,13 +140,14 @@ def main(args):
         # TODO: is there any reason to also compute info per platform?
         res = resources.compute_info
         res.check_resource_existence()
+        if test_dataset:
+            unrelated_expr = ~mt.meta.rand_sampling_meta.related
+        else:
+            unrelated_expr = ~mt.meta.sample_filters.relatedness_filters.related
         default_compute_info(
             mt,
             site_annotations=True,
-            ac_filter_groups={
-                "release": mt.meta.release,
-                "unrelated": ~mt.meta.sample_filters.relatedness_filters.related,
-            },
+            ac_filter_groups={"release": mt.meta.release, "unrelated": unrelated_expr},
         ).write(res.info_ht.path, overwrite=overwrite)
 
     if args.split_info:
