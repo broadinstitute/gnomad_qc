@@ -16,13 +16,14 @@ from gnomad.utils.sparse_mt import (
     split_lowqual_annotation,
 )
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
+from gnomad.utils.vep import vep_or_lookup_vep
 
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import get_info, info_vcf_path
+from gnomad_qc.v4.resources.annotations import get_info, get_vep, info_vcf_path
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 
 logging.basicConfig(
@@ -89,6 +90,10 @@ def get_variant_qc_annotation_resources(
         output_resources={"info_vcf": info_vcf_path(test=test)},
         pipeline_input_steps=[compute_info],
     )
+    run_vep = PipelineStepResourceCollection(
+        "--run-vep",
+        output_resources={"vep_ht": get_vep(test=test)},
+    )
 
     # Add all steps to the variant QC annotation pipeline resource collection.
     ann_pipeline.add_steps(
@@ -96,6 +101,7 @@ def get_variant_qc_annotation_resources(
             "compute_info": compute_info,
             "split_info": split_info_ann,
             "export_info_vcf": export_info_vcf,
+            "run_vep": run_vep,
         }
     )
 
@@ -112,14 +118,15 @@ def main(args):
     test_dataset = args.test_dataset
     test_n_partitions = args.test_n_partitions
     test = test_dataset or test_n_partitions
+    run_vep = args.run_vep
     overwrite = args.overwrite
     resources = get_variant_qc_annotation_resources(test=test, overwrite=overwrite)
     mt = get_gnomad_v4_vds(
         test=test_dataset,
-        high_quality_only=True,
+        high_quality_only=False if run_vep else True,
         # Keep control/truth samples because they are used in variant QC.
-        high_quality_only_keep_controls=True,
-        annotate_meta=True,
+        high_quality_only_keep_controls=False if run_vep else True,
+        annotate_meta=False if run_vep else True,
     ).variant_data
 
     if test_n_partitions:
@@ -149,6 +156,13 @@ def main(args):
         res.check_resource_existence()
         hl.export_vcf(adjust_vcf_incompatible_types(res.info_ht.ht()), res.info_vcf)
 
+    if run_vep:
+        res = resources.run_vep
+        res.check_resource_existence()
+        ht = hl.split_multi(mt.rows())
+        ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
+        ht.write(res.vep_ht.path, overwrite=args.overwrite)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -170,6 +184,15 @@ if __name__ == "__main__":
     parser.add_argument("--split-info", help="Split info HT.", action="store_true")
     parser.add_argument(
         "--export-info-vcf", help="Export info as VCF.", action="store_true"
+    )
+    parser.add_argument(
+        "--run-vep", help="Generates vep annotations.", action="store_true"
+    )
+    parser.add_argument(
+        "--vep-version",
+        help="Version of VEPed context Table to use in vep_or_lookup_vep.",
+        action="store_true",
+        default="105",
     )
 
     args = parser.parse_args()
