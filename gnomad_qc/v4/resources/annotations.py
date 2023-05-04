@@ -155,16 +155,6 @@ fam_stats = VersionedTableResource(
     },
 )
 
-allele_data = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{_annotations_root(version)}/gnomad.exomes.v{version}.qc_allele_data.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
 
 def get_freq(
     version: str = CURRENT_VERSION,
