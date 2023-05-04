@@ -242,7 +242,9 @@ def generate_faf_popmax(mt: hl.MatrixTable) -> hl.MatrixTable:
 def main(args):  # noqa: D103
     # TODO: Determine if splitting subset freq from whole callset agg
     subsets = args.subsets
-    test = args.test
+    test_dataset = args.test_dataset
+    test_n_partitions = args.test_n_partitions
+    test = test_dataset or test_n_partitions
     chrom = args.chrom
     af_threshold = args.af_threshold
     adjust_freqs = args.adjust_freqs
@@ -252,9 +254,7 @@ def main(args):  # noqa: D103
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    # TODO: Update to release = True once outlier filtering is complete,
-    # possibly sample_meta=True if added
-    vds = get_gnomad_v4_vds(test=test, release_only=True)
+    vds = get_gnomad_v4_vds(test=test_dataset, release_only=True)
     meta_ht = meta.ht()
     final_anns = []
 
@@ -265,7 +265,7 @@ def main(args):  # noqa: D103
     )
 
     if test or chrom:
-        if test:
+        if test_dataset:
             logger.info("Filtering to DRD2 in test VDS for testing purposes...")
             test_interval = [
                 hl.parse_locus_interval("chr11:113409605-113475691")
@@ -275,6 +275,10 @@ def main(args):  # noqa: D103
             logger.info(
                 "Test VDS has %s variants in DRD2 in %s samples...", variants, samples
             )
+        elif test_n_partitions:
+            test_vd = vds.variant_data._filter_partitions(range(test_n_partitions))
+            test_rd = vds.reference_data._filter_partitions(range(test_n_partitions))
+            vds = hl.vds.VariantDataset(test_rd, test_vd)
         else:
             logger.info("Filtering to chromosome %s...", chrom)
             vds = hl.vds.filter_chromosomes(vds, keep=chrom)
@@ -365,7 +369,19 @@ def main(args):  # noqa: D103
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--test", help="Runs a test on two partitions of the MT.", action="store_true"
+        "--test-dataset",
+        help="Runs a test on two partitions of the MT.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test-n-partitions",
+        help=(
+            "Use only N partitions of the VDS as input for testing purposes. Defaults"
+            "to 2 if passed without a value."
+        ),
+        nargs="?",
+        const=2,
+        type=int,
     )
     parser.add_argument(
         "--chrom",
