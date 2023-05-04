@@ -36,6 +36,7 @@ def generate_hists(mt: hl.MatrixTable) -> hl.Table:
     # Remove multiallelic CNV sites as recommended by the SV team
     # (too difficult to determine carriers vs non carriers at these sites)
     hists = mt.select_rows(
+        rsid=mt.rsid,
         age_hist_het=hl.or_missing(
             ~mt.info.MULTIALLELIC,
             hl.agg.filter(mt.GT.is_het(), hl.agg.hist(mt.age, 30, 80, 10)),
@@ -53,7 +54,7 @@ def generate_hists(mt: hl.MatrixTable) -> hl.Table:
         ),
     ).rows()
 
-    hist_expr = {}
+    hist_expr = {"rsid": hists.rsid}
     for hist in ["age_hist_het", "age_hist_hom", "gq_hist_alt", "gq_hist_all"]:
         hist_expr.update(
             {
@@ -137,6 +138,7 @@ def get_sex_and_autosome_mt() -> hl.MatrixTable:
         reference_genome="GRCh38",
         min_partitions=300,
         force_bgz=True,
+        array_elements_required=False,
     )
     s_mt = s_mt.annotate_rows(info=s_mt.info.drop("PAR"))
 
@@ -148,6 +150,7 @@ def get_sex_and_autosome_mt() -> hl.MatrixTable:
         reference_genome="GRCh38",
         min_partitions=300,
         force_bgz=True,
+        array_elements_required=False,
     )
     mt = s_mt.union_rows(a_mt)
     return mt
