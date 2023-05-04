@@ -122,24 +122,6 @@ def main(args):
         annotate_meta=True,
     ).variant_data
 
-    mt.describe()
-    mt = mt._filter_partitions(range(20))
-    missing_stats = mt.annotate_cols(
-        defined_gvcf_info={
-            ann: hl.agg.count_where(hl.is_defined(mt.gvcf_info)) for ann in mt.gvcf_info
-        },
-        defined_gvcf_info_missing_stats={
-            ann: hl.agg.count_where(
-                hl.is_defined(mt.gvcf_info) & hl.is_missing(mt.gvcf_info[ann])
-            )
-            for ann in mt.gvcf_info
-        },
-    ).cols()
-    missing_stats = missing_stats.select(
-        "defined_gvcf_info", "defined_gvcf_info_missing_stats"
-    ).checkpoint("gs://gnomad-tmp-4day/julia/missing_stats_new2.ht", overwrite=True)
-    missing_stats.show()
-
     if test_n_partitions:
         mt = mt._filter_partitions(range(test_n_partitions))
 
@@ -147,13 +129,14 @@ def main(args):
         # TODO: is there any reason to also compute info per platform?
         res = resources.compute_info
         res.check_resource_existence()
+        if test_dataset:
+            unrelated_expr = ~mt.meta.rand_sampling_meta.related
+        else:
+            unrelated_expr = ~mt.meta.sample_filters.relatedness_filters.related
         default_compute_info(
             mt,
             site_annotations=True,
-            ac_filter_groups={
-                "release": mt.meta.release,
-                "unrelated": ~mt.meta.sample_filters.relatedness_filters.related,
-            },
+            ac_filter_groups={"release": mt.meta.release, "unrelated": unrelated_expr},
         ).write(res.info_ht.path, overwrite=overwrite)
 
     if args.split_info:
