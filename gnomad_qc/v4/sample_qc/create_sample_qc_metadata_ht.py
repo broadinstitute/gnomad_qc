@@ -67,15 +67,27 @@ def get_project_meta() -> hl.Table:
     fixed_homalt_ver = hl.literal({"4.1.4.1", "4.1.8.0"})
     ht = project_meta.ht().select_globals()
 
-    # Add an annotation at the project_meta level indicating the sample belongs to UKB.
+    # Add a subset annotation indicating whether the samples belongs to the
+    # 'ukb', 'non-ukb', and/or 'topmed' subset
     project_meta_expr = ht.project_meta.annotate(
-        ukb_sample=ht.project_meta.project == "UKBB"
+        subset=hl.struct(
+            ukb=ht.project_meta.project == "UKBB",
+            non_ukb=ht.project_meta.project != "UKBB",
+            non_topmed=hl.coalesce(
+                ~(
+                    (ht.project_meta.subject_id.startswith("NWD"))
+                    | (ht.project_meta.v2_meta.v2_topmed)
+                ),
+                True,
+            ),
+        )
     )
+
     # Add GATK version to project metadata.
     project_meta_expr = project_meta_expr.annotate(
         gatk_version=hl.or_else(
             gatk_versions.ht()[ht.key].gatk_version,
-            hl.or_missing(project_meta_expr.ukb_sample, "4.0.10.1"),
+            hl.or_missing(project_meta_expr.subset.ukb, "4.0.10.1"),
         )
     )
     # Add an annotation indicating whether the sample was processed with the fixed
