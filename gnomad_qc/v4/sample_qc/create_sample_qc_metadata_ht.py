@@ -68,7 +68,7 @@ def get_project_meta() -> hl.Table:
     ht = project_meta.ht().select_globals()
 
     # Add a subset annotation indicating whether the samples belongs to the
-    # 'ukb', 'non-ukb', and/or 'topmed' subset
+    # 'ukb', 'non-ukb', and/or 'non_topmed' subset
     project_meta_expr = ht.project_meta.annotate(
         subset=hl.struct(
             ukb=ht.project_meta.project == "UKBB",
