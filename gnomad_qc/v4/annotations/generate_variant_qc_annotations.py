@@ -111,7 +111,7 @@ def main(args):
         test=test_dataset,
         high_quality_only=True,
         # Keep control/truth samples because they are used in variant QC.
-        high_quality_only_keep_controls=True,
+        keep_controls=True,
         annotate_meta=True,
     ).variant_data
 
