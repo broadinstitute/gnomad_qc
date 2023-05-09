@@ -26,7 +26,7 @@ def get_gnomad_v4_vds(
     remove_hard_filtered_samples: bool = True,
     remove_hard_filtered_samples_no_sex: bool = False,
     high_quality_only: bool = False,
-    high_quality_only_keep_controls: bool = False,
+    keep_controls: bool = False,
     release_only: bool = False,
     test: bool = False,
     n_partitions: int = None,
@@ -45,8 +45,8 @@ def get_gnomad_v4_vds(
         filtering is complete).
     :param high_quality_only: Whether to filter the VDS to only high quality samples
         (only relevant after outlier filtering is complete).
-    :param high_quality_only_keep_controls: Whether to keep control samples when
-        filtering the VDS to only high quality samples.
+    :param keep_controls: Whether to keep control samples when filtering the VDS to
+        a subset of samples.
     :param release_only: Whether to filter the VDS to only samples available for
         release (can only be used if metadata is present).
     :param test: Whether to use the test VDS instead of the full v4 VDS.
@@ -175,7 +175,7 @@ def get_gnomad_v4_vds(
                 filter_ht = hard_filtered_samples_no_sex.versions[CURRENT_VERSION].ht()
 
             filter_s = filter_ht.s.collect()
-            if high_quality_only_keep_controls:
+            if keep_controls:
                 if keep_samples:
                     filter_s += TRUTH_SAMPLES_S
                 else:
@@ -189,7 +189,10 @@ def get_gnomad_v4_vds(
         else:
             meta_ht = meta.versions[CURRENT_VERSION].ht()
         if release_only:
-            vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.release))
+            filter_expr = meta_ht.release
+            if keep_controls:
+                filter_expr |= hl.literal(TRUTH_SAMPLES_S).contains(meta_ht.s)
+            vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
         if annotate_meta:
             vds = hl.vds.VariantDataset(
                 vds.reference_data,
