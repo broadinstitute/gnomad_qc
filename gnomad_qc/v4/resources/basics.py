@@ -25,6 +25,7 @@ def get_gnomad_v4_vds(
     release_only: bool = False,
     test: bool = False,
     n_partitions: int = None,
+    chrom: str = None,
 ) -> hl.vds.VariantDataset:
     """
     Get gnomAD v4 data with desired filtering and metadata annotations.
@@ -48,8 +49,27 @@ def get_gnomad_v4_vds(
     else:
         gnomad_v4_resource = gnomad_v4_genotypes
 
-    if n_partitions:
-        vds = hl.vds.read_vds(gnomad_v4_resource.path, n_partitions=n_partitions)
+    if n_partitions and chrom:
+        reference_data = hl.read_matrix_table(
+            hl.vds.VariantDataset._reference_path(gnomad_v4_resource.path)
+        )
+        reference_data = hl.filter_intervals(
+            reference_data,
+            [hl.parse_locus_interval(x, reference_genome="GRCh38") for x in [chrom]],
+        )
+        intervals = reference_data._calculate_new_partitions(n_partitions)
+        assert len(intervals) > 0
+        reference_data = hl.read_matrix_table(
+            hl.vds.VariantDataset._reference_path(gnomad_v4_resource.path),
+            _intervals=intervals,
+        )
+        variant_data = hl.read_matrix_table(
+            hl.vds.VariantDataset._variants_path(gnomad_v4_resource.path),
+            _intervals=intervals,
+        )
+
+        vds = hl.vds.VariantDataset(reference_data, variant_data)
+        # vds = hl.vds.read_vds(gnomad_v4_resource.path, n_partitions=n_partitions)
     else:
         vds = gnomad_v4_resource.vds()
 

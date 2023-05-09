@@ -222,7 +222,9 @@ def main(args):  # noqa: D103
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    vds = get_gnomad_v4_vds(test=test_dataset, release_only=True)
+    vds = get_gnomad_v4_vds(
+        test=test_dataset, release_only=True, chrom=chrom, n_partitions=10000
+    )
     meta_ht = meta.ht()
     final_anns = {}
 
@@ -249,7 +251,7 @@ def main(args):  # noqa: D103
             vds = hl.vds.VariantDataset(test_rd, test_vd)
         else:
             logger.info("Filtering to chromosome %s...", chrom)
-            vds = hl.vds.filter_chromosomes(vds, keep=chrom)
+            # vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
     logger.info("Annotating non_ref hets pre-split...")
     vds = annotate_non_ref_het(vds)
@@ -262,15 +264,27 @@ def main(args):  # noqa: D103
     logger.info("Splitting VDS....")  # TODO: Move this to get_gnomad_v4_vds
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
 
+    vds = hl.vds.VariantDataset(
+        vds.reference_data,
+        vds.variant_data.select_entries("_het_non_ref", "AD", "DP", "GQ", "GT"),
+    )
+
     logger.info("Densifying VDS...")
     mt = hl.vds.to_dense_mt(vds)  # TODO: Move this to get_gnomad_v4_vds
 
     logger.info("Computing adj and sex adjusted genotypes...")
-    mt = mt.annotate_entries(
+    mt = mt.select_entries(
+        "_het_non_ref",
+        "AD",
+        "DP",
         GT=adjusted_sex_ploidy_expr(
             mt.locus, mt.GT, mt.meta.sex_imputation.sex_karyotype
         ),
         adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
+    )
+
+    mt = mt.checkpoint(
+        "gs://gnomad-tmp/julia/dense_mt_chr20_10k_partitions.mt", overwrite=True
     )
 
     if args.get_freq_and_high_ab:
