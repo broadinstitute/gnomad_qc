@@ -39,8 +39,9 @@ def split_info(info_ht: hl.Table) -> hl.Table:
 
     .. note::
 
-        gnomad_methods' `annotate_allele_info` splits multi-allelic sites before the `info` 
-        annotation is split to ensure that all sites in the returned Table are annotated with allele info.
+        gnomad_methods' `annotate_allele_info` splits multi-allelic sites before the
+        `info` annotation is split to ensure that all sites in the returned Table are
+        annotated with allele info.
 
     :param info_ht: Info Table with unsplit multi-allelics.
     :return: Info Table with split multi-allelics.
