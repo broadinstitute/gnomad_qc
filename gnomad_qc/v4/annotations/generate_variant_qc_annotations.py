@@ -191,7 +191,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--vep-version",
         help="Version of VEPed context Table to use in vep_or_lookup_vep.",
-        action="store_true",
         default="105",
     )
 
