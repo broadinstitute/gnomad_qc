@@ -52,7 +52,7 @@ from gnomad_qc.v3.resources.release import (
     append_to_vcf_header_path,
     hgdp_tgp_subset,
     release_header_path,
-    release_sites,
+    release_sites, #TODO: wait until the release HT to be updated to VEP 105 and created as a minor release
     release_vcf_path,
 )
 
@@ -89,7 +89,7 @@ SUBSETS = SUBSETS["v3"]
 
 # Make subset list (used in properly filling out VCF header descriptions
 # and naming VCF info fields)
-SUBSET_LIST_FOR_VCF = SUBSETS.copy()
+SUBSET_LIST_FOR_VCF = SUBSETS['v3'].copy()
 SUBSET_LIST_FOR_VCF.append("")
 
 # Remove cohorts that have subpop frequencies stored as pop frequencies
@@ -115,7 +115,7 @@ MISSING_INFO_FIELDS = (
 )
 
 # Remove unnecessary pop names from POP_NAMES dict
-POPS = {pop: POP_NAMES[pop] for pop in POPS}
+POPS = {pop: POP_NAMES[pop] for pop in POPS['v3']}
 
 # Remove unnecessary pop names from FAF_POPS dict
 FAF_POPS = {pop: POP_NAMES[pop] for pop in FAF_POPS}
@@ -380,6 +380,12 @@ def make_info_expr(
     vcf_info_dict["splice_ai_consequence"] = t["splice_ai"]["splice_consequence"]
 
     vcf_info_dict["primate_ai_score"] = t["primate_ai"]["primate_ai_score"]
+
+    # add VRS annotations to info dict
+    vcf_info_dict["VRS_Allele_IDs"] = t["release_ht_info"]["vrs"]["VRS_Allele_IDs"]
+    vcf_info_dict["VRS_Starts"] = t["release_ht_info"]["vrs"]["VRS_Starts"]
+    vcf_info_dict["VRS_Ends"] = t["release_ht_info"]["vrs"]["VRS_Ends"]
+    vcf_info_dict["VRS_States"] = t["release_ht_info"]["vrs"]["VRS_States"]
 
     return vcf_info_dict
 
@@ -708,6 +714,18 @@ def prepare_vcf_header_dict(
         subset_list=subset_list,
         subset_pops=pops,
     )
+
+    # update VCF header for VRS fields
+    VRS_Allele_IDs_description = "The computed identifiers for the GA4GH VRS Alleles corresponding to the values in the alleles column"
+    VRS_Starts_description = "Interresidue coordinates used as the location starts for the GA4GH VRS Alleles corresponding to the values in the alleles column"
+    VRS_Ends_description = "Interresidue coordinates used as the location ends for the GA4GH VRS Alleles corresponding to the values in the alleles column"
+    VRS_States_description = "The literal sequence states used for the GA4GH VRS Alleles corresponding to the values in the alleles column"
+
+    vcf_info_dict.update({"VRS_Allele_IDs": {"Number": "1", "Description": f"{VRS_Allele_IDs_description}"},
+                          "VRS_Starts": {"Number": "1", "Description": f"{VRS_Starts_description}"},
+                          "VRS_Ends": {"Number": "1", "Description": f"{VRS_Ends_description}"},
+                          "VRS_States": {"Number": "1", "Description": f"{VRS_States_description}"}})
+
     vcf_info_dict.update({"vep": {"Description": hl.eval(t.vep_csq_header)}})
 
     # Adjust keys to remove adj tags before exporting to VCF
@@ -822,7 +840,7 @@ def build_parameter_dict(
             "include_age_hists": True,
             "sample_sum_sets_and_pops": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
             "vcf_info_reorder": VCF_INFO_REORDER,
-            "ht": release_sites().ht(),
+            "ht": hl.read_table("gs://gnomad-vrs-io-finals/ht-outputs/release_0426_dmtest_v3.1.2-Full-ht-release-output-updated-schema-050523.ht"), #TODO: wait until the release HT to be updated to VEP 105 and created as a minor release
         }
         # Downsampling and subset entries to remove from VCF's freq export
         # Note: Need to extract the non-standard downsamplings from the freq_meta struct to the FREQ_ENTRIES_TO_REMOVE # noqa
