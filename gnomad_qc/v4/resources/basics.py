@@ -11,9 +11,12 @@ from gnomad.resources.resource_utils import (
 
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION
 from gnomad_qc.v4.resources.meta import meta
+from gnomad_qc.v4.resources.variant_qc import TRUTH_SAMPLES
 
 logger = logging.getLogger("basic_resources")
 logger.setLevel(logging.INFO)
+
+TRUTH_SAMPLES_S = [TRUTH_SAMPLES[s]["s"] for s in TRUTH_SAMPLES]
 
 
 # Note: Unlike previous versions, the v4 resource directory uses a general format of
@@ -23,10 +26,12 @@ def get_gnomad_v4_vds(
     remove_hard_filtered_samples: bool = True,
     remove_hard_filtered_samples_no_sex: bool = False,
     high_quality_only: bool = False,
+    keep_controls: bool = False,
     release_only: bool = False,
     test: bool = False,
     n_partitions: int = None,
     remove_dead_alleles: bool = True,
+    annotate_meta: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Get gnomAD v4 data with desired filtering and metadata annotations.
@@ -40,6 +45,8 @@ def get_gnomad_v4_vds(
         filtering is complete).
     :param high_quality_only: Whether to filter the VDS to only high quality samples
         (only relevant after outlier filtering is complete).
+    :param keep_controls: Whether to keep control samples when filtering the VDS to
+        a subset of samples.
     :param release_only: Whether to filter the VDS to only samples available for
         release (can only be used if metadata is present).
     :param test: Whether to use the test VDS instead of the full v4 VDS.
@@ -47,6 +54,8 @@ def get_gnomad_v4_vds(
         partitions.
     :param remove_dead_alleles: Whether to remove dead alleles from the VDS when
         removing withdrawn UKB samples. Default is True.
+    :param annotate_meta: Whether to annotate the VDS with the sample QC metadata.
+        Default is False.
     :return: gnomAD v4 dataset with chosen annotations and filters.
     """
     if remove_hard_filtered_samples and remove_hard_filtered_samples_no_sex:
@@ -164,15 +173,31 @@ def get_gnomad_v4_vds(
                 filter_ht = hard_filtered_samples.versions[CURRENT_VERSION].ht()
             else:
                 filter_ht = hard_filtered_samples_no_sex.versions[CURRENT_VERSION].ht()
-            vds = hl.vds.filter_samples(vds, filter_ht, keep=keep_samples)
 
-    if release_only:
+            filter_s = filter_ht.s.collect()
+            if keep_controls:
+                if keep_samples:
+                    filter_s += TRUTH_SAMPLES_S
+                else:
+                    filter_s = [s for s in filter_s if s not in TRUTH_SAMPLES_S]
+
+            vds = hl.vds.filter_samples(vds, filter_s, keep=keep_samples)
+
+    if release_only or annotate_meta:
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
         else:
             meta_ht = meta.versions[CURRENT_VERSION].ht()
-        meta_ht = meta_ht.filter(meta_ht.release)
-        vds = hl.vds.filter_samples(vds, meta_ht)
+        if release_only:
+            filter_expr = meta_ht.release
+            if keep_controls:
+                filter_expr |= hl.literal(TRUTH_SAMPLES_S).contains(meta_ht.s)
+            vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+        if annotate_meta:
+            vds = hl.vds.VariantDataset(
+                vds.reference_data,
+                vds.variant_data.annotate_cols(meta=meta_ht[vds.variant_data.col_key]),
+            )
 
     if split:
         vmt = vds.variant_data
