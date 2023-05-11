@@ -29,6 +29,7 @@ from gnomad.utils.vcf import (
     FORMAT_DICT,
     HISTS,
     IN_SILICO_ANNOTATIONS_INFO_DICT,
+    VRS_FIELDS_DICT,
     INFO_DICT,
     REGION_FLAG_FIELDS,
     RF_FIELDS,
@@ -89,7 +90,7 @@ SUBSETS = SUBSETS["v3"]
 
 # Make subset list (used in properly filling out VCF header descriptions
 # and naming VCF info fields)
-SUBSET_LIST_FOR_VCF = SUBSETS['v3'].copy()
+SUBSET_LIST_FOR_VCF = SUBSETS.copy()
 SUBSET_LIST_FOR_VCF.append("")
 
 # Remove cohorts that have subpop frequencies stored as pop frequencies
@@ -115,7 +116,7 @@ MISSING_INFO_FIELDS = (
 )
 
 # Remove unnecessary pop names from POP_NAMES dict
-POPS = {pop: POP_NAMES[pop] for pop in POPS['v3']}
+POPS = {pop: POP_NAMES[pop] for pop in POPS}
 
 # Remove unnecessary pop names from FAF_POPS dict
 FAF_POPS = {pop: POP_NAMES[pop] for pop in FAF_POPS}
@@ -238,6 +239,7 @@ def populate_info_dict(
     faf_pops: Dict[str, str] = FAF_POPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
+    vrs_fields_dict: Dict[str, Dict[str, str]] = VRS_FIELDS_DICT,
     label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
     """
@@ -262,6 +264,7 @@ def populate_info_dict(
     :param faf_pops: Dict with faf pop names (keys) and descriptions (values).  Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
+    :param vrs_fields_dict: Dictionary with VRS annotations.
     :param label_delimiter: String to use as delimiter when making group label combinations.
     :return: Updated INFO dictionary for VCF export.
     """
@@ -313,6 +316,9 @@ def populate_info_dict(
 
     # Add in silico prediction annotations to info_dict
     vcf_info_dict.update(in_silico_dict)
+
+    # Add VRS annotations to info_dict
+    vcf_info_dict.update(vrs_fields_dict)
 
     return vcf_info_dict
 
@@ -382,10 +388,8 @@ def make_info_expr(
     vcf_info_dict["primate_ai_score"] = t["primate_ai"]["primate_ai_score"]
 
     # Add VRS annotations to info dict
-    vcf_info_dict["VRS_Allele_IDs"] = t["release_ht_info"]["vrs"]["VRS_Allele_IDs"]
-    vcf_info_dict["VRS_Starts"] = t["release_ht_info"]["vrs"]["VRS_Starts"]
-    vcf_info_dict["VRS_Ends"] = t["release_ht_info"]["vrs"]["VRS_Ends"]
-    vcf_info_dict["VRS_States"] = t["release_ht_info"]["vrs"]["VRS_States"]
+    for field in list(VRS_FIELDS_DICT.keys()):
+        vcf_info_dict[field] = t["release_ht_info"]["vrs"][f"{field}"]
 
     return vcf_info_dict
 
@@ -714,17 +718,6 @@ def prepare_vcf_header_dict(
         subset_list=subset_list,
         subset_pops=pops,
     )
-
-    # update VCF header for VRS fields
-    VRS_Allele_IDs_description = "The computed identifiers for the GA4GH VRS Alleles corresponding to the values in the alleles column"
-    VRS_Starts_description = "Interresidue coordinates used as the location starts for the GA4GH VRS Alleles corresponding to the values in the alleles column"
-    VRS_Ends_description = "Interresidue coordinates used as the location ends for the GA4GH VRS Alleles corresponding to the values in the alleles column"
-    VRS_States_description = "The literal sequence states used for the GA4GH VRS Alleles corresponding to the values in the alleles column"
-
-    vcf_info_dict.update({"VRS_Allele_IDs": {"Number": "1", "Description": f"{VRS_Allele_IDs_description}"},
-                          "VRS_Starts": {"Number": "1", "Description": f"{VRS_Starts_description}"},
-                          "VRS_Ends": {"Number": "1", "Description": f"{VRS_Ends_description}"},
-                          "VRS_States": {"Number": "1", "Description": f"{VRS_States_description}"}})
 
     vcf_info_dict.update({"vep": {"Description": hl.eval(t.vep_csq_header)}})
 
