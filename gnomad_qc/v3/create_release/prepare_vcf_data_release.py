@@ -381,7 +381,7 @@ def make_info_expr(
 
     vcf_info_dict["primate_ai_score"] = t["primate_ai"]["primate_ai_score"]
 
-    # add VRS annotations to info dict
+    # Add VRS annotations to info dict
     vcf_info_dict["VRS_Allele_IDs"] = t["release_ht_info"]["vrs"]["VRS_Allele_IDs"]
     vcf_info_dict["VRS_Starts"] = t["release_ht_info"]["vrs"]["VRS_Starts"]
     vcf_info_dict["VRS_Ends"] = t["release_ht_info"]["vrs"]["VRS_Ends"]
