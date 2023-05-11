@@ -4,6 +4,7 @@ import argparse
 import logging
 
 import hail as hl
+from gnomad.utils.annotations import add_variant_type, annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
     INFO_INT32_SUM_AGG_FIELDS,
@@ -36,17 +37,23 @@ def split_info(info_ht: hl.Table) -> hl.Table:
     """
     Generate an info Table with split multi-allelic sites from the multi-allelic info Table.
 
+    .. note::
+
+        gnomad_methods' `annotate_allele_info` splits multi-allelic sites before the
+        `info` annotation is split to ensure that all sites in the returned Table are
+        annotated with allele info.
+
     :param info_ht: Info Table with unsplit multi-allelics.
     :return: Info Table with split multi-allelics.
     """
-    info_ht = hl.split_multi(info_ht)
-
+    info_ht = annotate_allele_info(info_ht)
     info_ht = info_ht.annotate(
         info=info_ht.info.annotate(
             **split_info_annotation(info_ht.info, info_ht.a_index),
         ),
         AS_lowqual=split_lowqual_annotation(info_ht.AS_lowqual, info_ht.a_index),
     )
+
     return info_ht
 
 
