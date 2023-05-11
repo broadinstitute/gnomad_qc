@@ -52,6 +52,27 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
     )
 
 
+def get_vep(version: str = CURRENT_VERSION, test: bool = False) -> str:
+    """
+    Get the gnomAD v4 VEP annotation VersionedTableResource.
+
+    :param version: Version of annotation path to return.
+    :param test: Whether to use a tmp path for testing.
+    :return: gnomAD v4 VEP VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                path=(
+                    f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.vep.ht"
+                )
+            )
+            for version in VERSIONS
+        },
+    )
+
+
 def get_vqsr_filters(
     model_id: str,
     split: bool = True,
@@ -125,31 +146,11 @@ qual_hist = VersionedTableResource(
     },
 )
 
-vep = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{_annotations_root(version)}/gnomad.exomes.v{version}.vep.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
 fam_stats = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
             f"{_annotations_root(version)}/gnomad.exomes.v{version}.qc_fam_stats.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-allele_data = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{_annotations_root(version)}/gnomad.exomes.v{version}.qc_allele_data.ht"
         )
         for version in VERSIONS
     },
