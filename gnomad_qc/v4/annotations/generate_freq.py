@@ -239,17 +239,15 @@ def main(args):  # noqa: D103
     # TODO: Determine if splitting subset freq from whole callset agg
     resources = get_freq_resources(args.overwrite, test, chrom)
 
+    logger.info("Getting gnomAD v4 VDS...")
     vds = get_gnomad_v4_vds(
-        test=test_dataset, release_only=True, chrom=chrom, n_partitions=10000
+        test=test_dataset,
+        release_only=True,
+        chrom=chrom,
+        n_partitions=10000,
+        annotate_meta=True,
     )
-    meta_ht = meta.ht()
     final_anns = {}
-
-    logger.info("Adding metadata to VDS variant data cols...")
-    vds = hl.vds.VariantDataset(
-        vds.reference_data,
-        vds.variant_data.annotate_cols(meta=meta_ht[vds.variant_data.col_key]),
-    )
 
     if test or chrom:
         if test_dataset:
