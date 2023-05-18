@@ -312,18 +312,14 @@ def export_transmitted_singletons_vcf():
 
 def run_vep(vep_version: str = "101") -> hl.Table:
     """
-    Return a table with a VEP annotation for each variant in the raw MatrixTable.
+    Return a table with a VEP annotation for each variant in the raw VariantDataset.
 
     :param vep_version: Version of VEPed context Table to use in `vep_or_lookup_vep`
     :return: VEPed Table
     """
-    ht = get_gnomad_v3_mt(
-        key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
-    ).rows()
-    ht = ht.filter(hl.len(ht.alleles) > 1)
-    ht = hl.split_multi_hts(ht)
+    ht = get_gnomad_v3_vds(remove_hard_filtered_samples=False).variant_data.rows()
+    ht = hl.split_multi(ht)
     ht = vep_or_lookup_vep(ht, vep_version=vep_version)
-    ht = ht.annotate_globals(version=f"v{vep_version}")
 
     return ht
 
