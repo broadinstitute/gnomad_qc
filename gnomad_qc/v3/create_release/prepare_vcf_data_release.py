@@ -53,7 +53,7 @@ from gnomad_qc.v3.resources.release import (
     append_to_vcf_header_path,
     hgdp_tgp_subset,
     release_header_path,
-    release_sites,  # TODO: wait until the release HT to be updated to VEP 105 and created as a minor release
+    release_sites,
     release_vcf_path,
 )
 
@@ -833,9 +833,7 @@ def build_parameter_dict(
             "include_age_hists": True,
             "sample_sum_sets_and_pops": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
             "vcf_info_reorder": VCF_INFO_REORDER,
-            "ht": hl.read_table(
-                "gs://gnomad-vrs-io-finals/ht-outputs/release_0426_dmtest_v3.1.2-Full-ht-release-output-updated-schema-050523.ht"
-            ),  # TODO: wait until the release HT to be updated to VEP 105 and created as a minor release
+            "ht": release_sites().ht(),
         }
         # Downsampling and subset entries to remove from VCF's freq export
         # Note: Need to extract the non-standard downsamplings from the freq_meta struct to the FREQ_ENTRIES_TO_REMOVE # noqa
