@@ -34,7 +34,7 @@ from gnomad_qc.v3.resources.annotations import (
     qc_ac,
     vep,
 )
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds,get_gnomad_v3_mt
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds, get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import trios
 
 logging.basicConfig(
