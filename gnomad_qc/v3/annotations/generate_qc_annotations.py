@@ -325,7 +325,11 @@ def run_vep(vep_version: str = "101") -> hl.Table:
 
 
 def main(args):  # noqa: D103
-    hl.init(default_reference="GRCh38", log="/qc_annotations.log")
+    hl.init(
+        default_reference="GRCh38",
+        log="/qc_annotations.log",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
 
     if args.compute_info:
         compute_info().write(get_info(split=False).path, overwrite=args.overwrite)
