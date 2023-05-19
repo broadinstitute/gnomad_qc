@@ -13,7 +13,7 @@ from gnomad.sample_qc.relatedness import (
 )
 
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
-from gnomad_qc.v3.resources.constants import CURRENT_RELEASE
+from gnomad_qc.v3.resources.constants import CURRENT_VERSION
 from gnomad_qc.v3.resources.meta import meta, ped_mendel_errors, pedigree, trios
 from gnomad_qc.v3.resources.sample_qc import (
     duplicates,
@@ -27,7 +27,7 @@ logger = logging.getLogger("create_fam")
 
 def run_mendel_errors() -> hl.Table:  # noqa: D103
     meta_ht = meta.ht()
-    ped = pedigree.versions[f"{CURRENT_RELEASE}_raw"].pedigree()
+    ped = pedigree.versions[f"{CURRENT_VERSION}_raw"].pedigree()
     logger.info(f"Running Mendel errors for {len(ped.trios)} trios.")
 
     fake_ped = create_fake_pedigree(
@@ -147,9 +147,9 @@ def main(args):  # noqa: D103
 
     if args.infer_families:
         ped = run_infer_families()
-        ped.write(pedigree.versions[f"{CURRENT_RELEASE}_raw"].path)
+        ped.write(pedigree.versions[f"{CURRENT_VERSION}_raw"].path)
         raw_trios = families_to_trios(ped)
-        raw_trios.write(trios.versions[f"{CURRENT_RELEASE}_raw"].path)
+        raw_trios.write(trios.versions[f"{CURRENT_VERSION}_raw"].path)
 
     if args.run_mendel_errors:
         mendel_errors = run_mendel_errors()
@@ -157,7 +157,7 @@ def main(args):  # noqa: D103
 
     if args.finalize_ped:
         final_ped = filter_ped(
-            pedigree.versions[f"{CURRENT_RELEASE}_raw"].pedigree,
+            pedigree.versions[f"{CURRENT_VERSION}_raw"].pedigree,
             ped_mendel_errors.ht(),
             args.max_dnm,
             args.max_mendel,
