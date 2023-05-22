@@ -272,7 +272,7 @@ def filter_ped(
                 ukb_filter_expr |= (mendel_by_s.ukb == ukb) & (
                     mendel_by_s[f"n_{m}"] < max_n
                 )
-                cutoffs[m]["max_n"] = {f"{'' if ukb else 'non-'}UKB": max_n}
+                cutoffs[m]["max_n"][f"{'' if ukb else 'non-'}UKB"] = max_n
             filter_expr &= ukb_filter_expr
         else:
             max_n = z_stats[m].mean + max_z * z_stats[m].stdev
