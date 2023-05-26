@@ -147,8 +147,11 @@ def filter_ped(
     mendel_ht: hl.Table,
     max_mendel_z: Optional[int] = 3,
     max_de_novo_z: Optional[int] = 3,
+    stratify_ukb: bool = False,
     max_mendel_n: Optional[int] = None,
+    ukb_max_mendel_n: Optional[int] = None,
     max_de_novo_n: Optional[int] = None,
+    ukb_max_de_novo_n: Optional[int] = None,
 ) -> Tuple[hl.Pedigree, Dict[str, Dict[str, int]]]:
     """
     Filter a Pedigree based on Mendel errors and de novo metrics.
@@ -157,13 +160,46 @@ def filter_ped(
     :param mendel_ht: Table with Mendel errors.
     :param max_mendel_z: Optional maximum z-score for Mendel error metrics. Default is 3.
     :param max_de_novo_z: Optional maximum z-score for de novo metrics. Default is 3.
-    :param max_mendel_n: Optional maximum Mendel error count. Default is None.
-    :param max_de_novo_n: Optional maximum de novo count. Default is None.
+    :param stratify_ukb: Whether to stratify z-score cutoffs by trio UK Biobank status.
+        Default is False.
+    :param max_mendel_n: Optional maximum Mendel error count. If specified and
+        `ukb_max_mendel_n` is not, `max_mendel_n` will be used for all samples. If both
+        `max_mendel_n` and `ukb_max_mendel_n` are specified, max_mendel_n` will be used
+        for non-UKB samples and `ukb_max_mendel_n` will be used for UKB samples.
+        Default is None.
+    :param ukb_max_mendel_n: Optional maximum Mendel error count for trios in UK
+        Biobank. If specified, `max_mendel_n` must also be specified for non-UKB
+        samples. If not specified, but `max_mendel_n` is, `max_mendel_n` will be used
+        for all samples. Default is None.
+    :param max_de_novo_n: Optional maximum de novo count. If specified and
+        `ukb_max_de_novo_n` is not, `max_de_novo_n` will be used for all samples. If
+        both `max_de_novo_n` and `ukb_max_de_novo_n` are specified, max_de_novo_n` will
+        be used for non-UKB samples and `ukb_max_de_novo_n` will be used for UKB
+        samples. Default is None.
+    :param ukb_max_de_novo_n: Optional maximum de novo count for trios in UK Biobank.
+        If specified, `max_de_novo_n` must also be specified for non-UKB samples. If not
+        specified, but `max_de_novo_n` is, `max_de_novo_n` will be used for all samples.
+        Default is None.
     :return: Tuple of filtered Pedigree and dictionary of filtering parameters.
     """
+    if ukb_max_mendel_n and not max_mendel_n:
+        raise ValueError("`max_mendel_n` must be specified if `ukb_max_mendel_n` is.")
+    if ukb_max_de_novo_n and not max_de_novo_n:
+        raise ValueError("`max_de_novo_n` must be specified if `ukb_max_de_novo_n` is.")
+
     cutoffs = {
-        "mendel": (max_mendel_z, max_mendel_n),
-        "de_novo": (max_de_novo_z, max_de_novo_n),
+        "mendel": (
+            max_mendel_z,
+            {"UKB": ukb_max_mendel_n, "non-UKB": max_mendel_n}
+            if ukb_max_mendel_n
+            else max_mendel_n,
+        ),
+        "de_novo": (
+            max_de_novo_z,
+            {"UKB": ukb_max_de_novo_n, "non-UKB": max_de_novo_n}
+            if ukb_max_de_novo_n
+            else max_de_novo_n,
+        ),
     }
 
     # Check that only one of `max_mendel_z` or `max_mendel_n` and one of `max_de_novo_z`
@@ -174,9 +210,12 @@ def filter_ped(
         if max_n:
             if max_z:
                 logger.warning(
-                    "Both `max_%s_z` and `max_%s_n` are set. Using `max_%s_n` of %i!",
+                    "Both `max_%s_z` and `max_%s_n` are set. Using `max_%s_n` of %d%s!",
                     *(m,) * 3,
-                    max_n,
+                    max_n["non-UKB"] if isinstance(max_n, dict) else max_n,
+                    f" and `ukb_max_{m}_n` of {max_n['UKB']}"
+                    if isinstance(max_n, dict)
+                    else "",
                 )
             cutoffs_by_method["count"][m] = max_n
         elif max_z:
@@ -188,40 +227,74 @@ def filter_ped(
 
     # Aggregate Mendel errors Table by sample to get per sample mendel error and
     # de novo counts.
-    mendel_by_s = (
-        mendel_ht.group_by(mendel_ht.s, mendel_ht.fam_id)
-        .aggregate(
-            n_mendel=hl.agg.count(),
-            # Code 2 is parents are hom ref, child is het.
-            n_de_novo=hl.agg.count_where(mendel_ht.mendel_code == 2),
-        )
-        .checkpoint(new_temp_file("filter_ped", extension="ht"))
+    mendel_by_s = mendel_ht.group_by(mendel_ht.s, mendel_ht.fam_id).aggregate(
+        n_mendel=hl.agg.count(),
+        # Code 2 is parents are hom ref, child is het.
+        n_de_novo=hl.agg.count_where(mendel_ht.mendel_code == 2),
     )
+
+    mendel_by_s = mendel_by_s.annotate(ukb=mendel_by_s.s.startswith("UKB"))
+    mendel_by_s = mendel_by_s.checkpoint(new_temp_file("filter_ped", extension="ht"))
 
     # Get aggregate stats (need mean and stdev) for each metric with std dev
     # cutoffs set.
     z_stats_expr = {}
     for m in cutoffs_by_method["stdev"]:
-        z_stats_expr[m] = hl.agg.stats(mendel_by_s[f"n_{m}"])
-    z_stats = mendel_by_s.aggregate(hl.struct(**z_stats_expr))
+        stats_expr = hl.agg.stats(mendel_by_s[f"n_{m}"])
+        # If stratifying by UKB status, get stats for UKB and non-UKB separately.
+        if stratify_ukb:
+            stats_expr = hl.agg.group_by(mendel_by_s.ukb, stats_expr)
+        z_stats_expr[m] = stats_expr
 
+    z_stats = mendel_by_s.aggregate(hl.struct(**z_stats_expr))
     # Build filter expression to filter metrics by requested metrics and methods.
     filter_expr = hl.literal(True)
     cutoffs = {}
     for m, max_z in cutoffs_by_method["stdev"].items():
-        max_n = z_stats[m].mean + max_z * z_stats[m].stdev
-        logger.info(
-            "Filtering trios with more than %f %s errors (%i z-score)",
-            max_n,
-            m,
-            max_z,
+        cutoffs[m] = {"max_z": max_z}
+        log_expr = (
+            "Filtering %strios with more than %f %s errors (%i standard deviations "
+            "from the mean)"
         )
-        filter_expr &= mendel_by_s[f"n_{m}"] < max_n
-        cutoffs[m] = {"max_n": max_n, "max_z": max_z}
+        # If stratifying by UKB status, get cutoffs for UKB and non-UKB separately.
+        if stratify_ukb:
+            cutoffs[m]["max_n"] = {}
+            ukb_filter_expr = hl.literal(False)
+            for ukb in [True, False]:
+                max_n = z_stats[m][ukb].mean + max_z * z_stats[m][ukb].stdev
+                logger.info(
+                    log_expr,
+                    "UKB " if ukb else "non-UKB ",
+                    max_n,
+                    m,
+                    max_z,
+                )
+                ukb_filter_expr |= (mendel_by_s.ukb == ukb) & (
+                    mendel_by_s[f"n_{m}"] < max_n
+                )
+                cutoffs[m]["max_n"][f"{'' if ukb else 'non-'}UKB"] = max_n
+            filter_expr &= ukb_filter_expr
+        else:
+            max_n = z_stats[m].mean + max_z * z_stats[m].stdev
+            logger.info(log_expr, "", max_n, m, max_z)
+            filter_expr &= mendel_by_s[f"n_{m}"] < max_n
+            cutoffs[m]["max_n"] = max_n
 
     for m, max_n in cutoffs_by_method["count"].items():
-        logger.info("Filtering trios with more than %d %s errors", max_n, m)
-        filter_expr &= mendel_by_s[f"n_{m}"] < max_n
+        log_expr = "Filtering %strios with more than %d %s errors."
+        # If stratifying by UKB status, use different cutoffs for UKB and non-UKB.
+        if isinstance(max_n, dict):
+            ukb_filter_expr = hl.literal(False)
+            for ukb in [True, False]:
+                ukb_max_n = max_n["UKB" if ukb else "non-UKB"]
+                logger.info(log_expr, "UKB " if ukb else "non-UKB ", ukb_max_n, m)
+                ukb_filter_expr |= (mendel_by_s.ukb == ukb) & (
+                    mendel_by_s[f"n_{m}"] < ukb_max_n
+                )
+            filter_expr &= ukb_filter_expr
+        else:
+            logger.info(log_expr, "", max_n, m)
+            filter_expr &= mendel_by_s[f"n_{m}"] < max_n
         cutoffs[m] = {"max_n": max_n}
 
     # Filter inferred Pedigree to only trios that pass filters defined by `filter_expr`.
@@ -370,8 +443,11 @@ def main(args):
             res.mendel_err_ht.ht(),
             args.max_mendel_z,
             args.max_de_novo_z,
+            args.stratify_ukb,
             args.max_mendel,
+            args.ukb_max_mendel,
             args.max_de_novo,
+            args.ukb_max_de_novo,
         )
         ped.write(res.final_ped.path)
         families_to_trios(ped, args.seed).write(res.final_trios.path)
@@ -482,13 +558,53 @@ if __name__ == "__main__":
         type=int,
     )
     finalize_ped_args.add_argument(
+        "--stratify-ukb",
+        help=(
+            "Stratify Mendel errors and de novo standard deviations cutoffs to UKB and "
+            "non-UKB samples."
+        ),
+        action="store_true",
+    )
+    finalize_ped_args.add_argument(
         "--max-mendel",
-        help="Maximum number of raw Mendel errors for real trios.",
+        help=(
+            "Maximum number of raw Mendel errors for real trios. If specified and "
+            "--ukb-max-mendel is not, --max-mendel will be used for all samples. If "
+            "both --max-mendel and --ukb-max-mendel are specified, --max-mendel will "
+            "be used for non-UKB samples and --ukb-max-mendel will be used for UKB "
+            "samples."
+        ),
+        type=int,
+    )
+    finalize_ped_args.add_argument(
+        "--ukb-max-mendel",
+        help=(
+            "Maximum number of raw Mendel errors for real trios in UKB samples. If "
+            "specified, --max-mendel must also be specified for non-UKB samples. If "
+            "not specified, but --max-mendel is, --max-mendel will be used for all "
+            "samples."
+        ),
         type=int,
     )
     finalize_ped_args.add_argument(
         "--max-de-novo",
-        help="Maximum number of raw de novo mutations for real trios.",
+        help=(
+            "Maximum number of raw de novo mutations for real trios. If specified and"
+            " --ukb-max-de-novo is not, --max-de-novo will be used for all samples. If"
+            " both --max-de-novo and --ukb-max-de-novo are specified, --max-de-novo"
+            " will be used for non-UKB samples and --ukb-max-de-novo will be used for"
+            " UKB samples."
+        ),
+        type=int,
+    )
+    finalize_ped_args.add_argument(
+        "--ukb-max-de-novo",
+        help=(
+            "Maximum number of raw de novo mutations for real trios in UKB samples. If "
+            "specified, --max-de-novo must also be specified for non-UKB samples. If "
+            "not specified, but --max-de-novo is, --max-de-novo will be used for all "
+            "samples."
+        ),
         type=int,
     )
     finalize_ped_args.add_argument(
@@ -503,6 +619,16 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    if args.ukb_max_mendel and not args.max_mendel:
+        parser.error(
+            "--ukb-max-mendel requires --max-mendel to be specified for non-UKB "
+            "samples."
+        )
+    if args.ukb_max_de_novo and not args.max_de_novo:
+        parser.error(
+            "--ukb-max-de-novo requires --max-de-novo to be specified for non-UKB "
+            "samples."
+        )
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
             main(args)
