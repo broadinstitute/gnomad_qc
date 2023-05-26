@@ -552,7 +552,9 @@ def get_sample_filter_ht(base_ht: hl.Table, relationship_ht: hl.Table) -> hl.Tab
     # variant QC and release.
     sample_filters_ht = sample_filters_ht.annotate(
         control=(control_samples.contains(sample_filters_ht.s)),
-        elgh2_project=(meta_ht[sample_filters_ht.key].project_meta.project == "elgh2"),
+        elgh2_project=hl.coalesce(
+            meta_ht[sample_filters_ht.key].project_meta.project == "elgh2", False
+        ),
     )
     sample_filters_ht = sample_filters_ht.checkpoint(
         new_temp_file("sample_filters", extension="ht"), overwrite=True
