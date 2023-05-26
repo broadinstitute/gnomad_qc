@@ -590,9 +590,9 @@ if __name__ == "__main__":
         "--max-de-novo",
         help=(
             "Maximum number of raw de novo mutations for real trios. If specified and "
-            "--ukb-max-mendel is not, --max-mendel will be used for all samples. If "
-            "both --max-mendel and --ukb-max-mendel are specified, --max-mendel will "
-            "be used for non-UKB samples and --ukb-max-mendel will be used for UKB "
+            "--ukb-max-de-novo is not, --max-de-novo will be used for all samples. If "
+            "both --max-de-novo and --ukb-max-de-novo are specified, --max-de-novo will "
+            "be used for non-UKB samples and --ukb-max-de-novo will be used for UKB "
             "samples."
         ),
         type=int,
@@ -601,8 +601,8 @@ if __name__ == "__main__":
         "--ukb-max-de-novo",
         help=(
             "Maximum number of raw de novo mutations for real trios in UKB samples. If "
-            "specified, --max-mendel must also be specified for non-UKB samples. If "
-            "not specified, but --max-mendel is, --max-mendel will be used for all "
+            "specified, --max-de-novo must also be specified for non-UKB samples. If "
+            "not specified, but --max-de-novo is, --max-de-novo will be used for all "
             "samples."
         ),
         type=int,
