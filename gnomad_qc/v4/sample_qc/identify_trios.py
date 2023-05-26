@@ -589,11 +589,11 @@ if __name__ == "__main__":
     finalize_ped_args.add_argument(
         "--max-de-novo",
         help=(
-            "Maximum number of raw de novo mutations for real trios. If specified and "
-            "--ukb-max-de-novo is not, --max-de-novo will be used for all samples. If "
-            "both --max-de-novo and --ukb-max-de-novo are specified, --max-de-novo will "
-            "be used for non-UKB samples and --ukb-max-de-novo will be used for UKB "
-            "samples."
+            "Maximum number of raw de novo mutations for real trios. If specified and"
+            " --ukb-max-de-novo is not, --max-de-novo will be used for all samples. If"
+            " both --max-de-novo and --ukb-max-de-novo are specified, --max-de-novo"
+            " will be used for non-UKB samples and --ukb-max-de-novo will be used for"
+            " UKB samples."
         ),
         type=int,
     )
