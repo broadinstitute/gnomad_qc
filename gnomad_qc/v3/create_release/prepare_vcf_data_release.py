@@ -389,7 +389,7 @@ def make_info_expr(
 
     # Add VRS annotations to info dict
     for field in list(VRS_FIELDS_DICT.keys()):
-        vcf_info_dict[field] = t["release_ht_info"]["vrs"][f"{field}"]
+        vcf_info_dict[field] = t["release_ht_info"]["vrs"][field]
 
     return vcf_info_dict
 
