@@ -23,6 +23,7 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.meta import project_meta
 from gnomad_qc.v4.resources.sample_qc import (
     duplicates,
     finalized_outlier_filtering,
@@ -397,6 +398,19 @@ def main(args):
     trio_resources = get_trio_resources(overwrite, test)
     trio_resources.check_resource_existence()
     filter_ht = trio_resources.filter_ht.ht()
+    # Setting samples in the ELGH2 project to 'outlier_filtered' True, so they
+    # are treated like outlier filtered samples when identifying trios for QC. We
+    # identified that they do not have the full set of 'AS' annotations in 'gvcf_info'
+    # so we need to exclude them from variant QC and release.
+    project_meta_ht = project_meta.ht()
+    filter_ht = filter_ht.annotate(
+        outlier_filtered=hl.if_else(
+            project_meta_ht[filter_ht.key].project_meta.project == "elgh2",
+            True,
+            filter_ht.outlier_filtered,
+            missing_false=True,
+        )
+    )
     rel_ht = filter_relatedness_ht(trio_resources.rel_ht.ht(), filter_ht)
 
     if args.identify_duplicates:

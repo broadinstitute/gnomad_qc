@@ -20,6 +20,7 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import get_logging_path
+from gnomad_qc.v4.resources.meta import project_meta
 from gnomad_qc.v4.resources.sample_qc import (
     finalized_outlier_filtering,
     get_cuking_input_path,
@@ -629,11 +630,28 @@ def main(args):
         if args.compute_related_samples_to_drop:
             res = relatedness_resources.compute_related_samples_to_drop
             res.check_resource_existence()
+            # Setting samples in the ELGH2 project to 'outlier_filtered' True, so they
+            # are treated like outlier filtered samples when creating the release
+            # ranking. We identified that they do not have the full set of 'AS'
+            # annotations in 'gvcf_info' so we need to exclude them from variant QC and
+            # release.
+            filter_ht = None
+            if release:
+                project_meta_ht = project_meta.ht()
+                filter_ht = res.outlier_filter_ht.ht()
+                filter_ht = filter_ht.annotate(
+                    outlier_filtered=hl.if_else(
+                        project_meta_ht[filter_ht.key].project_meta.project == "elgh2",
+                        True,
+                        filter_ht.outlier_filtered,
+                        missing_false=True,
+                    )
+                )
             rank_ht, drop_ht = run_compute_related_samples_to_drop(
                 res.final_relatedness_ht.ht(),
                 joint_qc_meta_ht.select_globals().semi_join(joint_qc_mt.cols()),
                 release,
-                res.outlier_filter_ht.ht() if release else None,
+                filter_ht,
             )
             rank_ht.write(res.sample_rankings_ht.path, overwrite=overwrite)
             drop_ht.write(res.related_samples_to_drop_ht.path, overwrite=overwrite)
