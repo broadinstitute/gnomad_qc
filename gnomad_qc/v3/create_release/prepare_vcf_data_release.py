@@ -34,6 +34,7 @@ from gnomad.utils.vcf import (
     RF_FIELDS,
     SITE_FIELDS,
     VQSR_FIELDS,
+    VRS_FIELDS_DICT,
     add_as_info_dict,
     adjust_vcf_incompatible_types,
     build_vcf_export_reference,
@@ -238,6 +239,7 @@ def populate_info_dict(
     faf_pops: Dict[str, str] = FAF_POPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
+    vrs_fields_dict: Dict[str, Dict[str, str]] = VRS_FIELDS_DICT,
     label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
     """
@@ -262,6 +264,7 @@ def populate_info_dict(
     :param faf_pops: Dict with faf pop names (keys) and descriptions (values).  Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
+    :param vrs_fields_dict: Dictionary with VRS annotations.
     :param label_delimiter: String to use as delimiter when making group label combinations.
     :return: Updated INFO dictionary for VCF export.
     """
@@ -313,6 +316,9 @@ def populate_info_dict(
 
     # Add in silico prediction annotations to info_dict
     vcf_info_dict.update(in_silico_dict)
+
+    # Add VRS annotations to info_dict
+    vcf_info_dict.update(vrs_fields_dict)
 
     return vcf_info_dict
 
@@ -380,6 +386,10 @@ def make_info_expr(
     vcf_info_dict["splice_ai_consequence"] = t["splice_ai"]["splice_consequence"]
 
     vcf_info_dict["primate_ai_score"] = t["primate_ai"]["primate_ai_score"]
+
+    # Add VRS annotations to info dict
+    for field in VRS_FIELDS_DICT:
+        vcf_info_dict[field] = t["release_ht_info"]["vrs"][field]
 
     return vcf_info_dict
 
@@ -708,6 +718,7 @@ def prepare_vcf_header_dict(
         subset_list=subset_list,
         subset_pops=pops,
     )
+
     vcf_info_dict.update({"vep": {"Description": hl.eval(t.vep_csq_header)}})
 
     # Adjust keys to remove adj tags before exporting to VCF
