@@ -4,6 +4,8 @@ import argparse
 import logging
 
 import hail as hl
+from gnomad.assessment.validity_checks import count_variant_per_interval
+from gnomad.resources.grch38.reference_data import ensembl_interval
 from gnomad.utils.annotations import add_variant_type, annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
@@ -163,6 +165,14 @@ def main(args):
         ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
         ht.write(res.vep_ht.path, overwrite=args.overwrite)
 
+    if args.valid_vep:
+        vep_ht = hl.read_table(
+            resources.run_vep.vep_ht.path
+        )  # TODO: can I use the vep_ht from the previous step?
+        logger.info("importing and parsing interval file: ")
+        interval_ht = ensembl_interval.ht()
+        count_variant_per_interval(vep_ht, interval_ht)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -187,6 +197,14 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--run-vep", help="Generates vep annotations.", action="store_true"
+    )
+    parser.add_argument(
+        "--valid-vep",
+        help=(
+            "validate if variants in protein-coding genes are correctly annotated by"
+            " VEP."
+        ),
+        action="store_true",
     )
     parser.add_argument(
         "--vep-version",
