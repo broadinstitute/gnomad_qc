@@ -25,6 +25,7 @@ from gnomad_qc.resource_utils import (
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_info, get_vep, info_vcf_path
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.constants import CURRENT_VERSION
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -92,7 +93,9 @@ def get_variant_qc_annotation_resources(
     )
     run_vep = PipelineStepResourceCollection(
         "--run-vep",
-        output_resources={"vep_ht": get_vep(test=test)},
+        output_resources={
+            "vep_ht": get_vep(version=CURRENT_VERSION, data_type="exomes", test=test)
+        },
     )
 
     # Add all steps to the variant QC annotation pipeline resource collection.

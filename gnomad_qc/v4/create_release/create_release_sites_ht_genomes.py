@@ -5,6 +5,7 @@ import logging
 import hail as hl
 
 from gnomad_qc.v4.resources.annotations import get_vep
+from gnomad_qc.v4.resources.constants import CURRENT_VERSION
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -23,7 +24,7 @@ def remove_missing_vep_fields(vep_ht: hl.Table) -> hl.Table:
     """
     logger.info("Loading annotation tables...")
 
-    vep_ht = get_vep(data_type="genomes").ht()
+    vep_ht = get_vep(version=CURRENT_VERSION, data_type="genomes").ht()
 
     vep_ht = vep_ht.annotate(vep=vep_ht.vep.drop("colocated_variants", "context"))
 

@@ -45,7 +45,7 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
         {
             version: TableResource(
                 path=(
-                    f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info{'.split' if split else ''}.ht"
+                    f"{_annotations_root(version, data_type='exomes', test=test)}/gnomad.exomes.v{version}.info{'.split' if split else ''}.ht"
                 )
             )
             for version in VERSIONS
@@ -53,7 +53,7 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
     )
 
 
-def get_vep(version: str, data_type: str, test: bool = False) -> str:
+def get_vep(version: str, data_type: str, test: bool = False) -> VersionedTableResource:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource.
 
@@ -92,7 +92,7 @@ def get_vqsr_filters(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version)}/vqsr/gnomad.exomes.v{version}.{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
+                f"{_annotations_root(version,data_type='exomes')}/vqsr/gnomad.exomes.v{version}.{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
             )
             for version in VERSIONS
         },
@@ -109,7 +109,7 @@ def info_vcf_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     :return: String for the path to the info VCF.
     """
     return (
-        f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.vcf.bgz"
+        f"{_annotations_root(version, data_type='exomes', test=test)}/gnomad.exomes.v{version}.info.vcf.bgz"
     )
 
 
@@ -124,7 +124,7 @@ def get_transmitted_singleton_vcf_path(
     :return: String for the path to the transmitted singleton VCF
     """
     return (
-        f'{_annotations_root(version)}/gnomad.exomes.v{version}.transmitted_singletons.{"adj" if adj else "raw"}.vcf.bgz'
+        f"{_annotations_root(version,data_type='exomes')}/gnomad.exomes.v{version}.transmitted_singletons.{'adj' if adj else 'raw'}.vcf.bgz"
     )
 
 
@@ -132,7 +132,7 @@ freq = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{_annotations_root(version)}/gnomad.exomes.v{version}.frequencies.ht"
+            f"{_annotations_root(version, data_type='exomes')}/gnomad.exomes.v{version}.frequencies.ht"
         )
         for version in VERSIONS
     },
@@ -142,7 +142,7 @@ qual_hist = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{_annotations_root(version)}/gnomad.exomes.v{version}.qual_hists.ht"
+            f"{_annotations_root(version,data_type='exomes')}/gnomad.exomes.v{version}.qual_hists.ht"
         )
         for version in VERSIONS
     },
@@ -152,7 +152,7 @@ fam_stats = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{_annotations_root(version)}/gnomad.exomes.v{version}.qc_fam_stats.ht"
+            f"{_annotations_root(version,data_type='exomes')}/gnomad.exomes.v{version}.qc_fam_stats.ht"
         )
         for version in VERSIONS
     },
@@ -182,7 +182,7 @@ def get_freq(
         version,
         {
             version: TableResource(
-                f"{_annotations_root(version)}/gnomad.exomes.v{version}.frequencies{'.' + subset if subset else ''}.ht"
+                f"{_annotations_root(version,data_type='exomes')}/gnomad.exomes.v{version}.frequencies{'.' + subset if subset else ''}.ht"
             )
             for version in VERSIONS
         },
@@ -218,7 +218,7 @@ def get_freq_comparison(version1, data_type1, version2, data_type2):
         f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq.ht"
     )
     if version1 in VERSIONS:
-        ht_path = f"{_annotations_root(version1)}/{ht_path}"
+        ht_path = f"{_annotations_root(version1,data_type=data_type1)}/{ht_path}"
     else:
         ht_path = f"gs://gnomad/annotations/hail-0.2/ht/{data_type1}/{ht_path}"
 
