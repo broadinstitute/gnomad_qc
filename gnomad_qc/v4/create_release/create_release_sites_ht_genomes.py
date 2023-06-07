@@ -6,12 +6,19 @@ import hail as hl
 
 from gnomad_qc.v4.resources.annotations import get_vep
 
+logging.basicConfig(
+    format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
+    datefmt="%m/%d/%Y %I:%M:%S %p",
+)
+logger = logging.getLogger("create_release_ht")
+logger.setLevel(logging.INFO)
 
-def add_release_annotations(freq_ht: hl.Table) -> hl.Table:
+
+def remove_missing_vep_fields(vep_ht: hl.Table) -> hl.Table:
     """
-    Load and join all Tables with variant annotations.
+    Remove fields from VEP annotations that are missing in all rows.
 
-    :param freq_ht: Table with frequency annotations
+    :param vep_ht: Table with frequency annotations, insilico annotations, and VEP annotations from gnomAD v3.1.4 genomes
     :return: Table containing joined annotations
     """
     logger.info("Loading annotation tables...")
