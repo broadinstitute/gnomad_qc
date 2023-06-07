@@ -14,19 +14,20 @@ from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 SUBSETS = SUBSETS["v4"]
 
 
-def _annotations_root(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def _annotations_root(version: str, data_type: str, test: bool = False) -> str:
     """
     Get root path to the variant annotation files.
 
     :param version: Version of annotation path to return.
+    :param data_type: Either "exomes" or "genomes".
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the
         full v4 VDS.
     :return: Root path of the variant annotation files.
     """
     return (
-        f"gs://gnomad-tmp/gnomad_v{version}_testing/annotations/exomes"
+        f"gs://gnomad-tmp/gnomad_v{version}_testing/annotations/{data_type}"
         if test
-        else f"gs://gnomad/v{version}/annotations/exomes"
+        else f"gs://gnomad/v{version}/annotations/{data_type}"
     )
 
 
@@ -52,11 +53,12 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
     )
 
 
-def get_vep(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def get_vep(version: str, data_type: str, test: bool = False) -> str:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource.
 
     :param version: Version of annotation path to return.
+    :param data_type: Either "exomes" or "genomes".
     :param test: Whether to use a tmp path for testing.
     :return: gnomAD v4 VEP VersionedTableResource.
     """
@@ -65,7 +67,7 @@ def get_vep(version: str = CURRENT_VERSION, test: bool = False) -> str:
         {
             version: TableResource(
                 path=(
-                    f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.vep.ht"
+                    f"{_annotations_root(version, data_type=data_type, test=test)}/gnomad.{data_type}.v{version}.vep.ht"
                 )
             )
             for version in VERSIONS
