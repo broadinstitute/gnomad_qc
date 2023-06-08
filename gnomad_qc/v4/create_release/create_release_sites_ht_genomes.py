@@ -50,3 +50,4 @@ def remove_missing_vep_fields(vep_ht: hl.Table) -> hl.Table:
                 }
             )
         )
+    return vep_ht
