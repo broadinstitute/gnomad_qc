@@ -1,7 +1,7 @@
 """Script containing release related resources."""
 from typing import Optional
 
-from gnomad.resources.grch38.gnomad import public_release
+from gnomad.resources.grch38.gnomad import coverage, public_release
 from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 from gnomad.utils.file_utils import file_exists
 
@@ -120,4 +120,46 @@ def append_to_vcf_header_path(
     """
     return (
         f"gs://gnomad/release/{release_version}/vcf/exomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
+    )
+
+
+def release_coverage_path(
+    data_type: str = "exomes",
+    release_version: str = CURRENT_RELEASE,
+    public: bool = True,
+) -> str:
+    """
+    Fetch filepath for coverage release Table.
+
+    :param data_type: 'exomes' or 'genomes'.
+    :param release_version: Release version.
+    :param public: Determines whether release coverage Table is read from public or
+        private bucket. Defaults to private.
+    :return: File path for desired Hail Table.
+    """
+    if public:
+        if file_exists(coverage(data_type).versions[release_version].path):
+            return coverage(data_type).versions[release_version].path
+        else:
+            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.coverage.ht"
+    else:
+        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.coverage.ht"
+
+
+def release_coverage(public: bool = False) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for coverage release Table.
+
+    :param public: Determines whether release coverage Table is read from public or
+        private bucket. Defaults to private.
+    :return: Coverage release Table.
+    """
+    return VersionedTableResource(
+        default_version=CURRENT_RELEASE,
+        versions={
+            release: TableResource(
+                path=release_coverage_path(release_version=release, public=public)
+            )
+            for release in RELEASES
+        },
     )
