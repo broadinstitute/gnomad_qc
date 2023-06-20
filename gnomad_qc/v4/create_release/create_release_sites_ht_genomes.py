@@ -3,6 +3,7 @@ import argparse
 import logging
 
 import hail as hl
+from gnomad.resources.grch38.reference_data import dbsnp
 
 from gnomad_qc.v4.resources.annotations import get_vep
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION
@@ -17,10 +18,10 @@ logger.setLevel(logging.INFO)
 
 def remove_missing_vep_fields(vep_ht: hl.Table) -> hl.Table:
     """
-    Remove fields from VEP annotations that are missing in all rows.
+    Remove fields from VEP 105 annotations that are missing in all rows.
 
-    :param vep_ht: Table with frequency annotations, insilico annotations, and VEP annotations from gnomAD v3.1.4 genomes
-    :return: Table containing joined annotations
+    :param vep_ht: Table containing VEP 105 annotations
+    :return: Table containing VEP 105 annotations with missing fields removed
     """
     logger.info("Loading annotation tables...")
 
