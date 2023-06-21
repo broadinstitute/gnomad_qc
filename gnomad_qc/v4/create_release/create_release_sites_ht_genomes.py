@@ -5,6 +5,7 @@ import logging
 import hail as hl
 from gnomad.resources.grch38.reference_data import dbsnp
 
+from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v4.resources.annotations import get_vep
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION
 
@@ -23,12 +24,6 @@ def remove_missing_vep_fields(vep_ht: hl.Table) -> hl.Table:
     :param vep_ht: Table containing VEP 105 annotations
     :return: Table containing VEP 105 annotations with missing fields removed
     """
-    logger.info("Loading annotation tables...")
-
-    vep_ht = get_vep(version=CURRENT_VERSION, data_type="genomes").ht()
-
-    vep_ht = vep_ht.annotate(vep=vep_ht.vep.drop("colocated_variants", "context"))
-
     vep_ht = vep_ht.annotate(
         vep=vep_ht.vep.annotate(
             transcript_consequences=vep_ht.vep.transcript_consequences.map(
@@ -52,3 +47,39 @@ def remove_missing_vep_fields(vep_ht: hl.Table) -> hl.Table:
             )
         )
     return vep_ht
+
+
+# TODO: drop old_locus, old_alleles, seems to be already dropped in v3.1.4 release table
+# TODO: rename ancestry group fields to match v4 exomes
+# TODO: drop missing fields from VEP 105 annotations
+# TODO: merge vep_ht with v3.1.4 release table
+# TODO: rerun inbreeding coefficient with callstats instead of GT calls
+# TODO: annotate with newest dbsnp release
+# TODO: add Pangolin prediction
+# TODO: add zoonomia constraint scores
+
+
+def main(args):
+    """Script to generate release sites ht for v4 genomes."""
+    logger.info("Loading release table of v3.1.4...")
+    # ht = release_sites(public=True).versions["3.1.4"].ht()
+    ht = hl.read_table(
+        "gs://gnomad/release/3.1.4/ht/genomes/gnomad.genomes.v3.1.4.sites.ht"
+    )
+
+    logger.info("Dropping old_locus and old_alleles...")
+    ht = ht.drop("old_locus", "old_alleles")
+
+    logger.info("Loading annotation tables...")
+    vep_ht = get_vep(version=CURRENT_VERSION, data_type="genomes").ht()
+
+    logger.info("Removing missing VEP fields...")
+    vep_ht = remove_missing_vep_fields(vep_ht)
+
+    logger.info("Loading dbsnp table...")
+    dbsnp_ht = dbsnp.ht().select("rsid")
+
+    logger.info("Loading pangolin table...")
+    pangolin_ht = hl.read_table(
+        "gs://gnomad/v4.0/annotations/genomes/gnomad.genomes.v4.0.pangolin.ht"
+    )  # TODO: make Pangolin a versioned resource
