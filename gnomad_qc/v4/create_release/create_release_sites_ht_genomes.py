@@ -23,10 +23,6 @@ def remove_missing_vep_fields(vep_ht: hl.Table) -> hl.Table:
     :param vep_ht: Table containing VEP 105 annotations
     :return: Table containing VEP 105 annotations with missing fields removed
     """
-    logger.info("Loading annotation tables...")
-
-    vep_ht = get_vep(version=CURRENT_VERSION, data_type="genomes").ht()
-
     vep_ht = vep_ht.annotate(vep=vep_ht.vep.drop("colocated_variants", "context"))
 
     vep_ht = vep_ht.annotate(
