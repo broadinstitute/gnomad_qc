@@ -49,6 +49,36 @@ def remove_missing_vep_fields(vep_ht: hl.Table) -> hl.Table:
     return vep_ht
 
 
+def replace_oth_with_remaining(ht: hl.Table) -> hl.Table:
+    """
+    Replace 'oth' with 'remaining' in Global fields of a Table.
+
+    .. note::
+        This function is used to rename ancestry group fields to match v4 exomes.
+        Which means that all "oth" will be changed to "remaining".
+        2 Global fields are renamed: freq_meta (in value of key "pop") and freq_index_dict (in the keys).
+
+    :param ht: release sites Table to be modified
+    :return: release sites Table with 'oth' replaced with 'remaining'
+    """
+    # in freq_meta, type: array<dict<str, str>>, the value of key "pop" is
+    # changed from 'oth' to 'remaining'.
+    ht = ht.annotate_globals(
+        freq_meta=ht.freq_meta.map(
+            lambda d: d.map_values(lambda x: x.replace("oth", "remaining"))
+        )
+    )
+
+    # in freq_index_dict, type: dict<str, int>, the keys containing 'oth'
+    # inside are changed to 'remaining'.
+    oldkeys = hl.eval(ht.freq_index_dict.keys())
+    newkeys = [s.replace("oth", "remaining") for s in oldkeys]
+    vals = hl.eval(ht.freq_index_dict.values())
+    freq_index_dict_new = {k: v for k, v in zip(newkeys, vals)}
+    ht = ht.annotate_globals(freq_index_dict=freq_index_dict_new)
+    return ht
+
+
 # TODO: drop old_locus, old_alleles, seems to be already dropped in v3.1.4 release table
 # TODO: rename ancestry group fields to match v4 exomes
 # TODO: drop missing fields from VEP 105 annotations
@@ -67,10 +97,10 @@ def main(args):
         "gs://gnomad/release/3.1.4/ht/genomes/gnomad.genomes.v3.1.4.sites.ht"
     )
 
-    logger.info("Dropping old_locus and old_alleles...")
-    ht = ht.drop("old_locus", "old_alleles")
+    logger.info("Replacing ancestry group 'oth' with 'remaining'...")
+    ht = replace_oth_with_remaining(ht)
 
-    logger.info("Loading annotation tables...")
+    logger.info("Loading VEP-annotated table...")
     vep_ht = get_vep(version=CURRENT_VERSION, data_type="genomes").ht()
 
     logger.info("Removing missing VEP fields...")
