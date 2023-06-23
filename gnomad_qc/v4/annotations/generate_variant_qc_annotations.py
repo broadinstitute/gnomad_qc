@@ -105,7 +105,7 @@ def get_variant_qc_annotation_resources(
     )
     validate_vep = PipelineStepResourceCollection(
         "--validate-vep",
-        output_resources={"vep_count_ht": validate_vep_path(test=True)},
+        output_resources={"vep_count_ht": validate_vep_path(test=test)},
         pipeline_input_steps=[run_vep],
     )
 
@@ -181,9 +181,9 @@ def main(args):
     if args.validate_vep:
         res = resources.validate_vep
         res.check_resource_existence()
-        vep_ht = res.vep_ht.ht()
-        interval_ht = ensembl_interval.ht()
-        count_ht = count_vep_annotated_variants_per_interval(vep_ht, interval_ht)
+        count_ht = count_vep_annotated_variants_per_interval(
+            res.vep_ht.ht(), ensembl_interval.ht()
+        )
         count_ht.write(res.vep_count_ht.path, overwrite=args.overwrite)
 
 
@@ -214,7 +214,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--validate-vep",
         help=(
-            "Validate if variants in protein-coding genes are correctly annotated by"
+            "Validate that variants in protein-coding genes are correctly annotated by"
             " VEP."
         ),
         action="store_true",

@@ -15,15 +15,17 @@ SUBSETS = SUBSETS["v4"]
 
 
 def _annotations_root(
-    version: str = CURRENT_VERSION, data_type: str = "exomes", test: bool = False
+    version: str = CURRENT_VERSION,
+    test: bool = False,
+    data_type: str = "exomes",
 ) -> str:
     """
     Get root path to the variant annotation files.
 
     :param version: Version of annotation path to return.
-    :param data_type: default is "exomes", can also be "genomes"
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the
         full v4 VDS.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
     :return: Root path of the variant annotation files.
     """
     return (
@@ -56,14 +58,14 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
 
 
 def get_vep(
-    version: str = CURRENT_VERSION, data_type: str = "exomes", test: bool = False
+    version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
 ) -> str:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource.
 
     :param version: Version of annotation path to return.
-    :param data_type: default is "exomes", can also be "genomes"
-    :param test: Whether to use a tmp path for testing.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
     :return: gnomAD v4 VEP VersionedTableResource.
     """
     return VersionedTableResource(
@@ -71,7 +73,7 @@ def get_vep(
         {
             version: TableResource(
                 path=(
-                    f"{_annotations_root(version, data_type, test)}/gnomad.{data_type}.v{version}.vep.ht"
+                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vep.ht"
                 )
             )
             for version in VERSIONS
@@ -80,14 +82,14 @@ def get_vep(
 
 
 def validate_vep_path(
-    version: str = CURRENT_VERSION, data_type: str = "exomes", test: bool = False
+    version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
 ) -> str:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource for validation counts.
 
     :param version: Version of annotation path to return.
-    :param data_type: default is "exomes", can also be "genomes"
-    :param test: Whether to use a tmp path for testing.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
     :return: gnomAD v4 VEP VersionedTableResource containing validity check.
     """
     return VersionedTableResource(
@@ -95,7 +97,7 @@ def validate_vep_path(
         {
             version: TableResource(
                 path=(
-                    f"{_annotations_root(version, data_type, test)}/gnomad.{data_type}.v{version}.vep.validate.ht"
+                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vep.validate.ht"
                 )
             )
             for version in VERSIONS
