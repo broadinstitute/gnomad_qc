@@ -131,11 +131,11 @@ def release_coverage_path(
     """
     Fetch filepath for coverage release Table.
 
-    :param data_type: 'exomes' or 'genomes'.
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
     :param release_version: Release version.
     :param public: Determines whether release coverage Table is read from public or
-        private bucket. Defaults to private.
-    :return: File path for desired Hail Table.
+        private bucket. Default is public.
+    :return: File path for desired coverage Hail Table.
     """
     if public:
         if file_exists(coverage(data_type).versions[release_version].path):
@@ -151,7 +151,7 @@ def release_coverage(public: bool = False) -> VersionedTableResource:
     Retrieve versioned resource for coverage release Table.
 
     :param public: Determines whether release coverage Table is read from public or
-        private bucket. Defaults to private.
+        private bucket. Default is private.
     :return: Coverage release Table.
     """
     return VersionedTableResource(
