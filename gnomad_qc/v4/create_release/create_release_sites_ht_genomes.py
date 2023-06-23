@@ -56,7 +56,7 @@ def replace_oth_with_remaining(ht: hl.Table) -> hl.Table:
     .. note::
         This function is used to rename ancestry group fields to match v4 exomes.
         Which means that all "oth" will be changed to "remaining".
-        2 Global fields are renamed: freq_meta (in value of key "pop") and freq_index_dict (in the keys).
+        2 Global fields are renamed: freq_meta (in the value of the key "pop") and freq_index_dict (in the keys).
 
     :param ht: release sites Table to be modified
     :return: release sites Table with 'oth' replaced with 'remaining'
