@@ -99,9 +99,7 @@ def get_variant_qc_annotation_resources(
     )
     run_vep = PipelineStepResourceCollection(
         "--run-vep",
-        output_resources={
-            "vep_ht": get_vep(test=True)
-        },  # TODO: I found "test" is a boolean here.
+        output_resources={"vep_ht": get_vep(test=test)},
     )
     validate_vep = PipelineStepResourceCollection(
         "--validate-vep",
