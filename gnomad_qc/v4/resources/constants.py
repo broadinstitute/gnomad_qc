@@ -4,3 +4,6 @@ CURRENT_VERSION = "4.0"
 
 RELEASES = ["4.0"]
 CURRENT_RELEASE = "4.0"
+
+COVERAGE_RELEASES = {"exomes": ["4.0"]}
+CURRENT_COVERAGE_RELEASE = {"exomes": "4.0"}
