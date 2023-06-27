@@ -1,4 +1,4 @@
-"""script to create release sites ht for v4 genomes."""
+"""Script to create release sites HT for v4 genomes."""
 import argparse
 import logging
 
@@ -16,20 +16,18 @@ logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
 
-def remove_missing_vep_fields(vep_ht: hl.Table) -> hl.Table:
+def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpression:
     """
     Remove fields from VEP 105 annotations that are missing in all rows.
 
-    :param vep_ht: Table containing VEP 105 annotations
-    :return: Table containing VEP 105 annotations with missing fields removed
+    :param vep_expr: StructExpression containing VEP 105 annotations.
+    :return: StructExpression containing VEP 105 annotations with missing fields removed.
     """
-    vep_ht = vep_ht.annotate(vep=vep_ht.vep.drop("colocated_variants", "context"))
+    vep_expr = vep_expr.drop("colocated_variants", "context")
 
-    vep_ht = vep_ht.annotate(
-        vep=vep_ht.vep.annotate(
-            transcript_consequences=vep_ht.vep.transcript_consequences.map(
-                lambda x: x.drop("minimised", "swissprot", "trembl", "uniparc")
-            )
+    vep_expr = vep_expr.annotate(
+        transcript_consequences=vep_expr.transcript_consequences.map(
+            lambda x: x.drop("minimised", "swissprot", "trembl", "uniparc")
         )
     )
 
@@ -38,13 +36,7 @@ def remove_missing_vep_fields(vep_ht: hl.Table) -> hl.Table:
         "motif_feature_consequences",
         "regulatory_feature_consequences",
     ]:
-        vep_ht = vep_ht.annotate(
-            vep=vep_ht.vep.annotate(
-                **{
-                    consequence: vep_ht.vep[consequence].map(
-                        lambda x: x.drop("minimised")
-                    )
-                }
-            )
+        vep_expr = vep_expr.annotate(
+            **{consequence: vep_expr[consequence].map(lambda x: x.drop("minimised"))}
         )
-    return vep_ht
+    return vep_expr
