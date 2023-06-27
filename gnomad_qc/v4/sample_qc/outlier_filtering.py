@@ -158,6 +158,7 @@ def apply_stratified_filtering_method(
     qc_metrics: List[str],
     pop_expr: Optional[hl.expr.StringExpression] = None,
     platform_expr: Optional[hl.expr.StringExpression] = None,
+    include_unreleasable_samples: bool = False,
 ) -> hl.Table:
     """
     Use population stratified QC metrics to determine what samples are outliers and should be filtered.
@@ -203,6 +204,9 @@ def apply_stratified_filtering_method(
             "n_singleton": (math.inf, 8.0),
             "r_het_hom_var": (math.inf, 4.0),
         },
+        comparison_sample_expr=sample_qc_ht.releasable
+        if include_unreleasable_samples
+        else None,
     )
 
     return filter_ht
@@ -217,6 +221,7 @@ def apply_regressed_filtering_method(
     regress_pop_n_pcs: Optional[int] = 30,
     regress_platform_n_pcs: Optional[int] = 9,
     regress_per_platform: bool = False,
+    include_unreleasable_samples: bool = False,
 ) -> hl.Table:
     """
     Compute sample QC metrics residuals after regressing out specified PCs and determine what samples are outliers that should be filtered.
@@ -301,6 +306,9 @@ def apply_regressed_filtering_method(
         pc_scores=sample_qc_ht.scores,
         qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
         strata={"platform": sample_qc_ht.platform} if regress_per_platform else None,
+        regression_sample_inclusion_expr=sample_qc_ht.releasable
+        if include_unreleasable_samples
+        else hl.bool(True),
     )
     filter_ht = compute_stratified_metrics_filter(
         sample_qc_res_ht,
@@ -311,6 +319,9 @@ def apply_regressed_filtering_method(
         },
         strata={"platform": sample_qc_ht[sample_qc_res_ht.key].platform}
         if regress_per_platform
+        else None,
+        comparison_sample_expr=sample_qc_ht[sample_qc_res_ht.key].releasable
+        if include_unreleasable_samples
         else None,
     )
     sample_qc_res_ht = sample_qc_res_ht.annotate(**filter_ht[sample_qc_res_ht.key])
@@ -782,6 +793,7 @@ def get_outlier_filtering_resources(
     test = args.test
     overwrite = args.overwrite
     include_unreleasable_samples = args.include_unreleasable_samples
+    include_unreleasable_samples_all = args.include_unreleasable_samples_all
 
     # Adding resources from previous scripts that are used by multiple steps in the
     # outlier filtering pipeline.
@@ -789,7 +801,7 @@ def get_outlier_filtering_resources(
 
     pop_ht = get_pop_ht()
     pop_scores_ht = ancestry_pca_scores(
-        include_unreleasable_samples=include_unreleasable_samples
+        include_unreleasable_samples=include_unreleasable_samples_all
     )
 
     sample_qc_input = {
@@ -856,7 +868,8 @@ def get_outlier_filtering_resources(
                 test=test,
                 platform_stratified=args.nearest_neighbors_per_platform,
                 approximation=args.use_nearest_neighbors_approximation,
-                include_unreleasable_samples=include_unreleasable_samples,
+                include_unreleasable_samples=include_unreleasable_samples
+                or include_unreleasable_samples_all,
             )
         },
         input_resources={**sample_qc_input, **pop_assign_input, **platform_input},
@@ -913,6 +926,7 @@ def main(args):
     filtering_qc_metrics = args.filtering_qc_metrics
     apply_r_ti_tv_singleton_filter = args.apply_n_singleton_filter_to_r_ti_tv_singleton
     include_unreleasable_samples = args.include_unreleasable_samples
+    include_unreleasable_samples_all = args.include_unreleasable_samples_all
     nn_platform_stratified = args.nearest_neighbors_per_platform
     nn_approximation = args.use_nearest_neighbors_approximation
 
@@ -937,9 +951,13 @@ def main(args):
         outlier_resources.sample_qc_ht.ht(), test=args.test, seed=args.seed
     )
 
-    if not include_unreleasable_samples:
+    if not include_unreleasable_samples and not include_unreleasable_samples_all:
         sample_qc_ht = sample_qc_ht.filter(
             joint_qc_meta_ht[sample_qc_ht.key].releasable
+        )
+    else:
+        sample_qc_ht = sample_qc_ht.annotate(
+            releasable=joint_qc_meta_ht[sample_qc_ht.key].releasable
         )
 
     if args.create_finalized_outlier_filter and args.use_existing_filter_tables:
@@ -965,9 +983,11 @@ def main(args):
                 args.regress_platform_n_pcs if args.regress_platform else None
             ),
             regress_per_platform=args.regress_per_platform,
+            include_unreleasable_samples=include_unreleasable_samples,
         )
         ht.annotate_globals(
-            include_unreleasable_samples=include_unreleasable_samples
+            include_unreleasable_samples=include_unreleasable_samples,
+            include_unreleasable_samples_all=include_unreleasable_samples_all,
         ).write(res.regressed_filter_ht.path, overwrite=overwrite)
 
     if args.apply_stratified_filters and rerun_filtering:
@@ -981,9 +1001,11 @@ def main(args):
             qc_metrics=filtering_qc_metrics,
             pop_ht=pop_ht if args.stratify_population else None,
             platform_ht=platform_ht if args.stratify_platform else None,
+            include_unreleasable_samples=include_unreleasable_samples,
         )
         ht.annotate_globals(
-            include_unreleasable_samples=include_unreleasable_samples
+            include_unreleasable_samples=include_unreleasable_samples,
+            include_unreleasable_samples_all=include_unreleasable_samples_all,
         ).write(res.stratified_filter_ht.path, overwrite=overwrite)
 
     if args.determine_nearest_neighbors:
@@ -1007,7 +1029,8 @@ def main(args):
             n_trees=args.n_trees,
         )
         ht.annotate_globals(
-            include_unreleasable_samples=include_unreleasable_samples
+            include_unreleasable_samples=include_unreleasable_samples,
+            include_unreleasable_samples_all=include_unreleasable_samples_all,
         ).write(res.nn_ht.path, overwrite=overwrite)
 
     if args.apply_nearest_neighbor_filters and rerun_filtering:
@@ -1023,6 +1046,7 @@ def main(args):
         )
         ht.annotate_globals(
             include_unreleasable_samples=include_unreleasable_samples,
+            include_unreleasable_samples_all=include_unreleasable_samples_all,
             nearest_neighbors_platform_stratified=nn_platform_stratified,
             nearest_neighbors_approximation=nn_approximation,
         ).write(res.nn_filter_ht.path, overwrite=overwrite)
@@ -1040,7 +1064,8 @@ def main(args):
             ensemble_operator=args.ensemble_method_logical_operator,
         )
         ht.annotate_globals(
-            include_unreleasable_samples=include_unreleasable_samples
+            include_unreleasable_samples=include_unreleasable_samples,
+            include_unreleasable_samples_all=include_unreleasable_samples_all,
         ).write(res.finalized_ht.path, overwrite=overwrite)
 
 
@@ -1062,6 +1087,14 @@ if __name__ == "__main__":
         help="Random seed for making random test dataset.",
         type=int,
         default=24,
+    )
+    parser.add_argument(
+        "--include-unreleasable-samples-all",
+        help=(
+            "Include unreleasable samples in the nearest_neighbors determination, "
+            "sample QC metric regressions, and/or sample QC filtering."
+        ),
+        action="store_true",
     )
     parser.add_argument(
         "--include-unreleasable-samples",
