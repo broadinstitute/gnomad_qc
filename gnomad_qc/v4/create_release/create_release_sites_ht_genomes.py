@@ -1,19 +1,5 @@
 """Script to create release sites HT for v4 genomes."""
-import argparse
-import logging
-
 import hail as hl
-from gnomad.resources.grch38.reference_data import dbsnp
-
-from gnomad_qc.v4.resources.annotations import get_vep
-from gnomad_qc.v4.resources.constants import CURRENT_VERSION
-
-logging.basicConfig(
-    format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
-    datefmt="%m/%d/%Y %I:%M:%S %p",
-)
-logger = logging.getLogger("create_release_ht")
-logger.setLevel(logging.INFO)
 
 
 def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpression:
@@ -22,6 +8,7 @@ def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpress
 
     :param vep_expr: StructExpression containing VEP 105 annotations.
     :return: StructExpression containing VEP 105 annotations with missing fields removed.
+    ...Note: "colocated_variants" is not all missing, but it has been removed in previous releases.
     """
     vep_expr = vep_expr.drop("colocated_variants", "context")
 
