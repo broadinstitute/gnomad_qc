@@ -4,11 +4,10 @@ import hail as hl
 
 def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpression:
     """
-    Remove fields from VEP 105 annotations that are missing in all rows.
+    Remove fields from VEP 105 annotations that have been excluded in past releases or are missing in all rows.
 
     :param vep_expr: StructExpression containing VEP 105 annotations.
     :return: StructExpression containing VEP 105 annotations with missing fields removed.
-    ...Note: "colocated_variants" is not all missing, but it has been removed in previous releases.
     """
     vep_expr = vep_expr.drop("colocated_variants", "context")
 
