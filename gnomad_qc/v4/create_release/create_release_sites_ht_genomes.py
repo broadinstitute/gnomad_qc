@@ -126,7 +126,7 @@ def main(args):
     vep_ht = get_vep(version=CURRENT_VERSION, data_type="genomes").ht()
 
     logger.info("Removing missing VEP fields...")
-    vep_ht = remove_missing_vep_fields(vep_ht)
+    vep_ht = ht.annotate(vep=remove_missing_vep_fields(vep_ht.vep))
 
     logger.info("Loading dbsnp table...")
     dbsnp_ht = dbsnp.ht().select("rsid")
