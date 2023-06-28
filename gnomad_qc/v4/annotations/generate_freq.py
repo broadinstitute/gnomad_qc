@@ -1,11 +1,9 @@
 """Script to generate the frequency data annotations across v4 exomes."""  # TODO: Expand on script description once nearing completion.
 import argparse
 import logging
+from typing import Optional
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import (
-    SUBSETS,  # TODO: subsets will be changed to UKB, non-UKB, non-TopMed
-)
 from gnomad.resources.grch38.gnomad import DOWNSAMPLINGS, POPS_TO_REMOVE_FOR_POPMAX
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
@@ -18,27 +16,19 @@ from gnomad.utils.annotations import (
     qual_hist_expr,
     set_female_y_metrics_to_na_expr,
 )
-from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict
+from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
+from gnomad.utils.vcf import SORT_ORDER
 
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import (  # TODO: Need to generate this resource for raw callstats
-    get_freq,
-)
-from gnomad_qc.v4.resources.basics import (
-    get_checkpoint_path,
-    get_gnomad_v4_vds,
-    qc_temp_prefix,
+from gnomad_qc.v4.resources.annotations import (
+    get_freq,  # TODO: Need to generate this resource for raw callstats; TODO: add the args used in this script to the resource on this new branch, use old branch as reference
 )
 from gnomad_qc.v4.resources.meta import meta
-from gnomad_qc.v4.resources.release import release_sites
-from gnomad_qc.v4.resources.variant_qc import (  # TODO: Confirm we want this in frequency calculations
-    SYNDIP,
-)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -63,26 +53,95 @@ def get_freq_resources(
         pipeline_name="frequency",
         overwrite=overwrite,
     )
-    get_freq_and_high_ab = PipelineStepResourceCollection(
-        "--get-freq-and-high-ab",
+    run_freq_and_dense_annotations = PipelineStepResourceCollection(
+        "--run-freq-and-dense-annotations",
         output_resources={
-            "freq_high_ab_ht": get_freq(test=test, hom_alt_adjustment=False, chr=chr),
+            "run_freq_and_dense_annotations": get_freq(
+                test=test, hom_alt_adjustment=False, chr=chr
+            ),
         },
     )
     correct_for_high_ab_hets = PipelineStepResourceCollection(
         "--correct-for-high-ab-hets",
-        pipeline_input_steps=[get_freq_and_high_ab],
+        pipeline_input_steps=[run_freq_and_dense_annotations],
         output_resources={
             "freq_ht": get_freq(test=test, hom_alt_adjustment=True, chr=chr),
         },
     )
     freq_pipeline.add_steps(
         {
-            "get_freq_and_high_ab": get_freq_and_high_ab,
+            "run_freq_and_dense_annotations": run_freq_and_dense_annotations,
             "correct_for_high_ab_hets": correct_for_high_ab_hets,
         }
     )
     return freq_pipeline
+
+
+def get_vds_for_freq(
+    test_gene: hl.bool, test_n_partitions: hl.int, chrom: hl.int
+) -> hl.vds.VariantDataset:
+    """
+    Prepare VDS for frequency calculation by filtering to release samples and only adding necessary annotations.
+
+    :param test_gene: Whether to filter to DRD2 for testing purposes.
+    :param test_n_partitions: Number of partitions to use for testing.
+    :param chr: Chromosome to filter to.
+    :return: Hail VDS with only necessary annotations.
+    """
+    logger.info("Reading gnomAD v4 VDS...")
+    vds = vds = hl.vds.read_vds("gs://gnomad/v4.0/raw/exomes/gnomad_v4.0.vds")
+    meta_ht = meta.ht()
+    vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.release))
+
+    if test_gene:
+        logger.info("Filtering to DRD2 in VDS for testing purposes...")
+        test_interval = [
+            hl.parse_locus_interval(
+                "chr11:113409605-113475691", reference_genome="GRCh38"
+            )
+        ]
+        vds = hl.vds.filter_intervals(vds, test_interval, split_reference_blocks=True)
+        variants, samples = vds.variant_data.count()
+        logger.info(
+            "Test VDS has %s variants in DRD2 in %s samples...", variants, samples
+        )
+    elif test_n_partitions:
+        logger.info(
+            "Filtering to %s partitions for testing purposes...", test_n_partitions
+        )
+        test_vmt = vds.variant_data._filter_partitions(range(test_n_partitions))
+        test_rmt = vds.reference_data._filter_partitions(range(test_n_partitions))
+        vds = hl.vds.VariantDataset(test_rmt, test_vmt)
+    else:
+        logger.info("Filtering to chromosome %s...", chrom)
+        vds = hl.vds.filter_chromosomes(vds, keep=chrom)
+
+    logger.info("Annotating only necessary sample metadata...")
+    vds = hl.vds.VariantDataset(
+        vds.reference_data,
+        vds.variant_data.annotate_cols(
+            pop=meta_ht[vds.variant_data.col_key].population_inference.pop,
+            sex_karyotype=meta_ht[
+                vds.variant_data.col_key
+            ].sex_imputation.sex_karyotype,
+            gatk_version=meta_ht[vds.variant_data.col_key].project_meta.gatk_version,
+            age=meta_ht[vds.variant_data.col_key].project_meta.age,
+            sample_age_bin=get_sample_age_bin(
+                meta_ht[vds.variant_data.col_key].project_meta.age
+            ),
+            ukb_sample=meta_ht[vds.variant_data.col_key].project_meta.ukb_sample,
+        ),
+    )
+    logger.info("Annotating non_ref hets pre-split...")
+    vds = annotate_non_ref_het(vds)
+
+    logger.info("Selecting only required fields to reduce memory usage...")
+    vds = hl.vds.VariantDataset(
+        vds.reference_data_data,
+        vds.variant_data.select_entries("LA", "LAD", "DP", "GQ", "LGT", "_het_non_ref"),
+    )
+
+    return vds
 
 
 def annotate_non_ref_het(vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
@@ -96,6 +155,30 @@ def annotate_non_ref_het(vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
         _het_non_ref=vds.variant_data.LGT.is_het_non_ref()
     )
     return vds
+
+
+def annotate_adj_and_select_fields(vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
+    """
+    Annotate adj, _het_ad, and select fields to reduce memory usage.
+
+    :param vds: Hail VDS to annotate adj onto variant data.
+    :return: Hail VDS with adj annotation.
+    """
+    rmt = vds.reference_data
+    vmt = vds.variant_data
+
+    rmt = rmt.annotate_entries(
+        adj=(rmt.DP >= 10) & (rmt.GQ >= 20)
+    )  # TODO: confirm this doesn't mess up haploids
+    vmt = vmt.select_entries(
+        "_het_non_ref",
+        "DP",
+        "GQ",
+        "GT",
+        adj=get_adj_expr(vmt.GT, vmt.GQ, vmt.DP, vmt.AD),
+        _het_ad=vmt.AD[1],
+    )
+    return hl.vds.VariantDataset(rmt, vmt)
 
 
 def needs_high_ab_het_fix_expr(
@@ -112,7 +195,7 @@ def needs_high_ab_het_fix_expr(
     :return mt:
     """
     return (
-        (mt.AD[1] / mt.DP > ab_cutoff)
+        (mt._het_AD / mt.DP > ab_cutoff)
         & mt.adj
         & mt.GT.is_het_ref()
         & ~mt.meta.project_meta.fixed_homalt_model
@@ -145,142 +228,6 @@ def correct_call_stats(ht: hl.Table, af_threshold: float = 0.01) -> hl.Table:
         )
     )
 
-    return ht
-
-
-def compute_age_hist(mt: hl.MatrixTable) -> hl.MatrixTable:
-    """
-    Compute age histograms for each variant.
-
-    :param mt: Input MT with age annotation.
-    :return: MatrixTable with age histogram annotations.
-    """
-    mt = mt.annotate_rows(**age_hists_expr(mt.adj, mt.GT, mt.meta.project_meta.age))
-
-    # Compute callset-wide age histogram global
-    mt = mt.annotate_globals(
-        age_distribution=mt.aggregate_cols(
-            hl.agg.hist(mt.meta.project_meta.age, 30, 80, 10)
-        )
-    )
-    return mt
-
-
-def annotate_quality_metrics_hist(mt: hl.MatrixTable) -> hl.MatrixTable:
-    """
-    Annotate quality metrics histograms.
-
-    :param mt: Input MT.
-    :return: MatrixTable with qual histogram annotations.
-    """
-    mt = mt.annotate_rows(qual_hists=qual_hist_expr(mt.GT, mt.GQ, mt.DP, mt.AD, mt.adj))
-    mt = mt.annotate_rows(
-        qual_hists=hl.Struct(
-            **{
-                i.replace("_adj", ""): mt.qual_hists[i]
-                for i in mt.qual_hists
-                if "_adj" in i
-            }
-        ),
-        raw_qual_hists=hl.Struct(
-            **{i: mt.qual_hists[i] for i in mt.qual_hists if "_adj" not in i}
-        ),
-    )
-    return mt
-
-
-def generate_faf_popmax(ht: hl.Table) -> hl.Table:
-    """
-    Compute filtering allele frequencies and popmax with the AB-adjusted frequencies.
-
-    :param ht: Hail Table containing freq, ab_adjusted_freq, high_ab_het annotations.
-    :return: Hail Table with faf & popmax annotations.
-    """
-    faf, faf_meta = faf_expr(
-        ht.ab_adjusted_freq, ht.freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX
-    )
-    ht = ht.annotate(
-        faf=faf,
-        popmax=pop_max_expr(
-            ht.ab_adjusted_freq, ht.freq_meta, POPS_TO_REMOVE_FOR_POPMAX
-        ),
-    )
-    ht = ht.annotate_globals(
-        faf_meta=faf_meta,
-        faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-"),
-    )
-    ht = ht.annotate(
-        popmax=ht.popmax.annotate(  # TODO: Update popmax to grpmax
-            faf95=ht.faf[
-                ht.faf_meta.index(lambda x: x.values() == ["adj", ht.popmax.pop])
-            ].faf95
-        )
-    )
-    return ht
-
-
-def get_sample_age_bin(
-    sample_age: hl.expr.Int32Expression,
-    lower_bound: int = 30,
-    upper_bound: int = 80,
-    number_of_bins: int = 10,
-) -> hl.expr.StringExpression:
-    """
-    Get the age bin for a sample.
-
-    :param sample_age: Sample age.
-    :return: Sample age bin.
-    """
-    bin_size = (upper_bound - lower_bound) / number_of_bins
-    lower_bin = hl.int(
-        hl.floor((sample_age - lower_bound) / bin_size) * bin_size + lower_bound
-    )
-    upper_bin = hl.int(lower_bin + bin_size)
-
-    bin_label = hl.if_else(
-        sample_age < lower_bound,
-        "n_smaller",
-        hl.if_else(
-            sample_age >= upper_bound,
-            "n_larger",
-            hl.str(lower_bin) + "-" + hl.str(upper_bin),
-        ),
-    )
-
-    return hl.or_missing(hl.is_defined(sample_age), bin_label)
-
-
-def correct_qual_hists(ht: hl.Table) -> hl.Table:
-    """
-    Correct quality metrics histograms.
-
-    Correct by accessing the qual_hist and raw_qual_hist structs and removing
-    all counts from the ab_hist_alt array where bin_edges exceed 0.9 AB.
-
-    :param ht: Hail Table containing qual hists, AB annotation.
-    :return: Hail Table
-    """
-
-    def _correct_ab_hist_alt(ab_hist_alt):
-        return hl.struct(
-            bin_edges=ab_hist_alt.bin_edges,
-            bin_freq=hl.map(
-                lambda edge, freq: hl.if_else(edge >= 0.4, 0, freq),
-                ab_hist_alt.bin_edges[:-1],
-                ab_hist_alt.bin_freq,
-            ),
-            n_smaller=ab_hist_alt.n_smaller,
-            n_larger=0,
-        )
-
-    ht = ht.annotate(
-        qual_hist=ht.qual_hist.annotate(
-            ab_hist_alt=_correct_ab_hist_alt(ht.qual_hists.ab_hist_alt)
-        ),
-        raw_qual_hist=ht.raw_qual_hist.annotate(
-            ab_hist_alt=_correct_ab_hist_alt(ht.raw_qual_hists.ab_hist_alt)
-        ),
-    )
     return ht
 
 
@@ -320,6 +267,55 @@ def create_high_ab_age_hists(
     )
 
 
+def get_sample_age_bin(
+    sample_age: hl.expr.Int32Expression,
+    lower_bound: int = 30,
+    upper_bound: int = 80,
+    number_of_bins: int = 10,
+) -> hl.expr.StringExpression:
+    """
+    Get the age bin for a sample.
+
+    :param sample_age: Sample age.
+    :return: Sample age bin.
+    """
+    bin_size = (upper_bound - lower_bound) / number_of_bins
+    lower_bin = hl.int(
+        hl.floor((sample_age - lower_bound) / bin_size) * bin_size + lower_bound
+    )
+    upper_bin = hl.int(lower_bin + bin_size)
+
+    bin_label = hl.if_else(
+        sample_age < lower_bound,
+        "n_smaller",
+        hl.if_else(
+            sample_age >= upper_bound,
+            "n_larger",
+            hl.str(lower_bin) + "-" + hl.str(upper_bin),
+        ),
+    )
+
+    return hl.or_missing(hl.is_defined(sample_age), bin_label)
+
+
+def compute_age_hist(mt: hl.MatrixTable) -> hl.MatrixTable:
+    """
+    Compute age histograms for each variant.
+
+    :param mt: Input MT with age annotation.
+    :return: MatrixTable with age histogram annotations.
+    """
+    mt = mt.annotate_rows(**age_hists_expr(mt.adj, mt.GT, mt.meta.project_meta.age))
+
+    # Compute callset-wide age histogram global
+    mt = mt.annotate_globals(
+        age_distribution=mt.aggregate_cols(
+            hl.agg.hist(mt.meta.project_meta.age, 30, 80, 10)
+        )
+    )
+    return mt
+
+
 def correct_age_hists(ht: hl.Table) -> hl.Table:
     """
     Correct age histograms.
@@ -352,142 +348,194 @@ def correct_age_hists(ht: hl.Table) -> hl.Table:
     )
 
 
-def main(args):  # noqa: D103
-    subsets = args.subsets
-    test_dataset = args.test_dataset
-    test_n_partitions = args.test_n_partitions
-    test = test_dataset or test_n_partitions
-    chrom = args.chrom
+def compute_qual_hists(mt: hl.MatrixTable) -> hl.MatrixTable:
+    """
+    Annotate quality metrics histograms.
 
+    :param mt: Input MT.
+    :return: MatrixTable with qual histogram annotations.
+    """
+    mt = mt.annotate_rows(
+        qual_hists=qual_hist_expr(
+            gt_expr=mt.GT,
+            gq_expr=mt.GQ,
+            dp_expr=mt.DP,
+            adj_expr=mt.adj,
+            ab_expr=mt._het_ad / mt.DP,
+        )
+    )
+    mt = mt.annotate_rows(
+        qual_hists=hl.Struct(
+            **{
+                i.replace("_adj", ""): mt.qual_hists[i]
+                for i in mt.qual_hists
+                if "_adj" in i
+            }
+        ),
+        raw_qual_hists=hl.Struct(
+            **{i: mt.qual_hists[i] for i in mt.qual_hists if "_adj" not in i}
+        ),
+    )
+    return mt
+
+
+def correct_qual_hists(ht: hl.Table) -> hl.Table:  # add ab_threshold as arg
+    """
+    Correct quality metrics histograms.
+
+    Correct by accessing the qual_hist and raw_qual_hist structs and removing
+    all counts from the ab_hist_alt array where bin_edges exceed 0.9 AB.
+
+    :param ht: Hail Table containing qual hists, AB annotation.
+    :return: Hail Table
+    """
+
+    def _correct_ab_hist_alt(ab_hist_alt):
+        return hl.struct(
+            bin_edges=ab_hist_alt.bin_edges,
+            bin_freq=hl.map(
+                lambda edge, freq: hl.if_else(edge >= 0.9, 0, freq),
+                ab_hist_alt.bin_edges[:-1],
+                ab_hist_alt.bin_freq,
+            ),
+            n_smaller=ab_hist_alt.n_smaller,
+            n_larger=0,
+        )
+
+    ht = ht.annotate(
+        qual_hist=ht.qual_hist.annotate(
+            ab_hist_alt=_correct_ab_hist_alt(ht.qual_hists.ab_hist_alt)
+        ),
+        raw_qual_hist=ht.raw_qual_hist.annotate(
+            ab_hist_alt=_correct_ab_hist_alt(ht.raw_qual_hists.ab_hist_alt)
+        ),
+    )
+    return ht
+
+
+def generate_faf_popmax(ht: hl.Table) -> hl.Table:
+    """
+    Compute filtering allele frequencies and popmax with the AB-adjusted frequencies.
+
+    :param ht: Hail Table containing freq, ab_adjusted_freq, high_ab_het annotations.
+    :return: Hail Table with faf & popmax annotations.
+    """
+    faf, faf_meta = faf_expr(
+        ht.ab_adjusted_freq, ht.freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX
+    )
+    ht = ht.annotate(
+        faf=faf,
+        popmax=pop_max_expr(  # TODO: Update popmax to grpmax
+            ht.ab_adjusted_freq, ht.freq_meta, POPS_TO_REMOVE_FOR_POPMAX
+        ),
+    )
+    ht = ht.annotate_globals(
+        faf_meta=faf_meta,
+        faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-"),
+    )
+    ht = ht.annotate(
+        popmax=ht.popmax.annotate(  # TODO: Update popmax to grpmax
+            faf95=ht.faf[
+                ht.faf_meta.index(lambda x: x.values() == ["adj", ht.popmax.pop])
+            ].faf95
+        )
+    )
+    return ht
+
+
+def compute_inbreeding_coeff(ht: hl.Table) -> hl.Table:
+    """
+    Compute inbreeding coefficient using raw call stats.
+
+    :param ht: Hail Table containing freq array with struct entries of AC, AN, and homozygote_count.
+    :return: Hail Table with inbreeding coefficient annotation.
+    """
+    ht = ht.annotate(
+        InbreedingCoeff=bi_allelic_site_inbreeding_expr(callstats_expr=ht.freq[1])
+    )
+    return ht
+
+
+def main(args):  # noqa: D103
+    """Script to generate frequency and dense dependent annotations on v4 exomes."""
+    test_gene = args.test_gene
+    test_n_partitions = args.test_n_partitions
+    test = test_gene or test_n_partitions
+    chrom = args.chrom
     ab_cutoff = args.ab_cutoff
     af_threshold = args.af_threshold
     correct_for_high_ab_hets = args.correct_for_high_ab_hets
 
     hl.init(
-        log=f"/generate_frequency_data{'.' + '_'.join(subsets) if subsets else ''}.log",
+        log=f"/generate_frequency_data.log",
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    # TODO: Determine if splitting subset freq from whole callset agg
+    # TODO: Determine if splitting subset freq from whole callset agg -- no
+    # splitting callset between ukb and non-ukb but same groupings
     resources = get_freq_resources(args.overwrite, test, chrom)
 
-    logger.info("Getting gnomAD v4 VDS...")
-    # TODO: Update this to get the raw vds or change get_gnomad_vds logic so
-    # if release only samples, skip all other sample removal steps,
-    # partitioning may need to go too.
-    vds = get_gnomad_v4_vds(
-        test=test_dataset,
-        release_only=True,
-        chrom=chrom,
-        n_partitions=10000,
-    )
-    meta = meta.ht()
+    logger.info("Getting VDS with fields required for splitting VDS...")
+    vds = get_vds_for_freq(test_gene, test_n_partitions, chrom)
 
-    if test or chrom:
-        if test_dataset:
-            logger.info("Filtering to DRD2 in test VDS for testing purposes...")
-            test_interval = [
-                hl.parse_locus_interval(
-                    "chr11:113409605-113475691", reference_genome="GRCh38"
-                )
-            ]  # NOTE: test on gene DRD2 for now, will update to chr22 when original PR goes in
-            vds = hl.vds.filter_intervals(
-                vds, test_interval, split_reference_blocks=True
-            )
-            variants, samples = vds.variant_data.count()
-            logger.info(
-                "Test VDS has %s variants in DRD2 in %s samples...", variants, samples
-            )
-        elif test_n_partitions:
-            test_vd = vds.variant_data._filter_partitions(range(test_n_partitions))
-            test_rd = vds.reference_data._filter_partitions(range(test_n_partitions))
-            vds = hl.vds.VariantDataset(test_rd, test_vd)
-        else:
-            logger.info("Filtering to chromosome %s...", chrom)
-            vds = hl.vds.filter_chromosomes(vds, keep=chrom)
-
-    logger.info("Annotating needed metadata...")
-    vds = hl.vds.VariantDataset(
-        vds.reference_data,
-        vds.variant_data.annotate_cols(
-            pop=meta[vds.variant_data.col_key].population_inference.pop,
-            sex_karyotype=meta[vds.variant_data.col_key].sex_imputation.sex_karyotype,
-            gatk_version=meta[vds.variant_data.col_key].project_meta.gatk_version,
-            age=meta[vds.variant_data.col_key].project_meta.age,
-            sample_age_bin=get_sample_age_bin(
-                meta[vds.variant_data.col_key].project_meta.age
-            ),
-            # subsets=meta[vds.variant_data.col_key].project_meta.subsets,
-        ),
-    )
-
-    logger.info("Annotating non_ref hets pre-split...")
-    vds = annotate_non_ref_het(vds)
-
-    if args.subsets:
-        vds = hl.vds.filter_samples(
-            vds,
-            vds.variant_data.subsets.contains(
-                hl.literal(subsets)
-            ),  # TODO: Fix this logic and all subset logic
-        )
-    logger.info("Splitting VDS....")
+    logger.info("Spltting VDS...")
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
 
-    vds = hl.vds.VariantDataset(
-        vds.reference_data,
-        vds.variant_data.select_entries("_het_non_ref", "AD", "DP", "GQ", "GT"),
+    logger.info(
+        "Computing adj and _het_AD as part of reducing fields to reduce memory usage"
+        " during dense dependent steps..."
     )
+    vds = annotate_adj_and_select_fields(vds)
 
     logger.info("Densifying VDS...")
     mt = hl.vds.to_dense_mt(vds)
 
-    logger.info("Computing adj and sex adjusted genotypes...")
-    mt = mt.select_entries(
-        "_het_non_ref",
-        "AD",
-        "DP",
-        "GQ",
+    logger.info("Computing sex adjusted genotypes...")
+    mt = mt.transmute_entries(
         GT=adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.sex_karyotype),
-        adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
     )
     # mt = mt.checkpoint(
     #     "gs://gnomad-tmp/mwilson/dense_mt_chr20_10k_partitions.mt", overwrite=True
     # )
     if args.run_dense_dependent_steps:
-        logger.info("Annotating frequencies and counting high AB het calls...")
-        res = resources.get_freq_and_high_ab
+        logger.info("Running dense dependent steps...")
+        res = resources.run_freq_and_dense_annotations
 
-        freq_ht = annotate_freq_and_high_ab_hets(
+        logger.info("Annotating frequencies and counting high AB het calls...")
+        additional_strata_expr = [
+            {"gatk_version": mt.gatk_version},
+            {
+                "gatk_version": mt.gatk_version,
+                "pop": mt.pop,
+            },
+            {"sample_age_bin": mt.sample_age_bin},
+        ]
+
+        freq_ht = annotate_freq_and_high_ab_hets(  # TODO: Update this function to use _het_ad when passed or maybe create AB ann?
             mt,
             sex_expr=mt.sex_karyotype,
             pop_expr=mt.pop,
             downsamplings=DOWNSAMPLINGS["v4"],
-            additional_strata_expr=[
-                {"gatk_version": mt.gatk_version},
-                {
-                    "gatk_version": mt.gatk_version,
-                    "pop": mt.pop,
-                },
-                {"sample_age_bin": mt.sample_age_bin},
-            ],
+            additional_strata_expr=additional_strata_expr,
             ab_cutoff=ab_cutoff,
         )
 
         logger.info("Making freq index dict...")
         freq_ht = freq_ht.annotate_globals(
-            freq_index_dict=make_freq_index_dict(
+            freq_index_dict=make_freq_index_dict_from_meta(
                 freq_meta=hl.eval(freq_ht.freq_meta),
-                downsamplings=hl.eval(freq_ht.downsamplings),
                 label_delimiter="_",
-            )  # TODO: Update to use Julia's suggestion with edits in notebook -- make new make_freq_dict_from_meta function
+                sort_order=SORT_ORDER.insert(
+                    -1, "gatk_version"
+                ),  # TODO: Check if we actually want to see age_bin, I dont thin we do
+            )
         )
-        logger.info("Setting XX y metrics to NA...")
+        logger.info("Setting Y metrics to NA for XX groups...")
         freq_ht = freq_ht.annotate(freq=set_female_y_metrics_to_na_expr(freq_ht))
 
         final_anns = {}
         logger.info("Annotating quality metrics histograms...")
-        mt = annotate_quality_metrics_hist(mt)
+        mt = compute_qual_hists(mt)
         final_anns.update(
             {
                 "qual_hists": mt.rows()[freq_ht.key].qual_hists,
@@ -495,7 +543,7 @@ def main(args):  # noqa: D103
             }
         )
         logger.info("Computing age histograms for each variant...")
-        mt = compute_age_hist(mt)
+        mt = compute_age_hist(mt)  # globla age distribution is a global
         final_anns.update(
             {
                 "age_hist_het": mt.rows()[freq_ht.key].age_hist_het,
@@ -526,10 +574,7 @@ def main(args):  # noqa: D103
         ht = generate_faf_popmax(ht)
 
         logger.info("Calculating InbreedingCoeff...")
-        # NOTE: This is not the ideal location to calculate this, but added here to avoid another densify # noqa
-        ht = ht.annotate(
-            InbreedingCoeff=bi_allelic_site_inbreeding_expr(use_callstats=True)
-        )
+        ht = compute_inbreeding_coeff(ht)
 
         logger.info("Writing frequency table...")
         ht.describe()
@@ -565,12 +610,7 @@ if __name__ == "__main__":
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
     parser.add_argument(
-        "--subsets",
-        help="Subsets to run frequency calculation on.",
-        choices=SUBSETS["v4"],
-    )
-    parser.add_argument(
-        "--run-dense-dependent-steps",
+        "--run-freq-and-dense-annotations",
         help=(
             "Calculate frequencies, histograms, and high AB sites per sample grouping."
         ),
