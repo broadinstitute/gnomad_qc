@@ -14,14 +14,18 @@ from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 SUBSETS = SUBSETS["v4"]
 
 
-def _annotations_root(version: str, data_type: str, test: bool = False) -> str:
+def _annotations_root(
+    version: str = CURRENT_VERSION,
+    test: bool = False,
+    data_type: str = "exomes",
+) -> str:
     """
     Get root path to the variant annotation files.
 
     :param version: Version of annotation path to return.
-    :param data_type: Either "exomes" or "genomes".
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the
         full v4 VDS.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
     :return: Root path of the variant annotation files.
     """
     return (
@@ -45,7 +49,7 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
         {
             version: TableResource(
                 path=(
-                    f"{_annotations_root(version, data_type='exomes', test=test)}/gnomad.exomes.v{version}.info{'.split' if split else ''}.ht"
+                    f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info{'.split' if split else ''}.ht"
                 )
             )
             for version in VERSIONS
@@ -53,13 +57,15 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
     )
 
 
-def get_vep(version: str, data_type: str, test: bool = False) -> VersionedTableResource:
+def get_vep(
+    version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
+) -> str:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource.
 
     :param version: Version of annotation path to return.
-    :param data_type: Either "exomes" or "genomes".
-    :param test: Whether to use a tmp path for testing.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
     :return: gnomAD v4 VEP VersionedTableResource.
     """
     return VersionedTableResource(
@@ -67,7 +73,31 @@ def get_vep(version: str, data_type: str, test: bool = False) -> VersionedTableR
         {
             version: TableResource(
                 path=(
-                    f"{_annotations_root(version, data_type=data_type, test=test)}/gnomad.{data_type}.v{version}.vep.ht"
+                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vep.ht"
+                )
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def validate_vep_path(
+    version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
+) -> str:
+    """
+    Get the gnomAD v4 VEP annotation VersionedTableResource for validation counts.
+
+    :param version: Version of annotation path to return.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
+    :return: gnomAD v4 VEP VersionedTableResource containing validity check.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                path=(
+                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vep.validate.ht"
                 )
             )
             for version in VERSIONS
@@ -92,7 +122,7 @@ def get_vqsr_filters(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version,data_type='exomes')}/vqsr/gnomad.exomes.v{version}.{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
+                f"{_annotations_root(version)}/vqsr/gnomad.exomes.v{version}.{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
             )
             for version in VERSIONS
         },
@@ -109,7 +139,7 @@ def info_vcf_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     :return: String for the path to the info VCF.
     """
     return (
-        f"{_annotations_root(version, data_type='exomes', test=test)}/gnomad.exomes.v{version}.info.vcf.bgz"
+        f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.vcf.bgz"
     )
 
 
@@ -124,7 +154,7 @@ def get_transmitted_singleton_vcf_path(
     :return: String for the path to the transmitted singleton VCF
     """
     return (
-        f"{_annotations_root(version,data_type='exomes')}/gnomad.exomes.v{version}.transmitted_singletons.{'adj' if adj else 'raw'}.vcf.bgz"
+        f'{_annotations_root(version)}/gnomad.exomes.v{version}.transmitted_singletons.{"adj" if adj else "raw"}.vcf.bgz'
     )
 
 
@@ -132,7 +162,7 @@ freq = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{_annotations_root(version, data_type='exomes')}/gnomad.exomes.v{version}.frequencies.ht"
+            f"{_annotations_root(version)}/gnomad.exomes.v{version}.frequencies.ht"
         )
         for version in VERSIONS
     },
@@ -142,7 +172,7 @@ qual_hist = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{_annotations_root(version,data_type='exomes')}/gnomad.exomes.v{version}.qual_hists.ht"
+            f"{_annotations_root(version)}/gnomad.exomes.v{version}.qual_hists.ht"
         )
         for version in VERSIONS
     },
@@ -152,7 +182,7 @@ fam_stats = VersionedTableResource(
     CURRENT_VERSION,
     {
         version: TableResource(
-            f"{_annotations_root(version,data_type='exomes')}/gnomad.exomes.v{version}.qc_fam_stats.ht"
+            f"{_annotations_root(version)}/gnomad.exomes.v{version}.qc_fam_stats.ht"
         )
         for version in VERSIONS
     },
@@ -182,7 +212,7 @@ def get_freq(
         version,
         {
             version: TableResource(
-                f"{_annotations_root(version,data_type='exomes')}/gnomad.exomes.v{version}.frequencies{'.' + subset if subset else ''}.ht"
+                f"{_annotations_root(version)}/gnomad.exomes.v{version}.frequencies{'.' + subset if subset else ''}.ht"
             )
             for version in VERSIONS
         },
@@ -218,7 +248,7 @@ def get_freq_comparison(version1, data_type1, version2, data_type2):
         f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq.ht"
     )
     if version1 in VERSIONS:
-        ht_path = f"{_annotations_root(version1,data_type=data_type1)}/{ht_path}"
+        ht_path = f"{_annotations_root(version1)}/{ht_path}"
     else:
         ht_path = f"gs://gnomad/annotations/hail-0.2/ht/{data_type1}/{ht_path}"
 
