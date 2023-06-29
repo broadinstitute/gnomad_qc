@@ -26,3 +26,27 @@ def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpress
             **{consequence: vep_expr[consequence].map(lambda x: x.drop("minimised"))}
         )
     return vep_expr
+
+
+def replace_oth_with_remaining(ht: hl.Table) -> hl.Table:
+    """
+    Replace 'oth' with 'remaining' in Global fields of a Table.
+
+    .. note::
+        This function renames v3 ancestry groups to match v4 exomes' ancestry groups.
+        The value of the key "pop" within `freq_meta` and the keys of `freq_index_dict`
+        that contain "oth" are replaced with "remaining".
+
+    :param ht: release sites Table to be modified.
+    :return: release sites Table with 'oth' replaced with 'remaining'.
+    """
+    ht = ht.annotate_globals(
+        freq_meta=ht.freq_meta.map(
+            lambda d: d.map_values(lambda x: x.replace("oth", "remaining"))
+        ),
+        freq_index_dict=hl.zip(
+            ht.freq_index_dict.keys().map(lambda k: k.replace("oth", "remaining")),
+            ht.freq_index_dict.values(),
+        ),
+    )
+    return ht
