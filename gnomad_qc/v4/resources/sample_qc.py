@@ -737,7 +737,7 @@ def stratified_filtering(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test)}/outlier_detection/test_6_26_23/gnomad.exomes.v{version}.stratified_filtering{postfix}.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.stratified_filtering{postfix}.ht"
             )
             for version in VERSIONS
         },
@@ -777,7 +777,7 @@ def regressed_filtering(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test)}/outlier_detection/test_6_26_23/gnomad.exomes.v{version}.regressed_filtering{postfix}.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.regressed_filtering{postfix}.ht"
             )
             for version in VERSIONS
         },
@@ -831,7 +831,7 @@ def nearest_neighbors_filtering(test: bool = False) -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test)}/outlier_detection/test_6_26_23/gnomad.exomes.v{version}.nearest_neighbors_filtering.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.nearest_neighbors_filtering.ht"
             )
             for version in VERSIONS
         },
@@ -849,7 +849,7 @@ def finalized_outlier_filtering(test: bool = False) -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test)}/outlier_detection/test_6_26_23/gnomad.exomes.v{version}.final_outlier_filtering.ht"
+                f"{get_sample_qc_root(version, test)}/outlier_detection/gnomad.exomes.v{version}.final_outlier_filtering.ht"
             )
             for version in VERSIONS
         },
