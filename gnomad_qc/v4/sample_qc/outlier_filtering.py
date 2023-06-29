@@ -962,7 +962,7 @@ def main(args):
         sample_qc_ht = sample_qc_ht.filter(
             joint_qc_meta_ht[sample_qc_ht.key].releasable
         )
-    elif unreleasable_in_cutoffs or unreleasable_in_regression:
+    elif not unreleasable_in_cutoffs or not unreleasable_in_regression:
         sample_qc_ht = sample_qc_ht.annotate(
             releasable=joint_qc_meta_ht[sample_qc_ht.key].releasable
         )
