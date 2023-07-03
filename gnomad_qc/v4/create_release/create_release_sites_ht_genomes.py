@@ -71,6 +71,86 @@ ensembl_ids = (
 create_revel_grch38_ht(revel_csv, ensembl_ids)
 
 
+def create_primateai_grch38_ht(primateai_tsv, ucsc_ids, ensembl_ids):
+    """
+    Create a Hail Table with PrimateAI scores for GRCh38.
+
+    :param primateai_tsv: Path to PrimateAI TSV file. The raw had the locus lifted over from GRCh37 to GRCh38, but the uscs ids are still in GRCh37.
+    :param ucsc_ids: Path to UCSC ID file, downloaded from UCSC Table Browser, in version GRCh37, known2Ensembl.
+    :param ensembl_ids: Path to Ensembl 105 ID file, downloaded from Ensembl 105 archive.
+    """
+    # import and process the primateAI tsv
+    ht = hl.import_table(
+        primateai_tsv,
+        comment="#",
+        skip_blank_lines=True,
+        types={
+            "pos": hl.tint32,
+            "primateDL_score": hl.tfloat32,
+            "ExAC_coverage": hl.tfloat32,
+        },
+        min_partitions=200,
+    )
+    ht = ht.annotate(locus=hl.locus(ht.chr, ht.pos, reference_genome="GRCh38"))
+    ht = ht.annotate(alleles=hl.array([ht.ref, ht.alt]))
+    ht = ht.select("locus", "alleles", "primateDL_score", "UCSC_gene")
+    ht = ht.key_by("UCSC_gene")
+
+    # import the ucsc id file
+    ucsc = hl.import_table(ucsc_ids, min_partitions=200)
+    ucsc = ucsc.annotate(
+        UCSC_gene=ucsc.hg19_knownToEnsembl_name,
+        Transcript_stable_ID=ucsc.hg19_ensGene_transcript,
+    )
+    ucsc = ucsc.select("UCSC_gene", "Transcript_stable_ID")
+    ucsc = ucsc.key_by("UCSC_gene")
+
+    # join the two tables
+    ht = ht.join(ucsc, how="left")
+    ht = ht.filter(hl.is_defined(ht.Transcript_stable_ID))
+    ht = ht.key_by("Transcript_stable_ID")
+
+    # import the Ensembl 105 id file
+    canon = hl.import_table(ensembl_ids, min_partitions=200)
+    canon = canon.select("Transcript_stable_ID", "Ensembl_Canonical")
+    canon = canon.key_by("Transcript_stable_ID")
+
+    # join the two tables
+    ht = ht.join(canon, how="inner")
+
+    # get the canonical and non-canonical primateAI scores
+    ht = ht.key_by("locus", "alleles")
+    ht = ht.annotate(
+        primateai_canonical=hl.if_else(
+            ht.Ensembl_Canonical == "1", ht.primateDL_score, hl.missing(hl.tfloat)
+        ),
+        primateai_noncanonical=hl.if_else(
+            ht.Ensembl_Canonical != "1", ht.primateDL_score, hl.missing(hl.tfloat)
+        ),
+    )
+
+    # get the max primateAI score for each variant
+    max_primateai_canonical = ht.group_by(*ht.key).aggregate(
+        max_primateai_canonical=hl.agg.max(ht.primateai_canonical)
+    )
+    max_primateai_noncanonical = ht.group_by(*ht.key).aggregate(
+        max_primateai_noncanonical=hl.agg.max(ht.primateai_noncanonical)
+    )
+    primateai = max_primateai_canonical.join(max_primateai_noncanonical, how="inner")
+    primateai.checkpoint(
+        "gs://gnomad-qin/v4_annotations/primateai-v0.2_processed_max_canonical.ht",
+        overwrite=True,
+    )
+
+
+primateai_tsv = "gs://gnomad-qin/v4_annotations/PrimateAI_scores_v0.2_hg38.tsv.bgz"
+ucsc_ids = "gs://gnomad-qin/ensembl/ucsc_hg19_knownToEnsembl.tsv.bgz"
+ensembl_ids = (
+    "gs://gnomad-qin/ensembl/ensembl105_chr1-22XY_MANE_canonical_ucscid.tsv.bgz"
+)
+create_primateai_grch38_ht(primateai_tsv, ucsc_ids, ensembl_ids)
+
+
 def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpression:
     """
     Remove fields from VEP 105 annotations that have been excluded in past releases or are missing in all rows.
