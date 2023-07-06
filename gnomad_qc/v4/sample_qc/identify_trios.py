@@ -7,7 +7,6 @@ from collections import Counter, defaultdict
 from typing import Dict, Optional, Tuple
 
 import hail as hl
-from gnomad.resources.resource_utils import PedigreeResource, TableResource
 from gnomad.sample_qc.relatedness import (
     create_fake_pedigree,
     get_duplicated_samples,
@@ -321,10 +320,7 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
     # Adding resources from previous scripts that are used by multiple steps in the
     # trio identification pipeline.
     rel_ht = relatedness()
-    # filter_ht = finalized_outlier_filtering()
-    from gnomad_qc.v4.resources.sample_qc import get_joint_qc
-
-    filter_ht = get_joint_qc().mt().cols()
+    filter_ht = finalized_outlier_filtering()
     pipeline_resources = {
         "outlier_filtering.py --create-finalized-outlier-filter": {
             "filter_ht": filter_ht
@@ -342,22 +338,16 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
     # Create resource collection for each step of the trio identification pipeline.
     identify_duplicates = PipelineStepResourceCollection(
         "--identify-duplicates",
-        output_resources={
-            "dup_ht": TableResource("gs://gnomad-tmp/julia/trios/duplicates.ht")
-        },
+        output_resources={"dup_ht": duplicates()},
         input_resources={
             "relatedness.py --compute-related-samples-to-drop": {
-                "rank_ht": sample_rankings(release=False)
+                "rank_ht": sample_rankings()
             },
         },
     )
     infer_families = PipelineStepResourceCollection(
         "--infer-families",
-        output_resources={
-            "raw_ped": PedigreeResource(
-                "gs://gnomad-tmp/julia/trios/families.ped", delimiter="\t"
-            )
-        },
+        output_resources={"raw_ped": pedigree(finalized=False)},
         pipeline_input_steps=[identify_duplicates],
         add_input_resources={
             "sex_inference.py --annotate-sex-karyotype": {"sex_ht": sex},
@@ -365,29 +355,19 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
     )
     create_fake_pedigree = PipelineStepResourceCollection(
         "--create-fake-pedigree",
-        output_resources={
-            "fake_ped": PedigreeResource(
-                "gs://gnomad-tmp/julia/trios/families_fake.ped", delimiter="\t"
-            )
-        },
+        output_resources={"fake_ped": pedigree(finalized=False, fake=True)},
         pipeline_input_steps=[infer_families],
     )
     run_mendel_errors = PipelineStepResourceCollection(
         "--run-mendel-errors",
-        output_resources={
-            "mendel_err_ht": TableResource("gs://gnomad-tmp/julia/trios/mendel.ht")
-        },
+        output_resources={"mendel_err_ht": ped_mendel_errors(test)},
         pipeline_input_steps=[infer_families, create_fake_pedigree],
     )
     finalize_ped = PipelineStepResourceCollection(
         "--finalize-ped",
         output_resources={
-            "final_ped": PedigreeResource(
-                "gs://gnomad-tmp/julia/trios/final_families.ped", delimiter="\t"
-            ),
-            "final_trios": PedigreeResource(
-                "gs://gnomad-tmp/julia/trios/final_trios.ped", delimiter="\t"
-            ),
+            "final_ped": pedigree(test=test),
+            "final_trios": trios(test=test),
             "filter_json": ped_filter_param_json_path(test=test),
         },
         pipeline_input_steps=[infer_families, run_mendel_errors],
@@ -418,8 +398,8 @@ def main(args):
     overwrite = args.overwrite
     test = args.test
     trio_resources = get_trio_resources(overwrite, test)
-    # trio_resources.check_resource_existence()
-    filter_ht = trio_resources.filter_ht  # .ht()
+    trio_resources.check_resource_existence()
+    filter_ht = trio_resources.filter_ht.ht()
     # Setting samples in the ELGH2 project to 'outlier_filtered' True, so they
     # are treated like outlier filtered samples when identifying trios for QC. We
     # identified that they do not have the full set of 'AS' annotations in 'gvcf_info'
@@ -429,13 +409,12 @@ def main(args):
         outlier_filtered=hl.if_else(
             project_meta_ht[filter_ht.key].project_meta.project == "elgh2",
             True,
-            False,  # filter_ht.outlier_filtered,
+            filter_ht.outlier_filtered,
             missing_false=True,
         )
     )
-    print(trio_resources.rel_ht.ht().count())
     rel_ht = filter_relatedness_ht(trio_resources.rel_ht.ht(), filter_ht)
-    print(rel_ht.count())
+
     if args.identify_duplicates:
         logger.info("Selecting best duplicate per duplicated sample set")
         res = trio_resources.identify_duplicates
@@ -490,11 +469,11 @@ def main(args):
         families_to_trios(ped, args.seed).write(res.final_trios.path)
 
         # Pedigree has no globals like a HT so write the parameters to a JSON file.
-        # logger.info(
-        #    "Writing finalized pedigree filter dictionary to %s.", res.filter_json
-        # )
-        # with hl.hadoop_open(res.filter_json, "w") as d:
-        #    d.write(json.dumps(filters))
+        logger.info(
+            "Writing finalized pedigree filter dictionary to %s.", res.filter_json
+        )
+        with hl.hadoop_open(res.filter_json, "w") as d:
+            d.write(json.dumps(filters))
 
 
 if __name__ == "__main__":
