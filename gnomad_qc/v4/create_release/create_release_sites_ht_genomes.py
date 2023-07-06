@@ -151,6 +151,31 @@ ensembl_ids = (
 create_primateai_grch38_ht(primateai_tsv, ucsc_ids, ensembl_ids)
 
 
+def create_spliceai_grch38_ht(spliceai_vcf_bgz) -> hl.Table:
+    """Create a Hail Table with SpliceAI scores for GRCh38."""
+    ht = hl.import_table(
+        spliceai_vcf_bgz,
+        delimiter="\t",
+        comment="#",
+        no_header=True,
+        missing=".",
+        min_partitions=100,
+    )
+    print(ht.count())
+    ht = ht.annotate(
+        locus=hl.locus(ht.f0, hl.int(ht.f1), reference_genome="GRCh38"),
+        alleles=hl.array([ht.f3, ht.f4]),
+        spliceai=ht.f7,
+    )
+    ht = ht.select("locus", "alleles", "spliceai")
+
+    ht = ht.filter(hl.is_defined(ht.spliceai))
+    ht = ht.key_by("locus", "alleles")
+    print(ht.count())
+    print(ht.distinct().count())
+    return ht
+
+
 def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpression:
     """
     Remove fields from VEP 105 annotations that have been excluded in past releases or are missing in all rows.
