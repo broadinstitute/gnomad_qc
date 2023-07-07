@@ -1,177 +1,105 @@
 """Script to generate Hail Tables with in silico predictors."""
 
+import argparse
+import logging
+
 import hail as hl
 
-
-def create_revel_grch38_ht(revel_csv, ensembl_ids):
-    """
-    Create a Hail Table with REVEL scores for GRCh38.
-
-    :param revel_csv: Path to REVEL CSV file.
-    :param ensembl_ids: Path to Ensembl 105 ID file, downloaded from Ensembl 105 archive.
-    """
-    # import and process the revel csv
-    # TODO: update path
-    ht = hl.import_table(
-        revel_csv,
-        delimiter=",",
-        min_partitions=200,
-        types={"grch38_pos": hl.tstr, "REVEL": hl.tfloat64},
-    )
-    ht = ht.drop("hg19_pos", "aaref", "aaalt")
-    ht = ht.filter(ht.grch38_pos.contains("."), keep=False)
-    ht = ht.transmute(chr="chr" + ht.chr)
-    ht = ht.annotate(
-        locus=hl.locus(ht.chr, hl.int(ht.grch38_pos), reference_genome="GRCh38"),
-        alleles=hl.array([ht.ref, ht.alt]),
-        Transcript_stable_ID=ht.Ensembl_transcriptid.strip().split(";"),
-    )
-    ht = ht.select("locus", "alleles", "REVEL", "Transcript_stable_ID")
-    ht = ht.explode("Transcript_stable_ID")
-    ht = ht.key_by("Transcript_stable_ID")
-
-    # import the ensembl 105 id file
-    # TODO: update path
-    ensembl_ids = hl.import_table(ensembl_ids, min_partitions=200)
-    ensembl_ids = ensembl_ids.select("Transcript_stable_ID", "Ensembl_Canonical")
-    ensembl_ids = ensembl_ids.key_by("Transcript_stable_ID")
-
-    # join the two tables
-    ht = ht.join(ensembl_ids, how="inner")
-
-    # get the canonical and non-canonical revel scores
-    ht = ht.key_by("locus", "alleles")
-    ht = ht.annotate(
-        revel_canonical=hl.if_else(
-            ht.Ensembl_Canonical == "1", ht.REVEL, hl.missing(hl.tfloat)
-        ),
-        revel_noncanonical=hl.if_else(
-            ht.Ensembl_Canonical != "1", ht.REVEL, hl.missing(hl.tfloat)
-        ),
-    )
-
-    # get the max revel score for each variant
-    max_revel_canonical = ht.group_by(*ht.key).aggregate(
-        max_revel_canonical=hl.agg.max(ht.revel_canonical)
-    )
-    max_revel_noncanonical = ht.group_by(*ht.key).aggregate(
-        max_revel_noncanonical=hl.agg.max(ht.revel_noncanonical)
-    )
-    revel = max_revel_canonical.join(max_revel_noncanonical, how="inner")
-    revel.checkpoint(
-        "gs://gnomad-qin/v4_annotations/revel-v1.3_processed_max_canonical.ht",
-        overwrite=True,
-    )
-    # TODO: update path
-
-
-revel_csv = "gs://gnomad-qin/v4_annotations/revel-v1.3_all_chromosomes_with_transcript_ids.csv.bgz"
-ensembl_ids = (
-    "gs://gnomad-qin/ensembl/ensembl105_chr1-22XY_MANE_canonical_ucscid.tsv.bgz"
+logging.basicConfig(
+    format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
+    datefmt="%m/%d/%Y %I:%M:%S %p",
 )
-create_revel_grch38_ht(revel_csv, ensembl_ids)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
-def create_primateai_grch38_ht(primateai_tsv, ucsc_ids, ensembl_ids):
+def create_cadd_grch38_ht() -> None:
     """
-    Create a Hail Table with PrimateAI scores for GRCh38.
+    Create a Hail Table with CADD scores for GRCh38.
 
-    :param primateai_tsv: Path to PrimateAI TSV file. The raw had the locus lifted over from GRCh37 to GRCh38, but the uscs ids are still in GRCh37.
-    :param ucsc_ids: Path to UCSC ID file, downloaded from UCSC Table Browser, in version GRCh37, known2Ensembl.
-    :param ensembl_ids: Path to Ensembl 105 ID file, downloaded from Ensembl 105 archive.
+    .. note:: The CADD scores are from the following sources:
+        - all SNVs: `cadd.v1.6.whole_genome_SNVs.tsv.bgz` (81G) downloaded from `https://krishna.gs.washington.edu/download/CADD/v1.6/GRCh38/whole_genome_SNVs.tsv.gz`. It contains 8,812,917,339 SNVs.
+        - gnomad 3.0 indels: `cadd.v1.6.indels.tsv.bgz` (1.1G) downloaded from `https://krishna.gs.washington.edu/download/CADD/v1.6/GRCh38/gnomad.genomes.r3.0.indel.tsv.gz`. It contains 100,546,109 indels in gnomaD v3.0.
+        - gnomad 3.1 indels: `CADD-indels-gnomad.3.1.ht` was run by William Phu with CADD v1.6 in 2020. It contains 166,122,720 indels in gnomAD v3.1.
+        - gnomad 3.1 complex indels: `CADD-1.6-gnomad-complex-variants.ht` was run by William Phu with CADD v1.6 in 2020. It contains 2,307 complex variants that were not filtered out by Hail is.indels().
+        - gnomAD v4 indels: `cadd.v1.6.gnomAD_v4_new_indels.tsv.bgz` (368M) was run by Qin He with CADD v1.6 in 2023. It contains 32,561,253 indel that are new in gnomAD v4.
+        - 1,972,208 indels were duplicated in gnomAD v3.0 and v4.0, in gnomAD v3.1 and v4.0. However, CADD only generate a score per loci. We use collect_by_key() to keep only one of the duplicated indels.
     """
-    # import and process the primateAI tsv
-    ht = hl.import_table(
-        primateai_tsv,
-        comment="#",
-        skip_blank_lines=True,
-        types={
-            "pos": hl.tint32,
-            "primateDL_score": hl.tfloat32,
-            "ExAC_coverage": hl.tfloat32,
-        },
-        min_partitions=200,
+
+    def load_cadd_raw(cadd_tsv) -> hl.Table:
+        column_names = {
+            "f0": "chr",
+            "f1": "pos",
+            "f2": "ref",
+            "f3": "alt",
+            "f4": "RawScore",
+            "f5": "PHRED",
+        }
+        types = {"f0": hl.tstr, "f1": hl.tint32, "f4": hl.tfloat32, "f5": hl.tfloat32}
+        ht = hl.import_table(
+            cadd_tsv,
+            delimiter="\t",
+            types=types,
+            no_header=True,
+            force_bgz=True,
+            comment="#",
+            min_partitions=1000,
+            missing="NA",
+        )
+        ht = ht.rename(column_names)
+        chr = hl.if_else(ht.chr.startswith("chr"), ht.chr, hl.format("chr%s", ht.chr))
+        ht = ht.annotate(
+            locus=hl.locus(chr, ht.pos, reference_genome="GRCh38"),
+            alleles=hl.array([ht.ref, ht.alt]),
+        )
+        ht = ht.select("locus", "alleles", "RawScore", "PHRED")
+        ht = ht.key_by("locus", "alleles")
+
+        return ht
+
+    snvs = load_cadd_raw(
+        "gs://gnomad-qin/v4_annotations/cadd.v1.6.whole_genome_SNVs.tsv.bgz"
     )
-    ht = ht.annotate(locus=hl.locus(ht.chr, ht.pos, reference_genome="GRCh38"))
-    ht = ht.annotate(alleles=hl.array([ht.ref, ht.alt]))
-    ht = ht.select("locus", "alleles", "primateDL_score", "UCSC_gene")
-    ht = ht.key_by("UCSC_gene")
-
-    # import the ucsc id file
-    ucsc = hl.import_table(ucsc_ids, min_partitions=200)
-    ucsc = ucsc.annotate(
-        UCSC_gene=ucsc.hg19_knownToEnsembl_name,
-        Transcript_stable_ID=ucsc.hg19_ensGene_transcript,
+    indel3_0 = load_cadd_raw(
+        "gs://gnomad-qin/v4_annotations/cadd.v1.6.gnomad.genomes.r3.0.indel.tsv.bgz"
     )
-    ucsc = ucsc.select("UCSC_gene", "Transcript_stable_ID")
-    ucsc = ucsc.key_by("UCSC_gene")
-
-    # join the two tables
-    ht = ht.join(ucsc, how="left")
-    ht = ht.filter(hl.is_defined(ht.Transcript_stable_ID))
-    ht = ht.key_by("Transcript_stable_ID")
-
-    # import the Ensembl 105 id file
-    canon = hl.import_table(ensembl_ids, min_partitions=200)
-    canon = canon.select("Transcript_stable_ID", "Ensembl_Canonical")
-    canon = canon.key_by("Transcript_stable_ID")
-
-    # join the two tables
-    ht = ht.join(canon, how="inner")
-
-    # get the canonical and non-canonical primateAI scores
-    ht = ht.key_by("locus", "alleles")
-    ht = ht.annotate(
-        primateai_canonical=hl.if_else(
-            ht.Ensembl_Canonical == "1", ht.primateDL_score, hl.missing(hl.tfloat)
-        ),
-        primateai_noncanonical=hl.if_else(
-            ht.Ensembl_Canonical != "1", ht.primateDL_score, hl.missing(hl.tfloat)
-        ),
+    indel3_1 = hl.read_table("gs://gnomad-wphu/CADD-indels-gnomad.3.1.ht")
+    indel3_1_complex = hl.read_table(
+        "gs://gnomad-wphu/CADD-1.6-gnomad-complex-variants.ht"
+    )
+    indel4 = load_cadd_raw(
+        "gs://gnomad-qin/v4_annotations/cadd.v1.6.gnomAD_v4_new_indels.tsv.bgz"
     )
 
-    # get the max primateAI score for each variant
-    max_primateai_canonical = ht.group_by(*ht.key).aggregate(
-        max_primateai_canonical=hl.agg.max(ht.primateai_canonical)
-    )
-    max_primateai_noncanonical = ht.group_by(*ht.key).aggregate(
-        max_primateai_noncanonical=hl.agg.max(ht.primateai_noncanonical)
-    )
-    primateai = max_primateai_canonical.join(max_primateai_noncanonical, how="inner")
-    primateai.checkpoint(
-        "gs://gnomad-qin/v4_annotations/primateai-v0.2_processed_max_canonical.ht",
-        overwrite=True,
+    indel3 = indel3_0.union(indel3_1, indel3_1_complex)
+
+    # This will avoid duplicated indels in gnomAD v3 and v4.
+    indel3 = indel3.anti_join(indel4)
+
+    ht = snvs.union(indel3, indel4)
+
+    ht.write(
+        "gs://gnomad-qin/v4_annotations/cadd_v1.6_grch38_gnomad_v4.ht", overwrite=True
     )
 
 
-primateai_tsv = "gs://gnomad-qin/v4_annotations/PrimateAI_scores_v0.2_hg38.tsv.bgz"
-ucsc_ids = "gs://gnomad-qin/ensembl/ucsc_hg19_knownToEnsembl.tsv.bgz"
-ensembl_ids = (
-    "gs://gnomad-qin/ensembl/ensembl105_chr1-22XY_MANE_canonical_ucscid.tsv.bgz"
-)
-create_primateai_grch38_ht(primateai_tsv, ucsc_ids, ensembl_ids)
-
-
-def create_spliceai_grch38_ht(spliceai_vcf_bgz) -> hl.Table:
-    """Create a Hail Table with SpliceAI scores for GRCh38."""
-    ht = hl.import_table(
-        spliceai_vcf_bgz,
-        delimiter="\t",
-        comment="#",
-        no_header=True,
-        missing=".",
-        min_partitions=100,
+def main(args):
+    """Generate Hail Tables with in silico predictors."""
+    hl.init(
+        default_reference="GRCh38",
+        log="/insilico_predictors.log",
+        tmp_dir="gs://gnomad-tmp-4day",
     )
-    print(ht.count())
-    ht = ht.annotate(
-        locus=hl.locus(ht.f0, hl.int(ht.f1), reference_genome="GRCh38"),
-        alleles=hl.array([ht.f3, ht.f4]),
-        spliceai=ht.f7,
-    )
-    ht = ht.select("locus", "alleles", "spliceai")
 
-    ht = ht.filter(hl.is_defined(ht.spliceai))
-    ht = ht.key_by("locus", "alleles")
-    print(ht.count())
-    print(ht.distinct().count())
-    return ht
+    logger.info("Creating CADD Hail Table for GRCh38...")
+    if args.cadd:
+        create_cadd_grch38_ht()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--slack-channel", help="Slack channel to post results and notifications to."
+    )
+    parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
+    parser.add_argument("--cadd", help="Create CADD HT", action="store_true")
