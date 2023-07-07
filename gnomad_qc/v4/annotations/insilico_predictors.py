@@ -4,6 +4,9 @@ import argparse
 import logging
 
 import hail as hl
+from gnomad.utils.slack import slack_notifications
+
+from gnomad_qc.slack_creds import slack_token
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -13,7 +16,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def create_cadd_grch38_ht() -> None:
+def create_cadd_grch38_ht() -> hl.Table:
     """
     Create a Hail Table with CADD scores for GRCh38.
 
@@ -24,6 +27,7 @@ def create_cadd_grch38_ht() -> None:
         - gnomad 3.1 complex indels: `CADD-1.6-gnomad-complex-variants.ht` was run by William Phu with CADD v1.6 in 2020. It contains 2,307 complex variants that were not filtered out by Hail is.indels().
         - gnomAD v4 indels: `cadd.v1.6.gnomAD_v4_new_indels.tsv.bgz` (368M) was run by Qin He with CADD v1.6 in 2023. It contains 32,561,253 indel that are new in gnomAD v4.
         - 1,972,208 indels were duplicated in gnomAD v3.0 and v4.0, in gnomAD v3.1 and v4.0. However, CADD only generate a score per loci. We use collect_by_key() to keep only one of the duplicated indels.
+    :return: Hail Table with CADD scores for GRCh38.
     """
 
     def load_cadd_raw(cadd_tsv) -> hl.Table:
@@ -68,19 +72,17 @@ def create_cadd_grch38_ht() -> None:
         "gs://gnomad-wphu/CADD-1.6-gnomad-complex-variants.ht"
     )
     indel4 = load_cadd_raw(
-        "gs://gnomad-qin/v4_annotations/cadd.v1.6.gnomAD_v4_new_indels.tsv.bgz"
+        "gs://gnomad-qin/v4_annotations/gnomAD_v4_new_indels.tsv.bgz"
     )
 
+    # Merge the CADD predictions run for v3 versions.
     indel3 = indel3_0.union(indel3_1, indel3_1_complex)
 
     # This will avoid duplicated indels in gnomAD v3 and v4.
     indel3 = indel3.anti_join(indel4)
 
     ht = snvs.union(indel3, indel4)
-
-    ht.write(
-        "gs://gnomad-qin/v4_annotations/cadd_v1.6_grch38_gnomad_v4.ht", overwrite=True
-    )
+    return ht
 
 
 def main(args):
@@ -91,9 +93,13 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
 
-    logger.info("Creating CADD Hail Table for GRCh38...")
     if args.cadd:
-        create_cadd_grch38_ht()
+        logger.info("Creating CADD Hail Table for GRCh38...")
+        ht = create_cadd_grch38_ht()
+        ht.write(
+            "gs://gnomad/v4.0/annotations/in_silico_predictors/gnomad.v4.0.cadd.grch38.ht",
+            overwrite=args.overwrite,
+        )
 
 
 if __name__ == "__main__":
@@ -103,3 +109,9 @@ if __name__ == "__main__":
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     parser.add_argument("--cadd", help="Create CADD HT", action="store_true")
+    args = parser.parse_args()
+    if args.slack_channel:
+        with slack_notifications(slack_token, args.slack_channel):
+            main(args)
+    else:
+        main(args)
