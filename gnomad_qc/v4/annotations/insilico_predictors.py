@@ -26,7 +26,7 @@ def create_cadd_grch38_ht() -> hl.Table:
         - gnomad 3.1 indels: `CADD-indels-gnomad.3.1.ht` was run by William Phu with CADD v1.6 in 2020. It contains 166,122,720 indels in gnomAD v3.1.
         - gnomad 3.1 complex indels: `CADD-1.6-gnomad-complex-variants.ht` was run by William Phu with CADD v1.6 in 2020. It contains 2,307 complex variants that were not filtered out by Hail is.indels().
         - gnomAD v4 indels: `cadd.v1.6.gnomAD_v4_new_indels.tsv.bgz` (368M) was run by Qin He with CADD v1.6 in 2023. It contains 32,561,253 indel that are new in gnomAD v4.
-        - 1,972,208 indels were duplicated in gnomAD v3.0 and v4.0, in gnomAD v3.1 and v4.0. However, CADD only generate a score per loci. We use collect_by_key() to keep only one of the duplicated indels.
+        - 1,972,208 indels were duplicated in gnomAD v3.0 and v4.0, in gnomAD v3.1 and v4.0. However, CADD only generate a score per loci. We use anti_join to keep only the latest prediction.
     :return: Hail Table with CADD scores for GRCh38.
     """
 
@@ -72,7 +72,7 @@ def create_cadd_grch38_ht() -> hl.Table:
         "gs://gnomad-wphu/CADD-1.6-gnomad-complex-variants.ht"
     )
     indel4 = load_cadd_raw(
-        "gs://gnomad-qin/v4_annotations/gnomAD_v4_new_indels.tsv.bgz"
+        "gs://gnomad-qin/v4_annotations/cadd.v1.6.gnomAD_v4_new_indels.tsv.bgz"
     )
 
     # Merge the CADD predictions run for v3 versions.
