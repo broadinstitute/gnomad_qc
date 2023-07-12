@@ -1417,16 +1417,22 @@
                                 "apply_r_ti_tv_singleton_filter": {
                                     "definition": "Whether the TiTv singleton filter was applied."
                                 },
-                                "include_unreleasable_samples": {
-                                    "definition": "Whether unreleasable samples were included in the regression and filtering."
+                                "include_unreleasable_in_regression": {
+                                    "definition": "Whether unreleasable samples were included in the regression."
+                                },
+                                "include_unreleasable_in_cutoffs": {
+                                    "definition": "Whether unreleasable samples were included in the metric cutoff determination."
+                                },
+                                "exclude_unreleasable_samples": {
+                                    "definition": "Whether unreleasable samples were excluded in the entire regression filtering pipeline. Unreleasable samples will have missing values for all regression filtering annotations."
                                 }
                             }
                         },
                         "nearest_neighbor_filters_globals": {
-                            "definition": "Filters used in nearest neighbor filterings.",
+                            "definition": "Filters used in nearest neighbor filtering.",
                             "subfields": {
-                                "include_unreleasable_samples": {
-                                    "definition": "Whether unreleasable samples were included in the regression and filtering."
+                                "exclude_unreleasable_samples": {
+                                    "definition": "Whether unreleasable samples were excluded in the entire nearest neighbor filtering pipeline. Unreleasable samples will have missing values for all nearest neighbor filtering annotations."
                                 },
                                 "apply_r_ti_tv_singleton_filter": {
                                     "definition": "Whether the TiTv singleton filter was applied."
@@ -1444,9 +1450,6 @@
                         },
                         "ensemble_combination_operator": {
                             "definition": "Logical operator used for combining filtering methods for the ensemble method."
-                        },
-                        "include_unreleasable_samples": {
-                            "definition": "Whether unreleasable samples were included in filtering."
                         }
                     }
                 }
@@ -2243,6 +2246,9 @@
                 },
                 "control": {
                     "definition": "Whether a sample is used as a control sample in variant QC assesment. This includes a synthetic-diploid (syndip) sample (a mixture of DNA from two haploid CHM cell lines) and two NA12878 samples."
+                },
+                "elgh2_project": {
+                    "definition": "Whether a sample is part of the ELGH2 project. This annotation was added because these samples should be excluded from the 'high_quality' and 'release' samples because we identified that they do not have the full set of 'AS' annotations in 'gvcf_info' so we need to exclude them from variant QC and release."
                 }
             }
         },
