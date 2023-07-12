@@ -408,19 +408,19 @@ def correct_qual_hists(ht: hl.Table) -> hl.Table:  # add ab_threshold as arg
     return ht
 
 
-def generate_faf_popmax(ht: hl.Table) -> hl.Table:
+def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     """
-    Compute filtering allele frequencies and popmax with the AB-adjusted frequencies.
+    Compute filtering allele frequencies and grpmax with the AB-adjusted frequencies.
 
     :param ht: Hail Table containing freq, ab_adjusted_freq, high_ab_het annotations.
-    :return: Hail Table with faf & popmax annotations.
+    :return: Hail Table with faf & grpmax annotations.
     """
     faf, faf_meta = faf_expr(
         ht.ab_adjusted_freq, ht.freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX
     )
     ht = ht.annotate(
         faf=faf,
-        popmax=pop_max_expr(  # TODO: Update popmax to grpmax
+        grpmax=pop_max_expr(
             ht.ab_adjusted_freq, ht.freq_meta, POPS_TO_REMOVE_FOR_POPMAX
         ),
     )
@@ -429,9 +429,9 @@ def generate_faf_popmax(ht: hl.Table) -> hl.Table:
         faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-"),
     )
     ht = ht.annotate(
-        popmax=ht.popmax.annotate(  # TODO: Update popmax to grpmax
+        grpmax=ht.grpmax.annotate(
             faf95=ht.faf[
-                ht.faf_meta.index(lambda x: x.values() == ["adj", ht.popmax.pop])
+                ht.faf_meta.index(lambda x: x.values() == ["adj", ht.grpmax.pop])
             ].faf95
         )
     )
@@ -712,8 +712,8 @@ def main(args):  # noqa: D103
         logger.info("Correcting age histograms...")
         ht = correct_age_hists(ht)
 
-        logger.info("computing FAF & popmax...")
-        ht = generate_faf_popmax(ht)
+        logger.info("computing FAF & grpmax...")
+        ht = generate_faf_grpmax(ht)
 
         logger.info("Calculating InbreedingCoeff...")
         ht = compute_inbreeding_coeff(ht)
