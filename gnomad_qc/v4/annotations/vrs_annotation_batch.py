@@ -3,16 +3,16 @@ This is a batch script which adds VRS IDs to a Hail Table by creating a sharded-
 
 The vrs-annotation script that generates the VRS IDs needs to be run with Query On Batch. These VRS annotations can be added back to the original Table with either Query On Batch or Spark.(https://hail.is/docs/0.2/cloud/query_on_batch.html#:~:text=Hail%20Query%2Don%2DBatch%20uses,Team%20at%20our%20discussion%20forum.)
 usage: python3 vrs_annotation_batch.py \
---billing-project gnomad-annot \ # TODO: change
---working-bucket gnomad-vrs-io-finals \
+--billing-project gnomad-annot \
+--working-bucket gnomad-qin \
 --image us-central1-docker.pkg.dev/broad-mpg-gnomad/ga4gh-vrs/marten_0615_vrs0_8_4 \
---version test_v3_1k \ # TODO: change
---prefix marten_prelim_test \
+--version test_v4.0_exomes \
+--prefix v4_vds \
 --partitions-for-vcf-export 20 \ # TODO: change
---downsample 0.1 \ # TODO: not necessary for a test run
---header-path gs://gnomad-vrs-io-finals/header-fix.txt \ # TODO: make a folder for VRS under v4
+--downsample 0.1 \ # not necessary for a test run
+--header-path gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt \
 --run-vrs \ # only works on Hail BATCH
---annotate-original \ # TODO: not necessary for v4 exomes
+--annotate-original \ # not necessary for v4 exomes
 --overwrite \
 --backend-mode batch \
 """
@@ -29,7 +29,6 @@ import hail as hl
 import hailtop.batch as hb
 from gnomad.resources.grch38.gnomad import public_release
 from gnomad.utils.reference_genome import get_reference_genome
-from tgg.batch.batch_utils import init_job
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.resources.annotations import vrs_annotations as v3_vrs_annotations
@@ -41,6 +40,60 @@ logging.basicConfig(
 )
 logger = logging.getLogger("annotate_vrs_ids")
 logger.setLevel(logging.INFO)
+
+
+def init_job(
+    batch,
+    name: str = None,
+    image: str = None,
+    cpu: float = None,
+    memory: float = None,
+    disk_size: float = None,
+):
+    """Initialize a hail batch job with some default parameters.
+
+    :param batch: Batch object
+    :param name: job label which will show up in the Batch web UI
+    :param image: docker image name (eg. "weisburd/image-name@sha256:aa19845da5")
+    :param cpu: number of CPUs (between 0.25 to 16)
+    :param memory: amount of RAM in Gb (eg. 3.75)
+    :param disk_size: amount of disk in Gb (eg. 50)
+    :return: new job object
+    """
+    j = batch.new_job(name=name)
+    if image:
+        j.image(image)
+
+    if cpu:
+        if cpu < 0.25 or cpu > 16:
+            raise ValueError(
+                f"CPU arg is {cpu}. This is outside the range of 0.25 to 16 CPUs"
+            )
+
+        j.cpu(cpu)  # Batch default is 1
+
+    if memory:
+        if memory < 0.1 or memory > 60:
+            raise ValueError(
+                f"Memory arg is {memory}. This is outside the range of 0.1 to 60 Gb"
+            )
+
+        j.memory(f"{memory}Gi")  # Batch default is 3.75G
+
+    if disk_size:
+        if disk_size < 1 or disk_size > 1000:
+            raise ValueError(
+                f"Disk size arg is {disk_size}. This is outside the range of 1 to"
+                " 1000 Gb"
+            )
+
+        j.storage(f"{disk_size}Gi")
+
+    j.command(
+        "set -euxo pipefail"
+    )  # set bash options for easier debugging and to make command execution more robust
+
+    return j
 
 
 def init_job_with_gcloud(
@@ -103,7 +156,9 @@ def main(args):
     input_paths_dict = {
         "v3.1.2": public_release("genomes").path,
         "v4.0_exomes": "gs://gnomad-qin/v4_annotations/v4_vds_all_variants.ht",
-        "test_v4.0_exomes": "gs://gnomad-qin/v4_annotations/v4_vds_2_partitions.ht",
+        "test_v4.0_exomes": (
+            f"gs://{working_bucket}/v4_annotations/{prefix}_2_partitions.ht"
+        ),
         "test_v3.1.2": public_release("genomes").path,
         "test_v3_1k": (
             "gs://gnomad-vrs-io-finals/ht-inputs/ht-1k-TESTING-ONLY-repartition-10p.ht"
@@ -118,7 +173,7 @@ def main(args):
     output_paths_dict = {
         "v3.1.2": v3_vrs_annotations.path,
         "v4.0": v4_vrs_annotations.path,
-        "test_v4.0_exomes": "gs://gnomad-qin/v4_annotations/v4_vds_2_partitions.ht",
+        "test_v4.0_exomes": f"gs://{working_bucket}/v4_annotations/{prefix}v4_vds_2_partitions_output.ht",
         "test_v3.1.2": (
             f"gs://gnomad-vrs-io-finals/ht-outputs/{prefix}-Full-ht-release-output.ht"
         ),
