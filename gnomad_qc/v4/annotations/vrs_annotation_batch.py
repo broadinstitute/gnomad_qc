@@ -133,8 +133,8 @@ def main(args):
     # seed for if user decides to downsample
     hl.init(
         backend=args.backend_mode,
-        tmp_dir=args.tmp_dir_hail,
-        gcs_requester_pays_configuration="gnomad-vrs",
+        tmp_dir="gs://gnomad-tmp-4day",
+        gcs_requester_pays_configuration="broad-mpg-gnomad",
         default_reference="GRCh38",
         global_seed=args.hail_rand_seed,
     )
@@ -143,8 +143,8 @@ def main(args):
 
     # Example schema
     logger.info("Example VRS schema for 2 variants:")
-    ht_example = hl.read_table("gs://gnomad-vrs-io-finals/ht-inputs/two-snps-schema.ht")
-    ht_example.show()
+    # ht_example = hl.read_table("gs://gnomad-vrs-io-finals/ht-inputs/two-snps-schema.ht")
+    # ht_example.show()
 
     working_bucket = args.working_bucket
     version = args.version
@@ -172,7 +172,7 @@ def main(args):
 
     output_paths_dict = {
         "v3.1.2": v3_vrs_annotations.path,
-        "v4.0": v4_vrs_annotations.path,
+        "v4.0": v4_vrs_annotations().path,
         "test_v4.0_exomes": f"gs://{working_bucket}/v4_annotations/{prefix}v4_vds_2_partitions_output.ht",
         "test_v3.1.2": (
             f"gs://gnomad-vrs-io-finals/ht-outputs/{prefix}-Full-ht-release-output.ht"
