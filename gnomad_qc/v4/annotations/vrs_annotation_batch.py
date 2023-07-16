@@ -8,21 +8,19 @@ usage: python3 vrs_annotation_batch.py \
 --image us-central1-docker.pkg.dev/broad-mpg-gnomad/ga4gh-vrs/marten_0615_vrs0_8_4 \
 --version test_v4.0_exomes \
 --prefix v4_vds \
---partitions-for-vcf-export 20 \ # TODO: change
---downsample 0.1 \ # not necessary for a test run
+--partitions-for-vcf-export 20 \
+--downsample 0.1 \
 --header-path gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt \
---run-vrs \ # only works on Hail BATCH
+--run-vrs \
 --annotate-original \ # not necessary for v4 exomes
 --overwrite \
---backend-mode batch \
+--backend-mode batch
+
+Note: if running into error `Requester pays bucket assess requires authentification`, run `gcloud auth application-default login` and try again.
 """
 
 import argparse
-import datetime
-import errno
 import logging
-import os
-import sys
 
 import ga4gh.vrs
 import hail as hl
@@ -152,12 +150,11 @@ def main(args):
     # Prefix to create custom named versions of outputs
     prefix = args.prefix + version
 
-    # TODO: add v4 exomes to this dict
     input_paths_dict = {
         "v3.1.2": public_release("genomes").path,
-        "v4.0_exomes": "gs://gnomad-qin/v4_annotations/v4_vds_all_variants.ht",
+        "v4.0_exomes": f"gs://{working_bucket}/v4_annotations/v4_vds_all_variants.ht",
         "test_v4.0_exomes": (
-            f"gs://{working_bucket}/v4_annotations/{prefix}_2_partitions.ht"
+            f"gs://{working_bucket}/v4_annotations/v4_vds_2_partitions.ht"
         ),
         "test_v3.1.2": public_release("genomes").path,
         "test_v3_1k": (
@@ -172,7 +169,7 @@ def main(args):
 
     output_paths_dict = {
         "v3.1.2": v3_vrs_annotations.path,
-        "v4.0": v4_vrs_annotations().path,
+        "v4.0_exomes": v4_vrs_annotations().path,
         "test_v4.0_exomes": f"gs://{working_bucket}/v4_annotations/{prefix}v4_vds_2_partitions_output.ht",
         "test_v3.1.2": (
             f"gs://gnomad-vrs-io-finals/ht-outputs/{prefix}-Full-ht-release-output.ht"
