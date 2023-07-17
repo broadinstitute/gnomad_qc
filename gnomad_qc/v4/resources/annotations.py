@@ -253,3 +253,27 @@ def get_freq_comparison(version1, data_type1, version2, data_type2):
         ht_path = f"gs://gnomad/annotations/hail-0.2/ht/{data_type1}/{ht_path}"
 
     return TableResource(ht_path)
+
+
+def get_vrs(
+    version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
+) -> str:
+    """
+    Get the gnomAD v4 VEP annotation VersionedTableResource.
+
+    :param version: Version of annotation path to return.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
+    :return: gnomAD v4 VEP VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                path=(
+                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vrs.ht"
+                )
+            )
+            for version in VERSIONS
+        },
+    )
