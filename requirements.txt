@@ -5,3 +5,4 @@ networkx
 scikit-learn
 scipy<1.4
 hail
+ga4gh.vrs[extras]
