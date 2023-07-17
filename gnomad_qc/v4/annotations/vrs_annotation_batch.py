@@ -122,10 +122,20 @@ def init_job_with_gcloud(
     """
     job = init_job(batch, name, image, cpu, memory, disk_size)
     job.command(
-        f'retry() {{"$@" " || (sleep 2 && " "$@" ") || (sleep 5 && " "$@" ");}}'
-        f"gcloud -q auth activate-service-account --key-file=/gsa-key/key.json"
+        """
+    retry() {
+              "$@" ||
+                  (sleep 2 && "$@") ||
+                  (sleep 5 && "$@");
+    }
+    retry gcloud -q auth activate-service-account --key-file=/gsa-key/key.json
+
+    curl_and_python() {
+        curl -sSL broad.io/install-gcs-connector | python3
+    }
+    retry curl_and_python
+    """
     )
-    job.command(f"curl -sSL broad.io/install-gcs-connector | python3")
     if mount:
         job.cloudfuse(mount, "/local-vrs-mount")
     return job
