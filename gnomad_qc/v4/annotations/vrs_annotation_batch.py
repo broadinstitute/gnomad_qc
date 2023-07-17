@@ -1,20 +1,20 @@
-r"""
+"""
 This is a batch script which adds VRS IDs to a Hail Table by creating a sharded-VCF, running a vrs-annotation script on each shard, and annotating the merged results back onto the original Hail Table.
 
 The vrs-annotation script that generates the VRS IDs needs to be run with Query On Batch. These VRS annotations can be added back to the original Table with either Query On Batch or Spark.(https://hail.is/docs/0.2/cloud/query_on_batch.html#:~:text=Hail%20Query%2Don%2DBatch%20uses,Team%20at%20our%20discussion%20forum.)
 usage: python3 vrs_annotation_batch.py \
---billing-project gnomad-annot \
---working-bucket gnomad-qin \
---image us-central1-docker.pkg.dev/broad-mpg-gnomad/ga4gh-vrs/marten_0615_vrs0_8_4 \
---version test_v4.0_exomes \
---prefix v4_vds \
---partitions-for-vcf-export 20 \
---downsample 0.1 \
---header-path gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt \
---run-vrs \
---annotate-original \ # not necessary for v4 exomes
---overwrite \
---backend-mode batch
+    --billing-project gnomad-vrs \
+    --working-bucket gnomad-vrs-io-finals \
+    --image us-central1-docker.pkg.dev/broad-mpg-gnomad/ga4gh-vrs/marten_0615_vrs0_8_4 \
+    --version test_v3_1k \
+    --prefix marten_prelim_test \
+    --partitions-for-vcf-export 20 \
+    --downsample 0.1 \
+    --header-path gs://gnomad-vrs-io-finals/header-fix.txt \
+    --run-vrs \
+    --annotate-original \
+    --overwrite \
+    --backend-mode batch
 
 Note: if running into error `Requester pays bucket assess requires authentification`, run `gcloud auth application-default login` and try again.
 """
@@ -22,7 +22,6 @@ Note: if running into error `Requester pays bucket assess requires authentificat
 import argparse
 import logging
 
-import ga4gh.vrs
 import hail as hl
 import hailtop.batch as hb
 from gnomad.resources.grch38.gnomad import public_release
@@ -38,6 +37,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("annotate_vrs_ids")
 logger.setLevel(logging.INFO)
+
+# Define the version of ga4gh.vrs code this was run on, as present in the Dockerfile
+# Please change this when the Dockerfile is updated
+VRS_VERSION = "0.8.4"
 
 
 def init_job(
@@ -126,13 +129,13 @@ def init_job_with_gcloud(
 
 
 def main(args):
-    """Generate VRS annotations for a Hail Table of variants."""
+    """Generate VRS IDs for variants in a Hail Table."""
     # Initialize Hail w/chosen mode (spark or batch for QoB), setting global
     # seed for if user decides to downsample
     hl.init(
         backend=args.backend_mode,
-        tmp_dir="gs://gnomad-tmp-4day",
-        gcs_requester_pays_configuration="broad-mpg-gnomad",
+        tmp_dir=args.tmp_dir_hail,
+        gcs_requester_pays_configuration="gnomad-vrs",
         default_reference="GRCh38",
         global_seed=args.hail_rand_seed,
     )
@@ -141,8 +144,8 @@ def main(args):
 
     # Example schema
     logger.info("Example VRS schema for 2 variants:")
-    # ht_example = hl.read_table("gs://gnomad-vrs-io-finals/ht-inputs/two-snps-schema.ht")
-    # ht_example.show()
+    ht_example = hl.read_table("gs://gnomad-vrs-io-finals/ht-inputs/two-snps-schema.ht")
+    ht_example.show()
 
     working_bucket = args.working_bucket
     version = args.version
@@ -387,18 +390,16 @@ def main(args):
             f"gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
         )
 
-        # Annotate final Hail Table with GA4GH version
-        ht_annotated = ht_annotated.annotate_globals(
-            ga4gh_vrs_version=ga4gh.vrs.__version__
-        )
-
-        if "3.1.2" in version:
-            logger.info("Adding VRS IDs to original Table")
+        if "test_" not in version:
+            logger.info("Adding VRS IDs and GA4GH.VRS version to original Table")
             ht_final = ht_original.annotate(
                 info=ht_original.info.annotate(
                     vrs=ht_annotated[ht_original.locus, ht_original.alleles].vrs
                 )
             )
+
+            ht_final = ht_final.annotate_globals(vrs_version=VRS_VERSION)
+
             logger.info(f"Outputting final table at: {output_paths_dict[version]}")
             ht_final.write(output_paths_dict[version], overwrite=args.overwrite)
 
