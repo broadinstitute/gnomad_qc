@@ -121,7 +121,10 @@ def init_job_with_gcloud(
         :return: New job object.
     """
     job = init_job(batch, name, image, cpu, memory, disk_size)
-    job.command(f"gcloud -q auth activate-service-account --key-file=/gsa-key/key.json")
+    job.command(
+        f'retry() {{"$@" " || (sleep 2 && " "$@" ") || (sleep 5 && " "$@" ");}}'
+        f"gcloud -q auth activate-service-account --key-file=/gsa-key/key.json"
+    )
     job.command(f"curl -sSL broad.io/install-gcs-connector | python3")
     if mount:
         job.cloudfuse(mount, "/local-vrs-mount")
@@ -261,6 +264,7 @@ def main(args):
         file_dict = hl.utils.hadoop_ls(
             f"gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz/part-*.bgz"
         )
+        # Note: this step took 1h20m to finish, astonishingly long.
 
         # Create a list of all file names to later annotate in parallel
         file_list = [file_item["path"].split("/")[-1] for file_item in file_dict]
