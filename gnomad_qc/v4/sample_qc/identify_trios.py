@@ -27,9 +27,11 @@ from gnomad_qc.v4.resources.meta import project_meta
 from gnomad_qc.v4.resources.sample_qc import (
     duplicates,
     finalized_outlier_filtering,
+    interval_qc_pass,
     ped_filter_param_json_path,
     ped_mendel_errors,
     pedigree,
+    platform,
     relatedness,
     sample_rankings,
     sex,
@@ -110,7 +112,10 @@ def run_create_fake_pedigree(
 
 
 def run_mendel_errors(
-    ped: hl.Pedigree, fake_ped: hl.Pedigree, test: bool = False
+    ped: hl.Pedigree,
+    fake_ped: hl.Pedigree,
+    test: bool = False,
+    interval_qc: bool = True,
 ) -> hl.Table:
     """
     Run Hail's `mendel_errors` on chr20 of the VDS subset to samples in `ped` and `fake_ped`.
@@ -119,6 +124,8 @@ def run_mendel_errors(
     :param fake_ped: Fake Pedigree.
     :param test: Whether to run on five partitions of the VDS for testing. Default is
         False.
+    :param interval_qc: Whether to use the interval QC pass Table to filter the
+        MatrixTable before running `mendel_errors`. Default is False.
     :return: Table with Mendel errors on chr20.
     """
     merged_ped = hl.Pedigree(trios=ped.trios + fake_ped.trios)
@@ -126,7 +133,7 @@ def run_mendel_errors(
 
     logger.info(f"Sub-setting VDS to %i samples.", len(ped_samples))
     # Partition VDS on read to a larger number of partitions to speed up computation.
-    vds = get_gnomad_v4_vds(split=True, n_partitions=150000, remove_dead_alleles=False)
+    vds = get_gnomad_v4_vds(split=False, n_partitions=150000, remove_dead_alleles=False)
     if test:
         vds = hl.vds.VariantDataset(
             vds.reference_data._filter_partitions(range(5)),
@@ -136,8 +143,14 @@ def run_mendel_errors(
         vds = hl.vds.filter_chromosomes(vds, keep="chr20")
 
     vds = hl.vds.filter_samples(vds, ped_samples)
+    vds.variant_data = vds.variant_data.select_entries("LA", "LGT")
     mt = hl.vds.to_dense_mt(vds)
-    mt = mt.select_entries("GT")
+
+    if interval_qc:
+        interval_qc_pass_ht = interval_qc_pass.ht()
+        mt = mt.filter_rows(interval_qc_pass_ht[mt.locus].pass_interval_qc)
+
+    mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
     logger.info(f"Running Mendel errors for %s trios.", len(merged_ped.trios))
     mendel_err_ht, _, _, _ = hl.mendel_errors(mt["GT"], merged_ped)
@@ -227,6 +240,34 @@ def filter_ped(
     # Filter Mendel errors Table to only errors in inferred families not from the
     # fake Pedigree.
     mendel_ht = mendel_ht.filter(mendel_ht.fam_id.startswith("fake"), keep=False)
+
+    platform_ht = platform.ht()
+    trio_ht = hl.Table.parallelize(
+        hl.literal(
+            [
+                {k: getattr(t, k) for k in ["s", "fam_id", "pat_id", "mat_id"]}
+                for t in ped.trios
+            ],
+            "array<struct{s: str, fam_id: str, pat_id: str, mat_id: str}>",
+        )
+    )
+    trio_ht = trio_ht.annotate(
+        same_platform=hl.len(
+            hl.set(
+                [
+                    platform_ht[trio_ht.s].qc_platform,
+                    platform_ht[trio_ht.pat_id].qc_platform,
+                    platform_ht[trio_ht.mat_id].qc_platform,
+                ]
+            )
+        )
+        == 1
+    )
+    same_platform_trios = trio_ht.aggregate(
+        hl.agg.filter(trio_ht.same_platform, hl.agg.collect_as_set(trio_ht.s)),
+        _localize=False,
+    )
+    mendel_ht = mendel_ht.filter(same_platform_trios.contains(mendel_ht.s))
 
     # Aggregate Mendel errors Table by sample to get per sample mendel error and
     # de novo counts.
