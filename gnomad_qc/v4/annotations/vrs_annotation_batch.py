@@ -272,7 +272,7 @@ def main(args):
 
         # Create a list of all shards of VCF
         file_dict = hl.utils.hadoop_ls(
-            f"gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz/part-*.bgz"
+            f"gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz/"
         )
         # Note: this step took 1h20m to finish, astonishingly long.
 
@@ -341,7 +341,7 @@ def main(args):
         )
 
         annotated_file_dict = hl.utils.hadoop_ls(
-            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/*.vcf"
+            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/"
         )
 
         annotated_file_list = [
