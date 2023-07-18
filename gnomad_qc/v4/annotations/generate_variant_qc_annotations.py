@@ -9,11 +9,7 @@ from gnomad.resources.grch38.reference_data import ensembl_interval
 from gnomad.utils.annotations import add_variant_type, annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
-    INFO_INT32_SUM_AGG_FIELDS,
-    INFO_SUM_AGG_FIELDS,
     default_compute_info,
-    get_as_info_expr,
-    get_site_info_expr,
     split_info_annotation,
     split_lowqual_annotation,
 )
