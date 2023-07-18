@@ -86,18 +86,39 @@ def filter_relatedness_ht(ht: hl.Table, filter_ht: hl.Table) -> hl.Table:
     return ht
 
 
+def platform_table_to_dict(platform_ht: hl.Table) -> Dict[str, str]:
+    """
+    Convert a Table with platform assignments to a sample:platform dictionary.
+
+    :param platform_ht: Table with platform assignments.
+    :return: Sample:platform dictionary.
+    """
+    return dict(
+        platform_ht.aggregate(hl.agg.collect((platform_ht.s, platform_ht.qc_platform)))
+    )
+
+
 def run_create_fake_pedigree(
-    ped: hl.Pedigree, filter_ht: hl.Table, fake_fam_prop: float = 0.1
+    ped: hl.Pedigree,
+    filter_ht: hl.Table,
+    platform_ht: Optional[hl.Table] = None,
+    fake_fam_prop: float = 0.1,
 ) -> hl.Pedigree:
     """
     Generate a fake Pedigree with `fake_fam_prop` defining the proportion of the number of trios in `ped` to use.
 
     :param ped: Pedigree to use for generating fake Pedigree.
     :param filter_ht: Outlier filtering Table.
+    :param platform_ht: Optional table with platform assignments. Default is None.
     :param fake_fam_prop: Proportion of trios in `ped` to use for generating fake
         Pedigree. Default is 0.1.
     :return: Fake Pedigree.
     """
+    if platform_ht is not None:
+        platform_stratification = platform_table_to_dict(platform_ht)
+    else:
+        platform_stratification = None
+
     n_fake_trios = int(fake_fam_prop * len(ped.complete_trios()))
     logger.info("Generating fake Pedigree with %i trios.", n_fake_trios)
     fake_ped = create_fake_pedigree(
@@ -106,6 +127,7 @@ def run_create_fake_pedigree(
             filter_ht.filter(filter_ht.outlier_filtered, keep=False).s.collect()
         ),
         real_pedigree=ped,
+        sample_list_stratification=platform_stratification,
     )
 
     return fake_ped
@@ -114,18 +136,20 @@ def run_create_fake_pedigree(
 def run_mendel_errors(
     ped: hl.Pedigree,
     fake_ped: hl.Pedigree,
+    interval_qc_pass_ht: Optional[hl.Table] = None,
     test: bool = False,
-    interval_qc: bool = True,
 ) -> hl.Table:
     """
     Run Hail's `mendel_errors` on chr20 of the VDS subset to samples in `ped` and `fake_ped`.
 
     :param ped: Inferred Pedigree.
     :param fake_ped: Fake Pedigree.
+    :param interval_qc_pass_ht: Optional interval QC pass Table that contains an
+        'interval_qc_pass' annotation indicating whether the interval passes
+        high-quality criteria. This annotation is used to filter the MatrixTable before
+        running `mendel_errors`. Default is None.
     :param test: Whether to run on five partitions of the VDS for testing. Default is
         False.
-    :param interval_qc: Whether to use the interval QC pass Table to filter the
-        MatrixTable before running `mendel_errors`. Default is False.
     :return: Table with Mendel errors on chr20.
     """
     merged_ped = hl.Pedigree(trios=ped.trios + fake_ped.trios)
@@ -146,8 +170,7 @@ def run_mendel_errors(
     vds.variant_data = vds.variant_data.select_entries("LA", "LGT")
     mt = hl.vds.to_dense_mt(vds)
 
-    if interval_qc:
-        interval_qc_pass_ht = interval_qc_pass.ht()
+    if interval_qc_pass_ht is not None:
         mt = mt.filter_rows(interval_qc_pass_ht[mt.locus].pass_interval_qc)
 
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
@@ -156,6 +179,33 @@ def run_mendel_errors(
     mendel_err_ht, _, _, _ = hl.mendel_errors(mt["GT"], merged_ped)
 
     return mendel_err_ht
+
+
+def filter_ped_to_same_platform(
+    ped: hl.Pedigree,
+    platform_ht: hl.Table,
+) -> hl.Pedigree:
+    """
+    Filter a Pedigree to only trios where all samples are from the same platform.
+
+    :param ped: Pedigree to filter.
+    :param platform_ht: Table with platform assignments.
+    :return: Filtered Pedigree.
+    """
+    sample_to_platform = platform_table_to_dict(platform_ht)
+
+    filtered_trios = []
+    for trio in ped.trios:
+        trio_ids = [trio.s, trio.pat_id, trio.mat_id]
+        if len({sample_to_platform[s] for s in trio_ids}) == 1:
+            filtered_trios.append(trio)
+
+    logger.info(
+        "Found %i trios with all samples having the same platform assignment.",
+        len(filtered_trios),
+    )
+
+    return hl.Pedigree(filtered_trios)
 
 
 def filter_ped(
@@ -240,34 +290,6 @@ def filter_ped(
     # Filter Mendel errors Table to only errors in inferred families not from the
     # fake Pedigree.
     mendel_ht = mendel_ht.filter(mendel_ht.fam_id.startswith("fake"), keep=False)
-
-    platform_ht = platform.ht()
-    trio_ht = hl.Table.parallelize(
-        hl.literal(
-            [
-                {k: getattr(t, k) for k in ["s", "fam_id", "pat_id", "mat_id"]}
-                for t in ped.trios
-            ],
-            "array<struct{s: str, fam_id: str, pat_id: str, mat_id: str}>",
-        )
-    )
-    trio_ht = trio_ht.annotate(
-        same_platform=hl.len(
-            hl.set(
-                [
-                    platform_ht[trio_ht.s].qc_platform,
-                    platform_ht[trio_ht.pat_id].qc_platform,
-                    platform_ht[trio_ht.mat_id].qc_platform,
-                ]
-            )
-        )
-        == 1
-    )
-    same_platform_trios = trio_ht.aggregate(
-        hl.agg.filter(trio_ht.same_platform, hl.agg.collect_as_set(trio_ht.s)),
-        _localize=False,
-    )
-    mendel_ht = mendel_ht.filter(same_platform_trios.contains(mendel_ht.s))
 
     # Aggregate Mendel errors Table by sample to get per sample mendel error and
     # de novo counts.
@@ -362,7 +384,10 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
     # trio identification pipeline.
     rel_ht = relatedness()
     filter_ht = finalized_outlier_filtering()
+    platform_ht = platform
+
     pipeline_resources = {
+        "platform_inference.py --assign-platforms": {"platform_ht": platform_ht},
         "outlier_filtering.py --create-finalized-outlier-filter": {
             "filter_ht": filter_ht
         },
@@ -403,6 +428,11 @@ def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollectio
         "--run-mendel-errors",
         output_resources={"mendel_err_ht": ped_mendel_errors(test)},
         pipeline_input_steps=[infer_families, create_fake_pedigree],
+        add_input_resources={
+            "interval_qc.py --generate-interval-qc-pass-ht": {
+                "interval_qc_pass_ht": interval_qc_pass(all_platforms=True)
+            },
+        },
     )
     finalize_ped = PipelineStepResourceCollection(
         "--finalize-ped",
@@ -440,6 +470,7 @@ def main(args):
     test = args.test
     trio_resources = get_trio_resources(overwrite, test)
     trio_resources.check_resource_existence()
+    platform_ht = trio_resources.platform_ht.ht()
     filter_ht = trio_resources.filter_ht.ht()
     # Setting samples in the ELGH2 project to 'outlier_filtered' True, so they
     # are treated like outlier filtered samples when identifying trios for QC. We
@@ -474,6 +505,7 @@ def main(args):
         sex_ht = sex_ht.filter(hl.literal(SEXES).contains(sex_ht.sex_karyotype))
         sex_ht = sex_ht.annotate(is_female=sex_ht.sex_karyotype == "XX")
         ped = infer_families(rel_ht, sex_ht, res.dup_ht.ht())
+        ped = filter_ped_to_same_platform(ped, platform_ht)
         ped.write(res.raw_ped.path)
 
     if args.create_fake_pedigree:
@@ -482,6 +514,7 @@ def main(args):
         run_create_fake_pedigree(
             res.raw_ped.pedigree(),
             filter_ht,
+            platform_ht,
             fake_fam_prop=args.fake_fam_prop,
         ).write(res.fake_ped.path)
 
@@ -489,7 +522,10 @@ def main(args):
         res = trio_resources.run_mendel_errors
         res.check_resource_existence()
         run_mendel_errors(
-            res.raw_ped.pedigree(), res.fake_ped.pedigree(), test=test
+            res.raw_ped.pedigree(),
+            res.fake_ped.pedigree(),
+            res.interval_qc_pass_ht.ht(),
+            test=test,
         ).write(res.mendel_err_ht.path, overwrite=args.overwrite)
 
     if args.finalize_ped:
