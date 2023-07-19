@@ -158,30 +158,27 @@ fam_stats = VersionedTableResource(
 
 
 def get_freq(
-    version: str = CURRENT_VERSION, subset: Optional[str] = None
+    version: str = CURRENT_VERSION,
+    test: bool = False,
+    hom_alt_adjustment=False,
+    chrom: Optional[str] = None,
 ) -> VersionedTableResource:
     """
     Get the frequency annotation table for a specified release.
 
     :param version: Version of annotation path to return
-    :param subset: One of the official subsets of the specified release (e.g., non_neuro, non_cancer,
-        controls_and_biobanks) or a combination of them split by '-'
+    :param test: Whether to use a tmp path for tests.
+    :param hom_alt_adjustment: Whether to return the frequency table before the hom alt adjustment.
+    :param chrom: Chromosome to return frequency table for. Entire Table will be returned if not specified.
     :return: Hail Table containing subset or overall cohort frequency annotations
     """
-    if subset is not None:
-        for s in subset.split("-"):
-            if s not in SUBSETS:
-                raise DataException(
-                    f"{subset} subset is not one of the following official subsets:"
-                    f" {SUBSETS}"
-                )
-
+    ht_name = (
+        f"gnomad.exomes.v{version}.{'' + chrom if chrom else ''}.frequencies{'.pre_ab_adjustment' if not hom_alt_adjustment else ''}.ht"
+    )
     return VersionedTableResource(
         version,
         {
-            version: TableResource(
-                f"{_annotations_root(version)}/gnomad.exomes.v{version}.frequencies{'.' + subset if subset else ''}.ht"
-            )
+            version: TableResource(f"{_annotations_root(version, test)}/{ht_name}")
             for version in VERSIONS
         },
     )
