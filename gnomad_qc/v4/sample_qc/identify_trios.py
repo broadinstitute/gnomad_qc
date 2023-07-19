@@ -90,6 +90,10 @@ def platform_table_to_dict(platform_ht: hl.Table) -> Dict[str, str]:
     """
     Convert a Table with platform assignments to a sample:platform dictionary.
 
+    .. note::
+
+        This function assumes that the Table has a `qc_platform` field.
+
     :param platform_ht: Table with platform assignments.
     :return: Sample:platform dictionary.
     """
@@ -194,15 +198,18 @@ def filter_ped_to_same_platform(
     """
     sample_to_platform = platform_table_to_dict(platform_ht)
 
+    all_trios = ped.trios
     filtered_trios = []
-    for trio in ped.trios:
+    for trio in all_trios:
         trio_ids = [trio.s, trio.pat_id, trio.mat_id]
         if len({sample_to_platform[s] for s in trio_ids}) == 1:
             filtered_trios.append(trio)
 
     logger.info(
-        "Found %i trios with all samples having the same platform assignment.",
+        "Found %i trios (out of %i) with all samples having the same platform "
+        "assignment.",
         len(filtered_trios),
+        len(all_trios),
     )
 
     return hl.Pedigree(filtered_trios)
