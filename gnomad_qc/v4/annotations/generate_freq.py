@@ -920,6 +920,79 @@ def generate_freq_and_hists_ht(
     return freq_ht
 
 
+def merge_histograms(ht: hl.Table, indices: List[int]) -> hl.Table:
+    """
+    Merge histogram annotations.
+
+    This function merges all split histogram annotations by
+    summing the arrays in an element-wise fashion across the like histograms. Histograms
+    that should be merged are named similarly with the index as a suffix. It keeps one
+    bin_edge annotation but merges the bin_freq, n_smaller, and n_larger annotations by
+    summing them.
+    :param ht: Hail Table with histogram annotations.
+    :param indices: List of indices to merge.
+    :return: Hail Table with merged histogram annotations.
+    """
+    age_hists = ["age_hist_het", "age_hist_hom"]
+    qual_hists = [
+        "gq_hist_all",
+        "dp_hist_all",
+        "gq_hist_alt",
+        "dp_hist_alt",
+        "ab_hist_alt",
+    ]
+    hist_structs = {"qual_hists": qual_hists, "raw_qual_hists": qual_hists}
+
+    def _hist_merge(arrays: List[hl.expr.StructExpression]):
+        """
+        Merge histograms.
+
+        :param arrays: List of histogram structs to merge.
+        :return: Merged histogram struct.
+        """
+        return hl.fold(
+            lambda i, j: hl.struct(
+                **{
+                    "bin_edges": (
+                        i.bin_edges
+                    ),  # Bin edges are the same for all histograms
+                    "bin_freq": hl.zip(i.bin_freq, j.bin_freq).map(
+                        lambda x: x[0] + x[1]
+                    ),
+                    "n_smaller": i.n_smaller + j.n_smaller,
+                    "n_larger": i.n_larger + j.n_larger,
+                }
+            ),
+            arrays[0].select("bin_edges", "bin_freq", "n_smaller", "n_larger"),
+            arrays[1:],
+        )
+
+    ht = ht.annotate(
+        **{
+            age_hist: _hist_merge([ht[f"{age_hist}_{idx}"] for idx in indices])
+            for age_hist in age_hists
+        },
+        **{
+            hist_struct: hl.struct(
+                **{
+                    hist: _hist_merge(
+                        [ht[f"{hist_struct}_{idx}"][hist] for idx in indices]
+                    )
+                    for hist in hists
+                }
+            )
+            for hist_struct, hists in hist_structs.items()
+        },
+    )
+    ht = ht.annotate_globals(
+        age_distribution=_hist_merge(
+            [ht.index_globals()[f"age_distribution_{i}"] for i in indices]
+        )
+    )
+
+    return ht
+
+
 def combine_freq_hts(
     freq_hts: hl.DictExpression,
     row_annotations: List[str],
@@ -928,15 +1001,17 @@ def combine_freq_hts(
     """
     Combine frequency HTs into a single HT.
 
-    Using hail, take the first ht and add all other hts to it using the idx in each annotation,
-    i.e. freq becomes freq_1, qual_hists becomes qual_hists_1.
     :param freq_hts: Dictionary of frequency HTs.
     :param row_annotations: List of annotations to put onto one hail Table.
     :param globals_annotations: List of global annotations to put onto one hail Table.
     :return: HT with all freq_hts annotations.
     """
-    freq_ht = freq_hts[0].select().select_globals()
+    # Create new HT with just variants and downsamplings global annotation to join onto
+    freq_ht = freq_hts[0].select().select_globals("downsamplings")
 
+    # Annotate all hts' annotations with a idx suffix to the new HT. We don't remove
+    # variants when splitting the VDS so each table has all rows.
+    logger.info("Annotating frequency HT with split HT dense dependent annotations")
     freq_ht = freq_ht.annotate(
         **{
             f"{ann}_{idx}": freq_hts[idx][freq_ht.key][ann]
@@ -952,27 +1027,35 @@ def combine_freq_hts(
         }
     )
 
-    comb_freq, comb_freq_meta = merge_freq_arrays(
-        [freq_ht[f"freq_{idx}"] for idx in freq_hts.keys()],
-        [freq_ht[f"freq_meta_{idx}"] for idx in freq_hts.keys()],
+    # Combine freq arrays and high ab het counts by group arrays into single annotations
+    logger.info(
+        "Merging frequency arrays, metadata, and high ab het counts by group array..."
     )
-
-    # TODO: Check if we want to drop all _idx annotations here
+    comb_freq, comb_freq_meta, comb_high_ab_hets = merge_freq_arrays(
+        farrays=[freq_ht[f"freq_{idx}"] for idx in freq_hts.keys()],
+        fmeta=[freq_ht[f"freq_meta_{idx}"] for idx in freq_hts.keys()],
+        count_arrays=[
+            freq_ht[f"high_ab_hets_by_group_membership_{idx}"]
+            for idx in freq_hts.keys()
+        ],
+    )
+    # TODO: We want to drop all _idx annotations here but keeping them around for now for testing
+    # This could also live in the merge function, passed as a boolean parameter
     freq_ht = freq_ht.annotate(
         freq=comb_freq,
-        # TODO: this should be returned by the above function
-        high_ab_hets_by_group_membership=comb_high_ab_counts,
+        high_ab_hets_by_group_membership=comb_high_ab_hets,
     )
 
+    # Merge all histograms into single annotations
+    logger.info("Merging all histograms...")
+    freq_ht = merge_histograms(freq_ht, freq_hts.keys())
+
     freq_ht = freq_ht.annotate_globals(
-        freq_meta=comb_freq_meta,
+        freq_meta=hl.eval(comb_freq_meta),
         freq_index_dict=make_freq_index_dict_from_meta(
             freq_meta=comb_freq_meta, label_delimiter="_"
         ),
     )
-    freq_ht = freq_ht.annotate()
-
-    # TODO Merge all histograms here
 
     return freq_ht
 
@@ -1010,14 +1093,16 @@ def main(args):  # noqa: D103
         )
         vds = annotate_adj_and_select_fields(vds)
 
-        logger.info(
-            "Splitting VDS by sample annotation to reduce data size for"
-            " densification..."
-        )
-        # TODO: just add single vds to list with one entry and remove else statement
         if args.split_vds_by_annotation:
+            logger.info(
+                "Splitting VDS by sample annotation to reduce data size for"
+                " densification..."
+            )
             vds_list = split_vds(vds, split_annotation=vds.variant_data.ukb_sample)
             freq_hts = {}
+
+            # Lists of final top level row and global annotations created from dense
+            # data that we want on the frequency HT before deciding on the AF cutoff.
             final_rows_anns = [
                 "freq",
                 "high_ab_hets_by_group_membership",
@@ -1027,15 +1112,16 @@ def main(args):  # noqa: D103
                 "age_hist_hom",
             ]
             final_globals_anns = ["freq_meta", "age_distribution"]
+
+            # Make a dict of freq hts with idx as key which will be used when joining
+            # annotations. This is more straight forward to me than using joins since
+            # hail keeps the existing annotation on the left table and the right table
+            # gets a suffix added to the same annotation. This way, every table's
+            # annotation will end up with a suffix in the merge.
             for idx, vds in enumerate(vds_list):
                 freq_ht = generate_freq_and_hists_ht(vds, ab_cutoff=ab_cutoff, idx=idx)
-                freq_hts[idx] = {
-                    "ht": freq_ht,
-                    **{
-                        ann: freq_ht[ann]
-                        for ann in final_rows_anns + final_globals_anns
-                    },
-                }
+                freq_hts[idx] = freq_ht
+
             freq_ht = combine_freq_hts(freq_hts, final_rows_anns, final_globals_anns)
         else:
             freq_ht = generate_freq_and_hists_ht(vds, ab_cutoff=ab_cutoff)
