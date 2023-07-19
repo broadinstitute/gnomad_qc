@@ -222,7 +222,9 @@ def main(args):
 
         # Create backend and batch for coming annotation batch jobs
         backend = hb.ServiceBackend(
-            billing_project=args.billing_project, bucket=working_bucket
+            billing_project=args.billing_project,
+            bucket=working_bucket,
+            remote_tmpdir=args.tmp_dir_hail,
         )
 
         batch_vrs = hb.Batch(name="vrs-annotation", backend=backend)
@@ -272,9 +274,10 @@ def main(args):
 
         # Create a list of all shards of VCF
         file_dict = hl.utils.hadoop_ls(
-            f"gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz/"
+            f"gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz/part-*.bgz"
         )
-        # Note: this step took 1h20m to finish, astonishingly long.
+        # Note: this step requires using Hail 0.2.119-138d69e126bc or later, for
+        # faster listing of files in a directory with hadoop_ls.
 
         # Create a list of all file names to later annotate in parallel
         file_list = [file_item["path"].split("/")[-1] for file_item in file_dict]
@@ -341,7 +344,7 @@ def main(args):
         )
 
         annotated_file_dict = hl.utils.hadoop_ls(
-            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/"
+            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/*.vcf"
         )
 
         annotated_file_list = [
