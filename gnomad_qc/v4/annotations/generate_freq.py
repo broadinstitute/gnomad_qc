@@ -36,9 +36,7 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import (
-    get_freq,  # TODO: Need to generate this resource for raw callstats; TODO: add the args used in this script to the resource on this new branch, use old branch as reference
-)
+from gnomad_qc.v4.resources.annotations import get_freq
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources.meta import meta
 
@@ -52,13 +50,14 @@ logger.setLevel(logging.INFO)
 
 
 def get_freq_resources(
-    overwrite: bool, test: bool, chrom: str
+    overwrite: bool = False, test: Optional[bool] = False, chrom: Optional[str] = None
 ) -> PipelineResourceCollection:
     """
     Get frequency resources.
 
     :param overwrite: Whether to overwrite existing files.
     :param test: Whether to use test resources.
+    :param chrom: Chromosome used in freq calculations.
     :return: Frequency resources.
     """
     freq_pipeline = PipelineResourceCollection(
@@ -69,7 +68,7 @@ def get_freq_resources(
         "--run-freq-and-dense-annotations",
         output_resources={
             "run_freq_and_dense_annotations": get_freq(
-                test=test, hom_alt_adjustment=False, chr=chrom
+                test=test, hom_alt_adjusted=False, chrom=chrom
             ),
         },
     )
@@ -77,7 +76,7 @@ def get_freq_resources(
         "--correct-for-high-ab-hets",
         pipeline_input_steps=[run_freq_and_dense_annotations],
         output_resources={
-            "freq_ht": get_freq(test=test, hom_alt_adjustment=True, chr=chrom),
+            "freq_ht": get_freq(test=test, hom_alt_adjustedt=True, chr=chrom),
         },
     )
     freq_pipeline.add_steps(
