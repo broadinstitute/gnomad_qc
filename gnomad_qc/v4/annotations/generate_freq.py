@@ -1,7 +1,16 @@
-"""Script to generate the frequency data annotations across v4 exomes."""  # TODO: Expand on script description once nearing completion.
+"""
+Script to generate the frequency data annotations across v4 exomes.
+
+This script first splits the v4 VDS into multiples VDSs based which are then densified
+and annotated with frequency data and histograms. The VDSs are then merged back together
+in a hail Table. Next the script corrects for the high AB heterzygous GATK artifact in
+existing annotations when given the AF threshold using a high AB het array. The script
+then computes the inbreeding coefficient using the raw call stats. Finally, it computes
+the filtering allele frequency and grpmax with the AB-adjusted frequencies.
+"""
 import argparse
+import itertools
 import logging
-from itertools import itertools
 from typing import Dict, List, Optional, Union
 
 import hail as hl
@@ -30,6 +39,7 @@ from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import (
     get_freq,  # TODO: Need to generate this resource for raw callstats; TODO: add the args used in this script to the resource on this new branch, use old branch as reference
 )
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources.meta import meta
 
 logging.basicConfig(
@@ -80,45 +90,57 @@ def get_freq_resources(
 
 
 def get_vds_for_freq(
-    test_gene: hl.bool, test_n_partitions: hl.int, chrom: hl.int
+    use_test_dataset: hl.bool = False,
+    test_gene: hl.bool = False,
+    test_n_partitions: Optional[hl.int] = None,
+    chrom: Optional[hl.int] = None,
 ) -> hl.vds.VariantDataset:
     """
     Prepare VDS for frequency calculation by filtering to release samples and only adding necessary annotations.
 
+    :param use_test_dataset: Whether to use test dataset.
     :param test_gene: Whether to filter to DRD2 for testing purposes.
     :param test_n_partitions: Number of partitions to use for testing.
     :param chr: Chromosome to filter to.
     :return: Hail VDS with only necessary annotations.
     """
-    logger.info("Reading gnomAD v4 VDS...")
-    vds = vds = hl.vds.read_vds("gs://gnomad/v4.0/raw/exomes/gnomad_v4.0.vds")
+    logger.info(
+        "Reading the %s gnomAD v4 VDS...", "test" if use_test_dataset else "full"
+    )
+    if use_test_dataset:
+        vds = get_gnomad_v4_vds(test=True)
+    else:
+        vds = hl.vds.read_vds("gs://gnomad/v4.0/raw/exomes/gnomad_v4.0.vds")
+
     meta_ht = meta.ht()
     vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.release))
 
-    if test_gene:
-        logger.info("Filtering to DRD2 in VDS for testing purposes...")
-        test_interval = [
-            hl.parse_locus_interval(
-                "chr11:113409605-113475691", reference_genome="GRCh38"
+    if test_gene or test_n_partitions or chrom:
+        if test_gene:
+            logger.info("Filtering to DRD2 in VDS for testing purposes...")
+            test_interval = [
+                hl.parse_locus_interval(
+                    "chr11:113409605-113475691", reference_genome="GRCh38"
+                )
+            ]
+            vds = hl.vds.filter_intervals(
+                vds, test_interval, split_reference_blocks=True
             )
-        ]
-        vds = hl.vds.filter_intervals(vds, test_interval, split_reference_blocks=True)
-        variants, samples = vds.variant_data.count()
-        logger.info(
-            "Test VDS has %s variants in DRD2 in %s samples...", variants, samples
-        )
-    elif test_n_partitions:
-        logger.info(
-            "Filtering to %s partitions for testing purposes...", test_n_partitions
-        )
-        test_vmt = vds.variant_data._filter_partitions(range(test_n_partitions))
-        test_rmt = vds.reference_data._filter_partitions(range(test_n_partitions))
-        vds = hl.vds.VariantDataset(test_rmt, test_vmt)
-    else:
-        logger.info("Filtering to chromosome %s...", chrom)
-        vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
-    logger.info("Annotating only necessary sample metadata...")
+        elif test_n_partitions:
+            logger.info(
+                "Filtering to %s partitions for testing purposes...", test_n_partitions
+            )
+            test_vmt = vds.variant_data._filter_partitions(range(test_n_partitions))
+            test_rmt = vds.reference_data._filter_partitions(range(test_n_partitions))
+            vds = hl.vds.VariantDataset(test_rmt, test_vmt)
+        else:
+            logger.info("Filtering to chromosome %s...", chrom)
+            vds = hl.vds.filter_chromosomes(vds, keep=chrom)
+        variants, samples = vds.variant_data.count()
+        logger.info("Test VDS has %s variants in %s samples...", variants, samples)
+
+    logger.info("Annotating VDS with only necessary sample metadata...")
     vds = hl.vds.VariantDataset(
         vds.reference_data,
         vds.variant_data.annotate_cols(
@@ -142,8 +164,8 @@ def get_vds_for_freq(
         ),
     )
 
-    # Downsamplings are down outside the above function as we need to store
-    # global and row annotations
+    # Downsamplings are done outside the above function as we need to annotate
+    # globals and rows
     logger.info("Annotating downsampling groups...")
     vds = hl.vds.VariantDataset(
         vds.reference_data,
@@ -462,6 +484,7 @@ def annotate_downsamplings(
     :return: MatrixTable with downsampling annotations.
     """
     if pop_expr is not None:
+        # We need to add all pop counts to the downsamplings list
         mt = mt.annotate_cols(pop=pop_expr)
         pop_sizes = mt.aggregate_cols(hl.agg.counter(mt.pop))
         downsamplings = [x for x in downsamplings if x <= sum(pop_sizes.values())]
@@ -473,6 +496,9 @@ def annotate_downsamplings(
     downsampling_ht = downsampling_ht.order_by(downsampling_ht.r)
     scan_expr = {"global_idx": hl.scan.count()}
 
+    # Index by pop if pop_expr is provided. This was pulled out of the existing
+    # annotate_freq code. We need to do this here so that we can annotate the
+    # pop_idx field in the downsampling_expr.
     if pop_expr is not None:
         scan_expr["pop_idx"] = hl.scan.counter(downsampling_ht.pop).get(
             downsampling_ht.pop, 0
@@ -508,6 +534,10 @@ def split_vds(
     return vds_list
 
 
+# The function below is an updated copy of Tim's freq updates found here:
+# https://github.com/broadinstitute/gnomad_methods/pull/537. I've merged the
+# additional_strata_expr and added the downsampling_expr functionality
+# that supports external downsampling annotations into this function
 def annotate_freq_and_high_ab_hets(
     mt: hl.MatrixTable,
     sex_expr: Optional[hl.expr.StringExpression] = None,
@@ -642,27 +672,29 @@ def annotate_freq_and_high_ab_hets(
     sample_group_filters = []
 
     # Create downsamplings if needed
-    sample_group_filters.extend(
-        [
-            (
-                {"downsampling": str(ds), "pop": "global"},
-                mt.downsampling.global_idx < ds,
-            )
-            for ds in hl.eval(downsamplings)
-        ]
-    )
-    sample_group_filters.extend(
-        [
-            (
-                {"downsampling": str(ds), "pop": pop},
-                (mt._freq_meta.downsampling.pop_idx < ds) & (mt._freq_meta.pop == pop),
-            )
-            for ds in hl.eval(downsamplings)
-            for pop, pop_count in hl.eval(ds_pop_counts).items()
-            if (ds <= pop_count) & (pop is not None)
-        ]
-    )
-
+    if downsampling_expr is not None:
+        # Create downsampled sample groups
+        sample_group_filters.extend(
+            [
+                (
+                    {"downsampling": str(ds), "pop": "global"},
+                    mt.downsampling.global_idx < ds,
+                )
+                for ds in hl.eval(downsamplings)
+            ]
+        )
+        sample_group_filters.extend(
+            [
+                (
+                    {"downsampling": str(ds), "pop": pop},
+                    (mt._freq_meta.downsampling.pop_idx < ds)
+                    & (mt._freq_meta.pop == pop),
+                )
+                for ds in hl.eval(downsamplings)
+                for pop, pop_count in hl.eval(ds_pop_counts).items()
+                if (ds <= pop_count) & (pop is not None)
+            ]
+        )
     # Add additional groupings to strata, e.g. strata-pop, strata-sex, strata-pop-sex
     additional_strata_filters = []
     for additional_strata in additional_strata_expr:
@@ -711,7 +743,7 @@ def annotate_freq_and_high_ab_hets(
         [hl.agg.count_where(x[1]) for x in sample_group_filters]
     )
 
-    logger.info(f"number of filters: {len(sample_group_filters)}")
+    logger.info("number of filters: %i", len(sample_group_filters))
     # Annotate columns with group_membership
     mt = mt.annotate_cols(group_membership=[x[1] for x in sample_group_filters])
 
@@ -749,9 +781,7 @@ def annotate_freq_and_high_ab_hets(
 
     def needs_high_ab_het_fix(entry, col):
         return (
-            (
-                entry._het_ad / entry.DP > ab_cutoff
-            )  # TODO: Fix  is in tim's code, need to generalize commit
+            ((entry._het_ad / entry.DP) > ab_cutoff)
             & entry.adj
             & ~col.fixed_homalt_model
             & ~entry._het_non_ref
@@ -850,7 +880,9 @@ def generate_freq_and_hists_ht(
             "gatk_version": mt.gatk_version,
             "pop": mt.pop,
         },
-        {"sample_age_bin": mt.sample_age_bin},
+        {
+            "sample_age_bin": mt.sample_age_bin
+        },  # We need this to get high AB hets for age histogram correction, dont care about the frequency of it, should we drop it?
         {"ukb_sample": mt.ukb_sample},  # confirm this is how we want to name this
     ]
 
@@ -1062,9 +1094,10 @@ def combine_freq_hts(
 
 def main(args):  # noqa: D103
     """Script to generate frequency and dense dependent annotations on v4 exomes."""
-    test_gene = args.test_gene
+    use_test_dataset = args.use_test_dataset
     test_n_partitions = args.test_n_partitions
-    test = test_gene or test_n_partitions
+    test_gene = args.test_gene
+    test = use_test_dataset or test_n_partitions or test_gene
     chrom = args.chrom
     ab_cutoff = args.ab_cutoff
     af_threshold = args.af_threshold
@@ -1076,13 +1109,13 @@ def main(args):  # noqa: D103
         tmp_dir="gs://gnomad-tmp-4day",
     )
 
-    if args.run_dense_dependent_steps:
+    if args.run_freq_and_dense_annotations:
         logger.info("Running dense dependent steps...")
         resources = get_freq_resources(args.overwrite, test, chrom)
         res = resources.run_freq_and_dense_annotations
 
         logger.info("Getting VDS with fields required for splitting VDS...")
-        vds = get_vds_for_freq(test_gene, test_n_partitions, chrom)
+        vds = get_vds_for_freq(use_test_dataset, test_gene, test_n_partitions, chrom)
 
         logger.info("Spltting mutliallelics in VDS...")
         vds = hl.vds.split_multi(vds, filter_changed_loci=True)
@@ -1150,7 +1183,7 @@ def main(args):  # noqa: D103
         logger.info("Calculating InbreedingCoeff...")
         ht = compute_inbreeding_coeff(ht)
 
-        # TODO: Drop Age bins from freq fields
+        # TODO: Drop Age bins from freq fields?
         logger.info("Writing frequency table...")
         ht.describe()
         ht.write(res.freq_ht.path, overwrite=args.overwrite)
@@ -1159,9 +1192,13 @@ def main(args):  # noqa: D103
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--test-dataset",
-        help="Runs a test on two partitions of the MT.",
+        "--use-test-dataset",
+        help="Runs a test on the gnomad test dataset.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--test-gene",
+        help="Runs a test on the DRD2 gene in the gnomad test dataset.",
     )
     parser.add_argument(
         "--test-n-partitions",
