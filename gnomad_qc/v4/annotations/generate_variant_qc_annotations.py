@@ -88,12 +88,13 @@ def run_generate_trio_stats(
     vmt = vds.variant_data
     rmt = vds.reference_data
 
+    # Filter the variant data to bi-allelic sites.
+    vmt = vmt.filter_rows(hl.len(vmt.alleles) == 2)
+    vmt = vmt.transmute_entries(GT=vmt.LGT)
+
     # Filter the variant data and reference data to only the trios.
     vmt = filter_mt_to_trios(vmt, fam_ht)
     rmt = rmt.filter_cols(hl.is_defined(vmt.cols()[rmt.col_key]))
-
-    # TODO: Should we be filtering to bi-allelic?
-    vmt = vmt.filter_rows(hl.len(vmt.alleles) == 2)
 
     mt = hl.vds.densify(hl.vds.VariantDataset(rmt, vmt))
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
