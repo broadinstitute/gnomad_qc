@@ -173,14 +173,12 @@ def get_freq(
     :return: Hail Table containing subset or overall cohort frequency annotations
     """
     ht_name = (
-        f"gnomad.exomes.v{version}.{'' + chrom if chrom else ''}.frequencies{'.pre_hom_alt_adjustment' if not hom_alt_adjusted else '.hom_alt_adjusted'}.ht"
+        f"gnomad.exomes.v{version}.{'' + chrom + '.' if chrom else ''}frequencies{'.pre_hom_alt_adjustment' if not hom_alt_adjusted else '.hom_alt_adjusted'}.ht"
     )
     return VersionedTableResource(
         version,
         {
-            version: TableResource(
-                f"gs://gnomad-mwilson/v4/frequences/{ht_name}"
-            )  # {_annotations_root(version, test)}/{ht_name}")
+            version: TableResource(f"{_annotations_root(version, test)}/{ht_name}")
             for version in VERSIONS
         },
     )
