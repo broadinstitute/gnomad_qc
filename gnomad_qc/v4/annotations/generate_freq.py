@@ -923,6 +923,19 @@ def generate_freq_and_hists_ht(
         .extend(freq_ht.high_ab_hets_by_group_membership[1:])
     )
 
+    logger.info("Making freq index dict...")
+    # Add our additional strata to the sort order, keeping group, i.e. adj, at the end
+    sort_order = deepcopy(SORT_ORDER)
+    sort_order[-1:-1] = ["gatk_version", "ukb_sample", "sample_age_bin"]
+
+    freq_ht = freq_ht.annotate_globals(
+        freq_index_dict=make_freq_index_dict_from_meta(
+            freq_meta=freq_ht.freq_meta,
+            label_delimiter="_",
+            sort_order=sort_order,
+            # TODO: Check if we actually want to see age_bin, I dont think we do
+        )
+    )
     logger.info("Setting Y metrics to NA for XX groups...")
     freq_ht = freq_ht.annotate(freq=set_female_y_metrics_to_na_expr(freq_ht))
 
@@ -947,8 +960,8 @@ def generate_freq_and_hists_ht(
     freq_ht = freq_ht.annotate_globals(**final_globals_anns)
     freq_ht.describe()
     freq_ht = freq_ht.checkpoint(
-        # new_temp_file(f"freq_ht_{idx}", extension="ht"),
-        f"gs://gnomad-mwilson/v4/frequencies/test/freq_ht_{idx}.ht",
+        new_temp_file(f"freq_ht_{idx}", extension="ht"),
+        # f"gs://gnomad-mwilson/v4/frequencies/test/freq_ht_{idx}.ht",
         overwrite=args.overwrite,
         _read_if_exists=True,
     )
@@ -1092,8 +1105,8 @@ def combine_freq_hts(
     # Add our additional strata to the sort order, keeping group, i.e. adj, at the end
     sort_order = deepcopy(SORT_ORDER)
     sort_order[-1:-1] = ["gatk_version", "ukb_sample", "sample_age_bin"]
+    freq_ht = freq_ht.annotate_globals(freq_meta=hl.eval(comb_freq_meta))
     freq_ht = freq_ht.annotate_globals(
-        freq_meta=hl.eval(comb_freq_meta),
         freq_index_dict=make_freq_index_dict_from_meta(
             freq_meta=freq_ht.freq_meta,
             label_delimiter="_",
