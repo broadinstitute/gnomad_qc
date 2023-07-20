@@ -4,6 +4,8 @@ import argparse
 import logging
 
 import hail as hl
+from gnomad.assessment.validity_checks import count_vep_annotated_variants_per_interval
+from gnomad.resources.grch38.reference_data import ensembl_interval
 from gnomad.sample_qc.relatedness import filter_mt_to_trios
 from gnomad.utils.annotations import add_variant_type, annotate_allele_info
 from gnomad.utils.slack import slack_notifications
@@ -31,8 +33,10 @@ from gnomad_qc.v4.resources.annotations import (
     get_trio_stats,
     get_vep,
     info_vcf_path,
+    validate_vep_path,
 )
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.constants import CURRENT_VERSION
 from gnomad_qc.v4.resources.sample_qc import pedigree, relatedness
 
 logging.basicConfig(
@@ -132,7 +136,14 @@ def get_variant_qc_annotation_resources(
     )
     run_vep = PipelineStepResourceCollection(
         "--run-vep",
-        output_resources={"vep_ht": get_vep(test=test)},
+        output_resources={
+            "vep_ht": get_vep(version=CURRENT_VERSION, data_type="exomes", test=test)
+        },
+    )
+    validate_vep = PipelineStepResourceCollection(
+        "--validate-vep",
+        output_resources={"vep_count_ht": validate_vep_path(test=test)},
+        pipeline_input_steps=[run_vep],
     )
     generate_trio_stats = PipelineStepResourceCollection(
         "--generate-trio-stats",
@@ -158,6 +169,7 @@ def get_variant_qc_annotation_resources(
             "split_info": split_info_ann,
             "export_info_vcf": export_info_vcf,
             "run_vep": run_vep,
+            "validate_vep": validate_vep,
             "generate_trio_stats": generate_trio_stats,
             "generate_sib_stats": generate_sib_stats,
         }
@@ -224,6 +236,14 @@ def main(args):
         ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
         ht.write(res.vep_ht.path, overwrite=overwrite)
 
+    if args.validate_vep:
+        res = resources.validate_vep
+        res.check_resource_existence()
+        count_ht = count_vep_annotated_variants_per_interval(
+            res.vep_ht.ht(), ensembl_interval.ht()
+        )
+        count_ht.write(res.vep_count_ht.path, overwrite=args.overwrite)
+
     if args.generate_trio_stats:
         # TODO: Does this need to be split?
         res = resources.generate_trio_stats
@@ -263,6 +283,14 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--run-vep", help="Generates vep annotations.", action="store_true"
+    )
+    parser.add_argument(
+        "--validate-vep",
+        help=(
+            "Validate that variants in protein-coding genes are correctly annotated by"
+            " VEP."
+        ),
+        action="store_true",
     )
     parser.add_argument(
         "--vep-version",

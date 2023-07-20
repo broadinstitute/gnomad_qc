@@ -546,8 +546,15 @@ def get_sample_filter_ht(base_ht: hl.Table, relationship_ht: hl.Table) -> hl.Tab
     # Annotate control samples that are used in variant QC, but not included in the
     # release.
     control_samples = hl.literal({v["s"] for k, v in TRUTH_SAMPLES.items()})
+    # Annotate samples in the ELGH2 project. They should be excluded from the
+    # high_quality and release samples because we identified that they do not have the
+    # full set of 'AS' annotations in 'gvcf_info' so we need to exclude them from
+    # variant QC and release.
     sample_filters_ht = sample_filters_ht.annotate(
-        control=(control_samples.contains(sample_filters_ht.s))
+        control=(control_samples.contains(sample_filters_ht.s)),
+        elgh2_project=hl.coalesce(
+            meta_ht[sample_filters_ht.key].project_meta.project == "elgh2", False
+        ),
     )
     sample_filters_ht = sample_filters_ht.checkpoint(
         new_temp_file("sample_filters", extension="ht"), overwrite=True
@@ -681,7 +688,14 @@ def main(args):
     ht = get_sample_qc_meta_ht(vds.variant_data.cols().select().select_globals())
 
     logger.info("\n\nAnnotating high_quality field and releasable field.")
-    hq_expr = ~ht.sample_filters.hard_filtered & ~ht.sample_filters.outlier_filtered
+    # Excluding samples in the ELGH2 project from the high_quality and release
+    # samples because we identified that they do not have the full set of 'AS'
+    # annotations in 'gvcf_info' so we need to exclude them from variant QC and release.
+    hq_expr = (
+        ~ht.sample_filters.hard_filtered
+        & ~ht.sample_filters.outlier_filtered
+        & ~ht.sample_filters.elgh2_project
+    )
 
     ht = ht.annotate(
         high_quality=hq_expr,

@@ -539,15 +539,16 @@ To prune samples up to second degree relatedness, run `relatedness.py --compute-
 			* **regress_pop_n_pcs**: Number of population PCA scores used in regression.
 			* **regress_per_platform**: Whether the regression per platform ran.
 			* **apply_r_ti_tv_singleton_filter**: Whether the TiTv singleton filter was applied.
-			* **include_unreleasable_samples**: Whether unreleasable samples were included in the regression and filtering.
-		* **nearest_neighbor_filters_globals**: Filters used in nearest neighbor filterings.
-			* **include_unreleasable_samples**: Whether unreleasable samples were included in the regression and filtering.
+			* **include_unreleasable_in_regression**: Whether unreleasable samples were included in the regression.
+			* **include_unreleasable_in_cutoffs**: Whether unreleasable samples were included in the metric cutoff determination.
+			* **exclude_unreleasable_samples**: Whether unreleasable samples were excluded in the entire regression filtering pipeline. Unreleasable samples will have missing values for all regression filtering annotations.
+		* **nearest_neighbor_filters_globals**: Filters used in nearest neighbor filtering.
+			* **exclude_unreleasable_samples**: Whether unreleasable samples were excluded in the entire nearest neighbor filtering pipeline. Unreleasable samples will have missing values for all nearest neighbor filtering annotations.
 			* **apply_r_ti_tv_singleton_filter**: Whether the TiTv singleton filter was applied.
 			* **nearest_neighbors_platform_stratified**: Whether the nearest neighbor filtering was stratified by platform.
 			* **nearest_neighbors_approximation**: Whether the nearest neighbors approximation used the Annoy nearest neighbors algorithm.
 		* **filter_qc_metrics**: List of sample QC metrics used for the finalized outlier filtering.
 		* **ensemble_combination_operator**: Logical operator used for combining filtering methods for the ensemble method.
-		* **include_unreleasable_samples**: Whether unreleasable samples were included in filtering.
 
 * **date**: Date sample QC metadata HT was generated.
 
@@ -807,6 +808,7 @@ To prune samples up to second degree relatedness, run `relatedness.py --compute-
 		* **parent_child**: Whether a release filtered sample has a parent or child among all samples that are not hard-filtered or outlier-filtered.
 		* **sibling**: Whether a release filtered sample has a sibling among all samples that are not hard-filtered or outlier-filtered.
 	* **control**: Whether a sample is used as a control sample in variant QC assesment. This includes a synthetic-diploid (syndip) sample (a mixture of DNA from two haploid CHM cell lines) and two NA12878 samples.
+	* **elgh2_project**: Whether a sample is part of the ELGH2 project. This annotation was added because these samples should be excluded from the 'high_quality' and 'release' samples because we identified that they do not have the full set of 'AS' annotations in 'gvcf_info' so we need to exclude them from variant QC and release.
 
 * **high_quality**: Whether a sample is considered high-quality (no hard filter or sample QC metric outlier filter flags).
 
