@@ -36,7 +36,6 @@ from gnomad_qc.v4.resources.annotations import (
     validate_vep_path,
 )
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
-from gnomad_qc.v4.resources.constants import CURRENT_VERSION
 from gnomad_qc.v4.resources.sample_qc import pedigree, relatedness
 
 logging.basicConfig(
@@ -136,9 +135,7 @@ def get_variant_qc_annotation_resources(
     )
     run_vep = PipelineStepResourceCollection(
         "--run-vep",
-        output_resources={
-            "vep_ht": get_vep(version=CURRENT_VERSION, data_type="exomes", test=test)
-        },
+        output_resources={"vep_ht": get_vep(data_type="exomes", test=test)},
     )
     validate_vep = PipelineStepResourceCollection(
         "--validate-vep",
