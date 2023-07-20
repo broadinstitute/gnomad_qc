@@ -18,11 +18,7 @@ usage: python3 vrs_annotation_batch_v3.py \
 """
 
 import argparse
-import datetime
-import errno
 import logging
-import os
-import sys
 
 import hail as hl
 import hailtop.batch as hb
