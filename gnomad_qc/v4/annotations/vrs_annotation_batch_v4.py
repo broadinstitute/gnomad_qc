@@ -118,8 +118,22 @@ def init_job_with_gcloud(
         :return: New job object.
     """
     job = init_job(batch, name, image, cpu, memory, disk_size)
-    job.command(f"gcloud -q auth activate-service-account --key-file=/gsa-key/key.json")
-    job.command(f"curl -sSL broad.io/install-gcs-connector | python3")
+    # Retry gcloud auth and gsutil commands to avoid transient failures
+    job.command(
+        """
+    retry() {
+              "$@" ||
+                  (sleep 2 && "$@") ||
+                  (sleep 5 && "$@");
+    }
+    retry gcloud -q auth activate-service-account --key-file=/gsa-key/key.json
+
+    curl_and_python() {
+        curl -sSL broad.io/install-gcs-connector | python3
+    }
+    retry curl_and_python
+    """
+    )
     if mount:
         job.cloudfuse(mount, "/local-vrs-mount")
     return job
@@ -132,9 +146,10 @@ def main(args):
     hl.init(
         backend=args.backend_mode,
         tmp_dir=args.tmp_dir_hail,
-        gcs_requester_pays_configuration="gnomad-vrs",
+        gcs_requester_pays_configuration="broad-mpg-gnomad",
         default_reference="GRCh38",
         global_seed=args.hail_rand_seed,
+        regions=["us-central1"],
     )
 
     logger.info(f"Hail version as: {hl.version()}")
@@ -206,7 +221,9 @@ def main(args):
 
         # Create backend and batch for coming annotation batch jobs
         backend = hb.ServiceBackend(
-            billing_project=args.billing_project, bucket=working_bucket
+            billing_project=args.billing_project,
+            bucket=working_bucket,
+            remote_tmpdir=args.tmp_dir_hail,
         )
 
         batch_vrs = hb.Batch(name="vrs-annotation", backend=backend)
@@ -258,6 +275,8 @@ def main(args):
         file_dict = hl.utils.hadoop_ls(
             f"gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz/part-*.bgz"
         )
+        # Note: this step requires using Hail 0.2.119-138d69e126bc or later, for
+        # faster listing of files in a directory with hadoop_ls.
 
         # Create a list of all file names to later annotate in parallel
         file_list = [file_item["path"].split("/")[-1] for file_item in file_dict]
