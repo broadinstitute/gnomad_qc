@@ -296,16 +296,39 @@ interval_qc = VersionedTableResource(
     },
 )
 
-# Table with interval QC pass annotation.
-interval_qc_pass = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/interval_qc/gnomad.exomes.v{version}.interval_qc_pass.ht"
-        )
-        for version in VERSIONS
-    },
-)
+
+def interval_qc_pass(
+    per_platform: bool = False,
+    all_platforms: bool = False,
+) -> VersionedTableResource:
+    """
+    Get the VersionedTableResource for Table with interval QC pass annotation.
+
+    :param per_platform: Whether to use the interval QC pass resource with interval QC
+        pass per platform.
+    :param all_platforms: Whether to use the interval QC pass resource where an
+        interval passes QC only if it passes interval QC per platform across all
+        platforms.
+    :return: VersionedTableResource for Table with interval QC pass annotation.
+    """
+    if per_platform and all_platforms:
+        raise ValueError("Only one of 'per_platform' and 'all_platforms' can be True!")
+    elif per_platform:
+        postfix = ".per_platform"
+    elif all_platforms:
+        postfix = ".all_platforms"
+    else:
+        postfix = ""
+
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version)}/interval_qc/gnomad.exomes.v{version}.interval_qc_pass{postfix}.ht"
+            )
+            for version in VERSIONS
+        },
+    )
 
 
 ######################################################################
@@ -942,7 +965,7 @@ def ped_mendel_errors(test: bool = False) -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.mendel_errors.samples.ht"
+                f"{get_sample_qc_root(version, test, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.mendel_errors.samples.interval_qc.ht"
             )
             for version in VERSIONS
         },
