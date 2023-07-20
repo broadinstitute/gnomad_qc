@@ -178,7 +178,9 @@ def get_freq(
     return VersionedTableResource(
         version,
         {
-            version: TableResource(f"{_annotations_root(version, test)}/{ht_name}")
+            version: TableResource(
+                f"gs://gnomad-mwilson/v4/frequences/{ht_name}"
+            )  # {_annotations_root(version, test)}/{ht_name}")
             for version in VERSIONS
         },
     )

@@ -11,6 +11,7 @@ the filtering allele frequency and grpmax with the AB-adjusted frequencies.
 import argparse
 import itertools
 import logging
+from copy import deepcopy
 from typing import Dict, List, Optional, Union
 
 import hail as hl
@@ -67,7 +68,7 @@ def get_freq_resources(
     run_freq_and_dense_annotations = PipelineStepResourceCollection(
         "--run-freq-and-dense-annotations",
         output_resources={
-            "run_freq_and_dense_annotations": get_freq(
+            "freq_and_dense_annotations": get_freq(
                 test=test, hom_alt_adjusted=False, chrom=chrom
             ),
         },
@@ -76,7 +77,7 @@ def get_freq_resources(
         "--correct-for-high-ab-hets",
         pipeline_input_steps=[run_freq_and_dense_annotations],
         output_resources={
-            "freq_ht": get_freq(test=test, hom_alt_adjustedt=True, chr=chrom),
+            "freq_ht": get_freq(test=test, hom_alt_adjusted=True, chrom=chrom),
         },
     )
     freq_pipeline.add_steps(
@@ -136,8 +137,12 @@ def get_vds_for_freq(
         else:
             logger.info("Filtering to chromosome %s...", chrom)
             vds = hl.vds.filter_chromosomes(vds, keep=chrom)
-        variants, samples = vds.variant_data.count()
-        logger.info("Test VDS has %s variants in %s samples...", variants, samples)
+
+    (
+        variants,
+        samples,
+    ) = vds.variant_data.count()  # TODO: Remove this logger after tests?
+    logger.info("VDS has %s variants in %s samples...", variants, samples)
 
     logger.info("Annotating VDS with only necessary sample metadata...")
     vds = hl.vds.VariantDataset(
@@ -485,9 +490,9 @@ def annotate_downsamplings(
     if pop_expr is not None:
         # We need to add all pop counts to the downsamplings list
         mt = mt.annotate_cols(pop=pop_expr)
-        pop_sizes = mt.aggregate_cols(hl.agg.counter(mt.pop))
-        downsamplings = [x for x in downsamplings if x <= sum(pop_sizes.values())]
-        downsamplings = sorted(set(downsamplings + list(pop_sizes.values())))
+        pop_counts = mt.aggregate_cols(hl.agg.counter(mt.pop))
+        downsamplings = [x for x in downsamplings if x <= sum(pop_counts.values())]
+        downsamplings = sorted(set(downsamplings + list(pop_counts.values())))
 
     logger.info("Found %i downsamplings: %s", len(downsamplings), downsamplings)
     downsampling_ht = mt.cols()
@@ -508,7 +513,7 @@ def annotate_downsamplings(
     mt = mt.annotate_cols(downsampling=downsampling_ht[mt.s])
     mt = mt.annotate_globals(
         downsamplings=downsamplings,
-        ds_pop_sizes=pop_sizes if pop_expr is not None else None,
+        ds_pop_counts=pop_counts if pop_expr is not None else None,
     )
 
     return mt
@@ -620,25 +625,30 @@ def annotate_freq_and_high_ab_hets(
     """
     if downsampling_expr is not None and downsamplings is None:
         raise NotImplementedError(
-            "annotate_freq requires downsamplings when using downsampling_expr"
+            "annotate_freq requires `downsamplings` when using `downsampling_expr`"
         )
 
-    if downsampling_expr.get("pop_idx") is not None and pop_expr is None:
+    if (
+        downsampling_expr.get("pop_idx") is not None
+        and pop_expr is None
+        and ds_pop_counts is None
+    ):
         raise NotImplementedError(
-            "annotate_freq requires pop_expr when using downsampling_expr with pop_idx"
+            "annotate_freq requires `pop_expr` and `ds_pop_counts` when using"
+            " `downsampling_expr` with pop_idx"
         )
 
     if downsampling_expr is not None and downsampling_expr.get("global_idx") is None:
         raise NotImplementedError(
-            "annotate_freq requires downsampling_expr with key 'global_idx'"
+            "annotate_freq requires `downsampling_expr` with key 'global_idx'"
         )
 
     if downsampling_expr is not None and (
         downsampling_expr.get("pop_idx") is None and pop_expr is not None
     ):
         raise NotImplementedError(
-            "annotate_freq requires downsampling_expr with key 'pop_idx' when using"
-            " pop_expr"
+            "annotate_freq requires `downsampling_expr` with key 'pop_idx' when using"
+            " `pop_expr`"
         )
 
     if additional_strata_expr is None:
@@ -822,7 +832,7 @@ def annotate_freq_and_high_ab_hets(
             AC=cs.AC[1],
             AF=cs.AF[
                 1
-            ],  # TODO This is NA in case AC and AN are 0 -- should we set it to 0?
+            ],  # TODO: This is NA in case AC and AN are 0 -- should we set it to 0?
             homozygote_count=cs.homozygote_count[1],
         )
     )
@@ -891,6 +901,7 @@ def generate_freq_and_hists_ht(
         pop_expr=mt.pop,
         downsamplings=mt.downsamplings,
         downsampling_expr=mt.downsampling,
+        ds_pop_counts=mt.ds_pop_counts,
         additional_strata_expr=additional_strata_expr,
         ab_cutoff=ab_cutoff,
     )
@@ -913,11 +924,15 @@ def generate_freq_and_hists_ht(
     )
 
     logger.info("Making freq index dict...")
+    # Add our additional strata to the sort order, keeping group, i.e. adj, at the end
+    sort_order = deepcopy(SORT_ORDER)
+    sort_order[-1:-1] = ["gatk_version", "ukb_sample", "sample_age_bin"]
+
     freq_ht = freq_ht.annotate_globals(
         freq_index_dict=make_freq_index_dict_from_meta(
             freq_meta=freq_ht.freq_meta,
             label_delimiter="_",
-            sort_order=SORT_ORDER.insert(-1, "gatk_version"),
+            sort_order=sort_order,
             # TODO: Check if we actually want to see age_bin, I dont thin we do
         )
     )
@@ -943,6 +958,7 @@ def generate_freq_and_hists_ht(
     final_globals_anns.update({"age_distribution": mt.index_globals().age_distribution})
     freq_ht = freq_ht.annotate(**final_rows_anns)
     freq_ht = freq_ht.annotate_globals(**final_globals_anns)
+    freq_ht.describe()
     freq_ht = freq_ht.checkpoint(
         new_temp_file(f"freq_ht{idx}", extension="ht"),
         overwrite=args.overwrite,
@@ -1038,7 +1054,7 @@ def combine_freq_hts(
     :return: HT with all freq_hts annotations.
     """
     # Create new HT with just variants and downsamplings global annotation to join onto
-    freq_ht = freq_hts[0].select().select_globals("downsamplings")
+    freq_ht = freq_hts[1].select().select_globals("downsamplings")
 
     # Annotate all hts' annotations with a idx suffix to the new HT. We don't remove
     # variants when splitting the VDS so each table has all rows.
@@ -1107,11 +1123,12 @@ def main(args):  # noqa: D103
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
+    resources = get_freq_resources(args.overwrite, test, chrom)
 
     if args.run_freq_and_dense_annotations:
         logger.info("Running dense dependent steps...")
-        resources = get_freq_resources(args.overwrite, test, chrom)
         res = resources.run_freq_and_dense_annotations
+        res.check_resource_existence()
 
         logger.info("Getting VDS with fields required for splitting VDS...")
         vds = get_vds_for_freq(use_test_dataset, test_gene, test_n_partitions, chrom)
@@ -1150,7 +1167,7 @@ def main(args):  # noqa: D103
             # hail keeps the existing annotation on the left table and the right table
             # gets a suffix added to the same annotation. This way, every table's
             # annotation will end up with a suffix in the merge.
-            for idx, vds in enumerate(vds_list):
+            for idx, vds in enumerate(vds_list, start=1):
                 freq_ht = generate_freq_and_hists_ht(vds, ab_cutoff=ab_cutoff, idx=idx)
                 freq_hts[idx] = freq_ht
 
@@ -1158,14 +1175,15 @@ def main(args):  # noqa: D103
         else:
             freq_ht = generate_freq_and_hists_ht(vds, ab_cutoff=ab_cutoff)
 
-        freq_ht.write(res.freq_high_ab_ht.path, overwrite=args.overwrite)
+        freq_ht.write(res.freq_and_dense_annotations.path, overwrite=args.overwrite)
 
     if correct_for_high_ab_hets:
         logger.info(
             "Adjusting annotations impacted by high AB het -> hom alt adjustment..."
         )
-        res = resources.correct_call_stats
-        ht = res.freq_high_ab_ht.ht()
+        res = resources.correct_for_high_ab_hets
+        res.check_resource_existence()
+        ht = res.freq_and_dense_annotations.ht()
 
         logger.info("Correcting call stats...")
         ht = correct_call_stats(ht, af_threshold)
@@ -1198,6 +1216,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test-gene",
         help="Runs a test on the DRD2 gene in the gnomad test dataset.",
+        action="store_true",
     )
     parser.add_argument(
         "--test-n-partitions",
