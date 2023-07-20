@@ -52,11 +52,10 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
     )
 
 
-def get_vep(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def get_vep(test: bool = False) -> str:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource.
 
-    :param version: Version of annotation path to return.
     :param test: Whether to use a tmp path for testing.
     :return: gnomAD v4 VEP VersionedTableResource.
     """
@@ -67,6 +66,42 @@ def get_vep(version: str = CURRENT_VERSION, test: bool = False) -> str:
                 path=(
                     f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.vep.ht"
                 )
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def get_trio_stats(test: bool = False) -> str:
+    """
+    Get the gnomAD v4 trio stats VersionedTableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :return: gnomAD v4 trio stats VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.trio_stats.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def get_sib_stats(test: bool = False) -> str:
+    """
+    Get the gnomAD v4 sibling stats VersionedTableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :return: gnomAD v4 sibling stats VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.sib_stats.ht"
             )
             for version in VERSIONS
         },
@@ -141,16 +176,6 @@ qual_hist = VersionedTableResource(
     {
         version: TableResource(
             f"{_annotations_root(version)}/gnomad.exomes.v{version}.qual_hists.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-fam_stats = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{_annotations_root(version)}/gnomad.exomes.v{version}.qc_fam_stats.ht"
         )
         for version in VERSIONS
     },

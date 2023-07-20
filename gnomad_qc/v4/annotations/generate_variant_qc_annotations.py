@@ -4,6 +4,7 @@ import argparse
 import logging
 
 import hail as hl
+from gnomad.sample_qc.relatedness import filter_mt_to_trios
 from gnomad.utils.annotations import add_variant_type, annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
@@ -17,14 +18,22 @@ from gnomad.utils.sparse_mt import (
 )
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from gnomad.utils.vep import vep_or_lookup_vep
+from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import get_info, get_vep, info_vcf_path
+from gnomad_qc.v4.resources.annotations import (
+    get_info,
+    get_sib_stats,
+    get_trio_stats,
+    get_vep,
+    info_vcf_path,
+)
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.sample_qc import pedigree, relatedness
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -56,6 +65,37 @@ def split_info(info_ht: hl.Table) -> hl.Table:
     )
 
     return info_ht
+
+
+def run_generate_trio_stats(
+    vds: hl.vds.VariantDataset,
+    fam_ped: hl.Pedigree,
+    fam_ht: hl.Table,
+) -> hl.Table:
+    """
+    Generate trio transmission stats from a VariantDataset and pedigree info.
+
+    :param vds: VariantDataset to generate trio stats from.
+    :param fam_ped: Pedigree containing trio info.
+    :param fam_ht: Table containing trio info.
+    :return: Table containing trio stats.
+    """
+    # Filter the VDS to autosomes.
+    vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
+    vmt = vds.variant_data
+    rmt = vds.reference_data
+
+    # Filter the variant data and reference data to only the trios.
+    vmt = filter_mt_to_trios(vmt, fam_ht)
+    rmt = rmt.filter_cols(hl.is_defined(vmt.cols()[rmt.col_key]))
+
+    # TODO: Should we be filtering to bi-allelic?
+    vmt = vmt.filter_rows(hl.len(vmt.alleles) == 2)
+
+    mt = hl.vds.densify(hl.vds.VariantDataset(rmt, vmt))
+    mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
+
+    return generate_trio_stats(mt, bi_allelic_only=False)
 
 
 def get_variant_qc_annotation_resources(
@@ -94,6 +134,22 @@ def get_variant_qc_annotation_resources(
         "--run-vep",
         output_resources={"vep_ht": get_vep(test=test)},
     )
+    generate_trio_stats = PipelineStepResourceCollection(
+        "--generate-trio-stats",
+        output_resources={"trio_stats_ht": get_trio_stats(test=test)},
+        input_resources={
+            "identify_trios.py --finalize-ped": {"final_ped": pedigree(test=test)}
+        },
+    )
+    generate_sib_stats = PipelineStepResourceCollection(
+        "--generate-sib-stats",
+        output_resources={"sib_stats_ht": get_sib_stats(test=test)},
+        input_resources={
+            "relatedness.py --finalize-relatedness-ht": {
+                "rel_ht": relatedness(test=test)
+            }
+        },
+    )
 
     # Add all steps to the variant QC annotation pipeline resource collection.
     ann_pipeline.add_steps(
@@ -102,6 +158,8 @@ def get_variant_qc_annotation_resources(
             "split_info": split_info_ann,
             "export_info_vcf": export_info_vcf,
             "run_vep": run_vep,
+            "generate_trio_stats": generate_trio_stats,
+            "generate_sib_stats": generate_sib_stats,
         }
     )
 
@@ -121,13 +179,16 @@ def main(args):
     run_vep = args.run_vep
     overwrite = args.overwrite
     resources = get_variant_qc_annotation_resources(test=test, overwrite=overwrite)
-    mt = get_gnomad_v4_vds(
+    # TODO: Need to change this, reload in run_vep
+    # TODO: Can't change alleles when filter UKB samples.
+    vds = get_gnomad_v4_vds(
         test=test_dataset,
         high_quality_only=False if run_vep else True,
         # Keep control/truth samples because they are used in variant QC.
         keep_controls=False if run_vep else True,
         annotate_meta=False if run_vep else True,
-    ).variant_data
+    )
+    mt = vds.variant_data
 
     if test_n_partitions:
         mt = mt._filter_partitions(range(test_n_partitions))
@@ -161,7 +222,19 @@ def main(args):
         res.check_resource_existence()
         ht = hl.split_multi(mt.rows())
         ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
-        ht.write(res.vep_ht.path, overwrite=args.overwrite)
+        ht.write(res.vep_ht.path, overwrite=overwrite)
+
+    if args.generate_trio_stats:
+        res = resources.generate_trio_stats
+        res.check_resource_existence()
+        ht = run_generate_trio_stats(vds, res.final_ped.pedigree(), res.final_ped.ht())
+        ht.write(res.trio_stats_ht.path, overwrite=overwrite)
+
+    if args.generate_sibling_stats:
+        res = resources.generate_trio_stats
+        res.check_resource_existence()
+        ht = generate_sib_stats(mt, res.rel_ht, bi_allelic_only=False)
+        ht.write(res.sib_stats_ht.path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
@@ -192,6 +265,14 @@ if __name__ == "__main__":
         "--vep-version",
         help="Version of VEPed context Table to use in vep_or_lookup_vep.",
         default="105",
+    )
+    parser.add_argument(
+        "--generate-trio-stats", help="Calculates trio stats", action="store_true"
+    )
+    parser.add_argument(
+        "--generate-sibling-stats",
+        help="Calculated sibling variant sharing stats",
+        action="store_true",
     )
 
     args = parser.parse_args()
