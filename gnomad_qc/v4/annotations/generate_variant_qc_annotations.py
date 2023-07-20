@@ -145,17 +145,13 @@ def get_variant_qc_annotation_resources(
     generate_trio_stats = PipelineStepResourceCollection(
         "--generate-trio-stats",
         output_resources={"trio_stats_ht": get_trio_stats(test=test)},
-        input_resources={
-            "identify_trios.py --finalize-ped": {"final_ped": pedigree(test=test)}
-        },
+        input_resources={"identify_trios.py --finalize-ped": {"final_ped": pedigree()}},
     )
     generate_sib_stats = PipelineStepResourceCollection(
         "--generate-sib-stats",
         output_resources={"sib_stats_ht": get_sib_stats(test=test)},
         input_resources={
-            "relatedness.py --finalize-relatedness-ht": {
-                "rel_ht": relatedness(test=test)
-            }
+            "relatedness.py --finalize-relatedness-ht": {"rel_ht": relatedness()}
         },
     )
 
