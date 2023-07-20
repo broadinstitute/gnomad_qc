@@ -191,14 +191,12 @@ def main(args):
     run_vep = args.run_vep
     overwrite = args.overwrite
     resources = get_variant_qc_annotation_resources(test=test, overwrite=overwrite)
-    # TODO: Need to change this, reload in run_vep
-    # TODO: Can't change alleles when filter UKB samples.
     vds = get_gnomad_v4_vds(
         test=test_dataset,
-        high_quality_only=False if run_vep else True,
+        high_quality_only=True,
         # Keep control/truth samples because they are used in variant QC.
-        keep_controls=False if run_vep else True,
-        annotate_meta=False if run_vep else True,
+        keep_controls=True,
+        annotate_meta=True,
     )
     mt = vds.variant_data
 
@@ -232,7 +230,7 @@ def main(args):
     if run_vep:
         res = resources.run_vep
         res.check_resource_existence()
-        ht = hl.split_multi(mt.rows())
+        ht = hl.split_multi(get_gnomad_v4_vds(test=test_dataset).variant_dataset.rows())
         ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
         ht.write(res.vep_ht.path, overwrite=overwrite)
 
@@ -245,17 +243,14 @@ def main(args):
         count_ht.write(res.vep_count_ht.path, overwrite=args.overwrite)
 
     if args.generate_trio_stats:
-        # TODO: Does this need to be split?
         res = resources.generate_trio_stats
         res.check_resource_existence()
         ht = run_generate_trio_stats(vds, res.final_ped.pedigree(), res.final_ped.ht())
         ht.write(res.trio_stats_ht.path, overwrite=overwrite)
 
     if args.generate_sibling_stats:
-        # TODO: Does this need to be split?
-        res = resources.generate_trio_stats
+        res = resources.generate_sib_stats
         res.check_resource_existence()
-        # TODO: Should we use bi-allelic only?
         ht = generate_sib_stats(mt, res.rel_ht)
         ht.write(res.sib_stats_ht.path, overwrite=overwrite)
 

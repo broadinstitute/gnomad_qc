@@ -74,71 +74,75 @@ def get_gnomad_v4_vds(
     else:
         vds = gnomad_v4_resource.vds()
 
-    # Count current number of samples in the VDS.
-    n_samples = vds.variant_data.count_cols()
+    # We don't need to do the UKB sample removal if we're only keeping high quality or
+    # release samples since they will not be in either of those sets.
+    if not high_quality_only and not release_only:
+        # Count current number of samples in the VDS.
+        n_samples = vds.variant_data.count_cols()
 
-    # Remove 75 withdrawn UKB samples (samples with withdrawn consents for application
-    # 31063 on 02/22/2022).
-    ukb_application_map_ht = ukb_application_map.ht()
-    withdrawn_ukb_samples = ukb_application_map_ht.filter(
-        ukb_application_map_ht.withdraw
-    ).s.collect()
+        # Remove 75 withdrawn UKB samples (samples with withdrawn consents for
+        # application 31063 on 02/22/2022).
+        ukb_application_map_ht = ukb_application_map.ht()
+        withdrawn_ukb_samples = ukb_application_map_ht.filter(
+            ukb_application_map_ht.withdraw
+        ).s.collect()
 
-    # Remove 43 samples that are known to be on the pharma's sample remove list. See:
-    # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308.
-    dups_ht = ukb_known_dups.ht()
-    ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
+        # Remove 43 samples that are known to be on the pharma's sample remove list.
+        # See:
+        # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308.
+        dups_ht = ukb_known_dups.ht()
+        ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
 
-    # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS). See:
-    # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286.
-    # Confirmed that the col_idx of the 27 dup samples in the original UKB MT match
-    # the col_idx of the dup UKB samples in the VDS.
-    dup_ids = []
-    with hl.hadoop_open(ukb_dups_idx_path, "r") as d:
-        for line in d:
-            line = line.strip().split("\t")
-            dup_ids.append(f"{line[0]}_{line[1]}")
+        # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS). See:
+        # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286.
+        # Confirmed that the col_idx of the 27 dup samples in the original UKB MT match
+        # the col_idx of the dup UKB samples in the VDS.
+        dup_ids = []
+        with hl.hadoop_open(ukb_dups_idx_path, "r") as d:
+            for line in d:
+                line = line.strip().split("\t")
+                dup_ids.append(f"{line[0]}_{line[1]}")
 
-    def _remove_ukb_dup_by_index(
-        mt: hl.MatrixTable, dup_ids: hl.expr.ArrayExpression
-    ) -> hl.MatrixTable:
-        """
-        Remove UKB samples with exact duplicate names based on column index.
+        def _remove_ukb_dup_by_index(
+            mt: hl.MatrixTable, dup_ids: hl.expr.ArrayExpression
+        ) -> hl.MatrixTable:
+            """
+            Remove UKB samples with exact duplicate names based on column index.
 
-        :param mt: MatrixTable of either the variant data or reference data of a VDS
-        :param dup_ids: ArrayExpression of UKB samples to remove in format of <sample_name>_<col_idx>
-        :return: MatrixTable of UKB samples with exact duplicate names removed based on column index
-        """
-        mt = mt.add_col_index()
-        mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
-        mt = mt.filter_cols(~dup_ids.contains(mt.new_s)).drop("new_s", "col_idx")
-        return mt
+            :param mt: MatrixTable of either the variant data or reference data of a VDS
+            :param dup_ids: ArrayExpression of UKB samples to remove in format of <sample_name>_<col_idx>
+            :return: MatrixTable of UKB samples with exact duplicate names removed based on column index
+            """
+            mt = mt.add_col_index()
+            mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
+            mt = mt.filter_cols(~dup_ids.contains(mt.new_s)).drop("new_s", "col_idx")
+            return mt
 
-    dup_ids = hl.literal(dup_ids)
-    vd = _remove_ukb_dup_by_index(vds.variant_data, dup_ids)
-    rd = _remove_ukb_dup_by_index(vds.reference_data, dup_ids)
-    vds = hl.vds.VariantDataset(rd, vd)
+        dup_ids = hl.literal(dup_ids)
+        vd = _remove_ukb_dup_by_index(vds.variant_data, dup_ids)
+        rd = _remove_ukb_dup_by_index(vds.reference_data, dup_ids)
+        vds = hl.vds.VariantDataset(rd, vd)
 
-    # Filter withdrawn samples from the VDS.
-    withdrawn_ids = withdrawn_ukb_samples + ids_to_remove + hl.eval(dup_ids)
-    withdrawn_ids = [i for i in withdrawn_ids if i is not None]
+        # Filter withdrawn samples from the VDS.
+        withdrawn_ids = withdrawn_ukb_samples + ids_to_remove + hl.eval(dup_ids)
+        withdrawn_ids = [i for i in withdrawn_ids if i is not None]
 
-    logger.info("Total number of UKB samples to exclude: %d", len(withdrawn_ids))
+        logger.info("Total number of UKB samples to exclude: %d", len(withdrawn_ids))
 
-    vds = hl.vds.filter_samples(
-        vds,
-        withdrawn_ids,
-        keep=False,
-        remove_dead_alleles=remove_dead_alleles,
-    )
+        vds = hl.vds.filter_samples(
+            vds,
+            withdrawn_ids,
+            keep=False,
+            remove_dead_alleles=remove_dead_alleles,
+        )
 
-    # Log number of UKB samples removed from the VDS.
-    n_samples_after_exclusion = vds.variant_data.count_cols()
-    n_samples_removed = n_samples - n_samples_after_exclusion
+        # Log number of UKB samples removed from the VDS.
+        n_samples_after_exclusion = vds.variant_data.count_cols()
+        n_samples_removed = n_samples - n_samples_after_exclusion
 
-    logger.info(
-        "Total number of UKB samples removed from the VDS: %d", n_samples_removed
-    )
+        logger.info(
+            "Total number of UKB samples removed from the VDS: %d", n_samples_removed
+        )
 
     if (
         high_quality_only
