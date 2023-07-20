@@ -225,15 +225,18 @@ def main(args):
         ht.write(res.vep_ht.path, overwrite=overwrite)
 
     if args.generate_trio_stats:
+        # TODO: Does this need to be split?
         res = resources.generate_trio_stats
         res.check_resource_existence()
         ht = run_generate_trio_stats(vds, res.final_ped.pedigree(), res.final_ped.ht())
         ht.write(res.trio_stats_ht.path, overwrite=overwrite)
 
     if args.generate_sibling_stats:
+        # TODO: Does this need to be split?
         res = resources.generate_trio_stats
         res.check_resource_existence()
-        ht = generate_sib_stats(mt, res.rel_ht, bi_allelic_only=False)
+        # TODO: Should we use bi-allelic only?
+        ht = generate_sib_stats(mt, res.rel_ht)
         ht.write(res.sib_stats_ht.path, overwrite=overwrite)
 
 
