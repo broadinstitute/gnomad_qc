@@ -239,9 +239,9 @@ def correct_call_stats(ht: hl.Table, af_threshold: float = 0.01) -> hl.Table:
             hl.map(
                 lambda f, g: hl.struct(
                     AC=hl.int32(f.AC + g),
-                    AF=hl.if_else(f.AN > 0, (f.AC + g) / f.AN, hl.missing(hl.tfloat64)),
                     AN=f.AN,
                     homozygote_count=f.homozygote_count + g,
+                    AF=hl.if_else(f.AN > 0, (f.AC + g) / f.AN, hl.missing(hl.tfloat64)),
                 ),
                 ht.freq,
                 ht.high_ab_hets_by_group_membership,
@@ -253,13 +253,13 @@ def correct_call_stats(ht: hl.Table, af_threshold: float = 0.01) -> hl.Table:
     return ht
 
 
-def create_high_ab_age_hists(ht: hl.Table, age_group_key="sample_age_bin") -> hl.Table:
+def create_high_ab_age_hists_expr(ht: hl.Table, age_group_key="sample_age_bin"):
     """
-    Create age histograms of high ab counts to account for high AB hets becoming hom alts.
+    Create histograms of high ab counts using age bins to account for high AB hets becoming hom alts.
 
     :param ht: Hail Table containing age hists, AB annotation.
     :param age_group_key: Age group key to use for age histogram.
-    :return: Hail Table
+    :return: Hail struct containing age histogram of high ab counts.
     """
     non_range_entries = hl.set(["n_larger", "n_smaller"])
     age_bins_indices = hl.sorted(
@@ -272,19 +272,15 @@ def create_high_ab_age_hists(ht: hl.Table, age_group_key="sample_age_bin") -> hl
     age_bin_indices_no_edges = age_bins_indices.filter(
         lambda x: ~non_range_entries.contains(x[0])
     )
-    ht = ht.annotate(
-        age_high_ab_hist=hl.struct(
-            bin_freq=hl.starmap(
-                lambda x, y: ht.high_ab_hets_by_group_membership[y],
-                age_bin_indices_no_edges,
-            ),
-            n_smaller=ht.high_ab_hets_by_group_membership[
-                age_bins_indices_dict["n_smaller"]
-            ],
-            n_larger=ht.high_ab_hets_by_group_membership[
-                age_bins_indices_dict["n_larger"]
-            ],
-        )
+    return hl.struct(
+        bin_freq=hl.starmap(
+            lambda x, y: ht.high_ab_hets_by_group_membership[y],
+            age_bin_indices_no_edges,
+        ),
+        n_smaller=ht.high_ab_hets_by_group_membership[
+            age_bins_indices_dict["n_smaller"]
+        ],
+        n_larger=ht.high_ab_hets_by_group_membership[age_bins_indices_dict["n_larger"]],
     )
 
 
@@ -345,10 +341,13 @@ def correct_age_hists(ht: hl.Table) -> hl.Table:
     :param ht: Hail Table containing age hists and hist of AB counts by age annotation.
     :return: Hail Table
     """
+    ht = ht.annotate(age_high_ab_hist=create_high_ab_age_hists_expr(ht))
+
     return ht.annotate(
         age_hist_het=hl.struct(
+            bin_edges=ht.age_hist_het.bin_edges,
             bin_freq=hl.map(
-                lambda x, y: x.bin_freq - y.bin_freq,
+                lambda x, y: x - y,
                 ht.age_hist_het.bin_freq,
                 ht.age_high_ab_hist.bin_freq,
             ),
@@ -356,8 +355,9 @@ def correct_age_hists(ht: hl.Table) -> hl.Table:
             n_larger=ht.age_hist_het.n_larger - ht.age_high_ab_hist.n_larger,
         ),
         age_hist_hom=hl.struct(
+            bin_edges=ht.age_hist_hom.bin_edges,
             bin_freq=hl.map(
-                lambda x, y: x.bin_freq + y.bin_freq,
+                lambda x, y: x + y,
                 ht.age_hist_hom.bin_freq,
                 ht.age_high_ab_hist.bin_freq,
             ),
@@ -421,13 +421,12 @@ def correct_qual_hists(ht: hl.Table) -> hl.Table:  # add ab_threshold as arg
             n_larger=0,
         )
 
+    qual_hists = ["qual_hists", "raw_qual_hists"]
     ht = ht.annotate(
-        qual_hist=ht.qual_hist.annotate(
-            ab_hist_alt=_correct_ab_hist_alt(ht.qual_hists.ab_hist_alt)
-        ),
-        raw_qual_hist=ht.raw_qual_hist.annotate(
-            ab_hist_alt=_correct_ab_hist_alt(ht.raw_qual_hists.ab_hist_alt)
-        ),
+        **{
+            x: ht[x].annotate(ab_hist_alt=_correct_ab_hist_alt(ht[x].ab_hist_alt))
+            for x in qual_hists
+        }
     )
     return ht
 
@@ -1211,7 +1210,12 @@ def main(args):  # noqa: D103
         logger.info("Calculating InbreedingCoeff...")
         ht = compute_inbreeding_coeff(ht)
 
-        # TODO: Drop Age bins from freq fields?
+        # TODO: Leaving in know while we test but need to drop fields we do not want
+        # -- 'age_high_ab_his', all annotations from the split VDSs, only keep combinged,
+        # rename ab_adjusted_freq to just freq and decide if we want to store uncorrect?
+        # Probably,just rename it, also remove age bins and gatk versions from freq fields?
+        # Also, change captialization of hists depending on decision from DP slack
+        # thread
         logger.info("Writing frequency table...")
         ht.describe()
         ht.write(res.freq_ht.path, overwrite=args.overwrite)
