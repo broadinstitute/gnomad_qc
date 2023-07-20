@@ -1,7 +1,8 @@
 """
 This is a batch script which adds VRS IDs to a Hail Table by creating a sharded-VCF, running a vrs-annotation script on each shard, and annotating the merged results back onto the original Hail Table.
+
 The vrs-annotation script that generates the VRS IDs needs to be run with Query On Batch. These VRS annotations can be added back to the original Table with either Query On Batch or Spark.(https://hail.is/docs/0.2/cloud/query_on_batch.html#:~:text=Hail%20Query%2Don%2DBatch%20uses,Team%20at%20our%20discussion%20forum.)
-usage: python3 vrs_annotation_batch.py \
+usage: python3 vrs_annotation_batch_v3.py \
     --billing-project gnomad-vrs \
     --working-bucket gnomad-vrs-io-finals \
     --image us-central1-docker.pkg.dev/broad-mpg-gnomad/ga4gh-vrs/marten_0615_vrs0_8_4 \
@@ -9,7 +10,7 @@ usage: python3 vrs_annotation_batch.py \
     --prefix marten_prelim_test \
     --partitions-for-vcf-export 20 \
     --downsample 0.1 \
-    --header-path gs://gnomad-vrs-io-finals/header-fix.txt \ 
+    --header-path gs://gnomad-vrs-io-finals/header-fix.txt \
     --run-vrs \
     --annotate-original \
     --overwrite \
@@ -27,10 +28,10 @@ import hail as hl
 import hailtop.batch as hb
 from gnomad.resources.grch38.gnomad import public_release
 from gnomad.utils.reference_genome import get_reference_genome
-from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v3.resources.annotations import vrs_annotations as v3_vrs_annotations
 from tgg.batch.batch_utils import init_job
 
+from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v3.resources.annotations import vrs_annotations as v3_vrs_annotations
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -55,6 +56,7 @@ def init_job_with_gcloud(
 ):
     """
     Create job and initialize glcoud authentication and gsutil commands.
+
     Wraps Ben Weisburd's init_job (https://github.com/broadinstitute/tgg_methods/blob/master/tgg/batch/batch_utils.py#L160) with additional gcloud steps.
     Parameters passed through to init_job:
         :param batch: Batch object.
@@ -75,7 +77,9 @@ def init_job_with_gcloud(
 
 
 def main(args):
-    # Initialize Hail w/chosen mode (spark or batch for QoB), setting global seed for if user decides to downsample
+    """Generate VRS annotations for a Hail Table of variants."""
+    # Initialize Hail w/chosen mode (spark or batch for QoB), setting global
+    # seed for if user decides to downsample
     hl.init(
         backend=args.backend_mode,
         tmp_dir=args.tmp_dir_hail,
@@ -100,18 +104,28 @@ def main(args):
     input_paths_dict = {
         "v3.1.2": public_release("genomes").path,
         "test_v3.1.2": public_release("genomes").path,
-        "test_v3_1k": "gs://gnomad-vrs-io-finals/ht-inputs/ht-1k-TESTING-ONLY-repartition-10p.ht",
-        "test_v3_10k": "gs://gnomad-vrs-io-finals/ht-inputs/ht-10k-TESTING-ONLY-repartition-50p.ht",
+        "test_v3_1k": (
+            "gs://gnomad-vrs-io-finals/ht-inputs/ht-1k-TESTING-ONLY-repartition-10p.ht"
+        ),
+        "test_v3_10k": (
+            "gs://gnomad-vrs-io-finals/ht-inputs/ht-10k-TESTING-ONLY-repartition-50p.ht"
+        ),
         "test_v3_100k": "gs://gnomad-vrs-io-finals/ht-inputs/ht-100k-TESTING-ONLY-repartition-100p.ht",
         "test_grch37": "gs://gnomad-vrs-io-finals/working-notebooks/scratch/downsample_and_downpart_with_ychr_grch37.ht",
     }
 
     output_paths_dict = {
         "v3.1.2": v3_vrs_annotations.path,
-        "test_v3.1.2": f"gs://gnomad-vrs-io-finals/ht-outputs/{prefix}-Full-ht-release-output.ht",
+        "test_v3.1.2": (
+            f"gs://gnomad-vrs-io-finals/ht-outputs/{prefix}-Full-ht-release-output.ht"
+        ),
         "test_v3_1k": f"gs://{working_bucket}/ht-outputs/{prefix}-Full-ht-1k-output.ht",
-        "test_v3_10k": f"gs://{working_bucket}/ht-outputs/{prefix}-Full-ht-10k-output.ht",
-        "test_v3_100k": f"gs://{working_bucket}/ht-outputs/{prefix}-Full-ht-100k-output.ht",
+        "test_v3_10k": (
+            f"gs://{working_bucket}/ht-outputs/{prefix}-Full-ht-10k-output.ht"
+        ),
+        "test_v3_100k": (
+            f"gs://{working_bucket}/ht-outputs/{prefix}-Full-ht-100k-output.ht"
+        ),
         "test_grch37": "'gs://gnomad-vrs-io-finals/working-notebooks/scratch/grch37_final_output.ht",
     }
 
@@ -129,7 +143,8 @@ def main(args):
     if args.run_vrs:
         if args.backend_mode == "spark":
             raise ValueError(
-                'Annotation step --run-vrs can only be run with "batch" setting for backend-mode'
+                'Annotation step --run-vrs can only be run with "batch" setting for'
+                " backend-mode"
             )
 
         # Create backend and batch for coming annotation batch jobs
@@ -148,19 +163,22 @@ def main(args):
             },
             overwrite=args.overwrite,
         )
-        # Use 'select' to remove all non-key rows - VRS-Allele is added back to original table based on just locus and allele
+        # Use 'select' to remove all non-key rows - VRS-Allele is added back to
+        # original table based on just locus and allele
         ht = ht_original.select()
 
         logger.info("Table read in and selected")
 
-        # Repartition the Hail Table if requested. In the following step, the Hail Table is exported to a sharded VCF with one shard per partition
+        # Repartition the Hail Table if requested. In the following step, the Hail
+        # Table is exported to a sharded VCF with one shard per partition
         if args.partitions_for_vcf_export:
             if args.partitions_for_vcf_export < ht.n_partitions():
                 logger.info("Repartitioning Table by Naive Coalsece")
                 ht = ht.naive_coalesce(args.partitions_for_vcf_export)
             elif args.partitions_for_vcf_export > ht.n_partitions():
                 logger.info(
-                    "Repartitioning Table by Repartition, NOTE this results in a shuffle"
+                    "Repartitioning Table by Repartition, NOTE this results in a"
+                    " shuffle"
                 )
                 ht = ht.repartition(args.partitions_for_vcf_export)
 
@@ -174,7 +192,9 @@ def main(args):
         )
 
         logger.info(
-            f"Gathering list of files in gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz using Hail's Hadoop method"
+            "Gathering list of files in"
+            f" gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz using"
+            " Hail's Hadoop method"
         )
 
         # Create a list of all shards of VCF
@@ -198,7 +218,8 @@ def main(args):
         logger.info(f"Number of duplicates to be excluded: {len(to_exclude)}")
 
         logger.info("File list created... getting ready to start Batch Jobs")
-        # Define SeqRepo path to be read in, outside of the loop, to avoid reading it in for each job
+        # Define SeqRepo path to be read in, outside of the loop, to avoid reading
+        # it in for each job
         seqrepo_path = "/tmp/local-seqrepo"
         if args.seqrepo_mount:
             seqrepo_path = "/local-vrs-mount/seqrepo/2018-11-26/"
@@ -214,7 +235,8 @@ def main(args):
                 memory=args.memory,
             )
 
-            # Script path for annotation is not expected to change for GA4GH if dependencies are installed using pip in the DockerFile
+            # Script path for annotation is not expected to change for GA4GH if
+            # dependencies are installed using pip in the DockerFile
             vrs_script_path = "/usr/local/lib/python3.9/dist-packages/ga4gh/vrs/extras/vcf_annotation.py"
 
             # Store VCF input and output paths
@@ -224,19 +246,24 @@ def main(args):
             # Perform VRS annotation on vcf_input and store output in /vrs-temp
             new_job.command("mkdir /temp-vcf-annotated/")
             new_job.command(
-                f"python3 {vrs_script_path} --vcf_in {batch_vrs.read_input(vcf_input)} --vcf_out {vcf_output} --seqrepo_root_dir {seqrepo_path} --assembly {assembly} --vrs_attributes"
+                f"python3 {vrs_script_path} --vcf_in"
+                f" {batch_vrs.read_input(vcf_input)} --vcf_out"
+                f" {vcf_output} --seqrepo_root_dir {seqrepo_path} --assembly"
+                f" {assembly} --vrs_attributes"
             )
 
             # Copy annotated shard to its appropriate place in Google Bucket
             new_job.command(
-                f"gsutil cp {vcf_output} gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/"
+                "gsutil cp"
+                f" {vcf_output} gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/"
             )
 
         # Execute all jobs in the batch_vrs Batch
         batch_vrs.run()
 
         logger.info(
-            "Batch jobs executed, preparing to read in sharded VCF from prior step. Preparing list of files first using Hail's hadoop_ls method."
+            "Batch jobs executed, preparing to read in sharded VCF from prior step."
+            " Preparing list of files first using Hail's hadoop_ls method."
         )
 
         annotated_file_dict = hl.utils.hadoop_ls(
@@ -272,10 +299,12 @@ def main(args):
             overwrite=args.overwrite,
         )
         logger.info(
-            f"Annotated Hail Table checkpointed to: gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
+            "Annotated Hail Table checkpointed to:"
+            f" gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
         )
 
-        # Deleting temporary files to keep clutter down, note that this does not include the annotated HT
+        # Deleting temporary files to keep clutter down, note that this does not
+        # include the annotated HT
         logger.info("Preparing to delete temporary files and sharded VCFs generated")
         delete_temps = hb.Batch(name="delete_temps", backend=backend)
         d1 = init_job_with_gcloud(
@@ -318,7 +347,8 @@ def main(args):
 
         else:
             logger.info(
-                "For test datasets, final output is identical to the checkpointed annotated HT"
+                "For test datasets, final output is identical to the checkpointed"
+                " annotated HT"
             )
             logger.info(f"Outputting final table at: {output_paths_dict[version]}")
             ht_annotated.write(output_paths_dict[version], overwrite=args.overwrite)
@@ -330,13 +360,20 @@ if __name__ == "__main__":
     parser.add_argument("--billing-project", help="Project to bill.", type=str)
     parser.add_argument(
         "--image",
-        default="us-central1-docker.pkg.dev/broad-mpg-gnomad/ga4gh-vrs/marten_0615_vrs0_8_4",
+        default=(
+            "us-central1-docker.pkg.dev/broad-mpg-gnomad/ga4gh-vrs/marten_0615_vrs0_8_4"
+        ),
         help="Image in a GCP Artifact Registry repository.",
         type=str,
     )
     parser.add_argument(
         "--working-bucket",
-        help="Name of GCP Bucket to output intermediate files (sharded VCFs and checkpointed HTs) to. Final outputs for test versions go to working bucket, but final outputs ran on the release HT always go in gs://gnomad-vrs-io-finals/ht-outputs/ .",
+        help=(
+            "Name of GCP Bucket to output intermediate files (sharded VCFs and"
+            " checkpointed HTs) to. Final outputs for test versions go to working"
+            " bucket, but final outputs ran on the release HT always go in"
+            " gs://gnomad-vrs-io-finals/ht-outputs/ ."
+        ),
         default="gnomad-vrs-io-finals",
         type=str,
     )
@@ -345,19 +382,30 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--partitions-for-vcf-export",
-        help="Number of partitions to use when exporting the Table to a sharded VCF (each partition is exported to a separate VCF). This value determines the breakdown of jobs that will be ran (the VRS annotation script is ran in parallel on the VCFs).",
+        help=(
+            "Number of partitions to use when exporting the Table to a sharded VCF"
+            " (each partition is exported to a separate VCF). This value determines the"
+            " breakdown of jobs that will be ran (the VRS annotation script is ran in"
+            " parallel on the VCFs)."
+        ),
         default=None,
         type=int,
     )
     parser.add_argument(
         "--prefix",
-        help="Prefix to append to names of all saved temp files and test version output files.",
+        help=(
+            "Prefix to append to names of all saved temp files and test version output"
+            " files."
+        ),
         type=str,
         default="",
     )
     parser.add_argument(
         "--header-path",
-        help="Full path of txt file containing lines to append to VCF headers for fields that maybe be missing when exporting the Table to VCF.",
+        help=(
+            "Full path of txt file containing lines to append to VCF headers for fields"
+            " that maybe be missing when exporting the Table to VCF."
+        ),
         type=str,
         default="gs://gnomad-vrs-io-finals/header-fix.txt",
     )
@@ -381,18 +429,28 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--seqrepo-mount",
-        help="Bucket to mount and read from using Hail Batch's CloudFuse for access to seqrepo: PLEASE note this DOES have performance implications.",
+        help=(
+            "Bucket to mount and read from using Hail Batch's CloudFuse for access to"
+            " seqrepo: PLEASE note this DOES have performance implications."
+        ),
         type=str,
         default=None,
     )
     parser.add_argument(
         "--overwrite",
-        help="Boolean to pass to ht.write(overwrite=_____) determining whether or not to overwrite existing output for the final Table and checkpointed files.",
+        help=(
+            "Boolean to pass to ht.write(overwrite=_____) determining whether or not to"
+            " overwrite existing output for the final Table and checkpointed files."
+        ),
         action="store_true",
     )
     parser.add_argument(
         "--run-vrs",
-        help="Pass argument to run VRS annotation on dataset of choice. Specifying '--run-vrs' also requires setting 'backend-mode' to 'batch', which is the default.",
+        help=(
+            "Pass argument to run VRS annotation on dataset of choice. Specifying"
+            " '--run-vrs' also requires setting 'backend-mode' to 'batch', which is the"
+            " default."
+        ),
         action="store_true",
     )
     parser.add_argument(
