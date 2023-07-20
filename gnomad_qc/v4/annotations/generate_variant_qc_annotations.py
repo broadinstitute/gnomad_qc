@@ -90,13 +90,13 @@ def run_generate_trio_stats(
 
     # Filter the variant data to bi-allelic sites.
     vmt = vmt.filter_rows(hl.len(vmt.alleles) == 2)
-    vmt = vmt.transmute_entries(GT=vmt.LGT)
 
     # Filter the variant data and reference data to only the trios.
     vmt = filter_mt_to_trios(vmt, fam_ht)
     rmt = rmt.filter_cols(hl.is_defined(vmt.cols()[rmt.col_key]))
 
-    mt = hl.vds.densify(hl.vds.VariantDataset(rmt, vmt))
+    mt = hl.vds.to_dense_mt(hl.vds.VariantDataset(rmt, vmt))
+    mt = mt.transmute_entries(GT=mt.LGT)
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
 
     return generate_trio_stats(mt, bi_allelic_only=False)
@@ -245,7 +245,11 @@ def main(args):
     if args.generate_sibling_stats:
         res = resources.generate_sib_stats
         res.check_resource_existence()
-        ht = generate_sib_stats(mt, res.rel_ht)
+        rel_ht = res.rel_ht.ht()
+        rel_ht = rel_ht.filter(
+            (rel_ht.i.data_type == "exomes") & (rel_ht.j.data_type == "exomes")
+        )
+        ht = generate_sib_stats(mt.transmute_entries(GT=mt.LGT), rel_ht)
         ht.write(res.sib_stats_ht.path, overwrite=overwrite)
 
 
