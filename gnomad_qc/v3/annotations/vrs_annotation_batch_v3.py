@@ -28,7 +28,6 @@ import hail as hl
 import hailtop.batch as hb
 from gnomad.resources.grch38.gnomad import public_release
 from gnomad.utils.reference_genome import get_reference_genome
-from tgg.batch.batch_utils import init_job
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.resources.annotations import vrs_annotations as v3_vrs_annotations
@@ -43,6 +42,60 @@ logger.setLevel(logging.INFO)
 # Define the version of ga4gh.vrs code this was run on, as present in the Dockerfile
 # Please change this when the Dockerfile is updated
 VRS_VERSION = "0.8.4"
+
+
+def init_job(
+    batch,
+    name: str = None,
+    image: str = None,
+    cpu: float = None,
+    memory: float = None,
+    disk_size: float = None,
+):
+    """Initialize a hail batch job with some default parameters.
+
+    :param batch: Batch object
+    :param name: job label which will show up in the Batch web UI
+    :param image: docker image name (eg. "weisburd/image-name@sha256:aa19845da5")
+    :param cpu: number of CPUs (between 0.25 to 16)
+    :param memory: amount of RAM in Gb (eg. 3.75)
+    :param disk_size: amount of disk in Gb (eg. 50)
+    :return: new job object
+    """
+    j = batch.new_job(name=name)
+    if image:
+        j.image(image)
+
+    if cpu:
+        if cpu < 0.25 or cpu > 16:
+            raise ValueError(
+                f"CPU arg is {cpu}. This is outside the range of 0.25 to 16 CPUs"
+            )
+
+        j.cpu(cpu)  # Batch default is 1
+
+    if memory:
+        if memory < 0.1 or memory > 60:
+            raise ValueError(
+                f"Memory arg is {memory}. This is outside the range of 0.1 to 60 Gb"
+            )
+
+        j.memory(f"{memory}Gi")  # Batch default is 3.75G
+
+    if disk_size:
+        if disk_size < 1 or disk_size > 1000:
+            raise ValueError(
+                f"Disk size arg is {disk_size}. This is outside the range of 1 to"
+                " 1000 Gb"
+            )
+
+        j.storage(f"{disk_size}Gi")
+
+    j.command(
+        "set -euxo pipefail"
+    )  # set bash options for easier debugging and to make command execution more robust
+
+    return j
 
 
 def init_job_with_gcloud(
