@@ -121,6 +121,7 @@ def init_job_with_gcloud(
         :return: New job object.
     """
     job = init_job(batch, name, image, cpu, memory, disk_size)
+    # Retry gcloud auth and gsutil commands to avoid transient failures
     job.command(
         """
     retry() {
@@ -151,6 +152,7 @@ def main(args):
         gcs_requester_pays_configuration="broad-mpg-gnomad",
         default_reference="GRCh38",
         global_seed=args.hail_rand_seed,
+        regions=["us-central1"],
     )
 
     logger.info(f"Hail version as: {hl.version()}")
@@ -274,7 +276,7 @@ def main(args):
 
         # Create a list of all shards of VCF
         file_dict = hl.utils.hadoop_ls(
-            f"gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz/part-*.bgz"
+            f"gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz/"
         )
         # Note: this step requires using Hail 0.2.119-138d69e126bc or later, for
         # faster listing of files in a directory with hadoop_ls.
@@ -344,7 +346,7 @@ def main(args):
         )
 
         annotated_file_dict = hl.utils.hadoop_ls(
-            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/*.vcf"
+            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/"
         )
 
         annotated_file_list = [
