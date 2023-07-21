@@ -11,5 +11,3 @@ RUN wget https://github.com/samtools/htslib/releases/download/1.17/htslib-1.17.t
     && make \
     && make install \
     && export PATH=htslib-1.17/bin:$PATH
-
-COPY vrs_vcf2ht.py /
