@@ -1,7 +1,7 @@
 """
-This is a batch script which adds VRS IDs to a Hail Table by creating a sharded-VCF, running a vrs-annotation script on each shard, and annotating the merged results back onto the original Hail Table.
+This is a batch script which adds VRS IDs to a Hail Table by creating sharded VCFs, running a vrs-annotation script on each shard. and merge the results into the original Hail Table.
 
-The vrs-annotation script that generates the VRS IDs needs to be run with Query On Batch. These VRS annotations can be added back to the original Table with either Query On Batch or Spark.(https://hail.is/docs/0.2/cloud/query_on_batch.html#:~:text=Hail%20Query%2Don%2DBatch%20uses,Team%20at%20our%20discussion%20forum.)
+The vrs-annotation script that generates the VRS IDs needs to be run with Query-On-Batch. These VRS annotations can be added back to the original Table needs to be run Query-on-Spark.(https://hail.is/docs/0.2/cloud/query_on_batch.html#:~:text=Hail%20Query%2Don%2DBatch%20uses,Team%20at%20our%20discussion%20forum.)
 usage: python3 vrs_annotation_batch_v3.py \
     --billing-project gnomad-vrs \
     --working-bucket gnomad-vrs-io-finals \
@@ -359,9 +359,7 @@ def main(args):
 
         logger.info("Adding VRS IDs and GA4GH.VRS version to original Table")
         ht_final = ht_original.annotate(
-            info=ht_original.info.annotate(
-                vrs=ht_annotated[ht_original.locus, ht_original.alleles].vrs
-            )
+            vrs=ht_annotated[ht_original.locus, ht_original.alleles].vrs
         )
 
         ht_final = ht_final.annotate_globals(vrs_version=VRS_VERSION)
@@ -369,11 +367,7 @@ def main(args):
         logger.info(f"Outputting final table at: {output_paths_dict[version]}")
         ht_final.write(output_paths_dict[version], overwrite=args.overwrite)
 
-        check_resource_existence(
-            output_step_resources={
-                "--annotate-original": [output_paths_dict[version]],
-            },
-        )
+        logger.info(f"Done! Final table written to {output_paths_dict[version]}.")
 
 
 if __name__ == "__main__":
