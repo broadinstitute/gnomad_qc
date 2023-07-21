@@ -965,7 +965,7 @@ def ped_mendel_errors(test: bool = False) -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_sample_qc_root(version, test, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.mendel_errors.samples.interval_qc.ht"
+                f"{get_sample_qc_root(version, test, data_type=data_type)}/relatedness/trios/gnomad.{data_type}.v{version}.mendel_errors.samples.ht"
             )
             for version in VERSIONS
         },
