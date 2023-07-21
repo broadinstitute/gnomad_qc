@@ -300,6 +300,7 @@ def main(args):
         if args.seqrepo_mount:
             seqrepo_path = "/local-vrs-mount/seqrepo/2018-11-26/"
 
+        jobs = []
         for vcf_name in file_list:
             # Setting up jobs
             new_job = init_job_with_gcloud(
@@ -328,56 +329,25 @@ def main(args):
                 f" {assembly} --vrs_attributes"
             )
 
+            # bgzip the annotated VCF
+            new_job.command(f"bgzip {vcf_output}")
+
             # Copy annotated shard to its appropriate place in Google Bucket
             new_job.command(
                 "gsutil cp"
-                f" {vcf_output} gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/"
+                f" {vcf_output}.bgz"
+                f" gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/"
             )
+            jobs.append(new_job)
+
+        vcf2ht = batch_vrs.new_job(name="vcf2ht")
+        vcf2ht.command(
+            f"""python3 /vrs_vcf2ht.py --working_bucket {working_bucket} --prefix {prefix} --version {version} --assembly {assembly}"""
+        )
+        vcf2ht.depends_on(jobs)
 
         # Execute all jobs in the batch_vrs Batch
         batch_vrs.run()
-
-        logger.info(
-            "Batch jobs executed, preparing to read in sharded VCF from prior step."
-            " Preparing list of files first using Hail's hadoop_ls method."
-        )
-
-        annotated_file_dict = hl.utils.hadoop_ls(
-            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/*.vcf"
-        )
-
-        annotated_file_list = [
-            annotated_file_item["path"] for annotated_file_item in annotated_file_dict
-        ]
-
-        logger.info("File list created. Now reading in annotated shards.")
-
-        # Import all annotated shards
-        ht_annotated = hl.import_vcf(
-            annotated_file_list,
-            reference_genome=assembly,
-        ).make_table()
-        logger.info("Annotated table constructed")
-
-        vrs_struct = hl.struct(
-            VRS_Allele_IDs=ht_annotated.info.VRS_Allele_IDs.split(","),
-            VRS_Starts=ht_annotated.info.VRS_Starts.split(",").map(lambda x: hl.int(x)),
-            VRS_Ends=ht_annotated.info.VRS_Ends.split(",").map(lambda x: hl.int(x)),
-            VRS_States=ht_annotated.info.VRS_States.split(","),
-        )
-
-        ht_annotated = ht_annotated.annotate(vrs=vrs_struct)
-        ht_annotated = ht_annotated.select(ht_annotated.vrs)
-
-        # Checkpoint (write) resulting annotated table
-        ht_annotated = ht_annotated.checkpoint(
-            f"gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht",
-            overwrite=args.overwrite,
-        )
-        logger.info(
-            "Annotated Hail Table checkpointed to:"
-            f" gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
-        )
 
         # Deleting temporary files to keep clutter down, note that this does not
         # include the annotated HT
