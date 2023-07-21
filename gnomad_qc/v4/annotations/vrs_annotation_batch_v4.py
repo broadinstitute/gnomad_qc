@@ -27,6 +27,7 @@ from gnomad.utils.reference_genome import get_reference_genome
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v3.resources.annotations import vrs_annotations as v3_vrs_annotations
+from gnomad_qc.v4.resources.annotations import get_vrs as v4_vrs_annotations
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -166,39 +167,15 @@ def main(args):
     prefix = args.prefix + version
 
     input_paths_dict = {
-        "v3.1.2": public_release("genomes").path,
-        "v4.0_exomes": f"gs://{working_bucket}/v4_annotations/v4_vds_all_variants.ht",
-        "test_v4.0_exomes": (
-            f"gs://{working_bucket}/v4_annotations/v4_vds_2_partitions.ht"
-        ),
-        "test_v3.1.2": public_release("genomes").path,
-        "test_v3_1k": (
-            "gs://gnomad-vrs-io-finals/ht-inputs/ht-1k-TESTING-ONLY-repartition-10p.ht"
-        ),
-        "test_v3_10k": (
-            "gs://gnomad-vrs-io-finals/ht-inputs/ht-10k-TESTING-ONLY-repartition-50p.ht"
-        ),
-        "test_v3_100k": "gs://gnomad-vrs-io-finals/ht-inputs/ht-100k-TESTING-ONLY-repartition-100p.ht",
-        "test_grch37": "gs://gnomad-vrs-io-finals/working-notebooks/scratch/downsample_and_downpart_with_ychr_grch37.ht",
+        "v4.0_exomes": f"gs://gnomad-qin/v4_annotations/v4_vds_all_variants.ht",
+        "test_v4.0_exomes": f"gs://gnomad-qin/v4_annotations/v4_vds_2_partitions.ht",
     }
 
     output_paths_dict = {
-        "v3.1.2": v3_vrs_annotations.path,
         "v4.0_exomes": v4_vrs_annotations().path,
         "test_v4.0_exomes": (
             f"gs://{working_bucket}/v4_annotations/v4_vds_2_partitions_output.ht"
         ),
-        "test_v3.1.2": (
-            f"gs://gnomad-vrs-io-finals/ht-outputs/{prefix}-Full-ht-release-output.ht"
-        ),
-        "test_v3_1k": f"gs://{working_bucket}/ht-outputs/{prefix}-Full-ht-1k-output.ht",
-        "test_v3_10k": (
-            f"gs://{working_bucket}/ht-outputs/{prefix}-Full-ht-10k-output.ht"
-        ),
-        "test_v3_100k": (
-            f"gs://{working_bucket}/ht-outputs/{prefix}-Full-ht-100k-output.ht"
-        ),
-        "test_grch37": "'gs://gnomad-vrs-io-finals/working-notebooks/scratch/grch37_final_output.ht",
     }
 
     # Read in Hail Table, partition, and export to sharded VCF
@@ -300,7 +277,6 @@ def main(args):
         if args.seqrepo_mount:
             seqrepo_path = "/local-vrs-mount/seqrepo/2018-11-26/"
 
-        jobs = []
         for vcf_name in file_list:
             # Setting up jobs
             new_job = init_job_with_gcloud(
@@ -335,69 +311,69 @@ def main(args):
             # Copy annotated shard to its appropriate place in Google Bucket
             new_job.command(
                 "gsutil cp"
-                f" {vcf_output}.bgz"
+                f" {vcf_output}.gz"
                 f" gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/"
             )
-            jobs.append(new_job)
-
-        vcf2ht = batch_vrs.new_job(name="vcf2ht")
-        vcf2ht.command(
-            f"""python3 /vrs_vcf2ht.py --working_bucket {working_bucket} --prefix {prefix} --version {version} --assembly {assembly}"""
-        )
-        vcf2ht.depends_on(jobs)
 
         # Execute all jobs in the batch_vrs Batch
         batch_vrs.run()
-
-        # Deleting temporary files to keep clutter down, note that this does not
-        # include the annotated HT
-        logger.info("Preparing to delete temporary files and sharded VCFs generated")
-        delete_temps = hb.Batch(name="delete_temps", backend=backend)
-        d1 = init_job_with_gcloud(
-            batch=delete_temps,
-            name=f"del_files",
-            image=args.image,
+        logger.info(
+            "Batch jobs executed, annotated vcf.gz shards copied to"
+            f" gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf"
         )
-        d1.command(f"gsutil -m -q rm -r gs://{working_bucket}/vrs-temp/")
-        delete_temps.run()
 
     if args.annotate_original:
+        logger.info(
+            "Batch jobs executed, preparing to read in sharded VCF from prior step."
+            " Preparing list of files first using Hail's hadoop_ls method."
+        )
+
+        annotated_file_dict = hl.utils.hadoop_ls(
+            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/"
+        )
+
+        annotated_file_list = [
+            annotated_file_item["path"] for annotated_file_item in annotated_file_dict
+        ]
+
+        logger.info("File list created. Now reading in annotated shards.")
+
+        # Import all annotated shards
+        ht_annotated = hl.import_vcf(
+            annotated_file_list,
+            force_bgz=True,
+            reference_genome=assembly,
+        ).make_table()
+
+        logger.info("Annotated table constructed")
+
+        vrs_struct = hl.struct(
+            VRS_Allele_IDs=ht_annotated.info.VRS_Allele_IDs.split(","),
+            VRS_Starts=ht_annotated.info.VRS_Starts.split(",").map(lambda x: hl.int(x)),
+            VRS_Ends=ht_annotated.info.VRS_Ends.split(",").map(lambda x: hl.int(x)),
+            VRS_States=ht_annotated.info.VRS_States.split(","),
+        )
+
+        ht_annotated = ht_annotated.annotate(vrs=vrs_struct)
+        ht_annotated = ht_annotated.select(ht_annotated.vrs)
+
+        logger.info("Adding VRS IDs and GA4GH.VRS version to original Table")
+        ht_final = ht_original.annotate(
+            info=ht_original.info.annotate(
+                vrs=ht_annotated[ht_original.locus, ht_original.alleles].vrs
+            )
+        )
+
+        ht_final = ht_final.annotate_globals(vrs_version=VRS_VERSION)
+
+        logger.info(f"Outputting final table at: {output_paths_dict[version]}")
+        ht_final.write(output_paths_dict[version], overwrite=args.overwrite)
+
         check_resource_existence(
-            input_step_resources={
-                "--run-vrs": [
-                    f"gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
-                ],
-            },
             output_step_resources={
                 "--annotate-original": [output_paths_dict[version]],
             },
-            overwrite=args.overwrite,
         )
-        # Output final Hail Tables with VRS annotations
-        ht_annotated = hl.read_table(
-            f"gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
-        )
-
-        if "test_" not in version:
-            logger.info("Adding VRS IDs and GA4GH.VRS version to original Table")
-            ht_final = ht_original.annotate(
-                info=ht_original.info.annotate(
-                    vrs=ht_annotated[ht_original.locus, ht_original.alleles].vrs
-                )
-            )
-
-            ht_final = ht_final.annotate_globals(vrs_version=VRS_VERSION)
-
-            logger.info(f"Outputting final table at: {output_paths_dict[version]}")
-            ht_final.write(output_paths_dict[version], overwrite=args.overwrite)
-
-        else:
-            logger.info(
-                "For test datasets, final output is identical to the checkpointed"
-                " annotated HT"
-            )
-            logger.info(f"Outputting final table at: {output_paths_dict[version]}")
-            ht_annotated.write(output_paths_dict[version], overwrite=args.overwrite)
 
 
 if __name__ == "__main__":
