@@ -2,7 +2,7 @@
 This is a batch script which adds VRS IDs to a Hail Table by creating sharded VCFs, running a vrs-annotation script on each shard. and merge the results into the original Hail Table.
 
 The vrs-annotation script that generates the VRS IDs needs to be run with Query-On-Batch. These VRS annotations can be added back to the original Table needs to be run Query-on-Spark.(https://hail.is/docs/0.2/cloud/query_on_batch.html#:~:text=Hail%20Query%2Don%2DBatch%20uses,Team%20at%20our%20discussion%20forum.)
-usage for step 1:
+usage for step 1 (only call --run-vrs):
 python3 /Users/heqin/PycharmProjects/gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch_v4.py \
 --billing-project gnomad-annot \
 --working-bucket gnomad-tmp-4day \
@@ -23,7 +23,7 @@ hailctl dataproc start qh2 \
     --max-idle 60m \
     --labels gnomad_release=gnomad_v4,gnomad_v4_run=vrs_v4_exomes
 
-# submit the job to the cluster
+# submit the job to the cluster (only call --annotate-original):
 hailctl dataproc submit qh1 /Users/heqin/PycharmProjects/gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch_v4.py \
 --billing-project gnomad-annot \
 --working-bucket gnomad-tmp-4day \
@@ -188,13 +188,15 @@ def main(args):
     input_paths_dict = {
         "v4.0_exomes": f"gs://gnomad-qin/v4_annotations/v4_vds_all_variants.ht",
         "test_v4.0_exomes": f"gs://gnomad-qin/v4_annotations/v4_vds_2_partitions.ht",
+        "v4.0_supp1": f"gs://gnomad-qin/v4_annotations/v4_vds_supp1.ht",
     }
 
     output_paths_dict = {
         "v4.0_exomes": v4_vrs_annotations().path,
         "test_v4.0_exomes": (
-            f"gs://{working_bucket}/v4_annotations/v4_vds_2_partitions_output.ht"
+            f"gs://{working_bucket}/v4_annotations/v4_vds_2_partitions_output.ht",
         ),
+        "v4.0_supp1": f"gs://{working_bucket}/v4_annotations/v4_vds_supp1_output.ht",
     }
 
     # Read in Hail Table, partition, and export to sharded VCF
@@ -283,8 +285,9 @@ def main(args):
         for file_idx in range(len(file_list)):
             file_name = file_list[file_idx].split("-")
             file_num = file_name[1]
-            if file_list[file_idx - 1].split("-")[1] == file_num:
+            if len(file_list) > 1 and file_list[file_idx - 1].split("-")[1] == file_num:
                 to_exclude.append(file_list[file_idx - 1])
+        # the original code didn't work when there's only 1 file in the list
 
         file_list = sorted(list(set(file_list) - set(to_exclude)))
         logger.info(f"Number of duplicates to be excluded: {len(to_exclude)}")
