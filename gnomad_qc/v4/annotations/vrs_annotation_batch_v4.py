@@ -353,6 +353,8 @@ def main(args):
         annotated_file_dict = hl.utils.hadoop_ls(
             f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/"
         )
+        # NOTE: this is changed to be a directory intstead `/*.vcf` because the
+        # QoS step was run with Hail 0.2.115 instead of the latest version
 
         annotated_file_list = [
             annotated_file_item["path"] for annotated_file_item in annotated_file_dict
