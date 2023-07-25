@@ -107,8 +107,9 @@ def main(args):
         )
         ht = create_cadd_grch38_ht()
         ht.write(
-            "gs://gnomad/v4.0/annotations/in_silico_predictors/gnomad.v4.0.cadd.grch38.ht",
+            get_insilico_predictors(predictor="cadd").path(),
             overwrite=args.overwrite,
+            read_if_exists=True,
         )
 
 
