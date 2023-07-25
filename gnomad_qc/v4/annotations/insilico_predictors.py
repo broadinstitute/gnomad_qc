@@ -99,17 +99,14 @@ def main(args):
 
     if args.cadd:
         logger.info("Creating CADD Hail Table for GRCh38...")
-        check_resource_existence(
-            output_step_resources={
-                "--cadd": [get_insilico_predictors(predictor="cadd").path()],
-            },
-            overwrite=args.overwrite,
-        )
+
         ht = create_cadd_grch38_ht()
-        ht.write(
-            get_insilico_predictors(predictor="cadd").path(),
+        ht.checkpoint(
+            get_insilico_predictors(predictor="cadd").path,
             overwrite=args.overwrite,
+            _read_if_exists=not args.overwrite,
         )
+        logger.info("CADD Hail Table for GRCh38 created.")
 
 
 if __name__ == "__main__":
