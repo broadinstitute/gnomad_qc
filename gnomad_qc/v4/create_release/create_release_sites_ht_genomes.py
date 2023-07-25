@@ -1,22 +1,5 @@
 """Script to create release sites HT for v4 genomes."""
-
-import argparse
-import logging
-
 import hail as hl
-from gnomad.resources.grch38.reference_data import dbsnp
-from gnomad.utils.slack import slack_notifications
-
-from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import get_vep
-from gnomad_qc.v4.resources.constants import CURRENT_VERSION
-
-logging.basicConfig(
-    format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
-    datefmt="%m/%d/%Y %I:%M:%S %p",
-)
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpression:
