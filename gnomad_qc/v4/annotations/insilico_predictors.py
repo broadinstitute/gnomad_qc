@@ -6,7 +6,9 @@ import logging
 import hail as hl
 from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v4.resources.annotations import get_insilico_predictors
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -97,6 +99,12 @@ def main(args):
 
     if args.cadd:
         logger.info("Creating CADD Hail Table for GRCh38...")
+        check_resource_existence(
+            output_step_resources={
+                "--cadd": [get_insilico_predictors(predictor="cadd").path()],
+            },
+            overwrite=args.overwrite,
+        )
         ht = create_cadd_grch38_ht()
         ht.write(
             "gs://gnomad/v4.0/annotations/in_silico_predictors/gnomad.v4.0.cadd.grch38.ht",
