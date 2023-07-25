@@ -109,7 +109,6 @@ def main(args):
         ht.write(
             get_insilico_predictors(predictor="cadd").path(),
             overwrite=args.overwrite,
-            read_if_exists=True,
         )
 
 
