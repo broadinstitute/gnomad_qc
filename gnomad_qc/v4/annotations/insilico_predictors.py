@@ -101,10 +101,9 @@ def main(args):
         logger.info("Creating CADD Hail Table for GRCh38...")
 
         ht = create_cadd_grch38_ht()
-        ht.checkpoint(
+        ht.write(
             get_insilico_predictors(predictor="cadd").path,
             overwrite=args.overwrite,
-            _read_if_exists=not args.overwrite,
         )
         logger.info("CADD Hail Table for GRCh38 created.")
 
