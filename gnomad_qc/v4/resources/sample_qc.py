@@ -1,6 +1,7 @@
 """Script containing sample QC related resources."""
 from typing import Optional
 
+import hail as hl
 from gnomad.resources.resource_utils import (
     MatrixTableResource,
     PedigreeResource,
@@ -1006,3 +1007,27 @@ def get_sample_qc_field_def_json_path(version: str = CURRENT_VERSION) -> str:
     :return: Path to sample QC field definitions JSON.
     """
     return f"{get_sample_qc_root(version)}/additional_resources/gnomad.exomes.v{version}.sample_qc_field_definitions.json"
+
+
+# Table with HGDP + 1KG/TGP metadata from Alicia Martin's group sample QC
+hgdp_tgp_meta = TableResource(
+    path="gs://gcp-public-data--gnomad/release/3.1.2/ht/genomes/gnomad.genomes.v3.1.2.hgdp_1kg_subset_sample_meta.ht"
+)
+
+# Table with the set of outliers found by Alicia Martin's group during pop
+# specific PCA analyses as well as one duplicate sample
+# version from 2023: https://github.com/atgu/hgdp_tgp/blob/master/tutorials/nb2.ipynb
+hgdp_tgp_pop_outliers = TableResource(
+    path="gs://gnomad/sample_qc/ht/gnomad.genomes.v4.0.hgdp_tgp_pca_outliers.ht",
+)
+
+# Table with HGDP + 1KG/TGP related samples to drop from Alicia Martin's group sample QC
+hgdp_tgp_related_samples_to_drop = TableResource(
+    path="gs://gcp-public-data--gnomad/release/3.1/secondary_analyses/hgdp_1kg/pca_preprocessing/related_sample_ids.ht"
+)
+
+# Table with HGDP sample contamination estimates from Konrad Karczewski's
+# group sample QC
+hgdp_recomputed_freemix = TableResource(
+    path="gs://gnomad/sample_qc/ht/gnomad_v3_contam_rate_recomputed_hgdp_full.ht"
+)
