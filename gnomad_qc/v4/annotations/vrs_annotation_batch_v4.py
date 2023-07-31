@@ -1,35 +1,33 @@
 """
-This is a batch script which adds VRS IDs to a Hail Table by creating sharded VCFs, running a vrs-annotation script on each shard. and merge the results into the original Hail Table.
+This is a batch script which adds VRS IDs to a Hail Table by creating sharded VCFs, running a vrs-annotation script on each shard, and merging the results into the original Hail Table.
 
-The vrs-annotation script that generates the VRS IDs needs to be run with Query-On-Batch. These VRS annotations can be added back to the original Table needs to be run Query-on-Spark.(https://hail.is/docs/0.2/cloud/query_on_batch.html#:~:text=Hail%20Query%2Don%2DBatch%20uses,Team%20at%20our%20discussion%20forum.)
+The vrs-annotation script that generates the VRS IDs needs to be run with Query-On-Batch. These VRS annotations should be added back to the original Table using Query-on-Spark.(https://hail.is/docs/0.2/cloud/query_on_batch.html#:~:text=Hail%20Query%2Don%2DBatch%20uses,Team%20at%20our%20discussion%20forum.)
 usage for step 1 (only call --run-vrs):
-python3 /Users/heqin/PycharmProjects/gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch_v4.py \
+python3 vrs_annotation_batch_v4.py \
 --billing-project gnomad-annot \
 --working-bucket gnomad-tmp-4day \
 --image us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
 --version test_v4.0_exomes \
---prefix v4_vds \
+--prefix v4 \
 --header-path gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt \
 --run-vrs \
 --overwrite \
 --backend-mode batch
 
 usage for step 2:
-# start a cluster with hailctl dataproc start
 hailctl dataproc start qh2 \
     --requester-pays-allow-all \
-    --pkgs="git+https://github.com/broadinstitute/gnomad_methods.git@main","git+https://github.com/broadinstitute/gnomad_qc.git@qh/vrs_v4_exomes" \
+    --pkgs="git+https://github.com/broadinstitute/gnomad_methods.git@main","git+https://github.com/broadinstitute/gnomad_qc.git@main" \
     --autoscaling-policy=max-50 \
     --max-idle 60m \
     --labels gnomad_release=gnomad_v4,gnomad_v4_run=vrs_v4_exomes
 
-# submit the job to the cluster (only call --annotate-original):
-hailctl dataproc submit qh1 /Users/heqin/PycharmProjects/gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch_v4.py \
+hailctl dataproc submit qh1 /vrs_annotation_batch_v4.py \
 --billing-project gnomad-annot \
 --working-bucket gnomad-tmp-4day \
 --image us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
 --version test_v4.0_exomes \
---prefix v4_vds \
+--prefix v4 \
 --header-path gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt \
 --annotate-original \
 --overwrite \
@@ -41,11 +39,9 @@ import logging
 
 import hail as hl
 import hailtop.batch as hb
-from gnomad.resources.grch38.gnomad import public_release
 from gnomad.utils.reference_genome import get_reference_genome
 
 from gnomad_qc.resource_utils import check_resource_existence
-from gnomad_qc.v3.resources.annotations import vrs_annotations as v3_vrs_annotations
 from gnomad_qc.v4.resources.annotations import get_vrs as v4_vrs_annotations
 
 logging.basicConfig(
@@ -270,16 +266,16 @@ def main(args):
         )
 
         # Create a list of all shards of VCF
+        # Note: this step requires using Hail 0.2.119-138d69e126bc or later, for
+        # faster listing of files in a directory with hadoop_ls.
         file_dict = hl.utils.hadoop_ls(
             f"gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz/part-*.bgz"
         )
-        # Note: this step requires using Hail 0.2.119-138d69e126bc or later, for
-        # faster listing of files in a directory with hadoop_ls.
 
         # Create a list of all file names to later annotate in parallel
         file_list = [file_item["path"].split("/")[-1] for file_item in file_dict]
 
-        # Query-On-Batch sometimes produces duplicate shards (same number, same content, different name) for v3.1.2 release Table
+        # Query-On-Batch sometimes produces duplicate shards (same number, same content, different name)
         # This block removes duplicates from the list of files to be annotated
         to_exclude = []
         for file_idx in range(len(file_list)):
@@ -400,9 +396,7 @@ if __name__ == "__main__":
     parser.add_argument("--billing-project", help="Project to bill.", type=str)
     parser.add_argument(
         "--image",
-        default=(
-            "us-central1-docker.pkg.dev/broad-mpg-gnomad/ga4gh-vrs/marten_0615_vrs0_8_4"
-        ),
+        default="us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084",
         help="Image in a GCP Artifact Registry repository.",
         type=str,
     )
@@ -412,13 +406,16 @@ if __name__ == "__main__":
             "Name of GCP Bucket to output intermediate files (sharded VCFs and"
             " checkpointed HTs) to. Final outputs for test versions go to working"
             " bucket, but final outputs ran on the release HT always go in"
-            " gs://gnomad-vrs-io-finals/ht-outputs/ ."
+            " gs://gnomad/v4.0/annotations/exomes/ ."
         ),
         default="gnomad-vrs-io-finals",
         type=str,
     )
     parser.add_argument(
-        "--version", help="Version of HT to read in. ", default="test_v3_1k", type=str
+        "--version",
+        help="Version of HT to read in. ",
+        default="test_v4.0_exomes",
+        type=str,
     )
     parser.add_argument(
         "--partitions-for-vcf-export",
@@ -438,7 +435,7 @@ if __name__ == "__main__":
             " files."
         ),
         type=str,
-        default="",
+        default="v4",
     )
     parser.add_argument(
         "--header-path",
