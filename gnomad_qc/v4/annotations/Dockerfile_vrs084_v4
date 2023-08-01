@@ -1,0 +1,13 @@
+# Pull the VRS image we created for v3, add bgzip to it.
+
+FROM us-central1-docker.pkg.dev/broad-mpg-gnomad/ga4gh-vrs/marten_0615_vrs0_8_4
+
+# Install bgzip
+ENV BGZIP_VERSION="1.17"
+RUN wget https://github.com/samtools/htslib/releases/download/1.17/htslib-1.17.tar.bz2 \
+    && tar -xjf htslib-1.17.tar.bz2 \
+    && cd htslib-1.17 \
+    && ./configure \
+    && make \
+    && make install \
+    && export PATH=htslib-1.17/bin:$PATH

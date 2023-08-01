@@ -1,5 +1,6 @@
 """Script containing generic resources."""
 import logging
+from typing import List, Optional
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -29,7 +30,9 @@ def get_gnomad_v4_vds(
     keep_controls: bool = False,
     release_only: bool = False,
     test: bool = False,
-    n_partitions: int = None,
+    n_partitions: Optional[int] = None,
+    filter_partitions: Optional[List[int]] = None,
+    chrom: Optional[str] = None,
     remove_dead_alleles: bool = True,
     annotate_meta: bool = False,
 ) -> hl.vds.VariantDataset:
@@ -52,6 +55,8 @@ def get_gnomad_v4_vds(
     :param test: Whether to use the test VDS instead of the full v4 VDS.
     :param n_partitions: Optional argument to read the VDS with a specific number of
         partitions.
+    :param filter_partitions: Optional argument to filter the VDS to specific partitions.
+    :param chrom: Optional argument to filter the VDS to a specific chromosome.
     :param remove_dead_alleles: Whether to remove dead alleles from the VDS when
         removing withdrawn UKB samples. Default is True.
     :param annotate_meta: Whether to annotate the VDS with the sample QC metadata.
@@ -69,10 +74,41 @@ def get_gnomad_v4_vds(
     else:
         gnomad_v4_resource = gnomad_v4_genotypes
 
-    if n_partitions:
+    if n_partitions and chrom:
+        logger.info(
+            "Filtering to chromosome %s with %s partitions...", chrom, n_partitions
+        )
+        reference_data = hl.read_matrix_table(
+            hl.vds.VariantDataset._reference_path(gnomad_v4_resource.path)
+        )
+        reference_data = hl.filter_intervals(
+            reference_data,
+            [hl.parse_locus_interval(x, reference_genome="GRCh38") for x in [chrom]],
+        )
+        intervals = reference_data._calculate_new_partitions(n_partitions)
+        reference_data = hl.read_matrix_table(
+            hl.vds.VariantDataset._reference_path(gnomad_v4_resource.path),
+            _intervals=intervals,
+        )
+        variant_data = hl.read_matrix_table(
+            hl.vds.VariantDataset._variants_path(gnomad_v4_resource.path),
+            _intervals=intervals,
+        )
+        vds = hl.vds.VariantDataset(reference_data, variant_data)
+    elif n_partitions:
         vds = hl.vds.read_vds(gnomad_v4_resource.path, n_partitions=n_partitions)
     else:
         vds = gnomad_v4_resource.vds()
+        if chrom:
+            logger.info("Filtering to chromosome %s...", chrom)
+            vds = hl.vds.filter_chromosomes(vds, keep=chrom)
+
+    if filter_partitions:
+        logger.info("Filtering to %s partitions...", len(filter_partitions))
+        vds = hl.vds.VariantDataset(
+            vds.reference_data._filter_partitions(filter_partitions),
+            vds.variant_data._filter_partitions(filter_partitions),
+        )
 
     # We don't need to do the UKB sample removal if we're only keeping high quality or
     # release samples since they will not be in either of those sets.
@@ -152,12 +188,22 @@ def get_gnomad_v4_vds(
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
             if high_quality_only:
+                logger.info(
+                    "Filtering test dataset VDS to high quality samples only..."
+                )
                 filter_expr = meta_ht.high_quality
             elif remove_hard_filtered_samples_no_sex:
+                logger.info(
+                    "Filtering test dataset VDS to hard filtered samples (without sex"
+                    " imputation filtering) only..."
+                )
                 filter_expr = (
                     hl.len(meta_ht.rand_sampling_meta.hard_filters_no_sex) == 0
                 )
             else:
+                logger.info(
+                    "Filtering test dataset VDS to hard filtered samples only..."
+                )
                 filter_expr = hl.len(meta_ht.rand_sampling_meta.hard_filters) == 0
             meta_ht = meta_ht.filter(filter_expr)
             vds = hl.vds.filter_samples(vds, meta_ht)
@@ -170,40 +216,51 @@ def get_gnomad_v4_vds(
 
             keep_samples = False
             if high_quality_only:
+                logger.info("Filtering VDS to high quality samples only...")
                 filter_ht = finalized_outlier_filtering().ht()
                 filter_ht = filter_ht.filter(~filter_ht.outlier_filtered)
                 keep_samples = True
             elif remove_hard_filtered_samples:
+                logger.info(
+                    "Filtering VDS to hard filtered samples (without sex imputation"
+                    " filtering) only..."
+                )
                 filter_ht = hard_filtered_samples.versions[CURRENT_VERSION].ht()
             else:
+                logger.info("Filtering VDS to hard filtered samples only...")
                 filter_ht = hard_filtered_samples_no_sex.versions[CURRENT_VERSION].ht()
 
             filter_s = filter_ht.s.collect()
             if keep_controls:
                 if keep_samples:
+                    logger.info("Keeping control samples in VDS...")
                     filter_s += TRUTH_SAMPLES_S
                 else:
                     filter_s = [s for s in filter_s if s not in TRUTH_SAMPLES_S]
 
             vds = hl.vds.filter_samples(vds, filter_s, keep=keep_samples)
 
-    if release_only or annotate_meta:
+    if release_only:
+        logger.info("Filtering VDS to release samples only...")
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
         else:
-            meta_ht = meta.versions[CURRENT_VERSION].ht()
-        if release_only:
-            filter_expr = meta_ht.release
-            if keep_controls:
-                filter_expr |= hl.literal(TRUTH_SAMPLES_S).contains(meta_ht.s)
-            vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
-        if annotate_meta:
-            vds = hl.vds.VariantDataset(
-                vds.reference_data,
-                vds.variant_data.annotate_cols(meta=meta_ht[vds.variant_data.col_key]),
-            )
+            meta_ht = meta.ht()
+        filter_expr = meta_ht.release
+        if keep_controls:
+            filter_expr |= hl.literal(TRUTH_SAMPLES_S).contains(meta_ht.s)
+        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+
+    if annotate_meta:
+        logger.info("Annotating VDS variant_data with metadata...")
+        meta_ht = meta.ht()
+        vds = hl.vds.VariantDataset(
+            vds.reference_data,
+            vds.variant_data.annotate_cols(meta=meta_ht[vds.variant_data.col_key]),
+        )
 
     if split:
+        logger.info("Splitting multiallelics...")
         vmt = vds.variant_data
         vmt = vmt.annotate_rows(
             n_unsplit_alleles=hl.len(vmt.alleles),
