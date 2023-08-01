@@ -163,7 +163,6 @@ def get_vds_for_freq(
         ),
     )
 
-    # TODO: What above function? Also I think this can be done at a different time.
     # Downsamplings are done outside the above function as we need to annotate
     # globals and rows.
     logger.info("Annotating downsampling groups...")
@@ -171,8 +170,6 @@ def get_vds_for_freq(
         vds.variant_data, DOWNSAMPLINGS["v4"], pop_expr=vds.variant_data.pop
     )
 
-    # TODO: This is only used once and is not a complicated expression, do you think it
-    #  needs to be a function?
     logger.info("Annotating non_ref hets pre-split...")
     vds.variant_data = vds.variant_data.annotate_entries(
         _het_non_ref=vds.variant_data.LGT.is_het_non_ref()
@@ -195,8 +192,6 @@ def get_vds_for_freq(
     return vds
 
 
-# TODO: Move VDS adj annotation to gnomad_methods, then add as option in
-#  loading function
 def annotate_adj_and_select_fields(vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
     """
     Annotate adj, _het_ad, and select fields to reduce memory usage.
@@ -311,7 +306,6 @@ def get_sample_age_bin(
     return hl.or_missing(hl.is_defined(sample_age), bin_label)
 
 
-# TODO: Does this need its own function?
 def compute_age_hist(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
     Compute age histograms for each variant.
@@ -364,22 +358,6 @@ def correct_age_hists(ht: hl.Table) -> hl.Table:
     )
 
 
-# TODO: I think `qual_hist_expr` in gnomad_methods should just be modified to either
-#  have an option to return them like this or to return them like this by default and
-#  just have a breaking change.
-#    if adj_expr is not None:
-#        adj_qual_hists = {
-#            qual_hist_name: hl.agg.filter(adj_expr, qual_hist_expr)
-#            for qual_hist_name, qual_hist_expr in qual_hists.items()
-#        }
-#        if split_adj_and_raw:
-#            return hl.struct(
-#                raw_qual_hists=hl.struct(**qual_hists),
-#                qual_hists=hl.struct(**adj_qual_hists)
-#            )
-#        else:
-#            qual_hists.update({f"{k}_adj": v for k, v in adj_qual_hists.items()})
-#    return hl.struct(**qual_hists)
 def compute_qual_hists(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
     Annotate quality metrics histograms.
@@ -474,7 +452,6 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     return ht
 
 
-# TODO: Move to gnomad_methods.
 def annotate_downsamplings(
     t: Union[hl.MatrixTable, hl.Table],
     downsamplings: List[int],
@@ -537,7 +514,6 @@ def annotate_downsamplings(
     return t
 
 
-# TODO: Move to gnomad_methods.
 def split_vds_by_strata(
     vds: hl.vds.VariantDataset, strata_expr: hl.expr.Expression
 ) -> List[hl.vds.VariantDataset]:
@@ -573,10 +549,6 @@ def compute_freq_by_strata(
     :param entry_agg_funcs: Optional dict of entry aggregation functions.
     :return: Table or MatrixTable with allele frequencies by strata.
     """
-    # TODO: Modified error organization a little bit to make it easier to look at
-    # TODO: Not implemented seems like the wrong error here, maybe ValueError?
-    # TODO: As is, it works like previously where some groupings of samples can have
-    #  0 samples. Do we want to remove these groups instead?
     n_samples = mt.count_cols()
 
     # Get counters for all strata.
@@ -817,8 +789,6 @@ def annotate_freq(
         instead of only a Table with `freq` and other annotations. Default is True.
     :return: MatrixTable or Table with `freq` annotation.
     """
-    # TODO: Modified error organization a little bit to make it easier to look at
-    # TODO: Not implemented seems like the wrong error here, maybe ValueError?
     errors = []
     if subpop_expr is not None and pop_expr is None:
         errors.append("annotate_freq requires pop_expr when using subpop_expr")
@@ -1223,8 +1193,6 @@ def main(args):  # noqa: D103
 
             freq_ht = combine_freq_hts(freq_hts, FREQ_ROW_FIELDS, FREQ_GLOBAL_FIELDS)
         else:
-            # TODO: Will this only have the fields in FREQ_ROW_FIELDS and
-            #  FREQ_GLOBAL_FIELDS?
             freq_ht = generate_freq_and_hists_ht(vds, ab_cutoff=ab_cutoff)
 
         freq_ht.write(res.freq_and_dense_annotations.path, overwrite=args.overwrite)
@@ -1249,7 +1217,6 @@ def main(args):  # noqa: D103
         logger.info("computing FAF & grpmax...")
         ht = generate_faf_grpmax(ht)
 
-        # TODO: I don't think this really needs its own function.
         logger.info("Calculating InbreedingCoeff...")
         ht = ht.annotate(
             InbreedingCoeff=bi_allelic_site_inbreeding_expr(callstats_expr=ht.freq[1])
