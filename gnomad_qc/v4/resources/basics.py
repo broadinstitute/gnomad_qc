@@ -76,7 +76,7 @@ def get_gnomad_v4_vds(
 
     if n_partitions and chrom:
         logger.info(
-            f"Filtering to chromosome %s with {n_partitions} partitions...", chrom
+            "Filtering to chromosome %s with %s partitions...", chrom, n_partitions
         )
         reference_data = hl.read_matrix_table(
             hl.vds.VariantDataset._reference_path(gnomad_v4_resource.path)
