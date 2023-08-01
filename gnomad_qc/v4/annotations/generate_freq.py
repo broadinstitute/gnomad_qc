@@ -3,7 +3,7 @@ Script to generate the frequency data annotations across v4 exomes.
 
 This script first splits the v4 VDS into multiples VDSs based which are then densified
 and annotated with frequency data and histograms. The VDSs are then merged back together
-in a hail Table. Next the script corrects for the high AB heterzygous GATK artifact in
+in a hail Table. Next the script corrects for the high AB heterozygous GATK artifact in
 existing annotations when given the AF threshold using a high AB het array. The script
 then computes the inbreeding coefficient using the raw call stats. Finally, it computes
 the filtering allele frequency and grpmax with the AB-adjusted frequencies.
@@ -12,7 +12,7 @@ import argparse
 import itertools
 import logging
 from copy import deepcopy
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import DOWNSAMPLINGS, POPS_TO_REMOVE_FOR_POPMAX
@@ -39,7 +39,6 @@ from gnomad_qc.resource_utils import (
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_freq
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
-from gnomad_qc.v4.resources.meta import meta
 
 logging.basicConfig(
     level=logging.INFO,
@@ -48,6 +47,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger("gnomAD_frequency")
 logger.setLevel(logging.INFO)
+
+FREQ_ROW_FIELDS = [
+    "freq",
+    "high_ab_hets_by_group_membership",
+    "qual_hists",
+    "raw_qual_hists",
+    "age_hist_het",
+    "age_hist_hom",
+]
+"""
+List of final top level row and global annotations created from dense data that we
+want on the frequency HT before deciding on the AF cutoff.
+"""
+
+FREQ_GLOBAL_FIELDS = ["freq_meta", "age_distribution"]
+"""
+List of final global annotations created from dense data that we want on the frequency
+HT before deciding on the AF cutoff.
+"""
 
 
 def get_freq_resources(
@@ -101,106 +119,84 @@ def get_vds_for_freq(
     :param use_test_dataset: Whether to use test dataset.
     :param test_gene: Whether to filter to DRD2 for testing purposes.
     :param test_n_partitions: Number of partitions to use for testing.
-    :param chr: Chromosome to filter to.
+    :param chrom: Chromosome to filter to.
     :return: Hail VDS with only necessary annotations.
     """
     logger.info(
         "Reading the %s gnomAD v4 VDS...", "test" if use_test_dataset else "full"
     )
-    if use_test_dataset:
-        vds = get_gnomad_v4_vds(test=True)
+    if test_n_partitions:
+        test_partitions = range(test_n_partitions)
     else:
-        vds = hl.vds.read_vds("gs://gnomad/v4.0/raw/exomes/gnomad_v4.0.vds")
+        test_partitions = None
 
-    meta_ht = meta.ht()
-    vds = hl.vds.filter_samples(vds, meta_ht.filter(meta_ht.release))
+    vds = get_gnomad_v4_vds(
+        test=use_test_dataset,
+        release_only=True,
+        filter_partitions=test_partitions,
+        chrom=chrom,
+        annotate_meta=True,
+    )
 
-    if test_gene or test_n_partitions or chrom:
-        if test_gene:
-            logger.info("Filtering to DRD2 in VDS for testing purposes...")
-            test_interval = [
-                hl.parse_locus_interval(
-                    "chr11:113409605-113475691", reference_genome="GRCh38"
-                )
-            ]
-            vds = hl.vds.filter_intervals(
-                vds, test_interval, split_reference_blocks=True
+    if test_gene:
+        logger.info("Filtering to DRD2 in VDS for testing purposes...")
+        test_interval = [
+            hl.parse_locus_interval(
+                "chr11:113409605-113475691", reference_genome="GRCh38"
             )
-
-        elif test_n_partitions:
-            logger.info(
-                "Filtering to %s partitions for testing purposes...", test_n_partitions
-            )
-            test_vmt = vds.variant_data._filter_partitions(range(test_n_partitions))
-            test_rmt = vds.reference_data._filter_partitions(range(test_n_partitions))
-            vds = hl.vds.VariantDataset(test_rmt, test_vmt)
-        else:
-            logger.info("Filtering to chromosome %s...", chrom)
-            vds = hl.vds.filter_chromosomes(vds, keep=chrom)
-
-    (
-        variants,
-        samples,
-    ) = vds.variant_data.count()  # TODO: Remove this logger after tests?
-    logger.info("VDS has %s variants in %s samples...", variants, samples)
+        ]
+        vds = hl.vds.filter_intervals(vds, test_interval, split_reference_blocks=True)
 
     logger.info("Annotating VDS with only necessary sample metadata...")
     vds = hl.vds.VariantDataset(
         vds.reference_data,
-        vds.variant_data.annotate_cols(
-            pop=meta_ht[vds.variant_data.col_key].population_inference.pop,
-            sex_karyotype=meta_ht[
-                vds.variant_data.col_key
-            ].sex_imputation.sex_karyotype,
-            fixed_homalt_model=meta_ht[
-                vds.variant_data.col_key
-            ].project_meta.fixed_homalt_model,
-            gatk_version=meta_ht[vds.variant_data.col_key].project_meta.gatk_version,
-            age=meta_ht[vds.variant_data.col_key].project_meta.age,
-            sample_age_bin=get_sample_age_bin(
-                meta_ht[vds.variant_data.col_key].project_meta.age
-            ),
+        vds.variant_data.select_cols(
+            pop=vds.variant_data.meta.population_inference.pop,
+            sex_karyotype=vds.variant_data.meta.sex_imputation.sex_karyotype,
+            fixed_homalt_model=vds.variant_data.meta.project_meta.fixed_homalt_model,
+            gatk_version=vds.variant_data.meta.project_meta.gatk_version,
+            age=vds.variant_data.meta.project_meta.age,
+            sample_age_bin=get_sample_age_bin(vds.variant_data.meta.project_meta.age),
             ukb_sample=hl.if_else(
-                meta_ht[vds.variant_data.col_key].project_meta.ukb_sample,
-                "ukb",
-                "non_ukb",
+                vds.variant_data.meta.project_meta.ukb_sample, "ukb", "non_ukb"
             ),
         ),
     )
 
+    # TODO: What above function? Also I think this can be done at a different time.
     # Downsamplings are done outside the above function as we need to annotate
-    # globals and rows
+    # globals and rows.
     logger.info("Annotating downsampling groups...")
-    vds = hl.vds.VariantDataset(
-        vds.reference_data,
-        annotate_downsamplings(vds.variant_data, pop_expr=vds.variant_data.pop),
+    vds.variant_data = annotate_downsamplings(
+        vds.variant_data, DOWNSAMPLINGS["v4"], pop_expr=vds.variant_data.pop
     )
 
+    # TODO: This is only used once and is not a complicated expression, do you think it
+    #  needs to be a function?
     logger.info("Annotating non_ref hets pre-split...")
-    vds = annotate_non_ref_het(vds)
-
-    logger.info("Selecting only required fields to reduce memory usage...")
-    vds = hl.vds.VariantDataset(
-        vds.reference_data,
-        vds.variant_data.select_entries("LA", "LAD", "DP", "GQ", "LGT", "_het_non_ref"),
-    )
-
-    return vds
-
-
-def annotate_non_ref_het(vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
-    """
-    Annotate non-ref heterozygous calls to prevent incorrect call adjustment post-split.
-
-    :param vds: Hail VDS to annotate non-ref het onto variant data.
-    :return: Hail VDS with _non_ref_het annotation.
-    """
     vds.variant_data = vds.variant_data.annotate_entries(
         _het_non_ref=vds.variant_data.LGT.is_het_non_ref()
     )
+
+    logger.info("Selecting only required fields to reduce memory usage...")
+    vds.variant_data = vds.variant_data.select_entries(
+        "LA", "LAD", "DP", "GQ", "LGT", "_het_non_ref"
+    )
+
+    logger.info("Spltting mutliallelics in VDS...")
+    vds = hl.vds.split_multi(vds, filter_changed_loci=True)
+
+    logger.info(
+        "Computing adj and _het_AD as part of reducing fields to reduce memory"
+        " usage during dense dependent steps..."
+    )
+    vds = annotate_adj_and_select_fields(vds)
+
     return vds
 
 
+# TODO: Move VDS adj annotation to gnomad_methods, then add as option in
+#  loading function
 def annotate_adj_and_select_fields(vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
     """
     Annotate adj, _het_ad, and select fields to reduce memory usage.
@@ -461,90 +457,244 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     return ht
 
 
-def compute_inbreeding_coeff(ht: hl.Table) -> hl.Table:
-    """
-    Compute inbreeding coefficient using raw call stats.
-
-    :param ht: Hail Table containing freq array with struct entries of AC, AN, and homozygote_count.
-    :return: Hail Table with inbreeding coefficient annotation.
-    """
-    ht = ht.annotate(
-        InbreedingCoeff=bi_allelic_site_inbreeding_expr(callstats_expr=ht.freq[1])
-    )
-    return ht
-
-
+# TODO: Move to gnomad_methods.
 def annotate_downsamplings(
-    mt: hl.MatrixTable,
+    t: Union[hl.MatrixTable, hl.Table],
+    downsamplings: List[int],
     pop_expr: Optional[hl.expr.StringExpression] = None,
-    downsamplings=DOWNSAMPLINGS["v4"],
-) -> hl.MatrixTable:
+) -> Union[hl.MatrixTable, hl.Table]:
     """
     Annotate downsampling groups.
 
-    :param mt: Input MT.
-    :param pop_expr: Optional expression for population group. When provided, population sample sizes are added as values to downsamplings.
+    :param t: Input Table or MatrixTable.
+    :param downsamplings: List of downsampling groups.
+    :param pop_expr: Optional expression for population group. When provided, population
+        sample sizes are added as values to downsamplings.
     :return: MatrixTable with downsampling annotations.
     """
-    if pop_expr is not None:
-        # We need to add all pop counts to the downsamplings list
-        mt = mt.annotate_cols(pop=pop_expr)
-        pop_counts = mt.aggregate_cols(hl.agg.counter(mt.pop))
-        downsamplings = [x for x in downsamplings if x <= sum(pop_counts.values())]
-        downsamplings = sorted(set(downsamplings + list(pop_counts.values())))
+    if isinstance(t, hl.MatrixTable):
+        if pop_expr is not None:
+            ht = t.annotate_cols(pop=pop_expr).cols()
+        else:
+            ht = t.cols()
+    else:
+        if pop_expr is not None:
+            ht = t.annotate(pop=pop_expr)
+        else:
+            ht = t
 
-    logger.info("Found %i downsamplings: %s", len(downsamplings), downsamplings)
-    downsampling_ht = mt.cols()
-    downsampling_ht = downsampling_ht.annotate(r=hl.rand_unif(0, 1))
-    downsampling_ht = downsampling_ht.order_by(downsampling_ht.r)
+    ht = ht.annotate(r=hl.rand_unif(0, 1))
+    ht = ht.order_by(ht.r)
+
+    # Add a global index for use in computing frequencies, or other aggregate stats on
+    # the downsamplings.
     scan_expr = {"global_idx": hl.scan.count()}
 
-    # Index by pop if pop_expr is provided. This was pulled out of the existing
-    # annotate_freq code. We need to do this here so that we can annotate the
-    # pop_idx field in the downsampling_expr.
+    # If pop_expr is provided, add all pop counts to the downsamplings list.
     if pop_expr is not None:
-        scan_expr["pop_idx"] = hl.scan.counter(downsampling_ht.pop).get(
-            downsampling_ht.pop, 0
+        pop_counts = ht.aggregate(
+            hl.agg.filter(hl.is_defined(ht.pop), hl.agg.counter(ht.pop))
         )
+        downsamplings = [x for x in downsamplings if x <= sum(pop_counts.values())]
+        downsamplings = sorted(set(downsamplings + list(pop_counts.values())))
+        # Add an index by pop for use in computing frequencies, or other aggregate stats
+        # on the downsamplings.
+        scan_expr["pop_idx"] = hl.scan.counter(ht.pop).get(ht.pop, 0)
+    else:
+        pop_counts = None
+    logger.info("Found %i downsamplings: %s", len(downsamplings), downsamplings)
 
-    downsampling_ht = downsampling_ht.annotate(**scan_expr)
-    downsampling_ht = downsampling_ht.key_by("s").select(*scan_expr)
-    mt = mt.annotate_cols(downsampling=downsampling_ht[mt.s])
-    mt = mt.annotate_globals(
+    ht = ht.annotate(**scan_expr)
+    ht = ht.key_by("s").select(*scan_expr)
+
+    if isinstance(t, hl.MatrixTable):
+        t = t.annotate_cols(downsampling=ht[t.s])
+    else:
+        t = t.annotate(downsampling=ht[t.s])
+
+    t = t.annotate_globals(
         downsamplings=downsamplings,
-        ds_pop_counts=pop_counts if pop_expr is not None else None,
+        ds_pop_counts=pop_counts,
     )
 
-    return mt
+    return t
 
 
-def split_vds(
-    vds: hl.vds.VariantDataset, split_annotation: hl.expr.Expression
-) -> hl.ArrayExpression:
+# TODO: Move to gnomad_methods.
+def split_vds_by_strata(
+    vds: hl.vds.VariantDataset, strata_expr: hl.expr.Expression
+) -> List[hl.vds.VariantDataset]:
     """
-    Split a VDS into a list of VDSs based on the split_annotation.
+    Split a VDS into a list of VDSs based on `strata_expr`.
 
     :param vds: Input VDS.
-    :param split_annotation: Annotation on VDS variant_data MT split on.
+    :param strata_expr: Expression on VDS variant_data MT to split on.
     :return: List of VDSs.
     """
-    vds_list = []
-    for split in vds.variant_data.aggregate_cols(
-        hl.agg.collect_as_set(split_annotation)
-    ):
-        samples = vds.variant_data.filter_cols(split_annotation == split).s.collect()
-        vds_list.append(hl.vds.filter_samples(vds, samples))
-    return vds_list
+    vmt = vds.variant_data
+    s_by_strata = vmt.aggregate_cols(
+        hl.agg.group_by(strata_expr, hl.agg.collect_as_set(vmt.s))
+    )
+
+    return [hl.vds.filter_samples(vds, s) for strata, s in s_by_strata.items()]
 
 
-# The function below is an updated copy of Tim's freq updates found here:
-# https://github.com/broadinstitute/gnomad_methods/pull/537. I've merged the
-# additional_strata_expr and added the downsampling_expr functionality
-# that supports external downsampling annotations into this function
-def annotate_freq_and_high_ab_hets(
+def compute_freq_by_strata(
+    mt: hl.MatrixTable,
+    strata_expr: List[Dict[str, hl.expr.StringExpression]],
+    downsamplings: Optional[List[int]] = None,
+    ds_pop_counts: Optional[Dict[str, int]] = None,
+    entry_agg_funcs: Optional[Dict[str, Tuple[Callable, Callable]]] = None,
+) -> hl.Table:
+    """
+    Compute allele frequencies by strata.
+
+    :param mt: Input MatrixTable.
+    :param strata_expr: List of dicts of strata expressions.
+    :param downsamplings: Optional list of downsampling groups.
+    :param ds_pop_counts: Optional dict of population counts for downsampling groups.
+    :param entry_agg_funcs: Optional dict of entry aggregation functions.
+    :return: Table or MatrixTable with allele frequencies by strata.
+    """
+    # TODO: Modified error organization a little bit to make it easier to look at
+    # TODO: Not implemented seems like the wrong error here, maybe ValueError?
+    # TODO: As is, it works like previously where some groupings of samples can have
+    #  0 samples. Do we want to remove these groups instead?
+    n_samples = mt.count_cols()
+
+    # Get counters for all strata.
+    strata_counts = mt.aggregate_cols(
+        hl.struct(
+            **{
+                k: hl.agg.filter(hl.is_defined(v), hl.agg.counter({k: v}))
+                for strata in strata_expr
+                for k, v in strata.items()
+            }
+        )
+    )
+
+    # Add all desired strata to sample group filters.
+    sample_group_filters = [({}, True)]
+    for strata in strata_expr:
+        downsampling_expr = strata.get("downsampling")
+        strata_values = []
+        for s in strata:
+            if s == "downsampling":
+                v = [("downsampling", d) for d in downsamplings]
+            else:
+                v = [(s, k[s]) for k in strata_counts.get(s, {})]
+                if s == "pop" and downsampling_expr is not None:
+                    v.append(("pop", "global"))
+            strata_values.append(v)
+
+        # Get all combinations of strata values.
+        strata_combinations = itertools.product(*strata_values)
+        for combo in strata_combinations:
+            combo = dict(combo)
+            ds = combo.get("downsampling")
+            pop = combo.get("pop")
+            # If combo contains downsampling, determine the downsampling index
+            # annotation to use.
+            downsampling_idx = "global_idx"
+            if ds is not None:
+                if pop is not None and pop != "global":
+                    # Don't include population downsamplings where the downsampling is
+                    # larger than the number of samples in the population.
+                    if ds > ds_pop_counts[pop]:
+                        continue
+                    downsampling_idx = "pop_idx"
+
+            # If combo contains downsampling, add downsampling filter expression.
+            combo_filter_exprs = []
+            for s, v in combo.items():
+                if s == "downsampling":
+                    combo_filter_exprs.append(downsampling_expr[downsampling_idx] < v)
+                else:
+                    if s != "pop" or v != "global":
+                        combo_filter_exprs.append(strata[s] == v)
+            combo = {k: str(v) for k, v in combo.items()}
+            sample_group_filters.append((combo, hl.all(combo_filter_exprs)))
+
+    n_groups = len(sample_group_filters)
+    logger.info("number of filters: %i", n_groups)
+
+    # Annotate columns with group_membership.
+    mt = mt.annotate_cols(group_membership=[x[1] for x in sample_group_filters])
+
+    # Get sample count per strata group.
+    freq_sample_count = mt.aggregate_cols(
+        hl.agg.array_agg(lambda x: hl.agg.count_where(x), mt.group_membership)
+    )
+
+    # Create and annotate global expression with meta and sample count information
+    freq_meta_expr = [
+        dict(**sample_group[0], group="adj") for sample_group in sample_group_filters
+    ]
+    freq_meta_expr.insert(1, {"group": "raw"})
+    freq_sample_count.insert(1, freq_sample_count[0])
+    mt = mt.annotate_globals(
+        freq_meta=freq_meta_expr,
+        freq_sample_count=freq_sample_count,
+    )
+
+    # Create frequency expression array from the sample groups.
+    ht = mt.localize_entries("entries", "cols")
+    ht = ht.annotate_globals(
+        indices_by_group=hl.range(n_groups).map(
+            lambda g_i: hl.range(n_samples).filter(
+                lambda s_i: ht.cols[s_i].group_membership[g_i]
+            )
+        )
+    )
+    ht = ht.annotate(
+        adj_array=ht.entries.map(lambda e: e.adj),
+        gt_array=ht.entries.map(lambda e: e.GT),
+    )
+
+    def _agg_by_group(ht, agg_func, agg_expr, *args):
+        adj_agg_expr = ht.indices_by_group.map(
+            lambda s_indices: s_indices.aggregate(
+                lambda i: hl.agg.filter(ht.adj_array[i], agg_func(agg_expr[i], *args))
+            )
+        )
+        raw_agg_expr = agg_expr.aggregate(lambda x: agg_func(x, *args))
+        return adj_agg_expr[:1].append(raw_agg_expr).extend(adj_agg_expr[1:])
+
+    freq_expr = _agg_by_group(ht, hl.agg.call_stats, ht.gt_array, ht.alleles)
+
+    # Select non-ref allele (assumes bi-allelic).
+    ann_expr = {
+        "freq": freq_expr.map(
+            lambda cs: cs.annotate(
+                AC=cs.AC[1],
+                # TODO: This is NA in case AC and AN are 0 -- should we set it to 0?
+                AF=cs.AF[1],
+                homozygote_count=cs.homozygote_count[1],
+            )
+        )
+    }
+
+    # Add annotations for any supplied entry transform and aggregation functions.
+    if entry_agg_funcs is not None:
+        for ann, f in entry_agg_funcs.items():
+            transform_func = f[0]
+            agg_func = f[1]
+            ann_expr[ann] = _agg_by_group(
+                ht,
+                agg_func,
+                hl.map(lambda e, s: transform_func(e, s), ht.entries, ht.cols),
+            )
+
+    ht = ht.select(**ann_expr)
+
+    return ht
+
+
+def annotate_freq(
     mt: hl.MatrixTable,
     sex_expr: Optional[hl.expr.StringExpression] = None,
     pop_expr: Optional[hl.expr.StringExpression] = None,
+    subpop_expr: Optional[hl.expr.StringExpression] = None,
     additional_strata_expr: Optional[
         Union[
             List[Dict[str, hl.expr.StringExpression]],
@@ -554,8 +704,9 @@ def annotate_freq_and_high_ab_hets(
     downsamplings: Optional[List[int]] = None,
     ds_pop_counts: Optional[Dict[str, int]] = None,
     downsampling_expr: Optional[hl.expr.StructExpression] = None,
-    ab_cutoff: float = 0.9,
-) -> hl.Table:
+    entry_agg_funcs: Optional[Dict[str, Tuple[Callable, Callable]]] = None,
+    annotate_mt: bool = True,
+) -> Union[hl.Table, hl.MatrixTable]:
     """
     Annotate `mt` with stratified allele frequencies.
 
@@ -570,274 +721,170 @@ def annotate_freq_and_high_ab_hets(
 
         The input `mt` needs to have the following entry fields:
           - GT: a CallExpression containing the genotype
-          - adj: a BooleanExpression containing whether the genotype is of high quality or not.
+          - adj: a BooleanExpression containing whether the genotype is of high quality
+            or not.
 
         All expressions arguments need to be expression on the input `mt`.
 
     .. rubric:: `freq` row annotation
 
-    The `freq` row annotation is an Array of Struct, with each Struct containing the following fields:
+    The `freq` row annotation is an Array of Struct, with each Struct containing the
+    following fields:
 
         - AC: int32
         - AF: float64
         - AN: int32
         - homozygote_count: int32
 
-    Each element of the array corresponds to a stratification of the data, and the metadata about these annotations is
-    stored in the globals.
+    Each element of the array corresponds to a stratification of the data, and the
+    metadata about these annotations is stored in the globals.
 
     .. rubric:: Global `freq_meta` metadata annotation
 
     The global annotation `freq_meta` is added to the input `mt`. It is a list of dict.
-    Each element of the list contains metadata on a frequency stratification and the index in the list corresponds
-    to the index of that frequency stratification in the `freq` row annotation.
+    Each element of the list contains metadata on a frequency stratification and the
+    index in the list corresponds to the index of that frequency stratification in the
+    `freq` row annotation.
 
     .. rubric:: Global `freq_sample_count` annotation
 
-    The global annotation `freq_sample_count` is added to the input `mt`. This is a sample count per sample grouping
-    defined in the `freq_meta` global annotation.
+    The global annotation `freq_sample_count` is added to the input `mt`. This is a
+    sample count per sample grouping defined in the `freq_meta` global annotation.
 
     .. rubric:: The `downsamplings` parameter
 
-    If the `downsamplings` parameter is used, frequencies will be computed for all samples and by population
-    (if `pop_expr` is specified) by downsampling the number of samples without replacement to each of the numbers specified in the
-    `downsamplings` array, provided that there are enough samples in the dataset.
-    In addition, if `pop_expr` is specified, a downsampling to each of the exact number of samples present in each population is added.
-    Note that samples are randomly sampled only once, meaning that the lower downsamplings are subsets of the higher ones.
+    If the `downsamplings` parameter is used, frequencies will be computed for all
+    samples and by population (if `pop_expr` is specified) by downsampling the number
+    of samples without replacement to each of the numbers specified in the
+    `downsamplings` array, provided that there are enough samples in the dataset. In
+    addition, if `pop_expr` is specified, a downsampling to each of the exact number
+    of samples present in each population is added. Note that samples are randomly
+    sampled only once, meaning that the lower downsamplings are subsets of the higher
+    ones.
 
     .. rubric:: The `additional_strata_expr` parameter
 
-    If the `additional_strata_expr` parameter is used, frequencies will be computed for each of the strata dictionaries across all
-    values. For example, if `additional_strata_expr` is set to `[{'platform': mt.platform}, {'platform':mt.platform, 'pop': mt.pop},
-    {'age_bin': mt.age_bin}]`, then frequencies will be computed for each of the values of `mt.platform`, each of the combined values
-    of `mt.platform` and `mt.pop`, and each of the values of `mt.age_bin`.
+    If the `additional_strata_expr` parameter is used, frequencies will be computed for
+    each of the strata dictionaries across all values. For example, if
+    `additional_strata_expr` is set to `[{'platform': mt.platform},
+    {'platform':mt.platform, 'pop': mt.pop}, {'age_bin': mt.age_bin}]`, then
+    frequencies will be computed for each of the values of `mt.platform`, each of the
+    combined values of `mt.platform` and `mt.pop`, and each of the values of
+    `mt.age_bin`.
 
     :param mt: Input MatrixTable
-    :param sex_expr: When specified, frequencies are stratified by sex. If `pop_expr` is also specified, then a pop/sex stratifiction is added.
-    :param pop_expr: When specified, frequencies are stratified by population. If `sex_expr` is also specified, then a pop/sex stratifiction is added.
-    :param additional_strata_expr: When specified, frequencies are stratified by the given additional strata. This can e.g. be used to stratify by platform, platform-pop, platform-pop-sex.
-    :param downsamplings: When specified, frequencies are computed by downsampling the data to the number of samples given in the list. Note that if `pop_expr` is specified, downsamplings by population is also computed.
-    :param ds_pop_counts: When specified, frequencies are computed by downsampling the data to the number of samples per pop in the dict. The key is the population and the value is the number of samples.
-    :param downsampling_expr: When specified, frequencies are computed using the downsampling indices in the provided StructExpression. Note that if `pop_idx` is specified within the struct, downsamplings by population is also computed.
-    :param ab_cutoff: Allele balance cutoff for high AB het filtering. Default is 0.9.
-    :return: MatrixTable with `freq` annotation
+    :param sex_expr: When specified, frequencies are stratified by sex. If `pop_expr`
+        is also specified, then a pop/sex stratifiction is added.
+    :param pop_expr: When specified, frequencies are stratified by population. If
+        `sex_expr` is also specified, then a pop/sex stratifiction is added.
+    :param subpop_expr: When specified, frequencies are stratified by sub-continental
+        population. Note that `pop_expr` is required as well when using this option.
+    :param additional_strata_expr: When specified, frequencies are stratified by the
+        given additional strata. This can e.g. be used to stratify by platform,
+        platform-pop, platform-pop-sex.
+    :param downsamplings: When specified, frequencies are computed by downsampling the
+        data to the number of samples given in the list. Note that if `pop_expr` is
+        specified, downsamplings by population is also computed.
+    :param ds_pop_counts: When specified, frequencies are computed by downsampling the
+        data to the number of samples per pop in the dict. The key is the population
+        and the value is the number of samples.
+    :param downsampling_expr: When specified, frequencies are computed using the
+        downsampling indices in the provided StructExpression. Note that if `pop_idx`
+        is specified within the struct, downsamplings by population is also computed.
+    :param entry_agg_funcs: When specified, additional annotations are added to the
+        output Table/MatrixTable. The keys of the dict are the names of the annotations
+        and the values are tuples of functions. The first function is used to transform
+        the `mt` entries in some way, and the second function is used to aggregate the
+        output from the first function.
+    :param annotate_mt: Whether to return the full MatrixTable with annotations added
+        instead of only a Table with `freq` and other annotations. Default is True.
+    :return: MatrixTable or Table with `freq` annotation.
     """
-    if downsampling_expr is not None and downsamplings is None:
-        raise NotImplementedError(
-            "annotate_freq requires `downsamplings` when using `downsampling_expr`"
-        )
+    # TODO: Modified error organization a little bit to make it easier to look at
+    # TODO: Not implemented seems like the wrong error here, maybe ValueError?
+    errors = []
+    if subpop_expr is not None and pop_expr is None:
+        errors.append("annotate_freq requires pop_expr when using subpop_expr")
 
-    if (
-        downsampling_expr.get("pop_idx") is not None
-        and pop_expr is None
-        and ds_pop_counts is None
-    ):
-        raise NotImplementedError(
-            "annotate_freq requires `pop_expr` and `ds_pop_counts` when using"
-            " `downsampling_expr` with pop_idx"
-        )
+    if downsampling_expr is not None:
+        if downsamplings is None:
+            errors.append(
+                "annotate_freq requires `downsamplings` when using `downsampling_expr`"
+            )
+        if downsampling_expr.get("global_idx") is None:
+            errors.append(
+                "annotate_freq requires `downsampling_expr` with key 'global_idx'"
+            )
+        if downsampling_expr.get("pop_idx") is None:
+            if pop_expr is not None:
+                errors.append(
+                    "annotate_freq requires `downsampling_expr` with key 'pop_idx' when"
+                    " using `pop_expr`"
+                )
+        else:
+            if pop_expr is None or ds_pop_counts is None:
+                errors.append(
+                    "annotate_freq requires `pop_expr` and `ds_pop_counts` when using"
+                    " `downsampling_expr` with pop_idx"
+                )
 
-    if downsampling_expr is not None and downsampling_expr.get("global_idx") is None:
-        raise NotImplementedError(
-            "annotate_freq requires `downsampling_expr` with key 'global_idx'"
-        )
+    if errors:
+        raise ValueError("The following errors were found: \n" + "\n".join(errors))
 
-    if downsampling_expr is not None and (
-        downsampling_expr.get("pop_idx") is None and pop_expr is not None
-    ):
-        raise NotImplementedError(
-            "annotate_freq requires `downsampling_expr` with key 'pop_idx' when using"
-            " `pop_expr`"
-        )
-
-    if additional_strata_expr is None:
-        additional_strata_expr = [{}]
-
-    if isinstance(additional_strata_expr, dict):
-        additional_strata_expr = [additional_strata_expr]
-
-    _freq_meta_expr = hl.struct(
-        **{k: v for d in additional_strata_expr for k, v in d.items()}
-    )
-    if sex_expr is not None:
-        _freq_meta_expr = _freq_meta_expr.annotate(sex=sex_expr)
+    # Build list of strata expressions based on supplied parameters.
+    strata_expr = []
     if pop_expr is not None:
-        _freq_meta_expr = _freq_meta_expr.annotate(pop=pop_expr)
+        strata_expr.append({"pop": pop_expr})
+    if sex_expr is not None:
+        strata_expr.append({"sex": sex_expr})
+        if pop_expr is not None:
+            strata_expr.append({"pop": pop_expr, "sex": sex_expr})
+    if subpop_expr is not None:
+        strata_expr.append({"pop": pop_expr, "subpop": subpop_expr})
+
+    # Add downsampling to strata expressions, include pop in the strata if supplied.
     if downsampling_expr is not None:
-        _freq_meta_expr = _freq_meta_expr.annotate(downsampling=downsampling_expr)
+        downsampling_strata = {"downsampling": downsampling_expr}
+        if pop_expr is not None:
+            downsampling_strata["pop"] = pop_expr
+        strata_expr.append(downsampling_strata)
 
-    # Annotate cols with provided cuts
-    mt = mt.annotate_cols(_freq_meta=_freq_meta_expr)
+    # Add additional strata expressions.
+    if additional_strata_expr is not None:
+        if isinstance(additional_strata_expr, dict):
+            additional_strata_expr = [additional_strata_expr]
+        strata_expr.extend(additional_strata_expr)
 
-    # Get counters for sex, pop and if set additional strata
-    cut_dict = {
-        cut: hl.agg.filter(
-            hl.is_defined(mt._freq_meta[cut]), hl.agg.counter(mt._freq_meta[cut])
+    # Annotate mt with all annotations used in the strata expression list before any
+    # modifications are made to mt.
+    mt = mt.annotate_cols(**{k: v for d in strata_expr for k, v in d.items()})
+
+    # Get downsampling_expr if it is None, but downsamplings is supplied.
+    if downsamplings is not None and downsampling_expr is None:
+        mt = annotate_downsamplings(
+            mt, downsamplings, pop_expr=None if pop_expr is None else mt.pop
         )
-        for cut in mt._freq_meta
-    }
-    cut_data = mt.aggregate_cols(hl.struct(**cut_dict))
-    sample_group_filters = []
+        downsamplings = hl.eval(mt.downsamplings)
+        ds_pop_counts = hl.eval(mt.ds_pop_counts)
+        downsampling_strata = {"downsampling": mt.downsampling}
+        if pop_expr is not None:
+            downsampling_strata["pop"] = pop_expr
+        strata_expr.append(downsampling_strata)
 
-    # Create downsamplings if needed
-    if downsampling_expr is not None:
-        # Create downsampled sample groups
-        sample_group_filters.extend(
-            [
-                (
-                    {"downsampling": str(ds), "pop": "global"},
-                    mt.downsampling.global_idx < ds,
-                )
-                for ds in hl.eval(downsamplings)
-            ]
-        )
-        sample_group_filters.extend(
-            [
-                (
-                    {"downsampling": str(ds), "pop": pop},
-                    (mt._freq_meta.downsampling.pop_idx < ds)
-                    & (mt._freq_meta.pop == pop),
-                )
-                for ds in hl.eval(downsamplings)
-                for pop, pop_count in hl.eval(ds_pop_counts).items()
-                if (ds <= pop_count) & (pop is not None)
-            ]
-        )
-    # Add additional groupings to strata, e.g. strata-pop, strata-sex, strata-pop-sex
-    additional_strata_filters = []
-    for additional_strata in additional_strata_expr:
-        additional_strata_values = [
-            cut_data.get(strata, {}) for strata in additional_strata
-        ]
-        additional_strata_combinations = itertools.product(*additional_strata_values)
+    strata_expr = [{k: mt[k] for k in d} for d in strata_expr]
 
-        additional_strata_filters.extend(
-            [
-                (
-                    {
-                        strata: str(value)
-                        for strata, value in zip(additional_strata, combination)
-                    },
-                    hl.all(
-                        list(
-                            mt._freq_meta[strata] == value
-                            for strata, value in zip(additional_strata, combination)
-                        )
-                    ),
-                )
-                for combination in additional_strata_combinations
-            ]
-        )
-
-    # Add all desired strata, starting with the full set and ending with
-    # downsamplings (if any)
-    sample_group_filters = (
-        [({}, True)]
-        + [({"pop": pop}, mt._freq_meta.pop == pop) for pop in cut_data.get("pop", {})]
-        + [({"sex": sex}, mt._freq_meta.sex == sex) for sex in cut_data.get("sex", {})]
-        + [
-            (
-                {"pop": pop, "sex": sex},
-                (mt._freq_meta.sex == sex) & (mt._freq_meta.pop == pop),
-            )
-            for sex in cut_data.get("sex", {})
-            for pop in cut_data.get("pop", {})
-        ]
-        + additional_strata_filters
-        + sample_group_filters
+    ht = compute_freq_by_strata(
+        mt,
+        strata_expr,
+        downsamplings=downsamplings,
+        ds_pop_counts=ds_pop_counts,
+        entry_agg_funcs=entry_agg_funcs,
     )
 
-    freq_sample_count = mt.aggregate_cols(
-        [hl.agg.count_where(x[1]) for x in sample_group_filters]
-    )
-
-    logger.info("number of filters: %i", len(sample_group_filters))
-    # Annotate columns with group_membership
-    mt = mt.annotate_cols(group_membership=[x[1] for x in sample_group_filters])
-
-    # Create and annotate global expression with meta and sample count information
-    freq_meta_expr = [
-        dict(**sample_group[0], group="adj") for sample_group in sample_group_filters
-    ]
-    freq_meta_expr.insert(1, {"group": "raw"})
-    freq_sample_count.insert(1, freq_sample_count[0])
-    mt = mt.annotate_globals(
-        freq_meta=freq_meta_expr,
-        freq_sample_count=freq_sample_count,
-    )
-
-    mt = mt.annotate_globals(
-        sample_group_filters_range_array=hl.range(len(sample_group_filters))
-    )
-
-    ht = mt.localize_entries("entries", "cols")
-    ht = ht.annotate_globals(
-        indices_by_category=hl.range(hl.len(ht.cols)).aggregate(
-            lambda i: hl.agg.array_agg(
-                lambda j: hl.agg.filter(
-                    ht.cols[i].group_membership[j], hl.agg.collect(hl.int(i))
-                ),
-                ht.sample_group_filters_range_array,
-            ),
-        )
-    )
-
-    ht = ht.annotate(
-        adj_array=ht.entries.map(lambda e: e.adj),
-        gt_array=ht.entries.map(lambda e: e.GT),
-    )
-
-    def needs_high_ab_het_fix(entry, col):
-        return (
-            ((entry._het_ad / entry.DP) > ab_cutoff)
-            & entry.adj
-            & ~col.fixed_homalt_model
-            & ~entry._het_non_ref
-        )  # Skip adjusting genotypes if sample originally had a het nonref genotype
-
-    ht = ht.annotate(
-        high_ab_hets_by_group_membership=ht.indices_by_category.map(
-            lambda sample_indices: hl.len(
-                sample_indices.filter(
-                    lambda i: ht.gt_array[i].is_het_ref()
-                    & needs_high_ab_het_fix(ht.entries[i], ht.cols[i])
-                )
-            )
-        )
-    )
-
-    tmp_path = hl.utils.new_temp_file("just_gt_adj", "ht")
-    ht = ht.select(
-        "gt_array", "adj_array", "high_ab_hets_by_group_membership"
-    ).checkpoint(tmp_path)
-
-    freq_expr = ht.indices_by_category.map(
-        lambda sample_indices: sample_indices.aggregate(
-            lambda i: hl.agg.filter(
-                ht.adj_array[i], hl.agg.call_stats(ht.gt_array[i], ht.alleles)
-            ),
-        )
-    )
-
-    freq_expr = (
-        freq_expr[:1]
-        .extend([ht.gt_array.aggregate(lambda gt: hl.agg.call_stats(gt, ht.alleles))])
-        .extend(freq_expr[1:])
-    )
-
-    # Select non-ref allele (assumes bi-allelic)
-    freq_expr = freq_expr.map(
-        lambda cs: cs.annotate(
-            AC=cs.AC[1],
-            AF=cs.AF[
-                1
-            ],  # TODO: This is NA in case AC and AN are 0 -- should we set it to 0?
-            homozygote_count=cs.homozygote_count[1],
-        )
-    )
-
-    ht = ht.annotate(freq=freq_expr)
-    return ht.select("freq", "high_ab_hets_by_group_membership")
+    if annotate_mt:
+        return mt.annotate_rows(**ht[mt.row_key])
+    else:
+        return ht
 
 
 def generate_freq_and_hists_ht(
@@ -865,7 +912,7 @@ def generate_freq_and_hists_ht(
         - downsampling
         - downsamplings
 
-    :param mt: Input MT.
+    :param vds: Input VDS.
     :param ab_cutoff: Allele balance cutoff to use for high AB het annotation.
     :param idx: Optional index to append to temp file name.
     :return: Hail Table with frequency and histogram annotations.
@@ -894,7 +941,16 @@ def generate_freq_and_hists_ht(
         {"ukb_sample": mt.ukb_sample},  # confirm this is how we want to name this
     ]
 
-    freq_ht = annotate_freq_and_high_ab_hets(
+    def _needs_high_ab_het_fix(entry, col):
+        return hl.int(
+            entry.GT.is_het_ref()
+            & (entry._het_ad / entry.DP > ab_cutoff)
+            & entry.adj
+            & ~col.fixed_homalt_model
+            & ~entry._het_non_ref
+        )  # Skip adjusting genotypes if sample originally had a het nonref genotype
+
+    freq_ht = annotate_freq(
         mt,
         sex_expr=mt.sex_karyotype,
         pop_expr=mt.pop,
@@ -902,24 +958,10 @@ def generate_freq_and_hists_ht(
         downsampling_expr=mt.downsampling,
         ds_pop_counts=mt.ds_pop_counts,
         additional_strata_expr=additional_strata_expr,
-        ab_cutoff=ab_cutoff,
-    )
-
-    # Note: Tim's approach doesnt account for 'raw'in the sample_group_filters when
-    # calculcating high AB hets per group. I think this is because the high AB hets
-    # are dependent on the adj annotation so he assumed we didnt need it. However,
-    # to properly match the high AB hets to the correct group using the same index,
-    # we need to account for 'raw' in the high_ab_hets array. The number of high AB
-    # hets in the 'raw' group matches the number in the adj group, so we can just
-    # add insert the 'raw' group into the high_ab_hets array at the first index using
-    # the value of 'adj', which is the zero index in the high_ab_hets array. Yuck.
-    logger.info("Inserting raw group into high_ab_hets array...")
-    freq_ht = freq_ht.transmute(
-        high_ab_hets_by_group_membership=hl.array(
-            [freq_ht.high_ab_hets_by_group_membership[0]]
-        )
-        .append(freq_ht.high_ab_hets_by_group_membership[0])
-        .extend(freq_ht.high_ab_hets_by_group_membership[1:])
+        entry_agg_funcs={
+            "high_ab_hets_by_group_membership": (_needs_high_ab_het_fix, hl.agg.sum)
+        },
+        annotate_mt=False,
     )
 
     logger.info("Making freq index dict...")
@@ -1140,37 +1182,18 @@ def main(args):  # noqa: D103
         res = resources.run_freq_and_dense_annotations
         res.check_resource_existence()
 
-        logger.info("Getting VDS with fields required for splitting VDS...")
+        logger.info(
+            "Getting multi-allelic split VDS with adj and _het_AD entry annotations..."
+        )
         vds = get_vds_for_freq(use_test_dataset, test_gene, test_n_partitions, chrom)
 
-        logger.info("Spltting mutliallelics in VDS...")
-        vds = hl.vds.split_multi(vds, filter_changed_loci=True)
-
-        logger.info(
-            "Computing adj and _het_AD as part of reducing fields to reduce memory"
-            " usage during dense dependent steps..."
-        )
-        vds = annotate_adj_and_select_fields(vds)
-
-        if args.split_vds_by_annotation:
+        if args.split_vds_by_ukb:
             logger.info(
-                "Splitting VDS by sample annotation to reduce data size for"
+                "Splitting VDS by ukb_sample annotation to reduce data size for"
                 " densification..."
             )
-            vds_list = split_vds(vds, split_annotation=vds.variant_data.ukb_sample)
+            vds_list = split_vds_by_strata(vds, strata_expr=vds.variant_data.ukb_sample)
             freq_hts = {}
-
-            # Lists of final top level row and global annotations created from dense
-            # data that we want on the frequency HT before deciding on the AF cutoff.
-            final_rows_anns = [
-                "freq",
-                "high_ab_hets_by_group_membership",
-                "qual_hists",
-                "raw_qual_hists",
-                "age_hist_het",
-                "age_hist_hom",
-            ]
-            final_globals_anns = ["freq_meta", "age_distribution"]
 
             # Make a dict of freq hts with idx as key which will be used when joining
             # annotations. This is more straight forward to me than using joins since
@@ -1181,8 +1204,10 @@ def main(args):  # noqa: D103
                 freq_ht = generate_freq_and_hists_ht(vds, ab_cutoff=ab_cutoff, idx=idx)
                 freq_hts[idx] = freq_ht
 
-            freq_ht = combine_freq_hts(freq_hts, final_rows_anns, final_globals_anns)
+            freq_ht = combine_freq_hts(freq_hts, FREQ_ROW_FIELDS, FREQ_GLOBAL_FIELDS)
         else:
+            # TODO: Will this only have the fields in FREQ_ROW_FIELDS and
+            #  FREQ_GLOBAL_FIELDS?
             freq_ht = generate_freq_and_hists_ht(vds, ab_cutoff=ab_cutoff)
 
         freq_ht.write(res.freq_and_dense_annotations.path, overwrite=args.overwrite)
@@ -1207,8 +1232,11 @@ def main(args):  # noqa: D103
         logger.info("computing FAF & grpmax...")
         ht = generate_faf_grpmax(ht)
 
+        # TODO: I don't think this really needs its own function.
         logger.info("Calculating InbreedingCoeff...")
-        ht = compute_inbreeding_coeff(ht)
+        ht = ht.annotate(
+            InbreedingCoeff=bi_allelic_site_inbreeding_expr(callstats_expr=ht.freq[1])
+        )
 
         # TODO: Leaving in know while we test but need to drop fields we do not want
         # -- 'age_high_ab_his', all annotations from the split VDSs, only keep combinged,
