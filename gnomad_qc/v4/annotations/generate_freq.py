@@ -869,6 +869,8 @@ def annotate_freq(
     )
 
     if annotate_mt:
+        mt = mt.annotate_rows(**ht[mt.row_key])
+        mt = mt.annotate_globals(**ht.index_globals())
         return mt.annotate_rows(**ht[mt.row_key])
     else:
         return ht
