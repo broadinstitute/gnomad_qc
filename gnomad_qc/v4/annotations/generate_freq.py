@@ -553,7 +553,7 @@ def split_vds_by_strata(
         hl.agg.group_by(strata_expr, hl.agg.collect_as_set(vmt.s))
     )
 
-    return [hl.vds.filter_samples(vds, s) for strata, s in s_by_strata.items()]
+    return [hl.vds.filter_samples(vds, list(s)) for strata, s in s_by_strata.items()]
 
 
 def compute_freq_by_strata(
@@ -969,9 +969,9 @@ def generate_freq_and_hists_ht(
         mt,
         sex_expr=mt.sex_karyotype,
         pop_expr=mt.pop,
-        downsamplings=mt.downsamplings,
+        downsamplings=hl.eval(mt.downsamplings),
         downsampling_expr=mt.downsampling,
-        ds_pop_counts=mt.ds_pop_counts,
+        ds_pop_counts=hl.eval(mt.ds_pop_counts),
         additional_strata_expr=additional_strata_expr,
         entry_agg_funcs={
             "high_ab_hets_by_group_membership": (_needs_high_ab_het_fix, hl.agg.sum)
@@ -1204,7 +1204,7 @@ def main(args):  # noqa: D103
         )
         vds = get_vds_for_freq(use_test_dataset, test_gene, test_n_partitions, chrom)
 
-        if args.split_vds_by_ukb:
+        if args.split_vds_by_annotation:
             logger.info(
                 "Splitting VDS by ukb_sample annotation to reduce data size for"
                 " densification..."
