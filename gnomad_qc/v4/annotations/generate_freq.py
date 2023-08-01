@@ -311,6 +311,7 @@ def get_sample_age_bin(
     return hl.or_missing(hl.is_defined(sample_age), bin_label)
 
 
+# TODO: Does this need its own function?
 def compute_age_hist(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
     Compute age histograms for each variant.
@@ -363,6 +364,22 @@ def correct_age_hists(ht: hl.Table) -> hl.Table:
     )
 
 
+# TODO: I think `qual_hist_expr` in gnomad_methods should just be modified to either
+#  have an option to return them like this or to return them like this by default and
+#  just have a breaking change.
+#    if adj_expr is not None:
+#        adj_qual_hists = {
+#            qual_hist_name: hl.agg.filter(adj_expr, qual_hist_expr)
+#            for qual_hist_name, qual_hist_expr in qual_hists.items()
+#        }
+#        if split_adj_and_raw:
+#            return hl.struct(
+#                raw_qual_hists=hl.struct(**qual_hists),
+#                qual_hists=hl.struct(**adj_qual_hists)
+#            )
+#        else:
+#            qual_hists.update({f"{k}_adj": v for k, v in adj_qual_hists.items()})
+#    return hl.struct(**qual_hists)
 def compute_qual_hists(mt: hl.MatrixTable) -> hl.MatrixTable:
     """
     Annotate quality metrics histograms.
@@ -931,14 +948,12 @@ def generate_freq_and_hists_ht(
     logger.info("Annotating frequencies and counting high AB het calls...")
     additional_strata_expr = [
         {"gatk_version": mt.gatk_version},
-        {
-            "gatk_version": mt.gatk_version,
-            "pop": mt.pop,
-        },
-        {
-            "sample_age_bin": mt.sample_age_bin
-        },  # We need this to get high AB hets for age histogram correction, dont care about the frequency of it, should we drop it?
-        {"ukb_sample": mt.ukb_sample},  # confirm this is how we want to name this
+        {"gatk_version": mt.gatk_version, "pop": mt.pop},
+        # TODO: We need this to get high AB hets for age histogram correction, dont
+        #  care about the frequency of it, should we drop it?
+        {"sample_age_bin": mt.sample_age_bin},
+        # TODO: confirm this is how we want to name this.
+        {"ukb_sample": mt.ukb_sample},
     ]
 
     def _needs_high_ab_het_fix(entry, col):
@@ -965,7 +980,7 @@ def generate_freq_and_hists_ht(
     )
 
     logger.info("Making freq index dict...")
-    # Add our additional strata to the sort order, keeping group, i.e. adj, at the end
+    # Add additional strata to the sort order, keeping group, i.e. adj, at the end.
     sort_order = deepcopy(SORT_ORDER)
     sort_order[-1:-1] = ["gatk_version", "ukb_sample", "sample_age_bin"]
 
@@ -974,31 +989,33 @@ def generate_freq_and_hists_ht(
             freq_meta=freq_ht.freq_meta,
             label_delimiter="_",
             sort_order=sort_order,
-            # TODO: Check if we actually want to see age_bin, I dont think we do
+            # TODO: Check if we actually want to see age_bin, I dont think we do.
         )
     )
     logger.info("Setting Y metrics to NA for XX groups...")
     freq_ht = freq_ht.annotate(freq=set_female_y_metrics_to_na_expr(freq_ht))
 
-    logger.info("Annotating quality metrics histograms...")
+    logger.info("Computing quality metrics histograms...")
     mt = compute_qual_hists(mt)
-    final_rows_anns.update(
-        {
-            "qual_hists": mt.rows()[freq_ht.key].qual_hists,
-            "raw_qual_hists": mt.rows()[freq_ht.key].raw_qual_hists,
-        }
-    )
+
     logger.info("Computing age histograms for each variant...")
-    mt = compute_age_hist(mt)  # globla age distribution is a global
+    mt = compute_age_hist(mt)  # global age distribution is a global
+
+    hists = mt.rows()[freq_ht.key]
     final_rows_anns.update(
         {
-            "age_hist_het": mt.rows()[freq_ht.key].age_hist_het,
-            "age_hist_hom": mt.rows()[freq_ht.key].age_hist_hom,
+            "qual_hists": hists.qual_hists,
+            "raw_qual_hists": hists.raw_qual_hists,
+            "age_hist_het": hists.age_hist_het,
+            "age_hist_hom": hists.age_hist_hom,
         }
     )
     final_globals_anns.update({"age_distribution": mt.index_globals().age_distribution})
+
     freq_ht = freq_ht.annotate(**final_rows_anns)
     freq_ht = freq_ht.annotate_globals(**final_globals_anns)
+
+    # TODO: Remove after testing.
     freq_ht.describe()
     freq_ht = freq_ht.checkpoint(
         new_temp_file(f"freq_ht_{idx}", extension="ht"),
