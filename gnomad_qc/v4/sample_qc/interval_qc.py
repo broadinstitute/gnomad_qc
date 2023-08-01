@@ -633,7 +633,9 @@ def main(args):
             ht.write(
                 get_checkpoint_path("interval_qc_pass")
                 if test
-                else interval_qc_pass.path,
+                else interval_qc_pass(
+                    per_platform=args.per_platform, all_platforms=args.all_platforms
+                ).path,
                 overwrite=overwrite,
             )
     finally:
