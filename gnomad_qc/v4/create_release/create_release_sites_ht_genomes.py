@@ -44,9 +44,11 @@ def replace_oth_with_remaining(ht: hl.Table) -> hl.Table:
         freq_meta=ht.freq_meta.map(
             lambda d: d.map_values(lambda x: x.replace("oth", "remaining"))
         ),
-        freq_index_dict=hl.zip(
-            ht.freq_index_dict.keys().map(lambda k: k.replace("oth", "remaining")),
-            ht.freq_index_dict.values(),
+        freq_index_dict=hl.dict(
+            hl.zip(
+                ht.freq_index_dict.keys().map(lambda k: k.replace("oth", "remaining")),
+                ht.freq_index_dict.values(),
+            )
         ),
     )
     return ht
