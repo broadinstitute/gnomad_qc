@@ -1,5 +1,6 @@
 """Script containing generic resources."""
 import logging
+from typing import List, Optional
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -29,7 +30,9 @@ def get_gnomad_v4_vds(
     keep_controls: bool = False,
     release_only: bool = False,
     test: bool = False,
-    n_partitions: int = None,
+    n_partitions: Optional[int] = None,
+    filter_partitions: Optional[List[int]] = None,
+    chrom: Optional[str] = None,
     remove_dead_alleles: bool = True,
     annotate_meta: bool = False,
 ) -> hl.vds.VariantDataset:
@@ -52,6 +55,8 @@ def get_gnomad_v4_vds(
     :param test: Whether to use the test VDS instead of the full v4 VDS.
     :param n_partitions: Optional argument to read the VDS with a specific number of
         partitions.
+    :param filter_partitions: Optional argument to filter the VDS to specific partitions.
+    :param chrom: Optional argument to filter the VDS to a specific chromosome.
     :param remove_dead_alleles: Whether to remove dead alleles from the VDS when
         removing withdrawn UKB samples. Default is True.
     :param annotate_meta: Whether to annotate the VDS with the sample QC metadata.
@@ -69,76 +74,111 @@ def get_gnomad_v4_vds(
     else:
         gnomad_v4_resource = gnomad_v4_genotypes
 
-    if n_partitions:
+    if n_partitions and chrom:
+        logger.info(
+            f"Filtering to chromosome %s with {n_partitions} partitions...", chrom
+        )
+        reference_data = hl.read_matrix_table(
+            hl.vds.VariantDataset._reference_path(gnomad_v4_resource.path)
+        )
+        reference_data = hl.filter_intervals(
+            reference_data,
+            [hl.parse_locus_interval(x, reference_genome="GRCh38") for x in [chrom]],
+        )
+        intervals = reference_data._calculate_new_partitions(n_partitions)
+        reference_data = hl.read_matrix_table(
+            hl.vds.VariantDataset._reference_path(gnomad_v4_resource.path),
+            _intervals=intervals,
+        )
+        variant_data = hl.read_matrix_table(
+            hl.vds.VariantDataset._variants_path(gnomad_v4_resource.path),
+            _intervals=intervals,
+        )
+        vds = hl.vds.VariantDataset(reference_data, variant_data)
+    elif n_partitions:
         vds = hl.vds.read_vds(gnomad_v4_resource.path, n_partitions=n_partitions)
     else:
         vds = gnomad_v4_resource.vds()
+        if chrom:
+            logger.info("Filtering to chromosome %s...", chrom)
+            vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
-    # Count current number of samples in the VDS.
-    n_samples = vds.variant_data.count_cols()
+    if filter_partitions:
+        logger.info("Filtering to %s partitions...", len(filter_partitions))
+        vds = hl.vds.VariantDataset(
+            vds.reference_data._filter_partitions(filter_partitions),
+            vds.variant_data._filter_partitions(filter_partitions),
+        )
 
-    # Remove 75 withdrawn UKB samples (samples with withdrawn consents for application
-    # 31063 on 02/22/2022).
-    ukb_application_map_ht = ukb_application_map.ht()
-    withdrawn_ukb_samples = ukb_application_map_ht.filter(
-        ukb_application_map_ht.withdraw
-    ).s.collect()
+    # We don't need to do the UKB sample removal if we're only keeping high quality or
+    # release samples since they will not be in either of those sets.
+    if not high_quality_only and not release_only:
+        # Count current number of samples in the VDS.
+        n_samples = vds.variant_data.count_cols()
 
-    # Remove 43 samples that are known to be on the pharma's sample remove list. See:
-    # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308.
-    dups_ht = ukb_known_dups.ht()
-    ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
+        # Remove 75 withdrawn UKB samples (samples with withdrawn consents for
+        # application 31063 on 02/22/2022).
+        ukb_application_map_ht = ukb_application_map.ht()
+        withdrawn_ukb_samples = ukb_application_map_ht.filter(
+            ukb_application_map_ht.withdraw
+        ).s.collect()
 
-    # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS). See:
-    # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286.
-    # Confirmed that the col_idx of the 27 dup samples in the original UKB MT match
-    # the col_idx of the dup UKB samples in the VDS.
-    dup_ids = []
-    with hl.hadoop_open(ukb_dups_idx_path, "r") as d:
-        for line in d:
-            line = line.strip().split("\t")
-            dup_ids.append(f"{line[0]}_{line[1]}")
+        # Remove 43 samples that are known to be on the pharma's sample remove list.
+        # See:
+        # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308.
+        dups_ht = ukb_known_dups.ht()
+        ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
 
-    def _remove_ukb_dup_by_index(
-        mt: hl.MatrixTable, dup_ids: hl.expr.ArrayExpression
-    ) -> hl.MatrixTable:
-        """
-        Remove UKB samples with exact duplicate names based on column index.
+        # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS). See:
+        # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286.
+        # Confirmed that the col_idx of the 27 dup samples in the original UKB MT match
+        # the col_idx of the dup UKB samples in the VDS.
+        dup_ids = []
+        with hl.hadoop_open(ukb_dups_idx_path, "r") as d:
+            for line in d:
+                line = line.strip().split("\t")
+                dup_ids.append(f"{line[0]}_{line[1]}")
 
-        :param mt: MatrixTable of either the variant data or reference data of a VDS
-        :param dup_ids: ArrayExpression of UKB samples to remove in format of <sample_name>_<col_idx>
-        :return: MatrixTable of UKB samples with exact duplicate names removed based on column index
-        """
-        mt = mt.add_col_index()
-        mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
-        mt = mt.filter_cols(~dup_ids.contains(mt.new_s)).drop("new_s", "col_idx")
-        return mt
+        def _remove_ukb_dup_by_index(
+            mt: hl.MatrixTable, dup_ids: hl.expr.ArrayExpression
+        ) -> hl.MatrixTable:
+            """
+            Remove UKB samples with exact duplicate names based on column index.
 
-    dup_ids = hl.literal(dup_ids)
-    vd = _remove_ukb_dup_by_index(vds.variant_data, dup_ids)
-    rd = _remove_ukb_dup_by_index(vds.reference_data, dup_ids)
-    vds = hl.vds.VariantDataset(rd, vd)
+            :param mt: MatrixTable of either the variant data or reference data of a VDS
+            :param dup_ids: ArrayExpression of UKB samples to remove in format of <sample_name>_<col_idx>
+            :return: MatrixTable of UKB samples with exact duplicate names removed based on column index
+            """
+            mt = mt.add_col_index()
+            mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
+            mt = mt.filter_cols(~dup_ids.contains(mt.new_s)).drop("new_s", "col_idx")
+            return mt
 
-    # Filter withdrawn samples from the VDS.
-    withdrawn_ids = withdrawn_ukb_samples + ids_to_remove + hl.eval(dup_ids)
-    withdrawn_ids = [i for i in withdrawn_ids if i is not None]
+        dup_ids = hl.literal(dup_ids)
+        vd = _remove_ukb_dup_by_index(vds.variant_data, dup_ids)
+        rd = _remove_ukb_dup_by_index(vds.reference_data, dup_ids)
+        vds = hl.vds.VariantDataset(rd, vd)
 
-    logger.info("Total number of UKB samples to exclude: %d", len(withdrawn_ids))
+        # Filter withdrawn samples from the VDS.
+        withdrawn_ids = withdrawn_ukb_samples + ids_to_remove + hl.eval(dup_ids)
+        withdrawn_ids = [i for i in withdrawn_ids if i is not None]
 
-    vds = hl.vds.filter_samples(
-        vds,
-        withdrawn_ids,
-        keep=False,
-        remove_dead_alleles=remove_dead_alleles,
-    )
+        logger.info("Total number of UKB samples to exclude: %d", len(withdrawn_ids))
 
-    # Log number of UKB samples removed from the VDS.
-    n_samples_after_exclusion = vds.variant_data.count_cols()
-    n_samples_removed = n_samples - n_samples_after_exclusion
+        vds = hl.vds.filter_samples(
+            vds,
+            withdrawn_ids,
+            keep=False,
+            remove_dead_alleles=remove_dead_alleles,
+        )
 
-    logger.info(
-        "Total number of UKB samples removed from the VDS: %d", n_samples_removed
-    )
+        # Log number of UKB samples removed from the VDS.
+        n_samples_after_exclusion = vds.variant_data.count_cols()
+        n_samples_removed = n_samples - n_samples_after_exclusion
+
+        logger.info(
+            "Total number of UKB samples removed from the VDS: %d", n_samples_removed
+        )
 
     if (
         high_quality_only
@@ -148,12 +188,22 @@ def get_gnomad_v4_vds(
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
             if high_quality_only:
+                logger.info(
+                    "Filtering test dataset VDS to high quality samples only..."
+                )
                 filter_expr = meta_ht.high_quality
             elif remove_hard_filtered_samples_no_sex:
+                logger.info(
+                    "Filtering test dataset VDS to hard filtered samples (without sex"
+                    " imputation filtering) only..."
+                )
                 filter_expr = (
                     hl.len(meta_ht.rand_sampling_meta.hard_filters_no_sex) == 0
                 )
             else:
+                logger.info(
+                    "Filtering test dataset VDS to hard filtered samples only..."
+                )
                 filter_expr = hl.len(meta_ht.rand_sampling_meta.hard_filters) == 0
             meta_ht = meta_ht.filter(filter_expr)
             vds = hl.vds.filter_samples(vds, meta_ht)
@@ -166,40 +216,51 @@ def get_gnomad_v4_vds(
 
             keep_samples = False
             if high_quality_only:
+                logger.info("Filtering VDS to high quality samples only...")
                 filter_ht = finalized_outlier_filtering().ht()
                 filter_ht = filter_ht.filter(~filter_ht.outlier_filtered)
                 keep_samples = True
             elif remove_hard_filtered_samples:
+                logger.info(
+                    "Filtering VDS to hard filtered samples (without sex imputation"
+                    " filtering) only..."
+                )
                 filter_ht = hard_filtered_samples.versions[CURRENT_VERSION].ht()
             else:
+                logger.info("Filtering VDS to hard filtered samples only...")
                 filter_ht = hard_filtered_samples_no_sex.versions[CURRENT_VERSION].ht()
 
             filter_s = filter_ht.s.collect()
             if keep_controls:
                 if keep_samples:
+                    logger.info("Keeping control samples in VDS...")
                     filter_s += TRUTH_SAMPLES_S
                 else:
                     filter_s = [s for s in filter_s if s not in TRUTH_SAMPLES_S]
 
             vds = hl.vds.filter_samples(vds, filter_s, keep=keep_samples)
 
-    if release_only or annotate_meta:
+    if release_only:
+        logger.info("Filtering VDS to release samples only...")
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
         else:
-            meta_ht = meta.versions[CURRENT_VERSION].ht()
-        if release_only:
-            filter_expr = meta_ht.release
-            if keep_controls:
-                filter_expr |= hl.literal(TRUTH_SAMPLES_S).contains(meta_ht.s)
-            vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
-        if annotate_meta:
-            vds = hl.vds.VariantDataset(
-                vds.reference_data,
-                vds.variant_data.annotate_cols(meta=meta_ht[vds.variant_data.col_key]),
-            )
+            meta_ht = meta.ht()
+        filter_expr = meta_ht.release
+        if keep_controls:
+            filter_expr |= hl.literal(TRUTH_SAMPLES_S).contains(meta_ht.s)
+        vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+
+    if annotate_meta:
+        logger.info("Annotating VDS variant_data with metadata...")
+        meta_ht = meta.ht()
+        vds = hl.vds.VariantDataset(
+            vds.reference_data,
+            vds.variant_data.annotate_cols(meta=meta_ht[vds.variant_data.col_key]),
+        )
 
     if split:
+        logger.info("Splitting multiallelics...")
         vmt = vds.variant_data
         vmt = vmt.annotate_rows(
             n_unsplit_alleles=hl.len(vmt.alleles),
