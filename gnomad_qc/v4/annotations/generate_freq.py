@@ -178,13 +178,11 @@ def get_vds_for_freq(
         ukb_sample=hl.if_else(project_meta_expr.ukb_sample, "ukb", "non_ukb"),
     )
 
-    # TODO: Add comment and logger.
+    # TODO: Add logger.
     vmt = vmt.annotate_globals(
         age_distribution=vmt.aggregate_cols(hl.agg.hist(vmt.age, 30, 80, 10))
     )
 
-    # Downsamplings are done outside the above function as we need to annotate
-    # globals and rows.
     logger.info("Annotating downsampling groups...")
     vmt = annotate_downsamplings(vmt, DOWNSAMPLINGS["v4"], pop_expr=vmt.pop)
 
@@ -364,7 +362,7 @@ def merge_histograms(hists: List[hl.expr.StructExpression]) -> hl.Table:
     return hl.fold(
         lambda i, j: hl.struct(
             **{
-                "bin_edges": (i.bin_edges),  # Bin edges are the same for all histograms
+                "bin_edges": i.bin_edges,  # Bin edges are the same for all histograms
                 "bin_freq": hl.zip(i.bin_freq, j.bin_freq).map(lambda x: x[0] + x[1]),
                 "n_smaller": i.n_smaller + j.n_smaller,
                 "n_larger": i.n_larger + j.n_larger,
@@ -437,7 +435,8 @@ def combine_freq_hts(
     sort_order = deepcopy(SORT_ORDER)
     sort_order[-1:-1] = ["gatk_version", "ukb_sample"]
     freq_ht = freq_ht.annotate_globals(
-        downsamplings=freq_ht.global_array[0].downsamplings, freq_meta=comb_freq_meta
+        downsamplings=freq_ht.global_array[0].downsamplings,
+        freq_meta=hl.eval(comb_freq_meta),
     )
     freq_ht = freq_ht.annotate_globals(
         freq_index_dict=make_freq_index_dict_from_meta(
