@@ -1009,11 +1009,6 @@ def get_sample_qc_field_def_json_path(version: str = CURRENT_VERSION) -> str:
     return f"{get_sample_qc_root(version)}/additional_resources/gnomad.exomes.v{version}.sample_qc_field_definitions.json"
 
 
-# Table with HGDP + 1KG/TGP metadata from Alicia Martin's group sample QC
-hgdp_tgp_meta = TableResource(
-    path="gs://gcp-public-data--gnomad/release/3.1.2/ht/genomes/gnomad.genomes.v3.1.2.hgdp_1kg_subset_sample_meta.ht"
-)
-
 # Table with the set of outliers found by Alicia Martin's group during pop
 # specific PCA analyses as well as one duplicate sample
 # version from 2023: https://github.com/atgu/hgdp_tgp/blob/master/tutorials/nb2.ipynb
@@ -1030,4 +1025,9 @@ hgdp_tgp_related_samples_to_drop = TableResource(
 # group sample QC
 hgdp_recomputed_freemix = TableResource(
     path="gs://gnomad/sample_qc/ht/gnomad_v3_contam_rate_recomputed_hgdp_full.ht"
+)
+
+# Table with new population labels and updated geographic locations for HGDP and TGP
+hgdp_tgp_populations_updated = TableResource(
+    path="gs://gnomad/sample_qc/ht/hgdp_tgp_populations_updated_202308.ht"
 )

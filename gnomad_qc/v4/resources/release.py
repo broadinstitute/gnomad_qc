@@ -10,10 +10,13 @@ from gnomad.resources.resource_utils import (
 )
 from gnomad.utils.file_utils import file_exists
 
+from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import (
     COVERAGE_RELEASES,
     CURRENT_COVERAGE_RELEASE,
+    CURRENT_HGDP_TGP_RELEASE,
     CURRENT_RELEASE,
+    HGDP_TGP_RELEASES,
     RELEASES,
 )
 
@@ -194,5 +197,24 @@ def release_coverage(
                 )
             )
             for release in COVERAGE_RELEASES[data_type]
+        },
+    )
+
+
+def hgdp_tgp_updated_AF(test: bool = False) -> VersionedTableResource:
+    """
+    Get the HGDP + 1KG/TGP subset release MatrixTableResource.
+
+    :param added: If True, return the HT for samples to be added; if False, return the HT for samples to be subtracted
+    :param test: If true, will return the annotation resource for testing purposes
+    :return: MatrixTableResource for specific subset
+    """
+    return VersionedTableResource(
+        default_version=CURRENT_HGDP_TGP_RELEASE,
+        versions={
+            release: TableResource(
+                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/ht/'}/gnomad.genomes.v{release}.updated_hgdp_1kg_subset_AF.ht"
+            )
+            for release in HGDP_TGP_RELEASES
         },
     )
