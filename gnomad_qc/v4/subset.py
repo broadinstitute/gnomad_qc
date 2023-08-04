@@ -252,7 +252,7 @@ def main(args):
             logger.info("Adding subset callstats")
             if not args.split_multi:
                 mt = mt.annotate_entries(
-                    GT=hl.experimental.lgt_to_gt(mt.LGT, mt.LA),
+                    GT=hl.vds.lgt_to_gt(mt.LGT, mt.LA),
                     adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD),
                 )
             else:

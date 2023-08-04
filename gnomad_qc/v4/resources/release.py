@@ -1,11 +1,25 @@
 """Script containing release related resources."""
+import logging
 from typing import Optional
 
-from gnomad.resources.grch38.gnomad import public_release
-from gnomad.resources.resource_utils import TableResource, VersionedTableResource
+from gnomad.resources.grch38.gnomad import coverage, public_release
+from gnomad.resources.resource_utils import (
+    DataException,
+    TableResource,
+    VersionedTableResource,
+)
 from gnomad.utils.file_utils import file_exists
 
-from gnomad_qc.v4.resources.constants import CURRENT_RELEASE, RELEASES
+from gnomad_qc.v4.resources.constants import (
+    COVERAGE_RELEASES,
+    CURRENT_COVERAGE_RELEASE,
+    CURRENT_RELEASE,
+    RELEASES,
+)
+
+logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
+logger = logging.getLogger("release_resources")
+logger.setLevel(logging.INFO)
 
 
 def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
@@ -120,4 +134,65 @@ def append_to_vcf_header_path(
     """
     return (
         f"gs://gnomad/release/{release_version}/vcf/exomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
+    )
+
+
+def release_coverage_path(
+    data_type: str = "exomes",
+    release_version: str = CURRENT_RELEASE,
+    public: bool = True,
+) -> str:
+    """
+    Fetch filepath for coverage release Table.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :param release_version: Release version.
+    :param public: Determines whether release coverage Table is read from public or
+        private bucket. Default is public.
+    :return: File path for desired coverage Hail Table.
+    """
+    if public:
+        try:
+            cov = coverage(data_type)
+            if release_version in cov.versions:
+                path = cov.versions[release_version].path
+            else:
+                path = None
+        except DataException:
+            path = None
+        if path is None:
+            logger.warning(
+                "No public coverage Table found for data_type %s and release %s. "
+                "Using 'gs://gnomad-public-requester-pays' path.",
+                data_type,
+                release_version,
+            )
+            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.coverage.ht"
+        else:
+            return path
+    else:
+        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.coverage.ht"
+
+
+def release_coverage(
+    data_type: str = "exomes", public: bool = False
+) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for coverage release Table.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :param public: Determines whether release coverage Table is read from public or
+        private bucket. Default is private.
+    :return: Coverage release Table.
+    """
+    return VersionedTableResource(
+        default_version=CURRENT_COVERAGE_RELEASE[data_type],
+        versions={
+            release: TableResource(
+                path=release_coverage_path(
+                    data_type=data_type, release_version=release, public=public
+                )
+            )
+            for release in COVERAGE_RELEASES[data_type]
+        },
     )

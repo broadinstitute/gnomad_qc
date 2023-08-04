@@ -73,7 +73,7 @@ def determine_fstat_sites(
     vd = vd.filter_rows(
         (hl.len(vd.alleles) == 2) & hl.is_snp(vd.alleles[0], vd.alleles[1])
     )
-    vd = vd.transmute_entries(GT=hl.experimental.lgt_to_gt(vd.LGT, vd.LA))
+    vd = vd.transmute_entries(GT=hl.vds.lgt_to_gt(vd.LGT, vd.LA))
 
     if approx_af_and_no_callrate:
         n_samples = vd.count_cols()
