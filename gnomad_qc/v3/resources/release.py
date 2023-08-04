@@ -190,8 +190,8 @@ def append_to_vcf_header_path(
 
 
 def hgdp_tgp_subset(
-    dense: bool = False, test: bool = False
-) -> VersionedMatrixTableResource:
+    dense: bool = False, test: bool = False, release: str = CURRENT_HGDP_TGP_RELEASE
+) -> str:
     """
     Get the HGDP + 1KG/TGP subset release MatrixTableResource.
 
@@ -199,14 +199,9 @@ def hgdp_tgp_subset(
     :param test: If true, will return the annotation resource for testing purposes
     :return: MatrixTableResource for specific subset
     """
-    return VersionedMatrixTableResource(
-        default_version=CURRENT_HGDP_TGP_RELEASE,
-        versions={
-            release: MatrixTableResource(
-                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/mt/'}/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_dense' if dense else '_sparse'}.mt"
-            )
-            for release in HGDP_TGP_RELEASES
-        },
+    # The old path can't be found anymore, so we need to use the new path
+    return (
+        f"{qc_temp_prefix(version=release) if test else f'gs://gcp-public-data--gnomad/release/{release}/mt/genomes'}/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_dense' if dense else '_sparse'}.mt"
     )
 
 

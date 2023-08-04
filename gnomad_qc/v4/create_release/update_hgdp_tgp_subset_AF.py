@@ -1,4 +1,4 @@
-"""Script to update the AFs of the HGDP + 1KG subset for v4."""
+"""Script to update the AFs of the HGDP + 1KG subset for v4 release HT."""
 import argparse
 import logging
 
@@ -190,12 +190,20 @@ def _get_filtered_samples(ht: hl.Table) -> tuple[hl.Table, hl.Table]:
         samples_to_subtract.count(),
     )
 
+    samples_to_add = samples_to_add.select_globals()
+    samples_to_subtract = samples_to_subtract.select_globals()
     samples_to_add = samples_to_add.select().join(samples_in_new_pops, how="outer")
     samples_to_subtract = samples_to_subtract.select().join(
         samples_in_old_pops, how="outer"
     )
-    logger.info("%d samples in the `sum` set", samples_to_add.count())
-    logger.info("%d samples in the `subtract` set", samples_to_subtract.count())
+    logger.info(
+        "%d samples in the `sum` set, including the splitted Papuan & Han",
+        samples_to_add.count(),
+    )
+    logger.info(
+        "%d samples in the `subtract` set, including the unsplitted Papuan & Han",
+        samples_to_subtract.count(),
+    )
 
     return samples_to_add, samples_to_subtract
 
@@ -209,7 +217,7 @@ def calculate_AFs_for_selected_samples(
     :param samples_ht: Table with the samples to be added or subtracted.
     :return: Table with the AFs for the selected samples.
     """
-    mt = mt.filter_cols(samples_ht[mt.col_key].s)
+    mt = mt.filter_cols(hl.is_defined(samples_ht[mt.col_key]))
 
     logger.info("Generating frequency data...")
     mt = annotate_freq(
@@ -263,7 +271,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
 
-    mt = hgdp_tgp_subset(dense=True).mt()
+    mt = hl.read_matrix_table(hgdp_tgp_subset(dense=True))
 
     if test_gene or test_n_partitions:
         if test_gene:
@@ -291,6 +299,7 @@ def main(args):
     samples_to_add, samples_to_subtract = _get_filtered_samples(meta_ht)
 
     logger.info("Calculating AFs for selected samples...")
+    mt = mt.select_globals()
     mt = mt.annotate_cols(**meta_ht[mt.col_key])
     af_added_samples = calculate_AFs_for_selected_samples(mt, samples_to_add)
     af_subtracted_samples = calculate_AFs_for_selected_samples(mt, samples_to_subtract)
@@ -333,18 +342,18 @@ if __name__ == "__main__":
         description="This script updates AFs for HGDP + 1KG subset for v4 release HT."
     )
     parser.add_argument(
-        "--test_n_partitions",
+        "--test-n-partitions",
         help="Test on a subset of partitions",
         type=int,
     )
     parser.add_argument(
-        "--test_gene",
+        "--test-gene",
         help="Test on a subset of variants in DRD2 gene",
         action="store_true",
     )
 
     parser.add_argument(
-        "--slack_channel", help="Slack channel to post results and notifications to."
+        "--slack-channel", help="Slack channel to post results and notifications to."
     )
 
     args = parser.parse_args()
