@@ -445,13 +445,14 @@ def combine_freq_hts(
     # Add our additional strata to the sort order, keeping group, i.e. adj, at the end.
     sort_order = deepcopy(SORT_ORDER)
     sort_order[-1:-1] = ["gatk_version", "ukb_sample"]
+    # TODO: Maybe change merge_freq_arrays to return hl.eval(new_freq_meta).
     freq_meta = hl.eval(comb_freq_meta)
     freq_ht = freq_ht.annotate_globals(
         downsamplings=freq_ht.global_array[0].downsamplings,
         age_distribution=freq_ht.global_array[0].age_distribution,
         freq_meta=freq_meta,
         freq_index_dict=make_freq_index_dict_from_meta(
-            freq_meta=freq_meta,
+            freq_meta=hl.literal(freq_meta),
             label_delimiter="_",
             sort_order=sort_order,
         ),
