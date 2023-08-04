@@ -209,22 +209,35 @@ def _get_filtered_samples(ht: hl.Table) -> tuple[hl.Table, hl.Table]:
 
 
 def calculate_AFs_for_selected_samples(
-    mt: hl.MatrixTable, samples_ht: hl.Table
+    mt: hl.MatrixTable,
+    samples_ht: hl.Table,
+    pop_old: hl.bool = False,
+    subsets: list[str] = ["hgdp", "tgp"],
 ) -> hl.Table:
     """Calculate the AFs for selected samples.
 
     :param mt: MatrixTable with the HGDP + 1KG subset.
     :param samples_ht: Table with the samples to be added or subtracted.
+    :param pop_old: If True, use the old population labels. Otherwise, use the updated population labels.
+    :param subsets: List of subsets to calculate the AFs for.
     :return: Table with the AFs for the selected samples.
     """
     mt = mt.filter_cols(hl.is_defined(samples_ht[mt.col_key]))
 
     logger.info("Generating frequency data...")
-    mt = annotate_freq(
-        mt,
-        sex_expr=mt.meta.sex_imputation.sex_karyotype,
-        pop_expr=mt.meta.hgdp_tgp_meta.population.lower(),
-    )
+
+    if pop_old:
+        mt = annotate_freq(
+            mt,
+            sex_expr=mt.gnomad_sex_imputation.sex_karyotype,
+            pop_expr=mt.hgdp_tgp_meta.population.lower(),
+        )
+    else:
+        mt = annotate_freq(
+            mt,
+            sex_expr=mt.gnomad_sex_imputation.sex_karyotype,
+            pop_expr=mt.hgdp_tgp_meta.population_updated.lower(),
+        )
     # make population labels lowercase to match the constants in release HT.
 
     mt = mt.annotate_globals(
@@ -264,6 +277,7 @@ def main(args):
     test_n_partitions = args.test_n_partitions
     test_gene = args.test_gene
     test = test_n_partitions or test_gene
+    subsets = ["hgdp", "tgp"]
 
     hl.init(
         log="/update_AFs_HGDP+TGP.log",
@@ -298,11 +312,19 @@ def main(args):
     meta_ht = add_updated_sample_qc_annotations(meta_ht)
     samples_to_add, samples_to_subtract = _get_filtered_samples(meta_ht)
 
-    logger.info("Calculating AFs for selected samples...")
+    logger.info("Annotating MT with the new meta HT...")
     mt = mt.select_globals()
     mt = mt.annotate_cols(**meta_ht[mt.col_key])
-    af_added_samples = calculate_AFs_for_selected_samples(mt, samples_to_add)
-    af_subtracted_samples = calculate_AFs_for_selected_samples(mt, samples_to_subtract)
+
+    logger.info("Calculating AFs for added samples...")
+    af_added_samples = calculate_AFs_for_selected_samples(
+        mt, samples_to_add, pop_old=False
+    )
+
+    logger.info("Calculating AFs for subtracted samples...")
+    af_subtracted_samples = calculate_AFs_for_selected_samples(
+        mt, samples_to_subtract, pop_old=False
+    )
 
     logger.info("Loading the release HT...")
     ht = hl.read_table(release_ht_path(release_version="3.1.2"))
