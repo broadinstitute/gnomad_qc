@@ -94,8 +94,8 @@ def recompute_as_qualapprox_from_lpl(mt: hl.MatrixTable) -> hl.expr.ArrayExpress
             - QUALapprox: 138
 
         Use `extract_as_pls` to get PLs for each allele:
-            - allele 1: [138, 98, 154] -> [40, 0, 56]
-            - allele 2: [138, 26, 14] -> [124, 12, 0]
+            - allele 1: [138, 98, 154]
+            - allele 2: [138, 26, 14]
 
         Normalize PLs by subtracting the smallest element from all the PLs:
             - allele 1: [138-98, 98-98, 154-98] -> [40, 0, 56]
@@ -104,7 +104,7 @@ def recompute_as_qualapprox_from_lpl(mt: hl.MatrixTable) -> hl.expr.ArrayExpress
         Use the first element of the allele specific PLs to generate AS_QUALapprox:
         [None, 40, 124]
 
-        Correct for star allele: [None, 0, 124]
+        Set QUALapprox to 0 for the star allele: [None, 0, 124]
 
     :param mt: Input MatrixTable.
     :return: AS_QUALapprox ArrayExpression recomputed from LPL.
@@ -135,7 +135,7 @@ def run_compute_info(mt: hl.MatrixTable, test: bool = False) -> hl.Table:
         have different lengths than LA.
 
     :param mt: Input MatrixTable.
-    :param test: Whether to use the test dataset.
+    :param test: Whether to use the test dataset. Default is False.
     :return: Table with info annotations.
     """
     mt = mt.annotate_entries(
