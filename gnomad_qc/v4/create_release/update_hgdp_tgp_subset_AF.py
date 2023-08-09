@@ -22,6 +22,7 @@ from gnomad_qc.v3.resources.release import (
 from gnomad_qc.v4.resources.release import hgdp_tgp_updated_AF
 from gnomad_qc.v4.resources.sample_qc import (
     hgdp_recomputed_freemix,
+    hgdp_tgp_meta_updated,
     hgdp_tgp_pop_outliers,
     hgdp_tgp_populations_updated,
     hgdp_tgp_related_samples_to_drop,
@@ -114,7 +115,8 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
         ),
     )
     logger.info(
-        "%d sample(s) were assigned differently than last release",
+        "%d sample(s) were assigned differently as subcontinental outlier than last"
+        " release",
         ht.aggregate(
             hl.agg.count_where(
                 ht.hgdp_tgp_meta.subcontinental_pca.outlier_updated
@@ -126,10 +128,11 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
     populations_ht = hgdp_tgp_populations_updated.ht()
     ht = ht.annotate(
         hgdp_tgp_meta=ht.hgdp_tgp_meta.annotate(
-            population_updated=populations_ht[ht.s].population
-        )
+            population_updated=populations_ht[ht.s].population,
+            latitude_updated=populations_ht[ht.s].latitude,
+            longitude_updated=populations_ht[ht.s].longitude,
+        ),
     )
-
     logger.info(
         "%d samples have different population labels than last release",
         ht.aggregate(
@@ -138,7 +141,6 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
             )
         ),
     )
-
     return ht
 
 
@@ -193,6 +195,7 @@ def _get_filtered_samples(ht: hl.Table) -> tuple[hl.Table, hl.Table]:
 
     samples_to_add = samples_to_add.select_globals()
     samples_to_subtract = samples_to_subtract.select_globals()
+
     samples_to_add = samples_to_add.select().join(samples_in_new_pops, how="outer")
     samples_to_subtract = samples_to_subtract.select().join(
         samples_in_old_pops, how="outer"
@@ -205,7 +208,6 @@ def _get_filtered_samples(ht: hl.Table) -> tuple[hl.Table, hl.Table]:
         "%d samples in the `subtract` set, including the unsplitted Papuan & Han",
         samples_to_subtract.count(),
     )
-
     return samples_to_add, samples_to_subtract
 
 
@@ -257,7 +259,6 @@ def calculate_AFs_for_selected_samples(
 
     mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
     ht = mt.rows()
-
     return ht
 
 
@@ -280,7 +281,6 @@ def update_hgdp_pop_labels(ht: hl.Table, old_pop: hl.str, new_pop: hl.str) -> hl
             )
         ),
     )
-
     return ht
 
 
@@ -358,10 +358,10 @@ def main(args):
     ht = update_hgdp_pop_labels(ht, old_pop="bantusafrica", new_pop="bantusouthafrica")
 
     if test:
-        logger.info("Filtering to DRD2 in MT for testing purposes...")
+        logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
         test_interval = [
             hl.parse_locus_interval(
-                "chr11:113409605-113475691", reference_genome="GRCh38"
+                "chr11:113425000-113435000", reference_genome="GRCh38"
             )
         ]
         mt = hl.filter_intervals(mt, test_interval)
@@ -372,6 +372,9 @@ def main(args):
 
     logger.info("Adding updated sample QC annotations to meta HT...")
     meta_ht = add_updated_sample_qc_annotations(meta_ht)
+    meta_ht = meta_ht.checkpoint(hgdp_tgp_meta_updated.path, _read_if_exists=True)
+
+    logger.info("Filtering samples in meta HT that will be added and subtracted...")
     samples_to_add, samples_to_subtract = _get_filtered_samples(meta_ht)
 
     logger.info("Annotating MT with the new meta HT...")
@@ -453,8 +456,8 @@ def main(args):
 
     logger.info("Merging AFs for added samples...")
     [freq, freq_meta] = merge_freq_arrays(
-        [ht.freq, ht.freq_added_samples],
-        [ht.freq_meta, ht.freq_meta_added_samples],
+        [ht.freq1, ht.freq_added_samples],
+        [ht.freq_meta1, ht.freq_meta_added_samples],
         set_negatives_to_zero=True,
     )
 

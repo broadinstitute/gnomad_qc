@@ -1031,3 +1031,9 @@ hgdp_recomputed_freemix = TableResource(
 hgdp_tgp_populations_updated = TableResource(
     path="gs://gnomad/sample_qc/ht/hgdp_tgp_populations_updated_202308.ht"
 )
+
+# updated meta HT with new population labels and updated geographic
+# locations for HGDP and TGP
+hgdp_tgp_meta_updated = TableResource(
+    path="gs://gnomad/sample_qc/ht/gnomad.genomes_v4.hgdp_tgp_sample_meta.ht",
+)
