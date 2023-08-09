@@ -1,11 +1,13 @@
 """Script to update the AFs of the HGDP + 1KG subset for v4 release HT."""
 import argparse
 import logging
+from typing import List, Optional
 
 import hail as hl
 from gnomad.utils.annotations import (
     annotate_freq,
     merge_freq_arrays,
+    missing_callstats_expr,
     set_female_y_metrics_to_na_expr,
 )
 from gnomad.utils.release import make_freq_index_dict
@@ -162,8 +164,7 @@ def _get_filtered_samples(ht: hl.Table) -> tuple[hl.Table, hl.Table]:
     ).select()
 
     # new filters to be used in v4 release sites HT
-    # TODO: Julia will double check the relatedness filters, if we should use
-    # two filters or one
+    # TODO: Julia will double check the relatedness filters
     samples_in_v4_release = ht.filter(
         ~ht.gnomad_sample_filters.hard_filtered_updated
         & ~ht.hgdp_tgp_meta.subcontinental_pca.outlier_updated
@@ -211,20 +212,18 @@ def _get_filtered_samples(ht: hl.Table) -> tuple[hl.Table, hl.Table]:
 def calculate_AFs_for_selected_samples(
     mt: hl.MatrixTable,
     samples_ht: hl.Table,
+    subsets: Optional[List[str]] = None,
     pop_old: hl.bool = False,
-    subsets: list[str] = ["hgdp", "tgp"],
 ) -> hl.Table:
     """Calculate the AFs for selected samples.
 
     :param mt: MatrixTable with the HGDP + 1KG subset.
     :param samples_ht: Table with the samples to be added or subtracted.
     :param pop_old: If True, use the old population labels. Otherwise, use the updated population labels.
-    :param subsets: List of subsets to calculate the AFs for.
+    :param subset: Subsets to be used for the AFs calculation: `hgdp` or `tgp`, or both.
     :return: Table with the AFs for the selected samples.
     """
     mt = mt.filter_cols(hl.is_defined(samples_ht[mt.col_key]))
-
-    logger.info("Generating frequency data...")
 
     if pop_old:
         mt = annotate_freq(
@@ -240,12 +239,25 @@ def calculate_AFs_for_selected_samples(
         )
     # make population labels lowercase to match the constants in release HT.
 
-    mt = mt.annotate_globals(
-        freq_index_dict=make_freq_index_dict(freq_meta=hl.eval(mt.freq_meta))
-    )
+    if subsets:
+        freq_meta = [
+            {**x, **{"subset": "|".join(subsets)}} for x in hl.eval(mt.freq_meta)
+        ]
+        mt = mt.annotate_globals(freq_meta=freq_meta)
+        mt = mt.annotate_globals(
+            freq_index_dict=make_freq_index_dict(
+                freq_meta=freq_meta,
+                subsets=["|".join(subsets)],
+            )
+        )
+    else:
+        mt = mt.annotate_globals(
+            freq_index_dict=make_freq_index_dict(freq_meta=hl.eval(mt.freq_meta))
+        )
 
     mt = mt.annotate_rows(freq=set_female_y_metrics_to_na_expr(mt))
-    ht = mt.select_rows(mt.freq).rows()
+    ht = mt.rows()
+
     return ht
 
 
@@ -272,12 +284,61 @@ def update_hgdp_pop_labels(ht: hl.Table, old_pop: hl.str, new_pop: hl.str) -> hl
     return ht
 
 
+def _concatenate_subset_frequencies(
+    global_freq_ht: hl.Table, subset_freq_hts: List[hl.Table]
+) -> hl.Table:
+    """Concatenate subset frequencies into a single Table.
+
+    .. note::
+    This is the same as we did gnomad_qc/v3/create_release/create_release_sites_ht.py#L291-L310, except excluding the pops & downsampling options.
+
+    :param global_freq_ht: Global frequency HT.
+    :param subset_freq_hts: List of subset frequency HTs.
+    :return: Concatenated frequency HT.
+    """
+    freq_ht = hl.Table.multi_way_zip_join(
+        [global_freq_ht.select("freq").select_globals("freq_meta")] + subset_freq_hts,
+        data_field_name="freq",
+        global_field_name="freq_meta",
+    )
+    freq_ht = freq_ht.transmute(freq=freq_ht.freq.flatmap(lambda x: x.freq))
+    freq_ht = freq_ht.transmute_globals(
+        freq_meta=freq_ht.freq_meta.flatmap(lambda x: x.freq_meta)
+    )
+
+    # Create frequency index dictionary on concatenated array (i.e., including
+    # all subsets)
+    freq_ht = freq_ht.annotate_globals(
+        freq_index_dict=make_freq_index_dict(
+            freq_meta=hl.eval(freq_ht.freq_meta),
+        )
+    )
+    return freq_ht
+
+
+def _pre_process_subset_freq(subset_ht: hl.Table, global_ht: hl.Table) -> hl.Table:
+    """Pre-process frequency HT.
+
+    :param subset_ht: Subset frequency HT.
+    :param global_ht: Global frequency HT.
+    :return: Pre-processed frequency HT.
+    """
+    # Fill in missing freq structs
+    ht = subset_ht.join(global_ht.select().select_globals(), how="right")
+    ht = ht.annotate(
+        freq=hl.if_else(
+            hl.is_missing(ht.freq),
+            hl.map(lambda x: missing_callstats_expr(), hl.range(hl.len(ht.freq_meta))),
+            ht.freq,
+        )
+    )
+    ht = ht.select("freq").select_globals("freq_meta")
+    return ht
+
+
 def main(args):
     """Script to update update Allele Frequencies for HGDP + 1KG subset for v4."""
-    test_n_partitions = args.test_n_partitions
-    test_gene = args.test_gene
-    test = test_n_partitions or test_gene
-    subsets = ["hgdp", "tgp"]
+    test = args.test
 
     hl.init(
         log="/update_AFs_HGDP+TGP.log",
@@ -285,25 +346,26 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
 
+    logger.info("Loading the HGDP + 1KG subset dense MT...")
     mt = hl.read_matrix_table(hgdp_tgp_subset(dense=True))
 
-    if test_gene or test_n_partitions:
-        if test_gene:
-            logger.info("Filtering to DRD2 in MT for testing purposes...")
-            test_interval = [
-                hl.parse_locus_interval(
-                    "chr11:113409605-113475691", reference_genome="GRCh38"
-                )
-            ]
+    logger.info("Loading the release HT...")
+    ht = hl.read_table(release_ht_path(release_version="3.1.2"))
 
-            mt = hl.filter_intervals(mt, test_interval)
+    logger.info("Updating the HGDP pop labels...")
+    ht = update_hgdp_pop_labels(ht, old_pop="miaozu", new_pop="miao")
+    ht = update_hgdp_pop_labels(ht, old_pop="yizu", new_pop="yi")
+    ht = update_hgdp_pop_labels(ht, old_pop="bantusafrica", new_pop="bantusouthafrica")
 
-        elif test_n_partitions:
-            logger.info(
-                "Filtering to %s partitions for testing purposes...", test_n_partitions
+    if test:
+        logger.info("Filtering to DRD2 in MT for testing purposes...")
+        test_interval = [
+            hl.parse_locus_interval(
+                "chr11:113409605-113475691", reference_genome="GRCh38"
             )
-
-            mt = mt._filter_partitions(range(test_n_partitions))
+        ]
+        mt = hl.filter_intervals(mt, test_interval)
+        ht = hl.filter_intervals(ht, test_interval)
 
     logger.info("Loading HGDP_TGP subset meta HT...")
     meta_ht = hgdp_tgp_subset_annotations(sample=True).ht()
@@ -317,46 +379,93 @@ def main(args):
     mt = mt.annotate_cols(**meta_ht[mt.col_key])
 
     logger.info("Calculating AFs for added samples...")
-    af_added_samples = calculate_AFs_for_selected_samples(
+    af_added_samples_all = calculate_AFs_for_selected_samples(
         mt, samples_to_add, pop_old=False
+    )
+    af_added_samples_hgdp = calculate_AFs_for_selected_samples(
+        mt.filter_cols(mt.hgdp_tgp_meta.project == "HGDP"),
+        samples_to_add,
+        subsets=["hgdp"],
+        pop_old=False,
+    )
+    af_added_samples_tgp = calculate_AFs_for_selected_samples(
+        mt.filter_cols(mt.hgdp_tgp_meta.project == "1000 Genomes"),
+        samples_to_add,
+        subsets=["tgp"],
+        pop_old=False,
+    )
+
+    logger.info("Concatenating AFs for added samples...")
+    subset_freq_hts = [
+        af_added_samples_hgdp.select("freq").select_globals("freq_meta"),
+        af_added_samples_tgp.select("freq").select_globals("freq_meta"),
+    ]
+    freq_ht_added = _concatenate_subset_frequencies(
+        af_added_samples_all, subset_freq_hts
     )
 
     logger.info("Calculating AFs for subtracted samples...")
-    af_subtracted_samples = calculate_AFs_for_selected_samples(
-        mt, samples_to_subtract, pop_old=False
+    af_subtracted_samples_all = calculate_AFs_for_selected_samples(
+        mt, samples_to_subtract, pop_old=True
+    )
+    af_subtracted_samples_hgdp = calculate_AFs_for_selected_samples(
+        mt.filter_cols(mt.hgdp_tgp_meta.project == "HGDP"),
+        samples_to_subtract,
+        subsets=["hgdp"],
+        pop_old=True,
+    )
+    af_subtracted_samples_tgp = calculate_AFs_for_selected_samples(
+        mt.filter_cols(mt.hgdp_tgp_meta.project == "1000 Genomes"),
+        samples_to_subtract,
+        subsets=["tgp"],
+        pop_old=True,
     )
 
-    logger.info("Loading the release HT...")
-    ht = hl.read_table(release_ht_path(release_version="3.1.2"))
+    logger.info("Concatenating AFs for subtracted samples...")
+    subset_freq_hts = [
+        af_subtracted_samples_hgdp.select("freq").select_globals("freq_meta"),
+        af_subtracted_samples_tgp.select("freq").select_globals("freq_meta"),
+    ]
+    freq_ht_subtracted = _concatenate_subset_frequencies(
+        af_subtracted_samples_all, subset_freq_hts
+    )
 
-    logger.info("Updating the HGDP pop labels...")
-    ht = update_hgdp_pop_labels(ht, old_pop="miaozu", new_pop="miao")
-    ht = update_hgdp_pop_labels(ht, old_pop="yizu", new_pop="yi")
-    ht = update_hgdp_pop_labels(ht, old_pop="bantusafrica", new_pop="bantusouthafrica")
+    logger.info("Annotating HT with AFs for added and subtracted samples...")
+    ht = ht.annotate(
+        freq_added_samples=freq_ht_added[ht.key].freq,
+        freq_subtracted_samples=freq_ht_subtracted[ht.key].freq,
+    )
+    ht = ht.annotate_globals(
+        freq_meta_added_samples=freq_ht_added.index_globals().freq_meta,
+        freq_meta_subtracted_samples=freq_ht_subtracted.index_globals().freq_meta,
+    )
 
-    logger.info("Merging AFs for subtracted samples...")
+    logger.info("Merging AFs for subtracted samples first...")
     [freq, freq_meta] = merge_freq_arrays(
-        [ht.freq, af_subtracted_samples.freq],
-        [ht.freq_meta, af_subtracted_samples.freq_meta],
+        [ht.freq, ht.freq_subtracted_samples],
+        [ht.freq_meta, ht.freq_meta_subtracted_samples],
         operation="diff",
+        set_negatives_to_zero=True,
     )
 
-    ht = ht.annotate(freq=freq)
-    ht = ht.annotate_globals(freq_meta=freq_meta)
+    ht = ht.annotate(freq1=freq)
+    ht = ht.annotate_globals(freq_meta1=freq_meta)
 
     logger.info("Merging AFs for added samples...")
     [freq, freq_meta] = merge_freq_arrays(
-        [ht.freq, af_added_samples.freq], [ht.freq_meta, af_added_samples.freq_meta]
+        [ht.freq, ht.freq_added_samples],
+        [ht.freq_meta, ht.freq_meta_added_samples],
+        set_negatives_to_zero=True,
     )
 
-    ht = ht.annotate(freq=freq)
-    ht = ht.annotate_globals(freq_meta=freq_meta)
+    ht = ht.annotate(freq2=freq)
+    ht = ht.annotate_globals(freq_meta2=freq_meta)
 
     logger.info("Writing out the AF HT...")
     if test:
-        ht.write(hgdp_tgp_updated_AF(test=True).path, overwrite=True)
+        ht.write(hgdp_tgp_updated_AF(test=True).path, overwrite=args.overwrite)
     else:
-        ht.write(hgdp_tgp_updated_AF().path, overwrite=True)
+        ht.write(hgdp_tgp_updated_AF().path, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":
@@ -364,16 +473,11 @@ if __name__ == "__main__":
         description="This script updates AFs for HGDP + 1KG subset for v4 release HT."
     )
     parser.add_argument(
-        "--test-n-partitions",
-        help="Test on a subset of partitions",
-        type=int,
-    )
-    parser.add_argument(
-        "--test-gene",
+        "--test",
         help="Test on a subset of variants in DRD2 gene",
         action="store_true",
     )
-
+    parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
