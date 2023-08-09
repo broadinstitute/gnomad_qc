@@ -370,6 +370,9 @@ def main(args):
     af_added_samples_all = calculate_AFs_for_selected_samples(
         mt, samples_to_add, pop_old=False
     )
+    # TODO: warnings at this step
+    # Hail: WARN: Name collision: field 'cols' already in object dict.
+    #   This field must be referenced with __getitem__ syntax: obj['cols']
     af_added_samples_hgdp = calculate_AFs_for_selected_samples(
         mt.filter_cols(mt.hgdp_tgp_meta.project == "HGDP"),
         samples_to_add,
@@ -450,6 +453,7 @@ def main(args):
     ht = ht.annotate(freq2=freq)
     ht = ht.annotate_globals(freq_meta2=freq_meta)
 
+    # TODO: writing step is quite slow, should be optimized
     logger.info("Writing out the AF HT...")
     if test:
         ht.write(hgdp_tgp_updated_AF(test=True).path, overwrite=args.overwrite)
