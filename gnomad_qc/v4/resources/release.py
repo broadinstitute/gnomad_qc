@@ -213,7 +213,7 @@ def hgdp_tgp_updated_AF(test: bool = False) -> VersionedTableResource:
         default_version=CURRENT_HGDP_TGP_RELEASE,
         versions={
             release: TableResource(
-                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/ht/'}/gnomad.genomes.v{release}.updated_hgdp_1kg_subset_AF.ht"
+                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/ht'}/gnomad.genomes.v{release}.updated_hgdp_1kg_subset_AF.ht"
             )
             for release in HGDP_TGP_RELEASES
         },

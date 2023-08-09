@@ -7,7 +7,6 @@ import hail as hl
 from gnomad.utils.annotations import (
     annotate_freq,
     merge_freq_arrays,
-    missing_callstats_expr,
     set_female_y_metrics_to_na_expr,
 )
 from gnomad.utils.release import make_freq_index_dict
@@ -222,7 +221,7 @@ def calculate_AFs_for_selected_samples(
     :param mt: MatrixTable with the HGDP + 1KG subset.
     :param samples_ht: Table with the samples to be added or subtracted.
     :param pop_old: If True, use the old population labels. Otherwise, use the updated population labels.
-    :param subset: Subsets to be used for the AFs calculation: `hgdp` or `tgp`, or both.
+    :param subsets: Subsets to be used for the AFs calculation: `hgdp` or `tgp`, or both.
     :return: Table with the AFs for the selected samples.
     """
     mt = mt.filter_cols(hl.is_defined(samples_ht[mt.col_key]))
@@ -231,15 +230,18 @@ def calculate_AFs_for_selected_samples(
         mt = annotate_freq(
             mt,
             sex_expr=mt.gnomad_sex_imputation.sex_karyotype,
-            pop_expr=mt.hgdp_tgp_meta.population.lower(),
+            pop_expr=mt.hgdp_tgp_meta.population.lower() if subsets else None,
         )
     else:
         mt = annotate_freq(
             mt,
             sex_expr=mt.gnomad_sex_imputation.sex_karyotype,
-            pop_expr=mt.hgdp_tgp_meta.population_updated.lower(),
+            pop_expr=mt.hgdp_tgp_meta.population_updated.lower() if subsets else None,
         )
     # make population labels lowercase to match the constants in release HT.
+    # TODO: Julia, could you double check the issue that I messaged you about?
+    # I got extra groupings if I use pop_expr for the combined HGDP + 1KG
+    # subset.
 
     if subsets:
         freq_meta = [
@@ -314,26 +316,6 @@ def _concatenate_subset_frequencies(
         )
     )
     return freq_ht
-
-
-def _pre_process_subset_freq(subset_ht: hl.Table, global_ht: hl.Table) -> hl.Table:
-    """Pre-process frequency HT.
-
-    :param subset_ht: Subset frequency HT.
-    :param global_ht: Global frequency HT.
-    :return: Pre-processed frequency HT.
-    """
-    # Fill in missing freq structs
-    ht = subset_ht.join(global_ht.select().select_globals(), how="right")
-    ht = ht.annotate(
-        freq=hl.if_else(
-            hl.is_missing(ht.freq),
-            hl.map(lambda x: missing_callstats_expr(), hl.range(hl.len(ht.freq_meta))),
-            ht.freq,
-        )
-    )
-    ht = ht.select("freq").select_globals("freq_meta")
-    return ht
 
 
 def main(args):
@@ -454,6 +436,7 @@ def main(args):
         set_negatives_to_zero=True,
     )
 
+    # TODO: temporarily not overwriting freq or freq_meta, so we can examine the output
     ht = ht.annotate(freq1=freq)
     ht = ht.annotate_globals(freq_meta1=freq_meta)
 
