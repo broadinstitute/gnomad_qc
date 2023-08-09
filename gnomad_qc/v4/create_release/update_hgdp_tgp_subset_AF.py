@@ -1,7 +1,7 @@
 """Script to update the AFs of the HGDP + 1KG subset for v4 release HT."""
 import argparse
 import logging
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import hail as hl
 from gnomad.utils.annotations import (
@@ -143,7 +143,7 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
     return ht
 
 
-def _get_filtered_samples(ht: hl.Table) -> tuple[hl.Table, hl.Table]:
+def _get_filtered_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
     """Compare the old and new sample filters.
 
     .. Note::
