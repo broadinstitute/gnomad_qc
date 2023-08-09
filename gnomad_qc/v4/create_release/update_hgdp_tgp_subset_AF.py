@@ -357,6 +357,9 @@ def main(args):
     ht = update_hgdp_pop_labels(ht, old_pop="yizu", new_pop="yi")
     ht = update_hgdp_pop_labels(ht, old_pop="bantusafrica", new_pop="bantusouthafrica")
 
+    logger.info("Selecting `freq` and `freq_meta` from the release HT...")
+    ht = ht.select("freq").select_globals("freq_meta")
+
     if test:
         logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
         test_interval = [
