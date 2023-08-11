@@ -92,7 +92,7 @@ def create_revel_grch38_ht(revel_csv, ensembl_ids) -> hl.Table:
     """
     Create a Hail Table with REVEL scores for GRCh38.
 
-    .. note::
+    .. Note::
     Starting from gnomAD v4, we will use REVEL scores for MANE Select transcripts and canonical transcripts only.
     We take a max of the REVEL scores if a variant falls on multiple transcripts.
     Since the Ensembl ID used by REVEL was not from Ensembl 105, we also only filtered transcripts that are in Ensembl 105.
