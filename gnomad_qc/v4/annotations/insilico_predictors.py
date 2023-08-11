@@ -96,6 +96,7 @@ def create_revel_grch38_ht(revel_csv, ensembl_ids) -> hl.Table:
     Starting from gnomAD v4, we will use REVEL scores for MANE Select transcripts and canonical transcripts only.
     We take a max of the REVEL scores if a variant falls on multiple transcripts.
     Since the Ensembl ID used by REVEL was not from Ensembl 105, we also only filtered transcripts that are in Ensembl 105.
+    This will also deprecate `has_duplicate` field as in gnomAD v3.
 
     :param revel_csv: Path to REVEL CSV file.
     :param ensembl_ids: Path to Ensembl 105 ID file, downloaded from Ensembl 105 archive.
