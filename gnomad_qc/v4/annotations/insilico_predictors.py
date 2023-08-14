@@ -89,6 +89,135 @@ def create_cadd_grch38_ht() -> hl.Table:
     return ht
 
 
+def create_spliceai_grch38_ht(
+    snvs_path: str, indels_path: str, new_indels_path: str, header_file_path: str
+) -> hl.Table:
+    """
+    Create a Hail Table with SpliceAI scores for GRCh38.
+
+    ..Note::
+    The SpliceAI scores are from the following resources:
+    all SNVs precomputed: spliceai_scores.masked.snv.hg38.vcf.bgz, downloaded from https://basespace.illumina.com/s/5u6ThOblecrh
+    all indels precomputed: spliceai_scores.masked.indel.hg38.vcf.bgz, downloaded from https://basespace.illumina.com/s/5u6ThOblecrh
+    new indels from gnomAD v4: gnomad_v4_new_indels.spliceai_masked.vcf.bgz, requested Illumina to compute for us.
+    We may have lost the SpliceAI score for gnomAD v3 indels, which makes it hard to process the raw scores to get a maximum and retain the position information.
+    Before we didn't `explode` the SpliceAI scores, so we only had scores for the first gene for each variant.
+
+    :return: Hail Table with SpliceAI scores for GRCh38.
+    """
+    logger.info("Importing vcf of SpliceAI scores into MT...")
+    recode = {f"{i}": f"chr{i}" for i in (list(range(1, 23)) + ["X", "Y"])}
+    spliceai_snvs = hl.import_vcf(
+        snvs_path,
+        force_bgz=True,
+        min_partitions=1000,
+        reference_genome="GRCh38",
+        contig_recoding=recode,
+        skip_invalid_loci=True,
+    )
+
+    spliceai_indels = hl.import_vcf(
+        indels_path,
+        force_bgz=True,
+        reference_genome="GRCh38",
+        contig_recoding=recode,
+        skip_invalid_loci=True,
+        min_partitions=1000,
+    )
+
+    spliceai_new_indels = hl.import_vcf(
+        new_indels_path,
+        header_file=header_file_path,
+        force_bgz=True,
+        reference_genome="GRCh38",
+        contig_recoding=recode,
+        skip_invalid_loci=True,
+        min_partitions=1000,
+    )
+
+    mt = spliceai_snvs.union_rows(spliceai_indels).union_rows(spliceai_new_indels)
+    ht = mt.rows().repartition(3000)
+    logger.info("Number of rows in original SpliceAI Hail Table: %s", ht.count())
+
+    logger.info("Exploding SpliceAI scores...")
+    # `explode` will eliminate rows with empty array, so we expect to have fewer rows after exploding.
+    ht = ht.explode(ht.info.SpliceAI)
+    logger.info("Number of rows in exploded SpliceAI Hail Table: %s", ht.count())
+
+    logger.info("Annotating SpliceAI scores...")
+    # there will only be one gene in the array after exploding
+    gene_symbol = ht.info.SpliceAI.split(delim="\\|")[1:2][0]
+    delta_scores = ht.info.SpliceAI.split(delim="\\|")[2:6]
+    positions = ht.info.SpliceAI.split(delim="\\|")[6:10]
+    ht = ht.annotate(
+        pangolin=hl.struct(
+            gene_symbol=gene_symbol,
+            delta_scores=hl.map(lambda x: hl.float32(x), delta_scores),
+            positions=hl.map(lambda x: hl.int32(x), positions),
+        )
+    )
+
+    # Annotate info.max_DS with the max of DS_AG, DS_AL, DS_DG, DS_DL in info.
+    # delta_score array is |DS_AG|DS_AL|DS_DG|DS_DL
+    logger.info(
+        "Getting the max SpliceAI score for each variant across consequences per"
+        " gene..."
+    )
+    consequences = hl.literal(
+        ["acceptor_gain", "acceptor_loss", "donor_gain", "donor_loss"]
+    )
+    ht = ht.annotate(
+        splice_ai=ht.splice_ai.annotate(ds_max=hl.max(ht.splice_ai.delta_scores))
+    )
+    ht = ht.annotate(
+        splice_ai=ht.splice_ai.annotate(
+            consequence_max=hl.if_else(
+                ht.splice_ai.ds_max > 0,
+                consequences[ht.splice_ai.delta_scores.index(ht.splice_ai.ds_max)],
+                "no_consequence",
+            ),
+            position_max=hl.if_else(
+                ht.splice_ai.ds_max > 0,
+                ht.splice_ai.positions[
+                    ht.splice_ai.delta_scores.index(ht.splice_ai.ds_max)
+                ],
+                hl.missing(hl.tint32),
+            ),
+        )
+    )
+    ht = ht.checkpoint("gs://gnomad-tmp-4day/spliceai.ht", _read_if_exists=True)
+
+    logger.info("Getting the max SpliceAI score for each variant across genes...")
+    ht2 = ht.group_by(*ht.key).aggregate(
+        staging=hl.agg.take(
+            hl.struct(
+                ds_max=ht.splice_ai.ds_max,
+                position_max=ht.splice_ai.position_max,
+                consequence_max=ht.splice_ai.consequence_max,
+                gene=ht.splice_ai.gene_symbol,
+            ),
+            1,
+            ordering=-ht.splice_ai.ds_max,
+        )
+    )
+    logger.info(
+        "Number of rows in SpliceAI Hail Table after aggregation: %s", ht2.count()
+    )
+
+    # `aggregate` put everything in an array, we need to extract the struct from the array.
+    ht2 = ht2.annotate(
+        splice_ai=hl.struct(
+            ds_max=hl.float32(ht2.staging.ds_max[0]),
+            position_max=hl.int32(ht2.staging.position_max[0]),
+            consequence_max=hl.str(ht2.staging.consequence_max[0]),
+            gene=hl.str(ht2.staging.gene[0]),
+        )
+    )
+
+    ht2 = ht2.select("splice_ai")
+    return ht2
+
+
 def main(args):
     """Generate Hail Tables with in silico predictors."""
     hl.init(
@@ -107,6 +236,25 @@ def main(args):
         )
         logger.info("CADD Hail Table for GRCh38 created.")
 
+    if args.spliceai:
+        logger.info("Creating SpliceAI Hail Table for GRCh38...")
+        snvs_path = (
+            "gs://gnomad-qin/v4_annotations/spliceai_scores.masked.snv.hg38.vcf.bgz"
+        )
+        indels_path = (
+            "gs://gnomad-qin/v4_annotations/spliceai_scores.masked.indel.hg38.vcf.bgz"
+        )
+        new_indels_path = "gs://gnomad-qin/v4_annotations/gnomad_v4_new_indels.spliceai_masked.vcf.bgz"
+        header_file_path = "gs://gnomad-qin/v4_annotations/spliceai.vcf.header"
+        ht = create_spliceai_grch38_ht(
+            snvs_path, indels_path, new_indels_path, header_file_path
+        )
+        ht.write(
+            get_insilico_predictors(predictor="spliceai").path,
+            overwrite=args.overwrite,
+        )
+        logger.info("SpliceAI Hail Table for GRCh38 created.")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -115,6 +263,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     parser.add_argument("--cadd", help="Create CADD HT", action="store_true")
+    parser.add_argument("--spliceai", help="Create SpliceAI HT", action="store_true")
     args = parser.parse_args()
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
