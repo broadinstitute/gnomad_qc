@@ -82,7 +82,7 @@ ALL_FREQ_ROW_FIELDS = FREQ_ROW_FIELDS + FREQ_HIGH_AB_HET_ROW_FIELDS
 List of final top level row and global annotations created from dense data that we
 want on the frequency HT before deciding on the AF cutoff.
 """
-
+# TODO: What are we doing about the sample count struct?
 FREQ_GLOBAL_FIELDS = [
     "downsamplings",
     "freq_meta",
@@ -202,6 +202,7 @@ def get_vds_for_freq(
     vds = hl.vds.VariantDataset(rmt, vmt)
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
 
+    # TODO: Need to decide which method to use for adj annotation.
     # logger.info(
     #    "Computing adj and _het_AD as part of reducing fields to reduce memory"
     #    " usage during dense dependent steps..."
