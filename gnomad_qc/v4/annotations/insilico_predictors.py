@@ -185,7 +185,7 @@ def create_spliceai_grch38_ht(
             ),
         )
     )
-    ht = ht.checkpoint("gs://gnomad-tmp-4day/spliceai.ht", _read_if_exists=True)
+    ht = ht.checkpoint("gs://gnomad-tmp-4day/spliceai.ht", overwrite=True)
 
     logger.info("Getting the max SpliceAI score for each variant across genes...")
     ht2 = ht.group_by(*ht.key).aggregate(
