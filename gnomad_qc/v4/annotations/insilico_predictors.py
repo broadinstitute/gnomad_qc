@@ -89,6 +89,102 @@ def create_cadd_grch38_ht() -> hl.Table:
     return ht
 
 
+def create_pangolin_grch38_ht(vcf_path: str) -> hl.Table:
+    """
+    Create a Hail Table with Pangolin score for splicing for GRCh38.
+
+    .. Note::
+    The Pangolin scores were generated for variants in gene body only. The first run contains variants from gnomAD v3 genomes.
+
+    :param vcf_path: path to the VCF files with Pangolin scores for splicing.
+    :return: Hail Table with Pangolin score for splicing for GRCh38.
+    """
+    mt = hl.import_vcf(vcf_path, min_partitions=1000, reference_genome="GRCh38")
+
+    ht = mt.rows()
+    logger.info("Number of rows in original Pangolin Hail Table: %s", ht.count())
+
+    logger.info("Exploding Pangolin scores...")
+    # `explode` will eliminate rows with empty array
+    ht = ht.annotate(pango=ht.info.Pangolin[0].split(delim="\|\|"))
+    ht = ht.explode(ht.pango)
+    logger.info("Number of rows in exploded SpliceAI Hail Table: %s", ht.count())
+
+    logger.info("Annotating Pangolin scores...")
+    ht = ht.annotate(
+        pangolin=hl.struct(
+            gene=ht.pango.split(delim=":|\\|")[0],
+            positions=(
+                hl.empty_array(hl.tint32).append(
+                    hl.int(ht.pango.split(delim=":|\\|")[1])
+                )
+            ).append(hl.int(ht.pango.split(delim=":|\\|")[3])),
+            delta_scores=(
+                hl.empty_array(hl.tfloat64).append(
+                    hl.float(ht.pango.split(delim=":|\\|")[2])
+                )
+            ).append(hl.float(ht.pango.split(delim=":|\\|")[4])),
+        )
+    )
+
+    logger.info(
+        "Getting the max SpliceAI score for each variant across consequences per"
+        " gene..."
+    )
+    consequences = hl.literal(["splice_gain", "splice_loss"])
+    ht = ht.annotate(
+        pangolin=ht.pangolin.annotate(ds_max=hl.max(ht.pangolin.delta_scores))
+    )
+    ht = ht.annotate(
+        pangolin=ht.pangolin.annotate(
+            consequence_max=hl.if_else(
+                ht.pangolin.ds_max > 0,
+                consequences[ht.pangolin.delta_scores.index(ht.pangolin.ds_max)],
+                "no_consequence",
+            ),
+            position_max=hl.if_else(
+                ht.pangolin.ds_max > 0,
+                ht.pangolin.positions[
+                    ht.pangolin.delta_scores.index(ht.pangolin.ds_max)
+                ],
+                hl.missing(hl.tint32),
+            ),
+        )
+    )
+
+    ht = ht.checkpoint("gs://gnomad-tmp-4day/pangolin.ht", _read_if_exists=True)
+
+    logger.info("Getting the max SpliceAI score for each variant across genes...")
+    ht2 = ht.group_by(*ht.key).aggregate(
+        staging=hl.agg.take(
+            hl.struct(
+                ds_max=ht.pangolin.ds_max,
+                position_max=ht.pangolin.position_max,
+                consequence_max=ht.pangolin.consequence_max,
+                gene=ht.pangolin.gene,
+            ),
+            1,
+            ordering=-ht.pangolin.ds_max,
+        )
+    )
+    logger.info(
+        "Number of rows in SpliceAI Hail Table after aggregation: %s", ht2.count()
+    )
+
+    # `aggregate` put everything in an array, we need to extract the struct from the array.
+    ht2 = ht2.annotate(
+        pangolin=hl.struct(
+            ds_max=hl.float32(ht2.staging.ds_max[0]),
+            position_max=hl.int32(ht2.staging.position_max[0]),
+            consequence_max=hl.str(ht2.staging.consequence_max[0]),
+            gene=hl.str(ht2.staging.gene[0]),
+        )
+    )
+
+    ht2 = ht2.select("pangolin")
+    return ht2
+
+
 def main(args):
     """Generate Hail Tables with in silico predictors."""
     hl.init(
@@ -107,6 +203,18 @@ def main(args):
         )
         logger.info("CADD Hail Table for GRCh38 created.")
 
+    if args.pangolin:
+        logger.info("Creating Pangolin Hail Table for GRCh38...")
+
+        ht = create_pangolin_grch38_ht(
+            vcf_path="gs://gnomad-qin/v4_annotations/gnomad.v4.0.genomes.pangolin.vcf.bgz/*.bgz"
+        )
+        ht.write(
+            get_insilico_predictors(predictor="pangolin").path,
+            overwrite=args.overwrite,
+        )
+        logger.info("Pangolin Hail Table for GRCh38 created.")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -115,6 +223,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     parser.add_argument("--cadd", help="Create CADD HT", action="store_true")
+    parser.add_argument("--pangolin", help="Create Pangolin HT", action="store_true")
     args = parser.parse_args()
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
