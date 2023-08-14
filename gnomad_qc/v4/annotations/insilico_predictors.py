@@ -151,8 +151,7 @@ def create_pangolin_grch38_ht(vcf_path: str) -> hl.Table:
             ),
         )
     )
-
-    ht = ht.checkpoint("gs://gnomad-tmp-4day/pangolin.ht", _read_if_exists=True)
+    ht = ht.checkpoint("gs://gnomad-tmp-4day/pangolin.ht", overwrite=True)
 
     logger.info("Getting the max SpliceAI score for each variant across genes...")
     ht2 = ht.group_by(*ht.key).aggregate(
