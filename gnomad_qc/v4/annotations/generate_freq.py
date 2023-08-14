@@ -14,14 +14,18 @@ from copy import deepcopy
 from typing import List, Optional
 
 import hail as hl
+from hail.utils.misc import new_temp_file
+
 from gnomad.resources.grch38.gnomad import DOWNSAMPLINGS, POPS_TO_REMOVE_FOR_POPMAX
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
     annotate_downsamplings,
-    annotate_freq,
     bi_allelic_site_inbreeding_expr,
+    build_freq_stratification_list,
+    compute_freq_by_strata,
     faf_expr,
+    generate_freq_group_membership_array,
     get_adj_expr,
     merge_freq_arrays,
     merge_histograms,
@@ -33,8 +37,6 @@ from gnomad.utils.filtering import split_vds_by_strata
 from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import SORT_ORDER
-from hail.utils.misc import new_temp_file
-
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
@@ -190,11 +192,6 @@ def get_vds_for_freq(
         age_distribution=vmt.aggregate_cols(hl.agg.hist(vmt.age, 30, 80, 10))
     )
 
-    # Downsamplings are done outside the above function as we need to annotate
-    # globals and rows.
-    logger.info("Annotating downsampling groups...")
-    vmt = annotate_downsamplings(vmt, DOWNSAMPLINGS["v4"], pop_expr=vmt.pop)
-
     logger.info("Annotating non_ref hets pre-split...")
     vmt = vmt.annotate_entries(_het_non_ref=vmt.LGT.is_het_non_ref())
 
@@ -263,13 +260,16 @@ def annotate_adj_and_select_fields(vds: hl.vds.VariantDataset) -> hl.vds.Variant
         vmt.GT,
         adjusted_sex_ploidy_expr(vmt.locus, vmt.GT, vmt.sex_karyotype),
     )
+    ab_expr = vmt.AD[1] / vmt.DP
+    # TODO: Add ab cutoff parameter if using this method.
     vmt = vmt.select_entries(
-        "_het_non_ref",
         "DP",
         "GQ",
         GT=vmt_gt_expr,
         adj=get_adj_expr(vmt_gt_expr, vmt.GQ, vmt.DP, vmt.AD),
-        _het_ad=vmt.AD[1],
+        _het_ab=ab_expr,
+        # Skip adjusting genotypes if sample originally had a het nonref genotype.
+        _high_ab_het_ref=(ab_expr > 0.9) & ~vmt._het_non_ref,
     )
 
     return hl.vds.VariantDataset(rmt, vmt)
@@ -300,8 +300,8 @@ def annotate_freq_index_dict(ht: hl.Table) -> hl.Table:
 
 def generate_freq_and_hists_ht(
     vds: hl.vds.VariantDataset,
+    ds_ht: hl.Table,
     ab_cutoff: float = 0.9,
-    idx: Optional[int] = None,
 ) -> hl.Table:
     """
     Generate frequency and histogram annotations.
@@ -318,35 +318,49 @@ def generate_freq_and_hists_ht(
         - fixed_homalt_model
         - gatk_version
         - age
-        - sample_age_bin
         - ukb_sample
-        - downsampling
-        - downsamplings
 
     :param vds: Input VDS.
     :param ab_cutoff: Allele balance cutoff to use for high AB het annotation.
-    :param idx: Optional index to append to temp file name.
     :return: Hail Table with frequency and histogram annotations.
     """
     final_rows_anns = {}
     final_globals_anns = {}
 
-    logger.info("Densifying VDS # %s...", idx)
+    ht = vds.variant_data.cols()
+    additional_strata_expr = [
+        {"gatk_version": ht.gatk_version},
+        {"gatk_version": ht.gatk_version, "pop": ht.pop},
+        # TODO: confirm this is how we want to name this.
+        {"ukb_sample": ht.ukb_sample},
+    ]
+    strata_expr = build_freq_stratification_list(
+        sex_expr=ht.sex_karyotype,
+        pop_expr=ht.pop,
+        additional_strata_expr=additional_strata_expr,
+        downsampling_expr=ds_ht[ht.key].downsampling,
+    )
+    ht = generate_freq_group_membership_array(
+        ht,
+        strata_expr,
+        downsamplings=hl.eval(ds_ht.downsamplings),
+        ds_pop_counts=hl.eval(ds_ht.ds_pop_counts),
+    )
+
+    logger.info("Densifying VDS...")
     mt = hl.vds.to_dense_mt(vds)
 
     logger.info("Computing sex adjusted genotypes...")
-    mt = mt.transmute_entries(
-        GT=adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.sex_karyotype),
+    ab_expr = mt.AD[1] / mt.DP
+    gt_expr = adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.sex_karyotype)
+    mt = mt.select_entries(
+        "DP",
+        "GQ",
+        GT=gt_expr,
+        adj=get_adj_expr(gt_expr, mt.GQ, mt.DP, mt.AD),
+        _het_ab=ab_expr,
+        _high_ab_het_ref=(ab_expr > ab_cutoff) & ~mt._het_non_ref,
     )
-    mt = mt.annotate_entries(adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD))
-
-    logger.info("Annotating frequencies and counting high AB het calls...")
-    additional_strata_expr = [
-        {"gatk_version": mt.gatk_version},
-        {"gatk_version": mt.gatk_version, "pop": mt.pop},
-        # TODO: confirm this is how we want to name this.
-        {"ukb_sample": mt.ukb_sample},
-    ]
 
     def _high_ab_het(entry, col):
         """
@@ -358,24 +372,17 @@ def generate_freq_and_hists_ht(
         """
         return hl.int(
             entry.GT.is_het_ref()
-            # & (entry._het_ad / entry.DP > ab_cutoff)
-            & (entry.AD[1] / entry.DP > ab_cutoff)
             & entry.adj
             & ~col.fixed_homalt_model
-            & ~entry._het_non_ref
-        )  # Skip adjusting genotypes if sample originally had a het nonref genotype.
+            & entry._high_ab_het_ref
+        )
 
-    freq_ht = annotate_freq(
-        mt,
-        sex_expr=mt.sex_karyotype,
-        pop_expr=mt.pop,
-        downsamplings=hl.eval(mt.downsamplings),
-        downsampling_expr=mt.downsampling,
-        ds_pop_counts=hl.eval(mt.ds_pop_counts),
-        additional_strata_expr=additional_strata_expr,
+    logger.info("Annotating frequencies and counting high AB het calls...")
+    freq_ht = compute_freq_by_strata(
+        mt.annotate_cols(group_membership=ht[mt.col_key].group_membership),
         entry_agg_funcs={"high_ab_hets_by_group": (_high_ab_het, hl.agg.sum)},
-        annotate_mt=False,
     )
+    freq_ht = freq_ht.annotate_globals(**ht.index_globals())
 
     logger.info("Setting Y metrics to NA for XX groups...")
     freq_ht = annotate_freq_index_dict(freq_ht)
@@ -385,21 +392,19 @@ def generate_freq_and_hists_ht(
         "Computing quality metrics histograms and age histograms for each variant..."
     )
     high_ab_gt_expr = hl.if_else(_high_ab_het(mt, mt) == 1, hl.call(1, 1), mt.GT)
-    ab_expr = mt.AD[1] / mt.DP
     mt = mt.select_rows(
         **qual_hist_expr(
             gt_expr=mt.GT,
             gq_expr=mt.GQ,
             dp_expr=mt.DP,
             adj_expr=mt.adj,
-            # ab_expr=mt._het_ad / mt.DP,
-            ab_expr=ab_expr,
+            ab_expr=mt._het_ab,
             split_adj_and_raw=True,
         ),
         high_ab_het_adjusted_ab_hists=qual_hist_expr(
             gt_expr=high_ab_gt_expr,
             adj_expr=mt.adj,
-            ab_expr=ab_expr,
+            ab_expr=mt._het_ab,
         ),
         age_hists=age_hists_expr(mt.adj, mt.GT, mt.age),
         high_ab_het_adjusted_age_hists=age_hists_expr(mt.adj, high_ab_gt_expr, mt.age),
@@ -564,6 +569,19 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     return ht
 
 
+def compute_inbreeding_coeff(ht: hl.Table) -> hl.Table:
+    """
+    Compute inbreeding coefficient using raw call stats.
+
+    :param ht: Hail Table containing freq array with struct entries of AC, AN, and homozygote_count.
+    :return: Hail Table with inbreeding coefficient annotation.
+    """
+    ht = ht.annotate(
+        InbreedingCoeff=bi_allelic_site_inbreeding_expr(callstats_expr=ht.freq[1])
+    )
+    return ht
+
+
 # TODO: add automatic copy of log file.
 def main(args):
     """Script to generate frequency and dense dependent annotations on v4 exomes."""
@@ -591,6 +609,16 @@ def main(args):
             "Getting multi-allelic split VDS with adj and _het_AD entry annotations..."
         )
         vds = get_vds_for_freq(use_test_dataset, test_gene, test_n_partitions, chrom)
+
+        logger.info("Determining downsampling groups...")
+        ds_ht = (
+            annotate_downsamplings(
+                vds.variant_data, DOWNSAMPLINGS["v4"], pop_expr=vds.variant_data.pop
+            )
+            .cols()
+            .checkpoint(new_temp_file("downsamplings", extension="ht"))
+        )
+
         if args.split_vds_by_annotation:
             logger.info(
                 "Splitting VDS by ukb_sample annotation to reduce data size for"
@@ -599,22 +627,20 @@ def main(args):
             vds_list = split_vds_by_strata(vds, strata_expr=vds.variant_data.ukb_sample)
             freq_hts = []
             for idx, vds in enumerate(vds_list, start=1):
-                freq_ht = generate_freq_and_hists_ht(vds, ab_cutoff=ab_cutoff, idx=idx)
+                logger.info("Generating frequency and histograms for VDS # %s...", idx)
+                ht = generate_freq_and_hists_ht(vds, ds_ht, ab_cutoff=ab_cutoff)
+
                 # TODO: Change to use a fixed location in gnomad_tmp instead of
                 #  new_temp_file so we can easily rerun only failed ones if needed?
                 # TODO: Actually, do we want to parallelize this in some way?
-                freq_hts.append(
-                    freq_ht.checkpoint(
-                        new_temp_file(f"freq_ht_{idx}", extension="ht"),
-                        overwrite=args.overwrite,
-                        _read_if_exists=False,
-                    )
-                )
+                ht = ht.checkpoint(new_temp_file(f"freq_{idx}", extension="ht"))
+                freq_hts.append(ht)
+
             freq_ht = combine_freq_hts(
                 freq_hts, ALL_FREQ_ROW_FIELDS, FREQ_GLOBAL_FIELDS
             )
         else:
-            freq_ht = generate_freq_and_hists_ht(vds, ab_cutoff=ab_cutoff)
+            freq_ht = generate_freq_and_hists_ht(vds, ds_ht, ab_cutoff=ab_cutoff)
 
         freq_ht.write(res.freq_and_dense_annotations.path, overwrite=args.overwrite)
 
@@ -633,9 +659,7 @@ def main(args):
         ht = generate_faf_grpmax(ht)
 
         logger.info("Calculating InbreedingCoeff...")
-        ht = ht.annotate(
-            InbreedingCoeff=bi_allelic_site_inbreeding_expr(callstats_expr=ht.freq[1])
-        )
+        ht = compute_inbreeding_coeff(ht)
 
         # TODO: I think we should add a finalize option that does what you describe
         #  below.
