@@ -157,6 +157,9 @@ def create_spliceai_grch38_ht(
         )
     )
 
+    logger.info("Checkpointing SpliceAI Hail Table...")
+    ht = ht.checkpoint("gs://gnomad-tmp-4day/spliceai.ht", overwrite=True)
+
     # Annotate info.max_DS with the max of DS_AG, DS_AL, DS_DG, DS_DL in info.
     # delta_score array is |DS_AG|DS_AL|DS_DG|DS_DL
     logger.info(
@@ -185,7 +188,6 @@ def create_spliceai_grch38_ht(
             ),
         )
     )
-    ht = ht.checkpoint("gs://gnomad-tmp-4day/spliceai.ht", overwrite=True)
 
     logger.info("Getting the max SpliceAI score for each variant across genes...")
     ht2 = ht.group_by(*ht.key).aggregate(
