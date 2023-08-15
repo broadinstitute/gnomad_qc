@@ -183,16 +183,12 @@ def main(args):
 
     input_paths_dict = {
         "v4.0_exomes": f"gs://gnomad-qin/v4_annotations/v4_vds_all_variants.ht",
-        "test_v4.0_exomes": f"gs://gnomad-qin/v4_annotations/v4_vds_2_partitions.ht",
-        "v4.0_supp1": f"gs://gnomad-qin/v4_annotations/v4_vds_supp1.ht",
+        "test_v4.0_exomes": f"gs://gnomad-qin/v4_annotations/v4_vds_all_variants.ht",
     }
 
     output_paths_dict = {
         "v4.0_exomes": v4_vrs_annotations().path,
-        "test_v4.0_exomes": (
-            f"gs://{working_bucket}/v4_annotations/v4_vds_2_partitions_output.ht",
-        ),
-        "v4.0_supp1": f"gs://{working_bucket}/v4_annotations/v4_vds_supp1_output.ht",
+        "test_v4.0_exomes": v4_vrs_annotations(test=True).path,
     }
 
     # Read in Hail Table, partition, and export to sharded VCF
@@ -335,22 +331,15 @@ def main(args):
 
         # Execute all jobs in the batch_vrs Batch
         batch_vrs.run()
-        logger.info(
-            "Batch jobs executed, annotated vcf.gz shards copied to"
-            f" gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf"
-        )
 
-    if args.annotate_original:
         logger.info(
             "Batch jobs executed, preparing to read in sharded VCF from prior step."
             " Preparing list of files first using Hail's hadoop_ls method."
         )
 
         annotated_file_dict = hl.utils.hadoop_ls(
-            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/"
+            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/*"
         )
-        # NOTE: this is changed to be a directory intstead `/*.vcf` because the
-        # QoS step was run with Hail 0.2.115 instead of the latest version
 
         annotated_file_list = [
             annotated_file_item["path"] for annotated_file_item in annotated_file_dict
@@ -361,10 +350,8 @@ def main(args):
         # Import all annotated shards
         ht_annotated = hl.import_vcf(
             annotated_file_list,
-            force_bgz=True,
             reference_genome=assembly,
         ).make_table()
-
         logger.info("Annotated table constructed")
 
         vrs_struct = hl.struct(
@@ -377,15 +364,53 @@ def main(args):
         ht_annotated = ht_annotated.annotate(vrs=vrs_struct)
         ht_annotated = ht_annotated.select(ht_annotated.vrs)
 
-        logger.info("Adding VRS IDs and GA4GH.VRS version to original Table")
-        ht_final = ht_original.annotate(
-            vrs=ht_annotated[ht_original.locus, ht_original.alleles].vrs
+        # Checkpoint (write) resulting annotated table
+        ht_annotated = ht_annotated.checkpoint(
+            f"gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht",
+            overwrite=args.overwrite,
+        )
+        logger.info(
+            "Annotated Hail Table checkpointed to:"
+            f" gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
         )
 
-        ht_final = ht_final.annotate_globals(vrs_version=VRS_VERSION)
+    if args.annotate_original:
+        check_resource_existence(
+            input_step_resources={
+                "--run-vrs": [
+                    f"gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
+                ],
+            },
+            output_step_resources={
+                "--annotate-original": [output_paths_dict[version]],
+            },
+            overwrite=args.overwrite,
+        )
 
-        logger.info(f"Outputting final table at: {output_paths_dict[version]}")
-        ht_final.write(output_paths_dict[version], overwrite=args.overwrite)
+        # Output final Hail Tables with VRS annotations
+        ht_annotated = hl.read_table(
+            f"gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
+        )
+
+        if args.downsample < 1.00:
+            logger.info(
+                "For test datasets, final output is identical to the checkpointed"
+                " annotated HT"
+            )
+            logger.info(f"Outputting final table at: {output_paths_dict[version]}")
+            ht_annotated.write(output_paths_dict[version], overwrite=args.overwrite)
+        else:
+            logger.info("Adding VRS IDs and GA4GH.VRS version to original Table")
+            ht_final = ht_original.annotate(
+                info=ht_original.info.annotate(
+                    vrs=ht_annotated[ht_original.locus, ht_original.alleles].vrs
+                )
+            )
+
+            ht_final = ht_final.annotate_globals(vrs_version=VRS_VERSION)
+
+            logger.info(f"Outputting final table at: {output_paths_dict[version]}")
+            ht_final.write(output_paths_dict[version], overwrite=args.overwrite)
 
         logger.info(f"Done! Final table written to {output_paths_dict[version]}.")
 
@@ -414,7 +439,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--version",
         help="Version of HT to read in. ",
-        default="test_v4.0_exomes",
+        default="v4.0_exomes",
         type=str,
     )
     parser.add_argument(
