@@ -108,7 +108,7 @@ def create_pangolin_grch38_ht(vcf_path: str) -> hl.Table:
     # `explode` will eliminate rows with empty array
     ht = ht.annotate(pango=ht.info.Pangolin[0].split(delim="\|\|"))
     ht = ht.explode(ht.pango)
-    logger.info("Number of rows in exploded SpliceAI Hail Table: %s", ht.count())
+    logger.info("Number of rows in exploded Pangolin Hail Table: %s", ht.count())
 
     logger.info("Annotating Pangolin scores...")
     ht = ht.annotate(
@@ -123,12 +123,12 @@ def create_pangolin_grch38_ht(vcf_path: str) -> hl.Table:
                 hl.empty_array(hl.tfloat64).append(
                     hl.float(ht.pango.split(delim=":|\\|")[2])
                 )
-            ).append(hl.float(ht.pango.split(delim=":|\\|")[4])),
+            ).append(hl.abs(hl.float(ht.pango.split(delim=":|\\|")[4]))),
         )
     )
 
     logger.info(
-        "Getting the max SpliceAI score for each variant across consequences per"
+        "Getting the max Pangolin score for each variant across consequences per"
         " gene..."
     )
     consequences = hl.literal(["splice_gain", "splice_loss"])
@@ -153,7 +153,7 @@ def create_pangolin_grch38_ht(vcf_path: str) -> hl.Table:
     )
     ht = ht.checkpoint("gs://gnomad-tmp-4day/pangolin.ht", overwrite=True)
 
-    logger.info("Getting the max SpliceAI score for each variant across genes...")
+    logger.info("Getting the max Pangolin score for each variant across genes...")
     ht2 = ht.group_by(*ht.key).aggregate(
         staging=hl.agg.take(
             hl.struct(
@@ -167,7 +167,7 @@ def create_pangolin_grch38_ht(vcf_path: str) -> hl.Table:
         )
     )
     logger.info(
-        "Number of rows in SpliceAI Hail Table after aggregation: %s", ht2.count()
+        "Number of rows in Pangolin Hail Table after aggregation: %s", ht2.count()
     )
 
     # `aggregate` put everything in an array, we need to extract the struct from the array.
