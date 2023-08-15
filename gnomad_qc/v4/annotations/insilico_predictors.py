@@ -150,7 +150,7 @@ def create_spliceai_grch38_ht(
     delta_scores = ht.info.SpliceAI.split(delim="\\|")[2:6]
     positions = ht.info.SpliceAI.split(delim="\\|")[6:10]
     ht = ht.annotate(
-        pangolin=hl.struct(
+        splice_ai=hl.struct(
             gene_symbol=gene_symbol,
             delta_scores=hl.map(lambda x: hl.float32(x), delta_scores),
             positions=hl.map(lambda x: hl.int32(x), positions),
