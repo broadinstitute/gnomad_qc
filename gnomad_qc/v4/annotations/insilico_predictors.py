@@ -137,12 +137,10 @@ def create_spliceai_grch38_ht(
 
     mt = spliceai_snvs.union_rows(spliceai_indels).union_rows(spliceai_new_indels)
     ht = mt.rows()
-    # logger.info("Number of rows in original SpliceAI Hail Table: %s", ht.count())
 
     logger.info("Exploding SpliceAI scores...")
     # `explode` will eliminate rows with empty array, but the varaints with multiple genes will extend the number of rows.
     ht = ht.explode(ht.info.SpliceAI)
-    # logger.info("Number of rows in exploded SpliceAI Hail Table: %s", ht.count())
 
     logger.info("Annotating SpliceAI scores...")
     # there will only be one gene in the array after exploding
@@ -156,9 +154,6 @@ def create_spliceai_grch38_ht(
             positions=hl.map(lambda x: hl.int32(x), positions),
         )
     )
-
-    logger.info("Checkpointing SpliceAI Hail Table...")
-    ht = ht.checkpoint("gs://gnomad-tmp-4day/spliceai.ht", overwrite=True)
 
     # Annotate info.max_DS with the max of DS_AG, DS_AL, DS_DG, DS_DL in info.
     # delta_score array is |DS_AG|DS_AL|DS_DG|DS_DL
@@ -202,10 +197,8 @@ def create_spliceai_grch38_ht(
             ordering=-ht.splice_ai.ds_max,
         )
     )
-    logger.info(
-        "Number of rows in SpliceAI Hail Table after aggregation: %s", ht2.count()
-    )
 
+    logger.info("Annotating SpliceAI scores in right format...")
     # `aggregate` put everything in an array, we need to extract the struct from the array.
     ht2 = ht2.annotate(
         splice_ai=hl.struct(
