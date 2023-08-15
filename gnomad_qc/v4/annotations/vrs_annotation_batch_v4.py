@@ -212,7 +212,6 @@ def main(args):
         # Create backend and batch for coming annotation batch jobs
         backend = hb.ServiceBackend(
             billing_project=args.billing_project,
-            bucket=working_bucket,
             remote_tmpdir=args.tmp_dir_hail,
         )
 
