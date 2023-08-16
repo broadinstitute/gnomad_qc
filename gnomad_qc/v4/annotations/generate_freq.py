@@ -337,7 +337,7 @@ def generate_freq_and_hists_ht(
         {"gatk_version": ht.gatk_version, "pop": ht.pop},
         {"ukb_sample": ht.ukb_sample},
     ]
-    logger.info("Building frequency stratification list..."
+    logger.info("Building frequency stratification list...")
     strata_expr = build_freq_stratification_list(
         sex_expr=ht.sex_karyotype,
         pop_expr=ht.pop,
