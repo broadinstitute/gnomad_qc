@@ -14,8 +14,6 @@ from copy import deepcopy
 from typing import List, Optional
 
 import hail as hl
-from hail.utils.misc import new_temp_file
-
 from gnomad.resources.grch38.gnomad import DOWNSAMPLINGS, POPS_TO_REMOVE_FOR_POPMAX
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
@@ -37,6 +35,8 @@ from gnomad.utils.filtering import split_vds_by_strata
 from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import SORT_ORDER
+from hail.utils.misc import new_temp_file
+
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
@@ -278,9 +278,9 @@ def annotate_adj_and_select_fields(vds: hl.vds.VariantDataset) -> hl.vds.Variant
 
 def annotate_freq_index_dict(ht: hl.Table) -> hl.Table:
     """
-    Create frequency index dictionary. 
-    
-    The keys are the strata over which frequency aggregations where calculated and 
+    Create frequency index dictionary.
+
+    The keys are the strata over which frequency aggregations where calculated and
     the values are the strata's index in the frequency array.
 
     :param ht:
@@ -360,7 +360,7 @@ def generate_freq_and_hists_ht(
     gt_expr = adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.sex_karyotype)
     # Select entries required for downstream work. DP, GQ, and _het_ab are
     # required for histograms. GT and adj are required for frequency calculations.
-    # _high_ab_het_ref is required for high AB call corrections in frequency and 
+    # _high_ab_het_ref is required for high AB call corrections in frequency and
     # histogram annotaitons.
     mt = mt.select_entries(
         "DP",
@@ -374,7 +374,7 @@ def generate_freq_and_hists_ht(
     def _high_ab_het(entry, col):
         """
         Determine if a call is considered a high allele balance heterozygous call.
-        
+
         High allele balance heterozygous calls were introduced in certain GATK versions.
         Track how many calls appear at each site to correct them to homozygous
         alternate calls downstream in frequency calculations and histograms.
@@ -506,9 +506,9 @@ def combine_freq_hts(
 def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Table:
     """
     Correct for high allele balance heterozygous calls in call statistics and histograms.
-    
-    High allele balance GTs were being called heterozygous instead of homozygous 
-    alternate in GATK until version 4.1.4.1. This corrects for those calls by adjusting 
+
+    High allele balance GTs were being called heterozygous instead of homozygous
+    alternate in GATK until version 4.1.4.1. This corrects for those calls by adjusting
     them  to homozygote alternate within our call statistics and histograms when a
     site's allele frequency is greater than the passed af_threshold. Raw data is not
     adjusted.
@@ -541,7 +541,7 @@ def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Tab
         if "qual_hist" in x
     }
 
-    # If a sites AF is greater than the af_threshold, add high AB het adjusted annotations, 
+    # If a sites AF is greater than the af_threshold, add high AB het adjusted annotations,
     # otherwise use original annotations.
     no_ab_adjusted_expr = {f"ab_adjusted_{x}": ht[x] for x in FREQ_ROW_FIELDS}
     ht = ht.select(
