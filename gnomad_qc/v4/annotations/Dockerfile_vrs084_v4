@@ -1,6 +1,9 @@
-# 2 changes compared to the original Dockerfile:
+############################################################################################################
+# 3 changes compared to the original Dockerfile:
 # use install GCS connector from broad.io
 # install bgzip
+# put gnomad & gnomad_qc dependencies inside the docker image
+############################################################################################################
 # Dockerfile for creating an image that can run the VRS Annotation Script inside of it
 # includes libpqdev and pythondev, plus psycopg2, ga4gh.vrs[extras] , and seqrepo
 
