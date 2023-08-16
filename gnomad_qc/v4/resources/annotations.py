@@ -284,7 +284,7 @@ def get_vrs(
     Get the gnomAD v4 VersionedTableResource containing VRS annotations.
 
     :param version: Version of annotation path to return.
-    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 Table.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
     :return: gnomAD v4 VRS VersionedTableResource.
     """
