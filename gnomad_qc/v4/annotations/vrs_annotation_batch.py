@@ -4,7 +4,7 @@ This is a batch script which adds VRS IDs to a Hail Table by creating sharded VC
 Advise to run a test from laptop, but run the full annotation from a backend (eg. hailctl batch submit) to avoid losing progress if laptop disconnects.
 
 Example command to run QoB from laptop (frontend):
-python3 /Users/heqin/PycharmProjects/gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch_v4.py \
+python3 /Users/heqin/PycharmProjects/gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch.py \
 --billing-project gnomad-annot \
 --working-bucket gnomad-tmp-4day \
 --image us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
@@ -20,7 +20,7 @@ python3 /Users/heqin/PycharmProjects/gnomad_qc/gnomad_qc/v4/annotations/vrs_anno
 Example command to use `hailctl batch submit` (backend):
 hailctl batch submit \
 --image-name us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
-/Users/heqin/PycharmProjects/gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch_v4.py \
+/Users/heqin/PycharmProjects/gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch.py \
 -- \
 --billing-project gnomad-annot \
 --working-bucket gnomad-tmp-4day \
