@@ -4,6 +4,7 @@ import argparse
 import logging
 
 import hail as hl
+
 from gnomad.assessment.validity_checks import count_vep_annotated_variants_per_interval
 from gnomad.resources.grch38.reference_data import ensembl_interval
 from gnomad.sample_qc.relatedness import filter_mt_to_trios
