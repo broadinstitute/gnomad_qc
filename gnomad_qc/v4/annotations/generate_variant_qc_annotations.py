@@ -7,7 +7,7 @@ import hail as hl
 from gnomad.assessment.validity_checks import count_vep_annotated_variants_per_interval
 from gnomad.resources.grch38.reference_data import ensembl_interval
 from gnomad.sample_qc.relatedness import filter_mt_to_trios
-from gnomad.utils.annotations import add_variant_type, annotate_allele_info
+from gnomad.utils.annotations import annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
     default_compute_info,
@@ -17,7 +17,6 @@ from gnomad.utils.sparse_mt import (
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from gnomad.utils.vep import vep_or_lookup_vep
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
-
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
@@ -98,6 +97,24 @@ def run_generate_trio_stats(
     return generate_trio_stats(mt, bi_allelic_only=False)
 
 
+def run_generate_sib_stats(
+    mt: hl.MatrixTable,
+    rel_ht: hl.Table,
+) -> hl.Table:
+    """
+    Generate stats for the number of alternate alleles in common between sibling pairs.
+
+    :param mt: MatrixTable to generate sibling stats from.
+    :param rel_ht: Table containing relatedness info for pairs in `mt`.
+    :return: Table containing sibling stats.
+    """
+    # Filter relatedness Table to only exomes-exome pairs.
+    rel_ht = rel_ht.filter(
+        (rel_ht.i.data_type == "exomes") & (rel_ht.j.data_type == "exomes")
+    )
+    return generate_sib_stats(mt.transmute_entries(GT=mt.LGT), rel_ht)
+
+
 def get_variant_qc_annotation_resources(
     test: bool, overwrite: bool
 ) -> PipelineResourceCollection:
@@ -139,12 +156,12 @@ def get_variant_qc_annotation_resources(
         output_resources={"vep_count_ht": validate_vep_path(test=test)},
         pipeline_input_steps=[run_vep],
     )
-    generate_trio_stats = PipelineStepResourceCollection(
+    trio_stats = PipelineStepResourceCollection(
         "--generate-trio-stats",
         output_resources={"trio_stats_ht": get_trio_stats(test=test)},
         input_resources={"identify_trios.py --finalize-ped": {"final_ped": pedigree()}},
     )
-    generate_sib_stats = PipelineStepResourceCollection(
+    sib_stats = PipelineStepResourceCollection(
         "--generate-sib-stats",
         output_resources={"sib_stats_ht": get_sib_stats(test=test)},
         input_resources={
@@ -160,8 +177,8 @@ def get_variant_qc_annotation_resources(
             "export_info_vcf": export_info_vcf,
             "run_vep": run_vep,
             "validate_vep": validate_vep,
-            "generate_trio_stats": generate_trio_stats,
-            "generate_sib_stats": generate_sib_stats,
+            "generate_trio_stats": trio_stats,
+            "generate_sib_stats": sib_stats,
         }
     )
 
@@ -180,7 +197,7 @@ def main(args):
     test = test_dataset or test_n_partitions
     run_vep = args.run_vep
     overwrite = args.overwrite
-    resources = get_variant_qc_annotation_resources(test=test, overwrite=overwrite)
+    vqc_resources = get_variant_qc_annotation_resources(test=test, overwrite=overwrite)
     vds = get_gnomad_v4_vds(
         test=test_dataset,
         high_quality_only=True,
@@ -195,7 +212,7 @@ def main(args):
 
     if args.compute_info:
         # TODO: is there any reason to also compute info per platform?
-        res = resources.compute_info
+        res = vqc_resources.compute_info
         res.check_resource_existence()
         if test_dataset:
             unrelated_expr = ~mt.meta.rand_sampling_meta.related
@@ -208,24 +225,24 @@ def main(args):
         ).write(res.info_ht.path, overwrite=overwrite)
 
     if args.split_info:
-        res = resources.split_info
+        res = vqc_resources.split_info
         res.check_resource_existence()
         split_info(res.info_ht.ht()).write(res.split_info_ht.path, overwrite=overwrite)
 
     if args.export_info_vcf:
-        res = resources.export_info_vcf
+        res = vqc_resources.export_info_vcf
         res.check_resource_existence()
         hl.export_vcf(adjust_vcf_incompatible_types(res.info_ht.ht()), res.info_vcf)
 
     if run_vep:
-        res = resources.run_vep
+        res = vqc_resources.run_vep
         res.check_resource_existence()
         ht = hl.split_multi(get_gnomad_v4_vds(test=test_dataset).variant_dataset.rows())
         ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
         ht.write(res.vep_ht.path, overwrite=overwrite)
 
     if args.validate_vep:
-        res = resources.validate_vep
+        res = vqc_resources.validate_vep
         res.check_resource_existence()
         count_ht = count_vep_annotated_variants_per_interval(
             res.vep_ht.ht(), ensembl_interval.ht()
@@ -233,19 +250,15 @@ def main(args):
         count_ht.write(res.vep_count_ht.path, overwrite=args.overwrite)
 
     if args.generate_trio_stats:
-        res = resources.generate_trio_stats
+        res = vqc_resources.generate_trio_stats
         res.check_resource_existence()
         ht = run_generate_trio_stats(vds, res.final_ped.pedigree(), res.final_ped.ht())
         ht.write(res.trio_stats_ht.path, overwrite=overwrite)
 
     if args.generate_sibling_stats:
-        res = resources.generate_sib_stats
+        res = vqc_resources.generate_sib_stats
         res.check_resource_existence()
-        rel_ht = res.rel_ht.ht()
-        rel_ht = rel_ht.filter(
-            (rel_ht.i.data_type == "exomes") & (rel_ht.j.data_type == "exomes")
-        )
-        ht = generate_sib_stats(mt.transmute_entries(GT=mt.LGT), rel_ht)
+        ht = run_generate_sib_stats(mt, res.rel_ht.ht())
         ht.write(res.sib_stats_ht.path, overwrite=overwrite)
 
 
