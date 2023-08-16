@@ -42,6 +42,7 @@ import hailtop.batch as hb
 from gnomad.utils.reference_genome import get_reference_genome
 
 from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.v4.resources.annotations import get_vep as v4_input_ht
 from gnomad_qc.v4.resources.annotations import get_vrs as v4_vrs_annotations
 
 logging.basicConfig(
@@ -182,8 +183,8 @@ def main(args):
     prefix = args.prefix + version
 
     input_paths_dict = {
-        "v4.0_exomes": f"gs://gnomad-qin/v4_annotations/v4_vds_all_variants.ht",
-        "test_v4.0_exomes": f"gs://gnomad-qin/v4_annotations/v4_vds_all_variants.ht",
+        "v4.0_exomes": v4_input_ht().path,
+        "test_v4.0_exomes": v4_input_ht().path,
     }
 
     output_paths_dict = {
