@@ -42,6 +42,125 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def extract_as_pls(
+    lpl_expr: hl.expr.ArrayExpression,
+    allele_idx: hl.expr.Int32Expression,
+) -> hl.expr.ArrayExpression:
+    """
+    Extract PLs for a specific allele from an LPL array expression.
+
+    PL/LPL represents the normalized Phred-scaled likelihoods of the possible
+    genotypes from all considered alleles (or local alleles).
+
+    If three alleles are considered, LPL genotype indexes are:
+    [0/0, 0/1, 1/1, 0/2, 1/2, 2/2].
+
+    If we want to extract the PLs for each alternate allele, we need to extract:
+        - allele 1: [0/0, 0/1, 1/1]
+        - allele 2: [0/0, 0/2, 2/2]
+
+    Example:
+        - LPL: [138, 98, 154, 26, 0, 14]
+        - Extract allele 1 PLs: [0/0, 0/1, 1/1] -> [138, 98, 154]
+        - Extract allele 2 PLs: [0/0, 0/2, 2/2] -> [138, 26, 14]
+
+    :param lpl_expr: LPL ArrayExpression.
+    :param allele_idx: The index of the alternate allele to extract PLs for.
+    :return: ArrayExpression of PLs for the specified allele.
+    """
+    calls_to_keep = hl.array(
+        [hl.call(0, 0), hl.call(0, allele_idx), hl.call(allele_idx, allele_idx)]
+    )
+    return calls_to_keep.map(lambda c: lpl_expr[c.unphased_diploid_gt_index()])
+
+
+def recompute_as_qualapprox_from_lpl(mt: hl.MatrixTable) -> hl.expr.ArrayExpression:
+    """
+    Recompute AS_QUALapprox from LPL.
+
+    QUALapprox is the (Phred-scaled) probability that all reads at the site are hom-ref,
+    so QUALapprox is PL[0]. To get the QUALapprox for just one allele, pull out the
+    PLs for just that allele, then normalize by subtracting the smallest element from
+    all the entries (so the best genotype is 0) and then use the normalized PL[0]
+    value for that allele's QUALapprox.
+
+    .. note::
+
+        - The first element of AS_QUALapprox is always None.
+        - If the allele is a star allele, we set QUALapprox to 0.
+
+    Example:
+        Starting Values:
+            - alleles: [‘G’, ‘*’, ‘A’, ‘C’, ‘GCTT’, ‘GT’, ‘T’]
+            - LGT: 1/2
+            - LA: [0, 1, 6]
+            - LPL: [138, 98, 154, 26, 0, 14]
+            - QUALapprox: 138
+
+        Use `extract_as_pls` to get PLs for each allele:
+            - allele 1: [138, 98, 154]
+            - allele 2: [138, 26, 14]
+
+        Normalize PLs by subtracting the smallest element from all the PLs:
+            - allele 1: [138-98, 98-98, 154-98] -> [40, 0, 56]
+            - allele 2: [138-14, 26-14, 14-14] -> [124, 12, 0]
+
+        Use the first element of the allele specific PLs to generate AS_QUALapprox:
+        [None, 40, 124]
+
+        Set QUALapprox to 0 for the star allele: [None, 0, 124]
+
+    :param mt: Input MatrixTable.
+    :return: AS_QUALapprox ArrayExpression recomputed from LPL.
+    """
+    return hl.enumerate(mt.LA).map(
+        lambda i: (
+            hl.case()
+            .when(mt.alleles[i[1]] == "*", 0)
+            .when(
+                i[0] > 0,
+                hl.bind(
+                    lambda pl_0: hl.if_else((mt.GQ < 2) & (pl_0 == 1), 0, pl_0),
+                    hl.bind(lambda x: x[0] - hl.min(x), extract_as_pls(mt.LPL, i[0])),
+                ),
+            )
+            .or_missing()
+        )
+    )
+
+
+def run_compute_info(mt: hl.MatrixTable, test: bool = False) -> hl.Table:
+    """
+    Run compute info on a MatrixTable.
+
+    ..note::
+
+        Adds a fix for AS_QUALapprox by recomputing from LPL because some were found to
+        have different lengths than LA.
+
+    :param mt: Input MatrixTable.
+    :param test: Whether to use the test dataset. Default is False.
+    :return: Table with info annotations.
+    """
+    mt = mt.annotate_entries(
+        gvcf_info=mt.gvcf_info.annotate(
+            AS_QUALapprox=recompute_as_qualapprox_from_lpl(mt)
+        )
+    )
+
+    if test:
+        unrelated_expr = ~mt.meta.rand_sampling_meta.related
+    else:
+        unrelated_expr = ~mt.meta.sample_filters.relatedness_filters.related
+
+    return default_compute_info(
+        mt,
+        site_annotations=True,
+        as_annotations=True,
+        ac_filter_groups={"release": mt.meta.release, "unrelated": unrelated_expr},
+    )
+
+
 def split_info(info_ht: hl.Table) -> hl.Table:
     """
     Generate an info Table with split multi-allelic sites from the multi-allelic info Table.
@@ -215,15 +334,8 @@ def main(args):
         # TODO: is there any reason to also compute info per platform?
         res = vqc_resources.compute_info
         res.check_resource_existence()
-        if test_dataset:
-            unrelated_expr = ~mt.meta.rand_sampling_meta.related
-        else:
-            unrelated_expr = ~mt.meta.sample_filters.relatedness_filters.related
-        default_compute_info(
-            mt,
-            site_annotations=True,
-            ac_filter_groups={"release": mt.meta.release, "unrelated": unrelated_expr},
-        ).write(res.info_ht.path, overwrite=overwrite)
+        ht = run_compute_info(mt, test=test_dataset)
+        ht.write(res.info_ht.path, overwrite=overwrite)
 
     if args.split_info:
         res = vqc_resources.split_info
