@@ -1,9 +1,10 @@
 """
 This is a batch script which adds VRS IDs to a Hail Table by creating sharded VCFs, running a vrs-annotation script on each shard, and merging the results into the original Hail Table.
 
-The vrs-annotation script that generates the VRS IDs needs to be run with Query-On-Batch. These VRS annotations should be added back to the original Table using Query-on-Spark.(https://hail.is/docs/0.2/cloud/query_on_batch.html#:~:text=Hail%20Query%2Don%2DBatch%20uses,Team%20at%20our%20discussion%20forum.)
-usage for step 1 (only call --run-vrs):
-python3 vrs_annotation_batch_v4.py \
+Advise to run a test from laptop, but run the full annotation from a backend (eg. hailctl batch submit) to avoid losing progress if laptop disconnects.
+
+Example command to run QoB from laptop (frontend):
+python3 /Users/heqin/PycharmProjects/gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch_v4.py \
 --billing-project gnomad-annot \
 --working-bucket gnomad-tmp-4day \
 --image us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
@@ -11,27 +12,27 @@ python3 vrs_annotation_batch_v4.py \
 --prefix v4 \
 --header-path gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt \
 --run-vrs \
+--annotate-original \
 --overwrite \
---backend-mode batch
+--backend-mode batch \
+--test
 
-usage for step 2:
-hailctl dataproc start qh2 \
-    --requester-pays-allow-all \
-    --pkgs="git+https://github.com/broadinstitute/gnomad_methods.git@main","git+https://github.com/broadinstitute/gnomad_qc.git@main" \
-    --autoscaling-policy=max-50 \
-    --max-idle 60m \
-    --labels gnomad_release=gnomad_v4,gnomad_v4_run=vrs_v4_exomes
-
-hailctl dataproc submit qh1 /vrs_annotation_batch_v4.py \
+Example command to use `hailctl batch submit` (backend):
+hailctl batch submit \
+--image-name us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
+/Users/heqin/PycharmProjects/gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch_v4.py \
+-- \
 --billing-project gnomad-annot \
 --working-bucket gnomad-tmp-4day \
 --image us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
 --version test_v4.0_exomes \
 --prefix v4 \
 --header-path gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt \
+--run-vrs \
 --annotate-original \
 --overwrite \
---backend-mode spark
+--backend-mode batch \
+--test
 """
 
 import argparse
