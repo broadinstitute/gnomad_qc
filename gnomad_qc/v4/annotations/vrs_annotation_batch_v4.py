@@ -197,7 +197,11 @@ def main(args):
 
     # Option to downsample for testing, if you want to annotate part of a Hail Table but not all of it
     # For this, is important that we have set the Hail random seed!
-    if args.downsample < 1.00:
+    if args.test:
+        logger.info("Filtering 200 partitions for testing...")
+        ht_original = ht_original._filter_partitions(range(200))
+
+    elif args.downsample < 1.00:
         logger.info("Downsampling Table...")
         ht_original = ht_original.sample(args.downsample)
         ht_original = ht_original.annotate_globals(vrs_downsample=args.downsample)
@@ -284,7 +288,7 @@ def main(args):
         logger.info(f"Number of duplicates to be excluded: {len(to_exclude)}")
 
         logger.info("File list created... getting ready to start Batch Jobs")
-        # Define SeqRepo path to be read in, outside of the loop, to avoid reading
+        # Define SeqRepo path to be read in, outside the loop, to avoid reading
         # it in for each job
         seqrepo_path = "/tmp/local-seqrepo"
         if args.seqrepo_mount:
@@ -349,8 +353,9 @@ def main(args):
         # Import all annotated shards
         ht_annotated = hl.import_vcf(
             annotated_file_list,
+            force_bgz=True,
             reference_genome=assembly,
-        ).make_table()
+        ).rows()
         logger.info("Annotated table constructed")
 
         vrs_struct = hl.struct(
@@ -391,7 +396,7 @@ def main(args):
             f"gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
         )
 
-        if args.downsample < 1.00:
+        if args.test:
             logger.info(
                 "For test datasets, final output is identical to the checkpointed"
                 " annotated HT"
@@ -460,6 +465,11 @@ if __name__ == "__main__":
         ),
         type=str,
         default="v4",
+    )
+    parser.add_argument(
+        "--test",
+        help="Fiter to only 200 partitions for testing purposes.",
+        action="store_true",
     )
     parser.add_argument(
         "--header-path",
