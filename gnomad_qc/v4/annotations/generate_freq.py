@@ -278,7 +278,10 @@ def annotate_adj_and_select_fields(vds: hl.vds.VariantDataset) -> hl.vds.Variant
 
 def annotate_freq_index_dict(ht: hl.Table) -> hl.Table:
     """
-    Add description.
+    Create frequency index dictionary. 
+    
+    The keys are the strata over which frequency aggregations where calculated and 
+    the values are the strata's index in the frequency array.
 
     :param ht:
     :return:
@@ -332,15 +335,16 @@ def generate_freq_and_hists_ht(
     additional_strata_expr = [
         {"gatk_version": ht.gatk_version},
         {"gatk_version": ht.gatk_version, "pop": ht.pop},
-        # TODO: confirm this is how we want to name this.
         {"ukb_sample": ht.ukb_sample},
     ]
+    logger.info("Building frequency stratification list..."
     strata_expr = build_freq_stratification_list(
         sex_expr=ht.sex_karyotype,
         pop_expr=ht.pop,
         additional_strata_expr=additional_strata_expr,
         downsampling_expr=ds_ht[ht.key].downsampling,
     )
+    logger.info("Generating group_membership array....")
     ht = generate_freq_group_membership_array(
         ht,
         strata_expr,
@@ -354,6 +358,10 @@ def generate_freq_and_hists_ht(
     logger.info("Computing sex adjusted genotypes...")
     ab_expr = mt.AD[1] / mt.DP
     gt_expr = adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.sex_karyotype)
+    # Select entries required for downstream work. DP, GQ, and _het_ab are
+    # required for histograms. GT and adj are required for frequency calculations.
+    # _high_ab_het_ref is required for high AB call corrections in frequency and 
+    # histogram annotaitons.
     mt = mt.select_entries(
         "DP",
         "GQ",
@@ -365,7 +373,11 @@ def generate_freq_and_hists_ht(
 
     def _high_ab_het(entry, col):
         """
-        Add description.
+        Determine if a call is considered a high allele balance heterozygous call.
+        
+        High allele balance heterozygous calls were introduced in certain GATK versions.
+        Track how many calls appear at each site to correct them to homozygous
+        alternate calls downstream in frequency calculations and histograms.
 
         :param entry:
         :param col:
@@ -493,25 +505,32 @@ def combine_freq_hts(
 
 def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Table:
     """
-    Add documentation.
+    Correct for high allele balance heterozygous calls in call statistics and histograms.
+    
+    High allele balance GTs were being called heterozygous instead of homozygous 
+    alternate in GATK until version 4.1.4.1. This corrects for those calls by adjusting 
+    them  to homozygote alternate within our call statistics and histograms when a
+    site's allele frequency is greater than the passed af_threshold. Raw data is not
+    adjusted.
 
-    :param ht:
-    :param af_threshold:
+    :param ht: Table with frequency and histogram annotations for correction as well as high AB het annotations.
+    :param af_threshold: Allele frequency threshold for high AB adjustment. Default is 0.01.
     :return:
     """
-    # TODO: Comment
+    # Correct call statistics by passing through freq and high_ab_hets_by_group arrays
+    # to adjust each annotation accordingly
     call_stats_expr = hl.map(
         lambda f, g: hl.struct(
             AC=hl.int32(f.AC + g),
+            AF=hl.if_else(f.AN > 0, (f.AC + g) / f.AN, hl.missing(hl.tfloat64)),
             AN=f.AN,
             homozygote_count=f.homozygote_count + g,
-            AF=hl.if_else(f.AN > 0, (f.AC + g) / f.AN, hl.missing(hl.tfloat64)),
         ),
         ht.freq,
         ht.high_ab_hets_by_group,
     )
 
-    # TODO: Comment
+    # Add already computed ab_adjusted histograms to the qual_hist_expr
     qual_hist_expr = {
         f"ab_adjusted_{x}": ht[x].annotate(
             ab_hist_alt=ht.high_ab_het_adjusted_ab_hists[
@@ -522,9 +541,11 @@ def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Tab
         if "qual_hist" in x
     }
 
-    # TODO: Comment
+    # If a sites AF is greater than the af_threshold, add high AB het adjusted annotations, 
+    # otherwise use original annotations.
     no_ab_adjusted_expr = {f"ab_adjusted_{x}": ht[x] for x in FREQ_ROW_FIELDS}
     ht = ht.select(
+        "high_ab_hets_by_group",
         *FREQ_ROW_FIELDS,
         **hl.if_else(
             ht.freq[0].AF > af_threshold,
