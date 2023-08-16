@@ -235,6 +235,67 @@ def run_generate_sib_stats(
     return generate_sib_stats(mt.transmute_entries(GT=mt.LGT), rel_ht)
 
 
+def export_tp_vcf(
+    transmitted_singletons: bool = True,
+    sibling_singletons: bool = True,
+):
+    """
+    Export true positive variants to VCF for use in VQSR.
+
+    :param transmitted_singletons: Should transmitted singletons be included
+    :param sibling_singletons: Should sibling singletons be included
+    :return: None
+    """
+    if not (transmitted_singletons | sibling_singletons):
+        raise ValueError(
+            "At least one of transmitted_singletons or sibling_singletons must be set "
+            "to True"
+        )
+
+    trio_stats_ht = hl.read_table(
+        var_annotations_ht_path("trio_stats", data_source, freeze)
+    )
+    sib_stats_ht = hl.read_table(
+        var_annotations_ht_path("sib_stats", data_source, freeze)
+    )
+
+    for transmission_confidence in ["raw", "adj"]:
+        filter_expr = False
+        true_positive_type = ""
+        if transmitted_singletons:
+            filter_expr = filter_expr | (
+                trio_stats_ht[qc_ac_ht.key][f"n_transmitted_{transmission_confidence}"]
+                == 1
+            ) & (qc_ac_ht.ac_qc_samples_raw == 2)
+            true_positive_type = true_positive_type + "ts_"
+
+        if sibling_singletons:
+            filter_expr = filter_expr | (
+                sib_stats_ht[qc_ac_ht.key][
+                    f"n_sib_shared_variants_{transmission_confidence}"
+                ]
+                == 1
+            ) & (qc_ac_ht.ac_qc_samples_raw == 2)
+            true_positive_type = true_positive_type + "ss_"
+
+        ht = qc_ac_ht.filter(filter_expr)
+        mt = hl.MatrixTable.from_rows_table(ht)
+        logger.info(
+            f"Exporting {transmission_confidence} transmitted singleton VCF with"
+            f" {mt.count()} variants..."
+        )
+        hl.export_vcf(
+            mt,
+            get_true_positive_vcf_path(
+                true_positive_type=true_positive_type,
+                adj=(transmission_confidence == "adj"),
+                data_source=data_source,
+                freeze=freeze,
+            ),
+            tabix=True,
+        )
+
+
 def get_variant_qc_annotation_resources(
     test: bool, overwrite: bool
 ) -> PipelineResourceCollection:
@@ -374,6 +435,26 @@ def main(args):
         ht = run_generate_sib_stats(mt, res.rel_ht.ht())
         ht.write(res.sib_stats_ht.path, overwrite=overwrite)
 
+    if args.annotate_truth_data:
+        logger.info("Joining truth data annotations...")
+        ht = get_ukbb_data(data_source, freeze).rows().select()
+        truth_ht = get_truth_ht()
+        ht = ht.join(truth_ht, how="left")
+        ht = ht.checkpoint(
+            var_annotations_ht_path("truth_data", data_source, freeze),
+            overwrite=overwrite,
+        )
+        ht.summarize()
+
+    if args.export_true_positive_vcfs:
+        logger.info("Exporting true positive variants to VCFs...")
+        export_tp_vcf(
+            data_source,
+            freeze,
+            transmitted_singletons=args.transmitted_singletons,
+            sibling_singletons=args.sibling_singletons,
+        )
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -418,6 +499,32 @@ if __name__ == "__main__":
     parser.add_argument(
         "--generate-sibling-stats",
         help="Calculated sibling variant sharing stats",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--annotate_truth_data",
+        help="Creates a HT of UKBB variants annotated with truth sites",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--export_true_positive_vcfs",
+        help="Exports true positive variants to VCF files.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--transmitted_singletons",
+        help=(
+            "Include transmitted singletons in the exports of true positive variants to"
+            " VCF files."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--sibling_singletons",
+        help=(
+            "Include sibling singletons in the exports of true positive variants to VCF"
+            " files."
+        ),
         action="store_true",
     )
 
