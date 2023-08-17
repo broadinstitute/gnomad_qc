@@ -288,9 +288,11 @@ def annotate_relationships(ht: hl.Table, outlier_filter_ht: hl.Table) -> hl.Tabl
     exome_filter_expr = (ht.i.data_type == "exomes") & (ht.j.data_type == "exomes")
     filter_expr = {
         "": exome_filter_expr,
-        "_high_quality": exome_filter_expr
-        & ~outlier_filter_ht[ht.i.s].outlier_filtered
-        & ~outlier_filter_ht[ht.j.s].outlier_filtered,
+        "_high_quality": (
+            exome_filter_expr
+            & ~outlier_filter_ht[ht.i.s].outlier_filtered
+            & ~outlier_filter_ht[ht.j.s].outlier_filtered
+        ),
     }
     rel_dict_ht = get_relatedness_dict_ht(ht, filter_expr)
 

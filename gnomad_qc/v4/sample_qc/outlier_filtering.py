@@ -64,9 +64,9 @@ def get_sample_qc_ht(
     # that contains the DP threshold.
     sample_qc_ht = sample_qc_ht.annotate(
         **{
-            f"bases_dp_over_{hl.eval(sample_qc_ht.dp_bins[i])}": sample_qc_ht.bases_over_dp_threshold[
-                i
-            ]
+            f"bases_dp_over_{hl.eval(sample_qc_ht.dp_bins[i])}": (
+                sample_qc_ht.bases_over_dp_threshold[i]
+            )
             for i in range(len(sample_qc_ht.dp_bins))
         },
     ).drop("bases_over_gq_threshold")
@@ -206,9 +206,9 @@ def apply_stratified_filtering_method(
             "n_singleton": (math.inf, 8.0),
             "r_het_hom_var": (math.inf, 4.0),
         },
-        comparison_sample_expr=sample_qc_ht.releasable
-        if not include_unreleasable_in_cutoffs
-        else None,
+        comparison_sample_expr=(
+            sample_qc_ht.releasable if not include_unreleasable_in_cutoffs else None
+        ),
     )
 
     return filter_ht
@@ -313,9 +313,11 @@ def apply_regressed_filtering_method(
         pc_scores=sample_qc_ht.scores,
         qc_metrics={metric: sample_qc_ht[metric] for metric in qc_metrics},
         strata={"platform": sample_qc_ht.platform} if regress_per_platform else None,
-        regression_sample_inclusion_expr=sample_qc_ht.releasable
-        if not include_unreleasable_in_regression
-        else hl.bool(True),
+        regression_sample_inclusion_expr=(
+            sample_qc_ht.releasable
+            if not include_unreleasable_in_regression
+            else hl.bool(True)
+        ),
     )
     filter_ht = compute_stratified_metrics_filter(
         sample_qc_res_ht,
@@ -324,12 +326,16 @@ def apply_regressed_filtering_method(
             "n_singleton_residual": (math.inf, 8.0),
             "r_het_hom_var_residual": (math.inf, 4.0),
         },
-        strata={"platform": sample_qc_ht[sample_qc_res_ht.key].platform}
-        if regress_per_platform
-        else None,
-        comparison_sample_expr=sample_qc_ht[sample_qc_res_ht.key].releasable
-        if not include_unreleasable_in_cutoffs
-        else None,
+        strata=(
+            {"platform": sample_qc_ht[sample_qc_res_ht.key].platform}
+            if regress_per_platform
+            else None
+        ),
+        comparison_sample_expr=(
+            sample_qc_ht[sample_qc_res_ht.key].releasable
+            if not include_unreleasable_in_cutoffs
+            else None
+        ),
     )
     sample_qc_res_ht = sample_qc_res_ht.annotate(**filter_ht[sample_qc_res_ht.key])
     filter_ht = sample_qc_res_ht.select_globals(
@@ -552,9 +558,8 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
         f"{median_filter_metric}_median_filtered": hl.is_defined(ht_idx),
         f"fail_{update_metric}": hl.coalesce(ht_idx[f"fail_{update_metric}"], False),
         "qc_metrics_filters": (
-            (ht.qc_metrics_filters - hl.set({update_metric}))
-            | hl.coalesce(ht_idx.qc_metrics_filters, hl.empty_set(hl.tstr))
-        ),
+            ht.qc_metrics_filters - hl.set({update_metric})
+        ) | hl.coalesce(ht_idx.qc_metrics_filters, hl.empty_set(hl.tstr)),
     }
 
     # For the 'regressed' filtering method, residuals were recomputed, so update them.
@@ -696,10 +701,9 @@ def create_finalized_outlier_filter_ht(
         select_expr.update(
             {
                 "qc_metrics_fail": ht[ht.key].select(*fail_annotations_keep),
-                "qc_metrics_filters": (
-                    hl.literal(qc_metrics_filters_keep)
-                    & ht.qc_metrics_filters.map(lambda x: x.replace("_residual", ""))
-                ),
+                "qc_metrics_filters": hl.literal(
+                    qc_metrics_filters_keep
+                ) & ht.qc_metrics_filters.map(lambda x: x.replace("_residual", "")),
             }
         )
         ht = ht.select(**select_expr)

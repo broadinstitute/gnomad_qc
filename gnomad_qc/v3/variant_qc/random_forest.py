@@ -144,8 +144,9 @@ def create_rf_ht(
         *FEATURES,
         *TRUTH_DATA,
         **{
-            "transmitted_singleton": (ht[f"n_transmitted_{group}"] == 1)
-            & (ht[f"ac_qc_samples_{group}"] == 2),
+            "transmitted_singleton": (ht[f"n_transmitted_{group}"] == 1) & (
+                ht[f"ac_qc_samples_{group}"] == 2
+            ),
             "fail_hard_filters": (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30),
         },
         singleton=ht.ac_release_samples_raw == 1,
@@ -302,9 +303,9 @@ def main(args):  # noqa: D103
         logger.info("Adding run to RF run list")
         rf_runs[model_id] = get_run_data(
             input_args={
-                "transmitted_singletons": None
-                if args.vqsr_training
-                else not args.no_transmitted_singletons,
+                "transmitted_singletons": (
+                    None if args.vqsr_training else not args.no_transmitted_singletons
+                ),
                 "adj": args.adj,
                 "vqsr_training": args.vqsr_training,
                 "filter_centromere_telomere": args.filter_centromere_telomere,

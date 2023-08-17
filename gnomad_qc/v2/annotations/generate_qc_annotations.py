@@ -134,7 +134,7 @@ def generate_qc_annotations(
                 nrq_median=hl.median(hl.agg.filter(non_refs, hl.agg.collect(nrq))),
                 ab_median=hl.median(
                     hl.agg.filter(hets, hl.agg.collect(mt.AD[1] / hl.sum(mt.AD)))
-                )
+                ),
                 # pab_median=hl.median(hl.agg.filter(hets, hl.agg.collect(pab)))
             )
         qc_stats_expression.append(stats_expression)
