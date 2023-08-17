@@ -93,20 +93,24 @@ def main(args):
             )
             scores_ht = scores_ht.annotate_globals(**mt.index_globals())
             scores_ht.write(
-                get_checkpoint_path(
-                    f"test_platform_scores.{calling_interval_name}.pad{calling_interval_padding}"
-                )
-                if args.test
-                else platform_pca_scores.path,
+                (
+                    get_checkpoint_path(
+                        f"test_platform_scores.{calling_interval_name}.pad{calling_interval_padding}"
+                    )
+                    if args.test
+                    else platform_pca_scores.path
+                ),
                 overwrite=args.overwrite,
             )
             loadings_ht = loadings_ht.annotate_globals(**mt.index_globals())
             loadings_ht.write(
-                get_checkpoint_path(
-                    f"test_platform_loadings.{calling_interval_name}.pad{calling_interval_padding}"
-                )
-                if args.test
-                else platform_pca_loadings.path,
+                (
+                    get_checkpoint_path(
+                        f"test_platform_loadings.{calling_interval_name}.pad{calling_interval_padding}"
+                    )
+                    if args.test
+                    else platform_pca_loadings.path
+                ),
                 overwrite=args.overwrite,
             )
             eigenvalues_ht = hl.Table.parallelize(
@@ -117,11 +121,13 @@ def main(args):
             )
             eigenvalues_ht = eigenvalues_ht.annotate_globals(**mt.index_globals())
             eigenvalues_ht.write(
-                get_checkpoint_path(
-                    f"test_platform_eigenvalues.{calling_interval_name}.pad{calling_interval_padding}"
-                )
-                if args.test
-                else platform_pca_eigenvalues.path,
+                (
+                    get_checkpoint_path(
+                        f"test_platform_eigenvalues.{calling_interval_name}.pad{calling_interval_padding}"
+                    )
+                    if args.test
+                    else platform_pca_eigenvalues.path
+                ),
                 overwrite=args.overwrite,
             )
 
@@ -165,11 +171,13 @@ def main(args):
                 **scores_ht.index_globals(),
             )
             platform_ht = platform_ht.checkpoint(
-                get_checkpoint_path(
-                    f"test_platform_assignment.{calling_interval_name}.pad{calling_interval_padding}"
-                )
-                if args.test
-                else platform.path,
+                (
+                    get_checkpoint_path(
+                        f"test_platform_assignment.{calling_interval_name}.pad{calling_interval_padding}"
+                    )
+                    if args.test
+                    else platform.path
+                ),
                 overwrite=args.overwrite,
             )
             logger.info(f"Platform PCA Table count: {platform_ht.count()}")

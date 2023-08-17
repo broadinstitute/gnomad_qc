@@ -337,10 +337,12 @@ def main(args):  # noqa: D103
     ht = ht.filter(hl.is_defined(ht.filters))
 
     ht = ht.checkpoint(
-        qc_temp_prefix()
-        + f"release/gnomad.genomes.sites.test{'.patch' if args.het_nonref_patch else ''}.ht"
-        if args.test
-        else release_sites(het_nonref_patch=args.het_nonref_patch).path,
+        (
+            qc_temp_prefix()
+            + f"release/gnomad.genomes.sites.test{'.patch' if args.het_nonref_patch else ''}.ht"
+            if args.test
+            else release_sites(het_nonref_patch=args.het_nonref_patch).path
+        ),
         args.overwrite,
     )
 
@@ -367,9 +369,11 @@ def main(args):  # noqa: D103
 
         logger.info("Writing out release HT...")
         ht = ht.checkpoint(
-            qc_temp_prefix() + "release/gnomad.genomes.sites.test.ht"
-            if args.test
-            else release_sites().path,
+            (
+                qc_temp_prefix() + "release/gnomad.genomes.sites.test.ht"
+                if args.test
+                else release_sites().path
+            ),
             args.overwrite,
         )
 

@@ -394,9 +394,11 @@ def main(args):
                 )
                 write_omes_concordance(
                     data_type,
-                    dup_version=datetime.today().strftime("%Y-%m-%d")
-                    if args.write_duplicates
-                    else args.dup_version,
+                    dup_version=(
+                        datetime.today().strftime("%Y-%m-%d")
+                        if args.write_duplicates
+                        else args.dup_version
+                    ),
                     by_platform=False,
                     overwrite=args.overwrite,
                 )
@@ -409,9 +411,11 @@ def main(args):
                 )
                 write_omes_concordance(
                     data_type,
-                    dup_version=datetime.today().strftime("%Y-%m-%d")
-                    if args.write_duplicates
-                    else args.dup_version,
+                    dup_version=(
+                        datetime.today().strftime("%Y-%m-%d")
+                        if args.write_duplicates
+                        else args.dup_version
+                    ),
                     by_platform=True,
                     overwrite=args.overwrite,
                 )
@@ -426,9 +430,9 @@ def main(args):
             metrics = (
                 []
                 if not args.run_hash
-                else [args.run_hash]
-                if isinstance(args.run_hash, str)
-                else args.run_hash
+                else (
+                    [args.run_hash] if isinstance(args.run_hash, str) else args.run_hash
+                )
             )
             if args.vqsr:
                 metrics.append("vqsr")
