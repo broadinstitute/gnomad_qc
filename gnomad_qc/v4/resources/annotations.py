@@ -8,6 +8,7 @@ from gnomad.resources.resource_utils import (
     TableResource,
     VersionedTableResource,
 )
+
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
 SUBSETS = SUBSETS["v4"]
@@ -56,13 +57,10 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
     )
 
 
-def get_vep(
-    version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
-) -> VersionedTableResource:
+def get_vep(test: bool = False, data_type: str = "exomes") -> VersionedTableResource:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource.
 
-    :param version: Version of annotation path to return.
     :param test: Whether to use a tmp path for analysis of the test Table instead of the full v4 Table.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
     :return: gnomAD v4 VEP VersionedTableResource.
@@ -81,12 +79,11 @@ def get_vep(
 
 
 def validate_vep_path(
-    version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
+    test: bool = False, data_type: str = "exomes"
 ) -> VersionedTableResource:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource for validation counts.
 
-    :param version: Version of annotation path to return.
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
     :return: gnomAD v4 VEP VersionedTableResource containing validity check.
@@ -134,6 +131,45 @@ def get_sib_stats(test: bool = False) -> str:
         {
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.sib_stats.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def get_variant_qc_annotations(
+    adj: bool = False, test: bool = False
+) -> VersionedTableResource:
+    """
+    Return the VersionedTableResource to the RF-ready annotated Table.
+
+    Annotations that are included in the Table:
+
+        Features for RF:
+            - variant_type
+            - allele_type
+            - n_alt_alleles
+            - has_star
+            - AS_QD
+            - AS_pab_max
+            - AS_MQRankSum
+            - AS_SOR
+            - AS_ReadPosRankSum
+
+        Training sites (bool):
+            - transmitted_singleton
+            - sibling_singleton
+            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
+
+    :param adj: Whether to load 'adj' or 'raw'.
+    :param test: Whether to use a tmp path for testing.
+    :return: Table with variant QC annotations.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.variant_qc_annotations.{'adj' if adj else 'raw'}.ht"
             )
             for version in VERSIONS
         },

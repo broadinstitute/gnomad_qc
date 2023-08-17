@@ -5,7 +5,7 @@ from typing import Dict, Optional
 
 import hail as hl
 from gnomad.assessment.validity_checks import count_vep_annotated_variants_per_interval
-from gnomad.resources.grch38.reference_data import ensembl_interval
+from gnomad.resources.grch38.reference_data import ensembl_interval, get_truth_ht
 from gnomad.sample_qc.relatedness import filter_mt_to_trios
 from gnomad.utils.annotations import annotate_allele_info
 from gnomad.utils.slack import slack_notifications
@@ -17,6 +17,7 @@ from gnomad.utils.sparse_mt import (
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from gnomad.utils.vep import vep_or_lookup_vep
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
+from gnomad.variant_qc.random_forest import median_impute_features
 
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
@@ -28,6 +29,7 @@ from gnomad_qc.v4.resources.annotations import (
     get_sib_stats,
     get_trio_stats,
     get_true_positive_vcf_path,
+    get_variant_qc_annotations,
     get_vep,
     info_vcf_path,
     validate_vep_path,
@@ -41,6 +43,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+INFO_FEATURES = [
+    "AS_MQRankSum",
+    "AS_pab_max",
+    "AS_QD",
+    "AS_ReadPosRankSum",
+    "AS_SOR",
+]
+"""Add description"""
+FEATURES = [
+    "allele_type",
+    "AS_MQRankSum",
+    "AS_pab_max",
+    "AS_QD",
+    "AS_ReadPosRankSum",
+    "AS_SOR",
+    "n_alt_alleles",
+    "variant_type",
+]
+"""Add description"""
+TRUTH_DATA = ["hapmap", "omni", "mills", "kgp_phase1_hc"]
+"""Add description"""
 
 
 def extract_as_pls(
@@ -287,6 +311,108 @@ def get_tp_ht_for_vcf_export(
     return tp_hts
 
 
+def create_variant_qc_annotation_ht(
+    info_ht: hl.Table,
+    trio_stats_ht: hl.Table,
+    sib_stats_ht: hl.Table,
+    impute_features: bool = True,
+    adj: bool = False,
+    n_partitions: int = 5000,
+) -> hl.Table:
+    """
+    Create a Table with all necessary annotations for variant QC.
+
+    Annotations that are included:
+
+        Features for RF:
+            - variant_type
+            - allele_type
+            - n_alt_alleles
+            - has_star
+            - AS_QD
+            - AS_pab_max
+            - AS_MQRankSum
+            - AS_SOR
+            - AS_ReadPosRankSum
+
+        Training sites (bool):
+            - transmitted_singleton
+            - sibling_singleton
+            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
+
+    :param info_ht: Info Table with split multi-allelics.
+    :param trio_stats_ht: Table with trio statistics.
+    :param sib_stats_ht: Table with sibling statistics.
+    :param impute_features: Whether to impute features using feature medians (this is done by variant type).
+    :param adj: Whether to use adj genotypes.
+    :param n_partitions: Number of partitions to use for final annotated Table.
+    :return: Hail Table with all annotations needed for variant QC.
+    """
+    truth_data_ht = get_truth_ht()
+    group = "adj" if adj else "raw"
+
+    ht = info_ht.transmute(**info_ht.info)
+    ht = ht.select("lowqual", "AS_lowqual", "FS", "MQ", "QD", *INFO_FEATURES)
+
+    trio_stats_ht = trio_stats_ht.select(
+        f"n_transmitted_{group}", f"ac_children_{group}"
+    )
+    sib_stats_ht.describe()
+    # sib_stats_ht = sib_stats_ht.select(
+    #    f"n_sib_shared_variants_{group}", f"ac_children_{group}"
+    # )
+
+    logger.info("Annotating Table with trio and sibling stats and reference truth data")
+    ht = ht.annotate(
+        **trio_stats_ht[ht.key],
+        **sib_stats_ht[ht.key],
+        **truth_data_ht[ht.key],
+    )
+    ht.describe()
+
+    # Filter to only variants found in high quality samples and are not lowqual
+    ht = ht.filter((ht[f"AC_high_quality_{group}"] > 0) & ~ht.AS_lowqual)
+    ht = ht.select(
+        "a_index",
+        "was_split",
+        *FEATURES,
+        *TRUTH_DATA,
+        **{
+            "transmitted_singleton": (ht[f"n_transmitted_{group}"] == 1) & (
+                ht[f"AC_high_quality_{group}"] == 2  # TODO: should this be raw always?
+            ),
+            "sibling_singleton": (ht[f"n_sib_shared_variants_{group}"] == 1) & (
+                ht[f"AC_high_quality_{group}"]
+                == 2
+                # TODO: should this be raw always?
+            ),
+            "fail_hard_filters": (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30),
+        },
+        singleton=ht.AC_release_raw == 1,
+        ac_raw=ht.AC_high_quality_raw,
+        ac=ht.AC_release_adj,
+        ac_unrelated_raw=ht.AC_unrelated_raw,
+    )
+
+    if impute_features:
+        ht = median_impute_features(ht, {"variant_type": ht.variant_type})
+
+    ht = ht.repartition(n_partitions, shuffle=False)
+    ht = ht.checkpoint(
+        hl.utils.new_temp_file("variant_qc_annotations", "ht"), overwrite=True
+    )
+
+    summary = ht.group_by(
+        *TRUTH_DATA,
+        "transmitted_singleton",
+        "sibling_singleton",
+    ).aggregate(n=hl.agg.count())
+    logger.info("Summary of truth data annotations:")
+    summary.show(-1)
+
+    return ht
+
+
 def get_variant_qc_annotation_resources(
     test: bool, overwrite: bool, true_positive_type: Optional[str] = None
 ) -> PipelineResourceCollection:
@@ -342,6 +468,14 @@ def get_variant_qc_annotation_resources(
             "relatedness.py --finalize-relatedness-ht": {"rel_ht": relatedness()}
         },
     )
+    variant_qc_annotation_ht = PipelineStepResourceCollection(
+        "--create-variant-qc-annotation-ht",
+        output_resources={
+            f"{k}_vqc_ht": get_variant_qc_annotations(test=test, adj=k)
+            for k in ["raw", "adj"]
+        },
+        pipeline_input_steps=[split_info_ann, trio_stats, sib_stats],
+    )
 
     # Add all steps to the variant QC annotation pipeline resource collection.
     ann_pipeline.add_steps(
@@ -353,6 +487,7 @@ def get_variant_qc_annotation_resources(
             "validate_vep": validate_vep,
             "generate_trio_stats": trio_stats,
             "generate_sib_stats": sib_stats,
+            "variant_qc_annotation_ht": variant_qc_annotation_ht,
         }
     )
 
@@ -456,6 +591,19 @@ def main(args):
         ht = run_generate_sib_stats(mt, res.rel_ht.ht())
         ht.write(res.sib_stats_ht.path, overwrite=overwrite)
 
+    if args.create_variant_qc_annotation_ht:
+        res = vqc_resources.variant_qc_annotation_ht
+        res.check_resource_existence()
+        for k in ["raw", "adj"]:
+            create_variant_qc_annotation_ht(
+                res.split_info_ht.ht(),
+                res.trio_stats_ht.ht(),
+                res.sib_stats_ht.ht(),
+                impute_features=args.impute_features,
+                adj=(k == "adj"),
+                n_partitions=args.n_partitions,
+            ).write(getattr(res, f"{k}_vqc_ht").path, overwrite=overwrite)
+
     if args.export_true_positive_vcfs:
         res = vqc_resources.export_true_positive_vcfs
         res.check_resource_existence()
@@ -513,6 +661,7 @@ if __name__ == "__main__":
         help="Calculated sibling variant sharing stats",
         action="store_true",
     )
+
     tp_vcf_args = parser.add_argument_group(
         "Export true positive VCFs",
         "Arguments used to define true positive variant set.",
@@ -540,6 +689,26 @@ if __name__ == "__main__":
             " files."
         ),
         action="store_true",
+    )
+
+    variant_qc_annotation_args = parser.add_argument_group(
+        "Variant QC annotation HT parameters"
+    )
+    variant_qc_annotation_args.add_argument(
+        "--create-variant-qc-annotation-ht",
+        help="Creates an annotated HT with features for variant QC.",
+        action="store_true",
+    )
+    variant_qc_annotation_args.add_argument(
+        "--impute-features",
+        help="If set, imputation is performed for variant QC features.",
+        action="store_true",
+    )
+    variant_qc_annotation_args.add_argument(
+        "--n-partitions",
+        help="Desired number of partitions for variant QC annotation HT .",
+        type=int,
+        default=5000,
     )
 
     args = parser.parse_args()
