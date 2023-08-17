@@ -1,7 +1,7 @@
 """Script to generate annotations for variant QC on gnomAD v4."""
-
 import argparse
 import logging
+from typing import Optional
 
 import hail as hl
 
@@ -27,6 +27,7 @@ from gnomad_qc.v4.resources.annotations import (
     get_info,
     get_sib_stats,
     get_trio_stats,
+    get_true_positive_vcf_path,
     get_vep,
     info_vcf_path,
     validate_vep_path,
@@ -235,75 +236,75 @@ def run_generate_sib_stats(
     return generate_sib_stats(mt.transmute_entries(GT=mt.LGT), rel_ht)
 
 
-def export_tp_vcf(
-    transmitted_singletons: bool = True,
-    sibling_singletons: bool = True,
-):
+def get_tp_ht_for_vcf_export(
+    info_ht: hl.Table,
+    trio_stats_ht: Optional[hl.Table] = None,
+    sib_stats_ht: Optional[hl.Table] = None,
+) -> hl.Table:
     """
-    Export true positive variants to VCF for use in VQSR.
+    Get Tables with raw and adj true positive variants to export as a VCF for use in VQSR.
 
-    :param transmitted_singletons: Should transmitted singletons be included
-    :param sibling_singletons: Should sibling singletons be included
-    :return: None
+    :param info_ht: Info Table with split multi-allelics.
+    :param trio_stats_ht: Optional Table with trio statistics. If Table is supplied,
+        transmitted singletons are included in the true positive variants.
+    :param sib_stats_ht: Optional Table with sibling statistics. If Table is supplied,
+        sibling singletons are included in the true positive variants.
+    :return: Table containing true positive variants.
     """
-    if not (transmitted_singletons | sibling_singletons):
+    if trio_stats_ht is None and sib_stats_ht is None:
         raise ValueError(
             "At least one of transmitted_singletons or sibling_singletons must be set "
             "to True"
         )
 
-    trio_stats_ht = hl.read_table(
-        var_annotations_ht_path("trio_stats", data_source, freeze)
-    )
-    sib_stats_ht = hl.read_table(
-        var_annotations_ht_path("sib_stats", data_source, freeze)
-    )
-
+    info_ht = info_ht.select()
+    tp_mts = []
     for transmission_confidence in ["raw", "adj"]:
         filter_expr = False
-        true_positive_type = ""
-        if transmitted_singletons:
+        if trio_stats_ht is not None:
             filter_expr = filter_expr | (
-                trio_stats_ht[qc_ac_ht.key][f"n_transmitted_{transmission_confidence}"]
+                trio_stats_ht[info_ht.key][f"n_transmitted_{transmission_confidence}"]
                 == 1
-            ) & (qc_ac_ht.ac_qc_samples_raw == 2)
-            true_positive_type = true_positive_type + "ts_"
+            ) & (info_ht.ac_qc_samples_raw == 2)
 
-        if sibling_singletons:
+        if sib_stats_ht is not None:
             filter_expr = filter_expr | (
-                sib_stats_ht[qc_ac_ht.key][
+                sib_stats_ht[info_ht.key][
                     f"n_sib_shared_variants_{transmission_confidence}"
                 ]
                 == 1
-            ) & (qc_ac_ht.ac_qc_samples_raw == 2)
-            true_positive_type = true_positive_type + "ss_"
+            ) & (info_ht.ac_qc_samples_raw == 2)
 
-        ht = qc_ac_ht.filter(filter_expr)
+        ht = info_ht.filter(filter_expr)
+        # TODO: Is this needed still?
         mt = hl.MatrixTable.from_rows_table(ht)
+        # ts_ht = ts_ht.annotate(s=hl.null(hl.tstr))
+        # ts_mt = ts_ht.to_matrix_table_row_major(columns=["s"], entry_field_name="s")
+        # ts_mt = ts_mt.filter_cols(False)
+        mt = mt.checkpoint(
+            hl.utils.new_temp_file("true_positive_variants", "mt"),
+            overwrite=True,
+        )
         logger.info(
-            f"Exporting {transmission_confidence} transmitted singleton VCF with"
-            f" {mt.count()} variants..."
+            "True positive %s Table for VCF export contains %d variants",
+            transmission_confidence,
+            mt.count_rows(),
         )
-        hl.export_vcf(
-            mt,
-            get_true_positive_vcf_path(
-                true_positive_type=true_positive_type,
-                adj=(transmission_confidence == "adj"),
-                data_source=data_source,
-                freeze=freeze,
-            ),
-            tabix=True,
-        )
+        tp_mts.append(mt)
+
+    return tp_mts
 
 
 def get_variant_qc_annotation_resources(
-    test: bool, overwrite: bool
+    test: bool, overwrite: bool, true_positive_type: Optional[str] = None
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the variant QC annotation pipeline.
 
     :param test: Whether to gather all resources for testing.
     :param overwrite: Whether to overwrite resources if they exist.
+    :param true_positive_type: Type of true positive variants to use for true positive
+        VCF path resource. Default is None.
     :return: PipelineResourceCollection containing resources for all steps of the
         variant QC annotation pipeline.
     """
@@ -363,6 +364,19 @@ def get_variant_qc_annotation_resources(
         }
     )
 
+    if true_positive_type is not None:
+        export_true_positive_vcfs = PipelineStepResourceCollection(
+            "--export-true-positive-vcfs",
+            output_resources={
+                "tp_vcf_path": get_true_positive_vcf_path(
+                    test=test,
+                    true_positive_type=true_positive_type,
+                ),
+            },
+            pipeline_input_steps=[split_info_ann, trio_stats, sib_stats],
+        )
+        ann_pipeline.add_steps({"export_true_positive_vcfs": export_true_positive_vcfs})
+
     return ann_pipeline
 
 
@@ -378,7 +392,20 @@ def main(args):
     test = test_dataset or test_n_partitions
     run_vep = args.run_vep
     overwrite = args.overwrite
-    vqc_resources = get_variant_qc_annotation_resources(test=test, overwrite=overwrite)
+    transmitted_singletons = args.transmitted_singletons
+    sibling_singletons = args.sibling_singletons
+
+    true_positive_type = None
+    if transmitted_singletons and sibling_singletons:
+        true_positive_type = "transmitted_singleton.sibling_singleton"
+    elif transmitted_singletons:
+        true_positive_type = "transmitted_singleton"
+    elif sibling_singletons:
+        true_positive_type += "sibling_singleton"
+
+    vqc_resources = get_variant_qc_annotation_resources(
+        test=test, overwrite=overwrite, true_positive_type=true_positive_type
+    )
     vds = get_gnomad_v4_vds(
         test=test_dataset,
         high_quality_only=True,
@@ -435,25 +462,16 @@ def main(args):
         ht = run_generate_sib_stats(mt, res.rel_ht.ht())
         ht.write(res.sib_stats_ht.path, overwrite=overwrite)
 
-    if args.annotate_truth_data:
-        logger.info("Joining truth data annotations...")
-        ht = get_ukbb_data(data_source, freeze).rows().select()
-        truth_ht = get_truth_ht()
-        ht = ht.join(truth_ht, how="left")
-        ht = ht.checkpoint(
-            var_annotations_ht_path("truth_data", data_source, freeze),
-            overwrite=overwrite,
-        )
-        ht.summarize()
-
     if args.export_true_positive_vcfs:
-        logger.info("Exporting true positive variants to VCFs...")
-        export_tp_vcf(
-            data_source,
-            freeze,
-            transmitted_singletons=args.transmitted_singletons,
-            sibling_singletons=args.sibling_singletons,
+        res = vqc_resources.export_true_positive_vcfs
+        res.check_resource_existence()
+        raw_ts_mt, adj_ts_mt = get_tp_ht_for_vcf_export(
+            res.info_ht,
+            trio_stats_ht=res.trio_stats_ht if transmitted_singletons else None,
+            sib_stats_ht=res.sib_stats_ht if sibling_singletons else None,
         )
+        hl.export_vcf(raw_ts_mt, res.raw_tp_vcf_path, tabix=True)
+        hl.export_vcf(adj_ts_mt, res.adj_tp_vcf_path, tabix=True)
 
 
 if __name__ == "__main__":
@@ -502,13 +520,11 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--annotate_truth_data",
-        help="Creates a HT of UKBB variants annotated with truth sites",
-        action="store_true",
-    )
-    parser.add_argument(
         "--export_true_positive_vcfs",
-        help="Exports true positive variants to VCF files.",
+        help=(
+            "Exports true positive variants (transmitted_singletons and/or"
+            " sibling_singletons) to VCF files."
+        ),
         action="store_true",
     )
     parser.add_argument(

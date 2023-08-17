@@ -8,7 +8,6 @@ from gnomad.resources.resource_utils import (
     TableResource,
     VersionedTableResource,
 )
-
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
 SUBSETS = SUBSETS["v4"]
@@ -179,18 +178,32 @@ def info_vcf_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     )
 
 
-def get_transmitted_singleton_vcf_path(
-    adj: bool = False, version: str = CURRENT_VERSION
+def get_true_positive_vcf_path(
+    version: str = CURRENT_VERSION,
+    test: bool = False,
+    adj: bool = False,
+    true_positive_type: str = "transmitted_singleton",
 ) -> str:
     """
     Provide the path to the transmitted singleton VCF used as input to VQSR.
 
-    :param bool adj: Whether to use adj genotypes
-    :param version: Version of transmitted singleton VCF path to return
-    :return: String for the path to the transmitted singleton VCF
+    :param version: Version of true positive VCF path to return.
+    :param test: Whether to use a tmp path for testing.
+    :param adj: Whether to use adj genotypes.
+    :param true_positive_type: Type of true positive VCF path to return. Should be one
+        of "transmitted_singleton", "sibling_singleton", or
+        "transmitted_singleton.sibling_singleton". Default is "transmitted_singleton".
+    :return: String for the path to the true positive VCF.
     """
+    tp_types = [
+        "transmitted_singleton",
+        "sibling_singleton",
+        "transmitted_singleton.sibling_singleton",
+    ]
+    if true_positive_type not in tp_types:
+        raise ValueError(f"true_positive_type must be one of {tp_types}")
     return (
-        f'{_annotations_root(version)}/gnomad.exomes.v{version}.transmitted_singletons.{"adj" if adj else "raw"}.vcf.bgz'
+        f'{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.{true_positive_type}.{"adj" if adj else "raw"}.vcf.bgz'
     )
 
 
