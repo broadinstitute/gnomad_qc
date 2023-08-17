@@ -187,7 +187,7 @@ def get_vds_for_freq(
         ukb_sample=hl.if_else(project_meta_expr.ukb_sample, "ukb", "non_ukb"),
     )
 
-    # TODO: Add comment and logger.
+    logger.info("Getting age distribution of all samples in the callset...")
     vmt = vmt.annotate_globals(
         age_distribution=vmt.aggregate_cols(hl.agg.hist(vmt.age, 30, 80, 10))
     )
@@ -456,14 +456,21 @@ def combine_freq_hts(
     logger.info(
         "Merging frequency arrays, metadata, and high ab het counts by group array..."
     )
-    comb_freq, comb_freq_meta, comb_high_ab_hets = merge_freq_arrays(
+    comb_freq, comb_freq_meta, count_arrays_dict = merge_freq_arrays(
         farrays=[freq_ht.ann_array[i].freq for i in n_hts_range],
         fmeta=[freq_ht.global_array[i].freq_meta for i in n_hts_range],
-        count_arrays=[freq_ht.ann_array[i].high_ab_hets_by_group for i in n_hts_range],
+        count_arrays={
+            "high_ab_hets": [
+                freq_ht.ann_array[i].high_ab_hets_by_group for i in n_hts_range
+            ],
+            "freq_meta_sample_counts": [
+                freq_ht.global_array[i].freq_meta_sample_counts for i in n_hts_range
+            ],
+        },
     )
     freq_ht = freq_ht.annotate(
         freq=comb_freq,
-        high_ab_hets_by_group=comb_high_ab_hets,
+        high_ab_hets_by_group=count_arrays_dict["high_ab_hets"],
     )
 
     # Merge all histograms into single annotations.
@@ -492,6 +499,7 @@ def combine_freq_hts(
         downsamplings=freq_ht.global_array[0].downsamplings,
         age_distribution=freq_ht.global_array[0].age_distribution,
         freq_meta=comb_freq_meta,
+        freq_meta_sample_counts=count_arrays_dict["freq_meta_sample_counts"],
     )
     freq_ht = annotate_freq_index_dict(freq_ht)
     freq_ht = freq_ht.select(*row_annotations)
