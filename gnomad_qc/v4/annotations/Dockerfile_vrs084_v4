@@ -1,8 +1,9 @@
 ############################################################################################################
-# 3 changes compared to the original Dockerfile:
-# use install GCS connector from broad.io
-# install bgzip
-# put gnomad & gnomad_qc dependencies inside the docker image
+# This Dockerfile has three main changes compared to the original Dockerfile
+# (which was copied from tgg_methods repo to gnomad_qc/v3/annotations/Dockerfile_vrs084):
+# 1) Uses install GCS connector from broad.io
+# 2) Installs bgzip
+# 3) Puts gnomad & gnomad_qc dependencies inside the docker image
 ############################################################################################################
 # Dockerfile for creating an image that can run the VRS Annotation Script inside of it
 # includes libpqdev and pythondev, plus psycopg2, ga4gh.vrs[extras] , and seqrepo
@@ -39,7 +40,6 @@ RUN wget -qO - https://adoptopenjdk.jfrog.io/adoptopenjdk/api/gpg/key/public | a
 
 RUN mkdir tools
 WORKDIR /tools
-
 
 
 # Install vcftools
