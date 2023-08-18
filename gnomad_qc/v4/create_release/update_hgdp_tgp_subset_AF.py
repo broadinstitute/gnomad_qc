@@ -1,4 +1,4 @@
-"""Script to update the AFs of the HGDP + 1KG subset for v4 release HT."""
+"""Script to update the call stats of the HGDP + 1KG subset for v4 release HT."""
 import argparse
 import logging
 from typing import List, Optional, Tuple
@@ -9,6 +9,7 @@ from gnomad.utils.annotations import (
     merge_freq_arrays,
     set_female_y_metrics_to_na_expr,
 )
+from gnomad.utils.filtering import add_filters_expr
 from gnomad.utils.release import make_freq_index_dict
 from gnomad.utils.slack import slack_notifications
 
@@ -18,7 +19,7 @@ from gnomad_qc.v3.resources.release import (
     hgdp_tgp_subset_annotations,
     release_ht_path,
 )
-from gnomad_qc.v4.resources.release import hgdp_tgp_updated_AF
+from gnomad_qc.v4.resources.release import hgdp_tgp_updated_callstats
 from gnomad_qc.v4.resources.sample_qc import (
     hgdp_recomputed_freemix,
     hgdp_tgp_meta_updated,
@@ -33,121 +34,128 @@ logger.setLevel(logging.INFO)
 
 
 def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
-    """Add updated sample QC annotations to the HGDP + 1KG subset.
+    """
+    Add updated sample QC annotations to the HGDP + 1KG subset.
 
-    .. Note::
-    The following annotations are updated based on the latest sample QC:
-    - `sample_filters.hard_filtered_updated` to apply the recomputed freemix filter for HGDP samples;
-    - `sample_filters.relatedness_inference.related_updated` to apply the updated relatedness inference implemented by Alicia Martin's group;
-    - `sample_filters.pop_outlier_updated` to apply the updated pop outlier filter implemented by Alicia Martin's group.
+    .. note::
+
+        The following annotations are updated based on the latest sample QC:
+            - `sample_filters.hard_filtered`: to apply the recomputed freemix
+              filter for HGDP samples.
+            - `sample_filters.relatedness_inference.related`: to apply the
+              updated relatedness inference implemented by Alicia Martin's group.
+            - `sample_filters.pop_outlier`: to apply the updated pop outlier
+              filter implemented by Alicia Martin's group.
 
     :param ht: Table with the HGDP + 1KG subset metadata from the last release.
     :return: Table with updated sample QC annotations.
     """
+    # Load all updated sample QC Tables.
     contamination_ht = hgdp_recomputed_freemix.ht()
-    samples_contaminated = contamination_ht.filter(
-        contamination_ht.recomputed_contam_rate > 0.05
-    ).s.collect(_localize=False)
-    samples_hard_filtered = ht.filter(ht.gnomad_sample_filters.hard_filtered).s.collect(
-        _localize=False
-    )
-
-    ht = ht.annotate(
-        gnomad_sample_filters=ht.gnomad_sample_filters.annotate(
-            hard_filtered_updated=(
-                hl.case()
-                .when(samples_contaminated.contains(ht.s), True)
-                .when(samples_hard_filtered.contains(ht.s), True)
-                .default(False)
-            )
-        )
-    )
-    num_hard_filtered_old = ht.filter(ht.gnomad_sample_filters.hard_filtered).count()
-    num_hard_filtered_new = ht.filter(
-        ht.gnomad_sample_filters.hard_filtered_updated
-    ).count()
-
-    logger.info("%d sample(s) hard filtered", num_hard_filtered_new)
-    logger.info(
-        "%d more sample(s) hard filtered than last release",
-        num_hard_filtered_new - num_hard_filtered_old,
-    )
-
     relatedness_ht = hgdp_tgp_related_samples_to_drop.ht()
-    samples_related = relatedness_ht.node.s.collect(_localize=False)
-    ht = ht.annotate(
-        relatedness_inference=ht.relatedness_inference.annotate(
-            related_updated=hl.if_else(samples_related.contains(ht.s), True, False)
-        )
-    )
-
-    logger.info(
-        "%d sample(s) related",
-        ht.aggregate(hl.agg.count_where(ht.relatedness_inference.related_updated)),
-    )
-    logger.info(
-        "%d sample(s) were assigned differently for the relatedness than last release",
-        ht.aggregate(
-            hl.agg.count_where(
-                ht.relatedness_inference.related_updated
-                != ht.relatedness_inference.related
-            )
-        ),
-    )
-
+    relatedness_ht = relatedness_ht.key_by(s=relatedness_ht.node.s)
     pop_outliers_ht = hgdp_tgp_pop_outliers.ht()
-    samples_pop_outliers = pop_outliers_ht.s.collect(_localize=False)
-    ht = ht.annotate(
-        hgdp_tgp_meta=ht.hgdp_tgp_meta.annotate(
-            subcontinental_pca=ht.hgdp_tgp_meta.subcontinental_pca.annotate(
-                outlier_updated=hl.if_else(
-                    samples_pop_outliers.contains(ht.s), True, False
+    populations_ht = hgdp_tgp_populations_updated.ht()
+    # Update annotations impacted by the recomputed freemix.
+    freemix = hl.coalesce(
+        contamination_ht[ht.s].recomputed_contam_rate * 100, ht.bam_metrics.freemix
+    )
+    hard_filters = ht.gnomad_sample_filters.hard_filters | hl.if_else(
+        freemix > 5.0, hl.set({"contamination"}), hl.empty_set(hl.tstr)
+    )
+    hard_filtered = hl.len(hard_filters) > 0
+    # Update annotations impacted by the updated relatedness inference.
+    related = hl.is_defined(relatedness_ht[ht.key])
+    # Update annotations impacted by the updated HGDP + 1KG metadata.
+    outlier = hl.is_defined(pop_outliers_ht[ht.key])
+    populations = populations_ht[ht.key]
+    # TODO: Will need to update based on gnomad_sample_filters.release_related decision.
+    gnomad_release = (
+        ~hard_filtered
+        & ~outlier
+        & ~related  # & ~ht.gnomad_sample_filters.release_related
+    )
+
+    def _update_annotations(expr, sample_annotations):
+        if isinstance(sample_annotations, dict):
+            updated = {}
+            updated_flag = {}
+            for ann, updated_expr in sample_annotations.items():
+                bla1, bla2 = _update_annotations(expr[ann], updated_expr)
+                updated_flag.update(
+                    {ann + ("." + k if k else ""): v for k, v in bla1.items()}
                 )
-            )
+                updated[ann] = bla2
+            if isinstance(expr, hl.Table):
+                updated_flag = add_filters_expr(filters=updated_flag)
+                return expr.annotate(**updated, sample_annotations_updated=updated_flag)
+            return updated_flag, expr.annotate(**updated)
+        else:
+            return {"": sample_annotations != expr}, sample_annotations
+
+    sample_annotations_to_update = {
+        "bam_metrics": {"freemix": freemix},
+        "gnomad_sample_filters": {
+            "hard_filters": hard_filters,
+            "hard_filtered": hard_filtered,
+        },
+        "gnomad_high_quality": ht.gnomad_high_quality & ~hard_filtered,
+        "gnomad_release": gnomad_release,
+        "relatedness_inference": {"related": related},
+        "hgdp_tgp_meta": {
+            "subcontinental_pca": {"outlier": outlier},
+            "population": populations.population,
+            "latitude": populations.latitude,
+            "longitude": populations.longitude,
+        },
+        "high_quality": ~hard_filtered & ~outlier,
+    }
+    updated_ht = _update_annotations(ht, sample_annotations_to_update)
+    updated_ht = updated_ht.checkpoint(
+        hl.utils.new_temp_file("hgdp_tgp_meta_update", extension="ht"), overwrite=True
+    )
+    updated_counts = updated_ht.aggregate(
+        hl.struct(
+            n_hard_filtered=hl.agg.count_where(
+                updated_ht.gnomad_sample_filters.hard_filtered
+            ),
+            n_related=hl.agg.count_where(updated_ht.relatedness_inference.related),
+            n_outlier=hl.agg.count_where(
+                updated_ht.hgdp_tgp_meta.subcontinental_pca.outlier
+            ),
+            n_diff=hl.agg.explode(
+                lambda x: hl.agg.counter(x), updated_ht.sample_annotations_updated
+            ),
         )
     )
-
     logger.info(
-        "%d sample(s) are pop outliers",
-        ht.aggregate(
-            hl.agg.count_where(ht.hgdp_tgp_meta.subcontinental_pca.outlier_updated)
-        ),
+        """%d sample(s) hard filtered
+        %d more sample(s) hard filtered than last release
+        %d sample(s) related
+        %d sample(s) were assigned differently for the relatedness than last release
+        %d sample(s) are pop outliers
+        %d sample(s) were assigned differently as subcontinental outlier than last release
+        %d samples have different population labels than last release""",
+        updated_counts["n_hard_filtered"],
+        updated_counts["n_diff"]["gnomad_sample_filters.hard_filtered"],
+        updated_counts["n_related"],
+        updated_counts["n_diff"]["relatedness_inference.related"],
+        updated_counts["n_outlier"],
+        updated_counts["n_diff"]["hgdp_tgp_meta.subcontinental_pca.outlier"],
+        updated_counts["n_diff"]["hgdp_tgp_meta.population"],
     )
-    logger.info(
-        "%d sample(s) were assigned differently as subcontinental outlier than last"
-        " release",
-        ht.aggregate(
-            hl.agg.count_where(
-                ht.hgdp_tgp_meta.subcontinental_pca.outlier_updated
-                != ht.hgdp_tgp_meta.subcontinental_pca.outlier
-            )
-        ),
-    )
-
-    populations_ht = hgdp_tgp_populations_updated.ht()
-    ht = ht.annotate(
-        hgdp_tgp_meta=ht.hgdp_tgp_meta.annotate(
-            population_updated=populations_ht[ht.s].population,
-            latitude_updated=populations_ht[ht.s].latitude,
-            longitude_updated=populations_ht[ht.s].longitude,
-        ),
-    )
-    logger.info(
-        "%d samples have different population labels than last release",
-        ht.aggregate(
-            hl.agg.count_where(
-                ht.hgdp_tgp_meta.population_updated != ht.hgdp_tgp_meta.population
-            )
-        ),
-    )
-    return ht
+    return updated_ht
 
 
 def _get_filtered_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
-    """Compare the old and new sample filters.
+    """
+    Compare the old and new sample filters.
 
-    .. Note::
-    We will use the new sample filters for the v4 release sites HT. To prepare for the two sets of samples, we will use anti-join, while taking into account the samples in the two populations `Han` & `Papuan`.
+    .. note::
+
+        We will use the new sample filters for the v4 release sites HT. To prepare for
+        the two sets of samples, we will use anti-join, while taking into account the
+        samples in the two populations `Han` & `Papuan`.
 
     :param ht: Table with the HGDP + 1KG subset metadata with the old and new sample filters.
     :return: Table with the old and new sample filters.

@@ -201,7 +201,7 @@ def release_coverage(
     )
 
 
-def hgdp_tgp_updated_AF(test: bool = False) -> VersionedTableResource:
+def hgdp_tgp_updated_callstats(test: bool = False) -> VersionedTableResource:
     """
     Get the HGDP + 1KG/TGP subset release MatrixTableResource.
 
