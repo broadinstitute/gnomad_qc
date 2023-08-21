@@ -105,6 +105,42 @@ def validate_vep_path(
     )
 
 
+def get_trio_stats(test: bool = False) -> str:
+    """
+    Get the gnomAD v4 trio stats VersionedTableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :return: gnomAD v4 trio stats VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.trio_stats.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def get_sib_stats(test: bool = False) -> str:
+    """
+    Get the gnomAD v4 sibling stats VersionedTableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :return: gnomAD v4 sibling stats VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.sib_stats.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
 def get_vqsr_filters(
     model_id: str,
     split: bool = True,
@@ -173,16 +209,6 @@ qual_hist = VersionedTableResource(
     {
         version: TableResource(
             f"{_annotations_root(version)}/gnomad.exomes.v{version}.qual_hists.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
-fam_stats = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{_annotations_root(version)}/gnomad.exomes.v{version}.qc_fam_stats.ht"
         )
         for version in VERSIONS
     },

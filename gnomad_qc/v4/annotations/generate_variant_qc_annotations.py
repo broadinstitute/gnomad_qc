@@ -6,7 +6,8 @@ import logging
 import hail as hl
 from gnomad.assessment.validity_checks import count_vep_annotated_variants_per_interval
 from gnomad.resources.grch38.reference_data import ensembl_interval
-from gnomad.utils.annotations import add_variant_type, annotate_allele_info
+from gnomad.sample_qc.relatedness import filter_mt_to_trios
+from gnomad.utils.annotations import annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
     default_compute_info,
@@ -15,6 +16,7 @@ from gnomad.utils.sparse_mt import (
 )
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from gnomad.utils.vep import vep_or_lookup_vep
+from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
 
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
@@ -23,12 +25,14 @@ from gnomad_qc.resource_utils import (
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import (
     get_info,
+    get_sib_stats,
+    get_trio_stats,
     get_vep,
     info_vcf_path,
     validate_vep_path,
 )
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
-from gnomad_qc.v4.resources.constants import CURRENT_VERSION
+from gnomad_qc.v4.resources.sample_qc import pedigree, relatedness
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -181,6 +185,56 @@ def split_info(info_ht: hl.Table) -> hl.Table:
     return info_ht
 
 
+def run_generate_trio_stats(
+    vds: hl.vds.VariantDataset,
+    fam_ped: hl.Pedigree,
+    fam_ht: hl.Table,
+) -> hl.Table:
+    """
+    Generate trio transmission stats from a VariantDataset and pedigree info.
+
+    :param vds: VariantDataset to generate trio stats from.
+    :param fam_ped: Pedigree containing trio info.
+    :param fam_ht: Table containing trio info.
+    :return: Table containing trio stats.
+    """
+    # Filter the VDS to autosomes.
+    vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
+    vmt = vds.variant_data
+    rmt = vds.reference_data
+
+    # Filter the variant data to bi-allelic sites.
+    vmt = vmt.filter_rows(hl.len(vmt.alleles) == 2)
+
+    # Filter the variant data and reference data to only the trios.
+    vmt = filter_mt_to_trios(vmt, fam_ht)
+    rmt = rmt.filter_cols(hl.is_defined(vmt.cols()[rmt.col_key]))
+
+    mt = hl.vds.to_dense_mt(hl.vds.VariantDataset(rmt, vmt))
+    mt = mt.transmute_entries(GT=mt.LGT)
+    mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
+
+    return generate_trio_stats(mt, bi_allelic_only=False)
+
+
+def run_generate_sib_stats(
+    mt: hl.MatrixTable,
+    rel_ht: hl.Table,
+) -> hl.Table:
+    """
+    Generate stats for the number of alternate alleles in common between sibling pairs.
+
+    :param mt: MatrixTable to generate sibling stats from.
+    :param rel_ht: Table containing relatedness info for pairs in `mt`.
+    :return: Table containing sibling stats.
+    """
+    # Filter relatedness Table to only exomes-exome pairs.
+    rel_ht = rel_ht.filter(
+        (rel_ht.i.data_type == "exomes") & (rel_ht.j.data_type == "exomes")
+    )
+    return generate_sib_stats(mt.transmute_entries(GT=mt.LGT), rel_ht)
+
+
 def get_variant_qc_annotation_resources(
     test: bool, overwrite: bool
 ) -> PipelineResourceCollection:
@@ -215,14 +269,24 @@ def get_variant_qc_annotation_resources(
     )
     run_vep = PipelineStepResourceCollection(
         "--run-vep",
-        output_resources={
-            "vep_ht": get_vep(version=CURRENT_VERSION, data_type="exomes", test=test)
-        },
+        output_resources={"vep_ht": get_vep(data_type="exomes", test=test)},
     )
     validate_vep = PipelineStepResourceCollection(
         "--validate-vep",
         output_resources={"vep_count_ht": validate_vep_path(test=test)},
         pipeline_input_steps=[run_vep],
+    )
+    trio_stats = PipelineStepResourceCollection(
+        "--generate-trio-stats",
+        output_resources={"trio_stats_ht": get_trio_stats(test=test)},
+        input_resources={"identify_trios.py --finalize-ped": {"final_ped": pedigree()}},
+    )
+    sib_stats = PipelineStepResourceCollection(
+        "--generate-sib-stats",
+        output_resources={"sib_stats_ht": get_sib_stats(test=test)},
+        input_resources={
+            "relatedness.py --finalize-relatedness-ht": {"rel_ht": relatedness()}
+        },
     )
 
     # Add all steps to the variant QC annotation pipeline resource collection.
@@ -233,6 +297,8 @@ def get_variant_qc_annotation_resources(
             "export_info_vcf": export_info_vcf,
             "run_vep": run_vep,
             "validate_vep": validate_vep,
+            "generate_trio_stats": trio_stats,
+            "generate_sib_stats": sib_stats,
         }
     )
 
@@ -251,49 +317,62 @@ def main(args):
     test = test_dataset or test_n_partitions
     run_vep = args.run_vep
     overwrite = args.overwrite
-    resources = get_variant_qc_annotation_resources(test=test, overwrite=overwrite)
-    mt = get_gnomad_v4_vds(
+    vqc_resources = get_variant_qc_annotation_resources(test=test, overwrite=overwrite)
+    vds = get_gnomad_v4_vds(
         test=test_dataset,
-        high_quality_only=False if run_vep else True,
+        high_quality_only=True,
         # Keep control/truth samples because they are used in variant QC.
-        keep_controls=False if run_vep else True,
-        annotate_meta=False if run_vep else True,
-    ).variant_data
+        keep_controls=True,
+        annotate_meta=True,
+    )
+    mt = vds.variant_data
 
     if test_n_partitions:
         mt = mt._filter_partitions(range(test_n_partitions))
 
     if args.compute_info:
         # TODO: is there any reason to also compute info per platform?
-        res = resources.compute_info
+        res = vqc_resources.compute_info
         res.check_resource_existence()
         ht = run_compute_info(mt, test=test_dataset)
         ht.write(res.info_ht.path, overwrite=overwrite)
 
     if args.split_info:
-        res = resources.split_info
+        res = vqc_resources.split_info
         res.check_resource_existence()
         split_info(res.info_ht.ht()).write(res.split_info_ht.path, overwrite=overwrite)
 
     if args.export_info_vcf:
-        res = resources.export_info_vcf
+        res = vqc_resources.export_info_vcf
         res.check_resource_existence()
         hl.export_vcf(adjust_vcf_incompatible_types(res.info_ht.ht()), res.info_vcf)
 
     if run_vep:
-        res = resources.run_vep
+        res = vqc_resources.run_vep
         res.check_resource_existence()
-        ht = hl.split_multi(mt.rows())
+        ht = hl.split_multi(get_gnomad_v4_vds(test=test_dataset).variant_dataset.rows())
         ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
-        ht.write(res.vep_ht.path, overwrite=args.overwrite)
+        ht.write(res.vep_ht.path, overwrite=overwrite)
 
     if args.validate_vep:
-        res = resources.validate_vep
+        res = vqc_resources.validate_vep
         res.check_resource_existence()
         count_ht = count_vep_annotated_variants_per_interval(
             res.vep_ht.ht(), ensembl_interval.ht()
         )
         count_ht.write(res.vep_count_ht.path, overwrite=args.overwrite)
+
+    if args.generate_trio_stats:
+        res = vqc_resources.generate_trio_stats
+        res.check_resource_existence()
+        ht = run_generate_trio_stats(vds, res.final_ped.pedigree(), res.final_ped.ht())
+        ht.write(res.trio_stats_ht.path, overwrite=overwrite)
+
+    if args.generate_sibling_stats:
+        res = vqc_resources.generate_sib_stats
+        res.check_resource_existence()
+        ht = run_generate_sib_stats(mt, res.rel_ht.ht())
+        ht.write(res.sib_stats_ht.path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
@@ -332,6 +411,14 @@ if __name__ == "__main__":
         "--vep-version",
         help="Version of VEPed context Table to use in vep_or_lookup_vep.",
         default="105",
+    )
+    parser.add_argument(
+        "--generate-trio-stats", help="Calculates trio stats", action="store_true"
+    )
+    parser.add_argument(
+        "--generate-sibling-stats",
+        help="Calculated sibling variant sharing stats",
+        action="store_true",
     )
 
     args = parser.parse_args()
