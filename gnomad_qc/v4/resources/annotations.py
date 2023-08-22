@@ -101,7 +101,7 @@ def validate_vep_path(
     )
 
 
-def get_trio_stats(test: bool = False) -> str:
+def get_trio_stats(test: bool = False) -> VersionedTableResource:
     """
     Get the gnomAD v4 trio stats VersionedTableResource.
 
@@ -119,7 +119,7 @@ def get_trio_stats(test: bool = False) -> str:
     )
 
 
-def get_sib_stats(test: bool = False) -> str:
+def get_sib_stats(test: bool = False) -> VersionedTableResource:
     """
     Get the gnomAD v4 sibling stats VersionedTableResource.
 
@@ -137,9 +137,7 @@ def get_sib_stats(test: bool = False) -> str:
     )
 
 
-def get_variant_qc_annotations(
-    adj: bool = False, test: bool = False
-) -> VersionedTableResource:
+def get_variant_qc_annotations(test: bool = False) -> VersionedTableResource:
     """
     Return the VersionedTableResource to the RF-ready annotated Table.
 
@@ -161,7 +159,6 @@ def get_variant_qc_annotations(
             - sibling_singleton
             - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
 
-    :param adj: Whether to load 'adj' or 'raw'.
     :param test: Whether to use a tmp path for testing.
     :return: Table with variant QC annotations.
     """
@@ -169,7 +166,7 @@ def get_variant_qc_annotations(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.variant_qc_annotations.{'adj' if adj else 'raw'}.ht"
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.variant_qc_annotations.ht"
             )
             for version in VERSIONS
         },
