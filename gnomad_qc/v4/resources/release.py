@@ -201,19 +201,21 @@ def release_coverage(
     )
 
 
-def hgdp_tgp_updated_callstats(test: bool = False) -> VersionedTableResource:
+def hgdp_tgp_updated_callstats(
+    test: bool = False, subset: str = "final"
+) -> VersionedTableResource:
     """
     Get the HGDP + 1KG/TGP subset release MatrixTableResource.
 
-    :param added: If True, return the HT for samples to be added; if False, return the HT for samples to be subtracted
     :param test: If true, will return the annotation resource for testing purposes
+    :param subset: The subset of the HGDP + 1KG/TGP release to return, could be "added", "subtracted", or "final"
     :return: MatrixTableResource for specific subset
     """
     return VersionedTableResource(
         default_version=CURRENT_HGDP_TGP_RELEASE,
         versions={
             release: TableResource(
-                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/ht'}/gnomad.genomes.v{release}.updated_hgdp_1kg_subset_AF.ht"
+                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/ht'}/gnomad.genomes.v{release}.updated_hgdp_1kg_subset_AF.{subset}.ht"
             )
             for release in HGDP_TGP_RELEASES
         },
