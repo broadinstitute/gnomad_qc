@@ -304,11 +304,11 @@ def create_variant_qc_annotation_ht(
         **truth_data_ht[ht.key],
     )
     tp_map = {
-        "transmitted_singleton": f"n_transmitted",
+        "transmitted_singleton": "n_transmitted",
         "sibling_singleton": "n_sib_shared_variants",
     }
 
-    # Filter to only variants found in high quality samples and are not lowqual
+    # Filter to only variants found in high quality samples and are not lowqual.
     ht = ht.filter((ht.AC_high_quality_raw > 0) & ~ht.AS_lowqual)
     ht = ht.select(
         "a_index",
@@ -316,7 +316,10 @@ def create_variant_qc_annotation_ht(
         *FEATURES,
         **{tp: hl.or_else(ht[tp], False) for tp in TRUTH_DATA},
         **{
-            f"{tp}_{group}": (ht[f"{n}_{group}"] == 1) & (ht.AC_high_quality_raw == 2)
+            f"{tp}_{group}": hl.or_else(
+                (ht[f"{n}_{group}"] == 1) & (ht.AC_high_quality_raw == 2),
+                False,
+            )
             for tp, n in tp_map.items()
             for group in GROUPS
         },
@@ -334,7 +337,7 @@ def create_variant_qc_annotation_ht(
     ht = ht.checkpoint(
         hl.utils.new_temp_file("variant_qc_annotations", "ht"), overwrite=True
     )
-    ht.describe()
+
     summary = ht.group_by(
         *TRUTH_DATA, *[f"{tp}_{group}" for tp in tp_map for group in GROUPS]
     ).aggregate(n=hl.agg.count())
