@@ -101,7 +101,11 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
         },
         "high_quality": ~hard_filtered & ~outlier,
     }
-    updated_ht = update_structured_annotations(ht, sample_annotations_to_update)
+    updated_ht = update_structured_annotations(
+        ht,
+        sample_annotations_to_update,
+        annotation_update_label="sample_annotations_updated",
+    )
     updated_ht = updated_ht.checkpoint(
         hl.utils.new_temp_file("hgdp_tgp_meta_update", extension="ht"), overwrite=True
     )
@@ -158,7 +162,8 @@ def get_filtered_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
     release_add_ht = release_diff_ht.filter(release_diff_ht.gnomad_release)
     release_subtract_ht = release_diff_ht.filter(~release_diff_ht.gnomad_release)
     logger.info(
-        """%d samples will be added after the new filters
+        """
+        %d samples will be added after the new filters
         %d sample(s) will be removed after the new filters""",
         release_add_ht.count(),
         release_subtract_ht.count(),
@@ -288,7 +293,9 @@ def calculate_concatenate_callstats(
     Calculate the call stats for samples in `samples_ht`.
 
     .. note::
-    This function is used to calculate callstats for all samples provided in the samples_ht, also samples that belong to HGDP and TGP project separately, then concatenate the callstats into a single Table.
+        This function is used to calculate callstats for all samples provided in
+        the samples_ht, also samples that belong to HGDP and TGP project separately,
+        then concatenate the callstats into a single Table.
 
     :param mt: MatrixTable with the HGDP + 1KG subset.
     :param samples_ht: Table with the samples.
@@ -310,7 +317,7 @@ def calculate_concatenate_callstats(
         subsets=["tgp"],
     )
 
-    logger.info("Concatenating AFs for subtracted samples...")
+    logger.info("Concatenating AFs for selected samples...")
     subset_freq_hts = [
         freq_ht_hgdp.select("freq").select_globals("freq_meta"),
         freq_ht_tgp.select("freq").select_globals("freq_meta"),
@@ -408,11 +415,14 @@ def main(args):
     )
 
     ht = ht.annotate(freq2=freq)
-    ht = ht.annotate(freq2=set_female_y_metrics_to_na_expr(ht))
     ht = ht.annotate_globals(freq_meta2=freq_meta)
+    ht = ht.annotate_globals(
+        freq_index_dict=make_freq_index_dict_from_meta(freq_meta=hl.eval(ht.freq_meta))
+    )
     ht = ht.annotate_globals(
         freq_meta_dict2=make_freq_index_dict_from_meta(ht.freq_meta2)
     )
+    ht = ht.annotate(freq2=set_female_y_metrics_to_na_expr(ht))
 
     logger.info("Writing out the AF HT...")
     if test:
