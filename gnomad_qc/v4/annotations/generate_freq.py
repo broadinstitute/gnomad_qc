@@ -43,7 +43,7 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_freq
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds, get_logging_path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -395,6 +395,13 @@ def generate_freq_and_hists_ht(
         mt.annotate_cols(group_membership=ht[mt.col_key].group_membership),
         entry_agg_funcs={"high_ab_hets_by_group": (_high_ab_het, hl.agg.sum)},
     )
+    # TODO: Possibly add in non-ukb specific downsamplings here? Its another full pass
+    #  of the data but this reduces the strata size by 132 groups if we do it here instead of in one go
+    # Im not sure if this will even work but I'm guessing well hit the OOM error again if we try
+    # adding them in one go to the non-ukb ht freq calculation. We can pass none for the sex_expr,
+    #  and additional_strata_expr to get the non-ukb specific downsamplings. We'd then need to drop the pop
+    # strata from the non-ukb specific downsamplings freq ht since they would
+    # already be in the first freq ht
     freq_ht = freq_ht.annotate_globals(**ht.index_globals())
 
     logger.info("Setting Y metrics to NA for XX groups...")
@@ -612,7 +619,6 @@ def compute_inbreeding_coeff(ht: hl.Table) -> hl.Table:
     return ht
 
 
-# TODO: add automatic copy of log file.
 def main(args):
     """Script to generate frequency and dense dependent annotations on v4 exomes."""
     use_test_dataset = args.use_test_dataset
@@ -630,78 +636,106 @@ def main(args):
     )
     resources = get_freq_resources(args.overwrite, test, chrom)
 
-    if args.run_freq_and_dense_annotations:
-        logger.info("Running dense dependent steps...")
-        res = resources.run_freq_and_dense_annotations
-        res.check_resource_existence()
+    try:
+        if args.run_freq_and_dense_annotations:
+            logger.info("Running dense dependent steps...")
+            res = resources.run_freq_and_dense_annotations
+            res.check_resource_existence()
 
-        logger.info(
-            "Getting multi-allelic split VDS with adj and _het_AD entry annotations..."
-        )
-        vds = get_vds_for_freq(use_test_dataset, test_gene, test_n_partitions, chrom)
-
-        logger.info("Determining downsampling groups...")
-        ds_ht = (
-            annotate_downsamplings(
-                vds.variant_data, DOWNSAMPLINGS["v4"], pop_expr=vds.variant_data.pop
-            )
-            .cols()
-            .checkpoint(new_temp_file("downsamplings", extension="ht"))
-        )
-
-        if args.split_vds_by_annotation:
             logger.info(
-                "Splitting VDS by ukb_sample annotation to reduce data size for"
-                " densification..."
+                "Getting multi-allelic split VDS with adj and _het_AD entry"
+                " annotations..."
             )
-            vds_list = split_vds_by_strata(vds, strata_expr=vds.variant_data.ukb_sample)
-            freq_hts = []
-            for idx, vds in enumerate(vds_list, start=1):
-                logger.info("Generating frequency and histograms for VDS # %s...", idx)
-                ht = generate_freq_and_hists_ht(vds, ds_ht, ab_cutoff=ab_cutoff)
-
-                # TODO: Change to use a fixed location in gnomad_tmp instead of
-                #  new_temp_file so we can easily rerun only failed ones if needed?
-                # TODO: Actually, do we want to parallelize this in some way?
-                ht = ht.checkpoint(new_temp_file(f"freq_{idx}", extension="ht"))
-                freq_hts.append(ht)
-
-            freq_ht = combine_freq_hts(
-                freq_hts, ALL_FREQ_ROW_FIELDS, FREQ_GLOBAL_FIELDS
+            vds = get_vds_for_freq(
+                use_test_dataset, test_gene, test_n_partitions, chrom
             )
-        else:
-            freq_ht = generate_freq_and_hists_ht(vds, ds_ht, ab_cutoff=ab_cutoff)
 
-        freq_ht.write(res.freq_and_dense_annotations.path, overwrite=args.overwrite)
+            logger.info("Determining downsampling groups...")
+            ds_ht = (
+                annotate_downsamplings(
+                    vds.variant_data, DOWNSAMPLINGS["v4"], pop_expr=vds.variant_data.pop
+                )
+                .cols()
+                .checkpoint(new_temp_file("downsamplings", extension="ht"))
+            )
 
-    if args.correct_for_high_ab_hets:
-        logger.info(
-            "Adjusting annotations impacted by high AB het -> hom alt adjustment..."
-        )
-        res = resources.correct_for_high_ab_hets
-        res.check_resource_existence()
-        ht = res.freq_and_dense_annotations.ht()
+            if args.split_vds_by_annotation:
+                logger.info(
+                    "Splitting VDS by ukb_sample annotation to reduce data size for"
+                    " densification..."
+                )
+                vds_dict = split_vds_by_strata(
+                    vds, strata_expr=vds.variant_data.ukb_sample
+                )
+                freq_hts = []
+                for strata, vds in vds_dict.items():
+                    logger.info(
+                        "Generating frequency and histograms for %s VDS...", strata
+                    )
+                    ht = generate_freq_and_hists_ht(vds, ds_ht, ab_cutoff=ab_cutoff)
+                    # This was the start of an attempt to add non-ukb specific downsamplings to the freq_ht but
+                    # I think we will need to do another pass inside the generate_freq_and hist function for those
+                    # extra downsamplings instead, otherwise we need to modify gnomad_methods'
+                    # generate_freq_group_membership_array and build_freq_stratification_list to take a list of
+                    # downsamplings(_exprs) to use instead of just the one.
+                    #
+                    #                if strata == "non_ukb":
+                    #                    ukb_ds_ht = (
+                    #                        annotate_downsamplings(
+                    #                            vds.variant_data,
+                    #                            DOWNSAMPLINGS["v4"][:-1],
+                    #                            pop_expr=vds.variant_data.pop,
+                    #                        )
+                    #                        .cols()
+                    #                        .checkpoint(new_temp_file("ukb_downsamplings", extension="ht"))
+                    #                    )
+                    # TODO: Change to use a fixed location in gnomad_tmp instead of
+                    #  new_temp_file so we can easily rerun only failed ones if needed?
+                    # TODO: Actually, do we want to parallelize this in some way?
+                    ht = ht.checkpoint(new_temp_file(f"freq_{strata}", extension="ht"))
+                    freq_hts.append(ht)
 
-        logger.info("Correcting call stats, qual AB histograms, and age histograms...")
-        ht = correct_for_high_ab_hets(ht, af_threshold=af_threshold)
+                freq_ht = combine_freq_hts(
+                    freq_hts, ALL_FREQ_ROW_FIELDS, FREQ_GLOBAL_FIELDS
+                )
+            else:
+                freq_ht = generate_freq_and_hists_ht(vds, ds_ht, ab_cutoff=ab_cutoff)
 
-        logger.info("Computing FAF & grpmax...")
-        ht = generate_faf_grpmax(ht)
+            freq_ht.write(res.freq_and_dense_annotations.path, overwrite=args.overwrite)
 
-        logger.info("Calculating InbreedingCoeff...")
-        ht = compute_inbreeding_coeff(ht)
+        if args.correct_for_high_ab_hets:
+            logger.info(
+                "Adjusting annotations impacted by high AB het -> hom alt adjustment..."
+            )
+            res = resources.correct_for_high_ab_hets
+            res.check_resource_existence()
+            ht = res.freq_and_dense_annotations.ht()
 
-        # TODO: I think we should add a finalize option that does what you describe
-        #  below.
-        # TODO: Leaving in know while we test but need to drop fields we do not want
-        # -- 'age_high_ab_his', all annotations from the split VDSs, only keep combinged,
-        # rename ab_adjusted_freq to just freq and decide if we want to store uncorrect?
-        # Probably,just rename it, also remove age bins and gatk versions from freq fields?
-        # Also, change captialization of hists depending on decision from DP slack
-        # thread
-        logger.info("Writing frequency table...")
-        ht.describe()
-        ht.write(res.freq_ht.path, overwrite=args.overwrite)
+            logger.info(
+                "Correcting call stats, qual AB histograms, and age histograms..."
+            )
+            ht = correct_for_high_ab_hets(ht, af_threshold=af_threshold)
+
+            logger.info("Computing FAF & grpmax...")
+            ht = generate_faf_grpmax(ht)
+
+            logger.info("Calculating InbreedingCoeff...")
+            ht = compute_inbreeding_coeff(ht)
+
+            # TODO: I think we should add a finalize option that does what you describe
+            #  below.
+            # TODO: Leaving in know while we test but need to drop fields we do not want
+            # -- 'age_high_ab_his', all annotations from the split VDSs, only keep combinged,
+            # rename ab_adjusted_freq to just freq and decide if we want to store uncorrect?
+            # Probably,just rename it, also remove age bins and gatk versions from freq fields?
+            # Also, change captialization of hists depending on decision from DP slack
+            # thread
+            logger.info("Writing frequency table...")
+            ht.describe()
+            ht.write(res.freq_ht.path, overwrite=args.overwrite)
+    finally:
+        logger.info("Copying log to logging bucket...")
+        hl.copy_log(get_logging_path("frequency_data"))
 
 
 if __name__ == "__main__":
