@@ -387,7 +387,7 @@ def main(args):
         freq_meta_added_samples=freq_ht_added.index_globals().freq_meta,
         freq_meta_subtracted_samples=freq_ht_subtracted.index_globals().freq_meta,
     )
-
+    # TODO: At some point before merging, add in removal of "Papuan" and "Han"
     logger.info("Merging AFs for subtracted samples first...")
     freq, freq_meta = merge_freq_arrays(
         [ht.freq, ht.freq_subtracted_samples],
