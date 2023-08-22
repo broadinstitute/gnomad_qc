@@ -194,9 +194,11 @@ def calculate_callstats_for_selected_samples(
     ht = annotate_freq(
         mt,
         sex_expr=mt.gnomad_sex_imputation.sex_karyotype,
-        pop_expr=mt.hgdp_tgp_meta.population.lower()
-        if subsets
-        else mt.gnomad_population_inference.pop,
+        pop_expr=(
+            mt.hgdp_tgp_meta.population.lower()
+            if subsets
+            else mt.gnomad_population_inference.pop
+        ),
         annotate_mt=False,
     )
     # make population labels lowercase to match the constants in release HT.
