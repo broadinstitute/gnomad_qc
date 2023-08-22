@@ -202,9 +202,11 @@ def generate_final_filter_ht(
     bin_names = [
         (
             x,
-            x.split("adj_")[0] + x.split("adj_")[1]
-            if len(x.split("adj_")) == 2
-            else "raw_" + x,
+            (
+                x.split("adj_")[0] + x.split("adj_")[1]
+                if len(x.split("adj_")) == 2
+                else "raw_" + x
+            ),
         )
         for x in bin_names
     ]
@@ -312,9 +314,11 @@ def main(args):  # noqa: D103
         inbreeding_coeff_cutoff=args.inbreeding_coeff_threshold,
         aggregated_bin_ht=aggregated_bin_ht,
         bin_id="bin",
-        vqsr_ht=get_vqsr_filters(args.vqsr_model_id, split=True).ht()
-        if args.vqsr_model_id
-        else None,
+        vqsr_ht=(
+            get_vqsr_filters(args.vqsr_model_id, split=True).ht()
+            if args.vqsr_model_id
+            else None
+        ),
     )
     ht = ht.annotate_globals(
         filtering_model=ht.filtering_model.annotate(model_id=args.model_id)

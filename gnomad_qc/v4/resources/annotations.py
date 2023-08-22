@@ -59,12 +59,12 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
 
 def get_vep(
     version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
-) -> str:
+) -> VersionedTableResource:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource.
 
     :param version: Version of annotation path to return.
-    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS.
+    :param test: Whether to use a tmp path for analysis of the test Table instead of the full v4 Table.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
     :return: gnomAD v4 VEP VersionedTableResource.
     """
@@ -83,7 +83,7 @@ def get_vep(
 
 def validate_vep_path(
     version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
-) -> str:
+) -> VersionedTableResource:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource for validation counts.
 
@@ -99,6 +99,42 @@ def validate_vep_path(
                 path=(
                     f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vep.validate.ht"
                 )
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def get_trio_stats(test: bool = False) -> str:
+    """
+    Get the gnomAD v4 trio stats VersionedTableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :return: gnomAD v4 trio stats VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.trio_stats.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def get_sib_stats(test: bool = False) -> str:
+    """
+    Get the gnomAD v4 sibling stats VersionedTableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :return: gnomAD v4 sibling stats VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.sib_stats.ht"
             )
             for version in VERSIONS
         },
@@ -178,16 +214,6 @@ qual_hist = VersionedTableResource(
     },
 )
 
-fam_stats = VersionedTableResource(
-    CURRENT_VERSION,
-    {
-        version: TableResource(
-            f"{_annotations_root(version)}/gnomad.exomes.v{version}.qc_fam_stats.ht"
-        )
-        for version in VERSIONS
-    },
-)
-
 
 def get_freq(
     version: str = CURRENT_VERSION, subset: Optional[str] = None
@@ -253,3 +279,49 @@ def get_freq_comparison(version1, data_type1, version2, data_type2):
         ht_path = f"gs://gnomad/annotations/hail-0.2/ht/{data_type1}/{ht_path}"
 
     return TableResource(ht_path)
+
+
+def get_insilico_predictors(
+    version: str = CURRENT_VERSION,
+    predictor: str = "cadd",
+) -> VersionedTableResource:
+    """
+    Get the path to the in silico predictors TableResource for a specified release.
+
+    :param version: Version of annotation path to return.
+    :param predictor: One of the in silico predictors available in gnomAD v4, including cadd, revel, primate_ai, splice_ai, and pangolin.
+    :return: in silico predictor VersionedTableResource for gnomAD v4.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                path=f"gs://gnomad/v{version}/annotations/in_silico_predictors/gnomad.v{version}.{predictor}.grch38.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def get_vrs(
+    version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
+) -> VersionedTableResource:
+    """
+    Get the gnomAD v4 VersionedTableResource containing VRS annotations.
+
+    :param version: Version of annotation path to return.
+    :param test: Whether to use a tmp path for analysis of the test Table instead of the full v4 Table.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
+    :return: gnomAD v4 VRS VersionedTableResource.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                path=(
+                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vrs.ht"
+                )
+            )
+            for version in VERSIONS
+        },
+    )

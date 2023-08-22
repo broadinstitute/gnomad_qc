@@ -299,24 +299,25 @@ def make_filters_sanity_check_expr(ht: hl.Table) -> Dict[str, hl.expr.Expression
     filters_dict = {
         "n": hl.agg.count(),
         "frac_any_filter": hl.agg.count_where(ht.is_filtered) / hl.agg.count(),
-        "frac_inbreed_coeff": hl.agg.count_where(
-            ht.filters.contains("inbreeding_coeff")
-        )
-        / hl.agg.count(),
+        "frac_inbreed_coeff": (
+            hl.agg.count_where(ht.filters.contains("inbreeding_coeff")) / hl.agg.count()
+        ),
         "frac_ac0": hl.agg.count_where(ht.filters.contains("AC0")) / hl.agg.count(),
         "frac_rf": hl.agg.count_where(ht.filters.contains("rf")) / hl.agg.count(),
-        "frac_inbreed_coeff_only": hl.agg.count_where(
-            ht.filters.contains("inbreeding_coeff") & (ht.filters.length() == 1)
-        )
-        / hl.agg.count(),
-        "frac_ac0_only": hl.agg.count_where(
-            ht.filters.contains("AC0") & (ht.filters.length() == 1)
-        )
-        / hl.agg.count(),
-        "frac_rf_only": hl.agg.count_where(
-            ht.filters.contains("rf") & (ht.filters.length() == 1)
-        )
-        / hl.agg.count(),
+        "frac_inbreed_coeff_only": (
+            hl.agg.count_where(
+                ht.filters.contains("inbreeding_coeff") & (ht.filters.length() == 1)
+            )
+            / hl.agg.count()
+        ),
+        "frac_ac0_only": (
+            hl.agg.count_where(ht.filters.contains("AC0") & (ht.filters.length() == 1))
+            / hl.agg.count()
+        ),
+        "frac_rf_only": (
+            hl.agg.count_where(ht.filters.contains("rf") & (ht.filters.length() == 1))
+            / hl.agg.count()
+        ),
     }
     return filters_dict
 

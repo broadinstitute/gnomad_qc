@@ -3,5 +3,5 @@
 git+https://github.com/broadinstitute/gnomad_methods@main
 networkx
 scikit-learn
-scipy<1.4
+scipy
 hail
