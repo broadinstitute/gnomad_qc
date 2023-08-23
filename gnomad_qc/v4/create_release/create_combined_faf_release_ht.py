@@ -1,5 +1,3 @@
-# noqa: D100
-
 """
 Compare frequencies for two gnomAD versions.
 
@@ -23,48 +21,43 @@ from gnomad.resources.grch37.gnomad import (
     EXOME_POPS,
     GENOME_POPS,
     liftover,
-    public_pca_loadings,
 )
 from gnomad.resources.grch37.gnomad import public_release as v2_public_release
 from gnomad.resources.grch38.gnomad import CURRENT_GENOME_RELEASE as V3_CURRENT_RELEASE
-from gnomad.resources.grch38.gnomad import POPS
+from gnomad.resources.grch38.gnomad import POPS, POPS_TO_REMOVE_FOR_POPMAX
 from gnomad.resources.grch38.gnomad import public_release as v3_public_release
-from gnomad.utils.annotations import get_adj_expr
-from gnomad.utils.liftover import default_lift_data
+from gnomad.utils.annotations import faf_expr, merge_freq_arrays, pop_max_expr
+from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict
 from gnomad.utils.slack import slack_notifications
+from statsmodels.stats.contingency_tables import StratifiedTable
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v2.resources.basics import get_gnomad_data, get_gnomad_meta
 from gnomad_qc.v3.resources.annotations import get_freq_comparison
-from gnomad_qc.v3.resources.basics import (
-    get_checkpoint_path,
-    get_gnomad_v3_mt,
-    get_logging_path,
-)
-from gnomad_qc.v3.resources.sample_qc import (
-    v2_v3_pc_project_pca_scores,
-    v2_v3_pc_relate_pca_scores,
-)
+from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
+from gnomad_qc.v4.resources.release import release_sites as v4_release_sites
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("compare_freq")
 logger.setLevel(logging.INFO)
 
-POPS = POPS["v3"]
 POPS_MAP = {
     "v2_exomes": {pop.lower() for pop in EXOME_POPS},
     "v2_genomes": {pop.lower() for pop in GENOME_POPS},
-    "v3_genomes": {pop.lower() for pop in POPS},
-}
-POP_FORMAT = {
-    "v2_exomes": "gnomad_{}",
-    "v2_genomes": "gnomad_{}",
-    "v3_genomes": "{}-adj",
+    "v3_genomes": {pop.lower() for pop in POPS["v3"]},
+    "v4_exomes": {pop.lower() for pop in POPS["v4"]},
+    "v4_genomes": {pop.lower() for pop in POPS["v4"]},
 }
 CURRENT_RELEASE_MAP = {
     "v2_exomes": CURRENT_EXOME_RELEASE,
     "v2_genomes": CURRENT_GENOME_RELEASE,
     "v3_genomes": V3_CURRENT_RELEASE,
+    "v4_exomes": "4.0",  # TODO: Update once v4 release is created.
+    "v4_genomes": "4.0",  # TODO: Update once v4 release is created.
+}
+POP_FORMAT = {
+    "v2_exomes": "gnomad_{}",
+    "v2_genomes": "gnomad_{}",
+    "v3_genomes": "{}-adj",
 }
 
 
@@ -74,17 +67,26 @@ def extract_freq_info(version1: str, version2: str, pops: List[str]) -> hl.Table
 
     This only keeps variants that PASS filtering in both callsets.
 
-    :param version1: First gnomAD version to extract frequency information from (v3_genomes, v2_exomes, v2_genomes)
-    :param version2: Second gnomAD version to extract frequency information from (v3_genomes, v2_exomes, v2_genomes)
-    :param pops: List of populations to include in the reduced frequency arrays for both gnomAD versions. The reduced
-        frequency arrays will be in the order of `pops` after the first 2 entries (adj, raw)
-    :return: Table with combined and filtered frequency information from two gnomAD versions
+    :param version1: First gnomAD version to extract frequency information from.
+    :param version2: Second gnomAD version to extract frequency information from.
+    :param pops: List of populations to include in the reduced frequency arrays for
+        both gnomAD versions. The reduced frequency arrays will be in the order of
+        `pops` after the first 2 entries (adj, raw).
+    :return: Table with combined and filtered frequency information from two gnomAD
+        versions.
     """
     versions = [version1, version2]
-    release_resource_map = {"v2": v2_public_release, "v3": v3_public_release}
+    versions_set = set([v.split("_")[0] for v in versions])
+    release_resource_map = {
+        "v2": v2_public_release,
+        "v3": v3_public_release,
+        "v4": v4_release_sites,  # v4_public_release,
+    }
 
-    if "v3_genomes" in versions:
+    if "v2" in versions_set and len(versions_set) > 1:
         release_resource_map["v2"] = liftover
+
+    faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX]
 
     logger.info("Reading release HTs and extracting frequency info...")
     hts = []
@@ -94,20 +96,57 @@ def extract_freq_info(version1: str, version2: str, pops: List[str]) -> hl.Table
 
         logger.info("Filtering %s to only variants that are PASS...", version)
         ht = ht.filter(hl.len(ht.filters) == 0)
-        freq_index_dict = hl.eval(ht.freq_index_dict)
+        freq_meta = hl.eval(ht.freq_meta)
+
+        if "grpmax" in ht.row:
+            grpmax_label = "grpmax"
+        else:
+            grpmax_label = "popmax"
+        grpmax_expr = ht[grpmax_label]
+
+        if f"{grpmax_label}_index_dict" in ht.globals:
+            grpmax_expr = grpmax_expr[ht[f"{grpmax_label}_index_dict"]["gnomad"]]
+
+        if "faf_meta" in ht.globals:
+            faf_meta = hl.eval(ht.faf_meta)
+            faf_idx = [0, 1]
+            faf_idx.extend(
+                [
+                    i
+                    for i, m in enumerate(faf_meta)
+                    if m.get("pop") in faf_pops and len(m) == 2
+                ]
+            )
+            faf_meta = [faf_meta[i] for i in faf_idx]
+        else:
+            faf_index_dict = hl.eval(ht.faf_index_dict)
+            pop_formatted = [POP_FORMAT[version].format(pop) for pop in faf_pops]
+            faf_idx = [0, 1] + [faf_index_dict[pop] for pop in pop_formatted]
+            faf_meta = [{"group": "adj"}, {"group": "raw"}]
+            faf_meta.extend([{"group": "adj", "pop": pop} for pop in faf_pops])
 
         # Keep full gnomAD callset adj [0], raw [1], and ancestry-specific adj
-        # frequencies
-        freq_idx = [0, 1] + [
-            freq_index_dict[POP_FORMAT[version].format(pop)] for pop in pops
-        ]
+        # frequencies.
+        freq_idx = [0, 1]
+        freq_idx.extend(
+            [i for i, m in enumerate(freq_meta) if m.get("pop") in pops and len(m) == 2]
+        )
 
         logger.info(
             "Keeping only frequencies that are needed (adj, raw, adj by pop)..."
         )
-        ht = ht.select(**{f"freq_{version}": [ht.freq[i] for i in freq_idx]})
+        ht = ht.select(
+            **{
+                f"freq_{version}": [ht.freq[i] for i in freq_idx],
+                f"faf_{version}": [ht.faf[i] for i in faf_idx],
+                f"grpmax_{version}": grpmax_expr,
+            }
+        )
         ht = ht.select_globals(
-            **{f"freq_meta_{version}": [ht.freq_meta[i] for i in freq_idx]}
+            **{
+                f"freq_meta_{version}": [ht.freq_meta[i] for i in freq_idx],
+                f"faf_meta_{version}": faf_meta,
+            }
         )
 
         hts.append(ht)
@@ -115,254 +154,127 @@ def extract_freq_info(version1: str, version2: str, pops: List[str]) -> hl.Table
     logger.info("Performing an inner join on frequency HTs...")
     ht = hts[0].join(hts[1], how="inner")
 
+    joint_freq_expr, joint_freq_meta_expr = merge_freq_arrays(
+        farrays=[ht[f"freq_{v}"] for v in versions],
+        fmeta=[ht[f"freq_meta_{v}"] for v in versions],
+    )
+    joint_faf_expr, joint_faf_meta_expr = faf_expr(
+        joint_freq_expr,
+        hl.literal(joint_freq_meta_expr),
+        ht.locus,
+        POPS_TO_REMOVE_FOR_POPMAX,
+    )
+    joint_grpmax_expr = pop_max_expr(
+        joint_freq_expr, hl.literal(joint_freq_meta_expr), POPS_TO_REMOVE_FOR_POPMAX
+    )
+    joint_faf_meta_by_pop = hl.literal(
+        {
+            m.get("pop"): i
+            for i, m in enumerate(joint_faf_meta_expr)
+            if m.get("pop") is not None
+        }
+    )
+    joint_grpmax_expr = joint_grpmax_expr.annotate(
+        faf95=joint_faf_expr[joint_faf_meta_by_pop.get(joint_grpmax_expr.pop)].faf95
+    )
+    ht = ht.annotate(
+        joint_freq=joint_freq_expr,
+        joint_faf=joint_faf_expr,
+        joint_grpmax=joint_grpmax_expr,
+    )
+    ht = ht.annotate_globals(
+        joint_freq_meta=joint_freq_meta_expr,
+        joint_freq_index_dict=make_freq_index_dict(
+            joint_freq_meta_expr, label_delimiter="-"
+        ),
+        joint_faf_meta=joint_faf_meta_expr,
+        joint_faf_index_dict=make_faf_index_dict(
+            joint_faf_meta_expr, label_delimiter="-"
+        ),
+    )
+
     return ht
 
 
 def perform_contingency_table_test(
-    ht: hl.Table,
-    version1: str,
-    version2: str,
-    pops: List[str],
+    freq1_expr: hl.expr.ArrayExpression,
+    freq2_expr: hl.expr.ArrayExpression,
     min_cell_count: int = 1000,
-) -> hl.Table:
+) -> hl.expr.ArrayExpression:
     """
     Perform Hail's `contingency_table_test` on the alleles counts between two gnomAD versions in `ht`.
 
-    This is done on the 2x2 matrix of reference and alternate allele counts. The chi-squared test is used for any case
-    where all cells of the 2x2 matrix are greater than `min_cell_count`. Otherwise Fisher’s exact test is used.
+    This is done on the 2x2 matrix of reference and alternate allele counts. The
+    chi-squared test is used for any case where all cells of the 2x2 matrix are greater
+    than `min_cell_count`. Otherwise, Fisher’s exact test is used.
 
-    Table must include two struct annotations with AN and AC counts for versions of gnomAD labeled `freq_version`.
+    Table must include two struct annotations with AN and AC counts for versions of
+    gnomAD labeled `freq_version`.
 
-    :param ht: Table containing frequency information
-    :param version1: First gnomAD version to extract frequency information from (v3_genomes, v2_exomes, v2_genomes)
-    :param version2: Second gnomAD version to extract frequency information from (v3_genomes, v2_exomes, v2_genomes)
-    :param pops: List of populations in the order of the frequency lists, excluding the first 2 entries (adj, raw).
-        This should be the same list used in `extract_freq_info`
+    :param freq1_expr: Expression for the first version of gnomAD frequencies.
+    :param freq2_expr: Expression for the second version of gnomAD frequencies.
     :param min_cell_count: Minimum count in every cell to use the chi-squared test
     :return: Table with contingency table test results added
     """
-    versions = [version1, version2]
-
-    # First two entries of the frequency lists are excluded because they are
-    # adj and raw, we only need it by pop
-    ht = ht.annotate(
-        n_ref=hl.struct(
-            **{
-                version: ht[f"freq_{version}"][2:].AN - ht[f"freq_{version}"][2:].AC
-                for version in versions
-            }
+    logger.info("Computing chi squared and fisher exact tests on frequencies...")
+    return hl.map(
+        lambda x, y: hl.contingency_table_test(
+            x.AC, x.AN - x.AC, y.AC, y.AN - y.AC, min_cell_count
         ),
-        n_alt=hl.struct(
-            **{version: ht[f"freq_{version}"][2:].AC for version in versions}
-        ),
+        freq1_expr,
+        freq2_expr,
     )
 
-    logger.info(
-        "Computing chi squared and fisher exact tests on per population frequencies..."
-    )
-    ht = ht.transmute(
-        contingency_table_test=hl.struct(
-            **{
-                pop: hl.contingency_table_test(
-                    ht.n_alt[version1][i],
-                    ht.n_ref[version1][i],
-                    ht.n_alt[version2][i],
-                    ht.n_ref[version2][i],
-                    min_cell_count,
-                )
-                for i, pop in enumerate(pops)
-            }
-        ),
-    )
 
-    return ht
-
-
-def filter_and_densify_v3_mt(filter_ht: hl.Table, test: bool = False) -> hl.MatrixTable:
-    """
-    Load, filter (to variants in `filter_ht`), and densify the gnomAD v3.1 MatrixTable.
-
-    :param filter_ht: Table including variants the v3.1 MatrixTable should be filtered to
-    :param test: Whether to filter the v3.1 MatrixTable to the first 5 partitions for testing
-    :return: Dense gnomAD v3.1 MatrixTable containing only variants in `filter_ht`
-    """
-    # Loading unsplit v3 because this is needed for the conversion to VDS
-    # before the necessary densify
-    logger.info("Loading v3.1 gnomAD MatrixTable...")
-    mt = get_gnomad_v3_mt(
-        key_by_locus_and_alleles=True,
-        samples_meta=True,
-        release_only=True,
-    )
-
-    if test:
-        mt = mt._filter_partitions(range(5))
-
-    logger.info("Converting MatrixTable to VDS...")
-    mt = mt.select_entries(
-        "END", "LA", "LGT", adj=get_adj_expr(mt.LGT, mt.GQ, mt.DP, mt.LAD)
-    )
-    vds = hl.vds.VariantDataset.from_merged_representation(mt)
-
-    logger.info("Performing split-multi and filtering variants...")
-    vds = hl.vds.split_multi(vds, filter_changed_loci=True)
-    vds = hl.vds.filter_variants(vds, filter_ht)
-
-    logger.info("Densifying data...")
-    mt = hl.vds.to_dense_mt(vds)
-
-    return mt
-
-
-def project_on_exome_pop_pcs(test: bool = False) -> hl.Table:
-    """
-    Perform `pc_project` on gnomAD v3.1 using gnomAD v2 population PCA loadings.
-
-    :param test: Whether to filter the v3.1 MatrixTable to the first 5 partitions for testing
-    :return: Table with PC project scores of gnomAD v3.1 projected onto v2 PCs combined with the v2 PCs
-    """
-    # Load gnomAD metadata and population pc loadings
-    v2_exome_meta_ht = get_gnomad_meta("exomes", full_meta=True)
-    v2_exome_meta_ht = v2_exome_meta_ht.key_by("s")
-    v2_exome_meta_ht = v2_exome_meta_ht.select(
-        scores=[v2_exome_meta_ht[f"PC{i + 1}"] for i in range(0, 10)],
-        version="v2_exomes",
-    )
-    v2_exome_loadings_ht = public_pca_loadings().ht()
-
-    v2_exome_loadings_ht = default_lift_data(v2_exome_loadings_ht)
-    v2_exome_loadings_ht = v2_exome_loadings_ht.filter(
-        ~v2_exome_loadings_ht.ref_allele_mismatch
-    )
-
-    logger.info(f"Checkpointing the liftover of gnomAD v2 PCA loading sites.")
-    v2_exome_loadings_ht = v2_exome_loadings_ht.checkpoint(
-        get_checkpoint_path("v2_exome_loadings_liftover"),
-        overwrite=True,
-    )
-
-    # Need to densify before running pc project
-    logger.info("Loading v3.1 gnomAD MatrixTable...")
-    mt = filter_and_densify_v3_mt(v2_exome_loadings_ht, test)
-
-    logger.info(
-        "Performing PC projection of gnomAD v3 samples into gnomAD v2 PC space..."
-    )
-    ht = hl.experimental.pc_project(
-        mt.GT,
-        v2_exome_loadings_ht.loadings,
-        v2_exome_loadings_ht.pca_af,
-    )
-    ht = ht.annotate(version="v3_genomes")
-
-    logger.info("Merging gnomAD v2 PCs with gnomAD v3 projected PCs...")
-    joint_scores_ht = v2_exome_meta_ht.union(ht)
-
-    return joint_scores_ht
-
-
-def perform_logistic_regression(
+def perform_cmh_test(
     ht: hl.Table,
-    version1: str,
-    version2: str,
-    test: bool,
-    use_pc_project: bool,
-    use_v3_qc_pc_scores: bool,
-    read_checkpoint_if_exists: bool = False,
+    freq1_expr: hl.expr.ArrayExpression,
+    freq2_expr: hl.expr.ArrayExpression,
+    freq1_meta_expr: hl.expr.ArrayExpression,
+    freq2_meta_expr: hl.expr.ArrayExpression,
+    pops: List[str],
 ) -> hl.Table:
     """
-    Perform Hail's `logistic_regression_rows` on the unified MatrixTable of two gnomAD versions including ancestry PCs.
-
-    .. warning::
-
-        This is currently implemented to only work with gnomAD v2 exomes and v3 genomes.
-
-    The test performed is: genome_vs_exome_status ~ genotype + [ancestry_pcs]
-
-    :param ht: Table containing frequency information
-    :param version1: First gnomAD version to extract frequency information from (v3_genomes, v2_exomes)
-    :param version2: Second gnomAD version to extract frequency information from (v3_genomes, v2_exomes)
-    :param test: Whether to filter both MatrixTables to the first 5 partitions for testing
-    :param use_pc_project: Whether to use PC project ancestry PCs
-    :param use_v3_qc_pc_scores: Whether to use precomputed v2/v3 ancestry PCs (included relateds, doesn't include v3.1 samples and uses 10% of v3 ancestry PCA variants)
-    :param read_checkpoint_if_exists: Whether to read the checkpointed v2/v3 unified MatrixTable if it exists
-    :return: Table with logistic regression results
+    Take the set of N populations with sufficient number of individuals in genomes
+    (say > 5K or 10K) and exomes (say >10K or 20K), run a CMH test across the N 2x2
+    tables (Exome/Genome allele1 and allele 2 counts) which would provide a p-value and
+    an odds ratio. Then, since p-value alone might still flag common sites as
+    significant based on ancestry mismatch within groups (though computing across all
+    will likely alleviate this somewhat) I would guess we would want to flag those with
+    ORs >2 (specifically OR<0.5 or OR>2) as inconsistent This is fast (mantelhaen.test
+    in R even).
     """
-    if version1 != "v3_genomes" and version2 != "v2_exomes":
-        raise NotImplementedError(
-            "Logistic regression with ancestry PCA inclusion is currently only"
-            " implemented for the comparison between gnomAD v3 genomes and v2 exomes."
+    freq1_meta = hl.eval(freq1_meta_expr)
+    freq2_meta = hl.eval(freq2_meta_expr)
+
+    ht = ht.select(
+        genomes={
+            m.get("pop"): hl.bind(lambda x: [x.AC, x.AN - x.AC], freq1_expr[i])
+            for i, m in enumerate(freq1_meta)
+            if m.get("pop") in pops
+        },
+        exomes={
+            m.get("pop"): hl.bind(lambda x: [x.AC, x.AN - x.AC], freq2_expr[i])
+            for i, m in enumerate(freq2_meta)
+            if m.get("pop") in pops
+        },
+    )
+    ht = ht.select(n_alleles=[[ht.genomes[pop], ht.exomes[pop]] for pop in pops])
+    n_alleles_pd = ht.to_pandas()
+    n_alleles_pd["cmh"] = n_alleles_pd.apply(
+        lambda x: StratifiedTable(x.n_alleles).test_null_odds(), axis=1
+    )
+    n_alleles_pd["cmh_pvalue"] = n_alleles_pd.apply(lambda x: x.cmh.pvalue, axis=1)
+    n_alleles_pd["cmh_statistic"] = n_alleles_pd.apply(
+        lambda x: x.cmh.statistic, axis=1
+    )
+    n_alleles_pd = n_alleles_pd.drop(["cmh", "n_alleles"], axis=1)
+    ht = hl.Table.from_pandas(n_alleles_pd)
+    ht = ht.key_by("locus", "alleles")
+    ht = ht.annotate(
+        cochran_mantel_haenszel_test=hl.struct(
+            odds_ratio=ht.cmh_statistic, p_value=ht.cmh_pvalue
         )
-
-    if use_pc_project and not use_v3_qc_pc_scores:
-        pc_ht = v2_v3_pc_project_pca_scores.ht()
-    elif use_v3_qc_pc_scores and not use_pc_project:
-        pc_ht = v2_v3_pc_relate_pca_scores.versions["3"].ht()
-    else:
-        raise ValueError(
-            "One and only one of use_pc_project or use_v3_qc_pc_scores must be True!"
-        )
-
-    logger.info("Loading v3 gnomAD and v2 gnomAD exomes MatrixTables...")
-    v2_mt = get_gnomad_data(data_type="exomes", split=True, release_samples=True)
-
-    if test:
-        v2_mt = v2_mt._filter_partitions(range(5))
-
-    v3_mt = filter_and_densify_v3_mt(ht, test)
-
-    logger.info("Adding is_genome annotation to the v3 MatrixTable...")
-    v3_mt = v3_mt.annotate_cols(is_genome=True)
-    v3_mt = v3_mt.select_entries("GT")
-
-    logger.info(
-        "Loading v2 exomes liftover HT for annotation onto the gnomAD v2 exome"
-        " MatrixTable..."
-    )
-    v2_liftover_ht = liftover("exomes").ht()
-    v2_liftover_ht = v2_liftover_ht.key_by("original_locus", "original_alleles")
-    v2_liftover = v2_liftover_ht[v2_mt.row_key]
-
-    logger.info(
-        "Rekeying the gnomAD v2 exome MatrixTable with liftover locus and alleles..."
-    )
-    v2_mt = v2_mt.key_rows_by(locus=v2_liftover.locus, alleles=v2_liftover.alleles)
-
-    logger.info(
-        "Filtering gnomAD v2 MatrixTable to the variants found in the joined frequency"
-        " HT and adding is_genome annotation..."
-    )
-    v2_mt = v2_mt.filter_rows(hl.is_defined(ht[v2_mt.row_key]))
-    v2_mt = v2_mt.annotate_cols(is_genome=False)
-    v2_mt = v2_mt.select_entries("GT")
-
-    logger.info(
-        "Performing a union of the gnomAD v2 exomes MatrixTable and gnomAD v3"
-        " MatrixTable columns..."
-    )
-    # Selecting only needed info in order to do the union on MatrixTables
-    v3_mt = v3_mt.select_rows().select_cols("is_genome")
-    v2_mt = v2_mt.select_rows().select_cols("is_genome")
-    mt = v2_mt.union_cols(v3_mt)
-    mt = mt.checkpoint(
-        get_checkpoint_path("v2_exomes_v3_joint", mt=True),
-        _read_if_exists=read_checkpoint_if_exists,
-        overwrite=not read_checkpoint_if_exists,
-    )
-
-    logger.info(
-        "Running a logistic regression of the rows: genome_vs_exome_status ~ genotype +"
-        " [ancestry_pcs]..."
-    )
-    mt = mt.annotate_cols(pc=pc_ht[mt.col_key].scores)
-    ht = hl.logistic_regression_rows(
-        "firth",
-        y=mt.is_genome,
-        x=mt.GT.n_alt_alleles(),
-        covariates=[1] + [mt.pc[i] for i in range(10)],
-    )
-    ht = ht.annotate_globals(
-        pc_type="pc_project" if use_pc_project else "v3_qc_pc_scores"
     )
 
     return ht
@@ -376,21 +288,41 @@ def main(args):  # noqa: D103
         # in the more recent release location
         version1, version2 = [
             v
-            for v in ["v3_genomes", "v2_genomes", "v2_exomes"]
+            for v in [
+                "v4_genomes",
+                "v4_exomes",
+                "v3_genomes",
+                "v2_genomes",
+                "v2_exomes",
+            ]
             if v in args.versions_to_compare
         ]
         pops = list(POPS_MAP[version1] & POPS_MAP[version2])
+        faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX]
         ht = extract_freq_info(version1, version2, pops)
 
         if args.test:
-            ht = ht._filter_partitions(range(5))
+            ht = ht._filter_partitions(range(20))
+        ht = ht.checkpoint("gs://gnomad-tmp/julia/combined_faf/freq.ht", overwrite=True)
 
         if args.contingency_table_test:
-            ht = perform_contingency_table_test(
-                ht, version1, version2, pops, min_cell_count=args.min_cell_count
+            ht = ht.annotate(
+                contingency_table_test=perform_contingency_table_test(
+                    ht[f"freq_{version1}"],
+                    ht[f"freq_{version2}"],
+                    min_cell_count=args.min_cell_count,
+                )
             )
-
-            ht.write(
+            cmh_ht = perform_cmh_test(
+                ht,
+                ht[f"freq_{version1}"],
+                ht[f"freq_{version2}"],
+                ht[f"freq_meta_{version1}"],
+                ht[f"freq_meta_{version2}"],
+                pops=faf_pops,
+            )
+            ht = ht.annotate(**cmh_ht[ht.key])
+            ht = ht.checkpoint(
                 (
                     get_checkpoint_path(f"{version1}_{version2}.compare_freq.test")
                     if args.test
@@ -403,47 +335,7 @@ def main(args):  # noqa: D103
                 ),
                 overwrite=args.overwrite,
             )
-
-        if args.run_pc_project_v3_on_v2:
-            scores_ht = project_on_exome_pop_pcs(args.test)
-            scores_ht.write(
-                (
-                    get_checkpoint_path(f"v3_pc_project_on_v2.test")
-                    if args.test
-                    else v2_v3_pc_project_pca_scores.versions["3.1"].path
-                ),
-                overwrite=args.overwrite,
-            )
-
-        if args.logistic_regression:
-            logic_ht = perform_logistic_regression(
-                ht,
-                version1,
-                version2,
-                args.test,
-                args.use_pc_project,
-                args.use_v3_qc_pc_scores,
-                args.read_checkpoint_if_exists,
-            )
-
-            ht = ht.annotate(logistic_regression=logic_ht[ht.key])
-
-            ht.write(
-                (
-                    get_checkpoint_path(
-                        f"{version1}_{version2}.compare_freq.logistic_regression.test"
-                    )
-                    if args.test
-                    else get_freq_comparison(
-                        CURRENT_RELEASE_MAP[version1],
-                        version1.split("_")[1],
-                        CURRENT_RELEASE_MAP[version2],
-                        version2.split("_")[1],
-                        logistic_regression=True,
-                    ).path
-                ),
-                overwrite=args.overwrite,
-            )
+            ht.describe()
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -469,8 +361,8 @@ if __name__ == "__main__":
         "--versions-to-compare",
         help="Two gnomAD versions to compare allele frequencies.",
         nargs=2,
-        choices=["v3_genomes", "v2_exomes", "v2_genomes"],
-        default=["v3_genomes", "v2_exomes"],
+        choices=["v3_genomes", "v2_exomes", "v2_genomes", "v4_genomes", "v4_exomes"],
+        default=["v4_genomes", "v4_exomes"],
     )
     parser.add_argument(
         "--contingency-table-test",
