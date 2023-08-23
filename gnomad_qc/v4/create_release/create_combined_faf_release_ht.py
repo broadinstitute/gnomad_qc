@@ -244,40 +244,39 @@ def perform_cmh_test(
     ORs >2 (specifically OR<0.5 or OR>2) as inconsistent This is fast (mantelhaen.test
     in R even).
     """
-    freq1_meta = hl.eval(freq1_meta_expr)
-    freq2_meta = hl.eval(freq2_meta_expr)
 
-    ht = ht.select(
-        genomes={
-            m.get("pop"): hl.bind(lambda x: [x.AC, x.AN - x.AC], freq1_expr[i])
-            for i, m in enumerate(freq1_meta)
+    def _get_freq_by_pop(freq_expr, meta_expr):
+        return {
+            m.get("pop"): freq_expr[i]
+            for i, m in enumerate(hl.eval(meta_expr))
             if m.get("pop") in pops
-        },
-        exomes={
-            m.get("pop"): hl.bind(lambda x: [x.AC, x.AN - x.AC], freq2_expr[i])
-            for i, m in enumerate(freq2_meta)
-            if m.get("pop") in pops
-        },
-    )
-    ht = ht.select(n_alleles=[[ht.genomes[pop], ht.exomes[pop]] for pop in pops])
-    n_alleles_pd = ht.to_pandas()
-    n_alleles_pd["cmh"] = n_alleles_pd.apply(
-        lambda x: StratifiedTable(x.n_alleles).test_null_odds(), axis=1
-    )
-    n_alleles_pd["cmh_pvalue"] = n_alleles_pd.apply(lambda x: x.cmh.pvalue, axis=1)
-    n_alleles_pd["cmh_statistic"] = n_alleles_pd.apply(
-        lambda x: x.cmh.statistic, axis=1
-    )
-    n_alleles_pd = n_alleles_pd.drop(["cmh", "n_alleles"], axis=1)
-    ht = hl.Table.from_pandas(n_alleles_pd)
-    ht = ht.key_by("locus", "alleles")
-    ht = ht.annotate(
-        cochran_mantel_haenszel_test=hl.struct(
-            odds_ratio=ht.cmh_statistic, p_value=ht.cmh_pvalue
-        )
+        }
+
+    freq1_by_pop = _get_freq_by_pop(freq1_expr, freq1_meta_expr)
+    freq2_by_pop = _get_freq_by_pop(freq2_expr, freq2_meta_expr)
+
+    df = ht.select(
+        an=[
+            hl.bind(
+                lambda x, y: [[x.AC, x.AN - x.AC], [y.AC, y.AN - y.AC]],
+                freq1_by_pop[pop],
+                freq2_by_pop[pop],
+            )
+            for pop in pops
+        ]
+    ).to_pandas()
+    df["cmh"] = df.apply(lambda x: StratifiedTable(x.an).test_null_odds(), axis=1)
+    df["pvalue"] = df.apply(lambda x: x.cmh.pvalue, axis=1)
+    df["statistic"] = df.apply(lambda x: x.cmh.statistic, axis=1)
+    df = df.drop(["cmh", "an"], axis=1)
+    cmh_ht = hl.Table.from_pandas(df)
+
+    cmh_ht = cmh_ht.key_by("locus", "alleles")
+    cmh_ht = cmh_ht.annotate(
+        cmh=hl.struct(odds_ratio=cmh_ht.statistic, p_value=cmh_ht.pvalue)
     )
 
-    return ht
+    return cmh_ht[ht.key].cmh
 
 
 def main(args):  # noqa: D103
@@ -311,17 +310,23 @@ def main(args):  # noqa: D103
                     ht[f"freq_{version1}"],
                     ht[f"freq_{version2}"],
                     min_cell_count=args.min_cell_count,
-                )
+                ),
+                cochran_mantel_haenszel_test=perform_cmh_test(
+                    ht,
+                    ht[f"freq_{version1}"],
+                    ht[f"freq_{version2}"],
+                    ht[f"freq_meta_{version1}"],
+                    ht[f"freq_meta_{version2}"],
+                    pops=faf_pops,
+                ),
             )
-            cmh_ht = perform_cmh_test(
-                ht,
-                ht[f"freq_{version1}"],
-                ht[f"freq_{version2}"],
-                ht[f"freq_meta_{version1}"],
-                ht[f"freq_meta_{version2}"],
-                pops=faf_pops,
+            ht = ht.annotate(
+                **{
+                    ann: ht[ann].rename({"pop": "grp"})
+                    for ann in ht.row_value
+                    if ann.startswith("grpmax")
+                }
             )
-            ht = ht.annotate(**cmh_ht[ht.key])
             ht = ht.checkpoint(
                 (
                     get_checkpoint_path(f"{version1}_{version2}.compare_freq.test")
