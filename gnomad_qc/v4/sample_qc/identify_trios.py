@@ -263,15 +263,19 @@ def filter_ped(
     cutoffs = {
         "mendel": (
             max_mendel_z,
-            {"UKB": ukb_max_mendel_n, "non-UKB": max_mendel_n}
-            if ukb_max_mendel_n
-            else max_mendel_n,
+            (
+                {"UKB": ukb_max_mendel_n, "non-UKB": max_mendel_n}
+                if ukb_max_mendel_n
+                else max_mendel_n
+            ),
         ),
         "de_novo": (
             max_de_novo_z,
-            {"UKB": ukb_max_de_novo_n, "non-UKB": max_de_novo_n}
-            if ukb_max_de_novo_n
-            else max_de_novo_n,
+            (
+                {"UKB": ukb_max_de_novo_n, "non-UKB": max_de_novo_n}
+                if ukb_max_de_novo_n
+                else max_de_novo_n
+            ),
         ),
     }
 
@@ -286,9 +290,11 @@ def filter_ped(
                     "Both `max_%s_z` and `max_%s_n` are set. Using `max_%s_n` of %d%s!",
                     *(m,) * 3,
                     max_n["non-UKB"] if isinstance(max_n, dict) else max_n,
-                    f" and `ukb_max_{m}_n` of {max_n['UKB']}"
-                    if isinstance(max_n, dict)
-                    else "",
+                    (
+                        f" and `ukb_max_{m}_n` of {max_n['UKB']}"
+                        if isinstance(max_n, dict)
+                        else ""
+                    ),
                 )
             cutoffs_by_method["count"][m] = max_n
         elif max_z:

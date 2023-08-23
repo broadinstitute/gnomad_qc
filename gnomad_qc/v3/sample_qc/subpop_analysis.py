@@ -412,9 +412,11 @@ def main(args):  # noqa: D103
             logger.info("Generating densified MT to use for all subpop analyses...")
             mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
             mt.write(
-                get_checkpoint_path("test_make_full_subpop_qc", mt=True)
-                if args.test
-                else subpop_qc.path,
+                (
+                    get_checkpoint_path("test_make_full_subpop_qc", mt=True)
+                    if args.test
+                    else subpop_qc.path
+                ),
                 overwrite=args.overwrite,
             )
 
@@ -438,9 +440,11 @@ def main(args):  # noqa: D103
             )
 
             mt.write(
-                get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
-                if args.test
-                else filtered_subpop_qc_mt(pop),
+                (
+                    get_checkpoint_path("test_checkpoint_filtered_subpop_qc", mt=True)
+                    if args.test
+                    else filtered_subpop_qc_mt(pop)
+                ),
                 overwrite=args.overwrite,
             )
 
@@ -479,27 +483,33 @@ def main(args):  # noqa: D103
                 )
             )
             pop_pca_evals_ht.write(
-                get_checkpoint_path("test_pop_pca_evals_ht")
-                if args.test
-                else ancestry_pca_eigenvalues(
-                    include_unreleasable_samples, high_quality, pop
-                ).path,
+                (
+                    get_checkpoint_path("test_pop_pca_evals_ht")
+                    if args.test
+                    else ancestry_pca_eigenvalues(
+                        include_unreleasable_samples, high_quality, pop
+                    ).path
+                ),
                 overwrite=args.overwrite,
             )
             pop_pca_scores.write(
-                get_checkpoint_path("test_pop_pca_scores_ht")
-                if args.test
-                else ancestry_pca_scores(
-                    include_unreleasable_samples, high_quality, pop
-                ).path,
+                (
+                    get_checkpoint_path("test_pop_pca_scores_ht")
+                    if args.test
+                    else ancestry_pca_scores(
+                        include_unreleasable_samples, high_quality, pop
+                    ).path
+                ),
                 overwrite=args.overwrite,
             )
             pop_pca_loadings.write(
-                get_checkpoint_path("test_pop_pca_loadings_ht")
-                if args.test
-                else ancestry_pca_loadings(
-                    include_unreleasable_samples, high_quality, pop
-                ).path,
+                (
+                    get_checkpoint_path("test_pop_pca_loadings_ht")
+                    if args.test
+                    else ancestry_pca_loadings(
+                        include_unreleasable_samples, high_quality, pop
+                    ).path
+                ),
                 overwrite=args.overwrite,
             )
 

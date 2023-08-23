@@ -73,9 +73,7 @@ def print_cuking_command(
         "This printed command assumes that the cuKING directory is in the same "
         "location where the command is being run and that $PROJECT_ID is set!"
     )
-    print(
-        textwrap.dedent(
-            f"""\
+    print(textwrap.dedent(f"""\
              cd cuKING && \\
              ./cloud_batch_submit.py \\
                  --location=us-central1 \\
@@ -89,9 +87,7 @@ def print_cuking_command(
                  --kin-threshold={min_emission_kinship} \\
                  --split-factor={cuking_split_factor} &&
              cd ..
-             """
-        )
-    )
+             """))
 
 
 def compute_ibd_on_cuking_pair_subset(
@@ -455,9 +451,11 @@ def get_relatedness_resources(
         "--finalize-relatedness-ht",
         output_resources={"final_relatedness_ht": relatedness(test=test)},
         pipeline_input_steps=[
-            create_cuking_relatedness_table
-            if relatedness_method == "cuking"
-            else create_pc_relate_relatedness_table
+            (
+                create_cuking_relatedness_table
+                if relatedness_method == "cuking"
+                else create_pc_relate_relatedness_table
+            )
         ],
         add_input_resources=joint_qc_meta_input,
     )
@@ -614,10 +612,18 @@ def main(args):
             res.check_resource_existence()
             relatedness_args = {
                 "parent_child_max_y": args.parent_child_max_ibd0_or_ibs0_over_ibs2,
-                "second_degree_sibling_lower_cutoff_slope": args.second_degree_sibling_lower_cutoff_slope,
-                "second_degree_sibling_lower_cutoff_intercept": args.second_degree_sibling_lower_cutoff_intercept,
-                "second_degree_upper_sibling_lower_cutoff_slope": args.second_degree_upper_sibling_lower_cutoff_slope,
-                "second_degree_upper_sibling_lower_cutoff_intercept": args.second_degree_upper_sibling_lower_cutoff_intercept,
+                "second_degree_sibling_lower_cutoff_slope": (
+                    args.second_degree_sibling_lower_cutoff_slope
+                ),
+                "second_degree_sibling_lower_cutoff_intercept": (
+                    args.second_degree_sibling_lower_cutoff_intercept
+                ),
+                "second_degree_upper_sibling_lower_cutoff_slope": (
+                    args.second_degree_upper_sibling_lower_cutoff_slope
+                ),
+                "second_degree_upper_sibling_lower_cutoff_intercept": (
+                    args.second_degree_upper_sibling_lower_cutoff_intercept
+                ),
                 "duplicate_twin_min_kin": args.duplicate_twin_min_kin,
                 "second_degree_min_kin": second_degree_min_kin,
                 "duplicate_twin_ibd1_min": args.duplicate_twin_ibd1_min,

@@ -391,23 +391,27 @@ def main(args):  # noqa: D103
             )
 
             ht.write(
-                get_checkpoint_path(f"{version1}_{version2}.compare_freq.test")
-                if args.test
-                else get_freq_comparison(
-                    CURRENT_RELEASE_MAP[version1],
-                    version1.split("_")[1],
-                    CURRENT_RELEASE_MAP[version2],
-                    version2.split("_")[1],
-                ).path,
+                (
+                    get_checkpoint_path(f"{version1}_{version2}.compare_freq.test")
+                    if args.test
+                    else get_freq_comparison(
+                        CURRENT_RELEASE_MAP[version1],
+                        version1.split("_")[1],
+                        CURRENT_RELEASE_MAP[version2],
+                        version2.split("_")[1],
+                    ).path
+                ),
                 overwrite=args.overwrite,
             )
 
         if args.run_pc_project_v3_on_v2:
             scores_ht = project_on_exome_pop_pcs(args.test)
             scores_ht.write(
-                get_checkpoint_path(f"v3_pc_project_on_v2.test")
-                if args.test
-                else v2_v3_pc_project_pca_scores.versions["3.1"].path,
+                (
+                    get_checkpoint_path(f"v3_pc_project_on_v2.test")
+                    if args.test
+                    else v2_v3_pc_project_pca_scores.versions["3.1"].path
+                ),
                 overwrite=args.overwrite,
             )
 
@@ -425,17 +429,19 @@ def main(args):  # noqa: D103
             ht = ht.annotate(logistic_regression=logic_ht[ht.key])
 
             ht.write(
-                get_checkpoint_path(
-                    f"{version1}_{version2}.compare_freq.logistic_regression.test"
-                )
-                if args.test
-                else get_freq_comparison(
-                    CURRENT_RELEASE_MAP[version1],
-                    version1.split("_")[1],
-                    CURRENT_RELEASE_MAP[version2],
-                    version2.split("_")[1],
-                    logistic_regression=True,
-                ).path,
+                (
+                    get_checkpoint_path(
+                        f"{version1}_{version2}.compare_freq.logistic_regression.test"
+                    )
+                    if args.test
+                    else get_freq_comparison(
+                        CURRENT_RELEASE_MAP[version1],
+                        version1.split("_")[1],
+                        CURRENT_RELEASE_MAP[version2],
+                        version2.split("_")[1],
+                        logistic_regression=True,
+                    ).path
+                ),
                 overwrite=args.overwrite,
             )
 

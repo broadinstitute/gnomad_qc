@@ -14,8 +14,7 @@ from gnomad.utils.annotations import (
 from gnomad.utils.filtering import filter_to_autosomes
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
-    INFO_INT32_SUM_AGG_FIELDS,
-    INFO_SUM_AGG_FIELDS,
+    INFO_AGG_FIELDS,
     get_as_info_expr,
     get_site_info_expr,
     split_info_annotation,
@@ -67,15 +66,15 @@ def compute_info() -> hl.Table:
     # For new releases, the `RAWMQ_andDP` field replaces the `RAW_MQ` and `MQ_DP` fields
     info_expr = get_site_info_expr(
         mt,
-        sum_agg_fields=INFO_SUM_AGG_FIELDS + ["RAW_MQ"],
-        int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ["MQ_DP"],
+        sum_agg_fields=INFO_AGG_FIELDS["sum_agg_fields"] + ["RAW_MQ"],
+        int32_sum_agg_fields=INFO_AGG_FIELDS["int32_sum_agg_fields"] + ["MQ_DP"],
         array_sum_agg_fields=["SB"],
     )
     info_expr = info_expr.annotate(
         **get_as_info_expr(
             mt,
-            sum_agg_fields=INFO_SUM_AGG_FIELDS + ["RAW_MQ"],
-            int32_sum_agg_fields=INFO_INT32_SUM_AGG_FIELDS + ["MQ_DP"],
+            sum_agg_fields=INFO_AGG_FIELDS["sum_agg_fields"] + ["RAW_MQ"],
+            int32_sum_agg_fields=INFO_AGG_FIELDS["int32_sum_agg_fields"] + ["MQ_DP"],
             array_sum_agg_fields=["SB"],
         )
     )
