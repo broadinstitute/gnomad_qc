@@ -1,26 +1,13 @@
 """
 This is a batch script which adds VRS IDs to a Hail Table by creating sharded VCFs, running a vrs-annotation script on each shard, and merging the results into the original Hail Table.
 
-Advise to run a test from laptop, but run the full annotation from a backend (eg. hailctl batch submit) to avoid losing progress if laptop disconnects.
+Advise to run from a backend (eg. hailctl batch submit) to avoid losing progress
+ in case of disconnection.
 
-Example command to run QoB from laptop (frontend):
-python3 /Users/heqin/PycharmProjects/gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch.py \
---billing-project gnomad-annot \
---working-bucket gnomad-tmp-4day \
---image us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
---version test_v4.0_exomes \
---prefix v4 \
---header-path gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt \
---run-vrs \
---annotate-original \
---overwrite \
---backend-mode batch \
---test
-
-Example command to use `hailctl batch submit` (backend):
+Example command to use `hailctl batch submit`:
 hailctl batch submit \
 --image-name us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
-/Users/heqin/PycharmProjects/gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch.py \
+gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch.py \
 -- \
 --billing-project gnomad-annot \
 --working-bucket gnomad-tmp-4day \
@@ -53,7 +40,8 @@ logging.basicConfig(
 logger = logging.getLogger("annotate_vrs_ids")
 logger.setLevel(logging.INFO)
 
-# Define the version of ga4gh.vrs code this was run on, as present in the Dockerfile
+# Define the version of ga4gh.vrs code this was run on,
+# as present in the Dockerfile
 # Please change this when the Dockerfile is updated
 VRS_VERSION = "0.8.4"
 
@@ -189,18 +177,19 @@ def main(args):
     }
 
     output_paths_dict = {
-        "v4.0_exomes": v4_vrs_annotations().path,
-        "test_v4.0_exomes": v4_vrs_annotations(test=True).path,
+        "v4.0_exomes": v4_vrs_annotations(annotated=True).path,
+        "test_v4.0_exomes": v4_vrs_annotations(test=True, annotated=True).path,
     }
 
     # Read in Hail Table, partition, and export to sharded VCF
     ht_original = hl.read_table(input_paths_dict[version])
     assembly = get_reference_genome(ht_original.locus).name
 
-    # Option to downsample for testing, if you want to annotate part of a Hail Table but not all of it
+    # Option to downsample for testing, if you want to annotate part
+    # of a Hail Table but not all of it
     # For this, is important that we have set the Hail random seed!
     if args.test:
-        logger.info("Filtering 200 partitions for testing...")
+        logger.info("Filtering to 200 partitions for testing...")
         ht_original = ht_original._filter_partitions(range(200))
 
     elif args.downsample < 1.00:
@@ -227,7 +216,7 @@ def main(args):
         check_resource_existence(
             output_step_resources={
                 "--run-vrs": [
-                    f"gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
+                    v4_vrs_annotations(test=args.test).path,
                 ],
             },
             overwrite=args.overwrite,
@@ -267,7 +256,7 @@ def main(args):
         )
 
         # Create a list of all shards of VCF
-        # Note: this step requires using Hail 0.2.119-138d69e126bc or later, for
+        # Note: This step requires using Hail 0.2.120 or later, for
         # faster listing of files in a directory with hadoop_ls.
         file_dict = hl.utils.hadoop_ls(
             f"gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz/part-*.bgz"
@@ -276,7 +265,8 @@ def main(args):
         # Create a list of all file names to later annotate in parallel
         file_list = [file_item["path"].split("/")[-1] for file_item in file_dict]
 
-        # Query-On-Batch sometimes produces duplicate shards (same number, same content, different name)
+        # Query-On-Batch sometimes produces duplicate shards
+        # (same number, same content, different name)
         # This block removes duplicates from the list of files to be annotated
         to_exclude = []
         for file_idx in range(len(file_list)):
@@ -284,7 +274,6 @@ def main(args):
             file_num = file_name[1]
             if len(file_list) > 1 and file_list[file_idx - 1].split("-")[1] == file_num:
                 to_exclude.append(file_list[file_idx - 1])
-        # the original code didn't work when there's only 1 file in the list
 
         file_list = sorted(list(set(file_list) - set(to_exclude)))
         logger.info(f"Number of duplicates to be excluded: {len(to_exclude)}")
@@ -372,20 +361,18 @@ def main(args):
 
         # Checkpoint (write) resulting annotated table
         ht_annotated = ht_annotated.checkpoint(
-            f"gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht",
+            v4_vrs_annotations(test=args.test).path,
             overwrite=args.overwrite,
         )
         logger.info(
             "Annotated Hail Table checkpointed to:"
-            f" gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
+            f" {v4_vrs_annotations(test=args.test).path}"
         )
 
     if args.annotate_original:
         check_resource_existence(
             input_step_resources={
-                "--run-vrs": [
-                    f"gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
-                ],
+                "--run-vrs": [v4_vrs_annotations(test=args.test).path],
             },
             output_step_resources={
                 "--annotate-original": [output_paths_dict[version]],
@@ -394,29 +381,19 @@ def main(args):
         )
 
         # Output final Hail Tables with VRS annotations
-        ht_annotated = hl.read_table(
-            f"gs://gnomad-vrs-io-finals/ht-outputs/annotated-checkpoint-VRS-{prefix}.ht"
+        ht_annotated = hl.read_table(v4_vrs_annotations(test=args.test).path)
+
+        logger.info("Adding VRS IDs and GA4GH.VRS version to original Table")
+        ht_final = ht_original.annotate(
+            info=ht_original.info.annotate(
+                vrs=ht_annotated[ht_original.locus, ht_original.alleles].vrs
+            )
         )
 
-        if args.test:
-            logger.info(
-                "For test datasets, final output is identical to the checkpointed"
-                " annotated HT"
-            )
-            logger.info(f"Outputting final table at: {output_paths_dict[version]}")
-            ht_annotated.write(output_paths_dict[version], overwrite=args.overwrite)
-        else:
-            logger.info("Adding VRS IDs and GA4GH.VRS version to original Table")
-            ht_final = ht_original.annotate(
-                info=ht_original.info.annotate(
-                    vrs=ht_annotated[ht_original.locus, ht_original.alleles].vrs
-                )
-            )
+        ht_final = ht_final.annotate_globals(vrs_version=VRS_VERSION)
 
-            ht_final = ht_final.annotate_globals(vrs_version=VRS_VERSION)
-
-            logger.info(f"Outputting final table at: {output_paths_dict[version]}")
-            ht_final.write(output_paths_dict[version], overwrite=args.overwrite)
+        logger.info(f"Outputting final table at: {output_paths_dict[version]}")
+        ht_final.write(output_paths_dict[version], overwrite=args.overwrite)
 
         logger.info(f"Done! Final table written to {output_paths_dict[version]}.")
 
@@ -439,12 +416,12 @@ if __name__ == "__main__":
             " bucket, but final outputs ran on the release HT always go in"
             " gs://gnomad/v4.0/annotations/exomes/ ."
         ),
-        default="gnomad-vrs-io-finals",
+        default="gnomad-tmp-4day",
         type=str,
     )
     parser.add_argument(
         "--version",
-        help="Version of HT to read in. ",
+        help="Version of HT to read in.",
         default="v4.0_exomes",
         type=str,
     )
@@ -480,7 +457,7 @@ if __name__ == "__main__":
             " that maybe be missing when exporting the Table to VCF."
         ),
         type=str,
-        default="gs://gnomad-vrs-io-finals/header-fix.txt",
+        default="gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt",
     )
     parser.add_argument(
         "--downsample",
