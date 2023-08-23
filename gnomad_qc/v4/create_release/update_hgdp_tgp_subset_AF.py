@@ -57,7 +57,8 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
     pop_outliers_ht = hgdp_tgp_pop_outliers.ht()
     populations_ht = hgdp_tgp_populations_updated.ht()
 
-    # TODO: rerun the pc_relate to get the updated relatedness HT, because Alicia's group didn't checkpoint the results.
+    # TODO: rerun the pc_relate to get the updated relatedness HT,
+    #  because Alicia's group didn't checkpoint the results.
     # TODO: get the global & subcontinental PCs for the updated HGDP + 1KG subset:
     #  hgdp_tgp_meta.global_pca_scores,
     #  hgdp_tgp_meta.subcontinental_pca.pca_scores,
@@ -307,13 +308,13 @@ def calculate_concatenate_callstats(
         samples_ht,
     )
     freq_ht_hgdp = calculate_callstats_for_selected_samples(
-        mt.filter_cols(mt.hgdp_tgp_meta.project == "HGDP"),
-        samples_ht,
+        mt,
+        samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "HGDP"),
         subsets=["hgdp"],
     )
     freq_ht_tgp = calculate_callstats_for_selected_samples(
-        mt.filter_cols(mt.hgdp_tgp_meta.project == "1000 Genomes"),
-        samples_ht,
+        mt,
+        samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "1000 Genomes"),
         subsets=["tgp"],
     )
 
@@ -325,6 +326,29 @@ def calculate_concatenate_callstats(
     freq_ht = concatenate_subset_frequencies(freq_ht_all, subset_freq_hts)
 
     return freq_ht
+
+
+def remove_pops_from_freq_meta(ht: hl.Table, pops_to_remove: List[str]) -> hl.Table:
+    """
+    Remove populations from the freq_meta.
+
+    :param ht: Table with call stats.
+    :param pops_to_remove: List of populations to be removed.
+    :return: Table with the populations removed.
+    """
+    pops_to_remove = hl.literal(pops_to_remove)
+    ht = ht.annotate_globals(
+        freq_meta=ht.freq_meta.map(
+            lambda d: d.filter(lambda x: ~pops_to_remove.contains(x))
+        ),
+        freq_index_dict=hl.dict(
+            hl.zip(
+                ht.freq_index_dict.keys().filter(lambda k: ~pops_to_remove.contains(k)),
+                ht.freq_index_dict.values(),
+            )
+        ),
+    )
+    return ht
 
 
 def main(args):
@@ -366,7 +390,9 @@ def main(args):
     if args.update_annotations:
         logger.info("Adding updated sample QC annotations to meta HT...")
         meta_ht = add_updated_sample_qc_annotations(meta_ht)
-        meta_ht = meta_ht.checkpoint(hgdp_tgp_meta_updated.path, overwrite=True)
+        # TODO: temporarily using _read_if_exists, until we have new fields to be
+        # updated.
+        meta_ht = meta_ht.checkpoint(hgdp_tgp_meta_updated.path, _read_if_exists=True)
 
     logger.info("Filtering samples in meta HT that will be added and subtracted...")
     samples_to_add, samples_to_subtract = get_filtered_samples(meta_ht)
@@ -417,10 +443,7 @@ def main(args):
     ht = ht.annotate(freq2=freq)
     ht = ht.annotate_globals(freq_meta2=freq_meta)
     ht = ht.annotate_globals(
-        freq_index_dict=make_freq_index_dict_from_meta(freq_meta=hl.eval(ht.freq_meta))
-    )
-    ht = ht.annotate_globals(
-        freq_meta_dict2=make_freq_index_dict_from_meta(ht.freq_meta2)
+        freq_index_dict=make_freq_index_dict_from_meta(ht.freq_meta2)
     )
     ht = ht.annotate(freq2=set_female_y_metrics_to_na_expr(ht))
 
