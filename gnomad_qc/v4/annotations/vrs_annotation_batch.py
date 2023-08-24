@@ -447,7 +447,7 @@ if __name__ == "__main__":
             " that maybe be missing when exporting the Table to VCF."
         ),
         type=str,
-        default="gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt",
+        default=None,
     )
     parser.add_argument(
         "--downsample",

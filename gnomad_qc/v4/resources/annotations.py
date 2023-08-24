@@ -313,9 +313,9 @@ def get_vrs(
     Get the gnomAD v4 VersionedTableResource containing VRS annotations.
 
     :param version: Version of annotation path to return.
-    :param annotated: Whether to obtain just the Table of VRS annotations only
-           or, if it exists, the original input Table that was annotated with
-           the VRS annotation added on
+    :param original_annotations: Whether to obtain the original input Table with
+           all its annotations in addition to the added on VRS annotations.
+           If set to False, obtain a Table with only the VRS annotations.
     :param test: Whether to use a tmp path for analysis of the test Table instead
            of the full v4 Table.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
@@ -327,8 +327,8 @@ def get_vrs(
         {
             version: TableResource(
                 path=(
-                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.annotated.vrs.ht"
-                    if annotated
+                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.original_annotations.vrs.ht"
+                    if original_annotations
                     else (
                         f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vrs.ht"
                     )
