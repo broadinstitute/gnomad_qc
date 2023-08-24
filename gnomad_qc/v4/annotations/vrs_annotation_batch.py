@@ -397,9 +397,7 @@ if __name__ == "__main__":
         "--working-bucket",
         help=(
             "Name of GCP Bucket to output intermediate files (sharded VCFs and"
-            " checkpointed HTs) to. Final outputs for test versions go to working"
-            " bucket, but final outputs ran on the release HT always go in"
-            " gs://gnomad/v4.0/annotations/exomes/ ."
+            " checkpointed HTs) to."
         ),
         default="gnomad-tmp-4day",
         type=str,
