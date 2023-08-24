@@ -87,7 +87,9 @@ def recompute_as_qualapprox_from_lpl(mt: hl.MatrixTable) -> hl.expr.ArrayExpress
     .. note::
 
         - The first element of AS_QUALapprox is always None.
-        - If the allele is a star allele, we set QUALapprox to 0.
+        - If the allele is a star allele, we set QUALapprox for that allele to 0.
+        - If GQ == 0 and PL[0] for the allele == 1, we set QUALapprox for the allele
+          to 0.
 
     Example:
         Starting Values:
@@ -120,7 +122,7 @@ def recompute_as_qualapprox_from_lpl(mt: hl.MatrixTable) -> hl.expr.ArrayExpress
             .when(
                 i[0] > 0,
                 hl.bind(
-                    lambda pl_0: hl.if_else((mt.GQ < 2) & (pl_0 == 1), 0, pl_0),
+                    lambda pl_0: hl.if_else((mt.GQ == 0) & (pl_0 == 1), 0, pl_0),
                     hl.bind(lambda x: x[0] - hl.min(x), extract_as_pls(mt.LPL, i[0])),
                 ),
             )
@@ -129,7 +131,60 @@ def recompute_as_qualapprox_from_lpl(mt: hl.MatrixTable) -> hl.expr.ArrayExpress
     )
 
 
-def run_compute_info(mt: hl.MatrixTable, test: bool = False) -> hl.Table:
+def correct_as_annotations(
+    mt: hl.MatrixTable,
+    set_to_missing: bool = False,
+    postfix: str = "",
+) -> hl.expr.StructExpression:
+    """
+    Correct allele specific annotations that are longer than the length of LA.
+
+    For some entries in the MatrixTable, the following annotations are longer than LA,
+    when they should be the same length as LA:
+        - AS_SB_TABLE
+        - AS_RAW_MQ
+        - AS_RAW_ReadPosRankSum
+        - AS_RAW_MQRankSum
+
+    This function corrects these annotations by either dropping the alternate allele
+    with the index corresponding to the min value of AS_RAW_MQ, or setting them to
+    missing if `set_to_missing` is True.
+
+    :param mt: Input MatrixTable.
+    :param set_to_missing: Whether to set the annotations to missing instead of
+        correcting them.
+    :param postfix: Postfix to add to the end of the corrected annotations labels.
+    :return: StructExpression with corrected allele specific annotations.
+    """
+    annotations_to_correct = [
+        "AS_SB_TABLE",
+        "AS_RAW_MQ",
+        "AS_RAW_ReadPosRankSum",
+        "AS_RAW_MQRankSum",
+    ]
+    annotations_to_correct = {
+        f"{a}{postfix}": mt.gvcf_info[a] for a in annotations_to_correct
+    }
+
+    # Identify index corresponding to min of AS_RAW_MQ, skipping the reference allele.
+    as_raw_mq_no_ref = mt.gvcf_info.AS_RAW_MQ[1:]
+    idx_remove = as_raw_mq_no_ref.index(hl.min(as_raw_mq_no_ref)) + 1
+
+    corrected_annotations = {
+        a: hl.if_else(
+            hl.len(expr) > hl.len(mt.LA),
+            hl.or_missing(
+                ~set_to_missing, expr[:idx_remove].extend(expr[idx_remove + 1 :])
+            ),
+            expr,
+        )
+        for a, expr in annotations_to_correct.items()
+    }
+
+    return hl.struct(**corrected_annotations)
+
+
+def run_compute_info(mt: hl.MatrixTable) -> hl.Table:
     """
     Run compute info on a MatrixTable.
 
@@ -139,25 +194,40 @@ def run_compute_info(mt: hl.MatrixTable, test: bool = False) -> hl.Table:
         have different lengths than LA.
 
     :param mt: Input MatrixTable.
-    :param test: Whether to use the test dataset. Default is False.
     :return: Table with info annotations.
     """
+    as_info_agg_fields = {
+        "sum_agg_fields": ["AS_QUALapprox", "AS_RAW_MQ", "AS_RAW_MQ_set_to_missing"],
+        "int32_sum_agg_fields": ["AS_VarDP"],
+        "median_agg_fields": [
+            "AS_RAW_ReadPosRankSum",
+            "AS_RAW_MQRankSum",
+            "AS_RAW_ReadPosRankSum_set_to_missing",
+            "AS_RAW_MQRankSum_set_to_missing",
+        ],
+        "array_sum_agg_fields": ["AS_SB_TABLE", "AS_SB_TABLE_set_to_missing"],
+    }
+
     mt = mt.annotate_entries(
         gvcf_info=mt.gvcf_info.annotate(
-            AS_QUALapprox=recompute_as_qualapprox_from_lpl(mt)
+            AS_QUALapprox=recompute_as_qualapprox_from_lpl(mt),
+            **correct_as_annotations(mt),
+            **correct_as_annotations(
+                mt, set_to_missing=True, postfix="_set_to_missing"
+            ),
         )
     )
-
-    if test:
-        unrelated_expr = ~mt.meta.rand_sampling_meta.related
-    else:
-        unrelated_expr = ~mt.meta.sample_filters.relatedness_filters.related
 
     return default_compute_info(
         mt,
         site_annotations=True,
         as_annotations=True,
-        ac_filter_groups={"release": mt.meta.release, "unrelated": unrelated_expr},
+        ac_filter_groups={
+            "high_quality": mt.meta.high_quality,
+            "release": mt.meta.release,
+            "unrelated": ~mt.meta.sample_filters.relatedness_filters.related,
+        },
+        as_info_agg_fields=as_info_agg_fields,
     )
 
 
