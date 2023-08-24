@@ -19,6 +19,7 @@ from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
     annotate_downsamplings,
+    annotate_freq,
     bi_allelic_site_inbreeding_expr,
     build_freq_stratification_list,
     compute_freq_by_strata,
@@ -85,9 +86,11 @@ want on the frequency HT before deciding on the AF cutoff.
 # TODO: What are we doing about the sample count struct?
 FREQ_GLOBAL_FIELDS = [
     "downsamplings",
+    "non_ukb_downsamplings",
     "freq_meta",
     "age_distribution",
     "freq_index_dict",
+    "freq_meta_sample_counts",
 ]
 """
 List of final global annotations created from dense data that we want on the frequency
@@ -305,6 +308,7 @@ def annotate_freq_index_dict(ht: hl.Table) -> hl.Table:
 def generate_freq_and_hists_ht(
     vds: hl.vds.VariantDataset,
     ds_ht: hl.Table,
+    split_strata: Optional[str] = None,
     ab_cutoff: float = 0.9,
 ) -> hl.Table:
     """
@@ -325,11 +329,12 @@ def generate_freq_and_hists_ht(
         - ukb_sample
 
     :param vds: Input VDS.
+    :param ds_ht: Table with downsampling annotations.
+    :param split_strata: Strata used when splitting VDS. Defaults to None.
     :param ab_cutoff: Allele balance cutoff to use for high AB het annotation.
     :return: Hail Table with frequency and histogram annotations.
     """
     final_rows_anns = {}
-    final_globals_anns = {}
 
     ht = vds.variant_data.cols()
     additional_strata_expr = [
@@ -395,14 +400,85 @@ def generate_freq_and_hists_ht(
         mt.annotate_cols(group_membership=ht[mt.col_key].group_membership),
         entry_agg_funcs={"high_ab_hets_by_group": (_high_ab_het, hl.agg.sum)},
     )
-    # TODO: Possibly add in non-ukb specific downsamplings here? Its another full pass
-    #  of the data but this reduces the strata size by 132 groups if we do it here instead of in one go
-    # Im not sure if this will even work but I'm guessing well hit the OOM error again if we try
-    # adding them in one go to the non-ukb ht freq calculation. We can pass none for the sex_expr,
-    #  and additional_strata_expr to get the non-ukb specific downsamplings. We'd then need to drop the pop
-    # strata from the non-ukb specific downsamplings freq ht since they would
-    # already be in the first freq ht
     freq_ht = freq_ht.annotate_globals(**ht.index_globals())
+
+    # TODO: Add in non-ukb specific downsamplings and freq calculations. Its another full pass
+    #  of the data but this reduces the strata size by 132 groups if we do it here instead of in one go
+    # I'm guessing well hit the OOM error again if we try adding them all in one go to the non-ukb ht freq
+    # calculation. We can pass none for the sex_expr,and additional_strata_expr to get the non-ukb specific downsamplings. We'd then need to drop the pop
+    # strata from the non-ukb specific downsamplings freq ht since they would already be in the first freq ht pass.
+    #  We'd also need to drop the pop strata from the non-ukb specific output and then merge the two freq arrays, renaming the
+    # non-ukb specific downsamplings group names to the "non-ukb-<specific
+    # downsampling>.
+    if split_strata == "non_ukb":
+        logger.info("Downsampling the non_ukb VDS for separate freq calcuation...")
+        non_ukb_ds_freq_ht = annotate_freq(
+            mt,
+            pop_expr=mt.pop,
+            downsamplings=DOWNSAMPLINGS["v4"][:-1],
+            annotate_mt=False,
+            entry_agg_funcs={"high_ab_hets_by_group": (_high_ab_het, hl.agg.sum)},
+        )
+
+        # Filter freq array field to only downsampling indices by using the freq_meta
+        # array field values.
+        def _select_non_ukb_entries(arr_expr):
+            return (
+                hl.zip(arr_expr, non_ukb_ds_freq_ht.freq_meta)
+                .filter(lambda i: i[1].keys().contains("downsampling"))
+                .map(lambda k: k[0])
+            )
+
+        non_ukb_ds_freq_ht = non_ukb_ds_freq_ht.annotate(
+            freq=_select_non_ukb_entries(non_ukb_ds_freq_ht.freq),
+            high_ab_hets_by_group=_select_non_ukb_entries(
+                non_ukb_ds_freq_ht.high_ab_hets_by_group
+            ),
+        )
+        # Filter freq_meta array field to dict entries with a "downsampling" key and
+        # rename the key to "non_ukb_downsampling". We don't want any other strata that
+        # are returned from annotate_freq, e.g. 'pop'. Also rename the downsamplings
+        # global field to "non_ukb_downsamplings" so we can merge the two freq arrays
+        # later and not lose the non_ukb downsampling information.
+        non_ukb_ds_freq_ht = non_ukb_ds_freq_ht.annotate_globals(
+            freq_meta=non_ukb_ds_freq_ht.freq_meta.filter(
+                lambda i: i.keys().contains("downsampling")
+            ).map(
+                lambda d: hl.dict(
+                    d.items().map(
+                        lambda i: hl.if_else(
+                            i[0] == "downsampling",
+                            ("non_ukb_downsampling", i[1]),
+                            (i[0], i[1]),
+                        )
+                    )
+                )
+            ),
+            non_ukb_downsamplings=non_ukb_ds_freq_ht.downsamplings,
+            freq_meta_sample_counts=_select_non_ukb_entries(
+                non_ukb_ds_freq_ht.freq_meta_sample_counts
+            ),
+        )
+        non_ukb_ds_freq_ht
+        # There are no overlap of strata groups here so can do basic extend on the
+        # arrays
+        freq_ht = freq_ht.annotate(
+            freq=freq_ht.freq.extend(non_ukb_ds_freq_ht[freq_ht.key].freq),
+            high_ab_hets_by_group=freq_ht.high_ab_hets_by_group.extend(
+                non_ukb_ds_freq_ht[freq_ht.key].high_ab_hets_by_group
+            ),
+        )
+        non_ukb_globals = non_ukb_ds_freq_ht.index_globals()
+        ht = ht.checkpoint(
+            new_temp_file(f"freq_non_ukb_ds", extension="ht")
+        )  # TODO: Is this necessary? Not sure how much pressure this puts on mem
+        freq_ht = freq_ht.annotate_globals(
+            freq_meta=freq_ht.freq_meta.extend(non_ukb_globals.freq_meta),
+            freq_meta_sample_counts=freq_ht.freq_meta_sample_counts.extend(
+                non_ukb_globals.freq_meta_sample_counts
+            ),
+            non_ukb_downsamplings=non_ukb_globals.non_ukb_downsamplings,
+        )
 
     logger.info("Setting Y metrics to NA for XX groups...")
     freq_ht = annotate_freq_index_dict(freq_ht)
@@ -434,8 +510,6 @@ def generate_freq_and_hists_ht(
     final_rows_anns.update({r: hists[r] for r in mt.row_value})
 
     freq_ht = freq_ht.annotate(**final_rows_anns)
-    freq_ht = freq_ht.annotate_globals(**final_globals_anns)
-
     return freq_ht
 
 
@@ -504,6 +578,9 @@ def combine_freq_hts(
 
     freq_ht = freq_ht.annotate_globals(
         downsamplings=freq_ht.global_array[0].downsamplings,
+        ukb_downsamplings=freq_hts["non_ukb"]
+        .index_globals()
+        .ukb_downsamplings,  # I think this works, trying to solve surfacing unique global from non_ukb table
         age_distribution=freq_ht.global_array[0].age_distribution,
         freq_meta=comb_freq_meta,
         freq_meta_sample_counts=count_arrays_dict["freq_meta_sample_counts"],
@@ -672,23 +749,9 @@ def main(args):
                     logger.info(
                         "Generating frequency and histograms for %s VDS...", strata
                     )
-                    ht = generate_freq_and_hists_ht(vds, ds_ht, ab_cutoff=ab_cutoff)
-                    # This was the start of an attempt to add non-ukb specific downsamplings to the freq_ht but
-                    # I think we will need to do another pass inside the generate_freq_and hist function for those
-                    # extra downsamplings instead, otherwise we need to modify gnomad_methods'
-                    # generate_freq_group_membership_array and build_freq_stratification_list to take a list of
-                    # downsamplings(_exprs) to use instead of just the one.
-                    #
-                    #                if strata == "non_ukb":
-                    #                    ukb_ds_ht = (
-                    #                        annotate_downsamplings(
-                    #                            vds.variant_data,
-                    #                            DOWNSAMPLINGS["v4"][:-1],
-                    #                            pop_expr=vds.variant_data.pop,
-                    #                        )
-                    #                        .cols()
-                    #                        .checkpoint(new_temp_file("ukb_downsamplings", extension="ht"))
-                    #                    )
+                    ht = generate_freq_and_hists_ht(
+                        vds, ds_ht, split_strata=strata, ab_cutoff=ab_cutoff
+                    )
                     # TODO: Change to use a fixed location in gnomad_tmp instead of
                     #  new_temp_file so we can easily rerun only failed ones if needed?
                     # TODO: Actually, do we want to parallelize this in some way?
@@ -696,7 +759,9 @@ def main(args):
                     freq_hts.append(ht)
 
                 freq_ht = combine_freq_hts(
-                    freq_hts, ALL_FREQ_ROW_FIELDS, FREQ_GLOBAL_FIELDS
+                    freq_hts,
+                    ALL_FREQ_ROW_FIELDS,
+                    FREQ_GLOBAL_FIELDS,
                 )
             else:
                 freq_ht = generate_freq_and_hists_ht(vds, ds_ht, ab_cutoff=ab_cutoff)
