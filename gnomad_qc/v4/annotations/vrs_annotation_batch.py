@@ -171,10 +171,7 @@ def main(args):
 
     input_path = v4_input_ht().path
 
-    output_paths_dict = {
-        "v4.0_exomes": v4_vrs_annotations(annotated=True).path,
-        "test_v4.0_exomes": v4_vrs_annotations(test=True, annotated=True).path,
-    }
+    output_path = v4_vrs_annotations(test=args.test, original_annotations=True)
 
     # Read in Hail Table, partition, and export to sharded VCF
     ht_original = hl.read_table(input_path)
@@ -370,7 +367,7 @@ def main(args):
                 "--run-vrs": [v4_vrs_annotations(test=args.test).path],
             },
             output_step_resources={
-                "--annotate-original": [output_paths_dict[version]],
+                "--annotate-original": [output_path],
             },
             overwrite=args.overwrite,
         )
@@ -385,10 +382,10 @@ def main(args):
 
         ht_final = ht_final.annotate_globals(vrs_version=VRS_VERSION)
 
-        logger.info(f"Outputting final table at: {output_paths_dict[version]}")
-        ht_final.write(output_paths_dict[version], overwrite=args.overwrite)
+        logger.info(f"Outputting final table at: {output_path}")
+        ht_final.write(output_path, overwrite=args.overwrite)
 
-        logger.info(f"Done! Final table written to {output_paths_dict[version]}.")
+        logger.info(f"Done! Final table written to {output_path}.")
 
 
 if __name__ == "__main__":
