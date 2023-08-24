@@ -305,7 +305,7 @@ def get_insilico_predictors(
 
 def get_vrs(
     version: str = CURRENT_VERSION,
-    annotated: bool = False,
+    original_annotations: bool = False,
     test: bool = False,
     data_type: str = "exomes",
 ) -> VersionedTableResource:

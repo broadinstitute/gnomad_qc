@@ -169,10 +169,7 @@ def main(args):
     # Prefix to create custom named versions of outputs
     prefix = args.prefix + version
 
-    input_paths_dict = {
-        "v4.0_exomes": v4_input_ht().path,
-        "test_v4.0_exomes": v4_input_ht().path,
-    }
+    input_path = v4_input_ht().path
 
     output_paths_dict = {
         "v4.0_exomes": v4_vrs_annotations(annotated=True).path,
@@ -180,7 +177,7 @@ def main(args):
     }
 
     # Read in Hail Table, partition, and export to sharded VCF
-    ht_original = hl.read_table(input_paths_dict[version])
+    ht_original = hl.read_table(input_path)
     assembly = get_reference_genome(ht_original.locus).name
 
     # Option to downsample for testing, if you want to annotate part
