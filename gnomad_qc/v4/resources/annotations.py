@@ -304,14 +304,22 @@ def get_insilico_predictors(
 
 
 def get_vrs(
-    version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
+    version: str = CURRENT_VERSION,
+    original_annotations: bool = False,
+    test: bool = False,
+    data_type: str = "exomes",
 ) -> VersionedTableResource:
     """
     Get the gnomAD v4 VersionedTableResource containing VRS annotations.
 
     :param version: Version of annotation path to return.
-    :param test: Whether to use a tmp path for analysis of the test Table instead of the full v4 Table.
-    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
+    :param original_annotations: Whether to obtain the original input Table with
+           all its annotations in addition to the added on VRS annotations.
+           If set to False, obtain a Table with only the VRS annotations.
+    :param test: Whether to use a tmp path for analysis of the test Table instead
+           of the full v4 Table.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
+           Default is "exomes".
     :return: gnomAD v4 VRS VersionedTableResource.
     """
     return VersionedTableResource(
@@ -319,7 +327,11 @@ def get_vrs(
         {
             version: TableResource(
                 path=(
-                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vrs.ht"
+                    f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.original_annotations.vrs.ht"
+                    if original_annotations
+                    else (
+                        f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vrs.ht"
+                    )
                 )
             )
             for version in VERSIONS
