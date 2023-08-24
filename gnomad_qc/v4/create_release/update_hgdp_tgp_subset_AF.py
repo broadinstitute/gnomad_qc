@@ -10,7 +10,8 @@ from gnomad.utils.annotations import (
     set_female_y_metrics_to_na_expr,
     update_structured_annotations,
 )
-from gnomad.utils.release import make_freq_index_dict, make_freq_index_dict_from_meta
+from gnomad.utils.filtering import remove_items_from_freq
+from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
@@ -374,6 +375,10 @@ def main(args):
     logger.info("Selecting `freq` and `freq_meta` from the release HT...")
     ht = ht.select("freq").select_globals("freq_meta")
 
+    logger.info("Removing `Han` and `Papuan` populations from freq and freq_meta...")
+    pops_to_remove = [{"pop": "han", "pop": "papuan"}]
+    ht = remove_items_from_freq(ht, pops_to_remove)
+
     if test:
         logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
         test_interval = [
@@ -422,7 +427,7 @@ def main(args):
         freq_meta_added_samples=freq_ht_added.index_globals().freq_meta,
         freq_meta_subtracted_samples=freq_ht_subtracted.index_globals().freq_meta,
     )
-    # TODO: At some point before merging, add in removal of "Papuan" and "Han"
+
     logger.info("Merging AFs for subtracted samples first...")
     freq, freq_meta = merge_freq_arrays(
         [ht.freq, ht.freq_subtracted_samples],
