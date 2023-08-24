@@ -1,196 +1,157 @@
 """
-Compare frequencies for two gnomAD versions.
+Create a joint gnomAD v4 exome and genome frequency and FAF.
 
-Generate a Hail Table containing frequencies for two gnomAD versions (specified using `args.versions_to_compare`),
-and one of the following tests comparing the two frequencies:
-    - Hail's contingency table test -- chi-squared or Fisher’s exact test of independence depending on min cell count
-    - A logistic regression on the rows of a unified MatrixTable: version ~ genotype + [ancestry_pcs]. This second test
-    is currently only implemented for the comparison of v3 genomes to v2 exomes and is therefore this:
-    genome_vs_exome_status ~ genotype + [ancestry_pcs].
+Generate a Hail Table containing frequencies for exomes and genomes in gnomAD v4, a
+joint frequency, a joint FAF, and the following tests comparing the two frequencies:
+    - Hail's contingency table test -- chi-squared or Fisher’s exact test of
+      independence depending on min cell count.
+    - Cochran–Mantel–Haenszel test -- stratified test of independence for 2x2xK
+      contingency tables.
 
-The Table is written out to the location of the more recent of the two gnomAD versions being compared.
 """
 import argparse
 import logging
-from typing import List
+from typing import Dict, List, Set, Tuple
 
 import hail as hl
-from gnomad.resources.grch37.gnomad import (
-    CURRENT_EXOME_RELEASE,
-    CURRENT_GENOME_RELEASE,
-    EXOME_POPS,
-    GENOME_POPS,
-    liftover,
-)
-from gnomad.resources.grch37.gnomad import public_release as v2_public_release
-from gnomad.resources.grch38.gnomad import CURRENT_GENOME_RELEASE as V3_CURRENT_RELEASE
 from gnomad.resources.grch38.gnomad import POPS, POPS_TO_REMOVE_FOR_POPMAX
-from gnomad.resources.grch38.gnomad import public_release as v3_public_release
 from gnomad.utils.annotations import faf_expr, merge_freq_arrays, pop_max_expr
 from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict
 from gnomad.utils.slack import slack_notifications
 from statsmodels.stats.contingency_tables import StratifiedTable
 
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources.annotations import get_freq_comparison
-from gnomad_qc.v3.resources.basics import get_checkpoint_path, get_logging_path
-from gnomad_qc.v4.resources.release import release_sites as v4_release_sites
+from gnomad_qc.v4.resources.annotations import (
+    get_combined_frequency,
+    get_freq_comparison,
+)
+from gnomad_qc.v4.resources.basics import get_logging_path
+from gnomad_qc.v4.resources.release import get_combined_faf_release, release_sites
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
-logger = logging.getLogger("compare_freq")
+logger = logging.getLogger("compute_combined_faf")
 logger.setLevel(logging.INFO)
 
-POPS_MAP = {
-    "v2_exomes": {pop.lower() for pop in EXOME_POPS},
-    "v2_genomes": {pop.lower() for pop in GENOME_POPS},
-    "v3_genomes": {pop.lower() for pop in POPS["v3"]},
-    "v4_exomes": {pop.lower() for pop in POPS["v4"]},
-    "v4_genomes": {pop.lower() for pop in POPS["v4"]},
-}
-CURRENT_RELEASE_MAP = {
-    "v2_exomes": CURRENT_EXOME_RELEASE,
-    "v2_genomes": CURRENT_GENOME_RELEASE,
-    "v3_genomes": V3_CURRENT_RELEASE,
-    "v4_exomes": "4.0",  # TODO: Update once v4 release is created.
-    "v4_genomes": "4.0",  # TODO: Update once v4 release is created.
-}
-POP_FORMAT = {
-    "v2_exomes": "gnomad_{}",
-    "v2_genomes": "gnomad_{}",
-    "v3_genomes": "{}-adj",
-}
 
-
-def extract_freq_info(version1: str, version2: str, pops: List[str]) -> hl.Table:
+def extract_freq_info(
+    ht: hl.Table,
+    pops: List[str],
+    faf_pops: List[str],
+    prefix: str,
+) -> hl.Table:
     """
-    Merge frequency info for two of the gnomAD versions.
+    Extract frequencies and FAF for populations in `pops` and `faf_pops` respectively.
 
-    This only keeps variants that PASS filtering in both callsets.
+    .. note::
 
-    :param version1: First gnomAD version to extract frequency information from.
-    :param version2: Second gnomAD version to extract frequency information from.
-    :param pops: List of populations to include in the reduced frequency arrays for
-        both gnomAD versions. The reduced frequency arrays will be in the order of
-        `pops` after the first 2 entries (adj, raw).
-    :return: Table with combined and filtered frequency information from two gnomAD
-        versions.
+        The reduced frequency arrays include adj and raw in addition to the `pops`.
+
+    The following annotations are filtered and renamed:
+        - freq: {prefix}_freq
+        - faf: {prefix}_faf
+        - grpmax: {prefix}_grpmax
+
+    The following global annotations are filtered and renamed:
+        - freq_meta: {prefix}_freq_meta
+        - faf_meta: {prefix}_faf_meta
+
+    This only keeps variants that PASS filtering.
+
+    :param ht: Table with frequency and FAF information.
+    :param pops: List of populations to include in the reduced frequency arrays.
+    :param faf_pops: List of populations to include in the reduced FAF arrays.
+    :param prefix: Prefix to add to each of the filtered annotations.
+    :return: Table with filtered frequency and FAF information.
     """
-    versions = [version1, version2]
-    versions_set = set([v.split("_")[0] for v in versions])
-    release_resource_map = {
-        "v2": v2_public_release,
-        "v3": v3_public_release,
-        "v4": v4_release_sites,  # v4_public_release,
-    }
+    logger.info("Filtering Table to only variants that are PASS...")
+    ht = ht.filter(hl.len(ht.filters) == 0)
 
-    if "v2" in versions_set and len(versions_set) > 1:
-        release_resource_map["v2"] = liftover
+    def _get_pop_meta_indices(
+        meta: hl.ArrayExpression, pop_list: List[str]
+    ) -> Tuple[List[int], List[dict]]:
+        """
+        Keep full gnomAD callset adj [0], raw [1], and ancestry-specific adj frequencies.
 
-    faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX]
-
-    logger.info("Reading release HTs and extracting frequency info...")
-    hts = []
-    for version in versions:
-        v, d = version.split("_")
-        ht = release_resource_map[v](d).ht()
-
-        logger.info("Filtering %s to only variants that are PASS...", version)
-        ht = ht.filter(hl.len(ht.filters) == 0)
-        freq_meta = hl.eval(ht.freq_meta)
-
-        if "grpmax" in ht.row:
-            grpmax_label = "grpmax"
-        else:
-            grpmax_label = "popmax"
-        grpmax_expr = ht[grpmax_label]
-
-        if f"{grpmax_label}_index_dict" in ht.globals:
-            grpmax_expr = grpmax_expr[ht[f"{grpmax_label}_index_dict"]["gnomad"]]
-
-        if "faf_meta" in ht.globals:
-            faf_meta = hl.eval(ht.faf_meta)
-            faf_idx = [0, 1]
-            faf_idx.extend(
-                [
-                    i
-                    for i, m in enumerate(faf_meta)
-                    if m.get("pop") in faf_pops and len(m) == 2
-                ]
-            )
-            faf_meta = [faf_meta[i] for i in faf_idx]
-        else:
-            faf_index_dict = hl.eval(ht.faf_index_dict)
-            pop_formatted = [POP_FORMAT[version].format(pop) for pop in faf_pops]
-            faf_idx = [0, 1] + [faf_index_dict[pop] for pop in pop_formatted]
-            faf_meta = [{"group": "adj"}, {"group": "raw"}]
-            faf_meta.extend([{"group": "adj", "pop": pop} for pop in faf_pops])
-
-        # Keep full gnomAD callset adj [0], raw [1], and ancestry-specific adj
-        # frequencies.
-        freq_idx = [0, 1]
-        freq_idx.extend(
-            [i for i, m in enumerate(freq_meta) if m.get("pop") in pops and len(m) == 2]
+        :param meta: Array of frequency metadata.
+        :param pop_list: List of populations to keep.
+        :return: Indices of populations to keep and their metadata.
+        """
+        meta = hl.eval(meta)
+        idx = [0, 1]
+        idx.extend(
+            [i for i, m in enumerate(meta) if m.get("pop") in pop_list and len(m) == 2]
         )
+        meta = [meta[i] for i in idx]
 
-        logger.info(
-            "Keeping only frequencies that are needed (adj, raw, adj by pop)..."
-        )
-        ht = ht.select(
-            **{
-                f"freq_{version}": [ht.freq[i] for i in freq_idx],
-                f"faf_{version}": [ht.faf[i] for i in faf_idx],
-                f"grpmax_{version}": grpmax_expr,
-            }
-        )
-        ht = ht.select_globals(
-            **{
-                f"freq_meta_{version}": [ht.freq_meta[i] for i in freq_idx],
-                f"faf_meta_{version}": faf_meta,
-            }
-        )
+        return idx, meta
 
-        hts.append(ht)
+    logger.info("Keeping only frequencies that are needed (adj, raw, adj by pop)...")
+    freq_idx, freq_meta = _get_pop_meta_indices(ht.freq_meta, pops)
+    faf_idx, faf_meta = _get_pop_meta_indices(ht.faf_meta, faf_pops)
 
-    logger.info("Performing an inner join on frequency HTs...")
-    ht = hts[0].join(hts[1], how="inner")
-
-    joint_freq_expr, joint_freq_meta_expr = merge_freq_arrays(
-        farrays=[ht[f"freq_{v}"] for v in versions],
-        fmeta=[ht[f"freq_meta_{v}"] for v in versions],
-    )
-    joint_faf_expr, joint_faf_meta_expr = faf_expr(
-        joint_freq_expr,
-        hl.literal(joint_freq_meta_expr),
-        ht.locus,
-        POPS_TO_REMOVE_FOR_POPMAX,
-    )
-    joint_grpmax_expr = pop_max_expr(
-        joint_freq_expr, hl.literal(joint_freq_meta_expr), POPS_TO_REMOVE_FOR_POPMAX
-    )
-    joint_faf_meta_by_pop = hl.literal(
-        {
-            m.get("pop"): i
-            for i, m in enumerate(joint_faf_meta_expr)
-            if m.get("pop") is not None
+    # Rename filtered annotations with supplied prefix.
+    ht = ht.select(
+        **{
+            f"{prefix}_freq": [ht.freq[i] for i in freq_idx],
+            f"{prefix}_faf": [ht.faf[i] for i in faf_idx],
+            f"{prefix}_grpmax": ht.grpmax,
         }
     )
-    joint_grpmax_expr = joint_grpmax_expr.annotate(
-        faf95=joint_faf_expr[joint_faf_meta_by_pop.get(joint_grpmax_expr.pop)].faf95
+    ht = ht.select_globals(
+        **{
+            f"{prefix}_freq_meta": freq_meta,
+            f"{prefix}_faf_meta": faf_meta,
+        }
     )
-    ht = ht.annotate(
-        joint_freq=joint_freq_expr,
-        joint_faf=joint_faf_expr,
-        joint_grpmax=joint_grpmax_expr,
+
+    return ht
+
+
+def get_joint_freq_and_faf(
+    genomes_ht: hl.Table,
+    exomes_ht: hl.Table,
+    faf_pops_to_exclude: Set[str] = POPS_TO_REMOVE_FOR_POPMAX,
+) -> hl.Table:
+    """
+    Get joint genomes and exomes frequency and FAF information.
+
+    :param genomes_ht: Table with genomes frequency and FAF information.
+    :param exomes_ht: Table with exomes frequency and FAF information.
+    :param faf_pops_to_exclude: Set of populations to exclude from the FAF calculation.
+    :return: Table with joint genomes and exomes frequency and FAF information.
+    """
+    logger.info("Performing an inner join on frequency HTs...")
+    ht = genomes_ht.join(exomes_ht, how="inner")
+
+    # Merge exomes and genomes frequencies.
+    freq, freq_meta = merge_freq_arrays(
+        farrays=[ht.genomes_freq, ht.exomes_freq],
+        fmeta=[ht.genomes_freq_meta, ht.exomes_freq_meta],
     )
+    freq_meta = hl.literal(freq_meta)
+
+    # Compute FAF on the merged exomes + genomes frequencies.
+    faf, faf_meta = faf_expr(
+        freq, freq_meta, ht.locus, pops_to_exclude=faf_pops_to_exclude
+    )
+    faf_meta_by_pop = {m.get("pop"): i for i, m in enumerate(faf_meta) if m.get("pop")}
+    faf_meta_by_pop = hl.literal(faf_meta_by_pop)
+
+    # Compute group max (popmax) on the merged exomes + genomes frequencies.
+    grpmax = pop_max_expr(freq, freq_meta, pops_to_exclude=faf_pops_to_exclude)
+    grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.grp)].faf95)
+
+    # Annotate Table with all joint exomes + genomes computations.
+    ht = ht.annotate(joint_freq=freq, joint_faf=faf, joint_grpmax=grpmax)
     ht = ht.annotate_globals(
-        joint_freq_meta=joint_freq_meta_expr,
-        joint_freq_index_dict=make_freq_index_dict(
-            joint_freq_meta_expr, label_delimiter="-"
-        ),
-        joint_faf_meta=joint_faf_meta_expr,
-        joint_faf_index_dict=make_faf_index_dict(
-            joint_faf_meta_expr, label_delimiter="-"
-        ),
+        joint_freq_meta=freq_meta,
+        joint_freq_index_dict=make_freq_index_dict(freq_meta, label_delimiter="-"),
+        joint_faf_meta=faf_meta,
+        joint_faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-"),
     )
 
     return ht
@@ -202,19 +163,19 @@ def perform_contingency_table_test(
     min_cell_count: int = 1000,
 ) -> hl.expr.ArrayExpression:
     """
-    Perform Hail's `contingency_table_test` on the alleles counts between two gnomAD versions in `ht`.
+    Perform Hail's `contingency_table_test` on the alleles counts between two frequency expressions.
 
     This is done on the 2x2 matrix of reference and alternate allele counts. The
     chi-squared test is used for any case where all cells of the 2x2 matrix are greater
     than `min_cell_count`. Otherwise, Fisher’s exact test is used.
 
-    Table must include two struct annotations with AN and AC counts for versions of
-    gnomAD labeled `freq_version`.
+    `freq1_expr` and `freq2_expr` should be ArrayExpressions of structs with 'AN' and
+    'AC' annotations.
 
-    :param freq1_expr: Expression for the first version of gnomAD frequencies.
-    :param freq2_expr: Expression for the second version of gnomAD frequencies.
-    :param min_cell_count: Minimum count in every cell to use the chi-squared test
-    :return: Table with contingency table test results added
+    :param freq1_expr: First ArrayExpression of frequencies to combine.
+    :param freq2_expr: Second ArrayExpression of frequencies to combine.
+    :param min_cell_count: Minimum count in every cell to use the chi-squared test.
+    :return: ArrayExpression for contingency table test results.
     """
     logger.info("Computing chi squared and fisher exact tests on frequencies...")
     return hl.map(
@@ -235,17 +196,33 @@ def perform_cmh_test(
     pops: List[str],
 ) -> hl.Table:
     """
-    Take the set of N populations with sufficient number of individuals in genomes
-    (say > 5K or 10K) and exomes (say >10K or 20K), run a CMH test across the N 2x2
-    tables (Exome/Genome allele1 and allele 2 counts) which would provide a p-value and
-    an odds ratio. Then, since p-value alone might still flag common sites as
-    significant based on ancestry mismatch within groups (though computing across all
-    will likely alleviate this somewhat) I would guess we would want to flag those with
-    ORs >2 (specifically OR<0.5 or OR>2) as inconsistent This is fast (mantelhaen.test
-    in R even).
+    Perform the Cochran–Mantel–Haenszel test on the alleles counts between two frequency expressions using population as the stratification.
+
+    This is done by creating a list of 2x2 matrices of freq1/freq2 reference and
+    alternate allele counts for each population in pops.
+
+    `freq1_expr` and `freq2_expr` should be ArrayExpressions of structs with 'AN' and
+    'AC' annotations.
+
+    :param ht: Table with joint exomes and genomes frequency and FAF information.
+    :param freq1_expr: First ArrayExpression of frequencies to combine.
+    :param freq2_expr: Second ArrayExpression of frequencies to combine.
+    :param freq1_meta_expr: Frequency metadata for `freq1_expr`.
+    :param freq2_meta_expr: Frequency metadata for `freq2_expr`.
+    :param pops: List of populations to  include in the CMH test.
+    :return: ArrayExpression for Cochran–Mantel–Haenszel test results.
     """
 
-    def _get_freq_by_pop(freq_expr, meta_expr):
+    def _get_freq_by_pop(
+        freq_expr: hl.expr.ArrayExpression, meta_expr: hl.expr.ArrayExpression
+    ) -> Dict[str, hl.expr.StructExpression]:
+        """
+        Get a dictionary of frequency StructExpressions by population.
+
+        :param freq_expr: ArrayExpression of frequencies to combine.
+        :param meta_expr: Frequency metadata for `freq_expr`.
+        :return: Dictionary of frequency StructExpressions by population.
+        """
         return {
             m.get("pop"): freq_expr[i]
             for i, m in enumerate(hl.eval(meta_expr))
@@ -255,6 +232,8 @@ def perform_cmh_test(
     freq1_by_pop = _get_freq_by_pop(freq1_expr, freq1_meta_expr)
     freq2_by_pop = _get_freq_by_pop(freq2_expr, freq2_meta_expr)
 
+    # Create list on 2x2 matrices of reference and alternate allele counts for each
+    # population in pops and export to pandas for CMH test.
     df = ht.select(
         an=[
             hl.bind(
@@ -269,8 +248,9 @@ def perform_cmh_test(
     df["pvalue"] = df.apply(lambda x: x.cmh.pvalue, axis=1)
     df["statistic"] = df.apply(lambda x: x.cmh.statistic, axis=1)
     df = df.drop(["cmh", "an"], axis=1)
-    cmh_ht = hl.Table.from_pandas(df)
 
+    # Convert CMH result pandas DataFrame to a Table and restructure the annotation.
+    cmh_ht = hl.Table.from_pandas(df)
     cmh_ht = cmh_ht.key_by("locus", "alleles")
     cmh_ht = cmh_ht.annotate(
         cmh=hl.struct(odds_ratio=cmh_ht.statistic, p_value=cmh_ht.pvalue)
@@ -279,72 +259,132 @@ def perform_cmh_test(
     return cmh_ht[ht.key].cmh
 
 
-def main(args):  # noqa: D103
-    hl.init(log="/compare_freq.log")
+def get_combine_faf_resources(
+    overwrite: bool, test: bool, public: bool = False
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the combined FAF resource creation pipeline.
+
+    :param overwrite: Whether to overwrite existing resources.
+    :param test: Whether to use test resources.
+    :param public: Whether to use the public finalized combined FAF resource.
+    :return: PipelineResourceCollection containing resources for all steps of the
+        combined FAF resource creation pipeline.
+    """
+    # Initialize pipeline resource collection.
+    combine_faf_pipeline = PipelineResourceCollection(
+        pipeline_name="combine_faf",
+        overwrite=overwrite,
+    )
+
+    # Create resource collection for each step of the pipeline.
+    combined_frequency = PipelineStepResourceCollection(
+        "--create-combined-frequency-table",
+        output_resources={"freq_ht": get_combined_frequency(test=test)},
+        input_resources={
+            # TODO: rename when release scripts are finalized.
+            "create_release.py": {
+                "exomes_ht": release_sites("exomes"),
+            },
+            "create_genome_release.py": {
+                "genomes_ht": release_sites("genomes"),
+            },
+        },
+    )
+    contingency_table_test = PipelineStepResourceCollection(
+        "--perform-contingency-table-test",
+        output_resources={
+            "contingency_table_ht": get_freq_comparison(
+                "contingency_table_test", test=test
+            )
+        },
+        pipeline_input_steps=[combined_frequency],
+    )
+    cmh_test = PipelineStepResourceCollection(
+        "--perform-cochran-mantel-haenszel-test",
+        output_resources={"cmh_ht": get_freq_comparison("cmh_test", test=test)},
+        pipeline_input_steps=[combined_frequency],
+    )
+    finalize_faf = PipelineStepResourceCollection(
+        "--finalize-combined-faf-release",
+        output_resources={
+            "final_combined_faf_ht": get_combined_faf_release(public=public),
+        },
+        pipeline_input_steps=[combined_frequency, contingency_table_test, cmh_test],
+    )
+
+    # Add all steps to the combined FAF pipeline resource collection.
+    combine_faf_pipeline.add_steps(
+        {
+            "combined_frequency": combined_frequency,
+            "contingency_table_test": contingency_table_test,
+            "cmh_test": cmh_test,
+            "finalize_faf": finalize_faf,
+        }
+    )
+
+    return combine_faf_pipeline
+
+
+def main(args):
+    """Create combined FAF resource."""
+    hl.init(log="/compute_combined_faf.log")
+    test = args.test
+    overwrite = args.overwrite
+    pops = list(POPS["v3"] & POPS["v4"])
+    faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX]
+    combine_faf_resources = get_combine_faf_resources(overwrite, test, args.public)
 
     try:
-        # Reorder so that v3_genomes is version1. Forces the output location to be
-        # in the more recent release location
-        version1, version2 = [
-            v
-            for v in [
-                "v4_genomes",
-                "v4_exomes",
-                "v3_genomes",
-                "v2_genomes",
-                "v2_exomes",
-            ]
-            if v in args.versions_to_compare
-        ]
-        pops = list(POPS_MAP[version1] & POPS_MAP[version2])
-        faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX]
-        ht = extract_freq_info(version1, version2, pops)
+        if args.create_combined_frequency_table:
+            res = combine_faf_resources.combined_frequency
+            res.check_resource_existence()
+            if test:
+                exomes_ht = res.exomes_ht.ht()._filter_partitions(range(20))
+                genomes_ht = res.genomes_ht.ht()._filter_partitions(range(20))
 
-        if args.test:
-            ht = ht._filter_partitions(range(20))
-        ht = ht.checkpoint("gs://gnomad-tmp/julia/combined_faf/freq.ht", overwrite=True)
+            exomes_ht = extract_freq_info(exomes_ht, pops, faf_pops, "genomes")
+            genomes_ht = extract_freq_info(genomes_ht, pops, faf_pops, "exomes")
+            ht = get_joint_freq_and_faf(genomes_ht, exomes_ht)
+            ht.write(res.freq_ht.path, overwrite=overwrite)
 
-        if args.contingency_table_test:
-            ht = ht.annotate(
+        if args.perform_contingency_table_test:
+            res = combine_faf_resources.contingency_table_test
+            res.check_resource_existence()
+            ht = res.freq_ht.ht()
+            ht = ht.select(
                 contingency_table_test=perform_contingency_table_test(
-                    ht[f"freq_{version1}"],
-                    ht[f"freq_{version2}"],
+                    ht.genomes_freq,
+                    ht.exomes_freq,
                     min_cell_count=args.min_cell_count,
-                ),
+                )
+            )
+            ht.write(res.contingency_table_ht.path, overwrite=overwrite)
+
+        if args.perform_cochran_mantel_haenszel_test:
+            res = combine_faf_resources.cmh_test
+            res.check_resource_existence()
+            ht = res.freq_ht.ht()
+            ht = ht.select(
                 cochran_mantel_haenszel_test=perform_cmh_test(
                     ht,
-                    ht[f"freq_{version1}"],
-                    ht[f"freq_{version2}"],
-                    ht[f"freq_meta_{version1}"],
-                    ht[f"freq_meta_{version2}"],
+                    ht.genomes_freq,
+                    ht.exomes_freq,
+                    ht.exomes_freq_meta,
+                    ht.exomes_freq_meta,
                     pops=faf_pops,
                 ),
             )
-            ht = ht.annotate(
-                **{
-                    ann: ht[ann].rename({"pop": "grp"})
-                    for ann in ht.row_value
-                    if ann.startswith("grpmax")
-                }
+            ht.write(res.cmh_ht.path, overwrite=overwrite)
+
+        if args.finalize_combined_faf_release:
+            raise NotImplementedError(
+                "Finalizing combined FAF release is not yet implemented."
             )
-            ht = ht.checkpoint(
-                (
-                    get_checkpoint_path(f"{version1}_{version2}.compare_freq.test")
-                    if args.test
-                    else get_freq_comparison(
-                        CURRENT_RELEASE_MAP[version1],
-                        version1.split("_")[1],
-                        CURRENT_RELEASE_MAP[version2],
-                        version2.split("_")[1],
-                    ).path
-                ),
-                overwrite=args.overwrite,
-            )
-            ht.describe()
 
     finally:
         logger.info("Copying hail log to logging bucket...")
-        hl.copy_log(get_logging_path("compare_freq"))
+        hl.copy_log(get_logging_path("compute_combined_faf"))
 
 
 if __name__ == "__main__":
@@ -359,18 +399,21 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--test",
-        help="Filter Tables to only the first 5 partitions for testing.",
+        help="Filter Tables to only the first 20 partitions for testing.",
         action="store_true",
     )
     parser.add_argument(
-        "--versions-to-compare",
-        help="Two gnomAD versions to compare allele frequencies.",
-        nargs=2,
-        choices=["v3_genomes", "v2_exomes", "v2_genomes", "v4_genomes", "v4_exomes"],
-        default=["v4_genomes", "v4_exomes"],
+        "--create-combined-frequency-table",
+        help=(
+            "Create a Table with frequency information for exomes, genomes, and the "
+            "joint exome + genome frequencies. Included frequencies are adj, raw, and "
+            "adj for all populations found in both the exomes and genomes. The table "
+            "also includes FAF computed on the joint frequencies."
+        ),
+        action="store_true",
     )
     parser.add_argument(
-        "--contingency-table-test",
+        "--perform-contingency-table-test",
         help=(
             "Perform chi-squared or Fisher’s exact test of independence on the allele"
             " frequencies based on `min_cell_count`."
@@ -384,44 +427,22 @@ if __name__ == "__main__":
         default=1000,
     )
     parser.add_argument(
-        "--run-pc-project-v3-on-v2",
+        "--perform-cochran-mantel-haenszel-test",
         help=(
-            "Run the projection of v3.1 samples onto v2 PCs using v2 loadings. This is"
-            " needed for '--logistic-regression' if '--use-pc-project' is wanted."
+            "Perform the Cochran–Mantel–Haenszel test, a stratified test of "
+            "independence for 2x2xK contingency tables, on the allele"
+            " frequencies where K is the number of populations with FAF computed."
         ),
         action="store_true",
     )
     parser.add_argument(
-        "--logistic-regression",
-        help=(
-            "Perform a logistic regression of the rows: genome_vs_exome_status ~"
-            " genotype + [ancestry_pcs]. Only implemented for the comparison of v3"
-            " genomes to v2 exomes."
-        ),
+        "--finalize-combined-faf-release",
+        help="Finalize the combined FAF Table for release.",
         action="store_true",
     )
     parser.add_argument(
-        "--use-pc-project",
-        help=(
-            "Use PC project scores as the ancestry PCs in the logistic regression"
-            " '--logistic-regression'."
-        ),
-        action="store_true",
-    )
-    parser.add_argument(
-        "--use-v3-qc-pc-scores",
-        help=(
-            "Use the joint v3/v2_exome PC scores from an old run of PC relate (includes"
-            " relateds and only used 10% of QC variants)."
-        ),
-        action="store_true",
-    )
-    parser.add_argument(
-        "--read-checkpoint-if-exists",
-        help=(
-            "Whether to read the checkpointed v2/v3 unified MatrixTable if it exists."
-            " Used in '--logistic-regression'."
-        ),
+        "--public",
+        help="Whether to write the finalized Table to a public release path.",
         action="store_true",
     )
 
