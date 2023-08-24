@@ -1,4 +1,4 @@
-"""
+r"""
 This is a batch script which adds VRS IDs to a Hail Table by creating sharded VCFs, running a vrs-annotation script on each shard, and merging the results into the original Hail Table.
 
 Advise to run from a backend (eg. hailctl batch submit) to avoid losing progress
@@ -8,12 +8,10 @@ Example command to use `hailctl batch submit`:
 hailctl batch submit \
 --image-name us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
 gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch.py \
--- \
+-- \ # TODO: remove this when hailctl batch submit bug is fixed in hail 0.2.121
 --billing-project gnomad-annot \
 --working-bucket gnomad-tmp-4day \
 --image us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
---version test_v4.0_exomes \
---prefix v4 \
 --header-path gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt \
 --run-vrs \
 --annotate-original \
@@ -164,14 +162,8 @@ def main(args):
     ht_example.show()
 
     working_bucket = args.working_bucket
-    version = args.version
-
-    # Prefix to create custom named versions of outputs
-    prefix = args.prefix + version
 
     input_path = v4_input_ht().path
-
-    output_path = v4_vrs_annotations(test=args.test, original_annotations=True)
 
     # Read in Hail Table, partition, and export to sharded VCF
     ht_original = hl.read_table(input_path)
@@ -236,14 +228,14 @@ def main(args):
 
         hl.export_vcf(
             ht,
-            f"gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz",
+            f"gs://{working_bucket}/vrs-temp/shards/shard.vcf.bgz",
             append_to_header=args.header_path,
             parallel="header_per_shard",
         )
 
         logger.info(
             "Gathering list of files in"
-            f" gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz using"
+            f" gs://{working_bucket}/vrs-temp/shards/shard.vcf.bgz using"
             " Hail's Hadoop method"
         )
 
@@ -251,7 +243,7 @@ def main(args):
         # Note: This step requires using Hail 0.2.120 or later, for
         # faster listing of files in a directory with hadoop_ls.
         file_dict = hl.utils.hadoop_ls(
-            f"gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz/part-*.bgz"
+            f"gs://{working_bucket}/vrs-temp/shards/shard.vcf.bgz/part-*.bgz"
         )
 
         # Create a list of all file names to later annotate in parallel
@@ -293,7 +285,9 @@ def main(args):
             vrs_script_path = "/usr/local/lib/python3.9/dist-packages/ga4gh/vrs/extras/vcf_annotation.py"
 
             # Store VCF input and output paths
-            vcf_input = f"gs://{working_bucket}/vrs-temp/shards/shard-{version}.vcf.bgz/{vcf_name}"
+            vcf_input = (
+                f"gs://{working_bucket}/vrs-temp/shards/shard.vcf.bgz/{vcf_name}"
+            )
             vcf_output = f'/temp-vcf-annotated/annotated-{vcf_name.split(".")[0]}.vcf'
 
             # Perform VRS annotation on vcf_input and store output in /vrs-temp
@@ -312,7 +306,7 @@ def main(args):
             new_job.command(
                 "gsutil cp"
                 f" {vcf_output}.gz"
-                f" gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/"
+                f" gs://{working_bucket}/vrs-temp/annotated-shards/annotated.vcf/"
             )
 
         # Execute all jobs in the batch_vrs Batch
@@ -324,7 +318,7 @@ def main(args):
         )
 
         annotated_file_dict = hl.utils.hadoop_ls(
-            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated-{version}.vcf/*"
+            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated.vcf/*"
         )
 
         annotated_file_list = [
@@ -362,6 +356,7 @@ def main(args):
         )
 
     if args.annotate_original:
+        output_path = v4_vrs_annotations(test=args.test, original_annotations=True)
         check_resource_existence(
             input_step_resources={
                 "--run-vrs": [v4_vrs_annotations(test=args.test).path],
@@ -410,12 +405,6 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
-        "--version",
-        help="Version of HT to read in.",
-        default="v4.0_exomes",
-        type=str,
-    )
-    parser.add_argument(
         "--partitions-for-vcf-export",
         help=(
             "Number of partitions to use when exporting the Table to a sharded VCF"
@@ -425,15 +414,6 @@ if __name__ == "__main__":
         ),
         default=None,
         type=int,
-    )
-    parser.add_argument(
-        "--prefix",
-        help=(
-            "Prefix to append to names of all saved temp files and test version output"
-            " files."
-        ),
-        type=str,
-        default="v4",
     )
     parser.add_argument(
         "--test",
