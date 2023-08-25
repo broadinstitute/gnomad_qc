@@ -375,8 +375,8 @@ def main(args):
     logger.info("Selecting `freq` and `freq_meta` from the release HT...")
     ht = ht.select("freq").select_globals("freq_meta")
 
-    logger.info("Removing `Han` and `Papuan` populations from freq and freq_meta...")
-    pops_to_remove = [{"pop": "han", "pop": "papuan"}]
+    logger.info("Removing 'Han' and 'Papuan' populations from freq and freq_meta...")
+    pops_to_remove = {"pop": ["pop", "papuan"]}
     ht = remove_items_from_freq(ht, pops_to_remove)
 
     if test:
