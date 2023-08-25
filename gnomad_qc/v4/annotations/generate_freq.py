@@ -299,7 +299,6 @@ def annotate_freq_index_dict(ht: hl.Table) -> hl.Table:
             sort_order=sort_order,
         )
     )
-
     return ht
 
 
@@ -430,22 +429,16 @@ def generate_freq_and_hists_ht(
             ),
         )
         # Filter freq_meta array field to dict entries with a "downsampling" key and
-        # rename the key to "non_ukb_downsampling". We don't want any other strata that
-        # are returned from annotate_freq, e.g. 'pop'. Also rename the downsamplings
-        # global field to "non_ukb_downsamplings" so we can merge the two freq arrays
+        # update it to have "subset" key with "non_ukb" value. We don't want any other
+        # strata that are returned from annotate_freq, e.g. 'pop'. Also rename the
+        # downsamplings global field to "non_ukb_downsamplings" so we can merge two
         # later and not lose the non_ukb downsampling information.
         non_ukb_ds_freq_ht = non_ukb_ds_freq_ht.annotate_globals(
             freq_meta=non_ukb_ds_freq_ht.freq_meta.filter(
                 lambda i: i.keys().contains("downsampling")
             ).map(
-                lambda d: hl.dict(  # TODO: changes this to just add "subset": "non_ukb" to the dict
-                    d.items().map(
-                        lambda i: hl.if_else(
-                            i[0] == "downsampling",
-                            ("non_ukb_downsamplings", i[1]),
-                            (i[0], i[1]),
-                        )
-                    )
+                lambda d: hl.dict(
+                    hl.zip(d.keys(), d.values()).append(("subset", "non_ukb"))
                 )
             ),
             non_ukb_downsamplings=non_ukb_ds_freq_ht.downsamplings,
