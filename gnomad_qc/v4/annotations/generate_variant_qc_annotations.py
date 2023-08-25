@@ -172,7 +172,7 @@ def correct_as_annotations(
         a: hl.if_else(
             hl.len(expr) > hl.len(mt.LA),
             hl.or_missing(
-                set_to_missing, expr[:idx_remove].extend(expr[idx_remove + 1 :])
+                not set_to_missing, expr[:idx_remove].extend(expr[idx_remove + 1 :])
             ),
             expr,
         )
