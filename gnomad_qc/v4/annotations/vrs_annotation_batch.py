@@ -356,7 +356,7 @@ def main(args):
         )
 
     if args.annotate_original:
-        output_path = v4_vrs_annotations(test=args.test, original_annotations=True)
+        output_path = v4_vrs_annotations(test=args.test, original_annotations=True).path
         check_resource_existence(
             input_step_resources={
                 "--run-vrs": [v4_vrs_annotations(test=args.test).path],
