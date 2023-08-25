@@ -10,7 +10,9 @@ from gnomad.sample_qc.relatedness import filter_mt_to_trios
 from gnomad.utils.annotations import annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
+    AS_INFO_AGG_FIELDS,
     default_compute_info,
+    get_as_info_expr,
     split_info_annotation,
     split_lowqual_annotation,
 )
@@ -134,7 +136,6 @@ def recompute_as_qualapprox_from_lpl(mt: hl.MatrixTable) -> hl.expr.ArrayExpress
 def correct_as_annotations(
     mt: hl.MatrixTable,
     set_to_missing: bool = False,
-    postfix: str = "",
 ) -> hl.expr.StructExpression:
     """
     Correct allele specific annotations that are longer than the length of LA.
@@ -153,7 +154,6 @@ def correct_as_annotations(
     :param mt: Input MatrixTable.
     :param set_to_missing: Whether to set the annotations to missing instead of
         correcting them.
-    :param postfix: Postfix to add to the end of the corrected annotations labels.
     :return: StructExpression with corrected allele specific annotations.
     """
     annotations_to_correct = [
@@ -162,9 +162,7 @@ def correct_as_annotations(
         "AS_RAW_ReadPosRankSum",
         "AS_RAW_MQRankSum",
     ]
-    annotations_to_correct = {
-        f"{a}{postfix}": mt.gvcf_info[a] for a in annotations_to_correct
-    }
+    annotations_to_correct = {a: mt.gvcf_info[a] for a in annotations_to_correct}
 
     # Identify index corresponding to min of AS_RAW_MQ, skipping the reference allele.
     as_raw_mq_no_ref = mt.gvcf_info.AS_RAW_MQ[1:]
@@ -174,7 +172,7 @@ def correct_as_annotations(
         a: hl.if_else(
             hl.len(expr) > hl.len(mt.LA),
             hl.or_missing(
-                ~set_to_missing, expr[:idx_remove].extend(expr[idx_remove + 1 :])
+                set_to_missing, expr[:idx_remove].extend(expr[idx_remove + 1 :])
             ),
             expr,
         )
@@ -196,29 +194,15 @@ def run_compute_info(mt: hl.MatrixTable) -> hl.Table:
     :param mt: Input MatrixTable.
     :return: Table with info annotations.
     """
-    as_info_agg_fields = {
-        "sum_agg_fields": ["AS_QUALapprox", "AS_RAW_MQ", "AS_RAW_MQ_set_to_missing"],
-        "int32_sum_agg_fields": ["AS_VarDP"],
-        "median_agg_fields": [
-            "AS_RAW_ReadPosRankSum",
-            "AS_RAW_MQRankSum",
-            "AS_RAW_ReadPosRankSum_set_to_missing",
-            "AS_RAW_MQRankSum_set_to_missing",
-        ],
-        "array_sum_agg_fields": ["AS_SB_TABLE", "AS_SB_TABLE_set_to_missing"],
-    }
-
     mt = mt.annotate_entries(
         gvcf_info=mt.gvcf_info.annotate(
             AS_QUALapprox=recompute_as_qualapprox_from_lpl(mt),
             **correct_as_annotations(mt),
-            **correct_as_annotations(
-                mt, set_to_missing=True, postfix="_set_to_missing"
-            ),
-        )
+        ),
+        set_long_AS_missing=correct_as_annotations(mt, set_to_missing=True),
     )
 
-    return default_compute_info(
+    info_ht = default_compute_info(
         mt,
         site_annotations=True,
         as_annotations=True,
@@ -227,8 +211,24 @@ def run_compute_info(mt: hl.MatrixTable) -> hl.Table:
             "release": mt.meta.release,
             "unrelated": ~mt.meta.sample_filters.relatedness_filters.related,
         },
-        as_info_agg_fields=as_info_agg_fields,
     )
+
+    mt = mt.annotate_entries(gvcf_info=mt.set_long_AS_missing)
+    mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
+    ht = mt.select_rows(
+        **get_as_info_expr(
+            mt,
+            sum_agg_fields=["AS_RAW_MQ"],
+            int32_sum_agg_fields=[],
+            median_agg_fields=["AS_RAW_ReadPosRankSum", "AS_RAW_MQRankSum"],
+            array_sum_agg_fields=["AS_SB_TABLE"],
+            treat_fields_as_allele_specific=True,
+        )
+    ).rows()
+
+    info_ht = info_ht.annotate(set_long_AS_missing_info=ht[info_ht.key])
+
+    return info_ht
 
 
 def split_info(info_ht: hl.Table) -> hl.Table:
@@ -245,10 +245,14 @@ def split_info(info_ht: hl.Table) -> hl.Table:
     :return: Info Table with split multi-allelics.
     """
     info_ht = annotate_allele_info(info_ht)
+    info_annotations_to_split = ["info", "quasi_info", "set_long_AS_missing_info"]
     info_ht = info_ht.annotate(
-        info=info_ht.info.annotate(
-            **split_info_annotation(info_ht.info, info_ht.a_index),
-        ),
+        **{
+            a: info_ht[a].annotate(
+                **split_info_annotation(info_ht[a], info_ht.a_index),
+            )
+            for a in info_annotations_to_split
+        },
         AS_lowqual=split_lowqual_annotation(info_ht.AS_lowqual, info_ht.a_index),
     )
 
@@ -404,7 +408,7 @@ def main(args):
         # TODO: is there any reason to also compute info per platform?
         res = vqc_resources.compute_info
         res.check_resource_existence()
-        ht = run_compute_info(mt, test=test_dataset)
+        ht = run_compute_info(mt)
         ht.write(res.info_ht.path, overwrite=overwrite)
 
     if args.split_info:
