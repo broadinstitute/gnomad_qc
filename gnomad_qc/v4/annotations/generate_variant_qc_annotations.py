@@ -371,7 +371,7 @@ def get_tp_ht_for_vcf_export(
     for group in GROUPS:
         filter_expr = False
         if transmitted_singletons:
-            filter_expr = filter_expr | ht[f"transmitted_singleton_{group}"]
+            filter_expr = ht[f"transmitted_singleton_{group}"]
         if sibling_singletons:
             filter_expr = filter_expr | ht[f"sibling_singleton_{group}"]
 
@@ -504,7 +504,7 @@ def main(args):
     elif transmitted_singletons:
         true_positive_type = "transmitted_singleton"
     elif sibling_singletons:
-        true_positive_type += "sibling_singleton"
+        true_positive_type = "sibling_singleton"
 
     vqc_resources = get_variant_qc_annotation_resources(
         test=test, overwrite=overwrite, true_positive_type=true_positive_type
