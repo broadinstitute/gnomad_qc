@@ -82,6 +82,7 @@ RUN python3 -m pip install --upgrade pip
 ENV HAIL_VERSION="0.2.120"
 ENV GA4GH_VRS_VERSION="0.8.4"
 RUN python3 --version
+RUN python3 -m pip install --ignore-installed PyYAML
 RUN python3 -m pip install \
     wheel \
     pypandoc \
