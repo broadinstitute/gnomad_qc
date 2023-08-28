@@ -386,11 +386,11 @@ def main(args):
 
     logger.info("Removing `Han` and `Papuan` populations from freq and freq_meta...")
     pops_to_remove = {"pop": ["pop", "papuan"]}
-    freq, freq_meta = filter_freq_by_meta(
+    freq0, freq_meta0 = filter_freq_by_meta(
         ht.freq, ht.freq_meta, pops_to_remove, keep=False, operator="or"
     )
-    ht = ht.annotate(freq=freq)
-    ht = ht.annotate_globals(freq_meta=freq_meta)
+    ht = ht.annotate(freq=freq0)
+    ht = ht.annotate_globals(freq_meta=freq_meta0)
 
     if test:
         logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
@@ -442,30 +442,36 @@ def main(args):
     )
 
     logger.info("Merging AFs for subtracted samples first...")
-    freq, freq_meta = merge_freq_arrays(
+    freq1, freq_meta1 = merge_freq_arrays(
         [ht.freq, ht.freq_subtracted_samples],
         [ht.freq_meta, ht.freq_meta_subtracted_samples],
         operation="diff",
         set_negatives_to_zero=True,
     )
-
-    # TODO: temporarily not overwriting freq or freq_meta, so we can examine the output
-    ht = ht.annotate(freq1=freq)
-    ht = ht.annotate_globals(freq_meta1=freq_meta)
+    ht = ht.annotate(freq=freq1)
+    ht = ht.annotate_globals(freq_meta=freq_meta1)
 
     logger.info("Merging AFs for added samples...")
-    freq, freq_meta = merge_freq_arrays(
-        [ht.freq1, ht.freq_added_samples],
-        [ht.freq_meta1, ht.freq_meta_added_samples],
-        operation="sum",
+    freq2, freq_meta2 = merge_freq_arrays(
+        [ht.freq, ht.freq_added_samples],
+        [ht.freq_meta, ht.freq_meta_added_samples],
+    )
+    ht = ht.annotate(freq=freq2)
+    ht = ht.annotate_globals(freq_meta=freq_meta2)
+
+    logger.info("Making freq_index_dict from freq_meta...")
+    ht = ht.annotate_globals(
+        freq_index_dict=make_freq_index_dict_from_meta(ht.freq_meta)
     )
 
-    ht = ht.annotate(freq2=freq)
-    ht = ht.annotate_globals(freq_meta2=freq_meta)
-    ht = ht.annotate_globals(
-        freq_index_dict=make_freq_index_dict_from_meta(ht.freq_meta2)
+    logger.info(
+        "Set Y-variant frequency callstats for female-specific "
+        "metrics to missing structs..."
     )
-    ht = ht.annotate(freq2=set_female_y_metrics_to_na_expr(ht))
+    ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
+
+    logger.info("Keeping only the final AFs...")
+    ht = ht.select("freq").select_globals("freq_meta", "freq_index_dict")
 
     logger.info("Writing out the AF HT...")
     if test:
