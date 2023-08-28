@@ -413,11 +413,8 @@ def main(args):
             # TODO: is there any reason to also compute info per platform?
             res = vqc_resources.compute_info
             res.check_resource_existence()
-            ht = run_compute_info(mt)
-            ht.write(
-                "gs://gnomad-tmp/julia/compute_info_part20180.ht", overwrite=overwrite
-            )
-            # ht.write(res.info_ht.path, overwrite=overwrite)
+            ht = run_compute_info(mt, args.compute_info_n_partitions)
+            ht.write(res.info_ht.path, overwrite=overwrite)
 
         if args.split_info:
             res = vqc_resources.split_info
