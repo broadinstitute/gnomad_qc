@@ -387,7 +387,7 @@ def main(args):
     logger.info("Removing `Han` and `Papuan` populations from freq and freq_meta...")
     pops_to_remove = {"pop": ["pop", "papuan"]}
     freq0, freq_meta0 = filter_freq_by_meta(
-        ht.freq, ht.freq_meta, pops_to_remove, keep=False, operator="or"
+        ht.freq, ht.freq_meta, pops_to_remove, keep=False, combine_operator="or"
     )
     ht = ht.annotate(freq=freq0)
     ht = ht.annotate_globals(freq_meta=freq_meta0)
