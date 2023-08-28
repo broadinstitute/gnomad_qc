@@ -212,7 +212,9 @@ def run_compute_info(mt: hl.MatrixTable, n_partitions: int) -> hl.Table:
         },
         n_partitions=None,
     )
-    info_ht = info_ht.checkpoint(hl.utils.new_temp_file("compute_info"), overwrite=True)
+    info_ht = info_ht.checkpoint(
+        hl.utils.new_temp_file("compute_info", extension="ht"), overwrite=True
+    )
 
     mt = mt.annotate_entries(gvcf_info=correct_as_annotations(mt, set_to_missing=True))
     mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
@@ -229,7 +231,8 @@ def run_compute_info(mt: hl.MatrixTable, n_partitions: int) -> hl.Table:
 
     info_ht = info_ht.annotate(set_long_AS_missing_info=ht[info_ht.key])
     info_ht = info_ht.checkpoint(
-        hl.utils.new_temp_file("compute_info_AS_missing"), overwrite=True
+        hl.utils.new_temp_file("compute_info_AS_missing", extension="ht"),
+        overwrite=True,
     )
 
     return info_ht.naive_coalesce(n_partitions)
