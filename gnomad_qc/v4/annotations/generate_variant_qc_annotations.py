@@ -33,7 +33,7 @@ from gnomad_qc.v4.resources.annotations import (
     info_vcf_path,
     validate_vep_path,
 )
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds, get_logging_path
 from gnomad_qc.v4.resources.sample_qc import pedigree, relatedness
 
 logging.basicConfig(
@@ -182,7 +182,7 @@ def correct_as_annotations(
     return hl.struct(**corrected_annotations)
 
 
-def run_compute_info(mt: hl.MatrixTable) -> hl.Table:
+def run_compute_info(mt: hl.MatrixTable, n_partitions: int) -> hl.Table:
     """
     Run compute info on a MatrixTable.
 
@@ -192,16 +192,15 @@ def run_compute_info(mt: hl.MatrixTable) -> hl.Table:
         have different lengths than LA.
 
     :param mt: Input MatrixTable.
+    :param n_partitions: Number of partitions to use for the output Table.
     :return: Table with info annotations.
     """
     mt = mt.annotate_entries(
         gvcf_info=mt.gvcf_info.annotate(
             AS_QUALapprox=recompute_as_qualapprox_from_lpl(mt),
             **correct_as_annotations(mt),
-        ),
-        set_long_AS_missing=correct_as_annotations(mt, set_to_missing=True),
+        )
     )
-
     info_ht = default_compute_info(
         mt,
         site_annotations=True,
@@ -211,9 +210,11 @@ def run_compute_info(mt: hl.MatrixTable) -> hl.Table:
             "release": mt.meta.release,
             "unrelated": ~mt.meta.sample_filters.relatedness_filters.related,
         },
+        n_partitions=None,
     )
+    info_ht = info_ht.checkpoint(hl.utils.new_temp_file("compute_info"), overwrite=True)
 
-    mt = mt.annotate_entries(gvcf_info=mt.set_long_AS_missing)
+    mt = mt.annotate_entries(gvcf_info=correct_as_annotations(mt, set_to_missing=True))
     mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
     ht = mt.select_rows(
         **get_as_info_expr(
@@ -227,8 +228,11 @@ def run_compute_info(mt: hl.MatrixTable) -> hl.Table:
     ).rows()
 
     info_ht = info_ht.annotate(set_long_AS_missing_info=ht[info_ht.key])
+    info_ht = info_ht.checkpoint(
+        hl.utils.new_temp_file("compute_info_AS_missing"), overwrite=True
+    )
 
-    return info_ht
+    return info_ht.naive_coalesce(n_partitions)
 
 
 def split_info(info_ht: hl.Table) -> hl.Table:
@@ -403,50 +407,65 @@ def main(args):
 
     if test_n_partitions:
         mt = mt._filter_partitions(range(test_n_partitions))
+    mt = mt._filter_partitions([20180])
 
-    if args.compute_info:
-        # TODO: is there any reason to also compute info per platform?
-        res = vqc_resources.compute_info
-        res.check_resource_existence()
-        ht = run_compute_info(mt)
-        ht.write(res.info_ht.path, overwrite=overwrite)
+    try:
+        if args.compute_info:
+            # TODO: is there any reason to also compute info per platform?
+            res = vqc_resources.compute_info
+            res.check_resource_existence()
+            ht = run_compute_info(mt)
+            ht.write(
+                "gs://gnomad-tmp/julia/compute_info_part20180.ht", overwrite=overwrite
+            )
+            # ht.write(res.info_ht.path, overwrite=overwrite)
 
-    if args.split_info:
-        res = vqc_resources.split_info
-        res.check_resource_existence()
-        split_info(res.info_ht.ht()).write(res.split_info_ht.path, overwrite=overwrite)
+        if args.split_info:
+            res = vqc_resources.split_info
+            res.check_resource_existence()
+            split_info(res.info_ht.ht()).write(
+                res.split_info_ht.path, overwrite=overwrite
+            )
 
-    if args.export_info_vcf:
-        res = vqc_resources.export_info_vcf
-        res.check_resource_existence()
-        hl.export_vcf(adjust_vcf_incompatible_types(res.info_ht.ht()), res.info_vcf)
+        if args.export_info_vcf:
+            res = vqc_resources.export_info_vcf
+            res.check_resource_existence()
+            hl.export_vcf(adjust_vcf_incompatible_types(res.info_ht.ht()), res.info_vcf)
 
-    if run_vep:
-        res = vqc_resources.run_vep
-        res.check_resource_existence()
-        ht = hl.split_multi(get_gnomad_v4_vds(test=test_dataset).variant_dataset.rows())
-        ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
-        ht.write(res.vep_ht.path, overwrite=overwrite)
+        if run_vep:
+            res = vqc_resources.run_vep
+            res.check_resource_existence()
+            ht = hl.split_multi(
+                get_gnomad_v4_vds(test=test_dataset).variant_dataset.rows()
+            )
+            ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
+            ht.write(res.vep_ht.path, overwrite=overwrite)
 
-    if args.validate_vep:
-        res = vqc_resources.validate_vep
-        res.check_resource_existence()
-        count_ht = count_vep_annotated_variants_per_interval(
-            res.vep_ht.ht(), ensembl_interval.ht()
-        )
-        count_ht.write(res.vep_count_ht.path, overwrite=args.overwrite)
+        if args.validate_vep:
+            res = vqc_resources.validate_vep
+            res.check_resource_existence()
+            count_ht = count_vep_annotated_variants_per_interval(
+                res.vep_ht.ht(), ensembl_interval.ht()
+            )
+            count_ht.write(res.vep_count_ht.path, overwrite=args.overwrite)
 
-    if args.generate_trio_stats:
-        res = vqc_resources.generate_trio_stats
-        res.check_resource_existence()
-        ht = run_generate_trio_stats(vds, res.final_ped.pedigree(), res.final_ped.ht())
-        ht.write(res.trio_stats_ht.path, overwrite=overwrite)
+        if args.generate_trio_stats:
+            res = vqc_resources.generate_trio_stats
+            res.check_resource_existence()
+            ht = run_generate_trio_stats(
+                vds, res.final_ped.pedigree(), res.final_ped.ht()
+            )
+            ht.write(res.trio_stats_ht.path, overwrite=overwrite)
 
-    if args.generate_sibling_stats:
-        res = vqc_resources.generate_sib_stats
-        res.check_resource_existence()
-        ht = run_generate_sib_stats(mt, res.rel_ht.ht())
-        ht.write(res.sib_stats_ht.path, overwrite=overwrite)
+        if args.generate_sibling_stats:
+            res = vqc_resources.generate_sib_stats
+            res.check_resource_existence()
+            ht = run_generate_sib_stats(mt, res.rel_ht.ht())
+            ht.write(res.sib_stats_ht.path, overwrite=overwrite)
+
+    finally:
+        logger.info("Copying log to logging bucket...")
+        hl.copy_log(get_logging_path("variant_qc_annotations.log"))
 
 
 if __name__ == "__main__":
@@ -466,6 +485,12 @@ if __name__ == "__main__":
         type=int,
     )
     parser.add_argument("--compute-info", help="Compute info HT.", action="store_true")
+    parser.add_argument(
+        "--compute-info-n-partitions",
+        help="Number of desired partitions for the info HT.",
+        default=5000,
+        type=int,
+    )
     parser.add_argument("--split-info", help="Split info HT.", action="store_true")
     parser.add_argument(
         "--export-info-vcf", help="Export info as VCF.", action="store_true"
