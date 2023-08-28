@@ -407,7 +407,6 @@ def main(args):
 
     if test_n_partitions:
         mt = mt._filter_partitions(range(test_n_partitions))
-    mt = mt._filter_partitions([20180])
 
     try:
         if args.compute_info:
