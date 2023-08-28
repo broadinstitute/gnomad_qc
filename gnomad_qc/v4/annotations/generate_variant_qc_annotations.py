@@ -11,7 +11,9 @@ from gnomad.sample_qc.relatedness import filter_mt_to_trios
 from gnomad.utils.annotations import annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
+    AS_INFO_AGG_FIELDS,
     default_compute_info,
+    get_as_info_expr,
     split_info_annotation,
     split_lowqual_annotation,
 )
@@ -35,7 +37,7 @@ from gnomad_qc.v4.resources.annotations import (
     info_vcf_path,
     validate_vep_path,
 )
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds, get_logging_path
 from gnomad_qc.v4.resources.sample_qc import pedigree, relatedness
 
 logging.basicConfig(
@@ -107,7 +109,9 @@ def recompute_as_qualapprox_from_lpl(mt: hl.MatrixTable) -> hl.expr.ArrayExpress
     .. note::
 
         - The first element of AS_QUALapprox is always None.
-        - If the allele is a star allele, we set QUALapprox to 0.
+        - If the allele is a star allele, we set QUALapprox for that allele to 0.
+        - If GQ == 0 and PL[0] for the allele == 1, we set QUALapprox for the allele
+          to 0.
 
     Example:
         Starting Values:
@@ -140,7 +144,7 @@ def recompute_as_qualapprox_from_lpl(mt: hl.MatrixTable) -> hl.expr.ArrayExpress
             .when(
                 i[0] > 0,
                 hl.bind(
-                    lambda pl_0: hl.if_else((mt.GQ < 2) & (pl_0 == 1), 0, pl_0),
+                    lambda pl_0: hl.if_else((mt.GQ == 0) & (pl_0 == 1), 0, pl_0),
                     hl.bind(lambda x: x[0] - hl.min(x), extract_as_pls(mt.LPL, i[0])),
                 ),
             )
@@ -149,7 +153,56 @@ def recompute_as_qualapprox_from_lpl(mt: hl.MatrixTable) -> hl.expr.ArrayExpress
     )
 
 
-def run_compute_info(mt: hl.MatrixTable, test: bool = False) -> hl.Table:
+def correct_as_annotations(
+    mt: hl.MatrixTable,
+    set_to_missing: bool = False,
+) -> hl.expr.StructExpression:
+    """
+    Correct allele specific annotations that are longer than the length of LA.
+
+    For some entries in the MatrixTable, the following annotations are longer than LA,
+    when they should be the same length as LA:
+        - AS_SB_TABLE
+        - AS_RAW_MQ
+        - AS_RAW_ReadPosRankSum
+        - AS_RAW_MQRankSum
+
+    This function corrects these annotations by either dropping the alternate allele
+    with the index corresponding to the min value of AS_RAW_MQ, or setting them to
+    missing if `set_to_missing` is True.
+
+    :param mt: Input MatrixTable.
+    :param set_to_missing: Whether to set the annotations to missing instead of
+        correcting them.
+    :return: StructExpression with corrected allele specific annotations.
+    """
+    annotations_to_correct = [
+        "AS_SB_TABLE",
+        "AS_RAW_MQ",
+        "AS_RAW_ReadPosRankSum",
+        "AS_RAW_MQRankSum",
+    ]
+    annotations_to_correct = {a: mt.gvcf_info[a] for a in annotations_to_correct}
+
+    # Identify index corresponding to min of AS_RAW_MQ, skipping the reference allele.
+    as_raw_mq_no_ref = mt.gvcf_info.AS_RAW_MQ[1:]
+    idx_remove = as_raw_mq_no_ref.index(hl.min(as_raw_mq_no_ref)) + 1
+
+    corrected_annotations = {
+        a: hl.if_else(
+            hl.len(expr) > hl.len(mt.LA),
+            hl.or_missing(
+                not set_to_missing, expr[:idx_remove].extend(expr[idx_remove + 1 :])
+            ),
+            expr,
+        )
+        for a, expr in annotations_to_correct.items()
+    }
+
+    return hl.struct(**corrected_annotations)
+
+
+def run_compute_info(mt: hl.MatrixTable, n_partitions: int) -> hl.Table:
     """
     Run compute info on a MatrixTable.
 
@@ -159,16 +212,16 @@ def run_compute_info(mt: hl.MatrixTable, test: bool = False) -> hl.Table:
         have different lengths than LA.
 
     :param mt: Input MatrixTable.
-    :param test: Whether to use the test dataset. Default is False.
+    :param n_partitions: Number of partitions to use for the output Table.
     :return: Table with info annotations.
     """
     mt = mt.annotate_entries(
         gvcf_info=mt.gvcf_info.annotate(
-            AS_QUALapprox=recompute_as_qualapprox_from_lpl(mt)
+            AS_QUALapprox=recompute_as_qualapprox_from_lpl(mt),
+            **correct_as_annotations(mt),
         )
     )
-
-    return default_compute_info(
+    info_ht = default_compute_info(
         mt,
         site_annotations=True,
         as_annotations=True,
@@ -177,7 +230,32 @@ def run_compute_info(mt: hl.MatrixTable, test: bool = False) -> hl.Table:
             "release": mt.meta.release,
             "unrelated": ~mt.meta.sample_filters.relatedness_filters.related,
         },
+        n_partitions=None,
     )
+    info_ht = info_ht.checkpoint(
+        hl.utils.new_temp_file("compute_info", extension="ht"), overwrite=True
+    )
+
+    mt = mt.annotate_entries(gvcf_info=correct_as_annotations(mt, set_to_missing=True))
+    mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
+    ht = mt.select_rows(
+        **get_as_info_expr(
+            mt,
+            sum_agg_fields=["AS_RAW_MQ"],
+            int32_sum_agg_fields=[],
+            median_agg_fields=["AS_RAW_ReadPosRankSum", "AS_RAW_MQRankSum"],
+            array_sum_agg_fields=["AS_SB_TABLE"],
+            treat_fields_as_allele_specific=True,
+        )
+    ).rows()
+
+    info_ht = info_ht.annotate(set_long_AS_missing_info=ht[info_ht.key])
+    info_ht = info_ht.checkpoint(
+        hl.utils.new_temp_file("compute_info_AS_missing", extension="ht"),
+        overwrite=True,
+    )
+
+    return info_ht.naive_coalesce(n_partitions)
 
 
 def split_info(info_ht: hl.Table) -> hl.Table:
@@ -194,10 +272,14 @@ def split_info(info_ht: hl.Table) -> hl.Table:
     :return: Info Table with split multi-allelics.
     """
     info_ht = annotate_allele_info(info_ht)
+    info_annotations_to_split = ["info", "quasi_info", "set_long_AS_missing_info"]
     info_ht = info_ht.annotate(
-        info=info_ht.info.annotate(
-            **split_info_annotation(info_ht.info, info_ht.a_index),
-        ),
+        **{
+            a: info_ht[a].annotate(
+                **split_info_annotation(info_ht[a], info_ht.a_index),
+            )
+            for a in info_annotations_to_split
+        },
         AS_lowqual=split_lowqual_annotation(info_ht.AS_lowqual, info_ht.a_index),
     )
 
@@ -521,71 +603,82 @@ def main(args):
     if test_n_partitions:
         mt = mt._filter_partitions(range(test_n_partitions))
 
-    if args.compute_info:
-        # TODO: is there any reason to also compute info per platform?
-        res = vqc_resources.compute_info
-        res.check_resource_existence()
-        ht = run_compute_info(mt, test=test_dataset)
-        ht.write(res.info_ht.path, overwrite=overwrite)
+    try:
+        if args.compute_info:
+            # TODO: is there any reason to also compute info per platform?
+            res = vqc_resources.compute_info
+            res.check_resource_existence()
+            ht = run_compute_info(mt, args.compute_info_n_partitions)
+            ht.write(res.info_ht.path, overwrite=overwrite)
 
-    if args.split_info:
-        res = vqc_resources.split_info
-        res.check_resource_existence()
-        split_info(res.info_ht.ht()).write(res.split_info_ht.path, overwrite=overwrite)
+        if args.split_info:
+            res = vqc_resources.split_info
+            res.check_resource_existence()
+            split_info(res.info_ht.ht()).write(
+                res.split_info_ht.path, overwrite=overwrite
+            )
 
-    if args.export_info_vcf:
-        res = vqc_resources.export_info_vcf
-        res.check_resource_existence()
-        hl.export_vcf(adjust_vcf_incompatible_types(res.info_ht.ht()), res.info_vcf)
+        if args.export_info_vcf:
+            res = vqc_resources.export_info_vcf
+            res.check_resource_existence()
+            hl.export_vcf(adjust_vcf_incompatible_types(res.info_ht.ht()), res.info_vcf)
 
-    if run_vep:
-        res = vqc_resources.run_vep
-        res.check_resource_existence()
-        ht = hl.split_multi(get_gnomad_v4_vds(test=test_dataset).variant_dataset.rows())
-        ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
-        ht.write(res.vep_ht.path, overwrite=overwrite)
+        if run_vep:
+            res = vqc_resources.run_vep
+            res.check_resource_existence()
+            ht = hl.split_multi(
+                get_gnomad_v4_vds(test=test_dataset).variant_dataset.rows()
+            )
+            ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
+            ht.write(res.vep_ht.path, overwrite=overwrite)
 
-    if args.validate_vep:
-        res = vqc_resources.validate_vep
-        res.check_resource_existence()
-        count_ht = count_vep_annotated_variants_per_interval(
-            res.vep_ht.ht(), ensembl_interval.ht()
-        )
-        count_ht.write(res.vep_count_ht.path, overwrite=args.overwrite)
+        if args.validate_vep:
+            res = vqc_resources.validate_vep
+            res.check_resource_existence()
+            count_ht = count_vep_annotated_variants_per_interval(
+                res.vep_ht.ht(), ensembl_interval.ht()
+            )
+            count_ht.write(res.vep_count_ht.path, overwrite=args.overwrite)
 
-    if args.generate_trio_stats:
-        res = vqc_resources.generate_trio_stats
-        res.check_resource_existence()
-        ht = run_generate_trio_stats(vds, res.final_ped.pedigree(), res.final_ped.ht())
-        ht.write(res.trio_stats_ht.path, overwrite=overwrite)
+        if args.generate_trio_stats:
+            res = vqc_resources.generate_trio_stats
+            res.check_resource_existence()
+            ht = run_generate_trio_stats(
+                vds, res.final_ped.pedigree(), res.final_ped.ht()
+            )
+            ht.write(res.trio_stats_ht.path, overwrite=overwrite)
 
-    if args.generate_sibling_stats:
-        res = vqc_resources.generate_sib_stats
-        res.check_resource_existence()
-        ht = run_generate_sib_stats(mt, res.rel_ht.ht())
-        ht.write(res.sib_stats_ht.path, overwrite=overwrite)
+        if args.generate_sibling_stats:
+            res = vqc_resources.generate_sib_stats
+            res.check_resource_existence()
+            ht = run_generate_sib_stats(mt, res.rel_ht.ht())
+            ht.write(res.sib_stats_ht.path, overwrite=overwrite)
 
-    if args.create_variant_qc_annotation_ht:
-        res = vqc_resources.variant_qc_annotation_ht
-        res.check_resource_existence()
-        create_variant_qc_annotation_ht(
-            res.split_info_ht.ht(),
-            res.trio_stats_ht.ht(),
-            res.sib_stats_ht.ht(),
-            impute_features=args.impute_features,
-            n_partitions=args.n_partitions,
-        ).write(res.vqc_ht.path, overwrite=overwrite)
+        if args.create_variant_qc_annotation_ht:
+            res = vqc_resources.variant_qc_annotation_ht
+            res.check_resource_existence()
+            create_variant_qc_annotation_ht(
+                res.split_info_ht.ht(),
+                res.trio_stats_ht.ht(),
+                res.sib_stats_ht.ht(),
+                impute_features=args.impute_features,
+                n_partitions=args.n_partitions,
+            ).write(res.vqc_ht.path, overwrite=overwrite)
 
-    if args.export_true_positive_vcfs:
-        res = vqc_resources.export_true_positive_vcfs
-        res.check_resource_existence()
-        tp_hts = get_tp_ht_for_vcf_export(
-            res.vqc_ht.ht(),
-            transmitted_singletons=transmitted_singletons,
-            sibling_singletons=sibling_singletons,
-        )
-        hl.export_vcf(tp_hts["raw"], res.raw_tp_vcf_path, tabix=True)
-        hl.export_vcf(tp_hts["adj"], res.adj_tp_vcf_path, tabix=True)
+        if args.export_true_positive_vcfs:
+            res = vqc_resources.export_true_positive_vcfs
+            res.check_resource_existence()
+            tp_hts = get_tp_ht_for_vcf_export(
+                res.vqc_ht.ht(),
+                transmitted_singletons=transmitted_singletons,
+                sibling_singletons=sibling_singletons,
+            )
+            hl.export_vcf(tp_hts["raw"], res.raw_tp_vcf_path, tabix=True)
+            hl.export_vcf(tp_hts["adj"], res.adj_tp_vcf_path, tabix=True)
+
+    finally:
+        logger.info("Copying log to logging bucket...")
+        hl.copy_log(get_logging_path("variant_qc_annotations.log"))
 
 
 if __name__ == "__main__":
@@ -605,6 +698,12 @@ if __name__ == "__main__":
         type=int,
     )
     parser.add_argument("--compute-info", help="Compute info HT.", action="store_true")
+    parser.add_argument(
+        "--compute-info-n-partitions",
+        help="Number of desired partitions for the info HT.",
+        default=5000,
+        type=int,
+    )
     parser.add_argument("--split-info", help="Split info HT.", action="store_true")
     parser.add_argument(
         "--export-info-vcf", help="Export info as VCF.", action="store_true"
