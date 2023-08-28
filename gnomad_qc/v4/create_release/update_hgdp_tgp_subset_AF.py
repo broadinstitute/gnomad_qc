@@ -10,7 +10,7 @@ from gnomad.utils.annotations import (
     set_female_y_metrics_to_na_expr,
     update_structured_annotations,
 )
-from gnomad.utils.filtering import remove_items_from_freq
+from gnomad.utils.filtering import filter_freq_by_meta
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 
@@ -369,15 +369,28 @@ def main(args):
     ht = hl.read_table(release_ht_path(release_version="3.1.2"))
 
     logger.info("Updating the HGDP pop labels...")
-    pop_map = {"miaozu": "miao", "yizu": "yi", "bantusafrica": "bantusouthafrica"}
+    pop_map = {
+        "bantusafrica": "bantusouthafrica",
+        "biakaPygmy": "biaka",
+        "italian": "bergamoitalian",
+        "mbutiPygmy": "mbuti",
+        "melanesian": "bougainville",
+        "mongola": "mongolian",
+        "miaozu": "miao",
+        "yizu": "yi",
+    }
     ht = update_hgdp_pop_labels(ht, pop_map)
 
     logger.info("Selecting `freq` and `freq_meta` from the release HT...")
     ht = ht.select("freq").select_globals("freq_meta")
 
-    logger.info("Removing 'Han' and 'Papuan' populations from freq and freq_meta...")
+    logger.info("Removing `Han` and `Papuan` populations from freq and freq_meta...")
     pops_to_remove = {"pop": ["pop", "papuan"]}
-    ht = remove_items_from_freq(ht, pops_to_remove)
+    freq, freq_meta = filter_freq_by_meta(
+        ht.freq, ht.freq_meta, pops_to_remove, keep=False, operator="or"
+    )
+    ht = ht.annotate(freq=freq)
+    ht = ht.annotate_globals(freq_meta=freq_meta)
 
     if test:
         logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
@@ -433,6 +446,7 @@ def main(args):
         [ht.freq, ht.freq_subtracted_samples],
         [ht.freq_meta, ht.freq_meta_subtracted_samples],
         operation="diff",
+        set_negatives_to_zero=True,
     )
 
     # TODO: temporarily not overwriting freq or freq_meta, so we can examine the output
@@ -443,6 +457,7 @@ def main(args):
     freq, freq_meta = merge_freq_arrays(
         [ht.freq1, ht.freq_added_samples],
         [ht.freq_meta1, ht.freq_meta_added_samples],
+        operation="sum",
     )
 
     ht = ht.annotate(freq2=freq)

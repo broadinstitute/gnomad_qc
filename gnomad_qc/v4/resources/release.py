@@ -215,7 +215,7 @@ def hgdp_tgp_updated_callstats(
         default_version=CURRENT_HGDP_TGP_RELEASE,
         versions={
             release: TableResource(
-                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/ht'}/gnomad.genomes.v{release}.updated_hgdp_1kg_subset_AF.{subset}.ht"
+                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/release/{release}/ht/'}gnomad.genomes.v{release}.hgdp_1kg_subset_updated_callstats_{subset}.ht"
             )
             for release in HGDP_TGP_RELEASES
         },
