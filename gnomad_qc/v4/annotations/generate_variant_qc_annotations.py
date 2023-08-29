@@ -336,11 +336,10 @@ def get_variant_qc_annotation_resources(
 
     :param test: Whether to gather all resources for testing.
     :param overwrite: Whether to overwrite resources if they exist.
-    :param large_n_alleles: Whether to use a temporary info TableResource for results
-        of only sites with a large number of alleles. If False, a temporary info
-        TableResource for results of only sites with a smaller number of alleles is
-        used. By default, when None, the finalized info ht is used instead of a
-        temporary location.
+    :param large_n_alleles: Whether to use a temporary info TableResource for results. When 
+    True, use temporary info TableResource for only sites with a large number of alleles. When
+    False, use temporary info TableResource for only sites with a small number of alleles. When 
+    None, the finalized info ht is used instead of a temporary location. Default is None.
     :param combine_compute_info: Whether the input for --compute-info should be the two
         temporary files (with and without the --compute-info-over-split-n-alleles flag)
         produced by running --compute-info with --compute-info-split-n-alleles.
@@ -576,7 +575,7 @@ if __name__ == "__main__":
     compute_info_args.add_argument(
         "--compute-info-over-split-n-alleles",
         help=(
-            "Whether to filter to sites greater than or equal to the value supplied tp"
+            "Whether to filter to sites greater than or equal to the value supplied to"
             "--compute-info-split-n-alleles. By default, sites are filtered to sites "
             "less than that value, or None if --compute-info-split-n-alleles is not "
             "supplied."
