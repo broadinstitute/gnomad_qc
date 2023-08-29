@@ -353,26 +353,34 @@ def reannotate_sex(
     )
     x_ploidy_cutoffs = hl.struct(
         upper_x=x_ploidy_cutoffs[0] if x_ploidy_cutoffs[0] else new_x_ploidy_cutoffs[0],
-        lower_xx=x_ploidy_cutoffs[1][0]
-        if x_ploidy_cutoffs[1][0]
-        else new_x_ploidy_cutoffs[1][0],
-        upper_xx=x_ploidy_cutoffs[1][1]
-        if x_ploidy_cutoffs[1][1]
-        else new_x_ploidy_cutoffs[1][1],
-        lower_xxx=x_ploidy_cutoffs[2]
-        if x_ploidy_cutoffs[2]
-        else new_x_ploidy_cutoffs[2],
+        lower_xx=(
+            x_ploidy_cutoffs[1][0]
+            if x_ploidy_cutoffs[1][0]
+            else new_x_ploidy_cutoffs[1][0]
+        ),
+        upper_xx=(
+            x_ploidy_cutoffs[1][1]
+            if x_ploidy_cutoffs[1][1]
+            else new_x_ploidy_cutoffs[1][1]
+        ),
+        lower_xxx=(
+            x_ploidy_cutoffs[2] if x_ploidy_cutoffs[2] else new_x_ploidy_cutoffs[2]
+        ),
     )
     y_ploidy_cutoffs = hl.struct(
-        lower_y=y_ploidy_cutoffs[0][0]
-        if y_ploidy_cutoffs[0][0]
-        else new_y_ploidy_cutoffs[0][0],
-        upper_y=y_ploidy_cutoffs[0][1]
-        if y_ploidy_cutoffs[0][1]
-        else new_y_ploidy_cutoffs[0][1],
-        lower_yy=y_ploidy_cutoffs[1]
-        if y_ploidy_cutoffs[1]
-        else new_y_ploidy_cutoffs[1],
+        lower_y=(
+            y_ploidy_cutoffs[0][0]
+            if y_ploidy_cutoffs[0][0]
+            else new_y_ploidy_cutoffs[0][0]
+        ),
+        upper_y=(
+            y_ploidy_cutoffs[0][1]
+            if y_ploidy_cutoffs[0][1]
+            else new_y_ploidy_cutoffs[0][1]
+        ),
+        lower_yy=(
+            y_ploidy_cutoffs[1] if y_ploidy_cutoffs[1] else new_y_ploidy_cutoffs[1]
+        ),
     )
     sex_ht = sex_ht.annotate(
         **get_sex_expr(

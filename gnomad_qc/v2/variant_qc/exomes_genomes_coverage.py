@@ -64,8 +64,9 @@ def compute_per_base_cds_coverage(overwrite: bool):
                 mean=0.5 * hl.agg.sum(mt.mean * mt.n) / hl.agg.sum(mt.n),
                 median=0.5 * hl.median(hl.agg.collect(mt.median)),
                 **{
-                    f"over_{i / 2}": hl.agg.sum(mt[f"over_{float(i)}"])
-                    / hl.agg.sum(mt.n)
+                    f"over_{i / 2}": hl.agg.sum(mt[f"over_{float(i)}"]) / hl.agg.sum(
+                        mt.n
+                    )
                     for i in COVERAGE_BINS
                 },
             ),
@@ -80,16 +81,18 @@ def compute_per_base_cds_coverage(overwrite: bool):
                     )
                 ),
                 **{
-                    f"over_{i / 2}": hl.null(hl.tfloat32)
-                    if not f"over_{i / 2}" in mt.entry
-                    else hl.agg.sum(
-                        hl.cond(
-                            mt.sex == "male",
-                            mt[f"over_{i / 2}"],
-                            mt[f"over_{float(i)}"],
+                    f"over_{i / 2}": (
+                        hl.null(hl.tfloat32)
+                        if not f"over_{i / 2}" in mt.entry
+                        else hl.agg.sum(
+                            hl.cond(
+                                mt.sex == "male",
+                                mt[f"over_{i / 2}"],
+                                mt[f"over_{float(i)}"],
+                            )
                         )
+                        / hl.agg.sum(mt.n)
                     )
-                    / hl.agg.sum(mt.n)
                     for i in COVERAGE_BINS
                 },
             ),

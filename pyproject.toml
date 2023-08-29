@@ -1,10 +1,11 @@
 [tool.black]
-target-version = ['py36', 'py37', 'py38']
+target-version = ['py39', 'py310', 'py311']
 preview = true
 exclude = "cuKING"
 [tool.isort]
 profile = "black"
 skip = "cuKING"
+known_third_party = "gnomad"
 [tool.autopep8]
 # Use same max line length as the default in Black - 88
 max_line_length = 88
