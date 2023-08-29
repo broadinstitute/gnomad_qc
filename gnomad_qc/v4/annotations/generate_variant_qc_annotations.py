@@ -336,10 +336,11 @@ def get_variant_qc_annotation_resources(
 
     :param test: Whether to gather all resources for testing.
     :param overwrite: Whether to overwrite resources if they exist.
-    :param large_n_alleles: Whether to use a temporary info TableResource for results. When 
-    True, use temporary info TableResource for only sites with a large number of alleles. When
-    False, use temporary info TableResource for only sites with a small number of alleles. When 
-    None, the finalized info ht is used instead of a temporary location. Default is None.
+    :param large_n_alleles: Whether to use a temporary info TableResource for results.
+        When True, use temporary info TableResource for only sites with a large number
+        of alleles. When False, use temporary info TableResource for only sites with a
+        small number of alleles. When None, the finalized info ht is used instead of a
+        temporary location. Default is None.
     :param combine_compute_info: Whether the input for --compute-info should be the two
         temporary files (with and without the --compute-info-over-split-n-alleles flag)
         produced by running --compute-info with --compute-info-split-n-alleles.
@@ -351,14 +352,14 @@ def get_variant_qc_annotation_resources(
     else:
         info_ht = TableResource(
             get_checkpoint_path(
-                f"compute_info{'.test' if test else ''}.{'large_n_alleles' if large_n_alleles else 'small_n_alleles'}"
+                f"compute_info{'.test' if test else ''}.{'over_n_alleles' if large_n_alleles else 'under_n_alleles'}"
             )
         )
     compute_info_input_resources = {}
     if combine_compute_info:
         res_key = "--compute-info --compute-info-split-n-alleles"
-        for n_alleles in ["small", "large"]:
-            if n_alleles == "large":
+        for n_alleles in ["under", "over"]:
+            if n_alleles == "over":
                 res_key += " --compute-info-over-split-n-alleles"
             compute_info_input_resources[res_key] = {
                 f"{n_alleles}_info_ht": TableResource(
@@ -478,8 +479,8 @@ def main(args):
             res.check_resource_existence()
             if combine_compute_info:
                 ht = mt.select_rows().rows()
-                lt_ht = res.small_info_ht.ht()
-                gt_eq_ht = res.large_info_ht.ht()
+                lt_ht = res.under_info_ht.ht()
+                gt_eq_ht = res.over_info_ht.ht()
                 ht = ht.annotate(**hl.coalesce(lt_ht[ht.key], gt_eq_ht[ht.key]))
             else:
                 ht = run_compute_info(mt, max_n_alleles, min_n_alleles)
