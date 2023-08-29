@@ -32,7 +32,7 @@ from gnomad.utils.annotations import (
     qual_hist_expr,
     set_female_y_metrics_to_na_expr,
 )
-from gnomad.utils.filtering import split_vds_by_strata
+from gnomad.utils.filtering import filter_freq_by_meta, split_vds_by_strata
 from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import SORT_ORDER
@@ -83,7 +83,6 @@ ALL_FREQ_ROW_FIELDS = FREQ_ROW_FIELDS + FREQ_HIGH_AB_HET_ROW_FIELDS
 List of final top level row and global annotations created from dense data that we
 want on the frequency HT before deciding on the AF cutoff.
 """
-# TODO: What are we doing about the sample count struct?
 FREQ_GLOBAL_FIELDS = [
     "downsamplings",
     "freq_meta",
@@ -450,23 +449,47 @@ def generate_freq_and_hists_ht(
                 non_ukb_ds_freq_ht.freq_meta_sample_count
             ),
         )
+        # Etiher filter main freq_ht freq here or after checkpoint to have only
+        # pop and sex groups, add subset key and then merge
         non_ukb_ds_freq_ht = non_ukb_ds_freq_ht.checkpoint(
             new_temp_file("freq_non_ukb_ds", extension="ht")
         )
+
+        # Grab/duplicate non-ukb subset specific freq strata for ancestry group and pop
+        # and add "subset" key so downstream merge of non-ukb and ukb will be summed
+        # properly but also contain subset freq breakdown.
+        non_ukb_freq, non_ukb_freq_meta, non_ukb_freq_meta_sc = filter_freq_by_meta(
+            freq_ht.freq,
+            freq_ht.freq_meta,
+            items_to_filter=["downsampling", "gatk_version", "ukb_sample"],
+            keep=False,
+            combine_operator="or",
+            freq_meta_based_array_expr=freq_ht.freq_meta_sample_count,
+        )
+        non_ukb_freq_meta = non_ukb_freq_meta.map(
+            lambda d: hl.dict(
+                hl.zip(d.keys(), d.values()).append(("subset", "non_ukb"))
+            )
+        )
+
         # There are no overlap of strata groups here so can do basic extend on the
         # arrays
         freq_ht = freq_ht.annotate(
-            freq=freq_ht.freq.extend(non_ukb_ds_freq_ht[freq_ht.key].freq),
+            freq=freq_ht.freq.extend(non_ukb_freq).extend(
+                non_ukb_ds_freq_ht[freq_ht.key].freq
+            ),
             high_ab_hets_by_group=freq_ht.high_ab_hets_by_group.extend(
                 non_ukb_ds_freq_ht[freq_ht.key].high_ab_hets_by_group
             ),
         )
         non_ukb_globals = non_ukb_ds_freq_ht.index_globals()
         freq_ht = freq_ht.annotate_globals(
-            freq_meta=freq_ht.freq_meta.extend(non_ukb_globals.freq_meta),
-            freq_meta_sample_count=freq_ht.freq_meta_sample_count.extend(
-                non_ukb_globals.freq_meta_sample_count
+            freq_meta=freq_ht.freq_meta.extend(non_ukb_freq_meta).extend(
+                non_ukb_globals.freq_meta
             ),
+            freq_meta_sample_count=freq_ht.freq_meta_sample_count.extend(
+                non_ukb_freq_meta_sc
+            ).extend(non_ukb_globals.freq_meta_sample_count),
             non_ukb_downsamplings=non_ukb_globals.non_ukb_downsamplings,
         )
     # Note:To use "multi_way_zip_join" need globals to be the same but an if_else based
@@ -676,19 +699,38 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     :param ht: Hail Table containing freq, ab_adjusted_freq, high_ab_het annotations.
     :return: Hail Table with faf & grpmax annotations.
     """
+    # TODO: Clean this up, lots of repetivie code, should be able to iterate
+    # over some list with map
     faf, faf_meta = faf_expr(
         ht.ab_adjusted_freq, ht.freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX
     )
-    ht = ht.annotate(
-        faf=faf,
-        grpmax=pop_max_expr(
-            ht.ab_adjusted_freq, ht.freq_meta, POPS_TO_REMOVE_FOR_POPMAX
-        ),
+    non_ukb_freq, non_ukb_freq_meta = filter_freq_by_meta(
+        ht.ab_adjusted_freq,
+        ht.freq_meta,
+        items_to_filter={"subset": "non_ukb"},
+        keep=True,
+        combine_operator="or",
+    )
+
+    non_ukb_faf, non_ukb_faf_meta = faf_expr(
+        non_ukb_freq, non_ukb_freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX
+    )
+
+    ht = ht.annotate(faf=faf.extend(non_ukb_faf))
+    ht = ht.annotate_globals(
+        faf_meta=faf_meta.extend(non_ukb_faf_meta),
     )
     ht = ht.annotate_globals(
-        faf_meta=faf_meta,
-        faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-"),
+        faf_index_dict=faf_meta.map(
+            lambda faf: make_faf_index_dict(faf, label_delimiter="-")
+        )
     )
+    grpmax = pop_max_expr(ht.ab_adjusted_freq, ht.freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
+    non_ukb_grpmax = pop_max_expr(
+        non_ukb_freq, non_ukb_freq_meta, POPS_TO_REMOVE_FOR_POPMAX
+    )
+    ht = ht.annotate(grpmax=grpmax.extend(non_ukb_grpmax))
+    # TODO: Need to add faf95 to both entries in grpmax array
     ht = ht.annotate(
         grpmax=ht.grpmax.annotate(
             faf95=ht.faf[
