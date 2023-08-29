@@ -417,18 +417,38 @@ def generate_freq_and_hists_ht(
             entry_agg_funcs={"high_ab_hets_by_group": (_high_ab_het, hl.agg.sum)},
         )
 
-        # Add "subset" key to freq_meta so we do not have any collisions on merging.
-        # Keep ancestry group and sex freq strata in here (basically duplicating the
-        # data for these groups since they are already captured above) so we can use
-        # the same code to merge the non_ukb and ukb freq HT arrays and capture the
-        # subset info without doing any extra manipulation.
+        # Filter freq array field to only downsampling indices by using the freq_meta
+        # array field values.
+        def _select_non_ukb_entries(arr_expr):
+            return (
+                hl.zip(arr_expr, non_ukb_ds_freq_ht.freq_meta)
+                .filter(lambda i: i[1].keys().contains("downsampling"))
+                .map(lambda k: k[0])
+            )
+
+        non_ukb_ds_freq_ht = non_ukb_ds_freq_ht.annotate(
+            freq=_select_non_ukb_entries(non_ukb_ds_freq_ht.freq),
+            high_ab_hets_by_group=_select_non_ukb_entries(
+                non_ukb_ds_freq_ht.high_ab_hets_by_group
+            ),
+        )
+        # Filter freq_meta array field to dict entries with a "downsampling" key and
+        # update it to have "subset" key with "non_ukb" value. We don't want any other
+        # strata that are returned from annotate_freq, e.g. 'pop'. Also rename the
+        # downsamplings global field to "non_ukb_downsamplings" so we can merge two
+        # later and not lose the non_ukb downsampling information.
         non_ukb_ds_freq_ht = non_ukb_ds_freq_ht.annotate_globals(
-            freq_meta=non_ukb_ds_freq_ht.freq_meta.map(
+            freq_meta=non_ukb_ds_freq_ht.freq_meta.filter(
+                lambda i: i.keys().contains("downsampling")
+            ).map(
                 lambda d: hl.dict(
                     hl.zip(d.keys(), d.values()).append(("subset", "non_ukb"))
                 )
             ),
             non_ukb_downsamplings=non_ukb_ds_freq_ht.downsamplings,
+            freq_meta_sample_count=_select_non_ukb_entries(
+                non_ukb_ds_freq_ht.freq_meta_sample_count
+            ),
         )
         non_ukb_ds_freq_ht = non_ukb_ds_freq_ht.checkpoint(
             new_temp_file("freq_non_ukb_ds", extension="ht")
