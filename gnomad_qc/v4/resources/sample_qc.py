@@ -1018,13 +1018,18 @@ hgdp_tgp_pop_outliers = TableResource(
 
 # Table with HGDP + 1KG/TGP related samples to drop from Alicia Martin's group sample QC
 hgdp_tgp_related_samples_to_drop = TableResource(
-    path="gs://gcp-public-data--gnomad/release/3.1/secondary_analyses/hgdp_1kg/pca_preprocessing/related_sample_ids.ht"
+    path="gs://gnomad/sample_qc/ht/hgdp_tgp_v4_related_samples_202308.ht"
 )
 
 # Table with HGDP sample contamination estimates from Konrad Karczewski's
 # group sample QC
 hgdp_recomputed_freemix = TableResource(
     path="gs://gnomad/sample_qc/ht/gnomad_v3_contam_rate_recomputed_hgdp_full.ht"
+)
+
+# Table with new relatedness annotations for HGDP and TGP
+hgdp_tgp_related_samples_v4 = TableResource(
+    path="gs://gnomad/sample_qc/ht/hgdp_tgp_related_samples_202308.ht"
 )
 
 # Table with new population labels and updated geographic locations for HGDP and TGP

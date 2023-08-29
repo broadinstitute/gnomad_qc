@@ -54,7 +54,6 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
     # Load all updated sample QC Tables.
     contamination_ht = hgdp_recomputed_freemix.ht()
     relatedness_ht = hgdp_tgp_related_samples_to_drop.ht()
-    relatedness_ht = relatedness_ht.key_by(s=relatedness_ht.node.s)
     pop_outliers_ht = hgdp_tgp_pop_outliers.ht()
     populations_ht = hgdp_tgp_populations_updated.ht()
 
@@ -170,14 +169,14 @@ def get_filtered_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
         release_add_ht.count(),
         release_subtract_ht.count(),
     )
-    # Filter to all samples with a population name split.
-    split_pops = hl.literal(["PapuanHighlands", "PapuanSepik", "Han", "NorthernHan"])
-    pop_diff_ht = ht.filter(split_pops.contains(ht.hgdp_tgp_meta.population))
-    release_add_ht = release_add_ht.union(pop_diff_ht)
-    logger.info(
-        "%d samples in the `sum` set, including the splitted Papuan & Han",
-        release_add_ht.count(),
-    )
+    # # Filter to all samples with a population name split.
+    # split_pops = hl.literal(["PapuanHighlands", "PapuanSepik", "Han", "NorthernHan"])
+    # pop_diff_ht = ht.filter(split_pops.contains(ht.hgdp_tgp_meta.population))
+    # release_add_ht = release_add_ht.union(pop_diff_ht).distinct()
+    # logger.info(
+    #     "%d samples in the `sum` set, including the splitted Papuan & Han",
+    #     release_add_ht.count(),
+    # )
     return release_add_ht, release_subtract_ht
 
 
@@ -208,28 +207,12 @@ def calculate_callstats_for_selected_samples(
         ),
         annotate_mt=False,
     )
-    # make population labels lowercase to match the constants in release HT.
-    # TODO: Julia, could you double check the issue that I messaged you about?
-    # I got extra groupings if I use pop_expr for the combined HGDP + 1KG
-    # subset.
 
     if subsets:
         freq_meta = [
             {**x, **{"subset": "|".join(subsets)}} for x in hl.eval(ht.freq_meta)
         ]
         ht = ht.annotate_globals(freq_meta=freq_meta)
-        # ht = ht.annotate_globals(
-        #     freq_index_dict=make_freq_index_dict(
-        #         freq_meta=freq_meta,
-        #         subsets=["|".join(subsets)],
-        #     )
-        # )
-    # else:
-    #     ht = ht.annotate_globals(
-    #         freq_index_dict=make_freq_index_dict_from_meta(freq_meta=hl.eval(ht.freq_meta))
-    #     )
-
-    # ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
     ht = ht.checkpoint(
         hl.utils.new_temp_file("hgdp_tgp_subset_freq", extension="ht"), overwrite=True
     )
@@ -308,22 +291,35 @@ def calculate_concatenate_callstats(
         mt,
         samples_ht,
     )
-    freq_ht_hgdp = calculate_callstats_for_selected_samples(
-        mt,
-        samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "HGDP"),
-        subsets=["hgdp"],
-    )
-    freq_ht_tgp = calculate_callstats_for_selected_samples(
-        mt,
-        samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "1000 Genomes"),
-        subsets=["tgp"],
-    )
+
+    if samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "HGDP").count() > 0:
+        freq_ht_hgdp = calculate_callstats_for_selected_samples(
+            mt,
+            samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "HGDP"),
+            subsets=["hgdp"],
+        )
+    else:
+        freq_ht_hgdp = None
+
+    if (
+        samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "1000 Genomes").count()
+        > 0
+    ):
+        freq_ht_tgp = calculate_callstats_for_selected_samples(
+            mt,
+            samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "1000 Genomes"),
+            subsets=["tgp"],
+        )
+    else:
+        freq_ht_tgp = None
 
     logger.info("Concatenating AFs for selected samples...")
-    subset_freq_hts = [
-        freq_ht_hgdp.select("freq").select_globals("freq_meta"),
-        freq_ht_tgp.select("freq").select_globals("freq_meta"),
-    ]
+    subset_freq_hts = []
+    if freq_ht_hgdp is not None:
+        subset_freq_hts.append(freq_ht_hgdp.select("freq").select_globals("freq_meta"))
+    if freq_ht_tgp is not None:
+        subset_freq_hts.append(freq_ht_tgp.select("freq").select_globals("freq_meta"))
+
     freq_ht = concatenate_subset_frequencies(freq_ht_all, subset_freq_hts)
 
     return freq_ht
@@ -384,13 +380,13 @@ def main(args):
     logger.info("Selecting `freq` and `freq_meta` from the release HT...")
     ht = ht.select("freq").select_globals("freq_meta")
 
-    logger.info("Removing `Han` and `Papuan` populations from freq and freq_meta...")
-    pops_to_remove = {"pop": ["pop", "papuan"]}
-    freq0, freq_meta0 = filter_freq_by_meta(
-        ht.freq, ht.freq_meta, pops_to_remove, keep=False, combine_operator="or"
-    )
-    ht = ht.annotate(freq=freq0)
-    ht = ht.annotate_globals(freq_meta=freq_meta0)
+    # logger.info("Removing `Han` and `Papuan` populations from freq and freq_meta...")
+    # pops_to_remove = {"pop": ["pop", "papuan"]}
+    # freq0, freq_meta0 = filter_freq_by_meta(
+    #     ht.freq, ht.freq_meta, pops_to_remove, keep=False, combine_operator="or"
+    # )
+    # ht = ht.annotate(freq=freq0)
+    # ht = ht.annotate_globals(freq_meta=freq_meta0)
 
     if test:
         logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
@@ -405,12 +401,21 @@ def main(args):
     logger.info("Loading HGDP_TGP subset meta HT...")
     meta_ht = hgdp_tgp_subset_annotations(sample=True).ht()
 
+    logger.info("Filtering pop `Han` from the old meta HT...")
+    han_ht = meta_ht.filter(meta_ht.hgdp_tgp_meta.population == "Han")
+
+    logger.info("Calculating and concatenating callstats for `Han` samples...")
+    freq_ht_han = calculate_concatenate_callstats(mt, han_ht)
+    freq_ht_han = freq_ht_han.checkpoint(
+        hgdp_tgp_updated_callstats(test=test, subset="han").path, overwrite=True
+    )
+
     if args.update_annotations:
         logger.info("Adding updated sample QC annotations to meta HT...")
         meta_ht = add_updated_sample_qc_annotations(meta_ht)
         # TODO: temporarily using _read_if_exists, until we have new fields to be
         # updated.
-        meta_ht = meta_ht.checkpoint(hgdp_tgp_meta_updated.path, _read_if_exists=True)
+        meta_ht = meta_ht.checkpoint(hgdp_tgp_meta_updated.path, overwrite=True)
 
     logger.info("Filtering samples in meta HT that will be added and subtracted...")
     samples_to_add, samples_to_subtract = get_filtered_samples(meta_ht)
@@ -433,15 +438,26 @@ def main(args):
 
     logger.info("Annotating HT with AFs for added and subtracted samples...")
     ht = ht.annotate(
+        freq_han=freq_ht_han[freq_ht_han.key].freq,
         freq_added_samples=freq_ht_added[ht.key].freq,
         freq_subtracted_samples=freq_ht_subtracted[ht.key].freq,
     )
     ht = ht.annotate_globals(
+        freq_meta_han=freq_ht_han.index_globals().freq_meta,
         freq_meta_added_samples=freq_ht_added.index_globals().freq_meta,
         freq_meta_subtracted_samples=freq_ht_subtracted.index_globals().freq_meta,
     )
 
-    logger.info("Merging AFs for subtracted samples first...")
+    logger.info("Merging AFs from Han samples...")
+    freq0, freq_meta0 = merge_freq_arrays(
+        [ht.freq, freq_ht_han.freq],
+        [ht.freq_meta, freq_ht_han.freq_meta],
+        operation="diff",
+    )
+    ht = ht.annotate(freq=freq0)
+    ht = ht.annotate_globals(freq_meta=freq_meta0)
+
+    logger.info("Merging AFs from subtracted samples...")
     freq1, freq_meta1 = merge_freq_arrays(
         [ht.freq, ht.freq_subtracted_samples],
         [ht.freq_meta, ht.freq_meta_subtracted_samples],
@@ -451,7 +467,7 @@ def main(args):
     ht = ht.annotate(freq=freq1)
     ht = ht.annotate_globals(freq_meta=freq_meta1)
 
-    logger.info("Merging AFs for added samples...")
+    logger.info("Merging AFs from added samples...")
     freq2, freq_meta2 = merge_freq_arrays(
         [ht.freq, ht.freq_added_samples],
         [ht.freq_meta, ht.freq_meta_added_samples],
