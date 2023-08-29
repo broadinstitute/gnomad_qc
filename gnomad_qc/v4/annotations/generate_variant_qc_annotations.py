@@ -328,7 +328,7 @@ def run_generate_sib_stats(
 def get_variant_qc_annotation_resources(
     test: bool,
     overwrite: bool,
-    large_n_alleles: Optional[bool] = None,
+    over_n_alleles: Optional[bool] = None,
     combine_compute_info: bool = False,
 ) -> PipelineResourceCollection:
     """
