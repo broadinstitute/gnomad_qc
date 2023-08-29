@@ -379,7 +379,22 @@ def remove_pops_from_freq_meta(ht: hl.Table, pops_to_remove: List[str]) -> hl.Ta
 
 
 def main(args):
-    """Script to update update call stats for HGDP + 1KG subset for v4."""
+    """
+    Script to update call stats for HGDP + 1KG subset for v4.
+
+    .. note::
+    This code is specifically designed for the update HGDP + 1KG subset in
+    v4 release HT. There are a few major changes compared to the v3 release:
+        - the following new sample filters are applied: hard filters,
+        pop PC outliers,relatedness within the subset and relatedness to
+        the rest of the release
+        - the new pop labels
+        - the new split of the `Han` and `Papuan` samples
+    In order to avoid re-calculating the callstats for the whole subset / whole
+    release, we will calculate the callstats for the samples that will be added
+    and subtracted, then merge the callstats with the old callstats in the
+    release HT.
+    """
     test = args.test
 
     hl.init(
@@ -426,6 +441,8 @@ def main(args):
     # need to calculate for `Han` samples separately, because they were 42
     # samples in v3 release but 43 samples in v4 release splitted to
     # 33 `Han` and 10 `NorthernHan` samples
+    # `Papuan` samples were not included in v3 release, so we don't need to
+    # get the callstats for them
     logger.info("Filtering pop `Han` from the old meta HT...")
     han_ht = meta_ht.filter(
         (meta_ht.hgdp_tgp_meta.population == "Han") & meta_ht.gnomad_release
@@ -486,7 +503,7 @@ def main(args):
     ht = ht.annotate_globals(freq_meta=freq_meta0)
 
     logger.info("Removing `Han` and `Papuan` populations from freq and freq_meta...")
-    pops_to_remove = {"pop": ["pop", "papuan"]}
+    pops_to_remove = {"pop": ["han", "papuan"]}
     freq1, freq_meta1 = filter_freq_by_meta(
         ht.freq, ht.freq_meta, pops_to_remove, keep=False, combine_operator="or"
     )
