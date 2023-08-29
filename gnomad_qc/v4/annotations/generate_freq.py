@@ -96,6 +96,10 @@ List of final global annotations created from dense data that we want on the fre
 HT before deciding on the AF cutoff.
 """
 
+# Dictionary for accessing the annotations with subset specific annotations
+# such as age_hists, popmax, and faf.
+SUBSET_DICT = {"gnomad": 0, "non_ukb": 1}
+
 
 def get_freq_resources(
     overwrite: bool = False, test: Optional[bool] = False, chrom: Optional[str] = None
@@ -552,6 +556,21 @@ def combine_freq_hts(
         for hist_struct, hists in hist_structs.items()
     }
     freq_ht = freq_ht.annotate(**hists_expr)
+
+    # Add in non-ukb subset age hists
+    logger.info("Adding non_ukb subset's age histograms...")
+    freq_ht = freq_ht.transmute(
+        age_hists=hl.array(
+            [freq_ht.age_hists, freq_hts["non_ukb"][freq_ht.key].age_hists]
+        ),
+        high_ab_het_adjusted_age_hists=hl.array(
+            [
+                freq_ht.high_ab_het_adjusted_age_hists,
+                freq_hts["non_ukb"][freq_ht.key].high_ab_het_adjusted_age_hists,
+            ]
+        ),
+    )
+    freq_ht = freq_ht.annotate_globals(age_index_dict=SUBSET_DICT)
 
     freq_ht = freq_ht.annotate_globals(
         downsamplings={
