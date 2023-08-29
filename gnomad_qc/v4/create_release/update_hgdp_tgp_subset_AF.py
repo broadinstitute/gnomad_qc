@@ -7,6 +7,7 @@ import hail as hl
 from gnomad.utils.annotations import (
     annotate_freq,
     merge_freq_arrays,
+    missing_callstats_expr,
     set_female_y_metrics_to_na_expr,
     update_structured_annotations,
 )
@@ -169,14 +170,14 @@ def get_filtered_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
         release_add_ht.count(),
         release_subtract_ht.count(),
     )
-    # # Filter to all samples with a population name split.
-    # split_pops = hl.literal(["PapuanHighlands", "PapuanSepik", "Han", "NorthernHan"])
-    # pop_diff_ht = ht.filter(split_pops.contains(ht.hgdp_tgp_meta.population))
-    # release_add_ht = release_add_ht.union(pop_diff_ht).distinct()
-    # logger.info(
-    #     "%d samples in the `sum` set, including the splitted Papuan & Han",
-    #     release_add_ht.count(),
-    # )
+    # Filter to all samples with a population name split.
+    split_pops = hl.literal(["PapuanHighlands", "PapuanSepik", "Han", "NorthernHan"])
+    pop_diff_ht = ht.filter(split_pops.contains(ht.hgdp_tgp_meta.population))
+    release_add_ht = release_add_ht.union(pop_diff_ht).distinct()
+    logger.info(
+        "%d samples in the `sum` set, including the splitted Papuan & Han",
+        release_add_ht.count(),
+    )
     return release_add_ht, release_subtract_ht
 
 
@@ -189,7 +190,7 @@ def calculate_callstats_for_selected_samples(
     Calculate the call stats for samples in `samples_ht`.
 
     :param mt: MatrixTable with the HGDP + 1KG subset.
-    :param samples_ht: Table with the samples to be added or subtracted.
+    :param samples_ht: Table with selected samples and their metadata
     :param subsets: Subsets to be used for the AFs calculation: `hgdp` or `tgp`, or both.
     :return: Table with the call stats for the selected samples.
     """
@@ -258,6 +259,35 @@ def concatenate_subset_frequencies(
     :param subset_freq_hts: List of subset frequency HTs.
     :return: Concatenated frequency HT.
     """
+
+    def fill_missing_freq_structs(
+        global_freq_ht: hl.Table, subset_freq_ht: hl.Table
+    ) -> hl.Table:
+        """
+        Fill in missing freq structs when no callstats are available for a subset.
+
+        :param global_freq_ht: Global frequency HT.
+        :param subset_freq_ht: Subset frequency HT.
+        :return: Subset frequency HT with missing freq structs filled in.
+        """
+        ht = subset_freq_ht.join(global_freq_ht.select().select_globals(), how="right")
+        ht = ht.annotate(
+            freq=hl.if_else(
+                hl.is_missing(ht.freq),
+                hl.map(
+                    lambda x: missing_callstats_expr(), hl.range(hl.len(ht.freq_meta))
+                ),
+                ht.freq,
+            )
+        )
+        ht = ht.select("freq").select_globals("freq_meta")
+        return ht
+
+    subset_freq_hts = [
+        fill_missing_freq_structs(global_freq_ht, subset_freq_ht)
+        for subset_freq_ht in subset_freq_hts
+    ]
+
     freq_ht = hl.Table.multi_way_zip_join(
         [global_freq_ht.select("freq").select_globals("freq_meta")] + subset_freq_hts,
         data_field_name="freq",
@@ -380,14 +410,6 @@ def main(args):
     logger.info("Selecting `freq` and `freq_meta` from the release HT...")
     ht = ht.select("freq").select_globals("freq_meta")
 
-    # logger.info("Removing `Han` and `Papuan` populations from freq and freq_meta...")
-    # pops_to_remove = {"pop": ["pop", "papuan"]}
-    # freq0, freq_meta0 = filter_freq_by_meta(
-    #     ht.freq, ht.freq_meta, pops_to_remove, keep=False, combine_operator="or"
-    # )
-    # ht = ht.annotate(freq=freq0)
-    # ht = ht.annotate_globals(freq_meta=freq_meta0)
-
     if test:
         logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
         test_interval = [
@@ -401,8 +423,13 @@ def main(args):
     logger.info("Loading HGDP_TGP subset meta HT...")
     meta_ht = hgdp_tgp_subset_annotations(sample=True).ht()
 
+    # need to calculate for `Han` samples separately, because they were 42
+    # samples in v3 release but 43 samples in v4 release splitted to
+    # 33 `Han` and 10 `NorthernHan` samples
     logger.info("Filtering pop `Han` from the old meta HT...")
-    han_ht = meta_ht.filter(meta_ht.hgdp_tgp_meta.population == "Han")
+    han_ht = meta_ht.filter(
+        (meta_ht.hgdp_tgp_meta.population == "Han") & meta_ht.gnomad_release
+    )
 
     logger.info("Calculating and concatenating callstats for `Han` samples...")
     freq_ht_han = calculate_concatenate_callstats(mt, han_ht)
@@ -415,7 +442,7 @@ def main(args):
         meta_ht = add_updated_sample_qc_annotations(meta_ht)
         # TODO: temporarily using _read_if_exists, until we have new fields to be
         # updated.
-        meta_ht = meta_ht.checkpoint(hgdp_tgp_meta_updated.path, overwrite=True)
+        meta_ht = meta_ht.checkpoint(hgdp_tgp_meta_updated.path, _read_if_exists=True)
 
     logger.info("Filtering samples in meta HT that will be added and subtracted...")
     samples_to_add, samples_to_subtract = get_filtered_samples(meta_ht)
@@ -438,7 +465,7 @@ def main(args):
 
     logger.info("Annotating HT with AFs for added and subtracted samples...")
     ht = ht.annotate(
-        freq_han=freq_ht_han[freq_ht_han.key].freq,
+        freq_han=freq_ht_han[ht.key].freq,
         freq_added_samples=freq_ht_added[ht.key].freq,
         freq_subtracted_samples=freq_ht_subtracted[ht.key].freq,
     )
@@ -450,30 +477,39 @@ def main(args):
 
     logger.info("Merging AFs from Han samples...")
     freq0, freq_meta0 = merge_freq_arrays(
-        [ht.freq, freq_ht_han.freq],
-        [ht.freq_meta, freq_ht_han.freq_meta],
+        [ht.freq, ht.freq_han],
+        [ht.freq_meta, ht.freq_meta_han],
         operation="diff",
+        set_negatives_to_zero=True,
     )
     ht = ht.annotate(freq=freq0)
     ht = ht.annotate_globals(freq_meta=freq_meta0)
 
+    logger.info("Removing `Han` and `Papuan` populations from freq and freq_meta...")
+    pops_to_remove = {"pop": ["pop", "papuan"]}
+    freq1, freq_meta1 = filter_freq_by_meta(
+        ht.freq, ht.freq_meta, pops_to_remove, keep=False, combine_operator="or"
+    )
+    ht = ht.annotate(freq=freq1)
+    ht = ht.annotate_globals(freq_meta=freq_meta1)
+
     logger.info("Merging AFs from subtracted samples...")
-    freq1, freq_meta1 = merge_freq_arrays(
+    freq2, freq_meta2 = merge_freq_arrays(
         [ht.freq, ht.freq_subtracted_samples],
         [ht.freq_meta, ht.freq_meta_subtracted_samples],
         operation="diff",
         set_negatives_to_zero=True,
     )
-    ht = ht.annotate(freq=freq1)
-    ht = ht.annotate_globals(freq_meta=freq_meta1)
+    ht = ht.annotate(freq=freq2)
+    ht = ht.annotate_globals(freq_meta=freq_meta2)
 
     logger.info("Merging AFs from added samples...")
-    freq2, freq_meta2 = merge_freq_arrays(
+    freq3, freq_meta3 = merge_freq_arrays(
         [ht.freq, ht.freq_added_samples],
         [ht.freq_meta, ht.freq_meta_added_samples],
     )
-    ht = ht.annotate(freq=freq2)
-    ht = ht.annotate_globals(freq_meta=freq_meta2)
+    ht = ht.annotate(freq=freq3)
+    ht = ht.annotate_globals(freq_meta=freq_meta3)
 
     logger.info("Making freq_index_dict from freq_meta...")
     ht = ht.annotate_globals(
