@@ -337,9 +337,9 @@ def get_variant_qc_annotation_resources(
     :param test: Whether to gather all resources for testing.
     :param overwrite: Whether to overwrite resources if they exist.
     :param over_n_alleles: Whether to use a temporary info TableResource for results.
-        When True, use temporary info TableResource for only sites that have more 
+        When True, use temporary info TableResource for only sites that have more
         than the passed arg --compute-info-split-n-alleles alleles. When False, use
-        temporary info TableResource for only sites with feweralleles. When None, 
+        temporary info TableResource for only sites with fewer alleles. When None,
         the finalize info ht is used instead of a temporary location. Default is None.
     :param combine_compute_info: Whether the input for --compute-info should be the two
         temporary files (with and without the --compute-info-over-split-n-alleles flag)
