@@ -336,23 +336,23 @@ def get_variant_qc_annotation_resources(
 
     :param test: Whether to gather all resources for testing.
     :param overwrite: Whether to overwrite resources if they exist.
-    :param large_n_alleles: Whether to use a temporary info TableResource for results.
-        When True, use temporary info TableResource for only sites with a large number
-        of alleles. When False, use temporary info TableResource for only sites with a
-        small number of alleles. When None, the finalized info ht is used instead of a
-        temporary location. Default is None.
+    :param over_n_alleles: Whether to use a temporary info TableResource for results.
+        When True, use temporary info TableResource for only sites that have more 
+        than the passed arg --compute-info-split-n-alleles alleles. When False, use
+        temporary info TableResource for only sites with feweralleles. When None, 
+        the finalize info ht is used instead of a temporary location. Default is None.
     :param combine_compute_info: Whether the input for --compute-info should be the two
         temporary files (with and without the --compute-info-over-split-n-alleles flag)
         produced by running --compute-info with --compute-info-split-n-alleles.
     :return: PipelineResourceCollection containing resources for all steps of the
         variant QC annotation pipeline.
     """
-    if large_n_alleles is None or combine_compute_info:
+    if over_n_alleles is None or combine_compute_info:
         info_ht = get_info(split=False, test=test)
     else:
         info_ht = TableResource(
             get_checkpoint_path(
-                f"compute_info{'.test' if test else ''}.{'over_n_alleles' if large_n_alleles else 'under_n_alleles'}"
+                f"compute_info{'.test' if test else ''}.{'over_n_alleles' if over_n_alleles else 'under_n_alleles'}"
             )
         )
     compute_info_input_resources = {}
@@ -445,7 +445,7 @@ def main(args):
     run_vep = args.run_vep
     overwrite = args.overwrite
 
-    max_n_alleles = min_n_alleles = large_n_alleles = None
+    max_n_alleles = min_n_alleles = over_n_alleles = None
     if split_n_alleles is not None:
         if over_split_n_alleles:
             min_n_alleles = split_n_alleles
