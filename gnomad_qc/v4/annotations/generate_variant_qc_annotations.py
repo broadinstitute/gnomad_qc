@@ -449,15 +449,15 @@ def main(args):
     if split_n_alleles is not None:
         if over_split_n_alleles:
             min_n_alleles = split_n_alleles
-            large_n_alleles = True
+            over_n_alleles = True
         else:
             max_n_alleles = split_n_alleles - 1
-            large_n_alleles = False
+            over_n_alleles = False
 
     vqc_resources = get_variant_qc_annotation_resources(
         test=test,
         overwrite=overwrite,
-        large_n_alleles=large_n_alleles,
+        over_n_alleles=over_n_alleles,
         combine_compute_info=combine_compute_info,
     )
     vds = get_gnomad_v4_vds(
