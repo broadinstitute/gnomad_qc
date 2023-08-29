@@ -140,19 +140,16 @@ def create_revel_grch38_ht(revel_csv: str, ensembl_ids: str) -> hl.Table:
     ht = ht.select("locus", "alleles", "REVEL", "Transcript_stable_ID")
     ht = ht.explode("Transcript_stable_ID")
     ht = ht.key_by("Transcript_stable_ID")
+    print(ht.count())
 
     logger.info("Import and process the ensembl ID file...")
     ensembl_ids = hl.import_table(
         ensembl_ids, min_partitions=200, impute=True, key="Transcript_stable_ID"
     )
-    ensembl_ids = ensembl_ids.select(
-        "Transcript_stable_ID", "Ensembl_Canonical", "MANE_Select"
-    )
+    ensembl_ids = ensembl_ids.select("Ensembl_Canonical", "MANE_Select")
     logger.info("Annotating revel HT with canonical and MANE Select transcripts...")
     ht = ht.annotate(**ensembl_ids[ht.Transcript_stable_ID])
-
-    logger.info("Filtering transcripts that are in Ensembl 105...")
-    ht = ht.filter(ht.in_Ensembl105, keep=True)
+    print(ht.count())
 
     logger.info(
         "Annotating REVEL scores for MANE Select transcripts and canonical"
@@ -172,7 +169,6 @@ def create_revel_grch38_ht(revel_csv: str, ensembl_ids: str) -> hl.Table:
     mane_ht = ht.filter(hl.is_defined(ht.revel_mane), keep=True)
     max_revel_mane = mane_ht.group_by(*mane_ht.key).aggregate(
         max_revel=hl.agg.max(mane_ht.revel_mane),
-        transcripts=hl.agg.collect_as_set(mane_ht.Transcript_stable_ID),
     )
 
     logger.info("Taking max REVEL scores for canonical transcripts...")
@@ -181,7 +177,6 @@ def create_revel_grch38_ht(revel_csv: str, ensembl_ids: str) -> hl.Table:
     )
     max_revel_canonical = canonical_ht.group_by(*canonical_ht.key).aggregate(
         max_revel=hl.agg.max(canonical_ht.revel_canonical),
-        transcripts=hl.agg.collect_as_set(canonical_ht.Transcript_stable_ID),
     )
     logger.info(
         "Merge max REVEL scores for MANE Select transcripts and canonical transcripts"
