@@ -9,7 +9,6 @@ from typing import List, Optional, Union
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import (
-    get_truth_ht,
     telomeres_and_centromeres,
 )
 from gnomad.utils.slack import slack_notifications
@@ -25,16 +24,13 @@ from gnomad.variant_qc.random_forest import (
 )
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources.annotations import (
-    allele_data,
-    fam_stats,
-    get_freq,
-    get_info,
+from gnomad_qc.v4.resources.annotations import (
     get_vqsr_filters,
-    qc_ac,
+    get_variant_qc_annotations # since get_info and others are being rolled into one
 )
-from gnomad_qc.v3.resources.basics import get_checkpoint_path
-from gnomad_qc.v3.resources.variant_qc import (
+
+from gnomad_qc.v4.resources.basics import get_checkpoint_path
+from gnomad_qc.v4.resources.variant_qc import (
     get_rf_annotations,
     get_rf_model_path,
     get_rf_result,
@@ -53,11 +49,9 @@ FEATURES = [
     "AS_QD",
     "AS_ReadPosRankSum",
     "AS_SOR",
-    "InbreedingCoeff",
     "n_alt_alleles",
     "variant_type",
 ]
-INBREEDING_COEFF_HARD_CUTOFF = -0.3
 INFO_FEATURES = [
     "AS_MQRankSum",
     "AS_pab_max",
@@ -70,156 +64,38 @@ PREDICTION_COL = "rf_prediction"
 TRAIN_COL = "rf_train"
 TRUTH_DATA = ["hapmap", "omni", "mills", "kgp_phase1_hc"]
 
-
-def create_rf_ht(
-    impute_features: bool = True,
-    adj: bool = False,
-    n_partitions: int = 5000,
-    checkpoint_path: Optional[str] = None,
-) -> hl.Table:
-    """
-    Create a Table with all necessary annotations for the random forest model.
-
-    Annotations that are included:
-
-        Features for RF:
-            - InbreedingCoeff
-            - variant_type
-            - allele_type
-            - n_alt_alleles
-            - has_star
-            - AS_QD
-            - AS_pab_max
-            - AS_MQRankSum
-            - AS_SOR
-            - AS_ReadPosRankSum
-
-        Training sites (bool):
-            - transmitted_singleton
-            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
-
-    :param bool impute_features: Whether to impute features using feature medians (this is done by variant type)
-    :param str adj: Whether to use adj genotypes
-    :param int n_partitions: Number of partitions to use for final annotated table
-    :param str checkpoint_path: Optional checkpoint path for the Table before median imputation and/or aggregate summary
-    :return: Hail Table ready for RF
-    :rtype: Table
-    """
-    group = "adj" if adj else "raw"
-
-    ht = get_info(split=True).ht()
-    ht = ht.transmute(**ht.info)
-    ht = ht.select("lowqual", "AS_lowqual", "FS", "MQ", "QD", *INFO_FEATURES)
-
-    inbreeding_ht = get_freq().ht()
-    inbreeding_ht = inbreeding_ht.select(
-        InbreedingCoeff=hl.if_else(
-            hl.is_nan(inbreeding_ht.InbreedingCoeff),
-            hl.null(hl.tfloat32),
-            inbreeding_ht.InbreedingCoeff,
-        )
-    )
-    trio_stats_ht = fam_stats.ht()
-    trio_stats_ht = trio_stats_ht.select(
-        f"n_transmitted_{group}", f"ac_children_{group}"
-    )
-
-    truth_data_ht = get_truth_ht()
-    allele_data_ht = allele_data.ht()
-    allele_counts_ht = qc_ac.ht()
-
-    logger.info("Annotating Table with all columns from multiple annotation Tables")
-    ht = ht.annotate(
-        **inbreeding_ht[ht.key],
-        **trio_stats_ht[ht.key],
-        **truth_data_ht[ht.key],
-        **allele_data_ht[ht.key].allele_data,
-        **allele_counts_ht[ht.key],
-    )
-    # Filter to only variants found in high quality samples and are not lowqual
-    ht = ht.filter((ht[f"ac_qc_samples_{group}"] > 0) & ~ht.AS_lowqual)
-    ht = ht.select(
-        "a_index",
-        "was_split",
-        *FEATURES,
-        *TRUTH_DATA,
-        **{
-            "transmitted_singleton": (ht[f"n_transmitted_{group}"] == 1) & (
-                ht[f"ac_qc_samples_{group}"] == 2
-            ),
-            "fail_hard_filters": (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30),
-        },
-        singleton=ht.ac_release_samples_raw == 1,
-        ac_raw=ht.ac_qc_samples_raw,
-        ac=ht.ac_release_samples_adj,
-        ac_qc_samples_unrelated_raw=ht.ac_qc_samples_unrelated_raw,
-    )
-
-    ht = ht.repartition(n_partitions, shuffle=False)
-    if checkpoint_path:
-        ht = ht.checkpoint(checkpoint_path, overwrite=True)
-
-    if impute_features:
-        ht = median_impute_features(ht, {"variant_type": ht.variant_type})
-
-    summary = ht.group_by(
-        "omni",
-        "mills",
-        "transmitted_singleton",
-    ).aggregate(n=hl.agg.count())
-    logger.info("Summary of truth data annotations:")
-    summary.show(20)
-
-    return ht
-
-
 def train_rf(
     ht: hl.Table,
     fp_to_tp: float = 1.0,
     num_trees: int = 500,
     max_depth: int = 5,
     no_transmitted_singletons: bool = False,
-    no_inbreeding_coeff: bool = False,
-    vqsr_training: bool = False,
-    vqsr_model_id: str = False,
+    no_sibling_singletons: bool = False,
     filter_centromere_telomere: bool = False,
     test_intervals: Union[str, List[str]] = "chr20",
 ):
     """
     Train random forest model using `train_rf_model`.
 
-    :param ht: Table containing annotations needed for RF training, built with `create_rf_ht`
+    :param ht: Table containing annotations needed for RF training, built with ???
     :param fp_to_tp: Ratio of FPs to TPs for creating the RF model. If set to 0, all training examples are used.
     :param num_trees: Number of trees in the RF model.
     :param max_depth: Maxmimum tree depth in the RF model.
     :param no_transmitted_singletons: Do not use transmitted singletons for training.
-    :param no_inbreeding_coeff: Do not use inbreeding coefficient as a feature for training.
-    :param vqsr_training: Use VQSR training sites to train the RF.
-    :param vqsr_model_id: VQSR model to use for vqsr_training. `vqsr_training` must be True for this parameter to be used.
+    :param no_sibling_singletons: Do not use sibling singletons for training. 
     :param filter_centromere_telomere: Filter centromeres and telomeres before training.
     :param test_intervals: Specified interval(s) will be held out for testing and evaluation only. (default to "chr20")
     :return: `ht` annotated with training information and the RF model
     """
     features = FEATURES
     test_intervals = test_intervals
-    if no_inbreeding_coeff:
-        logger.info("Removing InbreedingCoeff from list of features...")
-        features.remove("InbreedingCoeff")
 
-    if vqsr_training:
-        logger.info("Using VQSR training sites for RF training...")
-        vqsr_ht = get_vqsr_filters(vqsr_model_id, split=True).ht()
-        ht = ht.annotate(
-            vqsr_POSITIVE_TRAIN_SITE=vqsr_ht[ht.key].info.POSITIVE_TRAIN_SITE,
-            vqsr_NEGATIVE_TRAIN_SITE=vqsr_ht[ht.key].info.NEGATIVE_TRAIN_SITE,
-        )
-        tp_expr = ht.vqsr_POSITIVE_TRAIN_SITE
-        fp_expr = ht.vqsr_NEGATIVE_TRAIN_SITE
-    else:
-        fp_expr = ht.fail_hard_filters
-        tp_expr = ht.omni | ht.mills
-        if not no_transmitted_singletons:
-            tp_expr = tp_expr | ht.transmitted_singleton
+    fp_expr = ht.fail_hard_filters
+    tp_expr = ht.omni | ht.mills
+    if not no_transmitted_singletons:
+        tp_expr = tp_expr | ht.transmitted_singleton 
+    if not no_sibling_singletons:
+        tp_expr = tp_expr | ht.sibling_singleton # TODO: make sure this is acceptable Hail logic
 
     if test_intervals:
         if isinstance(test_intervals, str):
@@ -263,20 +139,8 @@ def main(args):  # noqa: D103
         logger.info(f"RF runs:")
         pretty_print_runs(get_rf_runs(rf_run_path()))
 
-    if args.annotate_for_rf:
-        ht = create_rf_ht(
-            impute_features=args.impute_features,
-            adj=args.adj,
-            n_partitions=args.n_partitions,
-            checkpoint_path=get_checkpoint_path("rf_annotation"),
-        )
-        ht.write(
-            get_rf_annotations(args.adj).path,
-            overwrite=args.overwrite,
-        )
-        logger.info(f"Completed annotation wrangling for random forests model training")
-
     if args.train_rf:
+        ht = get_variant_qc_annotations(test=args.test_dataset).ht()
         model_id = f"rf_{str(uuid.uuid4())[:8]}"
         rf_runs = get_rf_runs(rf_run_path())
         while model_id in rf_runs:
@@ -288,12 +152,10 @@ def main(args):  # noqa: D103
             num_trees=args.num_trees,
             max_depth=args.max_depth,
             no_transmitted_singletons=args.no_transmitted_singletons,
-            no_inbreeding_coeff=args.no_inbreeding_coeff,
-            vqsr_training=args.vqsr_training,
+            no_sibling_singletons=args.no_sibling_singletons,
             vqsr_model_id=args.vqsr_model_id,
             filter_centromere_telomere=args.filter_centromere_telomere,
-            test_intervals=args.test_intervals,
-        )
+            test_intervals=args.test_intervals)
 
         ht = ht.checkpoint(
             get_rf_training(model_id=model_id).path,
@@ -304,10 +166,13 @@ def main(args):  # noqa: D103
         rf_runs[model_id] = get_run_data(
             input_args={
                 "transmitted_singletons": (
-                    None if args.vqsr_training else not args.no_transmitted_singletons
+                    not args.no_transmitted_singletons
+                ),
+                # TODO: this will also require editing get_run_data maybe to accept No Sibling Singletons? 
+                "sibling_singletons": (
+                    not args.no_sibling_singletons
                 ),
                 "adj": args.adj,
-                "vqsr_training": args.vqsr_training,
                 "filter_centromere_telomere": args.filter_centromere_telomere,
             },
             test_intervals=args.test_intervals,
@@ -356,6 +221,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--overwrite",
         help="Overwrite all data from this subset. (default: False)",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test-dataset",
+        help="If test of Variant QC table should be used. (default: False)",
         action="store_true",
     )
     parser.add_argument(
@@ -437,9 +307,6 @@ if __name__ == "__main__":
         "--adj", help="Use adj genotypes.", action="store_true"
     )
     training_params.add_argument(
-        "--vqsr_training", help="Use VQSR training examples.", action="store_true"
-    )
-    training_params.add_argument(
         "--vqsr_model_id",
         help=(
             "If a VQSR model ID is provided the VQSR training annotations will be used"
@@ -455,8 +322,8 @@ if __name__ == "__main__":
         action="store_true",
     )
     training_params.add_argument(
-        "--no_inbreeding_coeff",
-        help="Train RF without inbreeding coefficient as a feature.",
+        "--no_sibling_singletons",
+        help="Do not use sibling singletons for training.",
         action="store_true",
     )
     training_params.add_argument(
