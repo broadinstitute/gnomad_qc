@@ -442,7 +442,7 @@ def get_tp_ht_for_vcf_export(
         true positive variants.
     :param sibling_singletons: Whether to include sibling singletons in the true
         positive variants.
-    :return: Dictionary of 'raw' and 'adj' true positive variant Tables.
+    :return: Dictionary of 'raw' and 'adj' true positive variant sites Tables.
     """
     if not transmitted_singletons and not sibling_singletons:
         raise ValueError(
