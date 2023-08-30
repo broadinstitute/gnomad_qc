@@ -7,7 +7,7 @@ import hail as hl
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import get_insilico_predictors
+from gnomad_qc.v4.resources.annotations import get_insilico_predictors, get_insilico_raw
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -112,12 +112,12 @@ def create_revel_grch38_ht(revel_csv: str, ensembl_ids: str) -> hl.Table:
     that are in Ensembl 105.
     This deprecates the `has_duplicate` field present in gnomAD v3.
 
-    :param revel_csv: Temporary path to REVEL CSV file, downloaded from
-    https://www.google.com/url?q=https%3A%2F%2Frothsj06.dmz.hpc.mssm.edu%2Frevel-v1.3_all_chromosomes.zip&sa=D&sntz=1&usg=AOvVaw2DS2TWUYl__0vqijzzxp5M
-    size ~526M, ~82,100,677 variants
-    :param ensembl_ids: temporary path to Ensembl 105 ID file,
-    downloaded from Ensembl 105 archive. It must contain the following columns:
-    Transcript stable ID, Ensembl Canonical, MANE Select
+    :param revel_csv: Path to REVEL CSV file, downloaded from
+       https://www.google.com/url?q=https%3A%2F%2Frothsj06.dmz.hpc.mssm.edu%2Frevel-v1.3_all_chromosomes.zip&sa=D&sntz=1&usg=AOvVaw2DS2TWUYl__0vqijzzxp5M
+       size ~648M, ~82,100,677 variants
+    :param ensembl_ids: Path to Ensembl 105 ID file,
+       downloaded from Ensembl 105 archive. It contains the following columns:
+       Transcript stable ID, Ensembl Canonical, MANE Select
     :return: Hail Table with REVEL scores for GRCh38.
     """
     ht = hl.import_table(
@@ -206,11 +206,8 @@ def main(args):
 
     if args.revel:
         logger.info("Creating REVEL Hail Table for GRCh38...")
-        # TODO: update path, do we keep both the raw and processed files?
-        revel_csv = "gs://gnomad-qin/v4_annotations/revel-v1.3_all_chromosomes_with_transcript_ids.csv.bgz"
-        ensembl_ids = (
-            "gs://gnomad-qin/ensembl/ensembl105_chr1-22XY_MANE_canonical_ucscid.tsv.bgz"
-        )
+        revel_csv = get_insilico_raw(predictor="revel-v1.3", postfix="csv.bgz")
+        ensembl_ids = get_insilico_raw(predictor="ensembl105id", postfix="tsv.bgz")
 
         ht = create_revel_grch38_ht(revel_csv, ensembl_ids)
         ht.write(
