@@ -364,6 +364,21 @@ def get_insilico_predictors(
     )
 
 
+def get_insilico_raw(
+    version: str = CURRENT_VERSION,
+    predictor: str = "revel-v1.3",
+    postfix: str = "csv.bgz",
+) -> str:
+    """
+    Get the path to the in silico predictors TableResource for a specified release.
+
+    :param version: Version of annotation path to return.
+    :param predictor: raw data of in silico predictors or other annotations.
+    :return: in silico predictor VersionedTableResource under v4 path.
+    """
+    return f"gs://gnomad/v{version}/annotations/in_silico_predictors/{predictor}.grch38.{postfix}"
+
+
 def get_vrs(
     version: str = CURRENT_VERSION,
     original_annotations: bool = False,
