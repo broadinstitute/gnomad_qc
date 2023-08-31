@@ -1,11 +1,12 @@
 """Script to generate annotations for variant QC on gnomAD v4."""
 import argparse
 import logging
-from typing import Optional
+from typing import Dict, Optional
 
 import hail as hl
 from gnomad.assessment.validity_checks import count_vep_annotated_variants_per_interval
-from gnomad.resources.grch38.reference_data import ensembl_interval
+from gnomad.resources.grch38.gnomad import GROUPS
+from gnomad.resources.grch38.reference_data import ensembl_interval, get_truth_ht
 from gnomad.resources.resource_utils import TableResource
 from gnomad.sample_qc.relatedness import filter_mt_to_trios
 from gnomad.utils.annotations import annotate_allele_info
@@ -19,6 +20,7 @@ from gnomad.utils.sparse_mt import (
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 from gnomad.utils.vep import vep_or_lookup_vep
 from gnomad.variant_qc.pipeline import generate_sib_stats, generate_trio_stats
+from gnomad.variant_qc.random_forest import median_impute_features
 
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
@@ -29,6 +31,8 @@ from gnomad_qc.v4.resources.annotations import (
     get_info,
     get_sib_stats,
     get_trio_stats,
+    get_true_positive_vcf_path,
+    get_variant_qc_annotations,
     get_vep,
     info_vcf_path,
     validate_vep_path,
@@ -46,6 +50,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+FEATURES = [
+    "variant_type",
+    "allele_type",
+    "n_alt_alleles",
+    "was_mixed",
+    "has_star",
+    "AS_MQRankSum",
+    "AS_pab_max",
+    "AS_QD",
+    "AS_ReadPosRankSum",
+    "AS_SOR",
+]
+"""List of features to be used for variant QC"""
+TRUTH_DATA = ["hapmap", "omni", "mills", "kgp_phase1_hc"]
+"""List of truth datasets to be used for variant QC"""
 
 
 def extract_as_pls(
@@ -325,11 +345,148 @@ def run_generate_sib_stats(
     return generate_sib_stats(mt.transmute_entries(GT=mt.LGT), rel_ht)
 
 
+def create_variant_qc_annotation_ht(
+    info_ht: hl.Table,
+    trio_stats_ht: hl.Table,
+    sib_stats_ht: hl.Table,
+    impute_features: bool = True,
+    n_partitions: int = 5000,
+) -> hl.Table:
+    """
+    Create a Table with all necessary annotations for variant QC.
+
+    Annotations that are included:
+
+        Features for RF:
+            - variant_type
+            - allele_type
+            - n_alt_alleles
+            - has_star
+            - AS_QD
+            - AS_pab_max
+            - AS_MQRankSum
+            - AS_SOR
+            - AS_ReadPosRankSum
+
+        Training sites (bool):
+            - transmitted_singleton
+            - sibling_singleton
+            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
+
+    :param info_ht: Info Table with split multi-allelics.
+    :param trio_stats_ht: Table with trio statistics.
+    :param sib_stats_ht: Table with sibling statistics.
+    :param impute_features: Whether to impute features using feature medians (this is
+        done by variant type).
+    :param n_partitions: Number of partitions to use for final annotated Table.
+    :return: Hail Table with all annotations needed for variant QC.
+    """
+    truth_data_ht = get_truth_ht()
+
+    ht = info_ht.transmute(**info_ht.info, **info_ht.allele_info)
+    trio_stats_ht = trio_stats_ht.select(
+        *[f"{a}_{group}" for a in ["n_transmitted", "ac_children"] for group in GROUPS]
+    )
+
+    logger.info("Annotating Table with trio and sibling stats and reference truth data")
+    ht = ht.annotate(
+        **trio_stats_ht[ht.key],
+        **sib_stats_ht[ht.key],
+        **truth_data_ht[ht.key],
+    )
+    tp_map = {
+        "transmitted_singleton": "n_transmitted",
+        "sibling_singleton": "n_sib_shared_variants",
+    }
+
+    # Filter to only variants found in high quality samples and are not lowqual.
+    ht = ht.filter((ht.AC_high_quality_raw > 0) & ~ht.AS_lowqual)
+    ht = ht.select(
+        "a_index",
+        "was_split",
+        *FEATURES,
+        **{tp: hl.or_else(ht[tp], False) for tp in TRUTH_DATA},
+        **{
+            f"{tp}_{group}": hl.or_else(
+                (ht[f"{n}_{group}"] == 1) & (ht.AC_high_quality_raw == 2),
+                False,
+            )
+            for tp, n in tp_map.items()
+            for group in GROUPS
+        },
+        fail_hard_filters=(ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30),
+        singleton=ht.AC_release_raw == 1,
+        ac_raw=ht.AC_high_quality_raw,
+        ac=ht.AC_release,
+        ac_unrelated_raw=ht.AC_unrelated_raw,
+    )
+
+    if impute_features:
+        ht = median_impute_features(ht, {"variant_type": ht.variant_type})
+
+    ht = ht.repartition(n_partitions, shuffle=False)
+    ht = ht.checkpoint(
+        hl.utils.new_temp_file("variant_qc_annotations", "ht"), overwrite=True
+    )
+
+    summary = ht.group_by(
+        *TRUTH_DATA, *[f"{tp}_{group}" for tp in tp_map for group in GROUPS]
+    ).aggregate(n=hl.agg.count())
+    logger.info("Summary of truth data annotations:")
+    summary.show(-1)
+
+    return ht
+
+
+def get_tp_ht_for_vcf_export(
+    ht: hl.Table,
+    transmitted_singletons: bool = False,
+    sibling_singletons: bool = False,
+) -> Dict[str, hl.Table]:
+    """
+    Get Tables with raw and adj true positive variants to export as a VCF for use in VQSR.
+
+    :param ht: Input Table with transmitted singleton and sibling singleton information.
+    :param transmitted_singletons: Whether to include transmitted singletons in the
+        true positive variants.
+    :param sibling_singletons: Whether to include sibling singletons in the true
+        positive variants.
+    :return: Dictionary of 'raw' and 'adj' true positive variant sites Tables.
+    """
+    if not transmitted_singletons and not sibling_singletons:
+        raise ValueError(
+            "At least one of transmitted_singletons or sibling_singletons must be set "
+            "to True"
+        )
+    tp_hts = {}
+    for group in GROUPS:
+        filter_expr = False
+        if transmitted_singletons:
+            filter_expr = ht[f"transmitted_singleton_{group}"]
+        if sibling_singletons:
+            filter_expr = filter_expr | ht[f"sibling_singleton_{group}"]
+
+        filtered_ht = ht.filter(filter_expr).select().select_globals()
+        filtered_ht = filtered_ht.checkpoint(
+            hl.utils.new_temp_file("true_positive_variants", "ht"),
+            overwrite=True,
+        )
+        logger.info(
+            "True positive %s Table for VCF export contains %d variants",
+            group,
+            filtered_ht.count(),
+        )
+        tp_hts[group] = filtered_ht
+
+    return tp_hts
+
+
 def get_variant_qc_annotation_resources(
     test: bool,
     overwrite: bool,
     over_n_alleles: Optional[bool] = None,
     combine_compute_info: bool = False,
+    true_positive_type: Optional[str] = None,
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the variant QC annotation pipeline.
@@ -344,6 +501,8 @@ def get_variant_qc_annotation_resources(
     :param combine_compute_info: Whether the input for --compute-info should be the two
         temporary files (with and without the --compute-info-over-split-n-alleles flag)
         produced by running --compute-info with --compute-info-split-n-alleles.
+    :param true_positive_type: Type of true positive variants to use for true positive
+        VCF path resource. Default is None.
     :return: PipelineResourceCollection containing resources for all steps of the
         variant QC annotation pipeline.
     """
@@ -412,6 +571,11 @@ def get_variant_qc_annotation_resources(
             "relatedness.py --finalize-relatedness-ht": {"rel_ht": relatedness()}
         },
     )
+    variant_qc_annotation_ht = PipelineStepResourceCollection(
+        "--create-variant-qc-annotation-ht",
+        output_resources={"vqc_ht": get_variant_qc_annotations(test=test)},
+        pipeline_input_steps=[split_info_ann, trio_stats, sib_stats],
+    )
 
     # Add all steps to the variant QC annotation pipeline resource collection.
     ann_pipeline.add_steps(
@@ -423,8 +587,24 @@ def get_variant_qc_annotation_resources(
             "validate_vep": validate_vep,
             "generate_trio_stats": trio_stats,
             "generate_sib_stats": sib_stats,
+            "variant_qc_annotation_ht": variant_qc_annotation_ht,
         }
     )
+
+    if true_positive_type is not None:
+        export_true_positive_vcfs = PipelineStepResourceCollection(
+            "--export-true-positive-vcfs",
+            output_resources={
+                f"{group}_tp_vcf_path": get_true_positive_vcf_path(
+                    test=test,
+                    adj=(group == "adj"),
+                    true_positive_type=true_positive_type,
+                )
+                for group in GROUPS
+            },
+            pipeline_input_steps=[variant_qc_annotation_ht],
+        )
+        ann_pipeline.add_steps({"export_true_positive_vcfs": export_true_positive_vcfs})
 
     return ann_pipeline
 
@@ -444,6 +624,8 @@ def main(args):
     combine_compute_info = args.combine_compute_info
     run_vep = args.run_vep
     overwrite = args.overwrite
+    transmitted_singletons = args.transmitted_singletons
+    sibling_singletons = args.sibling_singletons
 
     max_n_alleles = min_n_alleles = over_n_alleles = None
     if split_n_alleles is not None:
@@ -454,11 +636,20 @@ def main(args):
             max_n_alleles = split_n_alleles - 1
             over_n_alleles = False
 
+    true_positive_type = None
+    if transmitted_singletons and sibling_singletons:
+        true_positive_type = "transmitted_singleton.sibling_singleton"
+    elif transmitted_singletons:
+        true_positive_type = "transmitted_singleton"
+    elif sibling_singletons:
+        true_positive_type = "sibling_singleton"
+
     vqc_resources = get_variant_qc_annotation_resources(
         test=test,
         overwrite=overwrite,
         over_n_alleles=over_n_alleles,
         combine_compute_info=combine_compute_info,
+        true_positive_type=true_positive_type,
     )
     vds = get_gnomad_v4_vds(
         test=test_dataset,
@@ -532,6 +723,28 @@ def main(args):
             res.check_resource_existence()
             ht = run_generate_sib_stats(mt, res.rel_ht.ht())
             ht.write(res.sib_stats_ht.path, overwrite=overwrite)
+
+        if args.create_variant_qc_annotation_ht:
+            res = vqc_resources.variant_qc_annotation_ht
+            res.check_resource_existence()
+            create_variant_qc_annotation_ht(
+                res.split_info_ht.ht(),
+                res.trio_stats_ht.ht(),
+                res.sib_stats_ht.ht(),
+                impute_features=args.impute_features,
+                n_partitions=args.n_partitions,
+            ).write(res.vqc_ht.path, overwrite=overwrite)
+
+        if args.export_true_positive_vcfs:
+            res = vqc_resources.export_true_positive_vcfs
+            res.check_resource_existence()
+            tp_hts = get_tp_ht_for_vcf_export(
+                res.vqc_ht.ht(),
+                transmitted_singletons=transmitted_singletons,
+                sibling_singletons=sibling_singletons,
+            )
+            hl.export_vcf(tp_hts["raw"], res.raw_tp_vcf_path, tabix=True)
+            hl.export_vcf(tp_hts["adj"], res.adj_tp_vcf_path, tabix=True)
 
     finally:
         logger.info("Copying log to logging bucket...")
@@ -625,6 +838,55 @@ if __name__ == "__main__":
     parser.add_argument(
         "--generate-sibling-stats",
         help="Calculated sibling variant sharing stats",
+        action="store_true",
+    )
+
+    variant_qc_annotation_args = parser.add_argument_group(
+        "Variant QC annotation HT parameters"
+    )
+    variant_qc_annotation_args.add_argument(
+        "--create-variant-qc-annotation-ht",
+        help="Creates an annotated HT with features for variant QC.",
+        action="store_true",
+    )
+    variant_qc_annotation_args.add_argument(
+        "--impute-features",
+        help="If set, imputation is performed for variant QC features.",
+        action="store_true",
+    )
+    variant_qc_annotation_args.add_argument(
+        "--n-partitions",
+        help="Desired number of partitions for variant QC annotation HT .",
+        type=int,
+        default=5000,
+    )
+
+    tp_vcf_args = parser.add_argument_group(
+        "Export true positive VCFs",
+        "Arguments used to define true positive variant set.",
+    )
+    tp_vcf_args.add_argument(
+        "--export-true-positive-vcfs",
+        help=(
+            "Exports true positive variants (--transmitted-singletons and/or"
+            " --sibling-singletons) to VCF files."
+        ),
+        action="store_true",
+    )
+    tp_vcf_args.add_argument(
+        "--transmitted-singletons",
+        help=(
+            "Include transmitted singletons in the exports of true positive variants to"
+            " VCF files."
+        ),
+        action="store_true",
+    )
+    tp_vcf_args.add_argument(
+        "--sibling-singletons",
+        help=(
+            "Include sibling singletons in the exports of true positive variants to VCF"
+            " files."
+        ),
         action="store_true",
     )
 

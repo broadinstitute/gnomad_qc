@@ -57,13 +57,10 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
     )
 
 
-def get_vep(
-    version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
-) -> VersionedTableResource:
+def get_vep(test: bool = False, data_type: str = "exomes") -> VersionedTableResource:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource.
 
-    :param version: Version of annotation path to return.
     :param test: Whether to use a tmp path for analysis of the test Table instead of the full v4 Table.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
     :return: gnomAD v4 VEP VersionedTableResource.
@@ -82,12 +79,11 @@ def get_vep(
 
 
 def validate_vep_path(
-    version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
+    test: bool = False, data_type: str = "exomes"
 ) -> VersionedTableResource:
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource for validation counts.
 
-    :param version: Version of annotation path to return.
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS.
     :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
     :return: gnomAD v4 VEP VersionedTableResource containing validity check.
@@ -105,7 +101,7 @@ def validate_vep_path(
     )
 
 
-def get_trio_stats(test: bool = False) -> str:
+def get_trio_stats(test: bool = False) -> VersionedTableResource:
     """
     Get the gnomAD v4 trio stats VersionedTableResource.
 
@@ -123,7 +119,7 @@ def get_trio_stats(test: bool = False) -> str:
     )
 
 
-def get_sib_stats(test: bool = False) -> str:
+def get_sib_stats(test: bool = False) -> VersionedTableResource:
     """
     Get the gnomAD v4 sibling stats VersionedTableResource.
 
@@ -135,6 +131,42 @@ def get_sib_stats(test: bool = False) -> str:
         {
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.sib_stats.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
+def get_variant_qc_annotations(test: bool = False) -> VersionedTableResource:
+    """
+    Return the VersionedTableResource to the RF-ready annotated Table.
+
+    Annotations that are included in the Table:
+
+        Features for RF:
+            - variant_type
+            - allele_type
+            - n_alt_alleles
+            - has_star
+            - AS_QD
+            - AS_pab_max
+            - AS_MQRankSum
+            - AS_SOR
+            - AS_ReadPosRankSum
+
+        Training sites (bool):
+            - transmitted_singleton
+            - sibling_singleton
+            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
+
+    :param test: Whether to use a tmp path for testing.
+    :return: Table with variant QC annotations.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.variant_qc_annotations.ht"
             )
             for version in VERSIONS
         },
@@ -179,18 +211,32 @@ def info_vcf_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     )
 
 
-def get_transmitted_singleton_vcf_path(
-    adj: bool = False, version: str = CURRENT_VERSION
+def get_true_positive_vcf_path(
+    version: str = CURRENT_VERSION,
+    test: bool = False,
+    adj: bool = False,
+    true_positive_type: str = "transmitted_singleton",
 ) -> str:
     """
     Provide the path to the transmitted singleton VCF used as input to VQSR.
 
-    :param bool adj: Whether to use adj genotypes
-    :param version: Version of transmitted singleton VCF path to return
-    :return: String for the path to the transmitted singleton VCF
+    :param version: Version of true positive VCF path to return.
+    :param test: Whether to use a tmp path for testing.
+    :param adj: Whether to use adj genotypes.
+    :param true_positive_type: Type of true positive VCF path to return. Should be one
+        of "transmitted_singleton", "sibling_singleton", or
+        "transmitted_singleton.sibling_singleton". Default is "transmitted_singleton".
+    :return: String for the path to the true positive VCF.
     """
+    tp_types = [
+        "transmitted_singleton",
+        "sibling_singleton",
+        "transmitted_singleton.sibling_singleton",
+    ]
+    if true_positive_type not in tp_types:
+        raise ValueError(f"true_positive_type must be one of {tp_types}")
     return (
-        f'{_annotations_root(version)}/gnomad.exomes.v{version}.transmitted_singletons.{"adj" if adj else "raw"}.vcf.bgz'
+        f'{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.{true_positive_type}.{"adj" if adj else "raw"}.vcf.bgz'
     )
 
 
