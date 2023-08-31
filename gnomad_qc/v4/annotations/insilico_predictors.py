@@ -4,6 +4,7 @@ import argparse
 import logging
 
 import hail as hl
+from gnomad.resources.resource_utils import NO_CHR_TO_CHR_CONTIG_RECODING
 from gnomad.utils.slack import slack_notifications
 
 from gnomad_qc.resource_utils import check_resource_existence
@@ -64,13 +65,13 @@ def create_cadd_grch38_ht() -> hl.Table:
 
         return ht
 
-    snvs = _load_cadd_raw(
-        "gs://gnomad-qin/v4_annotations/cadd.v1.6.whole_genome_SNVs.tsv.bgz"
+    snvs = hl.read_table(
+        "gs://gcp-public-data--gnomad/resources/grch38/in_silico_predictors/CADD_v1.6_SNVs.ht"
     )
     indel3_0 = _load_cadd_raw(
-        "gs://gnomad-qin/v4_annotations/cadd.v1.6.gnomad.genomes.r3.0.indel.tsv.bgz"
+        "gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.genomes.r3.0.indel.tsv.bgz"
     )
-    indel3_1 = hl.read_table("gs://gnomad-wphu/CADD-indels-gnomad.3.1.ht")
+    indel3_1 = hl.read_table("gs://gnomad-insilico/cadd/CADD-indels-gnomad.3.1.ht")
     indel3_1_complex = hl.read_table(
         "gs://gnomad-wphu/CADD-1.6-gnomad-complex-variants.ht"
     )
@@ -95,51 +96,49 @@ def create_spliceai_grch38_ht(
     """
     Create a Hail Table with SpliceAI scores for GRCh38.
 
-    ..Note::
-    The SpliceAI scores are from the following resources:
-    all SNVs precomputed: spliceai_scores.masked.snv.hg38.vcf.bgz, downloaded from https://basespace.illumina.com/s/5u6ThOblecrh
-    all indels precomputed: spliceai_scores.masked.indel.hg38.vcf.bgz, downloaded from https://basespace.illumina.com/s/5u6ThOblecrh
-    new indels from gnomAD v4: gnomad_v4_new_indels.spliceai_masked.vcf.bgz, requested Illumina to compute for us.
-    We may have lost the SpliceAI score for gnomAD v3 indels, which makes it hard to process the raw scores to get a maximum and retain the position information.
-    Before we didn't `explode` the SpliceAI scores, so we only had scores for the first gene for each variant.
+    SpliceAI scores are from the following resources:
+        - Precomputed SNVs: spliceai_scores.masked.snv.hg38.vcf.bgz,
+          downloaded from https://basespace.illumina.com/s/5u6ThOblecrh
+        - Precomputed indels: spliceai_scores.masked.indel.hg38.vcf.bgz,
+          downloaded from https://basespace.illumina.com/s/5u6ThOblecrh
+        - gnomAD v4 indels: gnomad_v4_new_indels.spliceai_masked.vcf.bgz,
+          computed on v4 by Illumina.
 
+    :param str snvs_path: Path to the precomputed SNVs.
+    :param str indels_path: Path to the precomputed indels.
+    :param str new_indels_path: Path to the gnomAD v4 indels.
     :return: Hail Table with SpliceAI scores for GRCh38.
     """
+
+    def import_spliceai_vcf(path: str) -> hl.Table:
+        """
+        Import SpliceAI VCF into Hail Table.
+
+        :param str path: Path to SpliceAI VCF.
+        :return: Hail MatrixTable with SpliceAI scores.
+        """
+        ht = hl.import_vcf(
+            path,
+            force_bgz=True,
+            header_file=header_file_path,
+            reference_genome="GRCh38",
+            contig_recoding=NO_CHR_TO_CHR_CONTIG_RECODING,
+            skip_invalid_loci=True,
+            min_partitions=1000,
+        ).rows()
+        return ht
+
     logger.info("Importing vcf of SpliceAI scores into MT...")
-    recode = {f"{i}": f"chr{i}" for i in (list(range(1, 23)) + ["X", "Y"])}
-    spliceai_snvs = hl.import_vcf(
-        snvs_path,
-        force_bgz=True,
-        min_partitions=1000,
-        reference_genome="GRCh38",
-        contig_recoding=recode,
-        skip_invalid_loci=True,
-    )
 
-    spliceai_indels = hl.import_vcf(
-        indels_path,
-        force_bgz=True,
-        reference_genome="GRCh38",
-        contig_recoding=recode,
-        skip_invalid_loci=True,
-        min_partitions=1000,
-    )
+    spliceai_snvs = import_spliceai_vcf(snvs_path)
+    spliceai_indels = import_spliceai_vcf(indels_path)
+    spliceai_new_indels = import_spliceai_vcf(new_indels_path)
 
-    spliceai_new_indels = hl.import_vcf(
-        new_indels_path,
-        header_file=header_file_path,
-        force_bgz=True,
-        reference_genome="GRCh38",
-        contig_recoding=recode,
-        skip_invalid_loci=True,
-        min_partitions=1000,
-    )
-
-    mt = spliceai_snvs.union_rows(spliceai_indels).union_rows(spliceai_new_indels)
-    ht = mt.rows()
+    ht = spliceai_snvs.union(spliceai_indels).union(spliceai_new_indels)
 
     logger.info("Exploding SpliceAI scores...")
-    # `explode` will eliminate rows with empty array, but the varaints with multiple genes will extend the number of rows.
+    # `explode` will eliminate rows with empty array, but the varaints with
+    # multiple genes will extend the number of rows.
     ht = ht.explode(ht.info.SpliceAI)
 
     logger.info("Annotating SpliceAI scores...")
@@ -234,13 +233,13 @@ def main(args):
     if args.spliceai:
         logger.info("Creating SpliceAI Hail Table for GRCh38...")
         snvs_path = (
-            "gs://gnomad-qin/v4_annotations/spliceai_scores.masked.snv.hg38.vcf.bgz"
+            "gs://gnomad-insilico/spliceai/spliceai_scores.masked.snv.hg38.vcf.bgz"
         )
         indels_path = (
-            "gs://gnomad-qin/v4_annotations/spliceai_scores.masked.indel.hg38.vcf.bgz"
+            "gs://gnomad-insilico/spliceai/spliceai_scores.masked.indel.hg38.vcf.bgz"
         )
-        new_indels_path = "gs://gnomad-qin/v4_annotations/gnomad_v4_new_indels.spliceai_masked.vcf.bgz"
-        header_file_path = "gs://gnomad-qin/v4_annotations/spliceai.vcf.header"
+        new_indels_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v4_new_indels.hg38.vcf.bgz"
+        header_file_path = "gs://gnomad-insilico/spliceai/spliceai.vcf.header"
         ht = create_spliceai_grch38_ht(
             snvs_path, indels_path, new_indels_path, header_file_path
         )
