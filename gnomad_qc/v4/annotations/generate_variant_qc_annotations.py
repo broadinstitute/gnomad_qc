@@ -7,11 +7,11 @@ import hail as hl
 from gnomad.assessment.validity_checks import count_vep_annotated_variants_per_interval
 from gnomad.resources.grch38.gnomad import GROUPS
 from gnomad.resources.grch38.reference_data import ensembl_interval, get_truth_ht
+from gnomad.resources.resource_utils import TableResource
 from gnomad.sample_qc.relatedness import filter_mt_to_trios
 from gnomad.utils.annotations import annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
-    AS_INFO_AGG_FIELDS,
     default_compute_info,
     get_as_info_expr,
     split_info_annotation,
@@ -37,7 +37,11 @@ from gnomad_qc.v4.resources.annotations import (
     info_vcf_path,
     validate_vep_path,
 )
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds, get_logging_path
+from gnomad_qc.v4.resources.basics import (
+    get_checkpoint_path,
+    get_gnomad_v4_vds,
+    get_logging_path,
+)
 from gnomad_qc.v4.resources.sample_qc import pedigree, relatedness
 
 logging.basicConfig(
@@ -202,7 +206,11 @@ def correct_as_annotations(
     return hl.struct(**corrected_annotations)
 
 
-def run_compute_info(mt: hl.MatrixTable, n_partitions: int) -> hl.Table:
+def run_compute_info(
+    mt: hl.MatrixTable,
+    max_n_alleles: Optional[int] = None,
+    min_n_alleles: Optional[int] = None,
+) -> hl.Table:
     """
     Run compute info on a MatrixTable.
 
@@ -212,9 +220,17 @@ def run_compute_info(mt: hl.MatrixTable, n_partitions: int) -> hl.Table:
         have different lengths than LA.
 
     :param mt: Input MatrixTable.
-    :param n_partitions: Number of partitions to use for the output Table.
+    :param max_n_alleles: Maximum number of alleles for the site to be included in
+        computations.
+    :param min_n_alleles: Minimum number of alleles for the site to be included in
+        computations.
     :return: Table with info annotations.
     """
+    if max_n_alleles:
+        mt = mt.filter_rows(hl.len(mt.alleles) <= max_n_alleles)
+    if min_n_alleles:
+        mt = mt.filter_rows(hl.len(mt.alleles) >= min_n_alleles)
+
     mt = mt.annotate_entries(
         gvcf_info=mt.gvcf_info.annotate(
             AS_QUALapprox=recompute_as_qualapprox_from_lpl(mt),
@@ -232,9 +248,6 @@ def run_compute_info(mt: hl.MatrixTable, n_partitions: int) -> hl.Table:
         },
         n_partitions=None,
     )
-    info_ht = info_ht.checkpoint(
-        hl.utils.new_temp_file("compute_info", extension="ht"), overwrite=True
-    )
 
     mt = mt.annotate_entries(gvcf_info=correct_as_annotations(mt, set_to_missing=True))
     mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
@@ -250,12 +263,8 @@ def run_compute_info(mt: hl.MatrixTable, n_partitions: int) -> hl.Table:
     ).rows()
 
     info_ht = info_ht.annotate(set_long_AS_missing_info=ht[info_ht.key])
-    info_ht = info_ht.checkpoint(
-        hl.utils.new_temp_file("compute_info_AS_missing", extension="ht"),
-        overwrite=True,
-    )
 
-    return info_ht.naive_coalesce(n_partitions)
+    return info_ht
 
 
 def split_info(info_ht: hl.Table) -> hl.Table:
@@ -473,18 +482,52 @@ def get_tp_ht_for_vcf_export(
 
 
 def get_variant_qc_annotation_resources(
-    test: bool, overwrite: bool, true_positive_type: Optional[str] = None
+    test: bool,
+    overwrite: bool,
+    over_n_alleles: Optional[bool] = None,
+    combine_compute_info: bool = False,
+    true_positive_type: Optional[str] = None,
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the variant QC annotation pipeline.
 
     :param test: Whether to gather all resources for testing.
     :param overwrite: Whether to overwrite resources if they exist.
+    :param over_n_alleles: Whether to use a temporary info TableResource for results.
+        When True, use temporary info TableResource for only sites that have more
+        than the passed arg --compute-info-split-n-alleles alleles. When False, use
+        temporary info TableResource for only sites with fewer alleles. When None,
+        the finalize info ht is used instead of a temporary location. Default is None.
+    :param combine_compute_info: Whether the input for --compute-info should be the two
+        temporary files (with and without the --compute-info-over-split-n-alleles flag)
+        produced by running --compute-info with --compute-info-split-n-alleles.
     :param true_positive_type: Type of true positive variants to use for true positive
         VCF path resource. Default is None.
     :return: PipelineResourceCollection containing resources for all steps of the
         variant QC annotation pipeline.
     """
+    if over_n_alleles is None or combine_compute_info:
+        info_ht = get_info(split=False, test=test)
+    else:
+        info_ht = TableResource(
+            get_checkpoint_path(
+                f"compute_info{'.test' if test else ''}.{'over_n_alleles' if over_n_alleles else 'under_n_alleles'}"
+            )
+        )
+    compute_info_input_resources = {}
+    if combine_compute_info:
+        res_key = "--compute-info --compute-info-split-n-alleles"
+        for n_alleles in ["under", "over"]:
+            if n_alleles == "over":
+                res_key += " --compute-info-over-split-n-alleles"
+            compute_info_input_resources[res_key] = {
+                f"{n_alleles}_info_ht": TableResource(
+                    get_checkpoint_path(
+                        f"compute_info{'.test' if test else ''}.{n_alleles}_n_alleles"
+                    )
+                )
+            }
+
     # Initialize variant QC annotation pipeline resource collection.
     ann_pipeline = PipelineResourceCollection(
         pipeline_name="variant_qc_annotation",
@@ -494,7 +537,8 @@ def get_variant_qc_annotation_resources(
     # Create resource collection for each step of the variant QC annotation pipeline.
     compute_info = PipelineStepResourceCollection(
         "--compute-info",
-        output_resources={"info_ht": get_info(split=False, test=test)},
+        input_resources=compute_info_input_resources,
+        output_resources={"info_ht": info_ht},
     )
     split_info_ann = PipelineStepResourceCollection(
         "--split-info",
@@ -575,10 +619,22 @@ def main(args):
     test_dataset = args.test_dataset
     test_n_partitions = args.test_n_partitions
     test = test_dataset or test_n_partitions
+    over_split_n_alleles = args.compute_info_over_split_n_alleles
+    split_n_alleles = args.compute_info_split_n_alleles
+    combine_compute_info = args.combine_compute_info
     run_vep = args.run_vep
     overwrite = args.overwrite
     transmitted_singletons = args.transmitted_singletons
     sibling_singletons = args.sibling_singletons
+
+    max_n_alleles = min_n_alleles = over_n_alleles = None
+    if split_n_alleles is not None:
+        if over_split_n_alleles:
+            min_n_alleles = split_n_alleles
+            over_n_alleles = True
+        else:
+            max_n_alleles = split_n_alleles - 1
+            over_n_alleles = False
 
     true_positive_type = None
     if transmitted_singletons and sibling_singletons:
@@ -589,7 +645,11 @@ def main(args):
         true_positive_type = "sibling_singleton"
 
     vqc_resources = get_variant_qc_annotation_resources(
-        test=test, overwrite=overwrite, true_positive_type=true_positive_type
+        test=test,
+        overwrite=overwrite,
+        over_n_alleles=over_n_alleles,
+        combine_compute_info=combine_compute_info,
+        true_positive_type=true_positive_type,
     )
     vds = get_gnomad_v4_vds(
         test=test_dataset,
@@ -608,7 +668,17 @@ def main(args):
             # TODO: is there any reason to also compute info per platform?
             res = vqc_resources.compute_info
             res.check_resource_existence()
-            ht = run_compute_info(mt, args.compute_info_n_partitions)
+            if combine_compute_info:
+                ht = mt.select_rows().rows()
+                lt_ht = res.under_info_ht.ht()
+                gt_eq_ht = res.over_info_ht.ht()
+                ht = ht.annotate(**hl.coalesce(lt_ht[ht.key], gt_eq_ht[ht.key]))
+            else:
+                ht = run_compute_info(mt, max_n_alleles, min_n_alleles)
+
+            if split_n_alleles is None or combine_compute_info:
+                ht = ht.naive_coalesce(args.compute_info_n_partitions)
+
             ht.write(res.info_ht.path, overwrite=overwrite)
 
         if args.split_info:
@@ -697,13 +767,51 @@ if __name__ == "__main__":
         const=2,
         type=int,
     )
-    parser.add_argument("--compute-info", help="Compute info HT.", action="store_true")
-    parser.add_argument(
+    compute_info_args = parser.add_argument_group(
+        "Compute info HT.",
+        "Arguments relevant to computing the info HT..",
+    )
+    compute_info_args.add_argument(
+        "--compute-info", help="Compute info HT.", action="store_true"
+    )
+    compute_info_args.add_argument(
+        "--compute-info-split-n-alleles",
+        help=(
+            "Number of alleles at a site to filter results on. If "
+            "--compute-info-over-split-n-alleles is used, the results are filtered to "
+            "sites with greater than or equal to the value supplied, otherwise the "
+            "results are filtered to sites with less than the value supplied. By "
+            "default no sites are filtered."
+        ),
+        default=None,
+        type=int,
+    )
+    compute_info_args.add_argument(
+        "--compute-info-over-split-n-alleles",
+        help=(
+            "Whether to filter to sites greater than or equal to the value supplied to"
+            "--compute-info-split-n-alleles. By default, sites are filtered to sites "
+            "less than that value, or None if --compute-info-split-n-alleles is not "
+            "supplied."
+        ),
+        action="store_true",
+    )
+    compute_info_args.add_argument(
+        "--combine-compute-info",
+        help=(
+            "Whether to combine the output from running --compute-info "
+            "--compute-info-split-n-alleles with and without the "
+            "--compute-info-over-split-n-alleles flag."
+        ),
+        action="store_true",
+    )
+    compute_info_args.add_argument(
         "--compute-info-n-partitions",
         help="Number of desired partitions for the info HT.",
         default=5000,
         type=int,
     )
+
     parser.add_argument("--split-info", help="Split info HT.", action="store_true")
     parser.add_argument(
         "--export-info-vcf", help="Export info as VCF.", action="store_true"

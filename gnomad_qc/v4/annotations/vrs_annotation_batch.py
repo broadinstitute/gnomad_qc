@@ -313,23 +313,10 @@ def main(args):
         batch_vrs.run()
 
         logger.info(
-            "Batch jobs executed, preparing to read in sharded VCF from prior step."
-            " Preparing list of files first using Hail's hadoop_ls method."
+            "Batch jobs executed, importing annotated shards into Hail Table..."
         )
-
-        annotated_file_dict = hl.utils.hadoop_ls(
-            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated.vcf/*"
-        )
-
-        annotated_file_list = [
-            annotated_file_item["path"] for annotated_file_item in annotated_file_dict
-        ]
-
-        logger.info("File list created. Now reading in annotated shards.")
-
-        # Import all annotated shards
         ht_annotated = hl.import_vcf(
-            annotated_file_list,
+            f"gs://{working_bucket}/vrs-temp/annotated-shards/annotated.vcf/*",
             force_bgz=True,
             reference_genome=assembly,
         ).rows()
