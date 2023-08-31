@@ -11,7 +11,7 @@ from gnomad.utils.annotations import (
     set_female_y_metrics_to_na_expr,
     update_structured_annotations,
 )
-from gnomad.utils.filtering import filter_freq_by_meta
+from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 
@@ -191,7 +191,8 @@ def get_filtered_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table, hl.Table]:
     # Filter to all samples with a pop name split and no change in release status.
     split_pops = hl.literal(["PapuanHighlands", "PapuanSepik", "Han", "NorthernHan"])
     pop_diff_ht = ht.filter(
-        split_pops.contains(ht.hgdp_tgp_meta.population) & ~ht.sample_annotations_updated.contains("gnomad_release")
+        split_pops.contains(ht.hgdp_tgp_meta.population)
+        & ~ht.sample_annotations_updated.contains("gnomad_release")
     )
     logger.info("%d samples in the split Papuan & Han set", pop_diff_ht.count())
 
@@ -274,7 +275,7 @@ def calculate_callstats_for_selected_samples(
 
 
 def concatenate_subset_frequencies(
-    global_freq_ht: hl.Table, subset_freq_hts: List[hl.Table]
+    subset_freq_hts: List[hl.Table]
 ) -> hl.Table:
     """
     Concatenate subset frequencies into a single Table.
@@ -289,50 +290,22 @@ def concatenate_subset_frequencies(
     :param subset_freq_hts: List of subset frequency HTs.
     :return: Concatenated frequency HT.
     """
-
-    def fill_missing_freq_structs(
-        global_freq_ht: hl.Table, subset_freq_ht: hl.Table
-    ) -> hl.Table:
-        """
-        Fill in missing freq structs when no callstats are available for a subset.
-
-        :param global_freq_ht: Global frequency HT.
-        :param subset_freq_ht: Subset frequency HT.
-        :return: Subset frequency HT with missing freq structs filled in.
-        """
-        ht = subset_freq_ht.join(global_freq_ht.select().select_globals(), how="right")
-        ht = ht.annotate(
-            freq=hl.if_else(
-                hl.is_missing(ht.freq),
-                hl.map(
-                    lambda x: missing_callstats_expr(), hl.range(hl.len(ht.freq_meta))
-                ),
-                ht.freq,
-            )
-        )
-        ht = ht.select("freq").select_globals("freq_meta")
-        return ht
-
-    subset_freq_hts = [
-        fill_missing_freq_structs(global_freq_ht, subset_freq_ht)
-        for subset_freq_ht in subset_freq_hts
-    ]
-
     freq_ht = hl.Table.multi_way_zip_join(
-        [global_freq_ht.select("freq").select_globals("freq_meta")] + subset_freq_hts,
+        subset_freq_hts,
         data_field_name="freq",
         global_field_name="freq_meta",
     )
     freq_ht = freq_ht.transmute(freq=freq_ht.freq.flatmap(lambda x: x.freq))
     freq_ht = freq_ht.transmute_globals(
-        freq_meta=freq_ht.freq_meta.flatmap(lambda x: x.freq_meta)
+        freq_meta=freq_ht.freq_meta.flatmap(lambda x: x.freq_meta),
+        freq_meta_sample_count=freq_ht.freq_meta.flatmap(lambda x: x.freq_meta_sample_count)
     )
 
     return freq_ht
 
 
 def calculate_concatenate_callstats(
-    mt: hl.MatrixTable, samples_ht: hl.Table
+    mt: hl.MatrixTable, samples_ht: hl.Table, compute_freq_all: bool = True
 ) -> hl.Table:
     """
     Calculate the call stats for samples in `samples_ht`.
@@ -346,38 +319,28 @@ def calculate_concatenate_callstats(
     :param samples_ht: Table with the samples.
     :return: Table with the call stats for the selected samples.
     """
+    projects = []
+    subset_freq_hts = []
     logger.info("Calculating AFs for selected samples...")
-    freq_ht_all = calculate_callstats_for_selected_samples(mt, samples_ht)
+    if compute_freq_all:
+        projects.append(("All", None))
 
-    if samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "HGDP").count() > 0:
-        freq_ht_hgdp = calculate_callstats_for_selected_samples(
-            mt,
-            samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "HGDP"),
-            subsets=["hgdp"],
-        )
-    else:
-        freq_ht_hgdp = None
+    projects.extend([("HGDP", ["hgdp"]), ("1000 Genomes", ["tgp"])])
+    project_expr = samples_ht.hgdp_tgp_meta.project
+    project_n = samples_ht.aggregate(hl.agg.counter(project_expr))
 
-    if (
-        samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "1000 Genomes").count()
-        > 0
-    ):
-        freq_ht_tgp = calculate_callstats_for_selected_samples(
-            mt,
-            samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "1000 Genomes"),
-            subsets=["tgp"],
-        )
-    else:
-        freq_ht_tgp = None
+    for project, subset in projects:
+        if project == "All":
+            subset_ht = samples_ht
+        else:
+            subset_ht = samples_ht.filter(project_expr == project)
+        if project == "All" or project_n.get(project, 0) > 0:
+            freq_ht = calculate_callstats_for_selected_samples(mt, subset_ht, subset)
+            freq_ht = freq_ht.select("freq").select_globals("freq_meta", "freq_meta_sample_count")
+            subset_freq_hts.append(freq_ht)
 
     logger.info("Concatenating AFs for selected samples...")
-    subset_freq_hts = []
-    if freq_ht_hgdp is not None:
-        subset_freq_hts.append(freq_ht_hgdp.select("freq").select_globals("freq_meta"))
-    if freq_ht_tgp is not None:
-        subset_freq_hts.append(freq_ht_tgp.select("freq").select_globals("freq_meta"))
-
-    freq_ht = concatenate_subset_frequencies(freq_ht_all, subset_freq_hts)
+    freq_ht = concatenate_subset_frequencies(subset_freq_hts)
 
     return freq_ht
 
@@ -501,15 +464,6 @@ def main(args):
         test=test, overwrite=overwrite
     )
 
-    if args.update_annotations:
-        res = v4_genome_release_resources.update_annotations
-        res.check_resource_existence()
-        logger.info(
-            "Loading HGDP + 1KG subset meta HT and updating sample QC annotations..."
-        )
-        meta_ht = add_updated_sample_qc_annotations(res.meta_ht.ht())
-        meta_ht.write(res.updated_meta_ht.path, overwrite=overwrite)
-
     if args.get_callstats_for_updated_samples:
         res = v4_genome_release_resources.get_callstats_for_updated_samples
         res.check_resource_existence()
@@ -532,7 +486,20 @@ def main(args):
         freq_added_ht.write(res.freq_added_ht.path, overwrite=overwrite)
         freq_subtracted_ht = calculate_concatenate_callstats(mt, subtract_ht)
         freq_subtracted_ht.write(res.freq_subtracted_ht.path, overwrite=overwrite)
-        freq_pop_diff_ht = calculate_concatenate_callstats(mt, pop_diff_ht)
+        freq_pop_diff_ht = calculate_concatenate_callstats(mt, pop_diff_ht, compute_freq_all=False)
+        freq_meta_expr, freq_expr = filter_arrays_by_meta(
+            freq_pop_diff_ht.freq_meta,
+            {
+                "freq": freq_pop_diff_ht.freq,
+                "freq_meta_sample_count": freq_pop_diff_ht.index_globals().freq_meta_sample_count
+            },
+            ["pop"]
+        )
+        freq_pop_diff_ht = freq_pop_diff_ht.annotate(freq=freq_expr["freq"])
+        freq_pop_diff_ht = freq_pop_diff_ht.annotate_globals(
+            freq_meta=freq_meta_expr,
+            freq_meta_sample_count=freq_expr["freq_meta_sample_count"],
+        )
         freq_pop_diff_ht.write(res.freq_pop_diff_ht.path, overwrite=overwrite)
 
     if args.update_release_callstats:
@@ -545,73 +512,51 @@ def main(args):
         if test:
             ht = filter_to_test(ht)
 
-        # TODO: We won't need this anymore because we need to update more annotations
-        #  than just this.
-        logger.info("Selecting `freq` and `freq_meta` from the release HT...")
-        ht = ht.select("freq").select_globals("freq_meta")
-
         logger.info("Removing `Han` and `Papuan` populations from freq and freq_meta...")
         pops_to_remove = {"pop": ["han", "papuan"]}
-        freq_expr, freq_meta_expr = filter_freq_by_meta(
-            ht.freq, ht.freq_meta, pops_to_remove, keep=False, combine_operator="or"
+        freq_meta_expr, freq_expr = filter_arrays_by_meta(
+            ht.freq_meta, {"freq": ht.freq}, pops_to_remove, keep=False, combine_operator="or"
         )
-        ht = ht.annotate(freq=freq_expr)
+        ht = ht.annotate(freq=freq_expr["freq"])
         ht = ht.annotate_globals(freq_meta=freq_meta_expr)
 
         logger.info("Updating HGDP pop labels...")
         ht = update_hgdp_pop_labels(ht, POP_MAP)
 
+        # TODO: We won't need this anymore because we need to update more annotations
+        #  than just this.
+        logger.info("Selecting `freq` and `freq_meta` from the release HT...")
+        ht = ht.select("freq").select_globals("freq_meta")
+
         logger.info("Annotating HT with AFs for added and subtracted samples...")
-        freq_pop_diff_ht = res.freq_pop_diff_ht.ht()
-        freq_pop_diff_ht = freq_pop_diff_ht.annotate(
-            freq=freq_pop_diff_ht.freq[2:]
-        )
-        freq_pop_diff_ht = freq_pop_diff_ht.annotate_globals(
-            freq_meta=freq_pop_diff_ht.freq_meta[2:]
-        )
         freq_hts = [
             ht,
-            res.freq_pop_diff_ht.ht(),
-            res.freq_subtracted_ht.ht(),
-            res.freq_added_ht.ht()
+            res.freq_pop_diff_ht.ht().select("freq").select_globals("freq_meta"),
+            res.freq_added_ht.ht().select("freq").select_globals("freq_meta"),
+            res.freq_subtracted_ht.ht().select("freq").select_globals("freq_meta"),
         ]
         ht = hl.Table.multi_way_zip_join(freq_hts, "ann_array", "global_array")
+        ht = ht.checkpoint("gs://gnomad-tmp/julia/hgdp_tgp_update/update_hgdp_tgp_af.ht", overwrite=True)
 
-        # Combine freq arrays and high ab het counts by group arrays into single
-        # annotations.
-        logger.info(
-            "Merging frequency arrays, metadata, and high ab het counts by group array..."
-        )
-        logger.info("Merging AFs from diff pop samples...")
+        logger.info("Merging AFs from diff pop samples and added samples...")
         freq_expr, freq_meta_expr = merge_freq_arrays(
-            [ht.ann_array[0].freq, ht.ann_array[1].freq],
-            [ht.global_array[0].freq_meta, ht.global_array[1].freq_meta],
-            operation="diff",
-            set_negatives_to_zero=True,
-        )
+            [ht.ann_array[i].freq for i in range(3)],
+            [ht.global_array[i].freq_meta for i in range(3)],
+            operation="sum",
         )
 
         logger.info("Merging AFs from subtracted samples...")
-        freq2, freq_meta2 = merge_freq_arrays(
-            [ht.freq, ht.freq_subtracted_samples],
-            [ht.freq_meta, ht.freq_meta_subtracted_samples],
+        freq_expr, freq_meta_expr = merge_freq_arrays(
+            [freq_expr, ht.ann_array[3].freq],
+            [freq_meta_expr, ht.global_array[3].freq_meta],
             operation="diff",
-            set_negatives_to_zero=True,
+            set_negatives_to_zero=False,
         )
-        ht = ht.annotate(freq=freq2)
-        ht = ht.annotate_globals(freq_meta=freq_meta2)
-
-        logger.info("Merging AFs from added samples...")
-        freq3, freq_meta3 = merge_freq_arrays(
-            [ht.freq, ht.freq_added_samples],
-            [ht.freq_meta, ht.freq_meta_added_samples],
-        )
-        ht = ht.annotate(freq=freq3)
-        ht = ht.annotate_globals(freq_meta=freq_meta3)
-
+        ht = ht.select(freq=freq_expr)
         logger.info("Making freq_index_dict from freq_meta...")
-        ht = ht.annotate_globals(
-            freq_index_dict=make_freq_index_dict_from_meta(ht.freq_meta)
+        ht = ht.select_globals(
+            freq_meta=freq_meta_expr,
+            freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta_expr))
         )
 
         logger.info(
@@ -619,9 +564,6 @@ def main(args):
             "metrics to missing structs..."
         )
         ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
-
-        logger.info("Keeping only the final AFs...")
-        ht = ht.select("freq").select_globals("freq_meta", "freq_index_dict")
 
         logger.info("Writing out the AF HT...")
         ht.write(res.v4_freq_ht.path, overwrite=overwrite)
