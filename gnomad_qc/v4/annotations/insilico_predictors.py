@@ -137,14 +137,17 @@ def create_spliceai_grch38_ht(
     ht = spliceai_snvs.union(spliceai_indels).union(spliceai_new_indels)
 
     logger.info("Exploding SpliceAI scores...")
-    # `explode` will eliminate rows with empty array, but the varaints with
-    # multiple genes will extend the number of rows.
+    # `explode` will eliminate rows with empty array, some variants don't have
+    # score might because they are located inside gene body, but the variants
+    # fall on multiple genes will extend the number of rows.
     ht = ht.explode(ht.info.SpliceAI)
 
     logger.info("Annotating SpliceAI scores...")
     # there will only be one gene in the array after exploding
     gene_symbol = ht.info.SpliceAI.split(delim="\\|")[1:2][0]
+    # delta_score array for 4 splicing consequences: DS_AG|DS_AL|DS_DG|DS_DL
     delta_scores = ht.info.SpliceAI.split(delim="\\|")[2:6]
+    # position array is |AG|AL|DG|DL
     positions = ht.info.SpliceAI.split(delim="\\|")[6:10]
     ht = ht.annotate(
         splice_ai=hl.struct(
@@ -155,10 +158,8 @@ def create_spliceai_grch38_ht(
     )
 
     # Annotate info.max_DS with the max of DS_AG, DS_AL, DS_DG, DS_DL in info.
-    # delta_score array is |DS_AG|DS_AL|DS_DG|DS_DL
     logger.info(
-        "Getting the max SpliceAI score for each variant across consequences per"
-        " gene..."
+        "Getting the max SpliceAI score across consequences for each variant pergene..."
     )
     consequences = hl.literal(
         ["acceptor_gain", "acceptor_loss", "donor_gain", "donor_loss"]
@@ -168,12 +169,12 @@ def create_spliceai_grch38_ht(
     )
     ht = ht.annotate(
         splice_ai=ht.splice_ai.annotate(
-            consequence_max=hl.if_else(
+            ds_max_consequence=hl.if_else(
                 ht.splice_ai.ds_max > 0,
                 consequences[ht.splice_ai.delta_scores.index(ht.splice_ai.ds_max)],
                 "no_consequence",
             ),
-            position_max=hl.if_else(
+            ds_max_position=hl.if_else(
                 ht.splice_ai.ds_max > 0,
                 ht.splice_ai.positions[
                     ht.splice_ai.delta_scores.index(ht.splice_ai.ds_max)
@@ -188,8 +189,8 @@ def create_spliceai_grch38_ht(
         staging=hl.agg.take(
             hl.struct(
                 ds_max=ht.splice_ai.ds_max,
-                position_max=ht.splice_ai.position_max,
-                consequence_max=ht.splice_ai.consequence_max,
+                ds_max_position=ht.splice_ai.ds_max_position,
+                ds_max_consequence=ht.splice_ai.ds_max_consequence,
                 gene=ht.splice_ai.gene_symbol,
             ),
             1,
