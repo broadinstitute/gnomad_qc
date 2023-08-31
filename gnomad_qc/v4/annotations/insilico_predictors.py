@@ -185,6 +185,9 @@ def create_spliceai_grch38_ht(
     )
 
     logger.info("Getting the max SpliceAI score for each variant across genes...")
+    # The block of code below keeps all the info for the variant with the max
+    # SpliceAI score: ds_max, ds_max_consequence, ds_max_position, gene_symbol.
+    # We want to keep it here in case we want to use it in the future.
     ht2 = ht.group_by(*ht.key).aggregate(
         staging=hl.agg.take(
             hl.struct(
@@ -199,13 +202,12 @@ def create_spliceai_grch38_ht(
     )
 
     logger.info("Annotating SpliceAI scores in right format...")
-    # `aggregate` put everything in an array, we need to extract the struct from the array.
+    # `aggregate` put everything in an array, we need to extract the struct
+    # from the array.
+    # For the v4 release, we will only keep the max SpliceAI score.
     ht2 = ht2.annotate(
         splice_ai=hl.struct(
             ds_max=hl.float32(ht2.staging.ds_max[0]),
-            position_max=hl.int32(ht2.staging.position_max[0]),
-            consequence_max=hl.str(ht2.staging.consequence_max[0]),
-            gene=hl.str(ht2.staging.gene[0]),
         )
     )
 
