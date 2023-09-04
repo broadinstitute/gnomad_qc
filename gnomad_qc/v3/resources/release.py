@@ -65,8 +65,9 @@ def release_ht_path(
     if public:
         if het_nonref_patch:
             DataException("The patch HT will not be made public")
-        if file_exists(public_release(data_type).versions[release_version].path):
-            return public_release(data_type).versions[release_version].path
+        res = public_release(data_type).versions
+        if release_version in res and file_exists(res[release_version].path):
+            return res[release_version].path
         else:
             return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.{version_prefix}{release_version}.sites.ht"
     else:
@@ -190,18 +191,29 @@ def append_to_vcf_header_path(
 
 
 def hgdp_tgp_subset(
-    dense: bool = False, test: bool = False, release: str = CURRENT_HGDP_TGP_RELEASE
-) -> str:
+    dense: bool = False, test: bool = False, public: bool = False
+) -> VersionedMatrixTableResource:
     """
     Get the HGDP + 1KG/TGP subset release MatrixTableResource.
 
     :param dense: If True, return the dense MT; if False, return the sparse MT
     :param test: If true, will return the annotation resource for testing purposes
+    :param public: Determines whether release MT is read from public or private bucket.
+        Defaults to private.
     :return: MatrixTableResource for specific subset
     """
     # The old path can't be found anymore, so we need to use the new path
-    return (
-        f"{qc_temp_prefix(version=release) if test else f'gs://gcp-public-data--gnomad/release/{release}/mt/genomes'}/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_dense' if dense else '_sparse'}.mt"
+    if test and public:
+        raise DataException("Cannot read from public bucket when test is True.")
+    bucket = "gcp-public-data--gnomad" if public else "gnomad"
+    return VersionedMatrixTableResource(
+        default_version=CURRENT_HGDP_TGP_RELEASE,
+        versions={
+            release: MatrixTableResource(
+                f"{qc_temp_prefix(version=release) if test else f'gs://{bucket}/release/{release}/mt/genomes'}/gnomad.genomes.v{release}.hgdp_1kg_subset{f'_dense' if dense else '_sparse'}.mt"
+            )
+            for release in HGDP_TGP_RELEASES
+        },
     )
 
 

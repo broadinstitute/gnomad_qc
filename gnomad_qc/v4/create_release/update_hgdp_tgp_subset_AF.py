@@ -7,19 +7,23 @@ import hail as hl
 from gnomad.utils.annotations import (
     annotate_freq,
     merge_freq_arrays,
-    missing_callstats_expr,
     set_female_y_metrics_to_na_expr,
     update_structured_annotations,
 )
-from gnomad.utils.filtering import filter_freq_by_meta
+from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.resources.annotations import get_freq
 from gnomad_qc.v3.resources.release import (
     hgdp_tgp_subset,
     hgdp_tgp_subset_annotations,
-    release_ht_path,
+    release_sites,
 )
 from gnomad_qc.v4.resources.release import hgdp_tgp_updated_callstats
 from gnomad_qc.v4.resources.sample_qc import (
@@ -33,6 +37,17 @@ from gnomad_qc.v4.resources.sample_qc import (
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("update HGDP + 1KG subset")
 logger.setLevel(logging.INFO)
+
+POP_MAP = {
+    "bantusafrica": "bantusouthafrica",
+    "biakaPygmy": "biaka",
+    "italian": "bergamoitalian",
+    "mbutiPygmy": "mbuti",
+    "melanesian": "bougainville",
+    "mongola": "mongolian",
+    "miaozu": "miao",
+    "yizu": "yi",
+}
 
 
 def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
@@ -100,6 +115,7 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
             "population": populations.population,
             "latitude": populations.latitude,
             "longitude": populations.longitude,
+            "gnomad_labeled_subpop": populations.population.lower(),
         },
         "high_quality": ~hard_filtered & ~outlier,
     }
@@ -144,7 +160,7 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
     return updated_ht
 
 
-def get_filtered_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
+def get_filtered_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table, hl.Table]:
     """
     Compare the old and new sample filters.
 
@@ -170,15 +186,16 @@ def get_filtered_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table]:
         release_add_ht.count(),
         release_subtract_ht.count(),
     )
-    # Filter to all samples with a population name split.
+
+    # Filter to all samples with a pop name split and no change in release status.
     split_pops = hl.literal(["PapuanHighlands", "PapuanSepik", "Han", "NorthernHan"])
-    pop_diff_ht = ht.filter(split_pops.contains(ht.hgdp_tgp_meta.population))
-    release_add_ht = release_add_ht.union(pop_diff_ht).distinct()
-    logger.info(
-        "%d samples in the `sum` set, including the splitted Papuan & Han",
-        release_add_ht.count(),
+    pop_diff_ht = ht.filter(
+        split_pops.contains(ht.hgdp_tgp_meta.population)
+        & ~ht.sample_annotations_updated.contains("gnomad_release")
     )
-    return release_add_ht, release_subtract_ht
+    logger.info("%d samples in the split Papuan & Han set", pop_diff_ht.count())
+
+    return release_add_ht, release_subtract_ht, pop_diff_ht
 
 
 def calculate_callstats_for_selected_samples(
@@ -243,9 +260,7 @@ def update_hgdp_pop_labels(ht: hl.Table, pop_map: Dict[str, Any]) -> hl.Table:
     return ht
 
 
-def concatenate_subset_frequencies(
-    global_freq_ht: hl.Table, subset_freq_hts: List[hl.Table]
-) -> hl.Table:
+def concatenate_subset_frequencies(subset_freq_hts: List[hl.Table]) -> hl.Table:
     """
     Concatenate subset frequencies into a single Table.
 
@@ -259,37 +274,8 @@ def concatenate_subset_frequencies(
     :param subset_freq_hts: List of subset frequency HTs.
     :return: Concatenated frequency HT.
     """
-
-    def fill_missing_freq_structs(
-        global_freq_ht: hl.Table, subset_freq_ht: hl.Table
-    ) -> hl.Table:
-        """
-        Fill in missing freq structs when no callstats are available for a subset.
-
-        :param global_freq_ht: Global frequency HT.
-        :param subset_freq_ht: Subset frequency HT.
-        :return: Subset frequency HT with missing freq structs filled in.
-        """
-        ht = subset_freq_ht.join(global_freq_ht.select().select_globals(), how="right")
-        ht = ht.annotate(
-            freq=hl.if_else(
-                hl.is_missing(ht.freq),
-                hl.map(
-                    lambda x: missing_callstats_expr(), hl.range(hl.len(ht.freq_meta))
-                ),
-                ht.freq,
-            )
-        )
-        ht = ht.select("freq").select_globals("freq_meta")
-        return ht
-
-    subset_freq_hts = [
-        fill_missing_freq_structs(global_freq_ht, subset_freq_ht)
-        for subset_freq_ht in subset_freq_hts
-    ]
-
     freq_ht = hl.Table.multi_way_zip_join(
-        [global_freq_ht.select("freq").select_globals("freq_meta")] + subset_freq_hts,
+        subset_freq_hts,
         data_field_name="freq",
         global_field_name="freq_meta",
     )
@@ -302,7 +288,7 @@ def concatenate_subset_frequencies(
 
 
 def calculate_concatenate_callstats(
-    mt: hl.MatrixTable, samples_ht: hl.Table
+    mt: hl.MatrixTable, samples_ht: hl.Table, compute_freq_all: bool = True
 ) -> hl.Table:
     """
     Calculate the call stats for samples in `samples_ht`.
@@ -316,41 +302,30 @@ def calculate_concatenate_callstats(
     :param samples_ht: Table with the samples.
     :return: Table with the call stats for the selected samples.
     """
+    projects = []
+    subset_freq_hts = []
     logger.info("Calculating AFs for selected samples...")
-    freq_ht_all = calculate_callstats_for_selected_samples(
-        mt,
-        samples_ht,
-    )
+    if compute_freq_all:
+        projects.append(("All", None))
 
-    if samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "HGDP").count() > 0:
-        freq_ht_hgdp = calculate_callstats_for_selected_samples(
-            mt,
-            samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "HGDP"),
-            subsets=["hgdp"],
-        )
-    else:
-        freq_ht_hgdp = None
+    projects.extend([("HGDP", ["hgdp"]), ("1000 Genomes", ["tgp"])])
+    project_expr = samples_ht.hgdp_tgp_meta.project
+    project_n = samples_ht.aggregate(hl.agg.counter(project_expr))
 
-    if (
-        samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "1000 Genomes").count()
-        > 0
-    ):
-        freq_ht_tgp = calculate_callstats_for_selected_samples(
-            mt,
-            samples_ht.filter(samples_ht.hgdp_tgp_meta.project == "1000 Genomes"),
-            subsets=["tgp"],
-        )
-    else:
-        freq_ht_tgp = None
+    for project, subset in projects:
+        if project == "All":
+            subset_ht = samples_ht
+        else:
+            subset_ht = samples_ht.filter(project_expr == project)
+        if project == "All" or project_n.get(project, 0) > 0:
+            freq_ht = calculate_callstats_for_selected_samples(mt, subset_ht, subset)
+            freq_ht = freq_ht.select("freq").select_globals(
+                "freq_meta", "freq_meta_sample_count"
+            )
+            subset_freq_hts.append(freq_ht)
 
     logger.info("Concatenating AFs for selected samples...")
-    subset_freq_hts = []
-    if freq_ht_hgdp is not None:
-        subset_freq_hts.append(freq_ht_hgdp.select("freq").select_globals("freq_meta"))
-    if freq_ht_tgp is not None:
-        subset_freq_hts.append(freq_ht_tgp.select("freq").select_globals("freq_meta"))
-
-    freq_ht = concatenate_subset_frequencies(freq_ht_all, subset_freq_hts)
+    freq_ht = concatenate_subset_frequencies(subset_freq_hts)
 
     return freq_ht
 
@@ -378,6 +353,87 @@ def remove_pops_from_freq_meta(ht: hl.Table, pops_to_remove: List[str]) -> hl.Ta
     return ht
 
 
+def get_v4_genomes_release_resources(
+    test: bool, overwrite: bool
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed to create the gnomAD v4 genomes release.
+
+    .. note::
+       pipeline steps:
+       1. get the callstats for the populations that will be splited (Han, Papuan)
+          with the old meta_ht and dense MT;
+       2. add the sample counts of the subsets to old release HT;
+       3. update sample annotations of the old meta_ht and update the pop labels
+           in the release HT;
+       4. get the callstats for the samples that will be added and subtracted
+          with the new meta_ht and dense MT;
+
+    :param test: Whether to gather all resources for testing.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :return: PipelineResourceCollection containing resources for all steps of the
+        gnomAD v4 genomes release pipeline.
+    """
+    # Initialize gnomAD v4 genomes release pipeline resource collection.
+    v4_genome_release_pipeline = PipelineResourceCollection(
+        pipeline_name="gnomad_v4_genomes_release",
+        overwrite=overwrite,
+    )
+
+    # Create resource collection for each step of the v4 genomes release pipeline.
+    update_annotations = PipelineStepResourceCollection(
+        "--update-annotations",
+        input_resources={
+            "Released HGDP + 1KG sample metadata": {
+                "meta_ht": hgdp_tgp_subset_annotations(sample=True).versions["3.1.2"]
+            }
+        },
+        output_resources={"updated_meta_ht": hgdp_tgp_meta_updated},
+    )
+
+    get_callstats_for_updated_samples = PipelineStepResourceCollection(
+        "--get-callstats-for-updated-samples",
+        pipeline_input_steps=[update_annotations],
+        add_input_resources={
+            "gnomAD v3.1.2 HGDP + 1KG subset dense MT": {
+                "dense_mt": hgdp_tgp_subset(dense=True),
+            }
+        },
+        output_resources={
+            "freq_added_ht": hgdp_tgp_updated_callstats(test=test, subset="added"),
+            "freq_subtracted_ht": hgdp_tgp_updated_callstats(
+                test=test, subset="subtracted"
+            ),
+            "freq_pop_diff_ht": hgdp_tgp_updated_callstats(
+                test=test, subset="pop_diff"
+            ),
+        },
+    )
+    update_release_callstats = PipelineStepResourceCollection(
+        "--update-release-callstats",
+        pipeline_input_steps=[get_callstats_for_updated_samples],
+        add_input_resources={
+            "gnomAD v3.1.2 release sites HT": {
+                "sites_ht": release_sites(public=True).versions["3.1.2"]
+            }
+        },
+        output_resources={
+            "v4_freq_ht": hgdp_tgp_updated_callstats(test=test, subset="final"),
+        },
+    )
+
+    # Add all steps to the gnomAD v4 genomes release pipeline resource collection.
+    v4_genome_release_pipeline.add_steps(
+        {
+            "update_annotations": update_annotations,
+            "get_callstats_for_updated_samples": get_callstats_for_updated_samples,
+            "update_release_callstats": update_release_callstats,
+        }
+    )
+
+    return v4_genome_release_pipeline
+
+
 def main(args):
     """
     Script to update call stats for HGDP + 1KG subset for v4.
@@ -396,162 +452,125 @@ def main(args):
     release HT.
     """
     test = args.test
+    overwrite = args.overwrite
 
     hl.init(
         log="/update_hgdp_tgp_af.log",
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
+    v4_genome_release_resources = get_v4_genomes_release_resources(
+        test=test, overwrite=overwrite
+    )
 
-    logger.info("Loading the HGDP + 1KG subset dense MT...")
-    mt = hl.read_matrix_table(hgdp_tgp_subset(dense=True)).select_globals()
-
-    logger.info("Loading the release HT...")
-    ht = hl.read_table(release_ht_path(release_version="3.1.2"))
-
-    logger.info("Updating the HGDP pop labels...")
-    pop_map = {
-        "bantusafrica": "bantusouthafrica",
-        "biakaPygmy": "biaka",
-        "italian": "bergamoitalian",
-        "mbutiPygmy": "mbuti",
-        "melanesian": "bougainville",
-        "mongola": "mongolian",
-        "miaozu": "miao",
-        "yizu": "yi",
-    }
-    ht = update_hgdp_pop_labels(ht, pop_map)
-
-    logger.info("Selecting `freq` and `freq_meta` from the release HT...")
-    ht = ht.select("freq").select_globals("freq_meta")
-
-    if test:
+    def filter_to_test(t):
         logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
         test_interval = [
             hl.parse_locus_interval(
                 "chr11:113425000-113435000", reference_genome="GRCh38"
             )
         ]
-        mt = hl.filter_intervals(mt, test_interval)
-        ht = hl.filter_intervals(ht, test_interval)
+        return hl.filter_intervals(t, test_interval)
 
-    logger.info("Loading HGDP_TGP subset meta HT...")
-    meta_ht = hgdp_tgp_subset_annotations(sample=True).ht()
-
-    # need to calculate for `Han` samples separately, because they were 42
-    # samples in v3 release but 43 samples in v4 release splitted to
-    # 33 `Han` and 10 `NorthernHan` samples
-    # `Papuan` samples were not included in v3 release, so we don't need to
-    # get the callstats for them
-    logger.info("Filtering pop `Han` from the old meta HT...")
-    han_ht = meta_ht.filter(
-        (meta_ht.hgdp_tgp_meta.population == "Han") & meta_ht.gnomad_release
-    )
-
-    logger.info("Calculating and concatenating callstats for `Han` samples...")
-    freq_ht_han = calculate_concatenate_callstats(mt, han_ht)
-    freq_ht_han = freq_ht_han.checkpoint(
-        hgdp_tgp_updated_callstats(test=test, subset="han").path, overwrite=True
-    )
-
-    if args.update_annotations:
-        logger.info("Adding updated sample QC annotations to meta HT...")
-        meta_ht = add_updated_sample_qc_annotations(meta_ht)
-        # TODO: temporarily using _read_if_exists, until we have new fields to be
-        # updated.
-        meta_ht = meta_ht.checkpoint(hgdp_tgp_meta_updated.path, _read_if_exists=True)
-
-    logger.info("Filtering samples in meta HT that will be added and subtracted...")
-    samples_to_add, samples_to_subtract = get_filtered_samples(meta_ht)
-
-    logger.info(
-        "Calculating and concatenating callstats for samples to be added and samples to"
-        " be subtracted..."
-    )
-    freq_ht_added = calculate_concatenate_callstats(mt, samples_to_add)
-    freq_ht_added = freq_ht_added.checkpoint(
-        hgdp_tgp_updated_callstats(test=test, subset="added").path,
-        overwrite=args.overwrite,
-    )
-
-    freq_ht_subtracted = calculate_concatenate_callstats(mt, samples_to_subtract)
-    freq_ht_subtracted = freq_ht_subtracted.checkpoint(
-        hgdp_tgp_updated_callstats(test=test, subset="subtracted").path,
-        overwrite=args.overwrite,
-    )
-
-    logger.info("Annotating HT with AFs for added and subtracted samples...")
-    ht = ht.annotate(
-        freq_han=freq_ht_han[ht.key].freq,
-        freq_added_samples=freq_ht_added[ht.key].freq,
-        freq_subtracted_samples=freq_ht_subtracted[ht.key].freq,
-    )
-    ht = ht.annotate_globals(
-        freq_meta_han=freq_ht_han.index_globals().freq_meta,
-        freq_meta_added_samples=freq_ht_added.index_globals().freq_meta,
-        freq_meta_subtracted_samples=freq_ht_subtracted.index_globals().freq_meta,
-    )
-
-    logger.info("Merging AFs from Han samples...")
-    freq0, freq_meta0 = merge_freq_arrays(
-        [ht.freq, ht.freq_han],
-        [ht.freq_meta, ht.freq_meta_han],
-        operation="diff",
-        set_negatives_to_zero=True,
-    )
-    ht = ht.annotate(freq=freq0)
-    ht = ht.annotate_globals(freq_meta=freq_meta0)
-
-    logger.info("Removing `Han` and `Papuan` populations from freq and freq_meta...")
-    pops_to_remove = {"pop": ["han", "papuan"]}
-    freq1, freq_meta1 = filter_freq_by_meta(
-        ht.freq, ht.freq_meta, pops_to_remove, keep=False, combine_operator="or"
-    )
-    ht = ht.annotate(freq=freq1)
-    ht = ht.annotate_globals(freq_meta=freq_meta1)
-
-    logger.info("Merging AFs from subtracted samples...")
-    freq2, freq_meta2 = merge_freq_arrays(
-        [ht.freq, ht.freq_subtracted_samples],
-        [ht.freq_meta, ht.freq_meta_subtracted_samples],
-        operation="diff",
-        set_negatives_to_zero=True,
-    )
-    ht = ht.annotate(freq=freq2)
-    ht = ht.annotate_globals(freq_meta=freq_meta2)
-
-    logger.info("Merging AFs from added samples...")
-    freq3, freq_meta3 = merge_freq_arrays(
-        [ht.freq, ht.freq_added_samples],
-        [ht.freq_meta, ht.freq_meta_added_samples],
-    )
-    ht = ht.annotate(freq=freq3)
-    ht = ht.annotate_globals(freq_meta=freq_meta3)
-
-    logger.info("Making freq_index_dict from freq_meta...")
-    ht = ht.annotate_globals(
-        freq_index_dict=make_freq_index_dict_from_meta(ht.freq_meta)
-    )
-
-    logger.info(
-        "Set Y-variant frequency callstats for female-specific "
-        "metrics to missing structs..."
-    )
-    ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
-
-    logger.info("Keeping only the final AFs...")
-    ht = ht.select("freq").select_globals("freq_meta", "freq_index_dict")
-
-    logger.info("Writing out the AF HT...")
-    if test:
-        ht.write(
-            hgdp_tgp_updated_callstats(test=True, subset="final").path,
-            overwrite=args.overwrite,
+    if args.get_callstats_for_updated_samples:
+        res = v4_genome_release_resources.get_callstats_for_updated_samples
+        res.check_resource_existence()
+        logger.info("Loading HGDP + 1KG subset dense MT...")
+        mt = res.dense_mt.mt().select_globals()
+        if test:
+            mt = filter_to_test(mt)
+        logger.info("Filtering samples in meta HT that will be added and subtracted...")
+        meta_ht = res.updated_meta_ht.ht()
+        # TODO: the freq_pop_diff_ht should be calculated with the old meta HT
+        add_ht, subtract_ht, pop_diff_ht = get_filtered_samples(meta_ht)
+        logger.info(
+            "Calculating and concatenating callstats for samples to be added and "
+            "samples to be subtracted..."
         )
-    else:
-        ht.write(
-            hgdp_tgp_updated_callstats(subset="final").path, overwrite=args.overwrite
+        freq_added_ht = calculate_concatenate_callstats(mt, add_ht)
+        freq_added_ht.write(res.freq_added_ht.path, overwrite=overwrite)
+        freq_subtracted_ht = calculate_concatenate_callstats(mt, subtract_ht)
+        freq_subtracted_ht.write(res.freq_subtracted_ht.path, overwrite=overwrite)
+        freq_pop_diff_ht = calculate_concatenate_callstats(
+            mt, pop_diff_ht, compute_freq_all=False
         )
+        freq_meta_expr, freq_expr = filter_arrays_by_meta(
+            freq_pop_diff_ht.freq_meta,
+            {"freq": freq_pop_diff_ht.freq},
+            {"pop": ["han", "papuan"]},
+        )
+        freq_pop_diff_ht = freq_pop_diff_ht.annotate(freq=freq_expr["freq"])
+        freq_pop_diff_ht = freq_pop_diff_ht.annotate_globals(
+            freq_meta=freq_meta_expr,
+            freq_meta_sample_count=freq_expr["freq_meta_sample_count"],
+        )
+
+        freq_pop_diff_ht.write(res.freq_pop_diff_ht.path, overwrite=overwrite)
+
+    if args.update_release_callstats:
+        res = v4_genome_release_resources.update_release_callstats
+        res.check_resource_existence()
+
+        logger.info("Loading v3.1.2 full sites HT...")
+        ht = res.sites_ht.ht()
+
+        if test:
+            ht = filter_to_test(ht)
+        logger.info(
+            "Removing `Han` and `Papuan` populations from freq and freq_meta..."
+        )
+        pops_to_remove = {"pop": ["han", "papuan"]}
+        freq_meta_expr, freq_expr = filter_arrays_by_meta(
+            ht.freq_meta,
+            {"freq": ht.freq},
+            pops_to_remove,
+            keep=False,
+            combine_operator="or",
+        )
+
+        ht = ht.annotate(freq=freq_expr["freq"])
+        ht = ht.annotate_globals(freq_meta=freq_meta_expr)
+
+        logger.info("Updating HGDP pop labels...")
+        ht = update_hgdp_pop_labels(ht, POP_MAP)
+        logger.info("Selecting `freq` and `freq_meta` from the release HT...")
+        ht = ht.select("freq").select_globals("freq_meta")
+        logger.info("Annotating HT with AFs for added and subtracted samples...")
+        freq_hts = [
+            ht,
+            res.freq_pop_diff_ht.ht().select("freq").select_globals("freq_meta"),
+            res.freq_added_ht.ht().select("freq").select_globals("freq_meta"),
+            res.freq_subtracted_ht.ht().select("freq").select_globals("freq_meta"),
+        ]
+
+        ht = hl.Table.multi_way_zip_join(freq_hts, "ann_array", "global_array")
+        logger.info("Merging AFs from diff pop samples and added samples...")
+        freq_expr, freq_meta_expr = merge_freq_arrays(
+            [ht.ann_array[i].freq for i in range(3)],
+            [ht.global_array[i].freq_meta for i in range(3)],
+            operation="sum",
+        )
+
+        logger.info("Merging AFs from subtracted samples...")
+        freq_expr, freq_meta_expr = merge_freq_arrays(
+            [freq_expr, ht.ann_array[3].freq],
+            [freq_meta_expr, ht.global_array[3].freq_meta],
+            operation="diff",
+            set_negatives_to_zero=False,
+        )
+        ht = ht.select(freq=freq_expr)
+        logger.info("Making freq_index_dict from freq_meta...")
+        ht = ht.select_globals(
+            freq_meta=freq_meta_expr,
+            freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta_expr)),
+        )
+        logger.info(
+            "Set Y-variant frequency callstats for female-specific "
+            "metrics to missing structs..."
+        )
+        ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
+        logger.info("Writing out the AF HT...")
+        ht.write(res.v4_freq_ht.path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
@@ -566,6 +585,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--update-annotations", help="Update sample QC annotations", action="store_true"
     )
+    parser.add_argument(
+        "--get-callstats-for-updated-samples", help="", action="store_true"
+    )
+    parser.add_argument("--update-release-callstats", help="", action="store_true")
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
