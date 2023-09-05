@@ -596,7 +596,7 @@ def combine_freq_hts(
         farrays=[a_array[i].freq for i in ht_i],
         fmeta=[g_array[i].freq_meta for i in ht_i],
         count_arrays={
-            "high_ab_hets": [a_array[i].high_ab_hets for i in ht_i],
+            "high_ab_hets": [a_array[i].high_ab_hets_by_group for i in ht_i],
             "freq_meta_sample_count": [g_array[i].freq_meta_sample_count for i in ht_i],
         },
     )
