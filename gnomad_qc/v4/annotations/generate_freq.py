@@ -271,6 +271,68 @@ def annotate_freq_index_dict(ht: hl.Table) -> hl.Table:
     return ht
 
 
+def filter_freq_arrays_for_non_ukb_subset(
+    ht: hl.Table,
+    items_to_filter: Union[List[str], Dict[str, List[str]]],
+    keep: bool = True,
+    combine_operator: str = "and",
+    annotations: Union[List[str], Tuple[str]] = ("freq", "high_ab_hets_by_group"),
+    remove_subset_from_meta: bool = False,
+) -> hl.Table:
+    """
+    Filter frequency arrays by metadata.
+
+    Filter 'annotations' and `freq_meta` array fields to only `items_to_filter` by
+    using the 'freq_meta' array field values.
+
+    If `remove_subset_from_meta` is True, update 'freq_meta' dicts by removing items
+    with the key "subset" removed. If False, update 'freq_meta' dicts to include a
+    "subset" key with "non_ukb" value.
+
+    Also rename the 'downsamplings' global field to "non_ukb_downsamplings" so we can
+    merge them later without losing the non-UKB downsampling information.
+
+    :param ht: Input Table.
+    :param items_to_filter: Items to filter by.
+    :param keep: Whether to keep or remove items. Default is True.
+    :param combine_operator: Operator ("and" or "or") to use when combining items in
+        'items_to_filter'. Default is "and".
+    :param annotations: Annotations in 'ht' to filter by `items_to_filter`.
+    :param remove_subset_from_meta: Whether to remove the "subset" key from 'freq_meta'
+        or add "subset" key with "non_ukb" value. Default is False.
+    :return: Table with filtered 'annotations' and 'freq_meta' array fields.
+    """
+    freq_meta, array_exprs = filter_arrays_by_meta(
+        ht.freq_meta,
+        {
+            **{a: ht[a] for a in annotations},
+            "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
+        },
+        items_to_filter=items_to_filter,
+        keep=keep,
+        combine_operator=combine_operator,
+    )
+    if remove_subset_from_meta:
+        logger.info("Dropping non_ukb subset key from freq_meta...")
+        freq_meta = freq_meta.map(
+            lambda d: hl.dict(d.items().filter(lambda x: x[0] != "subset"))
+        )
+    else:
+        logger.info("Adding non_ukb subset key from freq_meta...")
+        freq_meta = freq_meta.map(
+            lambda d: hl.dict(d.items().append(("subset", "non_ukb")))
+        )
+
+    ht = ht.annotate(**{a: array_exprs[a] for a in annotations})
+    ht = ht.annotate_globals(
+        freq_meta=freq_meta,
+        freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
+        non_ukb_downsamplings=ht.downsamplings,
+    )
+
+    return ht
+
+
 def high_ab_het(
     entry: hl.StructExpression, col: hl.StructExpression
 ) -> hl.Int32Expression:
@@ -409,68 +471,6 @@ def densify_and_prep_vds_for_freq(
         _high_ab_het_ref=(ab_expr > ab_cutoff) & ~mt._het_non_ref,
     )
     return mt
-
-
-def filter_freq_arrays_for_non_ukb_subset(
-    ht: hl.Table,
-    items_to_filter: Union[List[str], Dict[str, List[str]]],
-    keep: bool = True,
-    combine_operator: str = "and",
-    annotations: Union[List[str], Tuple[str]] = ("freq", "high_ab_hets_by_group"),
-    remove_subset_from_meta: bool = False,
-) -> hl.Table:
-    """
-    Filter frequency arrays by metadata.
-
-    Filter 'annotations' and `freq_meta` array fields to only `items_to_filter` by
-    using the 'freq_meta' array field values.
-
-    If `remove_subset_from_meta` is True, update 'freq_meta' dicts by removing items
-    with the key "subset" removed. If False, update 'freq_meta' dicts to include a
-    "subset" key with "non_ukb" value.
-
-    Also rename the 'downsamplings' global field to "non_ukb_downsamplings" so we can
-    merge them later without losing the non-UKB downsampling information.
-
-    :param ht: Input Table.
-    :param items_to_filter: Items to filter by.
-    :param keep: Whether to keep or remove items. Default is True.
-    :param combine_operator: Operator ("and" or "or") to use when combining items in
-        'items_to_filter'. Default is "and".
-    :param annotations: Annotations in 'ht' to filter by `items_to_filter`.
-    :param remove_subset_from_meta: Whether to remove the "subset" key from 'freq_meta'
-        or add "subset" key with "non_ukb" value. Default is False.
-    :return: Table with filtered 'annotations' and 'freq_meta' array fields.
-    """
-    freq_meta, array_exprs = filter_arrays_by_meta(
-        ht.freq_meta,
-        {
-            **{a: ht[a] for a in annotations},
-            "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
-        },
-        items_to_filter=items_to_filter,
-        keep=keep,
-        combine_operator=combine_operator,
-    )
-    if remove_subset_from_meta:
-        logger.info("Dropping non_ukb subset key from freq_meta...")
-        freq_meta = freq_meta.map(
-            lambda d: hl.dict(d.items().filter(lambda x: x[0] != "subset"))
-        )
-    else:
-        logger.info("Adding non_ukb subset key from freq_meta...")
-        freq_meta = freq_meta.map(
-            lambda d: hl.dict(d.items().append(("subset", "non_ukb")))
-        )
-
-    ht = ht.annotate(**{a: array_exprs[a] for a in annotations})
-    ht = ht.annotate_globals(
-        freq_meta=freq_meta,
-        freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
-        non_ukb_downsamplings=ht.downsamplings,
-    )
-
-    return ht
 
 
 def non_ukb_freq_downsampling(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table:
