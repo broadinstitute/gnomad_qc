@@ -504,6 +504,16 @@ def main(args):
         ]
         return hl.filter_intervals(t, test_interval)
 
+    if args.update_annotations:
+        res = v4_genome_release_resources.update_annotations
+        res.check_resource_existence()
+        logger.info("Adding updated sample QC annotations to meta HT...")
+        meta_ht = res.meta_ht.ht()
+        meta_ht = add_updated_sample_qc_annotations(meta_ht)
+        # TODO: temporarily using _read_if_exists, until we have new fields to
+        #  be updated.
+        meta_ht.write(hgdp_tgp_meta_updated.path, overwrite=True)
+
     if args.get_callstats_for_updated_samples:
         res = v4_genome_release_resources.get_callstats_for_updated_samples
         res.check_resource_existence()
