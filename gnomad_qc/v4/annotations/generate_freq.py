@@ -301,49 +301,6 @@ def high_ab_het(
     )
 
 
-def densify_and_prep_vds_for_freq(
-    vds: hl.vds.VariantDataset,
-    ab_cutoff: float = 0.9,
-) -> hl.MatrixTable:
-    """
-    Densify VDS and select necessary annotations for frequency and histogram calculations.
-
-    Select entry annotations required for downstream work. 'DP', 'GQ', and '_het_ab' are
-    required for histograms. 'GT' and 'adj' are required for frequency calculations.
-    '_high_ab_het_ref' is required for high AB call corrections in frequency and
-    histogram annotations.
-
-    Assumes all necessary annotations are present:
-        - adj
-        - _het_non_ref
-        - GT
-        - GQ
-        - AD
-        - DP
-        - sex_karyotype
-
-    :param vds: Input VDS.
-    :param ab_cutoff: Allele balance cutoff to use for high AB het annotation.
-    :return: Dense MatrixTable with only necessary entry annotations.
-    """
-    logger.info("Densifying VDS...")
-    mt = hl.vds.to_dense_mt(vds)
-
-    logger.info("Computing sex adjusted genotypes...")
-    ab_expr = mt.AD[1] / mt.DP
-    gt_expr = adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.sex_karyotype)
-
-    mt = mt.select_entries(
-        "DP",
-        "GQ",
-        GT=gt_expr,
-        adj=get_adj_expr(gt_expr, mt.GQ, mt.DP, mt.AD),
-        _het_ab=ab_expr,
-        _high_ab_het_ref=(ab_expr > ab_cutoff) & ~mt._het_non_ref,
-    )
-    return mt
-
-
 def generate_freq_ht(
     mt: hl.MatrixTable,
     ds_ht: hl.Table,
@@ -409,6 +366,49 @@ def generate_freq_ht(
     )
 
     return freq_ht
+
+
+def densify_and_prep_vds_for_freq(
+    vds: hl.vds.VariantDataset,
+    ab_cutoff: float = 0.9,
+) -> hl.MatrixTable:
+    """
+    Densify VDS and select necessary annotations for frequency and histogram calculations.
+
+    Select entry annotations required for downstream work. 'DP', 'GQ', and '_het_ab' are
+    required for histograms. 'GT' and 'adj' are required for frequency calculations.
+    '_high_ab_het_ref' is required for high AB call corrections in frequency and
+    histogram annotations.
+
+    Assumes all necessary annotations are present:
+        - adj
+        - _het_non_ref
+        - GT
+        - GQ
+        - AD
+        - DP
+        - sex_karyotype
+
+    :param vds: Input VDS.
+    :param ab_cutoff: Allele balance cutoff to use for high AB het annotation.
+    :return: Dense MatrixTable with only necessary entry annotations.
+    """
+    logger.info("Densifying VDS...")
+    mt = hl.vds.to_dense_mt(vds)
+
+    logger.info("Computing sex adjusted genotypes...")
+    ab_expr = mt.AD[1] / mt.DP
+    gt_expr = adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.sex_karyotype)
+
+    mt = mt.select_entries(
+        "DP",
+        "GQ",
+        GT=gt_expr,
+        adj=get_adj_expr(gt_expr, mt.GQ, mt.DP, mt.AD),
+        _het_ab=ab_expr,
+        _high_ab_het_ref=(ab_expr > ab_cutoff) & ~mt._het_non_ref,
+    )
+    return mt
 
 
 def filter_freq_arrays_for_non_ukb_subset(
