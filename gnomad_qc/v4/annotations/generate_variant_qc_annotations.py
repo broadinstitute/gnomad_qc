@@ -12,6 +12,7 @@ from gnomad.sample_qc.relatedness import filter_mt_to_trios
 from gnomad.utils.annotations import annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
+    AS_INFO_AGG_FIELDS,
     default_compute_info,
     get_as_info_expr,
     split_info_annotation,
@@ -231,16 +232,9 @@ def run_compute_info(
     if min_n_alleles:
         mt = mt.filter_rows(hl.len(mt.alleles) >= min_n_alleles)
 
-    mt = mt.annotate_entries(
-        gvcf_info=mt.gvcf_info.annotate(
-            AS_QUALapprox=recompute_as_qualapprox_from_lpl(mt),
-            **correct_as_annotations(mt),
-        )
-    )
-    info_ht = default_compute_info(
+    ht = default_compute_info(
         mt,
         site_annotations=True,
-        as_annotations=True,
         ac_filter_groups={
             "high_quality": mt.meta.high_quality,
             "release": mt.meta.release,
@@ -248,12 +242,34 @@ def run_compute_info(
         },
         n_partitions=None,
     )
+    quasi_info_ht = ht.checkpoint(
+        hl.utils.new_temp_file("quasi_compute_info", extension="ht")
+    )
+    quasi_info_ht.describe()
 
-    mt = mt.annotate_entries(gvcf_info=correct_as_annotations(mt, set_to_missing=True))
     mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
-    ht = mt.select_rows(
+    correct_mt = mt.annotate_entries(
+        gvcf_info=mt.gvcf_info.annotate(
+            AS_QUALapprox=recompute_as_qualapprox_from_lpl(mt),
+            **correct_as_annotations(mt),
+        )
+    )
+    ht = correct_mt.select_rows(
         **get_as_info_expr(
-            mt,
+            correct_mt,
+            **AS_INFO_AGG_FIELDS,
+            treat_fields_as_allele_specific=True,
+        )
+    ).rows()
+    info_ht = ht.checkpoint(hl.utils.new_temp_file("compute_info", extension="ht"))
+    info_ht.describe()
+
+    correct_mt = mt.annotate_entries(
+        gvcf_info=correct_as_annotations(mt, set_to_missing=True)
+    )
+    ht = correct_mt.select_rows(
+        **get_as_info_expr(
+            correct_mt,
             sum_agg_fields=["AS_RAW_MQ"],
             int32_sum_agg_fields=[],
             median_agg_fields=["AS_RAW_ReadPosRankSum", "AS_RAW_MQRankSum"],
@@ -261,8 +277,33 @@ def run_compute_info(
             treat_fields_as_allele_specific=True,
         )
     ).rows()
+    ht = ht.checkpoint(
+        hl.utils.new_temp_file("AS_missing_info_compute_info", extension="ht")
+    )
+    ht.describe()
 
-    info_ht = info_ht.annotate(set_long_AS_missing_info=ht[info_ht.key])
+    quasi_info = quasi_info_ht.info
+    quasi_keys = hl.eval(
+        hl.array(list(quasi_info.keys())).group_by(
+            lambda x: (
+                hl.switch(x[:2])
+                .when("AS", "quasi_info")
+                .when("AC", "AC_info")
+                .default("site_info")
+            )
+        )
+    )
+    quasi_info = {k: quasi_info.select(*v) for k, v in quasi_keys.items()}
+    info_ht = quasi_info_ht.select(
+        AC_info=quasi_info["AC_info"],
+        site_info=quasi_info["site_info"],
+        AS_info=info_ht[quasi_info_ht.key],
+        set_long_AS_missing_info=ht[quasi_info_ht.key],
+        quasi_info=quasi_info["quasi_info"],
+        lowqual=quasi_info_ht.lowqual,
+        AS_lowqual=quasi_info_ht.AS_lowqual,
+    )
+    info_ht.describe()
 
     return info_ht
 
@@ -281,7 +322,12 @@ def split_info(info_ht: hl.Table) -> hl.Table:
     :return: Info Table with split multi-allelics.
     """
     info_ht = annotate_allele_info(info_ht)
-    info_annotations_to_split = ["info", "quasi_info", "set_long_AS_missing_info"]
+    info_annotations_to_split = [
+        "AC_info",
+        "AS_info",
+        "set_long_AS_missing_info",
+        "quasi_info",
+    ]
     info_ht = info_ht.annotate(
         **{
             a: info_ht[a].annotate(
@@ -631,6 +677,7 @@ def main(args):
     if split_n_alleles is not None:
         if over_split_n_alleles:
             min_n_alleles = split_n_alleles
+            max_n_alleles = 5000
             over_n_alleles = True
         else:
             max_n_alleles = split_n_alleles - 1
@@ -697,7 +744,7 @@ def main(args):
             res = vqc_resources.run_vep
             res.check_resource_existence()
             ht = hl.split_multi(
-                get_gnomad_v4_vds(test=test_dataset).variant_dataset.rows()
+                get_gnomad_v4_vds(test=test_dataset).variant_data.rows()
             )
             ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
             ht.write(res.vep_ht.path, overwrite=overwrite)
@@ -837,7 +884,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--generate-sibling-stats",
-        help="Calculated sibling variant sharing stats",
+        help="Calculated sibling variant sharing stats.",
         action="store_true",
     )
 
