@@ -434,6 +434,38 @@ def get_v4_genomes_release_resources(
     return v4_genome_release_pipeline
 
 
+def get_sample_count_from_v3_subsets(ht: hl.Table) -> hl.Table:
+    """
+    Get the freq sample counts from the v3 subsets.
+
+    :param ht: Table of the 3.1.2 release sites HT, which only contains the freq
+       sample counts for non subset groupings.
+    :return: Table with the freq sample counts from the v3 subsets added.
+    """
+    SUBSETS = [
+        "non_v2",
+        "non_topmed",
+        "non_cancer",
+        "controls_and_biobanks",
+        "non_neuro",
+        "tgp",
+        "hgdp",
+    ]
+
+    sc = ht.freq_sample_count.collect(_localize=False)[0]
+
+    for subset in SUBSETS:
+        freq_subset_ht = hl.read_table(
+            get_freq(version="3.1", subset=subset, het_nonref_patch=True).path
+        )
+        sc_subset = freq_subset_ht.freq_sample_count.collect(_localize=False)[0]
+        sc = sc.extend(sc_subset)
+
+    ht = ht.annotate_globals(freq_sample_count=sc)
+
+    return ht
+
+
 def main(args):
     """
     Script to update call stats for HGDP + 1KG subset for v4.
