@@ -247,6 +247,60 @@ def get_vds_for_freq(
     return vds
 
 
+def annotate_freq_index_dict(ht: hl.Table) -> hl.Table:
+    """
+    Create frequency index dictionary.
+
+    The keys are the strata over which frequency aggregations where calculated and
+    the values are the strata's index in the frequency array.
+
+    :param ht: Input Table.
+    :return: Table with 'freq_index_dict' global field.
+    """
+    logger.info("Making freq index dict...")
+    # Add additional strata to the sort order, keeping group, i.e. adj, at the end.
+    sort_order = deepcopy(SORT_ORDER)
+    sort_order[-1:-1] = ["gatk_version", "ukb_sample"]
+    ht = ht.annotate_globals(
+        freq_index_dict=make_freq_index_dict_from_meta(
+            freq_meta=ht.freq_meta,
+            label_delimiter="_",
+            sort_order=sort_order,
+        )
+    )
+    return ht
+
+
+def high_ab_het(
+    entry: hl.StructExpression, col: hl.StructExpression
+) -> hl.Int32Expression:
+    """
+    Determine if a call is considered a high allele balance heterozygous call.
+
+    High allele balance heterozygous calls were introduced in certain GATK versions.
+    Track how many calls appear at each site to correct them to homozygous
+    alternate calls downstream in frequency calculations and histograms.
+
+    Assumes the following annotations are present in `entry` struct:
+        - GT
+        - adj
+        - _het_non_ref
+
+    Assumes the following annotations are present in `col` struct:
+        - fixed_homalt_model
+
+    :param entry: Entry struct.
+    :param col: Column struct.
+    :return: 1 if high allele balance heterozygous call, else 0.
+    """
+    return hl.int(
+        entry.GT.is_het_ref()
+        & entry.adj
+        & ~col.fixed_homalt_model
+        & entry._high_ab_het_ref
+    )
+
+
 def densify_and_prep_vds_for_freq(
     vds: hl.vds.VariantDataset,
     ab_cutoff: float = 0.9,
@@ -288,36 +342,6 @@ def densify_and_prep_vds_for_freq(
         _high_ab_het_ref=(ab_expr > ab_cutoff) & ~mt._het_non_ref,
     )
     return mt
-
-
-def high_ab_het(
-    entry: hl.StructExpression, col: hl.StructExpression
-) -> hl.Int32Expression:
-    """
-    Determine if a call is considered a high allele balance heterozygous call.
-
-    High allele balance heterozygous calls were introduced in certain GATK versions.
-    Track how many calls appear at each site to correct them to homozygous
-    alternate calls downstream in frequency calculations and histograms.
-
-    Assumes the following annotations are present in `entry` struct:
-        - GT
-        - adj
-        - _het_non_ref
-
-    Assumes the following annotations are present in `col` struct:
-        - fixed_homalt_model
-
-    :param entry: Entry struct.
-    :param col: Column struct.
-    :return: 1 if high allele balance heterozygous call, else 0.
-    """
-    return hl.int(
-        entry.GT.is_het_ref()
-        & entry.adj
-        & ~col.fixed_homalt_model
-        & entry._high_ab_het_ref
-    )
 
 
 def generate_freq_ht(
@@ -501,30 +525,6 @@ def non_ukb_freq_downsampling(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table
     )
 
     return freq_ht
-
-
-def annotate_freq_index_dict(ht: hl.Table) -> hl.Table:
-    """
-    Create frequency index dictionary.
-
-    The keys are the strata over which frequency aggregations where calculated and
-    the values are the strata's index in the frequency array.
-
-    :param ht: Input Table.
-    :return: Table with 'freq_index_dict' global field.
-    """
-    logger.info("Making freq index dict...")
-    # Add additional strata to the sort order, keeping group, i.e. adj, at the end.
-    sort_order = deepcopy(SORT_ORDER)
-    sort_order[-1:-1] = ["gatk_version", "ukb_sample"]
-    ht = ht.annotate_globals(
-        freq_index_dict=make_freq_index_dict_from_meta(
-            freq_meta=ht.freq_meta,
-            label_delimiter="_",
-            sort_order=sort_order,
-        )
-    )
-    return ht
 
 
 def annotate_hists_on_freq_ht(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table:
