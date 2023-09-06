@@ -373,8 +373,8 @@ def generate_freq_ht(
 
     Assumes all necessary annotations are present:
         `mt` annotations:
+            - GT
             - adj
-            - _het_ad
             - _high_ab_het_ref
             - fixed_homalt_model
             - fixed_homalt_model
