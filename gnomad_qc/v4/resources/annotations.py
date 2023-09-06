@@ -215,7 +215,7 @@ def get_freq(
     if not finalized:
         if chrom:
             ht_name += f".{chrom}"
-        if hom_alt_adjusted:
+        if not hom_alt_adjusted:
             ht_name += ".pre_hom_alt_adjustment"
     if intermediate_subset:
         ht_name += f".{intermediate_subset}"

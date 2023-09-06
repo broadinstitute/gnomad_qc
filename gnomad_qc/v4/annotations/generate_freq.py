@@ -346,7 +346,7 @@ def high_ab_het(
     Assumes the following annotations are present in `entry` struct:
         - GT
         - adj
-        - _het_non_ref
+        - _high_ab_het_ref
 
     Assumes the following annotations are present in `col` struct:
         - fixed_homalt_model
@@ -375,7 +375,8 @@ def generate_freq_ht(
         `mt` annotations:
             - adj
             - _het_ad
-            - _het_non_ref
+            - _high_ab_het_ref
+            - fixed_homalt_model
             - fixed_homalt_model
 
         `ds_ht` annotations:
@@ -498,6 +499,9 @@ def non_ukb_freq_downsampling(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table
     non_ukb_ds_ht = filter_freq_arrays_for_non_ukb_subset(
         non_ukb_ds_ht, items_to_filter=["downsampling"]
     )
+    # Filter to only non_ukb group, pop, and sex strata so can add subset-specific freqs to main array. 
+    # This is duplicated data here but it's necessary so we can merge split vds strata properly and still
+    # retain the subset freq data.
     non_ukb_ht = filter_freq_arrays_for_non_ukb_subset(
         freq_ht,
         items_to_filter=["downsampling", "gatk_version", "ukb_sample"],
@@ -529,7 +533,7 @@ def non_ukb_freq_downsampling(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table
 
 def annotate_hists_on_freq_ht(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table:
     """
-    Annotate quality metrics histograms and age histograms to frequency Table.
+    Annotate quality metrics histograms and age histograms onto frequency Table.
 
     :param mt: Input MatrixTable.
     :param freq_ht: Frequency Table.
@@ -639,7 +643,7 @@ def combine_freq_hts(
 
     freq_ht = freq_ht.annotate_globals(
         downsamplings={
-            "global": freq_ht.global_array[0].downsamplings,
+            "gnomad": freq_ht.global_array[0].downsamplings,
             "non_ukb": freq_hts["non_ukb"].index_globals().non_ukb_downsamplings,
         },
         age_distribution=freq_ht.global_array[0].age_distribution,
