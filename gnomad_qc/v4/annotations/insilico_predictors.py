@@ -109,6 +109,12 @@ def create_spliceai_grch38_ht(
     :param str new_indels_path: Path to the gnomAD v4 indels.
     :return: Hail Table with SpliceAI scores for GRCh38.
     """
+    snvs_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.snv.hg38.vcf.bgz"
+    indels_path = (
+        "gs://gnomad-insilico/spliceai/spliceai_scores.masked.indel.hg38.vcf.bgz"
+    )
+    new_indels_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v4_new_indels.hg38.vcf.bgz"
+    header_file_path = "gs://gnomad-insilico/spliceai/spliceai.vcf.header"
 
     def import_spliceai_vcf(path: str) -> hl.Table:
         """
@@ -128,7 +134,7 @@ def create_spliceai_grch38_ht(
         ).rows()
         return ht
 
-    logger.info("Importing vcf of SpliceAI scores into MT...")
+    logger.info("Importing vcf of SpliceAI scores into HT...")
 
     spliceai_snvs = import_spliceai_vcf(snvs_path)
     spliceai_indels = import_spliceai_vcf(indels_path)
@@ -137,82 +143,25 @@ def create_spliceai_grch38_ht(
     ht = spliceai_snvs.union(spliceai_indels).union(spliceai_new_indels)
 
     logger.info("Exploding SpliceAI scores...")
-    # `explode` will eliminate rows with empty array, some variants don't have
-    # score might because they are located inside gene body, but the variants
-    # fall on multiple genes will extend the number of rows.
+    # `explode` because some variants fall on multiple genes and have a score per gene.
+    # All rows without a SpliceAI score, an empty array, are removed through explode.
     ht = ht.explode(ht.info.SpliceAI)
 
     logger.info("Annotating SpliceAI scores...")
-    # there will only be one gene in the array after exploding
-    gene_symbol = ht.info.SpliceAI.split(delim="\\|")[1:2][0]
     # delta_score array for 4 splicing consequences: DS_AG|DS_AL|DS_DG|DS_DL
     delta_scores = ht.info.SpliceAI.split(delim="\\|")[2:6]
-    # position array is |AG|AL|DG|DL
-    positions = ht.info.SpliceAI.split(delim="\\|")[6:10]
-    ht = ht.annotate(
-        splice_ai=hl.struct(
-            gene_symbol=gene_symbol,
-            delta_scores=hl.map(lambda x: hl.float32(x), delta_scores),
-            positions=hl.map(lambda x: hl.int32(x), positions),
-        )
-    )
-
-    # Annotate info.max_DS with the max of DS_AG, DS_AL, DS_DG, DS_DL in info.
+    ht = ht.annotate(delta_scores=hl.map(lambda x: hl.float32(x), delta_scores))
+    # Annotate ds_max with the max of DS_AG, DS_AL, DS_DG, DS_DL in info.
     logger.info(
-        "Getting the max SpliceAI score across consequences for each variant pergene..."
+        "Getting the max SpliceAI score across consequences for each variant per"
+        " gene..."
     )
-    consequences = hl.literal(
-        ["acceptor_gain", "acceptor_loss", "donor_gain", "donor_loss"]
-    )
-    ht = ht.annotate(
-        splice_ai=ht.splice_ai.annotate(ds_max=hl.max(ht.splice_ai.delta_scores))
-    )
-    ht = ht.annotate(
-        splice_ai=ht.splice_ai.annotate(
-            ds_max_consequence=hl.if_else(
-                ht.splice_ai.ds_max > 0,
-                consequences[ht.splice_ai.delta_scores.index(ht.splice_ai.ds_max)],
-                "no_consequence",
-            ),
-            ds_max_position=hl.if_else(
-                ht.splice_ai.ds_max > 0,
-                ht.splice_ai.positions[
-                    ht.splice_ai.delta_scores.index(ht.splice_ai.ds_max)
-                ],
-                hl.missing(hl.tint32),
-            ),
-        )
-    )
-
+    ht = ht.select(ds_max=hl.max(ht.delta_scores))
     logger.info("Getting the max SpliceAI score for each variant across genes...")
-    # The block of code below keeps all the info for the variant with the max
-    # SpliceAI score: ds_max, ds_max_consequence, ds_max_position, gene_symbol.
-    # We want to keep it here in case we want to use it in the future.
-    ht2 = ht.group_by(*ht.key).aggregate(
-        staging=hl.agg.take(
-            hl.struct(
-                ds_max=ht.splice_ai.ds_max,
-                ds_max_position=ht.splice_ai.ds_max_position,
-                ds_max_consequence=ht.splice_ai.ds_max_consequence,
-                gene=ht.splice_ai.gene_symbol,
-            ),
-            1,
-            ordering=-ht.splice_ai.ds_max,
-        )
-    )
+    ht = ht.collect_by_key()
+    ht = ht.select(splice_ai=hl.struct(ds_max=hl.max(ht.values.ds_max)))
 
-    logger.info("Annotating SpliceAI scores in right format...")
-    # `aggregate` put everything in an array, we need to extract the struct
-    # from the array.
-    # For the v4 release, we will only keep the max SpliceAI score.
-    ht2 = ht2.annotate(
-        splice_ai=hl.struct(
-            ds_max=hl.float32(ht2.staging.ds_max[0]),
-        )
-    )
-
-    ht2 = ht2.select("splice_ai")
-    return ht2
+    return ht
 
 
 def main(args):
@@ -235,17 +184,7 @@ def main(args):
 
     if args.spliceai:
         logger.info("Creating SpliceAI Hail Table for GRCh38...")
-        snvs_path = (
-            "gs://gnomad-insilico/spliceai/spliceai_scores.masked.snv.hg38.vcf.bgz"
-        )
-        indels_path = (
-            "gs://gnomad-insilico/spliceai/spliceai_scores.masked.indel.hg38.vcf.bgz"
-        )
-        new_indels_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v4_new_indels.hg38.vcf.bgz"
-        header_file_path = "gs://gnomad-insilico/spliceai/spliceai.vcf.header"
-        ht = create_spliceai_grch38_ht(
-            snvs_path, indels_path, new_indels_path, header_file_path
-        )
+        ht = create_spliceai_grch38_ht()
         ht.write(
             get_insilico_predictors(predictor="spliceai").path,
             overwrite=args.overwrite,
