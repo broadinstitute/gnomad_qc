@@ -471,7 +471,7 @@ def get_sample_count_from_v3_subsets(ht: hl.Table) -> hl.Table:
         sc_subset = freq_subset_ht.freq_sample_count.collect(_localize=False)[0]
         sc = sc.extend(sc_subset)
 
-    ht = ht.annotate_globals(freq_sample_count=sc)
+    ht = ht.annotate_globals(freq_meta_sample_count=sc)
 
     return ht
 
@@ -564,6 +564,9 @@ def main(args):
         logger.info("Loading v3.1.2 full sites HT...")
         ht = res.sites_ht.ht()
 
+        logger.info("Adding freq sample counts from v3 subsets...")
+        ht = get_sample_count_from_v3_subsets(ht)
+
         if test:
             ht = filter_to_test(ht)
 
@@ -573,12 +576,18 @@ def main(args):
         pops_to_remove = {"pop": ["han", "papuan"]}
         freq_meta_expr, freq_expr = filter_arrays_by_meta(
             ht.freq_meta,
-            {"freq": ht.freq},
+            {
+                "freq": ht.freq,
+                "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
+            },
             pops_to_remove,
             keep=False,
             combine_operator="or",
         )
         ht = ht.annotate(freq=freq_expr["freq"])
+        ht = ht.annotate_globals(
+            freq_meta_sample_count=freq_expr["freq_meta_sample_count"]
+        )
         ht = ht.annotate_globals(freq_meta=freq_meta_expr)
 
         logger.info("Updating HGDP pop labels...")
@@ -586,40 +595,65 @@ def main(args):
 
         # TODO: We won't need this anymore because we need to update more annotations
         #  than just this.
-        logger.info("Selecting `freq` and `freq_meta` from the release HT...")
-        ht = ht.select("freq").select_globals("freq_meta")
+        logger.info(
+            "Selecting 'freq', freq_meta', and 'freq_meta_sample_count'"
+            " from the release HT..."
+        )
+        ht = ht.select("freq").select_globals("freq_meta", "freq_meta_sample_count")
 
         logger.info("Annotating HT with AFs for added and subtracted samples...")
         freq_hts = [
             ht,
-            res.freq_pop_diff_ht.ht().select("freq").select_globals("freq_meta"),
-            res.freq_added_ht.ht().select("freq").select_globals("freq_meta"),
-            res.freq_subtracted_ht.ht().select("freq").select_globals("freq_meta"),
+            hgdp_tgp_updated_callstats(test=True, subset="pop_diff")
+            .ht()
+            .select("freq")
+            .select_globals("freq_meta", "freq_meta_sample_count"),
+            hgdp_tgp_updated_callstats(test=True, subset="added")
+            .ht()
+            .select("freq")
+            .select_globals("freq_meta", "freq_meta_sample_count"),
+            hgdp_tgp_updated_callstats(test=True, subset="subtracted")
+            .ht()
+            .select("freq")
+            .select_globals("freq_meta", "freq_meta_sample_count"),
         ]
         ht = hl.Table.multi_way_zip_join(freq_hts, "ann_array", "global_array")
         ht = ht.checkpoint(
-            "gs://gnomad-tmp/julia/hgdp_tgp_update/update_hgdp_tgp_af.ht",
+            "gs://gnomad-tmp-4day/update_hgdp_tgp_af_joined.ht",
             overwrite=True,
         )
 
         logger.info("Merging AFs from diff pop samples and added samples...")
-        freq_expr, freq_meta_expr = merge_freq_arrays(
+        freq_expr, freq_meta_expr, sample_count_expr = merge_freq_arrays(
             [ht.ann_array[i].freq for i in range(3)],
             [ht.global_array[i].freq_meta for i in range(3)],
             operation="sum",
+            set_negatives_to_zero=False,
+            count_arrays={
+                "freq_meta_sample_count": [
+                    ht.global_array[i].freq_meta_sample_count for i in range(3)
+                ]
+            },
         )
 
         logger.info("Merging AFs from subtracted samples...")
-        freq_expr, freq_meta_expr = merge_freq_arrays(
+        freq_expr, freq_meta_expr, sample_count_expr = merge_freq_arrays(
             [freq_expr, ht.ann_array[3].freq],
             [freq_meta_expr, ht.global_array[3].freq_meta],
             operation="diff",
             set_negatives_to_zero=False,
+            count_arrays={
+                "freq_meta_sample_count": [
+                    sample_count_expr["freq_meta_sample_count"],
+                    ht.global_array[3].freq_meta_sample_count,
+                ]
+            },
         )
         ht = ht.select(freq=freq_expr)
         logger.info("Making freq_index_dict from freq_meta...")
         ht = ht.select_globals(
             freq_meta=freq_meta_expr,
+            freq_meta_sample_count=sample_count_expr["freq_meta_sample_count"],
             freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta_expr)),
         )
 
