@@ -90,9 +90,7 @@ def create_cadd_grch38_ht() -> hl.Table:
     return ht
 
 
-def create_spliceai_grch38_ht(
-    snvs_path: str, indels_path: str, new_indels_path: str, header_file_path: str
-) -> hl.Table:
+def create_spliceai_grch38_ht() -> hl.Table:
     """
     Create a Hail Table with SpliceAI scores for GRCh38.
 
