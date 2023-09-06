@@ -260,7 +260,7 @@ def annotate_freq_index_dict(ht: hl.Table) -> hl.Table:
     logger.info("Making freq index dict...")
     # Add additional strata to the sort order, keeping group, i.e. adj, at the end.
     sort_order = deepcopy(SORT_ORDER)
-    sort_order[-1:-1] = ["gatk_version", "ukb_sample"]
+    sort_order[-1:-1] = ["gatk_version"]
     ht = ht.annotate_globals(
         freq_index_dict=make_freq_index_dict_from_meta(
             freq_meta=ht.freq_meta,
@@ -399,7 +399,6 @@ def generate_freq_ht(
     additional_strata_expr = [
         {"gatk_version": meta_ht.gatk_version},
         {"gatk_version": meta_ht.gatk_version, "pop": meta_ht.pop},
-        {"ukb_sample": meta_ht.ukb_sample},
     ]
     logger.info("Building frequency stratification list...")
     strata_expr = build_freq_stratification_list(
@@ -504,7 +503,7 @@ def non_ukb_freq_downsampling(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table
     # retain the subset freq data.
     non_ukb_ht = filter_freq_arrays_for_non_ukb_subset(
         freq_ht,
-        items_to_filter=["downsampling", "gatk_version", "ukb_sample"],
+        items_to_filter=["downsampling", "gatk_version"],
         keep=False,
         combine_operator="or",
     )
@@ -859,7 +858,7 @@ def main(args):
                 "Splitting VDS by ukb_sample annotation to reduce data size for"
                 " densification..."
             )
-            vds_dict = split_vds_by_strata(vds, strata_expr=vds.variant_data.ukb_sample)
+            vds_dict = split_vds_by_strata(vds, strata_expr=meta_ht.ukb_sample)
             for strata, vds in vds_dict.items():
                 if (
                     args.ukb_only
@@ -876,7 +875,6 @@ def main(args):
                     freq_ht = non_ukb_freq_downsampling(mt, freq_ht)
 
                 logger.info("Setting Y metrics to NA for XX groups...")
-                freq_ht = annotate_freq_index_dict(freq_ht)
                 freq_ht = freq_ht.annotate(
                     freq=set_female_y_metrics_to_na_expr(freq_ht)
                 )
