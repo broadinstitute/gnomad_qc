@@ -221,7 +221,7 @@ def get_freq(
         ht_name += f".{intermediate_subset}"
         if test:
             ht_name += ".test"
-        ht_path = get_checkpoint_path(ht_name)
+        ht_path = get_checkpoint_path(ht_name, version=CURRENT_VERSION)
     else:
         if finalized:
             ht_name += ".final"
