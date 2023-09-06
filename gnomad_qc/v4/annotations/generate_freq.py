@@ -495,12 +495,14 @@ def non_ukb_freq_downsampling(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table
     )
 
     # Filter 'freq' array field to only downsampling indices.
+    logger.info("Filtering the 'freq array to only downsampling indices...")
     non_ukb_ds_ht = filter_freq_arrays_for_non_ukb_subset(
         non_ukb_ds_ht, items_to_filter=["downsampling"]
     )
     # Filter to only non_ukb group, pop, and sex strata so can add subset-specific freqs to main array.
     # This is duplicated data here but it's necessary so we can merge split vds strata properly and still
     # retain the subset freq data.
+    logger.info("Filtering to non_ukb subset strata...")
     non_ukb_ht = filter_freq_arrays_for_non_ukb_subset(
         freq_ht,
         items_to_filter=["downsampling", "gatk_version"],
@@ -651,6 +653,8 @@ def combine_freq_hts(
         freq_meta_sample_count=hl.eval(count_arrays_dict["freq_meta_sample_count"]),
     )
     freq_ht = annotate_freq_index_dict(freq_ht)
+    logger.info("Setting Y metrics to NA for XX groups...")
+    freq_ht = freq_ht.annotate(freq=set_female_y_metrics_to_na_expr(freq_ht))
     freq_ht = freq_ht.select(*row_annotations)
     freq_ht = freq_ht.select_globals(*global_annotations)
 
@@ -858,7 +862,7 @@ def main(args):
                 "Splitting VDS by ukb_sample annotation to reduce data size for"
                 " densification..."
             )
-            vds_dict = split_vds_by_strata(vds, strata_expr=meta_ht.ukb_sample)
+            vds_dict = split_vds_by_strata(vds, strata_expr=vds.variant_data.ukb_sample)
             for strata, vds in vds_dict.items():
                 if (
                     args.ukb_only
@@ -873,11 +877,6 @@ def main(args):
                 freq_ht = generate_freq_ht(mt, ds_ht, meta_ht)
                 if strata == "non_ukb":
                     freq_ht = non_ukb_freq_downsampling(mt, freq_ht)
-
-                logger.info("Setting Y metrics to NA for XX groups...")
-                freq_ht = freq_ht.annotate(
-                    freq=set_female_y_metrics_to_na_expr(freq_ht)
-                )
                 freq_ht = annotate_hists_on_freq_ht(mt, freq_ht)
                 freq_ht.write(
                     getattr(res, f"{strata}_freq_ht").path, overwrite=overwrite
