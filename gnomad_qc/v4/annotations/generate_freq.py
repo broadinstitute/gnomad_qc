@@ -499,7 +499,7 @@ def non_ukb_freq_downsampling(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table
     non_ukb_ds_ht = filter_freq_arrays_for_non_ukb_subset(
         non_ukb_ds_ht, items_to_filter=["downsampling"]
     )
-    # Filter to only non_ukb group, pop, and sex strata so can add subset-specific freqs to main array. 
+    # Filter to only non_ukb group, pop, and sex strata so can add subset-specific freqs to main array.
     # This is duplicated data here but it's necessary so we can merge split vds strata properly and still
     # retain the subset freq data.
     non_ukb_ht = filter_freq_arrays_for_non_ukb_subset(
