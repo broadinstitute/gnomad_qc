@@ -557,7 +557,7 @@ def get_variant_qc_annotation_resources(
     else:
         info_ht = TableResource(
             get_checkpoint_path(
-                f"compute_info{'.test' if test else ''}.{'over_n_alleles' if over_n_alleles else 'under_n_alleles'}"
+                f"compute_info{'.test' if test else ''}.{'over_n_alleles_under10000' if over_n_alleles else 'under_n_alleles'}"
             )
         )
     compute_info_input_resources = {}
@@ -677,7 +677,7 @@ def main(args):
     if split_n_alleles is not None:
         if over_split_n_alleles:
             min_n_alleles = split_n_alleles
-            max_n_alleles = 5000
+            max_n_alleles = 10000
             over_n_alleles = True
         else:
             max_n_alleles = split_n_alleles - 1
