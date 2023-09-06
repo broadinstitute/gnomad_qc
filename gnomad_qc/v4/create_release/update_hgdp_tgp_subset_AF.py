@@ -653,7 +653,9 @@ def main(args):
         logger.info("Making freq_index_dict from freq_meta...")
         ht = ht.select_globals(
             freq_meta=freq_meta_expr,
-            freq_meta_sample_count=sample_count_expr["freq_meta_sample_count"],
+            freq_meta_sample_count=sample_count_expr["freq_meta_sample_count"].collect(
+                _localize=False
+            )[0],
             freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta_expr)),
         )
 
