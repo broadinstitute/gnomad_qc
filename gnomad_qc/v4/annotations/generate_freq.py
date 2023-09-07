@@ -396,6 +396,7 @@ def generate_freq_ht(
     :param meta_ht: Table with sample metadata annotations.
     :return: Hail Table with frequency annotations.
     """
+    meta_ht = meta_ht.semi_join(mt.cols())
     additional_strata_expr = [
         {"gatk_version": meta_ht.gatk_version},
         {"gatk_version": meta_ht.gatk_version, "pop": meta_ht.pop},
