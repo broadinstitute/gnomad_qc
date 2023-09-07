@@ -246,7 +246,6 @@ def get_vds_for_freq(
 
     logger.info("Spltting mutliallelics in VDS...")
     vds = hl.vds.VariantDataset(rmt, vmt)
-
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
 
     return vds
