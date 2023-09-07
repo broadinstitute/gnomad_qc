@@ -102,9 +102,6 @@ def create_spliceai_grch38_ht() -> hl.Table:
         - gnomAD v4 indels: gnomad_v4_new_indels.spliceai_masked.vcf.bgz,
           computed on v4 by Illumina.
 
-    :param str snvs_path: Path to the precomputed SNVs.
-    :param str indels_path: Path to the precomputed indels.
-    :param str new_indels_path: Path to the gnomAD v4 indels.
     :return: Hail Table with SpliceAI scores for GRCh38.
     """
     snvs_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.snv.hg38.vcf.bgz"
