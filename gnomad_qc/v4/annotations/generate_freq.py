@@ -635,21 +635,12 @@ def combine_freq_hts(
     }
     freq_ht = freq_ht.annotate(**hists_expr)
 
-    # Add in non-ukb subset age hists.
-    logger.info("Adding 'non_ukb' subset's age histograms...")
-    age_hists = ["age_hists", "high_ab_het_adjusted_age_hists"]
-    non_ukb = freq_hts["non_ukb"][freq_ht.key]
-    freq_ht = freq_ht.transmute(
-        **{a: hl.array([freq_ht[a], non_ukb[a]]) for a in age_hists}
-    )
-
     freq_ht = freq_ht.annotate_globals(
         downsamplings={
             "gnomad": freq_ht.global_array[0].downsamplings,
             "non_ukb": freq_hts["non_ukb"].index_globals().non_ukb_downsamplings,
         },
         age_distribution=freq_ht.global_array[0].age_distribution,
-        age_hist_index_dict=SUBSET_DICT,
         freq_meta=comb_freq_meta,
         freq_meta_sample_count=hl.eval(count_arrays_dict["freq_meta_sample_count"]),
     )
