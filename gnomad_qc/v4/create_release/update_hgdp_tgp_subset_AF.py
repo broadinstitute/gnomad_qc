@@ -27,7 +27,7 @@ from gnomad_qc.v3.resources.release import (
     hgdp_tgp_subset_annotations,
     release_sites,
 )
-from gnomad_qc.v4.resources.release import hgdp_tgp_updated_callstats
+from gnomad_qc.v4.resources.annotations import hgdp_tgp_updated_callstats
 from gnomad_qc.v4.resources.sample_qc import (
     hgdp_recomputed_freemix,
     hgdp_tgp_meta_updated,
@@ -664,7 +664,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--test",
-        help="Test on a subset of variants in DRD2 gene",
+        help="Test on a subset of variants in DRD2 gene.",
         action="store_true",
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
@@ -673,13 +673,15 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        "--update-annotations", help="Update sample QC annotations", action="store_true"
+        "--update-annotations",
+        help="Update sample QC annotations.",
+        action="store_true",
     )
     parser.add_argument(
         "--get-callstats-for-updated-samples",
         help=(
             "Get the callstats for the updated samples that were put into different"
-            " sets"
+            " sets."
         ),
         action="store_true",
     )
@@ -687,7 +689,7 @@ if __name__ == "__main__":
         "--update-release-callstats",
         help=(
             "Update the release callstats by merging the callstats for the updated"
-            " samples"
+            " samples."
         ),
         action="store_true",
     )

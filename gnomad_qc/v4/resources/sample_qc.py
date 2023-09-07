@@ -1011,34 +1011,29 @@ def get_sample_qc_field_def_json_path(version: str = CURRENT_VERSION) -> str:
 
 # Table with the set of outliers found by Alicia Martin's group during pop
 # specific PCA analyses as well as one duplicate sample
-# version from 2023: https://github.com/atgu/hgdp_tgp/blob/master/tutorials/nb2.ipynb
+# version from 2023: https://github.com/atgu/hgdp_tgp/blob/master/tutorials/nb2.ipynb.
 hgdp_tgp_pop_outliers = TableResource(
-    path="gs://gnomad/sample_qc/ht/gnomad.genomes.v4.0.hgdp_tgp_pca_outliers.ht",
+    path="gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_pca_outliers.ht",
 )
 
-# Table with HGDP + 1KG/TGP related samples to drop from Alicia Martin's group sample QC
+# Table with HGDP + 1KG/TGP related samples to drop from Alicia Martin's
+# group sample QC.
 hgdp_tgp_related_samples_to_drop = TableResource(
-    path="gs://gnomad/sample_qc/ht/hgdp_tgp_v4_related_samples_202308.ht"
+    path="gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_related_samples.ht"
 )
 
 # Table with HGDP sample contamination estimates from Konrad Karczewski's
-# group sample QC
+# group sample QC.
 hgdp_recomputed_freemix = TableResource(
-    path="gs://gnomad/sample_qc/ht/gnomad_v3_contam_rate_recomputed_hgdp_full.ht"
+    path="gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_contam_rate_recomputed.htt"
 )
 
-# Table with new relatedness annotations for HGDP and TGP
-hgdp_tgp_related_samples_v4 = TableResource(
-    path="gs://gnomad/sample_qc/ht/hgdp_tgp_related_samples_202308.ht"
-)
-
-# Table with new population labels and updated geographic locations for HGDP and TGP
+# Table with new population labels and updated geographic locations for HGDP and TGP.
 hgdp_tgp_populations_updated = TableResource(
-    path="gs://gnomad/sample_qc/ht/hgdp_tgp_populations_updated_202308.ht"
+    path="gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_populations_updated.ht"
 )
 
-# updated meta HT with new population labels and updated geographic
-# locations for HGDP and TGP
+# updated meta HT with all the updated information integrated for HGDP and TGP.
 hgdp_tgp_meta_updated = TableResource(
-    path="gs://gnomad/sample_qc/ht/gnomad.genomes_v4.hgdp_tgp_sample_meta.ht",
+    path="gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_sample_meta.ht",
 )
