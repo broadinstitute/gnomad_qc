@@ -84,10 +84,12 @@ def compute_sample_qc(
         # or more total alleles (n_unsplit_alleles >= 4), and the same as greater than
         # 3 total alleles (n_unsplit_alleles > 3).
         strata = {
-            f"under_{n_alt_alleles_strata_name}_alt_alleles": vds.variant_data.n_unsplit_alleles
-            <= n_alt_alleles_strata,
-            f"{n_alt_alleles_strata_name}_or_more_alt_alleles": vds.variant_data.n_unsplit_alleles
-            > n_alt_alleles_strata,
+            f"under_{n_alt_alleles_strata_name}_alt_alleles": (
+                vds.variant_data.n_unsplit_alleles <= n_alt_alleles_strata
+            ),
+            f"{n_alt_alleles_strata_name}_or_more_alt_alleles": (
+                vds.variant_data.n_unsplit_alleles > n_alt_alleles_strata
+            ),
         }
     sample_qc_ht = compute_stratified_sample_qc(
         vds,
@@ -171,9 +173,9 @@ def compute_hard_filters(
     # Convert tuples to lists so we can find the index of the passed threshold.
     bi_allelic_qc_ht = bi_allelic_qc_ht.annotate(
         **{
-            f"bases_dp_over_{hl.eval(bi_allelic_qc_ht.dp_bins[i])}": bi_allelic_qc_ht.bases_over_dp_threshold[
-                i
-            ]
+            f"bases_dp_over_{hl.eval(bi_allelic_qc_ht.dp_bins[i])}": (
+                bi_allelic_qc_ht.bases_over_dp_threshold[i]
+            )
             for i in range(len(bi_allelic_qc_ht.dp_bins))
         },
     )
@@ -309,12 +311,14 @@ def main(args):
                 calling_interval_padding=calling_interval_padding,
             )
             mt.write(
-                get_checkpoint_path(
-                    f"test_interval_coverage.{calling_interval_name}.pad{calling_interval_padding}",
-                    mt=True,
-                )
-                if test
-                else interval_coverage.path,
+                (
+                    get_checkpoint_path(
+                        f"test_interval_coverage.{calling_interval_name}.pad{calling_interval_padding}",
+                        mt=True,
+                    )
+                    if test
+                    else interval_coverage.path
+                ),
                 overwrite=overwrite,
             )
 
@@ -341,9 +345,11 @@ def main(args):
             )
             mt = mt.cols().annotate_globals(dp_cutoff=args.contam_dp_cutoff)
             mt.write(
-                get_checkpoint_path("test_gnomad.exomes.contamination")
-                if test
-                else contamination.path,
+                (
+                    get_checkpoint_path("test_gnomad.exomes.contamination")
+                    if test
+                    else contamination.path
+                ),
                 overwrite=overwrite,
             )
 
@@ -366,9 +372,11 @@ def main(args):
                 chr20_mean_dp=hl.agg.sum(coverage_mt.sum_dp)
                 / hl.agg.sum(coverage_mt.interval_size)
             ).cols().write(
-                get_checkpoint_path("test_gnomad.exomes.chr20_mean_dp")
-                if test
-                else sample_chr20_mean_dp.path,
+                (
+                    get_checkpoint_path("test_gnomad.exomes.chr20_mean_dp")
+                    if test
+                    else sample_chr20_mean_dp.path
+                ),
                 overwrite=overwrite,
             )
 
@@ -406,9 +414,11 @@ def main(args):
                 min_site_callrate=args.qc_mt_callrate_min_site_callrate,
             )
             ht.write(
-                get_checkpoint_path("test_gnomad.exomes.qc_mt_callrate")
-                if test
-                else sample_qc_mt_callrate.path,
+                (
+                    get_checkpoint_path("test_gnomad.exomes.qc_mt_callrate")
+                    if test
+                    else sample_qc_mt_callrate.path
+                ),
                 overwrite=overwrite,
             )
 

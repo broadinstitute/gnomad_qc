@@ -305,8 +305,9 @@ def compute_stratified_metrics_filter(
     strata_exp = hl.tuple([ht[x] for x in strata]) if strata else hl.tuple([])
 
     fail_exprs = {
-        f"fail_{metric}": (ht[metric] >= ht.metrics_stats[strata_exp][metric].upper)
-        | (ht[metric] <= ht.metrics_stats[strata_exp][metric].lower)
+        f"fail_{metric}": (ht[metric] >= ht.metrics_stats[strata_exp][metric].upper) | (
+            ht[metric] <= ht.metrics_stats[strata_exp][metric].lower
+        )
         for metric in qc_metrics
     }
     ht = ht.transmute(**fail_exprs)
