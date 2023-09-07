@@ -772,12 +772,16 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
 
     logger.info("Annotating 'faf' and 'grpmax'...")
     ht = ht.annotate(
-        faf=[x.faf for x in faf_grpmax_expr],
-        grpmax=[x.grpmax for x in faf_grpmax_expr],
+        faf=[group for dataset in faf_grpmax_expr for group in dataset],
+        grpmax=[dataset.grpmax for dataset in faf_grpmax_expr],
     )
     faf_meta_expr = [x.faf_meta.collect(_localize=False)[0] for x in faf_grpmax_expr]
+    # Add subset back to non_ukb faf meta and flatten it
+    faf_meta_expr[1] = faf_meta_expr[1].map(
+        lambda d: hl.dict(d.items().append(("subset", "non_ukb")))
+    )
     ht = ht.annotate_globals(
-        faf_meta=faf_meta_expr,
+        faf_meta=hl.flatten(faf_meta_expr),
         faf_index_dict=[
             make_faf_index_dict(hl.eval(x), label_delimiter="-") for x in faf_meta_expr
         ],
