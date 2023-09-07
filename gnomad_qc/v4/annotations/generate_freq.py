@@ -228,6 +228,11 @@ def get_vds_for_freq(
         ukb_sample=hl.if_else(project_meta_expr.ukb_sample, "ukb", "non_ukb"),
     )
 
+    logger.info("Dropping excessively multi-allelic site at chr19:5787204...")
+    vmt = vmt.filter_rows(
+        vmt.locus != hl.parse_locus("chr19:5787204", reference_genome="GRCh38")
+    )
+
     logger.info("Getting age distribution of all samples in the callset...")
     vmt = vmt.annotate_globals(
         age_distribution=vmt.aggregate_cols(hl.agg.hist(vmt.age, 30, 80, 10))
@@ -241,6 +246,7 @@ def get_vds_for_freq(
 
     logger.info("Spltting mutliallelics in VDS...")
     vds = hl.vds.VariantDataset(rmt, vmt)
+
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
 
     return vds
