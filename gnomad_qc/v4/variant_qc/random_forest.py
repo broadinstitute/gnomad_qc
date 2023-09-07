@@ -31,7 +31,6 @@ from gnomad_qc.v4.resources.annotations import (
 
 from gnomad_qc.v4.resources.basics import get_checkpoint_path
 from gnomad_qc.v4.resources.variant_qc import (
-    get_rf_annotations,
     get_rf_model_path,
     get_rf_result,
     get_rf_training,
@@ -93,9 +92,9 @@ def train_rf(
     fp_expr = ht.fail_hard_filters
     tp_expr = ht.omni | ht.mills
     if not no_transmitted_singletons:
-        tp_expr = tp_expr | ht.transmitted_singleton 
+        tp_expr = tp_expr | ht.transmitted_singleton_adj 
     if not no_sibling_singletons:
-        tp_expr = tp_expr | ht.sibling_singleton # TODO: make sure this is acceptable Hail logic
+        tp_expr = tp_expr | ht.sibling_singleton_adj # TODO: make sure this is acceptable Hail logic
 
     if test_intervals:
         if isinstance(test_intervals, str):
@@ -146,14 +145,12 @@ def main(args):  # noqa: D103
         while model_id in rf_runs:
             model_id = f"rf_{str(uuid.uuid4())[:8]}"
 
-        ht, rf_model = train_rf(
-            get_rf_annotations(args.adj).ht(),
+        ht, rf_model = train_rf(ht,
             fp_to_tp=args.fp_to_tp,
             num_trees=args.num_trees,
             max_depth=args.max_depth,
             no_transmitted_singletons=args.no_transmitted_singletons,
             no_sibling_singletons=args.no_sibling_singletons,
-            vqsr_model_id=args.vqsr_model_id,
             filter_centromere_telomere=args.filter_centromere_telomere,
             test_intervals=args.test_intervals)
 
