@@ -769,7 +769,12 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     logger.info("Annotating 'faf' and 'grpmax'...")
     ht = ht.annotate(
         faf=[group for dataset in faf_grpmax_expr for group in dataset],
-        grpmax=[dataset.grpmax for dataset in faf_grpmax_expr],
+        grpmax=hl.struct(
+            **{
+                "gnomad": faf_grpmax_expr[0].grpmax,
+                "non_ukb": faf_grpmax_expr[1].grpmax,
+            }
+        ),
     )
     faf_meta_expr = [x.faf_meta.collect(_localize=False)[0] for x in faf_grpmax_expr]
     # Add subset back to non_ukb faf meta and flatten it
@@ -781,11 +786,6 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
         faf_index_dict=[
             make_faf_index_dict(hl.eval(x), label_delimiter="-") for x in faf_meta_expr
         ],
-        grpmax_meta=[
-            {"dataset": "gnomad"},
-            {"dataset": "non_ukb"},
-        ],  # TODO: These seem silly but keeps with the meta/dict theme of globals
-        grpmax_index_dict=SUBSET_DICT,
     )
 
     return ht
