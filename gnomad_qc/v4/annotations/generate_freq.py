@@ -11,7 +11,7 @@ the filtering allele frequency and grpmax with the AB-adjusted frequencies.
 import argparse
 import logging
 from copy import deepcopy
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import DOWNSAMPLINGS, POPS_TO_REMOVE_FOR_POPMAX
@@ -19,6 +19,7 @@ from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
     annotate_downsamplings,
+    annotate_freq,
     bi_allelic_site_inbreeding_expr,
     build_freq_stratification_list,
     compute_freq_by_strata,
@@ -31,7 +32,7 @@ from gnomad.utils.annotations import (
     qual_hist_expr,
     set_female_y_metrics_to_na_expr,
 )
-from gnomad.utils.filtering import split_vds_by_strata
+from gnomad.utils.filtering import filter_arrays_by_meta, split_vds_by_strata
 from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import SORT_ORDER
@@ -43,7 +44,7 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_freq
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds, get_logging_path
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,7 +58,7 @@ AGE_HISTS = [
     "age_hist_het",
     "age_hist_hom",
 ]
-# TODO: Add documentation.
+"""Age histograms to compute and keep on the frequency Table."""
 QUAL_HISTS = [
     "gq_hist_all",
     "dp_hist_all",
@@ -65,33 +66,48 @@ QUAL_HISTS = [
     "dp_hist_alt",
     "ab_hist_alt",
 ]
-# TODO: Add documentation.
+"""Quality histograms to compute and keep on the frequency Table."""
 FREQ_HIGH_AB_HET_ROW_FIELDS = [
     "high_ab_hets_by_group",
     "high_ab_het_adjusted_ab_hists",
     "high_ab_het_adjusted_age_hists",
 ]
+"""
+List of top level row and global annotations relating to the high allele balance
+heterozygote correction that we want on the frequency HT before deciding on the AF
+cutoff.
+"""
 FREQ_ROW_FIELDS = [
     "freq",
     "qual_hists",
     "raw_qual_hists",
     "age_hists",
 ]
+"""
+List of top level row and global annotations with no high allele balance heterozygote
+correction that we want on the frequency HT.
+"""
 ALL_FREQ_ROW_FIELDS = FREQ_ROW_FIELDS + FREQ_HIGH_AB_HET_ROW_FIELDS
 """
 List of final top level row and global annotations created from dense data that we
 want on the frequency HT before deciding on the AF cutoff.
 """
-# TODO: What are we doing about the sample count struct?
 FREQ_GLOBAL_FIELDS = [
     "downsamplings",
     "freq_meta",
     "age_distribution",
     "freq_index_dict",
+    "freq_meta_sample_count",
+    "age_hist_index_dict",
 ]
 """
 List of final global annotations created from dense data that we want on the frequency
 HT before deciding on the AF cutoff.
+"""
+SUBSET_DICT = {"gnomad": 0, "non_ukb": 1}
+"""
+Dictionary for accessing the annotations with subset specific annotations such as
+age_hists, popmax, and faf.
 """
 
 
@@ -113,22 +129,48 @@ def get_freq_resources(
     run_freq_and_dense_annotations = PipelineStepResourceCollection(
         "--run-freq-and-dense-annotations",
         output_resources={
-            "freq_and_dense_annotations": get_freq(
-                test=test, hom_alt_adjusted=False, chrom=chrom
-            ),
+            f"{s}_freq_ht": get_freq(
+                test=test,
+                hom_alt_adjusted=False,
+                chrom=chrom,
+                intermediate_subset=s,
+                finalized=False,
+            )
+            for s in ["ukb", "non_ukb"]
+        },
+    )
+    combine_freq = PipelineStepResourceCollection(
+        "--combine-freq-hts",
+        pipeline_input_steps=[run_freq_and_dense_annotations],
+        output_resources={
+            "freq_ht": get_freq(
+                test=test,
+                hom_alt_adjusted=False,
+                chrom=chrom,
+                finalized=False,
+            )
         },
     )
     correct_for_high_ab_hets = PipelineStepResourceCollection(
         "--correct-for-high-ab-hets",
-        pipeline_input_steps=[run_freq_and_dense_annotations],
+        pipeline_input_steps=[combine_freq],
         output_resources={
-            "freq_ht": get_freq(test=test, hom_alt_adjusted=True, chrom=chrom),
+            "corrected_freq_ht": get_freq(
+                test=test, hom_alt_adjusted=True, chrom=chrom, finalized=False
+            )
         },
+    )
+    finalize_freq_ht = PipelineStepResourceCollection(
+        "--finalize-freq-ht",
+        pipeline_input_steps=[correct_for_high_ab_hets],
+        output_resources={"final_freq_ht": get_freq(test=test, finalized=True)},
     )
     freq_pipeline.add_steps(
         {
             "run_freq_and_dense_annotations": run_freq_and_dense_annotations,
+            "combine_freq": combine_freq,
             "correct_for_high_ab_hets": correct_for_high_ab_hets,
+            "finalize_freq_ht": finalize_freq_ht,
         }
     )
     return freq_pipeline
@@ -187,7 +229,7 @@ def get_vds_for_freq(
         ukb_sample=hl.if_else(project_meta_expr.ukb_sample, "ukb", "non_ukb"),
     )
 
-    # TODO: Add comment and logger.
+    logger.info("Getting age distribution of all samples in the callset...")
     vmt = vmt.annotate_globals(
         age_distribution=vmt.aggregate_cols(hl.agg.hist(vmt.age, 30, 80, 10))
     )
@@ -202,78 +244,7 @@ def get_vds_for_freq(
     vds = hl.vds.VariantDataset(rmt, vmt)
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
 
-    # TODO: Need to decide which method to use for adj annotation.
-    # logger.info(
-    #    "Computing adj and _het_AD as part of reducing fields to reduce memory"
-    #    " usage during dense dependent steps..."
-    # )
-    # vds = annotate_adj_and_select_fields(vds)
-
     return vds
-
-
-def is_haploid(
-    locus_expr: hl.expr.LocusExpression,
-    karyotype_expr: hl.expr.StringExpression,
-) -> hl.expr.CallExpression:
-    """
-    Add description.
-
-    :param locus_expr: Hail locus expression.
-    :param karyotype_expr:
-    """
-    xy = karyotype_expr == "XY"
-    xx = karyotype_expr == "XX"
-    x_nonpar = locus_expr.in_x_nonpar()
-    y_par = locus_expr.in_y_par()
-    y_nonpar = locus_expr.in_y_nonpar()
-
-    return hl.or_missing(~(xx & (y_par | y_nonpar)), xy & (x_nonpar | y_nonpar))
-
-
-def annotate_adj_and_select_fields(vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
-    """
-    Annotate adj, _het_ad, and select fields to reduce memory usage.
-
-    :param vds: Hail VDS to annotate adj onto variant data.
-    :return: Hail VDS with adj annotation.
-    """
-    rmt = vds.reference_data
-    vmt = vds.variant_data
-
-    logger.info("Computing sex adjusted genotypes...")
-    rmt_sex_expr = vmt.cols()[rmt.col_key].sex_karyotype
-    rmt.filter_entries(
-        (rmt.locus.in_y_par() | rmt.locus.in_y_nonpar()) & (rmt_sex_expr == "XX"),
-        keep=False,
-    )
-    rmt = rmt.annotate_entries(
-        adj=(rmt.GQ >= 20)
-        & hl.if_else(
-            ~rmt.locus.in_autosome() & is_haploid(rmt.locus, rmt_sex_expr),
-            rmt.DP >= 5,
-            rmt.DP >= 10,
-        )
-    )
-
-    vmt_gt_expr = hl.if_else(
-        vmt.locus.in_autosome(),
-        vmt.GT,
-        adjusted_sex_ploidy_expr(vmt.locus, vmt.GT, vmt.sex_karyotype),
-    )
-    ab_expr = vmt.AD[1] / vmt.DP
-    # TODO: Add ab cutoff parameter if using this method.
-    vmt = vmt.select_entries(
-        "DP",
-        "GQ",
-        GT=vmt_gt_expr,
-        adj=get_adj_expr(vmt_gt_expr, vmt.GQ, vmt.DP, vmt.AD),
-        _het_ab=ab_expr,
-        # Skip adjusting genotypes if sample originally had a het nonref genotype.
-        _high_ab_het_ref=(ab_expr > 0.9) & ~vmt._het_non_ref,
-    )
-
-    return hl.vds.VariantDataset(rmt, vmt)
 
 
 def annotate_freq_index_dict(ht: hl.Table) -> hl.Table:
@@ -283,14 +254,13 @@ def annotate_freq_index_dict(ht: hl.Table) -> hl.Table:
     The keys are the strata over which frequency aggregations where calculated and
     the values are the strata's index in the frequency array.
 
-    :param ht:
-    :return:
+    :param ht: Input Table.
+    :return: Table with 'freq_index_dict' global field.
     """
     logger.info("Making freq index dict...")
     # Add additional strata to the sort order, keeping group, i.e. adj, at the end.
     sort_order = deepcopy(SORT_ORDER)
-    sort_order[-1:-1] = ["gatk_version", "ukb_sample"]
-
+    sort_order[-1:-1] = ["gatk_version"]
     ht = ht.annotate_globals(
         freq_index_dict=make_freq_index_dict_from_meta(
             freq_meta=ht.freq_meta,
@@ -298,70 +268,201 @@ def annotate_freq_index_dict(ht: hl.Table) -> hl.Table:
             sort_order=sort_order,
         )
     )
+    return ht
+
+
+def filter_freq_arrays_for_non_ukb_subset(
+    ht: hl.Table,
+    items_to_filter: Union[List[str], Dict[str, List[str]]],
+    keep: bool = True,
+    combine_operator: str = "and",
+    annotations: Union[List[str], Tuple[str]] = ("freq", "high_ab_hets_by_group"),
+    remove_subset_from_meta: bool = False,
+) -> hl.Table:
+    """
+    Filter frequency arrays by metadata.
+
+    Filter 'annotations' and `freq_meta` array fields to only `items_to_filter` by
+    using the 'freq_meta' array field values.
+
+    If `remove_subset_from_meta` is True, update 'freq_meta' dicts by removing items
+    with the key "subset" removed. If False, update 'freq_meta' dicts to include a
+    "subset" key with "non_ukb" value.
+
+    Also rename the 'downsamplings' global field to "non_ukb_downsamplings" so we can
+    merge them later without losing the non-UKB downsampling information.
+
+    :param ht: Input Table.
+    :param items_to_filter: Items to filter by.
+    :param keep: Whether to keep or remove items. Default is True.
+    :param combine_operator: Operator ("and" or "or") to use when combining items in
+        'items_to_filter'. Default is "and".
+    :param annotations: Annotations in 'ht' to filter by `items_to_filter`.
+    :param remove_subset_from_meta: Whether to remove the "subset" key from 'freq_meta'
+        or add "subset" key with "non_ukb" value. Default is False.
+    :return: Table with filtered 'annotations' and 'freq_meta' array fields.
+    """
+    freq_meta, array_exprs = filter_arrays_by_meta(
+        ht.freq_meta,
+        {
+            **{a: ht[a] for a in annotations},
+            "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
+        },
+        items_to_filter=items_to_filter,
+        keep=keep,
+        combine_operator=combine_operator,
+    )
+    if remove_subset_from_meta:
+        logger.info("Dropping non_ukb subset key from freq_meta...")
+        freq_meta = freq_meta.map(
+            lambda d: hl.dict(d.items().filter(lambda x: x[0] != "subset"))
+        )
+    else:
+        logger.info("Adding non_ukb subset key from freq_meta...")
+        freq_meta = freq_meta.map(
+            lambda d: hl.dict(d.items().append(("subset", "non_ukb")))
+        )
+
+    ht = ht.annotate(**{a: array_exprs[a] for a in annotations})
+    ht = ht.annotate_globals(
+        freq_meta=freq_meta,
+        freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
+        non_ukb_downsamplings=ht.downsamplings,
+    )
 
     return ht
 
 
-def generate_freq_and_hists_ht(
-    vds: hl.vds.VariantDataset,
+def high_ab_het(
+    entry: hl.StructExpression, col: hl.StructExpression
+) -> hl.Int32Expression:
+    """
+    Determine if a call is considered a high allele balance heterozygous call.
+
+    High allele balance heterozygous calls were introduced in certain GATK versions.
+    Track how many calls appear at each site to correct them to homozygous
+    alternate calls downstream in frequency calculations and histograms.
+
+    Assumes the following annotations are present in `entry` struct:
+        - GT
+        - adj
+        - _high_ab_het_ref
+
+    Assumes the following annotations are present in `col` struct:
+        - fixed_homalt_model
+
+    :param entry: Entry struct.
+    :param col: Column struct.
+    :return: 1 if high allele balance heterozygous call, else 0.
+    """
+    return hl.int(
+        entry.GT.is_het_ref()
+        & entry.adj
+        & ~col.fixed_homalt_model
+        & entry._high_ab_het_ref
+    )
+
+
+def generate_freq_ht(
+    mt: hl.MatrixTable,
     ds_ht: hl.Table,
-    ab_cutoff: float = 0.9,
+    meta_ht: hl.Table,
 ) -> hl.Table:
     """
-    Generate frequency and histogram annotations.
+    Generate frequency Table.
 
     Assumes all necessary annotations are present:
-        - adj
-        - _het_ad
-        - _het_non_ref
-        - GT
-        - GQ
-        - s
-        - pop
-        - sex_karyotype
-        - fixed_homalt_model
-        - gatk_version
-        - age
-        - ukb_sample
+        `mt` annotations:
+            - GT
+            - adj
+            - _high_ab_het_ref
+            - fixed_homalt_model
+            - fixed_homalt_model
 
-    :param vds: Input VDS.
-    :param ab_cutoff: Allele balance cutoff to use for high AB het annotation.
-    :return: Hail Table with frequency and histogram annotations.
+        `ds_ht` annotations:
+            - downsampling
+            - downsamplings
+            - ds_pop_counts
+
+        `meta_ht` annotations:
+            - pop
+            - sex_karyotype
+            - gatk_version
+            - age
+            - ukb_sample
+
+    :param mt: Input MatrixTable.
+    :param ds_ht: Table with downsampling annotations.
+    :param meta_ht: Table with sample metadata annotations.
+    :return: Hail Table with frequency annotations.
     """
-    final_rows_anns = {}
-    final_globals_anns = {}
-
-    ht = vds.variant_data.cols()
+    meta_ht = meta_ht.semi_join(mt.cols())
     additional_strata_expr = [
-        {"gatk_version": ht.gatk_version},
-        {"gatk_version": ht.gatk_version, "pop": ht.pop},
-        {"ukb_sample": ht.ukb_sample},
+        {"gatk_version": meta_ht.gatk_version},
+        {"gatk_version": meta_ht.gatk_version, "pop": meta_ht.pop},
     ]
     logger.info("Building frequency stratification list...")
     strata_expr = build_freq_stratification_list(
-        sex_expr=ht.sex_karyotype,
-        pop_expr=ht.pop,
+        sex_expr=meta_ht.sex_karyotype,
+        pop_expr=meta_ht.pop,
         additional_strata_expr=additional_strata_expr,
-        downsampling_expr=ds_ht[ht.key].downsampling,
+        downsampling_expr=ds_ht[meta_ht.key].downsampling,
     )
     logger.info("Generating group_membership array....")
-    ht = generate_freq_group_membership_array(
-        ht,
+    meta_ht = generate_freq_group_membership_array(
+        meta_ht,
         strata_expr,
         downsamplings=hl.eval(ds_ht.downsamplings),
         ds_pop_counts=hl.eval(ds_ht.ds_pop_counts),
     )
+    logger.info("Annotating frequencies and counting high AB het calls...")
+    freq_ht = compute_freq_by_strata(
+        mt.annotate_cols(group_membership=meta_ht[mt.col_key].group_membership),
+        entry_agg_funcs={"high_ab_hets_by_group": (high_ab_het, hl.agg.sum)},
+    )
+    # Note: To use "multi_way_zip_join" need globals to be the same but an if_else based
+    #  on strata doesn't work because hail looks for the annotation
+    #  "non_ukb_downsamplings" regardless of the conditional value and throws an error
+    #  if it doesn't exist.
+    freq_ht = freq_ht.annotate_globals(
+        **meta_ht.index_globals(), non_ukb_downsamplings=hl.missing(hl.tarray(hl.tint))
+    )
 
+    return freq_ht
+
+
+def densify_and_prep_vds_for_freq(
+    vds: hl.vds.VariantDataset,
+    ab_cutoff: float = 0.9,
+) -> hl.MatrixTable:
+    """
+    Densify VDS and select necessary annotations for frequency and histogram calculations.
+
+    Select entry annotations required for downstream work. 'DP', 'GQ', and '_het_ab' are
+    required for histograms. 'GT' and 'adj' are required for frequency calculations.
+    '_high_ab_het_ref' is required for high AB call corrections in frequency and
+    histogram annotations.
+
+    Assumes all necessary annotations are present:
+        - adj
+        - _het_non_ref
+        - GT
+        - GQ
+        - AD
+        - DP
+        - sex_karyotype
+
+    :param vds: Input VDS.
+    :param ab_cutoff: Allele balance cutoff to use for high AB het annotation.
+    :return: Dense MatrixTable with only necessary entry annotations.
+    """
     logger.info("Densifying VDS...")
     mt = hl.vds.to_dense_mt(vds)
 
     logger.info("Computing sex adjusted genotypes...")
     ab_expr = mt.AD[1] / mt.DP
     gt_expr = adjusted_sex_ploidy_expr(mt.locus, mt.GT, mt.sex_karyotype)
-    # Select entries required for downstream work. DP, GQ, and _het_ab are
-    # required for histograms. GT and adj are required for frequency calculations.
-    # _high_ab_het_ref is required for high AB call corrections in frequency and
-    # histogram annotaitons.
+
     mt = mt.select_entries(
         "DP",
         "GQ",
@@ -370,41 +471,80 @@ def generate_freq_and_hists_ht(
         _het_ab=ab_expr,
         _high_ab_het_ref=(ab_expr > ab_cutoff) & ~mt._het_non_ref,
     )
+    return mt
 
-    def _high_ab_het(entry, col):
-        """
-        Determine if a call is considered a high allele balance heterozygous call.
 
-        High allele balance heterozygous calls were introduced in certain GATK versions.
-        Track how many calls appear at each site to correct them to homozygous
-        alternate calls downstream in frequency calculations and histograms.
+def non_ukb_freq_downsampling(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table:
+    """
+    Add non-ukb specific downsamplings and frequency calculations to frequency Table.
 
-        :param entry:
-        :param col:
-        :return:
-        """
-        return hl.int(
-            entry.GT.is_het_ref()
-            & entry.adj
-            & ~col.fixed_homalt_model
-            & entry._high_ab_het_ref
-        )
+    :param mt: Input MatrixTable.
+    :param freq_ht: Frequency Table.
+    :return: Frequency Table with non-UKB specific downsamplings and frequency
+        calculations.
+    """
+    annotations = ["freq", "high_ab_hets_by_group"]
+    global_annotations = ["freq_meta", "freq_meta_sample_count"]
 
-    logger.info("Annotating frequencies and counting high AB het calls...")
-    freq_ht = compute_freq_by_strata(
-        mt.annotate_cols(group_membership=ht[mt.col_key].group_membership),
-        entry_agg_funcs={"high_ab_hets_by_group": (_high_ab_het, hl.agg.sum)},
+    logger.info("Downsampling the non_ukb VDS for separate freq calculation...")
+    non_ukb_ds_ht = annotate_freq(
+        mt,
+        pop_expr=mt.pop,
+        downsamplings=DOWNSAMPLINGS["v4"][:-1],
+        annotate_mt=False,
+        entry_agg_funcs={"high_ab_hets_by_group": (high_ab_het, hl.agg.sum)},
     )
-    freq_ht = freq_ht.annotate_globals(**ht.index_globals())
 
-    logger.info("Setting Y metrics to NA for XX groups...")
-    freq_ht = annotate_freq_index_dict(freq_ht)
-    freq_ht = freq_ht.annotate(freq=set_female_y_metrics_to_na_expr(freq_ht))
+    # Filter 'freq' array field to only downsampling indices.
+    logger.info("Filtering the 'freq array to only downsampling indices...")
+    non_ukb_ds_ht = filter_freq_arrays_for_non_ukb_subset(
+        non_ukb_ds_ht, items_to_filter=["downsampling"]
+    )
+    # Filter to only non_ukb group, pop, and sex strata so can add subset-specific freqs to main array.
+    # This is duplicated data here but it's necessary so we can merge split vds strata properly and still
+    # retain the subset freq data.
+    logger.info("Filtering to non_ukb subset strata...")
+    non_ukb_ht = filter_freq_arrays_for_non_ukb_subset(
+        freq_ht,
+        items_to_filter=["downsampling", "gatk_version"],
+        keep=False,
+        combine_operator="or",
+    )
 
+    # There are no overlap of strata groups here so can do basic flatmap on the
+    # arrays.
+    freqs = hl.array(
+        [freq_ht.row_value, non_ukb_ht[freq_ht.key], non_ukb_ds_ht[freq_ht.key]]
+    )
+    freq_ht = freq_ht.annotate(
+        **{a: hl.flatmap(lambda x: x[a], freqs) for a in annotations}
+    )
+    freq_globals = hl.array(
+        [
+            x.select_globals(*global_annotations).index_globals()
+            for x in [freq_ht, non_ukb_ht, non_ukb_ds_ht]
+        ]
+    )
+    freq_ht = freq_ht.annotate_globals(
+        **{a: hl.flatmap(lambda x: x[a], freq_globals) for a in global_annotations},
+        non_ukb_downsamplings=non_ukb_ds_ht.index_globals().non_ukb_downsamplings,
+    )
+
+    return freq_ht
+
+
+def annotate_hists_on_freq_ht(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table:
+    """
+    Annotate quality metrics histograms and age histograms onto frequency Table.
+
+    :param mt: Input MatrixTable.
+    :param freq_ht: Frequency Table.
+    :return: Frequency Table with quality metrics histograms and age histograms.
+    """
     logger.info(
         "Computing quality metrics histograms and age histograms for each variant..."
     )
-    high_ab_gt_expr = hl.if_else(_high_ab_het(mt, mt) == 1, hl.call(1, 1), mt.GT)
+    high_ab_gt_expr = hl.if_else(high_ab_het(mt, mt) == 1, hl.call(1, 1), mt.GT)
     mt = mt.select_rows(
         **qual_hist_expr(
             gt_expr=mt.GT,
@@ -424,17 +564,13 @@ def generate_freq_and_hists_ht(
     )
 
     hists = mt.rows()[freq_ht.key]
-    final_rows_anns.update({r: hists[r] for r in mt.row_value})
-
-    freq_ht = freq_ht.annotate(**final_rows_anns)
-    freq_ht = freq_ht.annotate_globals(**final_globals_anns)
+    freq_ht = freq_ht.annotate(**{r: hists[r] for r in mt.row_value})
 
     return freq_ht
 
 
-# TODO: add to params.
 def combine_freq_hts(
-    freq_hts: hl.DictExpression,
+    freq_hts: Dict[str, hl.Table],
     row_annotations: List[str],
     global_annotations: List[str],
     age_hists: List[str] = AGE_HISTS,
@@ -446,24 +582,35 @@ def combine_freq_hts(
     :param freq_hts: Dictionary of frequency HTs.
     :param row_annotations: List of annotations to put onto one hail Table.
     :param global_annotations: List of global annotations to put onto one hail Table.
+    :param age_hists: List of age histogram annotations to merge.
+    :param qual_hists: List of quality histogram annotations to merge.
     :return: HT with all freq_hts annotations.
     """
-    n_hts_range = range(len(freq_hts))
-    freq_ht = hl.Table.multi_way_zip_join(freq_hts, "ann_array", "global_array")
+    ht_i = range(len(freq_hts))
+    freq_ht = hl.Table.multi_way_zip_join(
+        list(freq_hts.values()), "ann_array", "global_array"
+    )
 
     # Combine freq arrays and high ab het counts by group arrays into single
     # annotations.
     logger.info(
         "Merging frequency arrays, metadata, and high ab het counts by group array..."
     )
-    comb_freq, comb_freq_meta, comb_high_ab_hets = merge_freq_arrays(
-        farrays=[freq_ht.ann_array[i].freq for i in n_hts_range],
-        fmeta=[freq_ht.global_array[i].freq_meta for i in n_hts_range],
-        count_arrays=[freq_ht.ann_array[i].high_ab_hets_by_group for i in n_hts_range],
+    a_array = freq_ht.ann_array
+    g_array = freq_ht.global_array
+    comb_freq, comb_freq_meta, count_arrays_dict = merge_freq_arrays(
+        farrays=[a_array[i].freq for i in ht_i],
+        fmeta=[g_array[i].freq_meta for i in ht_i],
+        count_arrays={
+            "high_ab_hets": [a_array[i].high_ab_hets_by_group for i in ht_i],
+            "freq_meta_sample_count": [g_array[i].freq_meta_sample_count for i in ht_i],
+        },
     )
+
+    logger.info("Annotating merged freq array and high ab hets...")
     freq_ht = freq_ht.annotate(
         freq=comb_freq,
-        high_ab_hets_by_group=comb_high_ab_hets,
+        high_ab_hets_by_group=count_arrays_dict["high_ab_hets"],
     )
 
     # Merge all histograms into single annotations.
@@ -479,7 +626,7 @@ def combine_freq_hts(
         hist_struct: hl.struct(
             **{
                 h: merge_histograms(
-                    [freq_ht.ann_array[i][hist_struct][h] for i in n_hts_range]
+                    [freq_ht.ann_array[i][hist_struct][h] for i in ht_i]
                 )
                 for h in hists
             }
@@ -488,12 +635,27 @@ def combine_freq_hts(
     }
     freq_ht = freq_ht.annotate(**hists_expr)
 
+    # Add in non-ukb subset age hists.
+    logger.info("Adding 'non_ukb' subset's age histograms...")
+    age_hists = ["age_hists", "high_ab_het_adjusted_age_hists"]
+    non_ukb = freq_hts["non_ukb"][freq_ht.key]
+    freq_ht = freq_ht.transmute(
+        **{a: hl.array([freq_ht[a], non_ukb[a]]) for a in age_hists}
+    )
+
     freq_ht = freq_ht.annotate_globals(
-        downsamplings=freq_ht.global_array[0].downsamplings,
+        downsamplings={
+            "gnomad": freq_ht.global_array[0].downsamplings,
+            "non_ukb": freq_hts["non_ukb"].index_globals().non_ukb_downsamplings,
+        },
         age_distribution=freq_ht.global_array[0].age_distribution,
+        age_hist_index_dict=SUBSET_DICT,
         freq_meta=comb_freq_meta,
+        freq_meta_sample_count=hl.eval(count_arrays_dict["freq_meta_sample_count"]),
     )
     freq_ht = annotate_freq_index_dict(freq_ht)
+    logger.info("Setting Y metrics to NA for XX groups...")
+    freq_ht = freq_ht.annotate(freq=set_female_y_metrics_to_na_expr(freq_ht))
     freq_ht = freq_ht.select(*row_annotations)
     freq_ht = freq_ht.select_globals(*global_annotations)
 
@@ -509,16 +671,18 @@ def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Tab
 
     High allele balance GTs were being called heterozygous instead of homozygous
     alternate in GATK until version 4.1.4.1. This corrects for those calls by adjusting
-    them  to homozygote alternate within our call statistics and histograms when a
-    site's allele frequency is greater than the passed af_threshold. Raw data is not
+    them to homozygote alternate within our call statistics and histograms when a
+    site's allele frequency is greater than the passed `af_threshold`. Raw data is not
     adjusted.
 
-    :param ht: Table with frequency and histogram annotations for correction as well as high AB het annotations.
-    :param af_threshold: Allele frequency threshold for high AB adjustment. Default is 0.01.
-    :return:
+    :param ht: Table with frequency and histogram annotations for correction as well as
+        high AB het annotations.
+    :param af_threshold: Allele frequency threshold for high AB adjustment. Default is
+        0.01.
+    :return: Table with corrected call statistics and histograms.
     """
-    # Correct call statistics by passing through freq and high_ab_hets_by_group arrays
-    # to adjust each annotation accordingly
+    # Correct call statistics by passing through 'freq' and 'high_ab_hets_by_group'
+    # arrays to adjust each annotation accordingly.
     call_stats_expr = hl.map(
         lambda f, g: hl.struct(
             AC=hl.int32(f.AC + g),
@@ -530,7 +694,7 @@ def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Tab
         ht.high_ab_hets_by_group,
     )
 
-    # Add already computed ab_adjusted histograms to the qual_hist_expr
+    # Add already computed 'ab_adjusted' histograms to the 'qual_hist_expr'.
     qual_hist_expr = {
         f"ab_adjusted_{x}": ht[x].annotate(
             ab_hist_alt=ht.high_ab_het_adjusted_ab_hists[
@@ -541,8 +705,8 @@ def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Tab
         if "qual_hist" in x
     }
 
-    # If a sites AF is greater than the af_threshold, add high AB het adjusted annotations,
-    # otherwise use original annotations.
+    # If a sites AF is greater than the 'af_threshold', add high AB het adjusted
+    # annotations, otherwise use original annotations.
     no_ab_adjusted_expr = {f"ab_adjusted_{x}": ht[x] for x in FREQ_ROW_FIELDS}
     ht = ht.select(
         "high_ab_hets_by_group",
@@ -563,31 +727,62 @@ def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Tab
 
 def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     """
-    Compute filtering allele frequencies and grpmax with the AB-adjusted frequencies.
+    Compute filtering allele frequencies ('faf') and 'grpmax' with the AB-adjusted frequencies.
 
-    :param ht: Hail Table containing freq, ab_adjusted_freq, high_ab_het annotations.
-    :return: Hail Table with faf & grpmax annotations.
+    :param ht: Hail Table containing 'freq', 'ab_adjusted_freq', 'high_ab_het'
+        annotations.
+    :return: Hail Table with 'faf' and 'grpmax' annotations.
     """
-    faf, faf_meta = faf_expr(
-        ht.ab_adjusted_freq, ht.freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX
+    logger.info(
+        "Filtering frequencies to just 'non_ukb' subset entries for 'faf' "
+        "calculations..."
     )
-    ht = ht.annotate(
-        faf=faf,
-        grpmax=pop_max_expr(
-            ht.ab_adjusted_freq, ht.freq_meta, POPS_TO_REMOVE_FOR_POPMAX
-        ),
+    # Remove the key "subset" from each dict in 'non_ukb_freq_meta' list so 'faf' will
+    # pull the correct indices, i.e. `faf_expr` requires specific lengths to consider
+    # each element in the freq list.
+    non_ukb_ht = filter_freq_arrays_for_non_ukb_subset(
+        ht,
+        items_to_filter={"subset": ["non_ukb"]},
+        combine_operator="or",
+        annotations=("ab_adjusted_freq",),
+        remove_subset_from_meta=True,
     )
-    ht = ht.annotate_globals(
-        faf_meta=faf_meta,
-        faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-"),
-    )
-    ht = ht.annotate(
-        grpmax=ht.grpmax.annotate(
-            faf95=ht.faf[
-                ht.faf_meta.index(lambda x: x.values() == ["adj", ht.grpmax.pop])
-            ].faf95
+    freq_metas = [
+        (ht.ab_adjusted_freq, ht.index_globals().freq_meta),
+        (non_ukb_ht[ht.key].ab_adjusted_freq, non_ukb_ht.index_globals().freq_meta),
+    ]
+    faf_grpmax_expr = [
+        hl.struct(
+            **hl.bind(
+                lambda f, g: hl.struct(
+                    faf=f[0],
+                    faf_meta=f[1],
+                    grpmax=g.annotate(
+                        faf95=f[0][
+                            f[1].index(lambda y: y.values() == ["adj", g.pop])
+                        ].faf95
+                    ),
+                ),
+                faf_expr(freq, meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX),
+                pop_max_expr(freq, meta, POPS_TO_REMOVE_FOR_POPMAX),
+            )
         )
+        for freq, meta in freq_metas
+    ]
+
+    logger.info("Annotating 'faf' and 'grpmax'...")
+    ht = ht.annotate(
+        faf=[x.faf for x in faf_grpmax_expr],
+        grpmax=[x.grpmax for x in faf_grpmax_expr],
     )
+    faf_meta_expr = [x.faf_meta.collect(_localize=False)[0] for x in faf_grpmax_expr]
+    ht = ht.annotate_globals(
+        faf_meta=faf_meta_expr,
+        faf_index_dict=[
+            make_faf_index_dict(hl.eval(x), label_delimiter="-") for x in faf_meta_expr
+        ],
+    )
+
     return ht
 
 
@@ -595,7 +790,8 @@ def compute_inbreeding_coeff(ht: hl.Table) -> hl.Table:
     """
     Compute inbreeding coefficient using raw call stats.
 
-    :param ht: Hail Table containing freq array with struct entries of AC, AN, and homozygote_count.
+    :param ht: Hail Table containing 'freq' array with struct entries of 'AC', 'AN', and
+        'homozygote_count'.
     :return: Hail Table with inbreeding coefficient annotation.
     """
     ht = ht.annotate(
@@ -604,9 +800,29 @@ def compute_inbreeding_coeff(ht: hl.Table) -> hl.Table:
     return ht
 
 
-# TODO: add automatic copy of log file.
+def create_final_freq_ht(ht: hl.Table) -> hl.Table:
+    """
+    Create final freq Table with only desired annotations.
+
+    Drop the following annotations:
+        - 'age_high_ab_hist', all annotations from the split VDSs....
+
+    Rename the following annotations:
+        - 'ab_adjusted_freq' -> 'freq'
+        - decide if we want to store uncorrected? Probably,just rename it.
+
+    Filter the following from the 'freq' field:
+        - gatk versions
+
+    :param ht: Hail Table containing all annotations.
+    :return: Hail Table with only desired annotations.
+    """
+    raise NotImplementedError("Creation of final freq Table is not implemented yet.")
+
+
 def main(args):
     """Script to generate frequency and dense dependent annotations on v4 exomes."""
+    overwrite = args.overwrite
     use_test_dataset = args.use_test_dataset
     test_n_partitions = args.test_n_partitions
     test_gene = args.test_gene
@@ -620,80 +836,91 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    resources = get_freq_resources(args.overwrite, test, chrom)
+    resources = get_freq_resources(overwrite, test, chrom)
 
-    if args.run_freq_and_dense_annotations:
-        logger.info("Running dense dependent steps...")
-        res = resources.run_freq_and_dense_annotations
-        res.check_resource_existence()
+    try:
+        if args.run_freq_and_dense_annotations:
+            logger.info("Running dense dependent steps...")
+            res = resources.run_freq_and_dense_annotations
+            res.check_resource_existence()
 
-        logger.info(
-            "Getting multi-allelic split VDS with adj and _het_AD entry annotations..."
-        )
-        vds = get_vds_for_freq(use_test_dataset, test_gene, test_n_partitions, chrom)
-
-        logger.info("Determining downsampling groups...")
-        ds_ht = (
-            annotate_downsamplings(
-                vds.variant_data, DOWNSAMPLINGS["v4"], pop_expr=vds.variant_data.pop
+            logger.info(
+                "Getting multi-allelic split VDS with adj and _het_AD entry"
+                " annotations..."
             )
-            .cols()
-            .checkpoint(new_temp_file("downsamplings", extension="ht"))
-        )
+            vds = get_vds_for_freq(
+                use_test_dataset, test_gene, test_n_partitions, chrom
+            )
+            meta_ht = vds.variant_data.cols()
 
-        if args.split_vds_by_annotation:
+            logger.info("Determining downsampling groups...")
+            ds_ht = annotate_downsamplings(
+                meta_ht, DOWNSAMPLINGS["v4"], pop_expr=meta_ht.pop
+            )
+            ds_ht = ds_ht.checkpoint(new_temp_file("downsamplings", extension="ht"))
+
             logger.info(
                 "Splitting VDS by ukb_sample annotation to reduce data size for"
                 " densification..."
             )
-            vds_list = split_vds_by_strata(vds, strata_expr=vds.variant_data.ukb_sample)
-            freq_hts = []
-            for idx, vds in enumerate(vds_list, start=1):
-                logger.info("Generating frequency and histograms for VDS # %s...", idx)
-                ht = generate_freq_and_hists_ht(vds, ds_ht, ab_cutoff=ab_cutoff)
+            vds_dict = split_vds_by_strata(vds, strata_expr=vds.variant_data.ukb_sample)
+            for strata, vds in vds_dict.items():
+                if (
+                    args.ukb_only
+                    and strata == "non_ukb"
+                    or args.non_ukb_only
+                    and strata == "ukb"
+                ):
+                    continue
 
-                # TODO: Change to use a fixed location in gnomad_tmp instead of
-                #  new_temp_file so we can easily rerun only failed ones if needed?
-                # TODO: Actually, do we want to parallelize this in some way?
-                ht = ht.checkpoint(new_temp_file(f"freq_{idx}", extension="ht"))
-                freq_hts.append(ht)
+                logger.info("Generating frequency and histograms for %s VDS...", strata)
+                mt = densify_and_prep_vds_for_freq(vds, ab_cutoff=ab_cutoff)
+                freq_ht = generate_freq_ht(mt, ds_ht, meta_ht)
+                if strata == "non_ukb":
+                    freq_ht = non_ukb_freq_downsampling(mt, freq_ht)
+                freq_ht = annotate_hists_on_freq_ht(mt, freq_ht)
+                freq_ht.write(
+                    getattr(res, f"{strata}_freq_ht").path, overwrite=overwrite
+                )
 
+        if args.combine_freq_hts:
+            res = resources.combine_freq
+            res.check_resource_existence()
             freq_ht = combine_freq_hts(
-                freq_hts, ALL_FREQ_ROW_FIELDS, FREQ_GLOBAL_FIELDS
+                {"ukb": res.ukb_freq_ht.ht(), "non_ukb": res.non_ukb_freq_ht.ht()},
+                ALL_FREQ_ROW_FIELDS,
+                FREQ_GLOBAL_FIELDS,
             )
-        else:
-            freq_ht = generate_freq_and_hists_ht(vds, ds_ht, ab_cutoff=ab_cutoff)
+            freq_ht.write(res.freq_ht.path, overwrite=args.overwrite)
 
-        freq_ht.write(res.freq_and_dense_annotations.path, overwrite=args.overwrite)
+        if args.correct_for_high_ab_hets:
+            logger.info(
+                "Adjusting annotations impacted by high AB het -> hom alt adjustment..."
+            )
+            res = resources.correct_for_high_ab_hets
+            res.check_resource_existence()
+            ht = res.freq_ht.ht()
 
-    if args.correct_for_high_ab_hets:
-        logger.info(
-            "Adjusting annotations impacted by high AB het -> hom alt adjustment..."
-        )
-        res = resources.correct_for_high_ab_hets
-        res.check_resource_existence()
-        ht = res.freq_and_dense_annotations.ht()
+            logger.info("Correcting call stats, qual AB hists, and age hists...")
+            ht = correct_for_high_ab_hets(ht, af_threshold=af_threshold)
 
-        logger.info("Correcting call stats, qual AB histograms, and age histograms...")
-        ht = correct_for_high_ab_hets(ht, af_threshold=af_threshold)
+            ht.describe()
+            logger.info("Computing FAF & grpmax...")
+            ht = generate_faf_grpmax(ht)
 
-        logger.info("Computing FAF & grpmax...")
-        ht = generate_faf_grpmax(ht)
+            logger.info("Calculating InbreedingCoeff...")
+            ht = compute_inbreeding_coeff(ht)
 
-        logger.info("Calculating InbreedingCoeff...")
-        ht = compute_inbreeding_coeff(ht)
+            logger.info("Writing corrected frequency Table...")
+            ht.write(res.corrected_freq_ht.path, overwrite=args.overwrite)
 
-        # TODO: I think we should add a finalize option that does what you describe
-        #  below.
-        # TODO: Leaving in know while we test but need to drop fields we do not want
-        # -- 'age_high_ab_his', all annotations from the split VDSs, only keep combinged,
-        # rename ab_adjusted_freq to just freq and decide if we want to store uncorrect?
-        # Probably,just rename it, also remove age bins and gatk versions from freq fields?
-        # Also, change captialization of hists depending on decision from DP slack
-        # thread
-        logger.info("Writing frequency table...")
-        ht.describe()
-        ht.write(res.freq_ht.path, overwrite=args.overwrite)
+        if args.finalize_freq_ht:
+            logger.info("Writing final frequency Table...")
+            ht = create_final_freq_ht(ht)
+            ht.write(res.final_freq_ht.path, overwrite=args.overwrite)
+    finally:
+        logger.info("Copying log to logging bucket...")
+        hl.copy_log(get_logging_path("frequency_data"))
 
 
 if __name__ == "__main__":
@@ -737,10 +964,20 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--split-vds-by-annotation",
+        "--ukb-only",
+        help="Only run frequency and histogram calculations for UKB samples.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--non-ukb-only",
+        help="Only run frequency and histogram calculations for non-UKB samples.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--combine-freq-hts",
         help=(
-            "Split VDS by annotation to reduce data size for densification."
-            " Defaults to False."
+            "Combine frequency and histogram Tables for UKB and non-UKB samples into a"
+            " single Table."
         ),
         action="store_true",
     )
@@ -772,6 +1009,14 @@ if __name__ == "__main__":
         ),
         type=float,
         default=0.01,
+    )
+    parser.add_argument(
+        "--finalize-freq-ht",
+        help=(
+            "Finalize frequency Table by dropping unnecessary fields and renaming"
+            " remaining fields."
+        ),
+        action="store_true",
     )
     args = parser.parse_args()
 
