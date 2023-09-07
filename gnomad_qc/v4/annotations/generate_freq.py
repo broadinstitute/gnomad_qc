@@ -98,7 +98,6 @@ FREQ_GLOBAL_FIELDS = [
     "age_distribution",
     "freq_index_dict",
     "freq_meta_sample_count",
-    "age_hist_index_dict",
 ]
 """
 List of final global annotations created from dense data that we want on the frequency
@@ -884,6 +883,7 @@ def main(args):
                 )
 
         if args.combine_freq_hts:
+            logger.info("Combining frequency HTs...")
             res = resources.combine_freq
             res.check_resource_existence()
             freq_ht = combine_freq_hts(
