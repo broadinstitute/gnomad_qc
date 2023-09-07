@@ -776,6 +776,11 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
         faf_index_dict=[
             make_faf_index_dict(hl.eval(x), label_delimiter="-") for x in faf_meta_expr
         ],
+        grp_max_meta=[
+            {"dataset": "gnomad"},
+            {"dataset": "non_ukb"},
+        ],  # TODO: These seem silly but keeps with the meta/dict theme of globals
+        grp_max_index_dict=SUBSET_DICT,
     )
 
     return ht
