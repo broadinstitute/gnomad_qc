@@ -456,7 +456,8 @@ def generate_freq_ht(
         )
     else:
         group_membership_globals = group_membership_globals.annotate(
-            non_ukb_downsamplings=hl.missing(hl.tarray(hl.tint))
+            non_ukb_downsamplings=hl.missing(hl.tarray(hl.tint)),
+            non_ukb_ds_pop_counts=hl.missing(hl.tdict(hl.tstr, hl.tint)),
         )
 
     logger.info("Annotating frequencies and counting high AB het calls...")
@@ -625,8 +626,7 @@ def update_non_ukb_freq_ht(freq_ht: hl.Table) -> hl.Table:
         ]
     )
     freq_ht = freq_ht.annotate_globals(
-        **{a: hl.flatmap(lambda x: x[a], freq_globals) for a in global_annotations},
-        non_ukb_downsamplings=non_ukb_ds_ht.index_globals().non_ukb_downsamplings,
+        **{a: hl.flatmap(lambda x: x[a], freq_globals) for a in global_annotations}
     )
 
     return freq_ht
