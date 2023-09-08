@@ -331,7 +331,6 @@ def filter_freq_arrays_for_non_ukb_subset(
     ht = ht.annotate_globals(
         freq_meta=freq_meta,
         freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
-        non_ukb_downsamplings=ht.downsamplings,
     )
 
     return ht
@@ -571,6 +570,64 @@ def annotate_hists_on_freq_ht(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table
 
     hists = mt.rows()[freq_ht.key]
     freq_ht = freq_ht.annotate(**{r: hists[r] for r in mt.row_value})
+
+    return freq_ht
+
+
+def update_non_ukb_freq_ht(freq_ht: hl.Table) -> hl.Table:
+    """
+    Add summary.
+
+    :param freq_ht: .
+    :return: .
+    """
+    annotations = ["freq", "high_ab_hets_by_group"]
+    global_annotations = ["freq_meta", "freq_meta_sample_count"]
+
+    logger.info("Filtering to non_ukb subset downsamplings...")
+    non_ukb_ds_ht = filter_freq_arrays_for_non_ukb_subset(
+        freq_ht,
+        items_to_filter=["downsampling", "subset"],
+    )
+
+    # Filter to only non_ukb group, pop, and sex strata so can add subset-specific
+    # freqs to main array.
+    # NOTE: This is duplicated data here, but it's necessary to merge split vds strata
+    #  properly and still retain the subset freq data.
+    logger.info("Filtering to non_ukb subset strata...")
+    non_ukb_ht = filter_freq_arrays_for_non_ukb_subset(
+        freq_ht,
+        items_to_filter=["downsampling", "gatk_version"],
+        keep=False,
+        combine_operator="or",
+    )
+
+    logger.info("Filtering to non_ukb subset downsamplings...")
+    freq_ht = filter_freq_arrays_for_non_ukb_subset(
+        freq_ht,
+        items_to_filter=["downsampling", "subset"],
+        remove_subset_from_meta=True,
+        keep=False,
+    )
+
+    # There are no overlap of strata groups here so can do basic flatmap on the
+    # arrays.
+    freqs = hl.array(
+        [freq_ht.row_value, non_ukb_ht[freq_ht.key], non_ukb_ds_ht[freq_ht.key]]
+    )
+    freq_ht = freq_ht.annotate(
+        **{a: hl.flatmap(lambda x: x[a], freqs) for a in annotations}
+    )
+    freq_globals = hl.array(
+        [
+            x.select_globals(*global_annotations).index_globals()
+            for x in [freq_ht, non_ukb_ht, non_ukb_ds_ht]
+        ]
+    )
+    freq_ht = freq_ht.annotate_globals(
+        **{a: hl.flatmap(lambda x: x[a], freq_globals) for a in global_annotations},
+        non_ukb_downsamplings=non_ukb_ds_ht.index_globals().non_ukb_downsamplings,
+    )
 
     return freq_ht
 
@@ -894,7 +951,10 @@ def main(args):
             res = resources.combine_freq
             res.check_resource_existence()
             freq_ht = combine_freq_hts(
-                {"ukb": res.ukb_freq_ht.ht(), "non_ukb": res.non_ukb_freq_ht.ht()},
+                {
+                    "ukb": res.ukb_freq_ht.ht(),
+                    "non_ukb": update_non_ukb_freq_ht(res.non_ukb_freq_ht.ht()),
+                },
                 ALL_FREQ_ROW_FIELDS,
                 FREQ_GLOBAL_FIELDS,
             )
