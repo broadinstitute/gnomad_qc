@@ -371,6 +371,7 @@ def generate_freq_ht(
     mt: hl.MatrixTable,
     ds_ht: hl.Table,
     meta_ht: hl.Table,
+    non_ukb_ds_ht: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
     Generate frequency Table.
@@ -412,25 +413,61 @@ def generate_freq_ht(
         additional_strata_expr=additional_strata_expr,
         downsampling_expr=ds_ht[meta_ht.key].downsampling,
     )
-    logger.info("Generating group_membership array....")
-    meta_ht = generate_freq_group_membership_array(
+    group_membership_ht = generate_freq_group_membership_array(
         meta_ht,
         strata_expr,
         downsamplings=hl.eval(ds_ht.downsamplings),
         ds_pop_counts=hl.eval(ds_ht.ds_pop_counts),
     )
+    group_membership = group_membership_ht[mt.col_key].group_membership
+    group_membership_globals = group_membership_ht.index_globals()
+    if non_ukb_ds_ht is not None:
+        logger.info("Building non-ukb downsampling stratification list...")
+        non_ukb_strata_expr = build_freq_stratification_list(
+            pop_expr=meta_ht.pop,
+            downsampling_expr=non_ukb_ds_ht[meta_ht.key].downsampling,
+        )
+        non_ukb_strata_expr = [e for e in non_ukb_strata_expr if "downsampling" in e]
+
+        logger.info("Generating non-ukb downsampling group_membership array....")
+        non_uk_group_membership_ht = generate_freq_group_membership_array(
+            meta_ht,
+            non_ukb_strata_expr,
+            downsamplings=hl.eval(non_ukb_ds_ht.downsamplings),
+            ds_pop_counts=hl.eval(non_ukb_ds_ht.ds_pop_counts),
+        )
+        # Remove the first two because they are adj and raw for the full subset.
+        group_membership = group_membership.extend(
+            non_uk_group_membership_ht[mt.col_key].group_membership[2:]
+        )
+        non_uk_group_membership_globals = non_uk_group_membership_ht.index_globals()
+        freq_meta_expr = non_uk_group_membership_globals.freq_meta[2:]
+        freq_meta_expr = freq_meta_expr.map(
+            lambda d: hl.dict(d.items().append(("subset", "non_ukb")))
+        )
+        group_membership_globals = group_membership_globals.annotate(
+            freq_meta=group_membership_globals.freq_meta.extend(freq_meta_expr),
+            freq_meta_sample_count=group_membership_globals.freq_meta_sample_count.extend(
+                non_uk_group_membership_globals.freq_meta_sample_count[2:]
+            ),
+            non_ukb_downsamplings=non_uk_group_membership_globals.downsamplings,
+            non_ukb_ds_pop_counts=non_uk_group_membership_globals.ds_pop_counts,
+        )
+    else:
+        group_membership_globals = group_membership_globals.annotate(
+            non_ukb_downsamplings=hl.missing(hl.tarray(hl.tint))
+        )
+
     logger.info("Annotating frequencies and counting high AB het calls...")
     freq_ht = compute_freq_by_strata(
-        mt.annotate_cols(group_membership=meta_ht[mt.col_key].group_membership),
+        mt.annotate_cols(group_membership=group_membership),
         entry_agg_funcs={"high_ab_hets_by_group": (high_ab_het, hl.agg.sum)},
     )
     # Note: To use "multi_way_zip_join" need globals to be the same but an if_else based
     #  on strata doesn't work because hail looks for the annotation
     #  "non_ukb_downsamplings" regardless of the conditional value and throws an error
     #  if it doesn't exist.
-    freq_ht = freq_ht.annotate_globals(
-        **meta_ht.index_globals(), non_ukb_downsamplings=hl.missing(hl.tarray(hl.tint))
-    )
+    freq_ht = freq_ht.annotate_globals(**group_membership_globals)
 
     return freq_ht
 
@@ -478,63 +515,26 @@ def densify_and_prep_vds_for_freq(
     return mt
 
 
-def non_ukb_freq_downsampling(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table:
+def get_downsampling_ht(mt: hl.MatrixTable, non_ukb: bool = False) -> hl.Table:
     """
-    Add non-ukb specific downsamplings and frequency calculations to frequency Table.
+    Add summary.
 
-    :param mt: Input MatrixTable.
-    :param freq_ht: Frequency Table.
-    :return: Frequency Table with non-UKB specific downsamplings and frequency
-        calculations.
+    :param mt: .
+    :param non_ukb: .
+    :return: .
     """
-    annotations = ["freq", "high_ab_hets_by_group"]
-    global_annotations = ["freq_meta", "freq_meta_sample_count"]
+    logger.info(
+        "Determining downsampling groups for %s...",
+        "the non-UKB subset" if non_ukb else "all samples",
+    )
+    meta_ht = mt.cols()
+    downsamplings = DOWNSAMPLINGS["v4"]
+    if non_ukb:
+        downsamplings = downsamplings[:-1]
+    ds_ht = annotate_downsamplings(meta_ht, downsamplings, pop_expr=meta_ht.pop)
+    ds_ht = ds_ht.checkpoint(new_temp_file("downsamplings", extension="ht"))
 
-    logger.info("Downsampling the non_ukb VDS for separate freq calculation...")
-    non_ukb_ds_ht = annotate_freq(
-        mt,
-        pop_expr=mt.pop,
-        downsamplings=DOWNSAMPLINGS["v4"][:-1],
-        annotate_mt=False,
-        entry_agg_funcs={"high_ab_hets_by_group": (high_ab_het, hl.agg.sum)},
-    )
-
-    # Filter 'freq' array field to only downsampling indices.
-    logger.info("Filtering the 'freq array to only downsampling indices...")
-    non_ukb_ds_ht = filter_freq_arrays_for_non_ukb_subset(
-        non_ukb_ds_ht, items_to_filter=["downsampling"]
-    )
-    # Filter to only non_ukb group, pop, and sex strata so can add subset-specific freqs to main array.
-    # This is duplicated data here but it's necessary so we can merge split vds strata properly and still
-    # retain the subset freq data.
-    logger.info("Filtering to non_ukb subset strata...")
-    non_ukb_ht = filter_freq_arrays_for_non_ukb_subset(
-        freq_ht,
-        items_to_filter=["downsampling", "gatk_version"],
-        keep=False,
-        combine_operator="or",
-    )
-
-    # There are no overlap of strata groups here so can do basic flatmap on the
-    # arrays.
-    freqs = hl.array(
-        [freq_ht.row_value, non_ukb_ht[freq_ht.key], non_ukb_ds_ht[freq_ht.key]]
-    )
-    freq_ht = freq_ht.annotate(
-        **{a: hl.flatmap(lambda x: x[a], freqs) for a in annotations}
-    )
-    freq_globals = hl.array(
-        [
-            x.select_globals(*global_annotations).index_globals()
-            for x in [freq_ht, non_ukb_ht, non_ukb_ds_ht]
-        ]
-    )
-    freq_ht = freq_ht.annotate_globals(
-        **{a: hl.flatmap(lambda x: x[a], freq_globals) for a in global_annotations},
-        non_ukb_downsamplings=non_ukb_ds_ht.index_globals().non_ukb_downsamplings,
-    )
-
-    return freq_ht
+    return ds_ht
 
 
 def annotate_hists_on_freq_ht(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table:
@@ -856,12 +856,7 @@ def main(args):
                 use_test_dataset, test_gene, test_n_partitions, chrom
             )
             meta_ht = vds.variant_data.cols()
-
-            logger.info("Determining downsampling groups...")
-            ds_ht = annotate_downsamplings(
-                meta_ht, DOWNSAMPLINGS["v4"], pop_expr=meta_ht.pop
-            )
-            ds_ht = ds_ht.checkpoint(new_temp_file("downsamplings", extension="ht"))
+            ds_ht = get_downsampling_ht(vds.variant_data)
 
             logger.info(
                 "Splitting VDS by ukb_sample annotation to reduce data size for"
@@ -877,11 +872,16 @@ def main(args):
                 ):
                     continue
 
+                if strata == "non_ukb":
+                    non_ukb_ds_ht = get_downsampling_ht(vds.variant_data, non_ukb=True)
+                else:
+                    non_ukb_ds_ht = None
+
                 logger.info("Generating frequency and histograms for %s VDS...", strata)
                 mt = densify_and_prep_vds_for_freq(vds, ab_cutoff=ab_cutoff)
-                freq_ht = generate_freq_ht(mt, ds_ht, meta_ht)
-                if strata == "non_ukb":
-                    freq_ht = non_ukb_freq_downsampling(mt, freq_ht)
+                freq_ht = generate_freq_ht(
+                    mt, ds_ht, meta_ht, non_ukb_ds_ht=non_ukb_ds_ht
+                )
                 freq_ht = annotate_hists_on_freq_ht(mt, freq_ht)
                 freq_ht.write(
                     getattr(res, f"{strata}_freq_ht").path, overwrite=overwrite
@@ -909,7 +909,6 @@ def main(args):
             logger.info("Correcting call stats, qual AB hists, and age hists...")
             ht = correct_for_high_ab_hets(ht, af_threshold=af_threshold)
 
-            ht.describe()
             logger.info("Computing FAF & grpmax...")
             ht = generate_faf_grpmax(ht)
 
