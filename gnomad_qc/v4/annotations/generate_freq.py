@@ -826,7 +826,7 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
 
     logger.info("Annotating 'faf' and 'grpmax'...")
     ht = ht.annotate(
-        faf=[group for dataset in faf_grpmax_expr for group in dataset],
+        faf=hl.flatten([dataset.faf for dataset in faf_grpmax_expr]),
         grpmax=hl.struct(
             **{
                 "gnomad": faf_grpmax_expr[0].grpmax,
