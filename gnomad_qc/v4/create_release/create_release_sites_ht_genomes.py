@@ -658,7 +658,9 @@ def main(args):
 
         logger.info("Filtering to variants in the release HT...")
         for x in ["pop_diff", "added", "subtracted"]:
-            freq_hts[x] = freq_hts[x].filter(freq_hts[x][freq_hts["release"].key])
+            freq_hts[x] = freq_hts[x].filter(
+                hl.is_defined(freq_hts["release"][freq_hts[x].key])
+            )
             logger.info(
                 "There are %i variants found in the %s HT after filtering to the "
                 "release HT...",
