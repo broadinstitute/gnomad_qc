@@ -436,22 +436,24 @@ def generate_freq_ht(
             downsamplings=hl.eval(non_ukb_ds_ht.downsamplings),
             ds_pop_counts=hl.eval(non_ukb_ds_ht.ds_pop_counts),
         )
+        # Remove the first one because it is the indexing for the full subset.
         group_membership = group_membership.extend(
-            non_uk_group_membership_ht[mt.col_key].group_membership
+            non_uk_group_membership_ht[mt.col_key].group_membership[1:]
         )
-        non_uk_group_membership_globals = non_uk_group_membership_ht.index_globals()
+        non_uk_globals = non_uk_group_membership_ht.index_globals()
+        non_uk_globals = non_uk_globals.annotate(
+            freq_meta=non_uk_globals.freq_meta.map(
+                lambda d: hl.dict(d.items().append(("subset", "non_ukb")))
+            )
+        )
         # Remove the first two because they are adj and raw for the full subset.
-        freq_meta_expr = non_uk_group_membership_globals.freq_meta[2:]
-        freq_meta_expr = freq_meta_expr.map(
-            lambda d: hl.dict(d.items().append(("subset", "non_ukb")))
-        )
         group_membership_globals = group_membership_globals.annotate(
-            freq_meta=group_membership_globals.freq_meta.extend(freq_meta_expr),
-            freq_meta_sample_count=group_membership_globals.freq_meta_sample_count.extend(
-                non_uk_group_membership_globals.freq_meta_sample_count[2:]
-            ),
-            non_ukb_downsamplings=non_uk_group_membership_globals.downsamplings,
-            non_ukb_ds_pop_counts=non_uk_group_membership_globals.ds_pop_counts,
+            **{
+                g: group_membership_globals[g].extend(non_uk_globals[g][2:])
+                for g in ["freq_meta", "freq_meta_sample_count"]
+            },
+            non_ukb_downsamplings=non_uk_globals.downsamplings,
+            non_ukb_ds_pop_counts=non_uk_globals.ds_pop_counts,
         )
     else:
         group_membership_globals = group_membership_globals.annotate(
