@@ -497,9 +497,9 @@ def create_variant_qc_annotation_ht(
             )
             feature_imputed[m] = m_info_ht[ht.key].feature_imputed
             feature_medians[m] = m_info_ht.index_globals().feature_medians
-        ht = ht.annotate(feature_imputed=feature_imputed.annotate(**feature_imputed))
+        ht = ht.annotate(feature_imputed=ht.feature_imputed.annotate(**feature_imputed))
         ht = ht.annotate_globals(
-            feature_medians=feature_medians.annotate(**feature_medians)
+            feature_medians=ht.feature_medians.annotate(**feature_medians)
         )
 
     ht = ht.repartition(n_partitions, shuffle=False)
