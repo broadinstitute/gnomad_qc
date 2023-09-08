@@ -436,11 +436,11 @@ def generate_freq_ht(
             downsamplings=hl.eval(non_ukb_ds_ht.downsamplings),
             ds_pop_counts=hl.eval(non_ukb_ds_ht.ds_pop_counts),
         )
-        # Remove the first two because they are adj and raw for the full subset.
         group_membership = group_membership.extend(
-            non_uk_group_membership_ht[mt.col_key].group_membership[2:]
+            non_uk_group_membership_ht[mt.col_key].group_membership
         )
         non_uk_group_membership_globals = non_uk_group_membership_ht.index_globals()
+        # Remove the first two because they are adj and raw for the full subset.
         freq_meta_expr = non_uk_group_membership_globals.freq_meta[2:]
         freq_meta_expr = freq_meta_expr.map(
             lambda d: hl.dict(d.items().append(("subset", "non_ukb")))
