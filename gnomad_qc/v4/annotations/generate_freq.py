@@ -539,42 +539,6 @@ def get_downsampling_ht(mt: hl.MatrixTable, non_ukb: bool = False) -> hl.Table:
     return ds_ht
 
 
-def annotate_hists_on_freq_ht(mt: hl.MatrixTable, freq_ht: hl.Table) -> hl.Table:
-    """
-    Annotate quality metrics histograms and age histograms onto frequency Table.
-
-    :param mt: Input MatrixTable.
-    :param freq_ht: Frequency Table.
-    :return: Frequency Table with quality metrics histograms and age histograms.
-    """
-    logger.info(
-        "Computing quality metrics histograms and age histograms for each variant..."
-    )
-    high_ab_gt_expr = hl.if_else(high_ab_het(mt, mt) == 1, hl.call(1, 1), mt.GT)
-    mt = mt.select_rows(
-        **qual_hist_expr(
-            gt_expr=mt.GT,
-            gq_expr=mt.GQ,
-            dp_expr=mt.DP,
-            adj_expr=mt.adj,
-            ab_expr=mt._het_ab,
-            split_adj_and_raw=True,
-        ),
-        high_ab_het_adjusted_ab_hists=qual_hist_expr(
-            gt_expr=high_ab_gt_expr,
-            adj_expr=mt.adj,
-            ab_expr=mt._het_ab,
-        ),
-        age_hists=age_hists_expr(mt.adj, mt.GT, mt.age),
-        high_ab_het_adjusted_age_hists=age_hists_expr(mt.adj, high_ab_gt_expr, mt.age),
-    )
-
-    hists = mt.rows()[freq_ht.key]
-    freq_ht = freq_ht.annotate(**{r: hists[r] for r in mt.row_value})
-
-    return freq_ht
-
-
 def update_non_ukb_freq_ht(freq_ht: hl.Table) -> hl.Table:
     """
     Add summary.
@@ -630,6 +594,37 @@ def update_non_ukb_freq_ht(freq_ht: hl.Table) -> hl.Table:
     )
 
     return freq_ht
+
+
+def mt_hists_fields(mt: hl.MatrixTable) -> hl.StructExpression:
+    """
+    Annotate quality metrics histograms and age histograms onto MatrixTable.
+
+    :param mt: Input MatrixTable.
+    :return: Struct with quality metrics histograms and age histograms.
+    """
+    logger.info(
+        "Computing quality metrics histograms and age histograms for each variant..."
+    )
+    high_ab_gt_expr = hl.if_else(high_ab_het(mt, mt) == 1, hl.call(1, 1), mt.GT)
+
+    return hl.struct(
+        **qual_hist_expr(
+            gt_expr=mt.GT,
+            gq_expr=mt.GQ,
+            dp_expr=mt.DP,
+            adj_expr=mt.adj,
+            ab_expr=mt._het_ab,
+            split_adj_and_raw=True,
+        ),
+        high_ab_het_adjusted_ab_hists=qual_hist_expr(
+            gt_expr=high_ab_gt_expr,
+            adj_expr=mt.adj,
+            ab_expr=mt._het_ab,
+        ),
+        age_hists=age_hists_expr(mt.adj, mt.GT, mt.age),
+        high_ab_het_adjusted_age_hists=age_hists_expr(mt.adj, high_ab_gt_expr, mt.age),
+    )
 
 
 def combine_freq_hts(
@@ -938,10 +933,11 @@ def main(args):
 
                 logger.info("Generating frequency and histograms for %s VDS...", strata)
                 mt = densify_and_prep_vds_for_freq(vds, ab_cutoff=ab_cutoff)
+                mt = mt.annotate_rows(hists_fields=mt_hists_fields(mt))
                 freq_ht = generate_freq_ht(
                     mt, ds_ht, meta_ht, non_ukb_ds_ht=non_ukb_ds_ht
                 )
-                freq_ht = annotate_hists_on_freq_ht(mt, freq_ht)
+                freq_ht = freq_ht.annotate(**freq_ht.hists_fields)
                 freq_ht.write(
                     getattr(res, f"{strata}_freq_ht").path, overwrite=overwrite
                 )
