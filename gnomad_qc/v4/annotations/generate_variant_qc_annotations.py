@@ -248,7 +248,6 @@ def run_compute_info(
     quasi_info_ht = ht.checkpoint(
         hl.utils.new_temp_file("quasi_compute_info", extension="ht")
     )
-    quasi_info_ht.describe()
 
     mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
     correct_mt = mt.annotate_entries(
@@ -265,7 +264,6 @@ def run_compute_info(
         )
     ).rows()
     info_ht = ht.checkpoint(hl.utils.new_temp_file("compute_info", extension="ht"))
-    info_ht.describe()
 
     correct_mt = mt.annotate_entries(
         gvcf_info=correct_as_annotations(mt, set_to_missing=True)
@@ -283,7 +281,6 @@ def run_compute_info(
     ht = ht.checkpoint(
         hl.utils.new_temp_file("AS_missing_info_compute_info", extension="ht")
     )
-    ht.describe()
 
     quasi_info = quasi_info_ht.info
     quasi_keys = hl.eval(
@@ -306,7 +303,6 @@ def run_compute_info(
         lowqual=quasi_info_ht.lowqual,
         AS_lowqual=quasi_info_ht.AS_lowqual,
     )
-    info_ht.describe()
 
     return info_ht
 
@@ -582,7 +578,7 @@ def get_variant_qc_annotation_resources(
     else:
         info_ht = TableResource(
             get_checkpoint_path(
-                f"compute_info{'.test' if test else ''}.{'over_n_alleles_under10000' if over_n_alleles else 'under_n_alleles'}"
+                f"compute_info{'.test' if test else ''}.{'over_n_alleles' if over_n_alleles else 'under_n_alleles'}"
             )
         )
     compute_info_input_resources = {}
