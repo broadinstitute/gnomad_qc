@@ -464,7 +464,8 @@ def create_variant_qc_annotation_ht(
         "a_index",
         "was_split",
         *NON_INFO_FEATURES,
-        *info_methods ** {tp: hl.or_else(ht[tp], False) for tp in TRUTH_DATA},
+        *info_methods,
+        **{tp: hl.or_else(ht[tp], False) for tp in TRUTH_DATA},
         **{
             f"{tp}_{group}": hl.or_else(
                 (ht[f"{n}_{group}"] == 1)
