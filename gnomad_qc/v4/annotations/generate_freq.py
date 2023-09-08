@@ -19,7 +19,6 @@ from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     age_hists_expr,
     annotate_downsamplings,
-    annotate_freq,
     bi_allelic_site_inbreeding_expr,
     build_freq_stratification_list,
     compute_freq_by_strata,
@@ -465,6 +464,7 @@ def generate_freq_ht(
     freq_ht = compute_freq_by_strata(
         mt.annotate_cols(group_membership=group_membership),
         entry_agg_funcs={"high_ab_hets_by_group": (high_ab_het, hl.agg.sum)},
+        select_fields=["hists_fields"],
     )
     # Note: To use "multi_way_zip_join" need globals to be the same but an if_else based
     #  on strata doesn't work because hail looks for the annotation
