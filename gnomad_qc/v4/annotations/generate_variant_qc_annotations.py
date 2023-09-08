@@ -427,6 +427,7 @@ def create_variant_qc_annotation_ht(
     :param n_partitions: Number of partitions to use for final annotated Table.
     :return: Hail Table with all annotations needed for variant QC.
     """
+    info_methods = ["AS_info", "quasi_info", "set_long_AS_missing_info"]
     truth_data_ht = get_truth_ht()
 
     ht = info_ht.transmute(
@@ -440,12 +441,7 @@ def create_variant_qc_annotation_ht(
         **info_ht.AC_info,
         **info_ht.allele_info,
     )
-    ht = ht.annotate(
-        **{
-            f"{a}_info": ht[f"{a}_info"].select(*INFO_FEATURES)
-            for a in ["AS", "quasi", "set_long_AS_missing"]
-        }
-    )
+    ht = ht.annotate(**{m: ht[m].select(*INFO_FEATURES) for m in info_methods})
 
     trio_stats_ht = trio_stats_ht.select(
         *[f"{a}_{group}" for a in ["n_transmitted", "ac_children"] for group in GROUPS]
@@ -468,10 +464,7 @@ def create_variant_qc_annotation_ht(
         "a_index",
         "was_split",
         *NON_INFO_FEATURES,
-        "AS_info",
-        "quasi_info",
-        "set_long_AS_missing_info",
-        **{tp: hl.or_else(ht[tp], False) for tp in TRUTH_DATA},
+        *info_methods ** {tp: hl.or_else(ht[tp], False) for tp in TRUTH_DATA},
         **{
             f"{tp}_{group}": hl.or_else(
                 (ht[f"{n}_{group}"] == 1)
@@ -490,6 +483,23 @@ def create_variant_qc_annotation_ht(
 
     if impute_features:
         ht = median_impute_features(ht, {"variant_type": ht.variant_type})
+        ht = ht.checkpoint(hl.utils.new_temp_file("median_impute"), overwrite=True)
+        feature_imputed = {}
+        feature_medians = {}
+        for m in info_methods:
+            m_info_ht = ht.select("variant_type", **ht[m])
+            m_info_ht = median_impute_features(
+                m_info_ht, {"variant_type": m_info_ht.variant_type}
+            )
+            m_info_ht = m_info_ht.checkpoint(
+                hl.utils.new_temp_file("median_impute"), overwrite=True
+            )
+            feature_imputed[m] = m_info_ht[ht.key].feature_imputed
+            feature_medians[m] = m_info_ht.index_globals().feature_medians
+        ht = ht.annotate(feature_imputed=feature_imputed.annotate(**feature_imputed))
+        ht = ht.annotate_globals(
+            feature_medians=feature_medians.annotate(**feature_medians)
+        )
 
     ht = ht.repartition(n_partitions, shuffle=False)
     ht = ht.checkpoint(
