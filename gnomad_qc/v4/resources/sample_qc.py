@@ -1025,7 +1025,7 @@ hgdp_tgp_related_samples_to_drop = TableResource(
 # Table with HGDP sample contamination estimates from Konrad Karczewski's
 # group sample QC.
 hgdp_recomputed_freemix = TableResource(
-    path="gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_contam_rate_recomputed.htt"
+    path="gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_contam_rate_recomputed.ht"
 )
 
 # Table with new population labels and updated geographic locations for HGDP and TGP.

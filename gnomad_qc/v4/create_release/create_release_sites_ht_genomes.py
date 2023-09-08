@@ -656,6 +656,16 @@ def main(args):
                 "freq_meta", "freq_meta_sample_count"
             )
 
+        logger.info("Filtering to variants in the release HT...")
+        for x in ["pop_diff", "added", "subtracted"]:
+            freq_hts[x] = freq_hts[x].filter(freq_hts[x][freq_hts["release"].key])
+            logger.info(
+                "There are %i variants found in the %s HT after filtering to the "
+                "release HT...",
+                freq_hts[x].count(),
+                x,
+            )
+
         freq_hts = [freq_hts[x] for x in ["release", "pop_diff", "added", "subtracted"]]
         ht = hl.Table.multi_way_zip_join(freq_hts, "ann_array", "global_array")
         ht = ht.checkpoint(new_temp_file("join", extension="ht"), overwrite=True)
