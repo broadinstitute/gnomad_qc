@@ -398,6 +398,7 @@ def generate_freq_ht(
     :param mt: Input MatrixTable.
     :param ds_ht: Table with downsampling annotations.
     :param meta_ht: Table with sample metadata annotations.
+    :param non_ukb_ds_ht: Optional Table with non-UKB downsampling annotations.
     :return: Hail Table with frequency annotations.
     """
     meta_ht = meta_ht.semi_join(mt.cols())
@@ -519,11 +520,12 @@ def densify_and_prep_vds_for_freq(
 
 def get_downsampling_ht(mt: hl.MatrixTable, non_ukb: bool = False) -> hl.Table:
     """
-    Add summary.
+    Get Table with downsampling groups for all samples or the non-UKB subset.
 
-    :param mt: .
-    :param non_ukb: .
-    :return: .
+    :param mt: Input MatrixTable.
+    :param non_ukb: Whether to get downsampling groups for the non-UKB subset. Default
+        is False.
+    :return: Table with downsampling groups.
     """
     logger.info(
         "Determining downsampling groups for %s...",
@@ -541,10 +543,17 @@ def get_downsampling_ht(mt: hl.MatrixTable, non_ukb: bool = False) -> hl.Table:
 
 def update_non_ukb_freq_ht(freq_ht: hl.Table) -> hl.Table:
     """
-    Add summary.
+    Update non-UKB subset frequencies to be ready for combining with the frequencies of other samples.
 
-    :param freq_ht: .
-    :return: .
+    Duplicates frequency info for all groups except the non-UKB specific downsamplings
+    and adds "subset" annotation to 'freq_meta' for one of the duplicates.
+
+    This allows for the non-UKB subset frequencies to be merged with the frequencies of
+    the other samples to provide full dataset frequencies while keeping the non-UKB
+    subset specific frequency information.
+
+    :param freq_ht: Non-UKB frequency Table.
+    :return: Restructured non-UKB frequency Table.
     """
     annotations = ["freq", "high_ab_hets_by_group"]
     global_annotations = ["freq_meta", "freq_meta_sample_count"]
@@ -567,7 +576,9 @@ def update_non_ukb_freq_ht(freq_ht: hl.Table) -> hl.Table:
         combine_operator="or",
     )
 
-    logger.info("Filtering to non_ukb subset downsamplings...")
+    logger.info(
+        "Filtering non_ukb freqs to main freq strata to be combined with ukb..."
+    )
     freq_ht = filter_freq_arrays_for_non_ukb_subset(
         freq_ht,
         items_to_filter=["downsampling", "subset"],
