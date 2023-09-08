@@ -9,7 +9,7 @@ from gnomad.resources.grch38.gnomad import GROUPS
 from gnomad.resources.grch38.reference_data import ensembl_interval, get_truth_ht
 from gnomad.resources.resource_utils import TableResource
 from gnomad.sample_qc.relatedness import filter_mt_to_trios
-from gnomad.utils.annotations import annotate_allele_info
+from gnomad.utils.annotations import annotate_adj, annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
     AS_INFO_AGG_FIELDS,
@@ -52,21 +52,24 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-FEATURES = [
-    "variant_type",
-    "allele_type",
-    "n_alt_alleles",
-    "was_mixed",
-    "has_star",
+INFO_FEATURES = [
     "AS_MQRankSum",
     "AS_pab_max",
     "AS_QD",
     "AS_ReadPosRankSum",
     "AS_SOR",
 ]
-"""List of features to be used for variant QC"""
+"""List of features info to be used for variant QC."""
+NON_INFO_FEATURES = [
+    "variant_type",
+    "allele_type",
+    "n_alt_alleles",
+    "was_mixed",
+    "has_star",
+]
+"""List of features to be used for variant QC that are not in the info field."""
 TRUTH_DATA = ["hapmap", "omni", "mills", "kgp_phase1_hc"]
-"""List of truth datasets to be used for variant QC"""
+"""List of truth datasets to be used for variant QC."""
 
 
 def extract_as_pls(
@@ -368,6 +371,7 @@ def run_generate_trio_stats(
 
     mt = hl.vds.to_dense_mt(hl.vds.VariantDataset(rmt, vmt))
     mt = mt.transmute_entries(GT=mt.LGT)
+    mt = annotate_adj(mt)
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
 
     return generate_trio_stats(mt, bi_allelic_only=False)
@@ -429,7 +433,24 @@ def create_variant_qc_annotation_ht(
     """
     truth_data_ht = get_truth_ht()
 
-    ht = info_ht.transmute(**info_ht.info, **info_ht.allele_info)
+    ht = info_ht.transmute(
+        AS_info=info_ht.AS_info.annotate(AS_pab_max=info_ht.quasi_info.AS_pab_max),
+        quasi_info=info_ht.quasi_info.drop("AS_SB"),
+        set_long_AS_missing_info=info_ht.AS_info.annotate(
+            **info_ht.set_long_AS_missing_info,
+            AS_pab_max=info_ht.quasi_info.AS_pab_max,
+        ),
+        **info_ht.site_info,
+        **info_ht.AC_info,
+        **info_ht.allele_info,
+    )
+    ht = ht.annotate(
+        **{
+            f"{a}_info": ht[f"{a}_info"].select(*INFO_FEATURES)
+            for a in ["AS", "quasi", "set_long_AS_missing"]
+        }
+    )
+
     trio_stats_ht = trio_stats_ht.select(
         *[f"{a}_{group}" for a in ["n_transmitted", "ac_children"] for group in GROUPS]
     )
@@ -450,11 +471,15 @@ def create_variant_qc_annotation_ht(
     ht = ht.select(
         "a_index",
         "was_split",
-        *FEATURES,
+        *NON_INFO_FEATURES,
+        "AS_info",
+        "quasi_info",
+        "set_long_AS_missing_info",
         **{tp: hl.or_else(ht[tp], False) for tp in TRUTH_DATA},
         **{
             f"{tp}_{group}": hl.or_else(
-                (ht[f"{n}_{group}"] == 1) & (ht.AC_high_quality_raw == 2),
+                (ht[f"{n}_{group}"] == 1)
+                & (ht[f"AC_high_quality{'' if group == 'adj' else f'_raw'}"] == 2),
                 False,
             )
             for tp, n in tp_map.items()
@@ -720,6 +745,10 @@ def main(args):
                 lt_ht = res.under_info_ht.ht()
                 gt_eq_ht = res.over_info_ht.ht()
                 ht = ht.annotate(**hl.coalesce(lt_ht[ht.key], gt_eq_ht[ht.key]))
+                ht = ht.checkpoint(
+                    hl.utils.new_temp_file("combined_info", extension="ht"),
+                    overwrite=True,
+                )
             else:
                 ht = run_compute_info(mt, max_n_alleles, min_n_alleles)
 
