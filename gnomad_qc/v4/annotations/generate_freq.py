@@ -845,11 +845,10 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     faf_meta_expr[1] = faf_meta_expr[1].map(
         lambda d: hl.dict(d.items().append(("subset", "non_ukb")))
     )
+    faf_meta_expr = hl.flatten(faf_meta_expr)
     ht = ht.annotate_globals(
-        faf_meta=hl.flatten(faf_meta_expr),
-        faf_index_dict=[
-            make_faf_index_dict(hl.eval(x), label_delimiter="-") for x in faf_meta_expr
-        ],
+        faf_meta=faf_meta_expr,
+        faf_index_dict=make_faf_index_dict(hl.eval(faf_meta_expr), label_delimiter="-"),
     )
 
     return ht
