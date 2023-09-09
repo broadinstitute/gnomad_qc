@@ -32,7 +32,7 @@ from gnomad.utils.annotations import (
     set_female_y_metrics_to_na_expr,
 )
 from gnomad.utils.filtering import filter_arrays_by_meta, split_vds_by_strata
-from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict_from_meta
+from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import SORT_ORDER
 from hail.utils.misc import new_temp_file
@@ -848,7 +848,9 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     faf_meta_expr = hl.flatten(faf_meta_expr)
     ht = ht.annotate_globals(
         faf_meta=faf_meta_expr,
-        faf_index_dict=make_faf_index_dict(hl.eval(faf_meta_expr), label_delimiter="-"),
+        faf_index_dict=make_freq_index_dict_from_meta(
+            faf_meta_expr, label_delimiter="-"
+        ),
     )
 
     return ht
