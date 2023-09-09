@@ -5,12 +5,10 @@ import json
 import logging
 import sys
 import uuid
-from typing import List, Optional, Union
+from typing import List, Union
 
 import hail as hl
-from gnomad.resources.grch38.reference_data import (
-    telomeres_and_centromeres,
-)
+from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.utils.slack import slack_notifications
 from gnomad.variant_qc.pipeline import train_rf_model
 from gnomad.variant_qc.random_forest import (
@@ -18,18 +16,16 @@ from gnomad.variant_qc.random_forest import (
     get_rf_runs,
     get_run_data,
     load_model,
-    median_impute_features,
     pretty_print_runs,
     save_model,
 )
 
-from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import (
-    get_vqsr_filters,
-    get_variant_qc_annotations # since get_info and others are being rolled into one
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
 )
-
-from gnomad_qc.v4.resources.basics import get_checkpoint_path
+from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v4.resources.annotations import get_variant_qc_annotations
 from gnomad_qc.v4.resources.variant_qc import (
     get_rf_model_path,
     get_rf_result,
@@ -63,6 +59,7 @@ PREDICTION_COL = "rf_prediction"
 TRAIN_COL = "rf_train"
 TRUTH_DATA = ["hapmap", "omni", "mills", "kgp_phase1_hc"]
 
+
 def train_rf(
     ht: hl.Table,
     fp_to_tp: float = 1.0,
@@ -81,7 +78,7 @@ def train_rf(
     :param num_trees: Number of trees in the RF model.
     :param max_depth: Maxmimum tree depth in the RF model.
     :param no_transmitted_singletons: Do not use transmitted singletons for training.
-    :param no_sibling_singletons: Do not use sibling singletons for training. 
+    :param no_sibling_singletons: Do not use sibling singletons for training.
     :param filter_centromere_telomere: Filter centromeres and telomeres before training.
     :param test_intervals: Specified interval(s) will be held out for testing and evaluation only. (default to "chr20")
     :return: `ht` annotated with training information and the RF model
@@ -92,9 +89,11 @@ def train_rf(
     fp_expr = ht.fail_hard_filters
     tp_expr = ht.omni | ht.mills
     if not no_transmitted_singletons:
-        tp_expr = tp_expr | ht.transmitted_singleton_adj 
+        tp_expr |= ht.transmitted_singleton_adj
     if not no_sibling_singletons:
-        tp_expr = tp_expr | ht.sibling_singleton_adj # TODO: make sure this is acceptable Hail logic
+        tp_expr |= (
+            ht.sibling_singleton_adj
+        )  # TODO: make sure this is acceptable Hail logic
 
     if test_intervals:
         if isinstance(test_intervals, str):
@@ -131,6 +130,56 @@ def train_rf(
     return ht, rf_model
 
 
+def get_variant_qc_resources(
+    test: bool,
+    overwrite: bool,
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the variant QC pipeline.
+
+    :param test: Whether to gather all resources for testing.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :return: PipelineResourceCollection containing resources for all steps of the
+        variant QC pipeline.
+    """
+    # Initialize variant QC pipeline resource collection.
+    variant_qc_pipeline = PipelineResourceCollection(
+        pipeline_name="variant_qc",
+        overwrite=overwrite,
+    )
+    # Create resource collection for each step of the variant QC pipeline.
+    list_rf_runs = PipelineStepResourceCollection(
+        "--list-rf-runs",
+        input_resources=compute_info_input_resources,
+        output_resources={"info_ht": info_ht},
+    )
+    train_random_forest = PipelineStepResourceCollection(
+        "--train-rf",
+        input_resources={
+            "annotations/generate_variant_qc_annotations.py --create-variant-qc-annotation-ht": {
+                "vqc_annotation_ht": get_variant_qc_annotations(test=test)
+            }
+        },
+        output_resources={"split_info_ht": get_info(test=test)},
+    )
+    apply_random_forest = PipelineStepResourceCollection(
+        "--apply-rf",
+        output_resources={"info_vcf": info_vcf_path(test=test)},
+        pipeline_input_steps=[train_random_forest],
+    )
+
+    # Add all steps to the variant QC pipeline resource collection.
+    variant_qc_pipeline.add_steps(
+        {
+            "list_rf_runs": list_rf_runs,
+            "train_rf": train_random_forest,
+            "apply_rf": apply_random_forest,
+        }
+    )
+
+    return variant_qc_pipeline
+
+
 def main(args):  # noqa: D103
     hl.init(log="/variant_qc_random_forest.log")
 
@@ -145,14 +194,16 @@ def main(args):  # noqa: D103
         while model_id in rf_runs:
             model_id = f"rf_{str(uuid.uuid4())[:8]}"
 
-        ht, rf_model = train_rf(ht,
+        ht, rf_model = train_rf(
+            ht,
             fp_to_tp=args.fp_to_tp,
             num_trees=args.num_trees,
             max_depth=args.max_depth,
             no_transmitted_singletons=args.no_transmitted_singletons,
             no_sibling_singletons=args.no_sibling_singletons,
             filter_centromere_telomere=args.filter_centromere_telomere,
-            test_intervals=args.test_intervals)
+            test_intervals=args.test_intervals,
+        )
 
         ht = ht.checkpoint(
             get_rf_training(model_id=model_id).path,
@@ -162,13 +213,10 @@ def main(args):  # noqa: D103
         logger.info("Adding run to RF run list")
         rf_runs[model_id] = get_run_data(
             input_args={
-                "transmitted_singletons": (
-                    not args.no_transmitted_singletons
-                ),
-                # TODO: this will also require editing get_run_data maybe to accept No Sibling Singletons? 
-                "sibling_singletons": (
-                    not args.no_sibling_singletons
-                ),
+                "transmitted_singletons": not args.no_transmitted_singletons,
+                # TODO: this will also require editing get_run_data maybe to accept No
+                # Sibling Singletons?
+                "sibling_singletons": not args.no_sibling_singletons,
                 "adj": args.adj,
                 "filter_centromere_telomere": args.filter_centromere_telomere,
             },
@@ -226,7 +274,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--model_id",
+        "--model-id",
         help=(
             "Model ID. Created by --train_rf and only needed for --apply_rf without"
             " running --train_rf."
@@ -236,7 +284,7 @@ if __name__ == "__main__":
 
     actions = parser.add_argument_group("Actions")
     actions.add_argument(
-        "--list_rf_runs",
+        "--list-rf-runs",
         help=(
             "Lists all previous RF runs, along with their model ID, parameters and"
             " testing results."
@@ -244,23 +292,23 @@ if __name__ == "__main__":
         action="store_true",
     )
     actions.add_argument(
-        "--annotate_for_rf",
+        "--annotate-for-rf",
         help="Creates an annotated HT with features for RF.",
         action="store_true",
     )
     actions.add_argument("--train_rf", help="Trains RF model.", action="store_true")
     actions.add_argument(
-        "--apply_rf", help="Applies RF model to the data.", action="store_true"
+        "--apply-rf", help="Applies RF model to the data.", action="store_true"
     )
 
     annotate_params = parser.add_argument_group("Annotate features parameters")
     annotate_params.add_argument(
-        "--impute_features",
+        "--impute-features",
         help="If set, feature imputation is performed.",
         action="store_true",
     )
     annotate_params.add_argument(
-        "--n_partitions",
+        "--n-partitions",
         help="Desired number of partitions for annotated RF Table.",
         type=int,
         default=5000,
@@ -268,7 +316,7 @@ if __name__ == "__main__":
 
     rf_params = parser.add_argument_group("Random Forest parameters")
     rf_params.add_argument(
-        "--fp_to_tp",
+        "--fp-to-tp",
         help=(
             "Ratio of FPs to TPs for training the RF model. If 0, all training examples"
             " are used. (default=1.0)"
@@ -277,7 +325,7 @@ if __name__ == "__main__":
         type=float,
     )
     rf_params.add_argument(
-        "--test_intervals",
+        "--test-intervals",
         help=(
             "The specified interval(s) will be held out for testing and evaluation"
             ' only. (default to "chr20")'
@@ -287,13 +335,13 @@ if __name__ == "__main__":
         default="chr20",
     )
     rf_params.add_argument(
-        "--num_trees",
+        "--num-trees",
         help="Number of trees in the RF model. (default=500)",
         default=500,
         type=int,
     )
     rf_params.add_argument(
-        "--max_depth",
+        "--max-depth",
         help="Maxmimum tree depth in the RF model. (default=5)",
         default=5,
         type=int,
@@ -304,7 +352,7 @@ if __name__ == "__main__":
         "--adj", help="Use adj genotypes.", action="store_true"
     )
     training_params.add_argument(
-        "--vqsr_model_id",
+        "--vqsr-model-id",
         help=(
             "If a VQSR model ID is provided the VQSR training annotations will be used"
             " for training."
@@ -314,17 +362,17 @@ if __name__ == "__main__":
         type=str,
     )
     training_params.add_argument(
-        "--no_transmitted_singletons",
+        "--no-transmitted-singletons",
         help="Do not use transmitted singletons for training.",
         action="store_true",
     )
     training_params.add_argument(
-        "--no_sibling_singletons",
+        "--no-sibling-singletons",
         help="Do not use sibling singletons for training.",
         action="store_true",
     )
     training_params.add_argument(
-        "--filter_centromere_telomere",
+        "--filter-centromere-telomere",
         help="Train RF without centromeres and telomeres.",
         action="store_true",
     )
