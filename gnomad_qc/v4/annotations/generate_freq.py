@@ -719,7 +719,7 @@ def combine_freq_hts(
     freq_ht = freq_ht.select(*row_annotations)
     freq_ht = freq_ht.select_globals(*global_annotations)
 
-    logger.info("Final frequency HT schema...")
+    logger.info("Combined frequency HT schema...")
     freq_ht.describe()
 
     return freq_ht
@@ -983,12 +983,18 @@ def main(args):
             logger.info("Calculating InbreedingCoeff...")
             ht = compute_inbreeding_coeff(ht)
 
+            logger.info("High AB het corrected frequency HT schema...")
+            ht.describe()
+
             logger.info("Writing corrected frequency Table...")
             ht.write(res.corrected_freq_ht.path, overwrite=args.overwrite)
 
         if args.finalize_freq_ht:
             logger.info("Writing final frequency Table...")
             ht = create_final_freq_ht(ht)
+
+            logger.info("Final frequency HT schema...")
+            ht.describe()
             ht.write(res.final_freq_ht.path, overwrite=args.overwrite)
     finally:
         logger.info("Copying log to logging bucket...")
