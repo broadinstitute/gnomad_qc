@@ -154,13 +154,13 @@ def get_rf_run_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     :param test: Whether to return the test RF runs list.
     :return: Path to json file.
     """
-    return f"{_variant_qc_root(version, test=test)}/rf/gnomad.exomes.v{version}.rf_runs.json"
+    return (
+        f"{_variant_qc_root(version, test=test)}/rf/gnomad.exomes.v{version}.rf_runs.json"
+    )
 
 
 def get_rf_model_path(
-    model_id: str,
-    version: str = CURRENT_VERSION,
-    test: bool = False
+    model_id: str, version: str = CURRENT_VERSION, test: bool = False
 ) -> str:
     """
     Get the path to the RF model for a given run.
@@ -170,7 +170,9 @@ def get_rf_model_path(
     :param test: Whether to use a tmp path for variant QC tests.
     :return: Path to the RF model.
     """
-    return f"{_variant_qc_root(version, test=test)}/rf/models/{model_id}/gnomad.exomes.v{version}.rf.model"
+    return (
+        f"{_variant_qc_root(version, test=test)}/rf/models/{model_id}/gnomad.exomes.v{version}.rf.model"
+    )
 
 
 def get_rf_training(model_id: str, test: bool = False) -> VersionedTableResource:
@@ -193,8 +195,7 @@ def get_rf_training(model_id: str, test: bool = False) -> VersionedTableResource
 
 
 def get_rf_result(
-    model_id: Optional[str] = None,
-    test: bool = False
+    model_id: Optional[str] = None, test: bool = False
 ) -> VersionedTableResource:
     """
     Get the results of RF filtering for a given run.
