@@ -48,17 +48,9 @@ FEATURES = [
     "n_alt_alleles",
     "variant_type",
 ]
-INFO_FEATURES = [
-    "AS_MQRankSum",
-    "AS_pab_max",
-    "AS_QD",
-    "AS_ReadPosRankSum",
-    "AS_SOR",
-]
 LABEL_COL = "rf_label"
 PREDICTION_COL = "rf_prediction"
 TRAIN_COL = "rf_train"
-TRUTH_DATA = ["hapmap", "omni", "mills", "kgp_phase1_hc"]
 
 
 def train_rf(
