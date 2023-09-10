@@ -54,19 +54,24 @@ Current truth samples available are syndip and NA12878. Available data for each 
 """
 
 
-def get_variant_qc_root(version: str = CURRENT_VERSION) -> str:
+def _variant_qc_root(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
     Return path to variant QC root folder.
 
-    :param version: Version of variant QC path to return
-    :return: Root to sample QC path
+    :param version: Version of variant QC path to return.
+    :param test: Whether to use a tmp path for variant QC tests.
+    :return: Root to variant QC path.
     """
-    return f"gs://gnomad/v{version}/variant_qc/exomes"
+    return (
+        f"gs://gnomad-tmp/gnomad_v{version}_testing/variant_qc/exomes"
+        if test
+        else f"gs://gnomad/v{version}/variant_qc/exomes"
+    )
 
 
 def get_callset_truth_data(
     truth_sample: str, mt: bool = True
-) -> Union[MatrixTableResource, TableResource]:
+) -> Union[VersionedMatrixTableResource, VersionedTableResource]:
     """
     Get resources for the truth sample data that is subset from the full callset.
 
@@ -82,7 +87,7 @@ def get_callset_truth_data(
             CURRENT_VERSION,
             {
                 version: MatrixTableResource(
-                    f"{get_variant_qc_root(version)}/truth_samples/gnomad.exomes.v{version}.{truth_sample}.mt"
+                    f"{_variant_qc_root(version)}/truth_samples/gnomad.exomes.v{version}.{truth_sample}.mt"
                 )
                 for version in VERSIONS
             },
@@ -92,7 +97,7 @@ def get_callset_truth_data(
             CURRENT_VERSION,
             {
                 version: TableResource(
-                    f"{get_variant_qc_root(version)}/truth_samples/gnomad.exomes.v{version}.{truth_sample}.ht"
+                    f"{_variant_qc_root(version)}/truth_samples/gnomad.exomes.v{version}.{truth_sample}.ht"
                 )
                 for version in VERSIONS
             },
@@ -112,7 +117,7 @@ def get_score_bins(model_id: str, aggregated: bool) -> VersionedTableResource:
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_variant_qc_root(version)}/score_bins/gnomad.exomes.v{version}.{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
+                f"{_variant_qc_root(version)}/score_bins/gnomad.exomes.v{version}.{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
             )
             for version in VERSIONS
         },
@@ -134,81 +139,93 @@ def get_binned_concordance(model_id: str, truth_sample: str) -> VersionedTableRe
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_variant_qc_root(version)}/binned_concordance/gnomad.exomes.v{version}.{truth_sample}.{model_id}.binned_concordance.ht"
+                f"{_variant_qc_root(version)}/binned_concordance/gnomad.exomes.v{version}.{truth_sample}.{model_id}.binned_concordance.ht"
             )
             for version in VERSIONS
         },
     )
 
 
-def rf_run_path(version: str = CURRENT_VERSION) -> str:
+def get_rf_run_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
     Return the path to the json file containing the RF runs list.
 
-    :param version: Version of RF path to return
-    :return: Path to json file
+    :param version: Version of RF path to return.
+    :param test: Whether to return the test RF runs list.
+    :return: Path to json file.
     """
-    return f"{get_variant_qc_root(version)}/rf/gnomad.exomes.v{version}.rf_runs.json"
+    return f"{_variant_qc_root(version, test=test)}/rf/gnomad.exomes.v{version}.rf_runs.json"
 
 
-def get_rf_model_path(model_id: str, version: str = CURRENT_VERSION) -> str:
+def get_rf_model_path(
+    model_id: str,
+    version: str = CURRENT_VERSION,
+    test: bool = False
+) -> str:
     """
     Get the path to the RF model for a given run.
 
-    :param model_id: RF run to load
-    :param version: Version of model path to return
-    :return: Path to the RF model
+    :param model_id: RF run to load.
+    :param version: Version of model path to return.
+    :param test: Whether to use a tmp path for variant QC tests.
+    :return: Path to the RF model.
     """
-    return f"{get_variant_qc_root(version)}/rf/models/{model_id}/gnomad.exomes.v{version}.rf.model"
+    return f"{_variant_qc_root(version, test=test)}/rf/models/{model_id}/gnomad.exomes.v{version}.rf.model"
 
 
-def get_rf_training(model_id: str) -> VersionedTableResource:
+def get_rf_training(model_id: str, test: bool = False) -> VersionedTableResource:
     """
     Get the training data for a given run.
 
-    :param model_id: RF run to load
-    :return: VersionedTableResource for RF training data
+    :param model_id: RF run to load.
+    :param test: Whether to use a tmp path for variant QC tests.
+    :return: VersionedTableResource for RF training data.
     """
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_variant_qc_root(version)}/rf/models/{model_id}/gnomad.exomes.v{version}.training.ht"
+                f"{_variant_qc_root(version, test=test)}/rf/models/{model_id}/gnomad.exomes.v{version}.training.ht"
             )
             for version in VERSIONS
         },
     )
 
 
-def get_rf_result(model_id: Optional[str] = None) -> VersionedTableResource:
+def get_rf_result(
+    model_id: Optional[str] = None,
+    test: bool = False
+) -> VersionedTableResource:
     """
     Get the results of RF filtering for a given run.
 
-    :param model_id: RF run to load
-    :return: VersionedTableResource for RF filtered data
+    :param model_id: RF run to load.
+    :param test: Whether to use a tmp path for variant QC tests.
+    :return: VersionedTableResource for RF filtered data.
     """
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_variant_qc_root(version)}/rf/models/{model_id}/gnomad.exomes.v{version}.rf_result.ht"
+                f"{_variant_qc_root(version, test=test)}/rf/models/{model_id}/gnomad.exomes.v{version}.rf_result.ht"
             )
             for version in VERSIONS
         },
     )
 
 
-def final_filter() -> VersionedTableResource:
+def final_filter(test: bool = False) -> VersionedTableResource:
     """
     Get finalized variant QC filtering Table.
 
-    :return: VersionedTableResource for final variant QC data
+    :param test: Whether to use a tmp path for variant QC tests.
+    :return: VersionedTableResource for final variant QC data.
     """
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{get_variant_qc_root(version)}/gnomad.exomes.v{version}.final_filter.ht"
+                f"{_variant_qc_root(version, test=test)}/gnomad.exomes.v{version}.final_filter.ht"
             )
             for version in VERSIONS
         },
