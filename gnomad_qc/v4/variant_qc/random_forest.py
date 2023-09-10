@@ -5,7 +5,7 @@ import json
 import logging
 import sys
 import uuid
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
@@ -26,11 +26,12 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_variant_qc_annotations
+from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
 from gnomad_qc.v4.resources.variant_qc import (
     get_rf_model_path,
     get_rf_result,
-    get_rf_training,
     get_rf_run_path,
+    get_rf_training,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -70,7 +71,8 @@ def train_rf(
     sibling_singletons: bool = False,
     filter_centromere_telomere: bool = False,
     test_intervals: Union[str, List[str]] = "chr20",
-):
+    interval_qc_pass_ht: Optional[hl.Table] = None,
+) -> Tuple[hl.Table, Any]:
     """
     Train random forest model using `train_rf_model`.
 
@@ -86,8 +88,14 @@ def train_rf(
     :param sibling_singletons: Whether to use sibling singletons for training. Default
         is False.
     :param filter_centromere_telomere: Filter centromeres and telomeres before training.
-    :param test_intervals: Specified interval(s) will be held out for testing and evaluation only. (default to "chr20")
-    :return: `ht` annotated with training information and the RF model
+        Default is False.
+    :param test_intervals: Specified interval(s) will be held out for testing and
+        evaluation only. Default is "chr20".
+    :param interval_qc_pass_ht: Optional interval QC pass Table that contains an
+        'interval_qc_pass' annotation indicating whether the interval passes
+        high-quality criteria. This annotation is used to filter the Table before
+        running training the RF model. Default is None.
+    :return: Input `ht` annotated with training information and the RF model.
     """
     features = FEATURES
 
@@ -114,11 +122,15 @@ def train_rf(
 
     ht = ht.annotate(tp=tp_expr, fp=fp_expr)
 
+    rf_ht = ht
     if filter_centromere_telomere:
         logger.info("Filtering centromeres and telomeres from HT...")
-        rf_ht = ht.filter(~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]))
-    else:
-        rf_ht = ht
+        rf_ht = rf_ht.filter(
+            ~hl.is_defined(telomeres_and_centromeres.ht()[rf_ht.locus])
+        )
+    if interval_qc_pass_ht is not None:
+        logger.info("Filtering to intervals that pass interval QC...")
+        rf_ht = rf_ht.filter(interval_qc_pass_ht[rf_ht.locus].pass_interval_qc)
 
     rf_ht, rf_model = train_rf_model(
         rf_ht,
@@ -133,10 +145,57 @@ def train_rf(
         ),
     )
 
-    logger.info("Joining original RF Table with training information")
+    logger.info("Joining original RF Table with training information...")
     ht = ht.join(rf_ht, how="left")
 
+    ht = ht.annotate_globals(
+        fp_to_tp=fp_to_tp,
+        num_trees=num_trees,
+        max_depth=max_depth,
+        transmitted_singletons=transmitted_singletons,
+        sibling_singletons=sibling_singletons,
+        filter_centromere_telomere=filter_centromere_telomere,
+        interval_qc_filter=interval_qc_pass_ht is not None,
+        test_intervals=test_intervals,
+    )
+
     return ht, rf_model
+
+
+def add_model_to_run_list(
+    ht: hl.Table,
+    model_id: str,
+    rf_runs: Dict[str, Any],
+    rf_run_path: str,
+) -> None:
+    """
+    Add RF model run to RF run list.
+
+    :param ht: Table containing RF model run information as globals.
+    :param model_id: ID of RF model run.
+    :param rf_runs: Dictionary containing current RF run information.
+    :param rf_run_path: Path to RF run list.
+    :return: None
+    """
+    logger.info("Adding run to RF run list")
+    ht = ht.annotate_globals(test_intervals=hl.str(ht.test_intervals))
+    ht_globals = hl.eval(ht.globals)
+    input_args = [
+        "compute_info_method",
+        "transmitted_singletons",
+        "sibling_singletons",
+        # "adj",
+        "filter_centromere_telomere",
+        "interval_qc_filter",
+    ]
+    rf_output = ["test_intervals", "features_importance", "test_results"]
+    rf_runs[model_id] = get_run_data(
+        input_args={k: ht_globals[k] for k in input_args},
+        **{k: ht_globals[k] for k in rf_output},
+    )
+
+    with hl.hadoop_open(rf_run_path, "w") as f:
+        json.dump(rf_runs, f)
 
 
 def get_variant_qc_resources(
@@ -168,9 +227,11 @@ def get_variant_qc_resources(
         overwrite=overwrite,
         pipeline_resources={
             "RF models": {
-                "rf_runs": rf_runs, "rf_run_path": rf_run_path, "model_id": model_id
+                "rf_runs": rf_runs,
+                "rf_run_path": rf_run_path,
+                "model_id": model_id,
             },
-        }
+        },
     )
     # Create resource collection for each step of the variant QC pipeline.
     train_random_forest = PipelineStepResourceCollection(
@@ -186,7 +247,7 @@ def get_variant_qc_resources(
         output_resources={
             "rf_training_ht": get_rf_training(model_id=model_id, test=test),
             "rf_model_path": get_rf_model_path(model_id=model_id, test=test),
-        }
+        },
     )
     apply_random_forest = PipelineStepResourceCollection(
         "--apply-rf",
@@ -244,31 +305,17 @@ def main(args):  # noqa: D103
             fp_to_tp=args.fp_to_tp,
             num_trees=args.num_trees,
             max_depth=args.max_depth,
-            no_transmitted_singletons=args.no_transmitted_singletons,
-            no_sibling_singletons=args.no_sibling_singletons,
+            transmitted_singletons=args.transmitted_singletons,
+            sibling_singletons=args.sibling_singletons,
             filter_centromere_telomere=args.filter_centromere_telomere,
             test_intervals=args.test_intervals,
+            interval_qc_pass_ht=interval_qc_pass_ht,
         )
         ht = ht.annotate_globals(compute_info_method=compute_info_method)
         ht = ht.checkpoint(res.rf_training_ht.path, overwrite=overwrite)
 
         logger.info("Adding run to RF run list")
-        rf_runs[model_id] = get_run_data(
-            input_args={
-                "transmitted_singletons": not args.no_transmitted_singletons,
-                # TODO: this will also require editing get_run_data maybe to accept No
-                # Sibling Singletons?
-                "sibling_singletons": not args.no_sibling_singletons,
-                "adj": args.adj,
-                "filter_centromere_telomere": args.filter_centromere_telomere,
-            },
-            test_intervals=args.test_intervals,
-            features_importance=hl.eval(ht.features_importance),
-            test_results=hl.eval(ht.test_results),
-        )
-
-        with hl.hadoop_open(rf_run_path(), "w") as f:
-            json.dump(rf_runs, f)
+        add_model_to_run_list(ht, model_id, rf_runs, rf_run_path)
 
         logger.info("Saving RF model")
         save_model(rf_model, res.rf_model_path, overwrite=overwrite)
@@ -289,10 +336,8 @@ def main(args):  # noqa: D103
         ht = ht.annotate_globals(rf_model_id=model_id)
         ht = ht.checkpoint(res.rf_result_ht.path, overwrite=overwrite)
 
-        ht_summary = ht.group_by(
-            "tp", "fp", TRAIN_COL, LABEL_COL, PREDICTION_COL
-        ).aggregate(n=hl.agg.count())
-        ht_summary.show(n=20)
+        summary_cols = ["tp", "fp", TRAIN_COL, LABEL_COL, PREDICTION_COL]
+        ht.group_by(*summary_cols).aggregate(n=hl.agg.count()).show(-1)
 
 
 if __name__ == "__main__":
@@ -396,6 +441,11 @@ if __name__ == "__main__":
     training_params.add_argument(
         "--filter-centromere-telomere",
         help="Train RF without centromeres and telomeres.",
+        action="store_true",
+    )
+    training_params.add_argument(
+        "--interval-qc-filter",
+        help="Whether interval QC should be applied for RF training.",
         action="store_true",
     )
 
