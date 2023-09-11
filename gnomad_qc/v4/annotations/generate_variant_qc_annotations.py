@@ -494,10 +494,15 @@ def create_variant_qc_annotation_ht(
             m_info_ht = median_impute_features(
                 m_info_ht, {"variant_type": m_info_ht.variant_type}
             ).checkpoint(hl.utils.new_temp_file("median_impute"), overwrite=True)
-            feature_imputed[m] = m_info_ht[ht.key].feature_imputed
+            feature_imputed[m] = m_info_ht[ht.key]
             feature_medians[m] = hl.eval(m_info_ht.feature_medians)
 
-        ht = ht.annotate(feature_imputed=hl.struct(**feature_imputed))
+        ht = ht.annotate(
+            **{k: v.drop("feature_imputed") for k, v in feature_imputed.items()},
+            feature_imputed=hl.struct(
+                **{k: v.feature_imputed for k, v in feature_imputed.items()}
+            ),
+        )
         feature_medians = list(feature_medians.items())
         ht = ht.annotate_globals(
             feature_medians={
