@@ -61,6 +61,7 @@ def train_rf(
     max_depth: int = 5,
     transmitted_singletons: bool = False,
     sibling_singletons: bool = False,
+    adj: bool = False,
     filter_centromere_telomere: bool = False,
     test_intervals: Union[str, List[str]] = "chr20",
     interval_qc_pass_ht: Optional[hl.Table] = None,
@@ -79,6 +80,7 @@ def train_rf(
         Default is False.
     :param sibling_singletons: Whether to use sibling singletons for training. Default
         is False.
+    :param adj: True if using _adj genotypes for singletons. If False, using _raw.
     :param filter_centromere_telomere: Filter centromeres and telomeres before training.
         Default is False.
     :param test_intervals: Specified interval(s) will be held out for testing and
@@ -107,10 +109,17 @@ def train_rf(
     logger.info("Annotating true positives and false positives in HT...")
     fp_expr = ht.fail_hard_filters
     tp_expr = ht.omni | ht.mills
+    transmit_expr = ht.transmitted_singleton_raw
+    sibling_expr = ht.sibling_singleton_raw
+
+    if adj:
+        transmit_expr = ht.transmitted_singleton_adj
+        sibling_expr = ht.sibling_singleton_adj
+
     if transmitted_singletons:
-        tp_expr |= ht.transmitted_singleton_adj
+        tp_expr |= transmit_expr
     if sibling_singletons:
-        tp_expr |= ht.sibling_singleton_adj
+        tp_expr |= sibling_expr
 
     ht = ht.annotate(tp=tp_expr, fp=fp_expr)
 
@@ -176,7 +185,7 @@ def add_model_to_run_list(
         "compute_info_method",
         "transmitted_singletons",
         "sibling_singletons",
-        # "adj",
+        "adj",
         "filter_centromere_telomere",
         "interval_qc_filter",
     ]
@@ -299,11 +308,12 @@ def main(args):  # noqa: D103
             max_depth=args.max_depth,
             transmitted_singletons=args.transmitted_singletons,
             sibling_singletons=args.sibling_singletons,
+            adj=args.adj,
             filter_centromere_telomere=args.filter_centromere_telomere,
             test_intervals=args.test_intervals,
             interval_qc_pass_ht=interval_qc_pass_ht,
         )
-        ht = ht.annotate_globals(compute_info_method=compute_info_method)
+        ht = ht.annotate_globals(compute_info_method=compute_info_method, adj=args.adj)
         ht = ht.checkpoint(res.rf_training_ht.path, overwrite=overwrite)
 
         logger.info("Adding run to RF run list")
