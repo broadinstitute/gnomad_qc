@@ -429,7 +429,7 @@ def generate_freq_ht(
         non_ukb_strata_expr = [e for e in non_ukb_strata_expr if "downsampling" in e]
 
         logger.info("Generating non-ukb downsampling group_membership array....")
-        non_uk_group_membership_ht = generate_freq_group_membership_array(
+        non_ukb_group_membership_ht = generate_freq_group_membership_array(
             meta_ht,
             non_ukb_strata_expr,
             downsamplings=hl.eval(non_ukb_ds_ht.downsamplings),
@@ -437,22 +437,22 @@ def generate_freq_ht(
         )
         # Remove the first one because it is the indexing for the full subset.
         group_membership = group_membership.extend(
-            non_uk_group_membership_ht[mt.col_key].group_membership[1:]
+            non_ukb_group_membership_ht[mt.col_key].group_membership[1:]
         )
-        non_uk_globals = non_uk_group_membership_ht.index_globals()
-        non_uk_globals = non_uk_globals.annotate(
-            freq_meta=non_uk_globals.freq_meta.map(
+        non_ukb_globals = non_ukb_group_membership_ht.index_globals()
+        non_ukb_globals = non_ukb_globals.annotate(
+            freq_meta=non_ukb_globals.freq_meta.map(
                 lambda d: hl.dict(d.items().append(("subset", "non_ukb")))
             )
         )
         # Remove the first two because they are adj and raw for the full subset.
         group_membership_globals = group_membership_globals.annotate(
             **{
-                g: group_membership_globals[g].extend(non_uk_globals[g][2:])
+                g: group_membership_globals[g].extend(non_ukb_globals[g][2:])
                 for g in ["freq_meta", "freq_meta_sample_count"]
             },
-            non_ukb_downsamplings=non_uk_globals.downsamplings,
-            non_ukb_ds_pop_counts=non_uk_globals.ds_pop_counts,
+            non_ukb_downsamplings=non_ukb_globals.downsamplings,
+            non_ukb_ds_pop_counts=non_ukb_globals.ds_pop_counts,
         )
     else:
         group_membership_globals = group_membership_globals.annotate(
@@ -949,7 +949,7 @@ def main(args):
                 freq_ht = generate_freq_ht(
                     mt, ds_ht, meta_ht, non_ukb_ds_ht=non_ukb_ds_ht
                 )
-                freq_ht = freq_ht.annotate(**freq_ht.hists_fields)
+                freq_ht = freq_ht.transmute(**freq_ht.hists_fields)
                 freq_ht.write(
                     getattr(res, f"{strata}_freq_ht").path, overwrite=overwrite
                 )
