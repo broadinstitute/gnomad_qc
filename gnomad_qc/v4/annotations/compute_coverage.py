@@ -14,6 +14,7 @@ from gnomad.utils.sparse_mt import compute_coverage_stats
 
 from gnomad_qc.resource_utils import check_resource_existence
 from gnomad_qc.v4.resources.basics import calling_intervals, get_gnomad_v4_vds
+from gnomad_qc.v4.resources.release import release_coverage_path
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("coverage")
@@ -79,7 +80,9 @@ def main(args):
                 coverage_ht = coverage_ht.naive_coalesce(5000)
 
                 coverage_ht.write(
-                    coverage("exomes").versions[coverage_version].path,
+                    release_coverage_path(
+                        public=False, release_version=coverage_version
+                    ),
                     overwrite=args.overwrite,
                 )
 
