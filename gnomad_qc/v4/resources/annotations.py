@@ -283,7 +283,7 @@ def get_freq(
     :param finalized: Whether to return the finalized frequency table. Default is True.
     :return: Hail Table containing subset or overall cohort frequency annotations.
     """
-    ht_name = f"gnomad.exomes.v{version}"
+    ht_name = f"gnomad.exomes.v{version}.frequencies"
     if not finalized:
         if chrom:
             ht_name += f".{chrom}"
