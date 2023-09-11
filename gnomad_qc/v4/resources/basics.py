@@ -416,6 +416,10 @@ def calling_intervals(
         return TableResource(
             f"gs://gnomad/resources/intervals/hg38_v0_exome_calling_regions.v1.pad{calling_interval_padding}.interval_list.ht"
         )
+    if interval_name == "intersection" or interval_name == "union":
+        return TableResource(
+            f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.{interval_name}.interval_list.ht"
+        )
     if interval_name == "intersection":
         return TableResource(
             f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.intersection.interval_list.ht"

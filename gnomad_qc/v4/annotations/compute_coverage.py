@@ -1,5 +1,4 @@
-# noqa: D100
-
+"""Script to compute coverage statistics on gnomAD v4 exomes."""
 import argparse
 import logging
 from typing import List, Union
@@ -21,7 +20,8 @@ logger = logging.getLogger("coverage")
 logger.setLevel(logging.INFO)
 
 
-def main(args):  # noqa: D103
+def main(args):
+    """Compute coverage statistics, including mean, median_approx, and coverage over certain DPs."""
     hl.init(
         log="/coverage.log",
         default_reference="GRCh38",
@@ -68,7 +68,7 @@ def main(args):  # noqa: D103
             # Compute coverage stats.
             coverage_ht = compute_coverage_stats(vds, ref_ht, interval_ht)
 
-            # Checkpoint Table
+            # Checkpoint Table.
             coverage_ht = coverage_ht.checkpoint(
                 "gs://gnomad-tmp/gnomad.genomes_v4.coverage.summary.ht",
                 overwrite=args.overwrite,
