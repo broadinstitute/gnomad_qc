@@ -47,25 +47,25 @@ def main(args):  # noqa: D103
             )
 
             logger.info("Running compute coverage...")
-            # Read in context Table
+            # Read in context Table.
             ref_ht = vep_context.versions["105"].ht()
             if test:
                 ref_ht = ref_ht._filter_partitions(range(50))
 
-            # Read in calling intervals
+            # Read in calling intervals.
             interval_ht = calling_intervals(
                 interval_name=args.calling_interval_name,
                 calling_interval_padding=args.calling_interval_padding,
             ).ht()
 
-            # Read in VDS
+            # Read in VDS.
             vds = get_gnomad_v4_vds(
                 release_only=True,
                 test=test,
                 filter_partitions=range(2) if test else None,
             )
 
-            # Compute coverage stats
+            # Compute coverage stats.
             coverage_ht = compute_coverage_stats(vds, ref_ht, interval_ht)
 
             # Checkpoint Table
@@ -74,7 +74,7 @@ def main(args):  # noqa: D103
                 overwrite=args.overwrite,
             )
 
-            # Write final result if not testing
+            # Write final result if not testing.
             if not test:
                 coverage_ht = coverage_ht.naive_coalesce(5000)
 
