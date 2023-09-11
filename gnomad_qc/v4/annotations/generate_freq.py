@@ -849,7 +849,7 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     ht = ht.annotate_globals(
         faf_meta=faf_meta_expr,
         faf_index_dict=make_freq_index_dict_from_meta(
-            faf_meta_expr, label_delimiter="-"
+            faf_meta_expr, label_delimiter="_"
         ),
     )
 
