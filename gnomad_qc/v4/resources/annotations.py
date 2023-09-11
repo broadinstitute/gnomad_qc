@@ -9,6 +9,7 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
+from gnomad_qc.v3.resources.basics import get_checkpoint_path
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
 SUBSETS = SUBSETS["v4"]
@@ -271,32 +272,46 @@ qual_hist = VersionedTableResource(
 
 
 def get_freq(
-    version: str = CURRENT_VERSION, subset: Optional[str] = None
+    version: str = CURRENT_VERSION,
+    test: bool = False,
+    hom_alt_adjusted=False,
+    chrom: Optional[str] = None,
+    intermediate_subset: Optional[str] = None,
+    finalized: bool = True,
 ) -> VersionedTableResource:
     """
     Get the frequency annotation table for a specified release.
 
-    :param version: Version of annotation path to return
-    :param subset: One of the official subsets of the specified release (e.g., non_neuro, non_cancer,
-        controls_and_biobanks) or a combination of them split by '-'
-    :return: Hail Table containing subset or overall cohort frequency annotations
+    :param version: Version of annotation path to return.
+    :param test: Whether to use a tmp path for tests.
+    :param hom_alt_adjusted: Whether to return the hom alt adjusted frequency table.
+    :param chrom: Chromosome to return frequency table for. Entire Table will be
+        returned if not specified.
+    :param intermediate_subset: Optional intermediate subset to return temp frequency
+        Table for. Entire Table will be returned if not specified.
+    :param finalized: Whether to return the finalized frequency table. Default is True.
+    :return: Hail Table containing subset or overall cohort frequency annotations.
     """
-    if subset is not None:
-        for s in subset.split("-"):
-            if s not in SUBSETS:
-                raise DataException(
-                    f"{subset} subset is not one of the following official subsets:"
-                    f" {SUBSETS}"
-                )
+    ht_name = f"gnomad.exomes.v{version}"
+    if not finalized:
+        if chrom:
+            ht_name += f".{chrom}"
+        if not hom_alt_adjusted:
+            ht_name += ".pre_hom_alt_adjustment"
+    if intermediate_subset:
+        ht_name += f".{intermediate_subset}"
+        if test:
+            ht_name += ".test"
+        ht_path = get_checkpoint_path(ht_name, version=CURRENT_VERSION)
+    else:
+        if finalized:
+            ht_name += ".final"
+        if test:
+            ht_name += ".test"
+        ht_path = f"{_annotations_root(version, test)}/{ht_name}.ht"
 
     return VersionedTableResource(
-        version,
-        {
-            version: TableResource(
-                f"{_annotations_root(version)}/gnomad.exomes.v{version}.frequencies{'.' + subset if subset else ''}.ht"
-            )
-            for version in VERSIONS
-        },
+        version, {version: TableResource(ht_path) for version in VERSIONS}
     )
 
 

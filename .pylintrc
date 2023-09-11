@@ -7,4 +7,4 @@ disable=
   R,
   C
 
-ignore-paths=^gnomad_qc/v2/.*$
+ignore-paths=^gnomad_qc/v2/.*$,^gnomad_qc/v4/sample_qc/cuKING/.*$
