@@ -498,7 +498,10 @@ def create_variant_qc_annotation_ht(
             feature_medians[m] = hl.eval(m_info_ht.feature_medians)
 
         ht = ht.annotate(
-            **{k: v.drop("feature_imputed") for k, v in feature_imputed.items()},
+            **{
+                k: v.drop("feature_imputed", "variant_type")
+                for k, v in feature_imputed.items()
+            },
             feature_imputed=hl.struct(
                 **{k: v.feature_imputed for k, v in feature_imputed.items()}
             ),
