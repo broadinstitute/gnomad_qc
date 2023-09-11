@@ -435,7 +435,7 @@ def generate_freq_ht(
             downsamplings=hl.eval(non_ukb_ds_ht.downsamplings),
             ds_pop_counts=hl.eval(non_ukb_ds_ht.ds_pop_counts),
         )
-        # Remove the first one because it is the indexing for the full subset.
+        # Remove the first entry because it is the index for the full subset.
         group_membership = group_membership.extend(
             non_ukb_group_membership_ht[mt.col_key].group_membership[1:]
         )
@@ -849,7 +849,7 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     ht = ht.annotate_globals(
         faf_meta=faf_meta_expr,
         faf_index_dict=make_freq_index_dict_from_meta(
-            faf_meta_expr, label_delimiter="-"
+            faf_meta_expr, label_delimiter="_"
         ),
     )
 
