@@ -9,7 +9,14 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
+from gnomad_qc.v3.resources.basics import get_checkpoint_path
+from gnomad_qc.v4.resources.basics import qc_temp_prefix
+from gnomad_qc.v4.resources.constants import (
+    CURRENT_HGDP_TGP_RELEASE,
+    CURRENT_VERSION,
+    HGDP_TGP_RELEASES,
+    VERSIONS,
+)
 
 SUBSETS = SUBSETS["v4"]
 
@@ -381,5 +388,31 @@ def get_vrs(
                 )
             )
             for version in VERSIONS
+        },
+    )
+
+
+def hgdp_tgp_updated_callstats(
+    test: bool = False, subset: str = "final"
+) -> VersionedTableResource:
+    """
+    Get the HGDP + 1KG/TGP subset release MatrixTableResource.
+
+    :param test: If True, will return the annotation resource for testing purposes.
+    :param subset: The subset of the HGDP + 1KG/TGP release to return,
+       must be "added", "subtracted", "pop_diff", or "final"
+    :return: MatrixTableResource for specified subset.
+    """
+    if subset not in ["added", "subtracted", "pop_diff", "final"]:
+        raise ValueError(
+            "Operation must be one of 'added', 'subtracted', 'pop_diff', or 'final'"
+        )
+    return VersionedTableResource(
+        default_version=CURRENT_HGDP_TGP_RELEASE,
+        versions={
+            release: TableResource(
+                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/annotations/hail-0.2/ht/genomes_v{release}/'}gnomad.genomes.v{release}.hgdp_1kg_subset_updated_callstats_{subset}.ht"
+            )
+            for release in HGDP_TGP_RELEASES
         },
     )
