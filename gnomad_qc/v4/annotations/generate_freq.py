@@ -909,7 +909,7 @@ def main(args):
     hl.init(
         log="/generate_frequency_data.log",
         default_reference="GRCh38",
-        tmp_dir="gs://gnomad-tmp-4day",
+        tmp_dir="gs://gnomad-tmp-30day",
     )
     # SSA Logs are easier to troubleshoot with.
     hl._set_flags(use_ssa_logs="1")
