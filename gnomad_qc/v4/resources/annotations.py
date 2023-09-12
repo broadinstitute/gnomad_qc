@@ -198,17 +198,26 @@ def get_vqsr_filters(
     )
 
 
-def info_vcf_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def info_vcf_path(
+    info_method: str = "AS", version: str = CURRENT_VERSION, test: bool = False
+) -> str:
     """
     Path to sites VCF (input information for running VQSR).
 
+    :param info_method: Method for generating info VCF. Must be one of "AS", "quasi",
+        or "set_long_AS_missing". Default is "AS".
     :param version: Version of annotation path to return.
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the
         full v4 VDS.
     :return: String for the path to the info VCF.
     """
+    if info_method not in ["AS", "quasi", "set_long_AS_missing"]:
+        raise ValueError(
+            f"Invalid info_method: {info_method}. Must be one of 'AS', 'quasi', or "
+            "'long_AS_missing_info'."
+        )
     return (
-        f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.vcf.bgz"
+        f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.{info_method}.vcf.bgz"
     )
 
 
@@ -283,7 +292,7 @@ def get_freq(
     :param finalized: Whether to return the finalized frequency table. Default is True.
     :return: Hail Table containing subset or overall cohort frequency annotations.
     """
-    ht_name = f"gnomad.exomes.v{version}"
+    ht_name = f"gnomad.exomes.v{version}.frequencies"
     if not finalized:
         if chrom:
             ht_name += f".{chrom}"
