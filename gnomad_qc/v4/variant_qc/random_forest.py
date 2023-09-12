@@ -80,7 +80,7 @@ def train_rf(
     :param sibling_singletons: Whether to use sibling singletons for training. Default
         is False.
     :param adj: Whether to use adj genotypes for transmitted/sibling singletons instead
-        of raw. Default is False.
+        of raw. Default is False and raw is used. 
     :param filter_centromere_telomere: Filter centromeres and telomeres before training.
         Default is False.
     :param test_intervals: Specified interval(s) will be held out for testing and
