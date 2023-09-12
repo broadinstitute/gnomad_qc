@@ -400,15 +400,13 @@ def get_vrs(
     )
 
 
-def get_frequency_checkpoint_path(
+def get_split_vds_path(
     version: str = CURRENT_VERSION,
     data_type: str = "exomes",
     test: bool = False,
-    file_name: str = "frequency_checkpoint",
-    file_type: str = "ht",
 ) -> VersionedTableResource:
     """
-    Get the paths for intermediate files produce by `generate_freq` .
+    Get the gnomAD v4 split VDS.
 
     This is a temporary resource that will be removed once the split VDS is no longer
     needed. Given the uncertainies around frequency calculation runtimes, we cannot
@@ -419,10 +417,8 @@ def get_frequency_checkpoint_path(
            Default is "exomes".
     :param test: Whether to use a tmp path for analysis of the test Table instead
            of the full v4 Table.
-    :param file_name: Name of the file to return. Default is "frequency_checkpoint".
-    :param file_type: Type of file to return. Default is "vds".
-    :return: Intermediate frequency file path.
+    :return: gnomAD v4 split VDS path.
     """
     return (
-        f"{_annotations_root(version, test, data_type)}/temp/gnomad.{data_type}.v{version}.{file_name}.{file_type}"
+        f"{_annotations_root(version, test, data_type)}/temp/gnomad.{data_type}.v{version}.split.vds"
     )

@@ -42,7 +42,7 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import get_freq, get_frequency_checkpoint_path
+from gnomad_qc.v4.resources.annotations import get_freq, get_split_vds_path
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds, get_logging_path
 
 logging.basicConfig(
@@ -250,10 +250,7 @@ def get_vds_for_freq(
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
 
     logger.info("Checkpointing split VDS...")
-    vds = vds.checkpoint(
-        get_frequency_checkpoint_path(test=test, file_name="split", file_type="vds"),
-        overwrite=True,
-    )
+    vds = vds.checkpoint(get_split_vds_path(test=test), overwrite=True)
 
     return vds
 
@@ -378,8 +375,6 @@ def generate_freq_ht(
     ds_ht: hl.Table,
     meta_ht: hl.Table,
     non_ukb_ds_ht: Optional[hl.Table] = None,
-    strata: Optional[str] = "non_ukb",
-    test: bool = False,
 ) -> hl.Table:
     """
     Generate frequency Table.
@@ -408,8 +403,6 @@ def generate_freq_ht(
     :param ds_ht: Table with downsampling annotations.
     :param meta_ht: Table with sample metadata annotations.
     :param non_ukb_ds_ht: Optional Table with non-UKB downsampling annotations.
-    :param strata: Strata in split VDS.
-    :param test: Whether to use test resources.
     :return: Hail Table with frequency annotations.
     """
     meta_ht = meta_ht.semi_join(mt.cols())
@@ -429,9 +422,6 @@ def generate_freq_ht(
         strata_expr,
         downsamplings=hl.eval(ds_ht.downsamplings),
         ds_pop_counts=hl.eval(ds_ht.ds_pop_counts),
-        checkpoint_path=get_frequency_checkpoint_path(
-            test=test, file_name=f"{strata}_gnomad_group_membership", file_type="ht"
-        ),
     )
     group_membership = group_membership_ht[mt.col_key].group_membership
     group_membership_globals = group_membership_ht.index_globals()
@@ -449,11 +439,6 @@ def generate_freq_ht(
             non_ukb_strata_expr,
             downsamplings=hl.eval(non_ukb_ds_ht.downsamplings),
             ds_pop_counts=hl.eval(non_ukb_ds_ht.ds_pop_counts),
-            checkpoint_path=get_frequency_checkpoint_path(
-                test=test,
-                file_name="non_ukb_ds_group_membership",
-                file_type="ht",
-            ),
         )
         # Remove the first entry because it is the index for the full subset.
         group_membership = group_membership.extend(
@@ -538,16 +523,13 @@ def densify_and_prep_vds_for_freq(
     return mt
 
 
-def get_downsampling_ht(
-    mt: hl.MatrixTable, non_ukb: bool = False, checkpoint_path: Optional[str] = None
-) -> hl.Table:
+def get_downsampling_ht(mt: hl.MatrixTable, non_ukb: bool = False) -> hl.Table:
     """
     Get Table with downsampling groups for all samples or the non-UKB subset.
 
     :param mt: Input MatrixTable.
     :param non_ukb: Whether to get downsampling groups for the non-UKB subset. Default
         is False.
-    :param checkpoint_path: Optional path to checkpoint Table.
     :return: Table with downsampling groups.
     """
     logger.info(
@@ -559,13 +541,7 @@ def get_downsampling_ht(
     if non_ukb:
         downsamplings = downsamplings[:-1]
     ds_ht = annotate_downsamplings(meta_ht, downsamplings, pop_expr=meta_ht.pop)
-
-    checkpoint_path = (
-        new_temp_file("downsamplings", extension="ht")
-        if not checkpoint_path
-        else checkpoint_path
-    )
-    ds_ht = ds_ht.checkpoint(checkpoint_path)
+    ds_ht = ds_ht.checkpoint(new_temp_file("downsamplings", extension="ht"))
 
     return ds_ht
 
@@ -953,12 +929,7 @@ def main(args):
                 use_test_dataset, test_gene, test_n_partitions, chrom
             )
             meta_ht = vds.variant_data.cols()
-            ds_ht = get_downsampling_ht(
-                vds.variant_data,
-                checkpoint_path=get_frequency_checkpoint_path(
-                    test=test, file_name="downsamplings", file_type="ht"
-                ),
-            )
+            ds_ht = get_downsampling_ht(vds.variant_data)
 
             logger.info(
                 "Splitting VDS by ukb_sample annotation to reduce data size for"
@@ -975,15 +946,7 @@ def main(args):
                     continue
 
                 if strata == "non_ukb":
-                    non_ukb_ds_ht = get_downsampling_ht(
-                        vds.variant_data,
-                        non_ukb=True,
-                        checkpoint_path=get_frequency_checkpoint_path(
-                            test=test,
-                            file_name="non_ukb_downsamplings",
-                            file_type="ht",
-                        ),
-                    )
+                    non_ukb_ds_ht = get_downsampling_ht(vds.variant_data, non_ukb=True)
                 else:
                     non_ukb_ds_ht = None
 
