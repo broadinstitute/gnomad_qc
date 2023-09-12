@@ -65,7 +65,7 @@ def create_cadd_grch38_ht() -> hl.Table:
 
         return ht
 
-    snvs = hl.read_table(
+    snvs = _load_cadd_raw(
         "gs://gnomad-insilico/cadd/cadd.v1.6.whole_genome_SNVs.tsv.bgz"
     )
     indel3_0 = _load_cadd_raw(
