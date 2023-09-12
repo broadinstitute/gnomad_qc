@@ -66,17 +66,17 @@ def create_cadd_grch38_ht() -> hl.Table:
         return ht
 
     snvs = hl.read_table(
-        "gs://gcp-public-data--gnomad/resources/grch38/in_silico_predictors/CADD_v1.6_SNVs.ht"
+        "gs://gnomad-insilico/cadd/cadd.v1.6.whole_genome_SNVs.tsv.bgz"
     )
     indel3_0 = _load_cadd_raw(
         "gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.genomes.r3.0.indel.tsv.bgz"
     )
     indel3_1 = hl.read_table("gs://gnomad-insilico/cadd/CADD-indels-gnomad.3.1.ht")
     indel3_1_complex = hl.read_table(
-        "gs://gnomad-wphu/CADD-1.6-gnomad-complex-variants.ht"
+        "gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.genomes.v3.1.indels.complex.ht"
     )
     indel4 = _load_cadd_raw(
-        "gs://gnomad-qin/v4_annotations/cadd.v1.6.gnomAD_v4_new_indels.tsv.bgz"
+        "gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.v4.0.indels.new.tsv.bgz"
     )
 
     # Merge the CADD predictions run for v3 versions.
@@ -135,7 +135,7 @@ def create_spliceai_grch38_ht() -> hl.Table:
     spliceai_indels = import_spliceai_vcf(indels_path)
     spliceai_new_indels = import_spliceai_vcf(new_indels_path)
 
-    ht = spliceai_snvs.union(spliceai_indels).union(spliceai_new_indels)
+    ht = spliceai_snvs.union(spliceai_indels, spliceai_new_indels)
 
     logger.info("Exploding SpliceAI scores...")
     # `explode` because some variants fall on multiple genes and have a score per gene.
@@ -146,7 +146,6 @@ def create_spliceai_grch38_ht() -> hl.Table:
     # delta_score array for 4 splicing consequences: DS_AG|DS_AL|DS_DG|DS_DL
     delta_scores = ht.info.SpliceAI.split(delim="\\|")[2:6]
     ht = ht.annotate(delta_scores=hl.map(lambda x: hl.float32(x), delta_scores))
-    # Annotate ds_max with the max of DS_AG, DS_AL, DS_DG, DS_DL in info.
     logger.info(
         "Getting the max SpliceAI score across consequences for each variant per"
         " gene..."
