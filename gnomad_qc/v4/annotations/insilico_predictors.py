@@ -93,15 +93,21 @@ def create_pangolin_grch38_ht(vcf_path: str) -> hl.Table:
     """
     Create a Hail Table with Pangolin score for splicing for GRCh38.
 
-    .. Note::
-    The Pangolin scores were generated for variants in gene body only. The first run contains variants from gnomAD v3 genomes.
+    .. note::
+    The score was based on the splicing prediction tool Pangolin:
+    Zeng, T., Li, Y.I. Predicting RNA splicing from DNA sequence using Pangolin.
+     Genome Biol 23, 103 (2022). https://doi.org/10.1186/s13059-022-02664-4
+
+    There's no precomputed for all variants, the scores were generated for
+    gnomAD v3 variants in gene body only.
 
     :param vcf_path: path to the VCF files with Pangolin scores for splicing.
     :return: Hail Table with Pangolin score for splicing for GRCh38.
     """
-    mt = hl.import_vcf(vcf_path, min_partitions=1000, reference_genome="GRCh38")
-
-    ht = mt.rows()
+    vcf_path = (
+        "gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.pangolin.vcf.bgz/*.bgz"
+    )
+    ht = hl.import_vcf(vcf_path, min_partitions=1000, reference_genome="GRCh38").rows()
     logger.info("Number of rows in original Pangolin Hail Table: %s", ht.count())
 
     logger.info("Exploding Pangolin scores...")
@@ -128,7 +134,7 @@ def create_pangolin_grch38_ht(vcf_path: str) -> hl.Table:
     )
 
     logger.info(
-        "Getting the max Pangolin score for each variant across consequences per"
+        "Getting the max Pangolin score across consequences for each variant  per"
         " gene..."
     )
     consequences = hl.literal(["splice_gain", "splice_loss"])
@@ -205,9 +211,7 @@ def main(args):
     if args.pangolin:
         logger.info("Creating Pangolin Hail Table for GRCh38...")
 
-        ht = create_pangolin_grch38_ht(
-            vcf_path="gs://gnomad-qin/v4_annotations/gnomad.v4.0.genomes.pangolin.vcf.bgz/*.bgz"
-        )
+        ht = create_pangolin_grch38_ht()
         ht.write(
             get_insilico_predictors(predictor="pangolin").path,
             overwrite=args.overwrite,
