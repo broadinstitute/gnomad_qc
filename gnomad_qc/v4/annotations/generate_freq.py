@@ -202,7 +202,7 @@ def get_vds_for_freq(
     vds = get_gnomad_v4_vds(
         test=use_test_dataset,
         release_only=True,
-        filter_partitions=[25894, 38016, 41229, 46085, 40916],  # test_partitions,
+        filter_partitions=test_partitions,
         chrom=chrom,
         annotate_meta=True,
     )
