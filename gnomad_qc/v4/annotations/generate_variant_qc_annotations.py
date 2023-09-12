@@ -229,6 +229,18 @@ def run_compute_info(
         Adds a fix for AS_QUALapprox by recomputing from LPL because some were found to
         have different lengths than LA.
 
+    Creates a Table with three different methods of computing info annotations:
+        - quasi_info: Compute info annotations using the quasi-allele specific method
+          defined in `default_compute_info`.
+        - AS_info: Compute info annotations using aggregation of the allele specific
+          annotations in 'gvcf_info' after recomputing AS_QUALapprox from LPL, and
+          fixing the length of AS_SB_TABLE, AS_RAW_MQ, AS_RAW_ReadPosRankSum and
+          AS_RAW_MQRankSum.
+        - set_long_AS_missing_info: Compute info annotations using aggregation of the
+          allele specific  annotations in 'gvcf_info' after setting AS_SB_TABLE,
+          AS_RAW_MQ, AS_RAW_ReadPosRankSum and AS_RAW_MQRankSum to missing if they have
+          the incorrect length.
+
     :param mt: Input MatrixTable.
     :param max_n_alleles: Maximum number of alleles for the site to be included in
         computations.
@@ -241,6 +253,8 @@ def run_compute_info(
     if min_n_alleles:
         mt = mt.filter_rows(hl.len(mt.alleles) >= min_n_alleles)
 
+    # Compute and checkpoint the site annotations, quasi allele specific info
+    # annotations, allele count annotations, and lowQUAL annotations.
     ht = default_compute_info(
         mt,
         site_annotations=True,
@@ -255,6 +269,9 @@ def run_compute_info(
         hl.utils.new_temp_file("quasi_compute_info", extension="ht")
     )
 
+    # Compute and checkpoint the allele specific info annotations after recomputing
+    # AS_QUALapprox from LPL, and fixing the length of AS_SB_TABLE, AS_RAW_MQ,
+    # AS_RAW_ReadPosRankSum and AS_RAW_MQRankSum.
     mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
     correct_mt = mt.annotate_entries(
         gvcf_info=mt.gvcf_info.annotate(
@@ -271,6 +288,9 @@ def run_compute_info(
     ).rows()
     info_ht = ht.checkpoint(hl.utils.new_temp_file("compute_info", extension="ht"))
 
+    # Compute and checkpoint the allele specific info annotations after setting
+    # AS_SB_TABLE, AS_RAW_MQ, AS_RAW_ReadPosRankSum and AS_RAW_MQRankSum to missing if
+    # they have the incorrect length.
     correct_mt = mt.annotate_entries(
         gvcf_info=correct_as_annotations(mt, set_to_missing=True)
     )
@@ -331,11 +351,16 @@ def get_reformatted_info_fields(
             "'set_long_AS_missing'."
         )
 
+    # AS_pab_max is computed in the quasi_info annotation, but it doesn't change for
+    # the other info methods, so we can just copy it into each of the info annotation
+    # structs to make downstream code easier.
     if info_method is None or info_method == "AS":
         ht = ht.annotate(
             AS_info=ht.AS_info.annotate(AS_pab_max=ht.quasi_info.AS_pab_max)
         )
     if info_method is None or info_method == "quasi":
+        # TODO: AS_SB should be removed from the quasi_info annotation in
+        #  `get_as_info_expr` since it is identical to AD_SB_TABLE.
         ht = ht.annotate(quasi_info=ht.quasi_info.drop("AS_SB"))
     if info_method is None or info_method == "set_long_AS_missing":
         ht = ht.annotate(
