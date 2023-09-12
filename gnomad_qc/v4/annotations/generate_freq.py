@@ -203,7 +203,7 @@ def get_vds_for_freq(
     vds = get_gnomad_v4_vds(
         test=use_test_dataset,
         release_only=True,
-        filter_partitions=test_partitions,
+        filter_partitions=[25894, 38016, 41229, 46085, 40916],  # test_partitions,
         chrom=chrom,
         annotate_meta=True,
     )
@@ -249,6 +249,8 @@ def get_vds_for_freq(
     logger.info("Spltting mutliallelics in VDS...")
     vds = hl.vds.VariantDataset(rmt, vmt)
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
+
+    logger.info("Checkpointing split VDS...")
     vds = vds.checkpoint(get_split_vds_path(test=test), overwrite=True)
 
     return vds
@@ -910,6 +912,8 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
+    # SSA Logs are easier to troubleshoot with.
+    hl._set_flags(use_ssa_logs="1")
     resources = get_freq_resources(overwrite, test, chrom)
 
     try:
