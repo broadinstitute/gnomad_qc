@@ -1037,3 +1037,10 @@ hgdp_tgp_populations_updated = TableResource(
 hgdp_tgp_meta_updated = TableResource(
     path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_sample_meta.ht",
 )
+
+# Table with the HGDP+ 1KG/TGP samples that are not related within the
+# subset but are related to any v3.1 release sample outside the subset and
+# were not included in the v3.1 release.
+hgdp_tgp_related_to_nonsubset = TableResource(
+    path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_related_to_nonsubset.ht",
+)

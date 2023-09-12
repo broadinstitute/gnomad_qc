@@ -23,11 +23,13 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq
+from gnomad_qc.v3.resources.basics import meta
 from gnomad_qc.v3.resources.release import (
     hgdp_tgp_subset,
     hgdp_tgp_subset_annotations,
     release_sites,
 )
+from gnomad_qc.v3.resources.sample_qc import relatedness
 from gnomad_qc.v4.resources.annotations import hgdp_tgp_updated_callstats
 from gnomad_qc.v4.resources.sample_qc import (
     hgdp_recomputed_freemix,
@@ -35,6 +37,7 @@ from gnomad_qc.v4.resources.sample_qc import (
     hgdp_tgp_pop_outliers,
     hgdp_tgp_populations_updated,
     hgdp_tgp_related_samples_to_drop,
+    hgdp_tgp_related_to_nonsubset,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -106,6 +109,67 @@ def replace_oth_with_remaining(ht: hl.Table) -> hl.Table:
     return ht
 
 
+def get_hgdp_tgp_related_to_nonsubset(
+    v3_meta_ht: hl.Table, rel_ht: hl.Table
+) -> hl.Table:
+    """
+    Get the samples in the HGDP + 1KG subset that were related to samples outside the subset in v3 release and were not included in the v3 release.
+
+    :param v3_meta_ht: Table with the v3.1 release metadata
+    :param rel_ht: Table with the v3.1 release relatedness, here we use the
+       results from pc_relate of the full dataset.
+    :return: Table with the samples in the HGDP + 1KG subset that are related
+       to samples outside the subset in v3 release.
+    """
+    v3_meta_ht = v3_meta_ht.select(
+        hgdp_tgp=v3_meta_ht.subsets.tgp | v3_meta_ht.subsets.hgdp,
+        release=v3_meta_ht.release,
+    ).select_globals()
+
+    # Samples that are either in the HGDP + 1KG subset or in the v3 release.
+    v3_meta_release_ht = v3_meta_ht.filter(v3_meta_ht.release | v3_meta_ht.hgdp_tgp)
+
+    rel_ht = rel_ht.annotate(
+        **{
+            f"{x}_meta": hl.struct(
+                v3_release=hl.coalesce(v3_meta_release_ht[rel_ht[x].s].release, False),
+                hgdp_tgp=hl.coalesce(v3_meta_release_ht[rel_ht[x].s].hgdp_tgp, False),
+            )
+            for x in ["i", "j"]
+        }
+    )
+
+    rel_ht = rel_ht.filter(
+        # Filter to pairs where at least one of the samples was in the v3 release.
+        (rel_ht.i_meta.v3_release | rel_ht.j_meta.v3_release)
+        # Filter to pairs with 2nd degree or closer relatedness.
+        & (rel_ht.relationship != "unrelated")
+        # Filter to pairs where one and only one of the samples is in the HGDP +
+        # 1KG subset.
+        & ((hl.int(rel_ht.i_meta.hgdp_tgp) + hl.int(rel_ht.j_meta.hgdp_tgp)) == 1)
+        # Exclude pairs where the HGDP/1KG sample in the pair is also a v3 release
+        # sample.
+        & ~(rel_ht.i_meta.hgdp_tgp & rel_ht.i_meta.v3_release)
+        & ~(rel_ht.j_meta.hgdp_tgp & rel_ht.j_meta.v3_release)
+    )
+
+    rel_ht = rel_ht.naive_coalesce(1)
+
+    rel_ht = rel_ht.checkpoint(
+        new_temp_file("hgdp_tgp_related_temp", extension="ht"), overwrite=True
+    )
+
+    ht1 = rel_ht.filter(rel_ht.i_meta.hgdp_tgp).key_by().select("i")
+    ht1 = ht1.select(s=ht1.i.s)
+
+    ht2 = rel_ht.filter(rel_ht.j_meta.hgdp_tgp).key_by().select("j")
+    ht2 = ht2.select(s=ht2.j.s)
+
+    ht = ht1.union(ht2)
+    ht = ht.select(s=ht.s.replace("v3.1::", "")).key_by("s").distinct()
+    return ht
+
+
 def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
     """
     Add updated sample QC annotations to the HGDP + 1KG subset.
@@ -116,19 +180,23 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
         implemented in the v4 release HT:
             - `sample_filters.hard_filtered`: to apply the recomputed freemix
               filter for HGDP samples.
-            - `sample_filters.relatedness_inference.related`: to apply the
-              updated relatedness inference implemented by Alicia Martin's group.
             - `sample_filters.pop_outlier`: to apply the updated pop outlier
               filter implemented by Alicia Martin's group.
+            - `sample_filters.relatedness_inference.related`: to apply the
+              updated relatedness inference implemented by Alicia Martin's group.
+            - `sample_filters.relatedness_inference.related_to_nonsubset`:
+              to further filter out samples that are related to samples outside
+              the subset but were not included in the v3 release.
 
     :param ht: Table with the HGDP + 1KG subset metadata from the last release.
     :return: Table with updated sample QC annotations.
     """
     # Load all updated sample QC Tables.
     contamination_ht = hgdp_recomputed_freemix.ht()
-    relatedness_ht = hgdp_tgp_related_samples_to_drop.ht()
     pop_outliers_ht = hgdp_tgp_pop_outliers.ht()
     populations_ht = hgdp_tgp_populations_updated.ht()
+    relatedness_ht = hgdp_tgp_related_samples_to_drop.ht()
+    related_to_nonsubset_ht = hgdp_tgp_related_to_nonsubset.ht()
 
     # TODO: rerun the pc_relate to get the updated relatedness HT,
     #  because Alicia's group didn't checkpoint the results.
@@ -147,16 +215,14 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
     )
     hard_filtered = hl.len(hard_filters) > 0
     # Update annotations impacted by the updated relatedness inference.
-    related = hl.is_defined(relatedness_ht[ht.key])
+    related_subset = hl.is_defined(relatedness_ht[ht.key])
+    # Update the relatedness to nonsubset samples.
+    related_nonsubset = hl.is_defined(related_to_nonsubset_ht[ht.key])
     # Update annotations impacted by the updated HGDP + 1KG metadata.
     outlier = hl.is_defined(pop_outliers_ht[ht.key])
     populations = populations_ht[ht.key]
-    # TODO: Will need to update based on gnomad_sample_filters.release_related decision.
-    gnomad_release = (
-        ~hard_filtered
-        & ~outlier
-        & ~related  # & ~ht.gnomad_sample_filters.release_related
-    )
+
+    gnomad_release = ~hard_filtered & ~outlier & ~related_subset & ~related_nonsubset
 
     sample_annotations_to_update = {
         "bam_metrics": {"freemix": freemix},
@@ -166,7 +232,9 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
         },
         "gnomad_high_quality": ht.gnomad_high_quality & ~hard_filtered,
         "gnomad_release": gnomad_release,
-        "relatedness_inference": {"related": related},
+        "relatedness_inference": {
+            "related": related_subset,
+        },
         "hgdp_tgp_meta": {
             "subcontinental_pca": {"outlier": outlier},
             "population": populations.population,
@@ -181,6 +249,13 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
         sample_annotations_to_update,
         annotation_update_label="sample_annotations_updated",
     )
+    # Add the relatedness to nonsubset samples to the relatedness_inference annotation.
+    updated_ht = updated_ht.annotate(
+        relatedness_inference=updated_ht.relatedness_inference.annotate(
+            related_nonsubset=hl.is_defined(related_to_nonsubset_ht[updated_ht.key])
+        )
+    )
+
     updated_ht = updated_ht.checkpoint(
         new_temp_file("hgdp_tgp_meta_update", extension="ht"), overwrite=True
     )
@@ -189,30 +264,38 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
             n_hard_filtered=hl.agg.count_where(
                 updated_ht.gnomad_sample_filters.hard_filtered
             ),
-            n_related=hl.agg.count_where(updated_ht.relatedness_inference.related),
+            n_related_subset=hl.agg.count_where(
+                updated_ht.relatedness_inference.related
+            ),
+            n_related_nonsubset=hl.agg.count_where(
+                ~updated_ht.relatedness_inference.related
+                & updated_ht.relatedness_inference.related_nonsubset
+            ),
             n_outlier=hl.agg.count_where(
                 updated_ht.hgdp_tgp_meta.subcontinental_pca.outlier
             ),
+            n_release=hl.agg.count_where(updated_ht.gnomad_release),
             n_diff=hl.agg.explode(
                 lambda x: hl.agg.counter(x), updated_ht.sample_annotations_updated
             ),
         )
     )
     logger.info(
-        """%d sample(s) hard filtered
-        %d more sample(s) hard filtered than last release
-        %d sample(s) related
-        %d sample(s) were assigned differently for the relatedness than last release
-        %d sample(s) are pop outliers
-        %d sample(s) were assigned differently as subcontinental outlier than last release
-        %d samples have different population labels than last release""",
+        """%d sample(s) hard filtered (%d more samples compared to v3.1.2 subset release);
+        %d samples are pop outliers (%d samples different compared to v3.1.2 subset release);
+        %d samples have different population labels compared to v3.1.2 subset release;
+        %d samples related within the subset (%d samples different compared to v3.1.2 subset release);
+        %d samples further filtered out due to their relatedness to samples outside the subset;
+        %d samples will be in the v4 release, compared to 3280 in the v3.1.2 release.""",
         updated_counts["n_hard_filtered"],
         updated_counts["n_diff"]["gnomad_sample_filters.hard_filtered"],
-        updated_counts["n_related"],
-        updated_counts["n_diff"]["relatedness_inference.related"],
         updated_counts["n_outlier"],
         updated_counts["n_diff"]["hgdp_tgp_meta.subcontinental_pca.outlier"],
         updated_counts["n_diff"]["hgdp_tgp_meta.population"],
+        updated_counts["n_related_subset"],
+        updated_counts["n_diff"]["relatedness_inference.related"],
+        updated_counts["n_related_nonsubset"],
+        updated_counts["n_release"],
     )
     return updated_ht
 
@@ -255,6 +338,7 @@ def get_filtered_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table, hl.Table]:
     split_pops = hl.literal(["PapuanHighlands", "PapuanSepik", "Han", "NorthernHan"])
     pop_diff_ht = ht.filter(
         split_pops.contains(ht.hgdp_tgp_meta.population)
+        & ht.gnomad_release
         & ~ht.sample_annotations_updated.contains("gnomad_release")
     )
     logger.info("%d samples in the split Papuan & Han set", pop_diff_ht.count())
@@ -543,13 +627,19 @@ def main(args):
     overwrite = args.overwrite
 
     hl.init(
-        log="/update_hgdp_tgp_af.log",
+        log="/create_release_v4_genomes.log",
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
     v4_genome_release_resources = get_v4_genomes_release_resources(
         test=test, overwrite=overwrite
     )
+
+    if args.get_related_to_nonsubset:
+        ht = get_hgdp_tgp_related_to_nonsubset(
+            v3_meta_ht=meta.ht(), rel_ht=relatedness.ht()
+        )
+        ht.write(hgdp_tgp_related_to_nonsubset.path, overwrite=overwrite)
 
     if args.update_annotations:
         res = v4_genome_release_resources.update_annotations
@@ -736,7 +826,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
-
+    parser.add_argument(
+        "--get-related-to-nonsubset",
+        help="Get the relatedness to nonsubset samples.",
+        action="store_true",
+    )
     parser.add_argument(
         "--update-annotations",
         help="Update sample QC annotations.",
