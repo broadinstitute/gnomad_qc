@@ -141,42 +141,6 @@ def get_binned_concordance(model_id: str, truth_sample: str) -> VersionedTableRe
     )
 
 
-def get_rf_annotations(adj: bool = False) -> VersionedTableResource:
-    """
-    Return the VersionedTableResource to the RF-ready annotated Table.
-
-    Annotations that are included in the Table:
-
-        Features for RF:
-            - InbreedingCoeff
-            - variant_type
-            - allele_type
-            - n_alt_alleles
-            - has_star
-            - AS_QD
-            - AS_pab_max
-            - AS_MQRankSum
-            - AS_SOR
-            - AS_ReadPosRankSum
-
-        Training sites (bool):
-            - transmitted_singleton
-            - fail_hard_filters - (ht.QD < 2) | (ht.FS > 60) | (ht.MQ < 30)
-
-    :param bool adj: Whether to load 'adj' or 'raw'
-    :return: Table with RF annotations
-    """
-    return VersionedTableResource(
-        CURRENT_VERSION,
-        {
-            version: TableResource(
-                f"{get_variant_qc_root(version)}/rf/gnomad.exomes.v{version}.rf_annotations.{'adj' if adj else 'raw'}.ht"
-            )
-            for version in VERSIONS
-        },
-    )
-
-
 def rf_run_path(version: str = CURRENT_VERSION) -> str:
     """
     Return the path to the json file containing the RF runs list.
