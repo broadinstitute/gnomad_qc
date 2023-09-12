@@ -342,7 +342,7 @@ def main(args):
         ht = ht.annotate_globals(rf_model_id=model_id)
         ht = ht.checkpoint(res.rf_result_ht.path, overwrite=overwrite)
 
-        ht = ht.annotate(tp=rf_ht[ht.key].tp, fp=rf_ht[ht.key].fp,)
+        ht = ht.annotate(tp=rf_ht[ht.key].tp, fp=rf_ht[ht.key].fp)
         summary_cols = ["tp", "fp", TRAIN_COL, LABEL_COL, PREDICTION_COL]
         ht.group_by(*summary_cols).aggregate(n=hl.agg.count()).show(-1)
 
@@ -433,8 +433,9 @@ if __name__ == "__main__":
 
     training_params = parser.add_argument_group("Training data parameters")
     training_params.add_argument(
-        "--adj", help="Use adj genotypes for transmitted/sibling singletons.",
-        action="store_true"
+        "--adj",
+        help="Use adj genotypes for transmitted/sibling singletons.",
+        action="store_true",
     )
     training_params.add_argument(
         "--transmitted-singletons",
