@@ -1003,7 +1003,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--generate-sibling-stats",
-        help="Calculated sibling variant sharing stats.",
+        help="Calculate sibling variant sharing stats.",
         action="store_true",
     )
 
