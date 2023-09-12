@@ -25,6 +25,7 @@ from gnomad.utils.annotations import (
     faf_expr,
     generate_freq_group_membership_array,
     get_adj_expr,
+    get_split_vds_path,
     merge_freq_arrays,
     merge_histograms,
     pop_max_expr,
@@ -197,6 +198,8 @@ def get_vds_for_freq(
     else:
         test_partitions = None
 
+    test = use_test_dataset or test_gene or test_n_partitions
+
     vds = get_gnomad_v4_vds(
         test=use_test_dataset,
         release_only=True,
@@ -246,6 +249,7 @@ def get_vds_for_freq(
     logger.info("Spltting mutliallelics in VDS...")
     vds = hl.vds.VariantDataset(rmt, vmt)
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
+    vds = vds.checkpoint(get_split_vds_path(test=test), overwrite=True)
 
     return vds
 

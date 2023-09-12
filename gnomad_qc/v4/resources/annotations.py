@@ -413,3 +413,27 @@ def get_vrs(
             for version in VERSIONS
         },
     )
+
+
+def get_split_vds_path(
+    version: str = CURRENT_VERSION,
+    data_type: str = "exomes",
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Get the gnomAD v4 split VDS.
+
+    This is a temporary resource that will be removed once the split VDS is no longer
+    needed. Given the uncertainies around frequency calculation runtimes, we cannot
+    store it in gnomad-tmp but this needs to be deleted once frequency work is complete.
+
+    :param version: Version of annotation path to return.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
+           Default is "exomes".
+    :param test: Whether to use a tmp path for analysis of the test Table instead
+           of the full v4 Table.
+    :return: gnomAD v4 split VDS path.
+    """
+    return (
+        f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.split.vds"
+    )
