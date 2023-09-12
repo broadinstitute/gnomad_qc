@@ -25,7 +25,6 @@ from gnomad.utils.annotations import (
     faf_expr,
     generate_freq_group_membership_array,
     get_adj_expr,
-    get_split_vds_path,
     merge_freq_arrays,
     merge_histograms,
     pop_max_expr,
@@ -43,7 +42,7 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import get_freq
+from gnomad_qc.v4.resources.annotations import get_freq, get_split_vds_path
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds, get_logging_path
 
 logging.basicConfig(
