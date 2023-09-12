@@ -282,6 +282,8 @@ def run_compute_info(
     ht = correct_mt.select_rows(
         **get_as_info_expr(
             correct_mt,
+            # Use global AS_INFO_AGG_FIELDS for sum_agg_fields, int32_sum_agg_fields,
+            # median_agg_fields, and array_sum_agg_fields parameters.
             **AS_INFO_AGG_FIELDS,
             treat_fields_as_allele_specific=True,
         )
