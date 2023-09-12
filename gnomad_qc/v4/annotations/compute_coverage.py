@@ -41,7 +41,9 @@ def main(args):
             check_resource_existence(
                 output_step_resources={
                     "--compute-coverage-ht": [
-                        coverage("exomes").versions[coverage_version].path
+                        release_coverage_path(
+                            public=False, release_version=coverage_version
+                        )
                     ],
                 },
                 overwrite=args.overwrite,
@@ -52,6 +54,9 @@ def main(args):
             ref_ht = vep_context.versions["105"].ht()
             if test:
                 ref_ht = ref_ht._filter_partitions(range(50))
+
+            # Retain only 'locus' annotation from context Table
+            ref_ht = ref_ht.key_by("locus").select().distinct()
 
             # Read in calling intervals.
             interval_ht = calling_intervals(
