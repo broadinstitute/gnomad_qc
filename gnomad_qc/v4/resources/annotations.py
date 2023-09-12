@@ -435,5 +435,5 @@ def get_split_vds_path(
     :return: gnomAD v4 split VDS path.
     """
     return (
-        f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.split.vds"
+        f"{_annotations_root(version, test, data_type)}/temp/gnomad.{data_type}.v{version}.split.vds"
     )
