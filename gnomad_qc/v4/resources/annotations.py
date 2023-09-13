@@ -9,7 +9,6 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v3.resources.basics import get_checkpoint_path
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
 SUBSETS = SUBSETS["v4"]
@@ -293,7 +292,7 @@ def get_freq(
         ht_name += f".{intermediate_subset}"
         if test:
             ht_name += ".test"
-        ht_path = get_checkpoint_path(ht_name, version=CURRENT_VERSION)
+        ht_path = f"{_annotations_root(version, test)}/temp/{ht_name}.ht"
     else:
         if finalized:
             ht_name += ".final"
