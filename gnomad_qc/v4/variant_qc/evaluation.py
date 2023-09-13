@@ -1,5 +1,4 @@
-# noqa: D100
-
+"""Script to create Tables with aggregate variant statistics by variant QC score bins needed for evaluation plots."""
 import argparse
 import logging
 from pprint import pformat
@@ -32,8 +31,9 @@ from gnomad_qc.v3.resources import (
     get_score_bins,
     get_vqsr_filters,
 )
-from gnomad_qc.v3.resources.variant_qc import TRUTH_SAMPLES, get_callset_truth_data
-from gnomad_qc.v4.resources.basics import TRUTH_SAMPLES_S, get_gnomad_v4_vds
+from gnomad_qc.v4.resources.annotations import get_info
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.variant_qc import TRUTH_SAMPLES, get_callset_truth_data
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("variant_qc_evaluation")
@@ -170,6 +170,7 @@ def get_evaluation_resources(
     :return: PipelineResourceCollection containing resources for all steps of the
         variant QC evaluation pipeline.
     """
+    # Initialize variant QC evaluation pipeline resource collection.
     evaluation_pipeline = PipelineResourceCollection(
         pipeline_name="variant_qc_evaluation",
         overwrite=overwrite,
@@ -183,7 +184,7 @@ def get_evaluation_resources(
     extract_truth_samples = PipelineStepResourceCollection(
         "--extract-truth-samples",
         output_resources={
-            f"{s}_mt": get_callset_truth_data(s) for s in TRUTH_SAMPLES_S
+            f"{s}_mt": get_callset_truth_data(s, test=test) for s in TRUTH_SAMPLES
         },
     )
     merge_with_truth_data = PipelineStepResourceCollection(
@@ -192,15 +193,15 @@ def get_evaluation_resources(
         add_input_resources={
             "truth data high confidence intervals": {
                 f"{s}_hc_intervals": TRUTH_SAMPLES[s]["hc_intervals"]
-                for s in TRUTH_SAMPLES_S
+                for s in TRUTH_SAMPLES
             },
             "truth data matrix tables": {
-                f"{s}_truth_mt": TRUTH_SAMPLES[s]["truth_mt"] for s in TRUTH_SAMPLES_S
+                f"{s}_truth_mt": TRUTH_SAMPLES[s]["truth_mt"] for s in TRUTH_SAMPLES
             },
         },
         output_resources={
             f"{s}_ht": get_callset_truth_data(s, mt=False, test=test)
-            for s in TRUTH_SAMPLES_S
+            for s in TRUTH_SAMPLES
         },
     )
 
@@ -215,7 +216,8 @@ def get_evaluation_resources(
     return evaluation_pipeline
 
 
-def main(args):  # noqa: D103
+def main(args):
+    """Script to create Tables with aggregate variant statistics by variant QC score bins needed for evaluation plots."""
     hl.init(
         default_reference="GRCh38",
         log="/variant_qc_evaluation.log",
@@ -229,6 +231,7 @@ def main(args):  # noqa: D103
         test=test,
         overwrite=overwrite,
     )
+    info_ht = evaluation_resources.info_ht.ht()
 
     if args.create_bin_ht:
         create_bin_ht(args.model_id, args.n_bins, args.hgdp_tgp_subset).write(
@@ -269,37 +272,41 @@ def main(args):  # noqa: D103
         logger.info(f"Extracting truth samples from VDS...")
         res = evaluation_resources.extract_truth_samples
         res.check_resource_existence()
-        vds = get_gnomad_v4_vds(controls_only=True, split=True)
+        vds = get_gnomad_v4_vds(
+            controls_only=True, split=True, filter_partitions=range(2) if test else None
+        )
         # Checkpoint to prevent needing to go through the large VDS multiple times.
         vds = vds.checkpoint(new_temp_file("truth_samples", "vds"), overwrite=True)
 
-        for s in TRUTH_SAMPLES_S:
+        for ts in TRUTH_SAMPLES:
+            s = TRUTH_SAMPLES[ts]["s"]
             ts_mt = vds.variant_data
             ts_mt = ts_mt.filter_cols(ts_mt.s == s)
             # Filter to variants in truth data.
             ts_mt = ts_mt.filter_rows(hl.agg.any(ts_mt.GT.is_non_ref()))
-            ts_mt.naive_coalesce(args.n_partitions)
-            ts_mt.write(getattr(res, f"{s}_mt").path, overwrite=overwrite)
+            ts_mt.naive_coalesce(args.truth_sample_mt_n_partitions)
+            ts_mt.write(getattr(res, f"{ts}_mt").path, overwrite=overwrite)
 
     if args.merge_with_truth_data:
         res = evaluation_resources.merge_with_truth_data
         res.check_resource_existence()
-        for s in TRUTH_SAMPLES_S:
+        for ts in TRUTH_SAMPLES:
+            s = TRUTH_SAMPLES[ts]["s"]
             logger.info(
                 "Creating a merged table with callset truth sample and truth data for"
-                f" {s}..."
+                f" {ts}..."
             )
             # Remove low quality sites.
-            mt = getattr(res, f"{s}_mt").mt()
+            mt = getattr(res, f"{ts}_mt").mt()
             mt = mt.filter_rows(~info_ht[mt.row_key].AS_lowqual)
 
             # Load truth data.
-            truth_mt = getattr(res, f"{s}_truth_mt").mt()
-            truth_hc_intervals = getattr(res, f"{s}_hc_intervals").ht()
+            truth_mt = getattr(res, f"{ts}_truth_mt").mt()
+            truth_hc_intervals = getattr(res, f"{ts}_hc_intervals").ht()
             truth_mt = truth_mt.key_cols_by(s=s)
 
             ht = create_truth_sample_ht(mt, truth_mt, truth_hc_intervals)
-            ht.write(getattr(res, f"{s}_ht").path, overwrite=overwrite)
+            ht.write(getattr(res, f"{ts}_ht").path, overwrite=overwrite)
 
     if args.bin_truth_sample_concordance:
         for truth_sample in TRUTH_SAMPLES:
@@ -386,19 +393,16 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--n_bins",
-        help="Number of bins for the binned file (default: 100).",
-        default=100,
-        type=int,
-    )
-    parser.add_argument(
         "--extract-truth-samples",
         help="Extract truth samples from callset MatrixTable.",
         action="store_true",
     )
     parser.add_argument(
-        "--n-partitions",
-        help="Desired number of partitions for output Table. Default is 5000.",
+        "--truth-sample-mt-n-partitions",
+        help=(
+            "Desired number of partitions for th truth sample MatrixTable. Default is "
+            "5000."
+        ),
         default=5000,
         type=int,
     )
