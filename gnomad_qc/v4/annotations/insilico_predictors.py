@@ -89,7 +89,7 @@ def create_cadd_grch38_ht() -> hl.Table:
     return ht
 
 
-def create_pangolin_grch38_ht(vcf_path: str) -> hl.Table:
+def create_pangolin_grch38_ht() -> hl.Table:
     """
     Create a Hail Table with Pangolin score for splicing for GRCh38.
 
@@ -99,16 +99,27 @@ def create_pangolin_grch38_ht(vcf_path: str) -> hl.Table:
      Genome Biol 23, 103 (2022). https://doi.org/10.1186/s13059-022-02664-4
 
     There's no precomputed for all variants, the scores were generated for
-    gnomAD v3 variants in gene body only.
+    gnomAD v4 genomes (=v3 genomes) and v4 exomes variants in gene body only.
 
-    :param vcf_path: path to the VCF files with Pangolin scores for splicing.
     :return: Hail Table with Pangolin score for splicing for GRCh38.
     """
-    vcf_path = (
+    v4_genomes = (
         "gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.pangolin.vcf.bgz/*.bgz"
     )
-    ht = hl.import_vcf(vcf_path, min_partitions=1000, reference_genome="GRCh38").rows()
-    logger.info("Number of rows in original Pangolin Hail Table: %s", ht.count())
+    v4_exomes = (
+        "gs://gnomad-insilico/pangolin/gnomad.v4.0.exomes.pangolin.vcf.bgz/*.bgz"
+    )
+
+    ht_g = hl.import_vcf(
+        v4_genomes, min_partitions=1000, reference_genome="GRCh38"
+    ).rows()
+    ht_e = hl.import_vcf(
+        v4_exomes, min_partitions=1000, reference_genome="GRCh38"
+    ).rows()
+    logger.info("Number of rows in original Pangolin Hail Table: %s", ht_g.count())
+    logger.info("Number of rows in original Pangolin Hail Table: %s", ht_e.count())
+
+    ht = ht_g.union(ht_e)
 
     logger.info("Exploding Pangolin scores...")
     # `explode` will eliminate rows with empty array
@@ -116,6 +127,10 @@ def create_pangolin_grch38_ht(vcf_path: str) -> hl.Table:
     ht = ht.explode(ht.pango)
     logger.info("Number of rows in exploded Pangolin Hail Table: %s", ht.count())
 
+    # TODO: simplify this part to get only a maximum score per variant as SpliceAI
+    # TODO: put the splice loss back to negative
+    # The output of Pangolin is a string with the following format:
+    # gene|pos_splice_gain:largest_increase|pos_splice_loss:largest_decrease|
     logger.info("Annotating Pangolin scores...")
     ht = ht.annotate(
         pangolin=hl.struct(
