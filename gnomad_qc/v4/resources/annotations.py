@@ -6,6 +6,7 @@ from gnomad.resources.grch38.gnomad import SUBSETS
 from gnomad.resources.resource_utils import (
     DataException,
     TableResource,
+    VariantDatasetResource,
     VersionedTableResource,
 )
 
@@ -399,11 +400,11 @@ def get_vrs(
     )
 
 
-def get_split_vds_path(
+def get_split_vds(
     version: str = CURRENT_VERSION,
     data_type: str = "exomes",
     test: bool = False,
-) -> VersionedTableResource:
+) -> VariantDatasetResource:
     """
     Get the gnomAD v4 split VDS.
 
@@ -416,8 +417,8 @@ def get_split_vds_path(
            Default is "exomes".
     :param test: Whether to use a tmp path for analysis of the test Table instead
            of the full v4 Table.
-    :return: gnomAD v4 split VDS path.
+    :return: gnomAD v4 VariantDatasetResource.
     """
-    return (
+    return VariantDatasetResource(
         f"{_annotations_root(version, test, data_type)}/temp/gnomad.{data_type}.v{version}.split.vds"
     )
