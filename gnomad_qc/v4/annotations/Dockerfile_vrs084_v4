@@ -26,6 +26,7 @@ RUN apt-get -y update && apt-get install -y --no-install-recommends \
     software-properties-common \
     unzip \
     wget \
+    apt-transport-https \
     zlib1g-dev \
     libpq-dev \
     python-dev\
@@ -34,9 +35,8 @@ RUN apt-get -y update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 # Install Java 8 for hail
-RUN wget -qO - https://adoptopenjdk.jfrog.io/adoptopenjdk/api/gpg/key/public | apt-key add - \
-    && add-apt-repository -y https://adoptopenjdk.jfrog.io/adoptopenjdk/deb/ \
-    && apt-get update && apt-get install -y adoptopenjdk-8-hotspot
+RUN mkdir -p /etc/apt/keyrings
+RUN wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | tee /etc/apt/keyrings/adoptium.asc && echo "deb [signed-by=/etc/apt/keyrings/adoptium.asc] https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" | tee /etc/apt/sources.list.d/adoptium.list && apt-get update && apt install -y --no-install-recommends temurin-8-jdk
 
 RUN mkdir tools
 WORKDIR /tools
@@ -79,9 +79,10 @@ RUN python3 -m pip install --upgrade pip
 # Including packages needed for VRS annotation functionality
 # Also include version for ga4gh.vrs-python to be most recent and supporting their new variant schema
 # Please update the constant VRS_VERSION in vrs_annotation_batch.py accordingly when GA4GH_VRS_VERSION is changed
-ENV HAIL_VERSION="0.2.113"
+ENV HAIL_VERSION="0.2.121"
 ENV GA4GH_VRS_VERSION="0.8.4"
 RUN python3 --version
+RUN python3 -m pip install --ignore-installed PyYAML
 RUN python3 -m pip install \
     wheel \
     pypandoc \
