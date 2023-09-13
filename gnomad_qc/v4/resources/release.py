@@ -22,6 +22,29 @@ logger = logging.getLogger("release_resources")
 logger.setLevel(logging.INFO)
 
 
+def _release_root(
+    version: str = CURRENT_RELEASE,
+    test: bool = False,
+    data_type: str = "exomes",
+    extension: str = "ht",
+) -> str:
+    """
+    Get root path to the release files.
+
+    :param version: Version of release path to return.
+    :param test: Whether to use a tmp path for testing.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
+        Default is "exomes".
+    :param extension: File extension of release file. Default is "ht".
+    :return: Root path of the release files.
+    """
+    return (
+        f"gs://gnomad-tmp/gnomad_v{version}_testing/release/{extension}/{data_type}"
+        if test
+        else f"gs://gnomad/release/{version}/{extension}/{data_type}"
+    )
+
+
 def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
     """
     Return path to file containing ANNOTATIONS_HISTS dictionary.
@@ -141,6 +164,7 @@ def release_coverage_path(
     data_type: str = "exomes",
     release_version: str = CURRENT_RELEASE,
     public: bool = True,
+    test: bool = False,
 ) -> str:
     """
     Fetch filepath for coverage release Table.
@@ -149,9 +173,12 @@ def release_coverage_path(
     :param release_version: Release version.
     :param public: Determines whether release coverage Table is read from public or
         private bucket. Default is public.
+    :param test: Whether to use a tmp path for testing. Default is False.
     :return: File path for desired coverage Hail Table.
     """
     if public:
+        if test:
+            raise ValueError("Cannot use test=True with public=True!")
         try:
             cov = coverage(data_type)
             if release_version in cov.versions:
@@ -171,11 +198,31 @@ def release_coverage_path(
         else:
             return path
     else:
-        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.coverage.ht"
+        return (
+            f"{_release_root(release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.coverage.ht"
+        )
+
+
+def coverage_tsv_path(
+    data_type: str = "exomes",
+    release_version: str = CURRENT_COVERAGE_RELEASE["exomes"],
+    test: bool = False,
+) -> str:
+    """
+    Fetch path to coverage TSV file.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :param release_version: Release version.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: Coverage TSV path.
+    """
+    return (
+        f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.coverage.tsv.bgz"
+    )
 
 
 def release_coverage(
-    data_type: str = "exomes", public: bool = False
+    data_type: str = "exomes", public: bool = False, test: bool = False
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for coverage release Table.
@@ -183,6 +230,7 @@ def release_coverage(
     :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
     :param public: Determines whether release coverage Table is read from public or
         private bucket. Default is private.
+    :param test: Whether to use a tmp path for testing. Default is False.
     :return: Coverage release Table.
     """
     return VersionedTableResource(
@@ -190,7 +238,10 @@ def release_coverage(
         versions={
             release: TableResource(
                 path=release_coverage_path(
-                    data_type=data_type, release_version=release, public=public
+                    data_type=data_type,
+                    release_version=release,
+                    public=public,
+                    test=test,
                 )
             )
             for release in COVERAGE_RELEASES[data_type]
