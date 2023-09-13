@@ -451,5 +451,5 @@ def get_split_vds(
     :return: gnomAD v4 VariantDatasetResource.
     """
     return VariantDatasetResource(
-        f"{_annotations_root(version, test, data_type)}/temp/gnomad.{data_type}.v{version}.split.vds"
+        f"{_annotations_root(version, test, data_type)}/temp/gnomad.{data_type}.v{version}.split_multi.vds"
     )
