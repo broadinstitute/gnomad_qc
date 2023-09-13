@@ -6,10 +6,10 @@ from gnomad.resources.grch38.gnomad import SUBSETS
 from gnomad.resources.resource_utils import (
     DataException,
     TableResource,
+    VariantDatasetResource,
     VersionedTableResource,
 )
 
-from gnomad_qc.v3.resources.basics import get_checkpoint_path
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
 SUBSETS = SUBSETS["v4"]
@@ -302,7 +302,7 @@ def get_freq(
         ht_name += f".{intermediate_subset}"
         if test:
             ht_name += ".test"
-        ht_path = get_checkpoint_path(ht_name, version=CURRENT_VERSION)
+        ht_path = f"{_annotations_root(version, test)}/temp/{ht_name}.ht"
     else:
         if finalized:
             ht_name += ".final"
@@ -406,4 +406,28 @@ def get_vrs(
             )
             for version in VERSIONS
         },
+    )
+
+
+def get_split_vds(
+    version: str = CURRENT_VERSION,
+    data_type: str = "exomes",
+    test: bool = False,
+) -> VariantDatasetResource:
+    """
+    Get the gnomAD v4 split VDS.
+
+    This is a temporary resource that will be removed once the split VDS is no longer
+    needed. Given the uncertainies around frequency calculation runtimes, we cannot
+    store it in gnomad-tmp but this needs to be deleted once frequency work is complete.
+
+    :param version: Version of annotation path to return.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
+           Default is "exomes".
+    :param test: Whether to use a tmp path for analysis of the test Table instead
+           of the full v4 Table.
+    :return: gnomAD v4 VariantDatasetResource.
+    """
+    return VariantDatasetResource(
+        f"{_annotations_root(version, test, data_type)}/temp/gnomad.{data_type}.v{version}.split.vds"
     )
