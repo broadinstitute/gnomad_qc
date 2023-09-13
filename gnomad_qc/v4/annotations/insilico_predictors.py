@@ -98,111 +98,102 @@ def create_pangolin_grch38_ht() -> hl.Table:
     Zeng, T., Li, Y.I. Predicting RNA splicing from DNA sequence using Pangolin.
      Genome Biol 23, 103 (2022). https://doi.org/10.1186/s13059-022-02664-4
 
-    There's no precomputed for all variants, the scores were generated for
-    gnomAD v4 genomes (=v3 genomes) and v4 exomes variants in gene body only.
+    There's no precomputed score for all possible variants, the scores were
+    generated for gnomAD v4 genomes (=v3 genomes) and v4 exomes variants in
+    gene body only.
 
     :return: Hail Table with Pangolin score for splicing for GRCh38.
     """
     v4_genomes = (
         "gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.pangolin.vcf.bgz/*.bgz"
     )
-    v4_exomes = (
-        "gs://gnomad-insilico/pangolin/gnomad.v4.0.exomes.pangolin.vcf.bgz/*.bgz"
-    )
+    v4_exomes = "gs://gnomad-insilico/pangolin/gnomad.v4.0.exomes.pangolin.vcf.bgz/*.gz"
 
-    ht_g = hl.import_vcf(
-        v4_genomes, min_partitions=1000, reference_genome="GRCh38"
-    ).rows()
-    ht_e = hl.import_vcf(
-        v4_exomes, min_partitions=1000, reference_genome="GRCh38"
-    ).rows()
-    logger.info("Number of rows in original Pangolin Hail Table: %s", ht_g.count())
-    logger.info("Number of rows in original Pangolin Hail Table: %s", ht_e.count())
+    def import_pangolin_vcf(vcf_path: str) -> hl.Table:
+        """
+        Import Pangolin VCF to Hail Table.
+
+        :param vcf_path: Path to Pangolin VCF.
+        :return: Hail Table with Pangolin scores.
+        """
+        ht = hl.import_vcf(
+            vcf_path,
+            min_partitions=1000,
+            force_bgz=True,
+            reference_genome="GRCh38",
+            skip_invalid_loci=True,
+        ).rows()
+        return ht
+
+    ht_g = import_pangolin_vcf(v4_genomes)
+    ht_e = import_pangolin_vcf(v4_exomes)
+
+    logger.info(
+        "Number of rows in genomes Pangolin HT: %s; "
+        "Number of rows in raw exomes Pangolin HT: %s. ",
+        ht_g.count(),
+        ht_e.count(),
+    )
 
     ht = ht_g.union(ht_e)
 
     logger.info("Exploding Pangolin scores...")
     # `explode` will eliminate rows with empty array
+    # The VCF INFO of Pangolin is a string with the following format:
+    # gene1|pos_splice_gain:largest_increase|pos_splice_loss:largest_decrease|gene2...
+    # for example: Pangolin=ENSG00000121005.9|-86:0.25|38:-0.49|Warnings:||ENSG00000254238.1|-40:0.01|30:-0.17|Warnings:
+
     ht = ht.annotate(pango=ht.info.Pangolin[0].split(delim="\|\|"))
     ht = ht.explode(ht.pango)
     logger.info("Number of rows in exploded Pangolin Hail Table: %s", ht.count())
 
-    # TODO: simplify this part to get only a maximum score per variant as SpliceAI
-    # TODO: put the splice loss back to negative
-    # The output of Pangolin is a string with the following format:
-    # gene|pos_splice_gain:largest_increase|pos_splice_loss:largest_decrease|
     logger.info("Annotating Pangolin scores...")
     ht = ht.annotate(
         pangolin=hl.struct(
-            gene=ht.pango.split(delim=":|\\|")[0],
-            positions=(
-                hl.empty_array(hl.tint32).append(
-                    hl.int(ht.pango.split(delim=":|\\|")[1])
-                )
-            ).append(hl.int(ht.pango.split(delim=":|\\|")[3])),
             delta_scores=(
                 hl.empty_array(hl.tfloat64).append(
                     hl.float(ht.pango.split(delim=":|\\|")[2])
                 )
-            ).append(hl.abs(hl.float(ht.pango.split(delim=":|\\|")[4]))),
+            ).append(hl.float(ht.pango.split(delim=":|\\|")[4])),
         )
     )
 
-    logger.info(
-        "Getting the max Pangolin score across consequences for each variant  per"
-        " gene..."
-    )
-    consequences = hl.literal(["splice_gain", "splice_loss"])
+    # Using > instead of >= in case where delta score of splice gain and splice
+    # loss are the same but different sign, we will keep the positive score of
+    # splice gain
     ht = ht.annotate(
-        pangolin=ht.pangolin.annotate(ds_max=hl.max(ht.pangolin.delta_scores))
-    )
-    ht = ht.annotate(
-        pangolin=ht.pangolin.annotate(
-            consequence_max=hl.if_else(
-                ht.pangolin.ds_max > 0,
-                consequences[ht.pangolin.delta_scores.index(ht.pangolin.ds_max)],
-                "no_consequence",
-            ),
-            position_max=hl.if_else(
-                ht.pangolin.ds_max > 0,
-                ht.pangolin.positions[
-                    ht.pangolin.delta_scores.index(ht.pangolin.ds_max)
-                ],
-                hl.missing(hl.tint32),
-            ),
+        largest_ds_gene=hl.if_else(
+            hl.abs(hl.min(ht.pangolin.delta_scores))
+            > hl.abs(hl.max(ht.pangolin.delta_scores)),
+            hl.min(ht.pangolin.delta_scores),
+            hl.max(ht.pangolin.delta_scores),
         )
     )
-    ht = ht.checkpoint("gs://gnomad-tmp-4day/pangolin.ht", overwrite=True)
-
-    logger.info("Getting the max Pangolin score for each variant across genes...")
-    ht2 = ht.group_by(*ht.key).aggregate(
-        staging=hl.agg.take(
-            hl.struct(
-                ds_max=ht.pangolin.ds_max,
-                position_max=ht.pangolin.position_max,
-                consequence_max=ht.pangolin.consequence_max,
-                gene=ht.pangolin.gene,
-            ),
-            1,
-            ordering=-ht.pangolin.ds_max,
-        )
-    )
+    # TODO: tried hl.zip to make it one-step, but it's not working
+    ht = ht.select(ht.largest_ds_gene)
+    ht = ht.collect_by_key()
     logger.info(
-        "Number of rows in Pangolin Hail Table after aggregation: %s", ht2.count()
+        "Number of rows in Pangolin Hail Table after collect_by_key: %s", ht.count()
     )
-
-    # `aggregate` put everything in an array, we need to extract the struct from the array.
-    ht2 = ht2.annotate(
+    ht = ht.select(
         pangolin=hl.struct(
-            ds_max=hl.float32(ht2.staging.ds_max[0]),
-            position_max=hl.int32(ht2.staging.position_max[0]),
-            consequence_max=hl.str(ht2.staging.consequence_max[0]),
-            gene=hl.str(ht2.staging.gene[0]),
+            largest_ds=hl.if_else(
+                hl.abs(hl.min(ht.values.largest_ds_gene))
+                > hl.abs(hl.max(ht.values.largest_ds_gene)),
+                hl.min(ht.values.largest_ds_gene),
+                hl.max(ht.values.largest_ds_gene),
+            )
         )
     )
-
-    ht2 = ht2.select("pangolin")
-    return ht2
+    logger.info(
+        "Number of variants indicating splice gain: %s;"
+        "Number of variants indicating splice loss: %s; "
+        "Number of variants with no splicing consequence: %s",
+        ht.filter(ht.pangolin.largest_ds > 0).count(),
+        ht.filter(ht.pangolin.largest_ds < 0).count(),
+        ht.filter(ht.pangolin.largest_ds == 0).count(),
+    )
+    return ht
 
 
 def main(args):
