@@ -358,7 +358,12 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--model_id",
+        "--test",
+        help="If the model being evaluated is a test model.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--model-id",
         help="Model ID.",
         required=False,
     )
