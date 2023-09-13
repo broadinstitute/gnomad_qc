@@ -124,8 +124,13 @@ def get_freq_resources(
         pipeline_name="frequency",
         overwrite=overwrite,
     )
+    write_split_vds = PipelineStepResourceCollection(
+        "--write-split-vds",
+        output_resources={"split_vds": get_split_vds_path(test=test)},
+    )
     run_freq_and_dense_annotations = PipelineStepResourceCollection(
         "--run-freq-and-dense-annotations",
+        pipeline_input_steps=[write_split_vds],
         output_resources={
             f"{s}_freq_ht": get_freq(
                 test=test,
@@ -165,6 +170,7 @@ def get_freq_resources(
     )
     freq_pipeline.add_steps(
         {
+            "write_split_vds": write_split_vds,
             "run_freq_and_dense_annotations": run_freq_and_dense_annotations,
             "combine_freq": combine_freq,
             "correct_for_high_ab_hets": correct_for_high_ab_hets,
@@ -179,6 +185,7 @@ def get_vds_for_freq(
     test_gene: hl.bool = False,
     test_n_partitions: Optional[hl.int] = None,
     chrom: Optional[hl.int] = None,
+    overwrite: bool = False,
 ) -> hl.vds.VariantDataset:
     """
     Prepare VDS for frequency calculation by filtering to release samples and only adding necessary annotations.
@@ -248,9 +255,6 @@ def get_vds_for_freq(
     logger.info("Spltting mutliallelics in VDS...")
     vds = hl.vds.VariantDataset(rmt, vmt)
     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
-
-    logger.info("Checkpointing split VDS...")
-    vds = vds.checkpoint(get_split_vds_path(test=test), overwrite=True)
 
     return vds
 
@@ -916,10 +920,27 @@ def main(args):
     resources = get_freq_resources(overwrite, test, chrom)
 
     try:
+        if args.write_split_vds:
+            logger.info(
+                "Getting multi-allelic split VDS with adj and _het_AD entry"
+                " annotations..."
+            )
+            res = resources.write_split_vds
+            res.check_resource_existence()
+
+            vds = get_vds_for_freq(
+                use_test_dataset, test_gene, test_n_partitions, chrom
+            )
+            vds.write(res.split_vds.path, overwrite=overwrite)
+
         if args.run_freq_and_dense_annotations:
             logger.info("Running dense dependent steps...")
             res = resources.run_freq_and_dense_annotations
             res.check_resource_existence()
+
+            vds = hl.vds.read_vds(get_split_vds_path(test=test))
+            meta_ht = vds.variant_data.cols()
+            ds_ht = get_downsampling_ht(vds.variant_data)
 
             logger.info(
                 "Getting multi-allelic split VDS with adj and _het_AD entry"
