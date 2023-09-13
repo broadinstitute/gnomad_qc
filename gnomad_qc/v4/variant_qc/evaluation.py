@@ -64,8 +64,9 @@ def create_bin_ht(
         )
     else:
         ht = ht.annotate(
+            **rf_annotations_ht[ht.key],
             score=ht.rf_probability["TP"],
-            info=info_ht[ht.key].info,
+            # info=info_ht[ht.key].info,
             positive_train_site=ht.tp,
             negative_train_site=ht.fp,
         )
@@ -126,7 +127,7 @@ def create_aggregated_bin_ht(ht: hl.Table, trio_stats_ht: hl.Table) -> hl.Table:
         x: hl.agg.filter(
             hl.is_defined(ht[x]),
             hl.agg.counter(
-                hl.cond(hl.is_snp(ht.alleles[0], ht.alleles[1]), "snv", "indel")
+                hl.if_else(hl.is_snp(ht.alleles[0], ht.alleles[1]), "snv", "indel")
             ),
         )
         for x in ht.row
@@ -289,6 +290,8 @@ def main(args):  # noqa: D103
         ht.write(res.bin_ht.path, overwrite=overwrite)
 
     if args.score_bin_validity_check:
+        res = evaluation_resources.validity_check
+        res.check_resource_existence()
         logger.info("Running validity checks on score bins Table...")
         score_bin_validity_check(res.bin_ht.ht())
 
