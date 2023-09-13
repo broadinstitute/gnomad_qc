@@ -12,7 +12,7 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.v4.resources.basics import calling_intervals, get_gnomad_v4_vds
-from gnomad_qc.v4.resources.release import coverage_tsv_path, release_coverage
+from gnomad_qc.v4.resources.release import release_coverage, release_coverage_tsv_path
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("coverage")
@@ -60,7 +60,9 @@ def get_coverage_resources(
     )
     export_coverage_tsv = PipelineStepResourceCollection(
         "--export-coverage-tsv",
-        output_resources={"coverage_tsv": coverage_tsv_path("exomes", test=test)},
+        output_resources={
+            "coverage_tsv": release_coverage_tsv_path("exomes", test=test)
+        },
         pipeline_input_steps=[compute_coverage_ht],
     )
 

@@ -203,7 +203,7 @@ def release_coverage_path(
         )
 
 
-def coverage_tsv_path(
+def release_coverage_tsv_path(
     data_type: str = "exomes",
     release_version: str = CURRENT_COVERAGE_RELEASE["exomes"],
     test: bool = False,
