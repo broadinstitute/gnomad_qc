@@ -49,6 +49,7 @@ FEATURES = [
 ]
 LABEL_COL = "rf_label"
 PREDICTION_COL = "rf_prediction"
+PROBABILITY_COL = "rf_probability"
 TRAIN_COL = "rf_train"
 
 
@@ -343,7 +344,7 @@ def main(args):
 
         logger.info("Finished applying RF model...")
         summary_cols = ["tp", "fp", TRAIN_COL, LABEL_COL, PREDICTION_COL]
-        ht = ht.select(*summary_cols)
+        ht = ht.select(*summary_cols, PROBABILITY_COL)
         ht = ht.annotate_globals(rf_model_id=model_id)
         ht = ht.checkpoint(res.rf_result_ht.path, overwrite=overwrite)
         ht.group_by(*summary_cols).aggregate(n=hl.agg.count()).show(-1)
