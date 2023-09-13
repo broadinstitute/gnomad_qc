@@ -10,6 +10,7 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
+from gnomad_qc.v3.resources.basics import get_checkpoint_path
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
 SUBSETS = SUBSETS["v4"]
