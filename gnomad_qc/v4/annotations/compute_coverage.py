@@ -1,24 +1,80 @@
 """Script to compute coverage statistics on gnomAD v4 exomes."""
 import argparse
 import logging
-from typing import List, Union
+from typing import Optional
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import (
-    CURRENT_EXOME_COVERAGE_RELEASE,
-    coverage,
-    coverage_tsv_path,
-)
 from gnomad.resources.grch38.reference_data import vep_context
 from gnomad.utils.sparse_mt import compute_coverage_stats
 
-from gnomad_qc.resource_utils import check_resource_existence
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.v4.resources.basics import calling_intervals, get_gnomad_v4_vds
-from gnomad_qc.v4.resources.release import release_coverage_path
+from gnomad_qc.v4.resources.release import release_coverage, release_coverage_tsv_path
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("coverage")
 logger.setLevel(logging.INFO)
+
+
+def get_coverage_resources(
+    test: bool,
+    overwrite: bool,
+    calling_interval_name: Optional[str] = None,
+    calling_interval_padding: Optional[int] = None,
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the coverage pipeline.
+
+    :param test: Whether to gather all resources for testing.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :param calling_interval_name: Name of calling intervals to use.
+    :param calling_interval_padding: Padding to use for calling intervals.
+    :return: PipelineResourceCollection containing resources for all steps of the
+        coverage pipeline.
+    """
+    # Initialize coverage pipeline resource collection.
+    coverage_pipeline = PipelineResourceCollection(
+        pipeline_name="coverage",
+        overwrite=overwrite,
+    )
+    # Create resource collection for each step of the coverage pipeline.
+    if calling_interval_name and calling_interval_padding:
+        coverage_input_resources = {
+            "interval list": {
+                "interval_ht": calling_intervals(
+                    interval_name=calling_interval_name,
+                    calling_interval_padding=calling_interval_padding,
+                )
+            },
+        }
+    else:
+        coverage_input_resources = {}
+
+    compute_coverage_ht = PipelineStepResourceCollection(
+        "--compute-coverage-ht",
+        input_resources=coverage_input_resources,
+        output_resources={"coverage_ht": release_coverage(public=False, test=test)},
+    )
+    export_coverage_tsv = PipelineStepResourceCollection(
+        "--export-coverage-tsv",
+        output_resources={
+            "coverage_tsv": release_coverage_tsv_path("exomes", test=test)
+        },
+        pipeline_input_steps=[compute_coverage_ht],
+    )
+
+    # Add all steps to the coverage pipeline resource collection.
+    coverage_pipeline.add_steps(
+        {
+            "compute_coverage_ht": compute_coverage_ht,
+            "export_coverage_tsv": export_coverage_tsv,
+        }
+    )
+
+    return coverage_pipeline
 
 
 def main(args):
@@ -26,30 +82,24 @@ def main(args):
     hl.init(
         log="/coverage.log",
         default_reference="GRCh38",
-        tmp_dir="gs://gnomad-tmp-4day",
+        tmp_dir="gs://gnomad-tmp-30day",
+    )
+
+    test = args.test
+    overwrite = args.overwrite
+
+    coverage_resources = get_coverage_resources(
+        test=test,
+        overwrite=overwrite,
+        calling_interval_name=args.calling_interval_name,
+        calling_interval_padding=args.calling_interval_padding,
     )
 
     try:
-        coverage_version = (
-            args.coverage_version
-            if args.coverage_version
-            else CURRENT_EXOME_COVERAGE_RELEASE
-        )
-        test = args.test
-
         if args.compute_coverage_ht:
-            check_resource_existence(
-                output_step_resources={
-                    "--compute-coverage-ht": [
-                        release_coverage_path(
-                            public=False, release_version=coverage_version
-                        )
-                    ],
-                },
-                overwrite=args.overwrite,
-            )
-
             logger.info("Running compute coverage...")
+            res = coverage_resources.compute_coverage_ht
+            res.check_resource_existence()
             # Read in context Table.
             ref_ht = vep_context.versions["105"].ht()
             if test:
@@ -57,12 +107,6 @@ def main(args):
 
             # Retain only 'locus' annotation from context Table
             ref_ht = ref_ht.key_by("locus").select().distinct()
-
-            # Read in calling intervals.
-            interval_ht = calling_intervals(
-                interval_name=args.calling_interval_name,
-                calling_interval_padding=args.calling_interval_padding,
-            ).ht()
 
             # Read in VDS.
             vds = get_gnomad_v4_vds(
@@ -72,29 +116,22 @@ def main(args):
             )
 
             # Compute coverage stats.
-            coverage_ht = compute_coverage_stats(vds, ref_ht, interval_ht)
+            coverage_ht = compute_coverage_stats(vds, ref_ht, res.interval_ht.ht())
 
             # Checkpoint Table.
             coverage_ht = coverage_ht.checkpoint(
-                "gs://gnomad-tmp/gnomad.genomes_v4.coverage.summary.ht",
-                overwrite=args.overwrite,
+                hl.utils.new_temp_file("coverage", extension="ht"), overwrite=True
             )
 
-            # Write final result if not testing.
-            if not test:
-                coverage_ht = coverage_ht.naive_coalesce(5000)
-
-                coverage_ht.write(
-                    release_coverage_path(
-                        public=False, release_version=coverage_version
-                    ),
-                    overwrite=args.overwrite,
-                )
+            # Naive coalesce and write out final Table.
+            coverage_ht = coverage_ht.naive_coalesce(5000)
+            coverage_ht.write(res.coverage_ht.path, overwrite=overwrite)
 
         if args.export_coverage_tsv:
             logger.info("Exporting coverage tsv...")
-            ht = coverage("exomes").versions[coverage_version].ht()
-            ht.export(coverage_tsv_path("exomes", coverage_version))
+            res = coverage_resources.export_coverage_tsv
+            res.check_resource_existence()
+            res.coverage_ht.ht().export(res.coverage_tsv)
 
     finally:
         hl.copy_log(f"gs://gnomad-tmp-4day/coverage/compute_coverage.log")
@@ -115,14 +152,6 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--compute-coverage-ht", help="Compute the coverage HT.", action="store_true"
-    )
-    parser.add_argument(
-        "--coverage-version",
-        type=str,
-        help=(
-            "Specifies coverage version to read/write. If not set,"
-            " gnomad.resources.grch38.gnomad.CURRENT_EXOME_COVERAGE_RELEASE is used."
-        ),
     )
     parser.add_argument(
         "--calling-interval-name",
