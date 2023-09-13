@@ -42,7 +42,7 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import get_freq, get_split_vds_path
+from gnomad_qc.v4.resources.annotations import get_freq, get_split_vds
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds, get_logging_path
 
 logging.basicConfig(
@@ -126,7 +126,7 @@ def get_freq_resources(
     )
     write_split_vds = PipelineStepResourceCollection(
         "--write-split-vds",
-        output_resources={"split_vds": get_split_vds_path(test=test)},
+        output_resources={"split_vds": get_split_vds(test=test)},
     )
     run_freq_and_dense_annotations = PipelineStepResourceCollection(
         "--run-freq-and-dense-annotations",
@@ -938,17 +938,7 @@ def main(args):
             res = resources.run_freq_and_dense_annotations
             res.check_resource_existence()
 
-            vds = hl.vds.read_vds(get_split_vds_path(test=test))
-            meta_ht = vds.variant_data.cols()
-            ds_ht = get_downsampling_ht(vds.variant_data)
-
-            logger.info(
-                "Getting multi-allelic split VDS with adj and _het_AD entry"
-                " annotations..."
-            )
-            vds = get_vds_for_freq(
-                use_test_dataset, test_gene, test_n_partitions, chrom
-            )
+            vds = res.split_vds.vds()
             meta_ht = vds.variant_data.cols()
             ds_ht = get_downsampling_ht(vds.variant_data)
 
@@ -994,7 +984,7 @@ def main(args):
                 ALL_FREQ_ROW_FIELDS,
                 FREQ_GLOBAL_FIELDS,
             )
-            freq_ht.write(res.freq_ht.path, overwrite=args.overwrite)
+            freq_ht.write(res.freq_ht.path, overwrite=overwrite)
 
         if args.correct_for_high_ab_hets:
             logger.info(
@@ -1017,7 +1007,7 @@ def main(args):
             ht.describe()
 
             logger.info("Writing corrected frequency Table...")
-            ht.write(res.corrected_freq_ht.path, overwrite=args.overwrite)
+            ht.write(res.corrected_freq_ht.path, overwrite=overwrite)
 
         if args.finalize_freq_ht:
             logger.info("Writing final frequency Table...")
@@ -1025,7 +1015,7 @@ def main(args):
 
             logger.info("Final frequency HT schema...")
             ht.describe()
-            ht.write(res.final_freq_ht.path, overwrite=args.overwrite)
+            ht.write(res.final_freq_ht.path, overwrite=overwrite)
     finally:
         logger.info("Copying log to logging bucket...")
         hl.copy_log(get_logging_path("frequency_data"))
@@ -1063,6 +1053,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
+    )
+    parser.add_argument(
+        "--write-split-vds", help="Write split VDS.", action="store_true"
     )
     parser.add_argument(
         "--run-freq-and-dense-annotations",
