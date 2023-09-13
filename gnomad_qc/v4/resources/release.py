@@ -212,7 +212,7 @@ def coverage_tsv_path(
     Fetch path to coverage TSV file.
 
     :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
-    :param release_version: Release version.
+    :param release_version: Release version. Default is CURRENT_COVERAGE_RELEASE["exomes"].
     :param test: Whether to use a tmp path for testing. Default is False.
     :return: Coverage TSV path.
     """

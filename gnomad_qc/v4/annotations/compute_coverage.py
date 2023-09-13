@@ -43,7 +43,7 @@ def get_coverage_resources(
     # Create resource collection for each step of the coverage pipeline.
     if calling_interval_name and calling_interval_padding:
         coverage_input_resources = {
-            "Interval list": {
+            "interval list": {
                 "interval_ht": calling_intervals(
                     interval_name=calling_interval_name,
                     calling_interval_padding=calling_interval_padding,
@@ -121,7 +121,7 @@ def main(args):
                 hl.utils.new_temp_file("coverage", extension="ht"), overwrite=True
             )
 
-            # Naive coalesce if needed and write out final Table.
+            # Naive coalesce and write out final Table.
             coverage_ht = coverage_ht.naive_coalesce(5000)
             coverage_ht.write(res.coverage_ht.path, overwrite=overwrite)
 
