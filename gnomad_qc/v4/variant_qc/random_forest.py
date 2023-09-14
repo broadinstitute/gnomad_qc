@@ -49,6 +49,7 @@ FEATURES = [
 ]
 LABEL_COL = "rf_label"
 PREDICTION_COL = "rf_prediction"
+PROBABILITY_COL = "rf_probability"
 TRAIN_COL = "rf_train"
 
 
@@ -158,7 +159,9 @@ def train_rf(
         test_intervals=test_intervals,
     )
 
-    return rf_ht, rf_model
+    ht = ht.select("tp", "fp").join(rf_ht, how="left")
+
+    return ht, rf_model
 
 
 def add_model_to_run_list(
@@ -328,22 +331,22 @@ def main(args):
         res.check_resource_existence()
         logger.info(f"Applying RF model {model_id}...")
         rf_ht = res.rf_training_ht.ht()
+        rf_features = hl.eval(rf_ht.features)
         ht = vqc_annotation_ht.annotate(
-            **vqc_annotation_ht[f"{hl.eval(rf_ht.compute_info_method)}_info"]
+            **vqc_annotation_ht[f"{hl.eval(rf_ht.compute_info_method)}_info"],
         )
+        ht = rf_ht.annotate(**ht[rf_ht.key].select(*rf_features))
         ht = apply_rf_model(
             ht,
             rf_model=load_model(res.rf_model_path),
-            features=hl.eval(rf_ht.features),
-            label=LABEL_COL,
+            features=rf_features,
         )
 
         logger.info("Finished applying RF model...")
+        summary_cols = ["tp", "fp", TRAIN_COL, LABEL_COL, PREDICTION_COL]
+        ht = ht.select(*summary_cols, PROBABILITY_COL)
         ht = ht.annotate_globals(rf_model_id=model_id)
         ht = ht.checkpoint(res.rf_result_ht.path, overwrite=overwrite)
-
-        ht = ht.annotate(tp=rf_ht[ht.key].tp, fp=rf_ht[ht.key].fp)
-        summary_cols = ["tp", "fp", TRAIN_COL, LABEL_COL, PREDICTION_COL]
         ht.group_by(*summary_cols).aggregate(n=hl.agg.count()).show(-1)
 
 
