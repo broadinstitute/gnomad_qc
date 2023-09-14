@@ -170,7 +170,7 @@ def create_revel_grch38_ht() -> hl.Table:
     )
     mane_ht = ht.filter(hl.is_defined(ht.revel_mane), keep=True)
     max_revel_mane = mane_ht.group_by(*mane_ht.key).aggregate(
-        max_revel=hl.agg.max(mane_ht.revel_mane),
+        revel_max=hl.agg.max(mane_ht.revel_mane),
     )
 
     logger.info("Taking max REVEL scores for canonical transcripts...")
@@ -178,7 +178,7 @@ def create_revel_grch38_ht() -> hl.Table:
         (~hl.is_defined(ht.revel_mane)) & (hl.is_defined(ht.revel_canonical)), keep=True
     )
     max_revel_canonical = canonical_ht.group_by(*canonical_ht.key).aggregate(
-        max_revel=hl.agg.max(canonical_ht.revel_canonical),
+        revel_max=hl.agg.max(canonical_ht.revel_canonical),
     )
     logger.info(
         "Merge max REVEL scores for MANE Select transcripts and canonical transcripts"
