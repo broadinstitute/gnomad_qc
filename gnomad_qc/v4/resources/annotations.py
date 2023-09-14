@@ -10,8 +10,6 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-
-from gnomad_qc.v3.resources.basics import get_checkpoint_path
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import (
     CURRENT_HGDP_TGP_RELEASE,
@@ -19,7 +17,6 @@ from gnomad_qc.v4.resources.constants import (
     HGDP_TGP_RELEASES,
     VERSIONS,
 )
-
 
 SUBSETS = SUBSETS["v4"]
 
