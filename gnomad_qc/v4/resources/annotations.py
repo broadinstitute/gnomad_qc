@@ -6,8 +6,10 @@ from gnomad.resources.grch38.gnomad import SUBSETS
 from gnomad.resources.resource_utils import (
     DataException,
     TableResource,
+    VariantDatasetResource,
     VersionedTableResource,
 )
+
 
 from gnomad_qc.v3.resources.basics import get_checkpoint_path
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
@@ -17,6 +19,7 @@ from gnomad_qc.v4.resources.constants import (
     HGDP_TGP_RELEASES,
     VERSIONS,
 )
+
 
 SUBSETS = SUBSETS["v4"]
 
@@ -204,17 +207,26 @@ def get_vqsr_filters(
     )
 
 
-def info_vcf_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def info_vcf_path(
+    info_method: str = "AS", version: str = CURRENT_VERSION, test: bool = False
+) -> str:
     """
     Path to sites VCF (input information for running VQSR).
 
+    :param info_method: Method for generating info VCF. Must be one of "AS", "quasi",
+        or "set_long_AS_missing". Default is "AS".
     :param version: Version of annotation path to return.
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the
         full v4 VDS.
     :return: String for the path to the info VCF.
     """
+    if info_method not in ["AS", "quasi", "set_long_AS_missing"]:
+        raise ValueError(
+            f"Invalid info_method: {info_method}. Must be one of 'AS', 'quasi', or "
+            "'long_AS_missing_info'."
+        )
     return (
-        f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.vcf.bgz"
+        f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.{info_method}.vcf.bgz"
     )
 
 
@@ -268,6 +280,28 @@ qual_hist = VersionedTableResource(
 )
 
 
+def get_downsampling(
+    test: bool = False, subset: Optional[str] = None
+) -> VersionedTableResource:
+    """
+    Get the downsampling annotation table.
+
+    :param test: Whether to use a tmp path for tests. Default is False.
+    :param subset: Optional subset to return downsampling Table for. Downsampling for
+        entire dataset will be returned if not specified.
+    :return: Hail Table containing subset or overall dataset downsampling annotations.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.downsampling{f'.{subset}' if subset else ''}.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
 def get_freq(
     version: str = CURRENT_VERSION,
     test: bool = False,
@@ -299,7 +333,7 @@ def get_freq(
         ht_name += f".{intermediate_subset}"
         if test:
             ht_name += ".test"
-        ht_path = get_checkpoint_path(ht_name, version=CURRENT_VERSION)
+        ht_path = f"{_annotations_root(version, test)}/temp/{ht_name}.ht"
     else:
         if finalized:
             ht_name += ".final"
@@ -429,4 +463,28 @@ def hgdp_tgp_updated_callstats(
             )
             for release in HGDP_TGP_RELEASES
         },
+    )
+
+
+def get_split_vds(
+    version: str = CURRENT_VERSION,
+    data_type: str = "exomes",
+    test: bool = False,
+) -> VariantDatasetResource:
+    """
+    Get the gnomAD v4 split VDS.
+
+    This is a temporary resource that will be removed once the split VDS is no longer
+    needed. Given the uncertainies around frequency calculation runtimes, we cannot
+    store it in gnomad-tmp but this needs to be deleted once frequency work is complete.
+
+    :param version: Version of annotation path to return.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
+           Default is "exomes".
+    :param test: Whether to use a tmp path for analysis of the test Table instead
+           of the full v4 Table.
+    :return: gnomAD v4 VariantDatasetResource.
+    """
+    return VariantDatasetResource(
+        f"{_annotations_root(version, test, data_type)}/temp/gnomad.{data_type}.v{version}.split_multi.vds"
     )

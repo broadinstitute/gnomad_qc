@@ -35,14 +35,13 @@ from gnomad.utils.filtering import filter_arrays_by_meta, split_vds_by_strata
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import SORT_ORDER
-from hail.utils.misc import new_temp_file
 
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import get_freq
+from gnomad_qc.v4.resources.annotations import get_downsampling, get_freq, get_split_vds
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds, get_logging_path
 
 logging.basicConfig(
@@ -110,7 +109,11 @@ age_hists, popmax, and faf.
 
 
 def get_freq_resources(
-    overwrite: bool = False, test: Optional[bool] = False, chrom: Optional[str] = None
+    overwrite: bool = False,
+    test: Optional[bool] = False,
+    chrom: Optional[str] = None,
+    ukb: bool = False,
+    non_ukb: bool = False,
 ) -> PipelineResourceCollection:
     """
     Get frequency resources.
@@ -118,24 +121,44 @@ def get_freq_resources(
     :param overwrite: Whether to overwrite existing files.
     :param test: Whether to use test resources.
     :param chrom: Chromosome used in freq calculations.
+    :param ukb: Whether to get frequency resources for UKB subset.
+    :param non_ukb: Whether to get frequency resources for non UKB subset.
     :return: Frequency resources.
     """
+    freq_output_resources = []
+    if ukb:
+        freq_output_resources.append("ukb")
+    if non_ukb:
+        freq_output_resources.append("non_ukb")
     freq_pipeline = PipelineResourceCollection(
         pipeline_name="frequency",
         overwrite=overwrite,
     )
+    write_split_vds_and_downsampling_ht = PipelineStepResourceCollection(
+        "--write-split-vds-and-downsampling-ht",
+        output_resources={
+            "split_vds": get_split_vds(test=test),
+            "ds_ht": get_downsampling(test=test),
+        },
+    )
+    freq_output_resources = {
+        f"{s}_freq_ht": get_freq(
+            test=test,
+            hom_alt_adjusted=False,
+            chrom=chrom,
+            intermediate_subset=s,
+            finalized=False,
+        )
+        for s in freq_output_resources
+    }
+    if non_ukb:
+        freq_output_resources["non_ukb_ds_ht"] = get_downsampling(
+            test=test, subset="non_ukb"
+        )
     run_freq_and_dense_annotations = PipelineStepResourceCollection(
         "--run-freq-and-dense-annotations",
-        output_resources={
-            f"{s}_freq_ht": get_freq(
-                test=test,
-                hom_alt_adjusted=False,
-                chrom=chrom,
-                intermediate_subset=s,
-                finalized=False,
-            )
-            for s in ["ukb", "non_ukb"]
-        },
+        pipeline_input_steps=[write_split_vds_and_downsampling_ht],
+        output_resources=freq_output_resources,
     )
     combine_freq = PipelineStepResourceCollection(
         "--combine-freq-hts",
@@ -165,6 +188,7 @@ def get_freq_resources(
     )
     freq_pipeline.add_steps(
         {
+            "write_split_vds_and_downsampling_ht": write_split_vds_and_downsampling_ht,
             "run_freq_and_dense_annotations": run_freq_and_dense_annotations,
             "combine_freq": combine_freq,
             "correct_for_high_ab_hets": correct_for_high_ab_hets,
@@ -196,6 +220,8 @@ def get_vds_for_freq(
         test_partitions = range(test_n_partitions)
     else:
         test_partitions = None
+
+    test = use_test_dataset or test_gene or test_n_partitions
 
     vds = get_gnomad_v4_vds(
         test=use_test_dataset,
@@ -536,7 +562,6 @@ def get_downsampling_ht(mt: hl.MatrixTable, non_ukb: bool = False) -> hl.Table:
     if non_ukb:
         downsamplings = downsamplings[:-1]
     ds_ht = annotate_downsamplings(meta_ht, downsamplings, pop_expr=meta_ht.pop)
-    ds_ht = ds_ht.checkpoint(new_temp_file("downsamplings", extension="ht"))
 
     return ds_ht
 
@@ -900,29 +925,52 @@ def main(args):
     chrom = args.chrom
     ab_cutoff = args.ab_cutoff
     af_threshold = args.af_threshold
+    ukb_only = args.ukb_only
+    non_ukb_only = args.non_ukb_only
+
+    ukb = True
+    non_ukb = True
+    if ukb_only and non_ukb_only:
+        raise ValueError("Cannot specify both --ukb-only and --non-ukb-only.")
+    elif ukb_only:
+        non_ukb = False
+    elif non_ukb_only:
+        ukb = False
 
     hl.init(
         log="/generate_frequency_data.log",
         default_reference="GRCh38",
-        tmp_dir="gs://gnomad-tmp-4day",
+        tmp_dir="gs://gnomad-tmp-30day",
     )
-    resources = get_freq_resources(overwrite, test, chrom)
+    # SSA Logs are easier to troubleshoot with.
+    hl._set_flags(use_ssa_logs="1")
+    resources = get_freq_resources(overwrite, test, chrom, ukb, non_ukb)
 
     try:
+        if args.write_split_vds_and_downsampling_ht:
+            logger.info(
+                "Getting multi-allelic split VDS with adj and _het_AD entry"
+                " annotations..."
+            )
+            res = resources.write_split_vds_and_downsampling_ht
+            res.check_resource_existence()
+
+            vds = get_vds_for_freq(
+                use_test_dataset, test_gene, test_n_partitions, chrom
+            )
+            vds = vds.checkpoint(res.split_vds.path, overwrite=overwrite)
+
+            ds_ht = get_downsampling_ht(vds.variant_data)
+            ds_ht.write(res.ds_ht.path, overwrite=overwrite)
+
         if args.run_freq_and_dense_annotations:
             logger.info("Running dense dependent steps...")
             res = resources.run_freq_and_dense_annotations
             res.check_resource_existence()
 
-            logger.info(
-                "Getting multi-allelic split VDS with adj and _het_AD entry"
-                " annotations..."
-            )
-            vds = get_vds_for_freq(
-                use_test_dataset, test_gene, test_n_partitions, chrom
-            )
+            vds = res.split_vds.vds()
+            ds_ht = res.ds_ht.ht()
             meta_ht = vds.variant_data.cols()
-            ds_ht = get_downsampling_ht(vds.variant_data)
 
             logger.info(
                 "Splitting VDS by ukb_sample annotation to reduce data size for"
@@ -930,16 +978,14 @@ def main(args):
             )
             vds_dict = split_vds_by_strata(vds, strata_expr=vds.variant_data.ukb_sample)
             for strata, vds in vds_dict.items():
-                if (
-                    args.ukb_only
-                    and strata == "non_ukb"
-                    or args.non_ukb_only
-                    and strata == "ukb"
-                ):
+                if ukb_only and strata == "non_ukb" or non_ukb_only and strata == "ukb":
                     continue
 
                 if strata == "non_ukb":
                     non_ukb_ds_ht = get_downsampling_ht(vds.variant_data, non_ukb=True)
+                    non_ukb_ds_ht = non_ukb_ds_ht.checkpoint(
+                        res.non_ukb_ds_ht.path, overwrite=overwrite
+                    )
                 else:
                     non_ukb_ds_ht = None
 
@@ -966,7 +1012,7 @@ def main(args):
                 ALL_FREQ_ROW_FIELDS,
                 FREQ_GLOBAL_FIELDS,
             )
-            freq_ht.write(res.freq_ht.path, overwrite=args.overwrite)
+            freq_ht.write(res.freq_ht.path, overwrite=overwrite)
 
         if args.correct_for_high_ab_hets:
             logger.info(
@@ -989,7 +1035,7 @@ def main(args):
             ht.describe()
 
             logger.info("Writing corrected frequency Table...")
-            ht.write(res.corrected_freq_ht.path, overwrite=args.overwrite)
+            ht.write(res.corrected_freq_ht.path, overwrite=overwrite)
 
         if args.finalize_freq_ht:
             logger.info("Writing final frequency Table...")
@@ -997,7 +1043,7 @@ def main(args):
 
             logger.info("Final frequency HT schema...")
             ht.describe()
-            ht.write(res.final_freq_ht.path, overwrite=args.overwrite)
+            ht.write(res.final_freq_ht.path, overwrite=overwrite)
     finally:
         logger.info("Copying log to logging bucket...")
         hl.copy_log(get_logging_path("frequency_data"))
@@ -1035,6 +1081,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
+    )
+    parser.add_argument(
+        "--write-split-vds-and-downsampling-ht",
+        help="Write split VDS and downsampling HT.",
+        action="store_true",
     )
     parser.add_argument(
         "--run-freq-and-dense-annotations",
