@@ -130,27 +130,28 @@ def create_spliceai_grch38_ht() -> hl.Table:
         return ht
 
     logger.info("Importing vcf of SpliceAI scores into HT...")
-
     spliceai_snvs = import_spliceai_vcf(snvs_path)
     spliceai_indels = import_spliceai_vcf(indels_path)
     spliceai_new_indels = import_spliceai_vcf(new_indels_path)
 
     ht = spliceai_snvs.union(spliceai_indels, spliceai_new_indels)
 
-    logger.info("Exploding SpliceAI scores...")
     # `explode` because some variants fall on multiple genes and have a score per gene.
     # All rows without a SpliceAI score, an empty array, are removed through explode.
+    logger.info("Exploding SpliceAI scores...")
     ht = ht.explode(ht.info.SpliceAI)
 
-    logger.info("Annotating SpliceAI scores...")
     # delta_score array for 4 splicing consequences: DS_AG|DS_AL|DS_DG|DS_DL
+    logger.info("Annotating SpliceAI scores...")
     delta_scores = ht.info.SpliceAI.split(delim="\\|")[2:6]
     ht = ht.annotate(delta_scores=hl.map(lambda x: hl.float32(x), delta_scores))
+
     logger.info(
         "Getting the max SpliceAI score across consequences for each variant per"
         " gene..."
     )
     ht = ht.select(ds_max=hl.max(ht.delta_scores))
+
     logger.info("Getting the max SpliceAI score for each variant across genes...")
     ht = ht.collect_by_key()
     ht = ht.select(splice_ai=hl.struct(ds_max=hl.max(ht.values.ds_max)))
