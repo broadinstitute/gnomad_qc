@@ -397,13 +397,14 @@ def calling_intervals(
     """
     Return path to capture intervals Table.
 
-    :param interval_name: One of 'ukb', 'broad', or 'intersection'
+    :param interval_name: One of 'ukb', 'broad', 'intersection' or 'union'.
     :param calling_interval_padding: Padding around calling intervals. Available options are 0 or 50
     :return: Calling intervals resource
     """
-    if interval_name not in {"ukb", "broad", "intersection"}:
+    if interval_name not in {"ukb", "broad", "intersection", "union"}:
         raise ValueError(
-            "Calling interval name must be one of: 'ukb', 'broad', or 'intersection'!"
+            "Calling interval name must be one of: 'ukb', 'broad', 'intersection' or"
+            " 'union'!"
         )
     if calling_interval_padding not in {0, 50}:
         raise ValueError("Calling interval padding must be one of: 0 or 50 (bp)!")
@@ -415,7 +416,15 @@ def calling_intervals(
         return TableResource(
             f"gs://gnomad/resources/intervals/hg38_v0_exome_calling_regions.v1.pad{calling_interval_padding}.interval_list.ht"
         )
+    if interval_name == "intersection" or interval_name == "union":
+        return TableResource(
+            f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.{interval_name}.interval_list.ht"
+        )
     if interval_name == "intersection":
         return TableResource(
             f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.intersection.interval_list.ht"
+        )
+    if interval_name == "union":
+        return TableResource(
+            f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.union.interval_list.ht"
         )
