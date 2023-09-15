@@ -56,31 +56,28 @@ def create_bin_ht(
     :param vqsr: Whether the annotations are from a VQSR run.
     :return: Table with bin annotations.
     """
-    if vqsr:
-        ht = ht.annotate(
-            **rf_annotations_ht[ht.key],
-            info=info_ht[ht.key].info,
-            score=ht.info.AS_VQSLOD,
-            positive_train_site=ht.info.POSITIVE_TRAIN_SITE,
-            negative_train_site=ht.info.NEGATIVE_TRAIN_SITE,
-            AS_culprit=ht.info.AS_culprit,
-        )
-    else:
-        ht = ht.annotate(
-            **rf_annotations_ht[ht.key],
-            score=ht.rf_probability["TP"],
-            # info=info_ht[ht.key].info,
-            positive_train_site=ht.tp,
-            negative_train_site=ht.fp,
-        )
-
     ht = ht.filter(~info_ht[ht.key].AS_lowqual)
-    ht_non_lcr = filter_low_conf_regions(
+    non_lcr_ht = filter_low_conf_regions(
         ht,
         filter_decoy=False,
         filter_telomeres_and_centromeres=True,
     )
-    ht = ht.annotate(non_lcr=hl.is_defined(ht_non_lcr[ht.key]))
+    struct_expr = hl.struct(**rf_annotations_ht[ht.key])
+    if vqsr:
+        struct_expr = struct_expr.annotate(
+            score_expr=ht.info.AS_VQSLOD,
+            positive_train_site_expr=ht.info.POSITIVE_TRAIN_SITE,
+            negative_train_site_expr=ht.info.NEGATIVE_TRAIN_SITE,
+            AS_culprit_expr=ht.info.AS_culprit,
+        )
+    else:
+        struct_expr = struct_expr.annotate(
+            score_expr_expr=ht.rf_probability["TP"],
+            positive_train_site_expr=ht.tp,
+            negative_train_site_expr=ht.fp,
+        )
+
+    ht = ht.annotate(**struct_expr, non_lcr=hl.is_defined(non_lcr_ht[ht.key]))
     bin_ht = create_binned_ht(ht, n_bins, add_substrat={"non_lcr": ht.non_lcr})
 
     return bin_ht
