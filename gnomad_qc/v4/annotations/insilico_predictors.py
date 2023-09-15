@@ -211,7 +211,8 @@ def create_pangolin_grch38_ht() -> hl.Table:
     # `explode` will eliminate rows with empty array
     # The VCF INFO of Pangolin is a string with the following format:
     # gene1|pos_splice_gain:largest_increase|pos_splice_loss:largest_decrease|gene2...
-    # for example: Pangolin=ENSG00000121005.9|-86:0.25|38:-0.49|Warnings:||ENSG00000254238.1|-40:0.01|30:-0.17|Warnings:
+    # for example:
+    # Pangolin=ENSG00000121005.9|-86:0.25|38:-0.49|Warnings:||ENSG00000254238.1|-40:0.01|30:-0.17|Warnings:
 
     ht = ht.annotate(pango=ht.info.Pangolin[0].split(delim="\|\|"))
     ht = ht.explode(ht.pango)
