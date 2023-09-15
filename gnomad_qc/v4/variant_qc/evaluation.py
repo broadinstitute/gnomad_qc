@@ -138,6 +138,8 @@ def create_aggregated_bin_ht(ht: hl.Table, trio_stats_ht: hl.Table) -> hl.Table:
     logger.info(f"Found the following variant counts:\n {pformat(bin_variant_counts)}")
 
     logger.info(f"Creating grouped bin table...")
+    # score_bin_agg expects the unrelated AC to be named ac_qc_samples_unrelated_raw.
+    ht = ht.transmute(ac_qc_samples_unrelated_raw=ht.ac_unrelated_raw)
     grouped_binned_ht = compute_grouped_binned_ht(
         ht, checkpoint_path=new_temp_file(f"grouped_bin", "ht")
     )
