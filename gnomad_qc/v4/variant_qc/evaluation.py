@@ -1,5 +1,4 @@
-# noqa: D100
-
+"""Script to create Tables with aggregate variant statistics by variant QC score bins needed for evaluation plots."""
 import argparse
 import logging
 from pprint import pformat
@@ -50,7 +49,11 @@ def create_bin_ht(
     """
     Create a table with bin annotations added for a RF or VQSR run and writes it to its correct location in annotations.
 
+    :param ht: Table with RF or VQSR annotations.
+    :param info_ht: Table with info annotations.
+    :param rf_annotations_ht: Table with RF annotations.
     :param n_bins: Number of bins to bin the data into.
+    :param vqsr: Whether the annotations are from a VQSR run.
     :return: Table with bin annotations.
     """
     if vqsr:
@@ -120,6 +123,7 @@ def create_aggregated_bin_ht(ht: hl.Table, trio_stats_ht: hl.Table) -> hl.Table:
     For each bin, aggregates statistics needed for evaluation plots.
 
     :param ht: Table with bin annotations.
+    :param trio_stats_ht: Table with trio statistics.
     :return: Table of aggregate statistics by bin.
     """
     # Count variants for ranking.
@@ -157,6 +161,7 @@ def create_aggregated_bin_ht(ht: hl.Table, trio_stats_ht: hl.Table) -> hl.Table:
     return agg_ht
 
 
+# TODO: Update to work with VQSR models.
 def get_evaluation_resources(
     test: bool,
     overwrite: bool,
@@ -171,10 +176,6 @@ def get_evaluation_resources(
     :return: PipelineResourceCollection containing resources for all steps of the
         variant QC evaluation pipeline.
     """
-    # if vqsr:
-    #    ht = get_vqsr_filters(model_id, split=True).ht()
-    # else:
-    #    ht = get_rf_result(model_id=model_id).ht()
     # Initialize variant QC evaluation pipeline resource collection.
     evaluation_pipeline = PipelineResourceCollection(
         pipeline_name="variant_qc_evaluation",
@@ -263,7 +264,8 @@ def get_evaluation_resources(
     return evaluation_pipeline
 
 
-def main(args):  # noqa: D103
+def main(args):
+    """Script to create Tables with aggregate variant statistics by variant QC score bins needed for evaluation plots."""
     hl.init(
         default_reference="GRCh38",
         log="/variant_qc_evaluation.log",
@@ -296,7 +298,6 @@ def main(args):  # noqa: D103
         score_bin_validity_check(res.bin_ht.ht())
 
     if args.create_aggregated_bin_ht:
-        logger.warning("Use only workers, it typically crashes with preemptibles")
         res = evaluation_resources.create_aggregated_bin_table
         res.check_resource_existence()
         ht = create_aggregated_bin_ht(res.bin_ht.ht(), res.trio_stats_ht.ht())
