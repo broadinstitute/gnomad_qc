@@ -212,7 +212,9 @@ def get_evaluation_resources(
     )
     extract_truth_samples = PipelineStepResourceCollection(
         "--extract-truth-samples",
-        output_resources={f"{s}_mt": get_callset_truth_data(s) for s in TRUTH_SAMPLES},
+        output_resources={
+            f"{s}_mt": get_callset_truth_data(s, test=test) for s in TRUTH_SAMPLES
+        },
     )
     merge_with_truth_data = PipelineStepResourceCollection(
         "--merge-with-truth-data",
@@ -298,7 +300,9 @@ def main(args):
         logger.info(f"Extracting truth samples from VDS...")
         res = evaluation_resources.extract_truth_samples
         res.check_resource_existence()
-        vds = get_gnomad_v4_vds(controls_only=True, split=True)
+        vds = get_gnomad_v4_vds(
+            controls_only=True, split=True, filter_partitions=range(2) if test else None
+        )
         # Checkpoint to prevent needing to go through the large VDS multiple times.
         vds = vds.checkpoint(new_temp_file("truth_samples", "vds"), overwrite=True)
 
