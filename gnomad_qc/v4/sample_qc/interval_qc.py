@@ -524,9 +524,11 @@ def main(args):
                 calling_interval_padding=calling_interval_padding,
             )
             sex_coverage_mt.write(
-                get_checkpoint_path("test_sex_imputation_cov", mt=True)
-                if test
-                else sex_chr_coverage.path,
+                (
+                    get_checkpoint_path("test_sex_imputation_cov", mt=True)
+                    if test
+                    else sex_chr_coverage.path
+                ),
                 overwrite=overwrite,
             )
 
@@ -631,11 +633,13 @@ def main(args):
             )
 
             ht.write(
-                get_checkpoint_path("interval_qc_pass")
-                if test
-                else interval_qc_pass(
-                    per_platform=args.per_platform, all_platforms=args.all_platforms
-                ).path,
+                (
+                    get_checkpoint_path("interval_qc_pass")
+                    if test
+                    else interval_qc_pass(
+                        per_platform=args.per_platform, all_platforms=args.all_platforms
+                    ).path
+                ),
                 overwrite=overwrite,
             )
     finally:

@@ -208,9 +208,11 @@ def main(args):  # noqa: D103
             mt = annotate_freq(
                 mt,
                 sex_expr=mt.meta.sex_imputation.sex_karyotype,
-                pop_expr=mt.meta.population_inference.pop
-                if not n_subsets_use_subpops
-                else mt.meta.project_meta.project_subpop,
+                pop_expr=(
+                    mt.meta.population_inference.pop
+                    if not n_subsets_use_subpops
+                    else mt.meta.project_meta.project_subpop
+                ),
                 # NOTE: TGP and HGDP labeled populations are highly specific and are stored in the project_subpop meta field # noqa
             )
             freq_meta = [

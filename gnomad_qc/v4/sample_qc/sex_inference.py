@@ -341,9 +341,11 @@ def compute_sex_ploidy(
             vds,
             included_intervals=calling_intervals_ht,
             normalization_contig=normalization_contig,
-            sites_ht=freq_ht.filter(hl.is_defined(calling_intervals_ht[freq_ht.locus]))
-            if freq_ht is not None
-            else None,
+            sites_ht=(
+                freq_ht.filter(hl.is_defined(calling_intervals_ht[freq_ht.locus]))
+                if freq_ht is not None
+                else None
+            ),
             aaf_expr="AF",
             gt_expr="LGT",
             f_stat_cutoff=f_stat_cutoff,
@@ -550,9 +552,11 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
                     platform_ploidy_ht.chrY_ploidy,
                     x_ploidy_platform_cutoffs,
                     y_ploidy_platform_cutoffs,
-                    chr_x_frac_hom_alt_expr=platform_ploidy_ht.chrx_frac_hom_alt_adj
-                    if x_frac_hom_alt_cutoffs
-                    else None,
+                    chr_x_frac_hom_alt_expr=(
+                        platform_ploidy_ht.chrx_frac_hom_alt_adj
+                        if x_frac_hom_alt_cutoffs
+                        else None
+                    ),
                     chr_x_frac_hom_alt_cutoffs=x_frac_hom_alt_platform_cutoffs,
                 )
             )
@@ -580,9 +584,11 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
                 ploidy_ht.chrY_ploidy,
                 x_ploidy_cutoffs,
                 y_ploidy_cutoffs,
-                chr_x_frac_hom_alt_expr=None
-                if x_frac_hom_alt_cutoffs is None
-                else ploidy_ht.chrx_frac_hom_alt_adj,
+                chr_x_frac_hom_alt_expr=(
+                    None
+                    if x_frac_hom_alt_cutoffs is None
+                    else ploidy_ht.chrx_frac_hom_alt_adj
+                ),
                 chr_x_frac_hom_alt_cutoffs=x_frac_hom_alt_cutoffs,
             )
         )
@@ -653,9 +659,9 @@ def infer_sex_karyotype_from_ploidy(
             x_ploidy_cutoffs[platform] = karyotype_ht.index_globals().x_ploidy_cutoffs
             y_ploidy_cutoffs[platform] = karyotype_ht.index_globals().y_ploidy_cutoffs
             if apply_x_frac_hom_alt_cutoffs:
-                x_frac_hom_alt_cutoffs[
-                    platform
-                ] = karyotype_ht.index_globals().x_frac_hom_alt_cutoffs
+                x_frac_hom_alt_cutoffs[platform] = (
+                    karyotype_ht.index_globals().x_frac_hom_alt_cutoffs
+                )
 
         karyotype_ht = per_platform_karyotype_hts[0].union(
             *per_platform_karyotype_hts[1:]
@@ -779,9 +785,11 @@ def main(args):
                 mean_dp_thresholds=args.mean_dp_thresholds,
             )
             ht.naive_coalesce(args.interval_qc_n_partitions).write(
-                get_checkpoint_path("test_sex_chr_interval_qc")
-                if test
-                else sex_imputation_interval_qc.path,
+                (
+                    get_checkpoint_path("test_sex_chr_interval_qc")
+                    if test
+                    else sex_imputation_interval_qc.path
+                ),
                 overwrite=overwrite,
             )
 

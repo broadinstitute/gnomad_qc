@@ -324,14 +324,13 @@ def create_rf_ht(
         return {
             "transmitted_singleton": (
                 ht.family_stats[family_stats_group_index].tdt.t == 1
-            )
-            & (
+            ) & (
                 ht.family_stats[family_stats_group_index].unrelated_qc_callstats.AC[1]
                 == 1
             ),
-            "fail_hard_filters": (ht.info.QD < 2)
-            | (ht.info.FS > 60)
-            | (ht.info.MQ < 30),
+            "fail_hard_filters": (
+                (ht.info.QD < 2) | (ht.info.FS > 60) | (ht.info.MQ < 30)
+            ),
             "info_POSITIVE_TRAIN_SITE": ht.info.POSITIVE_TRAIN_SITE,
             "info_NEGATIVE_TRAIN_SITE": ht.info.NEGATIVE_TRAIN_SITE,
         }
@@ -522,9 +521,11 @@ def train_rf(data_type, args):
     test_intervals_str = (
         []
         if not args.test_intervals
-        else [args.test_intervals]
-        if isinstance(args.test_intervals, str)
-        else args.test_intervals
+        else (
+            [args.test_intervals]
+            if isinstance(args.test_intervals, str)
+            else args.test_intervals
+        )
     )
     test_intervals_locus = [hl.parse_locus_interval(x) for x in test_intervals_str]
 
@@ -534,9 +535,9 @@ def train_rf(data_type, args):
     ht = sample_rf_training_examples(
         ht,
         tp_col="info_POSITIVE_TRAIN_SITE" if args.vqsr_training else "tp",
-        fp_col="info_NEGATIVE_TRAIN_SITE"
-        if args.vqsr_training
-        else "fail_hard_filters",
+        fp_col=(
+            "info_NEGATIVE_TRAIN_SITE" if args.vqsr_training else "fail_hard_filters"
+        ),
         fp_to_tp=args.fp_to_tp,
     )
 

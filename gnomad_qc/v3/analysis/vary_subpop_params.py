@@ -121,7 +121,9 @@ def main(args):  # noqa: D103
                 merged.append(
                     {
                         "min_prob": min_prob,
-                        "max_proportion_mislabeled_training_samples": max_proportion_mislabeled_training_samples,
+                        "max_proportion_mislabeled_training_samples": (
+                            max_proportion_mislabeled_training_samples
+                        ),
                         "percent_correct": correct * 100,
                         "TP": tp,
                         "FP": fp,
