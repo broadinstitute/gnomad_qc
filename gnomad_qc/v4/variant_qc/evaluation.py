@@ -24,7 +24,7 @@ from gnomad_qc.v4.resources.annotations import (
     get_trio_stats,
     get_variant_qc_annotations,
 )
-from gnomad_qc.v4.resources.basics import TRUTH_SAMPLES_S, get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources.variant_qc import (
     TRUTH_SAMPLES,
     get_binned_concordance,
