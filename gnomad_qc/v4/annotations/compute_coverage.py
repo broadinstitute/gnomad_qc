@@ -120,7 +120,7 @@ def main(args):
 
             # Checkpoint Table.
             coverage_ht = coverage_ht.checkpoint(
-                hl.utils.new_temp_file("coverage", extension="ht"), overwrite=True
+                hl.utils.new_temp_file("coverage", extension="ht")
             )
 
             # Naive coalesce and write out final Table.
