@@ -4,8 +4,7 @@ import logging
 from pprint import pformat
 
 import hail as hl
-from gnomad.resources.grch38.reference_data import clinvar
-from gnomad.utils.filtering import filter_low_conf_regions, filter_to_clinvar_pathogenic
+from gnomad.utils.filtering import filter_low_conf_regions
 from gnomad.utils.slack import slack_notifications
 from gnomad.variant_qc.evaluation import (
     compute_binned_truth_sample_concordance,
@@ -138,20 +137,13 @@ def create_aggregated_bin_ht(ht: hl.Table, trio_stats_ht: hl.Table) -> hl.Table:
     ht = ht.annotate_globals(bin_variant_counts=bin_variant_counts)
     logger.info(f"Found the following variant counts:\n {pformat(bin_variant_counts)}")
 
-    # Load ClinVar pathogenic data.
-    clinvar_pathogenic_ht = filter_to_clinvar_pathogenic(clinvar.ht())
-    ht = ht.annotate(clinvar_path=hl.is_defined(clinvar_pathogenic_ht[ht.key]))
-
     logger.info(f"Creating grouped bin table...")
     grouped_binned_ht = compute_grouped_binned_ht(
-        ht,
-        checkpoint_path=new_temp_file(f"grouped_bin", "ht"),
+        ht, checkpoint_path=new_temp_file(f"grouped_bin", "ht")
     )
 
     logger.info(f"Aggregating grouped bin table...")
-    parent_ht = grouped_binned_ht._parent
     agg_ht = grouped_binned_ht.aggregate(
-        n_clinvar_path=hl.agg.count_where(parent_ht.clinvar_path),
         **score_bin_agg(grouped_binned_ht, fam_stats_ht=trio_stats_ht),
     )
 
