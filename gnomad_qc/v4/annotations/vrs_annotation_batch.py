@@ -152,6 +152,7 @@ def main(args):
         default_reference="GRCh38",
         global_seed=args.hail_rand_seed,
         regions=["us-central1"],
+        driver_memory="highmem",
     )
 
     logger.info(f"Hail version as: {hl.version()}")
