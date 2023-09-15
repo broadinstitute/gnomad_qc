@@ -117,7 +117,7 @@ def get_gnomad_v4_vds(
     # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286.
     # Confirmed that the col_idx of the 27 dup samples in the original UKB MT match
     # the col_idx of the dup UKB samples in the VDS.
-    logger.info("Removing 27 duplicate UKB samples by column index..."
+    logger.info("Removing 27 duplicate UKB samples by column index...")
     dup_ids = []
     with hl.hadoop_open(ukb_dups_idx_path, "r") as d:
         for line in d:
