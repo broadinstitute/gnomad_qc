@@ -61,15 +61,15 @@ RUN wget https://github.com/vcftools/vcftools/releases/download/v${VCFTOOLS_VERS
 
 # Install bgzip from htslib
 ENV BGZIP_VERSION="1.17"
-RUN wget https://github.com/samtools/htslib/releases/download/1.17/htslib-1.17.tar.bz2 \
-    && tar -xjf htslib-{BGZIP_VERSION}.tar.bz2 \
-    && rm htslib-{BGZIP_VERSION}.tar.bz2 \
-    && cd htslib-{BGZIP_VERSION} \
+RUN wget https://github.com/samtools/htslib/releases/download/${BGZIP_VERSION}/htslib-${BGZIP_VERSION}.tar.bz2 \
+    && tar -xjf htslib-${BGZIP_VERSION}.tar.bz2 \
+    && rm htslib-${BGZIP_VERSION}.tar.bz2 \
+    && cd htslib-${BGZIP_VERSION} \
     && ./configure \
     && make \
     && make install \
     && make clean \
-    && export PATH=htslib-{BGZIP_VERSION}/bin:$PATH
+    && export PATH=htslib-${BGZIP_VERSION}/bin:$PATH
 
 # Install python packages
 RUN apt-get update \
