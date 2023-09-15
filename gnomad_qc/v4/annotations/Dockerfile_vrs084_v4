@@ -11,7 +11,7 @@
 # Dockerfile for creating an image that can run the VRS Annotation Script inside of it
 # includes libpqdev and pythondev, plus psycopg2, ga4gh.vrs[extras] , and seqrepo
 
-FROM 'google/cloud-sdk:slim'
+FROM 'google/cloud-sdk:446.0.1-slim'
 
 # Copy in SeqRepo from local file structure
 # Put this big folder (~12G) in the first layers so that it doesn't get rebuilt every time
