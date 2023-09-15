@@ -188,7 +188,7 @@ def get_gnomad_v4_vds(
         high_quality_only
         or remove_hard_filtered_samples
         or remove_hard_filtered_samples_no_sex
-    ) and not release_only:
+    ) and not (release_only or controls_only):
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
             if high_quality_only:
