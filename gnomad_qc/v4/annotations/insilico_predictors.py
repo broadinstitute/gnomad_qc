@@ -26,8 +26,8 @@ def create_cadd_grch38_ht() -> hl.Table:
         - all SNVs: `cadd.v1.6.whole_genome_SNVs.tsv.bgz` (81G) downloaded from
         `https://krishna.gs.washington.edu/download/CADD/v1.6/GRCh38/whole_genome_SNVs.tsv.gz`.
         It contains 8,812,917,339 SNVs.
-        - gnomad 3.0 indels: `cadd.v1.6.indels.tsv.bgz` (1.1G) downloaded from `
-        https://krishna.gs.washington.edu/download/CADD/v1.6/GRCh38/gnomad.genomes.r3.0.indel.tsv.gz`.
+        - gnomad 3.0 indels: `cadd.v1.6.indels.tsv.bgz` (1.1G) downloaded from
+        `https://krishna.gs.washington.edu/download/CADD/v1.6/GRCh38/gnomad.genomes.r3.0.indel.tsv.gz`.
         It contains 100,546,109 indels from gnomaD v3.0.
         - gnomad 3.1 indels: `CADD-indels-gnomad.3.1.ht` was run on gnomAD v3.1
         with CADD v1.6 in 2020. It contains 166,122,720 indels from gnomAD v3.1.
@@ -166,7 +166,7 @@ def create_spliceai_grch38_ht() -> hl.Table:
     logger.info("Getting the max SpliceAI score for each variant across genes...")
     ht = ht.collect_by_key()
     ht = ht.select(splice_ai=hl.struct(ds_max=hl.max(ht.values.ds_max)))
-
+    ht = ht.annotate_globals(spliceai_version="v1.3")
     return ht
 
 
@@ -179,7 +179,7 @@ def create_revel_grch38_ht() -> hl.Table:
     canonical transcripts. Even when a variant falls on multiple MANE/canonical
     transcripts of different genes, the scores are equal.
     REVEL scores were downloaded from:
-       https://www.google.com/url?q=https%3A%2F%2Frothsj06.dmz.hpc.mssm.edu%2Frevel-v1.3_all_chromosomes.zip&sa=D&sntz=1&usg=AOvVaw2DS2TWUYl__0vqijzzxp5M
+       https://rothsj06.dmz.hpc.mssm.edu/revel-v1.3_all_chromosomes.zip
        size ~648M, ~82,100,677 variants
     REVEL's Ensembl ID is not from Ensembl 105, so we filter to transcripts
     that are in Ensembl 105. The Ensembl 105 ID file was downloaded from Ensembl
@@ -190,7 +190,7 @@ def create_revel_grch38_ht() -> hl.Table:
     :return: Hail Table with REVEL scores for GRCh38.
     """
     revel_csv = "gs://gnomad-insilico/revel/revel-v1.3_all_chromosomes_with_transcript_ids.csv.bgz"
-    ensembl_ids = "gs://gnomad-insilico/ensembl/ensembl105id.tsv.bgz"
+    ensembl_path = "gs://gnomad-insilico/ensembl/ensembl105id.grch38.tsv.bgz"
 
     ht = hl.import_table(
         revel_csv,
@@ -212,16 +212,16 @@ def create_revel_grch38_ht() -> hl.Table:
     ht = ht.select("locus", "alleles", "REVEL", "Transcript_stable_ID")
     ht = ht.explode("Transcript_stable_ID")
     ht = ht.key_by("Transcript_stable_ID")
-    print(ht.count())
+    logger.info("Number of rows in REVEL table: %s", ht.count())
 
     logger.info("Import and process the ensembl ID file...")
-    ensembl_ids = hl.import_table(
-        ensembl_ids, min_partitions=200, impute=True, key="Transcript_stable_ID"
+    ensembl_ids_ht = hl.import_table(
+        ensembl_path, min_partitions=200, impute=True, key="Transcript_stable_ID"
     )
-    ensembl_ids = ensembl_ids.select("Ensembl_Canonical", "MANE_Select")
+    ensembl_ids_ht = ensembl_ids_ht.select("Ensembl_Canonical", "MANE_Select")
+
     logger.info("Annotating revel HT with canonical and MANE Select transcripts...")
-    ht = ht.annotate(**ensembl_ids[ht.Transcript_stable_ID])
-    print(ht.count())
+    ht = ht.annotate(**ensembl_ids_ht[ht.key])
 
     logger.info(
         "Annotating REVEL scores for MANE Select transcripts and canonical"
@@ -231,13 +231,17 @@ def create_revel_grch38_ht() -> hl.Table:
     ht = ht.annotate(
         revel_mane=hl.or_missing(ht.MANE_Select != "", ht.REVEL),
         revel_canonical=hl.or_missing(ht.Ensembl_Canonical == "1", ht.REVEL),
-        revel_noncanonical=hl.or_missing(ht.Ensembl_Canonical != "1", ht.REVEL),
     )
-
-    logger.info("Taking max REVEL scores for MANE Select transcripts...")
     ht = ht.checkpoint(
         "gs://gnomad-tmp-4day/revel-v1.3_in_Ensembl105.ht", _read_if_exists=True
     )
+
+    # Since the REVEL score for each variant is transcript-specific, we
+    # prioritize the scores predicted on MANE Select and canonical transcripts,
+    # and take the max if a variants falls on multiple MANE Select or canonical
+    # transcripts. Normally, the score should be equal across MANE Select
+    # and canonical.
+    logger.info("Taking max REVEL scores for MANE Select transcripts...")
     mane_ht = ht.filter(hl.is_defined(ht.revel_mane), keep=True)
     max_revel_mane = mane_ht.group_by(*mane_ht.key).aggregate(
         revel_max=hl.agg.max(mane_ht.revel_mane),
@@ -255,6 +259,8 @@ def create_revel_grch38_ht() -> hl.Table:
         " to one HT..."
     )
     final_ht = max_revel_mane.union(max_revel_canonical)
+    logger.info("Number of rows in final REVEL HT: %s", final_ht.count())
+    final_ht = final_ht.annotate_globals(revel_version="v1.3")
     return final_ht
 
 
@@ -293,6 +299,7 @@ def main(args):
             get_insilico_predictors(predictor="revel").path,
             overwrite=args.overwrite,
         )
+        logger.info("REVEL Hail Table for GRCh38 created.")
 
 
 if __name__ == "__main__":
