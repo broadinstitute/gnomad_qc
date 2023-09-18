@@ -15,6 +15,8 @@ FROM 'google/cloud-sdk:446.0.1-slim'
 
 # Copy in SeqRepo from local file structure
 # Put this big folder (~12G) in the first layers so that it doesn't get rebuilt every time
+# NOTE: seqrepo has the latest version 2021-01-29 as of on 2023-09-18, however, we are only using GRCh38 primary assembly
+# for contigs chr1-22, X, Y that are included in gnomAD releases, which have not been changed since 2018-11-26.
 COPY /usr/local/share/seqrepo/2018-11-26/ /tmp/local-seqrepo
 
 RUN apt-get -y update && apt-get install -y --no-install-recommends \
