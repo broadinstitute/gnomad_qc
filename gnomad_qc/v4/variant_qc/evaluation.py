@@ -276,7 +276,7 @@ def main(args):
             controls_only=True, split=True, filter_partitions=range(2) if test else None
         )
         # Checkpoint to prevent needing to go through the large VDS multiple times.
-        vds = vds.checkpoint(new_temp_file("truth_samples", "vds"), overwrite=True)
+        vds = vds.checkpoint(new_temp_file("truth_samples", "vds"))
 
         for ts in TRUTH_SAMPLES:
             s = TRUTH_SAMPLES[ts]["s"]
