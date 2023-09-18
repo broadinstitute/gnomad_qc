@@ -1,14 +1,21 @@
 ############################################################################################################
-# This Dockerfile has three main changes compared to the original Dockerfile
+# This Dockerfile has a few changes compared to the original Dockerfile
 # (which was copied from tgg_methods repo to gnomad_qc/v3/annotations/Dockerfile_vrs084):
 # 1) Uses install GCS connector from broad.io
 # 2) Installs bgzip
 # 3) Puts gnomad & gnomad_qc dependencies inside the docker image
+# 4) Change the java repo to adoptium because adoptopenjdk is deprecated
+# 5) Reorder the installation of packages to optimize caching
+# 6) Update hail version to 0.2.122 from 0.2.113 for some bug fixes to run Hail Query-on-Batch
 ############################################################################################################
 # Dockerfile for creating an image that can run the VRS Annotation Script inside of it
 # includes libpqdev and pythondev, plus psycopg2, ga4gh.vrs[extras] , and seqrepo
 
-FROM 'google/cloud-sdk:slim'
+FROM 'google/cloud-sdk:446.0.1-slim'
+
+# Copy in SeqRepo from local file structure
+# Put this big folder (~12G) in the first layers so that it doesn't get rebuilt every time
+COPY /usr/local/share/seqrepo/2018-11-26/ /tmp/local-seqrepo
 
 RUN apt-get -y update && apt-get install -y --no-install-recommends \
     apt-utils \
@@ -41,7 +48,6 @@ RUN wget -O - https://packages.adoptium.net/artifactory/api/gpg/key/public | tee
 RUN mkdir tools
 WORKDIR /tools
 
-
 # Install vcftools
 ENV VCFTOOLS_VERSION="0.1.16"
 RUN wget https://github.com/vcftools/vcftools/releases/download/v${VCFTOOLS_VERSION}/vcftools-${VCFTOOLS_VERSION}.tar.gz \
@@ -53,6 +59,17 @@ RUN wget https://github.com/vcftools/vcftools/releases/download/v${VCFTOOLS_VERS
 	&& make install \
 	&& make clean
 
+# Install bgzip from htslib
+ENV BGZIP_VERSION="1.17"
+RUN wget https://github.com/samtools/htslib/releases/download/${BGZIP_VERSION}/htslib-${BGZIP_VERSION}.tar.bz2 \
+    && tar -xjf htslib-${BGZIP_VERSION}.tar.bz2 \
+    && rm htslib-${BGZIP_VERSION}.tar.bz2 \
+    && cd htslib-${BGZIP_VERSION} \
+    && ./configure \
+    && make \
+    && make install \
+    && make clean \
+    && export PATH=htslib-${BGZIP_VERSION}/bin:$PATH
 
 # Install python packages
 RUN apt-get update \
@@ -79,7 +96,7 @@ RUN python3 -m pip install --upgrade pip
 # Including packages needed for VRS annotation functionality
 # Also include version for ga4gh.vrs-python to be most recent and supporting their new variant schema
 # Please update the constant VRS_VERSION in vrs_annotation_batch.py accordingly when GA4GH_VRS_VERSION is changed
-ENV HAIL_VERSION="0.2.121"
+ENV HAIL_VERSION="0.2.122"
 ENV GA4GH_VRS_VERSION="0.8.4"
 RUN python3 --version
 RUN python3 -m pip install --ignore-installed PyYAML
@@ -102,21 +119,8 @@ RUN python3 -m pip install \
     git+https://github.com/broadinstitute/gnomad_methods.git@main \
     git+https://github.com/broadinstitute/gnomad_qc.git@main
 
-# Install bgzip
-ENV BGZIP_VERSION="1.17"
-RUN wget https://github.com/samtools/htslib/releases/download/1.17/htslib-1.17.tar.bz2 \
-    && tar -xjf htslib-1.17.tar.bz2 \
-    && cd htslib-1.17 \
-    && ./configure \
-    && make \
-    && make install \
-    && export PATH=htslib-1.17/bin:$PATH
-
 # Install GCS Connector
 RUN curl -sSL broad.io/install-gcs-connector > install-gcs-connector.py && \
     python3 install-gcs-connector.py --key-file-path /gsa-key/key.json
-
-# Copy in SeqRepo from local file structure
-COPY /usr/local/share/seqrepo/2018-11-26/ /tmp/local-seqrepo
 
 WORKDIR /home
