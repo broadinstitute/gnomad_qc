@@ -271,6 +271,28 @@ qual_hist = VersionedTableResource(
 )
 
 
+def get_downsampling(
+    test: bool = False, subset: Optional[str] = None
+) -> VersionedTableResource:
+    """
+    Get the downsampling annotation table.
+
+    :param test: Whether to use a tmp path for tests. Default is False.
+    :param subset: Optional subset to return downsampling Table for. Downsampling for
+        entire dataset will be returned if not specified.
+    :return: Hail Table containing subset or overall dataset downsampling annotations.
+    """
+    return VersionedTableResource(
+        CURRENT_VERSION,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.downsampling{f'.{subset}' if subset else ''}.ht"
+            )
+            for version in VERSIONS
+        },
+    )
+
+
 def get_freq(
     version: str = CURRENT_VERSION,
     test: bool = False,
@@ -429,5 +451,5 @@ def get_split_vds(
     :return: gnomAD v4 VariantDatasetResource.
     """
     return VariantDatasetResource(
-        f"{_annotations_root(version, test, data_type)}/temp/gnomad.{data_type}.v{version}.split.vds"
+        f"{_annotations_root(version, test, data_type)}/temp/gnomad.{data_type}.v{version}.split_multi.vds"
     )
