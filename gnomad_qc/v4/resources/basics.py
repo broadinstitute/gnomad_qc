@@ -147,9 +147,9 @@ def get_gnomad_v4_vds(
     vds = hl.vds.VariantDataset(rd, vd)
 
     # We don't need to do the UKB withdrawn and pharma remove list sample removal if
-    # we're only keeping high quality or release samples or control samples since they
-    # will not be in either of those sets.
-    if not high_quality_only and not release_only and not controls_only:
+    # we're only keeping high quality or release samples since they will not be in
+    # either of those sets.
+    if not (high_quality_only or release_only or controls_only):
         # Remove 75 withdrawn UKB samples (samples with withdrawn consents for
         # application 31063 on 02/22/2022).
         ukb_application_map_ht = ukb_application_map.ht()
