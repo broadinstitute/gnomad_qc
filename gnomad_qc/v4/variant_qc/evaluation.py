@@ -1,5 +1,4 @@
-# noqa: D100
-
+"""Script to create Tables with aggregate variant statistics by variant QC score bins needed for evaluation plots."""
 import argparse
 import logging
 from pprint import pformat
@@ -14,22 +13,27 @@ from gnomad.variant_qc.evaluation import (
     create_truth_sample_ht,
 )
 from gnomad.variant_qc.pipeline import create_binned_ht, score_bin_agg
+from hail.utils import new_temp_file
 
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources import (
-    TRUTH_SAMPLES,
     allele_data,
     fam_stats,
     get_binned_concordance,
-    get_callset_truth_data,
     get_checkpoint_path,
-    get_gnomad_v3_mt,
     get_info,
     get_rf_annotations,
     get_rf_result,
     get_score_bins,
     get_vqsr_filters,
 )
+from gnomad_qc.v4.resources.annotations import get_info
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.variant_qc import TRUTH_SAMPLES, get_callset_truth_data
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("variant_qc_evaluation")
@@ -154,8 +158,80 @@ def create_aggregated_bin_ht(model_id: str) -> hl.Table:
     return agg_ht
 
 
-def main(args):  # noqa: D103
-    hl.init(log="/variant_qc_evaluation.log")
+def get_evaluation_resources(
+    test: bool,
+    overwrite: bool,
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the variant QC evaluation pipeline.
+
+    :param test: Whether to gather all resources for testing.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :return: PipelineResourceCollection containing resources for all steps of the
+        variant QC evaluation pipeline.
+    """
+    # Initialize variant QC evaluation pipeline resource collection.
+    evaluation_pipeline = PipelineResourceCollection(
+        pipeline_name="variant_qc_evaluation",
+        overwrite=overwrite,
+        pipeline_resources={
+            "annotations/generate_variant_qc_annotations.py --compute-info --split-info": {
+                "info_ht": get_info(split=True)
+            },
+        },
+    )
+
+    extract_truth_samples = PipelineStepResourceCollection(
+        "--extract-truth-samples",
+        output_resources={
+            f"{s}_mt": get_callset_truth_data(s, test=test) for s in TRUTH_SAMPLES
+        },
+    )
+    merge_with_truth_data = PipelineStepResourceCollection(
+        "--merge-with-truth-data",
+        pipeline_input_steps=[extract_truth_samples],
+        add_input_resources={
+            "truth data high confidence intervals": {
+                f"{s}_hc_intervals": TRUTH_SAMPLES[s]["hc_intervals"]
+                for s in TRUTH_SAMPLES
+            },
+            "truth data matrix tables": {
+                f"{s}_truth_mt": TRUTH_SAMPLES[s]["truth_mt"] for s in TRUTH_SAMPLES
+            },
+        },
+        output_resources={
+            f"{s}_ht": get_callset_truth_data(s, mt=False, test=test)
+            for s in TRUTH_SAMPLES
+        },
+    )
+
+    # Add all steps to the variant QC evaluation pipeline resource collection.
+    evaluation_pipeline.add_steps(
+        {
+            "extract_truth_samples": extract_truth_samples,
+            "merge_with_truth_data": merge_with_truth_data,
+        }
+    )
+
+    return evaluation_pipeline
+
+
+def main(args):
+    """Script to create Tables with aggregate variant statistics by variant QC score bins needed for evaluation plots."""
+    hl.init(
+        default_reference="GRCh38",
+        log="/variant_qc_evaluation.log",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
+
+    overwrite = args.overwrite
+    test = args.test
+
+    evaluation_resources = get_evaluation_resources(
+        test=test,
+        overwrite=overwrite,
+    )
+    info_ht = evaluation_resources.info_ht.ht()
 
     if args.create_bin_ht:
         create_bin_ht(args.model_id, args.n_bins, args.hgdp_tgp_subset).write(
@@ -193,55 +269,44 @@ def main(args):  # noqa: D103
         )
 
     if args.extract_truth_samples:
-        logger.info(f"Extracting truth samples from MT...")
-        mt = get_gnomad_v3_mt(
-            key_by_locus_and_alleles=True, remove_hard_filtered_samples=False
+        logger.info(f"Extracting truth samples from VDS...")
+        res = evaluation_resources.extract_truth_samples
+        res.check_resource_existence()
+        vds = get_gnomad_v4_vds(
+            controls_only=True, split=True, filter_partitions=range(2) if test else None
         )
+        # Checkpoint to prevent needing to go through the large VDS multiple times.
+        vds = vds.checkpoint(new_temp_file("truth_samples", "vds"))
 
-        mt = mt.filter_cols(
-            hl.literal([v["s"] for k, v in TRUTH_SAMPLES.items()]).contains(mt.s)
-        )
-        mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
-
-        # Checkpoint to prevent needing to go through the large table a second time
-        mt = mt.checkpoint(
-            get_checkpoint_path("truth_samples", mt=True),
-            overwrite=args.overwrite,
-        )
-
-        for truth_sample in TRUTH_SAMPLES:
-            truth_sample_mt = mt.filter_cols(mt.s == TRUTH_SAMPLES[truth_sample]["s"])
-            # Filter to variants in truth data
-            truth_sample_mt = truth_sample_mt.filter_rows(
-                hl.agg.any(truth_sample_mt.GT.is_non_ref())
-            )
-            truth_sample_mt.naive_coalesce(args.n_partitions).write(
-                get_callset_truth_data(truth_sample).path,
-                overwrite=args.overwrite,
-            )
+        for ts in TRUTH_SAMPLES:
+            s = TRUTH_SAMPLES[ts]["s"]
+            ts_mt = vds.variant_data
+            ts_mt = ts_mt.filter_cols(ts_mt.s == s)
+            # Filter to variants in truth data.
+            ts_mt = ts_mt.filter_rows(hl.agg.any(ts_mt.GT.is_non_ref()))
+            ts_mt.naive_coalesce(args.truth_sample_mt_n_partitions)
+            ts_mt.write(getattr(res, f"{ts}_mt").path, overwrite=overwrite)
 
     if args.merge_with_truth_data:
-        for truth_sample in TRUTH_SAMPLES:
+        res = evaluation_resources.merge_with_truth_data
+        res.check_resource_existence()
+        for ts in TRUTH_SAMPLES:
+            s = TRUTH_SAMPLES[ts]["s"]
             logger.info(
                 "Creating a merged table with callset truth sample and truth data for"
-                f" {truth_sample}..."
+                f" {ts}..."
             )
-
-            # Load truth data
-            mt = get_callset_truth_data(truth_sample).mt()
-            truth_hc_intervals = TRUTH_SAMPLES[truth_sample]["hc_intervals"].ht()
-            truth_mt = TRUTH_SAMPLES[truth_sample]["truth_mt"].mt()
-            truth_mt = truth_mt.key_cols_by(s=hl.str(TRUTH_SAMPLES[truth_sample]["s"]))
-
-            # Remove low quality sites
-            info_ht = get_info(split=True).ht()
+            # Remove low quality sites.
+            mt = getattr(res, f"{ts}_mt").mt()
             mt = mt.filter_rows(~info_ht[mt.row_key].AS_lowqual)
 
+            # Load truth data.
+            truth_mt = getattr(res, f"{ts}_truth_mt").mt()
+            truth_hc_intervals = getattr(res, f"{ts}_hc_intervals").ht()
+            truth_mt = truth_mt.key_cols_by(s=s)
+
             ht = create_truth_sample_ht(mt, truth_mt, truth_hc_intervals)
-            ht.write(
-                get_callset_truth_data(truth_sample, mt=False).path,
-                overwrite=args.overwrite,
-            )
+            ht.write(getattr(res, f"{ts}_ht").path, overwrite=overwrite)
 
     if args.bin_truth_sample_concordance:
         for truth_sample in TRUTH_SAMPLES:
@@ -293,7 +358,12 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--model_id",
+        "--test",
+        help="If the model being evaluated is a test model.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--model-id",
         help="Model ID.",
         required=False,
     )
@@ -328,24 +398,21 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--n_bins",
-        help="Number of bins for the binned file (default: 100).",
-        default=100,
-        type=int,
-    )
-    parser.add_argument(
-        "--extract_truth_samples",
+        "--extract-truth-samples",
         help="Extract truth samples from callset MatrixTable.",
         action="store_true",
     )
     parser.add_argument(
-        "--n_partitions",
-        help="Desired number of partitions for output Table/MatrixTable.",
+        "--truth-sample-mt-n-partitions",
+        help=(
+            "Desired number of partitions for th truth sample MatrixTable. Default is "
+            "5000."
+        ),
         default=5000,
         type=int,
     )
     parser.add_argument(
-        "--merge_with_truth_data",
+        "--merge-with-truth-data",
         help=(
             "Computes a table for each truth sample comparing the truth sample in the"
             " callset vs the truth."
