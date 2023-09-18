@@ -70,24 +70,26 @@ def _variant_qc_root(version: str = CURRENT_VERSION, test: bool = False) -> str:
 
 
 def get_callset_truth_data(
-    truth_sample: str, mt: bool = True
+    truth_sample: str, mt: bool = True, test: bool = False
 ) -> Union[VersionedMatrixTableResource, VersionedTableResource]:
     """
     Get resources for the truth sample data that is subset from the full callset.
 
-    If `mt` this will return the truth sample MatrixTable (subset from callset); otherwise it returns the
-    merged truth sample Table that includes both the truth data and the data from the callset
+    If `mt` this will return the truth sample MatrixTable (subset from callset);
+    otherwise it returns the merged truth sample Table that includes both the truth
+    data and the data from the callset.
 
-    :param str truth_sample: Name of the truth sample
-    :param bool mt: Whether path is for a MatrixTable, default is True
-    :return: Path to callset truth sample MT
+    :param str truth_sample: Name of the truth sample.
+    :param bool mt: Whether path is for a MatrixTable, default is True.
+    :param test: Whether to use a tmp path for variant QC tests.
+    :return: Path to callset truth sample MT.
     """
     if mt:
         return VersionedMatrixTableResource(
             CURRENT_VERSION,
             {
                 version: MatrixTableResource(
-                    f"{_variant_qc_root(version)}/truth_samples/gnomad.exomes.v{version}.{truth_sample}.mt"
+                    f"{_variant_qc_root(version, test=test)}/truth_samples/gnomad.exomes.v{version}.{truth_sample}.mt"
                 )
                 for version in VERSIONS
             },
@@ -97,7 +99,7 @@ def get_callset_truth_data(
             CURRENT_VERSION,
             {
                 version: TableResource(
-                    f"{_variant_qc_root(version)}/truth_samples/gnomad.exomes.v{version}.{truth_sample}.ht"
+                    f"{_variant_qc_root(version, test=test)}/truth_samples/gnomad.exomes.v{version}.{truth_sample}.ht"
                 )
                 for version in VERSIONS
             },
