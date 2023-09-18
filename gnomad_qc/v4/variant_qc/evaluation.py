@@ -4,8 +4,7 @@ import logging
 from pprint import pformat
 
 import hail as hl
-from gnomad.resources.grch38.reference_data import clinvar
-from gnomad.utils.filtering import filter_low_conf_regions, filter_to_clinvar_pathogenic
+from gnomad.utils.filtering import filter_low_conf_regions
 from gnomad.utils.slack import slack_notifications
 from gnomad.variant_qc.evaluation import (
     compute_binned_truth_sample_concordance,
@@ -25,7 +24,7 @@ from gnomad_qc.v4.resources.annotations import (
     get_trio_stats,
     get_variant_qc_annotations,
 )
-from gnomad_qc.v4.resources.basics import TRUTH_SAMPLES_S, get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources.variant_qc import (
     TRUTH_SAMPLES,
     get_binned_concordance,
@@ -49,33 +48,35 @@ def create_bin_ht(
     """
     Create a table with bin annotations added for a RF or VQSR run and writes it to its correct location in annotations.
 
+    :param ht: Table with RF or VQSR annotations.
+    :param info_ht: Table with info annotations.
+    :param rf_annotations_ht: Table with RF annotations.
     :param n_bins: Number of bins to bin the data into.
+    :param vqsr: Whether the annotations are from a VQSR run.
     :return: Table with bin annotations.
     """
-    if vqsr:
-        ht = ht.annotate(
-            **rf_annotations_ht[ht.key],
-            info=info_ht[ht.key].info,
-            score=ht.info.AS_VQSLOD,
-            positive_train_site=ht.info.POSITIVE_TRAIN_SITE,
-            negative_train_site=ht.info.NEGATIVE_TRAIN_SITE,
-            AS_culprit=ht.info.AS_culprit,
-        )
-    else:
-        ht = ht.annotate(
-            score=ht.rf_probability["TP"],
-            info=info_ht[ht.key].info,
-            positive_train_site=ht.tp,
-            negative_train_site=ht.fp,
-        )
-
     ht = ht.filter(~info_ht[ht.key].AS_lowqual)
-    ht_non_lcr = filter_low_conf_regions(
+    non_lcr_ht = filter_low_conf_regions(
         ht,
         filter_decoy=False,
         filter_telomeres_and_centromeres=True,
     )
-    ht = ht.annotate(non_lcr=hl.is_defined(ht_non_lcr[ht.key]))
+    struct_expr = hl.struct(**rf_annotations_ht[ht.key])
+    if vqsr:
+        struct_expr = struct_expr.annotate(
+            score_expr=ht.info.AS_VQSLOD,
+            positive_train_site_expr=ht.info.POSITIVE_TRAIN_SITE,
+            negative_train_site_expr=ht.info.NEGATIVE_TRAIN_SITE,
+            AS_culprit_expr=ht.info.AS_culprit,
+        )
+    else:
+        struct_expr = struct_expr.annotate(
+            score_expr_expr=ht.rf_probability["TP"],
+            positive_train_site_expr=ht.tp,
+            negative_train_site_expr=ht.fp,
+        )
+
+    ht = ht.annotate(**struct_expr, non_lcr=hl.is_defined(non_lcr_ht[ht.key]))
     bin_ht = create_binned_ht(ht, n_bins, add_substrat={"non_lcr": ht.non_lcr})
 
     return bin_ht
@@ -118,6 +119,7 @@ def create_aggregated_bin_ht(ht: hl.Table, trio_stats_ht: hl.Table) -> hl.Table:
     For each bin, aggregates statistics needed for evaluation plots.
 
     :param ht: Table with bin annotations.
+    :param trio_stats_ht: Table with trio statistics.
     :return: Table of aggregate statistics by bin.
     """
     # Count variants for ranking.
@@ -125,7 +127,7 @@ def create_aggregated_bin_ht(ht: hl.Table, trio_stats_ht: hl.Table) -> hl.Table:
         x: hl.agg.filter(
             hl.is_defined(ht[x]),
             hl.agg.counter(
-                hl.cond(hl.is_snp(ht.alleles[0], ht.alleles[1]), "snv", "indel")
+                hl.if_else(hl.is_snp(ht.alleles[0], ht.alleles[1]), "snv", "indel")
             ),
         )
         for x in ht.row
@@ -135,26 +137,22 @@ def create_aggregated_bin_ht(ht: hl.Table, trio_stats_ht: hl.Table) -> hl.Table:
     ht = ht.annotate_globals(bin_variant_counts=bin_variant_counts)
     logger.info(f"Found the following variant counts:\n {pformat(bin_variant_counts)}")
 
-    # Load ClinVar pathogenic data.
-    clinvar_pathogenic_ht = filter_to_clinvar_pathogenic(clinvar.ht())
-    ht = ht.annotate(clinvar_path=hl.is_defined(clinvar_pathogenic_ht[ht.key]))
-
     logger.info(f"Creating grouped bin table...")
+    # score_bin_agg expects the unrelated AC to be named ac_qc_samples_unrelated_raw.
+    ht = ht.transmute(ac_qc_samples_unrelated_raw=ht.ac_unrelated_raw)
     grouped_binned_ht = compute_grouped_binned_ht(
-        ht,
-        checkpoint_path=new_temp_file(f"grouped_bin", "ht"),
+        ht, checkpoint_path=new_temp_file(f"grouped_bin", "ht")
     )
 
     logger.info(f"Aggregating grouped bin table...")
-    parent_ht = grouped_binned_ht._parent
     agg_ht = grouped_binned_ht.aggregate(
-        n_clinvar_path=hl.agg.count_where(parent_ht.clinvar_path),
         **score_bin_agg(grouped_binned_ht, fam_stats_ht=trio_stats_ht),
     )
 
     return agg_ht
 
 
+# TODO: Update to work with VQSR models.
 def get_evaluation_resources(
     test: bool,
     overwrite: bool,
@@ -198,6 +196,7 @@ def get_evaluation_resources(
     validity_check = PipelineStepResourceCollection(
         "--score-bin-validity-check",
         pipeline_input_steps=[create_bin_table],
+        output_resources={},  # No output resources.
     )
     create_aggregated_bin_table = PipelineStepResourceCollection(
         "--create-aggregated-bin-ht",
@@ -239,7 +238,7 @@ def get_evaluation_resources(
         pipeline_input_steps=[create_bin_table, merge_with_truth_data],
         output_resources={
             f"{s}_bin_ht": get_binned_concordance(model_id, s, test=test)
-            for s in TRUTH_SAMPLES_S
+            for s in TRUTH_SAMPLES
         },
     )
 
@@ -286,11 +285,12 @@ def main(args):
         ht.write(res.bin_ht.path, overwrite=overwrite)
 
     if args.score_bin_validity_check:
+        res = evaluation_resources.validity_check
+        res.check_resource_existence()
         logger.info("Running validity checks on score bins Table...")
         score_bin_validity_check(res.bin_ht.ht())
 
     if args.create_aggregated_bin_ht:
-        logger.warning("Use only workers, it typically crashes with preemptibles")
         res = evaluation_resources.create_aggregated_bin_table
         res.check_resource_existence()
         ht = create_aggregated_bin_ht(res.bin_ht.ht(), res.trio_stats_ht.ht())
@@ -339,12 +339,12 @@ def main(args):
     if args.bin_truth_sample_concordance:
         res = evaluation_resources.bin_truth_sample_concordance
         res.check_resource_existence()
-        for s in TRUTH_SAMPLES_S:
+        for ts in TRUTH_SAMPLES:
             logger.info(
-                f"Creating binned concordance table for {s} for model {model_id}..."
+                f"Creating binned concordance table for {ts} for model {model_id}..."
             )
             metric_ht = res.bin_ht.ht()
-            ht = getattr(res, f"{s}_ht").ht()
+            ht = getattr(res, f"{ts}_ht").ht()
             ht = ht.annotate(score=metric_ht[ht.key].score)
 
             logger.info("Filtering out low confidence regions and segdups...")
@@ -356,7 +356,7 @@ def main(args):
 
             ht = ht.filter(hl.is_defined(ht.score) & ~info_ht[ht.key].AS_lowqual)
             ht = compute_binned_truth_sample_concordance(ht, metric_ht, n_bins)
-            ht.write(getattr(res, f"{s}_bin_ht").path, overwrite=overwrite)
+            ht.write(getattr(res, f"{ts}_bin_ht").path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
@@ -378,6 +378,12 @@ if __name__ == "__main__":
         "--model-id",
         help="Model ID.",
         required=False,
+    )
+    parser.add_argument(
+        "--n-bins",
+        help="Number of bins for the binned file. Default is 100.",
+        default=100,
+        type=int,
     )
     parser.add_argument(
         "--create-bin-ht",
