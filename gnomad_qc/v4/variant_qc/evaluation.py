@@ -64,16 +64,16 @@ def create_bin_ht(
     struct_expr = hl.struct(**rf_annotations_ht[ht.key])
     if vqsr:
         struct_expr = struct_expr.annotate(
-            score_expr=ht.info.AS_VQSLOD,
-            positive_train_site_expr=ht.info.POSITIVE_TRAIN_SITE,
-            negative_train_site_expr=ht.info.NEGATIVE_TRAIN_SITE,
-            AS_culprit_expr=ht.info.AS_culprit,
+            score=ht.info.AS_VQSLOD,
+            positive_train_site=ht.info.POSITIVE_TRAIN_SITE,
+            negative_train_site=ht.info.NEGATIVE_TRAIN_SITE,
+            AS_culprit=ht.info.AS_culprit,
         )
     else:
         struct_expr = struct_expr.annotate(
-            score_expr_expr=ht.rf_probability["TP"],
-            positive_train_site_expr=ht.tp,
-            negative_train_site_expr=ht.fp,
+            score=ht.rf_probability["TP"],
+            positive_train_site=ht.tp,
+            negative_train_site=ht.fp,
         )
 
     ht = ht.annotate(**struct_expr, non_lcr=hl.is_defined(non_lcr_ht[ht.key]))
