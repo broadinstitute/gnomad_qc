@@ -23,7 +23,7 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq
-from gnomad_qc.v3.resources.basics import meta
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds, meta
 from gnomad_qc.v3.resources.release import (
     hgdp_tgp_subset,
     hgdp_tgp_subset_annotations,
@@ -308,17 +308,17 @@ def get_filtered_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table, hl.Table]:
 
         Three sets of samples will be obtained:
             - samples that will be added to the v4 release, samples where
-            gnomad_release status has changed and gnomad_release is now True
+              gnomad_release status has changed and gnomad_release is now True
             - samples that will be removed from the v4 release, samples where
-            gnomad_release status has changed and gnomad_release is now False
-            - samples that will have different pop labels in the v4 release,
-            samples in the to-be-splitted 'Han' and 'Papuan' populations
-            AND their gnomad_release status hasn't changed.
+              gnomad_release status has changed and gnomad_release is now False
+            - samples that will have different pop labels in the v4 release, samples in
+              the to-be-split 'Han' and 'Papuan' populations AND their gnomad_release
+              status hasn't changed.
 
     :param ht: Table with the HGDP + 1KG subset metadata with updated sample
         annotations.
     :return: Tuple of Tables with samples to be added, subtracted, and to have
-    different pop labels in the v4 release.
+        different pop labels in the v4 release.
     """
     # Filter to all samples with a change in the gnomad_release status.
     release_diff_ht = ht.filter(
@@ -390,7 +390,7 @@ def calculate_callstats_for_selected_samples(
 
     :param mt: MatrixTable with the HGDP + 1KG subset.
     :param samples_ht: Table with selected samples and their metadata.
-    param subsets: Subsets to be used for the AFs calculation: 'hgdp' or 'tgp', or both.
+    :param subsets: Subsets to be used for the AFs calculation: 'hgdp' or 'tgp', or both.
     :return: Table with the call stats for the selected samples.
     """
     logger.info("Filtering MT to sample subset and annotating with metadata...")
@@ -502,14 +502,9 @@ def remove_pops_from_freq_meta(ht: hl.Table, pops_to_remove: List[str]) -> hl.Ta
     ht = ht.annotate_globals(
         freq_meta=ht.freq_meta.map(
             lambda d: d.filter(lambda x: ~pops_to_remove.contains(x))
-        ),
-        freq_index_dict=hl.dict(
-            hl.zip(
-                ht.freq_index_dict.keys().filter(lambda k: ~pops_to_remove.contains(k)),
-                ht.freq_index_dict.values(),
-            )
-        ),
+        )
     )
+
     return ht
 
 
@@ -540,7 +535,6 @@ def get_v4_genomes_release_resources(
         },
         output_resources={"updated_meta_ht": hgdp_tgp_meta_updated},
     )
-
     get_callstats_for_updated_samples = PipelineStepResourceCollection(
         "--get-callstats-for-updated-samples",
         pipeline_input_steps=[update_annotations],
@@ -559,14 +553,30 @@ def get_v4_genomes_release_resources(
             ),
         },
     )
-    update_release_callstats = PipelineStepResourceCollection(
-        "--update-release-callstats",
+    join_callstats_for_update = PipelineStepResourceCollection(
+        "--join-callstats-for-update",
         pipeline_input_steps=[get_callstats_for_updated_samples],
         add_input_resources={
             "gnomAD v3.1.2 release sites HT": {
                 "sites_ht": release_sites(public=True).versions["3.1.2"]
             }
         },
+        output_resources={
+            "freq_join_ht": hgdp_tgp_updated_callstats(test=test, subset="join"),
+        },
+    )
+    compute_an_for_new_variants = PipelineStepResourceCollection(
+        "--compute-an-for-new-variants",
+        pipeline_input_steps=[join_callstats_for_update],
+        output_resources={
+            "v3_release_an_ht": hgdp_tgp_updated_callstats(
+                test=test, subset="v3_release_an"
+            ),
+        },
+    )
+    update_release_callstats = PipelineStepResourceCollection(
+        "--update-release-callstats",
+        pipeline_input_steps=[join_callstats_for_update, compute_an_for_new_variants],
         output_resources={
             "v4_freq_ht": hgdp_tgp_updated_callstats(test=test, subset="final"),
         },
@@ -577,6 +587,8 @@ def get_v4_genomes_release_resources(
         {
             "update_annotations": update_annotations,
             "get_callstats_for_updated_samples": get_callstats_for_updated_samples,
+            "join_callstats_for_update": join_callstats_for_update,
+            "compute_an_for_new_variants": compute_an_for_new_variants,
             "update_release_callstats": update_release_callstats,
         }
     )
@@ -610,14 +622,13 @@ def main(args):
     """
     Script to update call stats for HGDP + 1KG subset for v4.
 
-    .. note::
     This code is specifically designed for the update HGDP + 1KG subset in
     v4 release HT. There are a few major changes compared to the v3 release:
-        - the following new sample filters are applied: hard filters,
-        pop PC outliers,relatedness within the subset and relatedness to
-        the rest of the release
-        - the new pop labels
-        - the new split of the `Han` and `Papuan` samples
+        - the following new sample filters are applied: hard filters, pop PC outliers,
+        relatedness within the subset and relatedness to the rest of the release.
+      - the new pop labels.
+      - the new split of the `Han` and `Papuan` samples.
+
     In order to avoid re-calculating the callstats for the whole subset / whole
     release, we will calculate the callstats for the samples that will be added
     and subtracted, then merge the callstats with the old callstats in the
@@ -691,8 +702,8 @@ def main(args):
         )
         freq_pop_diff_ht.write(res.freq_pop_diff_ht.path, overwrite=overwrite)
 
-    if args.update_release_callstats:
-        res = v4_genome_release_resources.update_release_callstats
+    if args.join_callstats_for_update:
+        res = v4_genome_release_resources.join_callstats_for_update
         res.check_resource_existence()
 
         logger.info("Loading v3.1.2 full sites HT...")
@@ -746,22 +757,107 @@ def main(args):
                 "freq_meta", "freq_meta_sample_count"
             )
 
-        logger.info("Filtering to variants in the release HT...")
-        for x in ["pop_diff", "added", "subtracted"]:
-            freq_hts[x] = freq_hts[x].filter(
-                hl.is_defined(freq_hts["release"][freq_hts[x].key])
-            )
-            logger.info(
-                "There are %i variants found in the %s HT after filtering to the "
-                "release HT...",
-                freq_hts[x].count(),
-                x,
-            )
-
         freq_hts = [freq_hts[x] for x in ["release", "pop_diff", "added", "subtracted"]]
         ht = hl.Table.multi_way_zip_join(freq_hts, "ann_array", "global_array")
-        ht = ht.checkpoint(new_temp_file("join", extension="ht"), overwrite=True)
+        ht.write(res.freq_join_ht.path, overwrite=overwrite)
 
+    if args.compute_allele_number_for_new_variants:
+        res = v4_genome_release_resources.compute_an_for_new_variants
+        res.check_resource_existence()
+        logger.info("Determine variants in the release HT that need a recomputed AN...")
+        ht = res.freq_join_ht.ht()
+        ht = ht.filter(
+            hl.is_missing(ht.ann_array[0])
+            & hl.any(ht.ann_array[2].freq.map(lambda x: x.AC > 0))
+        )
+        ht = ht.checkpoint(new_temp_file("variants_for_an", extension="ht"))
+        logger.info(
+            "There are %i variants with an AC > 0 in the added frequency array, but "
+            "missing in the release HT...",
+            ht.count(),
+        )
+        v3_vds = get_gnomad_v3_vds(split=True, release_only=True, samples_meta=True)
+        v3_vds = hl.vds.filter_variants(v3_vds, ht)
+        v3_mt = hl.vds.to_dense_mt(v3_vds)
+        v3_ht = v3_mt.cols()
+        pop_expr = v3_ht.meta.population_inference.pop
+        sex_expr = v3_ht.meta.sex_imputation.sex_karyotype
+        subpop_expr = v3_ht.meta.project_meta.project_subpop
+        strata_expr = [
+            {"pop": pop_expr},
+            {"sex": sex_expr},
+            {"pop": pop_expr, "sex": sex_expr},
+        ]
+        for subset in SUBSETS:
+            subset_expr = hl.or_missing(v3_ht.meta.subsets[subset], subset)
+            if subset in ["tgp", "hgdp"]:
+                subset_pop_expr = subpop_expr
+            else:
+                subset_pop_expr = pop_expr
+            strata_expr.extend(
+                [
+                    {f"subset_{subset}": subset_expr},
+                    {f"subset_{subset}": subset_expr, "sex": sex_expr},
+                    {
+                        f"subset_{subset}": subset_expr,
+                        f"subset_pop_{subset}": subset_pop_expr,
+                    },
+                    {
+                        f"subset_{subset}": subset_expr,
+                        "sex": sex_expr,
+                        f"subset_pop_{subset}": subset_pop_expr,
+                    },
+                ]
+            )
+        from gnomad.utils.annotations import generate_freq_group_membership_array
+
+        ht = generate_freq_group_membership_array(v3_ht, strata_expr)
+        ht.describe()
+        print(hl.eval(ht.freq_meta))
+        print(hl.eval(ht.freq_meta_sample_count))
+
+        n_samples = v3_ht.count()
+        v3_mt = v3_mt.annotate_cols(group_membership=ht[v3_mt.col_key].group_membership)
+        n_groups = len(v3_mt.group_membership.take(1)[0])
+        ht = v3_mt.localize_entries("entries", "cols")
+        ht = ht.annotate_globals(
+            indices_by_group=hl.range(n_groups).map(
+                lambda g_i: hl.range(n_samples).filter(
+                    lambda s_i: ht.cols[s_i].group_membership[g_i]
+                )
+            )
+        )
+        # Pull out each annotation that will be used in the array aggregation below as its
+        # own ArrayExpression. This is important to prevent memory issues when performing
+        # the below array aggregations.
+        ht = ht.select(
+            adj_array=ht.entries.map(lambda e: e.adj),
+            gt_defined_array=ht.entries.map(lambda e: hl.is_defined(e.GT)),
+        )
+
+        adj_agg_expr = ht.indices_by_group.map(
+            lambda s_indices: s_indices.aggregate(
+                lambda i: hl.agg.filter(
+                    ht.adj_array[i], hl.agg.count_where(ht.gt_defined_array[i])
+                )
+            )
+        )
+        raw_agg_expr = ht.gt_defined_array.aggregate(lambda x: hl.agg.count_where(x))
+        # Create final agg list by inserting the "raw" group, representing all samples,
+        # into the adj_agg_list.
+        agg_expr = adj_agg_expr[:1].append(raw_agg_expr).extend(adj_agg_expr[1:])
+        agg_expr = agg_expr.map(
+            lambda x: hl.struct(
+                AC=0, AF=hl.missing(hl.tfloat64), AN=x, homozygote_count=0
+            )
+        )
+        # Add annotations for any supplied entry transform and aggregation functions.
+        ht = ht.select(hl.struct(AN=agg_expr)).drop("cols")
+
+    if args.update_release_callstats:
+        res = v4_genome_release_resources.update_release_callstats
+        res.check_resource_existence()
+        ht = res.freq_join_ht.ht()
         logger.info("Merging AFs from diff pop samples and added samples...")
         global_array = ht.index_globals().global_array
         freq_expr, freq_meta_expr, sample_count_expr = merge_freq_arrays(
@@ -841,6 +937,22 @@ if __name__ == "__main__":
         help=(
             "Get the callstats for the updated samples that were put into different"
             " sets."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--join-callstats-for-update",
+        help=(
+            "Join the callstats Tables for the updated samples with the release "
+            "callstats Table."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--compute-allele-number-for-new-variants",
+        help=(
+            "Compute the allele number for variants that are in the updated samples "
+            "but not in the release HT."
         ),
         action="store_true",
     )
