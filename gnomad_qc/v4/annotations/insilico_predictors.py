@@ -210,22 +210,25 @@ def create_pangolin_grch38_ht() -> hl.Table:
     logger.info("Exploding Pangolin scores...")
     # `explode` will eliminate rows with empty array
     # The VCF INFO of Pangolin is a string with the following format:
-    # gene1|pos_splice_gain:largest_increase|pos_splice_loss:largest_decrease|gene2...
+    # gene1|pos_splice_gain:largest_increase|pos_splice_loss:largest_decrease|Warnings:||gene2...
     # for example:
     # Pangolin=ENSG00000121005.9|-86:0.25|38:-0.49|Warnings:||ENSG00000254238.1|-40:0.01|30:-0.17|Warnings:
-
-    ht = ht.annotate(pango=ht.info.Pangolin[0].split(delim="\|\|"))
-    ht = ht.explode(ht.pango)
+    # There's only one string element in the array before splitting, so we use
+    # [0] to extract the string, otherwise split can't be used on an array.
+    ht = ht.annotate(pangolin=ht.info.Pangolin[0].split(delim="\|\|"))
+    ht = ht.explode(ht.pangolin)
     logger.info("Number of rows in exploded Pangolin Hail Table: %s", ht.count())
 
     logger.info("Annotating Pangolin scores...")
-    ht = ht.annotate(
+    # The Pangolin score is the delta score of splice gain and splice loss,
+    # which is the second and fourth element in the array after splitting.
+    ht = ht.transmute(
         pangolin=hl.struct(
             delta_scores=(
                 hl.empty_array(hl.tfloat64).append(
-                    hl.float(ht.pango.split(delim=":|\\|")[2])
+                    hl.float(ht.pangolin.split(delim=":|\\|")[2])
                 )
-            ).append(hl.float(ht.pango.split(delim=":|\\|")[4])),
+            ).append(hl.float(ht.pangolin.split(delim=":|\\|")[4])),
         )
     )
 
@@ -240,7 +243,6 @@ def create_pangolin_grch38_ht() -> hl.Table:
             hl.max(ht.pangolin.delta_scores),
         )
     )
-    # TODO: tried hl.zip to make it one-step, but it's not working
     ht = ht.select(ht.largest_ds_gene)
     ht = ht.collect_by_key()
     logger.info(
@@ -257,9 +259,9 @@ def create_pangolin_grch38_ht() -> hl.Table:
         )
     )
     logger.info(
-        "Number of variants indicating splice gain: %s;"
-        "Number of variants indicating splice loss: %s; "
-        "Number of variants with no splicing consequence: %s",
+        "\nNumber of variants indicating splice gain: %s;\n"
+        "Number of variants indicating splice loss: %s; \n"
+        "Number of variants with no splicing consequence: %s \n",
         ht.filter(ht.pangolin.largest_ds > 0).count(),
         ht.filter(ht.pangolin.largest_ds < 0).count(),
         ht.filter(ht.pangolin.largest_ds == 0).count(),
