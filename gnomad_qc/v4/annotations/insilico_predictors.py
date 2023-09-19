@@ -204,12 +204,12 @@ def create_revel_grch38_ht() -> hl.Table:
     # drop variants that have no position in GRCh38 when lifted over from GRCh37
     ht = ht.filter(ht.grch38_pos.contains("."), keep=False)
     ht = ht.transmute(chr="chr" + ht.chr)
-    ht = ht.annotate(
+    ht = ht.select(
         locus=hl.locus(ht.chr, hl.int(ht.grch38_pos), reference_genome="GRCh38"),
         alleles=hl.array([ht.ref, ht.alt]),
+        REVEL=ht.REVEL,
         Transcript_stable_ID=ht.Ensembl_transcriptid.strip().split(";"),
     )
-    ht = ht.select("locus", "alleles", "REVEL", "Transcript_stable_ID")
     ht = ht.explode("Transcript_stable_ID")
     ht = ht.key_by("Transcript_stable_ID")
     logger.info("Number of rows in REVEL table: %s", ht.count())
@@ -220,7 +220,7 @@ def create_revel_grch38_ht() -> hl.Table:
     )
     ensembl_ids_ht = ensembl_ids_ht.select("Ensembl_Canonical", "MANE_Select")
 
-    logger.info("Annotating revel HT with canonical and MANE Select transcripts...")
+    logger.info("Annotating REVEL HT with canonical and MANE Select transcripts...")
     ht = ht.annotate(**ensembl_ids_ht[ht.key])
 
     logger.info(
@@ -233,7 +233,7 @@ def create_revel_grch38_ht() -> hl.Table:
         revel_canonical=hl.or_missing(ht.Ensembl_Canonical == "1", ht.REVEL),
     )
     ht = ht.checkpoint(
-        "gs://gnomad-tmp-4day/revel-v1.3_in_Ensembl105.ht", _read_if_exists=True
+        "gs://gnomad-tmp-4day/revel-v1.3_in_Ensembl105.ht", overwrite=not args.overwrite
     )
 
     # Since the REVEL score for each variant is transcript-specific, we
@@ -310,7 +310,6 @@ if __name__ == "__main__":
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     parser.add_argument("--cadd", help="Create CADD HT", action="store_true")
     parser.add_argument("--spliceai", help="Create SpliceAI HT", action="store_true")
-    parser.add_argument("--overwrite", help="Overwrite data.", action="store_true")
     parser.add_argument("--cadd", help="Create CADD HT.", action="store_true")
     parser.add_argument("--revel", help="Create REVEL HT.", action="store_true")
     args = parser.parse_args()
