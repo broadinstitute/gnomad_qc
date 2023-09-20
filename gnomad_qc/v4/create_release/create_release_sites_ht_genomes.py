@@ -6,7 +6,7 @@ import hail as hl
 # move SIFT and PolyPhen to insilico_predictors in vep_ht
 # remove missing fields in vep_ht
 # drop vep from site HT and merge with vep_ht
-# remove old insilico predictors and replace with new ones (all 7)
+# remove old insilico predictors and replace with new ones (the left predictors)
 # update dbSNP to dbSNP 156
 # rerun inbreeding_coefficient with the callstats
 # update freq, freq_meta, freq_index_dict by integrating updates in HGDP/TGP
