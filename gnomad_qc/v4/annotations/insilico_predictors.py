@@ -209,7 +209,7 @@ def create_pangolin_grch38_ht() -> hl.Table:
 
     logger.info("Exploding Pangolin scores...")
     # `explode` will eliminate rows with empty array
-    # The Pangolin annotation is imported as an array of strings containing 
+    # The Pangolin annotation is imported as an array of strings containing
     # one element with the following format:
     # gene1|pos_splice_gain:largest_increase|pos_splice_loss:largest_decrease|Warnings:||gene2...
     # for example:
