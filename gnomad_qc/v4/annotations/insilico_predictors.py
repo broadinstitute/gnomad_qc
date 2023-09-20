@@ -191,6 +191,12 @@ def create_pangolin_grch38_ht() -> hl.Table:
     )
     v4_exomes = "gs://gnomad-insilico/pangolin/gnomad.v4.0.exomes.pangolin.vcf.bgz/*.gz"
 
+    # There was a bug in original Pangolin code, that would generate incorrect
+    # scores when a variant falls on multiple genes on the same strand. This bug
+    # was fixed before running v4 exomes, the affected ~20M variants have
+    # been rerun.
+    v4_bugfix = "gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.bugfix.pangolin.vcf.bgz/*.bgz"
+
     def import_pangolin_vcf(vcf_path: str) -> hl.Table:
         """
         Import Pangolin VCF to Hail Table.
@@ -209,6 +215,10 @@ def create_pangolin_grch38_ht() -> hl.Table:
 
     ht_g = import_pangolin_vcf(v4_genomes)
     ht_e = import_pangolin_vcf(v4_exomes)
+    ht_bugfix = import_pangolin_vcf(v4_bugfix)
+
+    ht_g_correct = ht_g.anti_join(ht_bugfix)
+    ht_g = ht_g_correct.union(ht_bugfix)
 
     logger.info(
         "Number of rows in genomes Pangolin HT: %s; "
