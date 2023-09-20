@@ -28,7 +28,6 @@ def get_sift_polyphen_from_vep(vep_ht: hl.Table) -> hl.Table:
     :return: Hail Table with VEP105 annotations and  SIFT and PolyPhen scores
     extracted and stored in insilico_predictors struct.
     """
-
     ht = vep_ht.select(vep_ht.vep.transcript_consequences)
     ht = ht.explode("transcript_consequences")
     ht = ht.select(
