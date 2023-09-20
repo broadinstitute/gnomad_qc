@@ -97,7 +97,7 @@ def create_cadd_grch38_ht() -> hl.Table:
     indel3 = indel3.anti_join(indel4)
 
     ht = snvs.union(indel3, indel4)
-    ht = ht.select(cadd=hl.struct(raw_score=ht.RawScore, phred=ht.PHRED))
+    ht = ht.select(cadd=hl.struct(phred=ht.PHRED, raw_score=ht.RawScore))
     ht = ht.annotate_globals(cadd_version="v1.6")
     return ht
 
