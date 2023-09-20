@@ -1,16 +1,93 @@
 """Script to create release sites HT for v4 genomes."""
 import hail as hl
 
-# TODO:
-# input: VRS- and VEP105-annotated sites HT v3.1.4
-# move SIFT and Polyphen to insilico_predictors
-# remove missing fields in vep
+# TODO: steps to create release sites HT
+# input: VRS-annotated sites HT v3.1.4
+# move SIFT and PolyPhen to insilico_predictors in vep_ht
+# remove missing fields in vep_ht
+# drop vep from site HT and merge with vep_ht
 # remove old insilico predictors and replace with new ones (all 7)
 # update dbSNP to dbSNP 156
 # rerun inbreeding_coefficient with the callstats
 # update freq, freq_meta, freq_index_dict by integrating updates in HGDP/TGP
 # replace oth with remaining in global fields
 # update global fields
+
+
+def get_sift_polyphen_from_vep(vep_ht: hl.Table) -> hl.Table:
+    """
+    Get SIFT and PolyPhen scores from VEP 105 annotations.
+
+    .. note::
+     This function is to get a max of SIFT and PolyPhen scores from mane_select
+     transcripts, otherwise get a max of SIFT and PolyPhen scores from canonical
+     transcripts. It will also drop the SIFT and PolyPhen scores and predictions
+     from the transcript_consequences struct.
+
+    :param vep_ht: VEP105 annotated Hail Table.
+    :return: Hail Table with VEP105 annotations and  SIFT and PolyPhen scores
+    extracted and stored in insilico_predictors struct.
+    """
+
+    ht = vep_ht.select(vep_ht.vep.transcript_consequences)
+    ht = ht.explode("transcript_consequences")
+    ht = ht.select(
+        ht.transcript_consequences.mane_select,
+        ht.transcript_consequences.canonical,
+        ht.transcript_consequences.sift_score,
+        ht.transcript_consequences.polyphen_score,
+    )
+
+    ht = ht.annotate(
+        sift_mane=hl.or_missing(
+            hl.is_defined(ht.mane_select),
+            ht.sift_score,
+        ),
+        sift_canonical=hl.or_missing(
+            ht.canonical == 1,
+            ht.sift_score,
+        ),
+        polyphen_mane=hl.or_missing(
+            hl.is_defined(ht.mane_select),
+            ht.polyphen_score,
+        ),
+        polyphen_canonical=hl.or_missing(
+            ht.canonical == 1,
+            ht.polyphen_score,
+        ),
+    )
+
+    ht = ht.group_by(*ht.key).aggregate(
+        sift_mane_max=hl.agg.max(ht.sift_mane),
+        sift_canonical_max=hl.agg.max(ht.sift_canonical),
+        polyphen_mane_max=hl.agg.max(ht.polyphen_mane),
+        polyphen_canonical_max=hl.agg.max(ht.polyphen_canonical),
+    )
+    ht = ht.select(
+        sift_max=hl.or_else(ht.sift_mane_max, ht.sift_canonical_max),
+        polyphen_max=hl.or_else(ht.polyphen_mane_max, ht.polyphen_canonical_max),
+    )
+    vep_ht = vep_ht.annotate(
+        vep=vep_ht.vep.annotate(
+            transcript_consequences=vep_ht.vep.transcript_consequences.map(
+                lambda x: x.drop(
+                    "sift_prediction",
+                    "sift_score",
+                    "polyphen_prediction",
+                    "polyphen_score",
+                )
+            )
+        )
+    )
+    vep_ht = vep_ht.annotate(
+        insilico_predictors=hl.struct(
+            sift_max=ht[vep_ht.key].sift_max, polyphen_max=ht[vep_ht.key].polyphen_max
+        )
+    )
+    vep_ht = vep_ht.annotate_globals(
+        tool_versions=hl.struct(sift_version="5.2.2", polyphen_version="2.2.2")
+    )
+    return vep_ht
 
 
 def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpression:
