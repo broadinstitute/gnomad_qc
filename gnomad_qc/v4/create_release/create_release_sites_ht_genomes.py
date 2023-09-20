@@ -1,6 +1,17 @@
 """Script to create release sites HT for v4 genomes."""
 import hail as hl
 
+# TODO:
+# input: VRS- and VEP105-annotated sites HT v3.1.4
+# move SIFT and Polyphen to insilico_predictors
+# remove missing fields in vep
+# remove old insilico predictors and replace with new ones (all 7)
+# update dbSNP to dbSNP 156
+# rerun inbreeding_coefficient with the callstats
+# update freq, freq_meta, freq_index_dict by integrating updates in HGDP/TGP
+# replace oth with remaining in global fields
+# update global fields
+
 
 def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpression:
     """
