@@ -97,6 +97,7 @@ def create_cadd_grch38_ht() -> hl.Table:
     indel3 = indel3.anti_join(indel4)
 
     ht = snvs.union(indel3, indel4)
+    ht = ht.select(cadd=hl.struct(raw_score=ht.RawScore, phred=ht.PHRED))
     ht = ht.annotate_globals(cadd_version="v1.6")
     return ht
 
@@ -165,7 +166,7 @@ def create_spliceai_grch38_ht() -> hl.Table:
 
     logger.info("Getting the max SpliceAI score for each variant across genes...")
     ht = ht.collect_by_key()
-    ht = ht.select(splice_ai=hl.struct(ds_max=hl.max(ht.values.ds_max)))
+    ht = ht.select(spliceai_ds_max=hl.max(ht.values.ds_max))
     ht = ht.annotate_globals(spliceai_version="v1.3")
     return ht
 
@@ -259,22 +260,20 @@ def create_pangolin_grch38_ht() -> hl.Table:
         "Number of rows in Pangolin Hail Table after collect_by_key: %s", ht.count()
     )
     ht = ht.select(
-        pangolin=hl.struct(
-            largest_ds=hl.if_else(
-                hl.abs(hl.min(ht.values.largest_ds_gene))
-                > hl.abs(hl.max(ht.values.largest_ds_gene)),
-                hl.min(ht.values.largest_ds_gene),
-                hl.max(ht.values.largest_ds_gene),
-            )
+        pangolin_largest_ds=hl.if_else(
+            hl.abs(hl.min(ht.values.largest_ds_gene))
+            > hl.abs(hl.max(ht.values.largest_ds_gene)),
+            hl.min(ht.values.largest_ds_gene),
+            hl.max(ht.values.largest_ds_gene),
         )
     )
     logger.info(
         "\nNumber of variants indicating splice gain: %s;\n"
         "Number of variants indicating splice loss: %s; \n"
         "Number of variants with no splicing consequence: %s \n",
-        hl.agg.count_where(ht.pangolin.largest_ds > 0),
-        hl.agg.count_where(ht.pangolin.largest_ds < 0),
-        hl.agg.count_where(ht.pangolin.largest_ds == 0),
+        hl.agg.count_where(ht.pangolin_largest_ds > 0),
+        hl.agg.count_where(ht.pangolin_largest_ds < 0),
+        hl.agg.count_where(ht.pangolin_largest_ds == 0),
     )
     return ht
 
