@@ -277,6 +277,8 @@ def create_pangolin_grch38_ht() -> hl.Table:
             hl.max(ht.values.largest_ds_gene),
         )
     )
+    # TODO: update version when Invitae publishes new version
+    ht = ht.annotate_globals(pangolin_version="v1.0.1")
     logger.info(
         "\nNumber of variants indicating splice gain: %s;\n"
         "Number of variants indicating splice loss: %s; \n"
