@@ -209,12 +209,11 @@ def create_pangolin_grch38_ht() -> hl.Table:
 
     logger.info("Exploding Pangolin scores...")
     # `explode` will eliminate rows with empty array
-    # The VCF INFO of Pangolin is a string with the following format:
+    # The Pangolin annotation is imported as an array of strings containing 
+    # one element with the following format:
     # gene1|pos_splice_gain:largest_increase|pos_splice_loss:largest_decrease|Warnings:||gene2...
     # for example:
     # Pangolin=ENSG00000121005.9|-86:0.25|38:-0.49|Warnings:||ENSG00000254238.1|-40:0.01|30:-0.17|Warnings:
-    # There's only one string element in the array before splitting, so we use
-    # [0] to extract the string, otherwise split can't be used on an array.
     ht = ht.annotate(pangolin=ht.info.Pangolin[0].split(delim="\|\|"))
     ht = ht.explode(ht.pangolin)
     logger.info("Number of rows in exploded Pangolin Hail Table: %s", ht.count())
@@ -262,9 +261,9 @@ def create_pangolin_grch38_ht() -> hl.Table:
         "\nNumber of variants indicating splice gain: %s;\n"
         "Number of variants indicating splice loss: %s; \n"
         "Number of variants with no splicing consequence: %s \n",
-        ht.filter(ht.pangolin.largest_ds > 0).count(),
-        ht.filter(ht.pangolin.largest_ds < 0).count(),
-        ht.filter(ht.pangolin.largest_ds == 0).count(),
+        hl.agg.count_where(ht.pangolin.largest_ds > 0),
+        hl.agg.count_where(ht.pangolin.largest_ds < 0),
+        hl.agg.count_where(ht.pangolin.largest_ds == 0),
     )
     return ht
 
