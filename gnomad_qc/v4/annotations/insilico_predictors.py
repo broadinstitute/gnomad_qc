@@ -170,6 +170,115 @@ def create_spliceai_grch38_ht() -> hl.Table:
     return ht
 
 
+def create_pangolin_grch38_ht() -> hl.Table:
+    """
+    Create a Hail Table with Pangolin score for splicing for GRCh38.
+
+    .. note::
+    The score was based on the splicing prediction tool Pangolin:
+    Zeng, T., Li, Y.I. Predicting RNA splicing from DNA sequence using Pangolin.
+     Genome Biol 23, 103 (2022). https://doi.org/10.1186/s13059-022-02664-4
+
+    There's no precomputed score for all possible variants, the scores were
+    generated for gnomAD v4 genomes (=v3 genomes) and v4 exomes variants in
+    gene body only.
+
+    :return: Hail Table with Pangolin score for splicing for GRCh38.
+    """
+    v4_genomes = (
+        "gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.pangolin.vcf.bgz/*.bgz"
+    )
+    v4_exomes = "gs://gnomad-insilico/pangolin/gnomad.v4.0.exomes.pangolin.vcf.bgz/*.gz"
+
+    def import_pangolin_vcf(vcf_path: str) -> hl.Table:
+        """
+        Import Pangolin VCF to Hail Table.
+
+        :param vcf_path: Path to Pangolin VCF.
+        :return: Hail Table with Pangolin scores.
+        """
+        ht = hl.import_vcf(
+            vcf_path,
+            min_partitions=1000,
+            force_bgz=True,
+            reference_genome="GRCh38",
+            skip_invalid_loci=True,
+        ).rows()
+        return ht
+
+    ht_g = import_pangolin_vcf(v4_genomes)
+    ht_e = import_pangolin_vcf(v4_exomes)
+
+    logger.info(
+        "Number of rows in genomes Pangolin HT: %s; "
+        "Number of rows in raw exomes Pangolin HT: %s. ",
+        ht_g.count(),
+        ht_e.count(),
+    )
+
+    ht = ht_g.union(ht_e)
+
+    logger.info("Exploding Pangolin scores...")
+    # `explode` will eliminate rows with empty array
+    # The Pangolin annotation is imported as an array of strings containing
+    # one element with the following format:
+    # gene1|pos_splice_gain:largest_increase|pos_splice_loss:largest_decrease|Warnings:||gene2...
+    # for example:
+    # Pangolin=ENSG00000121005.9|-86:0.25|38:-0.49|Warnings:||ENSG00000254238.1|-40:0.01|30:-0.17|Warnings:
+    ht = ht.annotate(pangolin=ht.info.Pangolin[0].split(delim="\|\|"))
+    ht = ht.explode(ht.pangolin)
+    logger.info("Number of rows in exploded Pangolin Hail Table: %s", ht.count())
+
+    logger.info("Annotating Pangolin scores...")
+    # The Pangolin score is the delta score of splice gain and splice loss,
+    # which is the second and fourth element in the array after splitting.
+    ht = ht.transmute(
+        pangolin=hl.struct(
+            delta_scores=(
+                hl.empty_array(hl.tfloat64).append(
+                    hl.float(ht.pangolin.split(delim=":|\\|")[2])
+                )
+            ).append(hl.float(ht.pangolin.split(delim=":|\\|")[4])),
+        )
+    )
+
+    # Using > instead of >= in case where delta score of splice gain and splice
+    # loss are the same but different sign, we will keep the positive score of
+    # splice gain
+    ht = ht.annotate(
+        largest_ds_gene=hl.if_else(
+            hl.abs(hl.min(ht.pangolin.delta_scores))
+            > hl.abs(hl.max(ht.pangolin.delta_scores)),
+            hl.min(ht.pangolin.delta_scores),
+            hl.max(ht.pangolin.delta_scores),
+        )
+    )
+    ht = ht.select(ht.largest_ds_gene)
+    ht = ht.collect_by_key()
+    logger.info(
+        "Number of rows in Pangolin Hail Table after collect_by_key: %s", ht.count()
+    )
+    ht = ht.select(
+        pangolin=hl.struct(
+            largest_ds=hl.if_else(
+                hl.abs(hl.min(ht.values.largest_ds_gene))
+                > hl.abs(hl.max(ht.values.largest_ds_gene)),
+                hl.min(ht.values.largest_ds_gene),
+                hl.max(ht.values.largest_ds_gene),
+            )
+        )
+    )
+    logger.info(
+        "\nNumber of variants indicating splice gain: %s;\n"
+        "Number of variants indicating splice loss: %s; \n"
+        "Number of variants with no splicing consequence: %s \n",
+        hl.agg.count_where(ht.pangolin.largest_ds > 0),
+        hl.agg.count_where(ht.pangolin.largest_ds < 0),
+        hl.agg.count_where(ht.pangolin.largest_ds == 0),
+    )
+    return ht
+
+
 def create_revel_grch38_ht() -> hl.Table:
     """
     Create a Hail Table with REVEL scores for GRCh38.
@@ -291,6 +400,16 @@ def main(args):
         )
         logger.info("SpliceAI Hail Table for GRCh38 created.")
 
+    if args.pangolin:
+        logger.info("Creating Pangolin Hail Table for GRCh38...")
+
+        ht = create_pangolin_grch38_ht()
+        ht.write(
+            get_insilico_predictors(predictor="pangolin").path,
+            overwrite=args.overwrite,
+        )
+        logger.info("Pangolin Hail Table for GRCh38 created.")
+
     if args.revel:
         logger.info("Creating REVEL Hail Table for GRCh38...")
 
@@ -310,7 +429,7 @@ if __name__ == "__main__":
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     parser.add_argument("--cadd", help="Create CADD HT", action="store_true")
     parser.add_argument("--spliceai", help="Create SpliceAI HT", action="store_true")
-    parser.add_argument("--cadd", help="Create CADD HT.", action="store_true")
+    parser.add_argument("--pangolin", help="Create Pangolin HT", action="store_true")
     parser.add_argument("--revel", help="Create REVEL HT.", action="store_true")
     args = parser.parse_args()
     if args.slack_channel:
