@@ -85,6 +85,9 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-30day",
     )
 
+    # SSA Logs are easier to troubleshoot with.
+    hl._set_flags(use_ssa_logs="1")
+
     test = args.test
     overwrite = args.overwrite
 
