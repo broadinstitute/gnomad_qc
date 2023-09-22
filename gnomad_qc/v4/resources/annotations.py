@@ -1,7 +1,6 @@
 """Script containing annotation related resources."""
 from typing import Optional
 
-from gnomad.resources.grch37.gnomad import EXOME_RELEASES, GENOME_RELEASES
 from gnomad.resources.grch38.gnomad import SUBSETS
 from gnomad.resources.resource_utils import (
     DataException,
@@ -295,6 +294,7 @@ def get_downsampling(
 
 def get_freq(
     version: str = CURRENT_VERSION,
+    data_type: str = "exomes",
     test: bool = False,
     hom_alt_adjusted=False,
     chrom: Optional[str] = None,
@@ -305,6 +305,7 @@ def get_freq(
     Get the frequency annotation table for a specified release.
 
     :param version: Version of annotation path to return.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
     :param test: Whether to use a tmp path for tests.
     :param hom_alt_adjusted: Whether to return the hom alt adjusted frequency table.
     :param chrom: Chromosome to return frequency table for. Entire Table will be
@@ -314,7 +315,7 @@ def get_freq(
     :param finalized: Whether to return the finalized frequency table. Default is True.
     :return: Hail Table containing subset or overall cohort frequency annotations.
     """
-    ht_name = f"gnomad.exomes.v{version}.frequencies"
+    ht_name = f"gnomad.{data_type}.v{version}.frequencies"
     if not finalized:
         if chrom:
             ht_name += f".{chrom}"
@@ -324,13 +325,13 @@ def get_freq(
         ht_name += f".{intermediate_subset}"
         if test:
             ht_name += ".test"
-        ht_path = f"{_annotations_root(version, test)}/temp/{ht_name}.ht"
+        ht_path = f"{_annotations_root(version, test, data_type)}/temp/{ht_name}.ht"
     else:
         if finalized:
             ht_name += ".final"
         if test:
             ht_name += ".test"
-        ht_path = f"{_annotations_root(version, test)}/{ht_name}.ht"
+        ht_path = f"{_annotations_root(version, test, data_type)}/{ht_name}.ht"
 
     return VersionedTableResource(
         version, {version: TableResource(ht_path) for version in VERSIONS}

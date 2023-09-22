@@ -27,6 +27,7 @@ from gnomad_qc.resource_utils import (
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import (
     get_combined_frequency,
+    get_freq,
     get_freq_comparison,
 )
 from gnomad_qc.v4.resources.basics import get_logging_path
@@ -260,7 +261,7 @@ def perform_cmh_test(
 
 
 def get_combine_faf_resources(
-    overwrite: bool, test: bool, public: bool = False
+        overwrite: bool, test: bool, public: bool = False
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the combined FAF resource creation pipeline.
@@ -283,12 +284,11 @@ def get_combine_faf_resources(
         output_resources={"freq_ht": get_combined_frequency(test=test)},
         input_resources={
             # TODO: rename when release scripts are finalized.
-            "create_release.py": {
-                "exomes_ht": release_sites("exomes"),
-            },
-            "create_genome_release.py": {
-                "genomes_ht": release_sites("genomes"),
-            },
+            "generate_freq.py": {
+                "exomes_ht": get_freq(test=test, finalized=False)},
+            "create_release_sites_ht_genomes.py": {
+                # TODO: "genomes_freq_ht": get_freq(test=test, data_type='genomes', finalized=True)},
+                "genomes_ht": release_sites(public=True).versions["3.1.2"]},
         },
     )
     contingency_table_test = PipelineStepResourceCollection(
@@ -325,6 +325,16 @@ def get_combine_faf_resources(
 
     return combine_faf_pipeline
 
+def filter_gene_to_test(ht: hl.Table) -> hl.Table:
+    """
+    Filter to PCSK9 1:55039447-55064852 for testing
+
+    :param ht: Table with frequency and FAF information.
+    :return: Table with frequency and FAF information of the filtered interval of a gene
+    """
+    return hl.filter_intervals(ht,
+        [hl.parse_locus_interval("1:55039447-55064852", reference_genome='GRCh38')])
+
 
 def main(args):
     """Create combined FAF resource."""
@@ -339,9 +349,14 @@ def main(args):
         if args.create_combined_frequency_table:
             res = combine_faf_resources.combined_frequency
             res.check_resource_existence()
+            exomes_ht = res.exomes_ht.ht()
+            genomes_ht = res.genomes_ht.ht()
             if test:
-                exomes_ht = res.exomes_ht.ht()._filter_partitions(range(20))
-                genomes_ht = res.genomes_ht.ht()._filter_partitions(range(20))
+                # exomes_ht = res.exomes_freq_ht.ht()._filter_partitions(range(20))
+                # genomes_ht = res.genomes_freq_ht.ht()._filter_partitions(range(20))
+                # filter to PCSK9 1:55039447-55064852 for testing
+                exomes_ht = filter_gene_to_test(exomes_ht)
+                genomes_ht = filter_gene_to_test(genomes_ht)
 
             exomes_ht = extract_freq_info(exomes_ht, pops, faf_pops, "genomes")
             genomes_ht = extract_freq_info(genomes_ht, pops, faf_pops, "exomes")
