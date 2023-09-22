@@ -8,7 +8,7 @@ Example command to use `hailctl batch submit`:
 hailctl batch submit \
 --image-name us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
 gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch.py \
--- \ # TODO: remove this when hailctl batch submit bug is fixed in hail 0.2.121
+-- \
 --billing-project gnomad-annot \
 --working-bucket gnomad-tmp-4day \
 --image us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
@@ -152,6 +152,7 @@ def main(args):
         default_reference="GRCh38",
         global_seed=args.hail_rand_seed,
         regions=["us-central1"],
+        driver_memory="highmem",
     )
 
     logger.info(f"Hail version as: {hl.version()}")
