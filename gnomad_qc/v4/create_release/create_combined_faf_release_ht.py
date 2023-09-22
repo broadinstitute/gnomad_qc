@@ -31,7 +31,9 @@ from gnomad_qc.v4.resources.annotations import (
     get_freq_comparison,
 )
 from gnomad_qc.v4.resources.basics import get_logging_path
-from gnomad_qc.v4.resources.release import get_combined_faf_release, release_sites
+from gnomad_qc.v4.resources.release import get_combined_faf_release
+# TODO: change to freq_ht when the freq_ht is finalized
+from gnomad_qc.v3.resources.release import release_sites
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("compute_combined_faf")
@@ -341,7 +343,7 @@ def main(args):
     hl.init(log="/compute_combined_faf.log")
     test = args.test
     overwrite = args.overwrite
-    pops = list(POPS["v3"] & POPS["v4"])
+    pops = POPS["v3"] + POPS["v4"]
     faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX]
     combine_faf_resources = get_combine_faf_resources(overwrite, test, args.public)
 
