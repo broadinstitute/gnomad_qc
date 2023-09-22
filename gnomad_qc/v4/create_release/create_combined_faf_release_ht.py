@@ -290,7 +290,7 @@ def get_combine_faf_resources(
                 "exomes_ht": get_freq(test=test, finalized=False)},
             "create_release_sites_ht_genomes.py": {
                 # TODO: "genomes_freq_ht": get_freq(test=test, data_type='genomes', finalized=True)},
-                "genomes_ht": release_sites(public=True).versions["3.1.2"]},
+                "genomes_ht": release_sites()},
         },
     )
     contingency_table_test = PipelineStepResourceCollection(
