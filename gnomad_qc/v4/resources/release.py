@@ -2,7 +2,7 @@
 import logging
 from typing import Optional
 
-from gnomad.resources.grch38.gnomad import combined_faf, coverage, public_release
+from gnomad.resources.grch38.gnomad import coverage, public_release
 from gnomad.resources.resource_utils import (
     DataException,
     TableResource,
@@ -79,13 +79,13 @@ def combined_faf_release_ht_path(
         bucket. Default is False.
     :return: File path for desired combined genome + exome FAF release Hail Table.
     """
-    if public:
-        if file_exists(combined_faf().versions[release_version].path):
-            return combined_faf().versions[release_version].path
-        else:
-            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/joint/gnomad.joint.v{release_version}.faf.ht"
-    else:
-        return f"gs://gnomad/release/{release_version}/ht/joint/gnomad.joint.v{release_version}.faf.ht"
+    # if public:
+    #     if file_exists(combined_faf().versions[release_version].path):
+    #         return combined_faf().versions[release_version].path
+    #     else:
+    #         return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/joint/gnomad.joint.v{release_version}.faf.ht"
+    # else:
+    return f"gs://gnomad/release/{release_version}/ht/joint/gnomad.joint.v{release_version}.faf.ht"
 
 
 def get_combined_faf_release(public: bool = False) -> VersionedTableResource:
