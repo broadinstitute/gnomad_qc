@@ -31,15 +31,16 @@ def get_sift_polyphen_from_vep(ht: hl.Table) -> hl.Table:
     :return: Hail Table with VEP105 annotations and  SIFT and PolyPhen scores
     extracted and stored in insilico_predictors struct.
     """
-    mane = filter_vep_transcript_csqs(ht, synonymous=False, canonical=False,
-                                      mane_select=True)
+    mane = filter_vep_transcript_csqs(
+        ht, synonymous=False, canonical=False, mane_select=True
+    )
     canonical = filter_vep_transcript_csqs(ht, synonymous=False, canonical=True)
     ht = ht.annotate(
         sift_mane=mane[ht.key].vep.transcript_consequences.sift_score,
         polyphen_mane=mane[ht.key].vep.transcript_consequences.polyphen_score,
         sift_canonical=canonical[ht.key].vep.transcript_consequences.sift_score,
-        polyphen_canonical=canonical[
-            ht.key].vep.transcript_consequences.polyphen_score)
+        polyphen_canonical=canonical[ht.key].vep.transcript_consequences.polyphen_score,
+    )
 
     ht = ht.annotate(
         vep=ht.vep.annotate(
@@ -55,14 +56,13 @@ def get_sift_polyphen_from_vep(ht: hl.Table) -> hl.Table:
     )
     ht = ht.annotate(
         insilico_predictors=hl.struct(
-            sift_max=hl.or_else(hl.max(ht.sift_mane),
-                                hl.max(ht.sift_canonical)),
-            polyphen_max=hl.or_else(hl.max(ht.polyphen_mane),
-                                    hl.max(ht.polyphen_canonical))
+            sift_max=hl.or_else(hl.max(ht.sift_mane), hl.max(ht.sift_canonical)),
+            polyphen_max=hl.or_else(
+                hl.max(ht.polyphen_mane), hl.max(ht.polyphen_canonical)
+            ),
         )
     )
-    ht = ht.drop("sift_mane", "polyphen_mane", "sift_canonical",
-                 'polyphen_canonical')
+    ht = ht.drop("sift_mane", "polyphen_mane", "sift_canonical", "polyphen_canonical")
 
     ht = ht.annotate_globals(
         tool_versions=hl.struct(sift_version="5.2.2", polyphen_version="2.2.2")
@@ -70,8 +70,7 @@ def get_sift_polyphen_from_vep(ht: hl.Table) -> hl.Table:
     return ht
 
 
-def remove_missing_vep_fields(
-        vep_expr: hl.StructExpression) -> hl.StructExpression:
+def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpression:
     """
     Remove fields from VEP 105 annotations that have been excluded in past releases or are missing in all rows.
 
@@ -92,8 +91,7 @@ def remove_missing_vep_fields(
         "regulatory_feature_consequences",
     ]:
         vep_expr = vep_expr.annotate(
-            **{consequence: vep_expr[consequence].map(
-                lambda x: x.drop("minimised"))}
+            **{consequence: vep_expr[consequence].map(lambda x: x.drop("minimised"))}
         )
     return vep_expr
 
@@ -116,8 +114,7 @@ def replace_oth_with_remaining(ht: hl.Table) -> hl.Table:
         ),
         freq_index_dict=hl.dict(
             hl.zip(
-                ht.freq_index_dict.keys().map(
-                    lambda k: k.replace("oth", "remaining")),
+                ht.freq_index_dict.keys().map(lambda k: k.replace("oth", "remaining")),
                 ht.freq_index_dict.values(),
             )
         ),
