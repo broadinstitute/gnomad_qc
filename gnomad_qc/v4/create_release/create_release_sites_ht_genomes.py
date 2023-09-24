@@ -1,8 +1,6 @@
 """Script to create release sites HT for v4 genomes."""
 import hail as hl
-
 from gnomad.utils.vep import filter_vep_transcript_csqs
-
 
 # TODO: steps to create release sites HT
 # input: VRS-annotated sites HT v3.1.4
