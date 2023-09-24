@@ -16,7 +16,7 @@ from typing import Dict, List, Set, Tuple
 import hail as hl
 from gnomad.resources.grch38.gnomad import POPS, POPS_TO_REMOVE_FOR_POPMAX
 from gnomad.utils.annotations import faf_expr, merge_freq_arrays, pop_max_expr
-from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict
+from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from statsmodels.stats.contingency_tables import StratifiedTable
 
@@ -25,6 +25,7 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v4.create_release.create_release_sites_ht_genomes import replace_oth_with_remaining
 from gnomad_qc.v4.resources.annotations import (
     get_combined_frequency,
     get_freq,
@@ -39,6 +40,7 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("compute_combined_faf")
 logger.setLevel(logging.INFO)
 
+faf_pops_to_exclude = POPS_TO_REMOVE_FOR_POPMAX
 
 def extract_freq_info(
     ht: hl.Table,
@@ -70,8 +72,10 @@ def extract_freq_info(
     :param prefix: Prefix to add to each of the filtered annotations.
     :return: Table with filtered frequency and FAF information.
     """
-    logger.info("Filtering Table to only variants that are PASS...")
-    ht = ht.filter(hl.len(ht.filters) == 0)
+    # logger.info("Filtering Table to only variants that are PASS...")
+    # ht = ht.filter(hl.len(ht.filters) == 0)
+    # TODO: we won't have this in the final freq_ht
+
 
     def _get_pop_meta_indices(
         meta: hl.ArrayExpression, pop_list: List[str]
@@ -93,6 +97,30 @@ def extract_freq_info(
         return idx, meta
 
     logger.info("Keeping only frequencies that are needed (adj, raw, adj by pop)...")
+    # if faf and faf_meta doesn't exist, then we calculate it with freq
+    # TODO: remove this once v4 exomes freq_ht is finalized
+    if 'faf_meta' not in ht.globals.keys():
+        faf, faf_meta = faf_expr(
+            ht.freq, ht.freq_meta, ht.locus, pops_to_exclude=faf_pops_to_exclude
+        )
+        faf_meta_by_pop = {m.get("pop"): i for i, m in enumerate(faf_meta) if
+                           m.get("pop")}
+        faf_meta_by_pop = hl.literal(faf_meta_by_pop)
+
+        # Compute group max (popmax) on the merged exomes + genomes frequencies.
+        grpmax = pop_max_expr(ht.freq, ht.freq_meta,
+                              pops_to_exclude=faf_pops_to_exclude)
+        grpmax = grpmax.annotate(
+            faf95=faf[faf_meta_by_pop.get(grpmax.pop)].faf95)
+
+        ht = ht.annotate(faf=faf, grpmax=grpmax)
+        ht = ht.annotate_globals(faf_meta=faf_meta)
+
+    # Rename popmax to grpmax because it's called 'popmax' in v3 release HT.
+    # TODO: remove this once v4 genomes freq_ht is finalized
+    if 'popmax' in ht.row.keys():
+        ht = ht.transmute(grpmax=ht.popmax)
+
     freq_idx, freq_meta = _get_pop_meta_indices(ht.freq_meta, pops)
     faf_idx, faf_meta = _get_pop_meta_indices(ht.faf_meta, faf_pops)
 
@@ -145,14 +173,15 @@ def get_joint_freq_and_faf(
     faf_meta_by_pop = hl.literal(faf_meta_by_pop)
 
     # Compute group max (popmax) on the merged exomes + genomes frequencies.
+    # TODO: can we just use the name 'popmax' instead of 'grpmax'?
     grpmax = pop_max_expr(freq, freq_meta, pops_to_exclude=faf_pops_to_exclude)
-    grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.grp)].faf95)
+    grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.pop)].faf95)
 
     # Annotate Table with all joint exomes + genomes computations.
     ht = ht.annotate(joint_freq=freq, joint_faf=faf, joint_grpmax=grpmax)
     ht = ht.annotate_globals(
         joint_freq_meta=freq_meta,
-        joint_freq_index_dict=make_freq_index_dict(freq_meta, label_delimiter="-"),
+        joint_freq_index_dict=make_freq_index_dict_from_meta(freq_meta, label_delimiter="-"),
         joint_faf_meta=faf_meta,
         joint_faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-"),
     )
@@ -287,7 +316,8 @@ def get_combine_faf_resources(
         input_resources={
             # TODO: rename when release scripts are finalized.
             "generate_freq.py": {
-                "exomes_ht": get_freq(test=test, finalized=False)},
+                # use the unfinalized freq_ht for now
+                "exomes_ht": get_freq(finalized=False)},
             "create_release_sites_ht_genomes.py": {
                 # TODO: "genomes_freq_ht": get_freq(test=test, data_type='genomes', finalized=True)},
                 "genomes_ht": release_sites()},
@@ -335,7 +365,7 @@ def filter_gene_to_test(ht: hl.Table) -> hl.Table:
     :return: Table with frequency and FAF information of the filtered interval of a gene
     """
     return hl.filter_intervals(ht,
-        [hl.parse_locus_interval("1:55039447-55064852", reference_genome='GRCh38')])
+        [hl.parse_locus_interval("chr1:55039447-55064852", reference_genome='GRCh38')])
 
 
 def main(args):
@@ -353,6 +383,9 @@ def main(args):
             res.check_resource_existence()
             exomes_ht = res.exomes_ht.ht()
             genomes_ht = res.genomes_ht.ht()
+
+            # replace oth with remaining in freq_meta and freq_index_dict for genomes_ht
+            genomes_ht = replace_oth_with_remaining(genomes_ht)
             if test:
                 # exomes_ht = res.exomes_freq_ht.ht()._filter_partitions(range(20))
                 # genomes_ht = res.genomes_freq_ht.ht()._filter_partitions(range(20))
@@ -360,8 +393,8 @@ def main(args):
                 exomes_ht = filter_gene_to_test(exomes_ht)
                 genomes_ht = filter_gene_to_test(genomes_ht)
 
-            exomes_ht = extract_freq_info(exomes_ht, pops, faf_pops, "genomes")
-            genomes_ht = extract_freq_info(genomes_ht, pops, faf_pops, "exomes")
+            exomes_ht = extract_freq_info(exomes_ht, pops, faf_pops, "exomes")
+            genomes_ht = extract_freq_info(genomes_ht, pops, faf_pops, "genomes")
             ht = get_joint_freq_and_faf(genomes_ht, exomes_ht)
             ht.write(res.freq_ht.path, overwrite=overwrite)
 
@@ -370,6 +403,7 @@ def main(args):
             res.check_resource_existence()
             ht = res.freq_ht.ht()
             ht = ht.select(
+                # TODO: this step is very slow, need to optimize
                 contingency_table_test=perform_contingency_table_test(
                     ht.genomes_freq,
                     ht.exomes_freq,
