@@ -91,11 +91,13 @@ def extract_freq_info(
         :return: Indices of populations to keep and their metadata.
         """
         meta = hl.eval(meta)
+        # for adj and raw, but raw is not in faf_meta for genomes release HT,
+        # so we will remove the duplicate idx with list(set(idx))
         idx = [0, 1]
         idx.extend(
             [i for i, m in enumerate(meta) if m.get("pop") in pop_list and len(m) == 2]
         )
-        meta = [meta[i] for i in idx]
+        meta = [meta[i] for i in list(set(idx))]
 
         return idx, meta
 
