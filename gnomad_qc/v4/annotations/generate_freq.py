@@ -909,10 +909,52 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
     Filter the following from the 'freq' field:
         - gatk versions
 
+    .. note::
+
+        `pre_adjustment_freq` is the frequency annotation before any high AB het
+        adjustment. This value will be the same as freq for sites that have an AF below
+        the AF adjustment threshold.
+
     :param ht: Hail Table containing all annotations.
     :return: Hail Table with only desired annotations.
     """
-    raise NotImplementedError("Creation of final freq Table is not implemented yet.")
+    logger.info("Dropping gatk_version from freq ht array annotations...")
+    freq_meta, array_exprs = filter_arrays_by_meta(
+        ht.freq_meta,
+        {
+            "freq": ht.ab_adjusted_freq,
+            "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
+        },
+        items_to_filter=["gatk_version"],
+        keep=False,
+    )
+
+    ht = ht.select(
+        freq=array_exprs["freq"],
+        faf=ht.faf,
+        grpmax=ht.grpmax,
+        inbreeding_coeff=ht.InbreedingCoeff,
+        histograms=hl.struct(
+            **{
+                "qual_hists": ht.ab_adjusted_qual_hists,
+                "raw_qual_hists": ht.ab_adjusted_raw_qual_hists,
+                "age_hists": ht.ab_adjusted_age_hists,
+            },
+        ),
+        pre_adjustment_freq=ht.freq,
+        high_ab_hets_by_group=ht.high_ab_hets_by_group,
+    )
+
+    ht = ht.select_globals(
+        downsamplings=ht.index_globals().downsamplings,
+        freq_meta=freq_meta,
+        freq_index_dict=make_freq_index_dict_from_meta(freq_meta),
+        freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
+        faf_meta=ht.index_globals().faf_meta,
+        faf_index_dict=ht.index_globals().faf_index_dict,
+    )
+
+    return ht
 
 
 def main(args):
