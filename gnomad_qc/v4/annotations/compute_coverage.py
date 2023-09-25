@@ -85,6 +85,9 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-30day",
     )
 
+    # SSA Logs are easier to troubleshoot with.
+    hl._set_flags(use_ssa_logs="1")
+
     test = args.test
     overwrite = args.overwrite
 
@@ -120,7 +123,7 @@ def main(args):
 
             # Checkpoint Table.
             coverage_ht = coverage_ht.checkpoint(
-                hl.utils.new_temp_file("coverage", extension="ht"), overwrite=True
+                hl.utils.new_temp_file("coverage", extension="ht")
             )
 
             # Naive coalesce and write out final Table.

@@ -229,7 +229,6 @@ def get_variant_qc_resources(
         overwrite=overwrite,
         pipeline_resources={
             "RF models": {
-                "rf_runs": rf_runs,
                 "rf_run_path": rf_run_path,
                 "model_id": model_id,
             },
@@ -285,14 +284,13 @@ def main(args):
         overwrite=overwrite,
         model_id=args.model_id,
     )
-    rf_runs = variant_qc_resources.rf_runs
     rf_run_path = variant_qc_resources.rf_run_path
     model_id = variant_qc_resources.model_id
     vqc_annotation_ht = variant_qc_resources.vqc_annotation_ht.ht()
 
     if args.list_rf_runs:
         logger.info(f"RF runs:")
-        pretty_print_runs(rf_runs)
+        pretty_print_runs(get_rf_runs(rf_run_path))
 
     if args.train_rf:
         res = variant_qc_resources.train_rf
@@ -321,7 +319,7 @@ def main(args):
         ht = ht.checkpoint(res.rf_training_ht.path, overwrite=overwrite)
 
         logger.info("Adding run to RF run list")
-        add_model_to_run_list(ht, model_id, rf_runs, rf_run_path)
+        add_model_to_run_list(ht, model_id, get_rf_runs(rf_run_path), rf_run_path)
 
         logger.info("Saving RF model")
         save_model(rf_model, res.rf_model_path, overwrite=overwrite)
