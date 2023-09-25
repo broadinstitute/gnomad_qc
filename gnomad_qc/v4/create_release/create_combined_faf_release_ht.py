@@ -25,7 +25,12 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.create_release.create_release_sites_ht_genomes import replace_oth_with_remaining
+
+# TODO: change to freq_ht when the freq_ht is finalized
+from gnomad_qc.v3.resources.release import release_sites
+from gnomad_qc.v4.create_release.create_release_sites_ht_genomes import (
+    replace_oth_with_remaining,
+)
 from gnomad_qc.v4.resources.annotations import (
     get_combined_frequency,
     get_freq,
@@ -33,14 +38,13 @@ from gnomad_qc.v4.resources.annotations import (
 )
 from gnomad_qc.v4.resources.basics import get_logging_path
 from gnomad_qc.v4.resources.release import get_combined_faf_release
-# TODO: change to freq_ht when the freq_ht is finalized
-from gnomad_qc.v3.resources.release import release_sites
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("compute_combined_faf")
 logger.setLevel(logging.INFO)
 
 faf_pops_to_exclude = POPS_TO_REMOVE_FOR_POPMAX
+
 
 def extract_freq_info(
     ht: hl.Table,
@@ -76,7 +80,6 @@ def extract_freq_info(
     # ht = ht.filter(hl.len(ht.filters) == 0)
     # TODO: we won't have this in the final freq_ht
 
-
     def _get_pop_meta_indices(
         meta: hl.ArrayExpression, pop_list: List[str]
     ) -> Tuple[List[int], List[dict]]:
@@ -99,26 +102,27 @@ def extract_freq_info(
     logger.info("Keeping only frequencies that are needed (adj, raw, adj by pop)...")
     # if faf and faf_meta doesn't exist, then we calculate it with freq
     # TODO: remove this once v4 exomes freq_ht is finalized
-    if 'faf_meta' not in ht.globals.keys():
+    if "faf_meta" not in ht.globals.keys():
         faf, faf_meta = faf_expr(
             ht.freq, ht.freq_meta, ht.locus, pops_to_exclude=faf_pops_to_exclude
         )
-        faf_meta_by_pop = {m.get("pop"): i for i, m in enumerate(faf_meta) if
-                           m.get("pop")}
+        faf_meta_by_pop = {
+            m.get("pop"): i for i, m in enumerate(faf_meta) if m.get("pop")
+        }
         faf_meta_by_pop = hl.literal(faf_meta_by_pop)
 
         # Compute group max (popmax) on the merged exomes + genomes frequencies.
-        grpmax = pop_max_expr(ht.freq, ht.freq_meta,
-                              pops_to_exclude=faf_pops_to_exclude)
-        grpmax = grpmax.annotate(
-            faf95=faf[faf_meta_by_pop.get(grpmax.pop)].faf95)
+        grpmax = pop_max_expr(
+            ht.freq, ht.freq_meta, pops_to_exclude=faf_pops_to_exclude
+        )
+        grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.pop)].faf95)
 
         ht = ht.annotate(faf=faf, grpmax=grpmax)
         ht = ht.annotate_globals(faf_meta=faf_meta)
 
     # Rename popmax to grpmax because it's called 'popmax' in v3 release HT.
     # TODO: remove this once v4 genomes freq_ht is finalized
-    if 'popmax' in ht.row.keys():
+    if "popmax" in ht.row.keys():
         ht = ht.transmute(grpmax=ht.popmax)
 
     freq_idx, freq_meta = _get_pop_meta_indices(ht.freq_meta, pops)
@@ -181,7 +185,9 @@ def get_joint_freq_and_faf(
     ht = ht.annotate(joint_freq=freq, joint_faf=faf, joint_grpmax=grpmax)
     ht = ht.annotate_globals(
         joint_freq_meta=freq_meta,
-        joint_freq_index_dict=make_freq_index_dict_from_meta(freq_meta, label_delimiter="-"),
+        joint_freq_index_dict=make_freq_index_dict_from_meta(
+            freq_meta, label_delimiter="-"
+        ),
         joint_faf_meta=faf_meta,
         joint_faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-"),
     )
@@ -292,7 +298,7 @@ def perform_cmh_test(
 
 
 def get_combine_faf_resources(
-        overwrite: bool, test: bool, public: bool = False
+    overwrite: bool, test: bool, public: bool = False
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the combined FAF resource creation pipeline.
@@ -317,10 +323,13 @@ def get_combine_faf_resources(
             # TODO: rename when release scripts are finalized.
             "generate_freq.py": {
                 # use the unfinalized freq_ht for now
-                "exomes_ht": get_freq(finalized=False)},
+                "exomes_ht": get_freq(finalized=False)
+            },
             "create_release_sites_ht_genomes.py": {
-                # TODO: "genomes_freq_ht": get_freq(test=test, data_type='genomes', finalized=True)},
-                "genomes_ht": release_sites()},
+                # TODO: "genomes_freq_ht": get_freq(test=test, data_type='genomes',
+                # finalized=True)},
+                "genomes_ht": release_sites()
+            },
         },
     )
     contingency_table_test = PipelineStepResourceCollection(
@@ -357,15 +366,18 @@ def get_combine_faf_resources(
 
     return combine_faf_pipeline
 
+
 def filter_gene_to_test(ht: hl.Table) -> hl.Table:
     """
-    Filter to PCSK9 1:55039447-55064852 for testing
+    Filter to PCSK9 1:55039447-55064852 for testing.
 
     :param ht: Table with frequency and FAF information.
     :return: Table with frequency and FAF information of the filtered interval of a gene
     """
-    return hl.filter_intervals(ht,
-        [hl.parse_locus_interval("chr1:55039447-55064852", reference_genome='GRCh38')])
+    return hl.filter_intervals(
+        ht,
+        [hl.parse_locus_interval("chr1:55039447-55064852", reference_genome="GRCh38")],
+    )
 
 
 def main(args):
