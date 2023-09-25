@@ -46,6 +46,74 @@ logger.setLevel(logging.INFO)
 faf_pops_to_exclude = POPS_TO_REMOVE_FOR_POPMAX
 
 
+# TODO: not sure if we should put this function in gnomad.utils.annotations
+def pop_max_for_faf_expr(
+    faf: hl.expr.ArrayExpression,
+    faf_meta: hl.expr.ArrayExpression,
+) -> hl.expr.StructExpression:
+    """
+
+    Create an expression containing the information about the population that has the highest FAF in `faf_meta`.
+
+    This resulting struct contains the following fields:
+
+        - faf95_max: float64
+        - faf95_max_pop: str
+        - faf99_max: float64
+        - faf99_max_pop: str
+
+    :param faf: ArrayExpression of Structs with fields ['faf95', 'faf99']
+    :param faf_meta: ArrayExpression of meta dictionaries corresponding to faf (as returned by faf_expr)
+
+    :return: Popmax struct for faf
+    """
+    popmax_faf_indices = hl.range(0, hl.len(faf_meta)).filter(
+        lambda i: (hl.set(faf_meta[i].keys()) == {"group", "pop"})
+        & (faf_meta[i]["group"] == "adj")
+    )
+    popmax_faf_indices = hl.eval(popmax_faf_indices)
+
+    faf95 = hl.rbind(
+        hl.sorted(
+            hl.array(
+                [
+                    hl.struct(faf=faf[i].faf95, population=faf_meta[i]["pop"])
+                    for i in popmax_faf_indices
+                ]
+            ),
+            key=lambda f: (-f.faf, f.population),
+        ),
+        lambda fafs: hl.if_else(
+            hl.len(fafs) > 0,
+            hl.struct(faf95_max=fafs[0].faf, faf95_max_pop=fafs[0].population),
+            hl.struct(
+                faf95_max=hl.missing(hl.tfloat), faf95_max_pop=hl.missing(hl.tstr)
+            ),
+        ),
+    )
+
+    faf99 = hl.rbind(
+        hl.sorted(
+            hl.array(
+                [
+                    hl.struct(faf=faf[i].faf99, population=faf_meta[i]["pop"])
+                    for i in popmax_faf_indices
+                ]
+            ),
+            key=lambda f: (-f.faf, f.population),
+        ),
+        lambda fafs: hl.if_else(
+            hl.len(fafs) > 0,
+            hl.struct(faf99_max=fafs[0].faf, faf99_max_pop=fafs[0].population),
+            hl.struct(
+                faf99_max=hl.missing(hl.tfloat), faf99_max_pop=hl.missing(hl.tstr)
+            ),
+        ),
+    )
+    faf_popmax = faf95.annotate(**faf99)
+    return faf_popmax
+
+
 def extract_freq_info(
     ht: hl.Table,
     pops: List[str],
@@ -113,7 +181,7 @@ def extract_freq_info(
         }
         faf_meta_by_pop = hl.literal(faf_meta_by_pop)
 
-        # Compute group max (popmax) on the merged exomes + genomes frequencies.
+        # Compute group max (popmax)
         grpmax = pop_max_expr(
             ht.freq, ht.freq_meta, pops_to_exclude=faf_pops_to_exclude
         )
@@ -130,11 +198,16 @@ def extract_freq_info(
     freq_idx, freq_meta = _get_pop_meta_indices(ht.freq_meta, pops)
     faf_idx, faf_meta = _get_pop_meta_indices(ht.faf_meta, faf_pops)
 
+    # Compute FAF max (fafmax)
+    fafmax = pop_max_for_faf_expr(ht.faf, ht.faf_meta)
+    ht = ht.annotate(fafmax=fafmax)
+
     # Rename filtered annotations with supplied prefix.
     ht = ht.select(
         **{
             f"{prefix}_freq": [ht.freq[i] for i in freq_idx],
             f"{prefix}_faf": [ht.faf[i] for i in faf_idx],
+            f"{prefix}_fafmax": ht.fafmax,
             f"{prefix}_grpmax": ht.grpmax,
         }
     )
@@ -185,6 +258,7 @@ def get_joint_freq_and_faf(
 
     # Annotate Table with all joint exomes + genomes computations.
     ht = ht.annotate(joint_freq=freq, joint_faf=faf, joint_grpmax=grpmax)
+
     ht = ht.annotate_globals(
         joint_freq_meta=freq_meta,
         joint_freq_index_dict=make_freq_index_dict_from_meta(
@@ -193,6 +267,10 @@ def get_joint_freq_and_faf(
         joint_faf_meta=faf_meta,
         joint_faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-"),
     )
+
+    # Compute FAF max (fafmax) on the merged exomes + genomes frequencies.
+    fafmax = pop_max_for_faf_expr(ht.joint_faf, ht.joint_faf_meta)
+    ht = ht.annotate(joint_fafmax=fafmax)
 
     return ht
 
