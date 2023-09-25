@@ -84,7 +84,7 @@ def pop_max_for_faf_expr(
             key=lambda f: (-f.faf, f.population),
         ),
         lambda fafs: hl.if_else(
-            hl.len(fafs) > 0,
+            (hl.len(fafs) > 0) & (fafs[0].faf > 0),
             hl.struct(faf95_max=fafs[0].faf, faf95_max_pop=fafs[0].population),
             hl.struct(
                 faf95_max=hl.missing(hl.tfloat), faf95_max_pop=hl.missing(hl.tstr)
@@ -103,7 +103,7 @@ def pop_max_for_faf_expr(
             key=lambda f: (-f.faf, f.population),
         ),
         lambda fafs: hl.if_else(
-            hl.len(fafs) > 0,
+            (hl.len(fafs) > 0) & (fafs[0].faf > 0),
             hl.struct(faf99_max=fafs[0].faf, faf99_max_pop=fafs[0].population),
             hl.struct(
                 faf99_max=hl.missing(hl.tfloat), faf99_max_pop=hl.missing(hl.tstr)
@@ -252,7 +252,6 @@ def get_joint_freq_and_faf(
     faf_meta_by_pop = hl.literal(faf_meta_by_pop)
 
     # Compute group max (popmax) on the merged exomes + genomes frequencies.
-    # TODO: can we just use the name 'popmax' instead of 'grpmax'?
     grpmax = pop_max_expr(freq, freq_meta, pops_to_exclude=faf_pops_to_exclude)
     grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.pop)].faf95)
 
