@@ -24,7 +24,8 @@ from gnomad_qc.v4.resources.annotations import (
     get_trio_stats,
     get_variant_qc_annotations,
 )
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import calling_intervals, get_gnomad_v4_vds
+from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
 from gnomad_qc.v4.resources.variant_qc import (
     TRUTH_SAMPLES,
     get_binned_concordance,
@@ -77,7 +78,15 @@ def create_bin_ht(
         )
 
     ht = ht.annotate(**struct_expr, non_lcr=hl.is_defined(non_lcr_ht[ht.key]))
-    bin_ht = create_binned_ht(ht, n_bins, add_substrat={"non_lcr": ht.non_lcr})
+    bin_ht = create_binned_ht(
+        ht,
+        n_bins,
+        add_substrat={
+            "non_lcr": ht.non_lcr,
+            "in_calling_intervals": ht.in_calling_intervals,
+            "pass_interval": ht.pass_interval_qc,
+        },
+    )
 
     return bin_ht
 
@@ -174,6 +183,13 @@ def get_evaluation_resources(
         pipeline_resources={
             "annotations/generate_variant_qc_annotations.py --compute-info --split-info": {
                 "info_ht": get_info(split=True)
+            },
+            "Interval Tables": {
+                "interval_ht": calling_intervals(
+                    interval_name="intersection",
+                    calling_interval_padding=50,
+                ),
+                "interval_qc_pass_ht": interval_qc_pass(all_platforms=True),
             },
         },
     )
@@ -276,12 +292,19 @@ def main(args):
         model_id=model_id,
     )
     info_ht = evaluation_resources.info_ht.ht()
+    interval_ht = evaluation_resources.interval_ht.ht()
+    interval_qc_pass_ht = evaluation_resources.interval_qc_pass_ht.ht()
 
     if args.create_bin_ht:
         logger.info(f"Annotating {model_id} HT with bins using {n_bins} bins...")
         res = evaluation_resources.create_bin_table
         res.check_resource_existence()
-        ht = create_bin_ht(res.rf_result_ht.ht(), info_ht, res.rf_ht.ht(), n_bins)
+        ht = res.rf_result_ht.ht()
+        ht = ht.annotate(
+            in_calling_intervals=hl.is_defined(interval_ht[ht.locus]),
+            pass_interval_qc=interval_qc_pass_ht[ht.locus].pass_interval_qc,
+        )
+        ht = create_bin_ht(ht, info_ht, res.rf_ht.ht(), n_bins)
         ht.write(res.bin_ht.path, overwrite=overwrite)
 
     if args.score_bin_validity_check:
@@ -354,8 +377,19 @@ def main(args):
                 filter_telomeres_and_centromeres=True,
             )
 
-            ht = ht.filter(hl.is_defined(ht.score) & ~info_ht[ht.key].AS_lowqual)
-            ht = compute_binned_truth_sample_concordance(ht, metric_ht, n_bins)
+            ht = ht.filter(
+                hl.is_defined(interval_ht[ht.locus])
+                & hl.is_defined(ht.score)
+                & ~info_ht[ht.key].AS_lowqual
+            )
+            ht = compute_binned_truth_sample_concordance(
+                ht,
+                metric_ht,
+                n_bins,
+                add_bins={
+                    "pass_interval_bin": interval_qc_pass_ht[ht.locus].pass_interval_qc
+                },
+            )
             ht.write(getattr(res, f"{ts}_bin_ht").path, overwrite=overwrite)
 
 

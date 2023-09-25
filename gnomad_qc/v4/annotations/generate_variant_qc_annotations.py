@@ -386,6 +386,9 @@ def get_info_ht_for_vcf_export(ht: hl.Table, info_method: str) -> hl.Table:
     """
     ht = get_reformatted_info_fields(ht, info_method=info_method)
     ht = ht.select(info=ht.site_info.annotate(**ht[f"{info_method}_info"]))
+    # Added to be consistent with compute info and remove sites with over 10,000
+    # alleles. It excludes a single problematic site that we decided to drop.
+    ht = ht.filter(hl.len(ht.alleles) < 10000)
     ht = adjust_vcf_incompatible_types(ht)
 
     return ht
