@@ -924,6 +924,8 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
         {
             "freq": ht.ab_adjusted_freq,
             "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
+            "high_ab_hets_by_group": ht.high_ab_hets_by_group,
+            "pre_adjustment_freq": ht.freq,
         },
         items_to_filter=["gatk_version"],
         keep=False,
@@ -941,8 +943,8 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
                 "age_hists": ht.ab_adjusted_age_hists,
             },
         ),
-        pre_adjustment_freq=ht.freq,
-        high_ab_hets_by_group=ht.high_ab_hets_by_group,
+        pre_adjustment_freq=array_exprs["pre_adjustment_freq"],
+        high_ab_hets_by_group=array_exprs["high_ab_hets_by_group"],
     )
 
     ht = ht.select_globals(
@@ -1081,6 +1083,9 @@ def main(args):
 
         if args.finalize_freq_ht:
             logger.info("Writing final frequency Table...")
+            res = resources.finalize_freq_ht
+            res.check_resource_existence()
+            ht = res.corrected_freq_ht.ht()
             ht = create_final_freq_ht(ht)
 
             logger.info("Final frequency HT schema...")
