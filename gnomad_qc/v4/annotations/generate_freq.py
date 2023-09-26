@@ -899,16 +899,6 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
     """
     Create final freq Table with only desired annotations.
 
-    Drop the following annotations:
-        - 'age_high_ab_hist', all annotations from the split VDSs....
-
-    Rename the following annotations:
-        - 'ab_adjusted_freq' -> 'freq'
-        - decide if we want to store uncorrected? Probably,just rename it.
-
-    Filter the following from the 'freq' field:
-        - gatk versions
-
     .. note::
 
         `pre_adjustment_freq` is the frequency annotation before any high AB het
@@ -916,7 +906,7 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
         the AF adjustment threshold.
 
     :param ht: Hail Table containing all annotations.
-    :return: Hail Table with only desired annotations.
+    :return: Hail Table with final annotations.
     """
     logger.info("Dropping gatk_version from freq ht array annotations...")
     freq_meta, array_exprs = filter_arrays_by_meta(
