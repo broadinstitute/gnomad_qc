@@ -832,50 +832,40 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
         annotations=("ab_adjusted_freq",),
         remove_subset_from_meta=True,
     )
-    freq_metas = [
-        (ht.ab_adjusted_freq, ht.index_globals().freq_meta),
-        (non_ukb_ht[ht.key].ab_adjusted_freq, non_ukb_ht.index_globals().freq_meta),
-    ]
-    faf_grpmax_expr = [
-        hl.struct(
-            **hl.bind(
-                lambda f, g: hl.struct(
-                    faf=f[0],
-                    faf_meta=f[1],
-                    grpmax=g.annotate(
-                        faf95=f[0][
-                            f[1].index(lambda y: y.values() == ["adj", g.pop])
-                        ].faf95
-                    ),
-                ),
-                faf_expr(freq, meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX),
-                pop_max_expr(freq, meta, POPS_TO_REMOVE_FOR_POPMAX),
-            )
+    freq_metas = {
+        "gnomad": (ht.ab_adjusted_freq, ht.index_globals().freq_meta),
+        "non_ukb": (
+            non_ukb_ht[ht.key].ab_adjusted_freq,
+            non_ukb_ht.index_globals().freq_meta,
+        ),
+    }
+    faf_exprs = []
+    faf_meta_exprs = []
+    grpmax_exprs = {}
+    for dataset, (freq, meta) in freq_metas.items():
+        faf, faf_meta = faf_expr(freq, meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
+        grpmax = pop_max_expr(freq, meta, POPS_TO_REMOVE_FOR_POPMAX)
+        grpmax = grpmax.annotate(
+            faf95=faf[
+                hl.literal(faf_meta).index(lambda y: y.values() == ["adj", grpmax.pop])
+            ].faf95
         )
-        for freq, meta in freq_metas
-    ]
+        # Add subset back to non_ukb faf meta.
+        if dataset == "non_ukb":
+            faf_meta = [{**x, **{"subset": "non_ukb"}} for x in faf_meta]
+        faf_exprs.append(faf)
+        faf_meta_exprs.append(faf_meta)
+        grpmax_exprs[dataset] = grpmax
 
     logger.info("Annotating 'faf' and 'grpmax'...")
     ht = ht.annotate(
-        faf=hl.flatten([dataset.faf for dataset in faf_grpmax_expr]),
-        grpmax=hl.struct(
-            **{
-                "gnomad": faf_grpmax_expr[0].grpmax,
-                "non_ukb": faf_grpmax_expr[1].grpmax,
-            }
-        ),
+        faf=hl.flatten(faf_exprs),
+        grpmax=hl.struct(**grpmax_exprs),
     )
-    faf_meta_expr = [x.faf_meta.collect(_localize=False)[0] for x in faf_grpmax_expr]
-    # Add subset back to non_ukb faf meta and flatten it
-    faf_meta_expr[1] = faf_meta_expr[1].map(
-        lambda d: hl.dict(d.items().append(("subset", "non_ukb")))
-    )
-    faf_meta_expr = hl.flatten(faf_meta_expr)
+    faf_meta_exprs = hl.flatten(faf_meta_exprs)
     ht = ht.annotate_globals(
-        faf_meta=faf_meta_expr,
-        faf_index_dict=make_freq_index_dict_from_meta(
-            faf_meta_expr, label_delimiter="_"
-        ),
+        faf_meta=faf_meta_exprs,
+        faf_index_dict=make_freq_index_dict_from_meta(faf_meta_exprs),
     )
 
     return ht
