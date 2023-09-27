@@ -934,6 +934,7 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
         freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
         faf_meta=ht.index_globals().faf_meta,
         faf_index_dict=ht.index_globals().faf_index_dict,
+        age_distribution=ht.index_globals().age_distribution,
     )
 
     return ht
