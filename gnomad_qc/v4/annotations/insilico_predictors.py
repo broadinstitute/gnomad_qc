@@ -111,8 +111,12 @@ def create_spliceai_grch38_ht() -> hl.Table:
           downloaded from https://basespace.illumina.com/s/5u6ThOblecrh
         - Precomputed indels: spliceai_scores.masked.indel.hg38.vcf.bgz,
           downloaded from https://basespace.illumina.com/s/5u6ThOblecrh
+        - gnomAD v3 indels: gnomad_v3_indel.spliceai_masked.vcf.bgz,
+          computed on v3.1 indels by Illumina in 2020.
         - gnomAD v4 indels: gnomad_v4_new_indels.spliceai_masked.vcf.bgz,
           computed on v4 by Illumina.
+        - gnomAD v3 and v4 unscored indels:
+          another set of indels that were not scored by SpliceAI before.
 
     :return: Hail Table with SpliceAI scores for GRCh38.
     """
@@ -120,7 +124,9 @@ def create_spliceai_grch38_ht() -> hl.Table:
     indels_path = (
         "gs://gnomad-insilico/spliceai/spliceai_scores.masked.indel.hg38.vcf.bgz"
     )
-    new_indels_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v4_new_indels.hg38.vcf.bgz"
+    v3_indels_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v3_indel.hg38.vcf.gz"
+    v4_indels_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v4_new_indels.hg38.vcf.bgz"
+    v3_v4_unscored_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v3_v4_unscored_indels.hg38.vcf.bgz"
     header_file_path = "gs://gnomad-insilico/spliceai/spliceai.vcf.header"
 
     def import_spliceai_vcf(path: str) -> hl.Table:
@@ -144,9 +150,13 @@ def create_spliceai_grch38_ht() -> hl.Table:
     logger.info("Importing vcf of SpliceAI scores into HT...")
     spliceai_snvs = import_spliceai_vcf(snvs_path)
     spliceai_indels = import_spliceai_vcf(indels_path)
-    spliceai_new_indels = import_spliceai_vcf(new_indels_path)
+    v3_indels = import_spliceai_vcf(v3_indels_path)
+    v4_indels = import_spliceai_vcf(v4_indels_path)
+    v3_v4_unscored_indels = import_spliceai_vcf(v3_v4_unscored_path)
 
-    ht = spliceai_snvs.union(spliceai_indels, spliceai_new_indels)
+    ht = spliceai_snvs.union(
+        spliceai_indels, v3_indels, v4_indels, v3_v4_unscored_indels
+    )
 
     # `explode` because some variants fall on multiple genes and have a score per gene.
     # All rows without a SpliceAI score, an empty array, are removed through explode.
@@ -182,20 +192,26 @@ def create_pangolin_grch38_ht() -> hl.Table:
 
     There's no precomputed score for all possible variants, the scores were
     generated for gnomAD v4 genomes (=v3 genomes) and v4 exomes variants in
-    gene body only.
+    gene body only with improved code of developers at Invitae:
+    https://github.com/invitae/pangolin.
 
     :return: Hail Table with Pangolin score for splicing for GRCh38.
     """
     v4_genomes = (
-        "gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.pangolin.vcf.bgz/*.bgz"
+        "gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.pangolin.vcf.bgz/*.gz"
     )
+    v4_genomes_new = "gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.new_variants.pangolin.vcf.bgz/*.gz"
     v4_exomes = "gs://gnomad-insilico/pangolin/gnomad.v4.0.exomes.pangolin.vcf.bgz/*.gz"
 
     # There was a bug in original Pangolin code, that would generate incorrect
     # scores when a variant falls on multiple genes on the same strand. This bug
     # was fixed before running v4 exomes, the affected ~20M variants have
     # been rerun.
-    v4_bugfix = "gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.bugfix.pangolin.vcf.bgz/*.bgz"
+    v4_bugfix = (
+        "gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.bugfix.pangolin.vcf.bgz/*.gz"
+    )
+
+    header_file_path = "gs://gnomad-insilico/pangolin/pangolin.vcf.header"
 
     def import_pangolin_vcf(vcf_path: str) -> hl.Table:
         """
@@ -210,24 +226,39 @@ def create_pangolin_grch38_ht() -> hl.Table:
             force_bgz=True,
             reference_genome="GRCh38",
             skip_invalid_loci=True,
+            header_file=header_file_path,
         ).rows()
         return ht
 
     ht_g = import_pangolin_vcf(v4_genomes)
+    ht_g = ht_g.checkpoint(
+        "gs://gnomad-tmp-4day/pangolin_genomes.ht", overwrite=args.overwrite
+    )
+    ht_g_new = import_pangolin_vcf(v4_genomes_new)
+    ht_g_new = ht_g_new.checkpoint(
+        "gs://gnomad-tmp-4day/pangolin_genomes_new.ht", overwrite=args.overwrite
+    )
     ht_e = import_pangolin_vcf(v4_exomes)
+    ht_e = ht_e.checkpoint(
+        "gs://gnomad-tmp-4day/pangolin_exomes.ht", overwrite=args.overwrite
+    )
     ht_bugfix = import_pangolin_vcf(v4_bugfix)
+    ht_bugfix = ht_bugfix.checkpoint(
+        "gs://gnomad-tmp-4day/pangolin_genomes_bugfix.ht", overwrite=args.overwrite
+    )
 
     ht_g_correct = ht_g.anti_join(ht_bugfix)
     ht_g = ht_g_correct.union(ht_bugfix)
 
     logger.info(
-        "Number of rows in genomes Pangolin HT: %s; "
-        "Number of rows in raw exomes Pangolin HT: %s. ",
+        "Number of rows in genomes Pangolin HT: %s; \n"
+        "Number of rows in raw exomes Pangolin HT: %s. \n",
         ht_g.count(),
         ht_e.count(),
+        ht_g_new.count(),
     )
 
-    ht = ht_g.union(ht_e)
+    ht = ht_g.union(ht_e, ht_g_new)
 
     logger.info("Exploding Pangolin scores...")
     # `explode` will eliminate rows with empty array
@@ -278,7 +309,7 @@ def create_pangolin_grch38_ht() -> hl.Table:
         )
     )
     # TODO: update version when Invitae publishes new version
-    ht = ht.annotate_globals(pangolin_version="v1.0.1")
+    ht = ht.annotate_globals(pangolin_version="v1.4.4")
     logger.info(
         "\nNumber of variants indicating splice gain: %s;\n"
         "Number of variants indicating splice loss: %s; \n"
