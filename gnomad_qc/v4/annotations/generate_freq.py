@@ -806,7 +806,7 @@ def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Tab
             hl.struct(**no_ab_adjusted_expr),
         ),
     )
-
+    ht = ht.annotate_globals(af_threshold_for_freq_adjustment=af_threshold)
     return ht
 
 
