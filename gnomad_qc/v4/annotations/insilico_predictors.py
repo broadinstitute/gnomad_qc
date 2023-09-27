@@ -251,12 +251,9 @@ def create_pangolin_grch38_ht() -> hl.Table:
     ht_g = ht_g_correct.union(ht_bugfix)
 
     logger.info(
-        "Number of rows in genomes Pangolin HT: %s; \n",
-        "Number of rows in raw exomes Pangolin HT: %s. \n",
-        "Number of rows in Pangolin HT for new variants of genomes: %s. \n",
-        ht_g.count(),
-        ht_e.count(),
-        ht_g_new.count(),
+        f"Number of rows in genomes Pangolin HT: {ht_g.count()};\n Number of rows in"
+        f" raw exomes Pangolin HT: {ht_e.count()};\n Number of rows in Pangolin HT for"
+        f" new variants of genomes: {ht_g_new.count()}.\n"
     )
 
     ht = ht_g.union(ht_e, ht_g_new)
