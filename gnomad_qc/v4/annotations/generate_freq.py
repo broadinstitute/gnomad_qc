@@ -889,11 +889,6 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
     """
     Create final freq Table with only desired annotations.
 
-    .. note::
-
-        `pre_adjustment_freq` is the frequency annotation before any high AB het
-        adjustment. This value will be the same as freq for sites that have an AF below
-        the AF adjustment threshold.
 
     :param ht: Hail Table containing all annotations.
     :return: Hail Table with final annotations.
@@ -904,8 +899,6 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
         {
             "freq": ht.ab_adjusted_freq,
             "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
-            "high_ab_hets_by_group": ht.high_ab_hets_by_group,
-            "pre_adjustment_freq": ht.freq,
         },
         items_to_filter=["gatk_version"],
         keep=False,
@@ -923,18 +916,17 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
                 "age_hists": ht.ab_adjusted_age_hists,
             },
         ),
-        pre_adjustment_freq=array_exprs["pre_adjustment_freq"],
-        high_ab_hets_by_group=array_exprs["high_ab_hets_by_group"],
     )
 
+    g = ht.index_globals()
     ht = ht.select_globals(
-        downsamplings=ht.index_globals().downsamplings,
+        downsamplings=g.downsamplings,
         freq_meta=freq_meta,
         freq_index_dict=make_freq_index_dict_from_meta(freq_meta),
         freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
-        faf_meta=ht.index_globals().faf_meta,
-        faf_index_dict=ht.index_globals().faf_index_dict,
-        age_distribution=ht.index_globals().age_distribution,
+        faf_meta=g.faf_meta,
+        faf_index_dict=g.faf_index_dict,
+        age_distribution=g.age_distribution,
     )
 
     return ht
@@ -1066,8 +1058,7 @@ def main(args):
             logger.info("Writing final frequency Table...")
             res = resources.finalize_freq_ht
             res.check_resource_existence()
-            ht = res.corrected_freq_ht.ht()
-            ht = create_final_freq_ht(ht)
+            ht = create_final_freq_ht(res.corrected_freq_ht.ht())
 
             logger.info("Final frequency HT schema...")
             ht.describe()
