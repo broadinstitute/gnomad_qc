@@ -846,10 +846,11 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
         faf, faf_meta = faf_expr(freq, meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
         grpmax = pop_max_expr(freq, meta, POPS_TO_REMOVE_FOR_POPMAX)
         grpmax = grpmax.annotate(
+            gen_anc=grpmax.pop,
             faf95=faf[
                 hl.literal(faf_meta).index(lambda y: y.values() == ["adj", grpmax.pop])
-            ].faf95
-        )
+            ].faf95,
+        ).drop("pop")
         # Add subset back to non_ukb faf meta.
         if dataset == "non_ukb":
             faf_meta = [{**x, **{"subset": "non_ukb"}} for x in faf_meta]
@@ -888,7 +889,6 @@ def compute_inbreeding_coeff(ht: hl.Table) -> hl.Table:
 def create_final_freq_ht(ht: hl.Table) -> hl.Table:
     """
     Create final freq Table with only desired annotations.
-
 
     :param ht: Hail Table containing all annotations.
     :return: Hail Table with final annotations.
