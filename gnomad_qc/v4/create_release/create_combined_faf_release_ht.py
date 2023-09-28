@@ -15,7 +15,12 @@ from typing import Dict, List, Set, Tuple
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import POPS, POPS_TO_REMOVE_FOR_POPMAX
-from gnomad.utils.annotations import faf_expr, merge_freq_arrays, pop_max_expr
+from gnomad.utils.annotations import (
+    faf_expr,
+    merge_freq_arrays,
+    pop_max_expr,
+    pop_max_for_faf_expr,
+)
 from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from statsmodels.stats.contingency_tables import StratifiedTable
@@ -42,76 +47,6 @@ from gnomad_qc.v4.resources.release import get_combined_faf_release
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("compute_combined_faf")
 logger.setLevel(logging.INFO)
-
-faf_pops_to_exclude = POPS_TO_REMOVE_FOR_POPMAX
-
-
-# TODO: not sure if we should put this function in gnomad.utils.annotations
-def pop_max_for_faf_expr(
-    faf: hl.expr.ArrayExpression,
-    faf_meta: hl.expr.ArrayExpression,
-) -> hl.expr.StructExpression:
-    """
-
-    Create an expression containing the information about the population that has the highest FAF in `faf_meta`.
-
-    This resulting struct contains the following fields:
-
-        - faf95_max: float64
-        - faf95_max_pop: str
-        - faf99_max: float64
-        - faf99_max_pop: str
-
-    :param faf: ArrayExpression of Structs with fields ['faf95', 'faf99']
-    :param faf_meta: ArrayExpression of meta dictionaries corresponding to faf (as returned by faf_expr)
-
-    :return: Popmax struct for faf
-    """
-    popmax_faf_indices = hl.range(0, hl.len(faf_meta)).filter(
-        lambda i: (hl.set(faf_meta[i].keys()) == {"group", "pop"})
-        & (faf_meta[i]["group"] == "adj")
-    )
-    popmax_faf_indices = hl.eval(popmax_faf_indices)
-
-    faf95 = hl.rbind(
-        hl.sorted(
-            hl.array(
-                [
-                    hl.struct(faf=faf[i].faf95, population=faf_meta[i]["pop"])
-                    for i in popmax_faf_indices
-                ]
-            ),
-            key=lambda f: (-f.faf, f.population),
-        ),
-        lambda fafs: hl.if_else(
-            (hl.len(fafs) > 0) & (fafs[0].faf > 0),
-            hl.struct(faf95_max=fafs[0].faf, faf95_max_pop=fafs[0].population),
-            hl.struct(
-                faf95_max=hl.missing(hl.tfloat), faf95_max_pop=hl.missing(hl.tstr)
-            ),
-        ),
-    )
-
-    faf99 = hl.rbind(
-        hl.sorted(
-            hl.array(
-                [
-                    hl.struct(faf=faf[i].faf99, population=faf_meta[i]["pop"])
-                    for i in popmax_faf_indices
-                ]
-            ),
-            key=lambda f: (-f.faf, f.population),
-        ),
-        lambda fafs: hl.if_else(
-            (hl.len(fafs) > 0) & (fafs[0].faf > 0),
-            hl.struct(faf99_max=fafs[0].faf, faf99_max_pop=fafs[0].population),
-            hl.struct(
-                faf99_max=hl.missing(hl.tfloat), faf99_max_pop=hl.missing(hl.tstr)
-            ),
-        ),
-    )
-    faf_popmax = faf95.annotate(**faf99)
-    return faf_popmax
 
 
 def extract_freq_info(
@@ -159,16 +94,16 @@ def extract_freq_info(
         :return: Indices of populations to keep and their metadata.
         """
         meta = hl.eval(meta)
-        # for adj and raw, but raw is not in faf_meta for genomes release HT,
-        # so we will remove the duplicate idx with list(set(idx))
-        idx = [0, 1]
+        # 0 for adj
+        idx = [0]
         idx.extend(
             [i for i, m in enumerate(meta) if m.get("pop") in pop_list and len(m) == 2]
         )
-        meta = [meta[i] for i in list(set(idx))]
+        meta = [meta[i] for i in idx]
 
         return idx, meta
 
+    faf_pops_to_exclude = POPS_TO_REMOVE_FOR_POPMAX
     logger.info("Keeping only frequencies that are needed (adj, raw, adj by pop)...")
     # if faf and faf_meta doesn't exist, then we calculate it with freq
     # TODO: remove this once v4 exomes freq_ht is finalized
@@ -199,8 +134,7 @@ def extract_freq_info(
     faf_idx, faf_meta = _get_pop_meta_indices(ht.faf_meta, faf_pops)
 
     # Compute FAF max (fafmax)
-    fafmax = pop_max_for_faf_expr(ht.faf, ht.faf_meta)
-    ht = ht.annotate(fafmax=fafmax)
+    ht = ht.annotate(fafmax=pop_max_for_faf_expr(ht.faf, ht.faf_meta))
 
     # Rename filtered annotations with supplied prefix.
     ht = ht.select(
@@ -260,16 +194,13 @@ def get_joint_freq_and_faf(
 
     ht = ht.annotate_globals(
         joint_freq_meta=freq_meta,
-        joint_freq_index_dict=make_freq_index_dict_from_meta(
-            freq_meta, label_delimiter="-"
-        ),
+        joint_freq_index_dict=make_freq_index_dict_from_meta(freq_meta),
         joint_faf_meta=faf_meta,
-        joint_faf_index_dict=make_faf_index_dict(faf_meta, label_delimiter="-"),
+        joint_faf_index_dict=make_faf_index_dict(faf_meta),
     )
 
     # Compute FAF max (fafmax) on the merged exomes + genomes frequencies.
-    fafmax = pop_max_for_faf_expr(ht.joint_faf, ht.joint_faf_meta)
-    ht = ht.annotate(joint_fafmax=fafmax)
+    ht = ht.annotate(joint_fafmax=pop_max_for_faf_expr(ht.joint_faf, ht.joint_faf_meta))
 
     return ht
 
@@ -377,14 +308,14 @@ def perform_cmh_test(
 
 
 def get_combine_faf_resources(
-    overwrite: bool, test: bool, public: bool = False
+    overwrite: bool = False, test: bool = False, public: bool = False
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the combined FAF resource creation pipeline.
 
-    :param overwrite: Whether to overwrite existing resources.
-    :param test: Whether to use test resources.
-    :param public: Whether to use the public finalized combined FAF resource.
+    :param overwrite: Whether to overwrite existing resources. Default is False.
+    :param test: Whether to use test resources. Default is False.
+    :param public: Whether to use the public finalized combined FAF resource. Default is False.
     :return: PipelineResourceCollection containing resources for all steps of the
         combined FAF resource creation pipeline.
     """
@@ -397,7 +328,7 @@ def get_combine_faf_resources(
     # Create resource collection for each step of the pipeline.
     combined_frequency = PipelineStepResourceCollection(
         "--create-combined-frequency-table",
-        output_resources={"freq_ht": get_combined_frequency(test=test)},
+        output_resources={"combo_freq_ht": get_combined_frequency(test=test)},
         input_resources={
             # TODO: rename when release scripts are finalized.
             "generate_freq.py": {
@@ -463,8 +394,9 @@ def main(args):
     """Create combined FAF resource."""
     hl.init(log="/compute_combined_faf.log")
     test = args.test
+    test_gene = args.test_gene
     overwrite = args.overwrite
-    pops = POPS["v3"] + POPS["v4"]
+    pops = list(set(POPS["v3"] + POPS["v4"]))
     faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX]
     combine_faf_resources = get_combine_faf_resources(overwrite, test, args.public)
 
@@ -475,14 +407,16 @@ def main(args):
             exomes_ht = res.exomes_ht.ht()
             genomes_ht = res.genomes_ht.ht()
 
-            # replace oth with remaining in freq_meta and freq_index_dict for genomes_ht
-            genomes_ht = replace_oth_with_remaining(genomes_ht)
             if test:
-                # exomes_ht = res.exomes_freq_ht.ht()._filter_partitions(range(20))
-                # genomes_ht = res.genomes_freq_ht.ht()._filter_partitions(range(20))
+                exomes_ht = res.exomes_freq_ht.ht()._filter_partitions(range(20))
+                genomes_ht = res.genomes_freq_ht.ht()._filter_partitions(range(20))
+            if test_gene:
                 # filter to PCSK9 1:55039447-55064852 for testing
                 exomes_ht = filter_gene_to_test(exomes_ht)
                 genomes_ht = filter_gene_to_test(genomes_ht)
+
+            # replace oth with remaining in freq_meta and freq_index_dict for genomes_ht
+            genomes_ht = replace_oth_with_remaining(genomes_ht)
 
             exomes_ht = extract_freq_info(exomes_ht, pops, faf_pops, "exomes")
             genomes_ht = extract_freq_info(genomes_ht, pops, faf_pops, "genomes")
@@ -495,6 +429,8 @@ def main(args):
             ht = res.freq_ht.ht()
             ht = ht.select(
                 # TODO: this step is very slow, need to optimize
+                # run the whole pipeline for gene PCSK9 took ~27 min, this step took ~24
+                # min
                 contingency_table_test=perform_contingency_table_test(
                     ht.genomes_freq,
                     ht.exomes_freq,
@@ -542,6 +478,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--test",
         help="Filter Tables to only the first 20 partitions for testing.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test-gene",
+        help="Filter Tables to only the PCSK9 gene for testing.",
         action="store_true",
     )
     parser.add_argument(
