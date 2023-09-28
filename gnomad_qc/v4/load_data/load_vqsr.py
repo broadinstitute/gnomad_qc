@@ -95,23 +95,23 @@ def main(args):  # noqa: D103
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--vqsr_vcf_path",
+        "--vqsr-vcf-path",
         help="Path to VQSR VCF. Can be specified as Hadoop glob patterns",
     )
     parser.add_argument(
-        "--vqsr_type",
+        "--vqsr-type",
         help="Type of VQSR corresponding to the VQSR VCF being loaded",
         default="alleleSpecificTrans",
         choices=["classic", "alleleSpecific", "alleleSpecificTrans"],
     )
     parser.add_argument(
-        "--n_partitions",
+        "--n-partitions",
         help="Number of desired partitions for output Table",
         default=5000,
         type=int,
     )
     parser.add_argument(
-        "--header_path",
+        "--header-path",
         help="Optional path to a header file to use for importing VQSR VCF",
     )
     parser.add_argument(
@@ -121,7 +121,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--slack_channel",
+        "--slack-channel",
         help="Slack channel to post results and notifications to",
     )
     args = parser.parse_args()
