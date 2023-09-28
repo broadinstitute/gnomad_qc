@@ -191,7 +191,12 @@ def get_joint_freq_and_faf(
     grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.pop)].faf95)
 
     # Annotate Table with all joint exomes + genomes computations.
-    ht = ht.annotate(joint_freq=freq, joint_faf=faf, joint_grpmax=grpmax)
+    ht = ht.annotate(
+        joint_freq=freq,
+        joint_faf=faf,
+        joint_fafmax=pop_max_for_faf_expr(faf, hl.literal(faf_meta)),
+        joint_grpmax=grpmax,
+    )
 
     ht = ht.annotate_globals(
         joint_freq_meta=freq_meta,
@@ -199,9 +204,6 @@ def get_joint_freq_and_faf(
         joint_faf_meta=faf_meta,
         joint_faf_index_dict=make_faf_index_dict(faf_meta),
     )
-
-    # Compute FAF max (fafmax) on the merged exomes + genomes frequencies.
-    ht = ht.annotate(joint_fafmax=pop_max_for_faf_expr(ht.joint_faf, ht.joint_faf_meta))
 
     return ht
 
@@ -422,12 +424,12 @@ def main(args):
             exomes_ht = extract_freq_info(exomes_ht, pops, faf_pops, "exomes")
             genomes_ht = extract_freq_info(genomes_ht, pops, faf_pops, "genomes")
             ht = get_joint_freq_and_faf(genomes_ht, exomes_ht)
-            ht.write(res.freq_ht.path, overwrite=overwrite)
+            ht.write(res.combo_freq_ht.path, overwrite=overwrite)
 
         if args.perform_contingency_table_test:
             res = combine_faf_resources.contingency_table_test
             res.check_resource_existence()
-            ht = res.freq_ht.ht()
+            ht = res.combo_freq_ht.ht()
             ht = ht.select(
                 # TODO: this step is very slow, need to optimize
                 # run the whole pipeline for gene PCSK9 took ~27 min, this step took ~24
