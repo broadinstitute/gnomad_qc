@@ -52,7 +52,7 @@ def import_vqsr(
             ),
             AS_VarDP=ht.info.AS_VarDP.split("\|")[1:].map(lambda x: hl.int(x)),
             AS_SB_TABLE=ht.info.AS_SB_TABLE.split("\|").map(
-                lambda x: x.split(",").map(lambda y: hl.int(y))
+                lambda x: hl.or_missing(x != "", x.split(",").map(lambda y: hl.int(y)))
             ),
         )
     )
