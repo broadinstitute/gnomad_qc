@@ -81,7 +81,8 @@ def extract_freq_info(
     """
     # logger.info("Filtering Table to only variants that are PASS...")
     # ht = ht.filter(hl.len(ht.filters) == 0)
-    # TODO: we won't have this in the final freq_ht
+    # TODO: we don't have this in the final freq_ht, but we will read in
+    #  variant_qc table and filter to PASS when this table is ready.
 
     def _get_pop_meta_indices(
         meta: hl.ArrayExpression, pop_list: List[str]
