@@ -22,6 +22,7 @@ def import_vqsr(
     num_partitions: int = 5000,
     overwrite: bool = False,
     import_header_path: Optional[str] = None,
+    array_elements_required: bool = False,
 ) -> None:
     """
     Import VQSR site VCF into a HT.
@@ -35,11 +36,14 @@ def import_vqsr(
     :return: None
     """
     logger.info(f"Importing VQSR annotations for {vqsr_type} VQSR...")
+    logger.info(f"Array elements field as {array_elements_required}")
     mt = hl.import_vcf(
         vqsr_path,
         force_bgz=True,
         reference_genome="GRCh38",
+        array_elements_required=array_elements_required,
         header_file=import_header_path,
+
     ).repartition(num_partitions)
 
     ht = mt.rows()
@@ -83,12 +87,15 @@ def import_vqsr(
 def main(args):  # noqa: D103
     hl.init(log="/load_data.log", default_reference="GRCh38")
 
+    logger.info(f"passed array elements required as: {args.array_elements_required}")
+
     import_vqsr(
         args.vqsr_vcf_path,
         args.vqsr_type,
         args.n_partitions,
         args.overwrite,
         args.header_path,
+        args.array_elements_required
     )
 
 
@@ -123,6 +130,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--slack-channel",
         help="Slack channel to post results and notifications to",
+    )
+    parser.add_argument(
+        "--array-elements-required",
+        action='store_true',
+        help="Pass if you would like array elements required in import_vcf to be true"
     )
     args = parser.parse_args()
 
