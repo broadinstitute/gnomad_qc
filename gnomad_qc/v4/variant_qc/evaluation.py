@@ -23,6 +23,7 @@ from gnomad_qc.v4.resources.annotations import (
     get_info,
     get_trio_stats,
     get_variant_qc_annotations,
+    get_vqsr_filters
 )
 from gnomad_qc.v4.resources.basics import calling_intervals, get_gnomad_v4_vds
 from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
@@ -196,6 +197,24 @@ def get_evaluation_resources(
     )
 
     # Create resource collection for each step of the variant QC evaluation pipeline.
+
+    if model_id.startswith("rf"):
+        model_resource = {
+            "random_forest.py --apply-rf": {
+                "vqc_result_ht": get_rf_result(model_id=model_id, test=test)
+            }
+        }
+    elif model_id.startswith("vqsr"):
+        model_resource = {
+            "VQSR batch output": {
+                "vqc_result_ht": get_vqsr_filters(model_id=model_id)
+            }
+        }
+    else:
+        raise ValueError(
+            f"Model ID {model_id} not recognized. Must start with 'rf' or 'vqsr'."
+        )
+
     create_bin_table = PipelineStepResourceCollection(
         "--create-bin-ht",
         input_resources={
@@ -203,7 +222,7 @@ def get_evaluation_resources(
                 "rf_ht": get_variant_qc_annotations()
             },
             "random_forest.py --apply-rf": {
-                "rf_result_ht": get_rf_result(model_id=model_id, test=test)
+                "rf_result_ht": get_rf_result(**model_resource)
             },
         },
         output_resources={
@@ -300,12 +319,12 @@ def main(args):
         logger.info(f"Annotating {model_id} HT with bins using {n_bins} bins...")
         res = evaluation_resources.create_bin_table
         res.check_resource_existence()
-        ht = res.rf_result_ht.ht()
+        ht = res.vqc_result_ht.ht()
         ht = ht.annotate(
             in_calling_intervals=hl.is_defined(interval_ht[ht.locus]),
             pass_interval_qc=interval_qc_pass_ht[ht.locus].pass_interval_qc,
         )
-        ht = create_bin_ht(ht, info_ht, res.rf_ht.ht(), n_bins)
+        ht = create_bin_ht(ht, info_ht, res.rf_ht.ht(), n_bins, vqsr=model_id.startswith("vqsr"))
         ht.write(res.bin_ht.path, overwrite=overwrite)
 
     if args.score_bin_validity_check:
