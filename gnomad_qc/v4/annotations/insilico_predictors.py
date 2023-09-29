@@ -124,7 +124,10 @@ def create_spliceai_grch38_ht() -> hl.Table:
     indels_path = (
         "gs://gnomad-insilico/spliceai/spliceai_scores.masked.indel.hg38.vcf.bgz"
     )
-    v3_indels_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v3_indel.hg38.vcf.gz"
+    v3_indels_path = (
+        "gs://gnomad-insilico/spliceai/spliceai_scores.masked"
+        ".gnomad_v3_indel.hg38.vcf.bgz"
+    )
     v4_indels_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v4_new_indels.hg38.vcf.bgz"
     v3_v4_unscored_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v3_v4_unscored_indels.hg38.vcf.bgz"
     header_file_path = "gs://gnomad-insilico/spliceai/spliceai.vcf.header"
