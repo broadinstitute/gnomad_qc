@@ -918,13 +918,28 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
         ),
     )
 
+    def _replace_pop_key_w_gen_anc(
+        meta: hl.expr.ArrayExpression,
+    ) -> hl.expr.ArrayExpression:
+        """
+        Replace 'pop' key with 'gen_anc' key in meta globals.
+
+        :param meta: Array of dicts.
+        :return: Array of dicts with 'pop' key replaced with 'gen_anc' key.
+        """
+        return meta.map(
+            lambda d: hl.dict(
+                d.items().map(lambda x: hl.if_else(x[0] == "pop", ("gen_anc", x[1]), x))
+            )
+        )
+
     g = ht.index_globals()
     ht = ht.select_globals(
         downsamplings=g.downsamplings,
-        freq_meta=freq_meta,
+        freq_meta=_replace_pop_key_w_gen_anc(freq_meta),
         freq_index_dict=make_freq_index_dict_from_meta(freq_meta),
         freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
-        faf_meta=g.faf_meta,
+        faf_meta=_replace_pop_key_w_gen_anc(g.faf_meta),
         faf_index_dict=g.faf_index_dict,
         age_distribution=g.age_distribution,
     )
