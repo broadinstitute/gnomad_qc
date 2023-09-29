@@ -78,6 +78,7 @@ def create_bin_ht(
         )
 
     ht = ht.annotate(**struct_expr, non_lcr=hl.is_defined(non_lcr_ht[ht.key]))
+    ht = ht.checkpoint(new_temp_file("pre_bin", "ht"), overwrite=True)
     bin_ht = create_binned_ht(
         ht,
         n_bins,
