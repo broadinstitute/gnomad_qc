@@ -23,7 +23,7 @@ from gnomad_qc.v4.resources.annotations import (
     get_info,
     get_trio_stats,
     get_variant_qc_annotations,
-    get_vqsr_filters
+    get_vqsr_filters,
 )
 from gnomad_qc.v4.resources.basics import calling_intervals, get_gnomad_v4_vds
 from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
@@ -206,9 +206,7 @@ def get_evaluation_resources(
         }
     elif model_id.startswith("vqsr"):
         model_resource = {
-            "VQSR batch output": {
-                "vqc_result_ht": get_vqsr_filters(model_id=model_id)
-            }
+            "VQSR batch output": {"vqc_result_ht": get_vqsr_filters(model_id=model_id)}
         }
     else:
         raise ValueError(
@@ -219,11 +217,9 @@ def get_evaluation_resources(
         "--create-bin-ht",
         input_resources={
             "annotations/generate_variant_qc_annotations.py --create-variant-qc-annotation-ht": {
-                "rf_ht": get_variant_qc_annotations()
+                "vqc_annotations_ht": get_variant_qc_annotations()
             },
-            "random_forest.py --apply-rf": {
-                "rf_result_ht": get_rf_result(**model_resource)
-            },
+            **model_resource,
         },
         output_resources={
             "bin_ht": get_score_bins(model_id, aggregated=False, test=test),
@@ -311,6 +307,7 @@ def main(args):
         overwrite=overwrite,
         model_id=model_id,
     )
+
     info_ht = evaluation_resources.info_ht.ht()
     interval_ht = evaluation_resources.interval_ht.ht()
     interval_qc_pass_ht = evaluation_resources.interval_qc_pass_ht.ht()
@@ -324,7 +321,13 @@ def main(args):
             in_calling_intervals=hl.is_defined(interval_ht[ht.locus]),
             pass_interval_qc=interval_qc_pass_ht[ht.locus].pass_interval_qc,
         )
-        ht = create_bin_ht(ht, info_ht, res.rf_ht.ht(), n_bins, vqsr=model_id.startswith("vqsr"))
+        ht = create_bin_ht(
+            ht,
+            info_ht,
+            res.vqc_annotations_ht.ht(),
+            n_bins,
+            vqsr=model_id.startswith("vqsr"),
+        )
         ht.write(res.bin_ht.path, overwrite=overwrite)
 
     if args.score_bin_validity_check:
