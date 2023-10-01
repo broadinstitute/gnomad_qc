@@ -163,7 +163,6 @@ def create_aggregated_bin_ht(ht: hl.Table, trio_stats_ht: hl.Table) -> hl.Table:
     return agg_ht
 
 
-# TODO: Update to work with VQSR models.
 def get_evaluation_resources(
     test: bool,
     overwrite: bool,
@@ -197,7 +196,6 @@ def get_evaluation_resources(
     )
 
     # Create resource collection for each step of the variant QC evaluation pipeline.
-
     if model_id.startswith("rf"):
         model_resource = {
             "random_forest.py --apply-rf": {
