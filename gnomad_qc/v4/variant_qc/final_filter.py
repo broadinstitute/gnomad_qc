@@ -1,5 +1,4 @@
-# noqa: D100
-
+"""Script to create final filter Table for release."""
 import argparse
 import logging
 import sys
@@ -7,7 +6,6 @@ from typing import Optional
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
-from gnomad.resources.resource_utils import DataException
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import add_filters_expr
 from gnomad.utils.slack import slack_notifications
@@ -15,7 +13,6 @@ from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq, get_info, get_vqsr_filters
-from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v3.resources.variant_qc import final_filter, get_score_bins
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -169,7 +166,7 @@ def generate_final_filter_ht(
 
     annotations_expr = dict()
     if model_name == "RF":
-        # Fix annotations for release
+        # Fix annotations for release.
         annotations_expr = annotations_expr.update(
             {
                 "positive_train_site": hl.or_else(ht.positive_train_site, False),
@@ -231,7 +228,6 @@ def generate_final_filter_ht(
                 NEGATIVE_TRAIN_SITE=vqsr.info.NEGATIVE_TRAIN_SITE,
                 POSITIVE_TRAIN_SITE=vqsr.info.POSITIVE_TRAIN_SITE,
             ),
-            SOR=vqsr.info.SOR,  # NOTE: This was required for v3.1, we now compute this in `get_site_info_expr`
         )
 
     ht = ht.drop("AS_culprit")
@@ -239,14 +235,17 @@ def generate_final_filter_ht(
     return ht
 
 
-def main(args):  # noqa: D103
-    hl.init(log="/variant_qc_finalize.log")
+def main(args):
+    """Create final filter Table for release."""
+    hl.init(
+        default_reference="GRCh38",
+        log="/variant_qc_finalize.log",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
 
     ht = get_score_bins(
         args.model_id, aggregated=False, hgdp_tgp_subset=args.hgdp_tgp_subset
     ).ht()
-    if args.filter_centromere_telomere:
-        ht = ht.filter(~hl.is_defined(telomeres_and_centromeres.ht()[ht.locus]))
 
     info_ht = get_info(split=True).ht()
     ht = ht.filter(~info_ht[ht.key].AS_lowqual)
@@ -254,42 +253,13 @@ def main(args):  # noqa: D103
     if args.model_id.startswith("vqsr_"):
         ht = ht.drop("info")
 
-    # NOTE: Added for the v3.1.2 HGDP + 1KG/TGP subset release because the frequency annotation Table was removed after
-    # the release sites HT was finalized
-    if file_exists(get_freq().path):
-        freq_ht = get_freq().ht()
-    elif file_exists(release_sites().path):
-        freq_ht = release_sites().ht()
-        freq_ht = freq_ht.select("freq", InbreedingCoeff=freq_ht.info.InbreedingCoeff)
-    else:
-        raise DataException(
-            "There is no frequency HT or release sites HT available for the current"
-            " release!"
-        )
+    freq_ht = get_freq().ht()
 
     ht = ht.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
     freq_idx = freq_ht[ht.key]
-    if args.hgdp_tgp_subset:
-        hgdp_tgp_freq_ht = get_freq(subset="hgdp-tgp").ht()
-        hgdp_tgp_freq_idx = hgdp_tgp_freq_ht[ht.key]
-        # If this is AC0 in full gnomAD and AC0 in HGDP + 1KG/TGP mark it as AC0
-        # If missing in full gnomAD only check HGDP + 1KG/TGP,
-        # If missing in HGDP + 1KG/TGP only check full gnomAD
-        ac0_filter_expr = hl.coalesce(
-            (freq_idx.freq[0].AC == 0) & (hgdp_tgp_freq_idx.freq[0].AC == 0),
-            hgdp_tgp_freq_idx.freq[0].AC == 0,
-            freq_idx.freq[0].AC == 0,
-        )
-        # Note: (freq_idx.freq[1].AF == 0) is actually already filtered out, only focus on variants where all samples
-        # are homozygous alternate for the variant.
-        # If this is monoallelic in gnomAD and monoallelic in HGDP + 1KG/TGP mark
-        # it as monoallelic
-        mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) & (
-            hgdp_tgp_freq_idx.freq[1].AF == 1
-        )
-    else:
-        ac0_filter_expr = freq_idx.freq[0].AC == 0
-        mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0)
+
+    ac0_filter_expr = freq_idx.freq[0].AC == 0
+    mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0)
 
     aggregated_bin_path = get_score_bins(args.model_id, aggregated=True).path
     if not file_exists(aggregated_bin_path):
@@ -388,7 +358,7 @@ if __name__ == "__main__":
         "--inbreeding_coeff_threshold",
         help="InbreedingCoeff hard filter to use for variants.",
         type=float,
-        default=INBREEDING_COEFF_HARD_CUTOFF,
+        default=INBREEDING_COEFF_HARD_CUTOFF,  # TODO: Is this still a good cutoff?
     )
     snp_cutoff = parser.add_mutually_exclusive_group(required=True)
     snp_cutoff.add_argument(
@@ -419,11 +389,6 @@ if __name__ == "__main__":
         type=float,
     )
     parser.add_argument(
-        "--filter_centromere_telomere",
-        help="Filter centromeres and telomeres from final filter Table.",
-        action="store_true",
-    )
-    parser.add_argument(  # NOTE: This was required for v3.1 to grab the SOR annotation, we now compute this in `get_site_info_expr`
         "--vqsr_model_id",
         help=(
             "If a VQSR model ID is provided, a 'vqsr' annotation will be added to the"
@@ -433,14 +398,6 @@ if __name__ == "__main__":
         default="vqsr_alleleSpecificTrans",
         choices=["vqsr_classic", "vqsr_alleleSpecific", "vqsr_alleleSpecificTrans"],
         type=str,
-    )
-    parser.add_argument(
-        "--hgdp_tgp_subset",
-        help=(
-            "Use HGDP + 1KG/TGP score binned filter Table instead of the full gnomAD"
-            " Table."
-        ),
-        action="store_true",
     )
     args = parser.parse_args()
 
