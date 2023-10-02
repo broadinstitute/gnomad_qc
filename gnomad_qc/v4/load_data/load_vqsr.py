@@ -108,8 +108,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--vqsr-type",
         help="Type of VQSR corresponding to the VQSR VCF being loaded",
-        default="alleleSpecificTrans",
-        choices=["classic", "alleleSpecific", "alleleSpecificTrans"],
+        default="as",
     )
     parser.add_argument(
         "--n-partitions",
