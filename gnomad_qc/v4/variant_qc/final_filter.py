@@ -23,7 +23,7 @@ logger.setLevel(logging.INFO)
 
 def generate_final_filter_ht(
     ht: hl.Table,
-    model_name: str,
+    filter_name: str,
     score_name: str,
     ac0_filter_expr: hl.expr.BooleanExpression,
     ts_ac_filter_expr: hl.expr.BooleanExpression,
@@ -53,7 +53,7 @@ def generate_final_filter_ht(
           created by `compute_grouped_binned_ht` in combination with `score_bin_agg`.
 
     :param ht: Filtering Table to prepare as the final filter Table.
-    :param model_name: Filtering model name to use in the 'filters' field (AS_VQSR or
+    :param filter_name: Filtering model name to use in the 'filters' field (AS_VQSR or
         RF).
     :param score_name: Name to use for the filtering score annotation. This will be
         used in place of 'score' in the release HT info struct and the INFO field of
@@ -164,7 +164,7 @@ def generate_final_filter_ht(
         ht.filter(hl.is_missing(ht.score)).show()
         raise ValueError("Missing Score!")
 
-    filters[model_name] = (
+    filters[filter_name] = (
         hl.is_missing(ht.score)
         | (
             hl.is_snp(ht.alleles[0], ht.alleles[1])
@@ -182,9 +182,9 @@ def generate_final_filter_ht(
     filters["AC0"] = ac0_filter_expr
 
     annotations_expr = dict()
-    if model_name == "RF":
+    if filter_name == "RF":
         # Fix annotations for release.
-        annotations_expr = annotations_expr.update(
+        annotations_expr.update(
             {
                 "positive_train_site": hl.or_else(ht.positive_train_site, False),
                 "rf_tp_probability": ht.rf_probability["TP"],
@@ -193,7 +193,7 @@ def generate_final_filter_ht(
     annotations_expr.update(
         {
             "transmitted_singleton": hl.or_missing(
-                ts_ac_filter_expr, ht.transmitted_singleton
+                ts_ac_filter_expr, ht.transmitted_singleton_raw
             )
         }
     )
@@ -226,11 +226,12 @@ def generate_final_filter_ht(
         for x in bin_names
     ]
     ht = ht.transmute(**{j: ht[i] for i, j in bin_names})
-
     ht = ht.annotate_globals(
-        bin_stats=hl.struct(**{j: ht.bin_stats[i] for i, j in bin_names}),
+        bin_stats=hl.struct(
+            **{j: ht.bin_group_variant_counts[i] for i, j in bin_names}
+        ),
         filtering_model=hl.struct(
-            model_name=model_name,
+            filter_name=filter_name,
             score_name=score_name,
             snv_cutoff=snp_cutoff_global,
             indel_cutoff=indel_cutoff_global,
@@ -247,8 +248,6 @@ def generate_final_filter_ht(
                 POSITIVE_TRAIN_SITE=vqsr.info.POSITIVE_TRAIN_SITE,
             ),
         )
-
-    ht = ht.drop("AS_culprit")
 
     return ht
 
@@ -331,6 +330,10 @@ def main(args):
 
     if args.model_id.startswith("vqsr_"):
         bin_ht = bin_ht.drop("info")
+        filter_name = "AS_VQSR"
+        score_name = "AS_VQSLOD"
+    else:
+        filter_name = score_name = "RF"
 
     bin_ht = bin_ht.annotate(inbreeding_coeff=freq_ht[bin_ht.key].inbreeding_coeff)
     freq_idx = freq_ht[bin_ht.key]
@@ -343,8 +346,8 @@ def main(args):
 
     ht = generate_final_filter_ht(
         bin_ht,
-        args.model_name,
-        args.score_name,
+        filter_name,
+        score_name,
         ac0_filter_expr=ac0_filter_expr,
         ts_ac_filter_expr=freq_idx.freq[1].AC == 1,
         mono_allelic_flag_expr=mono_allelic_flag_expr,
@@ -389,8 +392,7 @@ def main(args):
             )
         )
 
-    final_filter_ht = ht.checkpoint(res.final_ht.path, overwrite=args.overwrite)
-    final_filter_ht.summarize()
+    ht.write(res.final_ht.path, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":
@@ -413,19 +415,6 @@ if __name__ == "__main__":
     )
     parser.add_argument("--model-id", help="Filtering model ID to use.")
     parser.add_argument(
-        "--model-name",
-        help="Filtering model name to use in the filters field ('AS_VQSR', or 'RF').",
-        choices=["AS_VQSR", "RF"],
-    )
-    parser.add_argument(
-        "--score-name",
-        help=(
-            "What to rename the filtering score annotation. This will be used in place"
-            " of 'score' in the release HT info struct and the INFO field of the VCF"
-            " (e.g. 'RF', 'AS_VQSLOD')."
-        ),
-    )
-    parser.add_argument(
         "--inbreeding-coeff-threshold",
         help="InbreedingCoeff hard filter to use for variants.",
         type=float,
@@ -438,7 +427,7 @@ if __name__ == "__main__":
             "RF or VQSR score bin to use as cutoff for SNPs. Value should be between 1"
             " and 100."
         ),
-        type=float,
+        type=int,
     )
     snp_cutoff.add_argument(
         "--snp-score-cutoff",
@@ -452,7 +441,7 @@ if __name__ == "__main__":
             "RF or VQSR score bin to use as cutoff for indels. Value should be between"
             " 1 and 100."
         ),
-        type=float,
+        type=int,
     )
     indel_cutoff.add_argument(
         "--indel-score-cutoff",
