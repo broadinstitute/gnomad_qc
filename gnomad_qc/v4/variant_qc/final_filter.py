@@ -1,19 +1,20 @@
 """Script to create final filter Table for release."""
 import argparse
 import logging
-import sys
 from typing import Optional
 
 import hail as hl
-from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
-from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import add_filters_expr
 from gnomad.utils.slack import slack_notifications
 from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources.annotations import get_freq, get_info, get_vqsr_filters
-from gnomad_qc.v3.resources.variant_qc import final_filter, get_score_bins
+from gnomad_qc.v4.resources.annotations import get_freq, get_info, get_vqsr_filters
+from gnomad_qc.v4.resources.variant_qc import final_filter, get_score_bins
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("variant_qc_filtering")
@@ -27,6 +28,7 @@ def generate_final_filter_ht(
     ac0_filter_expr: hl.expr.BooleanExpression,
     ts_ac_filter_expr: hl.expr.BooleanExpression,
     mono_allelic_flag_expr: hl.expr.BooleanExpression,
+    only_het_flag_expr: hl.expr.BooleanExpression,
     inbreeding_coeff_cutoff: float = INBREEDING_COEFF_HARD_CUTOFF,
     snp_bin_cutoff: int = None,
     indel_bin_cutoff: int = None,
@@ -37,33 +39,48 @@ def generate_final_filter_ht(
     vqsr_ht: hl.Table = None,
 ) -> hl.Table:
     """
-    Prepare finalized filtering model given a filtering HT from `rf.apply_rf_model` or VQSR and cutoffs for filtering.
+    Prepare finalized filtering model given a filtering HT and cutoffs for filtering.
 
     .. note::
 
-        - `snp_bin_cutoff` and `snp_score_cutoff` are mutually exclusive, and one must be supplied.
-        - `indel_bin_cutoff` and `indel_score_cutoff` are mutually exclusive, and one must be supplied.
-        - If a `snp_bin_cutoff` or `indel_bin_cutoff` cutoff is supplied then an `aggregated_bin_ht` and `bin_id` must
-          also be supplied to determine the SNP and indel scores to use as cutoffs from an aggregated bin Table like
-          one created by `compute_grouped_binned_ht` in combination with `score_bin_agg`.
+        - `snp_bin_cutoff` and `snp_score_cutoff` are mutually exclusive, and one must
+          be supplied.
+        - `indel_bin_cutoff` and `indel_score_cutoff` are mutually exclusive, and one
+          must be supplied.
+        - If a `snp_bin_cutoff` or `indel_bin_cutoff` cutoff is supplied then an
+          `aggregated_bin_ht` and `bin_id` must also be supplied to determine the SNP
+          and indel scores to use as cutoffs from an aggregated bin Table like one
+          created by `compute_grouped_binned_ht` in combination with `score_bin_agg`.
 
-    :param ht: Filtering Table from `rf.apply_rf_model` or VQSR to prepare as the final filter Table
-    :param model_name: Filtering model name to use in the 'filters' field (VQSR or RF)
-    :param score_name: Name to use for the filtering score annotation. This will be used in place of 'score' in the
-        release HT info struct and the INFO field of the VCF (e.g. RF or AS_VQSLOD)
-    :param ac0_filter_expr: Expression that indicates if a variant should be filtered as allele count 0 (AC0)
-    :param ts_ac_filter_expr: Allele count expression in `ht` to use as a filter for determining a transmitted singleton
-    :param mono_allelic_flag_expr: Expression indicating if a variant is mono-allelic
-    :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter to use for variants
-    :param snp_bin_cutoff: Bin cutoff to use for SNP variant QC filter. Can't be used with `snp_score_cutoff`
-    :param indel_bin_cutoff: Bin cutoff to use for indel variant QC filter. Can't be used with `indel_score_cutoff`
-    :param snp_score_cutoff: Score cutoff (e.g. RF probability or AS_VQSLOD) to use for SNP variant QC filter. Can't be used with `snp_bin_cutoff`
-    :param indel_score_cutoff: Score cutoff (e.g. RF probability or AS_VQSLOD) to use for indel variant QC filter. Can't be used with `indel_bin_cutoff`
+    :param ht: Filtering Table to prepare as the final filter Table.
+    :param model_name: Filtering model name to use in the 'filters' field (AS_VQSR or
+        RF).
+    :param score_name: Name to use for the filtering score annotation. This will be
+        used in place of 'score' in the release HT info struct and the INFO field of
+            the VCF (e.g. RF or AS_VQSLOD).
+    :param ac0_filter_expr: Expression that indicates if a variant should be filtered
+        as allele count 0 (AC0).
+    :param ts_ac_filter_expr: Allele count expression in `ht` to use as a filter for
+        determining a transmitted singleton.
+    :param mono_allelic_flag_expr: Expression indicating if a variant is mono-allelic.
+    :param only_het_flag_expr: Expression indicating if all carriers of a variant are
+        het.
+    :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter to use for variants.
+    :param snp_bin_cutoff: Bin cutoff to use for SNP variant QC filter. Can't be used
+        with `snp_score_cutoff`.
+    :param indel_bin_cutoff: Bin cutoff to use for indel variant QC filter. Can't be
+        used with `indel_score_cutoff`.
+    :param snp_score_cutoff: Score cutoff (e.g. RF probability or AS_VQSLOD) to use
+        for SNP variant QC filter. Can't be used with `snp_bin_cutoff`.
+    :param indel_score_cutoff: Score cutoff (e.g. RF probability or AS_VQSLOD) to use
+        for indel variant QC filter. Can't be used with `indel_bin_cutoff`.
     :param aggregated_bin_ht: Table with aggregate counts of variants based on bins
-    :param bin_id: Name of bin to use in 'bin_id' column of `aggregated_bin_ht` to use to determine probability cutoff
-    :param vqsr_ht: If a VQSR HT is supplied a 'vqsr' annotation containing AS_VQSLOD, AS_culprit, NEGATIVE_TRAIN_SITE,
-        and POSITIVE_TRAIN_SITE will be included in the returned Table
-    :return: Finalized random forest Table annotated with variant filters
+    :param bin_id: Name of bin to use in 'bin_id' column of `aggregated_bin_ht` to use
+        to determine probability cutoff.
+    :param vqsr_ht: If a VQSR HT is supplied a 'vqsr' annotation containing AS_VQSLOD,
+        AS_culprit, NEGATIVE_TRAIN_SITE, and POSITIVE_TRAIN_SITE will be included in the
+        returned Table.
+    :return: Finalized random forest Table annotated with variant filters.
     """
     if snp_bin_cutoff is not None and snp_score_cutoff is not None:
         raise ValueError(
@@ -160,7 +177,7 @@ def generate_final_filter_ht(
     )
 
     filters["InbreedingCoeff"] = hl.or_else(
-        ht.InbreedingCoeff < inbreeding_coeff_cutoff, False
+        ht.inbreeding_coeff < inbreeding_coeff_cutoff, False
     )
     filters["AC0"] = ac0_filter_expr
 
@@ -191,6 +208,7 @@ def generate_final_filter_ht(
     ht = ht.transmute(
         filters=add_filters_expr(filters=filters),
         monoallelic=mono_allelic_flag_expr,
+        only_het=only_het_flag_expr,
         **{score_name: ht.score},
         **annotations_expr,
     )
@@ -235,6 +253,57 @@ def generate_final_filter_ht(
     return ht
 
 
+def get_final_variant_qc_resources(
+    test: bool,
+    overwrite: bool,
+    model_id: str,
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the finalizing variant QC pipeline.
+
+    :param test: Whether to gather all resources for testing.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :param model_id: Model ID to use for final variant QC.
+    :return: PipelineResourceCollection containing resources for all steps of finalizing
+        variant QC pipeline.
+    """
+    # Initialize finalizing variant QC pipeline resource collection.
+    variant_qc_pipeline = PipelineResourceCollection(
+        pipeline_name="variant_qc",
+        overwrite=overwrite,
+    )
+    input_resources = {
+        "variant_qc/evaluation.py --create-bin-ht": {
+            "bin_ht": get_score_bins(model_id, aggregated=False)
+        },
+        "variant_qc/evaluation.py --create-aggregated-bin-ht": {
+            "agg_bin_ht": get_score_bins(model_id, aggregated=True)
+        },
+        "annotations/generate_variant_qc_annotations.py --split-info": {
+            "info_ht": get_info(split=True)
+        },
+        "annotations/generate_freq.py --finalize-freq-ht": {
+            "freq_ht": get_freq(finalized=True)
+        },
+    }
+    if model_id.startswith("vqsr"):
+        input_resources["variant_qc/load_vqsr.py"] = {
+            "vqsr_ht": get_vqsr_filters(model_id, split=True)
+        }
+
+    # Create resource collection for the finalizing variant QC pipeline.
+    finalize_variant_qc = PipelineStepResourceCollection(
+        "final_filter.py",
+        input_resources=input_resources,
+        output_resources={"final_ht": final_filter(test=test)},
+    )
+
+    # Add all steps to the finalizing variant QC pipeline resource collection.
+    variant_qc_pipeline.add_steps({"finalize_variant_qc": finalize_variant_qc})
+
+    return variant_qc_pipeline
+
+
 def main(args):
     """Create final filter Table for release."""
     hl.init(
@@ -242,53 +311,52 @@ def main(args):
         log="/variant_qc_finalize.log",
         tmp_dir="gs://gnomad-tmp-4day",
     )
+    test = args.test
+    overwrite = args.overwrite
+    final_vqc_resources = get_final_variant_qc_resources(
+        test=test,
+        overwrite=overwrite,
+        model_id=args.model_id,
+    )
+    res = final_vqc_resources.finalize_variant_qc
+    res.check_resource_existence()
 
-    ht = get_score_bins(
-        args.model_id, aggregated=False, hgdp_tgp_subset=args.hgdp_tgp_subset
-    ).ht()
+    bin_ht = res.bin_ht.ht()
+    freq_ht = res.freq_ht.ht()
 
-    info_ht = get_info(split=True).ht()
-    ht = ht.filter(~info_ht[ht.key].AS_lowqual)
+    if test:
+        bin_ht = bin_ht._filter_partitions(range(5))
+
+    bin_ht = bin_ht.filter(~res.info_ht.ht()[bin_ht.key].AS_lowqual)
 
     if args.model_id.startswith("vqsr_"):
-        ht = ht.drop("info")
+        bin_ht = bin_ht.drop("info")
 
-    freq_ht = get_freq().ht()
-
-    ht = ht.annotate(InbreedingCoeff=freq_ht[ht.key].InbreedingCoeff)
-    freq_idx = freq_ht[ht.key]
+    bin_ht = bin_ht.annotate(inbreeding_coeff=freq_ht[bin_ht.key].inbreeding_coeff)
+    freq_idx = freq_ht[bin_ht.key]
 
     ac0_filter_expr = freq_idx.freq[0].AC == 0
     mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0)
-
-    aggregated_bin_path = get_score_bins(args.model_id, aggregated=True).path
-    if not file_exists(aggregated_bin_path):
-        sys.exit(
-            "Could not find binned HT for model:"
-            f" {args.model_id} ({aggregated_bin_path}). Please run"
-            " create_ranked_scores.py for that hash."
-        )
-    aggregated_bin_ht = get_score_bins(args.model_id, aggregated=True).ht()
+    only_het_flag_expr = ((freq_idx.freq[0].AC * 2) == freq_idx.freq[0].AN) & (
+        freq_idx.freq[0].homozygote_count == 0
+    )
 
     ht = generate_final_filter_ht(
-        ht,
+        bin_ht,
         args.model_name,
         args.score_name,
         ac0_filter_expr=ac0_filter_expr,
         ts_ac_filter_expr=freq_idx.freq[1].AC == 1,
         mono_allelic_flag_expr=mono_allelic_flag_expr,
+        only_het_flag_expr=only_het_flag_expr,
         snp_bin_cutoff=args.snp_bin_cutoff,
         indel_bin_cutoff=args.indel_bin_cutoff,
         snp_score_cutoff=args.snp_score_cutoff,
         indel_score_cutoff=args.indel_score_cutoff,
         inbreeding_coeff_cutoff=args.inbreeding_coeff_threshold,
-        aggregated_bin_ht=aggregated_bin_ht,
+        aggregated_bin_ht=res.agg_bin_ht.ht(),
         bin_id="bin",
-        vqsr_ht=(
-            get_vqsr_filters(args.vqsr_model_id, split=True).ht()
-            if args.vqsr_model_id
-            else None
-        ),
+        vqsr_ht=res.vqsr_ht.ht() if args.model_id.startswith("vqsr_") else None,
     )
     ht = ht.annotate_globals(
         filtering_model=ht.filtering_model.annotate(model_id=args.model_id)
@@ -321,33 +389,36 @@ def main(args):
             )
         )
 
-    ht.write(final_filter(hgdp_tgp_subset=args.hgdp_tgp_subset).path, args.overwrite)
-
-    final_filter_ht = final_filter(hgdp_tgp_subset=args.hgdp_tgp_subset).ht()
+    final_filter_ht = ht.checkpoint(res.final_ht.path, overwrite=args.overwrite)
     final_filter_ht.summarize()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--slack_channel", help="Slack channel to post results and notifications to."
+        "--slack-channel", help="Slack channel to post results and notifications to."
     )
     parser.add_argument(
         "--overwrite",
         help="Overwrite all data from this subset (default: False).",
         action="store_true",
     )
-    parser.add_argument("--model_id", help="Filtering model ID to use.")
     parser.add_argument(
-        "--model_name",
+        "--test",
         help=(
-            "Filtering model name to use in the filters field ('VQSR', 'AS_VQSR', or"
-            " 'RF')."
+            "Whether to run a test using only the first 2 partitions of the variant QC "
+            "Table."
         ),
-        choices=["AS_VQSR", "VQSR", "RF"],
+        action="store_true",
+    )
+    parser.add_argument("--model-id", help="Filtering model ID to use.")
+    parser.add_argument(
+        "--model-name",
+        help="Filtering model name to use in the filters field ('AS_VQSR', or 'RF').",
+        choices=["AS_VQSR", "RF"],
     )
     parser.add_argument(
-        "--score_name",
+        "--score-name",
         help=(
             "What to rename the filtering score annotation. This will be used in place"
             " of 'score' in the release HT info struct and the INFO field of the VCF"
@@ -355,14 +426,14 @@ if __name__ == "__main__":
         ),
     )
     parser.add_argument(
-        "--inbreeding_coeff_threshold",
+        "--inbreeding-coeff-threshold",
         help="InbreedingCoeff hard filter to use for variants.",
         type=float,
         default=INBREEDING_COEFF_HARD_CUTOFF,  # TODO: Is this still a good cutoff?
     )
     snp_cutoff = parser.add_mutually_exclusive_group(required=True)
     snp_cutoff.add_argument(
-        "--snp_bin_cutoff",
+        "--snp-bin-cutoff",
         help=(
             "RF or VQSR score bin to use as cutoff for SNPs. Value should be between 1"
             " and 100."
@@ -370,13 +441,13 @@ if __name__ == "__main__":
         type=float,
     )
     snp_cutoff.add_argument(
-        "--snp_score_cutoff",
+        "--snp-score-cutoff",
         help="RF or VQSR score to use as cutoff for SNPs.",
         type=float,
     )
     indel_cutoff = parser.add_mutually_exclusive_group(required=True)
     indel_cutoff.add_argument(
-        "--indel_bin_cutoff",
+        "--indel-bin-cutoff",
         help=(
             "RF or VQSR score bin to use as cutoff for indels. Value should be between"
             " 1 and 100."
@@ -384,20 +455,9 @@ if __name__ == "__main__":
         type=float,
     )
     indel_cutoff.add_argument(
-        "--indel_score_cutoff",
+        "--indel-score-cutoff",
         help="RF or VQSR score to use as cutoff for indels.",
         type=float,
-    )
-    parser.add_argument(
-        "--vqsr_model_id",
-        help=(
-            "If a VQSR model ID is provided, a 'vqsr' annotation will be added to the"
-            " final filter Table containing AS_VQSLOD , AS_culprit, NEGATIVE_TRAIN_SITE"
-            " and POSITIVE_TRAIN_SITE."
-        ),
-        default="vqsr_alleleSpecificTrans",
-        choices=["vqsr_classic", "vqsr_alleleSpecific", "vqsr_alleleSpecificTrans"],
-        type=str,
     )
     args = parser.parse_args()
 
