@@ -797,7 +797,7 @@ def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Tab
         "high_ab_hets_by_group",
         *FREQ_ROW_FIELDS,
         **hl.if_else(
-            (hl.is_defined(ht.freq[0].AF)) & (ht.freq[0].AF > 0.01),
+            (hl.is_defined(ht.freq[0].AF)) & (ht.freq[0].AF > af_threshold),
             hl.struct(
                 ab_adjusted_freq=call_stats_expr,
                 **qual_hist_expr,
