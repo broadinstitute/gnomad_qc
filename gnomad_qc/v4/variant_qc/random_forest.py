@@ -410,9 +410,9 @@ if __name__ == "__main__":
     )
     rf_params.add_argument(
         "--features",
-        help="List of features to use in the random forests model.",
+        help="Features to use in the random forests model.",
         default=FEATURES,
-        type=list,
+        type=str,
         nargs="+",
     )
     rf_params.add_argument(
