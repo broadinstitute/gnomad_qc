@@ -804,6 +804,7 @@ def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Tab
                 ab_adjusted_age_hists=ht.high_ab_het_adjusted_age_hists,
             ),
             hl.struct(**no_ab_adjusted_expr),
+            missing_false=True,
         ),
     )
     ht = ht.annotate_globals(af_threshold_for_freq_adjustment=af_threshold)
