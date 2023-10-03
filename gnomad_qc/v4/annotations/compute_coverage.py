@@ -116,10 +116,27 @@ def main(args):
                 release_only=True,
                 test=test,
                 filter_partitions=range(2) if test else None,
+                annotate_meta=True,
             )
 
+            if args.stratify_by_ukb_and_platform:
+                meta_expr = vds.variant_data.meta
+                strata = {
+                    "subset": hl.if_else(
+                        meta_expr.project_meta.ukb_sample, "ukb", "non_ukb"
+                    ),
+                    "platform": meta_expr.platform_inference.qc_platform,
+                }
+            else:
+                strata = None
+
             # Compute coverage stats.
-            coverage_ht = compute_coverage_stats(vds, ref_ht, res.interval_ht.ht())
+            coverage_ht = compute_coverage_stats(
+                vds,
+                ref_ht,
+                interval_ht=res.interval_ht.ht(),
+                strata=strata,
+            )
 
             # Checkpoint Table.
             coverage_ht = coverage_ht.checkpoint(
@@ -155,6 +172,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--compute-coverage-ht", help="Compute the coverage HT.", action="store_true"
+    )
+    parser.add_argument(
+        "--stratify-by-ukb-and-platform",
+        help="Whether to compute coverage stratified by UKB/non-UKB and platform.",
+        action="store_true",
     )
     parser.add_argument(
         "--calling-interval-name",
