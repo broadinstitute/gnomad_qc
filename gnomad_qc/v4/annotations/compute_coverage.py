@@ -121,12 +121,14 @@ def main(args):
 
             if args.stratify_by_ukb_and_platform:
                 meta_expr = vds.variant_data.meta
-                strata = {
-                    "subset": hl.if_else(
-                        meta_expr.project_meta.ukb_sample, "ukb", "non_ukb"
-                    ),
-                    "platform": meta_expr.platform_inference.qc_platform,
-                }
+                ukb_expr = meta_expr.project_meta.ukb_sample
+                strata = [
+                    {"subset": hl.if_else(ukb_expr, "ukb", "non_ukb")},
+                    {
+                        "subset": hl.or_missing(~ukb_expr, "non_ukb"),
+                        "platform": meta_expr.platform_inference.qc_platform,
+                    },
+                ]
             else:
                 strata = None
 
@@ -135,7 +137,7 @@ def main(args):
                 vds,
                 ref_ht,
                 interval_ht=res.interval_ht.ht(),
-                strata=strata,
+                strata_expr=strata,
             )
 
             # Checkpoint Table.
