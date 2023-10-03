@@ -61,9 +61,11 @@ INFO_METHODS = [
 INFO_FEATURES = [
     "AS_MQRankSum",
     "AS_pab_max",
+    "AS_MQ",
     "AS_QD",
     "AS_ReadPosRankSum",
     "AS_SOR",
+    "AS_FS",
 ]
 """List of features info to be used for variant QC."""
 NON_INFO_FEATURES = [
