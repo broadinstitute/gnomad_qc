@@ -208,10 +208,10 @@ def score_variant_annotations_job(
 
     j.declare_resource_group(
         output_score={
-            "scored_vcf": "{root}.scored_vcf",
-            "scored_vcf_idx": "{root}.scored_vcf_idx",
-            "annotations_hdf5": "{root}.annotations_hdf5",
-            "scores_hdf5": "{root}.scores_hdf5",
+            "scored_vcf": "{root}.vcf.gz",
+            "scored_vcf_idx": "{root}.vcf.gz.tbi",
+            "annotations_hdf5": "{root}.annot.hdf5",
+            "scores_hdf5": "{root}.scores.hdf5",
         }
     )
 
