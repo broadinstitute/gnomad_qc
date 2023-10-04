@@ -141,17 +141,18 @@ def main(args):
             )
 
             # Checkpoint Table.
-            coverage_ht = coverage_ht.annotate_globals(
-                coverage_stats_meta_sample_count=coverage_ht.coverage_stats_meta_sample_count.map(
-                    lambda x: hl.dict(
-                        x.items().map(
-                            lambda m: hl.if_else(
-                                m[0] == "ukb_strata", ("subset", m[1]), m
+            if args.stratify_by_ukb_and_platform:
+                coverage_ht = coverage_ht.annotate_globals(
+                    coverage_stats_meta=coverage_ht.coverage_stats_meta.map(
+                        lambda x: hl.dict(
+                            x.items().map(
+                                lambda m: hl.if_else(
+                                    m[0] == "ukb_strata", ("subset", m[1]), m
+                                )
                             )
                         )
                     )
                 )
-            )
             coverage_ht = coverage_ht.checkpoint(
                 hl.utils.new_temp_file("coverage", extension="ht")
             )
