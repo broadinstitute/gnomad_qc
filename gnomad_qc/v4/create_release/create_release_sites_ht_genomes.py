@@ -178,8 +178,6 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
     relatedness_ht = hgdp_tgp_related_samples_to_drop.ht()
     related_to_nonsubset_ht = hgdp_tgp_related_to_nonsubset.ht()
 
-    # TODO: rerun the pc_relate to get the updated relatedness HT,
-    #  because Alicia's group didn't checkpoint the results.
     # TODO: get the global & subcontinental PCs for the updated HGDP + 1KG subset:
     #  hgdp_tgp_meta.global_pca_scores,
     #  hgdp_tgp_meta.subcontinental_pca.pca_scores,
@@ -331,20 +329,30 @@ def get_filtered_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table, hl.Table]:
 
 def filter_to_test(
     t: Union[hl.Table, hl.MatrixTable, hl.vds.VariantDataset],
+    gene_on_chrx: bool = False,
     partitions: Optional[List[int]] = None,
 ) -> Union[hl.Table, hl.MatrixTable, hl.vds.VariantDataset]:
     """
     Filter to 10kb in DRD2 in Table or MatrixTable for testing purposes.
 
-    :param t: Table, MatrixTable or VariantDataset to filter.
+    :param t: Table or MatrixTable to filter.
+    :param gene_on_chrx: Whether the test gene is on chrX.
     :param partitions: Optional list of partitions to filter to before applying the
         filter to DRD2.
-    :return: Table, MatrixTable or VariantDataset filtered to 10kb in DRD2.
+    :return: Table or MatrixTable filtered to 10kb in DRD2.
     """
-    logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
-    test_interval = [
-        hl.parse_locus_interval("chr11:113425000-113435000", reference_genome="GRCh38")
-    ]
+    if gene_on_chrx:
+        logger.info("Filtering to PLCXD1 on chrX in MT for testing purposes...")
+        test_interval = [
+            hl.parse_locus_interval("chrX:285000-295000", reference_genome="GRCh38")
+        ]
+    else:
+        logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
+        test_interval = [
+            hl.parse_locus_interval(
+                "chr11:113425000-113435000", reference_genome="GRCh38"
+            )
+        ]
 
     if isinstance(t, hl.vds.VariantDataset):
         if partitions is not None:
@@ -418,19 +426,21 @@ def calculate_callstats_for_selected_samples(
     return ht
 
 
-def concatenate_subset_frequencies(
-    subset_freq_hts: List[hl.Table],
+def concatenate_subset_annotations(
+    subset_annot_hts: List[hl.Table],
     global_field_names: Union[List[str], Tuple[str]] = FREQ_GLOBALS,
     is_group_membership_ht: bool = False,
 ) -> hl.Table:
     """
-    Concatenate subset frequencies `subset_freq_hts` into a single Table.
+    Concatenate subset annotations: frequencies or group memberships into a single Table.
 
-    :param subset_freq_hts: List of subset frequency HTs.
-    :return: Concatenated frequency HT.
+    :param subset_annot_hts: List of subset annotation HTs.
+    :param global_field_names: Global field names to concatenate.
+    :param is_group_membership_ht: Whether the HTs are group membership HTs.
+    :return: Concatenated frequency HT or group membership HT.
     """
-    freq_ht = hl.Table.multi_way_zip_join(
-        subset_freq_hts,
+    concat_ht = hl.Table.multi_way_zip_join(
+        subset_annot_hts,
         data_field_name="ann_array",
         global_field_name="global_array",
     )
@@ -441,14 +451,17 @@ def concatenate_subset_frequencies(
     else:
         field_name = "freq"
 
-    freq_ht = freq_ht.transmute(
-        **{field_name: freq_ht.ann_array.flatmap(lambda x: x[field_name])}
+    concat_ht = concat_ht.transmute(
+        **{field_name: concat_ht.ann_array.flatmap(lambda x: x[field_name])}
     )
-    freq_ht = freq_ht.transmute_globals(
-        **{g: freq_ht.global_array.flatmap(lambda x: x[g]) for g in global_field_names},
+    concat_ht = concat_ht.transmute_globals(
+        **{
+            g: concat_ht.global_array.flatmap(lambda x: x[g])
+            for g in global_field_names
+        },
     )
 
-    return freq_ht
+    return concat_ht
 
 
 def calculate_concatenate_callstats(
@@ -490,7 +503,7 @@ def calculate_concatenate_callstats(
             subset_freq_hts.append(freq_ht)
 
     logger.info("Concatenating AFs for selected samples...")
-    freq_ht = concatenate_subset_frequencies(subset_freq_hts)
+    freq_ht = concatenate_subset_annotations(subset_freq_hts)
 
     return freq_ht
 
@@ -658,7 +671,7 @@ def get_group_membership_ht_for_an(ht: hl.Table) -> hl.Table:
         )
         hts.append(subset_ht)
 
-    return concatenate_subset_frequencies(hts, is_group_membership_ht=True)
+    return concatenate_subset_annotations(hts, is_group_membership_ht=True)
 
 
 def compute_an_by_group_membership(
@@ -678,6 +691,12 @@ def compute_an_by_group_membership(
     n_samples = group_membership_ht.count()
     n_groups = len(group_membership_ht.group_membership.take(1)[0])
 
+    # Get necessary entries and cols for AN calculation from the VDS and
+    # outer join with the variant filter HT, because the VDS variant_data only contains
+    # variants that are present in release samples.
+    # If entries for certain variants are missing, fill them with missing values.
+    # These steps involve converting VDS to an MT then to an HT, to add
+    # annotations and filter to only needed variants, then HT back to MT then to VDS.
     vmt = vds.variant_data
     vmt = vmt.select_entries("AD", "DP", "GT", "GQ").select_rows()
     vmt = vmt.select_cols(sex_karyotype=vmt.meta.sex_imputation.sex_karyotype)
@@ -694,12 +713,17 @@ def compute_an_by_group_membership(
     vmt = vht._unlocalize_entries("_entries", "_cols", ["s"])
     vmt = vmt.filter_rows(vmt._in_ref)
 
+    # Combine reference data and variant data into a VDS and densify it to an MT.
+    # annotate_adj adds an 'adj' annotation to each entry, which is used to compute
+    # the AN for each group.
+    # adjust_sex_ploidy adds a 'ploidy' annotation to each entry, which is used to sum
+    # the AN for by sex.
     vds = hl.vds.VariantDataset(vds.reference_data.select_cols().select_rows(), vmt)
     mt = hl.vds.to_dense_mt(vds)
     mt = annotate_adj(mt)
     mt = adjust_sex_ploidy(mt, mt.sex_karyotype, male_str="XY", female_str="XX")
 
-    # Unfilter entries so that entries with no ref block overlap aren't null.
+    # Un-filter entries so that entries with no ref block overlap aren't null.
     mt = mt.unfilter_entries()
 
     mt = mt.annotate_cols(
@@ -922,7 +946,8 @@ def main(args):
     and subtracted, then merge the callstats with the old callstats in the
     release HT.
     """
-    test = args.test
+    test = args.test_drd2 or args.test_x_gene
+    gene_on_chrx = args.test_x_gene
     overwrite = args.overwrite
 
     hl.init(
@@ -941,10 +966,14 @@ def main(args):
         v3_vds = get_gnomad_v3_vds(split=True, release_only=True, samples_meta=True)
 
     if test:
-        v3_dense_mt = filter_to_test(v3_dense_mt)
-        v3_sites_ht = filter_to_test(v3_sites_ht)
+        v3_dense_mt = filter_to_test(v3_dense_mt, gene_on_chrx=gene_on_chrx)
+        v3_sites_ht = filter_to_test(v3_sites_ht, gene_on_chrx=gene_on_chrx)
         if v3_vds is not None:
-            v3_vds = filter_to_test(v3_vds, partitions=[74593])
+            v3_vds = filter_to_test(
+                v3_vds,
+                gene_on_chrx=gene_on_chrx,
+                partitions=[74593, 108583],
+            )
 
     if args.get_related_to_nonsubset:
         ht = get_hgdp_tgp_related_to_nonsubset(meta.ht(), relatedness.ht())
@@ -1009,9 +1038,6 @@ def main(args):
         ht = compute_an_by_group_membership(v3_vds, group_membership_ht, ht)
         ht.write(res.v3_release_an_ht.path, overwrite=overwrite)
 
-    # TODO: Look at gene on a sex chromosome, to make sure AN works there too.
-    # TODO: Confirm the sample counts on the AN HT match the sample counts created by
-    #  annotate_v3_subsets_sample_count.
     if args.update_release_callstats:
         res = v4_genome_release_resources.update_release_callstats
         res.check_resource_existence()
@@ -1027,8 +1053,13 @@ if __name__ == "__main__":
         description="This script updates AFs for HGDP + 1KG subset for v4 release HT."
     )
     parser.add_argument(
-        "--test",
+        "--test-drd2",
         help="Test on a subset of variants in DRD2 gene.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test-x-gene",
+        help="Test on a subset of variants in PLCXD1 on chrX",
         action="store_true",
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
