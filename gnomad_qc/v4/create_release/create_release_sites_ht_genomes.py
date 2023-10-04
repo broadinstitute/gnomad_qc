@@ -336,10 +336,10 @@ def filter_to_test(
     """
     Filter to 10kb in DRD2 in Table or MatrixTable for testing purposes.
 
-    :param t: Table or MatrixTable to filter.
+    :param t: Table, MatrixTable or VariantDataset to filter.
     :param partitions: Optional list of partitions to filter to before applying the
         filter to DRD2.
-    :return: Table or MatrixTable filtered to 10kb in DRD2.
+    :return: Table, MatrixTable or VariantDataset filtered to 10kb in DRD2.
     """
     logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
     test_interval = [
