@@ -106,42 +106,51 @@ def get_callset_truth_data(
         )
 
 
-def get_score_bins(model_id: str, aggregated: bool) -> VersionedTableResource:
+def get_score_bins(
+    model_id: str, aggregated: bool, test: bool = False
+) -> VersionedTableResource:
     """
     Return the path to a Table containing RF or VQSR scores and annotated with a bin based on rank of the metric scores.
 
     :param model_id: RF or VQSR model ID for which to return score data.
-    :param bool aggregated: Whether to get the aggregated data.
-         If True, will return the path to Table grouped by bin that contains aggregated variant counts per bin.
+    :param bool aggregated: Whether to get the aggregated data. If True, will return
+        the path to Table grouped by bin that contains aggregated variant counts per
+        bin.
+    :param test: Whether to use a tmp path for variant QC tests.
     :return: Path to desired hail Table
     """
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{_variant_qc_root(version)}/score_bins/gnomad.exomes.v{version}.{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
+                f"{_variant_qc_root(version, test=test)}/score_bins/gnomad.exomes.v{version}.{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
             )
             for version in VERSIONS
         },
     )
 
 
-def get_binned_concordance(model_id: str, truth_sample: str) -> VersionedTableResource:
+def get_binned_concordance(
+    model_id: str, truth_sample: str, test: bool = False
+) -> VersionedTableResource:
     """
     Return the path to a truth sample concordance Table.
 
-    This Table contains concordance information (TP, FP, FN) between a truth sample within the callset and the
-    sample's truth data, grouped by bins of a metric (RF or VQSR scores).
+    This Table contains concordance information (TP, FP, FN) between a truth sample
+    within the callset and the sample's truth data, grouped by bins of a metric (RF or
+    VQSR scores).
 
     :param model_id: RF or VQSR model ID for which to return score data.
-    :param truth_sample: Which truth sample concordance to analyze (e.g., "NA12878" or "syndip")
-    :return: Path to binned truth data concordance Hail Table
+    :param truth_sample: Which truth sample concordance to analyze (e.g., "NA12878" or
+        "syndip").
+    :param test: Whether to use a tmp path for variant QC tests.
+    :return: Path to binned truth data concordance Hail Table.
     """
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{_variant_qc_root(version)}/binned_concordance/gnomad.exomes.v{version}.{truth_sample}.{model_id}.binned_concordance.ht"
+                f"{_variant_qc_root(version, test=test)}/binned_concordance/gnomad.exomes.v{version}.{truth_sample}.{model_id}.binned_concordance.ht"
             )
             for version in VERSIONS
         },
