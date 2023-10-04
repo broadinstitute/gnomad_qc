@@ -123,7 +123,7 @@ def main(args):
                 meta_expr = vds.variant_data.meta
                 ukb_expr = meta_expr.project_meta.ukb_sample
                 strata = [
-                    {"subset": hl.if_else(ukb_expr, "ukb", "non_ukb")},
+                    {"ukb_strata": hl.if_else(ukb_expr, "ukb", "non_ukb")},
                     {
                         "subset": hl.or_missing(~ukb_expr, "non_ukb"),
                         "platform": meta_expr.platform_inference.qc_platform,
@@ -141,6 +141,17 @@ def main(args):
             )
 
             # Checkpoint Table.
+            coverage_ht = coverage_ht.annotate_globals(
+                coverage_stats_meta_sample_count=coverage_ht.coverage_stats_meta_sample_count.map(
+                    lambda x: hl.dict(
+                        x.items().map(
+                            lambda m: hl.if_else(
+                                m[0] == "ukb_strata", ("subset", m[1]), m
+                            )
+                        )
+                    )
+                )
+            )
             coverage_ht = coverage_ht.checkpoint(
                 hl.utils.new_temp_file("coverage", extension="ht")
             )
