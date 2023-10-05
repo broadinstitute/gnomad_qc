@@ -22,10 +22,7 @@
   "axiom_poly_resource_vcf_index": "gs://gcp-public-data--broad-references/hg38/v0/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz.tbi",
 
   "GATK_IMAGE": "us.gcr.io/broad-gatk/gatk:4.4.0.0",
-  "SCATTER_COUNT_CHR22": 10,
-  "SCATTER_COUNT": 50,
-  "EVALUATION_INTERVALS_CHR22": "gs://gnomad-tmp-4day/julia/gnomad.exomes.v4.0.interval_qc_pass.all_platforms.chr22.intervals",
-  "EVALUATION_INTERVALS": "gs://gnomad/v4.0/sample_qc/exomes/interval_qc/gnomad.exomes.v4.0.interval_qc_pass.all_platforms.intervals",
-  "CALLING_INTERVALS_CHR22": "gs://gnomad-tmp-4day/julia/xgen.pad0.dsp.pad0.union.chr22.intervals",
-  "CALLING_INTERVALS": "gs://gnomad/resources/intervals/xgen.pad0.dsp.pad0.union.intervals"
+  "SCATTER_COUNT": 10,
+  "EVALUATION_INTERVALS": "gs://gnomad-tmp-4day/julia/gnomad.exomes.v4.0.interval_qc_pass.all_platforms.chr22.intervals",
+  "CALLING_INTERVALS": "gs://gnomad-tmp-4day/julia/xgen.pad0.dsp.pad0.union.chr22.intervals"
 }

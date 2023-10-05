@@ -40,14 +40,15 @@ def extract_variant_annotations_job(
     j = b.new_job("GATK: ExtractVariantAnnotations")
     # couldn't find a public image with both gatk and bcftools installed
     j.image(utils["GATK_IMAGE"])
-    cpu = utils.get("CPU", 1)
-    mem_gb = utils.get("COMMAND_MEM_GB", 6)
-    add_mem_gb = utils.get("ADDITIONAL_MEM_GB", 1)
-    disk_size = utils.get("DISK_SIZE_GB", 100)
-
-    j.cpu(cpu)
-    j.memory(f"{int(mem_gb) + int(add_mem_gb)}G")
-    j.storage(f"{disk_size}G")
+    # cpu = utils.get("CPU", 1)
+    # mem_gb = utils.get("COMMAND_MEM_GB", 6)
+    # add_mem_gb = utils.get("ADDITIONAL_MEM_GB", 1)
+    # disk_size = utils.get("DISK_SIZE_GB", 100)
+    
+    j.cpu(4)
+    mem_gb = 6
+    j.memory("standard")
+    j.storage(f"100")
 
     j.declare_resource_group(
         extract={
@@ -95,14 +96,15 @@ def train_variant_annotations_model_job(
     j = b.new_job("GATK: TrainVariantAnnotationsModel")
     # couldn't find a public image with both gatk and bcftools installed
     j.image(utils["GATK_IMAGE"])
-    cpu = utils.get("CPU", 1)
-    mem_gb = utils.get("COMMAND_MEM_GB", 6)
-    add_mem_gb = utils.get("ADDITIONAL_MEM_GB", 1)
-    disk_size = utils.get("DISK_SIZE_GB", 100)
+    # cpu = utils.get("CPU", 1)
+    # mem_gb = utils.get("COMMAND_MEM_GB", 6)
+    # add_mem_gb = utils.get("ADDITIONAL_MEM_GB", 1)
+    # disk_size = utils.get("DISK_SIZE_GB", 100)
 
-    j.cpu(cpu)
-    j.memory(f"{int(mem_gb) + int(add_mem_gb)}G")
-    j.storage(f"{disk_size}G")
+    j.cpu(4)
+    mem_gb = 6
+    j.memory("standard")
+    j.storage(f"100")
 
     j.declare_resource_group(
         isolation_forest={
@@ -197,14 +199,15 @@ def score_variant_annotations_job(
     j = b.new_job("GATK: ScoreVariantAnnotations")
     # couldn't find a public image with both gatk and bcftools installed
     j.image(utils["GATK_IMAGE"])
-    cpu = utils.get("CPU", 1)
-    mem_gb = utils.get("COMMAND_MEM_GB", 6)
-    add_mem_gb = utils.get("ADDITIONAL_MEM_GB", 1)
-    disk_size = utils.get("DISK_SIZE_GB", 100)
+    # cpu = utils.get("CPU", 1)
+    # mem_gb = utils.get("COMMAND_MEM_GB", 6)
+    # add_mem_gb = utils.get("ADDITIONAL_MEM_GB", 1)
+    # disk_size = utils.get("DISK_SIZE_GB", 100)
 
-    j.cpu(cpu)
-    j.memory(f"{int(mem_gb) + int(add_mem_gb)}G")
-    j.storage(f"{disk_size}G")
+    j.cpu(4)
+    mem_gb = 6
+    j.memory("standard")
+    j.storage(f"100")
 
     j.declare_resource_group(
         output_score={
