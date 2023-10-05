@@ -1,9 +1,13 @@
 """Script to create release sites HT for v4 genomes."""
+from typing import Tuple
+
 import hail as hl
 from gnomad.utils.vep import filter_vep_transcript_csqs
 
 
-def get_sift_polyphen_from_vep(ht: hl.Table) -> hl.Table:
+def get_sift_polyphen_from_vep(
+    ht: hl.Table,
+) -> Tuple[hl.ArrayExpression, hl.ArrayExpression]:
     """
     Get the max SIFT and PolyPhen scores from VEP 105 annotations.
 
@@ -13,7 +17,7 @@ def get_sift_polyphen_from_vep(ht: hl.Table) -> hl.Table:
      struct.
 
     :param ht: VEP 105 annotated Hail Table.
-    :return: Hail Table with SIFT and PolyPhen scores
+    :return: Tuple of max SIFT and PolyPhen scores.
     """
     mane = filter_vep_transcript_csqs(
         ht, synonymous=False, canonical=False, mane_select=True
@@ -26,32 +30,10 @@ def get_sift_polyphen_from_vep(ht: hl.Table) -> hl.Table:
         polyphen_canonical=canonical[ht.key].vep.transcript_consequences.polyphen_score,
     )
 
-    ht = ht.annotate(
-        vep=ht.vep.annotate(
-            transcript_consequences=ht.vep.transcript_consequences.map(
-                lambda x: x.drop(
-                    "sift_prediction",
-                    "sift_score",
-                    "polyphen_prediction",
-                    "polyphen_score",
-                )
-            )
-        )
-    )
-    ht = ht.annotate(
-        insilico_predictors=hl.struct(
-            sift_max=hl.or_else(hl.max(ht.sift_mane), hl.max(ht.sift_canonical)),
-            polyphen_max=hl.or_else(
-                hl.max(ht.polyphen_mane), hl.max(ht.polyphen_canonical)
-            ),
-        )
-    )
-    ht = ht.drop("sift_mane", "polyphen_mane", "sift_canonical", "polyphen_canonical")
+    sift_max = hl.or_else(hl.max(ht.sift_mane), hl.max(ht.sift_canonical))
+    polyphen_max = hl.or_else(hl.max(ht.polyphen_mane), hl.max(ht.polyphen_canonical))
 
-    ht = ht.annotate_globals(
-        tool_versions=hl.struct(sift_version="5.2.2", polyphen_version="2.2.2")
-    )
-    return ht
+    return sift_max, polyphen_max
 
 
 def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpression:
