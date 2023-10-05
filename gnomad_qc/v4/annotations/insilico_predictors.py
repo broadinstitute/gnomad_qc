@@ -1,11 +1,12 @@
 """Script to generate Hail Tables with in silico predictors."""
-
 import argparse
 import logging
+from typing import Tuple
 
 import hail as hl
 from gnomad.resources.resource_utils import NO_CHR_TO_CHR_CONTIG_RECODING
 from gnomad.utils.slack import slack_notifications
+from gnomad.utils.vep import filter_vep_transcript_csqs
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_insilico_predictors
@@ -16,6 +17,35 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+
+def get_sift_polyphen_from_vep(
+    ht: hl.Table,
+) -> Tuple[hl.ArrayExpression, hl.ArrayExpression]:
+    """
+    Get the max SIFT and PolyPhen scores from VEP 105 annotations.
+
+     This retrieves the max of SIFT and PolyPhen scores for a variant's MANE Select
+     transcript or, if MANE Select does not exist, canonical transcript.
+
+    :param ht: VEP 105 annotated Hail Table.
+    :return: Tuple of max SIFT and PolyPhen scores.
+    """
+    mane = filter_vep_transcript_csqs(
+        ht, synonymous=False, canonical=False, mane_select=True
+    )
+    canonical = filter_vep_transcript_csqs(ht, synonymous=False, canonical=True)
+    ht = ht.annotate(
+        sift_mane=mane[ht.key].vep.transcript_consequences.sift_score,
+        polyphen_mane=mane[ht.key].vep.transcript_consequences.polyphen_score,
+        sift_canonical=canonical[ht.key].vep.transcript_consequences.sift_score,
+        polyphen_canonical=canonical[ht.key].vep.transcript_consequences.polyphen_score,
+    )
+
+    sift_max = hl.or_else(hl.max(ht.sift_mane), hl.max(ht.sift_canonical))
+    polyphen_max = hl.or_else(hl.max(ht.polyphen_mane), hl.max(ht.polyphen_canonical))
+
+    return sift_max, polyphen_max
 
 
 def create_cadd_grch38_ht() -> hl.Table:
@@ -196,8 +226,9 @@ def create_pangolin_grch38_ht() -> hl.Table:
     There's no precomputed score for all possible variants, the scores were
     generated for gnomAD v4 genomes (=v3 genomes) and v4 exomes variants in
     gene body only with code from developers at Invitae:
-    https://github.com/invitae/pangolin. Only +(v4_genomes - v4_bugfix) were run on
-    Pangolin v1.3.12, the others was run on Pangolin v1.4.4.
+    https://github.com/invitae/pangolin. All v4 genomes variants (except ~20M
+    bug-affected and ~3M new variants from HGDP/TGP samples noted below) were run on
+    Pangolin v1.3.12, the others were run on Pangolin v1.4.4.
 
     :return: Hail Table with Pangolin score for splicing for GRCh38.
     """

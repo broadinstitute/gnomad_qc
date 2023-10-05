@@ -1,37 +1,5 @@
 """Script to create release sites HT for v4 genomes."""
-from typing import Tuple
-
 import hail as hl
-from gnomad.utils.vep import filter_vep_transcript_csqs
-
-
-def get_sift_polyphen_from_vep(
-    ht: hl.Table,
-) -> Tuple[hl.ArrayExpression, hl.ArrayExpression]:
-    """
-    Get the max SIFT and PolyPhen scores from VEP 105 annotations.
-
-     This retrieves the max of SIFT and PolyPhen scores for a variant's MANE Select
-     transcript or, if MANE Select does not exist, canonical transcript.
-
-    :param ht: VEP 105 annotated Hail Table.
-    :return: Tuple of max SIFT and PolyPhen scores.
-    """
-    mane = filter_vep_transcript_csqs(
-        ht, synonymous=False, canonical=False, mane_select=True
-    )
-    canonical = filter_vep_transcript_csqs(ht, synonymous=False, canonical=True)
-    ht = ht.annotate(
-        sift_mane=mane[ht.key].vep.transcript_consequences.sift_score,
-        polyphen_mane=mane[ht.key].vep.transcript_consequences.polyphen_score,
-        sift_canonical=canonical[ht.key].vep.transcript_consequences.sift_score,
-        polyphen_canonical=canonical[ht.key].vep.transcript_consequences.polyphen_score,
-    )
-
-    sift_max = hl.or_else(hl.max(ht.sift_mane), hl.max(ht.sift_canonical))
-    polyphen_max = hl.or_else(hl.max(ht.polyphen_mane), hl.max(ht.polyphen_canonical))
-
-    return sift_max, polyphen_max
 
 
 def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpression:
