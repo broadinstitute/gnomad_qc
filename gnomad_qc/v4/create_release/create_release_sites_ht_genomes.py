@@ -342,7 +342,7 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
         %d samples have different population labels compared to v3.1.2 subset release;
         %d samples related within the subset (%d samples different compared to v3.1.2 subset release);
         %d samples further filtered out due to their relatedness to samples outside the subset;
-        %d samples further filtered out because they are duplicated in the v4 exomes release;
+        %d samples filtered out because they are duplicated in the v4 exomes release;
         %d samples will be in the v4 release, compared to 3280 in the v3.1.2 release.""",
         updated_counts["n_hard_filtered"],
         updated_counts["n_diff"]["gnomad_sample_filters.hard_filtered"],
