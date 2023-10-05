@@ -814,7 +814,7 @@ def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Tab
 
 def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     """
-    Compute filtering allele frequencies ('faf') and 'grpmax' with the AB-adjusted frequencies.
+    Compute filtering allele frequencies ('faf'), 'grpmax', and 'gen_anc_faf_max' with the AB-adjusted frequencies.
 
     :param ht: Hail Table containing 'freq', 'ab_adjusted_freq', 'high_ab_het'
         annotations.
