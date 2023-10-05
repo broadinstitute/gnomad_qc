@@ -23,6 +23,7 @@ from gnomad.utils.annotations import (
     build_freq_stratification_list,
     compute_freq_by_strata,
     faf_expr,
+    gen_anc_faf_max_expr,
     generate_freq_group_membership_array,
     get_adj_expr,
     merge_freq_arrays,
@@ -843,6 +844,7 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     faf_exprs = []
     faf_meta_exprs = []
     grpmax_exprs = {}
+    gen_anc_faf_max_exprs = {}
     for dataset, (freq, meta) in freq_metas.items():
         faf, faf_meta = faf_expr(freq, meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
         grpmax = pop_max_expr(freq, meta, POPS_TO_REMOVE_FOR_POPMAX)
@@ -852,17 +854,21 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
                 hl.literal(faf_meta).index(lambda y: y.values() == ["adj", grpmax.pop])
             ].faf95,
         ).drop("pop")
+        gen_anc_faf_max = gen_anc_faf_max_expr(faf, faf_meta)
+
         # Add subset back to non_ukb faf meta.
         if dataset == "non_ukb":
             faf_meta = [{**x, **{"subset": "non_ukb"}} for x in faf_meta]
         faf_exprs.append(faf)
         faf_meta_exprs.append(faf_meta)
         grpmax_exprs[dataset] = grpmax
+        gen_anc_faf_max_exprs[dataset] = gen_anc_faf_max
 
-    logger.info("Annotating 'faf' and 'grpmax'...")
+    logger.info("Annotating 'faf','grpmax', and 'gen_anc_faf_max'...")
     ht = ht.annotate(
         faf=hl.flatten(faf_exprs),
         grpmax=hl.struct(**grpmax_exprs),
+        gen_anc_faf_max=hl.struct(**gen_anc_faf_max_exprs),
     )
     faf_meta_exprs = hl.flatten(faf_meta_exprs)
     ht = ht.annotate_globals(
@@ -909,6 +915,7 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
         freq=array_exprs["freq"],
         faf=ht.faf,
         grpmax=ht.grpmax,
+        gen_anc_faf_max=ht.gen_anc_faf_max,
         inbreeding_coeff=ht.InbreedingCoeff,
         histograms=hl.struct(
             **{
