@@ -38,12 +38,13 @@ logger = logging.getLogger("variant_qc_random_forest")
 logger.setLevel(logging.INFO)
 
 FEATURES = [
-    "allele_type",
     "AS_MQRankSum",
     "AS_pab_max",
     "AS_QD",
     "AS_ReadPosRankSum",
     "AS_SOR",
+    "allele_type",
+    "has_star",
     "n_alt_alleles",
     "variant_type",
 ]
@@ -56,6 +57,7 @@ TRAIN_COL = "rf_train"
 def train_rf(
     ht: hl.Table,
     test: bool = False,
+    features: List[str] = None,
     fp_to_tp: float = 1.0,
     num_trees: int = 500,
     max_depth: int = 5,
@@ -72,6 +74,8 @@ def train_rf(
     :param ht: Table containing annotations needed for RF training.
     :param test: Whether to filter the input Table to chr20 and `test_intervals` for
         test purposes. Default is False.
+    :param features: List of features to use in the random forests model. When no
+        `features` list is provided, the global FEATURES is used.
     :param fp_to_tp: Ratio of FPs to TPs for creating the RF model. If set to 0, all
         training examples are used. Default is 1.0.
     :param num_trees: Number of trees in the RF model. Default is 500.
@@ -92,7 +96,8 @@ def train_rf(
         running training the RF model. Default is None.
     :return: Input `ht` annotated with training information and the RF model.
     """
-    features = FEATURES
+    if features is None:
+        features = FEATURES
 
     if test_intervals:
         if isinstance(test_intervals, str):
@@ -305,6 +310,7 @@ def main(args):
         ht, rf_model = train_rf(
             ht,
             test=test,
+            features=args.features,
             fp_to_tp=args.fp_to_tp,
             num_trees=args.num_trees,
             max_depth=args.max_depth,
@@ -399,6 +405,13 @@ if __name__ == "__main__":
         default="AS",
         type=str,
         choices=["AS", "quasi", "set_long_AS_missing"],
+    )
+    rf_params.add_argument(
+        "--features",
+        help="Features to use in the random forests model.",
+        default=FEATURES,
+        type=str,
+        nargs="+",
     )
     rf_params.add_argument(
         "--fp-to-tp",
