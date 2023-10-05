@@ -227,7 +227,7 @@ def create_pangolin_grch38_ht() -> hl.Table:
     generated for gnomAD v4 genomes (=v3 genomes) and v4 exomes variants in
     gene body only with code from developers at Invitae:
     https://github.com/invitae/pangolin. All v4 genomes variants (except ~20M
-    bug-affected and ~3M new variants from HGDP/TGP samples noted below) were run on
+    bug-affected and ~3M new variants from HGDP/TGP samples, noted below) were run on
     Pangolin v1.3.12, the others were run on Pangolin v1.4.4.
 
     :return: Hail Table with Pangolin score for splicing for GRCh38.
