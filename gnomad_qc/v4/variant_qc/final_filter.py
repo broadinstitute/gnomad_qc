@@ -69,6 +69,7 @@ FINAL_FILTER_FIELDS = [
 """Top level annotations to keep in the final filter Table."""
 VARIANT_QC_GLOBAL_FIELDS = {
     "RF": [
+        "feature_medians",
         "features_importance",
         "test_results",
         "fp_to_tp",
@@ -213,8 +214,8 @@ def process_score_cutoffs(
             )
 
     logger.info(
-        f"Using a SNP score cutoff of {cutoff_globals['snv'].min_score} and an indel"
-        f" score cutoff of {cutoff_globals['indel'].min_score}."
+        f"Using a SNP score cutoff of {hl.eval(cutoff_globals['snv'].min_score)} and an"
+        f" indel score cutoff of {hl.eval(cutoff_globals['indel'].min_score)}."
     )
 
     return cutoff_globals
@@ -282,11 +283,13 @@ def generate_final_filter_ht(
         )
         snv_training_variables = variant_qc_globals.features
         indel_training_variables = variant_qc_globals.features
-        variant_qc_globals = variant_qc_globals.select(
+        variant_qc_globals = variant_qc_globals.annotate(
             feature_medians=variant_qc_globals.feature_medians.map_values(
                 lambda x: x[coumpute_info_method]
-            ),
-            rf_globals=variant_qc_globals.select(*VARIANT_QC_GLOBAL_FIELDS["RF"]),
+            )
+        )
+        variant_qc_globals = variant_qc_globals.select(
+            rf_globals=variant_qc_globals.select(*VARIANT_QC_GLOBAL_FIELDS["RF"])
         )
     else:
         vqc_expr = ht.info.select(
@@ -330,11 +333,9 @@ def generate_final_filter_ht(
     }
     ann_groups = {k: hl.struct(**{x: ht[x] for x in v}) for k, v in ann_groups.items()}
     ht = ht.transmute(**ann_groups)
-    ht.describe()
 
     # Select only the fields we want to keep in the final HT in the order we want them.
     ht = ht.select(*FINAL_FILTER_FIELDS, score_name)
-    ht.describe()
 
     # Restructure final filter Table global annotations.
     ht = ht.select_globals(
@@ -355,7 +356,6 @@ def generate_final_filter_ht(
         ),
         inbreeding_coeff_cutoff=inbreeding_coeff_cutoff,
     )
-    ht.describe()
 
     return ht
 
@@ -484,7 +484,6 @@ def main(args):
         score_cutoff_globals=score_cutoff_globals,
         inbreeding_coeff_cutoff=args.inbreeding_coeff_threshold,
     )
-    ht.describe()
     ht = ht.annotate_globals(
         filtering_model=ht.filtering_model.annotate(model_id=args.model_id)
     )
