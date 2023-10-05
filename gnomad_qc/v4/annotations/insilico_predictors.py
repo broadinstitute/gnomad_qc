@@ -195,7 +195,8 @@ def create_pangolin_grch38_ht() -> hl.Table:
     There's no precomputed score for all possible variants, the scores were
     generated for gnomAD v4 genomes (=v3 genomes) and v4 exomes variants in
     gene body only with code from developers at Invitae:
-    https://github.com/invitae/pangolin.
+    https://github.com/invitae/pangolin. Only +(v4_genomes - v4_bugfix) were run on
+    Pangolin v1.3.12, the others was run on Pangolin v1.4.4.
 
     :return: Hail Table with Pangolin score for splicing for GRCh38.
     """
@@ -299,7 +300,7 @@ def create_pangolin_grch38_ht() -> hl.Table:
         )
     )
     # TODO: get the version for genomes run in May 2023.
-    ht = ht.annotate_globals(pangolin_version="v1.4.4")
+    ht = ht.annotate_globals(pangolin_version=["v1.3.12", "v1.4.4"])
     logger.info(
         "\nNumber of variants indicating splice gain: %s;\n"
         "Number of variants indicating splice loss: %s; \n"
