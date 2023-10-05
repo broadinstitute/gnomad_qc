@@ -165,7 +165,12 @@ def main(args):
             logger.info("Exporting coverage tsv...")
             res = coverage_resources.export_coverage_tsv
             res.check_resource_existence()
-            res.coverage_ht.ht().export(res.coverage_tsv)
+            ht = res.coverage_ht.ht()
+            if "coverage_stats" in ht.row:
+                ht = ht.select(
+                    **{k: ht.coverage_stats[0][k] for k in ht.coverage_stats[0]}
+                )
+            ht.export(res.coverage_tsv)
 
     finally:
         hl.copy_log(f"gs://gnomad-tmp-4day/coverage/compute_coverage.log")
