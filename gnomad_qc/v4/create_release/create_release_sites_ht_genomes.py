@@ -12,9 +12,7 @@ def get_sift_polyphen_from_vep(
     Get the max SIFT and PolyPhen scores from VEP 105 annotations.
 
      This retrieves the max of SIFT and PolyPhen scores for a variant's MANE Select
-     transcript or, if MANE Select does not exist, canonical transcript. This also
-     drops SIFT and PolyPhen scores and predictions from VEP's transcript_consequences
-     struct.
+     transcript or, if MANE Select does not exist, canonical transcript.
 
     :param ht: VEP 105 annotated Hail Table.
     :return: Tuple of max SIFT and PolyPhen scores.
