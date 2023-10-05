@@ -17,9 +17,9 @@ import hail as hl
 from gnomad.resources.grch38.gnomad import POPS, POPS_TO_REMOVE_FOR_POPMAX
 from gnomad.utils.annotations import (
     faf_expr,
+    gen_anc_faf_max_expr,
     merge_freq_arrays,
     pop_max_expr,
-    pop_max_for_faf_expr,
 )
 from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
@@ -135,7 +135,7 @@ def extract_freq_info(
     faf_idx, faf_meta = _get_pop_meta_indices(ht.faf_meta, faf_pops)
 
     # Compute FAF max (fafmax)
-    ht = ht.annotate(fafmax=pop_max_for_faf_expr(ht.faf, ht.faf_meta))
+    ht = ht.annotate(fafmax=gen_anc_faf_max_expr(ht.faf, ht.faf_meta))
 
     # Rename filtered annotations with supplied prefix.
     ht = ht.select(
@@ -194,7 +194,7 @@ def get_joint_freq_and_faf(
     ht = ht.annotate(
         joint_freq=freq,
         joint_faf=faf,
-        joint_fafmax=pop_max_for_faf_expr(faf, hl.literal(faf_meta)),
+        joint_fafmax=gen_anc_faf_max_expr(faf, hl.literal(faf_meta)),
         joint_grpmax=grpmax,
     )
 
