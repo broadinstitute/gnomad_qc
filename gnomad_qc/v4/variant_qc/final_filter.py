@@ -1,7 +1,7 @@
 """Script to create final filter Table for release."""
 import argparse
 import logging
-from typing import Optional
+from typing import Dict, Optional
 
 import hail as hl
 from gnomad.utils.filtering import add_filters_expr
@@ -17,8 +17,207 @@ from gnomad_qc.v4.resources.annotations import get_freq, get_info, get_vqsr_filt
 from gnomad_qc.v4.resources.variant_qc import final_filter, get_score_bins
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
-logger = logging.getLogger("variant_qc_filtering")
+logger = logging.getLogger("final_filter")
 logger.setLevel(logging.INFO)
+
+REGION_INFO_FIELDS = ["non_lcr", "in_calling_intervals", "pass_interval_qc"]
+"""Annotations to keep in the 'region_info' field of the final filter Table."""
+TRUTH_SET_FIELDS = [
+    "hapmap",
+    "omni",
+    "mills",
+    "kgp_phase1_hc",
+    "transmitted_singleton_raw",
+    "transmitted_singleton_adj",
+    "sibling_singleton_adj",
+    "sibling_singleton_raw",
+]
+"""Annotations to keep in the 'truth_sets' field of the final filter Table."""
+TRAINING_INFO_FIELDS = {
+    "RF": [
+        "tp",
+        "fp",
+        "rf_train",
+        "rf_label",
+        "positive_train_site",
+        "negative_train_site",
+    ],
+    "AS_VQSR": ["POSITIVE_TRAIN_SITE", "NEGATIVE_TRAIN_SITE"],
+}
+"""Annotations to keep in the 'training_info' field of the final filter Table."""
+VARIANT_QC_RESULT_FIELDS = {
+    "RF": ["rf_tp_probability", "rf_prediction"],
+    "AS_VQSR": ["AS_VQSLOD", "AS_culprit"],
+}
+"""Annotations to keep in the 'results' field of the final filter Table."""
+FINAL_FILTER_FIELDS = [
+    "a_index",
+    "was_split",
+    "region_info",
+    "features",
+    "fail_hard_filters",
+    "truth_sets",
+    "training_info",
+    "results",
+    "evaluation_score_bins",
+    "singleton",
+    "transmitted_singleton",
+    "monoallelic",
+    "only_het",
+    "filters",
+]
+"""Top level annotations to keep in the final filter Table."""
+VARIANT_QC_GLOBAL_FIELDS = {
+    "RF": [
+        "features_importance",
+        "test_results",
+        "fp_to_tp",
+        "num_trees",
+        "max_depth",
+        "transmitted_singletons",
+        "sibling_singletons",
+        "adj",
+        "filter_centromere_telomere",
+        "interval_qc_filter",
+        "test_intervals",
+        "compute_info_method",
+    ],
+    "AS_VQSR": [],
+}
+"""Variant QC global annotations to keep in the final filter Table."""
+VQSR_FEATURES = {
+    "snv": [
+        "AS_QD",
+        "AS_MQRankSum",
+        "AS_ReadPosRankSum",
+        "AS_FS",
+        "AS_MQ",
+    ],
+    "indel": [
+        "AS_QD",
+        "AS_MQRankSum",
+        "AS_ReadPosRankSum",
+        "AS_FS",
+    ],
+}
+"""List of features used in the VQSR model."""
+
+
+def process_score_cutoffs(
+    ht: hl.Table,
+    snv_bin_cutoff: int = None,
+    indel_bin_cutoff: int = None,
+    snv_score_cutoff: float = None,
+    indel_score_cutoff: float = None,
+    aggregated_bin_ht: Optional[hl.Table] = None,
+    snv_bin_id: Optional[str] = None,
+    indel_bin_id: Optional[str] = None,
+) -> Dict[str, hl.expr.StructExpression]:
+    """
+    Determine SNP and indel score cutoffs if given bin instead of score.
+
+    .. note::
+
+        - `snv_bin_cutoff` and `snv_score_cutoff` are mutually exclusive, and one must
+          be supplied.
+        - `indel_bin_cutoff` and `indel_score_cutoff` are mutually exclusive, and one
+          must be supplied.
+        - If a `snv_bin_cutoff` or `indel_bin_cutoff` cutoff is supplied then an
+          `aggregated_bin_ht` and `bin_id` must also be supplied to determine the SNP
+          and indel scores to use as cutoffs from an aggregated bin Table like one
+          created by `compute_grouped_binned_ht` in combination with `score_bin_agg`.
+
+    :param ht: Filtering Table to prepare as the final filter Table.
+    :param snv_bin_cutoff: Bin cutoff to use for SNP variant QC filter. Can't be used
+        with `snv_score_cutoff`.
+    :param indel_bin_cutoff: Bin cutoff to use for indel variant QC filter. Can't be
+        used with `indel_score_cutoff`.
+    :param snv_score_cutoff: Score cutoff (e.g. RF probability or AS_VQSLOD) to use
+        for SNP variant QC filter. Can't be used with `snv_bin_cutoff`.
+    :param indel_score_cutoff: Score cutoff (e.g. RF probability or AS_VQSLOD) to use
+        for indel variant QC filter. Can't be used with `indel_bin_cutoff`.
+    :param aggregated_bin_ht: Table with aggregate counts of variants based on bins
+    :param snv_bin_id: Name of bin to use in 'bin_id' column of `aggregated_bin_ht` to
+        determine the SNP score cutoff.
+    :param indel_bin_id: Name of bin to use in 'bin_id' column of `aggregated_bin_ht` to
+        determine the indel score cutoff.
+    :return: Finalized random forest Table annotated with variant filters.
+    """
+    if snv_bin_cutoff is not None and snv_score_cutoff is not None:
+        raise ValueError(
+            "snv_bin_cutoff and snv_score_cutoff are mutually exclusive, please only"
+            " supply one SNP filtering cutoff."
+        )
+
+    if indel_bin_cutoff is not None and indel_score_cutoff is not None:
+        raise ValueError(
+            "indel_bin_cutoff and indel_score_cutoff are mutually exclusive, please"
+            " only supply one indel filtering cutoff."
+        )
+
+    if snv_bin_cutoff is None and snv_score_cutoff is None:
+        raise ValueError(
+            "One (and only one) of the parameters snv_bin_cutoff and snv_score_cutoff"
+            " must be supplied."
+        )
+
+    if indel_bin_cutoff is None and indel_score_cutoff is None:
+        raise ValueError(
+            "One (and only one) of the parameters indel_bin_cutoff and"
+            " indel_score_cutoff must be supplied."
+        )
+
+    if (
+        (snv_bin_cutoff is not None and snv_bin_id is None)
+        or (indel_bin_cutoff is not None and indel_bin_id is None)
+    ) and (aggregated_bin_ht is None):
+        raise ValueError(
+            "If using snv_bin_cutoff or indel_bin_cutoff, both aggregated_bin_ht and"
+            " snv_bin_id/indel_bin_id must be supplied"
+        )
+
+    cutoffs = {
+        "snv": {"score": snv_score_cutoff, "bin": snv_bin_cutoff, "bin_id": snv_bin_id},
+        "indel": {
+            "score": indel_score_cutoff,
+            "bin": indel_bin_cutoff,
+            "bin_id": indel_bin_id,
+        },
+    }
+
+    min_score = ht.aggregate(hl.agg.min(ht.score))
+    max_score = ht.aggregate(hl.agg.max(ht.score))
+    aggregated_bin_ht = aggregated_bin_ht.annotate(indel=~aggregated_bin_ht.snv)
+
+    cutoff_globals = {}
+    for variant_type, cutoff in cutoffs.items():
+        if cutoff["bin"] is not None:
+            score_cutoff = aggregated_bin_ht.aggregate(
+                hl.agg.filter(
+                    aggregated_bin_ht[variant_type]
+                    & (aggregated_bin_ht.bin_id == cutoff["bin_id"])
+                    & (aggregated_bin_ht.bin == cutoff["bin"]),
+                    hl.agg.min(aggregated_bin_ht.min_score),
+                )
+            )
+            cutoff_globals[variant_type] = hl.struct(
+                bin=cutoff["bin"], min_score=score_cutoff, bin_id=cutoff["bin_id"]
+            )
+        else:
+            cutoff_globals[variant_type] = hl.struct(min_score=cutoff["score"])
+
+        score_cutoff = hl.eval(cutoff_globals[variant_type].min_score)
+        if score_cutoff < min_score or score_cutoff > max_score:
+            raise ValueError(
+                f"{variant_type}_score_cutoff is not within the range of score."
+            )
+
+    logger.info(
+        f"Using a SNP score cutoff of {cutoff_globals['snv'].min_score} and an indel"
+        f" score cutoff of {cutoff_globals['indel'].min_score}."
+    )
+
+    return cutoff_globals
 
 
 def generate_final_filter_ht(
@@ -29,35 +228,18 @@ def generate_final_filter_ht(
     ts_ac_filter_expr: hl.expr.BooleanExpression,
     mono_allelic_flag_expr: hl.expr.BooleanExpression,
     only_het_flag_expr: hl.expr.BooleanExpression,
+    score_cutoff_globals: Dict[str, hl.expr.StructExpression],
     inbreeding_coeff_cutoff: float = INBREEDING_COEFF_HARD_CUTOFF,
-    snp_bin_cutoff: int = None,
-    indel_bin_cutoff: int = None,
-    snp_score_cutoff: float = None,
-    indel_score_cutoff: float = None,
-    aggregated_bin_ht: Optional[hl.Table] = None,
-    bin_id: Optional[str] = None,
-    vqsr_ht: hl.Table = None,
 ) -> hl.Table:
     """
     Prepare finalized filtering model given a filtering HT and cutoffs for filtering.
-
-    .. note::
-
-        - `snp_bin_cutoff` and `snp_score_cutoff` are mutually exclusive, and one must
-          be supplied.
-        - `indel_bin_cutoff` and `indel_score_cutoff` are mutually exclusive, and one
-          must be supplied.
-        - If a `snp_bin_cutoff` or `indel_bin_cutoff` cutoff is supplied then an
-          `aggregated_bin_ht` and `bin_id` must also be supplied to determine the SNP
-          and indel scores to use as cutoffs from an aggregated bin Table like one
-          created by `compute_grouped_binned_ht` in combination with `score_bin_agg`.
 
     :param ht: Filtering Table to prepare as the final filter Table.
     :param filter_name: Filtering model name to use in the 'filters' field (AS_VQSR or
         RF).
     :param score_name: Name to use for the filtering score annotation. This will be
         used in place of 'score' in the release HT info struct and the INFO field of
-            the VCF (e.g. RF or AS_VQSLOD).
+        the VCF (e.g. RF or AS_VQSLOD).
     :param ac0_filter_expr: Expression that indicates if a variant should be filtered
         as allele count 0 (AC0).
     :param ts_ac_filter_expr: Allele count expression in `ht` to use as a filter for
@@ -65,189 +247,115 @@ def generate_final_filter_ht(
     :param mono_allelic_flag_expr: Expression indicating if a variant is mono-allelic.
     :param only_het_flag_expr: Expression indicating if all carriers of a variant are
         het.
+    :param score_cutoff_globals: Dictionary of score cutoffs to use for filtering.
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter to use for variants.
-    :param snp_bin_cutoff: Bin cutoff to use for SNP variant QC filter. Can't be used
-        with `snp_score_cutoff`.
-    :param indel_bin_cutoff: Bin cutoff to use for indel variant QC filter. Can't be
-        used with `indel_score_cutoff`.
-    :param snp_score_cutoff: Score cutoff (e.g. RF probability or AS_VQSLOD) to use
-        for SNP variant QC filter. Can't be used with `snp_bin_cutoff`.
-    :param indel_score_cutoff: Score cutoff (e.g. RF probability or AS_VQSLOD) to use
-        for indel variant QC filter. Can't be used with `indel_bin_cutoff`.
-    :param aggregated_bin_ht: Table with aggregate counts of variants based on bins
-    :param bin_id: Name of bin to use in 'bin_id' column of `aggregated_bin_ht` to use
-        to determine probability cutoff.
-    :param vqsr_ht: If a VQSR HT is supplied a 'vqsr' annotation containing AS_VQSLOD,
-        AS_culprit, NEGATIVE_TRAIN_SITE, and POSITIVE_TRAIN_SITE will be included in the
-        returned Table.
     :return: Finalized random forest Table annotated with variant filters.
     """
-    if snp_bin_cutoff is not None and snp_score_cutoff is not None:
-        raise ValueError(
-            "snp_bin_cutoff and snp_score_cutoff are mutually exclusive, please only"
-            " supply one SNP filtering cutoff."
-        )
-
-    if indel_bin_cutoff is not None and indel_score_cutoff is not None:
-        raise ValueError(
-            "indel_bin_cutoff and indel_score_cutoff are mutually exclusive, please"
-            " only supply one indel filtering cutoff."
-        )
-
-    if snp_bin_cutoff is None and snp_score_cutoff is None:
-        raise ValueError(
-            "One (and only one) of the parameters snp_bin_cutoff and snp_score_cutoff"
-            " must be supplied."
-        )
-
-    if indel_bin_cutoff is None and indel_score_cutoff is None:
-        raise ValueError(
-            "One (and only one) of the parameters indel_bin_cutoff and"
-            " indel_score_cutoff must be supplied."
-        )
-
-    if (snp_bin_cutoff is not None or indel_bin_cutoff is not None) and (
-        aggregated_bin_ht is None or bin_id is None
-    ):
-        raise ValueError(
-            "If using snp_bin_cutoff or indel_bin_cutoff, both aggregated_bin_ht and"
-            " bin_id must be supplied"
-        )
-
-    # Determine SNP and indel score cutoffs if given bin instead of score
-    if snp_bin_cutoff:
-        snp_score_cutoff = aggregated_bin_ht.aggregate(
-            hl.agg.filter(
-                aggregated_bin_ht.snv
-                & (aggregated_bin_ht.bin_id == bin_id)
-                & (aggregated_bin_ht.bin == snp_bin_cutoff),
-                hl.agg.min(aggregated_bin_ht.min_score),
-            )
-        )
-        snp_cutoff_global = hl.struct(bin=snp_bin_cutoff, min_score=snp_score_cutoff)
-
-    if indel_bin_cutoff:
-        indel_score_cutoff = aggregated_bin_ht.aggregate(
-            hl.agg.filter(
-                ~aggregated_bin_ht.snv
-                & (aggregated_bin_ht.bin_id == bin_id)
-                & (aggregated_bin_ht.bin == indel_bin_cutoff),
-                hl.agg.min(aggregated_bin_ht.min_score),
-            )
-        )
-        indel_cutoff_global = hl.struct(
-            bin=indel_bin_cutoff, min_score=indel_score_cutoff
-        )
-
-    min_score = ht.aggregate(hl.agg.min(ht.score))
-    max_score = ht.aggregate(hl.agg.max(ht.score))
-
-    if snp_score_cutoff:
-        if snp_score_cutoff < min_score or snp_score_cutoff > max_score:
-            raise ValueError("snp_score_cutoff is not within the range of score.")
-        snp_cutoff_global = hl.struct(min_score=snp_score_cutoff)
-
-    if indel_score_cutoff:
-        if indel_score_cutoff < min_score or indel_score_cutoff > max_score:
-            raise ValueError("indel_score_cutoff is not within the range of score.")
-        indel_cutoff_global = hl.struct(min_score=indel_score_cutoff)
-
-    logger.info(
-        f"Using a SNP score cutoff of {snp_score_cutoff} and an indel score cutoff of"
-        f" {indel_score_cutoff}."
-    )
-
-    # Add filters to HT
-    filters = dict()
-
     if ht.any(hl.is_missing(ht.score)):
+        logger.warning("Missing Score!")
         ht.filter(hl.is_missing(ht.score)).show()
-        raise ValueError("Missing Score!")
 
-    filters[filter_name] = (
-        hl.is_missing(ht.score)
-        | (
-            hl.is_snp(ht.alleles[0], ht.alleles[1])
-            & (ht.score < snp_cutoff_global.min_score)
+    # Construct dictionary of filters for final 'filters' annotation.
+    filters = {
+        "InbreedingCoeff": hl.or_else(
+            ht.inbreeding_coeff < inbreeding_coeff_cutoff, False
+        ),
+        "AC0": ac0_filter_expr,
+        filter_name: hl.is_missing(ht.score),
+    }
+    snv_indel_expr = {"snv": hl.is_snp(ht.alleles[0], ht.alleles[1])}
+    snv_indel_expr["indel"] = ~snv_indel_expr["snv"]
+    for var_type, score_cut in score_cutoff_globals.items():
+        filters[filter_name] = filters[filter_name] | (
+            snv_indel_expr[var_type] & (ht.score < score_cut.min_score)
         )
-        | (
-            ~hl.is_snp(ht.alleles[0], ht.alleles[1])
-            & (ht.score < indel_cutoff_global.min_score)
-        )
-    )
 
-    filters["InbreedingCoeff"] = hl.or_else(
-        ht.inbreeding_coeff < inbreeding_coeff_cutoff, False
-    )
-    filters["AC0"] = ac0_filter_expr
-
-    annotations_expr = dict()
+    variant_qc_globals = ht.index_globals()
+    bin_stats_expr = variant_qc_globals.bin_group_variant_counts
     if filter_name == "RF":
-        # Fix annotations for release.
-        annotations_expr.update(
-            {
-                "positive_train_site": hl.or_else(ht.positive_train_site, False),
-                "rf_tp_probability": ht.rf_probability["TP"],
-            }
+        # Fix RF annotations for release.
+        coumpute_info_method = f"{hl.eval(ht.compute_info_method)}_info"
+        vqc_expr = hl.struct(
+            **ht[coumpute_info_method],
+            positive_train_site=hl.or_else(ht.positive_train_site, False),
+            rf_tp_probability=ht.rf_probability["TP"],
         )
-    annotations_expr.update(
-        {
-            "transmitted_singleton": hl.or_missing(
-                ts_ac_filter_expr, ht.transmitted_singleton_raw
-            )
-        }
-    )
-    if "feature_imputed" in ht.row:
-        annotations_expr.update(
-            {
-                x: hl.or_missing(~ht.feature_imputed[x], ht[x])
-                for x in [f for f in ht.row.feature_imputed]
-            }
+        snv_training_variables = variant_qc_globals.features
+        indel_training_variables = variant_qc_globals.features
+        variant_qc_globals = variant_qc_globals.select(
+            feature_medians=variant_qc_globals.feature_medians.map_values(
+                lambda x: x[coumpute_info_method]
+            ),
+            rf_globals=variant_qc_globals.select(*VARIANT_QC_GLOBAL_FIELDS["RF"]),
         )
+    else:
+        vqc_expr = ht.info.select(
+            *TRAINING_INFO_FIELDS[filter_name],
+            *VARIANT_QC_RESULT_FIELDS[filter_name],
+        )
+        snv_training_variables = VQSR_FEATURES["snv"]
+        indel_training_variables = VQSR_FEATURES["indel"]
 
-    ht = ht.transmute(
-        filters=add_filters_expr(filters=filters),
+    keep_features = hl.eval(
+        hl.set(snv_training_variables).union(hl.set(indel_training_variables))
+    )
+
+    # Restructure bin annotations as a struct with a struct for 'adj' and 'raw' bins.
+    bin_names = [x for x in ht.row if x.endswith("bin")]
+    bin_names = {
+        "adj": {x: x.replace("adj_", "") for x in bin_names if "adj_" in x},
+        "raw": {x: x for x in bin_names if "adj_" not in x},
+    }
+    bin_expr = {g: hl.struct(**{n[k]: ht[k] for k in n}) for g, n in bin_names.items()}
+
+    ht = ht.annotate(
+        **vqc_expr,
+        **{score_name: ht.score},
+        evaluation_score_bins=hl.struct(**bin_expr),
+        transmitted_singleton=hl.or_missing(
+            ts_ac_filter_expr, ht.transmitted_singleton_raw
+        ),
         monoallelic=mono_allelic_flag_expr,
         only_het=only_het_flag_expr,
-        **{score_name: ht.score},
-        **annotations_expr,
-    )
+        filters=add_filters_expr(filters=filters),
+    ).select_globals()
 
-    bin_names = [x for x in ht.row if x.endswith("bin")]
-    bin_names = [
-        (
-            x,
-            (
-                x.split("adj_")[0] + x.split("adj_")[1]
-                if len(x.split("adj_")) == 2
-                else "raw_" + x
-            ),
-        )
-        for x in bin_names
-    ]
-    ht = ht.transmute(**{j: ht[i] for i, j in bin_names})
-    ht = ht.annotate_globals(
+    # Restructure annotations into groups or related annotations.
+    ann_groups = {
+        "region_info": REGION_INFO_FIELDS,
+        "truth_sets": TRUTH_SET_FIELDS,
+        "features": keep_features,
+        "training_info": TRAINING_INFO_FIELDS[filter_name],
+        "results": VARIANT_QC_RESULT_FIELDS[filter_name],
+    }
+    ann_groups = {k: hl.struct(**{x: ht[x] for x in v}) for k, v in ann_groups.items()}
+    ht = ht.transmute(**ann_groups)
+    ht.describe()
+
+    # Select only the fields we want to keep in the final HT in the order we want them.
+    ht = ht.select(*FINAL_FILTER_FIELDS, score_name)
+    ht.describe()
+
+    # Restructure final filter Table global annotations.
+    ht = ht.select_globals(
+        **variant_qc_globals,
         bin_stats=hl.struct(
-            **{j: ht.bin_group_variant_counts[i] for i, j in bin_names}
+            **{
+                g: hl.struct(**{n[k]: bin_stats_expr[k] for k in n})
+                for g, n in bin_names.items()
+            }
         ),
         filtering_model=hl.struct(
             filter_name=filter_name,
             score_name=score_name,
-            snv_cutoff=snp_cutoff_global,
-            indel_cutoff=indel_cutoff_global,
+            snv_cutoff=score_cutoff_globals["snv"],
+            indel_cutoff=score_cutoff_globals["indel"],
+            snv_training_variables=snv_training_variables,
+            indel_training_variables=indel_training_variables,
         ),
         inbreeding_coeff_cutoff=inbreeding_coeff_cutoff,
     )
-    if vqsr_ht:
-        vqsr = vqsr_ht[ht.key]
-        ht = ht.annotate(
-            vqsr=hl.struct(
-                AS_VQSLOD=vqsr.info.AS_VQSLOD,
-                AS_culprit=vqsr.info.AS_culprit,
-                NEGATIVE_TRAIN_SITE=vqsr.info.NEGATIVE_TRAIN_SITE,
-                POSITIVE_TRAIN_SITE=vqsr.info.POSITIVE_TRAIN_SITE,
-            ),
-        )
+    ht.describe()
 
     return ht
 
@@ -335,10 +443,31 @@ def main(args):
     else:
         filter_name = score_name = "RF"
 
+    snv_bin_id = "bin"
+    indel_bin_id = "bin"
+    if args.snv_use_interval_qc_bin:
+        snv_bin_id = "pass_interval_bin"
+    elif args.snv_use_calling_interval_bin:
+        snv_bin_id = "in_calling_intervals_bin"
+    if args.indel_use_interval_qc_bin:
+        indel_bin_id = "pass_interval_bin"
+    elif args.indel_use_calling_interval_bin:
+        indel_bin_id = "in_calling_intervals_bin"
+
+    score_cutoff_globals = process_score_cutoffs(
+        bin_ht,
+        snv_bin_cutoff=args.snv_bin_cutoff,
+        indel_bin_cutoff=args.indel_bin_cutoff,
+        snv_score_cutoff=args.snv_score_cutoff,
+        indel_score_cutoff=args.indel_score_cutoff,
+        aggregated_bin_ht=res.agg_bin_ht.ht(),
+        snv_bin_id=snv_bin_id,
+        indel_bin_id=indel_bin_id,
+    )
+
     bin_ht = bin_ht.annotate(inbreeding_coeff=freq_ht[bin_ht.key].inbreeding_coeff)
     freq_idx = freq_ht[bin_ht.key]
 
-    ac0_filter_expr = freq_idx.freq[0].AC == 0
     mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0)
     only_het_flag_expr = ((freq_idx.freq[0].AC * 2) == freq_idx.freq[0].AN) & (
         freq_idx.freq[0].homozygote_count == 0
@@ -348,51 +477,22 @@ def main(args):
         bin_ht,
         filter_name,
         score_name,
-        ac0_filter_expr=ac0_filter_expr,
+        ac0_filter_expr=freq_idx.freq[0].AC == 0,
         ts_ac_filter_expr=freq_idx.freq[1].AC == 1,
         mono_allelic_flag_expr=mono_allelic_flag_expr,
         only_het_flag_expr=only_het_flag_expr,
-        snp_bin_cutoff=args.snp_bin_cutoff,
-        indel_bin_cutoff=args.indel_bin_cutoff,
-        snp_score_cutoff=args.snp_score_cutoff,
-        indel_score_cutoff=args.indel_score_cutoff,
+        score_cutoff_globals=score_cutoff_globals,
         inbreeding_coeff_cutoff=args.inbreeding_coeff_threshold,
-        aggregated_bin_ht=res.agg_bin_ht.ht(),
-        bin_id="bin",
-        vqsr_ht=res.vqsr_ht.ht() if args.model_id.startswith("vqsr_") else None,
     )
+    ht.describe()
     ht = ht.annotate_globals(
         filtering_model=ht.filtering_model.annotate(model_id=args.model_id)
     )
-    if args.model_id.startswith("vqsr_"):
-        ht = ht.annotate_globals(
-            filtering_model=ht.filtering_model.annotate(
-                snv_training_variables=[
-                    "AS_QD",
-                    "AS_MQRankSum",
-                    "AS_ReadPosRankSum",
-                    "AS_FS",
-                    "AS_SOR",
-                    "AS_MQ",
-                ],
-                indel_training_variables=[
-                    "AS_QD",
-                    "AS_MQRankSum",
-                    "AS_ReadPosRankSum",
-                    "AS_FS",
-                    "AS_SOR",
-                ],
-            )
-        )
-    else:
-        ht = ht.annotate_globals(
-            filtering_model=ht.filtering_model.annotate(
-                snv_training_variables=ht.features,
-                indel_training_variables=ht.features,
-            )
-        )
 
-    ht.write(res.final_ht.path, overwrite=args.overwrite)
+    # ht.write(res.final_ht.path, overwrite=args.overwrite)
+    ht = ht.checkpoint(res.final_ht.path, overwrite=args.overwrite)
+    ht.describe()
+    print(hl.eval(ht.index_globals()))
 
 
 if __name__ == "__main__":
@@ -418,21 +518,37 @@ if __name__ == "__main__":
         "--inbreeding-coeff-threshold",
         help="InbreedingCoeff hard filter to use for variants.",
         type=float,
-        default=INBREEDING_COEFF_HARD_CUTOFF,  # TODO: Is this still a good cutoff?
+        default=INBREEDING_COEFF_HARD_CUTOFF,
     )
-    snp_cutoff = parser.add_mutually_exclusive_group(required=True)
-    snp_cutoff.add_argument(
-        "--snp-bin-cutoff",
+    snv_cutoff = parser.add_mutually_exclusive_group(required=True)
+    snv_cutoff.add_argument(
+        "--snv-bin-cutoff",
         help=(
-            "RF or VQSR score bin to use as cutoff for SNPs. Value should be between 1"
+            "RF or VQSR score bin to use as cutoff for SNVs. Value should be between 1"
             " and 100."
         ),
         type=int,
     )
-    snp_cutoff.add_argument(
-        "--snp-score-cutoff",
-        help="RF or VQSR score to use as cutoff for SNPs.",
+    snv_cutoff.add_argument(
+        "--snv-score-cutoff",
+        help="RF or VQSR score to use as cutoff for SNVs.",
         type=float,
+    )
+    parser.add_argument(
+        "--snv-use-interval-qc-bin",
+        help=(
+            "Whether the '--snv-bin-cutoff' should be applied to the interval QC bin "
+            "instead of overall bin."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--snv-use-calling-interval-bin",
+        help=(
+            "Whether the '--snv-bin-cutoff' should be applied to the calling interval "
+            "bin instead of overall bin."
+        ),
+        action="store_true",
     )
     indel_cutoff = parser.add_mutually_exclusive_group(required=True)
     indel_cutoff.add_argument(
@@ -447,6 +563,22 @@ if __name__ == "__main__":
         "--indel-score-cutoff",
         help="RF or VQSR score to use as cutoff for indels.",
         type=float,
+    )
+    parser.add_argument(
+        "--indel-use-interval-qc-bin",
+        help=(
+            "Whether the '--indel-bin-cutoff' should be applied to the interval QC bin "
+            "instead of overall bin."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--indel-use-calling-interval-bin",
+        help=(
+            "Whether the '--indel-bin-cutoff' should be applied to the calling interval"
+            " bin instead of overall bin."
+        ),
+        action="store_true",
     )
     args = parser.parse_args()
 
