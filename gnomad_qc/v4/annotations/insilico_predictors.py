@@ -62,13 +62,16 @@ def create_cadd_grch38_ht() -> hl.Table:
         - gnomad 3.1 indels: `cadd.v1.6.gnomad.genomes.v3.1.indels.complex.ht` was run
           on gnomAD v3.1 with CADD v1.6 in 2020. It contains 166,122,720 indels from
           gnomAD v3.1.
-        - gnomad 3.1 complex indels: `CADD-1.6-gnomad-complex-variants.ht` was
-          run on gnomAD v3.1 with CADD v1.6 in 2020. It contains 2,307 complex
+        - gnomad 3.1 complex indels: `cadd.v1.6.gnomad.genomes.v3.1.indels.complex.ht`
+          was run on gnomAD v3.1 with CADD v1.6 in 2020. It contains 2,307 complex
           variants that do not fit Hail's criteria for an indel and thus exist in
           a separate table than the gnomad 3.1 indels.
-        - gnomAD v4 indels: `cadd.v1.6.gnomad.v4.0.indels.new.tsv.bgz` (368M) was
-          run on gnomAD v4 with CADD v1.6 in 2023. It contains 32,561,253 indels
-          that are new in gnomAD v4.
+        - gnomAD v4 exomes indels: `cadd.v1.6.gnomad.exomes.v4.0.indels.new.tsv.bgz`
+          (368M) was run on gnomAD v4 with CADD v1.6 in 2023. It contains 32,561,
+          253 indels that are new in gnomAD v4.
+        - gnomAD v4 genomes indels: `cadd.v1.6.gnomad.genomes.v4.0.indels.new.tsv.bgz`
+          # TODO: has to get the list of indels and rerun CADD.
+
 
          .. note::
          1,972,208 indels were duplicated in gnomAD v3.0 and v4.0 or in gnomAD
