@@ -818,7 +818,7 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
 
     :param ht: Hail Table containing 'freq', 'ab_adjusted_freq', 'high_ab_het'
         annotations.
-    :return: Hail Table with 'faf' and 'grpmax' annotations.
+    :return: Hail Table with 'faf', 'grpmax', and 'gen_anc_faf_max' annotations.
     """
     logger.info(
         "Filtering frequencies to just 'non_ukb' subset entries for 'faf' "
@@ -864,7 +864,7 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
         grpmax_exprs[dataset] = grpmax
         gen_anc_faf_max_exprs[dataset] = gen_anc_faf_max
 
-    logger.info("Annotating 'faf','grpmax', and 'gen_anc_faf_max'...")
+    logger.info("Annotating 'faf', 'grpmax', and 'gen_anc_faf_max'...")
     ht = ht.annotate(
         faf=hl.flatten(faf_exprs),
         grpmax=hl.struct(**grpmax_exprs),
