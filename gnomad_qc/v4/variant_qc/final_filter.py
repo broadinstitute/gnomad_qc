@@ -42,7 +42,7 @@ TRAINING_INFO_FIELDS = {
         "positive_train_site",
         "negative_train_site",
     ],
-    "AS_VQSR": ["POSITIVE_TRAIN_SITE", "NEGATIVE_TRAIN_SITE"],
+    "AS_VQSR": ["positive_train_site", "negative_train_site"],
 }
 """Annotations to keep in the 'training_info' field of the final filter Table."""
 VARIANT_QC_RESULT_FIELDS = {
@@ -86,19 +86,20 @@ VARIANT_QC_GLOBAL_FIELDS = {
     "AS_VQSR": [],
 }
 """Variant QC global annotations to keep in the final filter Table."""
+# TODO: Uncomment after fixing the output from the evaluation script.
 VQSR_FEATURES = {
     "snv": [
         "AS_QD",
         "AS_MQRankSum",
         "AS_ReadPosRankSum",
-        "AS_FS",
-        "AS_MQ",
+        # "AS_FS",
+        # "AS_MQ",
     ],
     "indel": [
         "AS_QD",
         "AS_MQRankSum",
         "AS_ReadPosRankSum",
-        "AS_FS",
+        # "AS_FS",
     ],
 }
 """List of features used in the VQSR model."""
@@ -210,7 +211,8 @@ def process_score_cutoffs(
         score_cutoff = hl.eval(cutoff_globals[variant_type].min_score)
         if score_cutoff < min_score or score_cutoff > max_score:
             raise ValueError(
-                f"{variant_type}_score_cutoff is not within the range of score."
+                f"{variant_type}_score_cutoff is not within the range of score ("
+                f"{min_score, max_score})."
             )
 
     logger.info(
@@ -252,6 +254,7 @@ def generate_final_filter_ht(
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter to use for variants.
     :return: Finalized random forest Table annotated with variant filters.
     """
+    ht.describe()
     if ht.any(hl.is_missing(ht.score)):
         logger.warning("Missing Score!")
         ht.filter(hl.is_missing(ht.score)).show()
@@ -292,10 +295,10 @@ def generate_final_filter_ht(
             rf_globals=variant_qc_globals.select(*VARIANT_QC_GLOBAL_FIELDS["RF"])
         )
     else:
-        vqc_expr = ht.info.select(
-            *TRAINING_INFO_FIELDS[filter_name],
-            *VARIANT_QC_RESULT_FIELDS[filter_name],
-        )
+        # TODO: Need to add a compute_info_method global in the vqsr loading script,
+        #  right now, just defaulting to AS for testing.
+        coumpute_info_method = "AS_info"
+        vqc_expr = hl.struct(**ht[coumpute_info_method])
         snv_training_variables = VQSR_FEATURES["snv"]
         indel_training_variables = VQSR_FEATURES["indel"]
 
@@ -332,7 +335,7 @@ def generate_final_filter_ht(
         "results": VARIANT_QC_RESULT_FIELDS[filter_name],
     }
     ann_groups = {k: hl.struct(**{x: ht[x] for x in v}) for k, v in ann_groups.items()}
-    ht = ht.transmute(**ann_groups)
+    ht = ht.annotate(**ann_groups)
 
     # Select only the fields we want to keep in the final HT in the order we want them.
     ht = ht.select(*FINAL_FILTER_FIELDS, score_name)
@@ -488,10 +491,7 @@ def main(args):
         filtering_model=ht.filtering_model.annotate(model_id=args.model_id)
     )
 
-    # ht.write(res.final_ht.path, overwrite=args.overwrite)
-    ht = ht.checkpoint(res.final_ht.path, overwrite=args.overwrite)
-    ht.describe()
-    print(hl.eval(ht.index_globals()))
+    ht.write(res.final_ht.path, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":
