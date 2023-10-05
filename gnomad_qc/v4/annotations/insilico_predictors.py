@@ -114,10 +114,11 @@ def create_spliceai_grch38_ht() -> hl.Table:
         - gnomAD v3 indels: gnomad_v3_indel.spliceai_masked.vcf.bgz,
           computed on v3.1 indels by Illumina in 2020.
         - gnomAD v4 indels: gnomad_v4_new_indels.spliceai_masked.vcf.bgz,
-          computed on v4 by Illumina in February 2023.
+          computed on v4 indels that are new compared to v3 indels by Illumina in
+          February 2023.
         - gnomAD v3 and v4 unscored indels:
           spliceai_scores.masked.gnomad_v3_v4_unscored_indels.hg38.vcf.bgz,
-          another set of indels were not scored in v3 or v4 but  computed by Illumina in
+          another set of indels were not scored in v3 or v4 but computed by Illumina in
           September 2023.
 
     :return: Hail Table with SpliceAI scores for GRCh38.
