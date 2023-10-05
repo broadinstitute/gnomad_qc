@@ -114,9 +114,11 @@ def create_spliceai_grch38_ht() -> hl.Table:
         - gnomAD v3 indels: gnomad_v3_indel.spliceai_masked.vcf.bgz,
           computed on v3.1 indels by Illumina in 2020.
         - gnomAD v4 indels: gnomad_v4_new_indels.spliceai_masked.vcf.bgz,
-          computed on v4 by Illumina.
+          computed on v4 by Illumina in February 2023.
         - gnomAD v3 and v4 unscored indels:
-          another set of indels that were not scored by SpliceAI before.
+          spliceai_scores.masked.gnomad_v3_v4_unscored_indels.hg38.vcf.bgz,
+          another set of indels were not scored in v3 or v4 but  computed by Illumina in
+          September 2023.
 
     :return: Hail Table with SpliceAI scores for GRCh38.
     """
@@ -124,10 +126,7 @@ def create_spliceai_grch38_ht() -> hl.Table:
     indels_path = (
         "gs://gnomad-insilico/spliceai/spliceai_scores.masked.indel.hg38.vcf.bgz"
     )
-    v3_indels_path = (
-        "gs://gnomad-insilico/spliceai/spliceai_scores.masked"
-        ".gnomad_v3_indel.hg38.vcf.bgz"
-    )
+    v3_indels_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v3_indel.hg38.vcf.bgz"
     v4_indels_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v4_new_indels.hg38.vcf.bgz"
     v3_v4_unscored_path = "gs://gnomad-insilico/spliceai/spliceai_scores.masked.gnomad_v3_v4_unscored_indels.hg38.vcf.bgz"
     header_file_path = "gs://gnomad-insilico/spliceai/spliceai.vcf.header"
@@ -195,7 +194,7 @@ def create_pangolin_grch38_ht() -> hl.Table:
 
     There's no precomputed score for all possible variants, the scores were
     generated for gnomAD v4 genomes (=v3 genomes) and v4 exomes variants in
-    gene body only with improved code of developers at Invitae:
+    gene body only with code from developers at Invitae:
     https://github.com/invitae/pangolin.
 
     :return: Hail Table with Pangolin score for splicing for GRCh38.
@@ -203,13 +202,15 @@ def create_pangolin_grch38_ht() -> hl.Table:
     v4_genomes = (
         "gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.pangolin.vcf.bgz/*.gz"
     )
+    # ~3 million new variants in gnomAD v4 genomes from the addition of HGDP/TGP
+    # samples, they were run with the fixed code.
     v4_genomes_new = "gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.new_variants.pangolin.vcf.bgz/*.gz"
     v4_exomes = "gs://gnomad-insilico/pangolin/gnomad.v4.0.exomes.pangolin.vcf.bgz/*.gz"
 
     # There was a bug in original Pangolin code, that would generate incorrect
     # scores when a variant falls on multiple genes on the same strand. This bug
-    # was fixed before running v4 exomes, the affected ~20M variants have
-    # been rerun.
+    # impacted v4 genomes but was fixed before running v4 exomes, the affected
+    #  ~20M v4 genome variants were rerun.
     v4_bugfix = (
         "gs://gnomad-insilico/pangolin/gnomad.v4.0.genomes.bugfix.pangolin.vcf.bgz/*.gz"
     )
@@ -231,25 +232,13 @@ def create_pangolin_grch38_ht() -> hl.Table:
             skip_invalid_loci=True,
             header_file=header_file_path,
         ).rows()
+        ht = ht.checkpoint(hl.utils.new_temp_file("pangolin", "ht"))
         return ht
 
     ht_g = import_pangolin_vcf(v4_genomes)
-    ht_g = ht_g.checkpoint(
-        "gs://gnomad-tmp-4day/pangolin_genomes.ht", overwrite=args.overwrite
-    )
     ht_g_new = import_pangolin_vcf(v4_genomes_new)
-    ht_g_new = ht_g_new.checkpoint(
-        "gs://gnomad-tmp-4day/pangolin_genomes_new.ht", overwrite=args.overwrite
-    )
     ht_e = import_pangolin_vcf(v4_exomes)
-    ht_e = ht_e.checkpoint(
-        "gs://gnomad-tmp-4day/pangolin_exomes.ht", overwrite=args.overwrite
-    )
     ht_bugfix = import_pangolin_vcf(v4_bugfix)
-    ht_bugfix = ht_bugfix.checkpoint(
-        "gs://gnomad-tmp-4day/pangolin_genomes_bugfix.ht", overwrite=args.overwrite
-    )
-
     ht_g_correct = ht_g.anti_join(ht_bugfix)
     ht_g = ht_g_correct.union(ht_bugfix)
 
@@ -309,7 +298,7 @@ def create_pangolin_grch38_ht() -> hl.Table:
             hl.max(ht.values.largest_ds_gene),
         )
     )
-    # TODO: update version when Invitae publishes new version
+    # TODO: get the version for genomes run in May 2023.
     ht = ht.annotate_globals(pangolin_version="v1.4.4")
     logger.info(
         "\nNumber of variants indicating splice gain: %s;\n"

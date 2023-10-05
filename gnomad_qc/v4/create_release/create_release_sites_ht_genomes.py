@@ -2,32 +2,18 @@
 import hail as hl
 from gnomad.utils.vep import filter_vep_transcript_csqs
 
-# TODO: steps to create release sites HT
-# input: VRS-annotated sites HT v3.1.4
-# move SIFT and PolyPhen to insilico_predictors in vep_ht
-# remove missing fields in vep_ht
-# drop vep from site HT and merge with vep_ht
-# remove old insilico predictors and replace with new ones (the left predictors)
-# update dbSNP to dbSNP 156
-# update freq, freq_meta, freq_index_dict by integrating updates in HGDP/TGP
-# rerun inbreeding_coefficient with the callstats from the new freq
-# replace oth with remaining in global fields
-# update global fields
-
 
 def get_sift_polyphen_from_vep(ht: hl.Table) -> hl.Table:
     """
-    Get SIFT and PolyPhen scores from VEP 105 annotations.
+    Get the max SIFT and PolyPhen scores from VEP 105 annotations.
 
-    .. note::
-     This function is to get a max of SIFT and PolyPhen scores from mane_select
-     transcripts, otherwise get a max of SIFT and PolyPhen scores from canonical
-     transcripts. It will also drop the SIFT and PolyPhen scores and predictions
-     from the transcript_consequences struct.
+     This retrieves the max of SIFT and PolyPhen scores for a variant's MANE Select
+     transcript or, if MANE Select does not exist, canonical transcript. This also
+     drops SIFT and PolyPhen scores and predictions from VEP's transcript_consequences
+     struct.
 
-    :param ht: VEP105 annotated Hail Table.
-    :return: Hail Table with VEP105 annotations and  SIFT and PolyPhen scores
-    extracted and stored in insilico_predictors struct.
+    :param ht: VEP 105 annotated Hail Table.
+    :return: Hail Table with SIFT and PolyPhen scores
     """
     mane = filter_vep_transcript_csqs(
         ht, synonymous=False, canonical=False, mane_select=True
