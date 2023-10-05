@@ -26,25 +26,32 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds, meta
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds
+from gnomad_qc.v3.resources.basics import meta as v3_meta
 from gnomad_qc.v3.resources.release import (
     hgdp_tgp_subset,
     hgdp_tgp_subset_annotations,
     release_sites,
 )
-from gnomad_qc.v3.resources.sample_qc import relatedness
+from gnomad_qc.v3.resources.sample_qc import relatedness as v3_relatedness
 from gnomad_qc.v4.resources.annotations import hgdp_tgp_updated_callstats
+from gnomad_qc.v4.resources.basics import meta as v4_meta
 from gnomad_qc.v4.resources.sample_qc import (
     hgdp_recomputed_freemix,
+    hgdp_tgp_duplicated_to_exomes,
     hgdp_tgp_meta_updated,
     hgdp_tgp_pop_outliers,
     hgdp_tgp_populations_updated,
     hgdp_tgp_related_samples_to_drop,
     hgdp_tgp_related_to_nonsubset,
 )
+from gnomad_qc.v4.resources.sample_qc import relatedness as v4_relatedness
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
-logger = logging.getLogger("update HGDP + 1KG subset")
+logger = logging.getLogger(
+    "Create v4 genomes release sites HT with update HGDP/TGP "
+    "metadata and new annotations"
+)
 logger.setLevel(logging.INFO)
 
 SUBSETS = SUBSETS["v3"]
@@ -147,6 +154,57 @@ def get_hgdp_tgp_related_to_nonsubset(
 
     ht = ht1.union(ht2)
     ht = ht.select(s=ht.s.replace("v3.1::", "")).key_by("s").distinct()
+    return ht
+
+
+def get_hgdp_tgp_duplicated_to_exomes(
+    v3_meta: hl.Table, v4_meta: hl.Table, rel_ht: hl.Table
+) -> hl.Table:
+    """
+    Get the samples in the HGDP + 1KG subset that were duplicated in the v4 exomes release.
+
+    .. note::
+
+        The duplicated samples are defined as samples that were in the v3.1.2
+        subset release and are also in the v4 exomes release. The duplicated samples
+        have to be removed because we will have combined frequencies from v4 exomes
+        and genomes.
+
+    :param v3_meta: Table with the v3.1.2 release metadata
+    :param v4_meta: Table with the v4.0 exomes release metadata
+    :param rel_ht: Table with the v3.1.2 and v4 joint relatedness, it's based on
+        cuKing relatedness results.
+    :return: Table with the samples in the HGDP + 1KG subset that are duplicated in
+        the v4 exomes release.
+    """
+    # get hgdp + 1kg subset samples in v3 meta
+    v3_meta = (
+        v3_meta.filter(v3_meta.subsets.hgdp | v3_meta.subsets.tgp)
+        .select()
+        .select_globals()
+    )
+
+    # get release samples in v4.0 exomes
+    v4_meta = v4_meta.filter(v4_meta.release).select().select_globals()
+
+    # Get samples that are in the v3 genomes and are also in the v4 exomes
+    ht = rel_ht.filter(rel_ht.gnomad_v3_duplicate)
+
+    # Check if the duplicates are still included in v4 exomes release and these
+    # samples belong to the HGDP + 1KG subset.
+    ht = ht.annotate(
+        in_v4_exomes_release=hl.is_defined(v4_meta[ht.j.s]),
+        in_hgdp_tgp_subset=hl.is_defined(v3_meta[ht.i.s]),
+    )
+
+    ht = ht.filter(ht.in_v4_exomes_release & ht.in_hgdp_tgp_subset)
+    ht = ht.key_by()
+    ht = ht.select(s=ht.i.s)
+    # in case some samples had a prefix in v3
+    ht = ht.select(s=ht.s.replace("v3.1::", "")).key_by("s").distinct()
+    logger.info(
+        "%d HGDP/TGP samples are duplicated in the v4 exomes release", ht.count()
+    )
     return ht
 
 
@@ -976,8 +1034,14 @@ def main(args):
             )
 
     if args.get_related_to_nonsubset:
-        ht = get_hgdp_tgp_related_to_nonsubset(meta.ht(), relatedness.ht())
+        ht = get_hgdp_tgp_related_to_nonsubset(v3_meta.ht(), v3_relatedness.ht())
         ht.write(hgdp_tgp_related_to_nonsubset.path, overwrite=overwrite)
+
+    if args.get_duplicated_to_exomes:
+        ht = get_hgdp_tgp_duplicated_to_exomes(
+            v3_meta.ht(), v4_meta.ht(), v4_relatedness.ht()
+        )
+        ht.write(hgdp_tgp_duplicated_to_exomes.path, overwrite=overwrite)
 
     if args.update_annotations:
         res = v4_genome_release_resources.update_annotations
@@ -1069,6 +1133,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--get-related-to-nonsubset",
         help="Get the relatedness to nonsubset samples.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--get-duplicated-to-exomes",
+        help="Get the duplicated samples to exomes.",
         action="store_true",
     )
     parser.add_argument(

@@ -1044,3 +1044,8 @@ hgdp_tgp_meta_updated = TableResource(
 hgdp_tgp_related_to_nonsubset = TableResource(
     path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_related_to_nonsubset.ht",
 )
+
+# List of HGDP+ 1KG/TGP samples that are duplicated in the v4.0 exome release.
+hgdp_tgp_duplicated_to_exomes = TableResource(
+    path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_duplicated_in_exomes.ht",
+)
