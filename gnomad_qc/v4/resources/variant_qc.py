@@ -227,7 +227,7 @@ def get_variant_qc_result(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{_variant_qc_root(version, test=test)}/{model_type}/models/{model_id}/gnomad.exomes.v{version}.{model_type}_result.{'' if split else '.unsplit'}.ht"
+                f"{_variant_qc_root(version, test=test)}/{model_type}/models/{model_id}/gnomad.exomes.v{version}.{model_type}_result{'' if split else '.unsplit'}.ht"
             )
             for version in VERSIONS
         },
