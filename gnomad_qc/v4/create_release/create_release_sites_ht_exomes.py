@@ -94,6 +94,8 @@ def get_config(release_exists: bool = False) -> dict:
             ),
             "path": [
                 get_insilico_predictors(predictor=predictor).path
+                # TODO: Add phylop maybe? see:
+                # https://docs.google.com/document/d/1mHfhDJyY22JTFWoMhqfrDAIeKikTxYBec11v7tOiQeo/edit?disco=AAAA6g_ZPBc
                 for predictor in INSILICO_PREDICTORS
             ],
             "field_name": "in_silico_predictors",
