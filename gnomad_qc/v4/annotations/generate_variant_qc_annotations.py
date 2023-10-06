@@ -377,7 +377,9 @@ def get_reformatted_info_fields(
     return ht
 
 
-def get_info_ht_for_vcf_export(ht: hl.Table, info_method: str) -> hl.Table:
+def get_info_ht_for_vcf_export(
+    ht: hl.Table, info_method: str, split: bool = False
+) -> hl.Table:
     """
     Get info HT for VCF export.
 
@@ -391,7 +393,15 @@ def get_info_ht_for_vcf_export(ht: hl.Table, info_method: str) -> hl.Table:
     # Added to be consistent with compute info and remove sites with over 10,000
     # alleles. It excludes a single problematic site that we decided to drop.
     ht = ht.filter(hl.len(ht.alleles) < 10000)
-    ht = adjust_vcf_incompatible_types(ht)
+    if split:
+        ht = ht.annotate(
+            info=ht.info.annotate(
+                AS_SB_TABLE=[ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]]
+            )
+        )
+        ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
+    else:
+        ht = adjust_vcf_incompatible_types(ht)
 
     return ht
 
@@ -720,7 +730,7 @@ def get_variant_qc_annotation_resources(
             f"{m}_info_vcf": info_vcf_path(info_method=m, split=True, test=test)
             for m in INFO_METHODS
         },
-        pipeline_input_steps=[compute_info],
+        pipeline_input_steps=[split_info_ann],
     )
     run_vep = PipelineStepResourceCollection(
         "--run-vep",
@@ -866,18 +876,21 @@ def main(args):
                 res.split_info_ht.path, overwrite=overwrite
             )
 
-        if args.export_info_vcf or args.export_split_info_vcf:
-            info_res = []
-            if args.export_info_vcf:
-                info_res.append(vqc_resources.export_info_vcf)
-            if args.export_split_info_vcf:
-                info_res.append(vqc_resources.export_split_info_vcf)
-            for res in info_res:
-                res.check_resource_existence()
-                info_ht = res.info_ht.ht()
-                for m in INFO_METHODS:
-                    m_info_ht = get_info_ht_for_vcf_export(info_ht, m)
-                    hl.export_vcf(m_info_ht, getattr(res, f"{m}_info_vcf"), tabix=True)
+        if args.export_info_vcf:
+            res = vqc_resources.export_info_vcf
+            res.check_resource_existence()
+            info_ht = res.info_ht.ht()
+            for m in INFO_METHODS:
+                m_info_ht = get_info_ht_for_vcf_export(info_ht, m)
+                hl.export_vcf(m_info_ht, getattr(res, f"{m}_info_vcf"), tabix=True)
+
+        if args.export_split_info_vcf:
+            res = vqc_resources.export_split_info_vcf
+            res.check_resource_existence()
+            info_ht = res.split_info_ht.ht()
+            for m in INFO_METHODS:
+                m_info_ht = get_info_ht_for_vcf_export(info_ht, m, split=True)
+                hl.export_vcf(m_info_ht, getattr(res, f"{m}_info_vcf"), tabix=True)
 
         if run_vep:
             res = vqc_resources.run_vep
