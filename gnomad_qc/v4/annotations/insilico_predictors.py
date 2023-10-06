@@ -1,7 +1,6 @@
 """Script to generate Hail Tables with in silico predictors."""
 import argparse
 import logging
-from typing import Tuple
 
 import hail as hl
 from gnomad.resources.resource_utils import NO_CHR_TO_CHR_CONTIG_RECODING
@@ -19,17 +18,15 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def get_sift_polyphen_from_vep(
-    ht: hl.Table,
-) -> Tuple[hl.ArrayExpression, hl.ArrayExpression]:
+def get_sift_polyphen_from_vep(ht: hl.Table) -> hl.Table:
     """
     Get the max SIFT and PolyPhen scores from VEP 105 annotations.
 
-     This retrieves the max of SIFT and PolyPhen scores for a variant's MANE Select
-     transcript or, if MANE Select does not exist, canonical transcript.
+    This retrieves the max of SIFT and PolyPhen scores for a variant's MANE Select
+    transcript or, if MANE Select does not exist, canonical transcript.
 
     :param ht: VEP 105 annotated Hail Table.
-    :return: Tuple of max SIFT and PolyPhen scores.
+    :return: Table annotated with max SIFT and PolyPhen scores.
     """
     mane = filter_vep_transcript_csqs(
         ht, synonymous=False, canonical=False, mane_select=True
@@ -42,10 +39,14 @@ def get_sift_polyphen_from_vep(
         polyphen_canonical=canonical[ht.key].vep.transcript_consequences.polyphen_score,
     )
 
-    sift_max = hl.or_else(hl.max(ht.sift_mane), hl.max(ht.sift_canonical))
-    polyphen_max = hl.or_else(hl.max(ht.polyphen_mane), hl.max(ht.polyphen_canonical))
+    ht = ht.select(
+        sift_max=hl.or_else(hl.max(ht.sift_mane), hl.max(ht.sift_canonical)),
+        polyphen_max=hl.or_else(
+            hl.max(ht.polyphen_mane), hl.max(ht.polyphen_canonical)
+        ),
+    )
 
-    return sift_max, polyphen_max
+    return ht
 
 
 def create_cadd_grch38_ht() -> hl.Table:
