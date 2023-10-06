@@ -1,5 +1,4 @@
-# noqa: D100
-
+"""Script for running random forest model on gnomAD v4 variant QC data."""
 import argparse
 import json
 import logging
@@ -39,23 +38,26 @@ logger = logging.getLogger("variant_qc_random_forest")
 logger.setLevel(logging.INFO)
 
 FEATURES = [
-    "allele_type",
     "AS_MQRankSum",
     "AS_pab_max",
     "AS_QD",
     "AS_ReadPosRankSum",
     "AS_SOR",
+    "allele_type",
+    "has_star",
     "n_alt_alleles",
     "variant_type",
 ]
 LABEL_COL = "rf_label"
 PREDICTION_COL = "rf_prediction"
+PROBABILITY_COL = "rf_probability"
 TRAIN_COL = "rf_train"
 
 
 def train_rf(
     ht: hl.Table,
     test: bool = False,
+    features: List[str] = None,
     fp_to_tp: float = 1.0,
     num_trees: int = 500,
     max_depth: int = 5,
@@ -72,6 +74,8 @@ def train_rf(
     :param ht: Table containing annotations needed for RF training.
     :param test: Whether to filter the input Table to chr20 and `test_intervals` for
         test purposes. Default is False.
+    :param features: List of features to use in the random forests model. When no
+        `features` list is provided, the global FEATURES is used.
     :param fp_to_tp: Ratio of FPs to TPs for creating the RF model. If set to 0, all
         training examples are used. Default is 1.0.
     :param num_trees: Number of trees in the RF model. Default is 500.
@@ -80,7 +84,8 @@ def train_rf(
         Default is False.
     :param sibling_singletons: Whether to use sibling singletons for training. Default
         is False.
-    :param adj: True if using _adj genotypes for singletons. If False, using _raw.
+    :param adj: Whether to use adj genotypes for transmitted/sibling singletons instead
+        of raw. Default is False and raw is used.
     :param filter_centromere_telomere: Filter centromeres and telomeres before training.
         Default is False.
     :param test_intervals: Specified interval(s) will be held out for testing and
@@ -91,7 +96,8 @@ def train_rf(
         running training the RF model. Default is None.
     :return: Input `ht` annotated with training information and the RF model.
     """
-    features = FEATURES
+    if features is None:
+        features = FEATURES
 
     if test_intervals:
         if isinstance(test_intervals, str):
@@ -146,19 +152,19 @@ def train_rf(
         ),
     )
 
-    logger.info("Joining original RF Table with training information...")
-    ht = ht.join(rf_ht, how="left")
-
-    ht = ht.annotate_globals(
+    rf_ht = rf_ht.annotate_globals(
         fp_to_tp=fp_to_tp,
         num_trees=num_trees,
         max_depth=max_depth,
         transmitted_singletons=transmitted_singletons,
         sibling_singletons=sibling_singletons,
+        adj=adj,
         filter_centromere_telomere=filter_centromere_telomere,
         interval_qc_filter=interval_qc_pass_ht is not None,
         test_intervals=test_intervals,
     )
+
+    ht = ht.select("tp", "fp").join(rf_ht, how="left")
 
     return ht, rf_model
 
@@ -228,9 +234,11 @@ def get_variant_qc_resources(
         overwrite=overwrite,
         pipeline_resources={
             "RF models": {
-                "rf_runs": rf_runs,
                 "rf_run_path": rf_run_path,
                 "model_id": model_id,
+            },
+            "annotations/generate_variant_qc_annotations.py --create-variant-qc-annotation-ht": {
+                "vqc_annotation_ht": get_variant_qc_annotations()
             },
         },
     )
@@ -238,9 +246,6 @@ def get_variant_qc_resources(
     train_random_forest = PipelineStepResourceCollection(
         "--train-rf",
         input_resources={
-            "annotations/generate_variant_qc_annotations.py --create-variant-qc-annotation-ht": {
-                "vqc_annotation_ht": get_variant_qc_annotations()
-            },
             "interval_qc.py --generate-interval-qc-pass-ht": {
                 "interval_qc_pass_ht": interval_qc_pass(all_platforms=True)
             },
@@ -267,7 +272,8 @@ def get_variant_qc_resources(
     return variant_qc_pipeline
 
 
-def main(args):  # noqa: D103
+def main(args):
+    """Run random forest variant QC pipeline."""
     hl.init(
         default_reference="GRCh38",
         log="/variant_qc_random_forest.log",
@@ -283,19 +289,20 @@ def main(args):  # noqa: D103
         overwrite=overwrite,
         model_id=args.model_id,
     )
-    rf_runs = variant_qc_resources.rf_runs
     rf_run_path = variant_qc_resources.rf_run_path
     model_id = variant_qc_resources.model_id
+    vqc_annotation_ht = variant_qc_resources.vqc_annotation_ht.ht()
 
     if args.list_rf_runs:
         logger.info(f"RF runs:")
-        pretty_print_runs(rf_runs)
+        pretty_print_runs(get_rf_runs(rf_run_path))
 
     if args.train_rf:
         res = variant_qc_resources.train_rf
         res.check_resource_existence()
-        ht = res.vqc_annotation_ht.ht()
-        ht = ht.annotate(**ht[f"{compute_info_method}_info"])
+        ht = vqc_annotation_ht.annotate(
+            **vqc_annotation_ht[f"{compute_info_method}_info"]
+        )
         if args.interval_qc_filter:
             interval_qc_pass_ht = res.interval_qc_pass_ht.ht()
         else:
@@ -303,6 +310,7 @@ def main(args):  # noqa: D103
         ht, rf_model = train_rf(
             ht,
             test=test,
+            features=args.features,
             fp_to_tp=args.fp_to_tp,
             num_trees=args.num_trees,
             max_depth=args.max_depth,
@@ -313,11 +321,11 @@ def main(args):  # noqa: D103
             test_intervals=args.test_intervals,
             interval_qc_pass_ht=interval_qc_pass_ht,
         )
-        ht = ht.annotate_globals(compute_info_method=compute_info_method, adj=args.adj)
+        ht = ht.annotate_globals(compute_info_method=compute_info_method)
         ht = ht.checkpoint(res.rf_training_ht.path, overwrite=overwrite)
 
         logger.info("Adding run to RF run list")
-        add_model_to_run_list(ht, model_id, rf_runs, rf_run_path)
+        add_model_to_run_list(ht, model_id, get_rf_runs(rf_run_path), rf_run_path)
 
         logger.info("Saving RF model")
         save_model(rf_model, res.rf_model_path, overwrite=overwrite)
@@ -326,19 +334,23 @@ def main(args):  # noqa: D103
         res = variant_qc_resources.apply_rf
         res.check_resource_existence()
         logger.info(f"Applying RF model {model_id}...")
-        ht = res.rf_training_ht.ht()
+        rf_ht = res.rf_training_ht.ht()
+        rf_features = hl.eval(rf_ht.features)
+        ht = vqc_annotation_ht.annotate(
+            **vqc_annotation_ht[f"{hl.eval(rf_ht.compute_info_method)}_info"],
+        )
+        ht = rf_ht.annotate(**ht[rf_ht.key].select(*rf_features))
         ht = apply_rf_model(
             ht,
             rf_model=load_model(res.rf_model_path),
-            features=hl.eval(ht.features),
-            label=LABEL_COL,
+            features=rf_features,
         )
 
         logger.info("Finished applying RF model...")
+        summary_cols = ["tp", "fp", TRAIN_COL, LABEL_COL, PREDICTION_COL]
+        ht = ht.select(*summary_cols, PROBABILITY_COL)
         ht = ht.annotate_globals(rf_model_id=model_id)
         ht = ht.checkpoint(res.rf_result_ht.path, overwrite=overwrite)
-
-        summary_cols = ["tp", "fp", TRAIN_COL, LABEL_COL, PREDICTION_COL]
         ht.group_by(*summary_cols).aggregate(n=hl.agg.count()).show(-1)
 
 
@@ -395,6 +407,13 @@ if __name__ == "__main__":
         choices=["AS", "quasi", "set_long_AS_missing"],
     )
     rf_params.add_argument(
+        "--features",
+        help="Features to use in the random forests model.",
+        default=FEATURES,
+        type=str,
+        nargs="+",
+    )
+    rf_params.add_argument(
         "--fp-to-tp",
         help=(
             "Ratio of FPs to TPs for training the RF model. If 0, all training examples"
@@ -428,7 +447,9 @@ if __name__ == "__main__":
 
     training_params = parser.add_argument_group("Training data parameters")
     training_params.add_argument(
-        "--adj", help="Use adj genotypes.", action="store_true"
+        "--adj",
+        help="Use adj genotypes for transmitted/sibling singletons.",
+        action="store_true",
     )
     training_params.add_argument(
         "--transmitted-singletons",
