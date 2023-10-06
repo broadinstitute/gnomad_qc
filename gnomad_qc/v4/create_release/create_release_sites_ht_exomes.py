@@ -89,14 +89,19 @@ def get_config() -> dict:
             "ht": reduce(
                 (lambda joined_ht, ht: joined_ht.join(ht, "outer")),
                 [
-                    get_insilico_predictors(predictor).ht()
+                    get_insilico_predictors(predictor=predictor).ht()
                     for predictor in INSILICO_PREDICTORS
                 ],
             ),
             # TODO: Update these once we knew which tools we will be usings
-            "select": ["cadd", "revel", "spliceai_ds_max", "pangolin_largest_ds"],
+            "select": ["cadd", "revel_max", "spliceai_ds_max", "pangolin_largest_ds"],
             # TODO: Update these once we knew which tools we will be usings
-            "select_globals": ["cadd_version", "revel_version"],
+            "select_globals": [
+                "cadd_version",
+                "revel_version",
+                "spliceai_version",
+                "pangolin_version",
+            ],
         },
         "info": {
             "ht": get_info().ht(),
@@ -287,7 +292,11 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
     if test:
         base_ht = hl.filter_intervals(
             base_ht,
-            [hl.parse_locus_interval("chr1:1-1000000", reference_genome="GRCh38")],
+            [
+                hl.parse_locus_interval(
+                    "chr1:55039447-55064852", reference_genome="GRCh38"
+                )
+            ],
         )
 
     select_fields = get_select_fields(config.get("select"), base_ht)
@@ -321,9 +330,14 @@ def join_hts(base_table, tables, new_partition_percent, test):
     base_ht_path = get_config()[base_table]["path"]
     base_ht = hl.read_table(base_ht_path)
     if test:
+        # Filter to PCSK9 for testing
         base_ht = hl.filter_intervals(
             base_ht,
-            [hl.parse_locus_interval("chr1:1-1000000", reference_genome="GRCh38")],
+            [
+                hl.parse_locus_interval(
+                    "chr1:55039447-55064852", reference_genome="GRCh38"
+                )
+            ],
         )
     partition_intervals = base_ht._calculate_new_partitions(
         base_ht.n_partitions() * new_partition_percent
