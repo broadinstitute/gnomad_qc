@@ -266,29 +266,29 @@ def get_select_fields(selects, base_ht):
     return select_fields
 
 
-def get_ht(dataset, _intervals, test, release_exists) -> hl.Table:
+def get_ht(dataset, _intervals, test) -> hl.Table:
     """
     Return the appropriate hail table with selects applied.
 
     :param dataset: Hail Table to join.
     :param _intervals: Intervals for reading in hail Table.
     :param test: Whether call is for a test run.
-    :param release_exists: Whether the release HT already exists.
     :return: Hail Table with fields to select.
     """
-    config = get_config(release_exists=release_exists)[dataset]
-    ht_path = config["path"]
-    logger.info("Reading in %s", dataset)
-    base_ht = hl.read_table(ht_path, _intervals=_intervals)
+    print(f"Getting the {dataset}...")
+    config = get_config()[dataset]
+
+    if dataset == "in_silico":
+        base_ht = config["ht"]
+    else:
+        ht_path = config["path"]
+        logger.info("Reading in %s", dataset)
+        base_ht = hl.read_table(ht_path, _intervals=_intervals)
 
     if test:
         base_ht = hl.filter_intervals(
             base_ht,
-            [
-                hl.parse_locus_interval(
-                    "chr1:55039447-55064852", reference_genome="GRCh38"
-                )
-            ],
+            [hl.parse_locus_interval("chr1:1-1000000", reference_genome="GRCh38")],
         )
 
     select_fields = get_select_fields(config.get("select"), base_ht)
