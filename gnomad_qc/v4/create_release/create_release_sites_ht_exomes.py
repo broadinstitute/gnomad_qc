@@ -75,9 +75,6 @@ def get_config(release_exists: bool = False) -> dict:
             "ht": dbsnp.ht(),
             "path": dbsnp.path,
             "select": ["rsid"],
-            "select_globals": {
-                "dbsnp_version": "version",
-            },
         },
         "filters": {
             "ht": final_filter().ht(),
@@ -100,7 +97,12 @@ def get_config(release_exists: bool = False) -> dict:
             ],
             "field_name": "in_silico_predictors",
             # TODO: Update these once we knew which tools we will be usings
-            "select": ["cadd", "revel_max", "spliceai_ds_max", "pangolin_largest_ds"],
+            "select": [
+                "cadd",
+                "revel_max",
+                "spliceai_ds_max",
+                "pangolin_largest_ds",
+            ],
             "custom_select": custom_in_silico_select,
             # TODO: Update these once we knew which tools we will be usings
             "select_globals": [
@@ -109,6 +111,7 @@ def get_config(release_exists: bool = False) -> dict:
                 "spliceai_version",
                 "pangolin_version",
             ],
+            "global_name": "tool_versions",
         },
         "info": {
             "ht": get_info().ht(),
@@ -152,6 +155,7 @@ def get_config(release_exists: bool = False) -> dict:
             "path": release_sites().path,
         },
     }
+
     if release_exists:
         config["release"] = {
             "ht": release_sites().ht(),
@@ -249,20 +253,22 @@ def custom_info_select(ht):
     return selects
 
 
-def get_select_global_fields(ht, release_exists=False):
+def get_select_global_fields(ht):
     """
     Generate a dictionary of globals to select by checking the configs of all tables joined.
 
     :param ht: Final joined HT with globals.
-    :param release_exists: Whether the release HT already exists.
     """
-    t_globals = [
-        get_select_fields(
-            get_config(release_exists=release_exists).get(t)["select_globals"], ht
-        )
-        for t in args.tables_for_join
-        if "select_globals" in get_config(release_exists=release_exists).get(t)
-    ]
+    t_globals = []
+    for t in TABLES_FOR_RELEASE:
+        config = get_config().get(t)
+        if "select_globals" in config:
+            select_globals = get_select_fields(config["select_globals"], ht)
+            if "global_name" in config:
+                global_name = config.get("global_name")
+                select_globals = {global_name: hl.struct(**select_globals)}
+            t_globals.append(select_globals)
+
     t_globals = reduce(lambda a, b: dict(a, **b), t_globals)
 
     return t_globals
@@ -409,6 +415,11 @@ def main(args):
         gnomad_methods_version=args.gnomad_methods_version,
         README=FIELD_DESCRIPTIONS,  # TODO: Make version dict for this and have it live in methods?
         version=args.version,
+    )
+
+    # The dbsnp table does not have a global field for dbsnp_versiona
+    ht = ht.annotate_globals(
+        tool_versions=ht.tool_versions.annotate(dbsnp_version="b156")
     )
 
     logger.info("Writing out release HT to %s", release_sites().path)
