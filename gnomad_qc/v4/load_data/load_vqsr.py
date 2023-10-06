@@ -12,128 +12,152 @@ from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_vqsr_filters
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
-logger = logging.getLogger("import_vqsr")
+logger = logging.getLogger("import_variant_qc_vcf")
 logger.setLevel(logging.INFO)
 
 
-def import_vqsr(
-    vqsr_path: str,
-    vqsr_type: str = "alleleSpecificTrans",
+def import_variant_qc_vcf(
+    vcf_path: str,
+    model_id: str,
     num_partitions: int = 5000,
     overwrite: bool = False,
     import_header_path: Optional[str] = None,
     array_elements_required: bool = False,
 ) -> None:
     """
-    Import VQSR site VCF into a HT.
+    Import variant QC result site VCF into a HT.
 
-    :param vqsr_path: Path to input vqsr site vcf. This can be specified as Hadoop glob patterns
-    :param vqsr_type: One of `classic`, `alleleSpecific` (allele specific) or `alleleSpecificTrans`
-        (allele specific with transmitted singletons)
-    :param num_partitions: Number of partitions to use for the VQSR HT
-    :param overwrite: Whether to overwrite imported VQSR HT
-    :param import_header_path: Optional path to a header file to use for import
+    :param vcf_path: Path to input variant QC result site vcf. This can be specified
+        as Hadoop glob patterns.
+    :param model_id: Model ID for the variant QC results.
+    :param num_partitions: Number of partitions to use for the output HT.
+    :param overwrite: Whether to overwrite data already present in the output HT.
+    :param import_header_path: Optional path to a header file to use for import.
     :return: None
     """
-    logger.info(f"Importing VQSR annotations for {vqsr_type} VQSR...")
+    logger.info(f"Importing variant QC annotations for model: {model_id}...")
     logger.info(f"Array elements field as {array_elements_required}")
     mt = hl.import_vcf(
-        vqsr_path,
+        vcf_path,
         force_bgz=True,
         reference_genome="GRCh38",
         array_elements_required=array_elements_required,
         header_file=import_header_path,
-
     ).repartition(num_partitions)
 
     ht = mt.rows()
 
-    ht = ht.annotate(
-        info=ht.info.annotate(
-            AS_VQSLOD=ht.info.AS_VQSLOD.map(lambda x: hl.float(x)),
-            AS_QUALapprox=ht.info.AS_QUALapprox.split("\|")[1:].map(
-                lambda x: hl.int(x)
-            ),
-            AS_VarDP=ht.info.AS_VarDP.split("\|")[1:].map(lambda x: hl.int(x)),
-            AS_SB_TABLE=ht.info.AS_SB_TABLE.split("\|").map(
-                lambda x: hl.or_missing(x != "", x.split(",").map(lambda y: hl.int(y)))
-            ),
+    unsplit_count = None
+    if not args.is_split:
+        ht = ht.annotate(
+            info=ht.info.annotate(
+                AS_VQSLOD=ht.info.AS_VQSLOD.map(lambda x: hl.float(x)),
+                AS_QUALapprox=ht.info.AS_QUALapprox.split("\|")[1:].map(
+                    lambda x: hl.int(x)
+                ),
+                AS_VarDP=ht.info.AS_VarDP.split("\|")[1:].map(lambda x: hl.int(x)),
+                AS_SB_TABLE=ht.info.AS_SB_TABLE.split("\|").map(
+                    lambda x: hl.or_missing(
+                        x != "", x.split(",").map(lambda y: hl.int(y))
+                    )
+                ),
+            )
         )
-    )
+
+        ht = ht.checkpoint(
+            get_vqsr_filters(f"vqsr_{model_id}", split=False, finalized=False).path,
+            overwrite=overwrite,
+        )
+
+        unsplit_count = ht.count()
+        ht = hl.split_multi_hts(ht)
+
+        ht = ht.annotate(
+            info=ht.info.annotate(**split_info_annotation(ht.info, ht.a_index)),
+        )
 
     ht = ht.checkpoint(
-        get_vqsr_filters(f"vqsr_{vqsr_type}", split=False, finalized=False).path,
+        get_vqsr_filters(f"vqsr_{model_id}", split=True, finalized=False).path,
         overwrite=overwrite,
     )
 
-    unsplit_count = ht.count()
-    ht = hl.split_multi_hts(ht)
-
-    ht = ht.annotate(
-        info=ht.info.annotate(**split_info_annotation(ht.info, ht.a_index)),
-    )
-
-    ht = ht.checkpoint(
-        get_vqsr_filters(f"vqsr_{vqsr_type}", split=True, finalized=False).path,
-        overwrite=overwrite,
-    )
     split_count = ht.count()
-    logger.info(
-        f"Found {unsplit_count} unsplit and {split_count} split variants with VQSR"
-        " annotations"
-    )
+    if unsplit_count is None:
+        logger.info(f"Found {split_count} split variants in the VCF")
+    else:
+        logger.info(
+            f"Found {unsplit_count} unsplit and {split_count} split variants in the VCF"
+        )
 
 
 def main(args):  # noqa: D103
-    hl.init(log="/load_data.log", default_reference="GRCh38")
+    hl.init(log="/load_variant_qc_vcf.log", default_reference="GRCh38")
 
     logger.info(f"passed array elements required as: {args.array_elements_required}")
 
-    import_vqsr(
-        args.vqsr_vcf_path,
-        args.vqsr_type,
+    import_variant_qc_vcf(
+        args.vcf_path,
+        args.model_id,
         args.n_partitions,
         args.overwrite,
         args.header_path,
-        args.array_elements_required
+        args.array_elements_required,
     )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--vqsr-vcf-path",
-        help="Path to VQSR VCF. Can be specified as Hadoop glob patterns",
+        "-o",
+        "--overwrite",
+        help="Whether to overwrite data already present in the output Table.",
+        action="store_true",
     )
     parser.add_argument(
-        "--vqsr-type",
-        help="Type of VQSR corresponding to the VQSR VCF being loaded",
-        default="as",
+        "--slack-channel",
+        help="Slack channel to post results and notifications to.",
+    )
+    parser.add_argument(
+        "--vcf-path",
+        help="Path to variant QC result VCF. Can be specified as Hadoop glob patterns.",
+        required=True,
+    )
+    parser.add_argument(
+        "--model-id",
+        help="Model ID for the variant QC result HT.",
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
+        "--compute-info-method",
+        help=(
+            "Compute info method used to generate the variant QC results. Options are"
+            " 'AS', 'quasi' or 'set_long_AS_missing_info'."
+        ),
+        type=str,
+        required=True,
+        choices=["AS", "quasi", "set_long_AS_missing_info"],
     )
     parser.add_argument(
         "--n-partitions",
-        help="Number of desired partitions for output Table",
+        help="Number of desired partitions for output Table.",
         default=5000,
         type=int,
     )
     parser.add_argument(
         "--header-path",
-        help="Optional path to a header file to use for importing VQSR VCF",
-    )
-    parser.add_argument(
-        "-o",
-        "--overwrite",
-        help="Overwrite all data from this subset (default: False)",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--slack-channel",
-        help="Slack channel to post results and notifications to",
+        help=(
+            "Optional path to a header file to use for importing the variant QC result"
+            " VCF."
+        ),
     )
     parser.add_argument(
         "--array-elements-required",
-        action='store_true',
-        help="Pass if you would like array elements required in import_vcf to be true"
+        action="store_true",
+        help="Pass if you would like array elements required in import_vcf to be true.",
+    )
+    parser.add_argument(
+        "--is-split", action="store_true", help="Whether the VCF is already split."
     )
     args = parser.parse_args()
 
