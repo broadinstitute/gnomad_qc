@@ -144,6 +144,8 @@ def get_config(release_exists: bool = False) -> dict:
             # TODO: drop 100% missing? Module to do this after all annotations added?
             "path": get_vep().path,
             "select": ["vep"],
+            # Add in "custom_select" that drops insilicos
+            "custom_select": custom_vep_select,
             "select_globals": ["vep_version"],
         },
         "region_flags": {
@@ -217,7 +219,7 @@ def custom_filters_select(ht):
     return selects
 
 
-def custom_info_select(ht):
+def custom_info_select(ht: hl.Table) -> dict:
     """
     Select fields for info hail Table annotation in release.
 
@@ -253,7 +255,29 @@ def custom_info_select(ht):
     return selects
 
 
-def get_select_global_fields(ht):
+def custom_vep_select(ht: hl.Table) -> dict:
+    """
+    Select fields for vep hail Table annotation in release.
+
+    :param ht: hail table
+    :return: select expression dict
+    """
+    selects = {
+        "vep": ht.vep.annotate(
+            transcript_consequences=ht.vep.transcript_consequences.map(
+                lambda x: x.drop(
+                    "sift_prediction",
+                    "sift_score",
+                    "polyphen_prediction",
+                    "polyphen_score",
+                )
+            )
+        )
+    }
+    return selects
+
+
+def get_select_global_fields(ht) -> dict:
     """
     Generate a dictionary of globals to select by checking the configs of all tables joined.
 
@@ -408,7 +432,7 @@ def main(args):
 
     t_globals = get_select_global_fields(ht)
 
-    ht = ht.annotate_globals(
+    ht = ht.select_globals(
         **t_globals,
         gnomad_qc_version=args.gnomad_qc_version,
         # TODO: See if we can pull this from the cluster
@@ -417,9 +441,14 @@ def main(args):
         version=args.version,
     )
 
-    # The dbsnp table does not have a global field for dbsnp_versiona
+    # The dbsnp table does not have a global field for dbsnp_versions, same
+    # with vep and sift/polyphen
     ht = ht.annotate_globals(
-        tool_versions=ht.tool_versions.annotate(dbsnp_version="b156")
+        tool_versions=ht.tool_versions.annotate(
+            dbsnp_version="b156",
+            sift_version="FILL THIS IS",
+            polyphen_version="FILL THIS IS",
+        )
     )
 
     logger.info("Writing out release HT to %s", release_sites().path)
