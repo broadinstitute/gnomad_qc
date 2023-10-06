@@ -9,9 +9,10 @@ from gnomad.resources.grch38.gnomad import GROUPS
 from gnomad.resources.grch38.reference_data import ensembl_interval, get_truth_ht
 from gnomad.resources.resource_utils import TableResource
 from gnomad.sample_qc.relatedness import filter_mt_to_trios
-from gnomad.utils.annotations import annotate_allele_info
+from gnomad.utils.annotations import annotate_adj, annotate_allele_info
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import (
+    AS_INFO_AGG_FIELDS,
     default_compute_info,
     get_as_info_expr,
     split_info_annotation,
@@ -51,21 +52,32 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-FEATURES = [
+INFO_METHODS = [
+    "AS",
+    "quasi",
+    "set_long_AS_missing",
+]
+"""List of info methods computed for variant QC."""
+INFO_FEATURES = [
+    "AS_MQRankSum",
+    "AS_pab_max",
+    "AS_MQ",
+    "AS_QD",
+    "AS_ReadPosRankSum",
+    "AS_SOR",
+    "AS_FS",
+]
+"""List of features info to be used for variant QC."""
+NON_INFO_FEATURES = [
     "variant_type",
     "allele_type",
     "n_alt_alleles",
     "was_mixed",
     "has_star",
-    "AS_MQRankSum",
-    "AS_pab_max",
-    "AS_QD",
-    "AS_ReadPosRankSum",
-    "AS_SOR",
 ]
-"""List of features to be used for variant QC"""
+"""List of features to be used for variant QC that are not in the info field."""
 TRUTH_DATA = ["hapmap", "omni", "mills", "kgp_phase1_hc"]
-"""List of truth datasets to be used for variant QC"""
+"""List of truth datasets to be used for variant QC."""
 
 
 def extract_as_pls(
@@ -219,6 +231,18 @@ def run_compute_info(
         Adds a fix for AS_QUALapprox by recomputing from LPL because some were found to
         have different lengths than LA.
 
+    Creates a Table with three different methods of computing info annotations:
+        - quasi_info: Compute info annotations using the quasi-allele specific method
+          defined in `default_compute_info`.
+        - AS_info: Compute info annotations using aggregation of the allele specific
+          annotations in 'gvcf_info' after recomputing AS_QUALapprox from LPL, and
+          fixing the length of AS_SB_TABLE, AS_RAW_MQ, AS_RAW_ReadPosRankSum and
+          AS_RAW_MQRankSum.
+        - set_long_AS_missing_info: Compute info annotations using aggregation of the
+          allele specific  annotations in 'gvcf_info' after setting AS_SB_TABLE,
+          AS_RAW_MQ, AS_RAW_ReadPosRankSum and AS_RAW_MQRankSum to missing if they have
+          the incorrect length.
+
     :param mt: Input MatrixTable.
     :param max_n_alleles: Maximum number of alleles for the site to be included in
         computations.
@@ -231,16 +255,11 @@ def run_compute_info(
     if min_n_alleles:
         mt = mt.filter_rows(hl.len(mt.alleles) >= min_n_alleles)
 
-    mt = mt.annotate_entries(
-        gvcf_info=mt.gvcf_info.annotate(
-            AS_QUALapprox=recompute_as_qualapprox_from_lpl(mt),
-            **correct_as_annotations(mt),
-        )
-    )
-    info_ht = default_compute_info(
+    # Compute and checkpoint the site annotations, quasi allele specific info
+    # annotations, allele count annotations, and lowQUAL annotations.
+    ht = default_compute_info(
         mt,
         site_annotations=True,
-        as_annotations=True,
         ac_filter_groups={
             "high_quality": mt.meta.high_quality,
             "release": mt.meta.release,
@@ -248,12 +267,40 @@ def run_compute_info(
         },
         n_partitions=None,
     )
+    quasi_info_ht = ht.checkpoint(
+        hl.utils.new_temp_file("quasi_compute_info", extension="ht")
+    )
 
-    mt = mt.annotate_entries(gvcf_info=correct_as_annotations(mt, set_to_missing=True))
+    # Compute and checkpoint the allele specific info annotations after recomputing
+    # AS_QUALapprox from LPL, and fixing the length of AS_SB_TABLE, AS_RAW_MQ,
+    # AS_RAW_ReadPosRankSum and AS_RAW_MQRankSum.
     mt = mt.annotate_rows(alt_alleles_range_array=hl.range(1, hl.len(mt.alleles)))
-    ht = mt.select_rows(
+    correct_mt = mt.annotate_entries(
+        gvcf_info=mt.gvcf_info.annotate(
+            AS_QUALapprox=recompute_as_qualapprox_from_lpl(mt),
+            **correct_as_annotations(mt),
+        )
+    )
+    ht = correct_mt.select_rows(
         **get_as_info_expr(
-            mt,
+            correct_mt,
+            # Use global AS_INFO_AGG_FIELDS for sum_agg_fields, int32_sum_agg_fields,
+            # median_agg_fields, and array_sum_agg_fields parameters.
+            **AS_INFO_AGG_FIELDS,
+            treat_fields_as_allele_specific=True,
+        )
+    ).rows()
+    info_ht = ht.checkpoint(hl.utils.new_temp_file("compute_info", extension="ht"))
+
+    # Compute and checkpoint the allele specific info annotations after setting
+    # AS_SB_TABLE, AS_RAW_MQ, AS_RAW_ReadPosRankSum and AS_RAW_MQRankSum to missing if
+    # they have the incorrect length.
+    correct_mt = mt.annotate_entries(
+        gvcf_info=correct_as_annotations(mt, set_to_missing=True)
+    )
+    ht = correct_mt.select_rows(
+        **get_as_info_expr(
+            correct_mt,
             sum_agg_fields=["AS_RAW_MQ"],
             int32_sum_agg_fields=[],
             median_agg_fields=["AS_RAW_ReadPosRankSum", "AS_RAW_MQRankSum"],
@@ -261,10 +308,92 @@ def run_compute_info(
             treat_fields_as_allele_specific=True,
         )
     ).rows()
+    ht = ht.checkpoint(
+        hl.utils.new_temp_file("AS_missing_info_compute_info", extension="ht")
+    )
 
-    info_ht = info_ht.annotate(set_long_AS_missing_info=ht[info_ht.key])
+    quasi_info = quasi_info_ht.info
+    quasi_keys = hl.eval(
+        hl.array(list(quasi_info.keys())).group_by(
+            lambda x: (
+                hl.switch(x[:2])
+                .when("AS", "quasi_info")
+                .when("AC", "AC_info")
+                .default("site_info")
+            )
+        )
+    )
+    quasi_info = {k: quasi_info.select(*v) for k, v in quasi_keys.items()}
+    info_ht = quasi_info_ht.select(
+        AC_info=quasi_info["AC_info"],
+        site_info=quasi_info["site_info"],
+        AS_info=info_ht[quasi_info_ht.key],
+        set_long_AS_missing_info=ht[quasi_info_ht.key],
+        quasi_info=quasi_info["quasi_info"],
+        lowqual=quasi_info_ht.lowqual,
+        AS_lowqual=quasi_info_ht.AS_lowqual,
+    )
 
     return info_ht
+
+
+def get_reformatted_info_fields(
+    ht: hl.Table, info_method: Optional[str] = None
+) -> hl.Table:
+    """
+    Reformat `ht` info annotations to contain all expected info fields.
+
+    :param ht: Input Table.
+    :param info_method: Shorthand name of method used to compute the info annotation
+        that should be reformatted. Choices are 'AS', 'quasi', or 'set_long_AS_missing'.
+        If None, all info annotations will be reformatted.
+    :return: Table with reformatted info annotations.
+    """
+    if info_method is not None and info_method not in INFO_METHODS:
+        raise ValueError(
+            f"Invalid info_method: {info_method}. Must be one of 'AS', 'quasi', or "
+            "'set_long_AS_missing'."
+        )
+
+    # AS_pab_max is computed in the quasi_info annotation, but it doesn't change for
+    # the other info methods, so we can just copy it into each of the info annotation
+    # structs to make downstream code easier.
+    if info_method is None or info_method == "AS":
+        ht = ht.annotate(
+            AS_info=ht.AS_info.annotate(AS_pab_max=ht.quasi_info.AS_pab_max)
+        )
+    if info_method is None or info_method == "quasi":
+        # TODO: AS_SB should be removed from the quasi_info annotation in
+        #  `get_as_info_expr` since it is identical to AD_SB_TABLE.
+        ht = ht.annotate(quasi_info=ht.quasi_info.drop("AS_SB"))
+    if info_method is None or info_method == "set_long_AS_missing":
+        ht = ht.annotate(
+            set_long_AS_missing_info=ht.AS_info.annotate(
+                **ht.set_long_AS_missing_info,
+                AS_pab_max=ht.quasi_info.AS_pab_max,
+            )
+        )
+
+    return ht
+
+
+def get_info_ht_for_vcf_export(ht: hl.Table, info_method: str) -> hl.Table:
+    """
+    Get info HT for VCF export.
+
+    :param ht: Input info HT.
+    :param info_method: Info method to use. One of 'AS', 'quasi', or
+        'set_long_AS_missing'.
+    :return: Info HT for VCF export.
+    """
+    ht = get_reformatted_info_fields(ht, info_method=info_method)
+    ht = ht.select(info=ht.site_info.annotate(**ht[f"{info_method}_info"]))
+    # Added to be consistent with compute info and remove sites with over 10,000
+    # alleles. It excludes a single problematic site that we decided to drop.
+    ht = ht.filter(hl.len(ht.alleles) < 10000)
+    ht = adjust_vcf_incompatible_types(ht)
+
+    return ht
 
 
 def split_info(info_ht: hl.Table) -> hl.Table:
@@ -281,7 +410,7 @@ def split_info(info_ht: hl.Table) -> hl.Table:
     :return: Info Table with split multi-allelics.
     """
     info_ht = annotate_allele_info(info_ht)
-    info_annotations_to_split = ["info", "quasi_info", "set_long_AS_missing_info"]
+    info_annotations_to_split = ["AC_info"] + [f"{m}_info" for m in INFO_METHODS]
     info_ht = info_ht.annotate(
         **{
             a: info_ht[a].annotate(
@@ -322,6 +451,7 @@ def run_generate_trio_stats(
 
     mt = hl.vds.to_dense_mt(hl.vds.VariantDataset(rmt, vmt))
     mt = mt.transmute_entries(GT=mt.LGT)
+    mt = annotate_adj(mt)
     mt = hl.trio_matrix(mt, pedigree=fam_ped, complete_trios=True)
 
     return generate_trio_stats(mt, bi_allelic_only=False)
@@ -381,14 +511,45 @@ def create_variant_qc_annotation_ht(
     :param n_partitions: Number of partitions to use for final annotated Table.
     :return: Hail Table with all annotations needed for variant QC.
     """
+    info_methods = [f"{m}_info" for m in INFO_METHODS]
     truth_data_ht = get_truth_ht()
 
-    ht = info_ht.transmute(**info_ht.info, **info_ht.allele_info)
+    ht = get_reformatted_info_fields(info_ht)
+    ht = ht.annotate(**{m: ht[m].select(*INFO_FEATURES) for m in info_methods})
+    ht = ht.transmute(**ht.AC_info, **ht.allele_info, **ht.site_info)
+
+    if impute_features:
+        feature_imputed = {}
+        feature_medians = {}
+        for m in info_methods:
+            m_info_ht = ht.select("variant_type", **ht[m])
+            m_info_ht = median_impute_features(
+                m_info_ht, {"variant_type": m_info_ht.variant_type}
+            ).checkpoint(hl.utils.new_temp_file("median_impute"), overwrite=True)
+            feature_imputed[m] = m_info_ht[ht.key]
+            feature_medians[m] = hl.eval(m_info_ht.feature_medians)
+
+        ht = ht.annotate(
+            **{
+                k: v.drop("feature_imputed", "variant_type")
+                for k, v in feature_imputed.items()
+            },
+            feature_imputed=hl.struct(
+                **{k: v.feature_imputed for k, v in feature_imputed.items()}
+            ),
+        )
+        feature_medians = list(feature_medians.items())
+        ht = ht.annotate_globals(
+            feature_medians={
+                k: hl.struct(**{m: f[k] for m, f in feature_medians})
+                for k in feature_medians[0][1]
+            }
+        )
+
+    logger.info("Annotating Table with trio and sibling stats and reference truth data")
     trio_stats_ht = trio_stats_ht.select(
         *[f"{a}_{group}" for a in ["n_transmitted", "ac_children"] for group in GROUPS]
     )
-
-    logger.info("Annotating Table with trio and sibling stats and reference truth data")
     ht = ht.annotate(
         **trio_stats_ht[ht.key],
         **sib_stats_ht[ht.key],
@@ -404,11 +565,13 @@ def create_variant_qc_annotation_ht(
     ht = ht.select(
         "a_index",
         "was_split",
-        *FEATURES,
+        *NON_INFO_FEATURES,
+        *info_methods,
         **{tp: hl.or_else(ht[tp], False) for tp in TRUTH_DATA},
         **{
             f"{tp}_{group}": hl.or_else(
-                (ht[f"{n}_{group}"] == 1) & (ht.AC_high_quality_raw == 2),
+                (ht[f"{n}_{group}"] == 1)
+                & (ht[f"AC_high_quality{'' if group == 'adj' else f'_raw'}"] == 2),
                 False,
             )
             for tp, n in tp_map.items()
@@ -421,13 +584,11 @@ def create_variant_qc_annotation_ht(
         ac_unrelated_raw=ht.AC_unrelated_raw,
     )
 
-    if impute_features:
-        ht = median_impute_features(ht, {"variant_type": ht.variant_type})
-
     ht = ht.repartition(n_partitions, shuffle=False)
     ht = ht.checkpoint(
         hl.utils.new_temp_file("variant_qc_annotations", "ht"), overwrite=True
     )
+    ht.describe()
 
     summary = ht.group_by(
         *TRUTH_DATA, *[f"{tp}_{group}" for tp in tp_map for group in GROUPS]
@@ -547,7 +708,10 @@ def get_variant_qc_annotation_resources(
     )
     export_info_vcf = PipelineStepResourceCollection(
         "--export-info-vcf",
-        output_resources={"info_vcf": info_vcf_path(test=test)},
+        output_resources={
+            f"{m}_info_vcf": info_vcf_path(info_method=m, test=test)
+            for m in INFO_METHODS
+        },
         pipeline_input_steps=[compute_info],
     )
     run_vep = PipelineStepResourceCollection(
@@ -631,6 +795,7 @@ def main(args):
     if split_n_alleles is not None:
         if over_split_n_alleles:
             min_n_alleles = split_n_alleles
+            max_n_alleles = 10000
             over_n_alleles = True
         else:
             max_n_alleles = split_n_alleles - 1
@@ -673,6 +838,10 @@ def main(args):
                 lt_ht = res.under_info_ht.ht()
                 gt_eq_ht = res.over_info_ht.ht()
                 ht = ht.annotate(**hl.coalesce(lt_ht[ht.key], gt_eq_ht[ht.key]))
+                ht = ht.checkpoint(
+                    hl.utils.new_temp_file("combined_info", extension="ht"),
+                    overwrite=True,
+                )
             else:
                 ht = run_compute_info(mt, max_n_alleles, min_n_alleles)
 
@@ -691,13 +860,16 @@ def main(args):
         if args.export_info_vcf:
             res = vqc_resources.export_info_vcf
             res.check_resource_existence()
-            hl.export_vcf(adjust_vcf_incompatible_types(res.info_ht.ht()), res.info_vcf)
+            info_ht = res.info_ht.ht()
+            for m in INFO_METHODS:
+                m_info_ht = get_info_ht_for_vcf_export(info_ht, m)
+                hl.export_vcf(m_info_ht, getattr(res, f"{m}_info_vcf"), tabix=True)
 
         if run_vep:
             res = vqc_resources.run_vep
             res.check_resource_existence()
             ht = hl.split_multi(
-                get_gnomad_v4_vds(test=test_dataset).variant_dataset.rows()
+                get_gnomad_v4_vds(test=test_dataset).variant_data.rows()
             )
             ht = vep_or_lookup_vep(ht, vep_version=args.vep_version)
             ht.write(res.vep_ht.path, overwrite=overwrite)
@@ -727,8 +899,9 @@ def main(args):
         if args.create_variant_qc_annotation_ht:
             res = vqc_resources.variant_qc_annotation_ht
             res.check_resource_existence()
+            ht = res.split_info_ht.ht()
             create_variant_qc_annotation_ht(
-                res.split_info_ht.ht(),
+                ht,
                 res.trio_stats_ht.ht(),
                 res.sib_stats_ht.ht(),
                 impute_features=args.impute_features,
@@ -837,7 +1010,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--generate-sibling-stats",
-        help="Calculated sibling variant sharing stats",
+        help="Calculate sibling variant sharing stats.",
         action="store_true",
     )
 

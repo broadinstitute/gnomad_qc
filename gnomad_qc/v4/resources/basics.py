@@ -29,6 +29,7 @@ def get_gnomad_v4_vds(
     high_quality_only: bool = False,
     keep_controls: bool = False,
     release_only: bool = False,
+    controls_only: bool = False,
     test: bool = False,
     n_partitions: Optional[int] = None,
     filter_partitions: Optional[List[int]] = None,
@@ -52,6 +53,7 @@ def get_gnomad_v4_vds(
         a subset of samples.
     :param release_only: Whether to filter the VDS to only samples available for
         release (can only be used if metadata is present).
+    :param controls_only: Whether to filter the VDS to only control samples.
     :param test: Whether to use the test VDS instead of the full v4 VDS.
     :param n_partitions: Optional argument to read the VDS with a specific number of
         partitions.
@@ -110,12 +112,44 @@ def get_gnomad_v4_vds(
             vds.variant_data._filter_partitions(filter_partitions),
         )
 
-    # We don't need to do the UKB sample removal if we're only keeping high quality or
-    # release samples since they will not be in either of those sets.
-    if not high_quality_only and not release_only:
-        # Count current number of samples in the VDS.
-        n_samples = vds.variant_data.count_cols()
+    # Count current number of samples in the VDS.
+    n_samples = vds.variant_data.count_cols()
 
+    # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS). See:
+    # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286.
+    # Confirmed that the col_idx of the 27 dup samples in the original UKB MT match
+    # the col_idx of the dup UKB samples in the VDS.
+    logger.info("Removing 27 duplicate UKB samples by column index...")
+    dup_ids = []
+    with hl.hadoop_open(ukb_dups_idx_path, "r") as d:
+        for line in d:
+            line = line.strip().split("\t")
+            dup_ids.append(f"{line[0]}_{line[1]}")
+
+    def _remove_ukb_dup_by_index(
+        mt: hl.MatrixTable, dup_ids: hl.expr.ArrayExpression
+    ) -> hl.MatrixTable:
+        """
+        Remove UKB samples with exact duplicate names based on column index.
+
+        :param mt: MatrixTable of either the variant data or reference data of a VDS
+        :param dup_ids: ArrayExpression of UKB samples to remove in format of <sample_name>_<col_idx>
+        :return: MatrixTable of UKB samples with exact duplicate names removed based on column index
+        """
+        mt = mt.add_col_index()
+        mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
+        mt = mt.filter_cols(~dup_ids.contains(mt.new_s)).drop("new_s", "col_idx")
+        return mt
+
+    dup_ids = hl.literal(dup_ids)
+    vd = _remove_ukb_dup_by_index(vds.variant_data, dup_ids)
+    rd = _remove_ukb_dup_by_index(vds.reference_data, dup_ids)
+    vds = hl.vds.VariantDataset(rd, vd)
+
+    # We don't need to do the UKB withdrawn and pharma remove list sample removal if
+    # we're only keeping high quality or release samples since they will not be in
+    # either of those sets.
+    if not (high_quality_only or release_only or controls_only):
         # Remove 75 withdrawn UKB samples (samples with withdrawn consents for
         # application 31063 on 02/22/2022).
         ukb_application_map_ht = ukb_application_map.ht()
@@ -128,36 +162,6 @@ def get_gnomad_v4_vds(
         # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L308.
         dups_ht = ukb_known_dups.ht()
         ids_to_remove = dups_ht.aggregate(hl.agg.collect(dups_ht["Sample Name - ID1"]))
-
-        # Remove 27 fully duplicated IDs (same exact name for 's' in the VDS). See:
-        # https://github.com/broadinstitute/ukbb_qc/blob/70c4268ab32e9efa948fe72f3887e1b81d8acb46/ukbb_qc/resources/basics.py#L286.
-        # Confirmed that the col_idx of the 27 dup samples in the original UKB MT match
-        # the col_idx of the dup UKB samples in the VDS.
-        dup_ids = []
-        with hl.hadoop_open(ukb_dups_idx_path, "r") as d:
-            for line in d:
-                line = line.strip().split("\t")
-                dup_ids.append(f"{line[0]}_{line[1]}")
-
-        def _remove_ukb_dup_by_index(
-            mt: hl.MatrixTable, dup_ids: hl.expr.ArrayExpression
-        ) -> hl.MatrixTable:
-            """
-            Remove UKB samples with exact duplicate names based on column index.
-
-            :param mt: MatrixTable of either the variant data or reference data of a VDS
-            :param dup_ids: ArrayExpression of UKB samples to remove in format of <sample_name>_<col_idx>
-            :return: MatrixTable of UKB samples with exact duplicate names removed based on column index
-            """
-            mt = mt.add_col_index()
-            mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
-            mt = mt.filter_cols(~dup_ids.contains(mt.new_s)).drop("new_s", "col_idx")
-            return mt
-
-        dup_ids = hl.literal(dup_ids)
-        vd = _remove_ukb_dup_by_index(vds.variant_data, dup_ids)
-        rd = _remove_ukb_dup_by_index(vds.reference_data, dup_ids)
-        vds = hl.vds.VariantDataset(rd, vd)
 
         # Filter withdrawn samples from the VDS.
         withdrawn_ids = withdrawn_ukb_samples + ids_to_remove + hl.eval(dup_ids)
@@ -172,19 +176,19 @@ def get_gnomad_v4_vds(
             remove_dead_alleles=remove_dead_alleles,
         )
 
-        # Log number of UKB samples removed from the VDS.
-        n_samples_after_exclusion = vds.variant_data.count_cols()
-        n_samples_removed = n_samples - n_samples_after_exclusion
+    # Log number of UKB samples removed from the VDS.
+    n_samples_after_exclusion = vds.variant_data.count_cols()
+    n_samples_removed = n_samples - n_samples_after_exclusion
 
-        logger.info(
-            "Total number of UKB samples removed from the VDS: %d", n_samples_removed
-        )
+    logger.info(
+        "Total number of UKB samples removed from the VDS: %d", n_samples_removed
+    )
 
     if (
         high_quality_only
         or remove_hard_filtered_samples
         or remove_hard_filtered_samples_no_sex
-    ):
+    ) and not (release_only or controls_only):
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
             if high_quality_only:
@@ -250,6 +254,10 @@ def get_gnomad_v4_vds(
         if keep_controls:
             filter_expr |= hl.literal(TRUTH_SAMPLES_S).contains(meta_ht.s)
         vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+
+    if controls_only:
+        logger.info("Filtering VDS to control samples only...")
+        vds = hl.vds.filter_samples(vds, TRUTH_SAMPLES_S)
 
     if annotate_meta:
         logger.info("Annotating VDS variant_data with metadata...")
@@ -397,13 +405,14 @@ def calling_intervals(
     """
     Return path to capture intervals Table.
 
-    :param interval_name: One of 'ukb', 'broad', or 'intersection'
+    :param interval_name: One of 'ukb', 'broad', 'intersection' or 'union'.
     :param calling_interval_padding: Padding around calling intervals. Available options are 0 or 50
     :return: Calling intervals resource
     """
-    if interval_name not in {"ukb", "broad", "intersection"}:
+    if interval_name not in {"ukb", "broad", "intersection", "union"}:
         raise ValueError(
-            "Calling interval name must be one of: 'ukb', 'broad', or 'intersection'!"
+            "Calling interval name must be one of: 'ukb', 'broad', 'intersection' or"
+            " 'union'!"
         )
     if calling_interval_padding not in {0, 50}:
         raise ValueError("Calling interval padding must be one of: 0 or 50 (bp)!")
@@ -415,7 +424,15 @@ def calling_intervals(
         return TableResource(
             f"gs://gnomad/resources/intervals/hg38_v0_exome_calling_regions.v1.pad{calling_interval_padding}.interval_list.ht"
         )
+    if interval_name == "intersection" or interval_name == "union":
+        return TableResource(
+            f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.{interval_name}.interval_list.ht"
+        )
     if interval_name == "intersection":
         return TableResource(
             f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.intersection.interval_list.ht"
+        )
+    if interval_name == "union":
+        return TableResource(
+            f"gs://gnomad/resources/intervals/xgen.pad{calling_interval_padding}.dsp.pad{calling_interval_padding}.union.interval_list.ht"
         )
