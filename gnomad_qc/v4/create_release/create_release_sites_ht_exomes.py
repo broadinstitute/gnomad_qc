@@ -96,7 +96,6 @@ def get_config(release_exists: bool = False) -> dict:
                 for predictor in INSILICO_PREDICTORS
             ],
             "field_name": "in_silico_predictors",
-            # TODO: Update these once we knew which tools we will be usings
             "select": [
                 "cadd",
                 "revel_max",
@@ -104,7 +103,6 @@ def get_config(release_exists: bool = False) -> dict:
                 "pangolin_largest_ds",
             ],
             "custom_select": custom_in_silico_select,
-            # TODO: Update these once we knew which tools we will be usings
             "select_globals": [
                 "cadd_version",
                 "revel_version",
@@ -141,7 +139,7 @@ def get_config(release_exists: bool = False) -> dict:
         },
         "vep": {
             "ht": get_vep().ht(),
-            # TODO: drop 100% missing? Module to do this after all annotations added?
+            # TODO: drop 100% missing? Can add to the custom vep select function
             "path": get_vep().path,
             "select": ["vep"],
             # Add in "custom_select" that drops insilicos
@@ -156,19 +154,22 @@ def get_config(release_exists: bool = False) -> dict:
         "release": {
             "path": release_sites().path,
         },
+        # TODO: Fill this in once we have the combined freq HT
+        "combined_faf": {},
     }
 
     if release_exists:
-        config["release"] = {
-            "ht": release_sites().ht(),
-            "path": release_sites().path,
-            "select": [r for r in release_sites().ht()._row],
-            "select_globals": [g for g in release_sites().ht()._global],
-        }
+        config["release"].update(
+            {
+                "ht": release_sites().ht(),
+                "select": [r for r in release_sites().ht()._row],
+                "select_globals": [g for g in release_sites().ht()._global],
+            }
+        )
     return config
 
 
-def custom_in_silico_select(ht):
+def custom_in_silico_select(ht: hl.Table) -> dict:
     """
     Get in silico predictors from VEP for release.
 
@@ -183,7 +184,7 @@ def custom_in_silico_select(ht):
     return selects
 
 
-def custom_region_flags_select(ht):
+def custom_region_flags_select(ht: hl.Table) -> dict:
     """
     Select region flags for release.
 
@@ -201,7 +202,7 @@ def custom_region_flags_select(ht):
     return selects
 
 
-def custom_filters_select(ht):
+def custom_filters_select(ht: hl.Table) -> dict:
     """
     Select gnomad filter HT fields for release dataset.
 
@@ -242,6 +243,8 @@ def custom_info_select(ht: hl.Table) -> dict:
         "monoallelic",
         "SOR",
     ]
+
+    # TODO: Add VRS Annotations
     filters_info_dict = {field: filters[field] for field in filters_info_fields}
     score_name = hl.eval(filters_ht.filtering_model.score_name)
     filters_info_dict.update({**{f"{score_name}": filters[f"{score_name}"]}})
@@ -277,7 +280,7 @@ def custom_vep_select(ht: hl.Table) -> dict:
     return selects
 
 
-def get_select_global_fields(ht) -> dict:
+def get_select_global_fields(ht: hl.Table) -> dict:
     """
     Generate a dictionary of globals to select by checking the configs of all tables joined.
 
@@ -298,7 +301,7 @@ def get_select_global_fields(ht) -> dict:
     return t_globals
 
 
-def get_select_fields(selects, base_ht):
+def get_select_fields(selects, base_ht: hl.Table) -> dict:
     """
     Generate a select dict from traversing the base_ht and extracting annotations.
 
@@ -320,7 +323,7 @@ def get_select_fields(selects, base_ht):
     return select_fields
 
 
-def get_ht(dataset, _intervals, test) -> hl.Table:
+def get_ht(dataset: str, _intervals, test) -> hl.Table:
     """
     Return the appropriate hail table with selects applied.
 
@@ -332,6 +335,9 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
     print(f"Getting the {dataset}...")
     config = get_config()[dataset]
 
+    # There is no single path for insilico so this impacts its join efficiency but
+    # I dont think its worth the effort of restructuring this code to make it work with
+    # multiple input paths thus the special treatment here
     if dataset == "in_silico":
         base_ht = config["ht"]
     else:
@@ -361,8 +367,12 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
 
 
 def join_hts(
-    base_table: hl.Table, tables: List[str], new_partition_percent, test, release_exists
-):
+    base_table: hl.Table,
+    tables: List[str],
+    new_partition_percent: float,
+    test: bool,
+    release_exists: bool,
+) -> hl.Table:
     """
     Outer join a list of hail tables.
 
@@ -371,6 +381,7 @@ def join_hts(
     :param new_partition_percent: Percent of base_table partitions used for final release hail Table.
     :param test: Whether this is for a test run.
     :param release_exists: Whether the release HT already exists.
+    :return: Hail Table with datasets joined.
     """
     logger.info(
         "Reading in %s to determine partition intervals for efficient join",
@@ -393,7 +404,7 @@ def join_hts(
     )
 
     hts = [get_ht(table, _intervals=partition_intervals, test=test) for table in tables]
-    # TODO: Check with hail if an intermediate checkpoint be helpful here?
+    # TODO: Check with hail if an intermediate checkpoint be helpful here
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
     # Track the dataset we've added as well as the source path.
@@ -432,17 +443,17 @@ def main(args):
 
     t_globals = get_select_global_fields(ht)
 
+    # Previously discussed having a gnomad_qc and gnomad_method repo versions but this
+    # does not make sense to me since they have been in continuous development and there
+    # is not single version for either.
     ht = ht.select_globals(
         **t_globals,
-        gnomad_qc_version=args.gnomad_qc_version,
-        # TODO: See if we can pull this from the cluster
-        gnomad_methods_version=args.gnomad_methods_version,
-        README=FIELD_DESCRIPTIONS,  # TODO: Make version dict for this and have it live in methods?
+        README=FIELD_DESCRIPTIONS,
         version=args.version,
     )
 
     # The dbsnp table does not have a global field for dbsnp_versions, same
-    # with vep and sift/polyphen
+    # with vep and sift/polyphen (still need these)
     ht = ht.annotate_globals(
         tool_versions=ht.tool_versions.annotate(
             dbsnp_version="b156",
@@ -482,8 +493,6 @@ if __name__ == "__main__":
         "--version",
         help="The version of gnomAD.",
         default=CURRENT_RELEASE,
-        # TODO: Consider using this for iterative releases - requires restructing
-        # of config select fields where there are changes
         required=True,
     )
     parser.add_argument(
@@ -512,16 +521,6 @@ if __name__ == "__main__":
         "--overwrite",
         help="Overwrite existing HT.",
         action="store_true",
-    )
-    parser.add_argument(
-        "--gnomad-qc-version",
-        help="Version of gnomAD QC repo",
-        required=True,
-    )
-    parser.add_argument(
-        "--gnomad-methods-version",
-        help="Version of gnomAD methods repo",
-        required=True,
     )
     parser.add_argument(
         "--release-exists",
