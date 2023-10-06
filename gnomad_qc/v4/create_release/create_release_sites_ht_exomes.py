@@ -221,6 +221,9 @@ def custom_filters_select(ht: hl.Table) -> dict:
     return selects
 
 
+# TODO: This function needs to be updated depending on which fields we want to keep from
+#  info, I noticed there a dups within structs, e.g quasi_info has AS_SOR as does AS_info,
+# maybe we need to pull these from filters instead?
 def custom_info_select(ht: hl.Table) -> dict:
     """
     Select fields for info hail Table annotation in release.
