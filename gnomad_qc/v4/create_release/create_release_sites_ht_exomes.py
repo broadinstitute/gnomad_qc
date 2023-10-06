@@ -6,7 +6,6 @@ from datetime import datetime
 from functools import reduce
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import SUBSETS
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
     lcr_intervals,
@@ -44,7 +43,6 @@ TABLES_FOR_RELEASE = [
     "filters",
     "freq",
     "info",
-    "subsets",
     "region_flags",
     "in_silico",
     "vep",
@@ -117,6 +115,7 @@ def get_config(release_exists: bool = False) -> dict:
                 "freq",
                 "faf",
                 "grpmax",
+                "gen_anc_faf_max",
                 "histograms",
             ],
             "select_globals": [
@@ -187,22 +186,6 @@ def custom_filters_select(ht):
         n_alt_alleles=ht.n_alt_alleles,
         was_mixed=ht.was_mixed,
     )
-    return selects
-
-
-def custom_subset_select(ht):
-    """
-    Select release subset field using freq HT AN value.
-
-    :param ht: hail table
-    :return: select expression dict
-    """
-    selects = {
-        subset: hl.if_else(
-            ht.freq[ht.freq_index_dict[f"{subset}-adj"]].AN > 0, True, False
-        )
-        for subset in SUBSETS
-    }
     return selects
 
 
