@@ -85,6 +85,7 @@ def create_bin_ht(
             extracted=ht.info.extracted,
             snp=ht.info.snp,
             positive_train_site=ht.info.training,
+            # We only use positive training sites for IF.
             negative_train_site=hl.missing(hl.tbool),
         )
     else:
