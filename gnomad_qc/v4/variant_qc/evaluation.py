@@ -78,7 +78,10 @@ def create_bin_ht(
             negative_train_site=ht.fp,
         )
     elif model_type == "if":
-        struct_expr = struct_expr.annotate(score=ht.info.SCORE)
+        struct_expr = struct_expr.annotate(
+            score=ht.info.SCORE,
+            calibration_sensitivity=ht.info.CALIBRATION_SENSITIVITY,
+        )
     else:
         raise ValueError(
             f"Model type {model_type} not recognized. Must be one of 'vqsr', 'rf', or"
