@@ -444,15 +444,14 @@ def create_phylop_grch38_ht() -> hl.Table:
     Convert PhyloP scores to Hail Table.
 
     .. note::
-       BigWig format of Phylop from here:
-       https://cgl.gi.ucsc.edu/data/cactus/241-mammalian-2020v2-hub/Homo_sapiens/241-mammalian-2020v2.bigWig
-       And convert
-       Converted it to bedGraph format with bigWigToBedGraph from the kent packages
-       of UCSC (https://hgdownload.cse.ucsc.edu/admin/exe/) with the following command:
-       `./bigWigToBedGraph ~/Downloads/241-mammalian-2020v2.bigWig ~/Downloads/241-mammalian-2020v2.bedGraph`
-       The bedGraph file is bigzipped before import to Hail.
-       Different to other in silico predictors, Phylop HT is not keyed by locus &
-       alleles, we have a score per base, so we won't have any score for deletions.
+    BigWig format of Phylop was download from here:
+    https://cgl.gi.ucsc.edu/data/cactus/241-mammalian-2020v2-hub/Homo_sapiens/241-mammalian-2020v2.bigWig
+    and converted it to bedGraph format with bigWigToBedGraph from the kent packages
+    of UCSC (https://hgdownload.cse.ucsc.edu/admin/exe/) with the following command:
+    `./bigWigToBedGraph ~/Downloads/241-mammalian-2020v2.bigWig ~/Downloads/241-mammalian-2020v2.bedGraph`
+    The bedGraph file is bigzipped before importing to Hail.
+    Different to other in silico predictors, Phylop HT is not keyed by locus
+    & alleles, we have a score per base pair, so we won't have any score for deletions.
 
     :return: Hail Table with Phylop Scores for GRCh38
     """
