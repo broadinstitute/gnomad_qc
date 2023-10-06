@@ -6,14 +6,11 @@ from datetime import datetime
 from functools import reduce
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import (
-    SUBSETS,  # TODO: Update gnomAD_methods to dict: key version, value subsets
-)
+from gnomad.resources.grch38.gnomad import SUBSETS
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
     lcr_intervals,
     seg_dup_intervals,
-    vep_context,
 )
 from gnomad.utils.annotations import region_flag_expr
 from gnomad.utils.slack import slack_notifications
@@ -24,7 +21,7 @@ from gnomad_qc.v4.resources.annotations import (
     get_freq,
     get_info,
     get_insilico_predictors,
-    vep,
+    get_vep,
 )
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
@@ -53,7 +50,98 @@ TABLES_FOR_RELEASE = [
     "vep",
 ]
 
-INSILICO_PREDICTORS = ["cadd", "splice_ai", "pangolin", "revel"]
+INSILICO_PREDICTORS = ["cadd", "spliceai", "pangolin", "revel"]
+
+
+# Putting this in a function so that it is not evaluated until the script is run.
+def get_config() -> dict:
+    """
+    Get configuration dictionary.
+
+    Format:
+        '<Name of dataset>': {
+                'path': 'gs://path/to/hailtable.ht',
+                'select': '<Optional list of fields to select or dict of new field name to location of old fieldin the dataset.>',
+                'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
+                'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
+                'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>
+            },
+
+    :return: dict of datasets configs.
+    """
+    config = {
+        "dbsnp": {
+            "ht": dbsnp.ht(),
+            "path": dbsnp.path,
+            "select": ["rsid"],
+            "select_globals": {
+                "dbsnp_version": "version",  # TODO: Need to add global to this table with version
+            },
+        },
+        "filters": {
+            "ht": final_filter().ht(),
+            "path": final_filter().path,
+            "select": ["filters", "vqsr"],
+            "custom_select": custom_filters_select,
+            "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
+        },
+        "in_silico": {
+            "ht": reduce(
+                (lambda joined_ht, ht: joined_ht.join(ht, "outer")),
+                [
+                    get_insilico_predictors(predictor).ht()
+                    for predictor in INSILICO_PREDICTORS
+                ],
+            ),
+            # TODO: Update these once we knew which tools we will be usings
+            "select": ["cadd", "revel", "spliceai_ds_max", "pangolin_largest_ds"],
+            # TODO: Update these once we knew which tools we will be usings
+            "select_globals": ["cadd_version", "revel_version"],
+        },
+        "info": {
+            "ht": get_info().ht(),
+            "path": get_info().path,
+            "select": ["was_split", "a_index"],
+            "custom_select": custom_info_select,
+        },
+        "freq": {
+            "ht": get_freq().ht(),
+            "path": get_freq().path,
+            "select": [
+                "freq",
+                "faf",
+                "grpmax",
+                "histograms",
+            ],
+            "select_globals": [
+                "freq_meta",
+                "freq_index_dict",
+                "freq_meta_sample_count",
+                "faf_meta",
+                "faf_index_dict",
+                "age_distribution",
+                "downsamplings",
+            ],
+        },
+        "vep": {
+            "ht": get_vep().ht(),
+            # TODO: drop 100% missing? Module to do this after all annotations added?
+            "select": ["vep"],
+            "select_globals": ["vep_version"],  # TODO: Confirm or add this is a global
+        },
+        "region_flags": {
+            "ht": get_freq().ht(),
+            "path": get_freq().path,
+            "custom_select": custom_region_flags_select,
+        },
+        "release": {
+            "ht": release_sites().ht(),
+            "path": release_sites().path,
+            "select": [r for r in release_sites().ht()._row],
+            "select_globals": [g for g in release_sites().ht()._global],
+        },
+    }
+    return config
 
 
 def custom_region_flags_select(ht):
@@ -118,10 +206,10 @@ def custom_info_select(ht):
     :param ht: hail table
     :return: select expression dict
     """
-    freq_ht = CONFIG.get("freq")["ht"]
+    freq_ht = get_config().get("freq")["ht"]
     freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
 
-    filters_ht = CONFIG.get("filters")["ht"]
+    filters_ht = get_config().get("filters")["ht"]
     filters = filters_ht[ht.key]
     filters_info_fields = [
         "singleton",
@@ -151,9 +239,9 @@ def get_select_global_fields(ht):
     :param ht: Final joined HT with globals.
     """
     t_globals = [
-        get_select_fields(CONFIG.get(t)["select_globals"], ht)
+        get_select_fields(get_config().get(t)["select_globals"], ht)
         for t in args.tables_for_join
-        if "select_globals" in CONFIG.get(t)
+        if "select_globals" in get_config().get(t)
     ]
     t_globals = reduce(lambda a, b: dict(a, **b), t_globals)
 
@@ -191,7 +279,7 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
     :param test: Whether call is for a test run.
     :return: Hail Table with fields to select.
     """
-    config = CONFIG[dataset]
+    config = get_config()[dataset]
     ht_path = config["path"]
     logger.info("Reading in %s", dataset)
     base_ht = hl.read_table(ht_path, _intervals=_intervals)
@@ -230,7 +318,7 @@ def join_hts(base_table, tables, new_partition_percent, test):
         "Reading in %s to determine partition intervals for efficient join",
         base_table,
     )
-    base_ht_path = CONFIG[base_table]["path"]
+    base_ht_path = get_config()[base_table]["path"]
     base_ht = hl.read_table(base_ht_path)
     if test:
         base_ht = hl.filter_intervals(
@@ -246,7 +334,7 @@ def join_hts(base_table, tables, new_partition_percent, test):
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
     # Track the dataset we've added as well as the source path.
-    included_dataset = {k: v["path"] for k, v in CONFIG.items() if k in tables}
+    included_dataset = {k: v["path"] for k, v in get_config().items() if k in tables}
 
     joined_ht = joined_ht.annotate_globals(
         date=datetime.now().isoformat(),
@@ -254,92 +342,6 @@ def join_hts(base_table, tables, new_partition_percent, test):
     )
     joined_ht.describe()
     return joined_ht
-
-
-"""
-Configurations of dataset to combine.
-Format:
-'<Name of dataset>': {
-        'path': 'gs://path/to/hailtable.ht',
-        'select': '<Optional list of fields to select or dict of new field name to location of old fieldin the dataset.>',
-        'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
-        'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
-        'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>
-    },
-"""
-
-CONFIG = {
-    "dbsnp": {
-        "ht": dbsnp.ht(),
-        "path": dbsnp.path,
-        "select": ["rsid"],
-        "select_globals": {
-            "dbsnp_version": "version",  # TODO: Need to add global to this table with version
-        },
-    },
-    "filters": {
-        "ht": final_filter().ht(),
-        "path": final_filter().path,
-        "select": ["filters", "vqsr"],
-        "custom_select": custom_filters_select,
-        "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
-    },
-    "in_silico": {
-        "ht": reduce(
-            (lambda joined_ht, ht: joined_ht.join(ht, "outer")),
-            [
-                get_insilico_predictors(predictor).ht()
-                for predictor in INSILICO_PREDICTORS
-            ],
-        ),
-        # TODO: Update these once we knew which tools we will be usings
-        "select": ["cadd", "revel", "spliceai_ds_max", "pangolin_largest_ds"],
-        # TODO: Update these once we knew which tools we will be usings
-        "select_globals": ["cadd_version", "revel_version"],
-    },
-    "info": {
-        "ht": get_info().ht(),
-        "path": get_info().path,
-        "select": ["was_split", "a_index"],
-        "custom_select": custom_info_select,
-    },
-    "freq": {
-        "ht": get_freq().ht(),
-        "path": get_freq().path,
-        "select": [
-            "freq",
-            "faf",
-            "grpmax",
-            "histograms",
-        ],
-        "select_globals": [
-            "freq_meta",
-            "freq_index_dict",
-            "freq_meta_sample_count",
-            "faf_meta",
-            "faf_index_dict",
-            "age_distribution",
-            "downsamplings",
-        ],
-    },
-    "vep": {
-        "ht": vep.ht(),
-        # TODO: drop 100% missing? Module to do this after all annotations added?
-        "select": ["vep"],
-        "select_globals": ["vep_version"],  # TODO: Confirm or add this is a global
-    },
-    "region_flags": {
-        "ht": get_freq().ht(),
-        "path": get_freq().path,
-        "custom_select": custom_region_flags_select,
-    },
-    "release": {
-        "ht": release_sites().ht(),
-        "path": release_sites().path,
-        "select": [r for r in release_sites().ht()._row],
-        "select_globals": [g for g in release_sites().ht()._global],
-    },
-}
 
 
 def main(args):
