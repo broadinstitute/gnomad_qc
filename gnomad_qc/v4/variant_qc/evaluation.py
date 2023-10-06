@@ -81,6 +81,11 @@ def create_bin_ht(
         struct_expr = struct_expr.annotate(
             score=ht.info.SCORE,
             calibration_sensitivity=ht.info.CALIBRATION_SENSITIVITY,
+            calibration=ht.info.calibration,
+            extracted=ht.info.extracted,
+            snp=ht.info.snp,
+            positive_train_site=ht.info.training,
+            negative_train_site=hl.missing(hl.tbool),
         )
     else:
         raise ValueError(
