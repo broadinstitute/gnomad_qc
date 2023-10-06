@@ -439,6 +439,40 @@ def create_revel_grch38_ht() -> hl.Table:
     return final_ht
 
 
+def create_phylop_grch38_ht() -> hl.Table:
+    """
+    Convert PhyloP scores to Hail Table.
+
+    .. note::
+       BigWig format of Phylop from here:
+       https://cgl.gi.ucsc.edu/data/cactus/241-mammalian-2020v2-hub/Homo_sapiens/241-mammalian-2020v2.bigWig
+       And convert
+       Converted it to bedGraph format with bigWigToBedGraph from the kent packages
+       of UCSC (https://hgdownload.cse.ucsc.edu/admin/exe/) with the following command:
+       `./bigWigToBedGraph ~/Downloads/241-mammalian-2020v2.bigWig ~/Downloads/241-mammalian-2020v2.bedGraph`
+       The bedGraph file is bigzipped before import to Hail.
+       Different to other in silico predictors, Phylop HT is not keyed by locus &
+       alleles, we have a score per base, so we won't have any score for deletions.
+
+    :return: Hail Table with Phylop Scores for GRCh38
+    """
+    bg_path = "gs://gnomad-insilico/phylop/Human-GRCh38-Phylop-241-mammalian-2020v2.bedGraph.bgz"
+    columns = ["chr", "start", "end", "phylop"]
+    ht = hl.import_table(
+        bg_path,
+        min_partitions=1000,
+        impute=True,
+        no_header=True,
+    ).rename({f"f{i}": c for i, c in enumerate(columns)})
+
+    ht = ht.annotate(pos=hl.range(ht.start + 1, ht.end + 1))
+    ht = ht.explode("pos")
+    ht = ht.annotate(locus=hl.locus(ht.chr, ht.pos, reference_genome="GRCh38"))
+    ht = ht.select("locus", "phylop")
+
+    return ht
+
+
 def main(args):
     """Generate Hail Tables with in silico predictors."""
     hl.init(
@@ -485,6 +519,13 @@ def main(args):
             overwrite=args.overwrite,
         )
         logger.info("REVEL Hail Table for GRCh38 created.")
+    if args.phylop:
+        logger.info("Creating PhyloP Hail Table for GRCh38...")
+        ht = create_phylop_grch38_ht()
+        ht.write(
+            get_insilico_predictors(predictor="phylop").path,
+            overwrite=args.overwrite,
+        )
 
 
 if __name__ == "__main__":
@@ -497,6 +538,7 @@ if __name__ == "__main__":
     parser.add_argument("--spliceai", help="Create SpliceAI HT", action="store_true")
     parser.add_argument("--pangolin", help="Create Pangolin HT", action="store_true")
     parser.add_argument("--revel", help="Create REVEL HT.", action="store_true")
+    parser.add_argument("--phylop", help="Create PhyloP HT.", action="store_true")
     args = parser.parse_args()
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
