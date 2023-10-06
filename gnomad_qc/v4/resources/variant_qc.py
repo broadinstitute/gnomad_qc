@@ -194,21 +194,29 @@ def get_rf_training(model_id: str, test: bool = False) -> VersionedTableResource
     )
 
 
-def get_rf_result(
-    model_id: Optional[str] = None, test: bool = False
+# TODO: Update in other variant QC scripts when they are merged.
+def get_variant_qc_result(
+    model_id: str, test: bool = False, split: bool = True
 ) -> VersionedTableResource:
     """
-    Get the results of RF filtering for a given run.
+    Get the results of variant QC filtering for a given run.
 
-    :param model_id: RF run to load.
+    :param model_id: Model ID of variant QC run to load. Must start with 'rf_', 'vqsr_',
+        or 'if_'.
     :param test: Whether to use a tmp path for variant QC tests.
-    :return: VersionedTableResource for RF filtered data.
+    :param split: Whether to return the split or unsplit variant QC result.
+    :return: VersionedTableResource for variant QC results.
     """
+    model_type = model_id.split("_")[0]
+    if model_type not in ["rf", "vqsr", "if"]:
+        raise ValueError(
+            f"Model ID must start with 'rf_', 'vqsr_', or 'if_', but found {model_id}"
+        )
     return VersionedTableResource(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{_variant_qc_root(version, test=test)}/rf/models/{model_id}/gnomad.exomes.v{version}.rf_result.ht"
+                f"{_variant_qc_root(version, test=test)}/{model_type}/models/{model_id}/gnomad.exomes.v{version}.{model_type}_result.{'' if split else '.unsplit'}.ht"
             )
             for version in VERSIONS
         },

@@ -174,30 +174,6 @@ def get_variant_qc_annotations(test: bool = False) -> VersionedTableResource:
     )
 
 
-def get_vqsr_filters(
-    model_id: str,
-    split: bool = True,
-    finalized: bool = False,
-) -> VersionedTableResource:
-    """
-    Get the specified VQSR filtering annotation resource.
-
-    :param model_id: VQSR filtering model id
-    :param split: Split or multi-allelic version of the filtering file
-    :param finalized: Whether to return the raw VQSR table or the finalized VQSR table representing determined cutoffs
-    :return: VQSR filtering annotation file
-    """
-    return VersionedTableResource(
-        CURRENT_VERSION,
-        {
-            version: TableResource(
-                f"{_annotations_root(version)}/vqsr/gnomad.exomes.v{version}.{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
-            )
-            for version in VERSIONS
-        },
-    )
-
-
 def info_vcf_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
     """
     Path to sites VCF (input information for running VQSR).
