@@ -4,6 +4,7 @@ import argparse
 import logging
 from datetime import datetime
 from functools import reduce
+from typing import List
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import (
@@ -16,6 +17,7 @@ from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
 
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v4.annotations.insilico_predictors import get_sift_polyphen_from_vep
 from gnomad_qc.v4.resources.annotations import (
     get_freq,
     get_info,
@@ -74,7 +76,7 @@ def get_config(release_exists: bool = False) -> dict:
             "path": dbsnp.path,
             "select": ["rsid"],
             "select_globals": {
-                "dbsnp_version": "version",  # TODO: Need to add global to this table with version
+                "dbsnp_version": "version",
             },
         },
         "filters": {
@@ -92,8 +94,14 @@ def get_config(release_exists: bool = False) -> dict:
                     for predictor in INSILICO_PREDICTORS
                 ],
             ),
+            "path": [
+                get_insilico_predictors(predictor=predictor).path
+                for predictor in INSILICO_PREDICTORS
+            ],
+            "field_name": "in_silico_predictors",
             # TODO: Update these once we knew which tools we will be usings
             "select": ["cadd", "revel_max", "spliceai_ds_max", "pangolin_largest_ds"],
+            "custom_select": custom_in_silico_select,
             # TODO: Update these once we knew which tools we will be usings
             "select_globals": [
                 "cadd_version",
@@ -131,8 +139,9 @@ def get_config(release_exists: bool = False) -> dict:
         "vep": {
             "ht": get_vep().ht(),
             # TODO: drop 100% missing? Module to do this after all annotations added?
+            "path": get_vep().path,
             "select": ["vep"],
-            "select_globals": ["vep_version"],  # TODO: Confirm or add this is a global
+            "select_globals": ["vep_version"],
         },
         "region_flags": {
             "ht": get_freq().ht(),
@@ -151,6 +160,21 @@ def get_config(release_exists: bool = False) -> dict:
             "select_globals": [g for g in release_sites().ht()._global],
         }
     return config
+
+
+def custom_in_silico_select(ht):
+    """
+    Get in silico predictors from VEP for release.
+
+    :param ht: hail Table.
+    :return: select expression dict
+    """
+    vep_in_silico = get_sift_polyphen_from_vep(get_vep().ht())
+    selects = {
+        "sift_max": vep_in_silico[ht.key].sift_max,
+        "polyphen_max": vep_in_silico[ht.key].polyphen_max,
+    }
+    return selects
 
 
 def custom_region_flags_select(ht):
@@ -306,7 +330,9 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
     return base_ht.select(**select_query)
 
 
-def join_hts(base_table, tables, new_partition_percent, test, release_exists):
+def join_hts(
+    base_table: hl.Table, tables: List[str], new_partition_percent, test, release_exists
+):
     """
     Outer join a list of hail tables.
 
@@ -349,7 +375,7 @@ def join_hts(base_table, tables, new_partition_percent, test, release_exists):
 
     joined_ht = joined_ht.annotate_globals(
         date=datetime.now().isoformat(),
-        datasets=hl.dict(included_dataset),
+        datasets=included_dataset,
     )
     joined_ht.describe()
     return joined_ht
@@ -423,7 +449,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-t",
         "--test",
-        help="Runs a test on the first two partitions of the HT.",
+        help="Runs a test on PCSK9 region, chr1:55039447-55064852",
         action="store_true",
     )
     parser.add_argument(
