@@ -23,6 +23,7 @@ from gnomad_qc.v4.resources.annotations import (
     get_info,
     get_insilico_predictors,
     get_vep,
+    get_vrs,
 )
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
@@ -244,7 +245,9 @@ def custom_info_select(ht: hl.Table) -> dict:
         "SOR",
     ]
 
-    # TODO: Add VRS Annotations
+    vrs_ht = get_vrs().ht()
+    vrs_info_fields = {"vrs": vrs_ht[ht.key].vrs}
+
     filters_info_dict = {field: filters[field] for field in filters_info_fields}
     score_name = hl.eval(filters_ht.filtering_model.score_name)
     filters_info_dict.update({**{f"{score_name}": filters[f"{score_name}"]}})
@@ -252,6 +255,7 @@ def custom_info_select(ht: hl.Table) -> dict:
     info_dict = {field: ht.info[field] for field in SITE_FIELDS + AS_FIELDS}
     info_dict.update(filters_info_dict)
     info_dict.update(freq_info_dict)
+    info_dict.update(vrs_info_fields)
 
     selects = {"info": hl.struct(**info_dict)}
 
@@ -453,12 +457,18 @@ def main(args):
     )
 
     # The dbsnp table does not have a global field for dbsnp_versions, same
-    # with vep and sift/polyphen (still need these)
+    # with sift/polyphen and vrs (still need these)
     ht = ht.annotate_globals(
         tool_versions=ht.tool_versions.annotate(
             dbsnp_version="b156",
             sift_version="FILL THIS IS",
             polyphen_version="FILL THIS IS",
+            vrs_version=hl.struct(
+                **{
+                    "vrs_python_version": "FILL THIS IS",
+                    "seqrepo_version": "FILL THIS IS",
+                },
+            ),
         )
     )
 
