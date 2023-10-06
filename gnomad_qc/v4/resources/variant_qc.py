@@ -211,7 +211,7 @@ def get_variant_qc_result(
     """
     Get the results of variant QC filtering for a given run.
 
-    :param model_id: Model ID of variant QC run. Must start with 'rf_', 'vqsr_',
+    :param model_id: Model ID of variant QC run to load. Must start with 'rf_', 'vqsr_',
         or 'if_'.
     :param test: Whether to use a tmp path for variant QC tests.
     :param split: Whether to return the split or unsplit variant QC result.
