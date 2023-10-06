@@ -54,7 +54,7 @@ INSILICO_PREDICTORS = ["cadd", "spliceai", "pangolin", "revel"]
 
 
 # Putting this in a function so that it is not evaluated until the script is run.
-def get_config() -> dict:
+def get_config(release_exists: bool = False) -> dict:
     """
     Get configuration dictionary.
 
@@ -67,6 +67,7 @@ def get_config() -> dict:
                 'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>
             },
 
+    :param release_exists: Whether the release HT already exists.
     :return: dict of datasets configs.
     """
     config = {
@@ -140,12 +141,16 @@ def get_config() -> dict:
             "custom_select": custom_region_flags_select,
         },
         "release": {
+            "path": release_sites().path,
+        },
+    }
+    if release_exists:
+        config["release"] = {
             "ht": release_sites().ht(),
             "path": release_sites().path,
             "select": [r for r in release_sites().ht()._row],
             "select_globals": [g for g in release_sites().ht()._global],
-        },
-    }
+        }
     return config
 
 
@@ -237,16 +242,19 @@ def custom_info_select(ht):
     return selects
 
 
-def get_select_global_fields(ht):
+def get_select_global_fields(ht, release_exists=False):
     """
     Generate a dictionary of globals to select by checking the configs of all tables joined.
 
     :param ht: Final joined HT with globals.
+    :param release_exists: Whether the release HT already exists.
     """
     t_globals = [
-        get_select_fields(get_config().get(t)["select_globals"], ht)
+        get_select_fields(
+            get_config(release_exists=release_exists).get(t)["select_globals"], ht
+        )
         for t in args.tables_for_join
-        if "select_globals" in get_config().get(t)
+        if "select_globals" in get_config(release_exists=release_exists).get(t)
     ]
     t_globals = reduce(lambda a, b: dict(a, **b), t_globals)
 
@@ -275,16 +283,17 @@ def get_select_fields(selects, base_ht):
     return select_fields
 
 
-def get_ht(dataset, _intervals, test) -> hl.Table:
+def get_ht(dataset, _intervals, test, release_exists) -> hl.Table:
     """
     Return the appropriate hail table with selects applied.
 
     :param dataset: Hail Table to join.
     :param _intervals: Intervals for reading in hail Table.
     :param test: Whether call is for a test run.
+    :param release_exists: Whether the release HT already exists.
     :return: Hail Table with fields to select.
     """
-    config = get_config()[dataset]
+    config = get_config(release_exists=release_exists)[dataset]
     ht_path = config["path"]
     logger.info("Reading in %s", dataset)
     base_ht = hl.read_table(ht_path, _intervals=_intervals)
@@ -314,7 +323,7 @@ def get_ht(dataset, _intervals, test) -> hl.Table:
     return base_ht.select(**select_query)
 
 
-def join_hts(base_table, tables, new_partition_percent, test):
+def join_hts(base_table, tables, new_partition_percent, test, release_exists):
     """
     Outer join a list of hail tables.
 
@@ -322,12 +331,13 @@ def join_hts(base_table, tables, new_partition_percent, test):
     :param tables: List of tables to join.
     :param new_partition_percent: Percent of base_table partitions used for final release hail Table.
     :param test: Whether this is for a test run.
+    :param release_exists: Whether the release HT already exists.
     """
     logger.info(
         "Reading in %s to determine partition intervals for efficient join",
         base_table,
     )
-    base_ht_path = get_config()[base_table]["path"]
+    base_ht_path = get_config(release_exists=release_exists)[base_table]["path"]
     base_ht = hl.read_table(base_ht_path)
     if test:
         # Filter to PCSK9 for testing
@@ -348,7 +358,11 @@ def join_hts(base_table, tables, new_partition_percent, test):
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
     # Track the dataset we've added as well as the source path.
-    included_dataset = {k: v["path"] for k, v in get_config().items() if k in tables}
+    included_dataset = {
+        k: v["path"]
+        for k, v in get_config(release_exists=release_exists).items()
+        if k in tables
+    }
 
     joined_ht = joined_ht.annotate_globals(
         date=datetime.now().isoformat(),
@@ -371,6 +385,7 @@ def main(args):
         args.tables_for_join,
         args.new_partition_percent,
         args.test,
+        args.release_exists,
     )
 
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
@@ -390,7 +405,7 @@ def main(args):
     logger.info("Writing out release HT to %s", release_sites().path)
     ht = ht.checkpoint(
         (
-            qc_temp_prefix() + "/release / gnomad.genomes.sites.test.ht"
+            qc_temp_prefix() + "/release/gnomad.genomes.sites.test.ht"
             if args.test
             else release_sites().path
         ),
@@ -458,6 +473,11 @@ if __name__ == "__main__":
         "--gnomad-methods-version",
         help="Version of gnomAD methods repo",
         required=True,
+    )
+    parser.add_argument(
+        "--release-exists",
+        help="Whether the release HT already exists.",
+        action="store_true",
     )
     parser.add_argument(
         "--slack_channel", help="Slack channel to post results and notifications to."
