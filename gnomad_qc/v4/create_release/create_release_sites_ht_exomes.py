@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+from copy import deepcopy
 from datetime import datetime
 from functools import reduce
 from typing import List
@@ -39,7 +40,9 @@ logger.setLevel(logging.INFO)
 
 # Remove InbreedingCoeff from allele-specific fields and SOR from SITE
 # (processed separately from other fields)
+AS_FIELDS = deepcopy(AS_FIELDS)
 AS_FIELDS.remove("InbreedingCoeff")
+SITE_FIELDS = deepcopy(SITE_FIELDS)
 SITE_FIELDS.remove("SOR")
 TABLES_FOR_RELEASE = [
     "dbsnp",
@@ -51,7 +54,7 @@ TABLES_FOR_RELEASE = [
     "vep",
 ]
 
-INSILICO_PREDICTORS = ["spliceai", "pangolin", "revel"]  # "cadd",
+INSILICO_PREDICTORS = ["spliceai", "pangolin", "revel"]  # "cadd", "phylop"
 
 
 # Putting this in a function so that it is not evaluated until the script is run.
@@ -104,6 +107,7 @@ def get_config(release_exists: bool = False):
                 "revel_max",
                 "spliceai_ds_max",
                 "pangolin_largest_ds",
+                # "phylop"
             ],
             "custom_select": custom_in_silico_select,
             "select_globals": [
@@ -111,6 +115,7 @@ def get_config(release_exists: bool = False):
                 "revel_version",
                 "spliceai_version",
                 "pangolin_version",
+                # "phylop_version",
             ],
             "global_name": "tool_versions",
         },
@@ -332,7 +337,7 @@ def get_select_fields(selects, base_ht: hl.Table):
     return select_fields
 
 
-def get_ht(dataset: str, _intervals, test) -> hl.Table:
+def get_ht(dataset: str, _intervals, test, release_exists) -> hl.Table:
     """
     Return the appropriate hail table with selects applied.
 
@@ -342,7 +347,7 @@ def get_ht(dataset: str, _intervals, test) -> hl.Table:
     :return: Hail Table with fields to select.
     """
     logger.info("Getting the %s dataset and its selected annotations...", dataset)
-    config = get_config()[dataset]
+    config = get_config(release_exists=release_exists)[dataset]
 
     # There is no single path for insilico so this impacts its join efficiency but
     # I dont think its worth the effort of restructuring this code to make it work with
@@ -357,7 +362,11 @@ def get_ht(dataset: str, _intervals, test) -> hl.Table:
     if test:
         base_ht = hl.filter_intervals(
             base_ht,
-            [hl.parse_locus_interval("chr1:1-1000000", reference_genome="GRCh38")],
+            [
+                hl.parse_locus_interval(
+                    "chr1:55039447-55064852", reference_genome="GRCh38"
+                )
+            ],
         )
 
     select_fields = get_select_fields(config.get("select"), base_ht)
@@ -396,7 +405,7 @@ def join_hts(
         "Reading in %s to determine partition intervals for efficient join",
         base_table,
     )
-    base_ht_path = get_config(release_exists=release_exists)[base_table]["path"]
+    base_ht_path = get_config()[base_table]["path"]
     base_ht = hl.read_table(base_ht_path)
     if test:
         # Filter to PCSK9 for testing
@@ -417,7 +426,15 @@ def join_hts(
     tables.insert(0, base_table)
 
     logger.info("Joining datasets: %s...", tables)
-    hts = [get_ht(table, _intervals=partition_intervals, test=test) for table in tables]
+    hts = [
+        get_ht(
+            table,
+            _intervals=partition_intervals,
+            test=test,
+            release_exists=release_exists,
+        )
+        for table in tables
+    ]
     # TODO: Check with hail if an intermediate checkpoint be helpful here
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
@@ -463,7 +480,7 @@ def main(args):
     # is not single version for either.
     ht = ht.select_globals(
         **t_globals,
-        README=FIELD_DESCRIPTIONS,
+        #    README=FIELD_DESCRIPTIONS,
         version=args.version,
     )
 
@@ -489,10 +506,10 @@ def main(args):
         else release_sites().path
     )
     logger.info("Writing out release HT to %s", output_path)
-    # ht = ht.checkpoint(
-    #     output_path,
-    #     args.overwrite,
-    # )
+    ht = ht.checkpoint(
+        output_path,
+        args.overwrite,
+    )
 
     logger.info("Final variant count: %d", ht.count())
     ht.describe()
