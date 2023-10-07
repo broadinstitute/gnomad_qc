@@ -501,7 +501,7 @@ def main(args):
     )
 
     output_path = (
-        qc_temp_prefix() + "/release/gnomad.exomes.sites.test.ht"
+        qc_temp_prefix() + "release/gnomad.exomes.sites.test.ht"
         if args.test
         else release_sites().path
     )
