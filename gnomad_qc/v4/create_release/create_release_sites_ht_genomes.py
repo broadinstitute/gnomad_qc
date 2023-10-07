@@ -117,7 +117,7 @@ def get_hgdp_tgp_related_to_nonsubset(
         "%d HGDP/1KG samples are related to samples outside the subset", ht.count()
     )
 
-    return ht
+    return ht.select_globals()
 
 
 def get_hgdp_tgp_v4_exome_duplicates(
@@ -151,8 +151,8 @@ def get_hgdp_tgp_v4_exome_duplicates(
     # Get samples that are in the v3.1 genomes and are also in the v4 exomes.
     rel_ht = rel_ht.filter(rel_ht.gnomad_v3_duplicate)
 
-    # Check if the duplicates are still included in v4.0 exomes release and these
-    # samples belong to the HGDP + 1KG subset.
+    # Check if the duplicates are included in the v4.0 exomes release and belong to the
+    # HGDP + 1KG subset.
     ht = rel_ht.annotate(
         **{
             f"{x}_meta": hl.struct(
@@ -169,9 +169,11 @@ def get_hgdp_tgp_v4_exome_duplicates(
     )
 
     # Filter the relatedness HT twice to get the HGDP/1KG sample in each pair.
-    ht1 = ht.filter(ht.i_meta.hgdp_tgp).key_by().select("i")
+    ht1 = ht.filter(ht.i_meta.in_hgdp_tgp_subset).key_by().select("i")
     ht1 = ht1.select(s=ht1.i.s)
-    ht2 = ht.filter(ht.j_meta.hgdp_tgp).key_by().select("j")
+    # This table is likely empty because of the ordering when computing relatedness,
+    # but included for completeness.
+    ht2 = ht.filter(ht.j_meta.in_hgdp_tgp_subset).key_by().select("j")
     ht2 = ht2.select(s=ht2.j.s)
 
     # Merge the two HTs and remove the v3.1 prefix from the sample IDs.
@@ -183,7 +185,7 @@ def get_hgdp_tgp_v4_exome_duplicates(
         "%d HGDP/1KG samples are duplicated in the v4 exomes release", ht.count()
     )
 
-    return ht
+    return ht.select_globals()
 
 
 def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollection:
@@ -216,7 +218,9 @@ def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollect
             "v4.0 metadata": {"v4_meta_ht": v4_meta},
             "v3.1 and v4.0 relatedness": {"v4_relatedness_ht": v4_relatedness()},
         },
-        output_resources={"duplicated_to_exomes": hgdp_tgp_duplicated_to_exomes},
+        output_resources={
+            "hgdp_tgp_v4_exome_duplicate_ht": hgdp_tgp_duplicated_to_exomes
+        },
     )
 
     # Add all steps to the gnomAD v4 genomes release pipeline resource collection.
@@ -279,7 +283,7 @@ def main(args):
         ht = get_hgdp_tgp_v4_exome_duplicates(
             res.v3_meta_ht.ht(), res.v4_meta_ht.ht(), res.v4_relatedness_ht.ht()
         )
-        ht.write(res.hgdp_tgp_duplicated_to_exomes.path, overwrite=overwrite)
+        ht.write(res.hgdp_tgp_v4_exome_duplicate_ht.path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
