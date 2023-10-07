@@ -112,7 +112,7 @@ def get_hgdp_tgp_related_to_nonsubset(
     ht = ht1.union(ht2)
     ht = ht.select(s=ht.s.replace("v3.1::", "")).key_by("s").distinct()
 
-    ht = ht.naive_coalese(1).checkpoint(new_temp_file("related_to_nonsubset_ht"))
+    ht = ht.naive_coalesce(1).checkpoint(new_temp_file("related_to_nonsubset_ht"))
     logger.info(
         "%d HGDP/1KG samples are related to samples outside the subset", ht.count()
     )
@@ -178,7 +178,7 @@ def get_hgdp_tgp_v4_exome_duplicates(
     ht = ht1.union(ht2)
     ht = ht.select(s=ht.s.replace("v3.1::", "")).key_by("s").distinct()
 
-    ht = ht.naive_coalese(1).checkpoint(new_temp_file("duplicate_in_v4_exomes"))
+    ht = ht.naive_coalesce(1).checkpoint(new_temp_file("duplicate_in_v4_exomes"))
     logger.info(
         "%d HGDP/1KG samples are duplicated in the v4 exomes release", ht.count()
     )
