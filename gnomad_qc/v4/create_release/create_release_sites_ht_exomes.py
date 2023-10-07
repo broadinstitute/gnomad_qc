@@ -152,7 +152,10 @@ def get_config(release_exists: bool = False):
             "select": ["vep"],
             # Add in "custom_select" that drops insilicos
             "custom_select": custom_vep_select,
-            "select_globals": ["vep_version"],
+            # TODO: Update to have vep_csq_header -- should this be on the vep table
+            # itself?
+            "select_globals": ["vep_version", "vep_help", "vep_config"],
+            "global_name": "vep_globals",
         },
         "region_flags": {
             "ht": get_freq().ht(),
@@ -481,6 +484,8 @@ def main(args):
     ht = ht.select_globals(
         **t_globals,
         #    README=FIELD_DESCRIPTIONS,
+        date=ht.date,
+        datasets=ht.datasets,
         version=args.version,
     )
 
