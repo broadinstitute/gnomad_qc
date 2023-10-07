@@ -442,6 +442,9 @@ def join_hts(
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
     # Track the dataset we've added as well as the source path.
+    # TODO: Rerunning this will end up overwriting the datasets global to only the
+    # tables run which we dont want. Need to change this behavior so only the rerun
+    # tables are updated.
     included_dataset = {
         k: v["path"]
         for k, v in get_config(release_exists=release_exists).items()
