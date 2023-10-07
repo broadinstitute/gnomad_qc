@@ -412,6 +412,10 @@ def join_hts(
         base_ht.n_partitions() * new_partition_percent
     )
 
+    # Reorg list so base table is first
+    tables.remove(base_table)
+    tables.insert(0, base_table)
+
     logger.info("Joining datasets: %s...", tables)
     hts = [get_ht(table, _intervals=partition_intervals, test=test) for table in tables]
     # TODO: Check with hail if an intermediate checkpoint be helpful here
@@ -485,14 +489,16 @@ def main(args):
         else release_sites().path
     )
     logger.info("Writing out release HT to %s", output_path)
-    ht = ht.checkpoint(
-        output_path,
-        args.overwrite,
-    )
+    # ht = ht.checkpoint(
+    #     output_path,
+    #     args.overwrite,
+    # )
 
     logger.info("Final variant count: %d", ht.count())
     ht.describe()
-    ht.show()
+
+
+#    ht.show()
 
 
 if __name__ == "__main__":
