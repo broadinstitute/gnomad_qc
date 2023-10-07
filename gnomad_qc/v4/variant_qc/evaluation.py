@@ -23,7 +23,6 @@ from gnomad_qc.v4.resources.annotations import (
     get_info,
     get_trio_stats,
     get_variant_qc_annotations,
-    get_vqsr_filters,
 )
 from gnomad_qc.v4.resources.basics import calling_intervals, get_gnomad_v4_vds
 from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
@@ -31,8 +30,8 @@ from gnomad_qc.v4.resources.variant_qc import (
     TRUTH_SAMPLES,
     get_binned_concordance,
     get_callset_truth_data,
-    get_rf_result,
     get_score_bins,
+    get_variant_qc_result,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -45,16 +44,17 @@ def create_bin_ht(
     info_ht: hl.Table,
     rf_annotations_ht: hl.Table,
     n_bins: int,
-    vqsr: bool = False,
+    model_type: bool = False,
 ) -> hl.Table:
     """
-    Create a table with bin annotations added for a RF or VQSR run and writes it to its correct location in annotations.
+    Create a table with bin annotations added for a variant QC run.
 
-    :param ht: Table with RF or VQSR annotations.
+    :param ht: Table with variant QC result annotations.
     :param info_ht: Table with info annotations.
     :param rf_annotations_ht: Table with RF annotations.
     :param n_bins: Number of bins to bin the data into.
-    :param vqsr: Whether the annotations are from a VQSR run.
+    :param model_type: Type of variant QC model used to annotate the data. Must be one
+        of 'vqsr', 'rf', or 'if'.
     :return: Table with bin annotations.
     """
     ht = ht.filter(~info_ht[ht.key].AS_lowqual)
@@ -64,18 +64,34 @@ def create_bin_ht(
         filter_telomeres_and_centromeres=True,
     )
     struct_expr = hl.struct(**rf_annotations_ht[ht.key])
-    if vqsr:
+    if model_type == "vqsr":
         struct_expr = struct_expr.annotate(
             score=ht.info.AS_VQSLOD,
             positive_train_site=ht.info.POSITIVE_TRAIN_SITE,
             negative_train_site=ht.info.NEGATIVE_TRAIN_SITE,
             AS_culprit=ht.info.AS_culprit,
         )
-    else:
+    elif model_type == "rf":
         struct_expr = struct_expr.annotate(
             score=ht.rf_probability["TP"],
             positive_train_site=ht.tp,
             negative_train_site=ht.fp,
+        )
+    elif model_type == "if":
+        struct_expr = struct_expr.annotate(
+            score=ht.info.SCORE,
+            calibration_sensitivity=ht.info.CALIBRATION_SENSITIVITY,
+            calibration=ht.info.calibration,
+            extracted=ht.info.extracted,
+            snp=ht.info.snp,
+            positive_train_site=ht.info.training,
+            # We only use positive training sites for IF.
+            negative_train_site=hl.missing(hl.tbool),
+        )
+    else:
+        raise ValueError(
+            f"Model type {model_type} not recognized. Must be one of 'vqsr', 'rf', or"
+            " 'if'."
         )
 
     ht = ht.annotate(**struct_expr, non_lcr=hl.is_defined(non_lcr_ht[ht.key]))
@@ -196,19 +212,15 @@ def get_evaluation_resources(
     )
 
     # Create resource collection for each step of the variant QC evaluation pipeline.
-    if model_id.startswith("rf"):
-        model_resource = {
-            "random_forest.py --apply-rf": {
-                "vqc_result_ht": get_rf_result(model_id=model_id, test=test)
-            }
-        }
-    elif model_id.startswith("vqsr"):
-        model_resource = {
-            "VQSR batch output": {"vqc_result_ht": get_vqsr_filters(model_id=model_id)}
-        }
+    model_type = model_id.split("_")[0]
+    if model_type == "rf":
+        model_res_key = "random_forest.py --apply-rf"
+    elif model_type in ["vqsr", "if"]:
+        model_res_key = "GATK batch output"
     else:
         raise ValueError(
-            f"Model ID {model_id} not recognized. Must start with 'rf' or 'vqsr'."
+            f"Model ID {model_id} not recognized. Must start with 'rf', 'vqsr', or "
+            "'if'."
         )
 
     create_bin_table = PipelineStepResourceCollection(
@@ -217,7 +229,9 @@ def get_evaluation_resources(
             "annotations/generate_variant_qc_annotations.py --create-variant-qc-annotation-ht": {
                 "vqc_annotations_ht": get_variant_qc_annotations()
             },
-            **model_resource,
+            model_res_key: {
+                "vqc_result_ht": get_variant_qc_result(model_id=model_id, test=test)
+            },
         },
         output_resources={
             "bin_ht": get_score_bins(model_id, aggregated=False, test=test),
@@ -324,7 +338,7 @@ def main(args):
             info_ht,
             res.vqc_annotations_ht.ht(),
             n_bins,
-            vqsr=model_id.startswith("vqsr"),
+            model_id.split("_")[0],
         )
         ht.write(res.bin_ht.path, overwrite=overwrite)
 

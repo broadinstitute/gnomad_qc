@@ -28,9 +28,9 @@ from gnomad_qc.v4.resources.annotations import get_variant_qc_annotations
 from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
 from gnomad_qc.v4.resources.variant_qc import (
     get_rf_model_path,
-    get_rf_result,
     get_rf_run_path,
     get_rf_training,
+    get_variant_qc_result,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -257,7 +257,9 @@ def get_variant_qc_resources(
     )
     apply_random_forest = PipelineStepResourceCollection(
         "--apply-rf",
-        output_resources={"rf_result_ht": get_rf_result(model_id=model_id, test=test)},
+        output_resources={
+            "rf_result_ht": get_variant_qc_result(model_id=model_id, test=test)
+        },
         pipeline_input_steps=[train_random_forest],
     )
 
