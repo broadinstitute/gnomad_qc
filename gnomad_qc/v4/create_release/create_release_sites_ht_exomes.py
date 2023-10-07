@@ -43,19 +43,19 @@ AS_FIELDS.remove("InbreedingCoeff")
 SITE_FIELDS.remove("SOR")
 TABLES_FOR_RELEASE = [
     "dbsnp",
-    "filters",
+    # "filters",
     "freq",
-    "info",
+    # "info",
     "region_flags",
     "in_silico",
     "vep",
 ]
 
-INSILICO_PREDICTORS = ["cadd", "spliceai", "pangolin", "revel"]
+INSILICO_PREDICTORS = ["spliceai", "pangolin", "revel"]  # "cadd",
 
 
 # Putting this in a function so that it is not evaluated until the script is run.
-def get_config(release_exists: bool = False) -> dict:
+def get_config(release_exists: bool = False):
     """
     Get configuration dictionary.
 
@@ -77,13 +77,13 @@ def get_config(release_exists: bool = False) -> dict:
             "path": dbsnp.path,
             "select": ["rsid"],
         },
-        "filters": {
-            "ht": final_filter().ht(),
-            "path": final_filter().path,
-            "select": ["filters", "vqsr"],
-            "custom_select": custom_filters_select,
-            "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
-        },
+        # "filters": {
+        #     "ht": final_filter().ht(),
+        #     "path": final_filter().path,
+        #     "select": ["filters", "vqsr"],
+        #     "custom_select": custom_filters_select,
+        #     "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
+        # },
         "in_silico": {
             "ht": reduce(
                 (lambda joined_ht, ht: joined_ht.join(ht, "outer")),
@@ -100,14 +100,14 @@ def get_config(release_exists: bool = False) -> dict:
             ],
             "field_name": "in_silico_predictors",
             "select": [
-                "cadd",
+                # "cadd",
                 "revel_max",
                 "spliceai_ds_max",
                 "pangolin_largest_ds",
             ],
             "custom_select": custom_in_silico_select,
             "select_globals": [
-                "cadd_version",
+                # "cadd_version",
                 "revel_version",
                 "spliceai_version",
                 "pangolin_version",
@@ -172,7 +172,7 @@ def get_config(release_exists: bool = False) -> dict:
     return config
 
 
-def custom_in_silico_select(ht: hl.Table) -> dict:
+def custom_in_silico_select(ht: hl.Table):
     """
     Get in silico predictors from VEP for release.
 
@@ -187,7 +187,7 @@ def custom_in_silico_select(ht: hl.Table) -> dict:
     return selects
 
 
-def custom_region_flags_select(ht: hl.Table) -> dict:
+def custom_region_flags_select(ht: hl.Table):
     """
     Select region flags for release.
 
@@ -205,7 +205,7 @@ def custom_region_flags_select(ht: hl.Table) -> dict:
     return selects
 
 
-def custom_filters_select(ht: hl.Table) -> dict:
+def custom_filters_select(ht: hl.Table):
     """
     Select gnomad filter HT fields for release dataset.
 
@@ -226,7 +226,7 @@ def custom_filters_select(ht: hl.Table) -> dict:
 # TODO: This function needs to be updated depending on which fields we want to keep from
 #  info, I noticed there a dups within structs, e.g quasi_info has AS_SOR as does AS_info,
 # maybe we need to pull these from filters instead?
-def custom_info_select(ht: hl.Table) -> dict:
+def custom_info_select(ht: hl.Table):
     """
     Select fields for info hail Table annotation in release.
 
@@ -267,7 +267,7 @@ def custom_info_select(ht: hl.Table) -> dict:
     return selects
 
 
-def custom_vep_select(ht: hl.Table) -> dict:
+def custom_vep_select(ht: hl.Table):
     """
     Select fields for vep hail Table annotation in release.
 
@@ -289,7 +289,7 @@ def custom_vep_select(ht: hl.Table) -> dict:
     return selects
 
 
-def get_select_global_fields(ht: hl.Table) -> dict:
+def get_select_global_fields(ht: hl.Table):
     """
     Generate a dictionary of globals to select by checking the configs of all tables joined.
 
@@ -310,7 +310,7 @@ def get_select_global_fields(ht: hl.Table) -> dict:
     return t_globals
 
 
-def get_select_fields(selects, base_ht: hl.Table) -> dict:
+def get_select_fields(selects, base_ht: hl.Table):
     """
     Generate a select dict from traversing the base_ht and extracting annotations.
 
@@ -341,7 +341,7 @@ def get_ht(dataset: str, _intervals, test) -> hl.Table:
     :param test: Whether call is for a test run.
     :return: Hail Table with fields to select.
     """
-    print(f"Getting the {dataset}...")
+    logger.info("Getting the %s dataset and its selected annotations...", dataset)
     config = get_config()[dataset]
 
     # There is no single path for insilico so this impacts its join efficiency but
@@ -412,6 +412,7 @@ def join_hts(
         base_ht.n_partitions() * new_partition_percent
     )
 
+    logger.info("Joining datasets: %s...", tables)
     hts = [get_ht(table, _intervals=partition_intervals, test=test) for table in tables]
     # TODO: Check with hail if an intermediate checkpoint be helpful here
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
@@ -439,6 +440,7 @@ def main(args):
         default_reference="GRCh38",
     )
 
+    logger.info("Creating release HT...")
     ht = join_hts(
         args.base_table,
         args.tables_for_join,
@@ -448,7 +450,7 @@ def main(args):
     )
 
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
-    ht = ht.filter(hl.is_defined(ht.filters))
+    # ht = ht.filter(hl.is_defined(ht.filters))
 
     t_globals = get_select_global_fields(ht)
 
@@ -477,13 +479,14 @@ def main(args):
         )
     )
 
-    logger.info("Writing out release HT to %s", release_sites().path)
+    output_path = (
+        qc_temp_prefix() + "/release/gnomad.exomes.sites.test.ht"
+        if args.test
+        else release_sites().path
+    )
+    logger.info("Writing out release HT to %s", output_path)
     ht = ht.checkpoint(
-        (
-            qc_temp_prefix() + "/release/gnomad.genomes.sites.test.ht"
-            if args.test
-            else release_sites().path
-        ),
+        output_path,
         args.overwrite,
     )
 
@@ -508,7 +511,6 @@ if __name__ == "__main__":
         "--version",
         help="The version of gnomAD.",
         default=CURRENT_RELEASE,
-        required=True,
     )
     parser.add_argument(
         "-t",
@@ -530,12 +532,6 @@ if __name__ == "__main__":
         help="Base table for interval partition calculation.",
         default="freq",
         choices=TABLES_FOR_RELEASE,
-    )
-    parser.add_argument(
-        "-o",
-        "--overwrite",
-        help="Overwrite existing HT.",
-        action="store_true",
     )
     parser.add_argument(
         "--release-exists",
