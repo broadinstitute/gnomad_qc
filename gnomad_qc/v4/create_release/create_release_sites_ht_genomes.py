@@ -1101,10 +1101,14 @@ def main(args):
         res.check_resource_existence()
         logger.info("Determine variants in the release HT that need a recomputed AN...")
         ht = res.freq_join_ht.ht()
-        ht = ht.filter(hl.is_missing(ht.ann_array[0]))
+        # TODO: double check the filter at L660, maybe merge it to one filter here
+        ht = ht.filter(
+            hl.any(ht.ann_array[2].freq.map(lambda x: x.AC > 0))
+            & hl.is_missing(ht.ann_array[0])
+        )
         ht = ht.checkpoint(new_temp_file("variants_for_an", extension="ht"))
         logger.info(
-            "There are %i variants with an AC > 0 in the subset callstats HTs, but "
+            "There are %i variants with an AC > 0 in the added callstats HTs, but "
             "missing in the release HT...",
             ht.count(),
         )
