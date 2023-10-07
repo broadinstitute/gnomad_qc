@@ -64,70 +64,68 @@ def get_hgdp_tgp_related_to_nonsubset(
     v3_meta_ht: hl.Table, rel_ht: hl.Table
 ) -> hl.Table:
     """
-    Get the samples in the HGDP + 1KG subset that were related to samples outside the subset in v3 release and were not included in the v3 release.
+    Get the samples in the HGDP + 1KG subset that were related to samples outside the subset in the v3.1 release and were not included in the v3.1 release.
 
-    :param v3_meta_ht: Table with the v3.1 release metadata
-    :param rel_ht: Table with the v3.1 release relatedness, here we use the
-       results from pc_relate of the full dataset.
-    :return: Table with the samples in the HGDP + 1KG subset that are related
-       to samples outside the subset in v3 release.
+    :param v3_meta_ht: Table with the v3.1 release metadata.
+    :param rel_ht: Table with the v3.1 release relatedness, here we use the results
+        from pc_relate of the full dataset.
+    :return: Table with the samples in the HGDP + 1KG subset that are related to
+        samples outside the subset in v3 release.
     """
-    v3_meta_ht = v3_meta_ht.select(
-        hgdp_tgp=v3_meta_ht.subsets.tgp | v3_meta_ht.subsets.hgdp,
-        release=v3_meta_ht.release,
-    ).select_globals()
-
-    # Samples that are either in the HGDP + 1KG subset or in the v3 release.
-    v3_meta_release_ht = v3_meta_ht.filter(v3_meta_ht.release | v3_meta_ht.hgdp_tgp)
+    # Filter to samples that are either in the HGDP + 1KG subset or in the v3.1 release.
+    v3_meta_ht = v3_meta_ht.annotate(
+        hgdp_tgp=v3_meta_ht.subsets.tgp | v3_meta_ht.subsets.hgdp
+    )
+    v3_meta_ht = v3_meta_ht.filter(v3_meta_ht.release | v3_meta_ht.hgdp_tgp)
 
     rel_ht = rel_ht.annotate(
         **{
             f"{x}_meta": hl.struct(
-                v3_release=hl.coalesce(v3_meta_release_ht[rel_ht[x].s].release, False),
-                hgdp_tgp=hl.coalesce(v3_meta_release_ht[rel_ht[x].s].hgdp_tgp, False),
+                v3_release=hl.coalesce(v3_meta_ht[rel_ht[x].s].release, False),
+                hgdp_tgp=hl.coalesce(v3_meta_ht[rel_ht[x].s].hgdp_tgp, False),
             )
             for x in ["i", "j"]
         }
     )
 
     rel_ht = rel_ht.filter(
-        # Filter to pairs where at least one of the samples was in the v3 release.
+        # Filter to pairs where at least one of the samples was in the v3.1 release.
         (rel_ht.i_meta.v3_release | rel_ht.j_meta.v3_release)
         # Filter to pairs with 2nd degree or closer relatedness.
         & (rel_ht.relationship != "unrelated")
         # Filter to pairs where one and only one of the samples is in the HGDP +
         # 1KG subset.
         & ((hl.int(rel_ht.i_meta.hgdp_tgp) + hl.int(rel_ht.j_meta.hgdp_tgp)) == 1)
-        # Exclude pairs where the HGDP/1KG sample in the pair is also a v3 release
+        # Exclude pairs where the HGDP/1KG sample in the pair is also a v3.1 release
         # sample.
         & ~(rel_ht.i_meta.hgdp_tgp & rel_ht.i_meta.v3_release)
         & ~(rel_ht.j_meta.hgdp_tgp & rel_ht.j_meta.v3_release)
     )
 
-    rel_ht = rel_ht.naive_coalesce(1)
-
-    rel_ht = rel_ht.checkpoint(
-        new_temp_file("hgdp_tgp_related_temp", extension="ht"), overwrite=True
-    )
-
+    # Filter the relatedness HT twice to get the HGDP/1KG sample in each pair.
     ht1 = rel_ht.filter(rel_ht.i_meta.hgdp_tgp).key_by().select("i")
     ht1 = ht1.select(s=ht1.i.s)
-
     ht2 = rel_ht.filter(rel_ht.j_meta.hgdp_tgp).key_by().select("j")
     ht2 = ht2.select(s=ht2.j.s)
 
+    # Merge the two HTs and remove the v3.1 prefix from the sample IDs.
     ht = ht1.union(ht2)
     ht = ht.select(s=ht.s.replace("v3.1::", "")).key_by("s").distinct()
+
+    logger.info(
+        "%d HGDP/1KG samples are related to samples outside the subset", ht.count()
+    )
+
     return ht
 
 
-def get_hgdp_tgp_duplicated_to_exomes(
-    v3_meta: hl.Table,
-    v4_meta: hl.Table,
+def get_hgdp_tgp_v4_exome_duplicates(
+    v3_meta_ht: hl.Table,
+    v4_meta_ht: hl.Table,
     rel_ht: hl.Table,
 ) -> hl.Table:
     """
-    Get the samples in the HGDP + 1KG subset that were duplicated in the v4 exomes release.
+    Get the samples in the HGDP + 1KG subset that are duplicates of an exome in the v4 release.
 
     .. note::
 
@@ -136,41 +134,53 @@ def get_hgdp_tgp_duplicated_to_exomes(
         have to be removed because we will have combined frequencies from v4 exomes
         and genomes.
 
-    :param v3_meta: Table with the v3.1.2 release metadata
-    :param v4_meta: Table with the v4.0 exomes release metadata
+    :param v3_meta_ht: Table with the v3.1.2 release metadata.
+    :param v4_meta_ht: Table with the v4.0 exomes release metadata.
     :param rel_ht: Table with the v3.1.2 and v4 joint relatedness, it's based on
-        cuKing relatedness results.
-    :return: Table with the samples in the HGDP + 1KG subset that are duplicated in
-        the v4 exomes release.
+        cuKING relatedness results.
+    :return: Table with the samples in the HGDP + 1KG subset that are duplicates of an
+        exome in the v4 exomes release.
     """
-    # get hgdp + 1kg subset samples in v3 meta
-    v3_meta = (
-        v3_meta.filter(v3_meta.subsets.hgdp | v3_meta.subsets.tgp)
-        .select()
-        .select_globals()
-    )
+    # Get HGDP + 1KG subset samples in v3.1 meta.
+    v3_meta_ht = v3_meta_ht.filter(v3_meta_ht.subsets.hgdp | v3_meta_ht.subsets.tgp)
 
-    # get release samples in v4.0 exomes
-    v4_meta = v4_meta.filter(v4_meta.release).select().select_globals()
+    # Get release samples in v4.0 exomes.
+    v4_meta_ht = v4_meta_ht.filter(v4_meta_ht.release)
 
-    # Get samples that are in the v3 genomes and are also in the v4 exomes
+    # Get samples that are in the v3.1 genomes and are also in the v4 exomes.
     rel_ht = rel_ht.filter(rel_ht.gnomad_v3_duplicate)
 
-    # Check if the duplicates are still included in v4 exomes release and these
+    # Check if the duplicates are still included in v4.0 exomes release and these
     # samples belong to the HGDP + 1KG subset.
     ht = rel_ht.annotate(
-        in_v4_exomes_release=hl.is_defined(v4_meta[rel_ht.j.s]),
-        in_hgdp_tgp_subset=hl.is_defined(v3_meta[rel_ht.i.s]),
+        **{
+            f"{x}_meta": hl.struct(
+                in_v4_exomes_release=hl.is_defined(v4_meta_ht[rel_ht[x].s]),
+                in_hgdp_tgp_subset=hl.is_defined(v3_meta_ht[rel_ht[x].s]),
+            )
+            for x in ["i", "j"]
+        }
     )
 
-    ht = ht.filter(ht.in_v4_exomes_release & ht.in_hgdp_tgp_subset)
-    ht = ht.key_by()
-    ht = ht.select(s=ht.i.s)
-    # in case some samples had a prefix in v3
-    ht = ht.select(s=ht.s.replace("v3.1::", "")).key_by("s").distinct()
-    logger.info(
-        "%d HGDP/TGP samples are duplicated in the v4 exomes release", ht.count()
+    ht = ht.filter(
+        (ht.i_meta.in_v4_exomes_release & ht.j_meta.in_hgdp_tgp_subset)
+        | (ht.j_meta.in_v4_exomes_release & ht.i_meta.in_hgdp_tgp_subset)
     )
+
+    # Filter the relatedness HT twice to get the HGDP/1KG sample in each pair.
+    ht1 = ht.filter(ht.i_meta.hgdp_tgp).key_by().select("i")
+    ht1 = ht1.select(s=ht1.i.s)
+    ht2 = ht.filter(ht.j_meta.hgdp_tgp).key_by().select("j")
+    ht2 = ht2.select(s=ht2.j.s)
+
+    # Merge the two HTs and remove the v3.1 prefix from the sample IDs.
+    ht = ht1.union(ht2)
+    ht = ht.select(s=ht.s.replace("v3.1::", "")).key_by("s").distinct()
+
+    logger.info(
+        "%d HGDP/1KG samples are duplicated in the v4 exomes release", ht.count()
+    )
+
     return ht
 
 
@@ -203,7 +213,7 @@ def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollect
         },
         output_resources={"related_to_nonsubset_ht": hgdp_tgp_related_to_nonsubset},
     )
-    get_duplicated_to_exomes = PipelineStepResourceCollection(
+    hgdp_tgp_v4_exome_duplicates = PipelineStepResourceCollection(
         "--get-duplicated-to-exomes",
         input_resources={
             "v3.1 metadata": {"v3_meta_ht": v3_meta},
@@ -217,7 +227,7 @@ def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollect
     v4_genome_release_pipeline.add_steps(
         {
             "get_related_to_nonsubset": get_related_to_nonsubset,
-            "get_duplicated_to_exomes": get_duplicated_to_exomes,
+            "get_hgdp_tgp_v4_exome_duplicates": hgdp_tgp_v4_exome_duplicates,
         }
     )
 
@@ -226,19 +236,29 @@ def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollect
 
 def main(args):
     """
-    Script to update call stats for HGDP + 1KG subset for v4.
+    Create the v4.0 genomes release Table.
 
-    This code is specifically designed for the update HGDP + 1KG subset in
-    v4 release HT. There are a few major changes compared to the v3 release:
-        - the following new sample filters are applied: hard filters, pop PC outliers,
-        relatedness within the subset and relatedness to the rest of the release.
-      - the new pop labels.
-      - the new split of the `Han` and `Papuan` samples.
+    Update call stats to include samples from the HGDP + 1KG subset that were
+    unintentionally excluded whole populations within the HGDP + 1KG subset that were
+    the most genetically unique and had small sample sizes (more specifically: San,
+    Mbuti Pygmy, Biaka Pygmy, Bougainville, and Papuan) compared to other populations
+    within the gnomAD v3.1 callset.
 
-    In order to avoid re-calculating the callstats for the whole subset / whole
-    release, we will calculate the callstats for the samples that will be added
-    and subtracted, then merge the callstats with the old callstats in the
+    In order to avoid re-calculating the call stats for the whole subset / whole
+    release, we calculate the call stats for the samples that will be added
+    and subtracted, then merge the call stats with the old call stats in the
     release HT.
+
+    Changes compared to the v3 release:
+      - Some small updates to samples that are hard filtered.
+      - Use a population PC outlier approach to filter the HGDP + 1KG samples instead
+        of the sample QC metric outlier filtering approach used on the full dataset
+        that caused some samples to be unintentionally excluded.
+      - HGDP + 1KG release samples are determined using relatedness (pc_relate) run on
+        only samples within the subset as well as relatedness to the rest of the
+        release.
+      - Some population labels were updated.
+      - The `Han` and `Papuan` populations were split into more specific groupings.
     """
     overwrite = args.overwrite
 
@@ -257,10 +277,10 @@ def main(args):
         )
         ht.write(res.related_to_nonsubset_ht.path, overwrite=overwrite)
 
-    if args.get_duplicated_to_exomes:
+    if args.get_hgdp_tgp_v4_exome_duplicates:
         res = v4_genome_release_resources.get_duplicated_to_exomes
         res.check_resource_existence()
-        ht = get_hgdp_tgp_duplicated_to_exomes(
+        ht = get_hgdp_tgp_v4_exome_duplicates(
             res.v3_meta_ht.ht(), res.v4_meta_ht.ht(), res.v4_relatedness_ht.ht()
         )
         ht.write(res.hgdp_tgp_duplicated_to_exomes.path, overwrite=overwrite)
@@ -268,7 +288,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="This script updates AFs for HGDP + 1KG subset for v4 release HT."
+        description="This script creates v4 genomes release HT."
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     parser.add_argument(
@@ -280,7 +300,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--get-duplicated-to-exomes",
+        "--get-hgdp-tgp-v4-exome-duplicates",
         help="Get the duplicated samples to exomes.",
         action="store_true",
     )
