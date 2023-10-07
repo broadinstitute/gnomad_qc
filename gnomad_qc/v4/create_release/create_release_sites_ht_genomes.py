@@ -196,19 +196,22 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
 
     .. note::
 
-        The following annotations updated based on the latest sample QC will be
-        implemented in the v4 release HT:
-            - `sample_filters.hard_filtered`: to apply the recomputed freemix
+        The following annotations need to be updated for the v4 genomes release based
+        on the latest sample QC results of the subset:
+            - `hgdp_tgp_meta.subcontinental_pca.outlier`: to apply the updated pop
+              outlier filter implemented by Alicia Martin's group.
+            - `gnomad_sample_filters.hard_filtered`: to apply the recomputed freemix
               filter for HGDP samples.
-            - `sample_filters.pop_outlier`: to apply the updated pop outlier
-              filter implemented by Alicia Martin's group.
-            - `sample_filters.relatedness_inference.related`: to apply the
-              updated relatedness inference implemented by Alicia Martin's group.
-            - `sample_filters.relatedness_inference.related_to_nonsubset`:
-              to further filter out samples that are related to samples outside
-              the subset but were not included in the v3 release.
+            - `gnomad_sample_filters.related_to_nonsubset`: to further filter out
+              samples that are related to samples outside the subset but were not
+              included in the v3 release.
+            - `gnomad_sample_filters.v4_exome_duplicate`: to further filter out the
+              samples in the HGDP + 1KG subset that are duplicates of an exome in the
+              v4 release.
+            - `sample_filters.relatedness_inference.related`: to apply the updated
+              relatedness inference implemented by Alicia Martin's group.
 
-    :param ht: Table with the HGDP + 1KG subset metadata from the last release.
+    :param ht: Table with the HGDP + 1KG subset metadata from the v3.1.2 release.
     :return: Table with updated sample QC annotations.
     """
     # Load all updated sample QC Tables.
@@ -259,6 +262,8 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
         "gnomad_sample_filters": {
             "hard_filters": hard_filters,
             "hard_filtered": hard_filtered,
+            "related_to_nonsubset": related_nonsubset,
+            "v4_exome_duplicate": duplicated_to_exomes,
         },
         "gnomad_high_quality": ht.gnomad_high_quality & ~hard_filtered,
         "gnomad_release": gnomad_release,
@@ -279,17 +284,9 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
         sample_annotations_to_update,
         annotation_update_label="sample_annotations_updated",
     )
-    # Add the relatedness to nonsubset samples to the relatedness_inference annotation.
-    updated_ht = updated_ht.annotate(
-        relatedness_inference=updated_ht.relatedness_inference.annotate(
-            related_nonsubset=hl.is_defined(related_to_nonsubset_ht[updated_ht.key]),
-            duplicated_to_exomes=hl.is_defined(duplicated_to_exomes_ht[updated_ht.key]),
-        )
-    )
+    updated_ht = updated_ht.annotate()
 
-    updated_ht = updated_ht.checkpoint(
-        new_temp_file("hgdp_tgp_meta_update", extension="ht"), overwrite=True
-    )
+    updated_ht = updated_ht.checkpoint(new_temp_file("hgdp_tgp_meta_update", "ht"))
     updated_counts = updated_ht.aggregate(
         hl.struct(
             n_hard_filtered=hl.agg.count_where(
@@ -300,12 +297,12 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
             ),
             n_related_nonsubset=hl.agg.count_where(
                 ~updated_ht.relatedness_inference.related
-                & updated_ht.relatedness_inference.related_nonsubset
+                & updated_ht.gnomad_sample_filters.related_to_nonsubset
             ),
             n_duplicate_to_exomes=hl.agg.count_where(
                 ~updated_ht.relatedness_inference.related
-                & ~updated_ht.relatedness_inference.related_nonsubset
-                & updated_ht.relatedness_inference.duplicated_to_exomes
+                & ~updated_ht.gnomad_sample_filters.related_to_nonsubset
+                & updated_ht.gnomad_sample_filters.v4_exome_duplicate
             ),
             n_outlier=hl.agg.count_where(
                 updated_ht.hgdp_tgp_meta.subcontinental_pca.outlier
@@ -477,7 +474,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--update-annotations",
-        help="Update sample QC annotations.",
+        help="Update HGDP + 1KG sample QC annotations.",
         action="store_true",
     )
 

@@ -1008,9 +1008,9 @@ def get_sample_qc_field_def_json_path(version: str = CURRENT_VERSION) -> str:
     return f"{get_sample_qc_root(version)}/additional_resources/gnomad.exomes.v{version}.sample_qc_field_definitions.json"
 
 
-# Table with the set of outliers found by Alicia Martin's group during pop
-# specific PCA analyses as well as one duplicate sample
-# version from 2023: https://github.com/atgu/hgdp_tgp/blob/master/tutorials/nb2.ipynb.
+# Table with the set of outliers found by Alicia Martin's group during pop specific PCA
+# analyses as well as one duplicate sample version from 2023:
+# https://github.com/atgu/hgdp_tgp/blob/master/tutorials/nb2.ipynb.
 hgdp_tgp_pop_outliers = TableResource(
     path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_pca_outliers.ht",
 )
@@ -1027,12 +1027,12 @@ hgdp_recomputed_freemix = TableResource(
     path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_contam_rate_recomputed.ht"
 )
 
-# Table with new population labels and updated geographic locations for HGDP and TGP.
+# Table with new population labels and updated geographic locations for HGDP + 1KG/TGP.
 hgdp_tgp_populations_updated = TableResource(
     path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_populations_updated.ht"
 )
 
-# updated meta HT with all the updated information integrated for HGDP and TGP.
+# Updated meta Table with all the updated information integrated for HGDP + 1KG/TGP.
 hgdp_tgp_meta_updated = TableResource(
     path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_sample_meta.ht",
 )
