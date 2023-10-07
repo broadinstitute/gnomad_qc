@@ -4,6 +4,7 @@ import argparse
 import logging
 
 import hail as hl
+from gnomad.utils.annotations import update_structured_annotations
 from gnomad.utils.slack import slack_notifications
 from hail.utils import new_temp_file
 
@@ -13,15 +14,16 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.basics import meta as v3_meta
-from gnomad_qc.v3.resources.release import (
-    hgdp_tgp_subset,
-    hgdp_tgp_subset_annotations,
-    release_sites,
-)
+from gnomad_qc.v3.resources.release import hgdp_tgp_subset_annotations
 from gnomad_qc.v3.resources.sample_qc import relatedness as v3_relatedness
 from gnomad_qc.v4.resources.basics import meta as v4_meta
 from gnomad_qc.v4.resources.sample_qc import (
+    hgdp_recomputed_freemix,
     hgdp_tgp_duplicated_to_exomes,
+    hgdp_tgp_meta_updated,
+    hgdp_tgp_pop_outliers,
+    hgdp_tgp_populations_updated,
+    hgdp_tgp_related_samples_to_drop,
     hgdp_tgp_related_to_nonsubset,
 )
 from gnomad_qc.v4.resources.sample_qc import relatedness as v4_relatedness
@@ -188,6 +190,154 @@ def get_hgdp_tgp_v4_exome_duplicates(
     return ht.select_globals()
 
 
+def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
+    """
+    Add updated sample QC annotations to the HGDP + 1KG subset.
+
+    .. note::
+
+        The following annotations updated based on the latest sample QC will be
+        implemented in the v4 release HT:
+            - `sample_filters.hard_filtered`: to apply the recomputed freemix
+              filter for HGDP samples.
+            - `sample_filters.pop_outlier`: to apply the updated pop outlier
+              filter implemented by Alicia Martin's group.
+            - `sample_filters.relatedness_inference.related`: to apply the
+              updated relatedness inference implemented by Alicia Martin's group.
+            - `sample_filters.relatedness_inference.related_to_nonsubset`:
+              to further filter out samples that are related to samples outside
+              the subset but were not included in the v3 release.
+
+    :param ht: Table with the HGDP + 1KG subset metadata from the last release.
+    :return: Table with updated sample QC annotations.
+    """
+    # Load all updated sample QC Tables.
+    contamination_ht = hgdp_recomputed_freemix.ht()
+    pop_outliers_ht = hgdp_tgp_pop_outliers.ht()
+    populations_ht = hgdp_tgp_populations_updated.ht()
+    relatedness_ht = hgdp_tgp_related_samples_to_drop.ht()
+    related_to_nonsubset_ht = hgdp_tgp_related_to_nonsubset.ht()
+    duplicated_to_exomes_ht = hgdp_tgp_duplicated_to_exomes.ht()
+
+    # TODO: get the global & subcontinental PCs for the updated HGDP + 1KG subset:
+    #  hgdp_tgp_meta.global_pca_scores,
+    #  hgdp_tgp_meta.subcontinental_pca.pca_scores,
+    #  hgdp_tgp_meta.subcontinental_pca.pca_scores_outliers_removed,
+    #  could update the meta HT after MVP release
+
+    # Update annotations impacted by the recomputed freemix.
+    freemix = hl.coalesce(
+        contamination_ht[ht.s].recomputed_contam_rate * 100, ht.bam_metrics.freemix
+    )
+    hard_filters = ht.gnomad_sample_filters.hard_filters | hl.if_else(
+        freemix > 5.0, hl.set({"contamination"}), hl.empty_set(hl.tstr)
+    )
+    hard_filtered = hl.len(hard_filters) > 0
+    # Update annotations impacted by the updated relatedness inference.
+    related_subset = hl.is_defined(relatedness_ht[ht.key])
+    # Update the relatedness to nonsubset samples.
+    related_nonsubset = hl.is_defined(related_to_nonsubset_ht[ht.key])
+    # Get the duplicated samples in the HGDP + 1KG subset.
+    duplicated_to_exomes = hl.is_defined(duplicated_to_exomes_ht[ht.key])
+    # Update annotations impacted by the updated HGDP + 1KG metadata.
+    outlier = hl.is_defined(pop_outliers_ht[ht.key])
+    populations = populations_ht[ht.key]
+    # Update gnomAD inferred population 'oth' to be 'remaining'.
+    gnomad_pop = ht.gnomad_population_inference.pop.replace("oth", "remaining")
+
+    gnomad_release = (
+        ~hard_filtered
+        & ~outlier
+        & ~related_subset
+        & ~related_nonsubset
+        & ~duplicated_to_exomes
+    )
+
+    sample_annotations_to_update = {
+        "bam_metrics": {"freemix": freemix},
+        "gnomad_population_inference": {"pop": gnomad_pop},
+        "gnomad_sample_filters": {
+            "hard_filters": hard_filters,
+            "hard_filtered": hard_filtered,
+        },
+        "gnomad_high_quality": ht.gnomad_high_quality & ~hard_filtered,
+        "gnomad_release": gnomad_release,
+        "relatedness_inference": {
+            "related": related_subset,
+        },
+        "hgdp_tgp_meta": {
+            "subcontinental_pca": {"outlier": outlier},
+            "population": populations.population,
+            "latitude": populations.latitude,
+            "longitude": populations.longitude,
+            "gnomad_labeled_subpop": populations.population.lower(),
+        },
+        "high_quality": ~hard_filtered & ~outlier,
+    }
+    updated_ht = update_structured_annotations(
+        ht,
+        sample_annotations_to_update,
+        annotation_update_label="sample_annotations_updated",
+    )
+    # Add the relatedness to nonsubset samples to the relatedness_inference annotation.
+    updated_ht = updated_ht.annotate(
+        relatedness_inference=updated_ht.relatedness_inference.annotate(
+            related_nonsubset=hl.is_defined(related_to_nonsubset_ht[updated_ht.key]),
+            duplicated_to_exomes=hl.is_defined(duplicated_to_exomes_ht[updated_ht.key]),
+        )
+    )
+
+    updated_ht = updated_ht.checkpoint(
+        new_temp_file("hgdp_tgp_meta_update", extension="ht"), overwrite=True
+    )
+    updated_counts = updated_ht.aggregate(
+        hl.struct(
+            n_hard_filtered=hl.agg.count_where(
+                updated_ht.gnomad_sample_filters.hard_filtered
+            ),
+            n_related_subset=hl.agg.count_where(
+                updated_ht.relatedness_inference.related
+            ),
+            n_related_nonsubset=hl.agg.count_where(
+                ~updated_ht.relatedness_inference.related
+                & updated_ht.relatedness_inference.related_nonsubset
+            ),
+            n_duplicate_to_exomes=hl.agg.count_where(
+                ~updated_ht.relatedness_inference.related
+                & ~updated_ht.relatedness_inference.related_nonsubset
+                & updated_ht.relatedness_inference.duplicated_to_exomes
+            ),
+            n_outlier=hl.agg.count_where(
+                updated_ht.hgdp_tgp_meta.subcontinental_pca.outlier
+            ),
+            n_release=hl.agg.count_where(updated_ht.gnomad_release),
+            n_diff=hl.agg.explode(
+                lambda x: hl.agg.counter(x), updated_ht.sample_annotations_updated
+            ),
+        )
+    )
+    logger.info(
+        """%d sample(s) hard filtered (%d more samples compared to v3.1.2 subset release);
+        %d samples are pop outliers (%d samples different compared to v3.1.2 subset release);
+        %d samples have different population labels compared to v3.1.2 subset release;
+        %d samples related within the subset (%d samples different compared to v3.1.2 subset release);
+        %d samples further filtered out due to their relatedness to samples outside the subset;
+        %d samples filtered out because they are duplicated in the v4 exomes release;
+        %d samples will be in the v4 release, compared to 3280 in the v3.1.2 release.""",
+        updated_counts["n_hard_filtered"],
+        updated_counts["n_diff"]["gnomad_sample_filters.hard_filtered"],
+        updated_counts["n_outlier"],
+        updated_counts["n_diff"]["hgdp_tgp_meta.subcontinental_pca.outlier"],
+        updated_counts["n_diff"]["hgdp_tgp_meta.population"],
+        updated_counts["n_related_subset"],
+        updated_counts["n_diff"]["relatedness_inference.related"],
+        updated_counts["n_related_nonsubset"],
+        updated_counts["n_duplicate_to_exomes"],
+        updated_counts["n_release"],
+    )
+    return updated_ht
+
+
 def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed to create the gnomAD v4 genomes release.
@@ -197,9 +347,13 @@ def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollect
         gnomAD v4 genomes release pipeline.
     """
     # Initialize gnomAD v4 genomes release pipeline resource collection.
+    hgdp_tgp_res = {
+        "meta_ht": hgdp_tgp_subset_annotations(sample=True).versions["3.1.2"],
+    }
     v4_genome_release_pipeline = PipelineResourceCollection(
         pipeline_name="gnomad_v4_genomes_release",
         overwrite=overwrite,
+        pipeline_resources={"Released HGDP + 1KG resources": hgdp_tgp_res},
     )
 
     # Create resource collection for each step of the v4 genomes release pipeline.
@@ -222,12 +376,20 @@ def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollect
             "hgdp_tgp_v4_exome_duplicate_ht": hgdp_tgp_duplicated_to_exomes
         },
     )
+    update_annotations = PipelineStepResourceCollection(
+        "--update-annotations",
+        input_resources={
+            "Released HGDP + 1KG sample metadata": {"meta_ht": hgdp_tgp_res["meta_ht"]}
+        },
+        output_resources={"updated_meta_ht": hgdp_tgp_meta_updated},
+    )
 
     # Add all steps to the gnomAD v4 genomes release pipeline resource collection.
     v4_genome_release_pipeline.add_steps(
         {
             "get_related_to_nonsubset": get_related_to_nonsubset,
             "get_hgdp_tgp_v4_exome_duplicates": hgdp_tgp_v4_exome_duplicates,
+            "update_annotations": update_annotations,
         }
     )
 
@@ -268,6 +430,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
     v4_genome_release_resources = get_v4_genomes_release_resources(overwrite=overwrite)
+    v3_meta_ht = v4_genome_release_resources.meta_ht.ht()
 
     if args.get_related_to_nonsubset:
         res = v4_genome_release_resources.get_related_to_nonsubset
@@ -284,6 +447,14 @@ def main(args):
             res.v3_meta_ht.ht(), res.v4_meta_ht.ht(), res.v4_relatedness_ht.ht()
         )
         ht.write(res.hgdp_tgp_v4_exome_duplicate_ht.path, overwrite=overwrite)
+
+    if args.update_annotations:
+        res = v4_genome_release_resources.update_annotations
+        res.check_resource_existence()
+        logger.info("Adding updated sample QC annotations to meta HT...")
+        add_updated_sample_qc_annotations(v3_meta_ht).write(
+            res.updated_meta_ht.path, overwrite=overwrite
+        )
 
 
 if __name__ == "__main__":
@@ -302,6 +473,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--get-hgdp-tgp-v4-exome-duplicates",
         help="Get the duplicated samples to exomes.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--update-annotations",
+        help="Update sample QC annotations.",
         action="store_true",
     )
 
