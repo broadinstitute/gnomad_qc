@@ -195,9 +195,31 @@ def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollect
     )
 
     # Create resource collection for each step of the v4 genomes release pipeline.
+    get_related_to_nonsubset = PipelineStepResourceCollection(
+        "--get-related-to-nonsubset",
+        input_resources={
+            "v3.1 metadata": {"v3_meta_ht": v3_meta},
+            "v3.1 relatedness": {"v3_relatedness_ht": v3_relatedness},
+        },
+        output_resources={"related_to_nonsubset_ht": hgdp_tgp_related_to_nonsubset},
+    )
+    get_duplicated_to_exomes = PipelineStepResourceCollection(
+        "--get-duplicated-to-exomes",
+        input_resources={
+            "v3.1 metadata": {"v3_meta_ht": v3_meta},
+            "v4.0 metadata": {"v4_meta_ht": v4_meta},
+            "v3.1 and v4.0 relatedness": {"v4_relatedness_ht": v4_relatedness()},
+        },
+        output_resources={"duplicated_to_exomes": hgdp_tgp_duplicated_to_exomes},
+    )
 
     # Add all steps to the gnomAD v4 genomes release pipeline resource collection.
-    v4_genome_release_pipeline.add_steps({})
+    v4_genome_release_pipeline.add_steps(
+        {
+            "get_related_to_nonsubset": get_related_to_nonsubset,
+            "get_duplicated_to_exomes": get_duplicated_to_exomes,
+        }
+    )
 
     return v4_genome_release_pipeline
 
@@ -228,14 +250,20 @@ def main(args):
     v4_genome_release_resources = get_v4_genomes_release_resources(overwrite=overwrite)
 
     if args.get_related_to_nonsubset:
-        ht = get_hgdp_tgp_related_to_nonsubset(v3_meta.ht(), v3_relatedness.ht())
-        ht.write(hgdp_tgp_related_to_nonsubset.path, overwrite=overwrite)
+        res = v4_genome_release_resources.get_related_to_nonsubset
+        res.check_resource_existence()
+        ht = get_hgdp_tgp_related_to_nonsubset(
+            res.v3_meta_ht.ht(), res.v3_relatedness_ht.ht()
+        )
+        ht.write(res.related_to_nonsubset_ht.path, overwrite=overwrite)
 
     if args.get_duplicated_to_exomes:
+        res = v4_genome_release_resources.get_duplicated_to_exomes
+        res.check_resource_existence()
         ht = get_hgdp_tgp_duplicated_to_exomes(
-            v3_meta.ht(), v4_meta.ht(), v4_relatedness().ht()
+            res.v3_meta_ht.ht(), res.v4_meta_ht.ht(), res.v4_relatedness_ht.ht()
         )
-        ht.write(hgdp_tgp_duplicated_to_exomes.path, overwrite=overwrite)
+        ht.write(res.hgdp_tgp_duplicated_to_exomes.path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
