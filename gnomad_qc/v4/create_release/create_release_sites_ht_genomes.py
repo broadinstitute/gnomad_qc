@@ -193,15 +193,9 @@ def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollect
         gnomAD v4 genomes release pipeline.
     """
     # Initialize gnomAD v4 genomes release pipeline resource collection.
-    hgdp_tgp_res = {
-        "meta_ht": hgdp_tgp_subset_annotations(sample=True).versions["3.1.2"],
-        "dense_mt": hgdp_tgp_subset(dense=True, public=True).versions["3.1.2"],
-        "sites_ht": release_sites(public=True).versions["3.1.2"],
-    }
     v4_genome_release_pipeline = PipelineResourceCollection(
         pipeline_name="gnomad_v4_genomes_release",
         overwrite=overwrite,
-        pipeline_resources={"Released HGDP + 1KG resources": hgdp_tgp_res},
     )
 
     # Create resource collection for each step of the v4 genomes release pipeline.
