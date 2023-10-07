@@ -71,6 +71,7 @@ def create_cadd_grch38_ht() -> hl.Table:
           253 indels that are new in gnomAD v4.
         - gnomAD v4 genomes indels: `cadd.v1.6.gnomad.genomes.v4.0.indels.new.tsv.bgz`
           # TODO: has to get the list of indels and rerun CADD.
+          # TODO: to avoid different CADD score, using score from new versions of CADD, the more recent scored.
 
 
          .. note::
