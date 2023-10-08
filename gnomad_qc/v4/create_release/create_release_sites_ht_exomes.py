@@ -46,15 +46,15 @@ SITE_FIELDS = deepcopy(SITE_FIELDS)
 SITE_FIELDS.remove("SOR")
 TABLES_FOR_RELEASE = [
     "dbsnp",
-    # "filters",
+    "filters",
     "freq",
-    # "info",
+    "info",
     "region_flags",
     "in_silico",
     "vep",
 ]
 
-INSILICO_PREDICTORS = ["spliceai", "pangolin", "revel"]  # "cadd", "phylop"
+INSILICO_PREDICTORS = ["spliceai", "pangolin", "revel", "cadd"]  # , "phylop"
 
 
 # Putting this in a function so that it is not evaluated until the script is run.
@@ -80,13 +80,13 @@ def get_config(release_exists: bool = False):
             "path": dbsnp.path,
             "select": ["rsid"],
         },
-        # "filters": {
-        #     "ht": final_filter().ht(),
-        #     "path": final_filter().path,
-        #     "select": ["filters", "vqsr"],
-        #     "custom_select": custom_filters_select,
-        #     "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
-        # },
+        "filters": {
+            "ht": final_filter().ht(),
+            "path": final_filter().path,
+            "select": ["filters", "vqsr"],
+            "custom_select": custom_filters_select,
+            "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
+        },
         "in_silico": {
             "ht": reduce(
                 (lambda joined_ht, ht: joined_ht.join(ht, "outer")),
@@ -103,7 +103,7 @@ def get_config(release_exists: bool = False):
             ],
             "field_name": "in_silico_predictors",
             "select": [
-                # "cadd",
+                "cadd",
                 "revel_max",
                 "spliceai_ds_max",
                 "pangolin_largest_ds",
@@ -111,7 +111,7 @@ def get_config(release_exists: bool = False):
             ],
             "custom_select": custom_in_silico_select,
             "select_globals": [
-                # "cadd_version",
+                "cadd_version",
                 "revel_version",
                 "spliceai_version",
                 "pangolin_version",
@@ -248,6 +248,11 @@ def custom_info_select(ht: hl.Table):
     freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
 
     filters_ht = get_config().get("filters")["ht"]
+
+    # TODO: Change name rf_globals
+    compute_info_method = hl.eval(filters_ht.rf_globals.compute_info_method)
+    ht = ht.select(info=hl.struct(**ht.site_info, **ht[f"{compute_info_method}_info"]))
+
     filters = filters_ht[ht.key]
     filters_info_fields = [
         "singleton",
@@ -477,13 +482,10 @@ def main(args):
     )
 
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
-    # ht = ht.filter(hl.is_defined(ht.filters))
+    ht = ht.filter(hl.is_defined(ht.filters))
 
     t_globals = get_select_global_fields(ht)
 
-    # Previously discussed having a gnomad_qc and gnomad_method repo versions but this
-    # does not make sense to me since they have been in continuous development and there
-    # is not single version for either.
     ht = ht.select_globals(
         **t_globals,
         #    README=FIELD_DESCRIPTIONS,
@@ -492,8 +494,8 @@ def main(args):
         version=args.version,
     )
 
-    # The dbsnp table does not have a global field for dbsnp_versions, same
-    # with sift/polyphen and vrs (still need these)
+    # The dbsnp table does not have a global field for dbsnp_versions, same with
+    # sift/polyphen and vrs (still need these).
     ht = ht.annotate_globals(
         tool_versions=ht.tool_versions.annotate(
             dbsnp_version="b156",
