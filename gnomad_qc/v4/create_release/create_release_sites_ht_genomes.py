@@ -1,4 +1,4 @@
-"""Script to create release sites HT for v4 genomes."""
+"""Script to create release sites HT for v4.0 genomes."""
 
 import argparse
 import logging
@@ -14,7 +14,11 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.basics import meta as v3_meta
-from gnomad_qc.v3.resources.release import hgdp_tgp_subset_annotations
+from gnomad_qc.v3.resources.release import (
+    hgdp_tgp_subset,
+    hgdp_tgp_subset_annotations,
+    release_sites,
+)
 from gnomad_qc.v3.resources.sample_qc import relatedness as v3_relatedness
 from gnomad_qc.v4.resources.basics import meta as v4_meta
 from gnomad_qc.v4.resources.sample_qc import (
@@ -30,7 +34,7 @@ from gnomad_qc.v4.resources.sample_qc import relatedness as v4_relatedness
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger(
-    "Create v4 genomes release sites HT with updated HGDP/TGP "
+    "Create v4.0 genomes release sites HT with updated HGDP/TGP "
     "metadata and new annotations"
 )
 logger.setLevel(logging.INFO)
@@ -91,10 +95,10 @@ def get_hgdp_tgp_related_to_nonsubset(
     )
 
     rel_ht = rel_ht.filter(
-        # Filter to pairs where at least one of the samples was in the v3.1 release.
-        (rel_ht.i_meta.v3_release | rel_ht.j_meta.v3_release)
         # Filter to pairs with 2nd degree or closer relatedness.
-        & (rel_ht.relationship != "unrelated")
+        (rel_ht.relationship != "unrelated")
+        # Filter to pairs where at least one of the samples was in the v3.1 release.
+        & (rel_ht.i_meta.v3_release | rel_ht.j_meta.v3_release)
         # Filter to pairs where one and only one of the samples is in the HGDP +
         # 1KG subset.
         & ((hl.int(rel_ht.i_meta.hgdp_tgp) + hl.int(rel_ht.j_meta.hgdp_tgp)) == 1)
@@ -128,21 +132,19 @@ def get_hgdp_tgp_v4_exome_duplicates(
     rel_ht: hl.Table,
 ) -> hl.Table:
     """
-    Get the samples in the HGDP + 1KG subset that are duplicates of an exome in the v4 release.
+    Get the samples in the HGDP + 1KG subset that are duplicates of an exome in the v4.0 release.
 
-    .. note::
+    The duplicated samples are defined as samples that were HGDP + 1KG subset samples
+    in the v3.1 release and are also in the v4.0 exomes release. The duplicated samples
+    have to be removed because we will have combined frequencies rom v4.0 exomes and
+    genomes.
 
-        The duplicated samples are defined as samples that were in the v3.1.2
-        subset release and are also in the v4 exomes release. The duplicated samples
-        have to be removed because we will have combined frequencies from v4 exomes
-        and genomes.
-
-    :param v3_meta_ht: Table with the v3.1.2 release metadata.
+    :param v3_meta_ht: Table with the v3.1 release metadata.
     :param v4_meta_ht: Table with the v4.0 exomes release metadata.
-    :param rel_ht: Table with the v3.1.2 and v4 joint relatedness, it's based on
+    :param rel_ht: Table with the v3.1 and v4.0 joint relatedness, it's based on
         cuKING relatedness results.
     :return: Table with the samples in the HGDP + 1KG subset that are duplicates of an
-        exome in the v4 exomes release.
+        exome in the v4.0 exomes release.
     """
     # Get HGDP + 1KG subset samples in v3.1 meta.
     v3_meta_ht = v3_meta_ht.filter(v3_meta_ht.subsets.hgdp | v3_meta_ht.subsets.tgp)
@@ -150,7 +152,7 @@ def get_hgdp_tgp_v4_exome_duplicates(
     # Get release samples in v4.0 exomes.
     v4_meta_ht = v4_meta_ht.filter(v4_meta_ht.release)
 
-    # Get samples that are in the v3.1 genomes and are also in the v4 exomes.
+    # Get samples that are in the v3.1 genomes and are also in the v4.0 exomes.
     rel_ht = rel_ht.filter(rel_ht.gnomad_v3_duplicate)
 
     # Check if the duplicates are included in the v4.0 exomes release and belong to the
@@ -184,7 +186,7 @@ def get_hgdp_tgp_v4_exome_duplicates(
 
     ht = ht.naive_coalesce(1).checkpoint(new_temp_file("duplicate_in_v4_exomes"))
     logger.info(
-        "%d HGDP/1KG samples are duplicated in the v4 exomes release", ht.count()
+        "%d HGDP/1KG samples are duplicated in the v4.0 exomes release", ht.count()
     )
 
     return ht.select_globals()
@@ -337,12 +339,13 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
 
 def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollection:
     """
-    Get PipelineResourceCollection for all resources needed to create the gnomAD v4 genomes release.
+    Get PipelineResourceCollection for all resources needed to create the gnomAD v4.0 genomes release.
 
     :param overwrite: Whether to overwrite resources if they exist.
     :return: PipelineResourceCollection containing resources for all steps of the
-        gnomAD v4 genomes release pipeline.
+        gnomAD v4.0 genomes release pipeline.
     """
+    # Initialize gnomAD v4.0 genomes release pipeline resource collection.
     # Initialize gnomAD v4 genomes release pipeline resource collection.
     hgdp_tgp_res = {
         "meta_ht": hgdp_tgp_subset_annotations(sample=True).versions["3.1.2"],
@@ -353,7 +356,7 @@ def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollect
         pipeline_resources={"Released HGDP + 1KG resources": hgdp_tgp_res},
     )
 
-    # Create resource collection for each step of the v4 genomes release pipeline.
+    # Create resource collection for each step of the v4.0 genomes release pipeline.
     get_related_to_nonsubset = PipelineStepResourceCollection(
         "--get-related-to-nonsubset",
         input_resources={
@@ -381,7 +384,7 @@ def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollect
         output_resources={"updated_meta_ht": hgdp_tgp_meta_updated},
     )
 
-    # Add all steps to the gnomAD v4 genomes release pipeline resource collection.
+    # Add all steps to the gnomAD v4.0 genomes release pipeline resource collection.
     v4_genome_release_pipeline.add_steps(
         {
             "get_related_to_nonsubset": get_related_to_nonsubset,
@@ -456,7 +459,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="This script creates v4 genomes release HT."
+        description="This script creates v4.0 genomes release HT."
     )
     parser.add_argument("--overwrite", help="Overwrite data", action="store_true")
     parser.add_argument(
