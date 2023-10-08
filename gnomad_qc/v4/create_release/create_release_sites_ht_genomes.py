@@ -708,11 +708,11 @@ def main(args):
     v4_genome_release_resources = get_v4_genomes_release_resources(
         test=test, overwrite=overwrite
     )
-    v3_meta_ht = v4_genome_release_resources.meta_ht.ht()
-    v3_dense_mt = v4_genome_release_resources.dense_mt.mt()
+    meta_ht = v4_genome_release_resources.meta_ht.ht()
+    dense_mt = v4_genome_release_resources.dense_mt.mt()
 
     if test:
-        v3_dense_mt = filter_to_test(v3_dense_mt, gene_on_chrx=gene_on_chrx)
+        dense_mt = filter_to_test(dense_mt, gene_on_chrx=gene_on_chrx)
 
     if args.get_related_to_nonsubset:
         res = v4_genome_release_resources.get_related_to_nonsubset
@@ -745,7 +745,7 @@ def main(args):
             "Calculating and concatenating call stats for samples to be added and "
             "samples to be subtracted from the v3.1.2 release sites HT..."
         )
-        mt = v3_dense_mt.select_globals()
+        mt = dense_mt.select_globals()
         filtered_hts = get_updated_release_samples(res.updated_meta_ht.ht())
         for ht, name in zip(filtered_hts, JOIN_FREQS[1:]):
             freq_ht = get_hgdp_tgp_callstats_for_selected_samples(
