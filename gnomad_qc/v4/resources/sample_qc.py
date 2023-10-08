@@ -1015,8 +1015,9 @@ hgdp_tgp_pop_outliers = TableResource(
     path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_pca_outliers.ht",
 )
 
-# Table with HGDP + 1KG/TGP related samples to drop from Alicia Martin's
-# group sample QC.
+# Followed the Notebook above by adding a step after run PC relate to save
+# the relatedness_ht, then using `hl.maximal_independent_set` to get the list
+# of related samples
 hgdp_tgp_related_samples_to_drop = TableResource(
     path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_related_samples.ht"
 )
