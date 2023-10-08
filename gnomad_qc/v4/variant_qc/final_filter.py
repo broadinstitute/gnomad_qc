@@ -84,25 +84,33 @@ VARIANT_QC_GLOBAL_FIELDS = {
         "compute_info_method",
     ],
     "AS_VQSR": [],
+    "IF": [],
 }
 """Variant QC global annotations to keep in the final filter Table."""
-# TODO: Uncomment after fixing the output from the evaluation script.
 VQSR_FEATURES = {
     "snv": [
         "AS_QD",
         "AS_MQRankSum",
         "AS_ReadPosRankSum",
-        # "AS_FS",
-        # "AS_MQ",
+        "AS_FS",
+        "AS_MQ",
     ],
     "indel": [
         "AS_QD",
         "AS_MQRankSum",
         "AS_ReadPosRankSum",
-        # "AS_FS",
+        "AS_FS",
     ],
 }
 """List of features used in the VQSR model."""
+IF_FEATURES = [
+    "AS_QD",
+    "AS_MQRankSum",
+    "AS_ReadPosRankSum",
+    "AS_FS",
+    "AS_MQ",
+]
+"""List of features used in the isolation forest model."""
 
 
 def process_score_cutoffs(
@@ -275,12 +283,12 @@ def generate_final_filter_ht(
         )
 
     variant_qc_globals = ht.index_globals()
+    compute_info_method = f"{hl.eval(ht.compute_info_method)}_info"
     bin_stats_expr = variant_qc_globals.bin_group_variant_counts
     if filter_name == "RF":
         # Fix RF annotations for release.
-        coumpute_info_method = f"{hl.eval(ht.compute_info_method)}_info"
         vqc_expr = hl.struct(
-            **ht[coumpute_info_method],
+            **ht[compute_info_method],
             positive_train_site=hl.or_else(ht.positive_train_site, False),
             rf_tp_probability=ht.rf_probability["TP"],
         )
@@ -288,19 +296,21 @@ def generate_final_filter_ht(
         indel_training_variables = variant_qc_globals.features
         variant_qc_globals = variant_qc_globals.annotate(
             feature_medians=variant_qc_globals.feature_medians.map_values(
-                lambda x: x[coumpute_info_method]
+                lambda x: x[compute_info_method]
             )
         )
         variant_qc_globals = variant_qc_globals.select(
             rf_globals=variant_qc_globals.select(*VARIANT_QC_GLOBAL_FIELDS["RF"])
         )
-    else:
-        # TODO: Need to add a compute_info_method global in the vqsr loading script,
-        #  right now, just defaulting to AS for testing.
-        coumpute_info_method = "AS_info"
-        vqc_expr = hl.struct(**ht[coumpute_info_method])
+    elif filter_name == "AS_VQSR":
+        vqc_expr = hl.struct(**ht[compute_info_method])
         snv_training_variables = VQSR_FEATURES["snv"]
         indel_training_variables = VQSR_FEATURES["indel"]
+    else:
+        vqc_expr = hl.struct(**ht[compute_info_method])
+        snv_training_variables = IF_FEATURES
+        indel_training_variables = IF_FEATURES
+        # TODO: Add other IF model annotations to final filter Table.
 
     keep_features = hl.eval(
         hl.set(snv_training_variables).union(hl.set(indel_training_variables))
@@ -443,6 +453,9 @@ def main(args):
         bin_ht = bin_ht.drop("info")
         filter_name = "AS_VQSR"
         score_name = "AS_VQSLOD"
+    elif args.model_id.startswith("if_"):
+        filter_name = "IF"  # TODO: Ask group what they want this named.
+        score_name = "SCORE"  # TODO: Ask group what they want this named.
     else:
         filter_name = score_name = "RF"
 
