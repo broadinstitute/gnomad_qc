@@ -208,8 +208,8 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
             - `gnomad_sample_filters.v4_exome_duplicate`: to further filter out the
               samples in the HGDP + 1KG subset that are duplicates of an exome in the
               v4 release.
-            - `relatedness_inference.related`: to apply the updated relatednesss
-                inference implemented by Alicia Martin's group.
+            - `relatedness_inference.related`: to apply the updated relatedness
+              inference implemented by Alicia Martin's group.
 
     :param ht: Table with the HGDP + 1KG subset metadata from the v3.1.2 release.
     :return: Table with updated sample QC annotations.
