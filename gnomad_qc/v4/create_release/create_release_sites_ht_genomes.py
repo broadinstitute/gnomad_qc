@@ -785,7 +785,11 @@ def get_group_membership_ht_for_an(ht: hl.Table) -> hl.Table:
         )
         hts.append(subset_ht)
 
-    return concatenate_subset_annotations(hts, is_group_membership_ht=True)
+    return concatenate_annotations(
+        hts,
+        row_field_names=["group_membership"],
+        global_field_names=list(FREQ_GLOBALS) + ["raw_group"],
+    )
 
 
 def compute_an_by_group_membership(
