@@ -208,8 +208,8 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
             - `gnomad_sample_filters.v4_exome_duplicate`: to further filter out the
               samples in the HGDP + 1KG subset that are duplicates of an exome in the
               v4 release.
-            - `sample_filters.relatedness_inference.related`: to apply the updated
-              relatedness inference implemented by Alicia Martin's group.
+            - `relatedness_inference.related`: to apply the updated relatednesss
+                inference implemented by Alicia Martin's group.
 
     :param ht: Table with the HGDP + 1KG subset metadata from the v3.1.2 release.
     :return: Table with updated sample QC annotations.
@@ -427,7 +427,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
     v4_genome_release_resources = get_v4_genomes_release_resources(overwrite=overwrite)
-    v3_meta_ht = v4_genome_release_resources.meta_ht.ht()
+    meta_ht = v4_genome_release_resources.meta_ht.ht()
 
     if args.get_related_to_nonsubset:
         res = v4_genome_release_resources.get_related_to_nonsubset
@@ -449,7 +449,7 @@ def main(args):
         res = v4_genome_release_resources.update_annotations
         res.check_resource_existence()
         logger.info("Adding updated sample QC annotations to meta HT...")
-        add_updated_sample_qc_annotations(v3_meta_ht).write(
+        add_updated_sample_qc_annotations(meta_ht).write(
             res.updated_meta_ht.path, overwrite=overwrite
         )
 
