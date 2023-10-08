@@ -1,4 +1,4 @@
-"""Script to create release sites HT for v4 genomes."""
+"""Script to create release sites HT for v4.0 genomes."""
 
 import argparse
 import logging
@@ -128,13 +128,14 @@ def get_hgdp_tgp_v4_exome_duplicates(
     """
     Get the samples in the HGDP + 1KG subset that are duplicates of an exome in the v4.0 release.
 
-    .. note::
-
-        The duplicated samples are defined as samples that were HGDP + 1KG subset samples in the v3.1 release and are also in the v4.0 exomes release. The duplicated samples have to be removed because we will have combined frequencies from v4.0 exomes and genomes.
+    The duplicated samples are defined as samples that were HGDP + 1KG subset samples
+    in the v3.1 release and are also in the v4.0 exomes release. The duplicated samples
+    have to be removed because we will have combined frequencies rom v4.0 exomes and
+    genomes.
 
     :param v3_meta_ht: Table with the v3.1 release metadata.
     :param v4_meta_ht: Table with the v4.0 exomes release metadata.
-    :param rel_ht: Table with the v3.1.2 and v4 joint relatedness, it's based on
+    :param rel_ht: Table with the v3.1 and v4.0 joint relatedness, it's based on
         cuKING relatedness results.
     :return: Table with the samples in the HGDP + 1KG subset that are duplicates of an
         exome in the v4.0 exomes release.
@@ -188,6 +189,7 @@ def get_hgdp_tgp_v4_exome_duplicates(
 def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed to create the gnomAD v4.0 genomes release.
+
     :param overwrite: Whether to overwrite resources if they exist.
     :return: PipelineResourceCollection containing resources for all steps of the
         gnomAD v4.0 genomes release pipeline.
@@ -198,7 +200,7 @@ def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollect
         overwrite=overwrite,
     )
 
-    # Create resource collection for each step of the v4 genomes release pipeline.
+    # Create resource collection for each step of the v4.0 genomes release pipeline.
     get_related_to_nonsubset = PipelineStepResourceCollection(
         "--get-related-to-nonsubset",
         input_resources={
@@ -219,7 +221,7 @@ def get_v4_genomes_release_resources(overwrite: bool) -> PipelineResourceCollect
         },
     )
 
-    # Add all steps to the gnomAD v4 genomes release pipeline resource collection.
+    # Add all steps to the gnomAD v4.0 genomes release pipeline resource collection.
     v4_genome_release_pipeline.add_steps(
         {
             "get_related_to_nonsubset": get_related_to_nonsubset,
