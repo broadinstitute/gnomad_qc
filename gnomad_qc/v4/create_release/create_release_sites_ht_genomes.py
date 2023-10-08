@@ -45,6 +45,7 @@ logger = logging.getLogger(
 logger.setLevel(logging.INFO)
 
 SUBSETS = SUBSETS["v3"]
+"""List of subsets in the v3.1/v4 genomes release."""
 POP_MAP = {
     "bantusafrica": "bantusouthafrica",
     "biakaPygmy": "biaka",
@@ -56,6 +57,10 @@ POP_MAP = {
     "yizu": "yi",
     "oth": "remaining",
 }
+"""
+Map of HGDP populations that need to be renamed in the v4 genomes release. Also includes
+the rename of 'oth' to 'remaining'.
+"""
 JOIN_FREQS = ["release", "pop_diff", "added", "subtracted"]
 """Frequency Tables to join for creation of the v4 genomes release sites HT."""
 FREQ_GLOBALS = ("freq_meta", "freq_meta_sample_count")
@@ -608,11 +613,16 @@ def filter_freq_arrays(
 
 def annotate_v3_subsets_sample_count(ht: hl.Table) -> hl.Table:
     """
-    Get the freq sample counts from the v3 subsets.
+    Get the freq sample counts from the v3.1 subsets.
+
+    The freq sample counts on the v3.1.2 release sites HT only contains the counts for
+    the non subset groupings. This function adds the freq sample counts from the v3.1
+    subset frequency groups to the v3.1.2 sample count array to give a sample count
+    array matching the v3.1.2 'freq_meta' global annotation.
 
     :param ht: Table of the 3.1.2 release sites HT, which only contains the freq
        sample counts for non subset groupings.
-    :return: Table with the freq sample counts from the v3 subsets added.
+    :return: Table with the freq sample counts from the v3.1 subset groups added.
     """
     sc = ht.index_globals().freq_sample_count
 
@@ -811,13 +821,13 @@ def main(args):
     v4_genome_release_resources = get_v4_genomes_release_resources(
         test=test, overwrite=overwrite
     )
-    v3_meta_ht = v4_genome_release_resources.meta_ht.ht()
-    v3_dense_mt = v4_genome_release_resources.dense_mt.mt()
-    v3_sites_ht = v4_genome_release_resources.sites_ht.ht()
+    v3_hgdp_tgp_meta_ht = v4_genome_release_resources.meta_ht.ht()
+    v3_hgdp_tgp_dense_mt = v4_genome_release_resources.dense_mt.mt()
+    v3_hgdp_tgp_sites_ht = v4_genome_release_resources.sites_ht.ht()
 
     if test:
-        v3_dense_mt = filter_to_test(v3_dense_mt, gene_on_chrx=gene_on_chrx)
-        v3_sites_ht = filter_to_test(v3_sites_ht, gene_on_chrx=gene_on_chrx)
+        v3_dense_mt = filter_to_test(v3_hgdp_tgp_dense_mt, gene_on_chrx=gene_on_chrx)
+        v3_sites_ht = filter_to_test(v3_hgdp_tgp_sites_ht, gene_on_chrx=gene_on_chrx)
 
     if args.get_related_to_nonsubset:
         res = v4_genome_release_resources.get_related_to_nonsubset
@@ -839,7 +849,7 @@ def main(args):
         res = v4_genome_release_resources.update_annotations
         res.check_resource_existence()
         logger.info("Adding updated sample QC annotations to meta HT...")
-        add_updated_sample_qc_annotations(v3_meta_ht).write(
+        add_updated_sample_qc_annotations(v3_hgdp_tgp_meta_ht).write(
             res.updated_meta_ht.path, overwrite=overwrite
         )
 
