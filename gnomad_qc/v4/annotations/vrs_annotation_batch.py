@@ -17,6 +17,7 @@ gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch.py \
 --annotate-original \
 --overwrite \
 --backend-mode batch \
+--data-type exomes \
 --test
 """
 
@@ -164,7 +165,7 @@ def main(args):
 
     working_bucket = args.working_bucket
 
-    input_path = v4_input_ht().path
+    input_path = v4_input_ht(data_type=args.data_type).path
 
     # Read in Hail Table, partition, and export to sharded VCF
     ht_original = hl.read_table(input_path)
@@ -344,7 +345,9 @@ def main(args):
         )
 
     if args.annotate_original:
-        output_path = v4_vrs_annotations(test=args.test, original_annotations=True).path
+        output_path = v4_vrs_annotations(
+            test=args.test, data_type=args.data_type, original_annotations=True
+        ).path
         check_resource_existence(
             input_step_resources={
                 "--run-vrs": [v4_vrs_annotations(test=args.test).path],
@@ -400,6 +403,12 @@ if __name__ == "__main__":
         ),
         default=None,
         type=int,
+    )
+    parser.add_argument(
+        "--data-type",
+        help="Data type to annotate (exomes or genomes).",
+        default="exomes",
+        choices=["exomes", "genomes"],
     )
     parser.add_argument(
         "--test",
