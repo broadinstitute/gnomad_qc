@@ -135,14 +135,14 @@ def create_cadd_grch38_ht() -> hl.Table:
 
     # Merge the CADD predictions run for v4 versions.
     indel4 = indel4_e.union(indel4_g).distinct()
-    logger.info("Number of unique indels in v4: %s", indel4.count())
+    logger.info("Number of unique indels in v4: %s.", indel4.count())
 
     # This will avoid duplicated indels in gnomAD v3 and v4.
     indel3 = indel3.anti_join(indel4)
-    logger.info("Number of indels in v3 and not in v4: %s", indel3.count())
+    logger.info("Number of indels in v3 and not in v4: %s.", indel3.count())
 
     ht = snvs.union(indel3, indel4)
-    logger.info("Number of variants in CADD HT: %s", ht.count())
+    logger.info("Number of variants in CADD HT: %s.", ht.count())
 
     ht = ht.select(cadd=hl.struct(phred=ht.PHRED, raw_score=ht.RawScore))
     ht = ht.annotate_globals(cadd_version="v1.6")
