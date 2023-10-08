@@ -43,7 +43,7 @@ logger = logging.getLogger(
 logger.setLevel(logging.INFO)
 
 JOIN_FREQS = ["release", "pop_diff", "added", "subtracted"]
-"""Frequency Tables to join for creation of the v4 genomes release sites HT."""
+"""Frequency Tables to join for creation of the v4.0 genomes release sites HT."""
 FREQ_GLOBALS = ("freq_meta", "freq_meta_sample_count")
 """Global annotations on the frequency Table."""
 
@@ -242,7 +242,7 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
 
     .. note::
 
-        The following annotations need to be updated for the v4 genomes release based
+        The following annotations need to be updated for the v4.0 genomes release based
         on the latest sample QC results of the subset:
             - `hgdp_tgp_meta.subcontinental_pca.outlier`: to apply the updated pop
               outlier filter implemented by Alicia Martin's group.
@@ -253,7 +253,7 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
               included in the v3 release.
             - `gnomad_sample_filters.v4_exome_duplicate`: to further filter out the
               samples in the HGDP + 1KG subset that are duplicates of an exome in the
-              v4 release.
+              v4.0 release.
             - `relatedness_inference.related`: to apply the updated relatedness
               inference implemented by Alicia Martin's group.
 
@@ -365,8 +365,8 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
         %d samples have different population labels compared to v3.1.2 subset release;
         %d samples related within the subset (%d samples different compared to v3.1.2 subset release);
         %d samples further filtered out due to their relatedness to samples outside the subset;
-        %d samples filtered out because they are duplicated in the v4 exomes release;
-        %d samples will be in the v4 release, compared to 3280 in the v3.1.2 release.""",
+        %d samples filtered out because they are duplicated in the v4.0 exomes release;
+        %d samples will be in the v4.0 release, compared to 3280 in the v3.1.2 release.""",
         updated_counts["n_hard_filtered"],
         updated_counts["n_diff"]["gnomad_sample_filters.hard_filtered"],
         updated_counts["n_outlier"],
@@ -383,15 +383,15 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
 
 def get_updated_release_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table, hl.Table]:
     """
-    Get the samples in the HGDP + 1KG subset that will be added, subtracted, or have different pop labels in the v4 release compared to the v3.1 release.
+    Get the samples in the HGDP + 1KG subset that will be added, subtracted, or have different pop labels in the v4.0 release compared to the v3.1 release.
 
     Three sets of samples will be obtained:
-        - samples that will have different pop labels in the v4 genomes release:
+        - samples that will have different pop labels in the v4.0 genomes release:
           samples in the to-be-split 'Han' and 'Papuan' populations AND their
           'gnomad_release' status hasn't changed.
-        - samples that will be added to the v4 genomes release: samples where
+        - samples that will be added to the v4.0 genomes release: samples where
           'gnomad_release' status has changed and 'gnomad_release' is now True.
-        - samples that will be removed from the v4 genomes release: samples where
+        - samples that will be removed from the v4.0 genomes release: samples where
          'gnomad_release' status has changed and 'gnomad_release' is now False.
 
     :param ht: Table with the HGDP + 1KG subset metadata with updated sample
@@ -602,7 +602,6 @@ def get_v4_genomes_release_resources(
         gnomAD v4.0 genomes release pipeline.
     """
     # Initialize gnomAD v4.0 genomes release pipeline resource collection.
-    # Initialize gnomAD v4 genomes release pipeline resource collection.
     hgdp_tgp_res = {
         "meta_ht": hgdp_tgp_subset_annotations(sample=True).versions["3.1.2"],
         "dense_mt": hgdp_tgp_subset(dense=True, public=True).versions["3.1.2"],
@@ -796,8 +795,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--get-callstats-for-updated-samples",
         help=(
-            "Get the call stats for the genomes with an updated release status for v4 "
-            "compared to v3.1."
+            "Get the call stats for the genomes with an updated release status for v4.0"
+            " compared to v3.1."
         ),
         action="store_true",
     )
