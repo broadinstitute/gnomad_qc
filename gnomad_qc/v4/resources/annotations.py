@@ -181,7 +181,10 @@ def get_variant_qc_annotations(test: bool = False) -> VersionedTableResource:
 
 
 def info_vcf_path(
-    info_method: str = "AS", version: str = CURRENT_VERSION, test: bool = False
+    info_method: str = "AS",
+    version: str = CURRENT_VERSION,
+    split: bool = False,
+    test: bool = False,
 ) -> str:
     """
     Path to sites VCF (input information for running VQSR).
@@ -189,6 +192,7 @@ def info_vcf_path(
     :param info_method: Method for generating info VCF. Must be one of "AS", "quasi",
         or "set_long_AS_missing". Default is "AS".
     :param version: Version of annotation path to return.
+    :param split: Whether to return the split or multi-allelic version of the resource.
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the
         full v4 VDS.
     :return: String for the path to the info VCF.
@@ -199,7 +203,7 @@ def info_vcf_path(
             "'long_AS_missing_info'."
         )
     return (
-        f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.{info_method}.vcf.bgz"
+        f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.{info_method}{'.split' if split else ''}.vcf.bgz"
     )
 
 
@@ -424,10 +428,10 @@ def hgdp_tgp_updated_callstats(
        must be "added", "subtracted", "pop_diff", or "final"
     :return: MatrixTableResource for specified subset.
     """
-    # if subset not in ["added", "subtracted", "pop_diff", "final"]:
-    #    raise ValueError(
-    #        "Operation must be one of 'added', 'subtracted', 'pop_diff', or 'final'"
-    #    )
+    if subset not in ["added", "subtracted", "pop_diff", "join"]:
+        raise ValueError(
+            "Operation must be one of 'added', 'subtracted', 'pop_diff', or 'join'"
+        )
     return VersionedTableResource(
         default_version=CURRENT_HGDP_TGP_RELEASE,
         versions={
