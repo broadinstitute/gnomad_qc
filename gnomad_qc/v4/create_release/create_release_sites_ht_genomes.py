@@ -705,12 +705,15 @@ def get_v4_genomes_release_resources(
     hgdp_tgp_res = {
         "meta_ht": hgdp_tgp_subset_annotations(sample=True).versions["3.1.2"],
         "dense_mt": hgdp_tgp_subset(dense=True, public=True).versions["3.1.2"],
-        "sites_ht": release_sites(public=True).versions["3.1.2"],
     }
+    v3_sites_ht = release_sites(public=True).versions["3.1.2"]
     v4_genome_release_pipeline = PipelineResourceCollection(
         pipeline_name="gnomad_v4_genomes_release",
         overwrite=overwrite,
-        pipeline_resources={"Released HGDP + 1KG resources": hgdp_tgp_res},
+        pipeline_resources={
+            "Released HGDP + 1KG resources": hgdp_tgp_res,
+            "gnomAD v3.1.2 release sites HT": {"v3_sites_ht": v3_sites_ht},
+        },
     )
 
     # Create resource collection for each step of the v4.0 genomes release pipeline.
@@ -760,7 +763,7 @@ def get_v4_genomes_release_resources(
         "--join-callstats-for-update",
         pipeline_input_steps=[get_callstats_for_updated_samples],
         add_input_resources={
-            "gnomAD v3.1.2 release sites HT": {"sites_ht": hgdp_tgp_res["sites_ht"]}
+            "gnomAD v3.1.2 release sites HT": {"sites_ht": v3_sites_ht}
         },
         output_resources={
             "freq_join_ht": hgdp_tgp_updated_callstats(test=test, subset="join"),
@@ -821,15 +824,13 @@ def main(args):
     )
     v3_hgdp_tgp_meta_ht = v4_genome_release_resources.meta_ht.ht()
     v3_hgdp_tgp_dense_mt = v4_genome_release_resources.dense_mt.mt()
-    v3_hgdp_tgp_sites_ht = v4_genome_release_resources.sites_ht.ht()
+    v3_sites_ht = v4_genome_release_resources.sites_ht.ht()
 
     if test:
         v3_hgdp_tgp_dense_mt = filter_to_test(
             v3_hgdp_tgp_dense_mt, gene_on_chrx=gene_on_chrx
         )
-        v3_hgdp_tgp_sites_ht = filter_to_test(
-            v3_hgdp_tgp_sites_ht, gene_on_chrx=gene_on_chrx
-        )
+        v3_sites_ht = filter_to_test(v3_sites_ht, gene_on_chrx=gene_on_chrx)
 
     if args.get_related_to_nonsubset:
         res = v4_genome_release_resources.get_related_to_nonsubset
@@ -878,7 +879,7 @@ def main(args):
         res.check_resource_existence()
         logger.info("Joining all callstats HTs with the release sites HT...")
         join_release_ht_with_subsets(
-            v3_hgdp_tgp_sites_ht,
+            v3_sites_ht,
             {n: getattr(res, f"freq_{n}_ht").ht() for n in JOIN_FREQS[1:]},
         ).write(res.freq_join_ht.path, overwrite=overwrite)
 
