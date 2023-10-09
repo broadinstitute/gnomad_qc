@@ -469,7 +469,6 @@ def join_hts(
         date=datetime.now().isoformat(),
         datasets=included_dataset,
     )
-    joined_ht.describe()
     return joined_ht
 
 
@@ -530,12 +529,10 @@ def main(args):
         args.overwrite,
     )
 
-    logger.info("Final variant count: %d", ht.count())
+    logger.info("Final release HT schema:")
     ht.describe()
-    print(hl.eval(ht.index_globals()))
 
-
-#    ht.show()
+    logger.info("Final variant count: %d", ht.count())
 
 
 if __name__ == "__main__":
