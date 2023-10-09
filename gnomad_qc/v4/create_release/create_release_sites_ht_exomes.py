@@ -1,5 +1,4 @@
-# noqa: D100
-
+"""Script to create release sites HT for exomes."""
 import argparse
 import logging
 from copy import deepcopy
@@ -55,22 +54,22 @@ TABLES_FOR_RELEASE = [
 INSILICO_PREDICTORS = ["spliceai", "pangolin", "revel", "cadd"]  # , "phylop"
 
 
-# Putting this in a function so that it is not evaluated until the script is run.
+# Config is added as a function, so it is not evaluated until the function is called.
 def get_config(release_exists: bool = False):
     """
     Get configuration dictionary.
 
     Format:
         '<Name of dataset>': {
-                'path': 'gs://path/to/hailtable.ht',
+                'path': 'gs://path/to/hail_table.ht',
                 'select': '<Optional list of fields to select or dict of new field name to location of old fieldin the dataset.>',
                 'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
                 'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
-                'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>
+                'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>'
             },
 
     :param release_exists: Whether the release HT already exists.
-    :return: dict of datasets configs.
+    :return: Dict of datasets configs.
     """
     config = {
         "dbsnp": {
@@ -81,7 +80,7 @@ def get_config(release_exists: bool = False):
         "filters": {
             "ht": final_filter().ht(),
             "path": final_filter().path,
-            "select": ["filters"],  # , "vqsr"],
+            "select": ["filters"],
             "custom_select": custom_filters_select,
             "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
         },
@@ -148,7 +147,7 @@ def get_config(release_exists: bool = False):
             # TODO: drop 100% missing? Can add to the custom vep select function
             "path": get_vep().path,
             "select": ["vep"],
-            # Add in "custom_select" that drops insilicos
+            # Add in "custom_select" that drops in silicos.
             "custom_select": custom_vep_select,
             # TODO: Update to have vep_csq_header -- should this be on the vep table
             #  itself?
@@ -178,12 +177,12 @@ def get_config(release_exists: bool = False):
     return config
 
 
-def custom_in_silico_select(ht: hl.Table):
+def custom_in_silico_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
     Get in silico predictors from VEP for release.
 
-    :param ht: hail Table.
-    :return: select expression dict
+    :param ht: VEP Hail Table.
+    :return: Select expression dict.
     """
     vep_in_silico = get_sift_polyphen_from_vep(get_vep().ht())
     selects = {
@@ -193,12 +192,12 @@ def custom_in_silico_select(ht: hl.Table):
     return selects
 
 
-def custom_region_flags_select(ht: hl.Table):
+def custom_region_flags_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
     Select region flags for release.
 
-    :param ht: hail Table.
-    :return: select expression dict
+    :param ht: Hail Table.
+    :return: Select expression dict.
     """
     selects = {
         "region_flags": region_flag_expr(
@@ -210,24 +209,30 @@ def custom_region_flags_select(ht: hl.Table):
     return selects
 
 
-def custom_filters_select(ht: hl.Table):
+def custom_filters_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
-    Select gnomad filter HT fields for release dataset.
+    Select gnomAD filter HT fields for release dataset.
 
-    Extract fields like 'filters', 'vqsr', and generates 'allele_info' struct.
-    :param ht: hail table.
-    :return: select expression dict.
+    Extract "results" field and rename based on filtering method.
+
+    :param ht: Filters Hail Table.
+    :return: Select expression dict.
     """
-    selects = {}
+    filter_name = hl.eval(ht.filtering_model.filter_name)
+    if filter_name == "RF":
+        name = "random_forest_results"
+    elif filter_name == "AS_VQSR":
+        name = "vqsr_results"
+    elif filter_name == "IF":
+        name = "isolation_forest_results"
+    else:
+        raise ValueError(f"Filtering method {filter_name} not recognized.")
 
-    # Should we drop model_id?
+    selects = {name: ht.results}
 
     return selects
 
 
-# TODO: Change name rf_globals
-# TODO: decide on interval info that we want to add to the release, where
-# should it go? Under region_flags?
 def custom_info_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
     Select fields for info Hail Table annotation in release.
@@ -235,12 +240,14 @@ def custom_info_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     The info field requires fields from the freq HT and the filters HT so those are
     pulled in here along with all info HT fields.
 
-    :param ht: Hail Table.
+    :param ht: Info Hail Table.
     :return: Select expression dict.
     """
     # Create a dict of the fields from the filters HT that we want to add to the info.
     filters_ht = get_config().get("filters")["ht"]
-    compute_info_method = hl.eval(filters_ht.rf_globals.compute_info_method)
+    compute_info_method = hl.eval(
+        filters_ht.filtering_model_specific_info.compute_info_method
+    )
     score_name = hl.eval(filters_ht.filtering_model.score_name)
     filters_ht = filters_ht.transmute(**filters_ht.truth_sets)
     filters = filters_ht[ht.key]
@@ -281,12 +288,12 @@ def custom_info_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_vep_select(ht: hl.Table):
+def custom_vep_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
     Select fields for vep hail Table annotation in release.
 
-    :param ht: hail table
-    :return: select expression dict
+    :param ht: VEP Hail table
+    :return: Select expression dict.
     """
     selects = {
         "vep": ht.vep.annotate(
@@ -303,7 +310,7 @@ def custom_vep_select(ht: hl.Table):
     return selects
 
 
-def get_select_global_fields(ht: hl.Table):
+def get_select_global_fields(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
     Generate a dictionary of globals to select by checking the configs of all tables joined.
 
@@ -324,13 +331,13 @@ def get_select_global_fields(ht: hl.Table):
     return t_globals
 
 
-def get_select_fields(selects, base_ht: hl.Table):
+def get_select_fields(selects, base_ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
-    Generate a select dict from traversing the base_ht and extracting annotations.
+    Generate a select dict from traversing the `base_ht` and extracting annotations.
 
-    :param selects: mapping or list of selections
-    :param base_ht: base_ht to traverse
-    :return: select mapping from annotation name to base_ht annotation
+    :param selects: Mapping or list of selections.
+    :param base_ht: Base Hail Table to traverse.
+    :return: select Mapping from annotation name to `base_ht` annotation.
     """
     select_fields = {}
     if selects is not None:
@@ -358,9 +365,8 @@ def get_ht(dataset: str, _intervals, test, release_exists) -> hl.Table:
     logger.info("Getting the %s dataset and its selected annotations...", dataset)
     config = get_config(release_exists=release_exists)[dataset]
 
-    # There is no single path for insilico so this impacts its join efficiency but
-    # I dont think its worth the effort of restructuring this code to make it work with
-    # multiple input paths thus the special treatment here
+    # There is no single path for insilico predictors, so we need to handle this case
+    # separately.
     if dataset == "in_silico":
         base_ht = config["ht"]
     else:
@@ -431,7 +437,7 @@ def join_hts(
         base_ht.n_partitions() * new_partition_percent
     )
 
-    # Reorg list so base table is first
+    # Reorg list so base table is first.
     tables.remove(base_table)
     tables.insert(0, base_table)
 
