@@ -2,9 +2,10 @@
 
 import argparse
 import logging
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import hail as hl
+from gnomad.resources.grch38.gnomad import SUBSETS
 from gnomad.utils.annotations import annotate_freq, update_structured_annotations
 from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.slack import slack_notifications
@@ -15,6 +16,7 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.resources.annotations import get_freq
 from gnomad_qc.v3.resources.basics import meta as v3_meta
 from gnomad_qc.v3.resources.release import (
     hgdp_tgp_subset,
@@ -42,6 +44,23 @@ logger = logging.getLogger(
 )
 logger.setLevel(logging.INFO)
 
+SUBSETS = SUBSETS["v3"]
+"""List of subsets in the v3.1/v4.0 genomes release."""
+POP_MAP = {
+    "bantusafrica": "bantusouthafrica",
+    "biakaPygmy": "biaka",
+    "italian": "bergamoitalian",
+    "mbutiPygmy": "mbuti",
+    "melanesian": "bougainville",
+    "mongola": "mongolian",
+    "miaozu": "miao",
+    "yizu": "yi",
+    "oth": "remaining",
+}
+"""
+Map of HGDP populations that need to be renamed in the v4 genomes release. Also includes
+the renaming of 'oth' to 'remaining'.
+"""
 JOIN_FREQS = ["release", "pop_diff", "added", "subtracted"]
 """Frequency Tables to join for creation of the v4.0 genomes release sites HT."""
 FREQ_GLOBALS = ("freq_meta", "freq_meta_sample_count")
@@ -590,6 +609,87 @@ def filter_freq_arrays(
     return ht
 
 
+def annotate_v3_subsets_sample_count(ht: hl.Table) -> hl.Table:
+    """
+    Get the freq sample counts from the v3.1 subsets.
+
+    The freq sample counts on the v3.1.2 release sites HT only contains the counts for
+    the non subset groupings. This function adds the freq sample counts from the v3.1
+    subset frequency groups to the v3.1.2 sample count array to give a sample count
+    array matching the v3.1.2 'freq_meta' global annotation.
+
+    :param ht: Table of the 3.1.2 release sites HT, which only contains the freq
+       sample counts for non subset groupings.
+    :return: Table with the freq sample counts from the v3.1 subset groups added.
+    """
+    sc = ht.index_globals().freq_sample_count
+
+    for subset in SUBSETS:
+        freq_subset_ht = get_freq(
+            version="3.1", subset=subset, het_nonref_patch=True
+        ).ht()
+        sc_subset = freq_subset_ht.index_globals().freq_sample_count
+        sc = sc.extend(sc_subset)
+
+    ht = ht.annotate_globals(freq_meta_sample_count=sc)
+
+    return ht
+
+
+def update_pop_labels(ht: hl.Table, pop_map: Dict[str, Any]) -> hl.Table:
+    """
+    Update the population labels in the 'freq_meta' annotation on `ht`.
+
+    :param ht: Table with population labels to update.
+    :param pop_map: Dictionary mapping old to new population labels.
+    :return: Table with updated population labels in 'freq_meta' annotation.
+    """
+    pop_map = hl.literal(pop_map)
+    ht = ht.annotate_globals(
+        freq_meta=ht.freq_meta.map(
+            lambda d: d.map_values(lambda x: hl.or_else(pop_map.get(x), x))
+        )
+    )
+
+    return ht
+
+
+def join_release_ht_with_subsets(
+    ht: hl.Table, freq_hts: Dict[str, hl.Table]
+) -> hl.Table:
+    """
+    Join the release HT with the call stats for added and subtracted samples.
+
+    :param ht: gnomAD v3.1.2 release sites Table.
+    :param freq_hts: Dictionary with the call stats Tables for added and subtracted
+        samples.
+    :return: Table with `ht` and all Tables in `freq_hts` joined.
+    """
+    logger.info("Adding freq sample counts from v3 subsets...")
+    ht = annotate_v3_subsets_sample_count(ht)
+
+    logger.info("Removing 'Han' and 'Papuan' pops from freq and freq_meta...")
+    pops_to_remove = {"pop": ["han", "papuan"]}
+    ht = filter_freq_arrays(ht, pops_to_remove, keep=False, combine_operator="or")
+
+    logger.info("Updating HGDP pop labels and 'oth' -> 'remaining'...")
+    ht = update_pop_labels(ht, POP_MAP)
+
+    freq_hts = {"release": ht, **freq_hts}
+    for name, freq_ht in freq_hts.items():
+        logger.info("There are %i variants in the %s HT...", freq_ht.count(), name)
+        freq_hts[name] = freq_ht.select("freq").select_globals(*FREQ_GLOBALS)
+
+    logger.info("Joining release HT with AFs for added and subtracted samples...")
+    freq_hts = [freq_hts[x] for x in JOIN_FREQS]
+    ht = hl.Table.multi_way_zip_join(freq_hts, "ann_array", "global_array")
+
+    logger.info("Filtering joint HT to rows where at least one group has AC > 0...")
+    ht = ht.filter(hl.any(ht.ann_array.map(lambda x: x.freq.any(lambda y: y.AC > 0))))
+
+    return ht
+
+
 def get_v4_genomes_release_resources(
     test: bool, overwrite: bool
 ) -> PipelineResourceCollection:
@@ -606,10 +706,14 @@ def get_v4_genomes_release_resources(
         "meta_ht": hgdp_tgp_subset_annotations(sample=True).versions["3.1.2"],
         "dense_mt": hgdp_tgp_subset(dense=True, public=True).versions["3.1.2"],
     }
+    v3_sites_ht = release_sites(public=True).versions["3.1.2"]
     v4_genome_release_pipeline = PipelineResourceCollection(
         pipeline_name="gnomad_v4_genomes_release",
         overwrite=overwrite,
-        pipeline_resources={"Released HGDP + 1KG resources": hgdp_tgp_res},
+        pipeline_resources={
+            "Released HGDP + 1KG resources": hgdp_tgp_res,
+            "gnomAD v3.1.2 release sites HT": {"v3_sites_ht": v3_sites_ht},
+        },
     )
 
     # Create resource collection for each step of the v4.0 genomes release pipeline.
@@ -655,6 +759,16 @@ def get_v4_genomes_release_resources(
             ),
         },
     )
+    join_callstats_for_update = PipelineStepResourceCollection(
+        "--join-callstats-for-update",
+        pipeline_input_steps=[get_callstats_for_updated_samples],
+        add_input_resources={
+            "gnomAD v3.1.2 release sites HT": {"sites_ht": v3_sites_ht}
+        },
+        output_resources={
+            "freq_join_ht": hgdp_tgp_updated_callstats(test=test, subset="join"),
+        },
+    )
 
     # Add all steps to the gnomAD v4.0 genomes release pipeline resource collection.
     v4_genome_release_pipeline.add_steps(
@@ -663,6 +777,7 @@ def get_v4_genomes_release_resources(
             "get_hgdp_tgp_v4_exome_duplicates": hgdp_tgp_v4_exome_duplicates,
             "update_annotations": update_annotations,
             "get_callstats_for_updated_samples": get_callstats_for_updated_samples,
+            "join_callstats_for_update": join_callstats_for_update,
         }
     )
 
@@ -707,11 +822,15 @@ def main(args):
     v4_genome_release_resources = get_v4_genomes_release_resources(
         test=test, overwrite=overwrite
     )
-    meta_ht = v4_genome_release_resources.meta_ht.ht()
-    dense_mt = v4_genome_release_resources.dense_mt.mt()
+    v3_hgdp_tgp_meta_ht = v4_genome_release_resources.meta_ht.ht()
+    v3_hgdp_tgp_dense_mt = v4_genome_release_resources.dense_mt.mt()
+    v3_sites_ht = v4_genome_release_resources.v3_sites_ht.ht()
 
     if test:
-        dense_mt = filter_to_test(dense_mt, gene_on_chrx=gene_on_chrx)
+        v3_hgdp_tgp_dense_mt = filter_to_test(
+            v3_hgdp_tgp_dense_mt, gene_on_chrx=gene_on_chrx
+        )
+        v3_sites_ht = filter_to_test(v3_sites_ht, gene_on_chrx=gene_on_chrx)
 
     if args.get_related_to_nonsubset:
         res = v4_genome_release_resources.get_related_to_nonsubset
@@ -733,7 +852,7 @@ def main(args):
         res = v4_genome_release_resources.update_annotations
         res.check_resource_existence()
         logger.info("Adding updated sample QC annotations to meta HT...")
-        add_updated_sample_qc_annotations(meta_ht).write(
+        add_updated_sample_qc_annotations(v3_hgdp_tgp_meta_ht).write(
             res.updated_meta_ht.path, overwrite=overwrite
         )
 
@@ -744,7 +863,7 @@ def main(args):
             "Calculating and concatenating call stats for samples to be added and "
             "samples to be subtracted from the v3.1.2 release sites HT..."
         )
-        mt = dense_mt.select_globals()
+        mt = v3_hgdp_tgp_dense_mt.select_globals()
         filtered_hts = get_updated_release_samples(res.updated_meta_ht.ht())
         for ht, name in zip(filtered_hts, JOIN_FREQS[1:]):
             freq_ht = get_hgdp_tgp_callstats_for_selected_samples(
@@ -754,6 +873,15 @@ def main(args):
                 freq_ht = filter_freq_arrays(freq_ht, ["pop"])
 
             freq_ht.write(getattr(res, f"freq_{name}_ht").path, overwrite=overwrite)
+
+    if args.join_callstats_for_update:
+        res = v4_genome_release_resources.join_callstats_for_update
+        res.check_resource_existence()
+        logger.info("Joining all callstats HTs with the release sites HT...")
+        join_release_ht_with_subsets(
+            v3_sites_ht,
+            {n: getattr(res, f"freq_{n}_ht").ht() for n in JOIN_FREQS[1:]},
+        ).write(res.freq_join_ht.path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
@@ -800,6 +928,15 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
+    parser.add_argument(
+        "--join-callstats-for-update",
+        help=(
+            "Join the callstats Tables for the updated samples with the release "
+            "callstats Table."
+        ),
+        action="store_true",
+    )
+
     args = parser.parse_args()
 
     if args.slack_channel:
