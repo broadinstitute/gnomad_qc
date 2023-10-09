@@ -87,6 +87,13 @@ def import_variant_qc_vcf(
             info=ht.info.annotate(**split_info_annotation(ht.info, ht.a_index)),
         )
 
+    ht = ht.annotate_globals(
+        transmitted_singletons=args.transmitted_singletons,
+        sibling_singletons=args.sibling_singletons,
+        adj=args.adj,
+        interval_qc_filter=args.interval_qc_filter,
+        compute_info_method=args.compute_info_method,
+    )
     ht = ht.checkpoint(
         get_variant_qc_result(model_id, split=True).path,
         overwrite=overwrite,
@@ -148,6 +155,33 @@ if __name__ == "__main__":
         type=str,
         required=True,
         choices=["AS", "quasi", "set_long_AS_missing_info"],
+    )
+    parser.add_argument(
+        "--transmitted-singletons",
+        help="Whether transmitted singletons where used in training the model.",
+        type=bool,
+        required=True,
+    )
+    parser.add_argument(
+        "--sibling-singletons",
+        help="Whether sibling singletons where used in training the model.",
+        type=bool,
+        required=True,
+    )
+    parser.add_argument(
+        "--adj",
+        help="Whether adj filtered singletons where used in training the model.",
+        type=bool,
+        required=True,
+    )
+    parser.add_argument(
+        "--interval-qc-filter",
+        help=(
+            "Whether only variants in intervals passing interval QC where used in "
+            "training the model."
+        ),
+        type=bool,
+        required=True,
     )
     parser.add_argument(
         "--n-partitions",
