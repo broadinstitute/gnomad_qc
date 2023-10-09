@@ -824,7 +824,7 @@ def main(args):
     )
     v3_hgdp_tgp_meta_ht = v4_genome_release_resources.meta_ht.ht()
     v3_hgdp_tgp_dense_mt = v4_genome_release_resources.dense_mt.mt()
-    v3_sites_ht = v4_genome_release_resources.sites_ht.ht()
+    v3_sites_ht = v4_genome_release_resources.v3_sites_ht.ht()
 
     if test:
         v3_hgdp_tgp_dense_mt = filter_to_test(
