@@ -199,6 +199,7 @@ def process_score_cutoffs(
         },
     }
 
+    # Calculate min and max scores within each bin.
     min_score = ht.aggregate(hl.agg.min(ht.score))
     max_score = ht.aggregate(hl.agg.max(ht.score))
     aggregated_bin_ht = aggregated_bin_ht.annotate(indel=~aggregated_bin_ht.snv)
@@ -439,6 +440,8 @@ def main(args):
     )
     test = args.test
     overwrite = args.overwrite
+
+    # Call method to return final VQC resources from evaluation runs.
     final_vqc_resources = get_final_variant_qc_resources(
         test=test,
         overwrite=overwrite,
@@ -447,14 +450,18 @@ def main(args):
     res = final_vqc_resources.finalize_variant_qc
     res.check_resource_existence()
 
+    # Get Bin and Freq HTs, where Bin contains info about ordered bins arranged by quality
+    # and freq contains frequency info for each variant
     bin_ht = res.bin_ht.ht()
     freq_ht = res.freq_ht.ht()
 
     if test:
         bin_ht = bin_ht._filter_partitions(range(5))
 
+    # Filter out bins which fail hard cutoffs.
     bin_ht = bin_ht.filter(~res.info_ht.ht()[bin_ht.key].AS_lowqual)
 
+    # Name filter and score annotations based on model.
     if args.model_id.startswith("vqsr_"):
         bin_ht = bin_ht.drop("info")
         filter_name = "AS_VQSR"
