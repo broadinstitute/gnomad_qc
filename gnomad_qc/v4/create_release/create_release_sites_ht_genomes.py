@@ -45,7 +45,7 @@ logger = logging.getLogger(
 logger.setLevel(logging.INFO)
 
 SUBSETS = SUBSETS["v3"]
-"""List of subsets in the v3.1/v4 genomes release."""
+"""List of subsets in the v3.1/v4.0 genomes release."""
 POP_MAP = {
     "bantusafrica": "bantusouthafrica",
     "biakaPygmy": "biaka",
@@ -59,7 +59,7 @@ POP_MAP = {
 }
 """
 Map of HGDP populations that need to be renamed in the v4 genomes release. Also includes
-the rename of 'oth' to 'remaining'.
+the renaming of 'oth' to 'remaining'.
 """
 JOIN_FREQS = ["release", "pop_diff", "added", "subtracted"]
 """Frequency Tables to join for creation of the v4.0 genomes release sites HT."""
@@ -660,7 +660,7 @@ def join_release_ht_with_subsets(
     """
     Join the release HT with the call stats for added and subtracted samples.
 
-    :param ht: GnomAD v3.1.2 release sites Table.
+    :param ht: gnomAD v3.1.2 release sites Table.
     :param freq_hts: Dictionary with the call stats Tables for added and subtracted
         samples.
     :return: Table with `ht` and all Tables in `freq_hts` joined.
