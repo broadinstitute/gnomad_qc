@@ -309,6 +309,7 @@ def generate_final_filter_ht(
         indel_training_variables = VQSR_FEATURES["indel"]
     else:
         vqc_expr = ht.info.annotate(**ht[compute_info_method])
+        vqc_expr = vqc_expr.drop("SCORE")
         snv_training_variables = IF_FEATURES
         indel_training_variables = IF_FEATURES
 
