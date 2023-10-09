@@ -48,6 +48,7 @@ TRAINING_INFO_FIELDS = {
 VARIANT_QC_RESULT_FIELDS = {
     "RF": ["rf_tp_probability", "rf_prediction"],
     "AS_VQSR": ["AS_VQSLOD", "AS_culprit"],
+    "IF": ["SCORE", "calibration_sensitivity", "calibration", "extracted", "snp"],
 }
 """Annotations to keep in the 'results' field of the final filter Table."""
 FINAL_FILTER_FIELDS = [
@@ -68,25 +69,26 @@ FINAL_FILTER_FIELDS = [
 ]
 """Top level annotations to keep in the final filter Table."""
 VARIANT_QC_GLOBAL_FIELDS = {
-    "RF": [
-        "feature_medians",
-        "features_importance",
-        "test_results",
-        "fp_to_tp",
-        "num_trees",
-        "max_depth",
+    "standard": [
         "transmitted_singletons",
         "sibling_singletons",
         "adj",
-        "filter_centromere_telomere",
         "interval_qc_filter",
-        "test_intervals",
         "compute_info_method",
-    ],
-    "AS_VQSR": [],
-    "IF": [],
+    ]
 }
 """Variant QC global annotations to keep in the final filter Table."""
+VARIANT_QC_GLOBAL_FIELDS["RF"] = VARIANT_QC_GLOBAL_FIELDS["standard"] + [
+    "feature_medians",
+    "features_importance",
+    "test_results",
+    "fp_to_tp",
+    "num_trees",
+    "max_depth",
+    "test_intervals",
+]
+VARIANT_QC_GLOBAL_FIELDS["AS_VQSR"] = VARIANT_QC_GLOBAL_FIELDS["standard"]
+VARIANT_QC_GLOBAL_FIELDS["IF"] = VARIANT_QC_GLOBAL_FIELDS["standard"]
 VQSR_FEATURES = {
     "snv": [
         "AS_QD",
@@ -104,11 +106,13 @@ VQSR_FEATURES = {
 }
 """List of features used in the VQSR model."""
 IF_FEATURES = [
-    "AS_QD",
     "AS_MQRankSum",
+    "AS_pab_max",
+    "AS_MQ",
+    "AS_QD",
     "AS_ReadPosRankSum",
     "AS_FS",
-    "AS_MQ",
+    "AS_SOR",
 ]
 """List of features used in the isolation forest model."""
 
@@ -277,6 +281,7 @@ def generate_final_filter_ht(
     }
     snv_indel_expr = {"snv": hl.is_snp(ht.alleles[0], ht.alleles[1])}
     snv_indel_expr["indel"] = ~snv_indel_expr["snv"]
+    ht.describe()
     for var_type, score_cut in score_cutoff_globals.items():
         filters[filter_name] = filters[filter_name] | (
             snv_indel_expr[var_type] & (ht.score < score_cut.min_score)
@@ -299,9 +304,6 @@ def generate_final_filter_ht(
                 lambda x: x[compute_info_method]
             )
         )
-        variant_qc_globals = variant_qc_globals.select(
-            rf_globals=variant_qc_globals.select(*VARIANT_QC_GLOBAL_FIELDS["RF"])
-        )
     elif filter_name == "AS_VQSR":
         vqc_expr = hl.struct(**ht[compute_info_method])
         snv_training_variables = VQSR_FEATURES["snv"]
@@ -310,8 +312,12 @@ def generate_final_filter_ht(
         vqc_expr = hl.struct(**ht[compute_info_method])
         snv_training_variables = IF_FEATURES
         indel_training_variables = IF_FEATURES
-        # TODO: Add other IF model annotations to final filter Table.
 
+    variant_qc_globals = variant_qc_globals.select(
+        filtering_model_specific_info=variant_qc_globals.select(
+            *VARIANT_QC_GLOBAL_FIELDS[filter_name]
+        )
+    )
     keep_features = hl.eval(
         hl.set(snv_training_variables).union(hl.set(indel_training_variables))
     )
