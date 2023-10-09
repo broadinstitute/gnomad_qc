@@ -13,7 +13,7 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import get_freq, get_info
+from gnomad_qc.v4.resources.annotations import get_freq, get_info, get_vqsr_filters
 from gnomad_qc.v4.resources.variant_qc import final_filter, get_score_bins
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -413,10 +413,6 @@ def get_final_variant_qc_resources(
             "freq_ht": get_freq(finalized=True)
         },
     }
-    if model_id.startswith("vqsr"):
-        input_resources["variant_qc/load_vqsr.py"] = {
-            "vqsr_ht": get_vqsr_filters(model_id, split=True)
-        }
 
     # Create resource collection for the finalizing variant QC pipeline.
     finalize_variant_qc = PipelineStepResourceCollection(
@@ -483,6 +479,7 @@ def main(args):
     elif args.indel_use_calling_interval_bin:
         indel_bin_id = "in_calling_intervals_bin"
 
+    # Return a dictionary containing cutoffs by variant type.
     score_cutoff_globals = process_score_cutoffs(
         bin_ht,
         snv_bin_cutoff=args.snv_bin_cutoff,
@@ -494,14 +491,17 @@ def main(args):
         indel_bin_id=indel_bin_id,
     )
 
+    # Append with frequency information.
     bin_ht = bin_ht.annotate(inbreeding_coeff=freq_ht[bin_ht.key].inbreeding_coeff)
     freq_idx = freq_ht[bin_ht.key]
 
+    # Generate expressions for mono-allelic and only-het status.
     mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0)
     only_het_flag_expr = ((freq_idx.freq[0].AC * 2) == freq_idx.freq[0].AN) & (
         freq_idx.freq[0].homozygote_count == 0
     )
 
+    # Return the final filtered table for all filters passed in below.
     ht = generate_final_filter_ht(
         bin_ht,
         filter_name,
@@ -517,6 +517,7 @@ def main(args):
         filtering_model=ht.filtering_model.annotate(model_id=args.model_id)
     )
 
+    # Write out final filtered table to path defined above in resources.
     ht.write(res.final_ht.path, overwrite=args.overwrite)
 
 
