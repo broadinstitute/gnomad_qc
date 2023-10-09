@@ -43,12 +43,13 @@ TRAINING_INFO_FIELDS = {
         "negative_train_site",
     ],
     "AS_VQSR": ["positive_train_site", "negative_train_site"],
+    "IF": ["positive_train_site", "training", "calibration", "extracted"],
 }
 """Annotations to keep in the 'training_info' field of the final filter Table."""
 VARIANT_QC_RESULT_FIELDS = {
     "RF": ["rf_tp_probability", "rf_prediction"],
     "AS_VQSR": ["AS_VQSLOD", "AS_culprit"],
-    "IF": ["SCORE", "calibration_sensitivity", "calibration", "extracted", "snp"],
+    "IF": ["SCORE", "CALIBRATION_SENSITIVITY"],
 }
 """Annotations to keep in the 'results' field of the final filter Table."""
 FINAL_FILTER_FIELDS = [
@@ -267,7 +268,6 @@ def generate_final_filter_ht(
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter to use for variants.
     :return: Finalized random forest Table annotated with variant filters.
     """
-    ht.describe()
     if ht.any(hl.is_missing(ht.score)):
         logger.warning("Missing Score!")
         ht.filter(hl.is_missing(ht.score)).show()
@@ -282,7 +282,6 @@ def generate_final_filter_ht(
     }
     snv_indel_expr = {"snv": hl.is_snp(ht.alleles[0], ht.alleles[1])}
     snv_indel_expr["indel"] = ~snv_indel_expr["snv"]
-    ht.describe()
     for var_type, score_cut in score_cutoff_globals.items():
         filters[filter_name] = filters[filter_name] | (
             snv_indel_expr[var_type] & (ht.score < score_cut.min_score)
@@ -310,7 +309,8 @@ def generate_final_filter_ht(
         snv_training_variables = VQSR_FEATURES["snv"]
         indel_training_variables = VQSR_FEATURES["indel"]
     else:
-        vqc_expr = hl.struct(**ht[compute_info_method])
+        vqc_expr = ht.info.annotate(**ht[compute_info_method])
+        vqc_expr = vqc_expr.drop("SCORE")
         snv_training_variables = IF_FEATURES
         indel_training_variables = IF_FEATURES
 
