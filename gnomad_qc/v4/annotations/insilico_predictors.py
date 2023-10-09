@@ -6,6 +6,7 @@ import hail as hl
 from gnomad.resources.resource_utils import NO_CHR_TO_CHR_CONTIG_RECODING
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import filter_vep_transcript_csqs
+from hail.utils import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_insilico_predictors
@@ -55,25 +56,30 @@ def create_cadd_grch38_ht() -> hl.Table:
 
     The combined CADD scores in the returned table are from the following sources:
         - all SNVs: `cadd.v1.6.whole_genome_SNVs.tsv.bgz` (81G) downloaded from
-        `https://krishna.gs.washington.edu/download/CADD/v1.6/GRCh38/whole_genome_SNVs.tsv.gz`.
-        It contains 8,812,917,339 SNVs.
-        - gnomad 3.0 indels: `cadd.v1.6.indels.tsv.bgz` (1.1G) downloaded from
-        `https://krishna.gs.washington.edu/download/CADD/v1.6/GRCh38/gnomad.genomes.r3.0.indel.tsv.gz`.
-        It contains 100,546,109 indels from gnomaD v3.0.
-        - gnomad 3.1 indels: `CADD-indels-gnomad.3.1.ht` was run on gnomAD v3.1
-        with CADD v1.6 in 2020. It contains 166,122,720 indels from gnomAD v3.1.
-        - gnomad 3.1 complex indels: `CADD-1.6-gnomad-complex-variants.ht` was
-        run on gnomAD v3.1 with CADD v1.6 in 2020. It contains 2,307 complex
-        variants that do not fit Hail's criteria for an indel and thus exist in
-        a separate table than the gnomad 3.1 indels.
-        - gnomAD v4 indels: `cadd.v1.6.gnomAD_v4_new_indels.tsv.bgz` (368M) was
-        run on gnomAD v4 with CADD v1.6 in 2023. It contains 32,561,253 indels
-        that are new in gnomAD v4.
+          `https://krishna.gs.washington.edu/download/CADD/v1.6/GRCh38/whole_genome_SNVs.tsv.gz`.
+          It contains 8,812,917,339 SNVs.
+        - gnomad 3.0 indels: `cadd.v1.6.gnomad.genomes.v3.0.indel.tsv.bgz` (1.1G)
+          downloaded from `https://krishna.gs.washington.edu/download/CADD/v1.6/GRCh38/gnomad.genomes.r3.0.indel.tsv.gz`.
+          It contains 100,546,109 indels from gnomaD v3.0.
+        - gnomad 3.1 indels: `cadd.v1.6.gnomad.genomes.v3.1.indels.new.ht` was run
+          on gnomAD v3.1 with CADD v1.6 in 2020. It contains 166,122,720 new indels from
+          gnomAD v3.1 compared to v3.0.
+        - gnomad 3.1 complex indels: `cadd.v1.6.gnomad.genomes.v3.1.indels.complex.ht`
+          was run on gnomAD v3.1 with CADD v1.6 in 2020. It contains 2,307 complex
+          variants that do not fit Hail's criteria for an indel and thus exist in
+          a separate table than the gnomad 3.1 indels.
+        - gnomAD v4 exomes indels: `cadd.v1.6.gnomad.exomes.v4.0.indels.new.tsv.bgz`
+          (368M) was run on gnomAD v4 with CADD v1.6 in 2023. It contains 32,561,
+          253 indels that are new in gnomAD v4.
+        - gnomAD v4 genomes indels: `cadd.v1.6.gnomad.genomes.v4.0.indels.new.tsv.bgz`
+          (13M) was run on gnomAD v4 with CADD v1.6 in 2023. It contains 904,906 indels
+          that are new in gnomAD v4 genomes because of the addition of HGDP/TGP samples.
 
          .. note::
-         1,972,208 indels were duplicated in gnomAD v3.0 and v4.0 or in gnomAD
-         v3.1 and v4.0. However, CADD only generates a score per loci.
-         We keep only the latest prediction, v4.0, for these loci.
+         ~1,9M indels were duplicated in gnomAD v3.0 and v4.0 or in gnomAD v3.1 and
+         v4.0. However, CADD only generates a score per loci. We keep only the latest
+         prediction, v4.0, for these loci.
+         The output generated a CADD HT with 9,110,177,520 rows.
     :return: Hail Table with CADD scores for GRCh38.
     """
 
@@ -104,30 +110,39 @@ def create_cadd_grch38_ht() -> hl.Table:
         )
         ht = ht.select("locus", "alleles", "RawScore", "PHRED")
         ht = ht.key_by("locus", "alleles")
-
+        ht = ht.checkpoint(new_temp_file("cadd", "ht"))
         return ht
 
     snvs = _load_cadd_raw(
         "gs://gnomad-insilico/cadd/cadd.v1.6.whole_genome_SNVs.tsv.bgz"
     )
     indel3_0 = _load_cadd_raw(
-        "gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.genomes.r3.0.indel.tsv.bgz"
+        "gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.genomes.v3.0.indel.tsv.bgz"
     )
-    indel3_1 = hl.read_table("gs://gnomad-insilico/cadd/CADD-indels-gnomad.3.1.ht")
+    indel3_1 = hl.read_table(
+        "gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.genomes.v3.1.indels.new.ht"
+    )
     indel3_1_complex = hl.read_table(
         "gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.genomes.v3.1.indels.complex.ht"
     )
-    indel4 = _load_cadd_raw(
-        "gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.v4.0.indels.new.tsv.bgz"
+    indel4_e = _load_cadd_raw(
+        "gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.exomes.v4.0.indels.new.tsv.bgz"
+    )
+    indel4_g = _load_cadd_raw(
+        "gs://gnomad-insilico/cadd/cadd.v1.6.gnomad.genomes.v4.0.indels.new.tsv.bgz"
     )
 
     # Merge the CADD predictions run for v3 versions.
     indel3 = indel3_0.union(indel3_1, indel3_1_complex)
 
+    # Merge the CADD predictions run for v4 versions.
+    indel4 = indel4_e.union(indel4_g).distinct()
+
     # This will avoid duplicated indels in gnomAD v3 and v4.
     indel3 = indel3.anti_join(indel4)
 
     ht = snvs.union(indel3, indel4)
+
     ht = ht.select(cadd=hl.struct(phred=ht.PHRED, raw_score=ht.RawScore))
     ht = ht.annotate_globals(cadd_version="v1.6")
     return ht

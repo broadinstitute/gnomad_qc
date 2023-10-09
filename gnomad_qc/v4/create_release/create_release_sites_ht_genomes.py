@@ -411,7 +411,7 @@ def get_updated_release_samples(ht: hl.Table) -> Tuple[hl.Table, hl.Table, hl.Ta
         - samples that will be added to the v4.0 genomes release: samples where
           'gnomad_release' status has changed and 'gnomad_release' is now True.
         - samples that will be removed from the v4.0 genomes release: samples where
-         'gnomad_release' status has changed and 'gnomad_release' is now False.
+          'gnomad_release' status has changed and 'gnomad_release' is now False.
 
     :param ht: Table with the HGDP + 1KG subset metadata with updated sample
         annotations.
