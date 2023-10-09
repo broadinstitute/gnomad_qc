@@ -6,6 +6,7 @@ import hail as hl
 from gnomad.resources.resource_utils import NO_CHR_TO_CHR_CONTIG_RECODING
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import filter_vep_transcript_csqs
+from hail.utils import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_insilico_predictors
@@ -108,7 +109,7 @@ def create_cadd_grch38_ht() -> hl.Table:
         )
         ht = ht.select("locus", "alleles", "RawScore", "PHRED")
         ht = ht.key_by("locus", "alleles")
-
+        ht = ht.checkpoint(new_temp_file("cadd", "ht"))
         return ht
 
     snvs = _load_cadd_raw(
@@ -132,7 +133,6 @@ def create_cadd_grch38_ht() -> hl.Table:
 
     # Merge the CADD predictions run for v3 versions.
     indel3 = indel3_0.union(indel3_1, indel3_1_complex)
-    logger.info("Number of indels in v3: %s", indel3.count())
 
     # Merge the CADD predictions run for v4 versions.
     indel4 = indel4_e.union(indel4_g).distinct()
@@ -143,7 +143,6 @@ def create_cadd_grch38_ht() -> hl.Table:
     logger.info("Number of indels in v3 and not in v4: %s.", indel3.count())
 
     ht = snvs.union(indel3, indel4)
-    logger.info("Number of variants in CADD HT: %s.", ht.count())
 
     ht = ht.select(cadd=hl.struct(phred=ht.PHRED, raw_score=ht.RawScore))
     ht = ht.annotate_globals(cadd_version="v1.6")
@@ -349,7 +348,6 @@ def create_pangolin_grch38_ht() -> hl.Table:
             hl.max(ht.values.largest_ds_gene),
         )
     )
-    # TODO: get the version for genomes run in May 2023.
     ht = ht.annotate_globals(pangolin_version=["v1.3.12", "v1.4.4"])
     logger.info(
         "\nNumber of variants indicating splice gain: %s;\n"
