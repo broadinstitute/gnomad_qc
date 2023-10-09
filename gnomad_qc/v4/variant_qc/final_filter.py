@@ -13,7 +13,7 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.annotations import get_freq, get_info, get_vqsr_filters
+from gnomad_qc.v4.resources.annotations import get_freq, get_info
 from gnomad_qc.v4.resources.variant_qc import final_filter, get_score_bins
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
