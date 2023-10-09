@@ -18,6 +18,7 @@ from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.annotations.insilico_predictors import get_sift_polyphen_from_vep
+from gnomad_qc.v4.create_release.create_release_utils import remove_missing_vep_fields
 from gnomad_qc.v4.resources.annotations import (
     get_freq,
     get_info,
@@ -144,10 +145,9 @@ def get_config(release_exists: bool = False):
         },
         "vep": {
             "ht": get_vep().ht(),
-            # TODO: drop 100% missing? Can add to the custom vep select function
             "path": get_vep().path,
             "select": ["vep"],
-            # Add in "custom_select" that drops in silicos.
+            # Add in "custom_select" that drops in silicos and 100% missing VEP fields.
             "custom_select": custom_vep_select,
             # TODO: Update to have vep_csq_header -- should this be on the vep table
             #  itself?
@@ -295,9 +295,10 @@ def custom_vep_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     :param ht: VEP Hail table
     :return: Select expression dict.
     """
+    vep_expr = remove_missing_vep_fields(ht.vep)
     selects = {
-        "vep": ht.vep.annotate(
-            transcript_consequences=ht.vep.transcript_consequences.map(
+        "vep": vep_expr.annotate(
+            transcript_consequences=vep_expr.transcript_consequences.map(
                 lambda x: x.drop(
                     "sift_prediction",
                     "sift_score",
