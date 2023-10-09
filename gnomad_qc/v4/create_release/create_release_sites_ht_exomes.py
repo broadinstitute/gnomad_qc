@@ -38,12 +38,11 @@ logging.basicConfig(
 logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
-# Remove InbreedingCoeff from allele-specific fields and SOR from SITE
-# (processed separately from other fields)
+# Remove InbreedingCoeff from allele-specific fields because it is processed separately
+# from the other fields.
 AS_FIELDS = deepcopy(AS_FIELDS)
 AS_FIELDS.remove("InbreedingCoeff")
 SITE_FIELDS = deepcopy(SITE_FIELDS)
-SITE_FIELDS.remove("SOR")
 TABLES_FOR_RELEASE = [
     "dbsnp",
     "filters",
@@ -53,7 +52,6 @@ TABLES_FOR_RELEASE = [
     "in_silico",
     "vep",
 ]
-
 INSILICO_PREDICTORS = ["spliceai", "pangolin", "revel", "cadd"]  # , "phylop"
 
 
@@ -83,7 +81,7 @@ def get_config(release_exists: bool = False):
         "filters": {
             "ht": final_filter().ht(),
             "path": final_filter().path,
-            "select": ["filters", "vqsr"],
+            "select": ["filters"],  # , "vqsr"],
             "custom_select": custom_filters_select,
             "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
         },
@@ -153,7 +151,7 @@ def get_config(release_exists: bool = False):
             # Add in "custom_select" that drops insilicos
             "custom_select": custom_vep_select,
             # TODO: Update to have vep_csq_header -- should this be on the vep table
-            # itself?
+            #  itself?
             "select_globals": ["vep_version", "vep_help", "vep_config"],
             "global_name": "vep_globals",
         },
@@ -202,7 +200,6 @@ def custom_region_flags_select(ht: hl.Table):
     :param ht: hail Table.
     :return: select expression dict
     """
-    selects = {}
     selects = {
         "region_flags": region_flag_expr(
             ht,
@@ -217,42 +214,35 @@ def custom_filters_select(ht: hl.Table):
     """
     Select gnomad filter HT fields for release dataset.
 
-    Extract fields like 'filters', 'vqsr', and generates 'alelle_info' struct.
+    Extract fields like 'filters', 'vqsr', and generates 'allele_info' struct.
     :param ht: hail table.
     :return: select expression dict.
     """
     selects = {}
-    selects["allele_info"] = hl.struct(
-        variant_type=ht.variant_type,
-        allele_type=ht.allele_type,
-        n_alt_alleles=ht.n_alt_alleles,
-        was_mixed=ht.was_mixed,
-    )
+
+    # Should we drop model_id?
+
     return selects
 
 
-# TODO: This function needs to be updated depending on which fields we want to keep from
-#  info, I noticed there a dups within structs, e.g quasi_info has AS_SOR as does AS_info,
-# maybe we need to pull these from filters instead?
-def custom_info_select(ht: hl.Table):
+# TODO: Change name rf_globals
+# TODO: decide on interval info that we want to add to the release, where
+# should it go? Under region_flags?
+def custom_info_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
-    Select fields for info hail Table annotation in release.
+    Select fields for info Hail Table annotation in release.
 
-    The info field requires fields from the freq HT and the filters HT
-    so those are pulled in here along with all info HT fields.
+    The info field requires fields from the freq HT and the filters HT so those are
+    pulled in here along with all info HT fields.
 
-    :param ht: hail table
-    :return: select expression dict
+    :param ht: Hail Table.
+    :return: Select expression dict.
     """
-    freq_ht = get_config().get("freq")["ht"]
-    freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
-
+    # Create a dict of the fields from the filters HT that we want to add to the info.
     filters_ht = get_config().get("filters")["ht"]
-
-    # TODO: Change name rf_globals
     compute_info_method = hl.eval(filters_ht.rf_globals.compute_info_method)
-    ht = ht.select(info=hl.struct(**ht.site_info, **ht[f"{compute_info_method}_info"]))
-
+    score_name = hl.eval(filters_ht.filtering_model.score_name)
+    filters_ht = filters_ht.transmute(**filters_ht.truth_sets)
     filters = filters_ht[ht.key]
     filters_info_fields = [
         "singleton",
@@ -260,22 +250,33 @@ def custom_info_select(ht: hl.Table):
         "omni",
         "mills",
         "monoallelic",
-        "SOR",
+        "only_het",
     ]
+    filters_info_dict = {field: filters[field] for field in filters_info_fields}
+    filters_info_dict.update({**{f"{score_name}": filters[f"{score_name}"]}})
 
+    # Create a dict of the fields from the freq HT that we want to add to the info.
+    freq_ht = get_config().get("freq")["ht"]
+    freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
+
+    # Create a dict of the fields from the VRS HT that we want to add to the info.
     vrs_ht = get_vrs().ht()
     vrs_info_fields = {"vrs": vrs_ht[ht.key].vrs}
 
-    filters_info_dict = {field: filters[field] for field in filters_info_fields}
-    score_name = hl.eval(filters_ht.filtering_model.score_name)
-    filters_info_dict.update({**{f"{score_name}": filters[f"{score_name}"]}})
-
-    info_dict = {field: ht.info[field] for field in SITE_FIELDS + AS_FIELDS}
+    # Create a dict of the fields from the info HT that we want keep in the info.
+    info_struct = hl.struct(**ht.site_info, **ht[f"{compute_info_method}_info"])
+    info_dict = {field: info_struct[field] for field in SITE_FIELDS + AS_FIELDS}
     info_dict.update(filters_info_dict)
     info_dict.update(freq_info_dict)
     info_dict.update(vrs_info_fields)
 
-    selects = {"info": hl.struct(**info_dict)}
+    # Select the info and allele info annotations. We drop nonsplit_alleles from
+    # allele_info so that we don't release alleles that are found in non-releasable
+    # samples.
+    selects = {
+        "info": hl.struct(**info_dict),
+        "allele_info": ht.allele_info.drop("nonsplit_alleles"),
+    }
 
     return selects
 
@@ -400,11 +401,12 @@ def join_hts(
     release_exists: bool,
 ) -> hl.Table:
     """
-    Outer join a list of hail tables.
+    Outer join a list of Hail Tables.
 
     :param base_table: Dataset to use for interval partitioning.
     :param tables: List of tables to join.
-    :param new_partition_percent: Percent of base_table partitions used for final release hail Table.
+    :param new_partition_percent: Percent of base_table partitions used for final
+        release Hail Table.
     :param test: Whether this is for a test run.
     :param release_exists: Whether the release HT already exists.
     :return: Hail Table with datasets joined.
@@ -416,7 +418,7 @@ def join_hts(
     base_ht_path = get_config()[base_table]["path"]
     base_ht = hl.read_table(base_ht_path)
     if test:
-        # Filter to PCSK9 for testing
+        # Filter to PCSK9 for testing.
         base_ht = hl.filter_intervals(
             base_ht,
             [
@@ -448,8 +450,8 @@ def join_hts(
 
     # Track the dataset we've added as well as the source path.
     # TODO: Rerunning this will end up overwriting the datasets global to only the
-    # tables run which we dont want. Need to change this behavior so only the rerun
-    # tables are updated.
+    #  tables run which we dont want. Need to change this behavior so only the rerun
+    #  tables are updated.
     included_dataset = {
         k: v["path"]
         for k, v in get_config(release_exists=release_exists).items()
@@ -523,6 +525,7 @@ def main(args):
 
     logger.info("Final variant count: %d", ht.count())
     ht.describe()
+    print(hl.eval(ht.index_globals()))
 
 
 #    ht.show()
@@ -572,7 +575,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--slack_channel", help="Slack channel to post results and notifications to."
+        "--slack-channel", help="Slack channel to post results and notifications to."
     )
 
     args = parser.parse_args()
