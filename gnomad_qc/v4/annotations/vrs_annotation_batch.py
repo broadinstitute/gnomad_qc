@@ -42,7 +42,9 @@ logger.setLevel(logging.INFO)
 # Define the version of ga4gh.vrs code this was run on,
 # as present in the Dockerfile
 # Please change this when the Dockerfile is updated
-VRS_VERSION = "0.8.4"
+VRS_SCHEMA_VERSION = "1.3.0"
+VRS_PYTHON_VERSION = "0.8.4"
+SEQREPO_VERSION = "2018-11-26"
 
 
 def init_job(
@@ -366,7 +368,13 @@ def main(args):
             info=hl.struct(vrs=ht_annotated[ht_original.locus, ht_original.alleles].vrs)
         )
 
-        ht_final = ht_final.annotate_globals(vrs_version=VRS_VERSION)
+        ht_final = ht_final.annotate_globals(
+            vrs_version=hl.struct(
+                vrs_schema_version=VRS_SCHEMA_VERSION,
+                vrs_python_version=VRS_PYTHON_VERSION,
+                seqrepo_version=SEQREPO_VERSION,
+            )
+        )
 
         logger.info(f"Outputting final table at: {output_path}")
         ht_final.write(output_path, overwrite=args.overwrite)
