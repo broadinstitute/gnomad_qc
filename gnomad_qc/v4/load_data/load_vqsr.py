@@ -1,5 +1,4 @@
-# noqa: D100
-
+"""Script to load variant QC result VCF into a Hail Table."""
 import argparse
 import logging
 from typing import Optional
@@ -108,7 +107,8 @@ def import_variant_qc_vcf(
         )
 
 
-def main(args):  # noqa: D103
+def main(args):
+    """Load variant QC result VCF into a Hail Table."""
     hl.init(log="/load_variant_qc_vcf.log", default_reference="GRCh38")
 
     logger.info(f"passed array elements required as: {args.array_elements_required}")
