@@ -168,7 +168,17 @@ def main(args):
     working_bucket = args.working_bucket
     data_type = args.data_type
 
-    input_path = v4_input_ht(data_type=data_type).path
+    input_path = v4_input_ht(data_type=data_type).path or args.input_path
+    output_vrs_path = (
+        v4_vrs_annotations(test=args.test, data_type=data_type).path
+        or args.output_vrs_path
+    )
+    output_vrs_anno_ori_path = (
+        v4_vrs_annotations(
+            test=args.test, data_type=data_type, original_annotations=True
+        ).path
+        or args.output_vrs_anno_ori_path
+    )
 
     # Read in Hail Table, partition, and export to sharded VCF
     ht_original = hl.read_table(input_path)
@@ -205,7 +215,7 @@ def main(args):
         check_resource_existence(
             output_step_resources={
                 "--run-vrs": [
-                    v4_vrs_annotations(test=args.test, data_type=data_type).path,
+                    output_vrs_path,
                 ],
             },
             overwrite=args.overwrite,
@@ -339,34 +349,24 @@ def main(args):
 
         # Checkpoint (write) resulting annotated table
         ht_annotated = ht_annotated.checkpoint(
-            v4_vrs_annotations(test=args.test, data_type=data_type).path,
+            output_vrs_path,
             overwrite=args.overwrite,
         )
-        logger.info(
-            "Annotated Hail Table checkpointed to:"
-            f" {v4_vrs_annotations(test=args.test, data_type=data_type).path}"
-        )
+        logger.info(f"Annotated Hail Table checkpointed to: {output_vrs_path}")
 
     if args.annotate_original:
-        output_path = v4_vrs_annotations(
-            test=args.test, data_type=data_type, original_annotations=True
-        ).path
         check_resource_existence(
             input_step_resources={
-                "--run-vrs": [
-                    v4_vrs_annotations(test=args.test, data_type=data_type).path
-                ],
+                "--run-vrs": [output_vrs_path],
             },
             output_step_resources={
-                "--annotate-original": [output_path],
+                "--annotate-original": [output_vrs_anno_ori_path],
             },
             overwrite=args.overwrite,
         )
 
         # Output final Hail Tables with VRS annotations
-        ht_annotated = hl.read_table(
-            v4_vrs_annotations(test=args.test, data_type=data_type).path
-        )
+        ht_annotated = hl.read_table(output_vrs_path)
 
         logger.info("Adding VRS IDs and GA4GH.VRS version to original Table")
         ht_final = ht_original.annotate(
@@ -381,10 +381,10 @@ def main(args):
             )
         )
 
-        logger.info(f"Outputting final table at: {output_path}")
-        ht_final.write(output_path, overwrite=args.overwrite)
+        logger.info(f"Outputting final table at: {output_vrs_anno_ori_path}")
+        ht_final.write(output_vrs_anno_ori_path, overwrite=args.overwrite)
 
-        logger.info(f"Done! Final table written to {output_path}.")
+        logger.info(f"Done! Final table written to {output_vrs_anno_ori_path}.")
 
 
 if __name__ == "__main__":
@@ -427,6 +427,24 @@ if __name__ == "__main__":
         "--test",
         help="Fiter to only 200 partitions for testing purposes.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--input-path",
+        help="Full path of Hail Table to annotate.",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--output-vrs-path",
+        help="Full path of Hail Table to write VRS annotations to.",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--output-vrs-anno-ori-path",
+        help="Full path of Hail Table to write VRS annotations to.",
+        type=str,
+        default=None,
     )
     parser.add_argument(
         "--header-path",
