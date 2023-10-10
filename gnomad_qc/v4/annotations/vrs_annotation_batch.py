@@ -167,18 +167,16 @@ def main(args):
 
     working_bucket = args.working_bucket
     data_type = args.data_type
-
-    input_path = v4_input_ht(data_type=data_type).path or args.input_path
-    output_vrs_path = (
-        v4_vrs_annotations(test=args.test, data_type=data_type).path
-        or args.output_vrs_path
-    )
-    output_vrs_anno_ori_path = (
-        v4_vrs_annotations(
+    if args.input_path is not None:
+        input_path = args.input_path
+        output_vrs_path = args.output_vrs_path
+        output_vrs_anno_ori_path = args.output_vrs_anno_ori_path
+    else:
+        input_path = v4_input_ht(data_type=data_type).path
+        output_vrs_path = v4_vrs_annotations(test=args.test, data_type=data_type).path
+        output_vrs_anno_ori_path = v4_vrs_annotations(
             test=args.test, data_type=data_type, original_annotations=True
         ).path
-        or args.output_vrs_anno_ori_path
-    )
 
     # Read in Hail Table, partition, and export to sharded VCF
     ht_original = hl.read_table(input_path)
@@ -417,18 +415,14 @@ if __name__ == "__main__":
         default=None,
         type=int,
     )
-    parser.add_argument(
+    input_args = parser.add_mutually_exclusive_group(required=True)
+    input_args.add_argument(
         "--data-type",
         help="Data type to annotate (exomes or genomes).",
         default="exomes",
         choices=["exomes", "genomes"],
     )
-    parser.add_argument(
-        "--test",
-        help="Fiter to only 200 partitions for testing purposes.",
-        action="store_true",
-    )
-    parser.add_argument(
+    input_args.add_argument(
         "--input-path",
         help="Full path of Hail Table to annotate.",
         type=str,
@@ -445,6 +439,11 @@ if __name__ == "__main__":
         help="Full path of Hail Table to write VRS annotations to.",
         type=str,
         default=None,
+    )
+    parser.add_argument(
+        "--test",
+        help="Fiter to only 200 partitions for testing purposes.",
+        action="store_true",
     )
     parser.add_argument(
         "--header-path",
