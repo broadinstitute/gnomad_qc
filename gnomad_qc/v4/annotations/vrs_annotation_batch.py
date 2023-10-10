@@ -166,8 +166,9 @@ def main(args):
     ht_example.show()
 
     working_bucket = args.working_bucket
+    data_type = args.data_type
 
-    input_path = v4_input_ht(data_type=args.data_type).path
+    input_path = v4_input_ht(data_type=data_type).path
 
     # Read in Hail Table, partition, and export to sharded VCF
     ht_original = hl.read_table(input_path)
@@ -204,7 +205,7 @@ def main(args):
         check_resource_existence(
             output_step_resources={
                 "--run-vrs": [
-                    v4_vrs_annotations(test=args.test, data_type=args.data_type).path,
+                    v4_vrs_annotations(test=args.test, data_type=data_type).path,
                 ],
             },
             overwrite=args.overwrite,
@@ -338,22 +339,22 @@ def main(args):
 
         # Checkpoint (write) resulting annotated table
         ht_annotated = ht_annotated.checkpoint(
-            v4_vrs_annotations(test=args.test, data_type=args.data_type).path,
+            v4_vrs_annotations(test=args.test, data_type=data_type).path,
             overwrite=args.overwrite,
         )
         logger.info(
             "Annotated Hail Table checkpointed to:"
-            f" {v4_vrs_annotations(test=args.test, data_type=args.data_type).path}"
+            f" {v4_vrs_annotations(test=args.test, data_type=data_type).path}"
         )
 
     if args.annotate_original:
         output_path = v4_vrs_annotations(
-            test=args.test, data_type=args.data_type, original_annotations=True
+            test=args.test, data_type=data_type, original_annotations=True
         ).path
         check_resource_existence(
             input_step_resources={
                 "--run-vrs": [
-                    v4_vrs_annotations(test=args.test, data_type=args.data_type).path
+                    v4_vrs_annotations(test=args.test, data_type=data_type).path
                 ],
             },
             output_step_resources={
@@ -364,7 +365,7 @@ def main(args):
 
         # Output final Hail Tables with VRS annotations
         ht_annotated = hl.read_table(
-            v4_vrs_annotations(test=args.test, data_type=args.data_type).path
+            v4_vrs_annotations(test=args.test, data_type=data_type).path
         )
 
         logger.info("Adding VRS IDs and GA4GH.VRS version to original Table")
