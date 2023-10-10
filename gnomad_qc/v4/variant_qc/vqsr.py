@@ -1,6 +1,4 @@
-"""
-Script to run VQSR on an AS-annotated Sites VCF
-"""
+"""Script to run VQSR on an AS-annotated Sites VCF."""
 import argparse
 import json
 import logging
@@ -22,6 +20,7 @@ def split_intervals(
 ) -> Job:
     """
     Split genome into intervals to parallelize VQSR for large sample sizes
+
     :param b: Batch object to add jobs to
     :param utils: a dictionary containing resources (file paths and arguments) to be used to split genome
     :param gcp_billing_project: GCP billing project for requester-pays buckets
@@ -103,9 +102,9 @@ def snps_variant_recalibrator_create_model(
     j.image(utils["GATK_IMAGE"])
     j.memory("highmem")
     if is_small_callset:
-        ncpu = 8  # ~ 8G/core ~ 64G
+        ncpu = 8  # ~ 8G/core ~ 64G.
     else:
-        ncpu = 16  # ~ 8G/core ~ 128G
+        ncpu = 16  # ~ 8G/core ~ 128G.
     j.cpu(ncpu)
     java_mem = ncpu * 8 - 10
     j.storage("50G")
@@ -215,7 +214,7 @@ def snps_variant_recalibrator(
     j = b.new_job("VQSR: SNPsVariantRecalibratorScattered")
 
     j.image(utils["GATK_IMAGE"])
-    mem_gb = 64  # ~ twice the sum of all input resources and input VCF sizes
+    mem_gb = 64  # ~ twice the sum of all input resources and input VCF sizes.
     j.memory(f"{mem_gb}G")
     j.cpu(4)
     j.storage("20G")
@@ -299,8 +298,7 @@ def indels_variant_recalibrator_create_model(
     max_gaussians: int = 4,
 ) -> Job:
     """
-    First step of VQSR for INDELs: run VariantRecalibrator to subsample variants
-    and produce a file of the VQSR model.
+    First step of VQSR for INDELs: run VariantRecalibrator to subsample variants and produce a file of the VQSR model.
     To support cohorts with more than 10,000 WGS samples, the INDEL recalibration process
     is broken down across genomic regions for parallel processing, and done in 3 steps:
     1. Run the recalibrator with the following additional arguments:
@@ -407,8 +405,7 @@ def indels_variant_recalibrator(
     max_gaussians: int = 4,
 ) -> Job:
     """
-    Second step of VQSR for INDELs: run VariantRecalibrator scattered to apply
-    the VQSR model file to each genomic interval.
+    Second step of VQSR for INDELs: run VariantRecalibrator scattered to apply the VQSR model file to each genomic interval.
     To support cohorts with more than 10,000 WGS samples, the SNP recalibration process
     is broken down across genomic regions for parallel processing, and done in 3 steps:
     1. Run the recalibrator with the following additional arguments:
@@ -509,7 +506,6 @@ def indels_variant_recalibrator(
     return j
 
 
-# other
 def gather_tranches(
     b: hb.Batch,
     tranches: List[hb.ResourceFile],
@@ -518,8 +514,7 @@ def gather_tranches(
     gcp_billing_project: str,
 ) -> Job:
     """
-    Third step of VQSR for SNPs: run GatherTranches to gather scattered per-interval
-    tranches outputs.
+    Third step of VQSR for SNPs: run GatherTranches to gather scattered per-interval tranches outputs.
     To support cohorts with more than 10,000 WGS samples, the SNP recalibration process
     is broken down across genomic regions for parallel processing, and done in 3 steps:
     1. Run the recalibrator with the following additional arguments:
@@ -681,8 +676,8 @@ def gather_vcfs(
     out_bucket: str = None,
 ) -> Job:
     """
-    Combines recalibrated VCFs into a single VCF.
-    Saves the output VCF to a bucket `out_bucket`
+    Combine recalibrated VCFs into a single VCF.
+    Saves the output VCF to a bucket `out_bucket`.
 
     :param b: Batch object to add jobs to
     :param input_vcfs: list of VCFs to be gathered
@@ -739,7 +734,8 @@ def make_vqsr_jobs(
     sibling_singletons: Optional[str] = None,
 ):
     """
-    Add jobs that perform the allele-specific VQSR variant QC
+    Add jobs that perform the allele-specific VQSR variant QC.
+
     :param b: Batch object to add jobs to
     :param sites_only_vcf: path to a sites only VCF created using gnomAD default_compute_info()
     :param is_small_callset: for small callsets, we gather the VCF shards and collect
@@ -975,7 +971,8 @@ def vqsr_workflow(
     use_as_annotations: bool = True,
 ):
     """
-    Wraps all the functions into a workflow
+    Wrap all the functions into a workflow.
+
     :param sites_only_vcf: path to a sites only VCF created using gnomAD default_compute_info()
     :param output_vcf_filename: name, without extension, to use for the output VCF file(s)
     :param transmitted_singletons: full path to transmitted singletons VCF file and its index
@@ -1045,6 +1042,7 @@ def vqsr_workflow(
 
 
 def main():
+    """Run VQSR variant qc workflow."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--input-vcf",
