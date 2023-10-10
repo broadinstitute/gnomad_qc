@@ -205,6 +205,7 @@ def snps_variant_recalibrator(
     :param out_bucket: full path to output bucket to write model and plots to
     :param tranche_idx: index for the tranches file
     :param use_as_annotations: If set, Allele-Specific variant recalibrator will be used
+    :param gcp_billing_project: GCP billing project for requester-pays buckets
     :param transmitted_singletons_resource_vcf: Optional transmitted singletons VCF to include in VariantRecalibrator
     :param sibling_singletons_resource_vcf: Optional sibling singletons VCF to include in VariantRecalibrator
     :param interval: genomic interval to apply the model to
@@ -609,7 +610,8 @@ def apply_recalibration(
         outpath = out_bucket
 
     j = b.new_job("VQSR: ApplyRecalibration")
-    # couldn't find a public image with both gatk and bcftools installed
+    # Custom image from Lindo Nkambule with GATK and BCFtools installed
+    # TODO: follow up on what version and how maintained
     j.image("docker.io/lindonkambule/vqsr_gatk_bcftools_img:latest")
     j.memory("8G")
     j.storage(f"{disk_size}G")
@@ -687,6 +689,7 @@ def gather_vcfs(
     :param out_vcf_name: output vcf filename
     :param utils: a dictionary containing paths to resource files to be used to split genome
     :param disk_size: disk size to be used for the job
+    :param gcp_billing_project: GCP billing project for requester-pays buckets
     :param out_bucket: full path to output bucket to write the gathered VCF to
     :return: a Job object with one ResourceGroup output j.output_vcf
     """
@@ -737,15 +740,13 @@ def make_vqsr_jobs(
     sibling_singletons: Optional[str] = None,
 ):
     """
-    Add jobs that perform the allele-specific VQSR variant QC.
+    Add jobs to Batch that perform the allele-specific VQSR variant QC.
 
     :param b: Batch object to add jobs to
     :param sites_only_vcf: path to a sites only VCF created using gnomAD default_compute_info()
-    :param is_small_callset: for small callsets, we gather the VCF shards and collect
-        QC metrics directly. For anything larger, we need to keep the VCF sharded and
-        gather metrics collected from them
-    :param is_large_callset: For huge callsets, we allocate more memory for the SNPs
-        Create Model step
+    :param is_small_callset: for small callsets, we reduce the resources per job from our default
+    :param is_large_callset: for large callsets, we increases resources per job from our default
+        and shard our VCF to launch jobs in a scattered mode
     :param output_vcf_name: name, without extension, to use for the output VCF file(s)
     :param utils: a dictionary containing resource files and parameters to be used in VQSR
     :param out_bucket: path to write, plots, evaluation results, and recalibrated VCF to
@@ -754,9 +755,10 @@ def make_vqsr_jobs(
     :param gcp_billing_project: GCP billing project for requester-pays buckets
     :param transmitted_singletons: full path to transmitted singletons VCF file and its index
     :param sibling_singletons: full path to sibling singletons VCF file and its index
-    :return: a final Job, and a path to the VCF with VQSR annotations
+
+    :return:
     """
-    # To fit only a sites-only VCF
+    # Scale resources for jobs as appropriate
     if is_small_callset:
         small_disk = 50
     elif not is_large_callset:
@@ -774,7 +776,7 @@ def make_vqsr_jobs(
     snp_max_gaussians = 6
     indel_max_gaussians = 4
 
-    # Iif it is a large callset, run in scatter mode
+    # If it is a large callset, run in scatter mode
     if is_large_callset:
         # 1. Run SNP recalibrator in a scattered mode
         # file exists:
@@ -902,7 +904,7 @@ def make_vqsr_jobs(
         ]
 
         # 4. Gather VCFs
-        gathered_vcf_job = gather_vcfs(
+        gather_vcfs(
             b=b,
             input_vcfs=scattered_vcfs,
             out_vcf_name=output_vcf_name,
@@ -912,6 +914,7 @@ def make_vqsr_jobs(
             gcp_billing_project=gcp_billing_project,
         )
 
+    # If not is_large_callset, no need to run as scattered
     else:
         snps_recalibrator_job = snps_variant_recalibrator(
             b=b,
@@ -941,7 +944,7 @@ def make_vqsr_jobs(
         indels_recalibration = indels_variant_recalibrator_job.recalibration
         indels_tranches = indels_variant_recalibrator_job.tranches
 
-        recalibrated_gathered_vcf_job = apply_recalibration(
+        apply_recalibration(
             b=b,
             input_vcf=sites_only_vcf,
             out_vcf_name=output_vcf_name,
@@ -955,8 +958,6 @@ def make_vqsr_jobs(
             gcp_billing_project=gcp_billing_project,
             out_bucket=out_bucket,
         )
-
-    # return recalibrated_gathered_vcf_job
 
 
 # VQSR workflow including scatter step
@@ -984,6 +985,8 @@ def vqsr_workflow(
     :param out_bucket: path to write, plots, evaluation results, and recalibrated VCF to
     :param batch_billing_project: Batch billing project to be used for the workflow
     :param gcp_billing_project: GCP billing project for requester-pays buckets
+    :param run_mode: mode corresponding to the size of the VCF, where large also causes scattered jobs
+    :batch_suffix: suffix to include at the end of the Batch name
     :param use_as_annotations: use allele-specific annotation for VQSR
 
     :return:
@@ -1015,10 +1018,13 @@ def vqsr_workflow(
         backend=backend,
     )
 
+    # Split passed intervals into value specified in resources json.
+    # These are used for scattered jobs, if requires.
     intervals_j = split_intervals(
         b=b, utils=utils, gcp_billing_project=gcp_billing_project
     )
 
+    # Converts run_mode into the two booleans used later in the code.
     is_small_callset = False
     is_large_callset = False
     if run_mode == "small":
@@ -1026,6 +1032,7 @@ def vqsr_workflow(
     elif run_mode == "large":
         is_large_callset = True
 
+    # Configure all VQSR jobs.
     make_vqsr_jobs(
         b=b,
         sites_only_vcf=sites_only_vcf,
@@ -1041,6 +1048,7 @@ def vqsr_workflow(
         sibling_singletons=sibling_singletons,
     )
 
+    # Run all jobs, as loaded into the Batch b.
     b.run()
 
 
@@ -1117,18 +1125,17 @@ def main():
         default="",
         help="String to add to end of batch name.",
     )
-    parser.add_argument(
-        "--test-on-chr22",
-        action="store_true",
-        help="If passed, will search resource file for _CHR22 versions of some files",
-    )
 
     args = parser.parse_args()
 
     use_as_annotations = False if args.no_as_annotations else True
 
-    print("billing project as: ", args.batch_billing_project)
+    logger.info(
+        f"Batch billing project as: {args.batch_billing_project},",
+        f"and GCP billing project as: {args.gcp_billing_project}",
+    )
 
+    # Run entire vqsr workflow, including generating and applying models.
     vqsr_workflow(
         sites_only_vcf=args.input_vcf,
         output_vcf_filename=args.out_vcf_name,
