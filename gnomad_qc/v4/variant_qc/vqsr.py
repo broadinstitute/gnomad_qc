@@ -19,7 +19,7 @@ def split_intervals(
     gcp_billing_project: str,
 ) -> Job:
     """
-    Split genome into intervals to parallelize VQSR for large sample sizes
+    Split genome into intervals to parallelize VQSR for large sample sizes.
 
     :param b: Batch object to add jobs to
     :param utils: a dictionary containing resources (file paths and arguments) to be used to split genome
@@ -70,8 +70,8 @@ def snps_variant_recalibrator_create_model(
     max_gaussians: int = 6,
 ) -> Job:
     """
-    First step of VQSR for SNPs: run VariantRecalibrator to subsample variants
-    and produce a file of the VQSR model.
+    First step of VQSR for SNPs: run VariantRecalibrator to subsample variants and produce a file of the VQSR model.
+
     To support cohorts with more than 10,000 WGS samples, the SNP recalibration process
     is broken down across genomic regions for parallel processing, and done in 3 steps:
     1. Run the recalibrator with the following additional arguments:
@@ -183,8 +183,8 @@ def snps_variant_recalibrator(
     max_gaussians: int = 4,
 ) -> Job:
     """
-    Second step of VQSR for SNPs: run VariantRecalibrator scattered to apply
-    the VQSR model file to each genomic interval.
+    Second step of VQSR for SNPs: run VariantRecalibrator scattered to apply the VQSR model file to each genomic interval.
+
     To support cohorts with more than 10,000 WGS samples, the SNP recalibration process
     is broken down across genomic regions for parallel processing, and done in 3 steps:
     1. Run the recalibrator with the following additional arguments:
@@ -299,6 +299,7 @@ def indels_variant_recalibrator_create_model(
 ) -> Job:
     """
     First step of VQSR for INDELs: run VariantRecalibrator to subsample variants and produce a file of the VQSR model.
+
     To support cohorts with more than 10,000 WGS samples, the INDEL recalibration process
     is broken down across genomic regions for parallel processing, and done in 3 steps:
     1. Run the recalibrator with the following additional arguments:
@@ -406,6 +407,7 @@ def indels_variant_recalibrator(
 ) -> Job:
     """
     Second step of VQSR for INDELs: run VariantRecalibrator scattered to apply the VQSR model file to each genomic interval.
+
     To support cohorts with more than 10,000 WGS samples, the SNP recalibration process
     is broken down across genomic regions for parallel processing, and done in 3 steps:
     1. Run the recalibrator with the following additional arguments:
@@ -515,6 +517,7 @@ def gather_tranches(
 ) -> Job:
     """
     Third step of VQSR for SNPs: run GatherTranches to gather scattered per-interval tranches outputs.
+
     To support cohorts with more than 10,000 WGS samples, the SNP recalibration process
     is broken down across genomic regions for parallel processing, and done in 3 steps:
     1. Run the recalibrator with the following additional arguments:
@@ -569,6 +572,7 @@ def apply_recalibration(
 ) -> Job:
     """
     Apply a score cutoff to filter variants based on a recalibration table.
+
     Runs ApplyVQSR twice to apply first indel, then SNP recalibrations.
     Targets indel_filter_level and snp_filter_level sensitivities. The tool matches
     them internally to a VQSLOD score cutoff based on the model's estimated sensitivity
@@ -676,8 +680,7 @@ def gather_vcfs(
     out_bucket: str = None,
 ) -> Job:
     """
-    Combine recalibrated VCFs into a single VCF.
-    Saves the output VCF to a bucket `out_bucket`.
+    Combine recalibrated VCFs into a single VCF & saves the output VCF to a bucket `out_bucket`.
 
     :param b: Batch object to add jobs to
     :param input_vcfs: list of VCFs to be gathered
