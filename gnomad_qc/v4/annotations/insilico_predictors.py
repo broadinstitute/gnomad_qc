@@ -450,8 +450,9 @@ def create_phylop_grch38_ht() -> hl.Table:
     of UCSC (https://hgdownload.cse.ucsc.edu/admin/exe/) with the following command:
     `./bigWigToBedGraph ~/Downloads/241-mammalian-2020v2.bigWig ~/Downloads/241-mammalian-2020v2.bedGraph`
     The bedGraph file is bigzipped before importing to Hail.
-    Different to other in silico predictors, Phylop HT is not keyed by locus
-    & alleles, we have a score per base pair, so we won't have any score for deletions.
+    Different to other in silico predictors, the Phylop HT is keyed by locus only. Since
+     the PhyloP scores have one value per position, we exploded the interval to store
+     the HT by locus.
 
     :return: Hail Table with Phylop Scores for GRCh38
     """
@@ -464,6 +465,8 @@ def create_phylop_grch38_ht() -> hl.Table:
         no_header=True,
     ).rename({f"f{i}": c for i, c in enumerate(columns)})
 
+    # We add 1 to both start and end because input bedGraph is 0-indexed interval and
+    # hl.range is end exclusive
     ht = ht.annotate(pos=hl.range(ht.start + 1, ht.end + 1))
     ht = ht.explode("pos")
     ht = ht.annotate(locus=hl.locus(ht.chr, ht.pos, reference_genome="GRCh38"))
