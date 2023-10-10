@@ -452,7 +452,8 @@ def create_phylop_grch38_ht() -> hl.Table:
     The bedGraph file is bigzipped before importing to Hail.
     Different to other in silico predictors, the Phylop HT is keyed by locus only. Since
      the PhyloP scores have one value per position, we exploded the interval to store
-     the HT by locus.
+     the HT by locus. In result, we have Phylop scores for 2,852,623,265 locus from
+     2,648,607,958 intervals.
 
     :return: Hail Table with Phylop Scores for GRCh38
     """
