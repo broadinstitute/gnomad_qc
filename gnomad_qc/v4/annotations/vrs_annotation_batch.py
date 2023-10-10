@@ -204,7 +204,7 @@ def main(args):
         check_resource_existence(
             output_step_resources={
                 "--run-vrs": [
-                    v4_vrs_annotations(test=args.test).path,
+                    v4_vrs_annotations(test=args.test, data_type=args.data_type).path,
                 ],
             },
             overwrite=args.overwrite,
@@ -338,12 +338,12 @@ def main(args):
 
         # Checkpoint (write) resulting annotated table
         ht_annotated = ht_annotated.checkpoint(
-            v4_vrs_annotations(test=args.test).path,
+            v4_vrs_annotations(test=args.test, data_type=args.data_type).path,
             overwrite=args.overwrite,
         )
         logger.info(
             "Annotated Hail Table checkpointed to:"
-            f" {v4_vrs_annotations(test=args.test).path}"
+            f" {v4_vrs_annotations(test=args.test, data_type=args.data_type).path}"
         )
 
     if args.annotate_original:
@@ -352,7 +352,9 @@ def main(args):
         ).path
         check_resource_existence(
             input_step_resources={
-                "--run-vrs": [v4_vrs_annotations(test=args.test).path],
+                "--run-vrs": [
+                    v4_vrs_annotations(test=args.test, data_type=args.data_type).path
+                ],
             },
             output_step_resources={
                 "--annotate-original": [output_path],
@@ -361,7 +363,9 @@ def main(args):
         )
 
         # Output final Hail Tables with VRS annotations
-        ht_annotated = hl.read_table(v4_vrs_annotations(test=args.test).path)
+        ht_annotated = hl.read_table(
+            v4_vrs_annotations(test=args.test, data_type=args.data_type).path
+        )
 
         logger.info("Adding VRS IDs and GA4GH.VRS version to original Table")
         ht_final = ht_original.annotate(
