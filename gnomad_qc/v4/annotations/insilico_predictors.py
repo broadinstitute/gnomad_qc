@@ -467,7 +467,7 @@ def create_phylop_grch38_ht() -> hl.Table:
     ).rename({f"f{i}": c for i, c in enumerate(columns)})
 
     # We add 1 to both start and end because input bedGraph is 0-indexed interval and
-    # hl.range is end exclusive
+    # the interval is end exclusive
     ht = ht.annotate(pos=hl.range(ht.start + 1, ht.end + 1))
     ht = ht.explode("pos")
     ht = ht.annotate(locus=hl.locus(ht.chr, ht.pos, reference_genome="GRCh38"))
