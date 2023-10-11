@@ -152,13 +152,19 @@ def get_config(
             "path": get_vep().path,
             "select": ["vep"],
             "custom_select": custom_vep_select,
-            "select_globals": ["vep_version", "vep_help", "vep_config"],
+            "select_globals": [
+                "vep_version",
+                "vep_help",
+                "vep_config",
+            ],
             "global_name": "vep_globals",
         },
         "region_flags": {
             "ht": get_freq().ht(),
             "path": get_freq().path,
-            "custom_select": custom_region_flags_select,
+            "custom_select": (
+                custom_region_flags_select
+            ),  # TODO: Add in the interval data region_flags: fail_interval_qc, outside_ukb_capture_region, outside_broad_capture_region), if we are able to release the calling intervals and point users to those files broad: https://console.cloud.google.com/storage/browser/gcp-public-data--broad-references/hg38/v0?pageState=(%22StorageObjectListTable%22:(%22f%22:%22%255B%255D%22))&prefix=&forceOnObjectsSortingFiltering=false
         },
         "release": {
             "path": release_sites().path,
@@ -504,6 +510,10 @@ def main(args):
     )
 
     ht = ht.annotate_globals(
+        vep_globals=ht.vep_globals.annotate(
+            gencode_version="Release 39",
+            mane_select_version="v0.95",
+        ),
         tool_versions=ht.tool_versions.annotate(
             dbsnp_version="b156",
             sift_version="5.2.2",
@@ -515,7 +525,7 @@ def main(args):
                     "seqrepo_version": "2018-11-26",
                 },
             ),
-        )
+        ),
     )
 
     output_path = (
