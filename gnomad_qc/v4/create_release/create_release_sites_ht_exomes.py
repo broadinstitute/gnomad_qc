@@ -1,5 +1,4 @@
-# noqa: D100
-
+"""Script to create release sites HT for exomes."""
 import argparse
 import logging
 from copy import deepcopy
@@ -19,6 +18,7 @@ from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.annotations.insilico_predictors import get_sift_polyphen_from_vep
+from gnomad_qc.v4.create_release.create_release_utils import remove_missing_vep_fields
 from gnomad_qc.v4.resources.annotations import (
     get_freq,
     get_info,
@@ -38,41 +38,41 @@ logging.basicConfig(
 logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
-# Remove InbreedingCoeff from allele-specific fields and SOR from SITE
-# (processed separately from other fields)
+# Remove InbreedingCoeff from allele-specific fields because it is processed separately
+# from the other fields.
 AS_FIELDS = deepcopy(AS_FIELDS)
 AS_FIELDS.remove("InbreedingCoeff")
 SITE_FIELDS = deepcopy(SITE_FIELDS)
-SITE_FIELDS.remove("SOR")
 TABLES_FOR_RELEASE = [
     "dbsnp",
-    # "filters",
+    "filters",
     "freq",
-    # "info",
+    "info",
     "region_flags",
     "in_silico",
     "vep",
 ]
+INSILICO_PREDICTORS = ["spliceai", "pangolin", "revel", "cadd"]  # , "phylop"
 
-INSILICO_PREDICTORS = ["spliceai", "pangolin", "revel"]  # "cadd", "phylop"
 
-
-# Putting this in a function so that it is not evaluated until the script is run.
-def get_config(release_exists: bool = False):
+# Config is added as a function, so it is not evaluated until the function is called.
+def get_config(
+    release_exists: bool = False,
+) -> dict[str, dict[str, hl.expr.Expression]]:
     """
     Get configuration dictionary.
 
     Format:
         '<Name of dataset>': {
-                'path': 'gs://path/to/hailtable.ht',
+                'path': 'gs://path/to/hail_table.ht',
                 'select': '<Optional list of fields to select or dict of new field name to location of old fieldin the dataset.>',
                 'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
                 'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
-                'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>
+                'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>'
             },
 
     :param release_exists: Whether the release HT already exists.
-    :return: dict of datasets configs.
+    :return: Dict of datasets configs.
     """
     config = {
         "dbsnp": {
@@ -80,13 +80,14 @@ def get_config(release_exists: bool = False):
             "path": dbsnp.path,
             "select": ["rsid"],
         },
-        # "filters": {
-        #     "ht": final_filter().ht(),
-        #     "path": final_filter().path,
-        #     "select": ["filters", "vqsr"],
-        #     "custom_select": custom_filters_select,
-        #     "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
-        # },
+        "filters": {
+            "ht": final_filter().ht(),
+            "path": final_filter().path,
+            "select": ["filters"],
+            "custom_select": custom_filters_select,
+            # TODO: Drop model_id from filtering_model struct
+            "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
+        },
         "in_silico": {
             "ht": reduce(
                 (lambda joined_ht, ht: joined_ht.join(ht, "outer")),
@@ -103,7 +104,7 @@ def get_config(release_exists: bool = False):
             ],
             "field_name": "in_silico_predictors",
             "select": [
-                # "cadd",
+                "cadd",
                 "revel_max",
                 "spliceai_ds_max",
                 "pangolin_largest_ds",
@@ -111,7 +112,7 @@ def get_config(release_exists: bool = False):
             ],
             "custom_select": custom_in_silico_select,
             "select_globals": [
-                # "cadd_version",
+                "cadd_version",
                 "revel_version",
                 "spliceai_version",
                 "pangolin_version",
@@ -147,13 +148,11 @@ def get_config(release_exists: bool = False):
         },
         "vep": {
             "ht": get_vep().ht(),
-            # TODO: drop 100% missing? Can add to the custom vep select function
             "path": get_vep().path,
             "select": ["vep"],
-            # Add in "custom_select" that drops insilicos
             "custom_select": custom_vep_select,
             # TODO: Update to have vep_csq_header -- should this be on the vep table
-            # itself?
+            #  itself?
             "select_globals": ["vep_version", "vep_help", "vep_config"],
             "global_name": "vep_globals",
         },
@@ -180,12 +179,12 @@ def get_config(release_exists: bool = False):
     return config
 
 
-def custom_in_silico_select(ht: hl.Table):
+def custom_in_silico_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
     Get in silico predictors from VEP for release.
 
-    :param ht: hail Table.
-    :return: select expression dict
+    :param ht: VEP Hail Table.
+    :return: Select expression dict.
     """
     vep_in_silico = get_sift_polyphen_from_vep(get_vep().ht())
     selects = {
@@ -195,14 +194,13 @@ def custom_in_silico_select(ht: hl.Table):
     return selects
 
 
-def custom_region_flags_select(ht: hl.Table):
+def custom_region_flags_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
     Select region flags for release.
 
-    :param ht: hail Table.
-    :return: select expression dict
+    :param ht: Hail Table.
+    :return: Select expression dict.
     """
-    selects = {}
     selects = {
         "region_flags": region_flag_expr(
             ht,
@@ -213,41 +211,47 @@ def custom_region_flags_select(ht: hl.Table):
     return selects
 
 
-def custom_filters_select(ht: hl.Table):
+def custom_filters_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
-    Select gnomad filter HT fields for release dataset.
+    Select gnomAD filter HT fields for release dataset.
 
-    Extract fields like 'filters', 'vqsr', and generates 'alelle_info' struct.
-    :param ht: hail table.
-    :return: select expression dict.
+    Extract "results" field and rename based on filtering method.
+
+    :param ht: Filters Hail Table.
+    :return: Select expression dict.
     """
-    selects = {}
-    selects["allele_info"] = hl.struct(
-        variant_type=ht.variant_type,
-        allele_type=ht.allele_type,
-        n_alt_alleles=ht.n_alt_alleles,
-        was_mixed=ht.was_mixed,
-    )
+    filter_name = hl.eval(ht.filtering_model.filter_name)
+    if filter_name == "RF":
+        name = "random_forest_results"
+    elif filter_name == "AS_VQSR":
+        name = "vqsr_results"
+    elif filter_name == "IF":
+        name = "isolation_forest_results"
+    else:
+        raise ValueError(f"Filtering method {filter_name} not recognized.")
+
+    selects = {name: ht.results}
+
     return selects
 
 
-# TODO: This function needs to be updated depending on which fields we want to keep from
-#  info, I noticed there a dups within structs, e.g quasi_info has AS_SOR as does AS_info,
-# maybe we need to pull these from filters instead?
-def custom_info_select(ht: hl.Table):
+def custom_info_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
-    Select fields for info hail Table annotation in release.
+    Select fields for info Hail Table annotation in release.
 
-    The info field requires fields from the freq HT and the filters HT
-    so those are pulled in here along with all info HT fields.
+    The info field requires fields from the freq HT and the filters HT so those are
+    pulled in here along with all info HT fields.
 
-    :param ht: hail table
-    :return: select expression dict
+    :param ht: Info Hail Table.
+    :return: Select expression dict.
     """
-    freq_ht = get_config().get("freq")["ht"]
-    freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
-
+    # Create a dict of the fields from the filters HT that we want to add to the info.
     filters_ht = get_config().get("filters")["ht"]
+    compute_info_method = hl.eval(
+        filters_ht.filtering_model_specific_info.compute_info_method
+    )
+    score_name = hl.eval(filters_ht.filtering_model.score_name)
+    filters_ht = filters_ht.transmute(**filters_ht.truth_sets)
     filters = filters_ht[ht.key]
     filters_info_fields = [
         "singleton",
@@ -255,36 +259,48 @@ def custom_info_select(ht: hl.Table):
         "omni",
         "mills",
         "monoallelic",
-        "SOR",
+        "only_het",
     ]
+    filters_info_dict = {field: filters[field] for field in filters_info_fields}
+    filters_info_dict.update({**{f"{score_name}": filters[f"{score_name}"]}})
 
+    # Create a dict of the fields from the freq HT that we want to add to the info.
+    freq_ht = get_config().get("freq")["ht"]
+    freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
+
+    # Create a dict of the fields from the VRS HT that we want to add to the info.
     vrs_ht = get_vrs().ht()
     vrs_info_fields = {"vrs": vrs_ht[ht.key].vrs}
 
-    filters_info_dict = {field: filters[field] for field in filters_info_fields}
-    score_name = hl.eval(filters_ht.filtering_model.score_name)
-    filters_info_dict.update({**{f"{score_name}": filters[f"{score_name}"]}})
-
-    info_dict = {field: ht.info[field] for field in SITE_FIELDS + AS_FIELDS}
+    # Create a dict of the fields from the info HT that we want keep in the info.
+    info_struct = hl.struct(**ht.site_info, **ht[f"{compute_info_method}_info"])
+    info_dict = {field: info_struct[field] for field in SITE_FIELDS + AS_FIELDS}
     info_dict.update(filters_info_dict)
     info_dict.update(freq_info_dict)
     info_dict.update(vrs_info_fields)
 
-    selects = {"info": hl.struct(**info_dict)}
+    # Select the info and allele info annotations. We drop nonsplit_alleles from
+    # allele_info so that we don't release alleles that are found in non-releasable
+    # samples.
+    selects = {
+        "info": hl.struct(**info_dict),
+        "allele_info": ht.allele_info.drop("nonsplit_alleles"),
+    }
 
     return selects
 
 
-def custom_vep_select(ht: hl.Table):
+def custom_vep_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
     Select fields for vep hail Table annotation in release.
 
-    :param ht: hail table
-    :return: select expression dict
+    :param ht: VEP Hail table
+    :return: Select expression dict.
     """
+    vep_expr = remove_missing_vep_fields(ht.vep)
     selects = {
-        "vep": ht.vep.annotate(
-            transcript_consequences=ht.vep.transcript_consequences.map(
+        "vep": vep_expr.annotate(
+            transcript_consequences=vep_expr.transcript_consequences.map(
                 lambda x: x.drop(
                     "sift_prediction",
                     "sift_score",
@@ -297,7 +313,7 @@ def custom_vep_select(ht: hl.Table):
     return selects
 
 
-def get_select_global_fields(ht: hl.Table):
+def get_select_global_fields(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
     Generate a dictionary of globals to select by checking the configs of all tables joined.
 
@@ -318,13 +334,13 @@ def get_select_global_fields(ht: hl.Table):
     return t_globals
 
 
-def get_select_fields(selects, base_ht: hl.Table):
+def get_select_fields(selects, base_ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
-    Generate a select dict from traversing the base_ht and extracting annotations.
+    Generate a select dict from traversing the `base_ht` and extracting annotations.
 
-    :param selects: mapping or list of selections
-    :param base_ht: base_ht to traverse
-    :return: select mapping from annotation name to base_ht annotation
+    :param selects: Mapping or list of selections.
+    :param base_ht: Base Hail Table to traverse.
+    :return: select Mapping from annotation name to `base_ht` annotation.
     """
     select_fields = {}
     if selects is not None:
@@ -352,9 +368,8 @@ def get_ht(dataset: str, _intervals, test, release_exists) -> hl.Table:
     logger.info("Getting the %s dataset and its selected annotations...", dataset)
     config = get_config(release_exists=release_exists)[dataset]
 
-    # There is no single path for insilico so this impacts its join efficiency but
-    # I dont think its worth the effort of restructuring this code to make it work with
-    # multiple input paths thus the special treatment here
+    # There is no single path for insilico predictors, so we need to handle this case
+    # separately.
     if dataset == "in_silico":
         base_ht = config["ht"]
     else:
@@ -395,11 +410,12 @@ def join_hts(
     release_exists: bool,
 ) -> hl.Table:
     """
-    Outer join a list of hail tables.
+    Outer join a list of Hail Tables.
 
     :param base_table: Dataset to use for interval partitioning.
     :param tables: List of tables to join.
-    :param new_partition_percent: Percent of base_table partitions used for final release hail Table.
+    :param new_partition_percent: Percent of base_table partitions used for final
+        release Hail Table.
     :param test: Whether this is for a test run.
     :param release_exists: Whether the release HT already exists.
     :return: Hail Table with datasets joined.
@@ -411,7 +427,7 @@ def join_hts(
     base_ht_path = get_config()[base_table]["path"]
     base_ht = hl.read_table(base_ht_path)
     if test:
-        # Filter to PCSK9 for testing
+        # Filter to PCSK9 for testing.
         base_ht = hl.filter_intervals(
             base_ht,
             [
@@ -424,7 +440,7 @@ def join_hts(
         base_ht.n_partitions() * new_partition_percent
     )
 
-    # Reorg list so base table is first
+    # Reorg list so base table is first.
     tables.remove(base_table)
     tables.insert(0, base_table)
 
@@ -443,8 +459,8 @@ def join_hts(
 
     # Track the dataset we've added as well as the source path.
     # TODO: Rerunning this will end up overwriting the datasets global to only the
-    # tables run which we dont want. Need to change this behavior so only the rerun
-    # tables are updated.
+    #  tables run which we dont want. Need to change this behavior so only the rerun
+    #  tables are updated.
     included_dataset = {
         k: v["path"]
         for k, v in get_config(release_exists=release_exists).items()
@@ -455,7 +471,6 @@ def join_hts(
         date=datetime.now().isoformat(),
         datasets=included_dataset,
     )
-    joined_ht.describe()
     return joined_ht
 
 
@@ -477,13 +492,10 @@ def main(args):
     )
 
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
-    # ht = ht.filter(hl.is_defined(ht.filters))
+    ht = ht.filter(hl.is_defined(ht.filters))
 
     t_globals = get_select_global_fields(ht)
 
-    # Previously discussed having a gnomad_qc and gnomad_method repo versions but this
-    # does not make sense to me since they have been in continuous development and there
-    # is not single version for either.
     ht = ht.select_globals(
         **t_globals,
         #    README=FIELD_DESCRIPTIONS,
@@ -492,17 +504,16 @@ def main(args):
         version=args.version,
     )
 
-    # The dbsnp table does not have a global field for dbsnp_versions, same
-    # with sift/polyphen and vrs (still need these)
     ht = ht.annotate_globals(
         tool_versions=ht.tool_versions.annotate(
             dbsnp_version="b156",
-            sift_version="FILL THIS IS",
-            polyphen_version="FILL THIS IS",
+            sift_version="5.2.2",
+            polyphen_version="2.2.2",
             vrs_version=hl.struct(
                 **{
-                    "vrs_python_version": "FILL THIS IS",
-                    "seqrepo_version": "FILL THIS IS",
+                    "vrs_schema_version": "1.3.0",
+                    "vrs_python_version": "0.8.4",
+                    "seqrepo_version": "2018-11-26",
                 },
             ),
         )
@@ -519,11 +530,10 @@ def main(args):
         args.overwrite,
     )
 
-    logger.info("Final variant count: %d", ht.count())
+    logger.info("Final release HT schema:")
     ht.describe()
 
-
-#    ht.show()
+    logger.info("Final variant count: %d", ht.count())
 
 
 if __name__ == "__main__":
@@ -570,7 +580,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--slack_channel", help="Slack channel to post results and notifications to."
+        "--slack-channel", help="Slack channel to post results and notifications to."
     )
 
     args = parser.parse_args()
