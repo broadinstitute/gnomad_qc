@@ -428,10 +428,9 @@ def hgdp_tgp_updated_callstats(
        must be "added", "subtracted", "pop_diff", or "final"
     :return: MatrixTableResource for specified subset.
     """
-    if subset not in ["added", "subtracted", "pop_diff", "join"]:
-        raise ValueError(
-            "Operation must be one of 'added', 'subtracted', 'pop_diff', or 'join'"
-        )
+    subsets = ["added", "subtracted", "pop_diff", "join", "v3_release_an"]
+    if subset not in subsets:
+        raise ValueError(f"Operation must be one of {subsets}")
     return VersionedTableResource(
         default_version=CURRENT_HGDP_TGP_RELEASE,
         versions={
