@@ -168,6 +168,11 @@ def main(args):
     working_bucket = args.working_bucket
     data_type = args.data_type
     if args.input_path is not None:
+        if args.output_vrs_path is None or args.output_vrs_anno_ori_path is None:
+            raise ValueError(
+                "If --input-path is provided, --output-vrs-path and"
+                " --output-vrs-anno-ori-path must also be provided"
+            )
         input_path = args.input_path
         output_vrs_path = args.output_vrs_path
         output_vrs_anno_ori_path = args.output_vrs_anno_ori_path
@@ -419,7 +424,6 @@ if __name__ == "__main__":
     input_args.add_argument(
         "--data-type",
         help="Data type to annotate (exomes or genomes).",
-        default="exomes",
         choices=["exomes", "genomes"],
     )
     input_args.add_argument(
@@ -436,7 +440,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--output-vrs-anno-ori-path",
-        help="Full path of Hail Table to write VRS annotations to.",
+        help=(
+            "Full path of Hail Table to write VRS annotations with the original "
+            "annotations added back."
+        ),
         type=str,
         default=None,
     )
