@@ -164,7 +164,7 @@ def get_config(
                 "revel_version",
                 "spliceai_version",
                 "pangolin_version",
-                # "phylop_version",
+                "phylop_version",
             ],
             "global_name": "tool_versions",
         },
@@ -530,7 +530,8 @@ def join_hts(
     # Track the dataset we've added as well as the source path.
     # TODO: Rerunning this will end up overwriting the datasets global to only the
     #  tables run which we dont want. Need to change this behavior so only the rerun
-    #  tables are updated.
+    # tables are updated, involves reading in existing json and updating
+    # values of dict.
     included_datasets = {
         k: v["path"]
         for k, v in get_config(release_exists=release_exists).items()
