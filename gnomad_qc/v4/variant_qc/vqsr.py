@@ -1190,6 +1190,8 @@ def main(args):
         evaluation_interval_path=evaluation_interval_path,
         overlap_skip=overlap_skip,
     )
+    # Run all jobs, as loaded into the Batch b.
+    b.run()
 
     if is_large_callset and overlap_skip:
         outpath = f"{tmp_vqsr_bucket}apply_recalibration/scatter/{args.out_vcf_name}_vqsr_recalibrated_*.vcf.gz"
@@ -1219,9 +1221,6 @@ def main(args):
             get_variant_qc_result(args.model_id, split=split).path,
             overwrite=args.overwrite,
         )
-
-    # Run all jobs, as loaded into the Batch b.
-    b.run()
 
 
 if __name__ == "__main__":
