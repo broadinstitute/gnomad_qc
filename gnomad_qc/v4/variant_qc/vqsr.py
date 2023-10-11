@@ -1195,35 +1195,38 @@ def main(args):
     # Run all jobs, as loaded into the Batch b.
     b.run()
 
-    if is_large_callset and overlap_skip:
-        outpath = f"{tmp_vqsr_bucket}apply_recalibration/scatter/{args.out_vcf_name}_vqsr_recalibrated_*.vcf.gz"
-    else:
-        outpath = f"{tmp_vqsr_bucket}{args.out_vcf_name}_vqsr_recalibrated.vcf.gz"
+    logger.info("VQSR Batch jobs executed successfully")
 
-    hts = import_variant_qc_vcf(
-        outpath,
-        args.model_id,
-        n_partitions,
-        args.header_path,
-        args.array_elements_required,
-        is_split=False,
-        deduplicate_check=True,
-    )
+    if args.load_vqsr:
+        if is_large_callset and overlap_skip:
+            outpath = f"{tmp_vqsr_bucket}apply_recalibration/scatter/{args.out_vcf_name}_vqsr_recalibrated_*.vcf.gz"
+        else:
+            outpath = f"{tmp_vqsr_bucket}{args.out_vcf_name}_vqsr_recalibrated.vcf.gz"
 
-    for ht, split in zip(hts, [True, False]):
-        ht = ht.annotate_globals(
-            transmitted_singletons=args.transmitted_singletons,
-            sibling_singletons=args.sibling_singletons,
-            adj=args.adj,
-            interval_qc_filter=args.interval_qc_filter,
-            compute_info_method=args.compute_info_method,
-            indel_features=args.indel_features,
-            snp_features=args.snp_features,
+        hts = import_variant_qc_vcf(
+            outpath,
+            args.model_id,
+            n_partitions,
+            args.header_path,
+            args.array_elements_required,
+            is_split=False,
+            deduplicate_check=True,
         )
-        ht.checkpoint(
-            get_variant_qc_result(args.model_id, split=split).path,
-            overwrite=args.overwrite,
-        )
+
+        for ht, split in zip(hts, [True, False]):
+            ht = ht.annotate_globals(
+                transmitted_singletons=args.transmitted_singletons,
+                sibling_singletons=args.sibling_singletons,
+                adj=args.adj,
+                interval_qc_filter=args.interval_qc_filter,
+                compute_info_method=args.compute_info_method,
+                indel_features=args.indel_features,
+                snp_features=args.snp_features,
+            )
+            ht.checkpoint(
+                get_variant_qc_result(args.model_id, split=split).path,
+                overwrite=args.overwrite,
+            )
 
 
 if __name__ == "__main__":
@@ -1389,6 +1392,11 @@ if __name__ == "__main__":
         type=str,
         default="",
         help="String to add to end of batch name.",
+    )
+    parser.add_argument(
+        "--load-vqsr",
+        help="Run import_variant_qc_vcf() to load VQSR VCFs as HT",
+        action="store_true",
     )
 
     args = parser.parse_args()
