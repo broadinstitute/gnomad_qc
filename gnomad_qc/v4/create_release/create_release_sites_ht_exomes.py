@@ -93,9 +93,17 @@ def get_config(
             # TODO: Drop model_id from filtering_model struct
             "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
         },
+        # Note: Phylop is keyed by locus only the code below sets the join key to 1,
+        # 'locus', if the HT being join is not keyed by both locus and alleles.
         "in_silico": {
             "ht": reduce(
-                (lambda joined_ht, ht: joined_ht.join(ht, "outer")),
+                (
+                    lambda joined_ht, ht: (
+                        joined_ht.join(ht, "outer")
+                        if set(ht.key.keys()) == {"locus", "alleles"}
+                        else joined_ht.join(ht, "outer", _join_key=1)
+                    )
+                ),
                 [
                     get_insilico_predictors(predictor=predictor).ht()
                     for predictor in INSILICO_PREDICTORS
@@ -103,8 +111,6 @@ def get_config(
             ),
             "path": [
                 get_insilico_predictors(predictor=predictor).path
-                # TODO: Add phylop maybe? see:
-                # https://docs.google.com/document/d/1mHfhDJyY22JTFWoMhqfrDAIeKikTxYBec11v7tOiQeo/edit?disco=AAAA6g_ZPBc
                 for predictor in INSILICO_PREDICTORS
             ],
             "field_name": "in_silico_predictors",
@@ -113,7 +119,7 @@ def get_config(
                 "revel_max",
                 "spliceai_ds_max",
                 "pangolin_largest_ds",
-                # "phylop"
+                "phylop",
             ],
             "custom_select": custom_in_silico_select,
             "select_globals": [
@@ -121,7 +127,7 @@ def get_config(
                 "revel_version",
                 "spliceai_version",
                 "pangolin_version",
-                # "phylop_version",
+                "phylop_version",
             ],
             "global_name": "tool_versions",
         },
