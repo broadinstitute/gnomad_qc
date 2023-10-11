@@ -1212,6 +1212,8 @@ def main(args):
             adj=args.adj,
             interval_qc_filter=args.interval_qc_filter,
             compute_info_method=args.compute_info_method,
+            indel_features=args.indel_features,
+            snp_features=args.snp_features,
         )
         ht.checkpoint(
             get_variant_qc_result(args.model_id, split=split).path,
