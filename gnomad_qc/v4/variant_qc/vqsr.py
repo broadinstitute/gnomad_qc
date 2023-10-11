@@ -699,7 +699,7 @@ def apply_recalibration(
         # Overwrite VCF with overlap issue addressed.
         j.command(f"""
                 cat {interval} | grep -Ev "^@" > tmp.interval
-                interval=$(cat tmp.interval awk 'NR == 1 {{c=$1; s=$2}} END {{ print c":"s"-"$1":"$3}}')
+                interval=$(cat tmp.interval | awk 'NR == 1 {{c=$1; s=$2}} END {{ print c":"s"-"$1":"$3}}')
                 bcftools view -t $interval {j.output_vcf['vcf.gz']} --output-file {j.output_vcf['vcf.gz']} --output-type z
                 tabix -f {j.output_vcf['vcf.gz']}
                 df -h; pwd; du -sh $(dirname {j.output_vcf['vcf.gz']})
