@@ -1252,3 +1252,21 @@ def release_coverage(
             for release in COVERAGE_RELEASES[data_type]
         },
     )
+
+
+def included_datasets_json_path(
+    data_type: str = "exomes",
+    test: bool = False,
+    release_version: str = CURRENT_RELEASE,
+) -> str:
+    """
+    Fetch filepath for the JSON containing all datasets used in the release.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param release_version: Release version. Defaults to CURRENT RELEASE
+    :return: File path for release versions included datasets JSON
+    """
+    return (
+        f"{_release_root(release_version, test=test, data_type=data_type, extension='json')}/gnomad.exomes.v{release_version}.included_datasets.json"
+    )

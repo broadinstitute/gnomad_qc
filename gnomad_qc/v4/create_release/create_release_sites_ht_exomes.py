@@ -28,7 +28,11 @@ from gnomad_qc.v4.resources.annotations import (
 )
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v4.resources.release import FIELD_DESCRIPTIONS, release_sites
+from gnomad_qc.v4.resources.release import (
+    FIELD_DESCRIPTIONS,
+    included_datasets_json_path,
+    release_sites,
+)
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(
@@ -466,16 +470,17 @@ def join_hts(
     # TODO: Rerunning this will end up overwriting the datasets global to only the
     #  tables run which we dont want. Need to change this behavior so only the rerun
     #  tables are updated.
-    included_dataset = {
+    included_datasets = {
         k: v["path"]
         for k, v in get_config(release_exists=release_exists).items()
         if k in tables
     }
 
-    joined_ht = joined_ht.annotate_globals(
-        date=datetime.now().isoformat(),
-        datasets=included_dataset,
-    )
+    with hl.utils.hadoop_open(
+        included_datasets_json_path(test=test, release_version=args.version), "w"
+    ) as f:
+        f.write(hl.eval(hl.json(included_datasets)))
+
     return joined_ht
 
 
@@ -499,17 +504,10 @@ def main(args):
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters))
 
-    t_globals = get_select_global_fields(ht)
-
-    ht = ht.select_globals(
-        **t_globals,
-        #    README=FIELD_DESCRIPTIONS,
-        date=ht.date,
-        datasets=ht.datasets,
-        version=args.version,
-    )
+    ht = ht.select_globals(**get_select_global_fields(ht))
 
     ht = ht.annotate_globals(
+        filtering_model=ht.filtering_model.drop("model_id"),
         vep_globals=ht.vep_globals.annotate(
             gencode_version="Release 39",
             mane_select_version="v0.95",
@@ -526,6 +524,9 @@ def main(args):
                 },
             ),
         ),
+        date=datetime.now().isoformat(),
+        version=args.version,
+        # README=FIELD_DESCRIPTIONS,
     )
 
     output_path = (
