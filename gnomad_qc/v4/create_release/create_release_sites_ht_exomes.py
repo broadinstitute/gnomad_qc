@@ -83,6 +83,7 @@ def get_config(release_exists: bool = False):
             "path": final_filter().path,
             "select": ["filters"],
             "custom_select": custom_filters_select,
+            # TODO: Drop model_id from filtering_model struct
             "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
         },
         "in_silico": {
@@ -147,7 +148,6 @@ def get_config(release_exists: bool = False):
             "ht": get_vep().ht(),
             "path": get_vep().path,
             "select": ["vep"],
-            # Add in "custom_select" that drops in silicos and 100% missing VEP fields.
             "custom_select": custom_vep_select,
             # TODO: Update to have vep_csq_header -- should this be on the vep table
             #  itself?
@@ -505,6 +505,7 @@ def main(args):
     # The dbsnp table does not have a global field for dbsnp_versions, same with
     # sift/polyphen and vrs (still need these).
     ht = ht.annotate_globals(
+        # TODO: Add sift_version="5.2.2",  polyphen_version="2.2.2", vrs_version=hl.struct("vrs_schema_version": "1.3.0", "vrs_python_version": "0.8.4", "seqrepo_version": "2018-11-26" to globals at FILL THIS IS points
         tool_versions=ht.tool_versions.annotate(
             dbsnp_version="b156",
             sift_version="FILL THIS IS",
