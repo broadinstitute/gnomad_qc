@@ -1207,6 +1207,7 @@ def main(args):
         args.header_path,
         args.array_elements_required,
         is_split=False,
+        deduplicate_check=True,
     )
 
     for ht, split in zip(hts, [True, False]):
