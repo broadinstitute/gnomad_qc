@@ -52,7 +52,8 @@ TABLES_FOR_RELEASE = [
     "in_silico",
     "vep",
 ]
-INSILICO_PREDICTORS = ["spliceai", "pangolin", "revel", "cadd"]  # , "phylop"
+
+INSILICO_PREDICTORS = ["cadd", "spliceai", "pangolin", "revel"]  # "phylop"
 
 
 # Config is added as a function, so it is not evaluated until the function is called.
@@ -151,8 +152,6 @@ def get_config(
             "path": get_vep().path,
             "select": ["vep"],
             "custom_select": custom_vep_select,
-            # TODO: Update to have vep_csq_header -- should this be on the vep table
-            #  itself?
             "select_globals": ["vep_version", "vep_help", "vep_config"],
             "global_name": "vep_globals",
         },
