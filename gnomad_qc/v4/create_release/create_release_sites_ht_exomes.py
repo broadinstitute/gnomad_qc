@@ -56,7 +56,9 @@ INSILICO_PREDICTORS = ["spliceai", "pangolin", "revel", "cadd"]  # , "phylop"
 
 
 # Config is added as a function, so it is not evaluated until the function is called.
-def get_config(release_exists: bool = False):
+def get_config(
+    release_exists: bool = False,
+) -> dict[str, dict[str, hl.expr.Expression]]:
     """
     Get configuration dictionary.
 
