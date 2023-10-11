@@ -1026,7 +1026,7 @@ def main(args):
     """Run VQSR variant qc workflow."""
     hl.init(
         backend="batch",
-        tmp_dir="gs://gnomad-tmp-4day/",
+        tmp_dir="gs://gnomad-tmp-4day",
         gcs_requester_pays_configuration=args.gcp_billing_project,
         default_reference="GRCh38",
         regions=["us-central1"],
@@ -1099,21 +1099,6 @@ def main(args):
             )
 
     # Write out intervals to a temp text file.
-    evaluation_interval_path = None
-    if evaluation_interval_ht is not None:
-        evaluation_interval_path = hl.utils.new_temp_file(
-            "evaluation_intervals", "interval_list"
-        )
-        int_expr = evaluation_interval_ht.interval
-        evaluation_interval_ht = evaluation_interval_ht.key_by(
-            interval=int_expr.start.contig
-            + ":"
-            + hl.str(int_expr.start.position)
-            + "-"
-            + hl.str(int_expr.end.position)
-        ).select()
-        evaluation_interval_ht.export(evaluation_interval_path, header=False)
-
     calling_interval_path = hl.utils.new_temp_file("calling_intervals", "intervals")
     int_expr = calling_interval_ht.interval
     calling_interval_ht = calling_interval_ht.key_by(
@@ -1124,6 +1109,22 @@ def main(args):
         + hl.str(int_expr.end.position)
     ).select()
     calling_interval_ht.export(calling_interval_path, header=False)
+
+    if evaluation_interval_ht is not None:
+        evaluation_interval_path = hl.utils.new_temp_file(
+            "evaluation_intervals", "intervals"
+        )
+        int_expr = evaluation_interval_ht.interval
+        evaluation_interval_ht = evaluation_interval_ht.key_by(
+            interval=int_expr.start.contig
+            + ":"
+            + hl.str(int_expr.start.position)
+            + "-"
+            + hl.str(int_expr.end.position)
+        ).select()
+        evaluation_interval_ht.export(evaluation_interval_path, header=False)
+    else:
+        evaluation_interval_path = calling_interval_path
 
     singleton_vcf_path = get_true_positive_vcf_path(
         adj=args.adj,
