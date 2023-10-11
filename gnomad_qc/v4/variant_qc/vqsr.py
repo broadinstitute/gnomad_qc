@@ -11,6 +11,8 @@ from hailtop.batch.job import Job
 from gnomad_qc.v4.resources.annotations import get_true_positive_vcf_path, info_vcf_path
 from gnomad_qc.v4.resources.basics import calling_intervals
 from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
+from gnomad_qc.v4.resources.variant_qc import get_variant_qc_result
+from gnomad_qc.v4.variant_qc.import_variant_qc_vcf import import_variant_qc_vcf
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -1028,6 +1030,8 @@ def make_vqsr_jobs(
             out_bucket=out_bucket,
         )
 
+        return
+
 
 def main(args):
     """Run VQSR variant qc workflow."""
@@ -1095,7 +1099,7 @@ def main(args):
         evaluation_interval_ht = None
 
     if test:
-        scatter_count = 5
+        scatter_count = 10
         snp_hard_filter = 90.0
         indel_hard_filter = 90.0
         calling_interval_ht = calling_interval_ht.filter(
@@ -1187,6 +1191,33 @@ def main(args):
         overlap_skip=overlap_skip,
     )
 
+    if is_large_callset and overlap_skip:
+        outpath = f"{tmp_vqsr_bucket}apply_recalibration/scatter/{args.out_vcf_name}_vqsr_recalibrated_*.vcf.gz"
+    else:
+        outpath = f"{tmp_vqsr_bucket}{args.out_vcf_name}_vqsr_recalibrated.vcf.gz"
+
+    hts = import_variant_qc_vcf(
+        outpath,
+        args.model_id,
+        args.n_partitions,
+        args.header_path,
+        args.array_elements_required,
+        is_split=False,
+    )
+
+    for ht, split in zip(hts, [True, False]):
+        ht = ht.annotate_globals(
+            transmitted_singletons=args.transmitted_singletons,
+            sibling_singletons=args.sibling_singletons,
+            adj=args.adj,
+            interval_qc_filter=args.interval_qc_filter,
+            compute_info_method=args.compute_info_method,
+        )
+        ht.checkpoint(
+            get_variant_qc_result(args.model_id, split=split).path,
+            overwrite=args.overwrite,
+        )
+
     # Run all jobs, as loaded into the Batch b.
     b.run()
 
@@ -1206,6 +1237,30 @@ if __name__ == "__main__":
         type=str,
         required=True,
         help="Required prefix for VQSR outputs.",
+    )
+    parser.add_argument(
+        "--model-id",
+        help="Model ID for the variant QC result HT.",
+        type=str,
+        required=True,
+    )
+    parser.add_argument(
+        "--header-path",
+        help=(
+            "Optional path to a header file to use for importing the variant QC result"
+            " VCF."
+        ),
+    )
+    parser.add_argument(
+        "--n-partitions",
+        help="Number of desired partitions for output Table.",
+        default=5000,
+        type=int,
+    )
+    parser.add_argument(
+        "--array-elements-required",
+        action="store_true",
+        help="Pass if you would like array elements required in import_vcf to be true.",
     )
     parser.add_argument(
         "--gatk-image",
