@@ -22,6 +22,7 @@ def import_variant_qc_vcf(
     import_header_path: Optional[str] = None,
     array_elements_required: bool = False,
     is_split: bool = False,
+    deduplicate_check: bool = False,
 ) -> Union[hl.Table, Tuple[hl.Table, hl.Table]]:
     """
     Import variant QC result site VCF into a HT.
@@ -35,6 +36,7 @@ def import_variant_qc_vcf(
     :param array_elements_required: Value of array_elements_required to pass to
         hl.import_vcf.
     :param is_split: Whether the VCF is already split.
+    :deduplicate_check: Check for and remove duplicate variants.
     :return: HT containing variant QC results.
     """
     model_type = model_id.split("_")[0]
@@ -54,6 +56,12 @@ def import_variant_qc_vcf(
     ).repartition(num_partitions)
 
     ht = mt.rows()
+
+    if deduplicate_check:
+        original_count = ht.count()
+        ht = ht.distinct()
+        count_difference = original_count - ht.count()
+        logger.info(f"Differnce after ht.distinct() as: {count_difference}")
 
     unsplit_count = None
     if not is_split:
@@ -215,6 +223,14 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--is-split", action="store_true", help="Whether the VCF is already split."
+    )
+    parser.add_argument(
+        "--deduplication-check",
+        action="store_true",
+        help=(
+            "Remove duplicate variants. Useful for v4 MVP when reading from potentiall"
+            " overlapping shards."
+        ),
     )
     args = parser.parse_args()
 
