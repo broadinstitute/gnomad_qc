@@ -1045,6 +1045,7 @@ def main(args):
 
     test = args.test
     scatter_count = args.scatter_count
+    n_partitions = args.n_partitions
     transmitted_singletons = args.transmitted_singletons
     sibling_singletons = args.sibling_singletons
     snp_hard_filter = args.snp_hard_filter
@@ -1099,6 +1100,7 @@ def main(args):
         evaluation_interval_ht = None
 
     if test:
+        n_partitions = 10
         scatter_count = 10
         snp_hard_filter = 90.0
         indel_hard_filter = 90.0
@@ -1201,7 +1203,7 @@ def main(args):
     hts = import_variant_qc_vcf(
         outpath,
         args.model_id,
-        args.n_partitions,
+        n_partitions,
         args.header_path,
         args.array_elements_required,
         is_split=False,
@@ -1225,6 +1227,12 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-o",
+        "--overwrite",
+        help="Whether to overwrite data already present in the output Table.",
+        action="store_true",
+    )
     parser.add_argument(
         "--test",
         help="If the dataset should be filtered to chr22 for testing.",
