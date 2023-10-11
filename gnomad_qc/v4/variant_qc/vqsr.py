@@ -610,6 +610,7 @@ def apply_recalibration(
     scatter: Optional[int] = None,
     interval: Optional[hb.ResourceGroup] = None,
     out_bucket: Optional[str] = None,
+    overlap_skip: bool = False,
 ) -> Job:
     """
     Apply a score cutoff to filter variants based on a recalibration table.
@@ -695,7 +696,7 @@ def apply_recalibration(
     # NOTE: An INDEL at the beginning of a chunk will overlap with the previous chunk
     #  and will cause issues when trying to merge. This makes sure the INDEL is ONLY
     #  in ONE of two consecutive chunks (not both).
-    if interval:
+    if interval and not overlap_skip:
         # Overwrite VCF with overlap issue addressed.
         j.command(f"""
                 cat {interval} | grep -Ev "^@" > tmp.interval
@@ -783,6 +784,7 @@ def make_vqsr_jobs(
     scatter_count: int = 100,
     singleton_vcf_path: Optional[str] = None,
     evaluation_interval_path: Optional[str] = None,
+    overlap_skip: bool = False,
 ) -> None:
     """
     Add jobs to Batch that perform the allele-specific VQSR variant QC.
@@ -959,20 +961,24 @@ def make_vqsr_jobs(
                 scatter=idx,
                 interval=intervals[f"interval_{idx}"],
                 out_bucket=out_bucket,
+                overlap_skip=overlap_skip,
             ).output_vcf
             for idx in range(scatter_count)
         ]
 
         # 4. Gather VCFs.
-        gather_vcfs(
-            b=b,
-            input_vcfs=scattered_vcfs,
-            out_vcf_name=output_vcf_name,
-            disk_size=huge_disk,
-            out_bucket=out_bucket,
-            gcp_billing_project=gcp_billing_project,
-            gatk_image=gatk_image,
-        )
+        if not overlap_skip:
+            gather_vcfs(
+                b=b,
+                input_vcfs=scattered_vcfs,
+                out_vcf_name=output_vcf_name,
+                disk_size=huge_disk,
+                out_bucket=out_bucket,
+                gcp_billing_project=gcp_billing_project,
+                gatk_image=gatk_image,
+            )
+        else:
+            logger.info("Read VCF from shards. Remember to check for duplicates.")
 
     # If not is_large_callset, no need to run as scattered.
     else:
@@ -1040,6 +1046,7 @@ def main(args):
     snp_hard_filter = args.snp_hard_filter
     indel_hard_filter = args.indel_hard_filter
     true_positive_type = None
+    overlap_skip = args.overlap_skip
     if transmitted_singletons and sibling_singletons:
         true_positive_type = "transmitted_singleton.sibling_singleton"
     elif transmitted_singletons:
@@ -1177,6 +1184,7 @@ def main(args):
         indel_hard_filter=indel_hard_filter,
         singleton_vcf_path=singleton_vcf_path,
         evaluation_interval_path=evaluation_interval_path,
+        overlap_skip=overlap_skip,
     )
 
     # Run all jobs, as loaded into the Batch b.
@@ -1305,6 +1313,11 @@ if __name__ == "__main__":
         default=VQSR_FEATURES["indel"],
         type=str,
         nargs="+",
+    )
+    parser.add_argument(
+        "--overlap-skip",
+        help="Skip code to address overlaps, output sharded VCF.",
+        action="store_true",
     )
     parser.add_argument(
         "--batch-suffix",
