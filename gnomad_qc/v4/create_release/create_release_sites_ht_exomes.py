@@ -502,18 +502,16 @@ def main(args):
         version=args.version,
     )
 
-    # The dbsnp table does not have a global field for dbsnp_versions, same with
-    # sift/polyphen and vrs (still need these).
     ht = ht.annotate_globals(
-        # TODO: Add sift_version="5.2.2",  polyphen_version="2.2.2", vrs_version=hl.struct("vrs_schema_version": "1.3.0", "vrs_python_version": "0.8.4", "seqrepo_version": "2018-11-26" to globals at FILL THIS IS points
         tool_versions=ht.tool_versions.annotate(
             dbsnp_version="b156",
-            sift_version="FILL THIS IS",
-            polyphen_version="FILL THIS IS",
+            sift_version="5.2.2",
+            polyphen_version="2.2.2",
             vrs_version=hl.struct(
                 **{
-                    "vrs_python_version": "FILL THIS IS",
-                    "seqrepo_version": "FILL THIS IS",
+                    "vrs_schema_version": "1.3.0",
+                    "vrs_python_version": "0.8.4",
+                    "seqrepo_version": "2018-11-26",
                 },
             ),
         )
