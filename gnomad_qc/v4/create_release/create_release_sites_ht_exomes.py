@@ -26,13 +26,14 @@ from gnomad_qc.v4.resources.annotations import (
     get_vep,
     get_vrs,
 )
-from gnomad_qc.v4.resources.basics import qc_temp_prefix
+from gnomad_qc.v4.resources.basics import calling_intervals, qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v4.resources.release import (
     FIELD_DESCRIPTIONS,
     included_datasets_json_path,
     release_sites,
 )
+from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(
@@ -57,7 +58,7 @@ TABLES_FOR_RELEASE = [
     "vep",
 ]
 
-INSILICO_PREDICTORS = ["cadd", "spliceai", "pangolin", "revel"]  # "phylop"
+INSILICO_PREDICTORS = ["cadd", "spliceai", "pangolin", "revel", "phylop"]
 
 
 # Config is added as a function, so it is not evaluated until the function is called.
@@ -90,11 +91,12 @@ def get_config(
             "path": final_filter().path,
             "select": ["filters"],
             "custom_select": custom_filters_select,
-            # TODO: Drop model_id from filtering_model struct
             "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
         },
-        # Note: Phylop is keyed by locus only the code below sets the join key to 1,
-        # 'locus', if the HT being join is not keyed by both locus and alleles.
+        # Note: Phylop is keyed by locus only. The code below sets the join key to 1,
+        # which will grab the first key of ht.key.dtype.values() e.g. 'locus', if
+        # the HT being join is not keyed by both locus and alleles. All future
+        # in_silico predictors should have the keys confirmed before using this logic.
         "in_silico": {
             "ht": reduce(
                 (
@@ -127,7 +129,7 @@ def get_config(
                 "revel_version",
                 "spliceai_version",
                 "pangolin_version",
-                "phylop_version",
+                # "phylop_version",
             ],
             "global_name": "tool_versions",
         },
@@ -172,9 +174,7 @@ def get_config(
         "region_flags": {
             "ht": get_freq().ht(),
             "path": get_freq().path,
-            "custom_select": (
-                custom_region_flags_select
-            ),  # TODO: Add in the interval data region_flags: fail_interval_qc, outside_ukb_capture_region, outside_broad_capture_region), if we are able to release the calling intervals and point users to those files broad: https://console.cloud.google.com/storage/browser/gcp-public-data--broad-references/hg38/v0?pageState=(%22StorageObjectListTable%22:(%22f%22:%22%255B%255D%22))&prefix=&forceOnObjectsSortingFiltering=false
+            "custom_select": custom_region_flags_select,
         },
         "release": {
             "path": release_sites().path,
@@ -223,6 +223,24 @@ def custom_region_flags_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
             prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         )
     }
+    # TODO: Confirm 50 bp was the padding used in interval_qc and these anns are correct
+    # The interval QC ticket does not pass padding and that script defaults to 50 bp. We
+    # need to confirm we can expose the calling interval files used here in some way.
+    # I think this would involve copying files
+    selects["region_flags"] = selects["region_flags"].annotate(
+        fail_interval_qc=~interval_qc_pass().ht()[ht.locus].pass_interval_qc,
+        outside_ukb_capture_region=~hl.is_defined(
+            calling_intervals(interval_name="ukb", calling_interval_padding=50).ht()[
+                ht.locus
+            ]
+        ),
+        outside_broad_capture_region=~hl.is_defined(
+            calling_intervals(interval_name="broad", calling_interval_padding=50).ht()[
+                ht.locus
+            ]
+        ),
+    )
+
     return selects
 
 
@@ -532,7 +550,6 @@ def main(args):
         ),
         date=datetime.now().isoformat(),
         version=args.version,
-        # README=FIELD_DESCRIPTIONS,
     )
 
     output_path = (
