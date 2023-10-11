@@ -1,7 +1,7 @@
 """Script to load variant QC result VCF into a Hail Table."""
 import argparse
 import logging
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 import hail as hl
 from gnomad.utils.slack import slack_notifications
@@ -19,10 +19,10 @@ def import_variant_qc_vcf(
     vcf_path: str,
     model_id: str,
     num_partitions: int = 5000,
-    overwrite: bool = False,
     import_header_path: Optional[str] = None,
     array_elements_required: bool = False,
-) -> None:
+    is_split: bool = False,
+) -> Union[hl.Table, Tuple[hl.Table, hl.Table]]:
     """
     Import variant QC result site VCF into a HT.
 
@@ -31,9 +31,11 @@ def import_variant_qc_vcf(
     :param model_id: Model ID for the variant QC results. Must start with 'rf_',
         'vqsr_', or 'if_'.
     :param num_partitions: Number of partitions to use for the output HT.
-    :param overwrite: Whether to overwrite data already present in the output HT.
     :param import_header_path: Optional path to a header file to use for import.
-    :return: None
+    :param array_elements_required: Value of array_elements_required to pass to
+        hl.import_vcf.
+    :param is_split: Whether the VCF is already split.
+    :return: HT containing variant QC results.
     """
     model_type = model_id.split("_")[0]
     if model_type not in ["rf", "vqsr", "if"]:
@@ -54,7 +56,7 @@ def import_variant_qc_vcf(
     ht = mt.rows()
 
     unsplit_count = None
-    if not args.is_split:
+    if not is_split:
         if model_type == "vqsr":
             as_vqslod_expr = {"AS_VQSLOD": ht.info.AS_VQSLOD.map(lambda x: hl.float(x))}
         else:
@@ -74,37 +76,34 @@ def import_variant_qc_vcf(
             )
         )
 
-        ht = ht.checkpoint(
-            get_variant_qc_result(model_id, split=False).path,
-            overwrite=overwrite,
+        unsplit_ht = ht.checkpoint(hl.utils.new_temp_file("unsplit_vcq_result", "ht"))
+
+        unsplit_count = unsplit_ht.count()
+        unsplit_ht = hl.split_multi_hts(unsplit_ht)
+
+        split_ht = unsplit_ht.annotate(
+            info=unsplit_ht.info.annotate(
+                **split_info_annotation(unsplit_ht.info, unsplit_ht.a_index)
+            ),
         )
+    else:
+        unsplit_ht = None
+        split_ht = ht
 
-        unsplit_count = ht.count()
-        ht = hl.split_multi_hts(ht)
+    split_ht = split_ht.checkpoint(hl.utils.new_temp_file("split_vcq_result", "ht"))
 
-        ht = ht.annotate(
-            info=ht.info.annotate(**split_info_annotation(ht.info, ht.a_index)),
-        )
-
-    ht = ht.annotate_globals(
-        transmitted_singletons=args.transmitted_singletons,
-        sibling_singletons=args.sibling_singletons,
-        adj=args.adj,
-        interval_qc_filter=args.interval_qc_filter,
-        compute_info_method=args.compute_info_method,
-    )
-    ht = ht.checkpoint(
-        get_variant_qc_result(model_id, split=True).path,
-        overwrite=overwrite,
-    )
-
-    split_count = ht.count()
+    split_count = split_ht.count()
     if unsplit_count is None:
         logger.info(f"Found {split_count} split variants in the VCF")
     else:
         logger.info(
             f"Found {unsplit_count} unsplit and {split_count} split variants in the VCF"
         )
+
+    if unsplit_ht is None:
+        return split_ht
+    else:
+        return split_ht, unsplit_ht
 
 
 def main(args):
@@ -113,14 +112,27 @@ def main(args):
 
     logger.info(f"passed array elements required as: {args.array_elements_required}")
 
-    import_variant_qc_vcf(
+    hts = import_variant_qc_vcf(
         args.vcf_path,
         args.model_id,
         args.n_partitions,
-        args.overwrite,
         args.header_path,
         args.array_elements_required,
+        args.is_split,
     )
+
+    for ht, split in zip(hts, [True, False]):
+        ht = ht.annotate_globals(
+            transmitted_singletons=args.transmitted_singletons,
+            sibling_singletons=args.sibling_singletons,
+            adj=args.adj,
+            interval_qc_filter=args.interval_qc_filter,
+            compute_info_method=args.compute_info_method,
+        )
+        ht.checkpoint(
+            get_variant_qc_result(args.model_id, split=split).path,
+            overwrite=args.overwrite,
+        )
 
 
 if __name__ == "__main__":
