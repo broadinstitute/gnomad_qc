@@ -473,6 +473,7 @@ def create_phylop_grch38_ht() -> hl.Table:
     ht = ht.annotate(locus=hl.locus(ht.chr, ht.pos, reference_genome="GRCh38"))
     ht = ht.select("locus", "phylop")
     ht = ht.key_by("locus")
+    ht = ht.annotate_globals(phylop_version="v2")
 
     return ht
 
