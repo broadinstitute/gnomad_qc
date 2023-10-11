@@ -60,6 +60,41 @@ TABLES_FOR_RELEASE = [
 
 INSILICO_PREDICTORS = ["cadd", "spliceai", "pangolin", "revel", "phylop"]
 
+FINALIZED_SCHEMA = {
+    "globals": [
+        "freq_meta",
+        "freq_index_dict",
+        "freq_meta_sample_count",
+        "faf_meta",
+        "faf_index_dict",
+        "age_distribution",
+        "downsamplings",
+        "filtering_model",
+        "inbreeding_coeff_cutoff",
+        "tool_versions",
+        "vep_globals",
+        "date",
+        "version",
+    ],
+    "rows": [
+        "freq",
+        "grpmax",
+        "faf",
+        "gen_anc_faf_max",
+        "a_index",
+        "was_split",
+        "rsid",
+        "filters",
+        "info",
+        "vep",
+        "isolation_forest_results",
+        "region_flags",
+        "allele_info",
+        "histograms",
+        "in_silico_predictors",
+    ],
+}
+
 
 # Config is added as a function, so it is not evaluated until the function is called.
 def get_config(
@@ -244,6 +279,8 @@ def custom_region_flags_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     return selects
 
 
+# TODO: This is currently grabbing the IF but I thought we decided VQSR --
+# need to confirm correct table is being grabbed
 def custom_filters_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
     Select gnomAD filter HT fields for release dataset.
@@ -550,6 +587,11 @@ def main(args):
         ),
         date=datetime.now().isoformat(),
         version=args.version,
+    )
+
+    # Reorder fields to match final schema.
+    ht = ht.select(*FINALIZED_SCHEMA["rows"]).select_globals(
+        *FINALIZED_SCHEMA["globals"]
     )
 
     output_path = (
