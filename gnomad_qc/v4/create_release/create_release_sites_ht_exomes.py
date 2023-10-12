@@ -5,7 +5,7 @@ import logging
 from copy import deepcopy
 from datetime import datetime
 from functools import reduce
-from typing import List
+from typing import Dict, List
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import (
@@ -65,16 +65,17 @@ FINALIZED_SCHEMA = {
         "freq_meta_sample_count",
         "faf_meta",
         "faf_index_dict",
-        "joint_freq_meta",
-        "joint_freq_index_dict",
-        "joint_freq_meta_sample_count",
-        "joint_faf_meta",
-        "joint_faf_index_dict",
+        # "joint_freq_meta",
+        # "joint_freq_index_dict",
+        # "joint_freq_meta_sample_count",
+        # "joint_faf_meta",
+        # "joint_faf_index_dict",
         "age_distribution",
         "downsamplings",
         "filtering_model",
         "inbreeding_coeff_cutoff",
         "tool_versions",
+        "vrs_versions",
         "vep_globals",
         "date",
         "version",
@@ -84,9 +85,9 @@ FINALIZED_SCHEMA = {
         "grpmax",
         "faf",
         "gen_anc_faf_max",
-        "joint_freq",
-        "joint_grpmax",
-        "joint_faf",
+        # "joint_freq",
+        # "joint_grpmax",
+        # "joint_faf",
         "a_index",
         "was_split",
         "rsid",
@@ -105,14 +106,14 @@ FINALIZED_SCHEMA = {
 # Config is added as a function, so it is not evaluated until the function is called.
 def get_config(
     release_exists: bool = False,
-) -> dict[str, dict[str, hl.expr.Expression]]:
+) -> Dict[str, dict[str, hl.expr.Expression]]:
     """
     Get configuration dictionary.
 
     Format:
         '<Name of dataset>': {
                 'path': 'gs://path/to/hail_table.ht',
-                'select': '<Optional list of fields to select or dict of new field name to location of old fieldin the dataset.>',
+                'select': '<Optional list of fields to select or dict of new field name to location of old field in the dataset.>',
                 'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
                 'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
                 'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>'
@@ -316,8 +317,7 @@ def custom_filters_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
         name = "isolation_forest_results"
     else:
         raise ValueError(f"Filtering method {filter_name} not recognized.")
-    # TODO: Add training_info negative and positive train site
-    selects = {name: ht.results}
+    selects = {name: ht.results.annotate(**ht.training_info)}
 
     return selects
 
@@ -664,6 +664,9 @@ if __name__ == "__main__":
         type=str,
         nargs="+",
     )
+    # TODO: Do we want final_filter to be the default base table? I think
+    # AS-lowqual are not present in the final_filter HT so it removes a
+    # filtering step
     parser.add_argument(
         "-b",
         "--base-table",
