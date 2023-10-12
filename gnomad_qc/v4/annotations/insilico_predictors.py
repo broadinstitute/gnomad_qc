@@ -6,6 +6,7 @@ import hail as hl
 from gnomad.resources.resource_utils import NO_CHR_TO_CHR_CONTIG_RECODING
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import filter_vep_transcript_csqs
+from hail.utils import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_insilico_predictors
@@ -75,9 +76,10 @@ def create_cadd_grch38_ht() -> hl.Table:
           that are new in gnomAD v4 genomes because of the addition of HGDP/TGP samples.
 
          .. note::
-         1,972,208 indels were duplicated in gnomAD v3.0 and v4.0 or in gnomAD
-         v3.1 and v4.0. However, CADD only generates a score per loci.
-         We keep only the latest prediction, v4.0, for these loci.
+         ~1,9M indels were duplicated in gnomAD v3.0 and v4.0 or in gnomAD v3.1 and
+         v4.0. However, CADD only generates a score per loci. We keep only the latest
+         prediction, v4.0, for these loci.
+         The output generated a CADD HT with 9,110,177,520 rows.
     :return: Hail Table with CADD scores for GRCh38.
     """
 
@@ -108,7 +110,7 @@ def create_cadd_grch38_ht() -> hl.Table:
         )
         ht = ht.select("locus", "alleles", "RawScore", "PHRED")
         ht = ht.key_by("locus", "alleles")
-
+        ht = ht.checkpoint(new_temp_file("cadd", "ht"))
         return ht
 
     snvs = _load_cadd_raw(
@@ -132,18 +134,14 @@ def create_cadd_grch38_ht() -> hl.Table:
 
     # Merge the CADD predictions run for v3 versions.
     indel3 = indel3_0.union(indel3_1, indel3_1_complex)
-    logger.info("Number of indels in v3: %s", indel3.count())
 
     # Merge the CADD predictions run for v4 versions.
     indel4 = indel4_e.union(indel4_g).distinct()
-    logger.info("Number of unique indels in v4: %s.", indel4.count())
 
     # This will avoid duplicated indels in gnomAD v3 and v4.
     indel3 = indel3.anti_join(indel4)
-    logger.info("Number of indels in v3 and not in v4: %s.", indel3.count())
 
     ht = snvs.union(indel3, indel4)
-    logger.info("Number of variants in CADD HT: %s.", ht.count())
 
     ht = ht.select(cadd=hl.struct(phred=ht.PHRED, raw_score=ht.RawScore))
     ht = ht.annotate_globals(cadd_version="v1.6")
@@ -456,6 +454,45 @@ def create_revel_grch38_ht() -> hl.Table:
     return final_ht
 
 
+def create_phylop_grch38_ht() -> hl.Table:
+    """
+    Convert PhyloP scores to Hail Table.
+
+    .. note::
+    BigWig format of Phylop was download from here:
+    https://cgl.gi.ucsc.edu/data/cactus/241-mammalian-2020v2-hub/Homo_sapiens/241-mammalian-2020v2.bigWig
+    and converted it to bedGraph format with bigWigToBedGraph from the kent packages
+    of UCSC (https://hgdownload.cse.ucsc.edu/admin/exe/) with the following command:
+    `./bigWigToBedGraph ~/Downloads/241-mammalian-2020v2.bigWig ~/Downloads/241-mammalian-2020v2.bedGraph`
+    The bedGraph file is bigzipped before importing to Hail.
+    Different to other in silico predictors, the Phylop HT is keyed by locus only. Since
+     the PhyloP scores have one value per position, we exploded the interval to store
+     the HT by locus. In result, we have Phylop scores for 2,852,623,265 locus from
+     2,648,607,958 intervals.
+
+    :return: Hail Table with Phylop Scores for GRCh38
+    """
+    bg_path = "gs://gnomad-insilico/phylop/Human-GRCh38-Phylop-241-mammalian-2020v2.bedGraph.bgz"
+    columns = ["chr", "start", "end", "phylop"]
+    ht = hl.import_table(
+        bg_path,
+        min_partitions=1000,
+        impute=True,
+        no_header=True,
+    ).rename({f"f{i}": c for i, c in enumerate(columns)})
+
+    # We add 1 to both start and end because input bedGraph is 0-indexed interval and
+    # the interval is end exclusive
+    ht = ht.annotate(pos=hl.range(ht.start + 1, ht.end + 1))
+    ht = ht.explode("pos")
+    ht = ht.annotate(locus=hl.locus(ht.chr, ht.pos, reference_genome="GRCh38"))
+    ht = ht.select("locus", "phylop")
+    ht = ht.key_by("locus")
+    ht = ht.annotate_globals(phylop_version="v2")
+
+    return ht
+
+
 def main(args):
     """Generate Hail Tables with in silico predictors."""
     hl.init(
@@ -502,6 +539,13 @@ def main(args):
             overwrite=args.overwrite,
         )
         logger.info("REVEL Hail Table for GRCh38 created.")
+    if args.phylop:
+        logger.info("Creating PhyloP Hail Table for GRCh38...")
+        ht = create_phylop_grch38_ht()
+        ht.write(
+            get_insilico_predictors(predictor="phylop").path,
+            overwrite=args.overwrite,
+        )
 
 
 if __name__ == "__main__":
@@ -514,6 +558,7 @@ if __name__ == "__main__":
     parser.add_argument("--spliceai", help="Create SpliceAI HT", action="store_true")
     parser.add_argument("--pangolin", help="Create Pangolin HT", action="store_true")
     parser.add_argument("--revel", help="Create REVEL HT.", action="store_true")
+    parser.add_argument("--phylop", help="Create PhyloP HT.", action="store_true")
     args = parser.parse_args()
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
