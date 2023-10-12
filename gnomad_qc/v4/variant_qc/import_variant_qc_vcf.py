@@ -237,14 +237,14 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--snp-features",
-        help="Features to use in the SNP VQSR model.",
+        help="Features used in the SNP VQSR model.",
         default=VQSR_FEATURES["snv"],
         type=str,
         nargs="+",
     )
     parser.add_argument(
         "--indel-features",
-        help="Features to use in the indel VQSR model.",
+        help="Features used in the indel VQSR model.",
         default=VQSR_FEATURES["indel"],
         type=str,
         nargs="+",
