@@ -1,5 +1,6 @@
 """Script to create release sites HT for exomes."""
 import argparse
+import json
 import logging
 from copy import deepcopy
 from datetime import datetime
@@ -523,16 +524,21 @@ def join_hts(
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
     # Track the dataset we've added as well as the source path.
-    # TODO: Rerunning this will end up overwriting the datasets global to only the
-    #  tables run which we dont want. Need to change this behavior so only the rerun
-    # tables are updated, involves reading in existing json and updating
-    # values of dict.
-    included_datasets = {
-        k: v["path"]
-        for k, v in get_config(release_exists=release_exists).items()
-        if k in tables
-    }
+    # If release in tables, read in the included datasets json
+    # and update the keys to the path for any new tables
+    included_datasets = {}
+    if "release" in tables:
+        with hl.utils.hadoop_open(
+            included_datasets_json_path(
+                test=test,
+                release_version=hl.eval(get_config()["release"]["ht"].version),
+            )
+        ) as f:
+            included_datasets = json.loads(f.read())
 
+    included_datasets.update(
+        {t: get_config(release_exists=release_exists)[t]["path"] for t in tables}
+    )
     with hl.utils.hadoop_open(
         included_datasets_json_path(test=test, release_version=args.version), "w"
     ) as f:
