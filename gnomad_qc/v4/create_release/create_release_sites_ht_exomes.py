@@ -260,7 +260,9 @@ def custom_region_flags_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     # need to confirm we can expose the calling interval files used here in some way.
     # I think this would involve copying files
     selects["region_flags"] = selects["region_flags"].annotate(
-        fail_interval_qc=~interval_qc_pass().ht()[ht.locus].pass_interval_qc,
+        fail_interval_qc=~interval_qc_pass(all_platforms=True)
+        .ht()[ht.locus]
+        .pass_interval_qc,
         outside_ukb_capture_region=~hl.is_defined(
             calling_intervals(interval_name="ukb", calling_interval_padding=50).ht()[
                 ht.locus
