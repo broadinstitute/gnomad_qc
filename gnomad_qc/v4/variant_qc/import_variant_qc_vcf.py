@@ -14,23 +14,6 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("import_variant_qc_vcf")
 logger.setLevel(logging.INFO)
 
-VQSR_FEATURES = {
-    "snv": [
-        "AS_QD",
-        "AS_MQRankSum",
-        "AS_ReadPosRankSum",
-        "AS_FS",
-        "AS_MQ",
-    ],
-    "indel": [
-        "AS_QD",
-        "AS_MQRankSum",
-        "AS_ReadPosRankSum",
-        "AS_FS",
-    ],
-}
-"""List of features used in the VQSR model."""
-
 
 def import_variant_qc_vcf(
     vcf_path: str,
