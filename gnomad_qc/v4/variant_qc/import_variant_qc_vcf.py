@@ -89,7 +89,7 @@ def import_variant_qc_vcf(
         unsplit_count = unsplit_ht.count()
         split_ht = hl.split_multi_hts(unsplit_ht)
 
-        split_ht = unsplit_ht.annotate(
+        split_ht = split_ht.annotate(
             info=unsplit_ht.info.annotate(
                 **split_info_annotation(unsplit_ht.info, unsplit_ht.a_index)
             ),
