@@ -579,13 +579,13 @@ def main(args):
             dbsnp_version="b156",
             sift_version="5.2.2",
             polyphen_version="2.2.2",
-            vrs_version=hl.struct(
-                **{
-                    "vrs_schema_version": "1.3.0",
-                    "vrs_python_version": "0.8.4",
-                    "seqrepo_version": "2018-11-26",
-                },
-            ),
+        ),
+        vrs_versions=hl.struct(
+            **{
+                "vrs_schema_version": "1.3.0",
+                "vrs_python_version": "0.8.4",
+                "seqrepo_version": "2018-11-26",
+            },
         ),
         date=datetime.now().isoformat(),
         version=args.version,
