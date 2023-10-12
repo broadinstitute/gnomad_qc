@@ -104,7 +104,7 @@ def import_variant_qc_vcf(
         unsplit_ht = ht.checkpoint(hl.utils.new_temp_file("unsplit_vcq_result", "ht"))
 
         unsplit_count = unsplit_ht.count()
-        unsplit_ht = hl.split_multi_hts(unsplit_ht)
+        split_ht = hl.split_multi_hts(unsplit_ht)
 
         split_ht = unsplit_ht.annotate(
             info=unsplit_ht.info.annotate(

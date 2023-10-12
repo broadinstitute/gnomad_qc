@@ -12,7 +12,9 @@ from gnomad_qc.v4.resources.annotations import get_true_positive_vcf_path, info_
 from gnomad_qc.v4.resources.basics import calling_intervals
 from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
 from gnomad_qc.v4.resources.variant_qc import get_variant_qc_result, VQSR_FEATURES
-from gnomad_qc.v4.variant_qc.import_variant_qc_vcf import import_variant_qc_vcf as import_vqsr
+from gnomad_qc.v4.variant_qc.import_variant_qc_vcf import (
+    import_variant_qc_vcf as import_vqsr,
+)
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
