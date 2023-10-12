@@ -1107,7 +1107,10 @@ def main(args):
         logger.info("Determine variants in the release HT that need a recomputed AN...")
         ht = res.freq_join_ht.ht()
         # First freq in ann_array is the release sites freq and the third is the added.
-        ht = ht.filter(hl.is_missing(ht.ann_array[0]) & (ht.ann_array[2].freq.AC > 0))
+        ht = ht.filter(
+            hl.is_missing(ht.ann_array[0])
+            & hl.any(ht.ann_array.freq[2].map(lambda x: x.AC > 0))
+        )
         ht = ht.checkpoint(new_temp_file("variants_for_an", "ht"))
         logger.info(
             "There are %i variants with an AC > 0 in the added call stats HTs, but "
