@@ -16,6 +16,23 @@ from gnomad.resources.resource_utils import (
 
 from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
 
+VQSR_FEATURES = {
+    "snv": [
+        "AS_QD",
+        "AS_MQRankSum",
+        "AS_ReadPosRankSum",
+        "AS_FS",
+        "AS_MQ",
+    ],
+    "indel": [
+        "AS_QD",
+        "AS_MQRankSum",
+        "AS_ReadPosRankSum",
+        "AS_FS",
+    ],
+}
+"""List of features used in the VQSR model."""
+
 SYNDIP = "CHMI_CHMI3_Nex1"
 """
 String representation for syndip truth sample.
