@@ -9,6 +9,7 @@ from gnomad.utils.sparse_mt import split_info_annotation
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.variant_qc import get_variant_qc_result
+from gnomad_qc.v4.variant_qc.vqsr import VQSR_FEATURES
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("import_variant_qc_vcf")
@@ -136,6 +137,8 @@ def main(args):
             adj=args.adj,
             interval_qc_filter=args.interval_qc_filter,
             compute_info_method=args.compute_info_method,
+            indel_features=args.indel_features,
+            snp_features=args.snp_features,
         )
         ht.checkpoint(
             get_variant_qc_result(args.model_id, split=split).path,
@@ -231,6 +234,20 @@ if __name__ == "__main__":
             "Remove duplicate variants. Useful for v4 MVP when reading from potentiall"
             " overlapping shards."
         ),
+    )
+    parser.add_argument(
+        "--snp-features",
+        help="Features to use in the SNP VQSR model.",
+        default=VQSR_FEATURES["snv"],
+        type=str,
+        nargs="+",
+    )
+    parser.add_argument(
+        "--indel-features",
+        help="Features to use in the indel VQSR model.",
+        default=VQSR_FEATURES["indel"],
+        type=str,
+        nargs="+",
     )
     args = parser.parse_args()
 
