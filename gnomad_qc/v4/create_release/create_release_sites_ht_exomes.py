@@ -84,7 +84,7 @@ FINALIZED_SCHEMA = {
         "filters",
         "info",
         "vep",
-        "isolation_forest_results",
+        "vqsr_results",
         "region_flags",
         "allele_info",
         "histograms",
@@ -278,8 +278,6 @@ def custom_region_flags_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     return selects
 
 
-# TODO: This is currently grabbing the IF but I thought we decided VQSR --
-# need to confirm the correct table is stored at final_filter
 def custom_filters_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
     Select gnomAD filter HT fields for release dataset.
