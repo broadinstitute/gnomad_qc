@@ -8,11 +8,28 @@ from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import split_info_annotation
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.variant_qc import get_variant_qc_result, VQSR_FEATURES
+from gnomad_qc.v4.resources.variant_qc import get_variant_qc_result
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("import_variant_qc_vcf")
 logger.setLevel(logging.INFO)
+
+VQSR_FEATURES = {
+    "snv": [
+        "AS_QD",
+        "AS_MQRankSum",
+        "AS_ReadPosRankSum",
+        "AS_FS",
+        "AS_MQ",
+    ],
+    "indel": [
+        "AS_QD",
+        "AS_MQRankSum",
+        "AS_ReadPosRankSum",
+        "AS_FS",
+    ],
+}
+"""List of features used in the VQSR model."""
 
 
 def import_variant_qc_vcf(
@@ -116,7 +133,12 @@ def import_variant_qc_vcf(
 
 def main(args):
     """Load variant QC result VCF into a Hail Table."""
-    hl.init(log="/load_variant_qc_vcf.log", default_reference="GRCh38")
+    hl.init(
+        log="/load_variant_qc_vcf.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+        gcs_requester_pays_configuration=args.gcp_billing_project
+    )
 
     logger.info(f"passed array elements required as: {args.array_elements_required}")
 
@@ -247,6 +269,12 @@ if __name__ == "__main__":
         default=VQSR_FEATURES["indel"],
         type=str,
         nargs="+",
+    )
+    parser.add_argument(
+        "--gcp-billing-project",
+        type=str,
+        required=True,
+        help="Google Cloud billing project for reading requester pays buckets.",
     )
     args = parser.parse_args()
 
