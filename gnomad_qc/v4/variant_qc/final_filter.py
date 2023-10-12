@@ -8,14 +8,14 @@ from gnomad.utils.filtering import add_filters_expr
 from gnomad.utils.slack import slack_notifications
 from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
+
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_freq, get_info
-from gnomad_qc.v4.resources.variant_qc import final_filter, get_score_bins
-from gnomad_qc.v4.variant_qc.vqsr import VQSR_FEATURES
+from gnomad_qc.v4.resources.variant_qc import final_filter, get_score_bins, VQSR_FEATURES
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("final_filter")

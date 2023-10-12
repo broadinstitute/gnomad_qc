@@ -8,7 +8,7 @@ from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import split_info_annotation
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.variant_qc import get_variant_qc_result
+from gnomad_qc.v4.resources.variant_qc import get_variant_qc_result, VQSR_FEATURES
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("import_variant_qc_vcf")
