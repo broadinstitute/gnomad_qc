@@ -65,11 +65,11 @@ FINALIZED_SCHEMA = {
         "freq_meta_sample_count",
         "faf_meta",
         "faf_index_dict",
-        # "comb_freq_meta",
-        # "comb_freq_index_dict",
-        # "comb_freq_meta_sample_count",
-        # "comb_faf_meta",
-        # "comb_faf_index_dict",
+        "joint_freq_meta",
+        "joint_freq_index_dict",
+        "joint_freq_meta_sample_count",
+        "joint_faf_meta",
+        "joint_faf_index_dict",
         "age_distribution",
         "downsamplings",
         "filtering_model",
@@ -84,7 +84,9 @@ FINALIZED_SCHEMA = {
         "grpmax",
         "faf",
         "gen_anc_faf_max",
-        # "combined_faf",
+        "joint_freq",
+        "joint_grpmax",
+        "joint_faf",
         "a_index",
         "was_split",
         "rsid",
@@ -314,7 +316,7 @@ def custom_filters_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
         name = "isolation_forest_results"
     else:
         raise ValueError(f"Filtering method {filter_name} not recognized.")
-
+    # TODO: Add training_info negative and positive train site
     selects = {name: ht.results}
 
     return selects
