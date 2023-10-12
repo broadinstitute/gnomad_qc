@@ -67,6 +67,42 @@ FREQ_GLOBALS = ("freq_meta", "freq_meta_sample_count")
 """Global annotations on the frequency Table."""
 
 
+def filter_to_test(
+    t: Union[hl.Table, hl.MatrixTable, hl.vds.VariantDataset],
+    gene_on_chrx: bool = False,
+    partitions: Optional[List[int]] = None,
+) -> Union[hl.Table, hl.MatrixTable, hl.vds.VariantDataset]:
+    """
+    Filter to 10kb in DRD2 or PLCXD1 in Table or MatrixTable for testing purposes.
+
+    :param t: Table or MatrixTable to filter.
+    :param gene_on_chrx: Whether to filter to PLCXD1, instead of DRD2, for testing chrX.
+    :param partitions: Optional list of partitions to filter to before applying the
+        filter to DRD2.
+    :return: Table or MatrixTable filtered to 10kb in DRD2 or PLCXD1.
+    """
+    if gene_on_chrx:
+        logger.info("Filtering to PLCXD1 on chrX in MT for testing purposes...")
+        test_locus = "chrX:285000-295000"
+    else:
+        logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
+        test_locus = "chr11:113425000-113435000"
+
+    test_interval = [hl.parse_locus_interval(test_locus, reference_genome="GRCh38")]
+
+    if isinstance(t, hl.vds.VariantDataset):
+        if partitions is not None:
+            t = hl.vds.VariantDataset(
+                t.reference_data._filter_partitions(partitions),
+                t.variant_data._filter_partitions(partitions),
+            )
+        return hl.vds.filter_intervals(t, test_interval, split_reference_blocks=True)
+    else:
+        if partitions is not None:
+            t = t._filter_partitions(partitions)
+        return hl.filter_intervals(t, test_interval)
+
+
 def get_hgdp_tgp_related_to_nonsubset(
     v3_meta_ht: hl.Table, rel_ht: hl.Table
 ) -> hl.Table:
