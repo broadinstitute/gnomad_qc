@@ -61,9 +61,11 @@ INFO_METHODS = [
 INFO_FEATURES = [
     "AS_MQRankSum",
     "AS_pab_max",
+    "AS_MQ",
     "AS_QD",
     "AS_ReadPosRankSum",
     "AS_SOR",
+    "AS_FS",
 ]
 """List of features info to be used for variant QC."""
 NON_INFO_FEATURES = [
@@ -386,6 +388,9 @@ def get_info_ht_for_vcf_export(ht: hl.Table, info_method: str) -> hl.Table:
     """
     ht = get_reformatted_info_fields(ht, info_method=info_method)
     ht = ht.select(info=ht.site_info.annotate(**ht[f"{info_method}_info"]))
+    # Added to be consistent with compute info and remove sites with over 10,000
+    # alleles. It excludes a single problematic site that we decided to drop.
+    ht = ht.filter(hl.len(ht.alleles) < 10000)
     ht = adjust_vcf_incompatible_types(ht)
 
     return ht
@@ -709,6 +714,14 @@ def get_variant_qc_annotation_resources(
         },
         pipeline_input_steps=[compute_info],
     )
+    export_split_info_vcf = PipelineStepResourceCollection(
+        "--export-split-info-vcf",
+        output_resources={
+            f"{m}_info_vcf": info_vcf_path(info_method=m, split=True, test=test)
+            for m in INFO_METHODS
+        },
+        pipeline_input_steps=[compute_info],
+    )
     run_vep = PipelineStepResourceCollection(
         "--run-vep",
         output_resources={"vep_ht": get_vep(data_type="exomes", test=test)},
@@ -742,6 +755,7 @@ def get_variant_qc_annotation_resources(
             "compute_info": compute_info,
             "split_info": split_info_ann,
             "export_info_vcf": export_info_vcf,
+            "export_split_info_vcf": export_split_info_vcf,
             "run_vep": run_vep,
             "validate_vep": validate_vep,
             "generate_trio_stats": trio_stats,
@@ -852,13 +866,18 @@ def main(args):
                 res.split_info_ht.path, overwrite=overwrite
             )
 
-        if args.export_info_vcf:
-            res = vqc_resources.export_info_vcf
-            res.check_resource_existence()
-            info_ht = res.info_ht.ht()
-            for m in INFO_METHODS:
-                m_info_ht = get_info_ht_for_vcf_export(info_ht, m)
-                hl.export_vcf(m_info_ht, getattr(res, f"{m}_info_vcf"), tabix=True)
+        if args.export_info_vcf or args.export_split_info_vcf:
+            info_res = []
+            if args.export_info_vcf:
+                info_res.append(vqc_resources.export_info_vcf)
+            if args.export_split_info_vcf:
+                info_res.append(vqc_resources.export_split_info_vcf)
+            for res in info_res:
+                res.check_resource_existence()
+                info_ht = res.info_ht.ht()
+                for m in INFO_METHODS:
+                    m_info_ht = get_info_ht_for_vcf_export(info_ht, m)
+                    hl.export_vcf(m_info_ht, getattr(res, f"{m}_info_vcf"), tabix=True)
 
         if run_vep:
             res = vqc_resources.run_vep
@@ -983,6 +1002,9 @@ if __name__ == "__main__":
     parser.add_argument("--split-info", help="Split info HT.", action="store_true")
     parser.add_argument(
         "--export-info-vcf", help="Export info as VCF.", action="store_true"
+    )
+    parser.add_argument(
+        "--export-split-info-vcf", help="Export split info as VCF.", action="store_true"
     )
     parser.add_argument(
         "--run-vep", help="Generates vep annotations.", action="store_true"

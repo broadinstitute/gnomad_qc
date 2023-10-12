@@ -29,6 +29,7 @@ def get_gnomad_v4_vds(
     high_quality_only: bool = False,
     keep_controls: bool = False,
     release_only: bool = False,
+    controls_only: bool = False,
     test: bool = False,
     n_partitions: Optional[int] = None,
     filter_partitions: Optional[List[int]] = None,
@@ -52,6 +53,7 @@ def get_gnomad_v4_vds(
         a subset of samples.
     :param release_only: Whether to filter the VDS to only samples available for
         release (can only be used if metadata is present).
+    :param controls_only: Whether to filter the VDS to only control samples.
     :param test: Whether to use the test VDS instead of the full v4 VDS.
     :param n_partitions: Optional argument to read the VDS with a specific number of
         partitions.
@@ -147,7 +149,7 @@ def get_gnomad_v4_vds(
     # We don't need to do the UKB withdrawn and pharma remove list sample removal if
     # we're only keeping high quality or release samples since they will not be in
     # either of those sets.
-    if not high_quality_only and not release_only:
+    if not (high_quality_only or release_only or controls_only):
         # Remove 75 withdrawn UKB samples (samples with withdrawn consents for
         # application 31063 on 02/22/2022).
         ukb_application_map_ht = ukb_application_map.ht()
@@ -186,7 +188,7 @@ def get_gnomad_v4_vds(
         high_quality_only
         or remove_hard_filtered_samples
         or remove_hard_filtered_samples_no_sex
-    ) and not release_only:
+    ) and not (release_only or controls_only):
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
             if high_quality_only:
@@ -252,6 +254,10 @@ def get_gnomad_v4_vds(
         if keep_controls:
             filter_expr |= hl.literal(TRUTH_SAMPLES_S).contains(meta_ht.s)
         vds = hl.vds.filter_samples(vds, meta_ht.filter(filter_expr))
+
+    if controls_only:
+        logger.info("Filtering VDS to control samples only...")
+        vds = hl.vds.filter_samples(vds, TRUTH_SAMPLES_S)
 
     if annotate_meta:
         logger.info("Annotating VDS variant_data with metadata...")

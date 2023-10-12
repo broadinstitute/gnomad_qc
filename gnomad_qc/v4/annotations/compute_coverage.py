@@ -116,12 +116,43 @@ def main(args):
                 release_only=True,
                 test=test,
                 filter_partitions=range(2) if test else None,
+                annotate_meta=True,
             )
 
+            if args.stratify_by_ukb_and_platform:
+                meta_expr = vds.variant_data.meta
+                ukb_expr = meta_expr.project_meta.ukb_sample
+                strata = [
+                    {"ukb_strata": hl.if_else(ukb_expr, "ukb", "non_ukb")},
+                    {
+                        "subset": hl.or_missing(~ukb_expr, "non_ukb"),
+                        "platform": meta_expr.platform_inference.qc_platform,
+                    },
+                ]
+            else:
+                strata = None
+
             # Compute coverage stats.
-            coverage_ht = compute_coverage_stats(vds, ref_ht, res.interval_ht.ht())
+            coverage_ht = compute_coverage_stats(
+                vds,
+                ref_ht,
+                interval_ht=res.interval_ht.ht(),
+                strata_expr=strata,
+            )
 
             # Checkpoint Table.
+            if args.stratify_by_ukb_and_platform:
+                coverage_ht = coverage_ht.annotate_globals(
+                    coverage_stats_meta=coverage_ht.coverage_stats_meta.map(
+                        lambda x: hl.dict(
+                            x.items().map(
+                                lambda m: hl.if_else(
+                                    m[0] == "ukb_strata", ("subset", m[1]), m
+                                )
+                            )
+                        )
+                    )
+                )
             coverage_ht = coverage_ht.checkpoint(
                 hl.utils.new_temp_file("coverage", extension="ht")
             )
@@ -134,7 +165,12 @@ def main(args):
             logger.info("Exporting coverage tsv...")
             res = coverage_resources.export_coverage_tsv
             res.check_resource_existence()
-            res.coverage_ht.ht().export(res.coverage_tsv)
+            ht = res.coverage_ht.ht()
+            if "coverage_stats" in ht.row:
+                ht = ht.select(
+                    **{k: ht.coverage_stats[0][k] for k in ht.coverage_stats[0]}
+                )
+            ht.export(res.coverage_tsv)
 
     finally:
         hl.copy_log(f"gs://gnomad-tmp-4day/coverage/compute_coverage.log")
@@ -155,6 +191,11 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--compute-coverage-ht", help="Compute the coverage HT.", action="store_true"
+    )
+    parser.add_argument(
+        "--stratify-by-ukb-and-platform",
+        help="Whether to compute coverage stratified by UKB/non-UKB and platform.",
+        action="store_true",
     )
     parser.add_argument(
         "--calling-interval-name",

@@ -9,7 +9,13 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
+from gnomad_qc.v4.resources.basics import qc_temp_prefix
+from gnomad_qc.v4.resources.constants import (
+    CURRENT_HGDP_TGP_RELEASE,
+    CURRENT_VERSION,
+    HGDP_TGP_RELEASES,
+    VERSIONS,
+)
 
 SUBSETS = SUBSETS["v4"]
 
@@ -173,32 +179,11 @@ def get_variant_qc_annotations(test: bool = False) -> VersionedTableResource:
     )
 
 
-def get_vqsr_filters(
-    model_id: str,
-    split: bool = True,
-    finalized: bool = False,
-) -> VersionedTableResource:
-    """
-    Get the specified VQSR filtering annotation resource.
-
-    :param model_id: VQSR filtering model id
-    :param split: Split or multi-allelic version of the filtering file
-    :param finalized: Whether to return the raw VQSR table or the finalized VQSR table representing determined cutoffs
-    :return: VQSR filtering annotation file
-    """
-    return VersionedTableResource(
-        CURRENT_VERSION,
-        {
-            version: TableResource(
-                f"{_annotations_root(version)}/vqsr/gnomad.exomes.v{version}.{model_id}{'.finalized' if finalized else ''}{'.split' if split else ''}.ht"
-            )
-            for version in VERSIONS
-        },
-    )
-
-
 def info_vcf_path(
-    info_method: str = "AS", version: str = CURRENT_VERSION, test: bool = False
+    info_method: str = "AS",
+    version: str = CURRENT_VERSION,
+    split: bool = False,
+    test: bool = False,
 ) -> str:
     """
     Path to sites VCF (input information for running VQSR).
@@ -206,6 +191,7 @@ def info_vcf_path(
     :param info_method: Method for generating info VCF. Must be one of "AS", "quasi",
         or "set_long_AS_missing". Default is "AS".
     :param version: Version of annotation path to return.
+    :param split: Whether to return the split or multi-allelic version of the resource.
     :param test: Whether to use a tmp path for analysis of the test VDS instead of the
         full v4 VDS.
     :return: String for the path to the info VCF.
@@ -216,7 +202,7 @@ def info_vcf_path(
             "'long_AS_missing_info'."
         )
     return (
-        f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.{info_method}.vcf.bgz"
+        f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info.{info_method}{'.split' if split else ''}.vcf.bgz"
     )
 
 
@@ -443,6 +429,32 @@ def get_vrs(
                 )
             )
             for version in VERSIONS
+        },
+    )
+
+
+def hgdp_tgp_updated_callstats(
+    test: bool = False, subset: str = "final"
+) -> VersionedTableResource:
+    """
+    Get the HGDP + 1KG/TGP subset release MatrixTableResource.
+
+    :param test: If True, will return the annotation resource for testing purposes.
+    :param subset: The subset of the HGDP + 1KG/TGP release to return,
+       must be "added", "subtracted", "pop_diff", or "final"
+    :return: MatrixTableResource for specified subset.
+    """
+    if subset not in ["added", "subtracted", "pop_diff", "join"]:
+        raise ValueError(
+            "Operation must be one of 'added', 'subtracted', 'pop_diff', or 'join'"
+        )
+    return VersionedTableResource(
+        default_version=CURRENT_HGDP_TGP_RELEASE,
+        versions={
+            release: TableResource(
+                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/annotations/hail-0.2/ht/genomes_v{release}/'}gnomad.genomes.v{release}.hgdp_1kg_subset_updated_callstats_{subset}.ht"
+            )
+            for release in HGDP_TGP_RELEASES
         },
     )
 

@@ -23,6 +23,7 @@ from gnomad.utils.annotations import (
     build_freq_stratification_list,
     compute_freq_by_strata,
     faf_expr,
+    gen_anc_faf_max_expr,
     generate_freq_group_membership_array,
     get_adj_expr,
     merge_freq_arrays,
@@ -461,9 +462,9 @@ def generate_freq_ht(
             downsamplings=hl.eval(non_ukb_ds_ht.downsamplings),
             ds_pop_counts=hl.eval(non_ukb_ds_ht.ds_pop_counts),
         )
-        # Remove the first entry because it is the index for the full subset.
+        # Remove the first two because they are adj and raw for the full subset.
         group_membership = group_membership.extend(
-            non_ukb_group_membership_ht[mt.col_key].group_membership[1:]
+            non_ukb_group_membership_ht[mt.col_key].group_membership[2:]
         )
         non_ukb_globals = non_ukb_group_membership_ht.index_globals()
         non_ukb_globals = non_ukb_globals.annotate(
@@ -804,19 +805,20 @@ def correct_for_high_ab_hets(ht: hl.Table, af_threshold: float = 0.01) -> hl.Tab
                 ab_adjusted_age_hists=ht.high_ab_het_adjusted_age_hists,
             ),
             hl.struct(**no_ab_adjusted_expr),
+            missing_false=True,
         ),
     )
-
+    ht = ht.annotate_globals(af_threshold_for_freq_adjustment=af_threshold)
     return ht
 
 
 def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     """
-    Compute filtering allele frequencies ('faf') and 'grpmax' with the AB-adjusted frequencies.
+    Compute filtering allele frequencies ('faf'), 'grpmax', and 'gen_anc_faf_max' with the AB-adjusted frequencies.
 
     :param ht: Hail Table containing 'freq', 'ab_adjusted_freq', 'high_ab_het'
         annotations.
-    :return: Hail Table with 'faf' and 'grpmax' annotations.
+    :return: Hail Table with 'faf', 'grpmax', and 'gen_anc_faf_max' annotations.
     """
     logger.info(
         "Filtering frequencies to just 'non_ukb' subset entries for 'faf' "
@@ -832,50 +834,46 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
         annotations=("ab_adjusted_freq",),
         remove_subset_from_meta=True,
     )
-    freq_metas = [
-        (ht.ab_adjusted_freq, ht.index_globals().freq_meta),
-        (non_ukb_ht[ht.key].ab_adjusted_freq, non_ukb_ht.index_globals().freq_meta),
-    ]
-    faf_grpmax_expr = [
-        hl.struct(
-            **hl.bind(
-                lambda f, g: hl.struct(
-                    faf=f[0],
-                    faf_meta=f[1],
-                    grpmax=g.annotate(
-                        faf95=f[0][
-                            f[1].index(lambda y: y.values() == ["adj", g.pop])
-                        ].faf95
-                    ),
-                ),
-                faf_expr(freq, meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX),
-                pop_max_expr(freq, meta, POPS_TO_REMOVE_FOR_POPMAX),
-            )
-        )
-        for freq, meta in freq_metas
-    ]
+    freq_metas = {
+        "gnomad": (ht.ab_adjusted_freq, ht.index_globals().freq_meta),
+        "non_ukb": (
+            non_ukb_ht[ht.key].ab_adjusted_freq,
+            non_ukb_ht.index_globals().freq_meta,
+        ),
+    }
+    faf_exprs = []
+    faf_meta_exprs = []
+    grpmax_exprs = {}
+    gen_anc_faf_max_exprs = {}
+    for dataset, (freq, meta) in freq_metas.items():
+        faf, faf_meta = faf_expr(freq, meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
+        grpmax = pop_max_expr(freq, meta, POPS_TO_REMOVE_FOR_POPMAX)
+        grpmax = grpmax.annotate(
+            gen_anc=grpmax.pop,
+            faf95=faf[
+                hl.literal(faf_meta).index(lambda y: y.values() == ["adj", grpmax.pop])
+            ].faf95,
+        ).drop("pop")
+        gen_anc_faf_max = gen_anc_faf_max_expr(faf, faf_meta)
 
-    logger.info("Annotating 'faf' and 'grpmax'...")
+        # Add subset back to non_ukb faf meta.
+        if dataset == "non_ukb":
+            faf_meta = [{**x, **{"subset": "non_ukb"}} for x in faf_meta]
+        faf_exprs.append(faf)
+        faf_meta_exprs.append(faf_meta)
+        grpmax_exprs[dataset] = grpmax
+        gen_anc_faf_max_exprs[dataset] = gen_anc_faf_max
+
+    logger.info("Annotating 'faf', 'grpmax', and 'gen_anc_faf_max'...")
     ht = ht.annotate(
-        faf=hl.flatten([dataset.faf for dataset in faf_grpmax_expr]),
-        grpmax=hl.struct(
-            **{
-                "gnomad": faf_grpmax_expr[0].grpmax,
-                "non_ukb": faf_grpmax_expr[1].grpmax,
-            }
-        ),
+        faf=hl.flatten(faf_exprs),
+        grpmax=hl.struct(**grpmax_exprs),
+        gen_anc_faf_max=hl.struct(**gen_anc_faf_max_exprs),
     )
-    faf_meta_expr = [x.faf_meta.collect(_localize=False)[0] for x in faf_grpmax_expr]
-    # Add subset back to non_ukb faf meta and flatten it
-    faf_meta_expr[1] = faf_meta_expr[1].map(
-        lambda d: hl.dict(d.items().append(("subset", "non_ukb")))
-    )
-    faf_meta_expr = hl.flatten(faf_meta_expr)
+    faf_meta_exprs = hl.flatten(faf_meta_exprs)
     ht = ht.annotate_globals(
-        faf_meta=faf_meta_expr,
-        faf_index_dict=make_freq_index_dict_from_meta(
-            faf_meta_expr, label_delimiter="_"
-        ),
+        faf_meta=faf_meta_exprs,
+        faf_index_dict=make_freq_index_dict_from_meta(faf_meta_exprs),
     )
 
     return ht
@@ -899,20 +897,62 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
     """
     Create final freq Table with only desired annotations.
 
-    Drop the following annotations:
-        - 'age_high_ab_hist', all annotations from the split VDSs....
-
-    Rename the following annotations:
-        - 'ab_adjusted_freq' -> 'freq'
-        - decide if we want to store uncorrected? Probably,just rename it.
-
-    Filter the following from the 'freq' field:
-        - gatk versions
-
     :param ht: Hail Table containing all annotations.
-    :return: Hail Table with only desired annotations.
+    :return: Hail Table with final annotations.
     """
-    raise NotImplementedError("Creation of final freq Table is not implemented yet.")
+    logger.info("Dropping gatk_version from freq ht array annotations...")
+    freq_meta, array_exprs = filter_arrays_by_meta(
+        ht.freq_meta,
+        {
+            "freq": ht.ab_adjusted_freq,
+            "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
+        },
+        items_to_filter=["gatk_version"],
+        keep=False,
+    )
+
+    ht = ht.select(
+        freq=array_exprs["freq"],
+        faf=ht.faf,
+        grpmax=ht.grpmax,
+        gen_anc_faf_max=ht.gen_anc_faf_max,
+        inbreeding_coeff=ht.InbreedingCoeff,
+        histograms=hl.struct(
+            **{
+                "qual_hists": ht.ab_adjusted_qual_hists,
+                "raw_qual_hists": ht.ab_adjusted_raw_qual_hists,
+                "age_hists": ht.ab_adjusted_age_hists,
+            },
+        ),
+    )
+
+    def _replace_pop_key_w_gen_anc(
+        meta: hl.expr.ArrayExpression,
+    ) -> hl.expr.ArrayExpression:
+        """
+        Replace 'pop' key with 'gen_anc' key in meta globals.
+
+        :param meta: Array of dicts.
+        :return: Array of dicts with 'pop' key replaced with 'gen_anc' key.
+        """
+        return meta.map(
+            lambda d: hl.dict(
+                d.items().map(lambda x: hl.if_else(x[0] == "pop", ("gen_anc", x[1]), x))
+            )
+        )
+
+    g = ht.index_globals()
+    ht = ht.select_globals(
+        downsamplings=g.downsamplings,
+        freq_meta=_replace_pop_key_w_gen_anc(freq_meta),
+        freq_index_dict=make_freq_index_dict_from_meta(freq_meta),
+        freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
+        faf_meta=_replace_pop_key_w_gen_anc(g.faf_meta),
+        faf_index_dict=g.faf_index_dict,
+        age_distribution=g.age_distribution,
+    )
+
+    return ht
 
 
 def main(args):
@@ -1039,7 +1079,9 @@ def main(args):
 
         if args.finalize_freq_ht:
             logger.info("Writing final frequency Table...")
-            ht = create_final_freq_ht(ht)
+            res = resources.finalize_freq_ht
+            res.check_resource_existence()
+            ht = create_final_freq_ht(res.corrected_freq_ht.ht())
 
             logger.info("Final frequency HT schema...")
             ht.describe()
