@@ -106,20 +106,20 @@ def filter_to_test(
     partitions: Optional[List[int]] = None,
 ) -> Union[hl.Table, hl.MatrixTable, hl.vds.VariantDataset]:
     """
-    Filter to 10kb in DRD2 or PLCXD1 in Table or MatrixTable for testing purposes.
+    Filter to 10kb in PCSK9 or PLCXD1 in Table or MatrixTable for testing purposes.
 
     :param t: Table or MatrixTable to filter.
-    :param gene_on_chrx: Whether to filter to PLCXD1, instead of DRD2, for testing chrX.
+    :param gene_on_chrx: Whether to filter to PLCXD1, instead of PCSK9, for testing chrX.
     :param partitions: Optional list of partitions to filter to before applying the
-        filter to DRD2.
-    :return: Table or MatrixTable filtered to 10kb in DRD2 or PLCXD1.
+        filter to PCSK9.
+    :return: Table or MatrixTable filtered to 10kb in PCSK9 or PLCXD1.
     """
     if gene_on_chrx:
         logger.info("Filtering to PLCXD1 on chrX in MT for testing purposes...")
         test_locus = "chrX:285000-295000"
     else:
-        logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
-        test_locus = "chr11:113425000-113435000"
+        logger.info("Filtering to 10kb in PCSK9 in MT for testing purposes...")
+        test_locus = "chr1:55039447-55064852"
 
     test_interval = [hl.parse_locus_interval(test_locus, reference_genome="GRCh38")]
 
@@ -1047,7 +1047,7 @@ def main(args):
             v3_vds = filter_to_test(
                 v3_vds,
                 gene_on_chrx=gene_on_chrx,
-                partitions=[74593, 108583],
+                partitions=[2183, 2184, 108583],
             )
 
     if args.get_related_to_nonsubset:
@@ -1142,8 +1142,8 @@ if __name__ == "__main__":
 
     test_args = parser.add_mutually_exclusive_group()
     test_args.add_argument(
-        "--test-drd2",
-        help="Test on a subset of variants in DRD2 gene.",
+        "--test-pcsk9",
+        help="Test on a subset of variants in PCSK9 gene.",
         action="store_true",
     )
     test_args.add_argument(
