@@ -28,11 +28,7 @@ from gnomad_qc.v4.resources.annotations import (
 )
 from gnomad_qc.v4.resources.basics import calling_intervals, qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v4.resources.release import (
-    FIELD_DESCRIPTIONS,
-    included_datasets_json_path,
-    release_sites,
-)
+from gnomad_qc.v4.resources.release import included_datasets_json_path, release_sites
 from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
@@ -280,7 +276,7 @@ def custom_region_flags_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
 
 
 # TODO: This is currently grabbing the IF but I thought we decided VQSR --
-# need to confirm correct table is being grabbed
+# need to confirm the correct table is stored at final_filter
 def custom_filters_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
     Select gnomAD filter HT fields for release dataset.
@@ -385,7 +381,7 @@ def custom_vep_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
 
 def get_select_global_fields(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
-    Generate a dictionary of globals to select by checking the configs of all tables joined.
+    Generate a dictionary of globals to select by checking the config of all tables joined.
 
     :param ht: Final joined HT with globals.
     """
@@ -524,7 +520,6 @@ def join_hts(
         )
         for table in tables
     ]
-    # TODO: Check with hail if an intermediate checkpoint be helpful here
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
     # Track the dataset we've added as well as the source path.
