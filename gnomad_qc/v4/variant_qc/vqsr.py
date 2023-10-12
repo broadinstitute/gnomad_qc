@@ -11,29 +11,15 @@ from hailtop.batch.job import Job
 from gnomad_qc.v4.resources.annotations import get_true_positive_vcf_path, info_vcf_path
 from gnomad_qc.v4.resources.basics import calling_intervals
 from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
-from gnomad_qc.v4.resources.variant_qc import get_variant_qc_result
-from gnomad_qc.v4.variant_qc.import_variant_qc_vcf import import_variant_qc_vcf
+from gnomad_qc.v4.resources.variant_qc import VQSR_FEATURES, get_variant_qc_result
+from gnomad_qc.v4.variant_qc.import_variant_qc_vcf import (
+    import_variant_qc_vcf as import_vqsr,
+)
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger.setLevel(logging.INFO)
 
-VQSR_FEATURES = {
-    "snv": [
-        "AS_QD",
-        "AS_MQRankSum",
-        "AS_ReadPosRankSum",
-        "AS_FS",
-        "AS_MQ",
-    ],
-    "indel": [
-        "AS_QD",
-        "AS_MQRankSum",
-        "AS_ReadPosRankSum",
-        "AS_FS",
-    ],
-}
-"""List of features used in the VQSR model."""
 
 SNP_RECALIBRATION_TRANCHE_VALUES = [
     100.0,
@@ -1203,7 +1189,7 @@ def main(args):
         else:
             outpath = f"{tmp_vqsr_bucket}{args.out_vcf_name}_vqsr_recalibrated.vcf.gz"
 
-        hts = import_variant_qc_vcf(
+        hts = import_vqsr(
             outpath,
             args.model_id,
             n_partitions,

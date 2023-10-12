@@ -423,7 +423,7 @@ def main(args):
                 n_bins,
                 add_bins={
                     "pass_interval_bin": interval_qc_pass_ht[ht.locus].pass_interval_qc,
-                    "calling_interval_bin": hl.is_defined(interval_ht[ht.locus]),
+                    "in_calling_intervals_bin": hl.is_defined(interval_ht[ht.locus]),
                 },
             )
             ht.write(getattr(res, f"{ts}_bin_ht").path, overwrite=overwrite)
