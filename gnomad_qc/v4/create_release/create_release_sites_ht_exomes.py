@@ -53,6 +53,7 @@ TABLES_FOR_RELEASE = [
     "region_flags",
     "in_silico",
     "vep",
+    # "faf",
 ]
 
 INSILICO_PREDICTORS = ["cadd", "spliceai", "pangolin", "revel", "phylop"]
@@ -64,6 +65,11 @@ FINALIZED_SCHEMA = {
         "freq_meta_sample_count",
         "faf_meta",
         "faf_index_dict",
+        # "comb_freq_meta",
+        # "comb_freq_index_dict",
+        # "comb_freq_meta_sample_count",
+        # "comb_faf_meta",
+        # "comb_faf_index_dict",
         "age_distribution",
         "downsamplings",
         "filtering_model",
@@ -78,6 +84,7 @@ FINALIZED_SCHEMA = {
         "grpmax",
         "faf",
         "gen_anc_faf_max",
+        # "combined_faf",
         "a_index",
         "was_split",
         "rsid",
@@ -212,7 +219,18 @@ def get_config(
             "path": release_sites().path,
         },
         # TODO: Fill this in once we have the combined freq HT
-        "combined_faf": {},
+        # "combined_faf": {
+        #     "ht": None,
+        #     "path": None,
+        #     "select": ["combined_freq","combined_faf"],
+        #     "select_globals": [
+        #         "comb_freq_meta",
+        #         "comb_freq_index_dict",
+        #         "comb_freq_meta_sample_count",
+        #         "comb_faf_meta",
+        #         "comb_faf_index_dict",
+        #     ],
+        # },
     }
 
     if release_exists:
