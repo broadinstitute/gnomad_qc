@@ -8,8 +8,7 @@ from gnomad.utils.slack import slack_notifications
 from gnomad.utils.sparse_mt import split_info_annotation
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.variant_qc import get_variant_qc_result
-from gnomad_qc.v4.variant_qc.vqsr import VQSR_FEATURES
+from gnomad_qc.v4.resources.variant_qc import VQSR_FEATURES, get_variant_qc_result
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("import_variant_qc_vcf")
@@ -88,9 +87,9 @@ def import_variant_qc_vcf(
         unsplit_ht = ht.checkpoint(hl.utils.new_temp_file("unsplit_vcq_result", "ht"))
 
         unsplit_count = unsplit_ht.count()
-        unsplit_ht = hl.split_multi_hts(unsplit_ht)
+        split_ht = hl.split_multi_hts(unsplit_ht)
 
-        split_ht = unsplit_ht.annotate(
+        split_ht = split_ht.annotate(
             info=unsplit_ht.info.annotate(
                 **split_info_annotation(unsplit_ht.info, unsplit_ht.a_index)
             ),
@@ -117,7 +116,11 @@ def import_variant_qc_vcf(
 
 def main(args):
     """Load variant QC result VCF into a Hail Table."""
-    hl.init(log="/load_variant_qc_vcf.log", default_reference="GRCh38")
+    hl.init(
+        log="/load_variant_qc_vcf.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
 
     logger.info(f"passed array elements required as: {args.array_elements_required}")
 
