@@ -1135,7 +1135,9 @@ def main(args):
             ht.count(),
         )
 
-        logger.info("Annotating call stats group membership for each v3.1 release sample...")
+        logger.info(
+            "Annotating call stats group membership for each v3.1 release sample..."
+        )
         v3_sites_meta_ht = v3_vds.variant_data.cols()
         v3_sites_meta_ht = v3_sites_meta_ht.filter(v3_sites_meta_ht.meta.release)
         group_membership_ht = get_group_membership_ht_for_an(v3_sites_meta_ht)
