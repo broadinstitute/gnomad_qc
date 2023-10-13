@@ -205,7 +205,7 @@ def main(args):
         monoallelic=mono_allelic_flag_expr,
         only_het=only_het_flag_expr,
         filters=add_filters_expr(filters=filters),
-    ).select_globals()
+    )
 
     # Restructure annotations into groups of related annotations.
     snv_features = VQSR_FEATURES["genomes"]["snv"]
