@@ -11,9 +11,12 @@ from gnomad.utils.annotations import (
     annotate_adj,
     annotate_freq,
     generate_freq_group_membership_array,
+    merge_freq_arrays,
+    set_female_y_metrics_to_na_expr,
     update_structured_annotations,
 )
 from gnomad.utils.filtering import filter_arrays_by_meta
+from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from hail.utils import new_temp_file
 
@@ -906,6 +909,60 @@ def compute_an_by_group_membership(
     return ht
 
 
+def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
+    """
+    Generate the call stats for the v4 genomes release.
+
+    :param ht: Table returned by `join_release_ht_with_subsets`.
+    :param an_ht: Table with the allele number for new variants in the v4 release.
+    :return: Table with the updated call stats for the v4 genomes release.
+    """
+    logger.info("Updating AN HT HGDP pop labels and 'oth' -> 'remaining'...")
+    an_ht = update_pop_labels(an_ht, POP_MAP)
+
+    logger.info("Merging AFs from diff pop samples and added samples...")
+    global_array = ht.index_globals().global_array
+    farrays = [ht.ann_array[i].freq for i in range(3)]
+    fmeta = [global_array[i].freq_meta for i in range(4)]
+    count_arrays = [global_array[i].freq_meta_sample_count for i in range(4)]
+
+    farrays.insert(1, an_ht[ht.key].freq)
+    fmeta.insert(1, an_ht.index_globals().freq_meta)
+    count_arrays.insert(1, [0] * hl.eval(hl.len(an_ht.freq_meta)))
+
+    freq_expr, freq_meta_expr, sample_count_expr = merge_freq_arrays(
+        farrays, fmeta[:4], count_arrays={"counts": count_arrays[:4]}
+    )
+    ht = ht.annotate(freq=freq_expr)
+    # need checkpoint here to avoid hanging
+    ht = ht.checkpoint(new_temp_file("added", extension="ht"), overwrite=True)
+
+    logger.info("Merging AFs from subtracted samples...")
+    freq_expr, freq_meta_expr, sample_count_expr = merge_freq_arrays(
+        [ht.freq, ht.ann_array[3].freq],
+        [freq_meta_expr, fmeta[4]],
+        operation="diff",
+        set_negatives_to_zero=False,
+        count_arrays={"counts": [sample_count_expr["counts"], count_arrays[4]]},
+    )
+    ht = ht.select(freq=freq_expr)
+
+    logger.info("Making freq_index_dict from freq_meta...")
+    ht = ht.select_globals(
+        freq_meta=freq_meta_expr,
+        freq_meta_sample_count=sample_count_expr["counts"],
+        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta_expr)),
+    )
+
+    logger.info(
+        "Set Y-variant frequency callstats for female-specific "
+        "metrics to missing structs..."
+    )
+    ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
+
+    return ht
+
+
 def get_v4_genomes_release_resources(
     test: bool, overwrite: bool
 ) -> PipelineResourceCollection:
@@ -994,6 +1051,14 @@ def get_v4_genomes_release_resources(
             ),
         },
     )
+    update_release_callstats = PipelineStepResourceCollection(
+        "--update-release-callstats",
+        pipeline_input_steps=[join_callstats_for_update, compute_an_for_new_variants],
+        output_resources={
+            "v4_freq_ht": hgdp_tgp_updated_callstats(test=test, subset="final"),
+        },
+    )
+
     # Add all steps to the gnomAD v4.0 genomes release pipeline resource collection.
     v4_genome_release_pipeline.add_steps(
         {
@@ -1003,6 +1068,7 @@ def get_v4_genomes_release_resources(
             "get_callstats_for_updated_samples": get_callstats_for_updated_samples,
             "join_callstats_for_update": join_callstats_for_update,
             "compute_an_for_new_variants": compute_an_for_new_variants,
+            "update_release_callstats": update_release_callstats,
         }
     )
 
@@ -1149,6 +1215,15 @@ def main(args):
         ht = compute_an_by_group_membership(v3_vds, group_membership_ht, ht)
         ht.write(res.v3_release_an_ht.path, overwrite=overwrite)
 
+    if args.update_release_callstats:
+        res = v4_genome_release_resources.update_release_callstats
+        res.check_resource_existence()
+
+        logger.info("Merging all callstats HTs for final v4 genomes callstats...")
+        generate_v4_genomes_callstats(
+            res.freq_join_ht.ht(), res.v3_release_an_ht.ht()
+        ).write(res.v4_freq_ht.path, overwrite=overwrite)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -1207,6 +1282,14 @@ if __name__ == "__main__":
         help=(
             "Compute the allele number for variants that are in the updated samples "
             "but not in the release HT."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--update-release-callstats",
+        help=(
+            "Update the release callstats by merging the callstats for the updated"
+            " samples."
         ),
         action="store_true",
     )
