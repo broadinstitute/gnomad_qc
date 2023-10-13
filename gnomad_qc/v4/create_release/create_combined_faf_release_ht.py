@@ -11,17 +11,17 @@ joint frequency, a joint FAF, and the following tests comparing the two frequenc
 """
 import argparse
 import logging
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Set
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import POPS, POPS_TO_REMOVE_FOR_POPMAX
-from gnomad.resources.resource_utils import TableResource
 from gnomad.utils.annotations import (
     faf_expr,
     gen_anc_faf_max_expr,
     merge_freq_arrays,
     pop_max_expr,
 )
+from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from statsmodels.stats.contingency_tables import StratifiedTable
@@ -44,9 +44,21 @@ logger = logging.getLogger("compute_combined_faf")
 logger.setLevel(logging.INFO)
 
 
+def filter_gene_to_test(ht: hl.Table) -> hl.Table:
+    """
+    Filter to PCSK9 1:55039447-55064852 for testing.
+
+    :param ht: Table with frequency and FAF information.
+    :return: Table with frequency and FAF information of the filtered interval of a gene
+    """
+    return hl.filter_intervals(
+        ht,
+        [hl.parse_locus_interval("chr1:55039447-55064852", reference_genome="GRCh38")],
+    )
+
+
 def extract_freq_info(
     ht: hl.Table,
-    pops: List[str],
     faf_pops: List[str],
     prefix: str,
 ) -> hl.Table:
@@ -60,7 +72,6 @@ def extract_freq_info(
     The following annotations are filtered and renamed:
         - freq: {prefix}_freq
         - faf: {prefix}_faf
-        - grpmax: {prefix}_grpmax
 
     The following global annotations are filtered and renamed:
         - freq_meta: {prefix}_freq_meta
@@ -69,107 +80,43 @@ def extract_freq_info(
     This only keeps variants that PASS filtering.
 
     :param ht: Table with frequency and FAF information.
-    :param pops: List of populations to include in the reduced frequency arrays.
     :param faf_pops: List of populations to include in the reduced FAF arrays.
     :param prefix: Prefix to add to each of the filtered annotations.
     :return: Table with filtered frequency and FAF information.
     """
-    # logger.info("Filtering Table to only variants that are PASS...")
-    # ht = ht.filter(hl.len(ht.filters) == 0)
-    # TODO: we don't have this in the final freq_ht, but we will read in
-    #  variant_qc table and filter to PASS when this table is ready.
-
-    def _get_pop_meta_indices(
-        meta: hl.ArrayExpression,
-        pop_list: Optional[List[str]] = None,
-        include_sex=False,
-        include_raw=False,
-    ) -> Tuple[List[int], List[dict]]:
-        """
-        Keep full gnomAD callset adj [0], raw [1], and ancestry-specific adj frequencies.
-
-        :param meta: Array of frequency metadata.
-        :param pop_list: List of populations to keep.
-        :return: Indices of populations to keep and their metadata.
-        """
-        meta = hl.eval(meta)
-        # 0 for adj
-        idx = [0]
-        if include_raw:
-            idx.append(1)
-
-        for i, m in enumerate(meta):
-            if (
-                (pop_list is None and "pop" in m and len(m) == 2)
-                or (m.get("pop") in pop_list and len(m) == 2)
-                or (
-                    include_sex
-                    and "sex" in m
-                    and (
-                        (len(m) == 2)
-                        or ((len(m) == 3) and (m.get("pop") in pop_list))
-                        or (pop_list is None and "pop" in m and len(m) == 3)
-                    )
-                )
-            ):
-                idx.append(i)
-
-        meta = [meta[i] for i in idx]
-
-        return idx, meta
-
-    faf_pops_to_exclude = POPS_TO_REMOVE_FOR_POPMAX
-    logger.info("Keeping only frequencies that are needed (adj, raw, adj by pop)...")
-    # if faf and faf_meta doesn't exist, then we calculate it with freq
-    # TODO: remove this once v4 exomes freq_ht is finalized
-    if "faf_meta" not in ht.globals.keys():
-        faf, faf_meta = faf_expr(
-            ht.freq, ht.freq_meta, ht.locus, pops_to_exclude=faf_pops_to_exclude
-        )
-        faf_meta_by_pop = {
-            m.get("pop"): i for i, m in enumerate(faf_meta) if m.get("pop")
-        }
-        faf_meta_by_pop = hl.literal(faf_meta_by_pop)
-
-        # Compute group max (popmax)
-        grpmax = pop_max_expr(
-            ht.freq, ht.freq_meta, pops_to_exclude=faf_pops_to_exclude
-        )
-        grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.pop)].faf95)
-
-        ht = ht.annotate(faf=faf, grpmax=grpmax)
-        ht = ht.annotate_globals(faf_meta=faf_meta)
-
-    # Rename popmax to grpmax because it's called 'popmax' in v3 release HT.
-    # TODO: remove this once v4 genomes freq_ht is finalized
-    if "popmax" in ht.row.keys():
-        ht = ht.transmute(grpmax=ht.popmax)
-
-    freq_idx, freq_meta = _get_pop_meta_indices(
-        ht.freq_meta, pops, include_sex=True, include_raw=True
+    # Keep full gnomAD callset adj [0], raw [1], and ancestry and/or sex specific adj
+    # frequencies.
+    logger.info(
+        "Keeping only frequencies for adj, raw, adj by pop, adj by sex, and adj by "
+        "pop/sex..."
     )
-    faf_idx, faf_meta = _get_pop_meta_indices(ht.faf_meta, faf_pops)
-
-    # Compute FAF max (fafmax)
-    ht = ht.annotate(fafmax=gen_anc_faf_max_expr(ht.faf, ht.faf_meta))
-    freq_meta_sample_count = [
-        ht.index_globals().freq_meta_sample_count[i] for i in freq_idx
-    ]
+    freq_meta, array_exprs = filter_arrays_by_meta(
+        ht.freq_meta,
+        {
+            "freq": ht.freq,
+            "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
+        },
+        ["gen_anc", "sex"],
+        combine_operator="or",
+    )
+    faf_meta, faf = filter_arrays_by_meta(
+        ht.faf_meta, {"faf": ht.faf}, {"gen_anc": faf_pops}, combine_operator="or"
+    )
 
     # Rename filtered annotations with supplied prefix.
     ht = ht.select(
         **{
-            f"{prefix}_freq": [ht.freq[i] for i in freq_idx],
-            f"{prefix}_faf": [ht.faf[i] for i in faf_idx],
-            f"{prefix}_fafmax": ht.fafmax,
-            f"{prefix}_grpmax": ht.grpmax,
+            f"{prefix}_freq": ht.freq[:2].extend(array_exprs["freq"]),
+            f"{prefix}_faf": ht.faf[:2].extend(faf["faf"]),
         }
     )
     ht = ht.select_globals(
         **{
-            f"{prefix}_freq_meta": freq_meta,
-            f"{prefix}_faf_meta": faf_meta,
-            f"{prefix}_freq_meta_sample_count": freq_meta_sample_count,
+            f"{prefix}_freq_meta": ht.freq_meta[:2].extend(freq_meta),
+            f"{prefix}_freq_meta_sample_count": ht.freq_meta_sample_count[:2].extend(
+                array_exprs["freq_meta_sample_count"]
+            ),
+            f"{prefix}_faf_meta": ht.faf_meta[:2].extend(ht.faf_meta),
         }
     )
 
@@ -191,7 +138,6 @@ def get_joint_freq_and_faf(
     """
     logger.info("Performing an inner join on frequency HTs...")
     ht = genomes_ht.join(exomes_ht, how="outer")
-    print("AHHHH1: ", ht.count())
 
     # Merge exomes and genomes frequencies.
     freq, freq_meta, count_arrays_dict = merge_freq_arrays(
@@ -207,23 +153,19 @@ def get_joint_freq_and_faf(
             ],
         },
     )
-    print("AHHHH2: ", freq_meta)
     freq_meta = hl.literal(freq_meta)
-    print("AHHHHHHH4", count_arrays_dict["counts"])
 
     # Compute FAF on the merged exomes + genomes frequencies.
     faf, faf_meta = faf_expr(
         freq, freq_meta, ht.locus, pops_to_exclude=faf_pops_to_exclude
     )
-    print("AHHHH3: ", faf_meta)
     faf_meta_by_pop = hl.literal(
-        {m.get("pop"): i for i, m in enumerate(faf_meta) if m.get("pop")}
+        {m.get("gen_anc"): i for i, m in enumerate(faf_meta) if m.get("gen_anc")}
     )
-    print("AHHHHHH5", faf_meta_by_pop)
 
     # Compute group max (popmax) on the merged exomes + genomes frequencies.
     grpmax = pop_max_expr(freq, freq_meta, pops_to_exclude=faf_pops_to_exclude)
-    grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.pop)].faf95)
+    grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.gen_anc)].faf95)
 
     # Annotate Table with all joint exomes + genomes computations.
     ht = ht.annotate(
@@ -355,7 +297,8 @@ def get_combine_faf_resources(
 
     :param overwrite: Whether to overwrite existing resources. Default is False.
     :param test: Whether to use test resources. Default is False.
-    :param public: Whether to use the public finalized combined FAF resource. Default is False.
+    :param public: Whether to use the public finalized combined FAF resource. Default
+        is False.
     :return: PipelineResourceCollection containing resources for all steps of the
         combined FAF resource creation pipeline.
     """
@@ -370,18 +313,9 @@ def get_combine_faf_resources(
         "--create-combined-frequency-table",
         output_resources={"combo_freq_ht": get_combined_frequency(test=test)},
         input_resources={
-            # TODO: rename when release scripts are finalized.
-            "generate_freq.py": {
-                # use the unfinalized freq_ht for now
-                "exomes_ht": get_freq(finalized=False)
-            },
+            "generate_freq.py": {"exomes_ht": get_freq()},
             "create_release_sites_ht_genomes.py": {
-                # TODO: "genomes_freq_ht": get_freq(test=test, data_type='genomes',
-                # finalized=True)},
-                # "genomes_ht": release_sites()
-                "genomes_ht": TableResource(
-                    "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/gnomad.genomes.v4.0.hgdp_1kg_subset_updated_callstats_final.ht"
-                )
+                "genomes_ht": get_freq(test=test, data_type="genomes")
             },
         },
     )
@@ -420,22 +354,13 @@ def get_combine_faf_resources(
     return combine_faf_pipeline
 
 
-def filter_gene_to_test(ht: hl.Table) -> hl.Table:
-    """
-    Filter to PCSK9 1:55039447-55064852 for testing.
-
-    :param ht: Table with frequency and FAF information.
-    :return: Table with frequency and FAF information of the filtered interval of a gene
-    """
-    return hl.filter_intervals(
-        ht,
-        [hl.parse_locus_interval("chr1:55039447-55064852", reference_genome="GRCh38")],
-    )
-
-
 def main(args):
     """Create combined FAF resource."""
-    hl.init(log="/compute_combined_faf.log")
+    hl.init(
+        log="/compute_combined_faf.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
     test = args.test
     test_gene = args.test_gene
     overwrite = args.overwrite
@@ -456,20 +381,12 @@ def main(args):
                 exomes_ht = res.exomes_freq_ht.ht()._filter_partitions(range(20))
                 genomes_ht = res.genomes_freq_ht.ht()._filter_partitions(range(20))
             if test_gene:
-                # filter to PCSK9 1:55039447-55064852 for testing
+                # filter to PCSK9 1:55039447-55064852 for testing.
                 exomes_ht = filter_gene_to_test(exomes_ht)
                 genomes_ht = filter_gene_to_test(genomes_ht)
 
-            exomes_ht.describe()
-            genomes_ht.describe()
-            # replace oth with remaining in freq_meta and freq_index_dict for genomes_ht
-            # genomes_ht = replace_oth_with_remaining(genomes_ht)
-            genomes_ht = generate_faf_grpmax(ht=genomes_ht)
-            genomes_ht.describe()
-            exomes_ht = extract_freq_info(exomes_ht, pops, faf_pops, "exomes")
-            exomes_ht.describe()
-            genomes_ht = extract_freq_info(genomes_ht, pops, faf_pops, "genomes")
-            genomes_ht.describe()
+            exomes_ht = extract_freq_info(exomes_ht, faf_pops, "exomes")
+            genomes_ht = extract_freq_info(genomes_ht, faf_pops, "genomes")
 
             ht = get_joint_freq_and_faf(genomes_ht, exomes_ht)
             ht.describe()
@@ -480,9 +397,6 @@ def main(args):
             res.check_resource_existence()
             ht = res.combo_freq_ht.ht()
             ht = ht.select(
-                # TODO: this step is very slow, need to optimize
-                # run the whole pipeline for gene PCSK9 took ~27 min, this step took ~24
-                # min
                 contingency_table_test=perform_contingency_table_test(
                     ht.genomes_freq,
                     ht.exomes_freq,
@@ -561,7 +475,7 @@ if __name__ == "__main__":
         "--min-cell-count",
         help="Minimum count in every cell to use the chi-squared test.",
         type=int,
-        default=1000,
+        default=100,
     )
     parser.add_argument(
         "--perform-cochran-mantel-haenszel-test",
