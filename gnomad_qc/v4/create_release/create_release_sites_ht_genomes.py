@@ -114,13 +114,13 @@ def filter_to_test(
     partitions: Optional[List[int]] = None,
 ) -> Union[hl.Table, hl.MatrixTable, hl.vds.VariantDataset]:
     """
-    Filter to 10kb in PCSK9 or PLCXD1 in Table or MatrixTable for testing purposes.
+    Filter to a region in PCSK9 or PLCXD1 in Table or MatrixTable for testing purposes.
 
     :param t: Table or MatrixTable to filter.
     :param gene_on_chrx: Whether to filter to PLCXD1, instead of PCSK9, for testing chrX.
     :param partitions: Optional list of partitions to filter to before applying the
         filter to PCSK9.
-    :return: Table or MatrixTable filtered to 10kb in PCSK9 or PLCXD1.
+    :return: Table or MatrixTable filtered to a region in PCSK9 or PLCXD1.
     """
     if gene_on_chrx:
         logger.info("Filtering to PLCXD1 on chrX in MT for testing purposes...")
@@ -833,7 +833,8 @@ def compute_an_by_group_membership(
     # Filter the VDS variant data and reference data to only keep samples that were in
     # the v3.1 release. We do it this way instead of using hl.vds.filter_samples because
     # we want to keep all variants that were in the v3.1 VDS not only those found in the
-    # release and filter_samples includes vmt = vmt.filter_rows(hl.agg.count() > 0).
+    # release but `hl.vds.filter_samples` includes vmt =
+    # vmt.filter_rows(hl.agg.count() > 0) by default.
     release_s = vmt.aggregate_cols(
         hl.agg.filter(vmt.meta.release, hl.agg.collect_as_set(vmt.s)), _localize=False
     )._persist()
@@ -1253,7 +1254,9 @@ def main(args):
             ht.count(),
         )
 
-        logger.info("Annotating call stats group membership for each v3.1 sample...")
+        logger.info(
+            "Annotating call stats group membership for each v3.1 release sample..."
+        )
         v3_sites_meta_ht = v3_vds.variant_data.cols()
         v3_sites_meta_ht = v3_sites_meta_ht.filter(v3_sites_meta_ht.meta.release)
         group_membership_ht = get_group_membership_ht_for_an(v3_sites_meta_ht)
