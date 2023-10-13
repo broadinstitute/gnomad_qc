@@ -95,10 +95,10 @@ def get_final_variant_qc_resources(
 
 
 def main(args):
-    """Create final filter Table for release."""
+    """Create final filter Table for v4 genome release."""
     hl.init(
         default_reference="GRCh38",
-        log="/variant_qc_finalize.log",
+        log="/genome_variant_qc_finalize.log",
         tmp_dir="gs://gnomad-tmp-4day",
     )
     test = args.test
