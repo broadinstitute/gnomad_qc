@@ -96,27 +96,32 @@ def extract_freq_info(
             "freq": ht.freq,
             "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
         },
-        ["gen_anc", "sex"],
+        ["downsampling", "subset"],
+        keep=False,
         combine_operator="or",
     )
     faf_meta, faf = filter_arrays_by_meta(
-        ht.faf_meta, {"faf": ht.faf}, {"gen_anc": faf_pops}, combine_operator="or"
+        ht.faf_meta, {"faf": ht.faf}, ["subset"], keep=False
+    )
+    faf_meta, faf = filter_arrays_by_meta(
+        hl.literal(faf_meta),
+        {"faf": faf["faf"]},
+        {"gen_anc": faf_pops},
+        combine_operator="or",
     )
 
     # Rename filtered annotations with supplied prefix.
     ht = ht.select(
         **{
-            f"{prefix}_freq": ht.freq[:2].extend(array_exprs["freq"]),
-            f"{prefix}_faf": ht.faf[:1].extend(faf["faf"]),
+            f"{prefix}_freq": array_exprs["freq"],
+            f"{prefix}_faf": ht.faf[:1].extend(faf["faf"][2:]),
         }
     )
     ht = ht.select_globals(
         **{
-            f"{prefix}_freq_meta": ht.freq_meta[:2].extend(freq_meta),
-            f"{prefix}_freq_meta_sample_count": ht.freq_meta_sample_count[:2].extend(
-                array_exprs["freq_meta_sample_count"]
-            ),
-            f"{prefix}_faf_meta": ht.faf_meta[:1].extend(ht.faf_meta),
+            f"{prefix}_freq_meta": freq_meta,
+            f"{prefix}_freq_meta_sample_count": array_exprs["freq_meta_sample_count"],
+            f"{prefix}_faf_meta": ht.faf_meta[:1].extend(ht.faf_meta[2:]),
         }
     )
 
@@ -157,24 +162,32 @@ def get_joint_freq_and_faf(
 
     # Compute FAF on the merged exomes + genomes frequencies.
     faf, faf_meta = faf_expr(
-        freq, freq_meta, ht.locus, pops_to_exclude=faf_pops_to_exclude
+        freq,
+        freq_meta,
+        ht.locus,
+        pops_to_exclude=faf_pops_to_exclude,
+        pop_label="gen_anc",
     )
-    faf_meta_by_pop = hl.literal(
-        {m.get("gen_anc"): i for i, m in enumerate(faf_meta) if m.get("gen_anc")}
-    )
-
+    faf_meta_by_pop = {
+        m.get("gen_anc"): i for i, m in enumerate(faf_meta) if m.get("gen_anc")
+    }
+    faf_meta_by_pop = hl.literal(faf_meta_by_pop)
     # Compute group max (popmax) on the merged exomes + genomes frequencies.
-    grpmax = pop_max_expr(freq, freq_meta, pops_to_exclude=faf_pops_to_exclude)
+    grpmax = pop_max_expr(
+        freq, freq_meta, pops_to_exclude=faf_pops_to_exclude, pop_label="gen_anc"
+    )
     grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.gen_anc)].faf95)
 
     # Annotate Table with all joint exomes + genomes computations.
     ht = ht.annotate(
         joint_freq=freq,
         joint_faf=faf,
-        joint_fafmax=gen_anc_faf_max_expr(faf, hl.literal(faf_meta)),
+        joint_fafmax=gen_anc_faf_max_expr(
+            faf, hl.literal(faf_meta), pop_label="gen_anc"
+        ),
         joint_grpmax=grpmax,
     )
-    ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf"), overwrite=True)
+    ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"), True)
 
     ht = ht.annotate_globals(
         joint_freq_meta=freq_meta,
@@ -388,7 +401,8 @@ def main(args):
             )
             exomes_ht = extract_freq_info(exomes_ht, faf_pops, "exomes")
             genomes_ht = extract_freq_info(genomes_ht, faf_pops, "genomes")
-
+            exomes_ht.describe()
+            genomes_ht.describe()
             ht = get_joint_freq_and_faf(genomes_ht, exomes_ht)
             ht.describe()
             ht.write(res.combo_freq_ht.path, overwrite=overwrite)
