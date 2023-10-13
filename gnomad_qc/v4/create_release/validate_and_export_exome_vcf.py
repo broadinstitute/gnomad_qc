@@ -146,69 +146,125 @@ def unfurl_nested_annotations(
     # Unfurl freq index dict
     # Cycles through each key and index (e.g., k=adj_afr, i=31)
     logger.info("Unfurling freq data...")
-
     freq_idx = hl.eval(ht.freq_index_dict)
-    for k, i in freq_idx.items():
-        # Set combination to key
-        # e.g., set entry of 'afr_adj' to combo
-        combo = k
-        combo_dict = {
-            f"AC_{combo}": ht["freq"][i].AC,
-            f"AN_{combo}": ht["freq"][i].AN,
-            f"AF_{combo}": ht["freq"][i].AF,
-            f"nhomalt_{combo}": ht["freq"][i].homozygote_count,
+    expr_dict.update(
+        {
+            f"{f}_{k}": ht.freq[i][f]
+            for f in ht.freq[0].keys()
+            for k, i in freq_idx.items()
         }
-        expr_dict.update(combo_dict)
+    )
 
-        if k.split("-")[0] in entries_to_remove:
-            freq_entries_to_remove_vcf.update(combo_dict.keys())
+    # TODO: Previously in for loop where k was key from freq_meta_dict so
+    # update this to iterate through freq_index_dict maybe?
+    if k.split("-")[0] in entries_to_remove:
+        freq_entries_to_remove_vcf.update(combo_dict.keys())
 
     logger.info("Adding grpmax data...")
     grpmax_idx = ht.grpmax.gnomad
-    combo_dict = {
-        "grpmax": grpmax_idx.pop,
-        "AC_grpmax": grpmax_idx.AC,
-        "AN_grpmax": grpmax_idx.AN,
-        "AF_grpmax": grpmax_idx.AF,
-        "nhomalt_grpmax": grpmax_idx.homozygote_count,
-        "faf95_grpmax": grpmax_idx.faf95,
-    }
-    expr_dict.update(combo_dict)
+    grpmax_dict = {"grpmax": grpmax_idx.gen_anc}
+    grpmax_dict.update(
+        {
+            (
+                f"{f}_grpmax" if f != "homozygote_count" else "nhomalt_grpmax"
+            ): grpmax_idx[f]
+            for f in [f for f in grpmax_idx._fields if f != "gen_anc"]
+        }
+    )
+    expr_dict.update(grpmax_dict)
 
     logger.info("Unfurling faf data...")
     faf_idx = hl.eval(ht.faf_index_dict)
-    for (
-        k,
-        i,
-    ) in faf_idx.items():
-        combo_dict = {
-            f"faf95_{k}": ht.faf[i].faf95,
-            f"faf99_{k}": ht.faf[i].faf99,
-        }
-        expr_dict.update(combo_dict)
+    expr_dict.update(
+        {f"{f}_{k}": ht.faf[i][f] for f in ht.faf[0].keys() for k, i in faf_idx.items()}
+    )
 
     logger.info("Unfurling age hists...")
+    hist_idx = ht.histograms
+    # NOTE: THIS DOESNT WORK FIX IT
     age_hist_dict = {
-        "age_hist_het_bin_freq": hl.delimit(
-            ht.histograms.age_hist_het.bin_freq, delimiter="|"
-        ),
-        "age_hist_het_bin_edges": hl.delimit(
-            ht.histograms.age_hist_het.bin_edges, delimiter="|"
-        ),
-        "age_hist_het_n_smaller": ht.histograms.age_hist_het.n_smaller,
-        "age_hist_het_n_larger": ht.histograms.age_hist_het.n_larger,
-        "age_hist_hom_bin_freq": hl.delimit(
-            ht.histograms.age_hist_hom.bin_freq, delimiter="|"
-        ),
-        "age_hist_hom_bin_edges": hl.delimit(
-            ht.histograms.age_hist_hom.bin_edges, delimiter="|"
-        ),
-        "age_hist_hom_n_smaller": ht.histograms.age_hist_hom.n_smaller,
-        "age_hist_hom_n_larger": ht.histograms.age_hist_hom.n_larger,
+        {
+            f"{hist}_bin_freq": hl.delimit(hist_idx[hist].bin_freq, delimiter="|"),
+            f"{hist}_bin_edges": hl.delimit(hist_idx[hist].bin_edges, delimiter="|"),
+            f"{hist}_n_smaller": hist_idx[hist].n_smaller,
+            f"{hist}_n_larger": hist_idx[hist].n_larger,
+        }
+        for hist in ["age_hist_het", "age_hist_hom"]
     }
     expr_dict.update(age_hist_dict)
 
     return hl.struct(**expr_dict), freq_entries_to_remove_vcf
+
+
+def make_info_expr(
+    t: Union[hl.MatrixTable, hl.Table],
+    hist_prefix: str = "",
+) -> Dict[str, hl.expr.Expression]:
+    """
+    Make Hail expression for variant annotations to be included in VCF INFO field.
+
+    :param t: Table/MatrixTable containing variant annotations to be reformatted for VCF export.
+    :param hist_prefix: Prefix to use for histograms.
+    :return: Dictionary containing Hail expressions for relevant INFO annotations.
+    :rtype: Dict[str, hl.expr.Expression]
+    """
+    vcf_info_dict = {}
+    # Add site-level annotations to vcf_info_dict
+    for field in SITE_FIELDS:
+        vcf_info_dict[field] = t["release_ht_info"][f"{field}"]
+
+    # Add AS annotations to info dict
+    for field in AS_FIELDS:
+        vcf_info_dict[field] = t["release_ht_info"][f"{field}"]
+    for field in VQSR_FIELDS:
+        vcf_info_dict[field] = t["vqsr"][f"{field}"]
+
+    # Add region_flag and allele_info fields to info dict
+    for field in ALLELE_TYPE_FIELDS:
+        vcf_info_dict[field] = t["allele_info"][f"{field}"]
+    for field in REGION_FLAG_FIELDS:
+        vcf_info_dict[field] = t["region_flag"][f"{field}"]
+
+    # Add underscore to hist_prefix if it isn't empty
+    if hist_prefix != "":
+        hist_prefix += "_"
+
+    # Histograms to export are:
+    # gq_hist_alt, gq_hist_all, dp_hist_alt, dp_hist_all, ab_hist_alt
+    # We previously dropped:
+    # _n_smaller for all hists
+    # _bin_edges for all hists
+    # _n_larger for all hists EXCEPT DP hists
+    for hist in HISTS:
+        hist_type = f"{hist_prefix}qual_hists"
+        hist_dict = {
+            f"{hist}_bin_freq": hl.delimit(t[hist_type][hist].bin_freq, delimiter="|"),
+        }
+        vcf_info_dict.update(hist_dict)
+
+        if "dp" in hist:
+            vcf_info_dict.update(
+                {f"{hist}_n_larger": t[hist_type][hist].n_larger},
+            )
+
+    # Add in silico annotations to info dict
+    vcf_info_dict["cadd_raw_score"] = t["cadd"]["raw_score"]
+    vcf_info_dict["cadd_phred"] = t["cadd"]["phred"]
+
+    vcf_info_dict["revel_score"] = t["revel"]["revel_score"]
+
+    # In the v3.1 release in silico files this was max_ds, but changed to
+    # splice_ai_score in releases after v3.1
+    vcf_info_dict["splice_ai_max_ds"] = t["splice_ai"]["splice_ai_score"]
+    vcf_info_dict["splice_ai_consequence"] = t["splice_ai"]["splice_consequence"]
+
+    vcf_info_dict["primate_ai_score"] = t["primate_ai"]["primate_ai_score"]
+
+    # Add VRS annotations to info dict
+    for field in VRS_FIELDS_DICT:
+        vcf_info_dict[field] = t["release_ht_info"]["vrs"][field]
+
+    return vcf_info_dict
 
 
 def prepare_ht_for_validation(
@@ -232,25 +288,47 @@ def prepare_ht_for_validation(
         entries_to_remove=freq_entries_to_remove,
     )
 
-    logger.info("Reformatting rsid...")
-    if isinstance(ht.rsid, hl.expr.SetExpression):
-        rsid_expr = hl.str(";").join(ht.rsid)
-    else:
-        rsid_expr = ht.rsid
-
-    logger.info("Reformatting VEP annotation...")
-    vep_expr = vep_struct_to_csq(ht.vep)
-
     logger.info("Constructing INFO field")
     ht = ht.annotate(
-        region_flag=region_flag_expr,
+        region_flag=ht.region_flags,
         release_ht_info=ht.info,
         info=info_struct,
-        rsid=rsid_expr,
-        vep=vep_expr,
+        rsid=hl.str(";").join(ht.rsid),
+        vep=vep_struct_to_csq(ht.vep),
     )
     info_expr = make_info_expr(ht)
+
     ht = ht.annotate(info=ht.info.annotate(**info_expr, vep=ht.vep))
+
+    # Add variant annotations to INFO field
+    # This adds the following:
+    #   region flag for problematic regions
+    #   annotations in ht.release_ht_info (site and allele-specific annotations),
+    #   info struct (unfurled data obtained above),
+    #   dbSNP rsIDs
+    #   all VEP annotations
+    ht = ht.annotate(info=ht.info.annotate(**info_expr, vep=ht.vep))
+
+    if freq_entries_to_remove:
+        ht = ht.annotate_globals(
+            vep_csq_header=VEP_CSQ_HEADER, freq_entries_to_remove=freq_entries_to_remove
+        )
+    else:
+        ht = ht.annotate_globals(
+            vep_csq_header=VEP_CSQ_HEADER,
+            freq_entries_to_remove=hl.empty_set(hl.tstr),
+        )
+
+    # Select relevant fields for VCF export
+    ht = ht.select("info", "filters", "rsid")
+
+    if vcf_info_reorder:
+        logger.info("Rearranging fields to desired order...")
+        ht = ht.annotate(
+            info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
+        )
+
+    return ht
 
 
 def main(args):  # noqa: D103
