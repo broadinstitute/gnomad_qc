@@ -96,12 +96,16 @@ def extract_freq_info(
             "freq": ht.freq,
             "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
         },
-        ["downsampling", "subset"],
-        keep=False,
+        ["group", "gen_anc", "sex"],
         combine_operator="or",
+        apply_keep_to_only_items_in_filter=True,
     )
     faf_meta, faf = filter_arrays_by_meta(
-        ht.faf_meta, {"faf": ht.faf}, ["subset"], keep=False
+        ht.faf_meta,
+        {"faf": ht.faf},
+        ["group", "gen_anc"],
+        combine_operator="or",
+        apply_keep_to_only_items_in_filter=True,
     )
     faf_meta, faf = filter_arrays_by_meta(
         hl.literal(faf_meta),
@@ -110,7 +114,7 @@ def extract_freq_info(
         combine_operator="or",
     )
 
-    # Rename filtered annotations with supplied prefix.
+    # Rename filtered annotations with supplied prefix and remove "raw" group from faf.
     ht = ht.select(
         **{
             f"{prefix}_freq": array_exprs["freq"],
@@ -124,6 +128,8 @@ def extract_freq_info(
             f"{prefix}_faf_meta": ht.faf_meta[:1].extend(ht.faf_meta[2:]),
         }
     )
+
+    ht = ht.checkpoint(hl.utils.new_temp_file("extract_freq_info", "ht"))
 
     return ht
 
@@ -401,10 +407,8 @@ def main(args):
             )
             exomes_ht = extract_freq_info(exomes_ht, faf_pops, "exomes")
             genomes_ht = extract_freq_info(genomes_ht, faf_pops, "genomes")
-            exomes_ht.describe()
-            genomes_ht.describe()
+
             ht = get_joint_freq_and_faf(genomes_ht, exomes_ht)
-            ht.describe()
             ht.write(res.combo_freq_ht.path, overwrite=overwrite)
 
         if args.perform_contingency_table_test:
@@ -418,7 +422,6 @@ def main(args):
                     min_cell_count=args.min_cell_count,
                 )
             )
-            ht.describe()
             ht.write(res.contingency_table_ht.path, overwrite=overwrite)
 
         if args.perform_cochran_mantel_haenszel_test:
@@ -435,7 +438,6 @@ def main(args):
                     pops=faf_pops,
                 ),
             )
-            ht.describe()
             ht.write(res.cmh_ht.path, overwrite=overwrite)
 
         if args.finalize_combined_faf_release:
