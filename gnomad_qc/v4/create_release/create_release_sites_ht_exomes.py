@@ -618,6 +618,7 @@ def main(args):
         args.release_exists,
     )
 
+    # Filter out chrM and AS_lowqual sites.
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters))
 
