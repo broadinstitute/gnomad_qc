@@ -931,8 +931,8 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     an_ht = update_pop_labels(an_ht, POP_MAP)
 
     logger.info(
-        "Merging call stats from new variants of v3.1 release samples, from pop_diff 
-        samples and added samples..."
+        "Merging call stats from new variants of v3.1 release samples, from pop_diff "
+        "samples and added samples..."
     )
     global_array = ht.index_globals().global_array
     farrays = [ht.ann_array[i].freq for i in range(3)]
@@ -987,11 +987,14 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
         ].faf95,
     ).drop("pop")
 
-    logger.info("Annotating 'faf', 'grpmax', 'gen_anc_faf_max' and 'InbreedingCoeff'...")
+    logger.info(
+        "Annotating 'faf', 'grpmax', 'gen_anc_faf_max' and 'InbreedingCoeff'..."
+    )
+    ht = ht.annotate(
         faf=faf,
         grpmax=grpmax,
         gen_anc_faf_max=gen_anc_faf_max_expr(faf, faf_meta),
-        InbreedingCoeff=bi_allelic_site_inbreeding_expr(callstats_expr=ht.freq[1],
+        InbreedingCoeff=bi_allelic_site_inbreeding_expr(callstats_expr=ht.freq[1]),
     )
 
     logger.info(
