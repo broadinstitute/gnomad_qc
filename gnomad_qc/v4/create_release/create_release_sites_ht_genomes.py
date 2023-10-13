@@ -966,12 +966,12 @@ def get_v4_genomes_release_resources(
             "gnomAD v3.1.2 HGDP + 1KG dense MT": {"dense_mt": hgdp_tgp_res["dense_mt"]}
         },
         output_resources={
-            "freq_added_ht": hgdp_tgp_updated_callstats(test=test, subset="added"),
+            "freq_added_ht": hgdp_tgp_updated_callstats(subset="added", test=test),
             "freq_subtracted_ht": hgdp_tgp_updated_callstats(
-                test=test, subset="subtracted"
+                subset="subtracted", test=test
             ),
             "freq_pop_diff_ht": hgdp_tgp_updated_callstats(
-                test=test, subset="pop_diff"
+                subset="pop_diff", test=test
             ),
         },
     )
@@ -982,7 +982,7 @@ def get_v4_genomes_release_resources(
             "gnomAD v3.1.2 release sites HT": {"sites_ht": v3_sites_ht}
         },
         output_resources={
-            "freq_join_ht": hgdp_tgp_updated_callstats(test=test, subset="join"),
+            "freq_join_ht": hgdp_tgp_updated_callstats(subset="join", test=test),
         },
     )
     compute_an_for_new_variants = PipelineStepResourceCollection(
@@ -990,7 +990,7 @@ def get_v4_genomes_release_resources(
         pipeline_input_steps=[join_callstats_for_update],
         output_resources={
             "v3_release_an_ht": hgdp_tgp_updated_callstats(
-                test=test, subset="v3_release_an"
+                subset="v3_release_an", test=test
             ),
         },
     )
