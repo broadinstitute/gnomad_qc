@@ -126,6 +126,91 @@ def filter_to_test(ht: hl.Table, num_partitions: int = 2) -> hl.Table:
     return ht
 
 
+def unfurl_nested_annotations(
+    ht: hl.Table,
+    entries_to_remove: Set[str] = None,
+) -> [hl.expr.StructExpression, Set[str]]:
+    """
+    Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays.
+
+    The values of the returned dictionary are Hail Expressions describing how to access the corresponding values.
+
+    :param ht: Table containing the nested variant annotation arrays to be unfurled.
+    :param entries_to_remove: Optional Set of frequency entries to remove for vcf_export.
+    :return: StructExpression containing variant annotations and their corresponding expressions and updated entries and set of frequency entries to remove
+        to remove from the VCF.
+    """
+    freq_entries_to_remove_vcf = set()
+    expr_dict = {}
+
+    # Unfurl freq index dict
+    # Cycles through each key and index (e.g., k=adj_afr, i=31)
+    logger.info("Unfurling freq data...")
+
+    freq_idx = hl.eval(ht.freq_index_dict)
+    for k, i in freq_idx.items():
+        # Set combination to key
+        # e.g., set entry of 'afr_adj' to combo
+        combo = k
+        combo_dict = {
+            f"AC_{combo}": ht["freq"][i].AC,
+            f"AN_{combo}": ht["freq"][i].AN,
+            f"AF_{combo}": ht["freq"][i].AF,
+            f"nhomalt_{combo}": ht["freq"][i].homozygote_count,
+        }
+        expr_dict.update(combo_dict)
+
+        if k.split("-")[0] in entries_to_remove:
+            freq_entries_to_remove_vcf.update(combo_dict.keys())
+
+    logger.info("Adding grpmax data...")
+    grpmax_idx = ht.grpmax.gnomad
+    combo_dict = {
+        "grpmax": grpmax_idx.pop,
+        "AC_grpmax": grpmax_idx.AC,
+        "AN_grpmax": grpmax_idx.AN,
+        "AF_grpmax": grpmax_idx.AF,
+        "nhomalt_grpmax": grpmax_idx.homozygote_count,
+        "faf95_grpmax": grpmax_idx.faf95,
+    }
+    expr_dict.update(combo_dict)
+
+    logger.info("Unfurling faf data...")
+    faf_idx = hl.eval(ht.faf_index_dict)
+    for (
+        k,
+        i,
+    ) in faf_idx.items():
+        combo_dict = {
+            f"faf95_{k}": ht.faf[i].faf95,
+            f"faf99_{k}": ht.faf[i].faf99,
+        }
+        expr_dict.update(combo_dict)
+
+    logger.info("Unfurling age hists...")
+    age_hist_dict = {
+        "age_hist_het_bin_freq": hl.delimit(
+            ht.histograms.age_hist_het.bin_freq, delimiter="|"
+        ),
+        "age_hist_het_bin_edges": hl.delimit(
+            ht.histograms.age_hist_het.bin_edges, delimiter="|"
+        ),
+        "age_hist_het_n_smaller": ht.histograms.age_hist_het.n_smaller,
+        "age_hist_het_n_larger": ht.histograms.age_hist_het.n_larger,
+        "age_hist_hom_bin_freq": hl.delimit(
+            ht.histograms.age_hist_hom.bin_freq, delimiter="|"
+        ),
+        "age_hist_hom_bin_edges": hl.delimit(
+            ht.histograms.age_hist_hom.bin_edges, delimiter="|"
+        ),
+        "age_hist_hom_n_smaller": ht.histograms.age_hist_hom.n_smaller,
+        "age_hist_hom_n_larger": ht.histograms.age_hist_hom.n_larger,
+    }
+    expr_dict.update(age_hist_dict)
+
+    return hl.struct(**expr_dict), freq_entries_to_remove_vcf
+
+
 def prepare_ht_for_validation(
     ht: hl.Table, freq_entries_to_remove: List[str], vcf_info_reorder: List[str]
 ) -> hl.Table:
@@ -137,6 +222,35 @@ def prepare_ht_for_validation(
     :param vcf_info_reorder: Order of VCF INFO fields
     :return: Hail Table prepared for validity checks and export
     """
+    logger.info("Preparing HT for validity checks and export...")
+
+    logger.info(
+        "Unfurling nested gnomAD frequency annotations and add to INFO field..."
+    )
+    info_struct, freq_entries_to_remove = unfurl_nested_annotations(
+        ht,
+        entries_to_remove=freq_entries_to_remove,
+    )
+
+    logger.info("Reformatting rsid...")
+    if isinstance(ht.rsid, hl.expr.SetExpression):
+        rsid_expr = hl.str(";").join(ht.rsid)
+    else:
+        rsid_expr = ht.rsid
+
+    logger.info("Reformatting VEP annotation...")
+    vep_expr = vep_struct_to_csq(ht.vep)
+
+    logger.info("Constructing INFO field")
+    ht = ht.annotate(
+        region_flag=region_flag_expr,
+        release_ht_info=ht.info,
+        info=info_struct,
+        rsid=rsid_expr,
+        vep=vep_expr,
+    )
+    info_expr = make_info_expr(ht)
+    ht = ht.annotate(info=ht.info.annotate(**info_expr, vep=ht.vep))
 
 
 def main(args):  # noqa: D103
@@ -154,7 +268,7 @@ def main(args):  # noqa: D103
 
     try:
         if args.validate_release_ht:
-            logger.info("Validating release HT...")
+            logger.info("Running release HT validation...")
             res = resources.validate_release
             res.check_resource_existence()
 
