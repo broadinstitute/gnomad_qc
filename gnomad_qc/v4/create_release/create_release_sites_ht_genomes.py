@@ -5,9 +5,22 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import SUBSETS
-from gnomad.utils.annotations import annotate_freq, update_structured_annotations
+from gnomad.resources.grch38.gnomad import POPS_TO_REMOVE_FOR_POPMAX, SUBSETS
+from gnomad.sample_qc.sex import adjust_sex_ploidy
+from gnomad.utils.annotations import (
+    annotate_adj,
+    annotate_freq,
+    bi_allelic_site_inbreeding_expr,
+    faf_expr,
+    gen_anc_faf_max_expr,
+    generate_freq_group_membership_array,
+    merge_freq_arrays,
+    pop_max_expr,
+    set_female_y_metrics_to_na_expr,
+    update_structured_annotations,
+)
 from gnomad.utils.filtering import filter_arrays_by_meta
+from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from hail.utils import new_temp_file
 
@@ -17,6 +30,7 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.annotations import get_freq
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds
 from gnomad_qc.v3.resources.basics import meta as v3_meta
 from gnomad_qc.v3.resources.release import (
     hgdp_tgp_subset,
@@ -24,6 +38,7 @@ from gnomad_qc.v3.resources.release import (
     release_sites,
 )
 from gnomad_qc.v3.resources.sample_qc import relatedness as v3_relatedness
+from gnomad_qc.v4.resources.annotations import get_freq as v4_get_freq
 from gnomad_qc.v4.resources.annotations import hgdp_tgp_updated_callstats
 from gnomad_qc.v4.resources.basics import meta as v4_meta
 from gnomad_qc.v4.resources.sample_qc import (
@@ -58,7 +73,7 @@ POP_MAP = {
     "oth": "remaining",
 }
 """
-Map of HGDP populations that need to be renamed in the v4 genomes release. Also includes
+Map of HGDP populations that need to be renamed in the v4.0 genomes release. Also includes
 the renaming of 'oth' to 'remaining'.
 """
 JOIN_FREQS = ["release", "pop_diff", "added", "subtracted"]
@@ -99,20 +114,20 @@ def filter_to_test(
     partitions: Optional[List[int]] = None,
 ) -> Union[hl.Table, hl.MatrixTable, hl.vds.VariantDataset]:
     """
-    Filter to 10kb in DRD2 or PLCXD1 in Table or MatrixTable for testing purposes.
+    Filter to a region in PCSK9 or PLCXD1 in Table or MatrixTable for testing purposes.
 
     :param t: Table or MatrixTable to filter.
-    :param gene_on_chrx: Whether to filter to PLCXD1, instead of DRD2, for testing chrX.
+    :param gene_on_chrx: Whether to filter to PLCXD1, instead of PCSK9, for testing chrX.
     :param partitions: Optional list of partitions to filter to before applying the
-        filter to DRD2.
-    :return: Table or MatrixTable filtered to 10kb in DRD2 or PLCXD1.
+        filter to PCSK9.
+    :return: Table or MatrixTable filtered to a region in PCSK9 or PLCXD1.
     """
     if gene_on_chrx:
         logger.info("Filtering to PLCXD1 on chrX in MT for testing purposes...")
         test_locus = "chrX:285000-295000"
     else:
-        logger.info("Filtering to 10kb in DRD2 in MT for testing purposes...")
-        test_locus = "chr11:113425000-113435000"
+        logger.info("Filtering to 10kb in PCSK9 in MT for testing purposes...")
+        test_locus = "chr1:55039447-55064852"
 
     test_interval = [hl.parse_locus_interval(test_locus, reference_genome="GRCh38")]
 
@@ -545,19 +560,19 @@ def get_hgdp_tgp_callstats_for_selected_samples(
     subset_freq_hts = []
     logger.info("Calculating call stats for selected samples...")
     if compute_freq_all:
-        projects.append(("All", None))
+        projects.append(("all", None))
 
     projects.extend([("HGDP", ["hgdp"]), ("1000 Genomes", ["tgp"])])
     project_expr = samples_ht.hgdp_tgp_meta.project
     project_n = samples_ht.aggregate(hl.agg.counter(project_expr))
 
     for project, subset in projects:
-        if project == "All":
+        if project == "all":
             subset_ht = samples_ht
         else:
             subset_ht = samples_ht.filter(project_expr == project)
 
-        if project == "All" or project_n.get(project, 0) > 0:
+        if project == "all" or project_n.get(project, 0) > 0:
             freq_ht = calculate_callstats_for_selected_samples(mt, subset_ht, subset)
             freq_ht = freq_ht.select("freq").select_globals(*FREQ_GLOBALS)
             subset_freq_hts.append(freq_ht)
@@ -690,6 +705,317 @@ def join_release_ht_with_subsets(
     return ht
 
 
+def get_group_membership_ht_for_an(ht: hl.Table) -> hl.Table:
+    """
+    Generate a Table with a 'group_membership' array for each sample indicating whether the sample belongs to specific stratification groups.
+
+    `ht` must have the following annotations:
+        - 'meta.population_inference.pop': population label.
+        - 'meta.sex_imputation.sex_karyotype`: sex label.
+        - 'meta.project_meta.project_subpop': subpopulation label.
+        - 'meta.subsets': dictionary with subset labels as keys and boolean values.
+
+    :param ht: Table with the sample metadata.
+    :return: Table with the group membership for each sample to be used for computing
+        allele number (AN) per group.
+    """
+    pop_expr = ht.meta.population_inference.pop
+    sex_expr = ht.meta.sex_imputation.sex_karyotype
+    subpop_expr = ht.meta.project_meta.project_subpop
+
+    hts = []
+    for subset in ["all"] + SUBSETS:
+        if subset in ["tgp", "hgdp"]:
+            subset_pop_expr = subpop_expr
+        else:
+            subset_pop_expr = pop_expr
+
+        # Build strata expressions to get group membership for pop, sex, pop-sex.
+        strata_expr = [
+            {"pop": subset_pop_expr},
+            {"sex": sex_expr},
+            {"pop": subset_pop_expr, "sex": sex_expr},
+        ]
+        # For subsets, add strata expressions to get group membership for subset,
+        # subset-pop, subset-sex, and subset-pop-sex.
+        if subset != "all":
+            subset_expr = hl.or_missing(ht.meta.subsets[subset], subset)
+            strata_expr = [{"subset": subset_expr}] + [
+                {"subset": subset_expr, **x} for x in strata_expr
+            ]
+
+        subset_ht = generate_freq_group_membership_array(
+            ht, strata_expr, remove_zero_sample_groups=True
+        )
+        subset_globals = subset_ht.index_globals()
+        if subset != "all":
+            # The group_membership, freq_meta, and freq_meta_sample_count arrays for
+            # subsets is ordered [adj, raw, subset adj, ...] and we want it to be
+            # [subset adj, subset raw, ...] where subset adj and subset raw have the
+            # same sample grouping.
+            subset_adj_idx = 2
+            subset_ht = subset_ht.annotate(
+                group_membership=hl.array(
+                    [subset_ht.group_membership[subset_adj_idx]]
+                ).extend(subset_ht.group_membership[subset_adj_idx:])
+            )
+            freq_meta_sample_count = hl.array(
+                [subset_globals.freq_meta_sample_count[subset_adj_idx]]
+            ).extend(subset_globals.freq_meta_sample_count[subset_adj_idx:])
+
+            # Modify the freq_meta annotation to match the new group_membership and
+            # freq_meta_sample_count arrays.
+            subset_ht = subset_ht.annotate_globals(
+                freq_meta=hl.array(
+                    [
+                        {"subset": subset, "group": "adj"},
+                        {"subset": subset, "group": "raw"},
+                    ]
+                ).extend(subset_globals.freq_meta[subset_adj_idx + 1 :]),
+                freq_meta_sample_count=freq_meta_sample_count,
+            )
+
+        # Remove 'Han' and 'Papuan' pops from group_membership, freq_meta, and
+        # freq_meta_sample_count.
+        subset_ht = filter_freq_arrays(
+            subset_ht,
+            {"pop": ["han", "papuan"]},
+            keep=False,
+            combine_operator="or",
+            annotations=["group_membership"],
+        )
+
+        # Keep track of which groups should aggregate raw genotypes.
+        subset_ht = subset_ht.annotate_globals(
+            raw_group=subset_ht.freq_meta.map(lambda x: x.get("group", "NA") == "raw"),
+        )
+        hts.append(subset_ht)
+
+    return concatenate_annotations(
+        hts,
+        row_field_names=["group_membership"],
+        global_field_names=list(FREQ_GLOBALS) + ["raw_group"],
+    )
+
+
+def compute_an_by_group_membership(
+    vds: hl.vds.VariantDataset,
+    group_membership_ht: hl.Table,
+    variant_filter_ht: hl.Table,
+) -> hl.Table:
+    """
+    Compute the allele number for new variants in the v4.0 release by call stats group membership.
+
+    :param vds: VariantDataset with all v3.1 samples (including non-release) and
+        multi-allelics split.
+    :param group_membership_ht: Table with the group membership for each sample. This
+        is generated by `get_group_membership_ht_for_an`.
+    :param variant_filter_ht: Table with all variants that need AN to be computed.
+    :return: Table with the allele number for new variants in the v4.0 release.
+    """
+    n_samples = group_membership_ht.count()
+    n_groups = len(group_membership_ht.group_membership.take(1)[0])
+
+    vmt = vds.variant_data
+    rmt = vds.reference_data.select_cols().select_rows()
+
+    # Confirm that all variants in variant_filter_ht are present in the
+    # vds.variant_dataset and throw an error if this is not the case since all samples
+    # added to v4.0 genomes should be in this vds.
+    if variant_filter_ht.aggregate(
+        hl.agg.any(hl.is_missing(vmt.rows()[variant_filter_ht.key]))
+    ):
+        raise ValueError(
+            "Not all variants in the variant_filter_ht are found in the "
+            "vds.variant_dataset!"
+        )
+
+    # Filter the VDS variant data and reference data to only keep samples that were in
+    # the v3.1 release. We do it this way instead of using hl.vds.filter_samples because
+    # we want to keep all variants that were in the v3.1 VDS not only those found in the
+    # release but `hl.vds.filter_samples` includes vmt =
+    # vmt.filter_rows(hl.agg.count() > 0) by default.
+    release_s = vmt.aggregate_cols(
+        hl.agg.filter(vmt.meta.release, hl.agg.collect_as_set(vmt.s)), _localize=False
+    )._persist()
+    vmt = vmt.filter_cols(release_s.contains(vmt.s))
+    rmt = rmt.filter_cols(release_s.contains(rmt.s))
+    rmt = rmt.filter_rows(hl.agg.count() > 0)
+
+    # Only keep necessary entries and col annotations for AN calculation from the VDS
+    # so that only the needed entries are densified. AD, DP, GT, and GQ are needed for
+    # adding the adj annotation to compute AN for all adj stratification groups.
+    # sex_karyotype is needed by adjust_sex_ploidy to adjust relevant genotypes on chrX
+    # and chrY non-PAR before computing AN.
+    vmt = (
+        vmt.select_cols(
+            sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
+            group_membership=group_membership_ht[vmt.col_key].group_membership,
+        )
+        .select_entries("AD", "DP", "GT", "GQ")
+        .select_rows()
+    )
+    vmt = vmt.semi_join_rows(variant_filter_ht)
+    vds = hl.vds.VariantDataset(rmt, vmt)
+
+    # Densify the VDS, adjust GT sex ploidy, and annotate entires with adj. Adj
+    # annotation must happen after sex ploidy adjustment because haploid GTs have
+    # different adj filtering criteria.
+    mt = hl.vds.to_dense_mt(vds)
+    mt = adjust_sex_ploidy(mt, mt.sex_karyotype, male_str="XY", female_str="XX")
+    mt = annotate_adj(mt)
+    mt = mt.select_entries("GT", "adj")
+
+    # Convert MT to HT with a row annotation that is an array of all samples entries
+    # for that variant.
+    ht = mt.localize_entries("entries", "cols")
+
+    # For each stratification group in group_membership, determine the indices of the
+    # samples that belong to that group.
+    ht = ht.annotate_globals(
+        indices_by_group=hl.range(n_groups).map(
+            lambda g_i: hl.range(n_samples).filter(
+                lambda s_i: ht.cols[s_i].group_membership[g_i]
+            )
+        ),
+        raw_group=group_membership_ht.index_globals().raw_group,
+    )
+
+    # Keep only the row annotations needed for the AN calculation.
+    # Use ploidy to determine the number of alleles for each sample at each variant and
+    # then sum the ploidy of all samples for each group indicated by indices_by_group
+    # to get the AN for each stratification group.
+    ht = ht.select(
+        adj_array=ht.entries.map(lambda e: e.adj),
+        ploidy_array=ht.entries.map(lambda e: e.GT.ploidy),
+    )
+    agg_expr = hl.map(
+        lambda s_indices, raw: s_indices.aggregate(
+            lambda i: hl.if_else(
+                raw,
+                hl.agg.sum(ht.ploidy_array[i]),
+                hl.agg.filter(ht.adj_array[i], hl.agg.sum(ht.ploidy_array[i])),
+            )
+        ),
+        ht.indices_by_group,
+        ht.raw_group,
+    )
+
+    # Turn the array of ANs for each group into a call stats struct with AC, AF, AN,
+    # and homozygote_count to be easily combined with the call stats of the updated
+    # samples.
+    agg_expr = agg_expr.map(
+        lambda x: hl.struct(
+            AC=0, AF=hl.missing(hl.tfloat64), AN=hl.int32(x), homozygote_count=0
+        )
+    )
+    ht = ht.select(freq=agg_expr).drop("cols")
+    ht = ht.select_globals(**group_membership_ht.index_globals())
+
+    return ht
+
+
+def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
+    """
+    Generate the call stats for the v4.0 genomes release.
+
+    Merge call stats from the v3.1 release, the v3.1 AN of new v4.0 variants,
+    samples with updated population labels, added samples, and removed samples.
+
+    Also, compute filtering allele frequencies ('faf'), 'grpmax', 'gen_anc_faf_max' and 'InbreedingCoeff' on the merged call stats.
+
+    :param ht: Table returned by `join_release_ht_with_subsets`.
+    :param an_ht: Table with the allele number for new variants in the v4.0 release.
+    :return: Table with the updated call stats for the v4.0 genomes release.
+    """
+    logger.info("Updating AN Table HGDP pop labels and 'oth' -> 'remaining'...")
+    an_ht = update_pop_labels(an_ht, POP_MAP)
+
+    logger.info(
+        "Merging call stats from new variants of v3.1 release samples, from pop_diff "
+        "samples and added samples..."
+    )
+    global_array = ht.index_globals().global_array
+    farrays = [ht.ann_array[i].freq for i in range(3)]
+    fmeta = [global_array[i].freq_meta for i in range(4)]
+    count_arrays = [global_array[i].freq_meta_sample_count for i in range(4)]
+
+    # Add the v3.1 release AN for the new v4.0 variants as the second element to be
+    # merged.
+    farrays.insert(1, an_ht[ht.key].freq)
+    fmeta.insert(1, an_ht.index_globals().freq_meta)
+    count_arrays.insert(1, [0] * hl.eval(hl.len(an_ht.freq_meta)))
+
+    # Merge the call stats from the v3.1 release, v3.1 AN of new v4.0 variants,
+    # pop_diff, and added samples.
+    freq_expr, freq_meta, sample_counts = merge_freq_arrays(
+        farrays, fmeta[:4], count_arrays={"counts": count_arrays[:4]}
+    )
+    ht = ht.annotate(freq=freq_expr)
+
+    # Needs checkpoint here to avoid hanging.
+    ht = ht.checkpoint(new_temp_file("added", "ht"))
+
+    logger.info("Merging call stats from subtracted samples...")
+    freq_expr, freq_meta, sample_counts = merge_freq_arrays(
+        [ht.freq, ht.ann_array[3].freq],
+        [freq_meta, fmeta[4]],
+        operation="diff",
+        set_negatives_to_zero=False,
+        count_arrays={"counts": [sample_counts["counts"], count_arrays[4]]},
+    )
+    ht = ht.select(freq=freq_expr)
+    ht = ht.select_globals(
+        freq_meta=freq_meta,
+        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
+        freq_meta_sample_count=sample_counts["counts"],
+    )
+    ht = ht.checkpoint(new_temp_file("merged", "ht"))
+
+    logger.info(
+        "Set Y-variant frequency call stats for female-specific "
+        "metrics to missing structs..."
+    )
+    ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
+
+    # Compute filtering allele frequency (faf), grpmax, and gen_anc_faf_max.
+    faf, faf_meta = faf_expr(ht.freq, ht.freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
+    grpmax = pop_max_expr(ht.freq, ht.freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
+    grpmax = grpmax.annotate(
+        gen_anc=grpmax.pop,
+        faf95=faf[
+            hl.literal(faf_meta).index(lambda y: y.values() == ["adj", grpmax.pop])
+        ].faf95,
+    ).drop("pop")
+
+    logger.info(
+        "Annotating 'faf', 'grpmax', 'gen_anc_faf_max' and 'InbreedingCoeff'..."
+    )
+    ht = ht.annotate(
+        faf=faf,
+        grpmax=grpmax,
+        gen_anc_faf_max=gen_anc_faf_max_expr(faf, faf_meta),
+        InbreedingCoeff=bi_allelic_site_inbreeding_expr(callstats_expr=ht.freq[1]),
+    )
+
+    logger.info(
+        "Annotating globals 'freq_meta', 'freq_meta_sample_count', 'faf_meta', "
+        "'freq_index_dict' and 'faf_index_dict'..."
+    )
+    # Change the 'pop' keys in the freq_meta and faf_meta arrays to 'gen_anc'.
+    freq_meta, faf_meta = [
+        hl.literal([{("gen_anc" if k == "pop" else k): m[k] for k in m} for m in meta])
+        for meta in [freq_meta, faf_meta]
+    ]
+    ht = ht.annotate_globals(
+        freq_meta=freq_meta,
+        faf_meta=faf_meta,
+        faf_index_dict=make_freq_index_dict_from_meta(faf_meta),
+    )
+
+    return ht
+
+
 def get_v4_genomes_release_resources(
     test: bool, overwrite: bool
 ) -> PipelineResourceCollection:
@@ -750,12 +1076,12 @@ def get_v4_genomes_release_resources(
             "gnomAD v3.1.2 HGDP + 1KG dense MT": {"dense_mt": hgdp_tgp_res["dense_mt"]}
         },
         output_resources={
-            "freq_added_ht": hgdp_tgp_updated_callstats(test=test, subset="added"),
+            "freq_added_ht": hgdp_tgp_updated_callstats(subset="added", test=test),
             "freq_subtracted_ht": hgdp_tgp_updated_callstats(
-                test=test, subset="subtracted"
+                subset="subtracted", test=test
             ),
             "freq_pop_diff_ht": hgdp_tgp_updated_callstats(
-                test=test, subset="pop_diff"
+                subset="pop_diff", test=test
             ),
         },
     )
@@ -766,7 +1092,23 @@ def get_v4_genomes_release_resources(
             "gnomAD v3.1.2 release sites HT": {"sites_ht": v3_sites_ht}
         },
         output_resources={
-            "freq_join_ht": hgdp_tgp_updated_callstats(test=test, subset="join"),
+            "freq_join_ht": hgdp_tgp_updated_callstats(subset="join", test=test),
+        },
+    )
+    compute_an_for_new_variants = PipelineStepResourceCollection(
+        "--compute-an-for-new-variants",
+        pipeline_input_steps=[join_callstats_for_update],
+        output_resources={
+            "v3_release_an_ht": hgdp_tgp_updated_callstats(
+                subset="v3_release_an", test=test
+            ),
+        },
+    )
+    update_release_callstats = PipelineStepResourceCollection(
+        "--update-release-callstats",
+        pipeline_input_steps=[join_callstats_for_update, compute_an_for_new_variants],
+        output_resources={
+            "v4_freq_ht": v4_get_freq(data_type="genomes", test=test),
         },
     )
 
@@ -778,6 +1120,8 @@ def get_v4_genomes_release_resources(
             "update_annotations": update_annotations,
             "get_callstats_for_updated_samples": get_callstats_for_updated_samples,
             "join_callstats_for_update": join_callstats_for_update,
+            "compute_an_for_new_variants": compute_an_for_new_variants,
+            "update_release_callstats": update_release_callstats,
         }
     )
 
@@ -810,7 +1154,7 @@ def main(args):
       - Some population labels were updated.
       - The `Han` and `Papuan` populations were split into more specific groupings.
     """
-    test = args.test_drd2 or args.test_x_gene
+    test = args.test_pcsk9 or args.test_x_gene
     gene_on_chrx = args.test_x_gene
     overwrite = args.overwrite
 
@@ -826,11 +1170,21 @@ def main(args):
     v3_hgdp_tgp_dense_mt = v4_genome_release_resources.dense_mt.mt()
     v3_sites_ht = v4_genome_release_resources.v3_sites_ht.ht()
 
+    v3_vds = None
+    if args.compute_allele_number_for_new_variants:
+        v3_vds = get_gnomad_v3_vds(split=True, samples_meta=True)
+
     if test:
         v3_hgdp_tgp_dense_mt = filter_to_test(
             v3_hgdp_tgp_dense_mt, gene_on_chrx=gene_on_chrx
         )
         v3_sites_ht = filter_to_test(v3_sites_ht, gene_on_chrx=gene_on_chrx)
+        if v3_vds is not None:
+            v3_vds = filter_to_test(
+                v3_vds,
+                gene_on_chrx=gene_on_chrx,
+                partitions=[2183, 2184, 108583],
+            )
 
     if args.get_related_to_nonsubset:
         res = v4_genome_release_resources.get_related_to_nonsubset
@@ -877,11 +1231,53 @@ def main(args):
     if args.join_callstats_for_update:
         res = v4_genome_release_resources.join_callstats_for_update
         res.check_resource_existence()
-        logger.info("Joining all callstats HTs with the release sites HT...")
+        logger.info("Joining all call stats HTs with the release sites HT...")
         join_release_ht_with_subsets(
             v3_sites_ht,
             {n: getattr(res, f"freq_{n}_ht").ht() for n in JOIN_FREQS[1:]},
         ).write(res.freq_join_ht.path, overwrite=overwrite)
+
+    if args.compute_allele_number_for_new_variants:
+        res = v4_genome_release_resources.compute_an_for_new_variants
+        res.check_resource_existence()
+        logger.info("Determine variants in the release HT that need a recomputed AN...")
+        ht = res.freq_join_ht.ht()
+        # First freq in ann_array is the release sites freq and the third is the added.
+        ht = ht.filter(
+            hl.is_missing(ht.ann_array[0])
+            & hl.any(ht.ann_array.freq[2].map(lambda x: x.AC > 0))
+        )
+        ht = ht.checkpoint(new_temp_file("variants_for_an", "ht"))
+        logger.info(
+            "There are %i variants with an AC > 0 in the added call stats HTs, but "
+            "missing in the release HT...",
+            ht.count(),
+        )
+
+        logger.info(
+            "Annotating call stats group membership for each v3.1 release sample..."
+        )
+        v3_sites_meta_ht = v3_vds.variant_data.cols()
+        v3_sites_meta_ht = v3_sites_meta_ht.filter(v3_sites_meta_ht.meta.release)
+        group_membership_ht = get_group_membership_ht_for_an(v3_sites_meta_ht)
+        group_membership_ht = group_membership_ht.checkpoint(
+            new_temp_file("group_membership_all", "ht")
+        )
+
+        logger.info(
+            "Computing the AN HT of v3.1 samples for new v4.0 genomes variants..."
+        )
+        ht = compute_an_by_group_membership(v3_vds, group_membership_ht, ht)
+        ht.write(res.v3_release_an_ht.path, overwrite=overwrite)
+
+    if args.update_release_callstats:
+        res = v4_genome_release_resources.update_release_callstats
+        res.check_resource_existence()
+
+        logger.info("Merging all call stats HTs for final v4.0 genomes call stats...")
+        generate_v4_genomes_callstats(
+            res.freq_join_ht.ht(), res.v3_release_an_ht.ht()
+        ).write(res.v4_freq_ht.path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
@@ -895,8 +1291,8 @@ if __name__ == "__main__":
 
     test_args = parser.add_mutually_exclusive_group()
     test_args.add_argument(
-        "--test-drd2",
-        help="Test on a subset of variants in DRD2 gene.",
+        "--test-pcsk9",
+        help="Test on a subset of variants in PCSK9 gene.",
         action="store_true",
     )
     test_args.add_argument(
@@ -931,8 +1327,24 @@ if __name__ == "__main__":
     parser.add_argument(
         "--join-callstats-for-update",
         help=(
-            "Join the callstats Tables for the updated samples with the release "
-            "callstats Table."
+            "Join the call stats Tables for the updated samples with the release "
+            "call stats Table."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--compute-allele-number-for-new-variants",
+        help=(
+            "Compute the allele number for variants that are in the updated samples "
+            "but not in the release HT."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--update-release-callstats",
+        help=(
+            "Update the release call stats by merging the call stats for the updated"
+            " samples."
         ),
         action="store_true",
     )

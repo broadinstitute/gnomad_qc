@@ -1,6 +1,7 @@
 """Script containing annotation related resources."""
 from typing import Optional
 
+from gnomad.resources.grch37.gnomad import EXOME_RELEASES, GENOME_RELEASES
 from gnomad.resources.grch38.gnomad import SUBSETS
 from gnomad.resources.resource_utils import (
     DataException,
@@ -304,16 +305,17 @@ def get_freq(
     :return: Hail Table containing subset or overall cohort frequency annotations.
     """
     ht_name = f"gnomad.{data_type}.v{version}.frequencies"
-    if not finalized:
+    if data_type == "exomes" and not finalized:
         if chrom:
             ht_name += f".{chrom}"
         if not hom_alt_adjusted:
             ht_name += ".pre_hom_alt_adjustment"
-    if intermediate_subset:
+
+    if data_type == "exomes" and intermediate_subset:
         ht_name += f".{intermediate_subset}"
         if test:
             ht_name += ".test"
-        ht_path = f"{_annotations_root(version, test, data_type)}/temp/{ht_name}.ht"
+        ht_path = f"{_annotations_root(version, test)}/temp/{ht_name}.ht"
     else:
         if finalized:
             ht_name += ".final"
@@ -436,25 +438,25 @@ def get_vrs(
 
 
 def hgdp_tgp_updated_callstats(
-    test: bool = False, subset: str = "final"
+    subset: str, test: bool = False
 ) -> VersionedTableResource:
     """
-    Get the HGDP + 1KG/TGP subset release MatrixTableResource.
+    Get the HGDP + 1KG/TGP subset updated callstats TableResource.
 
-    :param test: If True, will return the annotation resource for testing purposes.
     :param subset: The subset of the HGDP + 1KG/TGP release to return,
-       must be "added", "subtracted", "pop_diff", or "final"
+       must be "added", "subtracted", "pop_diff", "join", or "v3_release_an".
+    :param test: Whether to return the annotation resource for testing purposes.
     :return: MatrixTableResource for specified subset.
     """
-    if subset not in ["added", "subtracted", "pop_diff", "join"]:
-        raise ValueError(
-            "Operation must be one of 'added', 'subtracted', 'pop_diff', or 'join'"
-        )
+    subsets = ["added", "subtracted", "pop_diff", "join", "v3_release_an"]
+    if subset not in subsets:
+        raise ValueError(f"Operation must be one of {subsets}")
+
     return VersionedTableResource(
         default_version=CURRENT_HGDP_TGP_RELEASE,
         versions={
             release: TableResource(
-                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/annotations/hail-0.2/ht/genomes_v{release}/'}gnomad.genomes.v{release}.hgdp_1kg_subset_updated_callstats_{subset}.ht"
+                f"{_annotations_root(release, test, 'genomes')}/gnomad.genomes.v{release}.hgdp_1kg_subset_updated_callstats_{subset}.ht"
             )
             for release in HGDP_TGP_RELEASES
         },
