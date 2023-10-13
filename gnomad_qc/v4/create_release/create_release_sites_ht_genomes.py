@@ -814,8 +814,9 @@ def compute_an_by_group_membership(
     # Confirm that all variants in variant_filter_ht are present in the
     # vds.variant_dataset and throw an error if this is not the case since all samples
     # added to v4.0 genomes should be in this vds.
-    vht = vmt.rows()
-    if vht.aggregate(hl.agg.any(hl.is_missing(vht[variant_filter_ht.key]))):
+    if variant_filter_ht.aggregate(
+        hl.agg.any(hl.is_missing(vmt.rows()[variant_filter_ht.key]))
+    ):
         raise ValueError(
             "Not all variants in the variant_filter_ht are found in the "
             "vds.variant_dataset!"
