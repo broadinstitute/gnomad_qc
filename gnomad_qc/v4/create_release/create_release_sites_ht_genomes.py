@@ -5,13 +5,16 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import SUBSETS
+from gnomad.resources.grch38.gnomad import POPS_TO_REMOVE_FOR_POPMAX, SUBSETS
 from gnomad.sample_qc.sex import adjust_sex_ploidy
 from gnomad.utils.annotations import (
     annotate_adj,
     annotate_freq,
+    faf_expr,
+    gen_anc_faf_max_expr,
     generate_freq_group_membership_array,
     merge_freq_arrays,
+    pop_max_expr,
     set_female_y_metrics_to_na_expr,
     update_structured_annotations,
 )
@@ -34,6 +37,7 @@ from gnomad_qc.v3.resources.release import (
     release_sites,
 )
 from gnomad_qc.v3.resources.sample_qc import relatedness as v3_relatedness
+from gnomad_qc.v4.resources.annotations import get_freq as v4_get_freq
 from gnomad_qc.v4.resources.annotations import hgdp_tgp_updated_callstats
 from gnomad_qc.v4.resources.basics import meta as v4_meta
 from gnomad_qc.v4.resources.sample_qc import (
@@ -911,54 +915,92 @@ def compute_an_by_group_membership(
 
 def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     """
-    Generate the call stats for the v4 genomes release.
+    Generate the call stats for the v4.0 genomes release.
+
+    Merge call stats from the v3.1 release, the v3.1 AN of new v4.0 variants,
+    samples with updated population labels, added samples, and removed samples.
+
+    Also, compute filtering allele frequencies ('faf'), 'grpmax', and 'gen_anc_faf_max'
+    on the merged call stats.
 
     :param ht: Table returned by `join_release_ht_with_subsets`.
-    :param an_ht: Table with the allele number for new variants in the v4 release.
-    :return: Table with the updated call stats for the v4 genomes release.
+    :param an_ht: Table with the allele number for new variants in the v4.0 release.
+    :return: Table with the updated call stats for the v4.0 genomes release.
     """
-    logger.info("Updating AN HT HGDP pop labels and 'oth' -> 'remaining'...")
+    logger.info("Updating AN Table HGDP pop labels and 'oth' -> 'remaining'...")
     an_ht = update_pop_labels(an_ht, POP_MAP)
 
-    logger.info("Merging AFs from diff pop samples and added samples...")
+    logger.info("Merging call stats from diff pop samples and added samples...")
     global_array = ht.index_globals().global_array
     farrays = [ht.ann_array[i].freq for i in range(3)]
     fmeta = [global_array[i].freq_meta for i in range(4)]
     count_arrays = [global_array[i].freq_meta_sample_count for i in range(4)]
 
+    # Add the v3.1 release AN for the new v4.0 variants as the second element to be
+    # merged.
     farrays.insert(1, an_ht[ht.key].freq)
     fmeta.insert(1, an_ht.index_globals().freq_meta)
     count_arrays.insert(1, [0] * hl.eval(hl.len(an_ht.freq_meta)))
 
-    freq_expr, freq_meta_expr, sample_count_expr = merge_freq_arrays(
+    # Merge the call stats from the v3.1 release, v3.1 AN of new v4.0 variants,
+    # diff pop, and added samples.
+    freq_expr, freq_meta, sample_counts = merge_freq_arrays(
         farrays, fmeta[:4], count_arrays={"counts": count_arrays[:4]}
     )
     ht = ht.annotate(freq=freq_expr)
-    # need checkpoint here to avoid hanging
-    ht = ht.checkpoint(new_temp_file("added", extension="ht"), overwrite=True)
 
-    logger.info("Merging AFs from subtracted samples...")
-    freq_expr, freq_meta_expr, sample_count_expr = merge_freq_arrays(
+    # Needs checkpoint here to avoid hanging.
+    ht = ht.checkpoint(new_temp_file("added", "ht"))
+
+    logger.info("Merging call stats from subtracted samples...")
+    freq_expr, freq_meta, sample_counts = merge_freq_arrays(
         [ht.freq, ht.ann_array[3].freq],
-        [freq_meta_expr, fmeta[4]],
+        [freq_meta, fmeta[4]],
         operation="diff",
         set_negatives_to_zero=False,
-        count_arrays={"counts": [sample_count_expr["counts"], count_arrays[4]]},
+        count_arrays={"counts": [sample_counts["counts"], count_arrays[4]]},
     )
-    ht = ht.select(freq=freq_expr)
-
-    logger.info("Making freq_index_dict from freq_meta...")
-    ht = ht.select_globals(
-        freq_meta=freq_meta_expr,
-        freq_meta_sample_count=sample_count_expr["counts"],
-        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta_expr)),
-    )
+    ht = ht.select(freq=freq_expr).checkpoint(new_temp_file("merged", "ht"))
 
     logger.info(
-        "Set Y-variant frequency callstats for female-specific "
+        "Set Y-variant frequency call stats for female-specific "
         "metrics to missing structs..."
     )
     ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
+
+    # Compute filtering allele frequency (faf), grpmax, and gen_anc_faf_max.
+    faf, faf_meta = faf_expr(ht.freq, freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
+    grpmax = pop_max_expr(ht.freq, freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
+    grpmax = grpmax.annotate(
+        gen_anc=grpmax.pop,
+        faf95=faf[
+            hl.literal(faf_meta).index(lambda y: y.values() == ["adj", grpmax.pop])
+        ].faf95,
+    ).drop("pop")
+
+    logger.info("Annotating 'faf', 'grpmax', and 'gen_anc_faf_max'...")
+    ht = ht.annotate(
+        faf=faf,
+        grpmax=grpmax,
+        gen_anc_faf_max=gen_anc_faf_max_expr(faf, faf_meta),
+    )
+
+    logger.info(
+        "Annotating globals 'freq_meta', 'freq_meta_sample_count', 'faf_meta', "
+        "'freq_index_dict' and 'faf_index_dict'..."
+    )
+    # Change the 'pop' keys in the freq_meta and faf_meta arrays to 'gen_anc'.
+    freq_meta, faf_meta = [
+        hl.literal([{("gen_anc" if k == "pop" else k): m[k] for k in m} for m in meta])
+        for meta in [freq_meta, faf_meta]
+    ]
+    ht = ht.select_globals(
+        freq_meta=freq_meta,
+        freq_index_dict=make_freq_index_dict_from_meta(freq_meta),
+        freq_meta_sample_count=sample_counts["counts"],
+        faf_meta=faf_meta,
+        faf_index_dict=make_freq_index_dict_from_meta(faf_meta),
+    )
 
     return ht
 
@@ -1023,12 +1065,12 @@ def get_v4_genomes_release_resources(
             "gnomAD v3.1.2 HGDP + 1KG dense MT": {"dense_mt": hgdp_tgp_res["dense_mt"]}
         },
         output_resources={
-            "freq_added_ht": hgdp_tgp_updated_callstats(test=test, subset="added"),
+            "freq_added_ht": hgdp_tgp_updated_callstats(subset="added", test=test),
             "freq_subtracted_ht": hgdp_tgp_updated_callstats(
-                test=test, subset="subtracted"
+                subset="subtracted", test=test
             ),
             "freq_pop_diff_ht": hgdp_tgp_updated_callstats(
-                test=test, subset="pop_diff"
+                subset="pop_diff", test=test
             ),
         },
     )
@@ -1039,7 +1081,7 @@ def get_v4_genomes_release_resources(
             "gnomAD v3.1.2 release sites HT": {"sites_ht": v3_sites_ht}
         },
         output_resources={
-            "freq_join_ht": hgdp_tgp_updated_callstats(test=test, subset="join"),
+            "freq_join_ht": hgdp_tgp_updated_callstats(subset="join", test=test),
         },
     )
     compute_an_for_new_variants = PipelineStepResourceCollection(
@@ -1047,7 +1089,7 @@ def get_v4_genomes_release_resources(
         pipeline_input_steps=[join_callstats_for_update],
         output_resources={
             "v3_release_an_ht": hgdp_tgp_updated_callstats(
-                test=test, subset="v3_release_an"
+                subset="v3_release_an", test=test
             ),
         },
     )
@@ -1055,7 +1097,7 @@ def get_v4_genomes_release_resources(
         "--update-release-callstats",
         pipeline_input_steps=[join_callstats_for_update, compute_an_for_new_variants],
         output_resources={
-            "v4_freq_ht": hgdp_tgp_updated_callstats(test=test, subset="final"),
+            "v4_freq_ht": v4_get_freq(data_type="genomes", test=test),
         },
     )
 
@@ -1178,7 +1220,7 @@ def main(args):
     if args.join_callstats_for_update:
         res = v4_genome_release_resources.join_callstats_for_update
         res.check_resource_existence()
-        logger.info("Joining all callstats HTs with the release sites HT...")
+        logger.info("Joining all call stats HTs with the release sites HT...")
         join_release_ht_with_subsets(
             v3_sites_ht,
             {n: getattr(res, f"freq_{n}_ht").ht() for n in JOIN_FREQS[1:]},
@@ -1219,7 +1261,7 @@ def main(args):
         res = v4_genome_release_resources.update_release_callstats
         res.check_resource_existence()
 
-        logger.info("Merging all callstats HTs for final v4 genomes callstats...")
+        logger.info("Merging all call stats HTs for final v4.0 genomes call stats...")
         generate_v4_genomes_callstats(
             res.freq_join_ht.ht(), res.v3_release_an_ht.ht()
         ).write(res.v4_freq_ht.path, overwrite=overwrite)
@@ -1272,8 +1314,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--join-callstats-for-update",
         help=(
-            "Join the callstats Tables for the updated samples with the release "
-            "callstats Table."
+            "Join the call stats Tables for the updated samples with the release "
+            "call stats Table."
         ),
         action="store_true",
     )
@@ -1288,7 +1330,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--update-release-callstats",
         help=(
-            "Update the release callstats by merging the callstats for the updated"
+            "Update the release call stats by merging the call stats for the updated"
             " samples."
         ),
         action="store_true",

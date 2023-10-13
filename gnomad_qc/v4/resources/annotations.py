@@ -281,6 +281,7 @@ def get_downsampling(
 
 def get_freq(
     version: str = CURRENT_VERSION,
+    data_type: str = "exomes",
     test: bool = False,
     hom_alt_adjusted=False,
     chrom: Optional[str] = None,
@@ -291,6 +292,7 @@ def get_freq(
     Get the frequency annotation table for a specified release.
 
     :param version: Version of annotation path to return.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
     :param test: Whether to use a tmp path for tests.
     :param hom_alt_adjusted: Whether to return the hom alt adjusted frequency table.
     :param chrom: Chromosome to return frequency table for. Entire Table will be
@@ -300,13 +302,14 @@ def get_freq(
     :param finalized: Whether to return the finalized frequency table. Default is True.
     :return: Hail Table containing subset or overall cohort frequency annotations.
     """
-    ht_name = f"gnomad.exomes.v{version}.frequencies"
-    if not finalized:
+    ht_name = f"gnomad.{data_type}.v{version}.frequencies"
+    if data_type == "exomes" and not finalized:
         if chrom:
             ht_name += f".{chrom}"
         if not hom_alt_adjusted:
             ht_name += ".pre_hom_alt_adjustment"
-    if intermediate_subset:
+
+    if data_type == "exomes" and intermediate_subset:
         ht_name += f".{intermediate_subset}"
         if test:
             ht_name += ".test"
@@ -316,7 +319,7 @@ def get_freq(
             ht_name += ".final"
         if test:
             ht_name += ".test"
-        ht_path = f"{_annotations_root(version, test)}/{ht_name}.ht"
+        ht_path = f"{_annotations_root(version, test, data_type)}/{ht_name}.ht"
 
     return VersionedTableResource(
         version, {version: TableResource(ht_path) for version in VERSIONS}
@@ -418,24 +421,25 @@ def get_vrs(
 
 
 def hgdp_tgp_updated_callstats(
-    test: bool = False, subset: str = "final"
+    subset: str, test: bool = False
 ) -> VersionedTableResource:
     """
     Get the HGDP + 1KG/TGP subset release MatrixTableResource.
 
-    :param test: If True, will return the annotation resource for testing purposes.
     :param subset: The subset of the HGDP + 1KG/TGP release to return,
-       must be "added", "subtracted", "pop_diff", or "final"
+       must be "added", "subtracted", "pop_diff", "join", or "v3_release_an".
+    :param test: Whether to return the annotation resource for testing purposes.
     :return: MatrixTableResource for specified subset.
     """
-    subsets = ["added", "subtracted", "pop_diff", "join", "v3_release_an", "final"]
+    subsets = ["added", "subtracted", "pop_diff", "join", "v3_release_an"]
     if subset not in subsets:
         raise ValueError(f"Operation must be one of {subsets}")
+
     return VersionedTableResource(
         default_version=CURRENT_HGDP_TGP_RELEASE,
         versions={
             release: TableResource(
-                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/annotations/hail-0.2/ht/genomes_v{release}/'}gnomad.genomes.v{release}.hgdp_1kg_subset_updated_callstats_{subset}.ht"
+                f"{_annotations_root(release, test, 'genomes')}/gnomad.genomes.v{release}.hgdp_1kg_subset_updated_callstats_{subset}.ht"
             )
             for release in HGDP_TGP_RELEASES
         },
