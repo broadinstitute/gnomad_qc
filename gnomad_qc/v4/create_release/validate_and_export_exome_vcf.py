@@ -40,6 +40,10 @@ from gnomad.utils.vcf import (
 from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
 from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.v4.resources.basics import get_checkpoint_path, qc_temp_prefix
 from gnomad_qc.v4.resources.release import (
     append_to_vcf_header_path,
@@ -54,3 +58,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger("vcf_release")
 logger.setLevel(logging.INFO)
+
+
+def get_export_resources(
+    overwrite: bool = False,
+    test: Optional[bool] = False,
+) -> PipelineResourceCollection:
+    """
+    Get export resources.
+
+    :param overwrite: Whether to overwrite existing files.
+    :param test: Whether to use test resources.
+    :return: Export resources.
+    """
+    export_pipeline = PipelineResourceCollection(
+        pipeline_name="validate_and_export_vcf",
+        overwrite=overwrite,
+    )
+    validate_release = PipelineStepResourceCollection(
+        "--validate-release-ht",
+        output_resources={
+            "validated_release_ht": get_validated_release_ht(
+                test=test, overwrite=overwrite
+            )
+        },
+    )
+    export_pipeline.add_steps(
+        {
+            "validate_release_ht": validate_release,
+        }
+    )
+    return export_pipeline
