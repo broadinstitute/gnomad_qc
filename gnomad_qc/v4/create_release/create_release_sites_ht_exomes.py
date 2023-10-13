@@ -703,9 +703,6 @@ if __name__ == "__main__":
         type=str,
         nargs="+",
     )
-    # TODO: Do we want final_filter to be the default base table? I think
-    # AS-lowqual are not present in the final_filter HT so it removes a
-    # filtering step
     parser.add_argument(
         "-b",
         "--base-table",
