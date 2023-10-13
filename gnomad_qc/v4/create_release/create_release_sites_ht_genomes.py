@@ -825,7 +825,7 @@ def compute_an_by_group_membership(
     # Filter the VDS variant data and reference data to only keep samples that were in
     # the v3.1 release. We do it this way instead of using hl.vds.filter_samples because
     # we want to keep all variants that were in the v3.1 VDS not only those found in the
-    # release and filter_samples includes vmt = vmt.filter_rows(hl.agg.count() > 0).
+    # release but `hl.vds.filter_samples` includes vmt = vmt.filter_rows(hl.agg.count() > 0) by default. 
     release_s = vmt.aggregate_cols(
         hl.agg.filter(vmt.meta.release, hl.agg.collect_as_set(vmt.s)), _localize=False
     )._persist()
