@@ -960,7 +960,13 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
         set_negatives_to_zero=False,
         count_arrays={"counts": [sample_counts["counts"], count_arrays[4]]},
     )
-    ht = ht.select(freq=freq_expr).checkpoint(new_temp_file("merged", "ht"))
+    ht = ht.select(freq=freq_expr)
+    ht = ht.select_globals(
+        freq_meta=freq_meta,
+        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
+        freq_meta_sample_count=sample_counts["counts"],
+    )
+    ht = ht.checkpoint(new_temp_file("merged", "ht"))
 
     logger.info(
         "Set Y-variant frequency call stats for female-specific "
@@ -969,8 +975,8 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
 
     # Compute filtering allele frequency (faf), grpmax, and gen_anc_faf_max.
-    faf, faf_meta = faf_expr(ht.freq, freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
-    grpmax = pop_max_expr(ht.freq, freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
+    faf, faf_meta = faf_expr(ht.freq, ht.freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
+    grpmax = pop_max_expr(ht.freq, ht.freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
     grpmax = grpmax.annotate(
         gen_anc=grpmax.pop,
         faf95=faf[
@@ -996,8 +1002,6 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     ]
     ht = ht.select_globals(
         freq_meta=freq_meta,
-        freq_index_dict=make_freq_index_dict_from_meta(freq_meta),
-        freq_meta_sample_count=sample_counts["counts"],
         faf_meta=faf_meta,
         faf_index_dict=make_freq_index_dict_from_meta(faf_meta),
     )
