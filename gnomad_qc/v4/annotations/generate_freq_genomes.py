@@ -2,7 +2,7 @@
 Script to create frequencies HT for v4.0 genomes.
 
 This script is written specifically for the v4.0 genomes release to handle the
-addition and subtraction of samples from the HGDP + 1KG subset. The HGDPT + 1KG
+addition and subtraction of samples from the HGDP + 1KG subset. The HGDP + 1KG
 subset has updated sample QC annotations. The addition of new samples from the
 densified MT will include new variants, which will require the recomputation of AN
 for the v3.1 releases samples, and merging it to call stats of the v3.1.2 release
