@@ -5,7 +5,7 @@ import logging
 from copy import deepcopy
 from datetime import datetime
 from functools import reduce
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import (
@@ -16,10 +16,21 @@ from gnomad.resources.grch38.reference_data import (
 from gnomad.utils.annotations import region_flag_expr
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
+from hail.typecheck import anytype, nullable, sequenceof
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.annotations.insilico_predictors import get_sift_polyphen_from_vep
-from gnomad_qc.v4.create_release.create_release_utils import remove_missing_vep_fields
+from gnomad_qc.v4.create_release.create_release_utils import (
+    DBSNP_VERSION,
+    GENCODE_VERSION,
+    MANE_SELECT_VERSION,
+    POLYPHEN_VERSION,
+    SEQREPO_VERSION,
+    SIFT_VERSION,
+    VRS_PYTHON_VERSION,
+    VRS_SCHEMA_VERSION,
+    remove_missing_vep_fields,
+)
 from gnomad_qc.v4.resources.annotations import (
     get_freq,
     get_info,
@@ -119,8 +130,17 @@ def get_config(
                 'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>'
             },
 
+    .. warning::
+
+        The 'in_silico' key's 'ht' logic is handled separately because it is a list of
+        HTs. In this list, the phyloP HT is keyed by locus only and thus the 'ht' code
+        below sets the join key to 1, which will grab the first key of
+        ht.key.dtype.values() e.g. 'locus', when a HT key's are not {'locus, 'alleles'}.
+        All future in_silico predictors should have the keys confirmed to be 'locus'
+        with or without 'alleles' before using this logic.
+
     :param release_exists: Whether the release HT already exists.
-    :return: Dict of datasets configs.
+    :return: Dict of dataset's configs.
     """
     config = {
         "dbsnp": {
@@ -135,16 +155,12 @@ def get_config(
             "custom_select": custom_filters_select,
             "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
         },
-        # Note: Phylop is keyed by locus only. The code below sets the join key to 1,
-        # which will grab the first key of ht.key.dtype.values() e.g. 'locus', if
-        # the HT being join is not keyed by both locus and alleles. All future
-        # in_silico predictors should have the keys confirmed before using this logic.
         "in_silico": {
             "ht": reduce(
                 (
                     lambda joined_ht, ht: (
                         joined_ht.join(ht, "outer")
-                        if set(ht.key.keys()) == {"locus", "alleles"}
+                        if set(ht.key) == {"locus", "alleles"}
                         else joined_ht.join(ht, "outer", _join_key=1)
                     )
                 ),
@@ -240,8 +256,8 @@ def get_config(
         config["release"].update(
             {
                 "ht": release_sites().ht(),
-                "select": [r for r in release_sites().ht()._row],
-                "select_globals": [g for g in release_sites().ht()._global],
+                "select": [r for r in release_sites().ht().row],
+                "select_globals": [g for g in release_sites().ht().globals],
             }
         )
     return config
@@ -250,6 +266,8 @@ def get_config(
 def custom_in_silico_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
     Get in silico predictors from VEP for release.
+
+    This function currently selects only SIFT and Polyphen from VEP.
 
     :param ht: VEP Hail Table.
     :return: Select expression dict.
@@ -327,13 +345,17 @@ def custom_info_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     Select fields for info Hail Table annotation in release.
 
     The info field requires fields from the freq HT and the filters HT so those are
-    pulled in here along with all info HT fields.
+    pulled in here along with all info HT fields. It also adds the `allele_info` struct
+    to release HT.
 
     :param ht: Info Hail Table.
     :return: Select expression dict.
     """
     # Create a dict of the fields from the filters HT that we want to add to the info.
     filters_ht = get_config().get("filters")["ht"]
+
+    # For more information on the selected compute_info_method, please see the
+    # run_compute_info in gnomad_qc.v4.annotations.generate_variant_qc_annotations.py
     compute_info_method = hl.eval(
         filters_ht.filtering_model_specific_info.compute_info_method
     )
@@ -379,7 +401,7 @@ def custom_info_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
 
 def custom_vep_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     """
-    Select fields for vep hail Table annotation in release.
+    Select fields for VEP hail Table annotation in release.
 
     :param ht: VEP Hail table
     :return: Select expression dict.
@@ -421,7 +443,9 @@ def get_select_global_fields(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     return t_globals
 
 
-def get_select_fields(selects, base_ht: hl.Table) -> dict[str, hl.expr.Expression]:
+def get_select_fields(
+    selects: Union[List, Dict], base_ht: hl.Table
+) -> Dict[str, hl.expr.Expression]:
     """
     Generate a select dict from traversing the `base_ht` and extracting annotations.
 
@@ -443,13 +467,19 @@ def get_select_fields(selects, base_ht: hl.Table) -> dict[str, hl.expr.Expressio
     return select_fields
 
 
-def get_ht(dataset: str, _intervals, test, release_exists) -> hl.Table:
+def get_ht(
+    dataset: str,
+    _intervals: nullable(sequenceof(anytype)),
+    test: bool,
+    release_exists: bool,
+) -> hl.Table:
     """
-    Return the appropriate hail table with selects applied.
+    Return the appropriate Hail table with selects applied.
 
     :param dataset: Hail Table to join.
-    :param _intervals: Intervals for reading in hail Table.
+    :param _intervals: Intervals for reading in hail Table. Used to optimize join.
     :param test: Whether call is for a test run.
+    :param release_exists: Whether the release HT already exists.
     :return: Hail Table with fields to select.
     """
     logger.info("Getting the %s dataset and its selected annotations...", dataset)
@@ -465,6 +495,7 @@ def get_ht(dataset: str, _intervals, test, release_exists) -> hl.Table:
         base_ht = hl.read_table(ht_path, _intervals=_intervals)
 
     if test:
+        # Keep only PCSK9.
         base_ht = hl.filter_intervals(
             base_ht,
             [
@@ -507,6 +538,9 @@ def join_hts(
     :param release_exists: Whether the release HT already exists.
     :return: Hail Table with datasets joined.
     """
+    if base_table not in tables:
+        raise ValueError(f"Base table {base_table} must be in tables to join: {tables}")
+
     logger.info(
         "Reading in %s to determine partition intervals for efficient join",
         base_table,
@@ -543,8 +577,8 @@ def join_hts(
     ]
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
-    # Track the dataset we've added as well as the source path.
-    # If release in tables, read in the included datasets json
+    # Track the datasets we've added as well as the source paths.
+    # If release HT is included in tables, read in the included datasets json
     # and update the keys to the path for any new tables
     included_datasets = {}
     if "release" in tables:
@@ -592,19 +626,19 @@ def main(args):
     ht = ht.annotate_globals(
         filtering_model=ht.filtering_model.drop("model_id"),
         vep_globals=ht.vep_globals.annotate(
-            gencode_version="Release 39",
-            mane_select_version="v0.95",
+            gencode_version=GENCODE_VERSION,
+            mane_select_version=MANE_SELECT_VERSION,
         ),
         tool_versions=ht.tool_versions.annotate(
-            dbsnp_version="b156",
-            sift_version="5.2.2",
-            polyphen_version="2.2.2",
+            dbsnp_version=DBSNP_VERSION,
+            sift_version=SIFT_VERSION,
+            polyphen_version=POLYPHEN_VERSION,
         ),
         vrs_versions=hl.struct(
             **{
-                "vrs_schema_version": "1.3.0",
-                "vrs_python_version": "0.8.4",
-                "seqrepo_version": "2018-11-26",
+                "vrs_schema_version": VRS_SCHEMA_VERSION,
+                "vrs_python_version": VRS_PYTHON_VERSION,
+                "seqrepo_version": SEQREPO_VERSION,
             },
         ),
         date=datetime.now().isoformat(),
@@ -617,7 +651,7 @@ def main(args):
     )
 
     output_path = (
-        qc_temp_prefix() + "release/gnomad.exomes.sites.test.ht"
+        f"{qc_temp_prefix()}release/gnomad.exomes.sites.test.ht"
         if args.test
         else release_sites().path
     )
