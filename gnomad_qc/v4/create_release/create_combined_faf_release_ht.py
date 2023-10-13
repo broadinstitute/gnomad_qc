@@ -98,14 +98,14 @@ def extract_freq_info(
         },
         ["group", "gen_anc", "sex"],
         combine_operator="or",
-        apply_keep_to_only_items_in_filter=True,
+        exact_match=True,
     )
     faf_meta, faf = filter_arrays_by_meta(
         ht.faf_meta,
         {"faf": ht.faf},
         ["group", "gen_anc"],
         combine_operator="or",
-        apply_keep_to_only_items_in_filter=True,
+        exact_match=True,
     )
     faf_meta, faf = filter_arrays_by_meta(
         hl.literal(faf_meta),
