@@ -1000,7 +1000,7 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
         hl.literal([{("gen_anc" if k == "pop" else k): m[k] for k in m} for m in meta])
         for meta in [freq_meta, faf_meta]
     ]
-    ht = ht.select_globals(
+    ht = ht.annotate_globals(
         freq_meta=freq_meta,
         faf_meta=faf_meta,
         faf_index_dict=make_freq_index_dict_from_meta(faf_meta),
