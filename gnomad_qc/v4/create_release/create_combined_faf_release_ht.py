@@ -381,6 +381,11 @@ def main(args):
                     lambda x: x.annotate(homozygote_count=hl.int32(x.homozygote_count))
                 )
             )
+            exomes_ht = exomes_ht.annotate(
+                freq=exomes_ht.freq.map(
+                    lambda x: x.annotate(homozygote_count=hl.int32(x.homozygote_count))
+                )
+            )
             exomes_ht = extract_freq_info(exomes_ht, faf_pops, "exomes")
             genomes_ht = extract_freq_info(genomes_ht, faf_pops, "genomes")
 
