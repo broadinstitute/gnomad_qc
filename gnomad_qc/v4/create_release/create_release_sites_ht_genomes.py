@@ -10,6 +10,7 @@ from gnomad.sample_qc.sex import adjust_sex_ploidy
 from gnomad.utils.annotations import (
     annotate_adj,
     annotate_freq,
+    bi_allelic_site_inbreeding_expr,
     faf_expr,
     gen_anc_faf_max_expr,
     generate_freq_group_membership_array,
@@ -920,8 +921,7 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     Merge call stats from the v3.1 release, the v3.1 AN of new v4.0 variants,
     samples with updated population labels, added samples, and removed samples.
 
-    Also, compute filtering allele frequencies ('faf'), 'grpmax', and 'gen_anc_faf_max'
-    on the merged call stats.
+    Also, compute filtering allele frequencies ('faf'), 'grpmax', 'gen_anc_faf_max' and 'InbreedingCoeff' on the merged call stats.
 
     :param ht: Table returned by `join_release_ht_with_subsets`.
     :param an_ht: Table with the allele number for new variants in the v4.0 release.
@@ -930,7 +930,10 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     logger.info("Updating AN Table HGDP pop labels and 'oth' -> 'remaining'...")
     an_ht = update_pop_labels(an_ht, POP_MAP)
 
-    logger.info("Merging call stats from diff pop samples and added samples...")
+    logger.info(
+        "Merging call stats from new variants of v3.1 release samples, from pop_diff 
+        samples and added samples..."
+    )
     global_array = ht.index_globals().global_array
     farrays = [ht.ann_array[i].freq for i in range(3)]
     fmeta = [global_array[i].freq_meta for i in range(4)]
@@ -943,7 +946,7 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     count_arrays.insert(1, [0] * hl.eval(hl.len(an_ht.freq_meta)))
 
     # Merge the call stats from the v3.1 release, v3.1 AN of new v4.0 variants,
-    # diff pop, and added samples.
+    # pop_diff, and added samples.
     freq_expr, freq_meta, sample_counts = merge_freq_arrays(
         farrays, fmeta[:4], count_arrays={"counts": count_arrays[:4]}
     )
@@ -984,11 +987,11 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
         ].faf95,
     ).drop("pop")
 
-    logger.info("Annotating 'faf', 'grpmax', and 'gen_anc_faf_max'...")
-    ht = ht.annotate(
+    logger.info("Annotating 'faf', 'grpmax', 'gen_anc_faf_max' and 'InbreedingCoeff'...")
         faf=faf,
         grpmax=grpmax,
         gen_anc_faf_max=gen_anc_faf_max_expr(faf, faf_meta),
+        InbreedingCoeff=bi_allelic_site_inbreeding_expr(callstats_expr=ht.freq[1],
     )
 
     logger.info(
