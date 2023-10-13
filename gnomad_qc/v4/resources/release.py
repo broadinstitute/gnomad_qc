@@ -11,7 +11,9 @@ from gnomad.resources.resource_utils import (
 from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v4.resources.constants import (
+    COMBINED_FAF_RELEASES,
     COVERAGE_RELEASES,
+    CURRENT_COMBINED_FAF_RELEASE,
     CURRENT_COVERAGE_RELEASE,
     CURRENT_RELEASE,
     RELEASES,
@@ -67,45 +69,22 @@ def qual_hists_json_path(release_version: str = CURRENT_RELEASE) -> str:
     return f"gs://gnomad/release/{release_version}/json/gnomad.exomes.v{release_version}.json"
 
 
-def combined_faf_release_ht_path(
-    release_version: str = CURRENT_RELEASE,
-    public: bool = False,
-) -> str:
-    """
-    Fetch filepath for the combined genome + exome FAF release Table.
-
-    :param release_version: Release version. Default is CURRENT_RELEASE.
-    :param public: Whether release sites Table path returned is from public or private
-        bucket. Default is False.
-    :return: File path for desired combined genome + exome FAF release Hail Table.
-    """
-    # if public:
-    #     if file_exists(combined_faf().versions[release_version].path):
-    #         return combined_faf().versions[release_version].path
-    #     else:
-    #         return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/joint/gnomad.joint.v{release_version}.faf.ht"
-    # else:
-    return f"gs://gnomad/release/{release_version}/ht/joint/gnomad.joint.v{release_version}.faf.ht"
-
-
-def get_combined_faf_release(public: bool = False) -> VersionedTableResource:
+def get_combined_faf_release(test: bool = False) -> VersionedTableResource:
     """
     Retrieve versioned resource for the combined genome + exome FAF release Table.
 
-    :param public: Whether release combined FAF Table path returned is from public or
-        private bucket. Default is False.
+    :param test: Whether to use a tmp path for testing. Default is False.
     :return: Combined genome + exome FAF release VersionedTableResource.
     """
     return VersionedTableResource(
-        default_version=CURRENT_RELEASE,
+        default_version=CURRENT_COMBINED_FAF_RELEASE,
         versions={
             release: TableResource(
-                path=combined_faf_release_ht_path(
-                    release_version=release,
-                    public=public,
+                path=(
+                    f"gs://gnomad{'-tmp' if test else ''}/release/{release}/ht/joint/gnomad.joint.v{release}.faf.ht"
                 )
             )
-            for release in RELEASES
+            for release in COMBINED_FAF_RELEASES
         },
     )
 

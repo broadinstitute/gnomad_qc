@@ -11,6 +11,8 @@ from gnomad.resources.resource_utils import (
 
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import (
+    COMBINED_FAF_RELEASES,
+    CURRENT_COMBINED_FAF_RELEASE,
     CURRENT_HGDP_TGP_RELEASE,
     CURRENT_VERSION,
     HGDP_TGP_RELEASES,
@@ -332,12 +334,12 @@ def get_combined_frequency(test: bool = False) -> VersionedTableResource:
     :return: Hail Table containing combined frequency annotations
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_COMBINED_FAF_RELEASE,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test)}/gnomad.joint.v{version}.frequencies.ht"
+                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.frequencies.ht"
             )
-            for version in VERSIONS
+            for version in COMBINED_FAF_RELEASES
         },
     )
 
@@ -365,12 +367,12 @@ def get_freq_comparison(method: str, test: bool = False) -> VersionedTableResour
         )
 
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_COMBINED_FAF_RELEASE,
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test)}/gnomad.joint.v{version}.compare_frequencies.{method}.ht"
+                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.compare_frequencies.{method}.ht"
             )
-            for version in VERSIONS
+            for version in COMBINED_FAF_RELEASES
         },
     )
 

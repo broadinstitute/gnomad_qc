@@ -107,7 +107,7 @@ def extract_freq_info(
     ht = ht.select(
         **{
             f"{prefix}_freq": ht.freq[:2].extend(array_exprs["freq"]),
-            f"{prefix}_faf": ht.faf[:2].extend(faf["faf"]),
+            f"{prefix}_faf": ht.faf[:1].extend(faf["faf"]),
         }
     )
     ht = ht.select_globals(
@@ -116,7 +116,7 @@ def extract_freq_info(
             f"{prefix}_freq_meta_sample_count": ht.freq_meta_sample_count[:2].extend(
                 array_exprs["freq_meta_sample_count"]
             ),
-            f"{prefix}_faf_meta": ht.faf_meta[:2].extend(ht.faf_meta),
+            f"{prefix}_faf_meta": ht.faf_meta[:1].extend(ht.faf_meta),
         }
     )
 
@@ -290,15 +290,13 @@ def perform_cmh_test(
 
 
 def get_combine_faf_resources(
-    overwrite: bool = False, test: bool = False, public: bool = False
+    overwrite: bool = False, test: bool = False
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the combined FAF resource creation pipeline.
 
     :param overwrite: Whether to overwrite existing resources. Default is False.
     :param test: Whether to use test resources. Default is False.
-    :param public: Whether to use the public finalized combined FAF resource. Default
-        is False.
     :return: PipelineResourceCollection containing resources for all steps of the
         combined FAF resource creation pipeline.
     """
@@ -335,9 +333,7 @@ def get_combine_faf_resources(
     )
     finalize_faf = PipelineStepResourceCollection(
         "--finalize-combined-faf-release",
-        output_resources={
-            "final_combined_faf_ht": get_combined_faf_release(public=public),
-        },
+        output_resources={"final_combined_faf_ht": get_combined_faf_release(test=test)},
         pipeline_input_steps=[combined_frequency, contingency_table_test, cmh_test],
     )
 
@@ -361,14 +357,11 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
-    test = args.test
     test_gene = args.test_gene
     overwrite = args.overwrite
     pops = list(set(POPS["v3"] + POPS["v4"]))
     faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX]
-    combine_faf_resources = get_combine_faf_resources(
-        overwrite, test or test_gene, args.public
-    )
+    combine_faf_resources = get_combine_faf_resources(overwrite, test_gene)
 
     try:
         if args.create_combined_frequency_table:
@@ -377,14 +370,17 @@ def main(args):
             exomes_ht = res.exomes_ht.ht()
             genomes_ht = res.genomes_ht.ht()
 
-            if test:
-                exomes_ht = res.exomes_freq_ht.ht()._filter_partitions(range(20))
-                genomes_ht = res.genomes_freq_ht.ht()._filter_partitions(range(20))
             if test_gene:
                 # filter to PCSK9 1:55039447-55064852 for testing.
                 exomes_ht = filter_gene_to_test(exomes_ht)
                 genomes_ht = filter_gene_to_test(genomes_ht)
 
+            # TODO: Need to resolve the type difference.
+            genomes_ht = genomes_ht.annotate(
+                freq=genomes_ht.freq.map(
+                    lambda x: x.annotate(homozygote_count=hl.int32(x.homozygote_count))
+                )
+            )
             exomes_ht = extract_freq_info(exomes_ht, faf_pops, "exomes")
             genomes_ht = extract_freq_info(genomes_ht, faf_pops, "genomes")
 
@@ -409,7 +405,7 @@ def main(args):
         if args.perform_cochran_mantel_haenszel_test:
             res = combine_faf_resources.cmh_test
             res.check_resource_existence()
-            ht = res.freq_ht.ht()
+            ht = res.comb_freq_ht.ht()
             ht = ht.select(
                 cochran_mantel_haenszel_test=perform_cmh_test(
                     ht,
@@ -441,11 +437,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--overwrite",
         help="Overwrite output files.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--test",
-        help="Filter Tables to only the first 20 partitions for testing.",
         action="store_true",
     )
     parser.add_argument(
@@ -489,11 +480,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--finalize-combined-faf-release",
         help="Finalize the combined FAF Table for release.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--public",
-        help="Whether to write the finalized Table to a public release path.",
         action="store_true",
     )
 
