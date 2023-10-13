@@ -117,7 +117,7 @@ FINALIZED_SCHEMA = {
 # Config is added as a function, so it is not evaluated until the function is called.
 def get_config(
     release_exists: bool = False,
-) -> Dict[str, dict[str, hl.expr.Expression]]:
+) -> Dict[str, Dict[str, hl.expr.Expression]]:
     """
     Get configuration dictionary.
 
@@ -267,7 +267,7 @@ def get_config(
     return config
 
 
-def custom_in_silico_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
+def custom_in_silico_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     """
     Get in silico predictors from VEP for release.
 
@@ -284,7 +284,7 @@ def custom_in_silico_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_region_flags_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
+def custom_region_flags_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     """
     Select region flags for release.
 
@@ -321,7 +321,7 @@ def custom_region_flags_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_filters_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
+def custom_filters_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     """
     Select gnomAD filter HT fields for release dataset.
 
@@ -344,7 +344,7 @@ def custom_filters_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_info_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
+def custom_info_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     """
     Select fields for info Hail Table annotation in release.
 
@@ -403,7 +403,7 @@ def custom_info_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_vep_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
+def custom_vep_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     """
     Select fields for VEP hail Table annotation in release.
 
@@ -426,7 +426,7 @@ def custom_vep_select(ht: hl.Table) -> dict[str, hl.expr.Expression]:
     return selects
 
 
-def get_select_global_fields(ht: hl.Table) -> dict[str, hl.expr.Expression]:
+def get_select_global_fields(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     """
     Generate a dictionary of globals to select by checking the config of all tables joined.
 
