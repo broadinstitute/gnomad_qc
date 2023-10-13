@@ -1,4 +1,16 @@
-"""Script to create release sites HT for v4.0 genomes."""
+"""
+Script to create frequencies HT for v4.0 genomes.
+
+This script is written specifically for the v4.0 genomes release to handle the
+addition and subtraction of samples from the HGDP + 1KG subset. The HGDP + 1KG
+subset has updated sample QC annotations. The addition of new samples from the
+densified MT will include new variants, which will require the recomputation of AN
+for the v3.1 releases samples, and merging it to call stats of the v3.1.2 release
+sites HT and of updated HGDP + 1KG subset. In addition, the code will also get the
+other call stats related annotations, including: filtering allele frequencies ('faf'),
+'grpmax', 'gen_anc_faf_max' and 'InbreedingCoeff' as done in v4.0 exomes.
+"""
+
 
 import argparse
 import logging
@@ -80,32 +92,6 @@ JOIN_FREQS = ["release", "pop_diff", "added", "subtracted"]
 """Frequency Tables to join for creation of the v4.0 genomes release sites HT."""
 FREQ_GLOBALS = ("freq_meta", "freq_meta_sample_count")
 """Global annotations on the frequency Table."""
-
-
-def remove_missing_vep_fields(vep_expr: hl.StructExpression) -> hl.StructExpression:
-    """
-    Remove fields from VEP 105 annotations that have been excluded in past releases or are missing in all rows.
-
-    :param vep_expr: StructExpression containing VEP 105 annotations.
-    :return: StructExpression containing VEP 105 annotations with missing fields removed.
-    """
-    vep_expr = vep_expr.drop("colocated_variants", "context")
-
-    vep_expr = vep_expr.annotate(
-        transcript_consequences=vep_expr.transcript_consequences.map(
-            lambda x: x.drop("minimised", "swissprot", "trembl", "uniparc")
-        )
-    )
-
-    for consequence in [
-        "intergenic_consequences",
-        "motif_feature_consequences",
-        "regulatory_feature_consequences",
-    ]:
-        vep_expr = vep_expr.annotate(
-            **{consequence: vep_expr[consequence].map(lambda x: x.drop("minimised"))}
-        )
-    return vep_expr
 
 
 def filter_to_test(
@@ -922,7 +908,8 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     Merge call stats from the v3.1 release, the v3.1 AN of new v4.0 variants,
     samples with updated population labels, added samples, and removed samples.
 
-    Also, compute filtering allele frequencies ('faf'), 'grpmax', 'gen_anc_faf_max' and 'InbreedingCoeff' on the merged call stats.
+    Also, compute filtering allele frequencies ('faf'), 'grpmax', 'gen_anc_faf_max' and
+    'InbreedingCoeff' on the merged call stats.
 
     :param ht: Table returned by `join_release_ht_with_subsets`.
     :param an_ht: Table with the allele number for new variants in the v4.0 release.
