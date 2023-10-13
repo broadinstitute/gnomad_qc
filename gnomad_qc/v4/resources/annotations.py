@@ -421,7 +421,7 @@ def hgdp_tgp_updated_callstats(
     subset: str, test: bool = False
 ) -> VersionedTableResource:
     """
-    Get the HGDP + 1KG/TGP subset release MatrixTableResource.
+    Get the HGDP + 1KG/TGP subset updated callstats TableResource.
 
     :param subset: The subset of the HGDP + 1KG/TGP release to return,
        must be "added", "subtracted", "pop_diff", "join", or "v3_release_an".
