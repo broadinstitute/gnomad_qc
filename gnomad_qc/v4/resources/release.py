@@ -247,3 +247,29 @@ def release_coverage(
             for release in COVERAGE_RELEASES[data_type]
         },
     )
+
+
+def get_validated_release_ht(
+    test: bool = False,
+    overwrite: bool = False,
+    data_type: str = "exomes",
+) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for validated sites-only release Table.
+
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param overwrite: Whether to overwrite existing files. Default is False.
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :return: Validated release Table
+    """
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            version: TableResource(
+                path=(
+                    f"{_release_root(version, data_type=data_type, test=test)}/gnomad.{data_type}.v{version}.validated_release.ht"
+                )
+            )
+            for version in RELEASES
+        },
+    )
