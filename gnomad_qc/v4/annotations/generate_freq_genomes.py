@@ -27,6 +27,7 @@ from gnomad.utils.annotations import (
     gen_anc_faf_max_expr,
     generate_freq_group_membership_array,
     merge_freq_arrays,
+    missing_callstats_expr,
     pop_max_expr,
     set_female_y_metrics_to_na_expr,
     update_structured_annotations,
@@ -990,6 +991,32 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
         freq_meta=freq_meta,
         faf_meta=faf_meta,
         faf_index_dict=make_freq_index_dict_from_meta(faf_meta),
+    )
+
+    return ht
+
+
+def set_downsampling_freq_missing(ht: hl.Table, new_variants_ht: hl.Table) -> hl.Table:
+    """
+    Set the downsampling call stats for new variants in `freq_ht` to missing.
+
+    :param ht: Table with the call stats for all variants in the v4.0 release.
+    :param new_variants_ht: Table with new variants in the v4.0 release.
+    :return: Table with the downsampling call stats for new variants set to missing.
+    """
+    downsampling_indices = hl.enumerate(ht.freq_meta).filter(
+        lambda i: i[1].keys().contains("downsampling")
+    )
+
+    ht = ht.annotate(
+        freq=hl.if_else(
+            hl.is_defined(new_variants_ht[ht.key]),
+            hl.map(
+                lambda x: missing_callstats_expr(),
+                downsampling_indices.map(lambda i: i[0]),
+            ),
+            ht.freq,
+        )
     )
 
     return ht
