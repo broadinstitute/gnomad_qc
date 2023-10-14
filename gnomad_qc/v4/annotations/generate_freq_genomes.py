@@ -1022,6 +1022,43 @@ def set_downsampling_freq_missing(ht: hl.Table, new_variants_ht: hl.Table) -> hl
     return ht
 
 
+def get_age_distribution(v3: hl.Table, meta: hl.Table) -> hl.expr.StructExpression:
+    """
+    Get the age_distribution for samples in `subset_updated_meta`.
+
+    :param v3: Table with the v3.1.2 release sample metadata.
+    :param meta: Table with the updated sample metadata for the HGDP + 1KG subset.
+    :return: Expression with the age distribution for samples in `subset_updated_meta`.
+    """
+    logger.info("Getting age distribution for v4.0 genomes release...")
+    v3 = v3.key_by()
+    v3_release_count = v3.filter(v3.release).count()
+    v3 = (
+        v3.select(
+            s=v3.s.replace("v3.1::", ""),
+            release=v3.release,
+            subsets=v3.subsets,
+            age=v3.project_meta.age,
+        )
+        .key_by("s")
+        .distinct()
+    )
+
+    v4_hgdp_tgp = meta.filter(meta.gnomad_release).select().select_globals()
+    v3_nonsubset = v3.filter(v3.release & ~v3.subsets.hgdp & ~v3.subsets.tgp)
+    v4_release = v3_nonsubset.union(v3.filter(hl.is_defined(v4_hgdp_tgp[v3.key])))
+    logger.info(
+        "There will be %s samples in the v4.0 genome release, compared to %s in v3.1 "
+        "genome release.",
+        v4_release.count(),
+        v3_release_count,
+    )
+
+    age_expr = v4_release.aggregate(hl.agg.hist(v4_release.age, 30, 80, 10))
+
+    return age_expr
+
+
 def get_v4_genomes_release_resources(
     test: bool, overwrite: bool
 ) -> PipelineResourceCollection:
