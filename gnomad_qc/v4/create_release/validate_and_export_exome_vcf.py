@@ -180,16 +180,15 @@ def unfurl_nested_annotations(
     )
 
     logger.info("Unfurling age hists...")
-    hist_idx = ht.histograms
-    # NOTE: THIS DOESNT WORK FIX IT
+    hist_idx = ht.histograms.age_hists
     age_hist_dict = {
-        {
-            f"{hist}_bin_freq": hl.delimit(hist_idx[hist].bin_freq, delimiter="|"),
-            f"{hist}_bin_edges": hl.delimit(hist_idx[hist].bin_edges, delimiter="|"),
-            f"{hist}_n_smaller": hist_idx[hist].n_smaller,
-            f"{hist}_n_larger": hist_idx[hist].n_larger,
-        }
+        f"{hist}_{f}": (
+            hl.delimit(hist_idx[hist][f], delimiter="|")
+            if "bin" in f
+            else hist_idx[hist][f]
+        )
         for hist in ["age_hist_het", "age_hist_hom"]
+        for f in hist_idx[hist].keys()
     }
     expr_dict.update(age_hist_dict)
 
