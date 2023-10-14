@@ -57,6 +57,21 @@ from gnomad_qc.v4.resources.release import (
     validated_release_ht,
 )
 
+# Add new site fields
+NEW_SITE_FIELDS = [
+    "monoallelic",
+    "singleton",  # NOTE: doesn't look like it was exported to VCF in V3.1 and is not part of gnomad_methods vcf module so maybe we drop it? Easy enough to look at AC?
+    "transmitted_singleton",
+]
+SITE_FIELD = deepcopy(SITE_FIELDS)
+SITE_FIELDS.extend(NEW_SITE_FIELDS)
+
+# Add updatedVQSR fields
+NEW_AS_VQSR_FIELDS = ["negative_train_site", "positive_train_site"]
+AS_VQSR_FIELDSS = deepcopy(AS_VQSR_FIELDS)
+AS_FIELDS.extend(NEW_AS_VQSR_FIELDS)
+
+
 POPS = deepcopy(POPS["v4"])
 SUBSETS = deepcopy(SUBSETS["v4"])
 
@@ -140,7 +155,6 @@ def unfurl_nested_annotations(
     :return: StructExpression containing variant annotations and their corresponding expressions and updated entries and set of frequency entries to remove
         to remove from the VCF.
     """
-    freq_entries_to_remove_vcf = set()
     expr_dict = {}
 
     # Unfurl freq index dict
@@ -149,25 +163,39 @@ def unfurl_nested_annotations(
     freq_idx = hl.eval(ht.freq_index_dict)
     expr_dict.update(
         {
-            f"{f}_{k}": ht.freq[i][f]
-            for f in ht.freq[0].keys()
+            f"{f if f != 'homozygote_count' else 'nhomalt'}_{k}": ht.freq[i][f]
             for k, i in freq_idx.items()
+            for f in ht.freq[0].keys()
         }
     )
 
-    # TODO: Previously in for loop where k was key from freq_meta_dict so
-    # update this to iterate through freq_index_dict maybe?
-    if k.split("-")[0] in entries_to_remove:
-        freq_entries_to_remove_vcf.update(combo_dict.keys())
+    logger.info("Unfurling joint freq data...")
+    joint_freq_idx = hl.eval(ht.joint_freq_index_dict)
+    expr_dict.update(
+        {
+            f"{f if f != 'homozygote_count' else 'nhomalt'}_{k}": ht.joint_freq[i][f]
+            for k, i in joint_freq_idx.items()
+            for f in ht._joint_freq[0].keys()
+        }
+    )
 
     logger.info("Adding grpmax data...")
     grpmax_idx = ht.grpmax.gnomad
     grpmax_dict = {"grpmax": grpmax_idx.gen_anc}
     grpmax_dict.update(
         {
-            (
-                f"{f}_grpmax" if f != "homozygote_count" else "nhomalt_grpmax"
-            ): grpmax_idx[f]
+            f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": grpmax_idx[f]
+            for f in [f for f in grpmax_idx._fields if f != "gen_anc"]
+        }
+    )
+    expr_dict.update(grpmax_dict)
+
+    logger.info("Adding joint grpmax data...")
+    grpmax_idx = ht.joint_grpmax
+    grpmax_dict = {"grpmax": grpmax_idx.gen_anc}
+    grpmax_dict.update(
+        {
+            f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": grpmax_idx[f]
             for f in [f for f in grpmax_idx._fields if f != "gen_anc"]
         }
     )
@@ -179,30 +207,41 @@ def unfurl_nested_annotations(
         {f"{f}_{k}": ht.faf[i][f] for f in ht.faf[0].keys() for k, i in faf_idx.items()}
     )
 
+    logger.info("Unfurling joint faf data...")
+    joint_faf_idx = hl.eval(ht.joint_faf_index_dict)
+    expr_dict.update(
+        {
+            f"{f}_{k}": ht.joint_faf[i][f]
+            for f in ht.joint_faf[0].keys()
+            for k, i in joint_faf_idx.items()
+        }
+    )
+
     logger.info("Unfurling age hists...")
     hist_idx = ht.histograms.age_hists
+    age_hists = ["age_hist_het", "age_hist_hom"]
     age_hist_dict = {
         f"{hist}_{f}": (
             hl.delimit(hist_idx[hist][f], delimiter="|")
             if "bin" in f
             else hist_idx[hist][f]
         )
-        for hist in ["age_hist_het", "age_hist_hom"]
+        for hist in age_hists
         for f in hist_idx[hist].keys()
     }
     expr_dict.update(age_hist_dict)
 
-    return hl.struct(**expr_dict), freq_entries_to_remove_vcf
+    return hl.struct(**expr_dict)
 
 
 def make_info_expr(
-    t: Union[hl.MatrixTable, hl.Table],
+    t: hl.Table,
     hist_prefix: str = "",
 ) -> Dict[str, hl.expr.Expression]:
     """
     Make Hail expression for variant annotations to be included in VCF INFO field.
 
-    :param t: Table/MatrixTable containing variant annotations to be reformatted for VCF export.
+    :param t: Table containing variant annotations to be reformatted for VCF export.
     :param hist_prefix: Prefix to use for histograms.
     :return: Dictionary containing Hail expressions for relevant INFO annotations.
     :rtype: Dict[str, hl.expr.Expression]
@@ -215,7 +254,7 @@ def make_info_expr(
     # Add AS annotations to info dict
     for field in AS_FIELDS:
         vcf_info_dict[field] = t["release_ht_info"][f"{field}"]
-    for field in VQSR_FIELDS:
+    for field in AS_VQSR_FIELDS:
         vcf_info_dict[field] = t["vqsr"][f"{field}"]
 
     # Add region_flag and allele_info fields to info dict
@@ -293,7 +332,9 @@ def prepare_ht_for_validation(
         release_ht_info=ht.info,
         info=info_struct,
         rsid=hl.str(";").join(ht.rsid),
-        vep=vep_struct_to_csq(ht.vep),
+        vep=vep_struct_to_csq(
+            ht.vep, has_polyphen_sift=False
+        ),  # TODO: Remove polyhen and sift from vep csq header in vcf
     )
     info_expr = make_info_expr(ht)
 
