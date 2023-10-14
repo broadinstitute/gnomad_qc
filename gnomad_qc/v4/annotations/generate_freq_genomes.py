@@ -1018,8 +1018,8 @@ def get_histograms(ht: hl.Table, v3_release: hl.Table) -> hl.Table:
             qual_hists=v3_release[ht.key].qual_hists,
             raw_qual_hists=v3_release[ht.key].raw_qual_hists,
             age_hists=hl.struct(
-                age_hists_het=v3_release[ht.key].age_hists_het,
-                age_hists_hom=v3_release[ht.key].age_hists_hom,
+                age_hist_het=v3_release[ht.key].age_hist_het,
+                age_hist_hom=v3_release[ht.key].age_hist_hom,
             ),
         )
     )
@@ -1181,6 +1181,10 @@ def get_v4_genomes_release_resources(
     update_release_callstats = PipelineStepResourceCollection(
         "--update-release-callstats",
         pipeline_input_steps=[join_callstats_for_update, compute_an_for_new_variants],
+        add_input_resources={
+            "v3.1 metadata": {"v3_meta_ht": v3_meta},
+            "v4.0 HGDP + 1KG meta": {"updated_meta_ht": hgdp_tgp_meta_updated},
+        },
         output_resources={
             "v4_freq_ht": v4_get_freq(data_type="genomes", test=test),
         },
@@ -1348,9 +1352,16 @@ def main(args):
         res.check_resource_existence()
 
         logger.info("Merging all call stats HTs for final v4.0 genomes call stats...")
-        generate_v4_genomes_callstats(
+        ht = generate_v4_genomes_callstats(
             res.freq_join_ht.ht(), res.v3_release_an_ht.ht()
-        ).write(res.v4_freq_ht.path, overwrite=overwrite)
+        )
+        ht = get_histograms(ht, v3_sites_ht)
+        ht = ht.annotate_globals(
+            age_distribution=get_age_distribution(
+                res.v3_meta_ht.ht(), res.updated_meta_ht.ht()
+            )
+        )
+        ht.write(res.v4_freq_ht.path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
