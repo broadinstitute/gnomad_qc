@@ -365,11 +365,14 @@ def prepare_ht_for_validation(
 
     if freq_entries_to_remove:
         ht = ht.annotate_globals(
-            vep_csq_header=VEP_CSQ_HEADER, freq_entries_to_remove=freq_entries_to_remove
+            vep_csq_header=process_vep_csq_header(VEP_CSQ_HEADER),
+            freq_entries_to_remove=freq_entries_to_remove,
         )
     else:
         ht = ht.annotate_globals(
-            vep_csq_header=VEP_CSQ_HEADER,
+            vep_csq_header=process_vep_csq_header(
+                VEP_CSQ_HEADER
+            ),  # TODO: Process this to drop polyphen and sift
             freq_entries_to_remove=hl.empty_set(hl.tstr),
         )
 
@@ -383,6 +386,19 @@ def prepare_ht_for_validation(
         )
 
     return ht
+
+
+def process_vep_csq_header(vep_csq_header: str = VEP_CSQ_HEADER) -> str:
+    """
+    Process VEP CSQ header string, delimited by |, to remove polyphen and sift annotations.
+
+    :param vep_csq_header: VEP CSQ header.
+    :return: Processed VEP CSQ header.
+    """
+    logger.info("Processing VEP CSQ header...")
+    vep_csq_header = vep_csq_header.split("|")
+    vep_csq_header = [f for f in vep_csq_header if f not in ["PolyPhen", "SIFT"]]
+    return vep_csq_header
 
 
 def main(args):  # noqa: D103
