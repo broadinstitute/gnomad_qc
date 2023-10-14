@@ -23,9 +23,7 @@ from gnomad.utils.vcf import (
     IN_SILICO_ANNOTATIONS_INFO_DICT,
     INFO_DICT,
     REGION_FLAG_FIELDS,
-    RF_FIELDS,
     SITE_FIELDS,
-    VQSR_FIELDS,
     VRS_FIELDS_DICT,
     add_as_info_dict,
     adjust_vcf_incompatible_types,
@@ -70,6 +68,17 @@ SITE_FIELDS.extend(NEW_SITE_FIELDS)
 NEW_AS_VQSR_FIELDS = ["negative_train_site", "positive_train_site"]
 AS_VQSR_FIELDSS = deepcopy(AS_VQSR_FIELDS)
 AS_FIELDS.extend(NEW_AS_VQSR_FIELDS)
+
+# Drop decoy, still doesnt exist on 38
+REGION_FLAG_FIELDS = deepcopy(REGION_FLAG_FIELDS)
+REGION_FLAG_FIELDS = remove_fields_from_constant(REGION_FLAG_FIELDS, ["decoy"])
+
+# Remove original alleles for containing non-releasable alleles
+ALLELE_TYPE_FIELDS = deepcopy(ALLELE_TYPE_FIELDS)
+MISSING_ALLELE_TYPE_FIELDS = ["original_alleles", "has_star"]
+ALLELE_TYPE_FIELDS = remove_fields_from_constant(
+    ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS
+)
 
 
 POPS = deepcopy(POPS["v4"])
@@ -247,13 +256,10 @@ def make_info_expr(
     :rtype: Dict[str, hl.expr.Expression]
     """
     vcf_info_dict = {}
-    # Add site-level annotations to vcf_info_dict
-    for field in SITE_FIELDS:
+    # Add site-level annotations and AS annotations to vcf_info_dict
+    for field in SITE_FIELDS + AS_FIELDS:
         vcf_info_dict[field] = t["release_ht_info"][f"{field}"]
 
-    # Add AS annotations to info dict
-    for field in AS_FIELDS:
-        vcf_info_dict[field] = t["release_ht_info"][f"{field}"]
     for field in AS_VQSR_FIELDS:
         vcf_info_dict[field] = t["vqsr"][f"{field}"]
 
@@ -263,6 +269,7 @@ def make_info_expr(
     for field in REGION_FLAG_FIELDS:
         vcf_info_dict[field] = t["region_flag"][f"{field}"]
 
+    # TODO: START HERE TOMORRROW, DOUBLE CHECK HIST UPDATES
     # Add underscore to hist_prefix if it isn't empty
     if hist_prefix != "":
         hist_prefix += "_"
@@ -276,13 +283,15 @@ def make_info_expr(
     for hist in HISTS:
         hist_type = f"{hist_prefix}qual_hists"
         hist_dict = {
-            f"{hist}_bin_freq": hl.delimit(t[hist_type][hist].bin_freq, delimiter="|"),
+            f"{hist}_bin_freq": hl.delimit(
+                t.histograms[hist_type][hist].bin_freq, delimiter="|"
+            ),
         }
         vcf_info_dict.update(hist_dict)
 
         if "dp" in hist:
             vcf_info_dict.update(
-                {f"{hist}_n_larger": t[hist_type][hist].n_larger},
+                {f"{hist}_n_larger": t.histograms[hist_type][hist].n_larger},
             )
 
     # Add in silico annotations to info dict
