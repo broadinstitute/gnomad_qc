@@ -993,6 +993,37 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
         faf_index_dict=make_freq_index_dict_from_meta(faf_meta),
     )
 
+    ht = set_downsampling_freq_missing(ht, an_ht)
+
+    return ht
+
+
+def get_histograms(ht: hl.Table, v3_release: hl.Table) -> hl.Table:
+    """
+    Get histograms for the v4.0 genomes release from the v3.1 release.
+
+    .. note:
+       We didn't compute the variant histograms for the v4.0 genomes release because
+       we did't densify the VDS for all the variants. The histograms for the new
+       variants will be missing, and the histograms for the variants included
+       in v3.1 release will be the same as the v3.1 release.
+
+    :param ht: Table with the call stats for the v4.0 genomes release.
+    :param v3_release: Table for the v3.1 release sites.
+    :return: Table with the histograms added for the v4.0 genomes release.
+    """
+    logger.info("Getting histograms for the v4.0 genomes release...")
+    ht = ht.annotate(
+        histograms=hl.struct(
+            qual_hists=v3_release[ht.key].qual_hists,
+            raw_qual_hists=v3_release[ht.key].raw_qual_hists,
+            age_hists=hl.struct(
+                age_hists_het=v3_release[ht.key].age_hists_het,
+                age_hists_hom=v3_release[ht.key].age_hists_hom,
+            ),
+        )
+    )
+
     return ht
 
 
