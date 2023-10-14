@@ -66,8 +66,7 @@ from gnomad_qc.v4.resources.sample_qc import relatedness as v4_relatedness
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger(
-    "Create v4.0 genomes release sites HT with updated HGDP/TGP "
-    "metadata and new annotations"
+    "Create v4.0 frequencies HT with updated HGDP/TGP metadata and new annotations"
 )
 logger.setLevel(logging.INFO)
 
@@ -97,20 +96,18 @@ FREQ_GLOBALS = ("freq_meta", "freq_meta_sample_count")
 def filter_to_test(
     t: Union[hl.Table, hl.MatrixTable, hl.vds.VariantDataset],
     gene_on_chrx: bool = False,
-    partitions: Optional[List[int]] = None,
 ) -> Union[hl.Table, hl.MatrixTable, hl.vds.VariantDataset]:
     """
-    Filter to a region in PCSK9 or PLCXD1 in Table or MatrixTable for testing purposes.
+    Filter to a region in PCSK9 or TRPC5 in Table or MatrixTable for testing purposes.
 
     :param t: Table or MatrixTable to filter.
-    :param gene_on_chrx: Whether to filter to PLCXD1, instead of PCSK9, for testing chrX.
-    :param partitions: Optional list of partitions to filter to before applying the
-        filter to PCSK9.
-    :return: Table or MatrixTable filtered to a region in PCSK9 or PLCXD1.
+    :param gene_on_chrx: Whether to filter to TRPC5 (in the non-PAR region), instead of
+    PCSK9, for testing chrX.
+    :return: Table or MatrixTable filtered to a region in PCSK9 or TRPC5.
     """
     if gene_on_chrx:
-        logger.info("Filtering to PLCXD1 on chrX in MT for testing purposes...")
-        test_locus = "chrX:285000-295000"
+        logger.info("Filtering to TRPC5 on chrX in MT for testing purposes...")
+        test_locus = "chrX:111776000-111786000"
     else:
         logger.info("Filtering to 10kb in PCSK9 in MT for testing purposes...")
         test_locus = "chr1:55039447-55064852"
@@ -118,16 +115,11 @@ def filter_to_test(
     test_interval = [hl.parse_locus_interval(test_locus, reference_genome="GRCh38")]
 
     if isinstance(t, hl.vds.VariantDataset):
-        if partitions is not None:
-            t = hl.vds.VariantDataset(
-                t.reference_data._filter_partitions(partitions),
-                t.variant_data._filter_partitions(partitions),
-            )
-        return hl.vds.filter_intervals(t, test_interval, split_reference_blocks=True)
+        t = hl.vds.filter_intervals(t, test_interval, split_reference_blocks=True)
     else:
-        if partitions is not None:
-            t = t._filter_partitions(partitions)
-        return hl.filter_intervals(t, test_interval)
+        t = hl.filter_intervals(t, test_interval)
+
+    return t
 
 
 def get_hgdp_tgp_related_to_nonsubset(
@@ -1170,7 +1162,6 @@ def main(args):
             v3_vds = filter_to_test(
                 v3_vds,
                 gene_on_chrx=gene_on_chrx,
-                partitions=[2183, 2184, 108583],
             )
 
     if args.get_related_to_nonsubset:
@@ -1284,7 +1275,7 @@ if __name__ == "__main__":
     )
     test_args.add_argument(
         "--test-x-gene",
-        help="Test on a subset of variants in PLCXD1 on chrX.",
+        help="Test on a subset of variants in TRPC5 on chrX.",
         action="store_true",
     )
 
