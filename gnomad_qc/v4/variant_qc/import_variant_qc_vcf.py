@@ -36,7 +36,7 @@ def import_variant_qc_vcf(
     :param array_elements_required: Value of array_elements_required to pass to
         hl.import_vcf.
     :param is_split: Whether the VCF is already split.
-    :deduplicate_check: Check for and remove duplicate variants.
+    :param deduplicate_check: Check for and remove duplicate variants.
     :return: HT containing variant QC results.
     """
     model_type = model_id.split("_")[0]
@@ -61,7 +61,7 @@ def import_variant_qc_vcf(
         original_count = ht.count()
         ht = ht.distinct()
         count_difference = original_count - ht.count()
-        logger.info(f"Differnce after ht.distinct() as: {count_difference}")
+        logger.info(f"Difference after ht.distinct() as: {count_difference}")
 
     unsplit_count = None
     if not is_split:
@@ -90,8 +90,8 @@ def import_variant_qc_vcf(
         split_ht = hl.split_multi_hts(unsplit_ht)
 
         split_ht = split_ht.annotate(
-            info=unsplit_ht.info.annotate(
-                **split_info_annotation(unsplit_ht.info, unsplit_ht.a_index)
+            info=split_ht.info.annotate(
+                **split_info_annotation(split_ht.info, split_ht.a_index)
             ),
         )
     else:
