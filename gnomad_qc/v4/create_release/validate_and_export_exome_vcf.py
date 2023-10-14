@@ -80,6 +80,15 @@ ALLELE_TYPE_FIELDS = remove_fields_from_constant(
     ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS
 )
 
+INSILICO_FIELDS = [
+    "cadd",
+    "revel_max",
+    "spliceai_max",
+    "pangolin_largest_ds",
+    "phylop",
+    "sift_max",
+    "polyphen_max",
+]
 
 POPS = deepcopy(POPS["v4"])
 SUBSETS = deepcopy(SUBSETS["v4"])
@@ -281,35 +290,31 @@ def make_info_expr(
     # _bin_edges for all hists
     # _n_larger for all hists EXCEPT DP hists
     for hist in HISTS:
-        hist_type = f"{hist_prefix}qual_hists"
         hist_dict = {
-            f"{hist}_bin_freq": hl.delimit(
-                t.histograms[hist_type][hist].bin_freq, delimiter="|"
-            ),
+            f"{hist}_bin_freq": hl.delimit(t.histograms[hist].bin_freq, delimiter="|"),
         }
         vcf_info_dict.update(hist_dict)
 
         if "dp" in hist:
             vcf_info_dict.update(
-                {f"{hist}_n_larger": t.histograms[hist_type][hist].n_larger},
+                {f"{hist}_n_larger": t.histograms[hist].n_larger},
             )
 
     # Add in silico annotations to info dict
-    vcf_info_dict["cadd_raw_score"] = t["cadd"]["raw_score"]
-    vcf_info_dict["cadd_phred"] = t["cadd"]["phred"]
-
-    vcf_info_dict["revel_score"] = t["revel"]["revel_score"]
-
-    # In the v3.1 release in silico files this was max_ds, but changed to
-    # splice_ai_score in releases after v3.1
-    vcf_info_dict["splice_ai_max_ds"] = t["splice_ai"]["splice_ai_score"]
-    vcf_info_dict["splice_ai_consequence"] = t["splice_ai"]["splice_consequence"]
-
-    vcf_info_dict["primate_ai_score"] = t["primate_ai"]["primate_ai_score"]
+    insilico_idx = t.in_silico_predictors
+    for field in INSILICO_FIELDS:
+        if field == "cadd":
+            vcf_info_dict[f"{field}_raw_score"] = insilico_idx[field]["raw_score"]
+            vcf_info_dict[f"{field}_phred"] = insilico_idx[field]["phred"]
+        else:
+            vcf_info_dict[field] = insilico_idx[field]
 
     # Add VRS annotations to info dict
     for field in VRS_FIELDS_DICT:
         vcf_info_dict[field] = t["release_ht_info"]["vrs"][field]
+
+    # Add vep annotations to info dict
+    vcf_info_dict["vep"] = t["vep"]
 
     return vcf_info_dict
 
@@ -356,7 +361,7 @@ def prepare_ht_for_validation(
     #   info struct (unfurled data obtained above),
     #   dbSNP rsIDs
     #   all VEP annotations
-    ht = ht.annotate(info=ht.info.annotate(**info_expr, vep=ht.vep))
+    ht = ht.annotate(info=ht.info.annotate(**info_expr))
 
     if freq_entries_to_remove:
         ht = ht.annotate_globals(
@@ -421,3 +426,23 @@ def main(args):  # noqa: D103
     finally:
         logger.info("Copying log to logging bucket...")
         hl.copy_log(get_logging_path("validity_checks_and_export"))
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--validate-release-ht",
+        help="Run release HT validation",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--overwrite",
+        help="Overwrite all data and start from raw inputs",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test",
+        help="Use test resources",
+        action="store_true",
+    )
+    main(parser.parse_args())
