@@ -67,7 +67,7 @@ TABLES_FOR_RELEASE = [
     # "joint_faf",
 ]
 
-INSILICO_PREDICTORS = ["cadd", "spliceai", "pangolin", "revel", "phylop"]
+INSILICO_PREDICTORS = ["cadd", "revel", "spliceai", "pangolin", "phylop"]
 
 FINALIZED_SCHEMA = {
     "globals": [
