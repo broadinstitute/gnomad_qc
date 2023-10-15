@@ -419,28 +419,25 @@ def main(args):  # noqa: D103
 
             ht = prepare_ht_for_validation(ht)
 
-            validated_ht = validate_release_t(
+            validate_release_t(
                 ht,
                 subsets=SUBSETS,
                 pops=POPS,
                 monoallelic_expr=ht.info.monoallelic,
-                verbose=True,
+                verbose=args.verbose,
                 delimiter="_",
                 sample_sum_sets_and_pops={"non_ukb": POPS},
-                variant_filter_field="vqsr_results",
+                variant_filter_field="AS_VQSR",
                 problematic_regions=["lcr", "segdup", "non_par"],
                 single_filter_count=True,
             )
 
             # Note: Checkpoint saves time for the final export by not needing to run the
-            # VCF HT prep on each chromosome
-            logger.info(
-                "Checkpointing prepared VCF HT for validity checks and export..."
-            )
-            validated_ht = validated_ht.checkpoint(
-                res.validated_ht.path, overwrite=True
-            )
-            validated_ht.describe()
+            # VCF HT prep on each chromosome -- more needs to happen before ready for
+            # export, but this is an intermediate write.
+            logger.info("Writing prepared VCF HT for validity checks and export...")
+            ht.describe()
+            ht.write(res.validated_ht.path, overwrite=True)
 
     finally:
         logger.info("Copying log to logging bucket...")
@@ -452,6 +449,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--validate-release-ht",
         help="Run release HT validation",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--verbose",
+        help="Log successes in addition to failures during validation",
         action="store_true",
     )
     parser.add_argument(
