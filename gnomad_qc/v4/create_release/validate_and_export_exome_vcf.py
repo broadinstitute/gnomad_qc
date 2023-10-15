@@ -67,11 +67,18 @@ SITE_FIELDS.extend(NEW_SITE_FIELDS)
 # Add updatedVQSR fields
 NEW_AS_VQSR_FIELDS = ["negative_train_site", "positive_train_site"]
 AS_VQSR_FIELDSS = deepcopy(AS_VQSR_FIELDS)
-AS_FIELDS.extend(NEW_AS_VQSR_FIELDS)
+AS_VQSR_FIELDS.extend(NEW_AS_VQSR_FIELDS)
+
+# Update inbreeding coeff
+AS_FIELDS = remove_fields_from_constant(AS_FIELDS, ["InbreedingCoeff"])
+AS_FIELDS.append("inbreeding_coeff")
 
 # Drop decoy, still doesnt exist on 38
 REGION_FLAG_FIELDS = deepcopy(REGION_FLAG_FIELDS)
-REGION_FLAG_FIELDS = remove_fields_from_constant(REGION_FLAG_FIELDS, ["decoy"])
+REGION_FLAG_FIELDS = remove_fields_from_constant(
+    REGION_FLAG_FIELDS, ["decoy", "nonpar"]
+)
+REGION_FLAG_FIELDS.append("non_par")
 
 # Remove original alleles for containing non-releasable alleles
 ALLELE_TYPE_FIELDS = deepcopy(ALLELE_TYPE_FIELDS)
@@ -83,7 +90,7 @@ ALLELE_TYPE_FIELDS = remove_fields_from_constant(
 INSILICO_FIELDS = [
     "cadd",
     "revel_max",
-    "spliceai_max",
+    "spliceai_ds_max",
     "pangolin_largest_ds",
     "phylop",
     "sift_max",
@@ -270,15 +277,16 @@ def make_info_expr(
         vcf_info_dict[field] = t["release_ht_info"][f"{field}"]
 
     for field in AS_VQSR_FIELDS:
-        vcf_info_dict[field] = t["vqsr"][f"{field}"]
+        vcf_info_dict[field] = t["vqsr_results"][f"{field}"]
 
     # Add region_flag and allele_info fields to info dict
     for field in ALLELE_TYPE_FIELDS:
         vcf_info_dict[field] = t["allele_info"][f"{field}"]
     for field in REGION_FLAG_FIELDS:
-        vcf_info_dict[field] = t["region_flag"][f"{field}"]
+        vcf_info_dict[field] = t["region_flag"][
+            f"{field}" if field != "nonpar" else "non_par"
+        ]
 
-    # TODO: START HERE TOMORRROW, DOUBLE CHECK HIST UPDATES
     # Add underscore to hist_prefix if it isn't empty
     if hist_prefix != "":
         hist_prefix += "_"
@@ -291,13 +299,15 @@ def make_info_expr(
     # _n_larger for all hists EXCEPT DP hists
     for hist in HISTS:
         hist_dict = {
-            f"{hist}_bin_freq": hl.delimit(t.histograms[hist].bin_freq, delimiter="|"),
+            f"{hist}_bin_freq": hl.delimit(
+                t.histograms.qual_hists[hist].bin_freq, delimiter="|"
+            ),
         }
         vcf_info_dict.update(hist_dict)
 
         if "dp" in hist:
             vcf_info_dict.update(
-                {f"{hist}_n_larger": t.histograms[hist].n_larger},
+                {f"{hist}_n_larger": t.histograms.qual_hists[hist].n_larger},
             )
 
     # Add in silico annotations to info dict
@@ -350,10 +360,6 @@ def prepare_ht_for_validation(
             ht.vep, has_polyphen_sift=False
         ),  # TODO: Remove polyhen and sift from vep csq header in vcf
     )
-    info_expr = make_info_expr(ht)
-
-    ht = ht.annotate(info=ht.info.annotate(**info_expr, vep=ht.vep))
-
     # Add variant annotations to INFO field
     # This adds the following:
     #   region flag for problematic regions
@@ -361,7 +367,7 @@ def prepare_ht_for_validation(
     #   info struct (unfurled data obtained above),
     #   dbSNP rsIDs
     #   all VEP annotations
-    ht = ht.annotate(info=ht.info.annotate(**info_expr))
+    ht = ht.annotate(info=ht.info.annotate(**make_info_expr(ht)))
 
     if freq_entries_to_remove:
         ht = ht.annotate_globals(
@@ -420,14 +426,27 @@ def main(args):  # noqa: D103
             res = resources.validate_release
             res.check_resource_existence()
 
-            ht = release_sites().ht()
+            ht = hl.read_table(
+                "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/release/gnomad.exomes.sites.test.ht"
+            )  # release_sites().ht()
             if test:
                 logger.info("Filtering to test partitions...")
                 ht = filter_to_test(ht)
 
             ht = prepare_ht_for_validation(ht)
 
-            validated_ht = validate_release_t(ht)
+            validated_ht = validate_release_t(
+                ht,
+                subsets=SUBSETS,
+                pops=POPS,
+                monoallelic_expr=ht.info.monoallelic,
+                verbose=True,
+                delimiter="_",
+                sample_sum_sets_and_pops={"non_ukb": POPS},
+                variant_filter_field="vqsr_results",
+                problematic_regions=["lcr", "segdup", "non_par"],
+                single_filter_count=True,
+            )
 
             # Note: Checkpoint saves time for the final export by not needing to run the
             # VCF HT prep on each chromosome
