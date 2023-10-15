@@ -328,7 +328,7 @@ def get_combine_faf_resources(
     # Create resource collection for each step of the pipeline.
     combined_frequency = PipelineStepResourceCollection(
         "--create-combined-frequency-table",
-        output_resources={"combo_freq_ht": get_combined_frequency(test=test)},
+        output_resources={"comb_freq_ht": get_combined_frequency(test=test)},
         input_resources={
             "generate_freq.py": {"exomes_ht": get_freq()},
             "create_release_sites_ht_genomes.py": {
@@ -409,12 +409,19 @@ def main(args):
             genomes_ht = extract_freq_info(genomes_ht, faf_pops, "genomes")
 
             ht = get_joint_freq_and_faf(genomes_ht, exomes_ht)
-            ht.write(res.combo_freq_ht.path, overwrite=overwrite)
+            ht = ht.annotate_globals(
+                versions=hl.struct(
+                    exomes=res.exomes_ht.default_version,
+                    genomes=res.genomes_ht.default_version,
+                )
+            )
+            ht.describe()
+            ht.write(res.comb_freq_ht.path, overwrite=overwrite)
 
         if args.perform_contingency_table_test:
             res = combine_faf_resources.contingency_table_test
             res.check_resource_existence()
-            ht = res.combo_freq_ht.ht()
+            ht = res.comb_freq_ht.ht()
             ht = ht.select(
                 contingency_table_test=perform_contingency_table_test(
                     ht.genomes_freq,
@@ -422,6 +429,7 @@ def main(args):
                     min_cell_count=args.min_cell_count,
                 )
             )
+            ht.describe()
             ht.write(res.contingency_table_ht.path, overwrite=overwrite)
 
         if args.perform_cochran_mantel_haenszel_test:
@@ -438,12 +446,20 @@ def main(args):
                     pops=faf_pops,
                 ),
             )
+            ht.describe()
             ht.write(res.cmh_ht.path, overwrite=overwrite)
 
         if args.finalize_combined_faf_release:
-            raise NotImplementedError(
-                "Finalizing combined FAF release is not yet implemented."
+            res = combine_faf_resources.cmh_test
+            res.check_resource_existence()
+
+            ht = res.comb_freq_ht.ht()
+            ht = ht.annotate(
+                **res.contingency_table_ht.ht()[ht.key].contingency_table_test,
+                **res.cmh_ht.ht()[ht.key].cochran_mantel_haenszel_test,
             )
+            ht.describe()
+            ht.write(res.final_combined_faf_ht.path, overwrite=overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")
