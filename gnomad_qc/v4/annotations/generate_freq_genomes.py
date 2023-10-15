@@ -17,7 +17,11 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import POPS_TO_REMOVE_FOR_POPMAX, SUBSETS
+from gnomad.resources.grch38.gnomad import (
+    DOWNSAMPLINGS,
+    POPS_TO_REMOVE_FOR_POPMAX,
+    SUBSETS,
+)
 from gnomad.sample_qc.sex import adjust_sex_ploidy
 from gnomad.utils.annotations import (
     annotate_adj,
@@ -994,6 +998,7 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     )
 
     ht = set_downsampling_freq_missing(ht, an_ht)
+    ht = ht.annotate_globals(downsamplings=DOWNSAMPLINGS["v3"])
 
     return ht
 
