@@ -3,57 +3,31 @@
 import argparse
 import logging
 from copy import deepcopy
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set
 
 import hail as hl
 from gnomad.assessment.validity_checks import validate_release_t
-from gnomad.resources.grch38.gnomad import POPS, SEXES, SUBSETS
-from gnomad.resources.resource_utils import DataException
+from gnomad.resources.grch38.gnomad import POPS, SUBSETS
 from gnomad.sample_qc.ancestry import POP_NAMES
-from gnomad.utils.file_utils import file_exists
 from gnomad.utils.filtering import remove_fields_from_constant
 from gnomad.utils.vcf import (
     ALLELE_TYPE_FIELDS,
     AS_FIELDS,
     AS_VQSR_FIELDS,
-    ENTRIES,
     FAF_POPS,
-    FORMAT_DICT,
     HISTS,
-    IN_SILICO_ANNOTATIONS_INFO_DICT,
-    INFO_DICT,
     REGION_FLAG_FIELDS,
     SITE_FIELDS,
     VRS_FIELDS_DICT,
-    add_as_info_dict,
-    adjust_vcf_incompatible_types,
-    build_vcf_export_reference,
-    create_label_groups,
-    make_hist_bin_edges_expr,
-    make_hist_dict,
-    make_info_dict,
-    make_vcf_filter_dict,
-    rekey_new_reference,
 )
 from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
-from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
 )
-from gnomad_qc.v4.resources.basics import (
-    get_checkpoint_path,
-    get_logging_path,
-    qc_temp_prefix,
-)
-from gnomad_qc.v4.resources.release import (
-    append_to_vcf_header_path,
-    release_header_path,
-    release_sites,
-    release_vcf_path,
-    validated_release_ht,
-)
+from gnomad_qc.v4.resources.basics import get_logging_path
+from gnomad_qc.v4.resources.release import release_sites, validated_release_ht
 
 # Add new site fields
 NEW_SITE_FIELDS = [
@@ -101,7 +75,10 @@ POPS = deepcopy(POPS["v4"])
 SUBSETS = deepcopy(SUBSETS["v4"])
 
 # Remove unnecessary pop names from POP_NAMES dict
-POPS = {pop: POP_NAMES[pop] for pop in POPS}
+POPS = {
+    pop: POP_NAMES[pop] if pop != "remaining" else "Remaining individuals"
+    for pop in POPS
+}
 
 # Remove unnecessary pop names from FAF_POPS dict
 FAF_POPS = {pop: POP_NAMES[pop] for pop in FAF_POPS}
@@ -129,13 +106,18 @@ def get_export_resources(
         pipeline_name="validate_and_export_vcf",
         overwrite=overwrite,
     )
-    validate_release = PipelineStepResourceCollection(
+    validate_release_ht = PipelineStepResourceCollection(
         "--validate-release-ht",
+        input_resources={
+            "release_ht": [
+                "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/release/gnomad.exomes.sites.test.ht"
+            ]
+        },  # release_sites().ht()},
         output_resources={"validated_ht": validated_release_ht(test=test)},
     )
     export_pipeline.add_steps(
         {
-            "validate_ht": validate_release,
+            "validate_release_ht": validate_release_ht,
         }
     )
     return export_pipeline
@@ -200,7 +182,7 @@ def unfurl_nested_annotations(
         {
             f"{f if f != 'homozygote_count' else 'nhomalt'}_{k}": ht.joint_freq[i][f]
             for k, i in joint_freq_idx.items()
-            for f in ht._joint_freq[0].keys()
+            for f in ht.joint_freq[0].keys()
         }
     )
 
@@ -256,7 +238,7 @@ def unfurl_nested_annotations(
     }
     expr_dict.update(age_hist_dict)
 
-    return hl.struct(**expr_dict)
+    return hl.struct(**expr_dict), entries_to_remove
 
 
 def make_info_expr(
@@ -330,7 +312,9 @@ def make_info_expr(
 
 
 def prepare_ht_for_validation(
-    ht: hl.Table, freq_entries_to_remove: List[str], vcf_info_reorder: List[str]
+    ht: hl.Table,
+    freq_entries_to_remove: Optional[List[str]] = None,
+    vcf_info_reorder: Optional[List[str]] = None,
 ) -> hl.Table:
     """
     Prepare HT for validity checks and export.
@@ -423,15 +407,15 @@ def main(args):  # noqa: D103
     try:
         if args.validate_release_ht:
             logger.info("Running release HT validation...")
-            res = resources.validate_release
+            res = resources.validate_release_ht
             res.check_resource_existence()
 
             ht = hl.read_table(
                 "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/release/gnomad.exomes.sites.test.ht"
             )  # release_sites().ht()
-            if test:
-                logger.info("Filtering to test partitions...")
-                ht = filter_to_test(ht)
+            # if test:
+            #    logger.info("Filtering to test partitions...")
+            #    ht = filter_to_test(ht)
 
             ht = prepare_ht_for_validation(ht)
 
