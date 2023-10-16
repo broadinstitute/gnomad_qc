@@ -77,15 +77,13 @@ def extract_freq_info(
         - freq_meta: {prefix}_freq_meta
         - faf_meta: {prefix}_faf_meta
 
-    This only keeps variants that PASS filtering.
+    This only keeps variants that pass variant QC filtering.
 
     :param ht: Table with frequency and FAF information.
     :param faf_pops: List of populations to include in the reduced FAF arrays.
     :param prefix: Prefix to add to each of the filtered annotations.
     :return: Table with filtered frequency and FAF information.
     """
-    # Keep full gnomAD callset adj [0], raw [1], and ancestry and/or sex specific adj
-    # frequencies.
     logger.info(
         "Keeping only frequencies for adj, raw, adj by pop, adj by sex, and adj by "
         "pop/sex..."
@@ -107,6 +105,7 @@ def extract_freq_info(
         combine_operator="or",
         exact_match=True,
     )
+    logger.info("Filtering to only passed faf pops: %s", faf_pops)
     faf_meta, faf = filter_arrays_by_meta(
         hl.literal(faf_meta),
         {"faf": faf["faf"]},
@@ -330,7 +329,7 @@ def get_combine_faf_resources(
         "--create-combined-frequency-table",
         output_resources={"comb_freq_ht": get_combined_frequency(test=test)},
         input_resources={
-            "generate_freq.py": {"exomes_ht": get_freq()},
+            "generate_freq.py": {"exomes_ht": get_freq(test=test)},
             "create_release_sites_ht_genomes.py": {
                 "genomes_ht": get_freq(test=test, data_type="genomes")
             },

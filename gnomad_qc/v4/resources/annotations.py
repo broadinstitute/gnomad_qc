@@ -333,7 +333,7 @@ def get_combined_frequency(test: bool = False) -> VersionedTableResource:
     Get the combined v4 genome and exome frequency annotation VersionedTableResource.
 
     :param test: Whether to use a tmp path for testing.
-    :return: Hail Table containing combined frequency annotations
+    :return: Hail Table containing combined frequency annotations.
     """
     return VersionedTableResource(
         CURRENT_COMBINED_FAF_RELEASE,
