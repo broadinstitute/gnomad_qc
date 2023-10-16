@@ -40,7 +40,11 @@ from gnomad_qc.v4.resources.annotations import (
 )
 from gnomad_qc.v4.resources.basics import calling_intervals, qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v4.resources.release import included_datasets_json_path, release_sites
+from gnomad_qc.v4.resources.release import (
+    get_combined_faf_release,
+    included_datasets_json_path,
+    release_sites,
+)
 from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
@@ -64,7 +68,7 @@ TABLES_FOR_RELEASE = [
     "region_flags",
     "in_silico",
     "vep",
-    # "joint_faf",
+    "joint_faf",
 ]
 
 INSILICO_PREDICTORS = ["cadd", "revel", "spliceai", "pangolin", "phylop"]
@@ -76,11 +80,11 @@ FINALIZED_SCHEMA = {
         "freq_meta_sample_count",
         "faf_meta",
         "faf_index_dict",
-        # "joint_freq_meta",
-        # "joint_freq_index_dict",
-        # "joint_freq_meta_sample_count",
-        # "joint_faf_meta",
-        # "joint_faf_index_dict",
+        "joint_freq_meta",
+        "joint_freq_index_dict",
+        "joint_freq_meta_sample_count",
+        "joint_faf_meta",
+        "joint_faf_index_dict",
         "age_distribution",
         "downsamplings",
         "filtering_model",
@@ -96,9 +100,10 @@ FINALIZED_SCHEMA = {
         "grpmax",
         "faf",
         "fafmax",
-        # "joint_freq",
-        # "joint_grpmax",
-        # "joint_faf",
+        "joint_freq",
+        "joint_grpmax",
+        "joint_faf",
+        "joint_fafmax",
         "a_index",
         "was_split",
         "rsid",
@@ -237,23 +242,18 @@ def get_config(
         "release": {
             "path": release_sites().path,
         },
-        # TODO: Fill this in once we have the combined freq HT
-        # "joint_faf": {
-        #     "ht": None,
-        #     "path": None,
-        #     "select": [
-        #         "joint_freq",
-        #          "joint_grpmax",
-        #           "joint_faf"
-        #     ],
-        #     "select_globals": [
-        #           "joint_freq_meta",
-        #           "joint_freq_index_dict",
-        #           "joint_freq_meta_sample_count",
-        #           "joint_faf_meta",
-        #           "joint_faf_index_dict",
-        #     ],
-        # },
+        "joint_faf": {
+            "ht": get_combined_faf_release().ht(),
+            "path": get_combined_faf_release().path,
+            "select": ["joint_freq", "joint_grpmax", "joint_faf", "joint_fafmax"],
+            "select_globals": [
+                "joint_freq_meta",
+                "joint_freq_index_dict",
+                "joint_freq_meta_sample_count",
+                "joint_faf_meta",
+                "joint_faf_index_dict",
+            ],
+        },
     }
 
     if release_exists:
