@@ -107,7 +107,7 @@ def filter_to_test(
 
     :param t: Table or MatrixTable to filter.
     :param gene_on_chrx: Whether to filter to TRPC5 (in the non-PAR region), instead of
-    PCSK9, for testing chrX.
+        PCSK9, for testing chrX.
     :return: Table or MatrixTable filtered to a region in PCSK9 or TRPC5.
     """
     if gene_on_chrx:
@@ -972,6 +972,8 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     )
     ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
 
+    ht = set_downsampling_freq_missing(ht, an_ht)
+
     # Compute filtering allele frequency (faf), grpmax, and gen_anc_faf_max.
     faf, faf_meta = faf_expr(ht.freq, ht.freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
     grpmax = pop_max_expr(ht.freq, ht.freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
@@ -1005,36 +1007,35 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
         freq_meta=freq_meta,
         faf_meta=faf_meta,
         faf_index_dict=make_freq_index_dict_from_meta(faf_meta),
+        downsamplings=DOWNSAMPLINGS["v3"],
     )
-
-    ht = set_downsampling_freq_missing(ht, an_ht)
-    ht = ht.annotate_globals(downsamplings=DOWNSAMPLINGS["v3"])
 
     return ht
 
 
-def get_histograms(ht: hl.Table, v3_release: hl.Table) -> hl.Table:
+def get_histograms(ht: hl.Table, v3_sites_ht: hl.Table) -> hl.Table:
     """
     Get histograms for the v4.0 genomes release from the v3.1 release.
 
     .. note:
        We didn't compute the variant histograms for the v4.0 genomes release because
-       we did't densify the VDS for all the variants. The histograms for the new
+       we didn't densify the VDS for all the variants. The histograms for the new
        variants will be missing, and the histograms for the variants included
        in v3.1 release will be the same as the v3.1 release.
 
     :param ht: Table with the call stats for the v4.0 genomes release.
-    :param v3_release: Table for the v3.1 release sites.
+    :param v3_sites_ht: Table for the v3.1 release sites.
     :return: Table with the histograms added for the v4.0 genomes release.
     """
     logger.info("Getting histograms for the v4.0 genomes release...")
+    v3_sites = v3_sites_ht[ht.key]
     ht = ht.annotate(
         histograms=hl.struct(
-            qual_hists=v3_release[ht.key].qual_hists,
-            raw_qual_hists=v3_release[ht.key].raw_qual_hists,
+            qual_hists=v3_sites.qual_hists,
+            raw_qual_hists=v3_sites.raw_qual_hists,
             age_hists=hl.struct(
-                age_hist_het=v3_release[ht.key].age_hist_het,
-                age_hist_hom=v3_release[ht.key].age_hist_hom,
+                age_hist_het=v3_sites.age_hist_het,
+                age_hist_hom=v3_sites.age_hist_hom,
             ),
         )
     )
@@ -1044,22 +1045,25 @@ def get_histograms(ht: hl.Table, v3_release: hl.Table) -> hl.Table:
 
 def set_downsampling_freq_missing(ht: hl.Table, new_variants_ht: hl.Table) -> hl.Table:
     """
-    Set the downsampling call stats for new variants in `freq_ht` to missing.
+    Set the downsampling call stats for new variants in `ht` to missing.
 
-    :param ht: Table with the call stats for all variants in the v4.0 release.
-    :param new_variants_ht: Table with new variants in the v4.0 release.
+    :param ht: Table with the call stats for all variants in the v4.0 genomes release.
+    :param new_variants_ht: Table with new variants in the v4.0 genomes release.
     :return: Table with the downsampling call stats for new variants set to missing.
     """
-    downsampling_indices = hl.enumerate(ht.freq_meta).filter(
-        lambda i: i[1].keys().contains("downsampling")
+    downsampling_indices = hl.range(hl.len(ht.freq_meta)).filter(
+        lambda i: ht.freq_meta[i].contains("downsampling")
     )
 
     ht = ht.annotate(
         freq=hl.if_else(
             hl.is_defined(new_variants_ht[ht.key]),
-            hl.map(
-                lambda x: missing_callstats_expr(),
-                downsampling_indices.map(lambda i: i[0]),
+            hl.enumerate(ht.freq).map(
+                lambda i: hl.if_else(
+                    downsampling_indices.contains(i[0]),
+                    missing_callstats_expr(),
+                    i[1],
+                )
             ),
             ht.freq,
         )
@@ -1068,39 +1072,36 @@ def set_downsampling_freq_missing(ht: hl.Table, new_variants_ht: hl.Table) -> hl
     return ht
 
 
-def get_age_distribution(v3: hl.Table, meta: hl.Table) -> hl.expr.StructExpression:
+def get_age_distribution(
+    v3_meta_ht: hl.Table, subset_updated_meta_ht: hl.Table
+) -> hl.expr.StructExpression:
     """
-    Get the age_distribution for samples in `subset_updated_meta`.
+    Get the updated 'age_distribution' annotation for v4.0 genomes.
 
-    :param v3: Table with the v3.1.2 release sample metadata.
-    :param meta: Table with the updated sample metadata for the HGDP + 1KG subset.
+    :param v3_meta_ht: Table with the v3.1.2 release sample metadata.
+    :param subset_updated_meta_ht: Table with the updated sample metadata for the
+       HGDP + 1KG subset.
     :return: Expression with the age distribution for samples in `subset_updated_meta`.
     """
     logger.info("Getting age distribution for v4.0 genomes release...")
-    v3 = v3.key_by()
-    v3_release_count = v3.filter(v3.release).count()
-    v3 = (
-        v3.select(
-            s=v3.s.replace("v3.1::", ""),
-            release=v3.release,
-            subsets=v3.subsets,
-            age=v3.project_meta.age,
-        )
-        .key_by("s")
-        .distinct()
+    v3_release_count = v3_meta_ht.filter(v3_meta_ht.release).count()
+    v4_meta_ht = v3_meta_ht.select(
+        age=v3_meta_ht.project_meta.age,
+        release=hl.if_else(
+            v3_meta_ht.subsets.tgp | v3_meta_ht.subsets.hgdp,
+            subset_updated_meta_ht[v3_meta_ht.s.replace("v3.1::", "")].gnomad_release,
+            v3_meta_ht.release,
+        ),
     )
-
-    v4_hgdp_tgp = meta.filter(meta.gnomad_release).select().select_globals()
-    v3_nonsubset = v3.filter(v3.release & ~v3.subsets.hgdp & ~v3.subsets.tgp)
-    v4_release = v3_nonsubset.union(v3.filter(hl.is_defined(v4_hgdp_tgp[v3.key])))
+    v4_meta_ht = v4_meta_ht.filter(v4_meta_ht.release)
     logger.info(
         "There will be %s samples in the v4.0 genome release, compared to %s in v3.1 "
         "genome release.",
-        v4_release.count(),
+        v4_meta_ht.count(),
         v3_release_count,
     )
 
-    age_expr = v4_release.aggregate(hl.agg.hist(v4_release.age, 30, 80, 10))
+    age_expr = v4_meta_ht.aggregate(hl.agg.hist(v4_meta_ht.age, 30, 80, 10))
 
     return age_expr
 
@@ -1195,10 +1196,13 @@ def get_v4_genomes_release_resources(
     )
     update_release_callstats = PipelineStepResourceCollection(
         "--update-release-callstats",
-        pipeline_input_steps=[join_callstats_for_update, compute_an_for_new_variants],
+        pipeline_input_steps=[
+            update_annotations,
+            join_callstats_for_update,
+            compute_an_for_new_variants,
+        ],
         add_input_resources={
             "v3.1 metadata": {"v3_meta_ht": v3_meta},
-            "v4.0 HGDP + 1KG meta": {"updated_meta_ht": hgdp_tgp_meta_updated},
         },
         output_resources={
             "v4_freq_ht": v4_get_freq(data_type="genomes", test=test),
