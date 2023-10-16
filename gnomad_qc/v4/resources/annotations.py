@@ -12,6 +12,8 @@ from gnomad.resources.resource_utils import (
 
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import (
+    COMBINED_FAF_RELEASES,
+    CURRENT_COMBINED_FAF_RELEASE,
     CURRENT_HGDP_TGP_RELEASE,
     CURRENT_VERSION,
     HGDP_TGP_RELEASES,
@@ -326,40 +328,55 @@ def get_freq(
     )
 
 
-def get_freq_comparison(version1, data_type1, version2, data_type2):
+def get_combined_frequency(test: bool = False) -> VersionedTableResource:
     """
-    Get Table resource for a frequency comparison between two gnomAD versions.
+    Get the combined v4 genome and exome frequency annotation VersionedTableResource.
 
-    Table contains results from a chi squared test and fishers exact test comparing the variant frequencies of two
-    gnomAD versions/data types.
-
-    :param version1: First gnomAD version in the frequency comparison. Table will be in the root annotation path for this gnomAD version.
-    :param data_type1: Data type of first version in the frequency comparison. One of "exomes" or "genomes". Table will be in the root annotation path for this gnomAD data type.
-    :param version2: Second gnomAD version in the frequency comparison.
-    :param data_type2: Data type of first version in the frequency comparison. One of "exomes" or "genomes".
-    :return: Hail Table containing results from chi squared test and fishers exact test
+    :param test: Whether to use a tmp path for testing.
+    :return: Hail Table containing combined frequency annotations.
     """
-    versions = [r + "_exomes" for r in EXOME_RELEASES] + [
-        r + "_genomes" for r in GENOME_RELEASES + VERSIONS
-    ]
-    if (
-        f"{version1}_{data_type1}" not in versions
-        or f"{version2}_{data_type2}" not in versions
-    ):
+    return VersionedTableResource(
+        CURRENT_COMBINED_FAF_RELEASE,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.frequencies.ht"
+            )
+            for version in COMBINED_FAF_RELEASES
+        },
+    )
+
+
+def get_freq_comparison(method: str, test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for a frequency comparison between v4 genomes and exomes.
+
+    Table contains results from one of the following comparison methods:
+        - 'contingency_table_test': Hail's contingency table test -- chi-squared or
+           Fisher’s exact test of independence depending on min allele count.
+        - 'cmh_test': Cochran–Mantel–Haenszel test -- stratified test of independence
+           for 2x2xK contingency tables.
+
+    :param method: Method used to compare frequencies between v4 genomes and exomes.
+        Can be one of `contingency_table_test` or `cmh_test`.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: VersionedTableResource containing results from the specified comparison
+        `method`.
+    """
+    methods = ["contingency_table_test", "cmh_test"]
+    if method not in methods:
         raise DataException(
-            "One of the versions/datatypes supplied doesn't exist. Possible options"
-            f" are: {versions}"
+            f"The method: {method} is not an option. Possible options are: {methods}"
         )
 
-    ht_path = (
-        f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq.ht"
+    return VersionedTableResource(
+        CURRENT_COMBINED_FAF_RELEASE,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.compare_frequencies.{method}.ht"
+            )
+            for version in COMBINED_FAF_RELEASES
+        },
     )
-    if version1 in VERSIONS:
-        ht_path = f"{_annotations_root(version1)}/{ht_path}"
-    else:
-        ht_path = f"gs://gnomad/annotations/hail-0.2/ht/{data_type1}/{ht_path}"
-
-    return TableResource(ht_path)
 
 
 def get_insilico_predictors(
