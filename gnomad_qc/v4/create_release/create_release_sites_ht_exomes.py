@@ -123,6 +123,7 @@ def get_config(
 
     Format:
         '<Name of dataset>': {
+                'ht': '<Optional Hail Table for direct annotation extraction. This is not used for the join.>',
                 'path': 'gs://path/to/hail_table.ht',
                 'select': '<Optional list of fields to select or dict of new field name to location of old field in the dataset.>',
                 'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
@@ -135,7 +136,7 @@ def get_config(
         The 'in_silico' key's 'ht' logic is handled separately because it is a list of
         HTs. In this list, the phyloP HT is keyed by locus only and thus the 'ht' code
         below sets the join key to 1, which will grab the first key of
-        ht.key.dtype.values() e.g. 'locus', when a HT key's are not {'locus, 'alleles'}.
+        ht.key.dtype.values() e.g. 'locus', when a HT's keys are not {'locus, 'alleles'}.
         All future in_silico predictors should have the keys confirmed to be 'locus'
         with or without 'alleles' before using this logic.
 
