@@ -1169,6 +1169,8 @@ def main(args):
 
     v3_vds = None
     if args.compute_allele_number_for_new_variants:
+        # Please refer to 'TODO' in compute_an_by_group_membership function to set
+        #  split=True for optimization.
         v3_vds = get_gnomad_v3_vds(split=True, samples_meta=True)
 
     if test:
