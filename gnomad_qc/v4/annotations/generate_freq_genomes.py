@@ -808,6 +808,9 @@ def compute_an_by_group_membership(
     # Confirm that all variants in variant_filter_ht are present in the
     # vds.variant_dataset and throw an error if this is not the case since all samples
     # added to v4.0 genomes should be in this vds.
+    # TODO: This can be improved by setting split=False in get_gnomad_v3_vds and doing
+    #  the split multi on only the rows for this check then adding the split multi for
+    #  the full vds before the semi_join_rows below.
     if variant_filter_ht.aggregate(
         hl.agg.any(hl.is_missing(vmt.rows()[variant_filter_ht.key]))
     ):
@@ -821,6 +824,7 @@ def compute_an_by_group_membership(
     # we want to keep all variants that were in the v3.1 VDS not only those found in the
     # release but `hl.vds.filter_samples` includes vmt =
     # vmt.filter_rows(hl.agg.count() > 0) by default.
+    vmt = vmt.semi_join_rows(variant_filter_ht)
     release_s = vmt.aggregate_cols(
         hl.agg.filter(vmt.meta.release, hl.agg.collect_as_set(vmt.s)), _localize=False
     )._persist()
@@ -841,8 +845,14 @@ def compute_an_by_group_membership(
         .select_entries("AD", "DP", "GT", "GQ")
         .select_rows()
     )
-    vmt = vmt.semi_join_rows(variant_filter_ht)
     vds = hl.vds.VariantDataset(rmt, vmt)
+
+    # NOTE: We need to write and read the VDS here to avoid a bug in split_multi_hts
+    # that causes code 137 memory errors in Hail 0.2.122, this should be fixed in
+    # subsequent versions of Hail.
+    tmp_vds_path = new_temp_file("variants_for_an_split", "vds")
+    vds.write(tmp_vds_path)
+    vds = hl.vds.read_vds(tmp_vds_path)
 
     # Densify the VDS, adjust GT sex ploidy, and annotate entires with adj. Adj
     # annotation must happen after sex ploidy adjustment because haploid GTs have
@@ -1159,6 +1169,8 @@ def main(args):
 
     v3_vds = None
     if args.compute_allele_number_for_new_variants:
+        # Please refer to 'TODO' in compute_an_by_group_membership function to set
+        #  split=True for optimization.
         v3_vds = get_gnomad_v3_vds(split=True, samples_meta=True)
 
     if test:
