@@ -115,10 +115,9 @@ FINALIZED_SCHEMA = {
 }
 
 
-# TODO: drop all subsets except HGTP/TGP from freq_ht before joining
 def drop_v3_subsets(freq_ht: hl.Table) -> hl.Table:
     """
-    Drop the freq/faf of all v3 subsets except HGDP/TGP from the freq Table.
+    Drop the freq of all v3 subsets except HGDP + TGP from the freq Table.
 
     :param freq_ht: v4.0 genomes freq Table
     :return: v4.0 genomes freq Table with some v3 subsets dropped
@@ -142,24 +141,12 @@ def drop_v3_subsets(freq_ht: hl.Table) -> hl.Table:
         SUBSETS_TO_DROP,
         keep=False,
         combine_operator="or",
-        exact_match=True,
     )
 
-    faf_meta, faf = filter_arrays_by_meta(
-        freq_ht.faf_meta,
-        {"faf": freq_ht.faf},
-        SUBSETS_TO_DROP,
-        keep=False,
-        combine_operator="or",
-        exact_match=True,
-    )
-
-    freq_ht = freq_ht.annotate(freq=array_exprs["freq"], faf=faf)
+    freq_ht = freq_ht.annotate(freq=array_exprs["freq"])
     freq_ht = freq_ht.annotate_globals(
         freq_meta=freq_meta,
-        faf_meta=faf_meta,
         freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
-        faf_index_dict=make_freq_index_dict_from_meta(hl.literal(faf_meta)),
         freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
     )
     return freq_ht
