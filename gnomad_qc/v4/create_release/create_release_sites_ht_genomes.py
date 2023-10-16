@@ -42,7 +42,11 @@ from gnomad_qc.v4.resources.annotations import (
 )
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v4.resources.release import included_datasets_json_path, release_sites
+from gnomad_qc.v4.resources.release import (
+    get_combined_faf_release,
+    included_datasets_json_path,
+    release_sites,
+)
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(
@@ -279,9 +283,9 @@ def get_config(
             "path": release_sites(data_type="genomes").path,
         },
         "joint_faf": {
-            "ht": None,
-            "path": None,
-            "select": ["joint_freq", "joint_grpmax", "joint_faf"],
+            "ht": get_combined_faf_release().ht(),
+            "path": get_combined_faf_release().path,
+            "select": ["joint_freq", "joint_grpmax", "joint_faf", "joint_fafmax"],
             "select_globals": [
                 "joint_freq_meta",
                 "joint_freq_index_dict",
