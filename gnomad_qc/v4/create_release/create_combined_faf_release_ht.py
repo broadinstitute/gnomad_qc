@@ -22,7 +22,7 @@ from gnomad.utils.annotations import (
     pop_max_expr,
 )
 from gnomad.utils.filtering import filter_arrays_by_meta
-from gnomad.utils.release import make_faf_index_dict, make_freq_index_dict_from_meta
+from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from statsmodels.stats.contingency_tables import StratifiedTable
 
@@ -59,15 +59,10 @@ def filter_gene_to_test(ht: hl.Table) -> hl.Table:
 
 def extract_freq_info(
     ht: hl.Table,
-    faf_pops: List[str],
     prefix: str,
 ) -> hl.Table:
     """
-    Extract frequencies and FAF for populations in `pops` and `faf_pops` respectively.
-
-    .. note::
-
-        The reduced frequency arrays include adj and raw in addition to the `pops`.
+    Extract frequencies and FAF for adj, raw (only for frequencies), adj by pop, adj by sex, and adj by pop/sex.
 
     The following annotations are filtered and renamed:
         - freq: {prefix}_freq
@@ -80,7 +75,6 @@ def extract_freq_info(
     This only keeps variants that pass variant QC filtering.
 
     :param ht: Table with frequency and FAF information.
-    :param faf_pops: List of populations to include in the reduced FAF arrays.
     :param prefix: Prefix to add to each of the filtered annotations.
     :return: Table with filtered frequency and FAF information.
     """
@@ -105,26 +99,26 @@ def extract_freq_info(
         combine_operator="or",
         exact_match=True,
     )
-    logger.info("Filtering to only passed faf pops: %s", faf_pops)
+    logger.info("Filtering to only adj frequencies for FAF...")
     faf_meta, faf = filter_arrays_by_meta(
         hl.literal(faf_meta),
         {"faf": faf["faf"]},
-        {"gen_anc": faf_pops},
+        {"group": ["adj"]},
         combine_operator="or",
     )
 
-    # Rename filtered annotations with supplied prefix and remove "raw" group from faf.
+    # Rename filtered annotations with supplied prefix.
     ht = ht.select(
         **{
             f"{prefix}_freq": array_exprs["freq"],
-            f"{prefix}_faf": ht.faf[:1].extend(faf["faf"][2:]),
+            f"{prefix}_faf": faf["faf"][2:],
         }
     )
     ht = ht.select_globals(
         **{
             f"{prefix}_freq_meta": freq_meta,
             f"{prefix}_freq_meta_sample_count": array_exprs["freq_meta_sample_count"],
-            f"{prefix}_faf_meta": ht.faf_meta[:1].extend(ht.faf_meta[2:]),
+            f"{prefix}_faf_meta": faf_meta,
         }
     )
 
@@ -192,13 +186,13 @@ def get_joint_freq_and_faf(
         ),
         joint_grpmax=grpmax,
     )
-    ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"), True)
+    ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"))
 
     ht = ht.annotate_globals(
         joint_freq_meta=freq_meta,
         joint_freq_index_dict=make_freq_index_dict_from_meta(freq_meta),
         joint_faf_meta=faf_meta,
-        joint_faf_index_dict=make_faf_index_dict(faf_meta),
+        joint_faf_index_dict=make_freq_index_dict_from_meta(faf_meta),
         joint_freq_meta_sample_count=count_arrays_dict["counts"],
     )
 
@@ -247,7 +241,11 @@ def perform_cmh_test(
     Perform the Cochran–Mantel–Haenszel test on the alleles counts between two frequency expressions using population as the stratification.
 
     This is done by creating a list of 2x2 matrices of freq1/freq2 reference and
-    alternate allele counts for each population in pops.
+    alternate allele counts for each population in pops. The stats used in
+    `perform_contingency_table_test` can only be used on 2x2 matrices, so we perform
+    that per population to get one statistic per population. The CMH test allows for
+    multiple 2x2 matrices for a specific stratification, giving a single statistic
+    across all populations.
 
     `freq1_expr` and `freq2_expr` should be ArrayExpressions of structs with 'AN' and
     'AC' annotations.
@@ -330,7 +328,7 @@ def get_combine_faf_resources(
         output_resources={"comb_freq_ht": get_combined_frequency(test=test)},
         input_resources={
             "generate_freq.py": {"exomes_ht": get_freq(test=test)},
-            "create_release_sites_ht_genomes.py": {
+            "generate_freq_genomes.py": {
                 "genomes_ht": get_freq(test=test, data_type="genomes")
             },
         },
@@ -404,8 +402,8 @@ def main(args):
                     lambda x: x.annotate(homozygote_count=hl.int32(x.homozygote_count))
                 )
             )
-            exomes_ht = extract_freq_info(exomes_ht, faf_pops, "exomes")
-            genomes_ht = extract_freq_info(genomes_ht, faf_pops, "genomes")
+            exomes_ht = extract_freq_info(exomes_ht, "exomes")
+            genomes_ht = extract_freq_info(genomes_ht, "genomes")
 
             ht = get_joint_freq_and_faf(genomes_ht, exomes_ht)
             ht = ht.annotate_globals(
