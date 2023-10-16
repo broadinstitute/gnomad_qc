@@ -87,7 +87,7 @@ logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
 )
-logger = logging.getLogger("vcf_release")
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
@@ -198,15 +198,15 @@ def unfurl_nested_annotations(
     expr_dict.update(grpmax_dict)
 
     logger.info("Adding joint grpmax data...")
-    grpmax_idx = ht.joint_grpmax
-    grpmax_dict = {"grpmax": grpmax_idx.gen_anc}
-    grpmax_dict.update(
+    joint_grpmax_idx = ht.joint_grpmax
+    joint_grpmax_dict = {"grpmax": joint_grpmax_idx.gen_anc}
+    joint_grpmax_dict.update(
         {
-            f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": grpmax_idx[f]
-            for f in [f for f in grpmax_idx._fields if f != "gen_anc"]
+            f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": joint_grpmax_idx[f]
+            for f in [f for f in joint_grpmax_idx._fields if f != "gen_anc"]
         }
     )
-    expr_dict.update(grpmax_dict)
+    expr_dict.update(joint_grpmax_dict)
 
     logger.info("Unfurling faf data...")
     faf_idx = hl.eval(ht.faf_index_dict)
@@ -426,17 +426,16 @@ def main(args):  # noqa: D103
                 monoallelic_expr=ht.info.monoallelic,
                 verbose=args.verbose,
                 delimiter="_",
-                sample_sum_sets_and_pops={"non_ukb": POPS},
+                # sample_sum_sets_and_pops={"non_ukb": POPS},
                 variant_filter_field="AS_VQSR",
                 problematic_regions=["lcr", "segdup", "non_par"],
                 single_filter_count=True,
             )
 
-            # Note: Checkpoint saves time for the final export by not needing to run the
+            # Note: Write saves time for the final export by not needing to run the
             # VCF HT prep on each chromosome -- more needs to happen before ready for
             # export, but this is an intermediate write.
             logger.info("Writing prepared VCF HT for validity checks and export...")
-            ht.describe()
             ht.write(res.validated_ht.path, overwrite=True)
 
     finally:
