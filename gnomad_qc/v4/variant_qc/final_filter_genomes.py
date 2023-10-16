@@ -74,7 +74,7 @@ def get_final_variant_qc_resources(
             "agg_bin_ht": get_score_bins(model_id, aggregated=True)
         },
         "annotations/generate_variant_qc_annotations.py --split-info": {
-            "info_ht": get_info(split=True)
+            "info_ht": get_info()
         },
         "annotations/generate_freq_genomes.py --finalize-freq-ht": {
             "freq_ht": get_freq(data_type="genomes", finalized=True, test=test)
