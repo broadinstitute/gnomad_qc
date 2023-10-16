@@ -13,9 +13,9 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources.annotations import get_freq, get_info
+from gnomad_qc.v3.resources.annotations import get_info
 from gnomad_qc.v3.resources.variant_qc import get_score_bins
-from gnomad_qc.v4.resources.annotations import get_freq, get_info
+from gnomad_qc.v4.resources.annotations import get_freq
 from gnomad_qc.v4.resources.variant_qc import VQSR_FEATURES, final_filter
 from gnomad_qc.v4.variant_qc.final_filter import (
     FINAL_FILTER_FIELDS,
