@@ -1242,7 +1242,7 @@ def main(args):
     overwrite = args.overwrite
 
     hl.init(
-        log="/create_release_v4_genomes.log",
+        log="/create_v4.0_genomes_freq.log",
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
