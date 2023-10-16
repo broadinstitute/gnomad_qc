@@ -192,7 +192,7 @@ def get_joint_freq_and_faf(
         joint_freq_meta=freq_meta,
         joint_freq_index_dict=make_freq_index_dict_from_meta(freq_meta),
         joint_faf_meta=faf_meta,
-        joint_faf_index_dict=make_freq_index_dict_from_meta(faf_meta),
+        joint_faf_index_dict=make_freq_index_dict_from_meta(hl.literal(faf_meta)),
         joint_freq_meta_sample_count=count_arrays_dict["counts"],
     )
 
