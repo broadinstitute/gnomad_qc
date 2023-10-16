@@ -287,7 +287,7 @@ def final_filter(
         CURRENT_VERSION,
         {
             version: TableResource(
-                f"{_variant_qc_root(version, test=test, datatype=datatype)}/gnomad.{data_type}.v{version}.final_filter.ht"
+                f"{_variant_qc_root(version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.final_filter.ht"
             )
             for version in VERSIONS
         },
