@@ -14,6 +14,8 @@ from gnomad.resources.grch38.reference_data import (
     seg_dup_intervals,
 )
 from gnomad.utils.annotations import region_flag_expr
+from gnomad.utils.filtering import filter_arrays_by_meta
+from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
 from hail.typecheck import anytype, nullable, sequenceof
@@ -111,6 +113,56 @@ FINALIZED_SCHEMA = {
         "in_silico_predictors",
     ],
 }
+
+
+# TODO: drop all subsets except HGTP/TGP from freq_ht before joining
+def drop_v3_subsets(freq_ht: hl.Table) -> hl.Table:
+    """
+    Drop the freq/faf of all v3 subsets except HGDP/TGP from the freq Table.
+
+    :param freq_ht: v4.0 genomes freq Table
+    :return: v4.0 genomes freq Table with some v3 subsets dropped
+    """
+    SUBSETS_TO_DROP = {
+        "subset": [
+            "non_v2",
+            "non_topmed",
+            "non_cancer",
+            "controls_and_biobanks",
+            "non_neuro",
+        ]
+    }
+
+    freq_meta, array_exprs = filter_arrays_by_meta(
+        freq_ht.freq_meta,
+        {
+            "freq": freq_ht.freq,
+            "freq_meta_sample_count": freq_ht.index_globals().freq_meta_sample_count,
+        },
+        SUBSETS_TO_DROP,
+        keep=False,
+        combine_operator="or",
+        exact_match=True,
+    )
+
+    faf_meta, faf = filter_arrays_by_meta(
+        freq_ht.faf_meta,
+        {"faf": freq_ht.faf},
+        SUBSETS_TO_DROP,
+        keep=False,
+        combine_operator="or",
+        exact_match=True,
+    )
+
+    freq_ht = freq_ht.annotate(freq=array_exprs["freq"], faf=faf)
+    freq_ht = freq_ht.annotate_globals(
+        freq_meta=freq_meta,
+        faf_meta=faf_meta,
+        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
+        faf_index_dict=make_freq_index_dict_from_meta(hl.literal(faf_meta)),
+        freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
+    )
+    return freq_ht
 
 
 # Config is added as a function, so it is not evaluated until the function is called.
