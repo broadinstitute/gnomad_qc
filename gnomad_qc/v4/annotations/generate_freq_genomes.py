@@ -998,6 +998,8 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
         "Annotating globals 'freq_meta', 'freq_meta_sample_count', 'faf_meta', "
         "'freq_index_dict' and 'faf_index_dict'..."
     )
+    faf_index_dict = make_freq_index_dict_from_meta(hl.literal(faf_meta))
+
     # Change the 'pop' keys in the freq_meta and faf_meta arrays to 'gen_anc'.
     freq_meta, faf_meta = [
         hl.literal([{("gen_anc" if k == "pop" else k): m[k] for k in m} for m in meta])
@@ -1006,7 +1008,7 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     ht = ht.annotate_globals(
         freq_meta=freq_meta,
         faf_meta=faf_meta,
-        faf_index_dict=make_freq_index_dict_from_meta(faf_meta),
+        faf_index_dict=faf_index_dict,
         downsamplings=DOWNSAMPLINGS["v3"],
     )
 
