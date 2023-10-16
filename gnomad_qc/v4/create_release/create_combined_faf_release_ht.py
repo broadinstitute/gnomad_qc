@@ -111,7 +111,7 @@ def extract_freq_info(
     ht = ht.select(
         **{
             f"{prefix}_freq": array_exprs["freq"],
-            f"{prefix}_faf": faf["faf"][2:],
+            f"{prefix}_faf": faf["faf"],
         }
     )
     ht = ht.select_globals(
