@@ -19,6 +19,7 @@ from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
 from hail.typecheck import anytype, nullable, sequenceof
 
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.resources.annotations import get_info
 from gnomad_qc.v4.annotations.insilico_predictors import get_sift_polyphen_from_vep
 from gnomad_qc.v4.create_release.create_release_utils import (
     DBSNP_VERSION,
@@ -33,7 +34,6 @@ from gnomad_qc.v4.create_release.create_release_utils import (
 )
 from gnomad_qc.v4.resources.annotations import (
     get_freq,
-    get_info,
     get_insilico_predictors,
     get_vep,
     get_vrs,
@@ -136,7 +136,8 @@ def get_config(
         The 'in_silico' key's 'ht' logic is handled separately because it is a list of
         HTs. In this list, the phyloP HT is keyed by locus only and thus the 'ht' code
         below sets the join key to 1, which will grab the first key of
-        ht.key.dtype.values() e.g. 'locus', when a HT's keys are not {'locus, 'alleles'}.
+        ht.key.dtype.values() e.g. 'locus', when an HT's keys are not {'locus',
+        'alleles'}.
         All future in_silico predictors should have the keys confirmed to be 'locus'
         with or without 'alleles' before using this logic.
 
@@ -150,8 +151,8 @@ def get_config(
             "select": ["rsid"],
         },
         "filters": {
-            "ht": final_filter().ht(),
-            "path": final_filter().path,
+            "ht": final_filter(data_type="genomes").ht(),
+            "path": final_filter(data_type="genomes").path,
             "select": ["filters"],
             "custom_select": custom_filters_select,
             "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
@@ -199,8 +200,8 @@ def get_config(
             "custom_select": custom_info_select,
         },
         "freq": {
-            "ht": get_freq().ht(),
-            "path": get_freq().path,
+            "ht": get_freq(data_type="genomes").ht(),
+            "path": get_freq(data_type="genomes").path,
             "select": [
                 "freq",
                 "faf",
@@ -231,12 +232,12 @@ def get_config(
             "global_name": "vep_globals",
         },
         "region_flags": {
-            "ht": get_freq().ht(),
-            "path": get_freq().path,
+            "ht": get_freq(data_type="genomes").ht(),
+            "path": get_freq(data_type="genomes").path,
             "custom_select": custom_region_flags_select,
         },
         "release": {
-            "path": release_sites().path,
+            "path": release_sites(data_type="genomes").path,
         },
         # TODO: Fill this in once we have the combined freq HT
         # "joint_faf": {
@@ -260,9 +261,11 @@ def get_config(
     if release_exists:
         config["release"].update(
             {
-                "ht": release_sites().ht(),
-                "select": [r for r in release_sites().ht().row],
-                "select_globals": [g for g in release_sites().ht().globals],
+                "ht": release_sites(data_type="genomes").ht(),
+                "select": [r for r in release_sites(data_type="genomes").ht().row],
+                "select_globals": [
+                    g for g in release_sites(data_type="genomes").ht().globals
+                ],
             }
         )
     return config
@@ -299,25 +302,6 @@ def custom_region_flags_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
             prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         )
     }
-    # TODO: Confirm 50 bp was the padding used in interval_qc and these anns are correct
-    # The interval QC ticket does not pass padding and that script defaults to 50 bp. We
-    # need to confirm we can expose the calling interval files used here in some way.
-    # I think this would involve copying files
-    selects["region_flags"] = selects["region_flags"].annotate(
-        fail_interval_qc=~interval_qc_pass(all_platforms=True)
-        .ht()[ht.locus]
-        .pass_interval_qc,
-        outside_ukb_capture_region=~hl.is_defined(
-            calling_intervals(interval_name="ukb", calling_interval_padding=50).ht()[
-                ht.locus
-            ]
-        ),
-        outside_broad_capture_region=~hl.is_defined(
-            calling_intervals(interval_name="broad", calling_interval_padding=50).ht()[
-                ht.locus
-            ]
-        ),
-    )
 
     return selects
 
@@ -383,7 +367,7 @@ def custom_info_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
 
     # Create a dict of the fields from the VRS HT that we want to add to the info.
-    vrs_ht = get_vrs().ht()
+    vrs_ht = get_vrs(data_type="genomes").ht()
     vrs_info_fields = {"vrs": vrs_ht[ht.key].vrs}
 
     # Create a dict of the fields from the info HT that we want keep in the info.
@@ -609,12 +593,12 @@ def join_hts(
 def main(args):
     """Create release ht."""
     hl.init(
-        log="/create_release_ht.log",
+        log="/create_release_ht_genomes.log",
         tmp_dir="gs://gnomad-tmp-4day",
         default_reference="GRCh38",
     )
 
-    logger.info("Creating release HT...")
+    logger.info("Creating genomes release HT...")
     ht = join_hts(
         args.base_table,
         args.tables_for_join,
@@ -659,7 +643,7 @@ def main(args):
     output_path = (
         f"{qc_temp_prefix()}release/gnomad.exomes.sites.test.ht"
         if args.test
-        else release_sites().path
+        else release_sites(data_type="genomes").path
     )
     logger.info("Writing out release HT to %s", output_path)
     ht = ht.checkpoint(

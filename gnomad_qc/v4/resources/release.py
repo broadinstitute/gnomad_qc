@@ -89,18 +89,24 @@ def release_ht_path(
         return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
 
 
-def release_sites(public: bool = False) -> VersionedTableResource:
+def release_sites(
+    public: bool = False, data_type: str = "exomes"
+) -> VersionedTableResource:
     """
     Retrieve versioned resource for sites-only release Table.
 
-    :param public: Determines whether release sites Table is read from public or private bucket. Defaults to private
+    :param public: Determines whether release sites Table is read from public or private
+        bucket. Defaults to private
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
     :return: Sites-only release Table
     """
     return VersionedTableResource(
         default_version=CURRENT_RELEASE,
         versions={
             release: TableResource(
-                path=release_ht_path(release_version=release, public=public)
+                path=release_ht_path(
+                    data_type=data_type, release_version=release, public=public
+                )
             )
             for release in RELEASES
         },
