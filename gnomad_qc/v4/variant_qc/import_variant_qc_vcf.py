@@ -139,6 +139,7 @@ def main(args):
             sibling_singletons=args.sibling_singletons,
             adj=args.adj,
             interval_qc_filter=args.interval_qc_filter,
+            calling_interval_filter=args.calling_interval_filter,
             compute_info_method=args.compute_info_method,
             indel_features=args.indel_features,
             snp_features=args.snp_features,
@@ -184,27 +185,36 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--transmitted-singletons",
-        help="Whether transmitted singletons where used in training the model.",
+        help="Whether transmitted singletons were used in training the model.",
         type=bool,
         required=True,
     )
     parser.add_argument(
         "--sibling-singletons",
-        help="Whether sibling singletons where used in training the model.",
+        help="Whether sibling singletons were used in training the model.",
         type=bool,
         required=True,
     )
     parser.add_argument(
         "--adj",
-        help="Whether adj filtered singletons where used in training the model.",
+        help="Whether adj filtered singletons were used in training the model.",
         type=bool,
         required=True,
     )
     parser.add_argument(
         "--interval-qc-filter",
         help=(
-            "Whether only variants in intervals passing interval QC where used in "
+            "Whether only variants in intervals passing interval QC were used in "
             "training the model."
+        ),
+        type=bool,
+        required=True,
+    )
+    parser.add_argument(
+        "--calling-interval-filter",
+        help=(
+            "Whether only variants in the intersection of Broad/DSP calling intervals "
+            "with 50 bp of padding were used for training."
         ),
         type=bool,
         required=True,
@@ -234,7 +244,7 @@ if __name__ == "__main__":
         "--deduplication-check",
         action="store_true",
         help=(
-            "Remove duplicate variants. Useful for v4 MVP when reading from potentiall"
+            "Remove duplicate variants. Useful for v4 MVP when reading from potentially"
             " overlapping shards."
         ),
     )
