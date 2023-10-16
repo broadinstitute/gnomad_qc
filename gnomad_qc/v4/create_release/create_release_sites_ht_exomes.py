@@ -95,7 +95,7 @@ FINALIZED_SCHEMA = {
         "freq",
         "grpmax",
         "faf",
-        "gen_anc_faf_max",
+        "fafmax",
         # "joint_freq",
         # "joint_grpmax",
         # "joint_faf",
@@ -204,10 +204,9 @@ def get_config(
             "select": [
                 "freq",
                 "faf",
-                "grpmax",
-                "gen_anc_faf_max",
                 "histograms",
             ],
+            "custom_select": custom_freq_select,
             "select_globals": [
                 "freq_meta",
                 "freq_index_dict",
@@ -266,6 +265,23 @@ def get_config(
             }
         )
     return config
+
+
+def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+    """
+    Drop faf95 from both 'gnomad' and 'ukb' in 'grpmax' and rename `gen_anc_faf_max` to `fafmax`.
+
+    These annotations will be combined with the others from freq's select in the config.
+
+    :param ht: Freq Hail Table.
+    :return: Select expression dict.
+    """
+    selects = {
+        "grpmax": hl.struct(**{k: ht.grpmax[k].drop("faf95") for k in ht.grpmax}),
+        "fafmax": ht.gen_anc_faf_max,
+    }
+
+    return selects
 
 
 def custom_in_silico_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
