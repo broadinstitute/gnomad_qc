@@ -1,4 +1,4 @@
-"""Script to create release sites HT for exomes."""
+"""Script to create release sites HT for genomes."""
 import argparse
 import json
 import logging
@@ -38,10 +38,9 @@ from gnomad_qc.v4.resources.annotations import (
     get_vep,
     get_vrs,
 )
-from gnomad_qc.v4.resources.basics import calling_intervals, qc_temp_prefix
+from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v4.resources.release import included_datasets_json_path, release_sites
-from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(
