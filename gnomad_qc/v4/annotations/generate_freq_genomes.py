@@ -17,7 +17,11 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import POPS_TO_REMOVE_FOR_POPMAX, SUBSETS
+from gnomad.resources.grch38.gnomad import (
+    DOWNSAMPLINGS,
+    POPS_TO_REMOVE_FOR_POPMAX,
+    SUBSETS,
+)
 from gnomad.sample_qc.sex import adjust_sex_ploidy
 from gnomad.utils.annotations import (
     annotate_adj,
@@ -27,6 +31,7 @@ from gnomad.utils.annotations import (
     gen_anc_faf_max_expr,
     generate_freq_group_membership_array,
     merge_freq_arrays,
+    missing_callstats_expr,
     pop_max_expr,
     set_female_y_metrics_to_na_expr,
     update_structured_annotations,
@@ -66,8 +71,7 @@ from gnomad_qc.v4.resources.sample_qc import relatedness as v4_relatedness
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger(
-    "Create v4.0 genomes release sites HT with updated HGDP/TGP "
-    "metadata and new annotations"
+    "Create v4.0 frequencies HT with updated HGDP/TGP metadata and new annotations"
 )
 logger.setLevel(logging.INFO)
 
@@ -97,20 +101,18 @@ FREQ_GLOBALS = ("freq_meta", "freq_meta_sample_count")
 def filter_to_test(
     t: Union[hl.Table, hl.MatrixTable, hl.vds.VariantDataset],
     gene_on_chrx: bool = False,
-    partitions: Optional[List[int]] = None,
 ) -> Union[hl.Table, hl.MatrixTable, hl.vds.VariantDataset]:
     """
-    Filter to a region in PCSK9 or PLCXD1 in Table or MatrixTable for testing purposes.
+    Filter to a region in PCSK9 or TRPC5 in Table or MatrixTable for testing purposes.
 
     :param t: Table or MatrixTable to filter.
-    :param gene_on_chrx: Whether to filter to PLCXD1, instead of PCSK9, for testing chrX.
-    :param partitions: Optional list of partitions to filter to before applying the
-        filter to PCSK9.
-    :return: Table or MatrixTable filtered to a region in PCSK9 or PLCXD1.
+    :param gene_on_chrx: Whether to filter to TRPC5 (in the non-PAR region), instead of
+        PCSK9, for testing chrX.
+    :return: Table or MatrixTable filtered to a region in PCSK9 or TRPC5.
     """
     if gene_on_chrx:
-        logger.info("Filtering to PLCXD1 on chrX in MT for testing purposes...")
-        test_locus = "chrX:285000-295000"
+        logger.info("Filtering to TRPC5 on chrX in MT for testing purposes...")
+        test_locus = "chrX:111776000-111786000"
     else:
         logger.info("Filtering to 10kb in PCSK9 in MT for testing purposes...")
         test_locus = "chr1:55039447-55064852"
@@ -118,16 +120,11 @@ def filter_to_test(
     test_interval = [hl.parse_locus_interval(test_locus, reference_genome="GRCh38")]
 
     if isinstance(t, hl.vds.VariantDataset):
-        if partitions is not None:
-            t = hl.vds.VariantDataset(
-                t.reference_data._filter_partitions(partitions),
-                t.variant_data._filter_partitions(partitions),
-            )
-        return hl.vds.filter_intervals(t, test_interval, split_reference_blocks=True)
+        t = hl.vds.filter_intervals(t, test_interval, split_reference_blocks=True)
     else:
-        if partitions is not None:
-            t = t._filter_partitions(partitions)
-        return hl.filter_intervals(t, test_interval)
+        t = hl.filter_intervals(t, test_interval)
+
+    return t
 
 
 def get_hgdp_tgp_related_to_nonsubset(
@@ -975,6 +972,12 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     )
     ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
 
+    logger.info(
+        "Set downsampling call stats for new variants in gnomad v4.0 genomes to "
+        "missing structs..."
+    )
+    ht = set_downsampling_freq_missing(ht, an_ht)
+
     # Compute filtering allele frequency (faf), grpmax, and gen_anc_faf_max.
     faf, faf_meta = faf_expr(ht.freq, ht.freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
     grpmax = pop_max_expr(ht.freq, ht.freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
@@ -999,6 +1002,8 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
         "Annotating globals 'freq_meta', 'freq_meta_sample_count', 'faf_meta', "
         "'freq_index_dict' and 'faf_index_dict'..."
     )
+    faf_index_dict = make_freq_index_dict_from_meta(hl.literal(faf_meta))
+
     # Change the 'pop' keys in the freq_meta and faf_meta arrays to 'gen_anc'.
     freq_meta, faf_meta = [
         hl.literal([{("gen_anc" if k == "pop" else k): m[k] for k in m} for m in meta])
@@ -1007,10 +1012,104 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     ht = ht.annotate_globals(
         freq_meta=freq_meta,
         faf_meta=faf_meta,
-        faf_index_dict=make_freq_index_dict_from_meta(faf_meta),
+        faf_index_dict=faf_index_dict,
+        downsamplings=DOWNSAMPLINGS["v3"],
     )
 
     return ht
+
+
+def get_histograms(ht: hl.Table, v3_sites_ht: hl.Table) -> hl.Table:
+    """
+    Get histograms for the v4.0 genomes release from the v3.1 release.
+
+    .. note:
+       We didn't compute the variant histograms for the v4.0 genomes release because
+       we didn't densify the VDS for all the variants. The histograms for the new
+       variants will be missing, and the histograms for the variants included
+       in v3.1 release will be the same as the v3.1 release.
+
+    :param ht: Table with the call stats for the v4.0 genomes release.
+    :param v3_sites_ht: Table for the v3.1 release sites.
+    :return: Table with the histograms added for the v4.0 genomes release.
+    """
+    logger.info("Getting histograms for the v4.0 genomes release...")
+    v3_sites = v3_sites_ht[ht.key]
+    ht = ht.annotate(
+        histograms=hl.struct(
+            qual_hists=v3_sites.qual_hists,
+            raw_qual_hists=v3_sites.raw_qual_hists,
+            age_hists=hl.struct(
+                age_hist_het=v3_sites.age_hist_het,
+                age_hist_hom=v3_sites.age_hist_hom,
+            ),
+        )
+    )
+
+    return ht
+
+
+def set_downsampling_freq_missing(ht: hl.Table, new_variants_ht: hl.Table) -> hl.Table:
+    """
+    Set the downsampling call stats for new variants in `ht` to missing.
+
+    :param ht: Table with the call stats for all variants in the v4.0 genomes release.
+    :param new_variants_ht: Table with new variants in the v4.0 genomes release.
+    :return: Table with the downsampling call stats for new variants set to missing.
+    """
+    downsampling_indices = hl.range(hl.len(ht.freq_meta)).filter(
+        lambda i: ht.freq_meta[i].contains("downsampling")
+    )
+
+    ht = ht.annotate(
+        freq=hl.if_else(
+            hl.is_defined(new_variants_ht[ht.key]),
+            hl.enumerate(ht.freq).map(
+                lambda i: hl.if_else(
+                    downsampling_indices.contains(i[0]),
+                    missing_callstats_expr(),
+                    i[1],
+                )
+            ),
+            ht.freq,
+        )
+    )
+
+    return ht
+
+
+def get_age_distribution(
+    v3_meta_ht: hl.Table, subset_updated_meta_ht: hl.Table
+) -> hl.expr.StructExpression:
+    """
+    Get the updated 'age_distribution' annotation for v4.0 genomes.
+
+    :param v3_meta_ht: Table with the v3.1.2 release sample metadata.
+    :param subset_updated_meta_ht: Table with the updated sample metadata for the
+       HGDP + 1KG subset.
+    :return: Expression with the age distribution for samples in `subset_updated_meta`.
+    """
+    logger.info("Getting age distribution for v4.0 genomes release...")
+    v3_release_count = v3_meta_ht.filter(v3_meta_ht.release).count()
+    v4_meta_ht = v3_meta_ht.select(
+        age=v3_meta_ht.project_meta.age,
+        release=hl.if_else(
+            v3_meta_ht.subsets.tgp | v3_meta_ht.subsets.hgdp,
+            subset_updated_meta_ht[v3_meta_ht.s.replace("v3.1::", "")].gnomad_release,
+            v3_meta_ht.release,
+        ),
+    )
+    v4_meta_ht = v4_meta_ht.filter(v4_meta_ht.release)
+    logger.info(
+        "There will be %s samples in the v4.0 genome release, compared to %s in v3.1 "
+        "genome release.",
+        v4_meta_ht.count(),
+        v3_release_count,
+    )
+
+    age_expr = v4_meta_ht.aggregate(hl.agg.hist(v4_meta_ht.age, 30, 80, 10))
+
+    return age_expr
 
 
 def get_v4_genomes_release_resources(
@@ -1103,7 +1202,14 @@ def get_v4_genomes_release_resources(
     )
     update_release_callstats = PipelineStepResourceCollection(
         "--update-release-callstats",
-        pipeline_input_steps=[join_callstats_for_update, compute_an_for_new_variants],
+        pipeline_input_steps=[
+            update_annotations,
+            join_callstats_for_update,
+            compute_an_for_new_variants,
+        ],
+        add_input_resources={
+            "v3.1 metadata": {"v3_meta_ht": v3_meta},
+        },
         output_resources={
             "v4_freq_ht": v4_get_freq(data_type="genomes", test=test),
         },
@@ -1156,7 +1262,7 @@ def main(args):
     overwrite = args.overwrite
 
     hl.init(
-        log="/create_release_v4_genomes.log",
+        log="/create_v4.0_genomes_freq.log",
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
@@ -1182,7 +1288,6 @@ def main(args):
             v3_vds = filter_to_test(
                 v3_vds,
                 gene_on_chrx=gene_on_chrx,
-                partitions=[2183, 2184, 108583],
             )
 
     if args.get_related_to_nonsubset:
@@ -1274,9 +1379,16 @@ def main(args):
         res.check_resource_existence()
 
         logger.info("Merging all call stats HTs for final v4.0 genomes call stats...")
-        generate_v4_genomes_callstats(
+        ht = generate_v4_genomes_callstats(
             res.freq_join_ht.ht(), res.v3_release_an_ht.ht()
-        ).write(res.v4_freq_ht.path, overwrite=overwrite)
+        )
+        ht = get_histograms(ht, v3_sites_ht)
+        ht = ht.annotate_globals(
+            age_distribution=get_age_distribution(
+                res.v3_meta_ht.ht(), res.updated_meta_ht.ht()
+            )
+        )
+        ht.write(res.v4_freq_ht.path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
@@ -1296,7 +1408,7 @@ if __name__ == "__main__":
     )
     test_args.add_argument(
         "--test-x-gene",
-        help="Test on a subset of variants in PLCXD1 on chrX.",
+        help="Test on a subset of variants in TRPC5 on chrX.",
         action="store_true",
     )
 

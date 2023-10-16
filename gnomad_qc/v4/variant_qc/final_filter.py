@@ -294,8 +294,8 @@ def generate_final_filter_ht(
         )
     elif filter_name == "AS_VQSR":
         vqc_expr = hl.struct(**ht[compute_info_method])
-        snv_training_variables = VQSR_FEATURES["snv"]
-        indel_training_variables = VQSR_FEATURES["indel"]
+        snv_training_variables = VQSR_FEATURES["exomes"]["snv"]
+        indel_training_variables = VQSR_FEATURES["exomes"]["indel"]
     else:
         vqc_expr = ht.info.annotate(**ht[compute_info_method])
         vqc_expr = vqc_expr.drop("SCORE")
