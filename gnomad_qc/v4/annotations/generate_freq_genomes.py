@@ -972,6 +972,10 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     )
     ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
 
+    logger.info(
+        "Set downsampling call stats for new variants in gnomad v4.0 genomes to "
+        "missing structs..."
+    )
     ht = set_downsampling_freq_missing(ht, an_ht)
 
     # Compute filtering allele frequency (faf), grpmax, and gen_anc_faf_max.
