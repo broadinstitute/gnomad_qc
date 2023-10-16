@@ -315,10 +315,6 @@ def custom_region_flags_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
             prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         )
     }
-    # TODO: Confirm 50 bp was the padding used in interval_qc and these anns are correct
-    # The interval QC ticket does not pass padding and that script defaults to 50 bp. We
-    # need to confirm we can expose the calling interval files used here in some way.
-    # I think this would involve copying files
     selects["region_flags"] = selects["region_flags"].annotate(
         fail_interval_qc=~interval_qc_pass(all_platforms=True)
         .ht()[ht.locus]
@@ -645,6 +641,7 @@ def main(args):
 
     ht = ht.select_globals(**get_select_global_fields(ht))
 
+    # Add additional globals that were not present on the joined HTs.
     ht = ht.annotate_globals(
         filtering_model=ht.filtering_model.drop("model_id"),
         vep_globals=ht.vep_globals.annotate(
@@ -665,6 +662,10 @@ def main(args):
         ),
         date=datetime.now().isoformat(),
         version=args.version,
+        interval_qc_parameters=interval_qc_pass(all_platforms=True)
+        .ht()
+        .index_globals()
+        .high_qual_interval_parameters,
     )
 
     # Reorder fields to match final schema.
