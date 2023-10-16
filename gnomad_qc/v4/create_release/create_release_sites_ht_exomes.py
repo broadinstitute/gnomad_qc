@@ -269,7 +269,7 @@ def get_config(
 
 def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     """
-    Drop faf95 from both 'gnomad' and 'ukb' in 'grpmax' and rename `gen_anc_faf_max` to `fafmax`.
+    Drop faf95 from both 'gnomad' and 'non_ukb' in 'grpmax' and rename `gen_anc_faf_max` to `fafmax`.
 
     These annotations will be combined with the others from freq's select in the config.
 
