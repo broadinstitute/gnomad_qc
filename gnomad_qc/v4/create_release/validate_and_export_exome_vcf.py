@@ -180,7 +180,9 @@ def unfurl_nested_annotations(
     joint_freq_idx = hl.eval(ht.joint_freq_index_dict)
     expr_dict.update(
         {
-            f"{f if f != 'homozygote_count' else 'nhomalt'}_{k}": ht.joint_freq[i][f]
+            f"joint_{f if f != 'homozygote_count' else 'nhomalt'}_{k}": ht.joint_freq[
+                i
+            ][f]
             for k, i in joint_freq_idx.items()
             for f in ht.joint_freq[0].keys()
         }
@@ -199,10 +201,12 @@ def unfurl_nested_annotations(
 
     logger.info("Adding joint grpmax data...")
     joint_grpmax_idx = ht.joint_grpmax
-    joint_grpmax_dict = {"grpmax": joint_grpmax_idx.gen_anc}
+    joint_grpmax_dict = {"joint_grpmax": joint_grpmax_idx.gen_anc}
     joint_grpmax_dict.update(
         {
-            f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": joint_grpmax_idx[f]
+            f"joint_{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": (
+                joint_grpmax_idx[f]
+            )
             for f in [f for f in joint_grpmax_idx._fields if f != "gen_anc"]
         }
     )
@@ -218,7 +222,7 @@ def unfurl_nested_annotations(
     joint_faf_idx = hl.eval(ht.joint_faf_index_dict)
     expr_dict.update(
         {
-            f"{f}_{k}": ht.joint_faf[i][f]
+            f"joint_{f}_{k}": ht.joint_faf[i][f]
             for f in ht.joint_faf[0].keys()
             for k, i in joint_faf_idx.items()
         }
