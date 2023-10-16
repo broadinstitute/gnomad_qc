@@ -5,7 +5,7 @@ import logging
 from copy import deepcopy
 from datetime import datetime
 from functools import reduce
-from typing import Dict, List, Union
+from typing import Dict, List, Tuple, Union
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import (
@@ -65,7 +65,7 @@ TABLES_FOR_RELEASE = [
     "region_flags",
     "in_silico",
     "vep",
-    # "joint_faf",
+    "joint_faf",
 ]
 
 INSILICO_PREDICTORS = ["cadd", "revel", "spliceai", "pangolin", "phylop"]
@@ -77,11 +77,11 @@ FINALIZED_SCHEMA = {
         "freq_meta_sample_count",
         "faf_meta",
         "faf_index_dict",
-        # "joint_freq_meta",
-        # "joint_freq_index_dict",
-        # "joint_freq_meta_sample_count",
-        # "joint_faf_meta",
-        # "joint_faf_index_dict",
+        "joint_freq_meta",
+        "joint_freq_index_dict",
+        "joint_freq_meta_sample_count",
+        "joint_faf_meta",
+        "joint_faf_index_dict",
         "age_distribution",
         "downsamplings",
         "filtering_model",
@@ -97,9 +97,9 @@ FINALIZED_SCHEMA = {
         "grpmax",
         "faf",
         "gen_anc_faf_max",
-        # "joint_freq",
-        # "joint_grpmax",
-        # "joint_faf",
+        "joint_freq",
+        "joint_grpmax",
+        "joint_faf",
         "a_index",
         "was_split",
         "rsid",
@@ -115,7 +115,7 @@ FINALIZED_SCHEMA = {
 }
 
 
-def drop_v3_subsets(freq_ht: hl.Table) -> hl.Table:
+def drop_v3_subsets(freq_ht: hl.Table) -> Tuple[hl.Table, str]:
     """
     Drop the freq of all v3 subsets except HGDP + TGP from the freq Table.
 
@@ -149,7 +149,10 @@ def drop_v3_subsets(freq_ht: hl.Table) -> hl.Table:
         freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
         freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
     )
-    return freq_ht
+
+    freq_ht_tmp_path = "gs://gnomad-tmp-4day/freq/genomes_freq_tmp.ht"
+    freq_ht = freq_ht.checkpoint(freq_ht_tmp_path, overwrite=True)
+    return freq_ht, freq_ht_tmp_path
 
 
 # Config is added as a function, so it is not evaluated until the function is called.
@@ -238,13 +241,11 @@ def get_config(
             "custom_select": custom_info_select,
         },
         "freq": {
-            "ht": get_freq(data_type="genomes").ht(),
-            "path": get_freq(data_type="genomes").path,
+            "ht": drop_v3_subsets(get_freq(data_type="genomes").ht())[0],
+            "path": drop_v3_subsets(get_freq(data_type="genomes").ht())[1],
             "select": [
                 "freq",
                 "faf",
-                "grpmax",
-                "gen_anc_faf_max",
                 "histograms",
             ],
             "select_globals": [
@@ -277,23 +278,18 @@ def get_config(
         "release": {
             "path": release_sites(data_type="genomes").path,
         },
-        # TODO: Fill this in once we have the combined freq HT
-        # "joint_faf": {
-        #     "ht": None,
-        #     "path": None,
-        #     "select": [
-        #         "joint_freq",
-        #          "joint_grpmax",
-        #           "joint_faf"
-        #     ],
-        #     "select_globals": [
-        #           "joint_freq_meta",
-        #           "joint_freq_index_dict",
-        #           "joint_freq_meta_sample_count",
-        #           "joint_faf_meta",
-        #           "joint_faf_index_dict",
-        #     ],
-        # },
+        "joint_faf": {
+            "ht": None,
+            "path": None,
+            "select": ["joint_freq", "joint_grpmax", "joint_faf"],
+            "select_globals": [
+                "joint_freq_meta",
+                "joint_freq_index_dict",
+                "joint_freq_meta_sample_count",
+                "joint_faf_meta",
+                "joint_faf_index_dict",
+            ],
+        },
     }
 
     if release_exists:
@@ -307,6 +303,22 @@ def get_config(
             }
         )
     return config
+
+
+def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+    """
+    Drop faf95 from 'grpmax' and rename `gen_anc_faf_max` to `fafmax`.
+
+    These annotations will be combined with the others from freq's select in the config.
+    :param ht: Freq Hail Table.
+    :return: Select expression dict.
+    """
+    selects = {
+        "grpmax": hl.struct(**{k: ht.grpmax[k].drop("faf95") for k in ht.grpmax}),
+        "fafmax": ht.gen_anc_faf_max,
+    }
+
+    return selects
 
 
 def custom_in_silico_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
