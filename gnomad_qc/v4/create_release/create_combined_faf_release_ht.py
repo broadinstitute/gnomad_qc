@@ -458,6 +458,10 @@ def main(args):
                 cochran_mantel_haenszel_test=res.cmh_ht.ht()[
                     ht.key
                 ].cochran_mantel_haenszel_test,
+                data_type=hl.case()
+                .when(~hl.is_defined(ht.genomes_freq), "exomes")
+                .when(~hl.is_defined(ht.exomes_freq), "genomes")
+                .default("both"),
             )
             ht.describe()
             ht.write(res.final_combined_faf_ht.path, overwrite=overwrite)
