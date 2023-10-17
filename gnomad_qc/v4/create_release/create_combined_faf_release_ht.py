@@ -67,6 +67,8 @@ def extract_freq_info(
     The following annotations are filtered and renamed:
         - freq: {prefix}_freq
         - faf: {prefix}_faf
+        - grpmax: {prefix}_grpmax
+        - fafmax: {prefix}_fafmax
 
     The following global annotations are filtered and renamed:
         - freq_meta: {prefix}_freq_meta
@@ -112,6 +114,8 @@ def extract_freq_info(
         **{
             f"{prefix}_freq": array_exprs["freq"],
             f"{prefix}_faf": faf["faf"],
+            f"{prefix}_grpmax": ht.grpmax,
+            f"{prefix}_fafmax": ht.gen_anc_faf_max,
         }
     )
     ht = ht.select_globals(
@@ -458,10 +462,26 @@ def main(args):
                 cochran_mantel_haenszel_test=res.cmh_ht.ht()[
                     ht.key
                 ].cochran_mantel_haenszel_test,
-                data_type=hl.case()
-                .when(~hl.is_defined(ht.genomes_freq), "exomes")
-                .when(~hl.is_defined(ht.exomes_freq), "genomes")
-                .default("both"),
+                join_metric_data_type=hl.case()
+                .when(
+                    (hl.is_defined(ht.genomes_grpmax.AC))
+                    & hl.is_defined(ht.exomes_grpmax.gnomad.AC),
+                    "both",
+                )
+                .when(hl.is_defined(ht.genomes_grpmax.AC), "genomes")
+                .when(hl.is_defined(ht.exomes_grpmax.gnomad.AC), "exomes")
+                .default(hl.missing(hl.tstr)),
+                joint_fafmax=ht.joint_fafmax.annotate(
+                    join_metric_data_type=hl.case()
+                    .when(
+                        (hl.is_defined(ht.genomes_fafmax.faf95_max))
+                        & hl.is_defined(ht.exomes_fafmax.gnomad.faf95_max),
+                        "both",
+                    )
+                    .when(hl.is_defined(ht.genomes_fafmax.faf95_max), "genomes")
+                    .when(hl.is_defined(ht.exomes_fafmax.gnomad.faf95_max), "exomes")
+                    .default(hl.missing(hl.tstr)),
+                ),
             )
             ht.describe()
             ht.write(res.final_combined_faf_ht.path, overwrite=overwrite)
