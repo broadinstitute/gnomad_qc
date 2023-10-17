@@ -140,8 +140,8 @@ def get_joint_freq_and_faf(
     :param faf_pops_to_exclude: Set of populations to exclude from the FAF calculation.
     :return: Table with joint genomes and exomes frequency and FAF information.
     """
-    logger.info("Performing an inner join on frequency HTs...")
-    ht = genomes_ht.join(exomes_ht, how="inner")
+    logger.info("Performing an outer join on frequency HTs...")
+    ht = genomes_ht.join(exomes_ht, how="outer")
 
     # Use a temp SORT_ORDER for v4 release
     SORT_ORDER = [
