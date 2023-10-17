@@ -273,7 +273,8 @@ def custom_joint_faf_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     """
     Drop faf95 from 'grpmax'.
 
-    This annotations will be combined with the others from joint_faf's select in the config.
+    This annotation will be combined with the others from joint_faf's select in the config.
+    See note in `custom_freq_select` explaining why this field is removed.
 
     :param ht: Joint FAF Hail Table.
     :return: Select expression dict.
@@ -289,7 +290,13 @@ def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
 
     These annotations will be combined with the others from freq's select in the config.
 
-    :param ht: Freq Hail Table.
+    .. note::
+        - The faf95 field in the grpmax struct is the FAF of the genetic ancestry group with the largest AF (grpmax AF).
+        - The FAF fields within the gen_anc_faf_max struct contains the FAFs from the genetic ancestry group(s) with the largest FAFs
+        - These values aren't necessarily the same; the group with the highest AF for a variant isn't necessarily the group with the highest FAF for a variant
+        - The filtering allele frequencies that are used by the community are the values within the gen_anc_faf_max struct, NOT grpmax FAF, which is why we are dropping grpmax.faf95 and renaming gen_anc_faf_max
+        
+    :param ht: Freq Hail Table
     :return: Select expression dict.
     """
     selects = {
