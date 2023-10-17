@@ -246,8 +246,8 @@ def get_config(
         "joint_faf": {
             "ht": get_combined_faf_release().ht(),
             "path": get_combined_faf_release().path,
-            "custom_select": custom_joint_faf_select,
             "select": ["joint_freq", "joint_faf", "joint_fafmax"],
+            "custom_select": custom_joint_faf_select,
             "select_globals": [
                 "joint_freq_meta",
                 "joint_freq_index_dict",
