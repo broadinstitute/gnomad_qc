@@ -60,7 +60,9 @@ logger.setLevel(logging.INFO)
 # from the other fields.
 AS_FIELDS = deepcopy(AS_FIELDS)
 AS_FIELDS.remove("InbreedingCoeff")
+AS_FIELDS.remove("AS_SOR")
 SITE_FIELDS = deepcopy(SITE_FIELDS)
+SITE_FIELDS.remove("SOR")
 TABLES_FOR_RELEASE = [
     "dbsnp",
     "filters",
@@ -326,7 +328,8 @@ def custom_joint_faf_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     """
     Drop faf95 from 'grpmax'.
 
-    This annotations will be combined with the others from joint_faf's select in the config.
+    This annotation will be combined with the others from joint_faf's select in the config.
+    See note in `custom_freq_select` explaining why this field is removed.
     :param ht: Joint FAF Hail Table.
     :return: Select expression dict.
     """
@@ -340,7 +343,14 @@ def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     Drop faf95 from 'grpmax' and rename `gen_anc_faf_max` to `fafmax`.
 
     These annotations will be combined with the others from freq's select in the config.
-    :param ht: Freq Hail Table.
+
+    .. note::
+        - The faf95 field in the grpmax struct is the FAF of the genetic ancestry group with the largest AF (grpmax AF).
+        - The FAF fields within the gen_anc_faf_max struct contains the FAFs from the genetic ancestry group(s) with the largest FAFs
+        - These values aren't necessarily the same; the group with the highest AF for a variant isn't necessarily the group with the highest FAF for a variant
+        - The filtering allele frequencies that are used by the community are the values within the gen_anc_faf_max struct, NOT grpmax FAF, which is why we are dropping grpmax.faf95 and renaming gen_anc_faf_max
+
+    :param ht: Freq Hail Table
     :return: Select expression dict.
     """
     selects = {
@@ -446,18 +456,15 @@ def custom_info_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     vrs_info_fields = {"vrs": vrs_ht[ht.key].vrs}
 
     # Create a dict of the fields from the info HT that we want keep in the info.
-    info_struct = hl.struct()
+    info_struct = hl.struct(**ht.info)
     info_dict = {field: info_struct[field] for field in SITE_FIELDS + AS_FIELDS}
     info_dict.update(filters_info_dict)
     info_dict.update(freq_info_dict)
     info_dict.update(vrs_info_fields)
 
-    # Select the info and allele info annotations. We drop nonsplit_alleles from
-    # allele_info so that we don't release alleles that are found in non-releasable
-    # samples.
+    # Select the info
     selects = {
         "info": hl.struct(**info_dict),
-        "allele_info": ht.allele_info.drop("nonsplit_alleles"),
     }
 
     return selects
@@ -682,9 +689,9 @@ def main(args):
         args.release_exists,
     )
 
-    # Filter out chrM and AS_lowqual sites.
+    # Filter out chrM, AS_lowqual sites, and AC_raw == 0.
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
-    ht = ht.filter(hl.is_defined(ht.filters))
+    ht = ht.filter(hl.is_defined(ht.filters) & (ht.freq[1].AC > 0))
 
     ht = ht.select_globals(**get_select_global_fields(ht))
 
