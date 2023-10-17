@@ -41,6 +41,7 @@ from gnomad_qc.v4.resources.annotations import (
 from gnomad_qc.v4.resources.basics import calling_intervals, qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v4.resources.release import (
+    FREQUENCY_README,
     get_combined_faf_release,
     included_datasets_json_path,
     release_sites,
@@ -93,6 +94,7 @@ FINALIZED_SCHEMA = {
         "tool_versions",
         "vrs_versions",
         "vep_globals",
+        "frequency_README",
         "date",
         "version",
     ],
@@ -658,7 +660,8 @@ def main(args):
         args.release_exists,
     )
 
-    # Filter out chrM, AS_lowqual sites, and AC_raw == 0.
+    # Filter out chrM, AS_lowqual sites (these sites are dropped in the final_filters HT
+    # so will not have information in `filters`) and AC_raw == 0.
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters) & (ht.freq[1].AC > 0))
 
@@ -689,6 +692,7 @@ def main(args):
         .ht()
         .index_globals()
         .high_qual_interval_parameters,
+        frequency_README=FREQUENCY_README,
     )
 
     # Reorder fields to match final schema.
