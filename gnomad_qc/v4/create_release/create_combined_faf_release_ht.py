@@ -263,16 +263,16 @@ def perform_cmh_test(
         freq_expr: hl.expr.ArrayExpression, meta_expr: hl.expr.ArrayExpression
     ) -> Dict[str, hl.expr.StructExpression]:
         """
-        Get a dictionary of frequency StructExpressions by population.
+        Get a dictionary of frequency StructExpressions by genetic ancestries.
 
         :param freq_expr: ArrayExpression of frequencies to combine.
         :param meta_expr: Frequency metadata for `freq_expr`.
         :return: Dictionary of frequency StructExpressions by population.
         """
         return {
-            m.get("pop"): freq_expr[i]
+            m.get("gen_anc"): freq_expr[i]
             for i, m in enumerate(hl.eval(meta_expr))
-            if m.get("pop") in pops
+            if m.get("gen_anc") in pops
         }
 
     freq1_by_pop = _get_freq_by_pop(freq1_expr, freq1_meta_expr)
@@ -447,13 +447,17 @@ def main(args):
             ht.write(res.cmh_ht.path, overwrite=overwrite)
 
         if args.finalize_combined_faf_release:
-            res = combine_faf_resources.cmh_test
+            res = combine_faf_resources.finalize_faf
             res.check_resource_existence()
 
             ht = res.comb_freq_ht.ht()
             ht = ht.annotate(
-                **res.contingency_table_ht.ht()[ht.key].contingency_table_test,
-                **res.cmh_ht.ht()[ht.key].cochran_mantel_haenszel_test,
+                contingency_table_test=res.contingency_table_ht.ht()[
+                    ht.key
+                ].contingency_table_test,
+                cochran_mantel_haenszel_test=res.cmh_ht.ht()[
+                    ht.key
+                ].cochran_mantel_haenszel_test,
             )
             ht.describe()
             ht.write(res.final_combined_faf_ht.path, overwrite=overwrite)
