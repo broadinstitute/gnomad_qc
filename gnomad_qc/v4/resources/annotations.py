@@ -12,6 +12,8 @@ from gnomad.resources.resource_utils import (
 
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import (
+    COMBINED_FAF_RELEASES,
+    CURRENT_COMBINED_FAF_RELEASE,
     CURRENT_HGDP_TGP_RELEASE,
     CURRENT_VERSION,
     HGDP_TGP_RELEASES,
@@ -281,6 +283,7 @@ def get_downsampling(
 
 def get_freq(
     version: str = CURRENT_VERSION,
+    data_type: str = "exomes",
     test: bool = False,
     hom_alt_adjusted=False,
     chrom: Optional[str] = None,
@@ -291,6 +294,7 @@ def get_freq(
     Get the frequency annotation table for a specified release.
 
     :param version: Version of annotation path to return.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
     :param test: Whether to use a tmp path for tests.
     :param hom_alt_adjusted: Whether to return the hom alt adjusted frequency table.
     :param chrom: Chromosome to return frequency table for. Entire Table will be
@@ -300,13 +304,14 @@ def get_freq(
     :param finalized: Whether to return the finalized frequency table. Default is True.
     :return: Hail Table containing subset or overall cohort frequency annotations.
     """
-    ht_name = f"gnomad.exomes.v{version}.frequencies"
-    if not finalized:
+    ht_name = f"gnomad.{data_type}.v{version}.frequencies"
+    if data_type == "exomes" and not finalized:
         if chrom:
             ht_name += f".{chrom}"
         if not hom_alt_adjusted:
             ht_name += ".pre_hom_alt_adjustment"
-    if intermediate_subset:
+
+    if data_type == "exomes" and intermediate_subset:
         ht_name += f".{intermediate_subset}"
         if test:
             ht_name += ".test"
@@ -316,47 +321,62 @@ def get_freq(
             ht_name += ".final"
         if test:
             ht_name += ".test"
-        ht_path = f"{_annotations_root(version, test)}/{ht_name}.ht"
+        ht_path = f"{_annotations_root(version, test, data_type)}/{ht_name}.ht"
 
     return VersionedTableResource(
         version, {version: TableResource(ht_path) for version in VERSIONS}
     )
 
 
-def get_freq_comparison(version1, data_type1, version2, data_type2):
+def get_combined_frequency(test: bool = False) -> VersionedTableResource:
     """
-    Get Table resource for a frequency comparison between two gnomAD versions.
+    Get the combined v4 genome and exome frequency annotation VersionedTableResource.
 
-    Table contains results from a chi squared test and fishers exact test comparing the variant frequencies of two
-    gnomAD versions/data types.
-
-    :param version1: First gnomAD version in the frequency comparison. Table will be in the root annotation path for this gnomAD version.
-    :param data_type1: Data type of first version in the frequency comparison. One of "exomes" or "genomes". Table will be in the root annotation path for this gnomAD data type.
-    :param version2: Second gnomAD version in the frequency comparison.
-    :param data_type2: Data type of first version in the frequency comparison. One of "exomes" or "genomes".
-    :return: Hail Table containing results from chi squared test and fishers exact test
+    :param test: Whether to use a tmp path for testing.
+    :return: Hail Table containing combined frequency annotations.
     """
-    versions = [r + "_exomes" for r in EXOME_RELEASES] + [
-        r + "_genomes" for r in GENOME_RELEASES + VERSIONS
-    ]
-    if (
-        f"{version1}_{data_type1}" not in versions
-        or f"{version2}_{data_type2}" not in versions
-    ):
+    return VersionedTableResource(
+        CURRENT_COMBINED_FAF_RELEASE,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.frequencies.ht"
+            )
+            for version in COMBINED_FAF_RELEASES
+        },
+    )
+
+
+def get_freq_comparison(method: str, test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for a frequency comparison between v4 genomes and exomes.
+
+    Table contains results from one of the following comparison methods:
+        - 'contingency_table_test': Hail's contingency table test -- chi-squared or
+           Fisher’s exact test of independence depending on min allele count.
+        - 'cmh_test': Cochran–Mantel–Haenszel test -- stratified test of independence
+           for 2x2xK contingency tables.
+
+    :param method: Method used to compare frequencies between v4 genomes and exomes.
+        Can be one of `contingency_table_test` or `cmh_test`.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: VersionedTableResource containing results from the specified comparison
+        `method`.
+    """
+    methods = ["contingency_table_test", "cmh_test"]
+    if method not in methods:
         raise DataException(
-            "One of the versions/datatypes supplied doesn't exist. Possible options"
-            f" are: {versions}"
+            f"The method: {method} is not an option. Possible options are: {methods}"
         )
 
-    ht_path = (
-        f"gnomad.{data_type1}_v{version1}_{data_type2}_v{version2}.compare_freq.ht"
+    return VersionedTableResource(
+        CURRENT_COMBINED_FAF_RELEASE,
+        {
+            version: TableResource(
+                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.compare_frequencies.{method}.ht"
+            )
+            for version in COMBINED_FAF_RELEASES
+        },
     )
-    if version1 in VERSIONS:
-        ht_path = f"{_annotations_root(version1)}/{ht_path}"
-    else:
-        ht_path = f"gs://gnomad/annotations/hail-0.2/ht/{data_type1}/{ht_path}"
-
-    return TableResource(ht_path)
 
 
 def get_insilico_predictors(
@@ -418,25 +438,25 @@ def get_vrs(
 
 
 def hgdp_tgp_updated_callstats(
-    test: bool = False, subset: str = "final"
+    subset: str, test: bool = False
 ) -> VersionedTableResource:
     """
-    Get the HGDP + 1KG/TGP subset release MatrixTableResource.
+    Get the HGDP + 1KG/TGP subset updated callstats TableResource.
 
-    :param test: If True, will return the annotation resource for testing purposes.
     :param subset: The subset of the HGDP + 1KG/TGP release to return,
-       must be "added", "subtracted", "pop_diff", or "final"
+       must be "added", "subtracted", "pop_diff", "join", or "v3_release_an".
+    :param test: Whether to return the annotation resource for testing purposes.
     :return: MatrixTableResource for specified subset.
     """
-    if subset not in ["added", "subtracted", "pop_diff", "join"]:
-        raise ValueError(
-            "Operation must be one of 'added', 'subtracted', 'pop_diff', or 'join'"
-        )
+    subsets = ["added", "subtracted", "pop_diff", "join", "v3_release_an"]
+    if subset not in subsets:
+        raise ValueError(f"Operation must be one of {subsets}")
+
     return VersionedTableResource(
         default_version=CURRENT_HGDP_TGP_RELEASE,
         versions={
             release: TableResource(
-                f"{qc_temp_prefix(version=release) if test else f'gs://gnomad/annotations/hail-0.2/ht/genomes_v{release}/'}gnomad.genomes.v{release}.hgdp_1kg_subset_updated_callstats_{subset}.ht"
+                f"{_annotations_root(release, test, 'genomes')}/gnomad.genomes.v{release}.hgdp_1kg_subset_updated_callstats_{subset}.ht"
             )
             for release in HGDP_TGP_RELEASES
         },
