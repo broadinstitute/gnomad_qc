@@ -143,17 +143,6 @@ def get_joint_freq_and_faf(
     logger.info("Performing an outer join on frequency HTs...")
     ht = genomes_ht.join(exomes_ht, how="outer")
 
-    # Use a temp SORT_ORDER for v4 release
-    SORT_ORDER = [
-        "subset",
-        "downsampling",
-        "popmax",
-        "gen_anc",
-        "subpop",
-        "sex",
-        "group",
-    ]
-
     # Merge exomes and genomes frequencies.
     freq, freq_meta, count_arrays_dict = merge_freq_arrays(
         farrays=[ht.genomes_freq, ht.exomes_freq],
@@ -201,13 +190,9 @@ def get_joint_freq_and_faf(
 
     ht = ht.annotate_globals(
         joint_freq_meta=freq_meta,
-        joint_freq_index_dict=make_freq_index_dict_from_meta(
-            freq_meta, sort_order=SORT_ORDER
-        ),
+        joint_freq_index_dict=make_freq_index_dict_from_meta(freq_meta),
         joint_faf_meta=faf_meta,
-        joint_faf_index_dict=make_freq_index_dict_from_meta(
-            hl.literal(faf_meta), sort_order=SORT_ORDER
-        ),
+        joint_faf_index_dict=make_freq_index_dict_from_meta(hl.literal(faf_meta)),
         joint_freq_meta_sample_count=count_arrays_dict["counts"],
     )
 
