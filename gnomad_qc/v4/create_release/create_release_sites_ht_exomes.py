@@ -248,7 +248,7 @@ def get_config(
         "joint_faf": {
             "ht": get_combined_faf_release().ht(),
             "path": get_combined_faf_release().path,
-            "select": ["joint_freq", "joint_faf", "joint_fafmax"],
+            "select": ["joint_freq", "joint_faf"],
             "custom_select": custom_joint_faf_select,
             "select_globals": [
                 "joint_freq_meta",
@@ -281,7 +281,10 @@ def custom_joint_faf_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     :param ht: Joint FAF Hail Table.
     :return: Select expression dict.
     """
-    selects = {"joint_grpmax": ht.joint_grpmax.drop("faf95")}
+    selects = {
+        "joint_grpmax": ht.joint_grpmax.drop("faf95"),
+        "joint_fafmax": ht.joint_fafmax.annotate(data_type=ht.joint_metric_data_type),
+    }
 
     return selects
 
