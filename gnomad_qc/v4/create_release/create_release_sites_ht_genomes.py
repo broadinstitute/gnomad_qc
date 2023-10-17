@@ -162,6 +162,7 @@ def drop_v3_subsets(freq_ht: hl.Table) -> Tuple[hl.Table, str]:
 # Config is added as a function, so it is not evaluated until the function is called.
 def get_config(
     release_exists: bool = False,
+    test: bool = False,
 ) -> Dict[str, Dict[str, hl.expr.Expression]]:
     """
     Get configuration dictionary.
@@ -196,8 +197,8 @@ def get_config(
             "select": ["rsid"],
         },
         "filters": {
-            "ht": final_filter(data_type="genomes").ht(),
-            "path": final_filter(data_type="genomes").path,
+            "ht": final_filter(data_type="genomes", test=test).ht(),
+            "path": final_filter(data_type="genomes", test=test).path,
             "select": ["filters"],
             "custom_select": custom_filters_select,
             "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
@@ -245,8 +246,8 @@ def get_config(
             "custom_select": custom_info_select,
         },
         "freq": {
-            "ht": drop_v3_subsets(get_freq(data_type="genomes").ht())[0],
-            "path": drop_v3_subsets(get_freq(data_type="genomes").ht())[1],
+            "ht": drop_v3_subsets(get_freq(data_type="genomes", test=test).ht())[0],
+            "path": drop_v3_subsets(get_freq(data_type="genomes", test=test).ht())[1],
             "select": [
                 "freq",
                 "faf",
@@ -275,17 +276,18 @@ def get_config(
             "global_name": "vep_globals",
         },
         "region_flags": {
-            "ht": get_freq(data_type="genomes").ht(),
-            "path": get_freq(data_type="genomes").path,
+            "ht": get_freq(data_type="genomes", test=test).ht(),
+            "path": get_freq(data_type="genomes", test=test).path,
             "custom_select": custom_region_flags_select,
         },
         "release": {
             "path": release_sites(data_type="genomes").path,
         },
         "joint_faf": {
-            "ht": get_combined_faf_release().ht(),
-            "path": get_combined_faf_release().path,
-            "select": ["joint_freq", "joint_grpmax", "joint_faf", "joint_fafmax"],
+            "ht": get_combined_faf_release(test=test).ht(),
+            "path": get_combined_faf_release(test=test).path,
+            "select": ["joint_freq", "joint_faf", "joint_fafmax"],
+            "custom_select": custom_joint_faf_select,
             "select_globals": [
                 "joint_freq_meta",
                 "joint_freq_index_dict",
@@ -307,6 +309,19 @@ def get_config(
             }
         )
     return config
+
+
+def custom_joint_faf_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+    """
+    Drop faf95 from 'grpmax'.
+
+    This annotations will be combined with the others from joint_faf's select in the config.
+    :param ht: Joint FAF Hail Table.
+    :return: Select expression dict.
+    """
+    selects = {"joint_grpmax": ht.joint_grpmax.drop("faf95")}
+
+    return selects
 
 
 def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
@@ -695,7 +710,7 @@ def main(args):
     )
 
     output_path = (
-        f"{qc_temp_prefix()}release/gnomad.exomes.sites.test.ht"
+        f"{qc_temp_prefix()}release/gnomad.genomes.sites.test.updated_101623.ht"
         if args.test
         else release_sites(data_type="genomes").path
     )
