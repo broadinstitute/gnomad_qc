@@ -136,6 +136,16 @@ def drop_v3_subsets(freq_ht: hl.Table) -> Tuple[hl.Table, str]:
         ]
     }
 
+    SORT_ORDER = [
+        "subset",
+        "downsampling",
+        "popmax",
+        "gen_anc",
+        "subpop",
+        "sex",
+        "group",
+    ]
+
     freq_meta, array_exprs = filter_arrays_by_meta(
         freq_ht.freq_meta,
         {
@@ -150,7 +160,9 @@ def drop_v3_subsets(freq_ht: hl.Table) -> Tuple[hl.Table, str]:
     freq_ht = freq_ht.annotate(freq=array_exprs["freq"])
     freq_ht = freq_ht.annotate_globals(
         freq_meta=freq_meta,
-        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
+        freq_index_dict=make_freq_index_dict_from_meta(
+            hl.literal(freq_meta), sort_order=SORT_ORDER
+        ),
         freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
     )
 
@@ -411,11 +423,6 @@ def custom_info_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     # Create a dict of the fields from the filters HT that we want to add to the info.
     filters_ht = get_config().get("filters")["ht"]
 
-    # For more information on the selected compute_info_method, please see the
-    # run_compute_info in gnomad_qc.v4.annotations.generate_variant_qc_annotations.py
-    compute_info_method = hl.eval(
-        filters_ht.filtering_model_specific_info.compute_info_method
-    )
     score_name = hl.eval(filters_ht.filtering_model.score_name)
     filters_ht = filters_ht.transmute(**filters_ht.truth_sets)
     filters = filters_ht[ht.key]
@@ -432,14 +439,14 @@ def custom_info_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
 
     # Create a dict of the fields from the freq HT that we want to add to the info.
     freq_ht = get_config().get("freq")["ht"]
-    freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
+    freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["InbreedingCoeff"]}
 
     # Create a dict of the fields from the VRS HT that we want to add to the info.
     vrs_ht = get_vrs(data_type="genomes").ht()
     vrs_info_fields = {"vrs": vrs_ht[ht.key].vrs}
 
     # Create a dict of the fields from the info HT that we want keep in the info.
-    info_struct = hl.struct(**ht.site_info, **ht[f"{compute_info_method}_info"])
+    info_struct = hl.struct()
     info_dict = {field: info_struct[field] for field in SITE_FIELDS + AS_FIELDS}
     info_dict.update(filters_info_dict)
     info_dict.update(freq_info_dict)
@@ -642,7 +649,7 @@ def join_hts(
         with hl.utils.hadoop_open(
             included_datasets_json_path(
                 test=test,
-                release_version=hl.eval(get_config(t)["release"]["ht"].version),
+                release_version=hl.eval(get_config()["release"]["ht"].version),
             )
         ) as f:
             included_datasets = json.loads(f.read())
