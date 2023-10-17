@@ -658,9 +658,9 @@ def main(args):
         args.release_exists,
     )
 
-    # Filter out chrM and AS_lowqual sites.
+    # Filter out chrM, AS_lowqual sites, and AC_raw == 0.
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
-    ht = ht.filter(hl.is_defined(ht.filters))
+    ht = ht.filter(hl.is_defined(ht.filters) & ht.freq[1].AC > 0)
 
     ht = ht.select_globals(**get_select_global_fields(ht))
 
