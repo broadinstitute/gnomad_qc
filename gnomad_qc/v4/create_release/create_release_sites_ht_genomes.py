@@ -162,7 +162,6 @@ def drop_v3_subsets(freq_ht: hl.Table) -> Tuple[hl.Table, str]:
 # Config is added as a function, so it is not evaluated until the function is called.
 def get_config(
     release_exists: bool = False,
-    test: bool = False,
 ) -> Dict[str, Dict[str, hl.expr.Expression]]:
     """
     Get configuration dictionary.
@@ -197,8 +196,8 @@ def get_config(
             "select": ["rsid"],
         },
         "filters": {
-            "ht": final_filter(data_type="genomes", test=test).ht(),
-            "path": final_filter(data_type="genomes", test=test).path,
+            "ht": final_filter(data_type="genomes", test=True).ht(),
+            "path": final_filter(data_type="genomes", test=True).path,
             "select": ["filters"],
             "custom_select": custom_filters_select,
             "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
@@ -246,8 +245,8 @@ def get_config(
             "custom_select": custom_info_select,
         },
         "freq": {
-            "ht": drop_v3_subsets(get_freq(data_type="genomes", test=test).ht())[0],
-            "path": drop_v3_subsets(get_freq(data_type="genomes", test=test).ht())[1],
+            "ht": drop_v3_subsets(get_freq(data_type="genomes", test=True).ht())[0],
+            "path": drop_v3_subsets(get_freq(data_type="genomes", test=True).ht())[1],
             "select": [
                 "freq",
                 "faf",
@@ -276,16 +275,16 @@ def get_config(
             "global_name": "vep_globals",
         },
         "region_flags": {
-            "ht": get_freq(data_type="genomes", test=test).ht(),
-            "path": get_freq(data_type="genomes", test=test).path,
+            "ht": get_freq(data_type="genomes", test=True).ht(),
+            "path": get_freq(data_type="genomes", test=True).path,
             "custom_select": custom_region_flags_select,
         },
         "release": {
             "path": release_sites(data_type="genomes").path,
         },
         "joint_faf": {
-            "ht": get_combined_faf_release(test=test).ht(),
-            "path": get_combined_faf_release(test=test).path,
+            "ht": get_combined_faf_release(test=True).ht(),
+            "path": get_combined_faf_release(test=True).path,
             "select": ["joint_freq", "joint_faf", "joint_fafmax"],
             "custom_select": custom_joint_faf_select,
             "select_globals": [
@@ -643,7 +642,7 @@ def join_hts(
         with hl.utils.hadoop_open(
             included_datasets_json_path(
                 test=test,
-                release_version=hl.eval(get_config()["release"]["ht"].version),
+                release_version=hl.eval(get_config(t)["release"]["ht"].version),
             )
         ) as f:
             included_datasets = json.loads(f.read())
