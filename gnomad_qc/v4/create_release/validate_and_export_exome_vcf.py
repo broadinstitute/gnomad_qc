@@ -430,7 +430,7 @@ def main(args):  # noqa: D103
                 monoallelic_expr=ht.info.monoallelic,
                 verbose=args.verbose,
                 delimiter="_",
-                # sample_sum_sets_and_pops={"non_ukb": POPS},
+                sample_sum_sets_and_pops={"non_ukb": POPS},
                 variant_filter_field="AS_VQSR",
                 problematic_regions=["lcr", "segdup", "non_par"],
                 single_filter_count=True,
