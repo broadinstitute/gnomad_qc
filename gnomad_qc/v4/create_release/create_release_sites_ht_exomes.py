@@ -89,6 +89,7 @@ FINALIZED_SCHEMA = {
         "downsamplings",
         "filtering_model",
         "inbreeding_coeff_cutoff",
+        "interval_qc_parameters",
         "tool_versions",
         "vrs_versions",
         "vep_globals",
@@ -245,7 +246,8 @@ def get_config(
         "joint_faf": {
             "ht": get_combined_faf_release().ht(),
             "path": get_combined_faf_release().path,
-            "select": ["joint_freq", "joint_grpmax", "joint_faf", "joint_fafmax"],
+            "custom_select": custom_joint_faf_select,
+            "select": ["joint_freq", "joint_faf", "joint_fafmax"],
             "select_globals": [
                 "joint_freq_meta",
                 "joint_freq_index_dict",
@@ -265,6 +267,20 @@ def get_config(
             }
         )
     return config
+
+
+def custom_joint_faf_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+    """
+    Drop faf95 from 'grpmax'.
+
+    This annotations will be combined with the others from joint_faf's select in the config.
+
+    :param ht: Joint FAF Hail Table.
+    :return: Select expression dict.
+    """
+    selects = {"joint_grpmax": ht.joint_grpmax.drop("faf95")}
+
+    return selects
 
 
 def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
@@ -674,7 +690,7 @@ def main(args):
     )
 
     output_path = (
-        f"{qc_temp_prefix()}release/gnomad.exomes.sites.test.ht"
+        f"{qc_temp_prefix()}release/gnomad.exomes.sites.test.updated_101623.ht"
         if args.test
         else release_sites().path
     )
