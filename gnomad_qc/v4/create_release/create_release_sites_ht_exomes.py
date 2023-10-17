@@ -295,7 +295,7 @@ def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
         - The FAF fields within the gen_anc_faf_max struct contains the FAFs from the genetic ancestry group(s) with the largest FAFs
         - These values aren't necessarily the same; the group with the highest AF for a variant isn't necessarily the group with the highest FAF for a variant
         - The filtering allele frequencies that are used by the community are the values within the gen_anc_faf_max struct, NOT grpmax FAF, which is why we are dropping grpmax.faf95 and renaming gen_anc_faf_max
-        
+
     :param ht: Freq Hail Table
     :return: Select expression dict.
     """
@@ -660,7 +660,7 @@ def main(args):
 
     # Filter out chrM, AS_lowqual sites, and AC_raw == 0.
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
-    ht = ht.filter(hl.is_defined(ht.filters) & ht.freq[1].AC > 0)
+    ht = ht.filter(hl.is_defined(ht.filters) & (ht.freq[1].AC > 0))
 
     ht = ht.select_globals(**get_select_global_fields(ht))
 
