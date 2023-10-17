@@ -138,16 +138,6 @@ def drop_v3_subsets(freq_ht: hl.Table) -> Tuple[hl.Table, str]:
         ]
     }
 
-    SORT_ORDER = [
-        "subset",
-        "downsampling",
-        "popmax",
-        "gen_anc",
-        "subpop",
-        "sex",
-        "group",
-    ]
-
     freq_meta, array_exprs = filter_arrays_by_meta(
         freq_ht.freq_meta,
         {
@@ -162,9 +152,7 @@ def drop_v3_subsets(freq_ht: hl.Table) -> Tuple[hl.Table, str]:
     freq_ht = freq_ht.annotate(freq=array_exprs["freq"])
     freq_ht = freq_ht.annotate_globals(
         freq_meta=freq_meta,
-        freq_index_dict=make_freq_index_dict_from_meta(
-            hl.literal(freq_meta), sort_order=SORT_ORDER
-        ),
+        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
         freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
     )
 
@@ -259,8 +247,8 @@ def get_config(
             "custom_select": custom_info_select,
         },
         "freq": {
-            "ht": drop_v3_subsets(get_freq(data_type="genomes", test=True).ht())[0],
-            "path": drop_v3_subsets(get_freq(data_type="genomes", test=True).ht())[1],
+            "ht": drop_v3_subsets(get_freq(data_type="genomes").ht())[0],
+            "path": drop_v3_subsets(get_freq(data_type="genomes").ht())[1],
             "select": [
                 "freq",
                 "faf",
@@ -289,8 +277,8 @@ def get_config(
             "global_name": "vep_globals",
         },
         "region_flags": {
-            "ht": get_freq(data_type="genomes", test=True).ht(),
-            "path": get_freq(data_type="genomes", test=True).path,
+            "ht": get_freq(data_type="genomes").ht(),
+            "path": get_freq(data_type="genomes").path,
             "custom_select": custom_region_flags_select,
         },
         "release": {
