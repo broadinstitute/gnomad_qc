@@ -1205,6 +1205,7 @@ def main(args):
                 sibling_singletons=args.sibling_singletons,
                 adj=args.adj,
                 interval_qc_filter=args.interval_qc_filter,
+                calling_interval_filter=args.calling_interval_filter,
                 compute_info_method=args.compute_info_method,
                 indel_features=args.indel_features,
                 snp_features=args.snp_features,

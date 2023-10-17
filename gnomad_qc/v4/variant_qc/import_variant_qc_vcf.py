@@ -36,7 +36,7 @@ def import_variant_qc_vcf(
     :param array_elements_required: Value of array_elements_required to pass to
         hl.import_vcf.
     :param is_split: Whether the VCF is already split.
-    :deduplicate_check: Check for and remove duplicate variants.
+    :param deduplicate_check: Check for and remove duplicate variants.
     :return: HT containing variant QC results.
     """
     model_type = model_id.split("_")[0]
@@ -61,7 +61,7 @@ def import_variant_qc_vcf(
         original_count = ht.count()
         ht = ht.distinct()
         count_difference = original_count - ht.count()
-        logger.info(f"Differnce after ht.distinct() as: {count_difference}")
+        logger.info(f"Difference after ht.distinct() as: {count_difference}")
 
     unsplit_count = None
     if not is_split:
@@ -90,8 +90,8 @@ def import_variant_qc_vcf(
         split_ht = hl.split_multi_hts(unsplit_ht)
 
         split_ht = split_ht.annotate(
-            info=unsplit_ht.info.annotate(
-                **split_info_annotation(unsplit_ht.info, unsplit_ht.a_index)
+            info=split_ht.info.annotate(
+                **split_info_annotation(split_ht.info, split_ht.a_index)
             ),
         )
     else:
@@ -139,6 +139,7 @@ def main(args):
             sibling_singletons=args.sibling_singletons,
             adj=args.adj,
             interval_qc_filter=args.interval_qc_filter,
+            calling_interval_filter=args.calling_interval_filter,
             compute_info_method=args.compute_info_method,
             indel_features=args.indel_features,
             snp_features=args.snp_features,
@@ -184,27 +185,36 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--transmitted-singletons",
-        help="Whether transmitted singletons where used in training the model.",
+        help="Whether transmitted singletons were used in training the model.",
         type=bool,
         required=True,
     )
     parser.add_argument(
         "--sibling-singletons",
-        help="Whether sibling singletons where used in training the model.",
+        help="Whether sibling singletons were used in training the model.",
         type=bool,
         required=True,
     )
     parser.add_argument(
         "--adj",
-        help="Whether adj filtered singletons where used in training the model.",
+        help="Whether adj filtered singletons were used in training the model.",
         type=bool,
         required=True,
     )
     parser.add_argument(
         "--interval-qc-filter",
         help=(
-            "Whether only variants in intervals passing interval QC where used in "
+            "Whether only variants in intervals passing interval QC were used in "
             "training the model."
+        ),
+        type=bool,
+        required=True,
+    )
+    parser.add_argument(
+        "--calling-interval-filter",
+        help=(
+            "Whether only variants in the intersection of Broad/DSP calling intervals "
+            "with 50 bp of padding were used for training."
         ),
         type=bool,
         required=True,
@@ -234,7 +244,7 @@ if __name__ == "__main__":
         "--deduplication-check",
         action="store_true",
         help=(
-            "Remove duplicate variants. Useful for v4 MVP when reading from potentiall"
+            "Remove duplicate variants. Useful for v4 MVP when reading from potentially"
             " overlapping shards."
         ),
     )
