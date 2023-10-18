@@ -110,7 +110,7 @@ def get_export_resources(
         "--validate-release-ht",
         input_resources={
             "release_ht": [
-                "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/release/gnomad.exomes.sites.test.ht"
+                "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/release/gnomad.exomes.sites.test.updated_101623.ht"
             ]
         },  # release_sites().ht()},
         output_resources={"validated_ht": validated_release_ht(test=test)},
@@ -227,6 +227,13 @@ def unfurl_nested_annotations(
             for k, i in joint_faf_idx.items()
         }
     )
+
+    logger.info("Unfurling joint fafmax data...")
+    joint_fafmax_idx = ht.joint_fafmax
+    joint_fafmax_dict = {
+        f"joint_fafmax_{f}": joint_fafmax_idx[f] for f in joint_fafmax_idx.keys()
+    }
+    expr_dict.update(joint_fafmax_dict)
 
     logger.info("Unfurling age hists...")
     hist_idx = ht.histograms.age_hists
