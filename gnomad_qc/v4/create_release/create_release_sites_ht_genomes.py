@@ -183,8 +183,7 @@ def get_config(
         The 'in_silico' key's 'ht' logic is handled separately because it is a list of
         HTs. In this list, the phyloP HT is keyed by locus only and thus the 'ht' code
         below sets the join key to 1, which will grab the first key of
-        ht.key.dtype.values() e.g. 'locus', when an HT's keys are not {'locus',
-        'alleles'}.
+        ht.key.dtype.values() e.g. 'locus', when an HT's keys are not {'locus', 'alleles'}.
         All future in_silico predictors should have the keys confirmed to be 'locus'
         with or without 'alleles' before using this logic.
 
@@ -198,8 +197,8 @@ def get_config(
             "select": ["rsid"],
         },
         "filters": {
-            "ht": final_filter(data_type="genomes", test=True).ht(),
-            "path": final_filter(data_type="genomes", test=True).path,
+            "ht": final_filter(data_type="genomes").ht(),
+            "path": final_filter(data_type="genomes").path,
             "select": ["filters"],
             "custom_select": custom_filters_select,
             "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
@@ -247,8 +246,8 @@ def get_config(
             "custom_select": custom_info_select,
         },
         "freq": {
-            "ht": drop_v3_subsets(get_freq(data_type="genomes").ht())[0],
-            "path": drop_v3_subsets(get_freq(data_type="genomes").ht())[1],
+            "ht": drop_v3_subsets(get_freq(data_type="genomes"))[0],
+            "path": drop_v3_subsets(get_freq(data_type="genomes"))[1],
             "select": [
                 "freq",
                 "faf",
@@ -285,8 +284,8 @@ def get_config(
             "path": release_sites(data_type="genomes").path,
         },
         "joint_faf": {
-            "ht": get_combined_faf_release(test=True).ht(),
-            "path": get_combined_faf_release(test=True).path,
+            "ht": get_combined_faf_release(test=True).ht(),  # TODO: remove test=True
+            "path": get_combined_faf_release(test=True).path,  # TODO: remove test=True
             "select": ["joint_freq", "joint_faf", "joint_fafmax"],
             "custom_select": custom_joint_faf_select,
             "select_globals": [
@@ -318,6 +317,7 @@ def custom_joint_faf_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
 
     This annotation will be combined with the others from joint_faf's select in the config.
     See note in `custom_freq_select` explaining why this field is removed.
+
     :param ht: Joint FAF Hail Table.
     :return: Select expression dict.
     """
@@ -328,7 +328,7 @@ def custom_joint_faf_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
 
 def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     """
-    Drop faf95 from 'grpmax' and rename `gen_anc_faf_max` to `fafmax`.
+    Drop faf95 from both 'gnomad' and 'non_ukb' in 'grpmax' and rename `gen_anc_faf_max` to `fafmax`.
 
     These annotations will be combined with the others from freq's select in the config.
 
@@ -677,12 +677,14 @@ def main(args):
         args.release_exists,
     )
 
-    # Filter out chrM, AS_lowqual sites, and AC_raw == 0.
+    # Filter out chrM, AS_lowqual sites (these sites are dropped in the final_filters HT
+    # so will not have information in `filters`) and AC_raw == 0.
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters) & (ht.freq[1].AC > 0))
 
     ht = ht.select_globals(**get_select_global_fields(ht))
 
+    # Add additional globals that were not present on the joined HTs.
     ht = ht.annotate_globals(
         filtering_model=ht.filtering_model.drop("model_id"),
         vep_globals=ht.vep_globals.annotate(
@@ -711,7 +713,7 @@ def main(args):
     )
 
     output_path = (
-        f"{qc_temp_prefix()}release/gnomad.genomes.sites.test.updated_101623.ht"
+        f"{qc_temp_prefix()}release/gnomad.genomes.sites.test.updated_101723.ht"
         if args.test
         else release_sites(data_type="genomes").path
     )
