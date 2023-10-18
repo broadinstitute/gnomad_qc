@@ -110,7 +110,7 @@ def get_export_resources(
         "--validate-release-ht",
         input_resources={
             "release_ht": [
-                "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/release/gnomad.exomes.sites.test.updated_101623.ht"
+                "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/release/gnomad.exomes.sites.test.updated_101723.ht"
             ]
         },  # release_sites().ht()},
         output_resources={"validated_ht": validated_release_ht(test=test)},
@@ -422,7 +422,7 @@ def main(args):  # noqa: D103
             res.check_resource_existence()
 
             ht = hl.read_table(
-                "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/release/gnomad.exomes.sites.test.ht"
+                "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/release/gnomad.exomes.sites.test.updated_101723.ht"
             )  # release_sites().ht()
             # if test:
             #    logger.info("Filtering to test partitions...")
