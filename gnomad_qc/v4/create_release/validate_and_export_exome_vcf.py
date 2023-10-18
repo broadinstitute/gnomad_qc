@@ -408,8 +408,10 @@ def main(args):  # noqa: D103
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-30day",
     )
-    # SSA Logs are easier to troubleshoot with.
-    hl._set_flags(use_ssa_logs="1")
+    # SSA Logs are easier to troubleshoot with and this hits a
+    # class too large error without this no whole stage codegen flag
+    # after I added joint_fafmax -- just the straw that broke hails back
+    hl._set_flags(use_ssa_logs="1", no_whole_stage_codegen="1")
 
     overwrite = args.overwrite
     test = args.test
