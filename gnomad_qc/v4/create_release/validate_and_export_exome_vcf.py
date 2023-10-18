@@ -3,10 +3,15 @@
 import argparse
 import logging
 from copy import deepcopy
+from pprint import pformat
 from typing import Dict, List, Optional, Set
 
 import hail as hl
-from gnomad.assessment.validity_checks import validate_release_t
+from gnomad.assessment.validity_checks import (
+    compare_related_global_and_row_lengths,
+    pprint_global_anns,
+    validate_release_t,
+)
 from gnomad.resources.grch38.gnomad import POPS, SUBSETS
 from gnomad.sample_qc.ancestry import POP_NAMES
 from gnomad.utils.filtering import remove_fields_from_constant
@@ -30,8 +35,6 @@ from gnomad_qc.v4.resources.basics import get_logging_path
 from gnomad_qc.v4.resources.release import release_sites, validated_release_ht
 
 # TODO: Check global lengths match the fields they reference
-# TODO: pprint the globals
-# TODO: add only_het to monoallelic check
 
 # Add new site fields
 NEW_SITE_FIELDS = [
@@ -93,6 +96,18 @@ POPS = {
 
 # Remove unnecessary pop names from FAF_POPS dict
 FAF_POPS = {pop: POP_NAMES[pop] for pop in FAF_POPS}
+
+# Row annotaions and their associated global annotations for length comparison
+LEN_COMP_GLOBAL_ROWS = {
+    "freq": ["freq_meta", "freq_index_dict", "freq_meta_sample_count"],
+    "faf": ["faf_meta", "faf_index_dict"],
+    "joint_freq": [
+        "joint_freq_meta",
+        "joint_freq_index_dict",
+        "joint_freq_meta_sample_count",
+    ],
+    "joint_faf": ["joint_faf_meta", "joint_faf_index_dict"],
+}
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -344,8 +359,6 @@ def prepare_ht_for_validation(
     :param vcf_info_reorder: Order of VCF INFO fields
     :return: Hail Table prepared for validity checks and export
     """
-    logger.info("Preparing HT for validity checks and export...")
-
     logger.info(
         "Unfurling nested gnomAD frequency annotations and add to INFO field..."
     )
@@ -439,8 +452,15 @@ def main(args):  # noqa: D103
             #    logger.info("Filtering to test partitions...")
             #    ht = filter_to_test(ht)
 
+            logger.info(
+                "Printing globals and checking their associated row annotation"
+                " lengths..."
+            )
+            pprint_global_anns(ht)
+            compare_related_global_and_row_lengths(ht, LEN_COMP_GLOBAL_ROWS)
+
+            logger.info("Preparing HT for validity checks and export...")
             ht = prepare_ht_for_validation(ht)
-            ht.describe()
             # Note: Checkpoint saves time in validity checks and final export by not
             # needing to run the VCF HT prep on each chromosome -- more needs to happen
             # before ready for export, but this is an intermediate write.
