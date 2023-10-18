@@ -21,6 +21,7 @@ from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
 from hail.typecheck import anytype, nullable, sequenceof
 
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.resources.annotations import get_info as get_info_v3
 from gnomad_qc.v4.annotations.insilico_predictors import get_sift_polyphen_from_vep
 from gnomad_qc.v4.create_release.create_release_utils import (
     DBSNP_VERSION,
@@ -126,6 +127,7 @@ FINALIZED_SCHEMA = {
 
 # Config is added as a function, so it is not evaluated until the function is called.
 def get_config(
+    data_type: str = "exomes",
     release_exists: bool = False,
 ) -> Dict[str, Dict[str, hl.expr.Expression]]:
     """
@@ -146,7 +148,8 @@ def get_config(
         The 'in_silico' key's 'ht' logic is handled separately because it is a list of
         HTs. In this list, the phyloP HT is keyed by locus only and thus the 'ht' code
         below sets the join key to 1, which will grab the first key of
-        ht.key.dtype.values() e.g. 'locus', when a HT's keys are not {'locus, 'alleles'}.
+        ht.key.dtype.values() e.g. 'locus', when an HT's keys are not {'locus',
+        'alleles'}.
         All future in_silico predictors should have the keys confirmed to be 'locus'
         with or without 'alleles' before using this logic.
 
@@ -160,8 +163,8 @@ def get_config(
             "select": ["rsid"],
         },
         "filters": {
-            "ht": final_filter().ht(),
-            "path": final_filter().path,
+            "ht": final_filter(data_type=data_type).ht(),
+            "path": final_filter(data_type=data_type).path,
             "select": ["filters"],
             "custom_select": custom_filters_select,
             "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
@@ -203,14 +206,14 @@ def get_config(
             "global_name": "tool_versions",
         },
         "info": {
-            "ht": get_info().ht(),
-            "path": get_info().path,
+            "ht": get_info().ht() if data_type == "exomes" else get_info_v3().ht(),
+            "path": get_info().path if data_type == "exomes" else get_info_v3().path,
             "select": ["was_split", "a_index"],
             "custom_select": custom_info_select,
         },
         "freq": {
-            "ht": get_freq().ht(),
-            "path": get_freq().path,
+            "ht": get_freq(data_type=data_type).ht(),
+            "path": get_freq(data_type=data_type).path,
             "select": [
                 "freq",
                 "faf",
@@ -228,8 +231,8 @@ def get_config(
             ],
         },
         "vep": {
-            "ht": get_vep().ht(),
-            "path": get_vep().path,
+            "ht": get_vep(data_type=data_type).ht(),
+            "path": get_vep(data_type=data_type).path,
             "select": ["vep"],
             "custom_select": custom_vep_select,
             "select_globals": [
@@ -240,16 +243,16 @@ def get_config(
             "global_name": "vep_globals",
         },
         "region_flags": {
-            "ht": get_freq().ht(),
-            "path": get_freq().path,
+            "ht": get_freq(data_type=data_type).ht(),
+            "path": get_freq(data_type=data_type).path,
             "custom_select": custom_region_flags_select,
         },
         "release": {
             "path": release_sites().path,
         },
         "joint_faf": {
-            "ht": get_combined_faf_release().ht(),
-            "path": get_combined_faf_release().path,
+            "ht": get_combined_faf_release(test=True).ht(),  # TODO: remove test=True
+            "path": get_combined_faf_release(test=True).path,  # TODO: remove test=True
             "select": ["joint_freq", "joint_faf", "joint_fafmax"],
             "custom_select": custom_joint_faf_select,
             "select_globals": [
@@ -265,9 +268,11 @@ def get_config(
     if release_exists:
         config["release"].update(
             {
-                "ht": release_sites().ht(),
-                "select": [r for r in release_sites().ht().row],
-                "select_globals": [g for g in release_sites().ht().globals],
+                "ht": release_sites(data_type=data_type).ht(),
+                "select": [r for r in release_sites(data_type=data_type).ht().row],
+                "select_globals": [
+                    g for g in release_sites(data_type=data_type).ht().globals
+                ],
             }
         )
     return config
@@ -326,7 +331,7 @@ def custom_joint_faf_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_freq_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expression]:
     """
     Drop faf95 from both 'gnomad' and 'non_ukb' in 'grpmax' and rename `gen_anc_faf_max` to `fafmax`.
 
@@ -342,7 +347,11 @@ def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     :return: Select expression dict.
     """
     selects = {
-        "grpmax": hl.struct(**{k: ht.grpmax[k].drop("faf95") for k in ht.grpmax}),
+        "grpmax": (
+            hl.struct(**{k: ht.grpmax[k].drop("faf95") for k in ht.grpmax})
+            if data_type == "exomes"
+            else ht.grpmax.drop("faf95")
+        ),
         "fafmax": ht.gen_anc_faf_max,
     }
 
@@ -366,7 +375,9 @@ def custom_in_silico_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_region_flags_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_region_flags_select(
+    ht: hl.Table, data_type: str
+) -> Dict[str, hl.expr.Expression]:
     """
     Select region flags for release.
 
@@ -380,21 +391,22 @@ def custom_region_flags_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
             prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         )
     }
-    selects["region_flags"] = selects["region_flags"].annotate(
-        fail_interval_qc=~interval_qc_pass(all_platforms=True)
-        .ht()[ht.locus]
-        .pass_interval_qc,
-        outside_ukb_capture_region=~hl.is_defined(
-            calling_intervals(interval_name="ukb", calling_interval_padding=50).ht()[
-                ht.locus
-            ]
-        ),
-        outside_broad_capture_region=~hl.is_defined(
-            calling_intervals(interval_name="broad", calling_interval_padding=50).ht()[
-                ht.locus
-            ]
-        ),
-    )
+    if data_type == "exomes":
+        selects["region_flags"] = selects["region_flags"].annotate(
+            fail_interval_qc=~interval_qc_pass(all_platforms=True)
+            .ht()[ht.locus]
+            .pass_interval_qc,
+            outside_ukb_capture_region=~hl.is_defined(
+                calling_intervals(
+                    interval_name="ukb", calling_interval_padding=50
+                ).ht()[ht.locus]
+            ),
+            outside_broad_capture_region=~hl.is_defined(
+                calling_intervals(
+                    interval_name="broad", calling_interval_padding=50
+                ).ht()[ht.locus]
+            ),
+        )
 
     return selects
 
@@ -422,7 +434,7 @@ def custom_filters_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_info_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expression]:
     """
     Select fields for info Hail Table annotation in release.
 
@@ -436,11 +448,13 @@ def custom_info_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     # Create a dict of the fields from the filters HT that we want to add to the info.
     filters_ht = get_config().get("filters")["ht"]
 
-    # For more information on the selected compute_info_method, please see the
-    # run_compute_info in gnomad_qc.v4.annotations.generate_variant_qc_annotations.py
-    compute_info_method = hl.eval(
-        filters_ht.filtering_model_specific_info.compute_info_method
-    )
+    if data_type == "exomes":
+        # For more information on the selected compute_info_method, please see the
+        # run_compute_info in gnomad_qc.v4.annotations.generate_variant_qc_annotations.py
+        compute_info_method = hl.eval(
+            filters_ht.filtering_model_specific_info.compute_info_method
+        )
+
     score_name = hl.eval(filters_ht.filtering_model.score_name)
     filters_ht = filters_ht.transmute(**filters_ht.truth_sets)
     filters = filters_ht[ht.key]
@@ -457,14 +471,21 @@ def custom_info_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
 
     # Create a dict of the fields from the freq HT that we want to add to the info.
     freq_ht = get_config().get("freq")["ht"]
-    freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
+    # TODO: will change back to 'inbreeding_coeff' once we have the new freq_ht
+    if data_type == "exomes":
+        freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
+    else:
+        freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["InbreedingCoeff"]}
 
     # Create a dict of the fields from the VRS HT that we want to add to the info.
-    vrs_ht = get_vrs().ht()
+    vrs_ht = get_vrs(data_type=data_type).ht()
     vrs_info_fields = {"vrs": vrs_ht[ht.key].vrs}
 
     # Create a dict of the fields from the info HT that we want keep in the info.
-    info_struct = hl.struct(**ht.site_info, **ht[f"{compute_info_method}_info"])
+    if data_type == "exomes":
+        info_struct = hl.struct(**ht.site_info, **ht[f"{compute_info_method}_info"])
+    else:
+        info_struct = hl.struct(**ht.info)
     info_dict = {field: info_struct[field] for field in SITE_FIELDS + AS_FIELDS}
     info_dict.update(filters_info_dict)
     info_dict.update(freq_info_dict)
@@ -475,7 +496,9 @@ def custom_info_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     # samples.
     selects = {
         "info": hl.struct(**info_dict),
-        "allele_info": ht.allele_info.drop("nonsplit_alleles"),
+        "allele_info": (
+            ht.allele_info.drop("nonsplit_alleles") if data_type == "exomes" else None
+        ),
     }
 
     return selects
@@ -552,6 +575,7 @@ def get_select_fields(
 def get_ht(
     dataset: str,
     _intervals: nullable(sequenceof(anytype)),
+    data_type: str,
     test: bool,
     release_exists: bool,
 ) -> hl.Table:
@@ -575,6 +599,8 @@ def get_ht(
         ht_path = config["path"]
         logger.info("Reading in %s", dataset)
         base_ht = hl.read_table(ht_path, _intervals=_intervals)
+        if dataset == "freq" and data_type == "genomes":
+            base_ht = drop_v3_subsets(base_ht)
 
     if test:
         # Keep only PCSK9.
@@ -685,13 +711,19 @@ def join_hts(
 
 def main(args):
     """Create release ht."""
+    data_type = args.data_type
     hl.init(
-        log="/create_release_ht.log",
+        log=f"/create_release_ht_{data_type}.log",
         tmp_dir="gs://gnomad-tmp-4day",
         default_reference="GRCh38",
     )
+    # TODO: Change this once we find 'SOR' and 'AS_SOR' for genomes.
+    if data_type == "genomes":
+        AS_FIELDS.remove("AS_SOR")
+        SITE_FIELDS.remove("SOR")
+        FINALIZED_SCHEMA["rows"].remove("allele_info")
 
-    logger.info("Creating release HT...")
+    logger.info(f"Creating {args.datatype} release HT...")
     ht = join_hts(
         args.base_table,
         args.tables_for_join,
@@ -728,10 +760,14 @@ def main(args):
         ),
         date=datetime.now().isoformat(),
         version=args.version,
-        interval_qc_parameters=interval_qc_pass(all_platforms=True)
-        .ht()
-        .index_globals()
-        .high_qual_interval_parameters,
+        interval_qc_parameters=(
+            interval_qc_pass(all_platforms=True)
+            .ht()
+            .index_globals()
+            .high_qual_interval_parameters
+            if data_type == "exomes"
+            else None
+        ),
         frequency_README=FREQUENCY_README,
     )
 
@@ -741,11 +777,11 @@ def main(args):
     )
 
     output_path = (
-        f"{qc_temp_prefix()}release/gnomad.exomes.sites.test.updated_101723.ht"
+        f"{qc_temp_prefix()}release/gnomad.{data_type}.sites.test.updated_101823.ht"
         if args.test
-        else release_sites().path
+        else release_sites(data_type=data_type).path
     )
-    logger.info("Writing out release HT to %s", output_path)
+    logger.info(f"Writing out {data_type} release HT to %s", output_path)
     ht = ht.checkpoint(
         output_path,
         args.overwrite,
@@ -779,6 +815,13 @@ if __name__ == "__main__":
         "--test",
         help="Runs a test on PCSK9 region, chr1:55039447-55064852",
         action="store_true",
+    )
+    parser.add_argument(
+        "-d",
+        "--data-type",
+        help="Data type to create release HT for.",
+        default="exomes",
+        choices=["exomes", "genomes"],
     )
     parser.add_argument(
         "-j",
