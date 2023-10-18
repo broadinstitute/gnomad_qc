@@ -462,7 +462,7 @@ def main(args):
                 cochran_mantel_haenszel_test=res.cmh_ht.ht()[
                     ht.key
                 ].cochran_mantel_haenszel_test,
-                join_metric_data_type=hl.case()
+                joint_metric_data_type=hl.case()
                 .when(
                     (hl.is_defined(ht.genomes_grpmax.AC))
                     & hl.is_defined(ht.exomes_grpmax.gnomad.AC),
@@ -472,7 +472,7 @@ def main(args):
                 .when(hl.is_defined(ht.exomes_grpmax.gnomad.AC), "exomes")
                 .default(hl.missing(hl.tstr)),
                 joint_fafmax=ht.joint_fafmax.annotate(
-                    join_metric_data_type=hl.case()
+                    joint_fafmax_data_type=hl.case()
                     .when(
                         (hl.is_defined(ht.genomes_fafmax.faf95_max))
                         & hl.is_defined(ht.exomes_fafmax.gnomad.faf95_max),
