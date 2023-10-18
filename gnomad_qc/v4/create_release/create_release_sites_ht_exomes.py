@@ -246,8 +246,11 @@ def get_config(
             "path": release_sites().path,
         },
         "joint_faf": {
-            "ht": get_combined_faf_release().ht(),
-            "path": get_combined_faf_release().path,
+            "ht": hl.read_table(
+                "gs://gnomad-tmp/gnomad_v4.0_testing/annotations/joint/gnomad.joint.v4.0.frequencies.ht"
+            ),  # get_combined_faf_release().ht(),
+            # get_combined_faf_release().path,
+            "path": "gs://gnomad-tmp/gnomad_v4.0_testing/annotations/joint/gnomad.joint.v4.0.frequencies.ht",
             "select": ["joint_freq", "joint_faf", "joint_fafmax"],
             "custom_select": custom_joint_faf_select,
             "select_globals": [
@@ -701,7 +704,7 @@ def main(args):
     )
 
     output_path = (
-        f"{qc_temp_prefix()}release/gnomad.exomes.sites.test.updated_101623.ht"
+        f"{qc_temp_prefix()}release/gnomad.exomes.sites.test.updated_101723.ht"
         if args.test
         else release_sites().path
     )
