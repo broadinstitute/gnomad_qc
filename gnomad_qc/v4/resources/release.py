@@ -20,13 +20,9 @@ from gnomad_qc.v4.resources.constants import (
 )
 
 FREQUENCY_README = """
-The 'freq' row annotation contains allele frequency information aggregated by certain
-sample groupings within the dataset within an array. Each element of the array contains
-a grouping's alternate allele count (AC), alternate allele frequency (AF), total number
-ofalleles (AN), and the count of homozygous alternate individuals (homozygote_count).
+The 'freq' row annotation is an array that contains allele frequency information. Each element of the array is a struct that contains the alternate allele count (AC), alternate allele frequency (AF), total number of alleles (AN), and number of homozygous alternate individuals (homozygote_count) for a specific sample grouping.
 
-To retrieve the frequency information for a specific group of samples, use the
-'freq_index_dict' global annotation. This annotation is a dictionary keyed by sample
+Use the 'freq_index_dict' global annotation to retrieve frequency information for a specific group of samples from the 'freq' array. This global annotation is a dictionary keyed by sample
 grouping combinations whose values are the combination's index in the 'freq' array.
 
 The available keys combinations for the 'freq_index_dict' are as follows:
