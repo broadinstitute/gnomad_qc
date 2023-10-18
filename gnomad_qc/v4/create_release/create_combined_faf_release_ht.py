@@ -114,7 +114,7 @@ def extract_freq_info(
     fafmax_expr = ht.gen_anc_faf_max
     if prefix == "exomes":
         # Note: The `grpmax` and `fafmax` structs in the exomes freq HT have two nested structs:
-        # `gnomad` and `non_ukb`. This section selects only the `gnomad` values (values across full 
+        # `gnomad` and `non_ukb`. This section selects only the `gnomad` values (values across full
         # v4 exomes release)
         grpmax_expr = grpmax_expr.gnomad
         fafmax_expr = fafmax_expr.gnomad
