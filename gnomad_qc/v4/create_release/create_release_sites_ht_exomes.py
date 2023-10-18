@@ -246,11 +246,8 @@ def get_config(
             "path": release_sites().path,
         },
         "joint_faf": {
-            "ht": hl.read_table(
-                "gs://gnomad-tmp/gnomad_v4.0_testing/annotations/joint/gnomad.joint.v4.0.frequencies.ht"
-            ),  # get_combined_faf_release().ht(),
-            # get_combined_faf_release().path,
-            "path": "gs://gnomad-tmp/gnomad_v4.0_testing/annotations/joint/gnomad.joint.v4.0.frequencies.ht",
+            "ht": get_combined_faf_release().ht(),
+            "path": get_combined_faf_release().path,
             "select": ["joint_freq", "joint_faf", "joint_fafmax"],
             "custom_select": custom_joint_faf_select,
             "select_globals": [
