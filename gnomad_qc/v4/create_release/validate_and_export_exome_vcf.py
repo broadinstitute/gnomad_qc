@@ -29,10 +29,14 @@ from gnomad_qc.resource_utils import (
 from gnomad_qc.v4.resources.basics import get_logging_path
 from gnomad_qc.v4.resources.release import release_sites, validated_release_ht
 
+# TODO: Check global lengths match the fields they reference
+# TODO: pprint the globals
+# TODO: add only_het to monoallelic check
+
 # Add new site fields
 NEW_SITE_FIELDS = [
     "monoallelic",
-    "singleton",  # NOTE: doesn't look like it was exported to VCF in V3.1 and is not part of gnomad_methods vcf module so maybe we drop it? Easy enough to look at AC?
+    "only_het",
     "transmitted_singleton",
 ]
 SITE_FIELD = deepcopy(SITE_FIELDS)
@@ -52,11 +56,18 @@ REGION_FLAG_FIELDS = deepcopy(REGION_FLAG_FIELDS)
 REGION_FLAG_FIELDS = remove_fields_from_constant(
     REGION_FLAG_FIELDS, ["decoy", "nonpar"]
 )
-REGION_FLAG_FIELDS.append("non_par")
+REGION_FLAG_FIELDS.extend(
+    [
+        "non_par",
+        "fail_interval_qc",
+        "outside_ukb_capture_region",
+        "outside_broad_capture_region",
+    ]
+)
 
 # Remove original alleles for containing non-releasable alleles
 ALLELE_TYPE_FIELDS = deepcopy(ALLELE_TYPE_FIELDS)
-MISSING_ALLELE_TYPE_FIELDS = ["original_alleles", "has_star"]
+MISSING_ALLELE_TYPE_FIELDS = ["original_alleles"]
 ALLELE_TYPE_FIELDS = remove_fields_from_constant(
     ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS
 )
@@ -276,9 +287,7 @@ def make_info_expr(
     for field in ALLELE_TYPE_FIELDS:
         vcf_info_dict[field] = t["allele_info"][f"{field}"]
     for field in REGION_FLAG_FIELDS:
-        vcf_info_dict[field] = t["region_flag"][
-            f"{field}" if field != "nonpar" else "non_par"
-        ]
+        vcf_info_dict[field] = t["region_flag"][f"{field}"]
 
     # Add underscore to hist_prefix if it isn't empty
     if hist_prefix != "":
@@ -431,25 +440,30 @@ def main(args):  # noqa: D103
             #    ht = filter_to_test(ht)
 
             ht = prepare_ht_for_validation(ht)
+            ht.describe()
+            # Note: Checkpoint saves time in validity checks and final export by not
+            # needing to run the VCF HT prep on each chromosome -- more needs to happen
+            # before ready for export, but this is an intermediate write.
+            logger.info("Writing prepared VCF HT for validity checks and export...")
+            ht = ht.checkpoint(res.validated_ht.path, overwrite=overwrite)
 
             validate_release_t(
                 ht,
                 subsets=SUBSETS,
                 pops=POPS,
-                monoallelic_expr=ht.info.monoallelic,
+                monoallelic_expr={
+                    "monoallelic": ht.info.monoallelic,
+                    "only_het": ht.info.only_het,
+                },
                 verbose=args.verbose,
                 delimiter="_",
                 sample_sum_sets_and_pops={"non_ukb": POPS},
                 variant_filter_field="AS_VQSR",
-                problematic_regions=["lcr", "segdup", "non_par"],
+                problematic_regions=REGION_FLAG_FIELDS,
                 single_filter_count=True,
             )
 
-            # Note: Write saves time for the final export by not needing to run the
-            # VCF HT prep on each chromosome -- more needs to happen before ready for
-            # export, but this is an intermediate write.
-            logger.info("Writing prepared VCF HT for validity checks and export...")
-            ht.write(res.validated_ht.path, overwrite=True)
+            ht.describe()
 
     finally:
         logger.info("Copying log to logging bucket...")
