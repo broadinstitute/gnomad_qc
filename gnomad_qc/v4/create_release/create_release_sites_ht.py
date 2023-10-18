@@ -1,4 +1,4 @@
-"""Script to create release sites HT for exomes."""
+"""Script to create release sites HT for v4.0 exomes and genomes."""
 import argparse
 import json
 import logging
@@ -14,6 +14,8 @@ from gnomad.resources.grch38.reference_data import (
     seg_dup_intervals,
 )
 from gnomad.utils.annotations import region_flag_expr
+from gnomad.utils.filtering import filter_arrays_by_meta
+from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
 from hail.typecheck import anytype, nullable, sequenceof
@@ -269,6 +271,44 @@ def get_config(
             }
         )
     return config
+
+
+def drop_v3_subsets(freq_ht: hl.Table) -> hl.Table:
+    """
+    Drop the freq of all v3 subsets except HGDP + TGP from the freq Table.
+
+    :param freq_ht: v4.0 genomes freq Table
+    :return: v4.0 genomes freq Table with some v3 subsets dropped
+    """
+    SUBSETS_TO_DROP = {
+        "subset": [
+            "non_v2",
+            "non_topmed",
+            "non_cancer",
+            "controls_and_biobanks",
+            "non_neuro",
+        ]
+    }
+
+    freq_meta, array_exprs = filter_arrays_by_meta(
+        freq_ht.freq_meta,
+        {
+            "freq": freq_ht.freq,
+            "freq_meta_sample_count": freq_ht.index_globals().freq_meta_sample_count,
+        },
+        SUBSETS_TO_DROP,
+        keep=False,
+        combine_operator="or",
+    )
+
+    freq_ht = freq_ht.annotate(freq=array_exprs["freq"])
+    freq_ht = freq_ht.annotate_globals(
+        freq_meta=freq_meta,
+        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
+        freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
+    )
+
+    return freq_ht
 
 
 def custom_joint_faf_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
