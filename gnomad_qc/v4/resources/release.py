@@ -19,6 +19,42 @@ from gnomad_qc.v4.resources.constants import (
     RELEASES,
 )
 
+FREQUENCY_README = """
+The 'freq' row annotation is an array that contains allele frequency information. Each element of the array is a struct that contains the alternate allele count (AC), alternate allele frequency (AF), total number of alleles (AN), and number of homozygous alternate individuals (homozygote_count) for a specific sample grouping.
+
+Use the 'freq_index_dict' global annotation to retrieve frequency information for a specific group of samples from the 'freq' array. This global annotation is a dictionary keyed by sample
+grouping combinations whose values are the combination's index in the 'freq' array.
+
+The available keys combinations for the 'freq_index_dict' are as follows:
+
+group, e.g. “adj”, “raw”
+sex_group, e.g. “XX_adj”
+subset_group, e.g. “non_ukb_raw”
+gen-anc_group, e.g. “afr_adj”
+gen-anc_sex_group, e.g. “ami_XX_adj”
+downsampling_group_gen-anc, e.g. “200_eas_adj”,
+downsampling_group_gen-anc, e.g. “non_ukb_218035_eas_adj”
+subset_gen-anc_group, e.g. “non_ukb_sas_adj”
+subset_gen-anc_group, e.g. “non_ukb_XY_adj”
+subset_gen-anc_sex_group, e.g. “non_ukb_mid_XX_adj”,
+
+The example below shows how to access the entry of the high quality genotypes
+(group: adj) of XX individuals (sex: XX) labeled as AFR (gen_anc: AFR)
+in the HT:
+
+    # Use the key 'afr-XX-adj' to retrieve the index of this groups frequency data in 'freq'
+    ht = ht.annotate(afr_XX_freq=ht.freq[ht.freq_index_dict['afr-XX-adj']])
+
+The above example will retrieve the entire frequency struct for each variant. To grab a
+certain statistic, such as AC, specify the statistic after the value:
+
+    ht = ht.annotate(afr_XX_AC=ht.freq[ht.freq_index_dict['afr-XX-adj']].AC)
+
+This same approach can be applied to the filtering allele frequency (FAF) array, 'faf',
+by using the 'faf_index_dict'. For more information, please visit the FAQ page:
+https://gnomad.broadinstitute.org/help#technical-details:~:text=How%20do%20I%20access%20the%20gnomAD%20Hail%20Table%20frequency%20annotation%3F
+"""
+
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("release_resources")
 logger.setLevel(logging.INFO)
@@ -279,4 +315,22 @@ def release_coverage(
             )
             for release in COVERAGE_RELEASES[data_type]
         },
+    )
+
+
+def included_datasets_json_path(
+    data_type: str = "exomes",
+    test: bool = False,
+    release_version: str = CURRENT_RELEASE,
+) -> str:
+    """
+    Fetch filepath for the JSON containing all datasets used in the release.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param release_version: Release version. Defaults to CURRENT RELEASE
+    :return: File path for release versions included datasets JSON
+    """
+    return (
+        f"{_release_root(release_version, test=test, data_type=data_type, extension='json')}/gnomad.exomes.v{release_version}.included_datasets.json"
     )
