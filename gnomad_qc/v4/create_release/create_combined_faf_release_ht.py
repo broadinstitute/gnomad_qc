@@ -109,13 +109,20 @@ def extract_freq_info(
         combine_operator="or",
     )
 
+    # Select grpmax and fafmax
+    grpmax_expr = ht.grpmax
+    fafmax_expr = ht.gen_anc_faf_max
+    if prefix == "exomes":
+        grpmax_expr = grpmax_expr.gnomad
+        fafmax_expr = fafmax_expr.gnomad
+
     # Rename filtered annotations with supplied prefix.
     ht = ht.select(
         **{
             f"{prefix}_freq": array_exprs["freq"],
             f"{prefix}_faf": faf["faf"],
-            f"{prefix}_grpmax": ht.grpmax,
-            f"{prefix}_fafmax": ht.gen_anc_faf_max,
+            f"{prefix}_grpmax": grpmax_expr,
+            f"{prefix}_fafmax": fafmax_expr,
         }
     )
     ht = ht.select_globals(
