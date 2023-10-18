@@ -67,6 +67,8 @@ def extract_freq_info(
     The following annotations are filtered and renamed:
         - freq: {prefix}_freq
         - faf: {prefix}_faf
+        - grpmax: {prefix}_grpmax
+        - fafmax: {prefix}_fafmax
 
     The following global annotations are filtered and renamed:
         - freq_meta: {prefix}_freq_meta
@@ -107,11 +109,23 @@ def extract_freq_info(
         combine_operator="or",
     )
 
+    # Select grpmax and fafmax
+    grpmax_expr = ht.grpmax
+    fafmax_expr = ht.gen_anc_faf_max
+    if prefix == "exomes":
+        # Note: The `grpmax` and `fafmax` structs in the exomes freq HT have two nested structs:
+        # `gnomad` and `non_ukb`. This section selects only the `gnomad` values (values across full
+        # v4 exomes release)
+        grpmax_expr = grpmax_expr.gnomad
+        fafmax_expr = fafmax_expr.gnomad
+
     # Rename filtered annotations with supplied prefix.
     ht = ht.select(
         **{
             f"{prefix}_freq": array_exprs["freq"],
             f"{prefix}_faf": faf["faf"],
+            f"{prefix}_grpmax": grpmax_expr,
+            f"{prefix}_fafmax": fafmax_expr,
         }
     )
     ht = ht.select_globals(
@@ -140,7 +154,7 @@ def get_joint_freq_and_faf(
     :param faf_pops_to_exclude: Set of populations to exclude from the FAF calculation.
     :return: Table with joint genomes and exomes frequency and FAF information.
     """
-    logger.info("Performing an inner join on frequency HTs...")
+    logger.info("Performing an outer join on frequency HTs...")
     ht = genomes_ht.join(exomes_ht, how="outer")
 
     # Merge exomes and genomes frequencies.
@@ -458,6 +472,26 @@ def main(args):
                 cochran_mantel_haenszel_test=res.cmh_ht.ht()[
                     ht.key
                 ].cochran_mantel_haenszel_test,
+                joint_metric_data_type=hl.case()
+                .when(
+                    (hl.is_defined(ht.genomes_grpmax.AC))
+                    & hl.is_defined(ht.exomes_grpmax.AC),
+                    "both",
+                )
+                .when(hl.is_defined(ht.genomes_grpmax.AC), "genomes")
+                .when(hl.is_defined(ht.exomes_grpmax.AC), "exomes")
+                .default(hl.missing(hl.tstr)),
+                joint_fafmax=ht.joint_fafmax.annotate(
+                    joint_fafmax_data_type=hl.case()
+                    .when(
+                        (hl.is_defined(ht.genomes_fafmax.faf95_max))
+                        & hl.is_defined(ht.exomes_fafmax.faf95_max),
+                        "both",
+                    )
+                    .when(hl.is_defined(ht.genomes_fafmax.faf95_max), "genomes")
+                    .when(hl.is_defined(ht.exomes_fafmax.faf95_max), "exomes")
+                    .default(hl.missing(hl.tstr)),
+                ),
             )
             ht.describe()
             ht.write(res.final_combined_faf_ht.path, overwrite=overwrite)
