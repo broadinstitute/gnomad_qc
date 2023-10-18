@@ -477,7 +477,7 @@ def main(args):
 
     # Filter out AS_lowqual variants and variants not in the release.
     bin_ht = bin_ht.filter(
-        ~res.info_ht.ht()[bin_ht.key].AS_lowqual & freq_ht[bin_ht.key].freq[1].AC > 0
+        ~res.info_ht.ht()[bin_ht.key].AS_lowqual & (freq_ht[bin_ht.key].freq[1].AC > 0)
     )
 
     # Name filter and score annotations based on model.
