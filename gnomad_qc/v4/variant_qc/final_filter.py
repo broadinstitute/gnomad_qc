@@ -467,16 +467,18 @@ def main(args):
     res = final_vqc_resources.finalize_variant_qc
     res.check_resource_existence()
 
-    # Get Bin and Freq HTs, where Bin contains info about ordered bins arranged by quality
-    # and freq contains frequency info for each variant
+    # Get bin and freq HTs, where Bin contains info about ordered bins arranged by
+    # quality and freq contains frequency info for each variant.
     bin_ht = res.bin_ht.ht()
     freq_ht = res.freq_ht.ht()
 
     if test:
         bin_ht = bin_ht._filter_partitions(range(5))
 
-    # Filter out bins which fail hard cutoffs.
-    bin_ht = bin_ht.filter(~res.info_ht.ht()[bin_ht.key].AS_lowqual)
+    # Filter out AS_lowqual variants and variants not in the release.
+    bin_ht = bin_ht.filter(
+        ~res.info_ht.ht()[bin_ht.key].AS_lowqual & freq_ht[bin_ht.key].freq[1].AC > 0
+    )
 
     # Name filter and score annotations based on model.
     if args.model_id.startswith("vqsr_"):
@@ -529,7 +531,17 @@ def main(args):
     )
 
     # Write out final filtered table to path defined above in resources.
-    ht.write(res.final_ht.path, overwrite=args.overwrite)
+    ht = ht.checkpoint(res.final_ht.path, overwrite=args.overwrite)
+
+    # Print out counts of variants in each filter group.
+    logger.info("Counts of variants in each filter group:")
+    ht.group_by(
+        **{
+            "snv": hl.is_snp(ht.alleles[0], ht.alleles[1]),
+            "AC0": ht.filters.contains("AC0"),
+            filter_name: ht.filters.contains(filter_name),
+        }
+    ).aggregate(n=hl.agg.count()).show(-1)
 
 
 if __name__ == "__main__":
