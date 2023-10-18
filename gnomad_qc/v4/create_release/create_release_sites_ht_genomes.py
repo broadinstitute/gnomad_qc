@@ -60,7 +60,7 @@ logger.setLevel(logging.INFO)
 # from the other fields.
 AS_FIELDS = deepcopy(AS_FIELDS)
 AS_FIELDS.remove("InbreedingCoeff")
-# TODO: Julia needs to find "AS_SOR" and "SOR".
+# TODO: Julia needs to find "AS_SOR" and "SOR" if possible
 AS_FIELDS.remove("AS_SOR")
 SITE_FIELDS = deepcopy(SITE_FIELDS)
 SITE_FIELDS.remove("SOR")
