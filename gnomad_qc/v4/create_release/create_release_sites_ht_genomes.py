@@ -5,7 +5,7 @@ import logging
 from copy import deepcopy
 from datetime import datetime
 from functools import reduce
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Union
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import (
@@ -42,7 +42,7 @@ from gnomad_qc.v4.resources.annotations import (
 )
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v4.resources.release import (
+from gnomad_qc.v4.resources.release import (  # FREQUENCY_README, # TODO: uncomment when exome release PR is in
     get_combined_faf_release,
     included_datasets_json_path,
     release_sites,
@@ -60,6 +60,7 @@ logger.setLevel(logging.INFO)
 # from the other fields.
 AS_FIELDS = deepcopy(AS_FIELDS)
 AS_FIELDS.remove("InbreedingCoeff")
+# TODO: Julia needs to find "AS_SOR" and "SOR".
 AS_FIELDS.remove("AS_SOR")
 SITE_FIELDS = deepcopy(SITE_FIELDS)
 SITE_FIELDS.remove("SOR")
@@ -95,6 +96,7 @@ FINALIZED_SCHEMA = {
         "tool_versions",
         "vrs_versions",
         "vep_globals",
+        # "frequency_README", # TODO: uncomment when exome release PR is in
         "date",
         "version",
     ],
@@ -102,10 +104,11 @@ FINALIZED_SCHEMA = {
         "freq",
         "grpmax",
         "faf",
-        "gen_anc_faf_max",
+        "fafmax",
         "joint_freq",
         "joint_grpmax",
         "joint_faf",
+        "joint_fafmax",
         "a_index",
         "was_split",
         "rsid",
@@ -114,14 +117,14 @@ FINALIZED_SCHEMA = {
         "vep",
         "vqsr_results",
         "region_flags",
-        "allele_info",
+        # "allele_info", # TODO: double check if this is needed
         "histograms",
         "in_silico_predictors",
     ],
 }
 
 
-def drop_v3_subsets(freq_ht: hl.Table) -> Tuple[hl.Table, str]:
+def drop_v3_subsets(freq_ht: hl.Table) -> hl.Table:
     """
     Drop the freq of all v3 subsets except HGDP + TGP from the freq Table.
 
@@ -156,9 +159,7 @@ def drop_v3_subsets(freq_ht: hl.Table) -> Tuple[hl.Table, str]:
         freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
     )
 
-    freq_ht_tmp_path = "gs://gnomad-tmp-4day/freq/genomes_freq_tmp.ht"
-    freq_ht = freq_ht.checkpoint(freq_ht_tmp_path, overwrite=True)
-    return freq_ht, freq_ht_tmp_path
+    return freq_ht
 
 
 # Config is added as a function, so it is not evaluated until the function is called.
@@ -183,7 +184,8 @@ def get_config(
         The 'in_silico' key's 'ht' logic is handled separately because it is a list of
         HTs. In this list, the phyloP HT is keyed by locus only and thus the 'ht' code
         below sets the join key to 1, which will grab the first key of
-        ht.key.dtype.values() e.g. 'locus', when an HT's keys are not {'locus', 'alleles'}.
+        ht.key.dtype.values() e.g. 'locus', when an HT's keys are not {'locus',
+        'alleles'}.
         All future in_silico predictors should have the keys confirmed to be 'locus'
         with or without 'alleles' before using this logic.
 
@@ -246,13 +248,14 @@ def get_config(
             "custom_select": custom_info_select,
         },
         "freq": {
-            "ht": drop_v3_subsets(get_freq(data_type="genomes"))[0],
-            "path": drop_v3_subsets(get_freq(data_type="genomes"))[1],
+            "ht": get_freq(data_type="genomes").ht(),
+            "path": get_freq(data_type="genomes").path,
             "select": [
                 "freq",
                 "faf",
                 "histograms",
             ],
+            "custom_select": custom_freq_select,
             "select_globals": [
                 "freq_meta",
                 "freq_index_dict",
@@ -342,7 +345,7 @@ def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     :return: Select expression dict.
     """
     selects = {
-        "grpmax": hl.struct(**{k: ht.grpmax[k].drop("faf95") for k in ht.grpmax}),
+        "grpmax": ht.grpmax.drop("faf95"),
         "fafmax": ht.gen_anc_faf_max,
     }
 
@@ -552,6 +555,8 @@ def get_ht(
         ht_path = config["path"]
         logger.info("Reading in %s", dataset)
         base_ht = hl.read_table(ht_path, _intervals=_intervals)
+        if dataset == "freq":
+            base_ht = drop_v3_subsets(base_ht)
 
     if test:
         # Keep only PCSK9.
@@ -639,6 +644,7 @@ def join_hts(
     # Track the datasets we've added as well as the source paths.
     # If release HT is included in tables, read in the included datasets json
     # and update the keys to the path for any new tables
+
     included_datasets = {}
     if "release" in tables:
         with hl.utils.hadoop_open(
