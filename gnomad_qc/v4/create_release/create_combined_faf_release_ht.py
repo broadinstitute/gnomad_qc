@@ -475,21 +475,21 @@ def main(args):
                 joint_metric_data_type=hl.case()
                 .when(
                     (hl.is_defined(ht.genomes_grpmax.AC))
-                    & hl.is_defined(ht.exomes_grpmax.gnomad.AC),
+                    & hl.is_defined(ht.exomes_grpmax.AC),
                     "both",
                 )
                 .when(hl.is_defined(ht.genomes_grpmax.AC), "genomes")
-                .when(hl.is_defined(ht.exomes_grpmax.gnomad.AC), "exomes")
+                .when(hl.is_defined(ht.exomes_grpmax.AC), "exomes")
                 .default(hl.missing(hl.tstr)),
                 joint_fafmax=ht.joint_fafmax.annotate(
                     joint_fafmax_data_type=hl.case()
                     .when(
                         (hl.is_defined(ht.genomes_fafmax.faf95_max))
-                        & hl.is_defined(ht.exomes_fafmax.gnomad.faf95_max),
+                        & hl.is_defined(ht.exomes_fafmax.faf95_max),
                         "both",
                     )
                     .when(hl.is_defined(ht.genomes_fafmax.faf95_max), "genomes")
-                    .when(hl.is_defined(ht.exomes_fafmax.gnomad.faf95_max), "exomes")
+                    .when(hl.is_defined(ht.exomes_fafmax.faf95_max), "exomes")
                     .default(hl.missing(hl.tstr)),
                 ),
             )
