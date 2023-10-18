@@ -258,8 +258,8 @@ def generate_final_filter_ht(
         logger.warning("Missing Score!")
         ht.filter(hl.is_missing(ht.score)).show()
 
-    adj_freq_expr = freq_expr.freq[0]
-    raw_freq_expr = freq_expr.freq[1]
+    adj_freq_expr = freq_expr[0]
+    raw_freq_expr = freq_expr[1]
 
     # Construct dictionary of filters for final 'filters' annotation.
     filters = {
@@ -276,9 +276,19 @@ def generate_final_filter_ht(
             snv_indel_expr[var_type] & (ht.score < score_cut.min_score)
         )
 
+    # Get info needed from variant QC globals to determine correct annotations for the
+    # final filter HT.
     variant_qc_globals = ht.index_globals()
     compute_info_method = f"{hl.eval(ht.compute_info_method)}_info"
     bin_stats_expr = variant_qc_globals.bin_group_variant_counts
+    if hl.eval(variant_qc_globals.adj):
+        training_group = "adj"
+        training_group_ac = adj_freq_expr.AC
+    else:
+        training_group = "raw"
+        training_group_ac = raw_freq_expr.AC
+
+    # Grab the correct annotations from the input HT based on the filtering model.
     if filter_name == "RF":
         # Fix RF annotations for release.
         vqc_expr = hl.struct(
@@ -303,6 +313,33 @@ def generate_final_filter_ht(
         snv_training_variables = IF_FEATURES
         indel_training_variables = IF_FEATURES
 
+    # Add annotations for transmitted and sibling singletons if they were used in
+    # training.
+    if hl.eval(variant_qc_globals.transmitted_singletons):
+        vqc_expr = vqc_expr.annotate(
+            transmitted_singleton=hl.or_missing(
+                training_group_ac == 1, ht[f"transmitted_singleton_{training_group}"]
+            )
+        )
+    if hl.eval(variant_qc_globals.sibling_singletons):
+        vqc_expr = vqc_expr.annotate(
+            sibling_singleton=hl.or_missing(
+                training_group_ac == 1, ht[f"sibling_singleton_{training_group}"]
+            )
+        )
+
+    # Generate expressions for mono-allelic and only-het status if requested.
+    if mono_allelic_flag:
+        vqc_expr = vqc_expr.annotate(
+            monoallelic=(raw_freq_expr.AF == 1) | (raw_freq_expr.AF == 0)
+        )
+    if only_het_flag:
+        vqc_expr = vqc_expr.annotate(
+            only_het=((adj_freq_expr.AC * 2) == adj_freq_expr.AN)
+            & (adj_freq_expr.homozygote_count == 0)
+        )
+
+    # Select only the variant QC globals we want to keep in the final HT.
     variant_qc_globals = variant_qc_globals.select(
         filtering_model_specific_info=variant_qc_globals.select(
             *VARIANT_QC_GLOBAL_FIELDS[filter_name]
@@ -319,39 +356,6 @@ def generate_final_filter_ht(
         "raw": {x: x for x in bin_names if "adj_" not in x},
     }
     bin_expr = {g: hl.struct(**{n[k]: ht[k] for k in n}) for g, n in bin_names.items()}
-
-    # Add annotations for transmitted and sibling singletons if they were used in
-    # training.
-    if variant_qc_globals.adj:
-        training_group = "adj"
-        training_freq = adj_freq_expr
-    else:
-        training_group = "raw"
-        training_freq = raw_freq_expr
-
-    if variant_qc_globals.transmitted_singletons:
-        vqc_expr = vqc_expr.annotate(
-            transmitted_singleton=hl.or_missing(
-                training_freq == 1, ht[f"transmitted_singleton_{training_group}"]
-            )
-        )
-    if variant_qc_globals.sibling_singletons:
-        vqc_expr = vqc_expr.annotate(
-            sibling_singleton=hl.or_missing(
-                training_freq == 1, ht[f"sibling_singletons_{training_group}"]
-            )
-        )
-
-    # Generate expressions for mono-allelic and only-het status if requested.
-    if mono_allelic_flag:
-        vqc_expr = vqc_expr.annotate(
-            monoallelic=(raw_freq_expr.AF == 1) | (raw_freq_expr.AF == 0)
-        )
-    if only_het_flag:
-        vqc_expr = vqc_expr.annotate(
-            only_het=((adj_freq_expr.AC * 2) == adj_freq_expr.AN)
-            & (adj_freq_expr.homozygote_count == 0)
-        )
 
     ht = ht.annotate(
         **vqc_expr,
