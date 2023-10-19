@@ -350,6 +350,7 @@ def custom_freq_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
         - The filtering allele frequencies that are used by the community are the values within the gen_anc_faf_max struct, NOT grpmax FAF, which is why we are dropping grpmax.faf95 and renaming gen_anc_faf_max
 
     :param ht: Freq Hail Table
+    :param data_type: Either 'exomes' or 'genomes'.
     :return: Select expression dict.
     """
     selects = {
@@ -388,6 +389,7 @@ def custom_region_flags_select(
     Select region flags for release.
 
     :param ht: Hail Table.
+    :param data_type: Either 'exomes' or 'genomes'.
     :return: Select expression dict.
     """
     selects = {
@@ -449,6 +451,7 @@ def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
     to release HT.
 
     :param ht: Info Hail Table.
+    :param data_type: Either 'exomes' or 'genomes'.
     :return: Select expression dict.
     """
     # Create a dict of the fields from the filters HT that we want to add to the info.
@@ -472,6 +475,8 @@ def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
         "monoallelic",
         "only_het",
     ]
+    if data_type == "genomes":
+        filters_info_fields.drop("sibling_singleton")
     filters_info_dict = {field: filters[field] for field in filters_info_fields}
     filters_info_dict.update({**{f"{score_name}": filters[f"{score_name}"]}})
 
@@ -544,6 +549,8 @@ def get_select_global_fields(
     Generate a dictionary of globals to select by checking the config of all tables joined.
 
     :param ht: Final joined HT with globals.
+    :param data_type: Either 'exomes' or 'genomes'.
+    :return: select mapping from global annotation name to `ht` annotation.
     """
     t_globals = []
     for t in TABLES_FOR_RELEASE:
@@ -596,6 +603,7 @@ def get_ht(
 
     :param dataset: Hail Table to join.
     :param _intervals: Intervals for reading in hail Table. Used to optimize join.
+    :param data_type: Either 'exomes' or 'genomes'.
     :param test: Whether call is for a test run.
     :param release_exists: Whether the release HT already exists.
     :return: Hail Table with fields to select.
@@ -660,6 +668,7 @@ def join_hts(
     :param new_partition_percent: Percent of base_table partitions used for final
         release Hail Table.
     :param test: Whether this is for a test run.
+    :param data_type: Either 'exomes' or 'genomes'.
     :param release_exists: Whether the release HT already exists.
     :return: Hail Table with datasets joined.
     """
