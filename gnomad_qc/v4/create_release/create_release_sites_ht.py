@@ -8,16 +8,17 @@ from functools import reduce
 from typing import Dict, List, Optional, Union
 
 import hail as hl
+from gnomad.resources.grch38.gnomad import SUBSETS
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
     lcr_intervals,
     seg_dup_intervals,
 )
 from gnomad.utils.annotations import region_flag_expr
-from gnomad.utils.filtering import filter_arrays_by_meta
+from gnomad.utils.filtering import filter_arrays_by_meta, remove_fields_from_constant
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
+from gnomad.utils.vcf import ALLELE_TYPE_FIELDS, AS_FIELDS, SITE_FIELDS
 from hail.typecheck import anytype, nullable, sequenceof
 
 from gnomad_qc.slack_creds import slack_token
@@ -59,11 +60,21 @@ logging.basicConfig(
 logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
+# All v3 subsets except HGDP and TGP will be dropped from the v4.0 genomes.
+SUBSETS_TO_DROP = remove_fields_from_constant(SUBSETS["v3"], ["hgdp", "tgp"])
+
 # Remove InbreedingCoeff from allele-specific fields because it is processed separately
 # from the other fields.
 AS_FIELDS = deepcopy(AS_FIELDS)
 AS_FIELDS.remove("InbreedingCoeff")
 SITE_FIELDS = deepcopy(SITE_FIELDS)
+
+# Remove original_alleles for containing non-releasable alleles.
+ALLELE_TYPE_FIELDS = deepcopy(ALLELE_TYPE_FIELDS)
+ALLELE_TYPE_FIELDS = remove_fields_from_constant(
+    ALLELE_TYPE_FIELDS, ["original_alleles", "has_star"]
+)
+
 TABLES_FOR_RELEASE = [
     "dbsnp",
     "filters",
@@ -285,23 +296,13 @@ def drop_v3_subsets(freq_ht: hl.Table) -> hl.Table:
     :param freq_ht: v4.0 genomes freq Table
     :return: v4.0 genomes freq Table with some v3 subsets dropped
     """
-    SUBSETS_TO_DROP = {
-        "subset": [
-            "non_v2",
-            "non_topmed",
-            "non_cancer",
-            "controls_and_biobanks",
-            "non_neuro",
-        ]
-    }
-
     freq_meta, array_exprs = filter_arrays_by_meta(
         freq_ht.freq_meta,
         {
             "freq": freq_ht.freq,
             "freq_meta_sample_count": freq_ht.index_globals().freq_meta_sample_count,
         },
-        SUBSETS_TO_DROP,
+        {"subset": SUBSETS_TO_DROP},
         keep=False,
         combine_operator="or",
     )
@@ -316,9 +317,7 @@ def drop_v3_subsets(freq_ht: hl.Table) -> hl.Table:
     return freq_ht
 
 
-def custom_joint_faf_select(
-    ht: hl.Table, data_type: str = None
-) -> Dict[str, hl.expr.Expression]:
+def custom_joint_faf_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     """
     Drop faf95 from 'grpmax'.
 
@@ -360,9 +359,7 @@ def custom_freq_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
     return selects
 
 
-def custom_in_silico_select(
-    ht: hl.Table, data_type: Optional[str] = None
-) -> Dict[str, hl.expr.Expression]:
+def custom_in_silico_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     """
     Get in silico predictors from VEP for release.
 
@@ -415,9 +412,7 @@ def custom_region_flags_select(
     return selects
 
 
-def custom_filters_select(
-    ht: hl.Table, data_type: Optional[str] = None
-) -> Dict[str, hl.expr.Expression]:
+def custom_filters_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     """
     Select gnomAD filter HT fields for release dataset.
 
@@ -491,7 +486,12 @@ def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
     if data_type == "exomes":
         info_struct = hl.struct(**ht.site_info, **ht[f"{compute_info_method}_info"])
     else:
-        info_struct = hl.struct(**ht.info)
+        # v3 info HT has no SOR or AS_SOR fields. They are computed by VQSR, so we can
+        # grab them from the filters HT.
+        info_struct = hl.struct(
+            **ht.info, SOR=filters.SOR, AS_SOR=filters.features.AS_SOR
+        )
+
     info_dict = {field: info_struct[field] for field in SITE_FIELDS + AS_FIELDS}
     info_dict.update(filters_info_dict)
     info_dict.update(freq_info_dict)
@@ -500,18 +500,16 @@ def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
     # Select the info and allele info annotations. We drop nonsplit_alleles from
     # allele_info so that we don't release alleles that are found in non-releasable
     # samples.
-    selects = {
-        "info": hl.struct(**info_dict),
-    }
+    selects = {"info": hl.struct(**info_dict)}
     if data_type == "exomes":
         selects["allele_info"] = ht.allele_info.drop("nonsplit_alleles")
+    if data_type == "genomes":
+        selects["allele_info"] = filters.allele_info
 
     return selects
 
 
-def custom_vep_select(
-    ht: hl.Table, data_type: Optional[str] = None
-) -> Dict[str, hl.expr.Expression]:
+def custom_vep_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     """
     Select fields for VEP hail Table annotation in release.
 
@@ -737,11 +735,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
         default_reference="GRCh38",
     )
-    # TODO: Change this once we find 'SOR' and 'AS_SOR' for genomes.
     if data_type == "genomes":
-        AS_FIELDS.remove("AS_SOR")
-        SITE_FIELDS.remove("SOR")
-        FINALIZED_SCHEMA["rows"].remove("allele_info")
         FINALIZED_SCHEMA["globals"].remove("interval_qc_parameters")
 
     logger.info(f"Creating {data_type} release HT...")
