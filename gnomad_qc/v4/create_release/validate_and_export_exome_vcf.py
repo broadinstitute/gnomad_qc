@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Set
 
 import hail as hl
 from gnomad.assessment.validity_checks import (
-    compare_related_global_and_row_lengths,
+    compare_global_and_row_annot_lengths,
     pprint_global_anns,
     validate_release_t,
 )
@@ -457,7 +457,7 @@ def main(args):  # noqa: D103
                 " lengths..."
             )
             pprint_global_anns(ht)
-            compare_related_global_and_row_lengths(ht, LEN_COMP_GLOBAL_ROWS)
+            compare_global_and_row_annot_lengths(ht, LEN_COMP_GLOBAL_ROWS)
 
             logger.info("Preparing HT for validity checks and export...")
             ht = prepare_ht_for_validation(ht)
