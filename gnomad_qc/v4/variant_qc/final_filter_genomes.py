@@ -50,6 +50,9 @@ TRUTH_SET_FIELDS = [
 """Annotations to keep in the 'truth_sets' field of the final filter Table."""
 
 FINAL_FILTER_FIELDS = deepcopy(FINAL_FILTER_FIELDS)
+FINAL_FILTER_FIELDS = remove_fields_from_constant(
+    FINAL_FILTER_FIELDS, ["sibling_singleton"]
+)
 FINAL_FILTER_FIELDS = ["allele_info"] + FINAL_FILTER_FIELDS + ["AS_VQSLOD"]
 """Top level annotations to keep in the final filter Table."""
 
