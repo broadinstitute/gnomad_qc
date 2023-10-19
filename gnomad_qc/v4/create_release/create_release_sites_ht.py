@@ -5,7 +5,7 @@ import logging
 from copy import deepcopy
 from datetime import datetime
 from functools import reduce
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import (
@@ -127,7 +127,7 @@ FINALIZED_SCHEMA = {
 
 # Config is added as a function, so it is not evaluated until the function is called.
 def get_config(
-    data_type: str = "exomes",
+    data_type: str,
     release_exists: bool = False,
 ) -> Dict[str, Dict[str, hl.expr.Expression]]:
     """
@@ -316,7 +316,9 @@ def drop_v3_subsets(freq_ht: hl.Table) -> hl.Table:
     return freq_ht
 
 
-def custom_joint_faf_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_joint_faf_select(
+    ht: hl.Table, data_type: str = None
+) -> Dict[str, hl.expr.Expression]:
     """
     Drop faf95 from 'grpmax'.
 
@@ -358,7 +360,9 @@ def custom_freq_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
     return selects
 
 
-def custom_in_silico_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_in_silico_select(
+    ht: hl.Table, data_type: Optional[str] = None
+) -> Dict[str, hl.expr.Expression]:
     """
     Get in silico predictors from VEP for release.
 
@@ -411,7 +415,9 @@ def custom_region_flags_select(
     return selects
 
 
-def custom_filters_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_filters_select(
+    ht: hl.Table, data_type: Optional[str] = None
+) -> Dict[str, hl.expr.Expression]:
     """
     Select gnomAD filter HT fields for release dataset.
 
@@ -446,7 +452,7 @@ def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
     :return: Select expression dict.
     """
     # Create a dict of the fields from the filters HT that we want to add to the info.
-    filters_ht = get_config().get("filters")["ht"]
+    filters_ht = get_config(data_type=data_type).get("filters")["ht"]
 
     if data_type == "exomes":
         # For more information on the selected compute_info_method, please see the
@@ -470,7 +476,7 @@ def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
     filters_info_dict.update({**{f"{score_name}": filters[f"{score_name}"]}})
 
     # Create a dict of the fields from the freq HT that we want to add to the info.
-    freq_ht = get_config().get("freq")["ht"]
+    freq_ht = get_config(data_type=data_type).get("freq")["ht"]
     # TODO: will change back to 'inbreeding_coeff' once we have the new freq_ht
     if data_type == "exomes":
         freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
@@ -496,15 +502,16 @@ def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
     # samples.
     selects = {
         "info": hl.struct(**info_dict),
-        "allele_info": (
-            ht.allele_info.drop("nonsplit_alleles") if data_type == "exomes" else None
-        ),
     }
+    if data_type == "exomes":
+        selects["allele_info"] = ht.allele_info.drop("nonsplit_alleles")
 
     return selects
 
 
-def custom_vep_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_vep_select(
+    ht: hl.Table, data_type: Optional[str] = None
+) -> Dict[str, hl.expr.Expression]:
     """
     Select fields for VEP hail Table annotation in release.
 
@@ -527,7 +534,9 @@ def custom_vep_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     return selects
 
 
-def get_select_global_fields(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def get_select_global_fields(
+    ht: hl.Table, data_type: str
+) -> Dict[str, hl.expr.Expression]:
     """
     Generate a dictionary of globals to select by checking the config of all tables joined.
 
@@ -535,7 +544,7 @@ def get_select_global_fields(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     """
     t_globals = []
     for t in TABLES_FOR_RELEASE:
-        config = get_config().get(t)
+        config = get_config(data_type=data_type).get(t)
         if "select_globals" in config:
             select_globals = get_select_fields(config["select_globals"], ht)
             if "global_name" in config:
@@ -589,7 +598,7 @@ def get_ht(
     :return: Hail Table with fields to select.
     """
     logger.info("Getting the %s dataset and its selected annotations...", dataset)
-    config = get_config(release_exists=release_exists)[dataset]
+    config = get_config(data_type=data_type, release_exists=release_exists)[dataset]
 
     # There is no single path for insilico predictors, so we need to handle this case
     # separately.
@@ -597,6 +606,7 @@ def get_ht(
         base_ht = config["ht"]
     else:
         ht_path = config["path"]
+        print(ht_path)  # TODO: remove
         logger.info("Reading in %s", dataset)
         base_ht = hl.read_table(ht_path, _intervals=_intervals)
         if dataset == "freq" and data_type == "genomes":
@@ -617,7 +627,10 @@ def get_ht(
 
     if "custom_select" in config:
         custom_select_fn = config["custom_select"]
-        select_fields = {**select_fields, **custom_select_fn(base_ht)}
+        select_fields = {
+            **select_fields,
+            **custom_select_fn(base_ht, data_type=data_type),
+        }
 
     if "field_name" in config:
         field_name = config.get("field_name")
@@ -633,6 +646,7 @@ def join_hts(
     tables: List[str],
     new_partition_percent: float,
     test: bool,
+    data_type: str,
     release_exists: bool,
 ) -> hl.Table:
     """
@@ -653,7 +667,7 @@ def join_hts(
         "Reading in %s to determine partition intervals for efficient join",
         base_table,
     )
-    base_ht_path = get_config()[base_table]["path"]
+    base_ht_path = get_config(data_type=data_type)[base_table]["path"]
     base_ht = hl.read_table(base_ht_path)
     if test:
         # Filter to PCSK9 for testing.
@@ -679,6 +693,7 @@ def join_hts(
             table,
             _intervals=partition_intervals,
             test=test,
+            data_type=data_type,
             release_exists=release_exists,
         )
         for table in tables
@@ -699,7 +714,10 @@ def join_hts(
             included_datasets = json.loads(f.read())
 
     included_datasets.update(
-        {t: get_config(release_exists=release_exists)[t]["path"] for t in tables}
+        {
+            t: get_config(data_type=data_type, release_exists=release_exists)[t]["path"]
+            for t in tables
+        }
     )
     with hl.utils.hadoop_open(
         included_datasets_json_path(test=test, release_version=args.version), "w"
@@ -722,13 +740,15 @@ def main(args):
         AS_FIELDS.remove("AS_SOR")
         SITE_FIELDS.remove("SOR")
         FINALIZED_SCHEMA["rows"].remove("allele_info")
+        FINALIZED_SCHEMA["globals"].remove("interval_qc_parameters")
 
-    logger.info(f"Creating {args.datatype} release HT...")
+    logger.info(f"Creating {data_type} release HT...")
     ht = join_hts(
         args.base_table,
         args.tables_for_join,
         args.new_partition_percent,
         args.test,
+        data_type,
         args.release_exists,
     )
 
@@ -737,7 +757,7 @@ def main(args):
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters) & (ht.freq[1].AC > 0))
 
-    ht = ht.select_globals(**get_select_global_fields(ht))
+    ht = ht.select_globals(**get_select_global_fields(ht, data_type))
 
     # Add additional globals that were not present on the joined HTs.
     ht = ht.annotate_globals(
@@ -760,16 +780,16 @@ def main(args):
         ),
         date=datetime.now().isoformat(),
         version=args.version,
-        interval_qc_parameters=(
-            interval_qc_pass(all_platforms=True)
+        frequency_README=FREQUENCY_README,
+    )
+
+    if data_type == "exomes":
+        ht = ht.annotate_globals(
+            interval_qc_parameters=interval_qc_pass(all_platforms=True)
             .ht()
             .index_globals()
             .high_qual_interval_parameters
-            if data_type == "exomes"
-            else None
-        ),
-        frequency_README=FREQUENCY_README,
-    )
+        )
 
     # Reorder fields to match final schema.
     ht = ht.select(*FINALIZED_SCHEMA["rows"]).select_globals(
