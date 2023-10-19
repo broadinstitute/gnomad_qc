@@ -471,7 +471,7 @@ def main(args):  # noqa: D103
                 ht,
                 subsets=SUBSETS,
                 pops=POPS,
-                monoallelic_expr={
+                site_gt_check_expr={
                     "monoallelic": ht.info.monoallelic,
                     "only_het": ht.info.only_het,
                 },
