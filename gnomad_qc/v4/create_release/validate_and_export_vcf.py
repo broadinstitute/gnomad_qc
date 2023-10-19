@@ -12,7 +12,13 @@ from gnomad.assessment.validity_checks import (
     pprint_global_anns,
     validate_release_t,
 )
-from gnomad.resources.grch38.gnomad import POPS, SUBSETS
+from gnomad.resources.grch38.gnomad import (
+    HGDP_POPS,
+    POPS,
+    SUBSETS,
+    TGP_POP_NAMES,
+    TGP_POPS,
+)
 from gnomad.sample_qc.ancestry import POP_NAMES
 from gnomad.utils.filtering import remove_fields_from_constant
 from gnomad.utils.vcf import (
@@ -61,14 +67,16 @@ REGION_FLAG_FIELDS = deepcopy(REGION_FLAG_FIELDS)
 REGION_FLAG_FIELDS = remove_fields_from_constant(
     REGION_FLAG_FIELDS, ["decoy", "nonpar", "has_star"]
 )
+REGION_FLAG_FIELDS.append("non_par")
 REGION_FLAG_FIELDS = {
-    "exomes": REGION_FLAG_FIELDS + [
-        "non_par",
+    "exomes": REGION_FLAG_FIELDS
+    + [
+        "has_star",
         "fail_interval_qc",
         "outside_ukb_capture_region",
         "outside_broad_capture_region",
     ],
-    "genomes": REGION_FLAG_FIELDS + ["has_star"],
+    "genomes": REGION_FLAG_FIELDS,
 }
 
 # Remove original alleles for containing non-releasable alleles
@@ -88,9 +96,18 @@ INSILICO_FIELDS = [
     "polyphen_max",
 ]
 
-POPS = deepcopy(POPS["v4"])
-SUBSETS = deepcopy(SUBSETS["v4"])
+GENOME_SUBSETS_TO_DROP = remove_fields_from_constant(
+    deepcopy(SUBSETS["v3"]), ["hgdp", "tgp"]
+)
+SUBSETS = {
+    "exomes": deepcopy(SUBSETS["v4"]),
+    "genomes": remove_fields_from_constant(
+        deepcopy(SUBSETS["v3"]), GENOME_SUBSETS_TO_DROP
+    ),
+}
 
+# Exomes and genomes use the same pops for v4
+POPS = deepcopy(POPS["v4"])
 # Remove unnecessary pop names from POP_NAMES dict
 POPS = {
     pop: POP_NAMES[pop] if pop != "remaining" else "Remaining individuals"
@@ -142,12 +159,14 @@ def get_export_resources(
         "--validate-release-ht",
         input_resources={
             "create_release_sites_ht.py": {
-                "release_ht": release_sites(data_type=data_type)
+                "release_ht": hl.read_table(
+                    "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/release/gnomad.genomes.sites.test.updated_101923.ht"
+                )  # release_sites(data_type=data_type)
             }
         },
         output_resources={
-            "validated_ht": validated_release_ht(test=test)
-        },  # TODO: Need to add data_type
+            "validated_ht": validated_release_ht(test=test, data_type=data_type)
+        },
     )
     export_pipeline.add_steps(
         {
@@ -185,6 +204,7 @@ def filter_to_test(ht: hl.Table, num_partitions: int = 2) -> hl.Table:
 def unfurl_nested_annotations(
     ht: hl.Table,
     entries_to_remove: Set[str] = None,
+    data_type: str = "exomes",
 ) -> [hl.expr.StructExpression, Set[str]]:
     """
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays.
@@ -193,6 +213,7 @@ def unfurl_nested_annotations(
 
     :param ht: Table containing the nested variant annotation arrays to be unfurled.
     :param entries_to_remove: Optional Set of frequency entries to remove for vcf_export.
+    :param data_type: Data type to unfurl nested annotations for. One of "exomes" or "genomes".
     :return: StructExpression containing variant annotations and their corresponding expressions and updated entries and set of frequency entries to remove
         to remove from the VCF.
     """
@@ -223,7 +244,7 @@ def unfurl_nested_annotations(
     )
 
     logger.info("Adding grpmax data...")
-    grpmax_idx = ht.grpmax.gnomad  # TODO: This needs to be modified for genomes
+    grpmax_idx = ht.grpmax.gnomad if data_type == "exomes" else ht.grpmax
     grpmax_dict = {"grpmax": grpmax_idx.gen_anc}
     grpmax_dict.update(
         {
@@ -377,8 +398,7 @@ def prepare_ht_for_validation(
         "Unfurling nested gnomAD frequency annotations and add to INFO field..."
     )
     info_struct, freq_entries_to_remove = unfurl_nested_annotations(
-        ht,
-        entries_to_remove=freq_entries_to_remove,
+        ht, entries_to_remove=freq_entries_to_remove, data_type=data_type
     )
 
     logger.info("Constructing INFO field")
@@ -492,12 +512,12 @@ def main(args):  # noqa: D103
         if args.validate_release_ht:
             logger.info("Running release HT validation...")
             res = resources.validate_release_ht
-            res.check_resource_existence()
-            ht = res.release_ht.ht()
+            # res.check_resource_existence()
+            ht = res.release_ht  # .ht()
 
-            if test:
-                logger.info("Filtering to test partitions...")
-                ht = filter_to_test(ht)
+            # if test:
+            #     logger.info("Filtering to test partitions...")
+            #     ht = filter_to_test(ht)
 
             logger.info(
                 "Checking globals for retired terms and checking their associated row"
