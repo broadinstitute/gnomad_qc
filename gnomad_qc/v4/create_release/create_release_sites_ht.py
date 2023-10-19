@@ -470,6 +470,7 @@ def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
     filters_info_fields = [
         "singleton",
         "transmitted_singleton",
+        "sibling_singleton",
         "omni",
         "mills",
         "monoallelic",

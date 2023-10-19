@@ -68,6 +68,7 @@ FINAL_FILTER_FIELDS = [
     "evaluation_score_bins",
     "singleton",
     "transmitted_singleton",
+    "sibling_singleton",
     "monoallelic",
     "only_het",
     "filters",
@@ -229,11 +230,10 @@ def generate_final_filter_ht(
     ht: hl.Table,
     filter_name: str,
     score_name: str,
-    ac0_filter_expr: hl.expr.BooleanExpression,
-    ts_ac_filter_expr: hl.expr.BooleanExpression,
-    mono_allelic_flag_expr: hl.expr.BooleanExpression,
-    only_het_flag_expr: hl.expr.BooleanExpression,
+    freq_expr: hl.expr.ArrayExpression,
     score_cutoff_globals: Dict[str, hl.expr.StructExpression],
+    mono_allelic_flag: bool = True,
+    only_het_flag: bool = True,
     inbreeding_coeff_cutoff: float = INBREEDING_COEFF_HARD_CUTOFF,
 ) -> hl.Table:
     """
@@ -245,14 +245,12 @@ def generate_final_filter_ht(
     :param score_name: Name to use for the filtering score annotation. This will be
         used in place of 'score' in the release HT info struct and the INFO field of
         the VCF (e.g. RF or AS_VQSLOD).
-    :param ac0_filter_expr: Expression that indicates if a variant should be filtered
-        as allele count 0 (AC0).
-    :param ts_ac_filter_expr: Allele count expression in `ht` to use as a filter for
-        determining a transmitted singleton.
-    :param mono_allelic_flag_expr: Expression indicating if a variant is mono-allelic.
-    :param only_het_flag_expr: Expression indicating if all carriers of a variant are
-        het.
+    :param freq_expr: Expression for frequency information to use for flags and filters.
     :param score_cutoff_globals: Dictionary of score cutoffs to use for filtering.
+    :param mono_allelic_flag: Whether to add a flag indicating that a variant is
+        mono-allelic.
+    :param only_het_flag: Whether to add a flag indicating that all carriers of a
+        variant are het.
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter to use for variants.
     :return: Finalized random forest Table annotated with variant filters.
     """
@@ -260,12 +258,15 @@ def generate_final_filter_ht(
         logger.warning("Missing Score!")
         ht.filter(hl.is_missing(ht.score)).show()
 
+    adj_freq_expr = freq_expr[0]
+    raw_freq_expr = freq_expr[1]
+
     # Construct dictionary of filters for final 'filters' annotation.
     filters = {
         "InbreedingCoeff": hl.or_else(
             ht.inbreeding_coeff < inbreeding_coeff_cutoff, False
         ),
-        "AC0": ac0_filter_expr,
+        "AC0": adj_freq_expr.AC == 0,
         filter_name: hl.is_missing(ht.score),
     }
     snv_indel_expr = {"snv": hl.is_snp(ht.alleles[0], ht.alleles[1])}
@@ -275,9 +276,19 @@ def generate_final_filter_ht(
             snv_indel_expr[var_type] & (ht.score < score_cut.min_score)
         )
 
+    # Get info needed from variant QC globals to determine correct annotations for the
+    # final filter HT.
     variant_qc_globals = ht.index_globals()
     compute_info_method = f"{hl.eval(ht.compute_info_method)}_info"
     bin_stats_expr = variant_qc_globals.bin_group_variant_counts
+    if hl.eval(variant_qc_globals.adj):
+        training_group = "adj"
+        training_group_ac = adj_freq_expr.AC
+    else:
+        training_group = "raw"
+        training_group_ac = raw_freq_expr.AC
+
+    # Grab the correct annotations from the input HT based on the filtering model.
     if filter_name == "RF":
         # Fix RF annotations for release.
         vqc_expr = hl.struct(
@@ -302,6 +313,33 @@ def generate_final_filter_ht(
         snv_training_variables = IF_FEATURES
         indel_training_variables = IF_FEATURES
 
+    # Add annotations for transmitted and sibling singletons if they were used in
+    # training.
+    if hl.eval(variant_qc_globals.transmitted_singletons):
+        vqc_expr = vqc_expr.annotate(
+            transmitted_singleton=hl.or_missing(
+                training_group_ac == 1, ht[f"transmitted_singleton_{training_group}"]
+            )
+        )
+    if hl.eval(variant_qc_globals.sibling_singletons):
+        vqc_expr = vqc_expr.annotate(
+            sibling_singleton=hl.or_missing(
+                training_group_ac == 1, ht[f"sibling_singleton_{training_group}"]
+            )
+        )
+
+    # Generate expressions for mono-allelic and only-het status if requested.
+    if mono_allelic_flag:
+        vqc_expr = vqc_expr.annotate(
+            monoallelic=(raw_freq_expr.AF == 1) | (raw_freq_expr.AF == 0)
+        )
+    if only_het_flag:
+        vqc_expr = vqc_expr.annotate(
+            only_het=((adj_freq_expr.AC * 2) == adj_freq_expr.AN)
+            & (adj_freq_expr.homozygote_count == 0)
+        )
+
+    # Select only the variant QC globals we want to keep in the final HT.
     variant_qc_globals = variant_qc_globals.select(
         filtering_model_specific_info=variant_qc_globals.select(
             *VARIANT_QC_GLOBAL_FIELDS[filter_name]
@@ -323,11 +361,6 @@ def generate_final_filter_ht(
         **vqc_expr,
         **{score_name: ht.score},
         evaluation_score_bins=hl.struct(**bin_expr),
-        transmitted_singleton=hl.or_missing(
-            ts_ac_filter_expr, ht.transmitted_singleton_raw
-        ),
-        monoallelic=mono_allelic_flag_expr,
-        only_het=only_het_flag_expr,
         filters=add_filters_expr(filters=filters),
     ).select_globals()
 
@@ -434,16 +467,18 @@ def main(args):
     res = final_vqc_resources.finalize_variant_qc
     res.check_resource_existence()
 
-    # Get Bin and Freq HTs, where Bin contains info about ordered bins arranged by quality
-    # and freq contains frequency info for each variant
+    # Get bin and freq HTs, where Bin contains info about ordered bins arranged by
+    # quality and freq contains frequency info for each variant.
     bin_ht = res.bin_ht.ht()
     freq_ht = res.freq_ht.ht()
 
     if test:
         bin_ht = bin_ht._filter_partitions(range(5))
 
-    # Filter out bins which fail hard cutoffs.
-    bin_ht = bin_ht.filter(~res.info_ht.ht()[bin_ht.key].AS_lowqual)
+    # Filter out AS_lowqual variants and variants not in the release.
+    bin_ht = bin_ht.filter(
+        ~res.info_ht.ht()[bin_ht.key].AS_lowqual & (freq_ht[bin_ht.key].freq[1].AC > 0)
+    )
 
     # Name filter and score annotations based on model.
     if args.model_id.startswith("vqsr_"):
@@ -481,32 +516,32 @@ def main(args):
 
     # Append with frequency information.
     bin_ht = bin_ht.annotate(inbreeding_coeff=freq_ht[bin_ht.key].inbreeding_coeff)
-    freq_idx = freq_ht[bin_ht.key]
-
-    # Generate expressions for mono-allelic and only-het status.
-    mono_allelic_flag_expr = (freq_idx.freq[1].AF == 1) | (freq_idx.freq[1].AF == 0)
-    only_het_flag_expr = ((freq_idx.freq[0].AC * 2) == freq_idx.freq[0].AN) & (
-        freq_idx.freq[0].homozygote_count == 0
-    )
 
     # Return the final filtered table for all filters passed in below.
     ht = generate_final_filter_ht(
         bin_ht,
         filter_name,
         score_name,
-        ac0_filter_expr=freq_idx.freq[0].AC == 0,
-        ts_ac_filter_expr=freq_idx.freq[1].AC == 1,
-        mono_allelic_flag_expr=mono_allelic_flag_expr,
-        only_het_flag_expr=only_het_flag_expr,
-        score_cutoff_globals=score_cutoff_globals,
+        freq_expr=freq_ht[bin_ht.key].freq,
         inbreeding_coeff_cutoff=args.inbreeding_coeff_threshold,
+        score_cutoff_globals=score_cutoff_globals,
     )
     ht = ht.annotate_globals(
         filtering_model=ht.filtering_model.annotate(model_id=args.model_id)
     )
 
     # Write out final filtered table to path defined above in resources.
-    ht.write(res.final_ht.path, overwrite=args.overwrite)
+    ht = ht.checkpoint(res.final_ht.path, overwrite=args.overwrite)
+
+    # Print out counts of variants in each filter group.
+    logger.info("Counts of variants in each filter group:")
+    ht.group_by(
+        **{
+            "snv": hl.is_snp(ht.alleles[0], ht.alleles[1]),
+            "AC0": ht.filters.contains("AC0"),
+            filter_name: ht.filters.contains(filter_name),
+        }
+    ).aggregate(n=hl.agg.count()).show(-1)
 
 
 if __name__ == "__main__":
