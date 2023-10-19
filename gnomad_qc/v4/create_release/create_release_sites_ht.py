@@ -291,10 +291,10 @@ def get_config(
 
 def drop_v3_subsets(freq_ht: hl.Table) -> hl.Table:
     """
-    Drop the freq of all v3 subsets except HGDP + TGP from the freq Table.
+    Drop the frequencies of all v3 subsets except 'hgdp' and 'tgp' from `freq_ht`.
 
-    :param freq_ht: v4.0 genomes freq Table
-    :return: v4.0 genomes freq Table with some v3 subsets dropped
+    :param freq_ht: v4.0 genomes freq Table.
+    :return: v4.0 genomes freq Table with some v3 subsets dropped.
     """
     freq_meta, array_exprs = filter_arrays_by_meta(
         freq_ht.freq_meta,
