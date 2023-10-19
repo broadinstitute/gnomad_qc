@@ -3,7 +3,7 @@
 import argparse
 import logging
 from copy import deepcopy
-from pprint import pformat
+from pprint import pprint
 from typing import Dict, List, Optional, Set
 
 import hail as hl
@@ -424,6 +424,40 @@ def process_vep_csq_header(vep_csq_header: str = VEP_CSQ_HEADER) -> str:
     return vep_csq_header
 
 
+def check_globals_for_retired_terms(ht: hl.Table) -> None:
+    """
+    Check list of dictionaries to see if the keys in the dictionaries contain either 'pop and 'oth'.
+
+    :param ht: Input Table
+    """
+    logger.info("Checking globals for retired terms...")
+    errors = []
+
+    for field in ht.globals:
+        if field.endswith("meta"):
+            for d in hl.eval(ht[field]):
+                if "pop" in d.keys():
+                    errors.append(
+                        f"Found retired term 'pop' in global {field} annotation: {d}"
+                    )
+                if "oth" in d.values():
+                    errors.append(
+                        f"Found retired term 'oth' in global {field} annotation: {d}"
+                    )
+        if "index_dict" in field:
+            for k in hl.eval(ht[field]).keys():
+                if "oth" in k:
+                    errors.append(
+                        f"Found retired term 'oth' in global {field} annotation: {k}"
+                    )
+
+    if len(errors) > 0:
+        logger.info("Failed retired term check")
+        pprint(errors)
+    else:
+        logger.info("Passed retired term check: No retired terms found in globals.")
+
+
 def main(args):  # noqa: D103
     hl.init(
         log="/validate_and_export_vcf.log",
@@ -453,9 +487,10 @@ def main(args):  # noqa: D103
             #    ht = filter_to_test(ht)
 
             logger.info(
-                "Printing globals and checking their associated row annotation"
-                " lengths..."
+                "Checking globals for retired terms and checking their associated row"
+                " annotation lengths..."
             )
+            check_globals_for_retired_terms(ht)
             pprint_global_anns(ht)
             compare_global_and_row_annot_lengths(ht, LEN_COMP_GLOBAL_ROWS)
 
