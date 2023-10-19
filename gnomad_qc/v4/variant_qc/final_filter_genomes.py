@@ -13,7 +13,7 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.resources.annotations import get_info
+from gnomad_qc.v3.resources.annotations import get_info, get_vqsr_filters
 from gnomad_qc.v3.resources.variant_qc import get_score_bins
 from gnomad_qc.v4.resources.annotations import get_freq
 from gnomad_qc.v4.resources.variant_qc import VQSR_FEATURES, final_filter
@@ -79,6 +79,7 @@ def get_final_variant_qc_resources(
         "annotations/generate_freq_genomes.py --finalize-freq-ht": {
             "freq_ht": get_freq(data_type="genomes", finalized=True, test=test)
         },
+        "VQSR result HT": {"vqsr_ht": get_vqsr_filters(model_id, split=True)},
     }
 
     # Create resource collection for the finalizing variant QC pipeline.
@@ -224,6 +225,10 @@ def main(args):
 
     # Select only the fields we want to keep in the final HT in the order we want them.
     ht = ht.select(*FINAL_FILTER_FIELDS)
+
+    # NOTE: This was required for v4.0 genomes to grab the SOR annotation, we now
+    # compute this in `get_site_info_expr`.
+    ht = ht.annotate(SOR=res.vqsr_ht.ht()[ht.key].info.SOR)
 
     # Restructure final filter Table global annotations.
     ht = ht.select_globals(
