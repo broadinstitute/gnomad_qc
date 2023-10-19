@@ -133,11 +133,7 @@ def get_export_resources(
     )
     validate_release_ht = PipelineStepResourceCollection(
         "--validate-release-ht",
-        input_resources={
-            "release_ht": [
-                "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/release/gnomad.exomes.sites.test.updated_101723.ht"
-            ]
-        },  # release_sites().ht()},
+        input_resources={"release_ht": release_sites().ht()},
         output_resources={"validated_ht": validated_release_ht(test=test)},
     )
     export_pipeline.add_steps(
@@ -477,13 +473,11 @@ def main(args):  # noqa: D103
             logger.info("Running release HT validation...")
             res = resources.validate_release_ht
             res.check_resource_existence()
+            ht = res.release_ht
 
-            ht = hl.read_table(
-                "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/release/gnomad.exomes.sites.test.updated_101723.ht"
-            )  # release_sites().ht()
-            # if test:
-            #    logger.info("Filtering to test partitions...")
-            #    ht = filter_to_test(ht)
+            if test:
+                logger.info("Filtering to test partitions...")
+                ht = filter_to_test(ht)
 
             logger.info(
                 "Checking globals for retired terms and checking their associated row"
@@ -491,9 +485,7 @@ def main(args):  # noqa: D103
             )
             check_globals_for_retired_terms(ht)
             pprint_global_anns(ht)
-            check_global_and_row_annot_lengths(
-                ht, LEN_COMP_GLOBAL_ROWS, check_all_rows=True
-            )
+            check_global_and_row_annot_lengths(ht, LEN_COMP_GLOBAL_ROWS)
 
             logger.info("Preparing HT for validity checks and export...")
             ht = prepare_ht_for_validation(ht)
