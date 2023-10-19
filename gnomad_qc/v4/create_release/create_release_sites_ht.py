@@ -142,7 +142,7 @@ def get_config(
     release_exists: bool = False,
 ) -> Dict[str, Dict[str, hl.expr.Expression]]:
     """
-    Get configuration dictionary.
+    Get configuration dictionary for specified data type.
 
     Format:
         '<Name of dataset>': {
@@ -164,9 +164,14 @@ def get_config(
         All future in_silico predictors should have the keys confirmed to be 'locus'
         with or without 'alleles' before using this logic.
 
+    :param data_type: Either 'exomes' or 'genomes'.
     :param release_exists: Whether the release HT already exists.
     :return: Dict of dataset's configs.
     """
+    if data_type not in ["exomes", "genomes"]:
+        raise ValueError(
+            f"Data type {data_type} not recognized. Must be 'exomes' or 'genomes'."
+        )
     config = {
         "dbsnp": {
             "ht": dbsnp.ht(),
