@@ -39,10 +39,13 @@ NEW_SITE_FIELDS = [
     "monoallelic",
     "only_het",
     "transmitted_singleton",
-    "sibling_singleton",
 ]
-SITE_FIELD = deepcopy(SITE_FIELDS)
+SITE_FIELDS = deepcopy(SITE_FIELDS)
 SITE_FIELDS.extend(NEW_SITE_FIELDS)
+SITE_FIELDS = {
+    "exomes": SITE_FIELDS + ["sibling_singleton"],
+    "genomes": SITE_FIELDS,
+}
 
 # Add updatedVQSR fields
 NEW_AS_VQSR_FIELDS = ["negative_train_site", "positive_train_site"]
@@ -53,19 +56,20 @@ AS_VQSR_FIELDS.extend(NEW_AS_VQSR_FIELDS)
 AS_FIELDS = remove_fields_from_constant(AS_FIELDS, ["InbreedingCoeff"])
 AS_FIELDS.append("inbreeding_coeff")
 
-# Drop decoy, still doesnt exist on 38
+# Drop decoy, still doesn't exist on 38
 REGION_FLAG_FIELDS = deepcopy(REGION_FLAG_FIELDS)
 REGION_FLAG_FIELDS = remove_fields_from_constant(
-    REGION_FLAG_FIELDS, ["decoy", "nonpar"]
+    REGION_FLAG_FIELDS, ["decoy", "nonpar", "has_star"]
 )
-REGION_FLAG_FIELDS.extend(
-    [
+REGION_FLAG_FIELDS = {
+    "exomes": REGION_FLAG_FIELDS + [
         "non_par",
         "fail_interval_qc",
         "outside_ukb_capture_region",
         "outside_broad_capture_region",
-    ]
-)
+    ],
+    "genomes": REGION_FLAG_FIELDS + ["has_star"],
+}
 
 # Remove original alleles for containing non-releasable alleles
 ALLELE_TYPE_FIELDS = deepcopy(ALLELE_TYPE_FIELDS)
@@ -118,12 +122,15 @@ logger.setLevel(logging.INFO)
 
 def get_export_resources(
     overwrite: bool = False,
+    data_type: str = "exomes",
     test: Optional[bool] = False,
 ) -> PipelineResourceCollection:
     """
     Get export resources.
 
     :param overwrite: Whether to overwrite existing files.
+    :param data_type: Data type to get resources for. One of "exomes" or "genomes".
+        Default is "exomes".
     :param test: Whether to use test resources.
     :return: Export resources.
     """
@@ -133,8 +140,14 @@ def get_export_resources(
     )
     validate_release_ht = PipelineStepResourceCollection(
         "--validate-release-ht",
-        input_resources={"create_release_sites_ht.py": {"release_ht": release_sites()}},
-        output_resources={"validated_ht": validated_release_ht(test=test)},
+        input_resources={
+            "create_release_sites_ht.py": {
+                "release_ht": release_sites(data_type=data_type)
+            }
+        },
+        output_resources={
+            "validated_ht": validated_release_ht(test=test)
+        },  # TODO: Need to add data_type
     )
     export_pipeline.add_steps(
         {
@@ -210,7 +223,7 @@ def unfurl_nested_annotations(
     )
 
     logger.info("Adding grpmax data...")
-    grpmax_idx = ht.grpmax.gnomad
+    grpmax_idx = ht.grpmax.gnomad  # TODO: This needs to be modified for genomes
     grpmax_dict = {"grpmax": grpmax_idx.gen_anc}
     grpmax_dict.update(
         {
@@ -276,18 +289,21 @@ def unfurl_nested_annotations(
 def make_info_expr(
     t: hl.Table,
     hist_prefix: str = "",
+    data_type: str = "exomes",
 ) -> Dict[str, hl.expr.Expression]:
     """
     Make Hail expression for variant annotations to be included in VCF INFO field.
 
     :param t: Table containing variant annotations to be reformatted for VCF export.
     :param hist_prefix: Prefix to use for histograms.
+    :param data_type: Data type to make info expression for. One of "exomes" or
+        "genomes". Default is "exomes".
     :return: Dictionary containing Hail expressions for relevant INFO annotations.
     :rtype: Dict[str, hl.expr.Expression]
     """
     vcf_info_dict = {}
     # Add site-level annotations and AS annotations to vcf_info_dict
-    for field in SITE_FIELDS + AS_FIELDS:
+    for field in SITE_FIELDS[data_type] + AS_FIELDS:
         vcf_info_dict[field] = t["release_ht_info"][f"{field}"]
 
     for field in AS_VQSR_FIELDS:
@@ -296,7 +312,7 @@ def make_info_expr(
     # Add region_flag and allele_info fields to info dict
     for field in ALLELE_TYPE_FIELDS:
         vcf_info_dict[field] = t["allele_info"][f"{field}"]
-    for field in REGION_FLAG_FIELDS:
+    for field in REGION_FLAG_FIELDS[data_type]:
         vcf_info_dict[field] = t["region_flag"][f"{field}"]
 
     # Add underscore to hist_prefix if it isn't empty
@@ -343,6 +359,7 @@ def make_info_expr(
 
 def prepare_ht_for_validation(
     ht: hl.Table,
+    data_type: str = "exomes",
     freq_entries_to_remove: Optional[List[str]] = None,
     vcf_info_reorder: Optional[List[str]] = None,
 ) -> hl.Table:
@@ -350,6 +367,8 @@ def prepare_ht_for_validation(
     Prepare HT for validity checks and export.
 
     :param ht: Release Hail Table
+    :param data_type: Data type to prepare HT for. One of "exomes" or "genomes".
+        Default is "exomes".
     :param freq_entries_to_remove: List of entries to remove from freq
     :param vcf_info_reorder: Order of VCF INFO fields
     :return: Hail Table prepared for validity checks and export
@@ -379,7 +398,7 @@ def prepare_ht_for_validation(
     #   info struct (unfurled data obtained above),
     #   dbSNP rsIDs
     #   all VEP annotations
-    ht = ht.annotate(info=ht.info.annotate(**make_info_expr(ht)))
+    ht = ht.annotate(info=ht.info.annotate(**make_info_expr(ht, data_type=data_type)))
 
     if freq_entries_to_remove:
         ht = ht.annotate_globals(
@@ -466,7 +485,8 @@ def main(args):  # noqa: D103
 
     overwrite = args.overwrite
     test = args.test
-    resources = get_export_resources(overwrite, test)
+    data_type = args.data_type
+    resources = get_export_resources(overwrite, data_type, test)
 
     try:
         if args.validate_release_ht:
@@ -488,7 +508,7 @@ def main(args):  # noqa: D103
             check_global_and_row_annot_lengths(ht, LEN_COMP_GLOBAL_ROWS)
 
             logger.info("Preparing HT for validity checks and export...")
-            ht = prepare_ht_for_validation(ht)
+            ht = prepare_ht_for_validation(ht, data_type=data_type)
             # Note: Checkpoint saves time in validity checks and final export by not
             # needing to run the VCF HT prep on each chromosome -- more needs to happen
             # before ready for export, but this is an intermediate write.
@@ -507,7 +527,7 @@ def main(args):  # noqa: D103
                 delimiter="_",
                 sample_sum_sets_and_pops={"non_ukb": POPS},
                 variant_filter_field="AS_VQSR",
-                problematic_regions=REGION_FLAG_FIELDS,
+                problematic_regions=REGION_FLAG_FIELDS[data_type],
                 single_filter_count=True,
             )
 
@@ -540,4 +560,12 @@ if __name__ == "__main__":
         help="Use test resources",
         action="store_true",
     )
+    parser.add_argument(
+        "-d",
+        "--data-type",
+        help="Data type to run validity checks on.",
+        default="exomes",
+        choices=["exomes", "genomes"],
+    )
+
     main(parser.parse_args())
