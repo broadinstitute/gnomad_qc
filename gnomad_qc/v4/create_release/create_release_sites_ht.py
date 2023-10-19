@@ -175,9 +175,7 @@ def get_config(
             "select": ["rsid"],
         },
         "filters": {
-            "ht": final_filter(
-                data_type=data_type, test=True
-            ).ht(),  # TODO: remove test=True
+            "ht": final_filter(data_type=data_type).ht(),
             "path": final_filter(data_type=data_type).path,
             "select": ["filters"],
             "custom_select": custom_filters_select,
@@ -265,8 +263,8 @@ def get_config(
             "path": release_sites().path,
         },
         "joint_faf": {
-            "ht": get_combined_faf_release(test=True).ht(),  # TODO: remove test=True
-            "path": get_combined_faf_release(test=True).path,  # TODO: remove test=True
+            "ht": get_combined_faf_release().ht(),
+            "path": get_combined_faf_release().path,
             "select": ["joint_freq", "joint_faf", "joint_fafmax"],
             "custom_select": custom_joint_faf_select,
             "select_globals": [
@@ -616,7 +614,6 @@ def get_ht(
         base_ht = config["ht"]
     else:
         ht_path = config["path"]
-        print(ht_path)  # TODO: remove
         logger.info("Reading in %s", dataset)
         base_ht = hl.read_table(ht_path, _intervals=_intervals)
         if dataset == "freq" and data_type == "genomes":
