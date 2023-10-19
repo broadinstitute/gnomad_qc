@@ -808,7 +808,7 @@ def main(args):
     )
 
     output_path = (
-        f"{qc_temp_prefix()}release/gnomad.{data_type}.sites.test.updated_101823.ht"
+        f"{qc_temp_prefix()}release/gnomad.{data_type}.sites.test.updated_101923.ht"
         if args.test
         else release_sites(data_type=data_type).path
     )
