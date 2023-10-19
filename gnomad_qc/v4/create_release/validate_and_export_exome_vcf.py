@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Set
 
 import hail as hl
 from gnomad.assessment.validity_checks import (
-    compare_global_and_row_annot_lengths,
+    check_global_and_row_annot_lengths,
     pprint_global_anns,
     validate_release_t,
 )
@@ -34,13 +34,12 @@ from gnomad_qc.resource_utils import (
 from gnomad_qc.v4.resources.basics import get_logging_path
 from gnomad_qc.v4.resources.release import release_sites, validated_release_ht
 
-# TODO: Check global lengths match the fields they reference
-
 # Add new site fields
 NEW_SITE_FIELDS = [
     "monoallelic",
     "only_het",
     "transmitted_singleton",
+    "sibling_singleton",
 ]
 SITE_FIELD = deepcopy(SITE_FIELDS)
 SITE_FIELDS.extend(NEW_SITE_FIELDS)
@@ -492,7 +491,9 @@ def main(args):  # noqa: D103
             )
             check_globals_for_retired_terms(ht)
             pprint_global_anns(ht)
-            compare_global_and_row_annot_lengths(ht, LEN_COMP_GLOBAL_ROWS)
+            check_global_and_row_annot_lengths(
+                ht, LEN_COMP_GLOBAL_ROWS, check_all_rows=True
+            )
 
             logger.info("Preparing HT for validity checks and export...")
             ht = prepare_ht_for_validation(ht)
