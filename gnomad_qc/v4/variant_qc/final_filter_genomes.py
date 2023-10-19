@@ -1,11 +1,13 @@
 """Script to create final filter Table for v4 genomes release."""
 import argparse
 import logging
+from copy import deepcopy
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
-from gnomad.utils.filtering import add_filters_expr
+from gnomad.utils.filtering import add_filters_expr, remove_fields_from_constant
 from gnomad.utils.slack import slack_notifications
+from gnomad.utils.vcf import ALLELE_TYPE_FIELDS
 from gnomad.variant_qc.pipeline import INBREEDING_COEFF_HARD_CUTOFF
 
 from gnomad_qc.resource_utils import (
@@ -28,8 +30,16 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("final_filter_genomes")
 logger.setLevel(logging.INFO)
 
+ALLELE_TYPE_FIELDS = deepcopy(ALLELE_TYPE_FIELDS)
+# Remove original_alleles for containing non-releasable alleles.
+ALLELE_TYPE_FIELDS = remove_fields_from_constant(
+    ALLELE_TYPE_FIELDS, ["original_alleles", "has_star"]
+)
+"""Annotations for allele info to keep in the final filter Table."""
+
 REGION_INFO_FIELDS = ["non_lcr"]
 """Annotations to keep in the 'region_info' field of the final filter Table."""
+
 TRUTH_SET_FIELDS = [
     "hapmap",
     "omni",
@@ -38,8 +48,11 @@ TRUTH_SET_FIELDS = [
     "transmitted_singleton",
 ]
 """Annotations to keep in the 'truth_sets' field of the final filter Table."""
-FINAL_FILTER_FIELDS = FINAL_FILTER_FIELDS + ["AS_VQSLOD"]
+
+FINAL_FILTER_FIELDS = deepcopy(FINAL_FILTER_FIELDS)
+FINAL_FILTER_FIELDS = ["allele_info"] + FINAL_FILTER_FIELDS + ["AS_VQSLOD"]
 """Top level annotations to keep in the final filter Table."""
+
 VARIANT_QC_GLOBAL_FIELDS = {
     "transmitted_singletons",
     "adj",
@@ -213,6 +226,7 @@ def main(args):
     indel_features = VQSR_FEATURES["genomes"]["indel"]
     keep_features = set(snv_features) | set(indel_features)
     ann_groups = {
+        "allele_info": ALLELE_TYPE_FIELDS,
         "region_info": REGION_INFO_FIELDS,
         "truth_sets": TRUTH_SET_FIELDS,
         "features": keep_features,
