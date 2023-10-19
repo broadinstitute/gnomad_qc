@@ -133,7 +133,7 @@ def get_export_resources(
     )
     validate_release_ht = PipelineStepResourceCollection(
         "--validate-release-ht",
-        input_resources={"release_ht": release_sites().ht()},
+        input_resources={"create_release_sites_ht.py": {"release_ht": release_sites()}},
         output_resources={"validated_ht": validated_release_ht(test=test)},
     )
     export_pipeline.add_steps(
@@ -473,7 +473,7 @@ def main(args):  # noqa: D103
             logger.info("Running release HT validation...")
             res = resources.validate_release_ht
             res.check_resource_existence()
-            ht = res.release_ht
+            ht = res.release_ht.ht()
 
             if test:
                 logger.info("Filtering to test partitions...")
