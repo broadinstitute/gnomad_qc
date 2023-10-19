@@ -708,7 +708,9 @@ def join_hts(
         with hl.utils.hadoop_open(
             included_datasets_json_path(
                 test=test,
-                release_version=hl.eval(get_config()["release"]["ht"].version),
+                release_version=hl.eval(
+                    get_config(data_type=data_type)["release"]["ht"].version
+                ),
             )
         ) as f:
             included_datasets = json.loads(f.read())
