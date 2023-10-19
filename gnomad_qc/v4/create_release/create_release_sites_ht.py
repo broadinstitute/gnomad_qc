@@ -168,10 +168,6 @@ def get_config(
     :param release_exists: Whether the release HT already exists.
     :return: Dict of dataset's configs.
     """
-    if data_type not in ["exomes", "genomes"]:
-        raise ValueError(
-            f"Data type {data_type} not recognized. Must be 'exomes' or 'genomes'."
-        )
     config = {
         "dbsnp": {
             "ht": dbsnp.ht(),
@@ -179,7 +175,9 @@ def get_config(
             "select": ["rsid"],
         },
         "filters": {
-            "ht": final_filter(data_type=data_type).ht(),
+            "ht": final_filter(
+                data_type=data_type, test=True
+            ).ht(),  # TODO: remove test=True
             "path": final_filter(data_type=data_type).path,
             "select": ["filters"],
             "custom_select": custom_filters_select,
@@ -477,7 +475,7 @@ def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
         "only_het",
     ]
     if data_type == "genomes":
-        filters_info_fields.drop("sibling_singleton")
+        filters_info_fields.remove("sibling_singleton")
     filters_info_dict = {field: filters[field] for field in filters_info_fields}
     filters_info_dict.update({**{f"{score_name}": filters[f"{score_name}"]}})
 
