@@ -1,24 +1,28 @@
-"""Script to create release sites HT for exomes."""
+"""Script to create release sites HT for v4.0 exomes and genomes."""
 import argparse
 import json
 import logging
 from copy import deepcopy
 from datetime import datetime
 from functools import reduce
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import hail as hl
+from gnomad.resources.grch38.gnomad import SUBSETS
 from gnomad.resources.grch38.reference_data import (
     dbsnp,
     lcr_intervals,
     seg_dup_intervals,
 )
 from gnomad.utils.annotations import region_flag_expr
+from gnomad.utils.filtering import filter_arrays_by_meta, remove_fields_from_constant
+from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vcf import AS_FIELDS, SITE_FIELDS
+from gnomad.utils.vcf import ALLELE_TYPE_FIELDS, AS_FIELDS, SITE_FIELDS
 from hail.typecheck import anytype, nullable, sequenceof
 
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v3.resources.annotations import get_info as get_info_v3
 from gnomad_qc.v4.annotations.insilico_predictors import get_sift_polyphen_from_vep
 from gnomad_qc.v4.create_release.create_release_utils import (
     DBSNP_VERSION,
@@ -56,11 +60,21 @@ logging.basicConfig(
 logger = logging.getLogger("create_release_ht")
 logger.setLevel(logging.INFO)
 
+# All v3 subsets except HGDP and TGP will be dropped from the v4.0 genomes.
+SUBSETS_TO_DROP = remove_fields_from_constant(SUBSETS["v3"], ["hgdp", "tgp"])
+
 # Remove InbreedingCoeff from allele-specific fields because it is processed separately
 # from the other fields.
 AS_FIELDS = deepcopy(AS_FIELDS)
 AS_FIELDS.remove("InbreedingCoeff")
 SITE_FIELDS = deepcopy(SITE_FIELDS)
+
+# Remove original_alleles for containing non-releasable alleles.
+ALLELE_TYPE_FIELDS = deepcopy(ALLELE_TYPE_FIELDS)
+ALLELE_TYPE_FIELDS = remove_fields_from_constant(
+    ALLELE_TYPE_FIELDS, ["original_alleles", "has_star"]
+)
+
 TABLES_FOR_RELEASE = [
     "dbsnp",
     "filters",
@@ -124,10 +138,11 @@ FINALIZED_SCHEMA = {
 
 # Config is added as a function, so it is not evaluated until the function is called.
 def get_config(
+    data_type: str,
     release_exists: bool = False,
 ) -> Dict[str, Dict[str, hl.expr.Expression]]:
     """
-    Get configuration dictionary.
+    Get configuration dictionary for specified data type.
 
     Format:
         '<Name of dataset>': {
@@ -144,10 +159,12 @@ def get_config(
         The 'in_silico' key's 'ht' logic is handled separately because it is a list of
         HTs. In this list, the phyloP HT is keyed by locus only and thus the 'ht' code
         below sets the join key to 1, which will grab the first key of
-        ht.key.dtype.values() e.g. 'locus', when a HT's keys are not {'locus, 'alleles'}.
+        ht.key.dtype.values() e.g. 'locus', when an HT's keys are not {'locus',
+        'alleles'}.
         All future in_silico predictors should have the keys confirmed to be 'locus'
         with or without 'alleles' before using this logic.
 
+    :param data_type: Dataset's data type: 'exomes' or 'genomes'.
     :param release_exists: Whether the release HT already exists.
     :return: Dict of dataset's configs.
     """
@@ -158,8 +175,8 @@ def get_config(
             "select": ["rsid"],
         },
         "filters": {
-            "ht": final_filter().ht(),
-            "path": final_filter().path,
+            "ht": final_filter(data_type=data_type).ht(),
+            "path": final_filter(data_type=data_type).path,
             "select": ["filters"],
             "custom_select": custom_filters_select,
             "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
@@ -201,14 +218,14 @@ def get_config(
             "global_name": "tool_versions",
         },
         "info": {
-            "ht": get_info().ht(),
-            "path": get_info().path,
+            "ht": get_info().ht() if data_type == "exomes" else get_info_v3().ht(),
+            "path": get_info().path if data_type == "exomes" else get_info_v3().path,
             "select": ["was_split", "a_index"],
             "custom_select": custom_info_select,
         },
         "freq": {
-            "ht": get_freq().ht(),
-            "path": get_freq().path,
+            "ht": get_freq(data_type=data_type).ht(),
+            "path": get_freq(data_type=data_type).path,
             "select": [
                 "freq",
                 "faf",
@@ -226,8 +243,8 @@ def get_config(
             ],
         },
         "vep": {
-            "ht": get_vep().ht(),
-            "path": get_vep().path,
+            "ht": get_vep(data_type=data_type).ht(),
+            "path": get_vep(data_type=data_type).path,
             "select": ["vep"],
             "custom_select": custom_vep_select,
             "select_globals": [
@@ -238,8 +255,8 @@ def get_config(
             "global_name": "vep_globals",
         },
         "region_flags": {
-            "ht": get_freq().ht(),
-            "path": get_freq().path,
+            "ht": get_freq(data_type=data_type).ht(),
+            "path": get_freq(data_type=data_type).path,
             "custom_select": custom_region_flags_select,
         },
         "release": {
@@ -263,15 +280,45 @@ def get_config(
     if release_exists:
         config["release"].update(
             {
-                "ht": release_sites().ht(),
-                "select": [r for r in release_sites().ht().row],
-                "select_globals": [g for g in release_sites().ht().globals],
+                "ht": release_sites(data_type=data_type).ht(),
+                "select": [r for r in release_sites(data_type=data_type).ht().row],
+                "select_globals": [
+                    g for g in release_sites(data_type=data_type).ht().globals
+                ],
             }
         )
     return config
 
 
-def custom_joint_faf_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def drop_v3_subsets(freq_ht: hl.Table) -> hl.Table:
+    """
+    Drop the frequencies of all v3 subsets except 'hgdp' and 'tgp' from `freq_ht`.
+
+    :param freq_ht: v4.0 genomes freq Table.
+    :return: v4.0 genomes freq Table with some v3 subsets dropped.
+    """
+    freq_meta, array_exprs = filter_arrays_by_meta(
+        freq_ht.freq_meta,
+        {
+            "freq": freq_ht.freq,
+            "freq_meta_sample_count": freq_ht.index_globals().freq_meta_sample_count,
+        },
+        {"subset": SUBSETS_TO_DROP},
+        keep=False,
+        combine_operator="or",
+    )
+
+    freq_ht = freq_ht.annotate(freq=array_exprs["freq"])
+    freq_ht = freq_ht.annotate_globals(
+        freq_meta=freq_meta,
+        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
+        freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
+    )
+
+    return freq_ht
+
+
+def custom_joint_faf_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     """
     Drop faf95 from 'grpmax'.
 
@@ -286,7 +333,7 @@ def custom_joint_faf_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_freq_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expression]:
     """
     Drop faf95 from both 'gnomad' and 'non_ukb' in 'grpmax' and rename `gen_anc_faf_max` to `fafmax`.
 
@@ -299,17 +346,22 @@ def custom_freq_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
         - The filtering allele frequencies that are used by the community are the values within the gen_anc_faf_max struct, NOT grpmax FAF, which is why we are dropping grpmax.faf95 and renaming gen_anc_faf_max
 
     :param ht: Freq Hail Table
+    :param data_type: Dataset's data type: 'exomes' or 'genomes'.
     :return: Select expression dict.
     """
     selects = {
-        "grpmax": hl.struct(**{k: ht.grpmax[k].drop("faf95") for k in ht.grpmax}),
+        "grpmax": (
+            hl.struct(**{k: ht.grpmax[k].drop("faf95") for k in ht.grpmax})
+            if data_type == "exomes"
+            else ht.grpmax.drop("faf95")
+        ),
         "fafmax": ht.gen_anc_faf_max,
     }
 
     return selects
 
 
-def custom_in_silico_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_in_silico_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     """
     Get in silico predictors from VEP for release.
 
@@ -326,11 +378,14 @@ def custom_in_silico_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_region_flags_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_region_flags_select(
+    ht: hl.Table, data_type: str
+) -> Dict[str, hl.expr.Expression]:
     """
     Select region flags for release.
 
     :param ht: Hail Table.
+    :param data_type: Dataset's data type: 'exomes' or 'genomes'.
     :return: Select expression dict.
     """
     selects = {
@@ -340,26 +395,27 @@ def custom_region_flags_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
             prob_regions={"lcr": lcr_intervals.ht(), "segdup": seg_dup_intervals.ht()},
         )
     }
-    selects["region_flags"] = selects["region_flags"].annotate(
-        fail_interval_qc=~interval_qc_pass(all_platforms=True)
-        .ht()[ht.locus]
-        .pass_interval_qc,
-        outside_ukb_capture_region=~hl.is_defined(
-            calling_intervals(interval_name="ukb", calling_interval_padding=50).ht()[
-                ht.locus
-            ]
-        ),
-        outside_broad_capture_region=~hl.is_defined(
-            calling_intervals(interval_name="broad", calling_interval_padding=50).ht()[
-                ht.locus
-            ]
-        ),
-    )
+    if data_type == "exomes":
+        selects["region_flags"] = selects["region_flags"].annotate(
+            fail_interval_qc=~interval_qc_pass(all_platforms=True)
+            .ht()[ht.locus]
+            .pass_interval_qc,
+            outside_ukb_capture_region=~hl.is_defined(
+                calling_intervals(
+                    interval_name="ukb", calling_interval_padding=50
+                ).ht()[ht.locus]
+            ),
+            outside_broad_capture_region=~hl.is_defined(
+                calling_intervals(
+                    interval_name="broad", calling_interval_padding=50
+                ).ht()[ht.locus]
+            ),
+        )
 
     return selects
 
 
-def custom_filters_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_filters_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     """
     Select gnomAD filter HT fields for release dataset.
 
@@ -382,7 +438,7 @@ def custom_filters_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     return selects
 
 
-def custom_info_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expression]:
     """
     Select fields for info Hail Table annotation in release.
 
@@ -391,16 +447,19 @@ def custom_info_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     to release HT.
 
     :param ht: Info Hail Table.
+    :param data_type: Dataset's data type: 'exomes' or 'genomes'.
     :return: Select expression dict.
     """
     # Create a dict of the fields from the filters HT that we want to add to the info.
-    filters_ht = get_config().get("filters")["ht"]
+    filters_ht = get_config(data_type=data_type).get("filters")["ht"]
 
-    # For more information on the selected compute_info_method, please see the
-    # run_compute_info in gnomad_qc.v4.annotations.generate_variant_qc_annotations.py
-    compute_info_method = hl.eval(
-        filters_ht.filtering_model_specific_info.compute_info_method
-    )
+    if data_type == "exomes":
+        # For more information on the selected compute_info_method, please see the
+        # run_compute_info in gnomad_qc.v4.annotations.generate_variant_qc_annotations.py
+        compute_info_method = hl.eval(
+            filters_ht.filtering_model_specific_info.compute_info_method
+        )
+
     score_name = hl.eval(filters_ht.filtering_model.score_name)
     filters_ht = filters_ht.transmute(**filters_ht.truth_sets)
     filters = filters_ht[ht.key]
@@ -413,19 +472,33 @@ def custom_info_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
         "monoallelic",
         "only_het",
     ]
+    if data_type == "genomes":
+        filters_info_fields.remove("sibling_singleton")
     filters_info_dict = {field: filters[field] for field in filters_info_fields}
     filters_info_dict.update({**{f"{score_name}": filters[f"{score_name}"]}})
 
     # Create a dict of the fields from the freq HT that we want to add to the info.
-    freq_ht = get_config().get("freq")["ht"]
-    freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
+    freq_ht = get_config(data_type=data_type).get("freq")["ht"]
+    # TODO: will change back to 'inbreeding_coeff' once we have the new freq_ht
+    if data_type == "exomes":
+        freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["inbreeding_coeff"]}
+    else:
+        freq_info_dict = {"inbreeding_coeff": freq_ht[ht.key]["InbreedingCoeff"]}
 
     # Create a dict of the fields from the VRS HT that we want to add to the info.
-    vrs_ht = get_vrs().ht()
+    vrs_ht = get_vrs(data_type=data_type).ht()
     vrs_info_fields = {"vrs": vrs_ht[ht.key].vrs}
 
     # Create a dict of the fields from the info HT that we want keep in the info.
-    info_struct = hl.struct(**ht.site_info, **ht[f"{compute_info_method}_info"])
+    if data_type == "exomes":
+        info_struct = hl.struct(**ht.site_info, **ht[f"{compute_info_method}_info"])
+    else:
+        # v3 info HT has no SOR or AS_SOR fields. They are computed by VQSR, so we can
+        # grab them from the filters HT.
+        info_struct = hl.struct(
+            **ht.info, SOR=filters.SOR, AS_SOR=filters.features.AS_SOR
+        )
+
     info_dict = {field: info_struct[field] for field in SITE_FIELDS + AS_FIELDS}
     info_dict.update(filters_info_dict)
     info_dict.update(freq_info_dict)
@@ -434,15 +507,16 @@ def custom_info_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     # Select the info and allele info annotations. We drop nonsplit_alleles from
     # allele_info so that we don't release alleles that are found in non-releasable
     # samples.
-    selects = {
-        "info": hl.struct(**info_dict),
-        "allele_info": ht.allele_info.drop("nonsplit_alleles"),
-    }
+    selects = {"info": hl.struct(**info_dict)}
+    if data_type == "exomes":
+        selects["allele_info"] = ht.allele_info.drop("nonsplit_alleles")
+    if data_type == "genomes":
+        selects["allele_info"] = filters.allele_info
 
     return selects
 
 
-def custom_vep_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def custom_vep_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     """
     Select fields for VEP hail Table annotation in release.
 
@@ -465,15 +539,19 @@ def custom_vep_select(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
     return selects
 
 
-def get_select_global_fields(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+def get_select_global_fields(
+    ht: hl.Table, data_type: str
+) -> Dict[str, hl.expr.Expression]:
     """
     Generate a dictionary of globals to select by checking the config of all tables joined.
 
     :param ht: Final joined HT with globals.
+    :param data_type: Dataset's data type: 'exomes' or 'genomes'.
+    :return: select mapping from global annotation name to `ht` annotation.
     """
     t_globals = []
     for t in TABLES_FOR_RELEASE:
-        config = get_config().get(t)
+        config = get_config(data_type=data_type).get(t)
         if "select_globals" in config:
             select_globals = get_select_fields(config["select_globals"], ht)
             if "global_name" in config:
@@ -513,6 +591,7 @@ def get_select_fields(
 def get_ht(
     dataset: str,
     _intervals: nullable(sequenceof(anytype)),
+    data_type: str,
     test: bool,
     release_exists: bool,
 ) -> hl.Table:
@@ -521,12 +600,13 @@ def get_ht(
 
     :param dataset: Hail Table to join.
     :param _intervals: Intervals for reading in hail Table. Used to optimize join.
+    :param data_type: Dataset's data type: 'exomes' or 'genomes'.
     :param test: Whether call is for a test run.
     :param release_exists: Whether the release HT already exists.
     :return: Hail Table with fields to select.
     """
     logger.info("Getting the %s dataset and its selected annotations...", dataset)
-    config = get_config(release_exists=release_exists)[dataset]
+    config = get_config(data_type=data_type, release_exists=release_exists)[dataset]
 
     # There is no single path for insilico predictors, so we need to handle this case
     # separately.
@@ -536,6 +616,8 @@ def get_ht(
         ht_path = config["path"]
         logger.info("Reading in %s", dataset)
         base_ht = hl.read_table(ht_path, _intervals=_intervals)
+        if dataset == "freq" and data_type == "genomes":
+            base_ht = drop_v3_subsets(base_ht)
 
     if test:
         # Keep only PCSK9.
@@ -552,7 +634,10 @@ def get_ht(
 
     if "custom_select" in config:
         custom_select_fn = config["custom_select"]
-        select_fields = {**select_fields, **custom_select_fn(base_ht)}
+        select_fields = {
+            **select_fields,
+            **custom_select_fn(base_ht, data_type=data_type),
+        }
 
     if "field_name" in config:
         field_name = config.get("field_name")
@@ -568,6 +653,7 @@ def join_hts(
     tables: List[str],
     new_partition_percent: float,
     test: bool,
+    data_type: str,
     release_exists: bool,
 ) -> hl.Table:
     """
@@ -578,6 +664,7 @@ def join_hts(
     :param new_partition_percent: Percent of base_table partitions used for final
         release Hail Table.
     :param test: Whether this is for a test run.
+    :param data_type: Dataset's data type: 'exomes' or 'genomes'.
     :param release_exists: Whether the release HT already exists.
     :return: Hail Table with datasets joined.
     """
@@ -588,7 +675,7 @@ def join_hts(
         "Reading in %s to determine partition intervals for efficient join",
         base_table,
     )
-    base_ht_path = get_config()[base_table]["path"]
+    base_ht_path = get_config(data_type=data_type)[base_table]["path"]
     base_ht = hl.read_table(base_ht_path)
     if test:
         # Filter to PCSK9 for testing.
@@ -614,6 +701,7 @@ def join_hts(
             table,
             _intervals=partition_intervals,
             test=test,
+            data_type=data_type,
             release_exists=release_exists,
         )
         for table in tables
@@ -628,13 +716,18 @@ def join_hts(
         with hl.utils.hadoop_open(
             included_datasets_json_path(
                 test=test,
-                release_version=hl.eval(get_config()["release"]["ht"].version),
+                release_version=hl.eval(
+                    get_config(data_type=data_type)["release"]["ht"].version
+                ),
             )
         ) as f:
             included_datasets = json.loads(f.read())
 
     included_datasets.update(
-        {t: get_config(release_exists=release_exists)[t]["path"] for t in tables}
+        {
+            t: get_config(data_type=data_type, release_exists=release_exists)[t]["path"]
+            for t in tables
+        }
     )
     with hl.utils.hadoop_open(
         included_datasets_json_path(test=test, release_version=args.version), "w"
@@ -646,18 +739,22 @@ def join_hts(
 
 def main(args):
     """Create release ht."""
+    data_type = args.data_type
     hl.init(
-        log="/create_release_ht.log",
+        log=f"/create_release_ht_{data_type}.log",
         tmp_dir="gs://gnomad-tmp-4day",
         default_reference="GRCh38",
     )
+    if data_type == "genomes":
+        FINALIZED_SCHEMA["globals"].remove("interval_qc_parameters")
 
-    logger.info("Creating release HT...")
+    logger.info(f"Creating {data_type} release HT...")
     ht = join_hts(
         args.base_table,
         args.tables_for_join,
         args.new_partition_percent,
         args.test,
+        data_type,
         args.release_exists,
     )
 
@@ -666,7 +763,7 @@ def main(args):
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters) & (ht.freq[1].AC > 0))
 
-    ht = ht.select_globals(**get_select_global_fields(ht))
+    ht = ht.select_globals(**get_select_global_fields(ht, data_type))
 
     # Add additional globals that were not present on the joined HTs.
     ht = ht.annotate_globals(
@@ -689,12 +786,16 @@ def main(args):
         ),
         date=datetime.now().isoformat(),
         version=args.version,
-        interval_qc_parameters=interval_qc_pass(all_platforms=True)
-        .ht()
-        .index_globals()
-        .high_qual_interval_parameters,
         frequency_README=FREQUENCY_README,
     )
+
+    if data_type == "exomes":
+        ht = ht.annotate_globals(
+            interval_qc_parameters=interval_qc_pass(all_platforms=True)
+            .ht()
+            .index_globals()
+            .high_qual_interval_parameters
+        )
 
     # Reorder fields to match final schema.
     ht = ht.select(*FINALIZED_SCHEMA["rows"]).select_globals(
@@ -702,11 +803,11 @@ def main(args):
     )
 
     output_path = (
-        f"{qc_temp_prefix()}release/gnomad.exomes.sites.test.updated_101723.ht"
+        f"{qc_temp_prefix()}release/gnomad.{data_type}.sites.test.updated_101923.ht"
         if args.test
-        else release_sites().path
+        else release_sites(data_type=data_type).path
     )
-    logger.info("Writing out release HT to %s", output_path)
+    logger.info(f"Writing out {data_type} release HT to %s", output_path)
     ht = ht.checkpoint(
         output_path,
         args.overwrite,
@@ -740,6 +841,13 @@ if __name__ == "__main__":
         "--test",
         help="Runs a test on PCSK9 region, chr1:55039447-55064852",
         action="store_true",
+    )
+    parser.add_argument(
+        "-d",
+        "--data-type",
+        help="Data type to create release HT for.",
+        default="exomes",
+        choices=["exomes", "genomes"],
     )
     parser.add_argument(
         "-j",
