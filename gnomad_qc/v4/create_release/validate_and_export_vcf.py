@@ -71,7 +71,6 @@ REGION_FLAG_FIELDS.append("non_par")
 REGION_FLAG_FIELDS = {
     "exomes": REGION_FLAG_FIELDS
     + [
-        "has_star",
         "fail_interval_qc",
         "outside_ukb_capture_region",
         "outside_broad_capture_region",
