@@ -65,7 +65,7 @@ AS_FIELDS.append("inbreeding_coeff")
 # Drop decoy, still doesn't exist on 38
 REGION_FLAG_FIELDS = deepcopy(REGION_FLAG_FIELDS)
 REGION_FLAG_FIELDS = remove_fields_from_constant(
-    REGION_FLAG_FIELDS, ["decoy", "nonpar", "has_star"]
+    REGION_FLAG_FIELDS, ["decoy", "nonpar"]
 )
 REGION_FLAG_FIELDS.append("non_par")
 REGION_FLAG_FIELDS = {
@@ -85,6 +85,11 @@ MISSING_ALLELE_TYPE_FIELDS = ["original_alleles"]
 ALLELE_TYPE_FIELDS = remove_fields_from_constant(
     ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS
 )
+# Remove original alleles for containing non-releasable alleles
+ALLELE_TYPE_FIELDS = {
+    "exomes": ALLELE_TYPE_FIELDS,
+    "genomes": remove_fields_from_constant(ALLELE_TYPE_FIELDS, ["has_star"]),
+}
 
 INSILICO_FIELDS = [
     "cadd",
@@ -112,6 +117,11 @@ POPS = deepcopy(POPS["v4"])
 POPS = {
     pop: POP_NAMES[pop] if pop != "remaining" else "Remaining individuals"
     for pop in POPS
+}
+
+SAMPLE_SUM_SETS_AND_POPS = {
+    "exomes": {"non_ukb": POPS},
+    "genomes": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
 }
 
 # Remove unnecessary pop names from FAF_POPS dict
@@ -331,7 +341,7 @@ def make_info_expr(
         vcf_info_dict[field] = t["vqsr_results"][f"{field}"]
 
     # Add region_flag and allele_info fields to info dict
-    for field in ALLELE_TYPE_FIELDS:
+    for field in ALLELE_TYPE_FIELDS[data_type]:
         vcf_info_dict[field] = t["allele_info"][f"{field}"]
     for field in REGION_FLAG_FIELDS[data_type]:
         vcf_info_dict[field] = t["region_flag"][f"{field}"]
@@ -537,7 +547,7 @@ def main(args):  # noqa: D103
 
             validate_release_t(
                 ht,
-                subsets=SUBSETS,
+                subsets=SUBSETS[data_type],
                 pops=POPS,
                 site_gt_check_expr={
                     "monoallelic": ht.info.monoallelic,
@@ -545,7 +555,7 @@ def main(args):  # noqa: D103
                 },
                 verbose=args.verbose,
                 delimiter="_",
-                sample_sum_sets_and_pops={"non_ukb": POPS},
+                sample_sum_sets_and_pops=SAMPLE_SUM_SETS_AND_POPS[data_type],
                 variant_filter_field="AS_VQSR",
                 problematic_regions=REGION_FLAG_FIELDS[data_type],
                 single_filter_count=True,
