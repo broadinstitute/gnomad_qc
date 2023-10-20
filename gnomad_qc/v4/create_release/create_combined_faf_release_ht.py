@@ -433,6 +433,9 @@ def main(args):
             res = combine_faf_resources.contingency_table_test
             res.check_resource_existence()
             ht = res.comb_freq_ht.ht()
+            ht = ht.filter(
+                hl.is_defined(ht.genomes_freq) & hl.is_defined(ht.exomes_freq)
+            )
             ht = ht.select(
                 contingency_table_test=perform_contingency_table_test(
                     ht.genomes_freq,
@@ -447,6 +450,9 @@ def main(args):
             res = combine_faf_resources.cmh_test
             res.check_resource_existence()
             ht = res.comb_freq_ht.ht()
+            ht = ht.filter(
+                hl.is_defined(ht.genomes_freq) & hl.is_defined(ht.exomes_freq)
+            )
             ht = ht.select(
                 cochran_mantel_haenszel_test=perform_cmh_test(
                     ht,
@@ -538,7 +544,7 @@ if __name__ == "__main__":
         "--min-cell-count",
         help="Minimum count in every cell to use the chi-squared test.",
         type=int,
-        default=100,
+        default=50,
     )
     parser.add_argument(
         "--perform-cochran-mantel-haenszel-test",
