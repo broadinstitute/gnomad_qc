@@ -179,7 +179,8 @@ def get_config(
             "path": final_filter(data_type=data_type).path,
             "select": ["filters"],
             "custom_select": custom_filters_select,
-            "select_globals": ["filtering_model", "inbreeding_coeff_cutoff"],
+            "select_globals": ["inbreeding_coeff_cutoff"],
+            "custom_globals_select": custom_filters_select_globals,
         },
         "in_silico": {
             "ht": reduce(
@@ -438,6 +439,30 @@ def custom_filters_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
     return selects
 
 
+def custom_filters_select_globals(ht: hl.Table) -> Dict[str, hl.expr.Expression]:
+    """
+    Select filter HT globals for release dataset.
+
+    :param ht: Filters Hail Table.
+    :return: Select expression dict.
+    """
+    selects = {
+        "filtering_model": hl.struct(
+            **{
+                "filter_name": ht.filtering_model.filter_name,
+                "score_name": ht.filtering_model.score_name,
+                "snv_cutoff": ht.filtering_model.snv_cutoff.drop("bin_id"),
+                "indel_cutoff": ht.filtering_model.indel_cutoff.drop("bin_id"),
+                "snv_training_variables": ht.filtering_model.snv_training_variables,
+                "indel_training_variables": ht.filtering_model.indel_training_variables,
+            }
+        ),
+        "inbreeding_coeff_cutoff": ht.inbreeding_coeff_cutoff,
+    }
+
+    return selects
+
+
 def custom_info_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expression]:
     """
     Select fields for info Hail Table annotation in release.
@@ -545,19 +570,32 @@ def get_select_global_fields(
     """
     Generate a dictionary of globals to select by checking the config of all tables joined.
 
+    .. note::
+
+        This function will place the globals within the select_globals value above
+        any globals returned from custom_select_globals. If ordering is important, use
+        only custom_select_globals.
+
     :param ht: Final joined HT with globals.
     :param data_type: Dataset's data type: 'exomes' or 'genomes'.
     :return: select mapping from global annotation name to `ht` annotation.
     """
     t_globals = []
+    select_globals = {}
     for t in TABLES_FOR_RELEASE:
         config = get_config(data_type=data_type).get(t)
         if "select_globals" in config:
             select_globals = get_select_fields(config["select_globals"], ht)
-            if "global_name" in config:
-                global_name = config.get("global_name")
-                select_globals = {global_name: hl.struct(**select_globals)}
-            t_globals.append(select_globals)
+        if "custom_globals_select" in config:
+            custom_globals_select_fn = config["custom_globals_select"]
+            select_globals = {
+                **select_globals,
+                **custom_globals_select_fn(ht),
+            }
+        if "global_name" in config:
+            global_name = config.get("global_name")
+            select_globals = {global_name: hl.struct(**select_globals)}
+        t_globals.append(select_globals)
 
     t_globals = reduce(lambda a, b: dict(a, **b), t_globals)
 
@@ -762,12 +800,10 @@ def main(args):
     # so will not have information in `filters`) and AC_raw == 0.
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters) & (ht.freq[1].AC > 0))
-
     ht = ht.select_globals(**get_select_global_fields(ht, data_type))
 
     # Add additional globals that were not present on the joined HTs.
     ht = ht.annotate_globals(
-        filtering_model=ht.filtering_model.drop("model_id"),
         vep_globals=ht.vep_globals.annotate(
             gencode_version=GENCODE_VERSION,
             mane_select_version=MANE_SELECT_VERSION,
@@ -803,7 +839,7 @@ def main(args):
     )
 
     output_path = (
-        f"{qc_temp_prefix()}release/gnomad.{data_type}.sites.test.updated_101923.ht"
+        f"{qc_temp_prefix()}release/gnomad.{data_type}.sites.test.updated_102023.ht"
         if args.test
         else release_sites(data_type=data_type).path
     )
