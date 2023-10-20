@@ -139,6 +139,7 @@ For example, curation is needed to remove "Costa Rican" and "Indigenous American
 def compute_subpop_qc_mt(
     mt: hl.MatrixTable,
     min_popmax_af: float = 0.001,
+    overwrite: bool = False,
 ) -> hl.MatrixTable:
     """
     Generate the subpop QC MT to be used for all subpop analyses.
@@ -147,7 +148,8 @@ def compute_subpop_qc_mt(
 
     :param mt: Raw MatrixTable to use for the subpop analysis
     :param min_popmax_af: Minimum population max variant allele frequency to retain variant for the subpop QC MatrixTable
-    :return: MatrixTable filtered to variants for subpop analysis
+    :param overwrite: Whether to overwrite checkpoint file. Default is False.
+    return: MatrixTable filtered to variants for subpop analysis
     """
     release_ht = hl.read_table(release_sites().path)
 
@@ -167,8 +169,8 @@ def compute_subpop_qc_mt(
     )
     qc_sites = qc_sites.checkpoint(
         get_checkpoint_path("qc_sites"),
-        overwrite=args.overwrite,
-        _read_if_exists=not args.overwrite,
+        overwrite=overwrite,
+        _read_if_exists=not overwrite,
     )
 
     logger.info(
@@ -198,6 +200,7 @@ def filter_subpop_qc(
     ld_r2: float = 0.1,
     n_partitions: int = None,
     block_size: int = None,
+    overwrite: bool = False,
 ) -> hl.MatrixTable:
     """
     Generate the QC MT per specified population.
@@ -214,6 +217,7 @@ def filter_subpop_qc(
     :param ld_r2: Minimum r2 to keep when LD-pruning (set to `None` for no LD pruning)
     :param n_partitions: Number of partitions to repartition the MT to before LD pruning
     :param block_size: If given, set the block size to this value when LD pruning
+    :param overwrite: Whether to overwrite checkpoint file. Default is False.
     :return: Filtered QC MT with sample metadata for the specified population to use for subpop analysis
     """
     meta_ht = meta.ht()
@@ -240,8 +244,8 @@ def filter_subpop_qc(
     pop_mt = pop_mt.filter_rows(hl.agg.any(pop_mt.GT.is_non_ref()))
     pop_mt = pop_mt.checkpoint(
         get_checkpoint_path("pop_mt", mt=True),
-        overwrite=args.overwrite,
-        _read_if_exists=not args.overwrite,
+        overwrite=overwrite,
+        _read_if_exists=not overwrite,
     )
 
     # Generate a QC MT for the given pop
@@ -410,7 +414,7 @@ def main(args):  # noqa: D103
         # Write out the densified MT
         if args.make_full_subpop_qc_mt:
             logger.info("Generating densified MT to use for all subpop analyses...")
-            mt = compute_subpop_qc_mt(mt, args.min_popmax_af)
+            mt = compute_subpop_qc_mt(mt, args.min_popmax_af, args.overwrite)
             mt.write(
                 (
                     get_checkpoint_path("test_make_full_subpop_qc", mt=True)
@@ -437,6 +441,7 @@ def main(args):  # noqa: D103
                 args.ld_r2,
                 args.n_partitions,
                 args.block_size,
+                overwrite=args.overwrite,
             )
 
             mt.write(

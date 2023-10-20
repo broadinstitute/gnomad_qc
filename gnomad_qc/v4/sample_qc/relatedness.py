@@ -167,9 +167,7 @@ def compute_ibd_on_cuking_pair_subset(
             sample_subset = []
 
     full_ibd_ht = ibd_hts[0].union(*ibd_hts[1:])
-    full_ibd_ht = full_ibd_ht.annotate_globals(
-        ibd_min_cuking_kin=args.ibd_min_cuking_kin
-    )
+    full_ibd_ht = full_ibd_ht.annotate_globals(ibd_min_cuking_kin=ibd_min_cuking_kin)
 
     return full_ibd_ht.distinct()
 
