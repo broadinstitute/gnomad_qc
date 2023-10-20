@@ -655,6 +655,7 @@ def join_hts(
     test: bool,
     data_type: str,
     release_exists: bool,
+    version: str,
 ) -> hl.Table:
     """
     Outer join a list of Hail Tables.
@@ -666,6 +667,7 @@ def join_hts(
     :param test: Whether this is for a test run.
     :param data_type: Dataset's data type: 'exomes' or 'genomes'.
     :param release_exists: Whether the release HT already exists.
+    :param version: Release version.
     :return: Hail Table with datasets joined.
     """
     if base_table not in tables:
@@ -730,7 +732,7 @@ def join_hts(
         }
     )
     with hl.utils.hadoop_open(
-        included_datasets_json_path(test=test, release_version=args.version), "w"
+        included_datasets_json_path(test=test, release_version=version), "w"
     ) as f:
         f.write(hl.eval(hl.json(included_datasets)))
 
@@ -756,6 +758,7 @@ def main(args):
         args.test,
         data_type,
         args.release_exists,
+        args.version,
     )
 
     # Filter out chrM, AS_lowqual sites (these sites are dropped in the final_filters HT

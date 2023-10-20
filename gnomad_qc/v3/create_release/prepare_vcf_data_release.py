@@ -826,9 +826,7 @@ def build_parameter_dict(
             "pops": POPS,
             "subsets": SUBSET_LIST_FOR_VCF,
             "is_subset": False,
-            "temp_ht_path": get_checkpoint_path(
-                f"vcf_prep{'_test' if args.test else ''}"
-            ),
+            "temp_ht_path": get_checkpoint_path(f"vcf_prep{'_test' if test else ''}"),
             "drop_hists": ["age_hist_het_bin_edges", "age_hist_hom_bin_edges"],
             "include_age_hists": True,
             "sample_sum_sets_and_pops": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},

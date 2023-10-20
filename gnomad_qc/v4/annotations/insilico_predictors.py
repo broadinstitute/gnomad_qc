@@ -423,7 +423,7 @@ def create_revel_grch38_ht() -> hl.Table:
         revel_canonical=hl.or_missing(ht.Ensembl_Canonical == "1", ht.REVEL),
     )
     ht = ht.checkpoint(
-        "gs://gnomad-tmp-4day/revel-v1.3_in_Ensembl105.ht", overwrite=args.overwrite
+        "gs://gnomad-tmp-4day/revel-v1.3_in_Ensembl105.ht", overwrite=True
     )
 
     # Since the REVEL score for each variant is transcript-specific, we
