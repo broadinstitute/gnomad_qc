@@ -260,7 +260,7 @@ def get_config(
             "custom_select": custom_region_flags_select,
         },
         "release": {
-            "path": release_sites().path,
+            "path": release_sites(data_type=data_type).path,
         },
         "joint_faf": {
             "ht": get_combined_faf_release().ht(),
