@@ -170,11 +170,13 @@ def generate_final_filter_ht(
     annotations_expr = {}
     if model_name == "RF":
         # Fix annotations for release
-        annotations_expr = annotations_expr.update(  # pylint: disable=E1111
-            {
-                "positive_train_site": hl.or_else(ht.positive_train_site, False),
-                "rf_tp_probability": ht.rf_probability["TP"],
-            }
+        annotations_expr = (  # pylint: disable=assignment-from-no-return
+            annotations_expr.update(  # pylint: disable=assignment-from-no-return
+                {
+                    "positive_train_site": hl.or_else(ht.positive_train_site, False),
+                    "rf_tp_probability": ht.rf_probability["TP"],
+                }
+            )
         )
     annotations_expr.update(
         {
