@@ -5,7 +5,7 @@ import logging
 from copy import deepcopy
 from datetime import datetime
 from functools import reduce
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Union
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import SUBSETS
@@ -838,7 +838,7 @@ def main(args):
     )
 
     output_path = (
-        f"{qc_temp_prefix()}release/gnomad.{data_type}.sites.test.updated_102023.ht"
+        f"{qc_temp_prefix(data_type=data_type)}release/gnomad.{data_type}.sites.test.{datetime.today().strftime('%Y-%m-%d')}.ht"
         if args.test
         else release_sites(data_type=data_type).path
     )
