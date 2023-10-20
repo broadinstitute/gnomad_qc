@@ -349,14 +349,15 @@ all_ukb_samples_to_remove = f"{_ukb_root_path()}/all_ukbb_samples_to_remove.txt"
 ukb_f_stat = TableResource(f"{_ukb_root_path()}/f_stat_sites.ht")
 
 
-def qc_temp_prefix(version: str = CURRENT_VERSION) -> str:
+def qc_temp_prefix(version: str = CURRENT_VERSION, data_type="exomes") -> str:
     """
     Return path to temporary QC bucket.
 
-    :param version: Version of annotation path to return
+    :param version: Version of annotation path to return.
+    :param data_type: One of 'exomes' or 'genomes'. Default is 'exomes'.
     :return: Path to bucket with temporary QC data
     """
-    return f"gs://gnomad-tmp/gnomad.exomes.v{version}.qc_data/"
+    return f"gs://gnomad-tmp/gnomad.{data_type}.v{version}.qc_data/"
 
 
 def get_checkpoint_path(
