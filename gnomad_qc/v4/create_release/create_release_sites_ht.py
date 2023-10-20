@@ -179,7 +179,6 @@ def get_config(
             "path": final_filter(data_type=data_type).path,
             "select": ["filters"],
             "custom_select": custom_filters_select,
-            "select_globals": ["inbreeding_coeff_cutoff"],
             "custom_globals_select": custom_filters_select_globals,
         },
         "in_silico": {
