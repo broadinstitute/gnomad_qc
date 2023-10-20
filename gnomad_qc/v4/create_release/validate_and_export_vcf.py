@@ -79,9 +79,8 @@ REGION_FLAG_FIELDS = {
 
 # Remove original alleles for containing non-releasable alleles
 ALLELE_TYPE_FIELDS = deepcopy(ALLELE_TYPE_FIELDS)
-MISSING_ALLELE_TYPE_FIELDS = ["original_alleles"]
 ALLELE_TYPE_FIELDS = remove_fields_from_constant(
-    ALLELE_TYPE_FIELDS, MISSING_ALLELE_TYPE_FIELDS
+    ALLELE_TYPE_FIELDS, ["original_alleles"]
 )
 # Remove original alleles for containing non-releasable alleles
 ALLELE_TYPE_FIELDS = {
