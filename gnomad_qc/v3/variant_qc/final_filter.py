@@ -167,7 +167,7 @@ def generate_final_filter_ht(
     )
     filters["AC0"] = ac0_filter_expr
 
-    annotations_expr = dict()
+    annotations_expr = {}
     if model_name == "RF":
         # Fix annotations for release
         annotations_expr = annotations_expr.update(
