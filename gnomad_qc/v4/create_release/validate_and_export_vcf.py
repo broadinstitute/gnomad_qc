@@ -12,13 +12,7 @@ from gnomad.assessment.validity_checks import (
     pprint_global_anns,
     validate_release_t,
 )
-from gnomad.resources.grch38.gnomad import (
-    HGDP_POPS,
-    POPS,
-    SUBSETS,
-    TGP_POP_NAMES,
-    TGP_POPS,
-)
+from gnomad.resources.grch38.gnomad import HGDP_POPS, POPS, SUBSETS, TGP_POPS
 from gnomad.sample_qc.ancestry import POP_NAMES
 from gnomad.utils.filtering import remove_fields_from_constant
 from gnomad.utils.vcf import (
@@ -279,6 +273,11 @@ def unfurl_nested_annotations(
     expr_dict.update(
         {f"{f}_{k}": ht.faf[i][f] for f in ht.faf[0].keys() for k, i in faf_idx.items()}
     )
+
+    logger.info("Unfurling fafmax data...")
+    fafmax_idx = ht.fafmax
+    fafmax_dict = {f"fafmax_{f}": fafmax_idx[f] for f in fafmax_idx.keys()}
+    expr_dict.update(fafmax_dict)
 
     logger.info("Unfurling joint faf data...")
     joint_faf_idx = hl.eval(ht.joint_faf_index_dict)
