@@ -171,7 +171,7 @@ def get_export_resources(
             "create_release_sites_ht.py": {
                 "release_ht": hl.read_table(
                     "gs://gnomad-tmp/gnomad.exomes.v4.0.qc_data/release/gnomad.genomes.sites.test.updated_101923.ht"
-                )  # release_sites(data_type=data_type)
+                )  # release_sites(data_type=data_type) #TODO: Restore once PR is ready for merge
             }
         },
         output_resources={
@@ -522,10 +522,10 @@ def main(args):  # noqa: D103
         if args.validate_release_ht:
             logger.info("Running release HT validation...")
             res = resources.validate_release_ht
-            # res.check_resource_existence()
-            ht = res.release_ht  # .ht()
+            # res.check_resource_existence() #TODO: Restore once PR is ready for merge
+            ht = res.release_ht  # .ht()#TODO: Restore once PR is ready for merge
 
-            # if test:
+            # if test: #TODO: Restore once PR is ready for merge
             #     logger.info("Filtering to test partitions...")
             #     ht = filter_to_test(ht)
 
