@@ -723,7 +723,7 @@ def main(args):
         **ht.index_globals(),
         date=datetime.now().isoformat(),
     )
-    ht = ht.checkpoint(meta.path, overwrite=args.overwrite)
+    ht = ht.checkpoint(meta().path, overwrite=args.overwrite)
 
     logger.info(
         "Release sample count: %s", ht.aggregate(hl.agg.count_where(ht.release))
