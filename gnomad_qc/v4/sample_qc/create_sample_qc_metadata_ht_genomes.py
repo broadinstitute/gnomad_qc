@@ -1,7 +1,10 @@
 """
 Script to create sample QC metadata HT for genomes.
 
-This script is used to create the sample QC metadata HT for genomes. It is run on the full genomes dataset, and the resulting HT is used to create the sample QC metadata HT for exomes.
+This script is used to create the sample QC metadata HT for genomes. The main updates
+from v3.1 to v4.0 are:
+Sample QC annotations for HGDP + TGP subset, this script directly merges the updated
+annotations from the subset meta HT to the full meta HT.
 """
 
 
@@ -10,9 +13,9 @@ import logging
 
 import hail as hl
 from gnomad.resources.resource_utils import TableResource
-from gnomad.utils.annotations import update_structured_annotations
 
 from gnomad_qc.v3.resources.basics import meta
+from gnomad_qc.v4.resources.meta import meta, meta_tsv_path
 from gnomad_qc.v4.resources.sample_qc import hgdp_tgp_meta_updated
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -90,7 +93,7 @@ def import_updated_annotations(ht: hl.Table, subset_ht: hl.Table) -> hl.Table:
     return ht
 
 
-def mains(args):
+def main(args):
     """Create v4.0 genomes sample QC metadata HT."""
     hl.init(
         log="/create_v4.0_genomes_meta.log",
@@ -103,3 +106,18 @@ def mains(args):
     subset_ht = hgdp_tgp_meta_updated.ht()
     logger.info("Updating annotations...")
     ht = import_updated_annotations(ht, subset_ht)
+    ht.write(meta(data_type="genomes").path, overwrite=args.overwrite)
+    ht.export(meta_tsv_path(data_type="genomes"), delimiter="\t")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        """This script is used to create the sample QC metadata HT for genomes."""
+    )
+    parser.add_argument(
+        "--overwrite",
+        help="Overwrite the existing meta HT.",
+        action="store_true",
+    )
+    args = parser.parse_args()
+    main(args)
