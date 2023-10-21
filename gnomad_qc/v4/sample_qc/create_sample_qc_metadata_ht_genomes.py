@@ -13,9 +13,11 @@ import logging
 
 import hail as hl
 from gnomad.resources.resource_utils import TableResource
+from hail.utils import new_temp_file
 
-from gnomad_qc.v3.resources.basics import meta
-from gnomad_qc.v4.resources.meta import meta, meta_tsv_path
+from gnomad_qc.v3.resources.basics import meta as v3_meta
+from gnomad_qc.v4.resources.meta import meta as v4_meta
+from gnomad_qc.v4.resources.meta import meta_tsv_path as v4_meta_tsv_path
 from gnomad_qc.v4.resources.sample_qc import hgdp_tgp_meta_updated
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -43,10 +45,11 @@ def import_updated_annotations(ht: hl.Table, subset_ht: hl.Table) -> hl.Table:
     # a temp key to join the subset meta HT.
     release_v3 = ht.filter(ht.release).count()
     ht1 = ht.filter(ht.subsets.hgdp | ht.subsets.tgp)
+    ht1 = ht1.naive_coalesce(5).checkpoint(new_temp_file("v4.0_genomes_meta", "ht"))
     ht2 = ht.filter(~(ht.subsets.hgdp | ht.subsets.tgp))
+    ht2 = ht2.checkpoint(new_temp_file("v4.0_genomes_meta", "ht"))
 
     ht1 = ht1.key_by(ht1.project_meta.sample_id)
-
     annot = subset_ht[ht1.key]
     subpop = annot.hgdp_tgp_meta.population
     freemix = annot.bam_metrics.freemix
@@ -87,7 +90,9 @@ def import_updated_annotations(ht: hl.Table, subset_ht: hl.Table) -> hl.Table:
     )
     release_v4 = ht.filter(ht.release).count()
     logger.info(
-        "Number of release samples will change from %s to %s. ", release_v3, release_v4
+        "Number of genome release samples will change from %s in v3.1 to %s in v4.0.",
+        release_v3,
+        release_v4,
     )
 
     return ht
@@ -101,13 +106,14 @@ def main(args):
     )
 
     logger.info("Importing v3.1 genomes meta HT...")
-    ht = meta.ht()
-    logger.info("Importing updated HGDP/TGP meta HT...")
+    ht = v3_meta.ht()
+    logger.info("Importing updated HGDP + TGP meta HT...")
     subset_ht = hgdp_tgp_meta_updated.ht()
     logger.info("Updating annotations...")
     ht = import_updated_annotations(ht, subset_ht)
-    ht.write(meta(data_type="genomes").path, overwrite=args.overwrite)
-    ht.export(meta_tsv_path(data_type="genomes"), delimiter="\t")
+    ht = ht.naive_coalesce(160)
+    ht.write(v4_meta(data_type="genomes").path, overwrite=args.overwrite)
+    ht.export(v4_meta_tsv_path(data_type="genomes"), delimiter="\t")
 
 
 if __name__ == "__main__":
