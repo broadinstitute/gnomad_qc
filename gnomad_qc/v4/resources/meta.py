@@ -23,7 +23,10 @@ def meta_tsv_path(version: str = CURRENT_VERSION, data_type: str = "exomes") -> 
     :param data_type: Data type (exomes or genomes), defaults to exomes.
     :return: String path to the finalized metadata.
     """
-    return f"{_meta_root_path(version)}/gnomad.{data_type}.v{version}.metadata.tsv.gz"
+    return (
+        f"{_meta_root_path(version, data_type)}/gnomad.{data_type}."
+        f"v{version}.metadata.tsv.gz"
+    )
 
 
 def meta(data_type: str = "exomes") -> VersionedTableResource:
