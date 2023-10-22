@@ -9,7 +9,7 @@ def _meta_root_path(version: str = CURRENT_VERSION, data_type: str = "exomes") -
     Retrieve the path to the root metadata directory.
 
     :param version: gnomAD version.
-    :param data_type: Data type (exomes or genomes), defaults to exomes.
+    :param data_type: Data type ("exomes" or "genomes"). Default is "exomes".
     :return: String representation of the path to the root metadata directory.
     """
     return f"gs://gnomad/v{version}/metadata/{data_type}"
@@ -20,8 +20,8 @@ def meta_tsv_path(version: str = CURRENT_VERSION, data_type: str = "exomes") -> 
     Get the path to the finalized sample metadata information after sample QC.
 
     :param version: gnomAD version.
-    :param data_type: Data type (exomes or genomes), defaults to exomes.
-    :return: String path to the finalized metadata.
+    :param data_type: Data type ("exomes" or "genomes"). Default is "exomes".
+    :return: String path to the finalized metadata TSV.
     """
     return (
         f"{_meta_root_path(version, data_type)}/gnomad.{data_type}."
@@ -33,9 +33,8 @@ def meta(data_type: str = "exomes") -> VersionedTableResource:
     """
     Get the gnomAD v4 sample QC meta VersionedTableResource.
 
-    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
-       Default is "exomes".
-    :return: gnomAD v4 meta VersionedTableResource.
+    :param data_type: Data type ("exomes" or "genomes"). Default is "exomes".
+    :return: gnomAD v4 sample meta VersionedTableResource.
     """
     return VersionedTableResource(
         CURRENT_VERSION,
@@ -50,6 +49,7 @@ def meta(data_type: str = "exomes") -> VersionedTableResource:
     )
 
 
+# The following variables only apply to "exomes" data.
 _project_meta_versions = {
     "4.0": TableResource(
         path="gs://gnomad/v4.0/metadata/exomes/gnomad.exomes.v4.0.project_meta.ht"
