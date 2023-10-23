@@ -87,7 +87,12 @@ def main(args):
                 filter_name = filter_name + ".100k_downsampling"
 
             logger.info("Getting summary counts per variant category...")
-            ht = get_summary_counts(ht.select_globals(), index=freq_index)
+            ht = get_summary_counts(
+                ht.select_globals(),
+                canonical_only=False,
+                mane_select_only=True,
+                index=freq_index,
+            )
             meta_ht = meta.ht()
             meta_ht = meta_ht.filter(meta_ht.release)
 
