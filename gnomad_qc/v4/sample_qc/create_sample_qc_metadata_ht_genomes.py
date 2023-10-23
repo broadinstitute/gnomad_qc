@@ -8,11 +8,11 @@ The main updates from v3.1 to v4.0 are due to the following updates in the HGDP 
 The 169 samples added were diverse HGDP/TGP samples in v3.1 that were unintentionally removed during sample outlier detection.
 
 The 110 samples were removed due to the following reasons:
-- Contamination flagged by CHARR.
+- Contamination flagged by CHARR (CHARR score stored in `freemix` column).
 - Subcontinental PCA outliers within the subset.
 - Updated relatedness results within the subset, re-evaluation of relatedness
   inference of the subset to the rest of gnomAD release samples, and removal of any
-  that are duplicates of v4.0 exomes release samples.
+  samples that are duplicates of v4.0 exomes release samples.
 
 All samples impacted (169 added, 110 released) are releasable; the updates we made here were to their sample QC status (high quality vs filtered).
 """
@@ -35,6 +35,11 @@ from gnomad_qc.v4.resources.sample_qc import hgdp_tgp_meta_updated
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("create_v4_genomes_sample_meta")
 logger.setLevel(logging.INFO)
+
+N_DIFF_SAMPLES = 169 - 110
+"""
+The number of samples that have been updated between v3.1 and v4.0.
+"""
 
 
 def import_updated_annotations(ht: hl.Table, subset_ht: hl.Table) -> hl.Table:
@@ -99,7 +104,7 @@ def import_updated_annotations(ht: hl.Table, subset_ht: hl.Table) -> hl.Table:
         release_v3,
         release_v4,
     )
-    if release_v4 <= release_v3 or release_v4 != release_v3 + 169 - 110:
+    if release_v4 <= release_v3 or release_v4 != release_v3 + N_DIFF_SAMPLES:
         raise ValueError("Number of release samples in v4.0 is not as expected.")
 
     return ht
@@ -119,7 +124,10 @@ def main(args):
     logger.info("Updating annotations...")
     ht = import_updated_annotations(ht, subset_ht)
     logger.info("Writing HT and exporting TSV...")
-    ht.write(v4_meta(data_type="genomes").path, overwrite=args.overwrite)
+    ht.write(
+        v4_meta(data_type="genomes", overwrite=args.overwrite).path,
+        overwrite=args.overwrite,
+    )
     ht.export(v4_meta_tsv_path(data_type="genomes"), delimiter="\t")
 
 
