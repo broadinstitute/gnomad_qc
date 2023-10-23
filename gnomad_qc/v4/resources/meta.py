@@ -38,7 +38,7 @@ def meta(
     Get the gnomAD v4 sample QC meta VersionedTableResource.
 
     Function will check that metadata exists for the requested gnomAD version and data type
-    and will throw an error if it already exists.
+    and will throw an error if it doesn't exist.
 
     :param version: gnomAD version.
     :param data_type: Data type ("exomes" or "genomes"). Default is "exomes".
@@ -46,7 +46,7 @@ def meta(
     """
     # Check if the meta Table exists for specified version and data type combination
     check_resource_existence(
-        output_step_resources={
+        input_step_resources={
             f"{data_type}_{version}": [
                 f"{_meta_root_path(version, data_type)}/gnomad.{data_type}.v{version}.sample_qc_metadata.ht"
             ],
