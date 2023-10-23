@@ -204,7 +204,6 @@ def get_joint_freq_and_faf(
         ),
         joint_grpmax=grpmax,
     )
-    ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"))
 
     ht = ht.annotate_globals(
         joint_freq_meta=freq_meta,
@@ -219,8 +218,8 @@ def get_joint_freq_and_faf(
         joint_freq=set_female_y_metrics_to_na_expr(
             ht,
             freq_expr=ht.joint_freq,
-            freq_meta_expr=ht.freq_meta,
-            freq_index_dict_expr=ht.freq_index_dict,
+            freq_meta_expr=ht.joint_freq_meta,
+            freq_index_dict_expr=ht.joint_freq_index_dict,
         )
     )
     ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"))
