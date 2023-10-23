@@ -315,6 +315,9 @@ def perform_cmh_test(
     df = _ht.to_spark().write.option("compression", "zstd")
     df.mode("overwrite").parquet(tmp_path)
     df = pd.read_parquet(tmp_path)
+
+    # Perform CMH test on the list of 2x2 matrices (list of lists of 2 lists with 2
+    # elements each).
     df["cmh"] = df.apply(
         lambda x: StratifiedTable(
             [list([list(a) for a in p]) for p in x.an]
@@ -537,7 +540,7 @@ def main(args):
                 ),
             )
             ht.describe()
-            ht.naive_coalesce(10000).write(
+            ht.naive_coalesce(args.n_partitions).write(
                 res.final_combined_faf_ht.path, overwrite=overwrite
             )
 
@@ -619,6 +622,15 @@ if __name__ == "__main__":
             " Table"
         ),
         action="store_true",
+    )
+    finalize_combined_faf.add_argument(
+        "--n-partitions",
+        help=(
+            "Number of partitions to repartition the finalized combined FAF release "
+            "Table to."
+        ),
+        type=int,
+        default=10000,
     )
 
     args = parser.parse_args()
