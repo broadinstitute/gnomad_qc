@@ -951,6 +951,14 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     ht = ht.checkpoint(new_temp_file("added", "ht"))
 
     logger.info("Merging call stats from subtracted samples...")
+    # Normally `set_negatives_to_zero` should be False, but we set it to True
+    # because there was a bug in the v3.1 frequency code where we used the v3.0
+    # freq_ht for the hotfix of depletion of homozygous frequency calculation,
+    # once a variant is new in v3.1 (i.e. not present in v3.0 freq_ht) and is from
+    # samples with heterozygous non-reference genotypes with high allele balances,
+    # their GT was set to missing in the v3.1 freq_ht, hence we don't have
+    # non-zero callstats for these variants in v3.1 release while non-zero callstats
+    # are present the corrected "subtract" freq_ht.
     freq_expr, freq_meta, sample_counts = merge_freq_arrays(
         [ht.freq, ht.ann_array[3].freq],
         [freq_meta, fmeta[4]],
