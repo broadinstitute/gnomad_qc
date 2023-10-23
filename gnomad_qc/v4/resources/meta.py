@@ -61,8 +61,8 @@ def meta(
     )
 
 
-# This is used in `meta()` function anymore but is kept here to quickly get the current
-# existing versions of sample metadata.
+# This isn't used in `meta()` function anymore but is kept here to quickly get the
+# currently existing versions of sample metadata.
 _meta_versions = {
     "exomes": {
         "4.0": TableResource(
