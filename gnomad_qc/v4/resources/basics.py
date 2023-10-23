@@ -385,17 +385,14 @@ def get_logging_path(name: str, version: str = CURRENT_VERSION) -> str:
     return f"{qc_temp_prefix(version)}{name}.log"
 
 
-def add_meta(
-    mt: hl.MatrixTable, version: str = CURRENT_VERSION, meta_name: str = "meta"
-) -> hl.MatrixTable:
+def add_meta(mt: hl.MatrixTable, meta_name: str = "meta") -> hl.MatrixTable:
     """
     Add metadata to MT in 'meta_name' column.
 
     :param mt: MatrixTable to which 'meta_name' annotation should be added
-    :param version: Version of metadata ht to use for annotations
     :return: MatrixTable with metadata added in a 'meta' column
     """
-    mt = mt.annotate_cols(**{meta_name: meta().versions[version].ht()[mt.col_key]})
+    mt = mt.annotate_cols(**{meta_name: meta().ht()[mt.col_key]})
 
     return mt
 
