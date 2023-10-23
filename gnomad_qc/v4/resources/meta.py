@@ -61,6 +61,21 @@ def meta(
     )
 
 
+# This is used in `meta()` function anymore but is kept here to quickly get the current
+# existing versions of sample metadata.
+_meta_versions = {
+    "exomes": {
+        "4.0": TableResource(
+            path="gs://gnomad/v4.0/metadata/exomes/gnomad.exomes.v4.0.sample_qc_metadata.ht"
+        ),
+    },
+    "genomes": {
+        "4.0": TableResource(
+            path="gs://gnomad/v4.0/metadata/genomes/gnomad.genomes.v4.0.sample_qc_metadata.ht"
+        ),
+    },
+}
+
 # The following variables only apply to "exomes" data.
 _project_meta_versions = {
     "4.0": TableResource(
