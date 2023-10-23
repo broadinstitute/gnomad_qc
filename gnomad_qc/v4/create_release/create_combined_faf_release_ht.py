@@ -21,6 +21,7 @@ from gnomad.utils.annotations import (
     gen_anc_faf_max_expr,
     merge_freq_arrays,
     pop_max_expr,
+    set_female_y_metrics_to_na_expr,
 )
 from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.release import make_freq_index_dict_from_meta
@@ -212,6 +213,17 @@ def get_joint_freq_and_faf(
         joint_faf_index_dict=make_freq_index_dict_from_meta(hl.literal(faf_meta)),
         joint_freq_meta_sample_count=count_arrays_dict["counts"],
     )
+
+    logger.info("Setting Y metrics to NA for XX groups...")
+    ht = ht.annotate(
+        joint_freq=set_female_y_metrics_to_na_expr(
+            ht,
+            freq_expr=ht.joint_freq,
+            freq_meta_expr=ht.freq_meta,
+            freq_index_dict_expr=ht.freq_index_dict,
+        )
+    )
+    ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"))
 
     return ht
 
