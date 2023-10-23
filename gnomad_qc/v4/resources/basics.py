@@ -249,7 +249,7 @@ def get_gnomad_v4_vds(
         if test:
             meta_ht = gnomad_v4_testset_meta.ht()
         else:
-            meta_ht = meta.ht()
+            meta_ht = meta().ht()
         filter_expr = meta_ht.release
         if keep_controls:
             filter_expr |= hl.literal(TRUTH_SAMPLES_S).contains(meta_ht.s)
@@ -261,7 +261,7 @@ def get_gnomad_v4_vds(
 
     if annotate_meta:
         logger.info("Annotating VDS variant_data with metadata...")
-        meta_ht = meta.ht()
+        meta_ht = meta().ht()
         vds = hl.vds.VariantDataset(
             vds.reference_data,
             vds.variant_data.annotate_cols(meta=meta_ht[vds.variant_data.col_key]),
@@ -392,10 +392,9 @@ def add_meta(
     Add metadata to MT in 'meta_name' column.
 
     :param mt: MatrixTable to which 'meta_name' annotation should be added
-    :param version: Version of metadata ht to use for annotations
     :return: MatrixTable with metadata added in a 'meta' column
     """
-    mt = mt.annotate_cols(**{meta_name: meta.versions[version].ht()[mt.col_key]})
+    mt = mt.annotate_cols(**{meta_name: meta(version=version).ht()[mt.col_key]})
 
     return mt
 
