@@ -14,6 +14,7 @@ import logging
 from typing import Dict, List, Set
 
 import hail as hl
+import pandas as pd
 from gnomad.resources.grch38.gnomad import POPS, POPS_TO_REMOVE_FOR_POPMAX
 from gnomad.utils.annotations import (
     faf_expr,
@@ -182,7 +183,9 @@ def get_joint_freq_and_faf(
         pop_label="gen_anc",
     )
     faf_meta_by_pop = {
-        m.get("gen_anc"): i for i, m in enumerate(faf_meta) if m.get("gen_anc")
+        m.get("gen_anc"): i
+        for i, m in enumerate(faf_meta)
+        if m.get("gen_anc") and len(m) == 2
     }
     faf_meta_by_pop = hl.literal(faf_meta_by_pop)
     # Compute group max (popmax) on the merged exomes + genomes frequencies.
@@ -294,7 +297,7 @@ def perform_cmh_test(
 
     # Create list on 2x2 matrices of reference and alternate allele counts for each
     # population in pops and export to pandas for CMH test.
-    df = ht.select(
+    _ht = ht.select(
         an=[
             hl.bind(
                 lambda x, y: [[x.AC, x.AN - x.AC], [y.AC, y.AN - y.AC]],
@@ -303,30 +306,55 @@ def perform_cmh_test(
             )
             for pop in pops
         ]
-    ).to_pandas()
-    df["cmh"] = df.apply(lambda x: StratifiedTable(x.an).test_null_odds(), axis=1)
+    )
+    _ht = _ht.add_index(name="tmp_idx")
+    _ht = _ht.annotate(tmp_idx=hl.int32(_ht.tmp_idx))
+    tmp_path = hl.utils.new_temp_file("cmh_test", "parquet")
+
+    # Export one compressed Parquet file per partition.
+    df = _ht.to_spark().write.option("compression", "zstd")
+    df.mode("overwrite").parquet(tmp_path)
+    df = pd.read_parquet(tmp_path)
+
+    # Perform CMH test on the list of 2x2 matrices (list of lists of 2 lists with 2
+    # elements each).
+    df["cmh"] = df.apply(
+        lambda x: StratifiedTable(
+            [list([list(a) for a in p]) for p in x.an]
+        ).test_null_odds(),
+        axis=1,
+    )
     df["pvalue"] = df.apply(lambda x: x.cmh.pvalue, axis=1)
     df["statistic"] = df.apply(lambda x: x.cmh.statistic, axis=1)
-    df = df.drop(["cmh", "an"], axis=1)
+    df = df[["tmp_idx", "pvalue", "statistic"]]
 
     # Convert CMH result pandas DataFrame to a Table and restructure the annotation.
     cmh_ht = hl.Table.from_pandas(df)
-    cmh_ht = cmh_ht.key_by("locus", "alleles")
-    cmh_ht = cmh_ht.annotate(
-        cmh=hl.struct(odds_ratio=cmh_ht.statistic, p_value=cmh_ht.pvalue)
+    cmh_ht = cmh_ht.key_by("tmp_idx")
+    cmh_ht = _ht.select(
+        cmh=hl.struct(
+            odds_ratio=cmh_ht[_ht.tmp_idx].statistic, p_value=cmh_ht[_ht.tmp_idx].pvalue
+        )
     )
 
     return cmh_ht[ht.key].cmh
 
 
 def get_combine_faf_resources(
-    overwrite: bool = False, test: bool = False
+    overwrite: bool = False,
+    test: bool = False,
+    include_contingency_table_test: bool = False,
+    include_cochran_mantel_haenszel_test: bool = False,
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the combined FAF resource creation pipeline.
 
     :param overwrite: Whether to overwrite existing resources. Default is False.
     :param test: Whether to use test resources. Default is False.
+    :param include_contingency_table_test: Whether to include the results from
+        '--perform-contingency-table-test' on the combined FAF release Table.
+    :param include_cochran_mantel_haenszel_test: Whether to include the results from
+        '--perform-cochran-mantel-haenszel-test' on the combined FAF release Table.
     :return: PipelineResourceCollection containing resources for all steps of the
         combined FAF resource creation pipeline.
     """
@@ -361,10 +389,15 @@ def get_combine_faf_resources(
         output_resources={"cmh_ht": get_freq_comparison("cmh_test", test=test)},
         pipeline_input_steps=[combined_frequency],
     )
+    finalize_faf_input_steps = [combined_frequency]
+    if include_contingency_table_test:
+        finalize_faf_input_steps.append(contingency_table_test)
+    if include_cochran_mantel_haenszel_test:
+        finalize_faf_input_steps.append(cmh_test)
     finalize_faf = PipelineStepResourceCollection(
         "--finalize-combined-faf-release",
         output_resources={"final_combined_faf_ht": get_combined_faf_release(test=test)},
-        pipeline_input_steps=[combined_frequency, contingency_table_test, cmh_test],
+        pipeline_input_steps=finalize_faf_input_steps,
     )
 
     # Add all steps to the combined FAF pipeline resource collection.
@@ -391,7 +424,12 @@ def main(args):
     overwrite = args.overwrite
     pops = list(set(POPS["v3"] + POPS["v4"]))
     faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX]
-    combine_faf_resources = get_combine_faf_resources(overwrite, test_gene)
+    combine_faf_resources = get_combine_faf_resources(
+        overwrite,
+        test_gene,
+        args.include_contingency_table_test,
+        args.include_cochran_mantel_haenszel_test,
+    )
 
     try:
         if args.create_combined_frequency_table:
@@ -433,6 +471,9 @@ def main(args):
             res = combine_faf_resources.contingency_table_test
             res.check_resource_existence()
             ht = res.comb_freq_ht.ht()
+            ht = ht.filter(
+                hl.is_defined(ht.genomes_freq) & hl.is_defined(ht.exomes_freq)
+            )
             ht = ht.select(
                 contingency_table_test=perform_contingency_table_test(
                     ht.genomes_freq,
@@ -440,13 +481,15 @@ def main(args):
                     min_cell_count=args.min_cell_count,
                 )
             )
-            ht.describe()
             ht.write(res.contingency_table_ht.path, overwrite=overwrite)
 
         if args.perform_cochran_mantel_haenszel_test:
             res = combine_faf_resources.cmh_test
             res.check_resource_existence()
             ht = res.comb_freq_ht.ht()
+            ht = ht.filter(
+                hl.is_defined(ht.genomes_freq) & hl.is_defined(ht.exomes_freq)
+            )
             ht = ht.select(
                 cochran_mantel_haenszel_test=perform_cmh_test(
                     ht,
@@ -457,7 +500,6 @@ def main(args):
                     pops=faf_pops,
                 ),
             )
-            ht.describe()
             ht.write(res.cmh_ht.path, overwrite=overwrite)
 
         if args.finalize_combined_faf_release:
@@ -465,13 +507,17 @@ def main(args):
             res.check_resource_existence()
 
             ht = res.comb_freq_ht.ht()
+            stats_expr = {}
+            if args.include_contingency_table_test:
+                stats_expr["contingency_table_test"] = res.contingency_table_ht.ht()[
+                    ht.key
+                ].contingency_table_test
+            if args.include_cochran_mantel_haenszel_test:
+                stats_expr["cochran_mantel_haenszel_test"] = res.cmh_ht.ht()[
+                    ht.key
+                ].cochran_mantel_haenszel_test
             ht = ht.annotate(
-                contingency_table_test=res.contingency_table_ht.ht()[
-                    ht.key
-                ].contingency_table_test,
-                cochran_mantel_haenszel_test=res.cmh_ht.ht()[
-                    ht.key
-                ].cochran_mantel_haenszel_test,
+                **stats_expr,
                 joint_metric_data_type=hl.case()
                 .when(
                     (hl.is_defined(ht.genomes_grpmax.AC))
@@ -494,7 +540,9 @@ def main(args):
                 ),
             )
             ht.describe()
-            ht.write(res.final_combined_faf_ht.path, overwrite=overwrite)
+            ht.naive_coalesce(args.n_partitions).write(
+                res.final_combined_faf_ht.path, overwrite=overwrite
+            )
 
     finally:
         logger.info("Copying hail log to logging bucket...")
@@ -538,7 +586,7 @@ if __name__ == "__main__":
         "--min-cell-count",
         help="Minimum count in every cell to use the chi-squared test.",
         type=int,
-        default=100,
+        default=25,
     )
     parser.add_argument(
         "--perform-cochran-mantel-haenszel-test",
@@ -553,6 +601,36 @@ if __name__ == "__main__":
         "--finalize-combined-faf-release",
         help="Finalize the combined FAF Table for release.",
         action="store_true",
+    )
+    finalize_combined_faf = parser.add_argument_group(
+        "Create finalized combined FAF release Table.",
+        "Arguments for finalizing the combined FAF release Table.",
+    )
+    finalize_combined_faf.add_argument(
+        "--include-contingency-table-test",
+        help=(
+            "Whether to include the results from '--perform-contingency-table-test' on "
+            "the combined FAF release Table"
+        ),
+        action="store_true",
+    )
+    finalize_combined_faf.add_argument(
+        "--include-cochran-mantel-haenszel-test",
+        help=(
+            "Whether to include the results from"
+            " '--perform-cochran-mantel-haenszel-test' on the combined FAF release"
+            " Table"
+        ),
+        action="store_true",
+    )
+    finalize_combined_faf.add_argument(
+        "--n-partitions",
+        help=(
+            "Number of partitions to repartition the finalized combined FAF release "
+            "Table to."
+        ),
+        type=int,
+        default=10000,
     )
 
     args = parser.parse_args()
