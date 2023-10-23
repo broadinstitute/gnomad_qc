@@ -358,3 +358,54 @@ def validated_release_ht(
             for version in RELEASES
         },
     )
+
+
+def release_summary_stats(
+    test: bool = False,
+    data_type: str = "exomes",
+    filter_name: Optional[str] = None,
+) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for release summary stats Table.
+
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :return: Summary stats Table.
+    """
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            version: TableResource(
+                path=(
+                    f"{_release_root(version, data_type=data_type, test=test)}/gnomad.{data_type}.v{version}.summary_stats{f'.{filter_name}' if filter_name else ''}.ht"
+                )
+            )
+            for version in RELEASES
+        },
+    )
+
+
+def release_lof(
+    test: bool = False,
+    data_type: str = "exomes",
+    mt: bool = False,
+) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for release LOF stats MatrixTable or Table.
+
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :param mt: Whether to return the lof MatrixTable instead of Table. Default is False.
+    :return: release LOF stats MatrixTable or Table.
+    """
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            version: TableResource(
+                path=(
+                    f"{_release_root(version, data_type=data_type, test=test)}/gnomad.{data_type}.v{version}.lof.{'mt' if mt else 'ht'}"
+                )
+            )
+            for version in RELEASES
+        },
+    )
