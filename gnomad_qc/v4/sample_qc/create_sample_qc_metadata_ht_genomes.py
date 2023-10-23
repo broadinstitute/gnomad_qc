@@ -125,7 +125,7 @@ def main(args):
     ht = import_updated_annotations(ht, subset_ht)
     logger.info("Writing HT and exporting TSV...")
     ht.write(
-        v4_meta(data_type="genomes", overwrite=args.overwrite).path,
+        v4_meta(data_type="genomes").path,
         overwrite=args.overwrite,
     )
     ht.export(v4_meta_tsv_path(data_type="genomes"), delimiter="\t")

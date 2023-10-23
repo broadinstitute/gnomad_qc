@@ -31,24 +31,27 @@ def meta_tsv_path(version: str = CURRENT_VERSION, data_type: str = "exomes") -> 
 
 
 def meta(
-    version: str = CURRENT_VERSION, data_type: str = "exomes", overwrite: bool = False
+    version: str = CURRENT_VERSION,
+    data_type: str = "exomes",
 ) -> TableResource:
     """
     Get the gnomAD v4 sample QC meta VersionedTableResource.
 
-    :param version: Version of meta that corresponds to its data type.
+    Function will check that metadata exists for the requested gnomAD version and data type
+    and will throw an error if it already exists.
+
+    :param version: gnomAD version.
     :param data_type: Data type ("exomes" or "genomes"). Default is "exomes".
-    :param overwrite: Whether to overwrite existing resources.
     :return: gnomAD v4 sample meta VersionedTableResource.
     """
-    # Check if the meta Table exists
+    # Check if the meta Table exists for specified version and data type combination
     check_resource_existence(
         output_step_resources={
             f"{data_type}_{version}": [
                 f"{_meta_root_path(version, data_type)}/gnomad.{data_type}.v{version}.sample_qc_metadata.ht"
             ],
         },
-        overwrite=overwrite,
+        overwrite=False,
     )
 
     return TableResource(
