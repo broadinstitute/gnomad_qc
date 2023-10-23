@@ -955,7 +955,7 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
         [ht.freq, ht.ann_array[3].freq],
         [freq_meta, fmeta[4]],
         operation="diff",
-        set_negatives_to_zero=False,
+        set_negatives_to_zero=True,
         count_arrays={"counts": [sample_counts["counts"], count_arrays[4]]},
     )
     ht = ht.select(freq=freq_expr)
