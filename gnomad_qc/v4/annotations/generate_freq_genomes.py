@@ -741,7 +741,6 @@ def get_group_membership_ht_for_an(
         subset_ht = generate_freq_group_membership_array(
             ht, strata_expr, remove_zero_sample_groups=True
         )
-        print(hl.eval(subset_ht.index_globals()))
         subset_globals = subset_ht.index_globals()
         if subset != "all" and not only_pop_diff:
             # The group_membership, freq_meta, and freq_meta_sample_count arrays for
