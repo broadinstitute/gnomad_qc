@@ -855,7 +855,10 @@ def compute_an_by_group_membership(
     # release but `hl.vds.filter_samples` includes vmt =
     # vmt.filter_rows(hl.agg.count() > 0) by default.
     release_s = vmt.aggregate_cols(
-        hl.agg.filter(vmt.meta.release, hl.agg.collect_as_set(vmt.s)), _localize=False
+        hl.agg.filter(
+            hl.is_defined(group_membership_ht[vmt.s]), hl.agg.collect_as_set(vmt.s)
+        ),
+        _localize=False,
     )._persist()
     vmt = vmt.filter_cols(release_s.contains(vmt.s))
     rmt = rmt.filter_cols(release_s.contains(rmt.s))

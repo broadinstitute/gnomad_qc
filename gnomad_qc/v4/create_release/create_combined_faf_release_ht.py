@@ -225,7 +225,6 @@ def get_joint_freq_and_faf(
             for f in ["joint_freq", "joint_faf"]
         }
     )
-    ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"))
 
     return ht
 
