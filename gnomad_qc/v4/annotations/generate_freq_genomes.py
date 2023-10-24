@@ -17,11 +17,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import (
-    DOWNSAMPLINGS,
-    POPS_TO_REMOVE_FOR_POPMAX,
-    SUBSETS,
-)
+from gnomad.resources.grch38.gnomad import POPS_TO_REMOVE_FOR_POPMAX, SUBSETS
 from gnomad.sample_qc.sex import adjust_sex_ploidy
 from gnomad.utils.annotations import (
     annotate_adj,
@@ -1484,8 +1480,20 @@ def main(args):
             res.freq_join_ht.ht(), res.v3_release_an_ht.ht(), res.v3_pop_diff_an_ht.ht()
         )
         ht = get_histograms(ht, v3_sites_ht)
+        # NOTE: The v3.1 release HT doesn't have a downsamplings global. Since
+        #  non-standard downsampling values are created in the frequency script
+        #  corresponding to population totals, so this needs to be determined from the
+        #  freq_meta.
+        downsamplings = sorted(
+            {
+                int(x["downsampling"])
+                for x in hl.eval(ht.freq_meta)
+                if "downsampling" in x
+            }
+        )
+
         ht = ht.annotate_globals(
-            downsamplings=v3_sites_ht.downsamplings,
+            downsamplings=downsamplings,
             age_distribution=get_age_distribution(
                 res.v3_meta_ht.ht(), res.updated_meta_ht.ht()
             ),
