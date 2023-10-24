@@ -184,7 +184,7 @@ def get_joint_freq_and_faf(
     logger.info("Setting Y metrics to NA for XX groups...")
     freq = set_female_y_metrics_to_na_expr(
         ht,
-        freq_expr=ht.freq,
+        freq_expr=ht.joint_freq,
         freq_meta_expr=ht.freq_meta,
         freq_index_dict_expr=ht.freq_index_dict,
     )
@@ -192,7 +192,7 @@ def get_joint_freq_and_faf(
 
     # Compute FAF on the merged exomes + genomes frequencies.
     faf, faf_meta = faf_expr(
-        ht.freq,
+        ht.joint_freq,
         ht.freq_meta,
         ht.locus,
         pops_to_exclude=faf_pops_to_exclude,
@@ -206,7 +206,10 @@ def get_joint_freq_and_faf(
     faf_meta_by_pop = hl.literal(faf_meta_by_pop)
     # Compute group max (popmax) on the merged exomes + genomes frequencies.
     grpmax = pop_max_expr(
-        ht.freq, ht.freq_meta, pops_to_exclude=faf_pops_to_exclude, pop_label="gen_anc"
+        ht.joint_freq,
+        ht.freq_meta,
+        pops_to_exclude=faf_pops_to_exclude,
+        pop_label="gen_anc",
     )
     grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.gen_anc)].faf95)
 
