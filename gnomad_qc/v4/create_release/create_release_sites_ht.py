@@ -846,7 +846,7 @@ def main(args):
         else release_sites(data_type=data_type).path
     )
     logger.info(f"Writing out {data_type} release HT to %s", output_path)
-    ht = ht.checkpoint(
+    ht = ht.naive_coalesce(args.n_partitions).checkpoint(
         output_path,
         args.overwrite,
     )
@@ -909,6 +909,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
+    )
+    parser.add_argument(
+        "--n-partitions",
+        help="Number of partitions to naive coalesce the release Table to.",
+        type=int,
+        default=10000,
     )
 
     args = parser.parse_args()

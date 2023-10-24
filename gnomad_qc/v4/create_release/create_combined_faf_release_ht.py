@@ -215,12 +215,15 @@ def get_joint_freq_and_faf(
 
     logger.info("Setting Y metrics to NA for XX groups...")
     ht = ht.annotate(
-        joint_freq=set_female_y_metrics_to_na_expr(
-            ht,
-            freq_expr=ht.joint_freq,
-            freq_meta_expr=ht.joint_freq_meta,
-            freq_index_dict_expr=ht.joint_freq_index_dict,
-        )
+        **{
+            f: set_female_y_metrics_to_na_expr(
+                ht,
+                freq_expr=ht[f],
+                freq_meta_expr=ht[f"{f}_meta"],
+                freq_index_dict_expr=ht[f"{f}_index_dict"],
+            )
+            for f in ["joint_freq", "joint_faf"]
+        }
     )
     ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"))
 
