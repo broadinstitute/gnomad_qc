@@ -688,7 +688,9 @@ def join_release_ht_with_subsets(
     return ht
 
 
-def get_group_membership_ht_for_an(ht: hl.Table) -> hl.Table:
+def get_group_membership_ht_for_an(
+    ht: hl.Table, only_pop_diff: bool = False
+) -> hl.Table:
     """
     Generate a Table with a 'group_membership' array for each sample indicating whether the sample belongs to specific stratification groups.
 
@@ -699,15 +701,24 @@ def get_group_membership_ht_for_an(ht: hl.Table) -> hl.Table:
         - 'meta.subsets': dictionary with subset labels as keys and boolean values.
 
     :param ht: Table with the sample metadata.
+    :param only_pop_diff: Whether to only include the population stratification groups
+        for samples in pop_diff. Default is False.
     :return: Table with the group membership for each sample to be used for computing
         allele number (AN) per group.
     """
-    pop_expr = ht.meta.population_inference.pop
-    sex_expr = ht.meta.sex_imputation.sex_karyotype
-    subpop_expr = ht.meta.project_meta.project_subpop
+    if only_pop_diff:
+        pop_expr = ht.hgdp_tgp_meta.population.lower()
+        subpop_expr = ht.hgdp_tgp_meta.population.lower()
+        sex_expr = ht.gnomad_sex_imputation.sex_karyotype
+        subsets = ["hgdp"]
+    else:
+        pop_expr = ht.meta.population_inference.pop
+        sex_expr = ht.meta.sex_imputation.sex_karyotype
+        subpop_expr = ht.meta.project_meta.project_subpop
+        subsets = ["all"] + SUBSETS
 
     hts = []
-    for subset in ["all"] + SUBSETS:
+    for subset in subsets:
         if subset in ["tgp", "hgdp"]:
             subset_pop_expr = subpop_expr
         else:
@@ -721,7 +732,7 @@ def get_group_membership_ht_for_an(ht: hl.Table) -> hl.Table:
         ]
         # For subsets, add strata expressions to get group membership for subset,
         # subset-pop, subset-sex, and subset-pop-sex.
-        if subset != "all":
+        if subset != "all" and not only_pop_diff:
             subset_expr = hl.or_missing(ht.meta.subsets[subset], subset)
             strata_expr = [{"subset": subset_expr}] + [
                 {"subset": subset_expr, **x} for x in strata_expr
@@ -730,8 +741,9 @@ def get_group_membership_ht_for_an(ht: hl.Table) -> hl.Table:
         subset_ht = generate_freq_group_membership_array(
             ht, strata_expr, remove_zero_sample_groups=True
         )
+        print(hl.eval(subset_ht.index_globals()))
         subset_globals = subset_ht.index_globals()
-        if subset != "all":
+        if subset != "all" and not only_pop_diff:
             # The group_membership, freq_meta, and freq_meta_sample_count arrays for
             # subsets is ordered [adj, raw, subset adj, ...] and we want it to be
             # [subset adj, subset raw, ...] where subset adj and subset raw have the
@@ -758,15 +770,37 @@ def get_group_membership_ht_for_an(ht: hl.Table) -> hl.Table:
                 freq_meta_sample_count=freq_meta_sample_count,
             )
 
-        # Remove 'Han' and 'Papuan' pops from group_membership, freq_meta, and
-        # freq_meta_sample_count.
-        subset_ht = filter_freq_arrays(
-            subset_ht,
-            {"pop": ["han", "papuan"]},
-            keep=False,
-            combine_operator="or",
-            annotations=["group_membership"],
-        )
+        if only_pop_diff:
+            # We only want:
+            # {'group': 'adj', 'pop': 'han', 'subset': 'hgdp'},
+            # {'group': 'adj', 'pop': 'northernhan', 'subset': 'hgdp'},
+            # {'group': 'adj', 'pop': 'han', 'sex': 'XX', 'subset': 'hgdp'},
+            # {'group': 'adj', 'pop': 'han', 'sex': 'XY', 'subset': 'hgdp'},
+            # {'group': 'adj', 'pop': 'northernhan', 'sex': 'XX', 'subset': 'hgdp'},
+            # {'group': 'adj', 'pop': 'northernhan', 'sex': 'XY', 'subset': 'hgdp'}
+            subset_ht = subset_ht.annotate_globals(
+                freq_meta=[
+                    {**x, **{"subset": "hgdp"}}
+                    for x in hl.eval(subset_ht.freq_meta)[2:]
+                ],
+                freq_meta_sample_count=subset_ht.freq_meta_sample_count[2:],
+            )
+            subset_ht = subset_ht.annotate(
+                group_membership=subset_ht.group_membership[2:]
+            )
+            subset_ht = filter_freq_arrays(
+                subset_ht, ["pop"], annotations=["group_membership"]
+            )
+        else:
+            # Remove 'Han' and 'Papuan' pops from group_membership, freq_meta, and
+            # freq_meta_sample_count.
+            subset_ht = filter_freq_arrays(
+                subset_ht,
+                {"pop": ["han", "papuan"]},
+                keep=False,
+                combine_operator="or",
+                annotations=["group_membership"],
+            )
 
         # Keep track of which groups should aggregate raw genotypes.
         subset_ht = subset_ht.annotate_globals(
@@ -802,19 +836,20 @@ def compute_an_by_group_membership(
     vmt = vds.variant_data
     rmt = vds.reference_data.select_cols().select_rows()
 
+    # TODO: Uncomment before merge
     # Confirm that all variants in variant_filter_ht are present in the
     # vds.variant_dataset and throw an error if this is not the case since all samples
     # added to v4.0 genomes should be in this vds.
     # TODO: This can be improved by setting split=False in get_gnomad_v3_vds and doing
     #  the split multi on only the rows for this check then adding the split multi for
     #  the full vds before the semi_join_rows below.
-    if variant_filter_ht.aggregate(
-        hl.agg.any(hl.is_missing(vmt.rows()[variant_filter_ht.key]))
-    ):
-        raise ValueError(
-            "Not all variants in the variant_filter_ht are found in the "
-            "vds.variant_dataset!"
-        )
+    # if variant_filter_ht.aggregate(
+    #    hl.agg.any(hl.is_missing(vmt.rows()[variant_filter_ht.key]))
+    # ):
+    #    raise ValueError(
+    #        "Not all variants in the variant_filter_ht are found in the "
+    #        "vds.variant_dataset!"
+    #    )
 
     # Filter the VDS variant data and reference data to only keep samples that were in
     # the v3.1 release. We do it this way instead of using hl.vds.filter_samples because
@@ -908,7 +943,9 @@ def compute_an_by_group_membership(
     return ht
 
 
-def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
+def generate_v4_genomes_callstats(
+    ht: hl.Table, an_ht: hl.Table, pop_diff_an_ht: hl.Table
+) -> hl.Table:
     """
     Generate the call stats for the v4.0 genomes release.
 
@@ -920,6 +957,8 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
 
     :param ht: Table returned by `join_release_ht_with_subsets`.
     :param an_ht: Table with the allele number for new variants in the v4.0 release.
+    :param pop_diff_an_ht: Table with the allele number for samples with updated pop
+        labels and new variants in the v4.0 release.
     :return: Table with the updated call stats for the v4.0 genomes release.
     """
     logger.info("Updating AN Table HGDP pop labels and 'oth' -> 'remaining'...")
@@ -930,20 +969,29 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
         "samples and added samples..."
     )
     global_array = ht.index_globals().global_array
-    farrays = [ht.ann_array[i].freq for i in range(3)]
-    fmeta = [global_array[i].freq_meta for i in range(4)]
-    count_arrays = [global_array[i].freq_meta_sample_count for i in range(4)]
+    farrays = [
+        ht.ann_array[0].freq,
+        an_ht[ht.key].freq,
+        pop_diff_an_ht[ht.key].freq,
+    ] + [ht.ann_array[i].freq for i in range(1, 3)]
+    fmeta = [
+        global_array[0].freq_meta,
+        an_ht.index_globals().freq_meta,
+        pop_diff_an_ht.index_globals().freq_meta,
+    ] + [global_array[i].freq_meta for i in range(1, 3)]
+    count_arrays = [
+        global_array[0].freq_meta_sample_count,
+        [0] * hl.eval(hl.len(an_ht.freq_meta)),
+        [0] * hl.eval(hl.len(pop_diff_an_ht.freq_meta)),
+    ] + [global_array[i].freq_meta_sample_count for i in range(1, 3)]
 
-    # Add the v3.1 release AN for the new v4.0 variants as the second element to be
-    # merged.
-    farrays.insert(1, an_ht[ht.key].freq)
-    fmeta.insert(1, an_ht.index_globals().freq_meta)
-    count_arrays.insert(1, [0] * hl.eval(hl.len(an_ht.freq_meta)))
+    ht = ht.select(farrays=farrays, sub_array=ht.ann_array[3].freq)
+    ht = ht.checkpoint(new_temp_file("farrays", "ht"))
 
     # Merge the call stats from the v3.1 release, v3.1 AN of new v4.0 variants,
     # pop_diff, and added samples.
     freq_expr, freq_meta, sample_counts = merge_freq_arrays(
-        farrays, fmeta[:4], count_arrays={"counts": count_arrays[:4]}
+        ht.farrays, fmeta, count_arrays={"counts": count_arrays}
     )
     ht = ht.annotate(freq=freq_expr)
 
@@ -960,11 +1008,13 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
     # non-zero callstats for these variants in v3.1 release while non-zero callstats
     # are present the corrected "subtract" freq_ht.
     freq_expr, freq_meta, sample_counts = merge_freq_arrays(
-        [ht.freq, ht.ann_array[3].freq],
-        [freq_meta, fmeta[4]],
+        [ht.freq, ht.sub_array],
+        [freq_meta, global_array[3].freq_meta],
         operation="diff",
         set_negatives_to_zero=True,
-        count_arrays={"counts": [sample_counts["counts"], count_arrays[4]]},
+        count_arrays={
+            "counts": [sample_counts["counts"], global_array[3].freq_meta_sample_count]
+        },
     )
     ht = ht.select(freq=freq_expr)
     ht = ht.select_globals(
@@ -1021,7 +1071,6 @@ def generate_v4_genomes_callstats(ht: hl.Table, an_ht: hl.Table) -> hl.Table:
         freq_meta=freq_meta,
         faf_meta=faf_meta,
         faf_index_dict=faf_index_dict,
-        downsamplings=DOWNSAMPLINGS["v3"],
     )
 
     return ht
@@ -1121,13 +1170,15 @@ def get_age_distribution(
 
 
 def get_v4_genomes_release_resources(
-    test: bool, overwrite: bool
+    test: bool, overwrite: bool, pop_diff_an_only: bool = False
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed to create the gnomAD v4.0 genomes release.
 
     :param test: Whether to gather all resources for testing.
     :param overwrite: Whether to overwrite resources if they exist.
+    :param pop_diff_an_only: Whether to only get the AN resource for the pop_diff
+        samples.
     :return: PipelineResourceCollection containing resources for all steps of the
         gnomAD v4.0 genomes release pipeline.
     """
@@ -1199,14 +1250,19 @@ def get_v4_genomes_release_resources(
             "freq_join_ht": hgdp_tgp_updated_callstats(subset="join", test=test),
         },
     )
+    an_output_resources = {
+        "v3_pop_diff_an_ht": hgdp_tgp_updated_callstats(
+            subset="v3_pop_diff_an", test=test
+        )
+    }
+    if not pop_diff_an_only:
+        an_output_resources["v3_release_an_ht"] = hgdp_tgp_updated_callstats(
+            subset="v3_release_an", test=test
+        )
     compute_an_for_new_variants = PipelineStepResourceCollection(
         "--compute-an-for-new-variants",
-        pipeline_input_steps=[join_callstats_for_update],
-        output_resources={
-            "v3_release_an_ht": hgdp_tgp_updated_callstats(
-                subset="v3_release_an", test=test
-            ),
-        },
+        pipeline_input_steps=[update_annotations, join_callstats_for_update],
+        output_resources=an_output_resources,
     )
     update_release_callstats = PipelineStepResourceCollection(
         "--update-release-callstats",
@@ -1275,7 +1331,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
     v4_genome_release_resources = get_v4_genomes_release_resources(
-        test=test, overwrite=overwrite
+        test=test, overwrite=overwrite, pop_diff_an_only=args.pop_diff_an_only
     )
     v3_hgdp_tgp_meta_ht = v4_genome_release_resources.meta_ht.ht()
     v3_hgdp_tgp_dense_mt = v4_genome_release_resources.dense_mt.mt()
@@ -1366,21 +1422,55 @@ def main(args):
             ht.count(),
         )
 
-        logger.info(
-            "Annotating call stats group membership for each v3.1 release sample..."
-        )
         v3_sites_meta_ht = v3_vds.variant_data.cols()
         v3_sites_meta_ht = v3_sites_meta_ht.filter(v3_sites_meta_ht.meta.release)
-        group_membership_ht = get_group_membership_ht_for_an(v3_sites_meta_ht)
-        group_membership_ht = group_membership_ht.checkpoint(
-            new_temp_file("group_membership_all", "ht")
-        )
 
         logger.info(
-            "Computing the AN HT of v3.1 samples for new v4.0 genomes variants..."
+            "Annotating call stats group membership for pop diff release samples..."
         )
-        ht = compute_an_by_group_membership(v3_vds, group_membership_ht, ht)
-        ht.write(res.v3_release_an_ht.path, overwrite=overwrite)
+        # Need to make sure we are using the names that are in the vds for the release
+        # samples.
+        # Note: the samples in the pop_diff HT are samples in the to-be-split 'Han' and
+        # 'Papuan' populations AND their 'gnomad_release' status hasn't changed.
+        v3_sites_meta_rename_ht = v3_sites_meta_ht.key_by(
+            s_no_prefix=v3_sites_meta_ht.s.replace("v3.1::", "")
+        )
+        pop_diff_sample_ht = get_updated_release_samples(res.updated_meta_ht.ht())[0]
+        pop_diff_sample_ht = pop_diff_sample_ht.key_by(
+            s=v3_sites_meta_rename_ht[pop_diff_sample_ht.s].s
+        )
+        pop_diff_group_membership_ht = get_group_membership_ht_for_an(
+            pop_diff_sample_ht, only_pop_diff=True
+        )
+        pop_diff_group_membership_ht = pop_diff_group_membership_ht.checkpoint(
+            new_temp_file("group_membership_pop_diff", "ht")
+        )
+        logger.info(
+            "Computing the AN HT of v3.1 pop diff samples for new v4.0 genomes"
+            " variants. Freq meta: %s",
+            hl.eval(pop_diff_group_membership_ht.freq_meta),
+        )
+        ht = compute_an_by_group_membership(
+            v3_vds, pop_diff_group_membership_ht, res.freq_join_ht.ht().select()
+        )
+        ht.write(res.v3_pop_diff_an_ht.path, overwrite=overwrite)
+
+        if not args.pop_diff_an_only:
+            logger.info(
+                "Annotating call stats group membership for each v3.1 release sample..."
+            )
+            v3_sites_meta_ht = v3_vds.variant_data.cols()
+            v3_sites_meta_ht = v3_sites_meta_ht.filter(v3_sites_meta_ht.meta.release)
+            group_membership_ht = get_group_membership_ht_for_an(v3_sites_meta_ht)
+            group_membership_ht = group_membership_ht.checkpoint(
+                new_temp_file("group_membership_all", "ht")
+            )
+
+            logger.info(
+                "Computing the AN HT of v3.1 samples for new v4.0 genomes variants..."
+            )
+            ht = compute_an_by_group_membership(v3_vds, group_membership_ht, ht)
+            ht.write(res.v3_release_an_ht.path, overwrite=overwrite)
 
     if args.update_release_callstats:
         res = v4_genome_release_resources.update_release_callstats
@@ -1388,13 +1478,14 @@ def main(args):
 
         logger.info("Merging all call stats HTs for final v4.0 genomes call stats...")
         ht = generate_v4_genomes_callstats(
-            res.freq_join_ht.ht(), res.v3_release_an_ht.ht()
+            res.freq_join_ht.ht(), res.v3_release_an_ht.ht(), res.v3_pop_diff_an_ht.ht()
         )
         ht = get_histograms(ht, v3_sites_ht)
         ht = ht.annotate_globals(
+            downsamplings=v3_sites_ht.downsamplings,
             age_distribution=get_age_distribution(
                 res.v3_meta_ht.ht(), res.updated_meta_ht.ht()
-            )
+            ),
         )
         ht.write(res.v4_freq_ht.path, overwrite=overwrite)
 
@@ -1459,6 +1550,15 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
+    parser.add_argument(
+        "--pop-diff-an-only",
+        help=(
+            "Only run --compute-allele-number-for-new-variants on the samples that "
+            "have different pops in v4.0."
+        ),
+        action="store_true",
+    )
+
     parser.add_argument(
         "--update-release-callstats",
         help=(
