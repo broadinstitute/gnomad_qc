@@ -32,7 +32,11 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.v4.resources.basics import get_logging_path
-from gnomad_qc.v4.resources.release import release_sites, validated_release_ht
+from gnomad_qc.v4.resources.release import (
+    release_sites,
+    release_vcf_path,
+    validated_release_ht,
+)
 
 # Add new site fields
 NEW_SITE_FIELDS = [
@@ -63,7 +67,8 @@ REGION_FLAG_FIELDS = remove_fields_from_constant(
 )
 REGION_FLAG_FIELDS.append("non_par")
 REGION_FLAG_FIELDS = {
-    "exomes": REGION_FLAG_FIELDS + [
+    "exomes": REGION_FLAG_FIELDS
+    + [
         "fail_interval_qc",
         "outside_ukb_capture_region",
         "outside_broad_capture_region",
@@ -142,6 +147,7 @@ def get_export_resources(
     overwrite: bool = False,
     data_type: str = "exomes",
     test: Optional[bool] = False,
+    contig: Optional[str] = None,
 ) -> PipelineResourceCollection:
     """
     Get export resources.
@@ -150,6 +156,7 @@ def get_export_resources(
     :param data_type: Data type to get resources for. One of "exomes" or "genomes".
         Default is "exomes".
     :param test: Whether to use test resources.
+    :param contig: Contig to get resources for. Default is None.
     :return: Export resources.
     """
     export_pipeline = PipelineResourceCollection(
@@ -167,9 +174,22 @@ def get_export_resources(
             "validated_ht": validated_release_ht(test=test, data_type=data_type)
         },
     )
+    export_vcf = PipelineStepResourceCollection(
+        "--export-vcf",
+        pipeline_input_steps=[validate_release_ht],
+        output_resources={
+            "release_vcf": release_vcf_path(
+                test=test,
+                data_type=data_type,
+                contig=contig,
+            )
+        },
+    )
+
     export_pipeline.add_steps(
         {
             "validate_release_ht": validate_release_ht,
+            "export_vcf": export_vcf,
         }
     )
     return export_pipeline

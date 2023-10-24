@@ -178,12 +178,16 @@ def release_sites(
 
 def release_vcf_path(
     release_version: Optional[str] = None,
+    test: bool = False,
+    data_type: str = "exomes",
     contig: Optional[str] = None,
 ) -> str:
     """
     Fetch bucket for release (sites-only) VCFs.
 
     :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param data_type: Data type of release resource to return. Should be one of 'exomes' or 'genomes'. Default is 'exomes'.
     :param contig: String containing the name of the desired reference contig. Defaults to the full (all contigs) sites VCF path
         sites VCF path
     :return: Filepath for the desired VCF
@@ -192,11 +196,15 @@ def release_vcf_path(
         release_version = CURRENT_RELEASE
 
     if contig:
-        return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}.sites.{contig}.vcf.bgz"
+        return (
+            f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}.sites.{contig}.vcf.bgz"
+        )
     else:
         # If contig is None, return path to sharded vcf bucket.
         # NOTE: need to add .bgz or else hail will not bgzip shards.
-        return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}.sites.vcf.bgz"
+        return (
+            f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}.sites.vcf.bgz"
+        )
 
 
 def release_header_path(release_version: Optional[str] = None) -> str:
