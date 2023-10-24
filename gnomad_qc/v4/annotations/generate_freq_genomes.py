@@ -1451,7 +1451,7 @@ def main(args):
             new_temp_file("group_membership_pop_diff", "ht")
         )
         logger.info(
-            "Computing the AN HT of v3.1 pop diff samples for new v4.0 genomes"
+            "Computing the AN HT of v3.1 pop diff samples for all v4.0 genomes"
             " variants. Freq meta: %s",
             hl.eval(pop_diff_group_membership_ht.freq_meta),
         )
@@ -1464,8 +1464,6 @@ def main(args):
             logger.info(
                 "Annotating call stats group membership for each v3.1 release sample..."
             )
-            v3_sites_meta_ht = v3_vds.variant_data.cols()
-            v3_sites_meta_ht = v3_sites_meta_ht.filter(v3_sites_meta_ht.meta.release)
             group_membership_ht = get_group_membership_ht_for_an(v3_sites_meta_ht)
             group_membership_ht = group_membership_ht.checkpoint(
                 new_temp_file("group_membership_all", "ht")
@@ -1558,7 +1556,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--pop-diff-an-only",
         help=(
-            "Only run --compute-allele-number-for-new-variants on the samples that "
+            "Only run --compute-allele-number-for-new-variants step to get the AN of "
+            "all v4.0 variants on the samples that have different pops in v4.0."
             "have different pops in v4.0."
         ),
         action="store_true",
