@@ -17,11 +17,7 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import (
-    DOWNSAMPLINGS,
-    POPS_TO_REMOVE_FOR_POPMAX,
-    SUBSETS,
-)
+from gnomad.resources.grch38.gnomad import POPS_TO_REMOVE_FOR_POPMAX, SUBSETS
 from gnomad.sample_qc.sex import adjust_sex_ploidy
 from gnomad.utils.annotations import (
     annotate_adj,
@@ -96,6 +92,39 @@ JOIN_FREQS = ["release", "pop_diff", "added", "subtracted"]
 """Frequency Tables to join for creation of the v4.0 genomes release sites HT."""
 FREQ_GLOBALS = ("freq_meta", "freq_meta_sample_count")
 """Global annotations on the frequency Table."""
+
+DOWNSAMPLING = [
+    10,
+    20,
+    50,
+    100,
+    158,
+    200,
+    456,
+    500,
+    1000,
+    1047,
+    1736,
+    2000,
+    2419,
+    2604,
+    5000,
+    5316,
+    7647,
+    10000,
+    15000,
+    20000,
+    20744,
+    25000,
+    30000,
+    34029,
+    40000,
+    50000,
+    60000,
+    70000,
+    75000,
+]
+"""Downsamplings used in v3.1 release"""
 
 
 def filter_to_test(
@@ -994,7 +1023,9 @@ def generate_v4_genomes_callstats(
     # Merge the call stats from the v3.1 release, v3.1 AN of new v4.0 variants,
     # pop_diff, and added samples.
     freq_expr, freq_meta, sample_counts = merge_freq_arrays(
-        ht.farrays, fmeta, count_arrays={"counts": count_arrays}
+        [ht.farrays[i] for i in range(len(fmeta))],
+        fmeta,
+        count_arrays={"counts": count_arrays},
     )
     ht = ht.annotate(freq=freq_expr)
 
@@ -1485,7 +1516,7 @@ def main(args):
         )
         ht = get_histograms(ht, v3_sites_ht)
         ht = ht.annotate_globals(
-            downsamplings=v3_sites_ht.downsamplings,
+            downsamplings=hl.literal(DOWNSAMPLING),
             age_distribution=get_age_distribution(
                 res.v3_meta_ht.ht(), res.updated_meta_ht.ht()
             ),
