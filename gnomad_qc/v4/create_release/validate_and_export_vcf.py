@@ -63,7 +63,8 @@ REGION_FLAG_FIELDS = remove_fields_from_constant(
 )
 REGION_FLAG_FIELDS.append("non_par")
 REGION_FLAG_FIELDS = {
-    "exomes": REGION_FLAG_FIELDS + [
+    "exomes": REGION_FLAG_FIELDS
+    + [
         "fail_interval_qc",
         "outside_ukb_capture_region",
         "outside_broad_capture_region",
@@ -273,7 +274,7 @@ def unfurl_nested_annotations(
     )
 
     logger.info("Unfurling fafmax data...")
-    fafmax_idx = ht.fafmax
+    fafmax_idx = ht.fafmax.gnomad if data_type == "exomes" else ht.fafmax
     fafmax_dict = {f"fafmax_{f}": fafmax_idx[f] for f in fafmax_idx.keys()}
     expr_dict.update(fafmax_dict)
 
