@@ -93,7 +93,7 @@ JOIN_FREQS = ["release", "pop_diff", "added", "subtracted"]
 FREQ_GLOBALS = ("freq_meta", "freq_meta_sample_count")
 """Global annotations on the frequency Table."""
 
-DOWNSAMPLING = [
+DOWNSAMPLINGS = [
     10,
     20,
     50,
@@ -1516,7 +1516,7 @@ def main(args):
         )
         ht = get_histograms(ht, v3_sites_ht)
         ht = ht.annotate_globals(
-            downsamplings=hl.literal(DOWNSAMPLING),
+            downsamplings=hl.literal(DOWNSAMPLINGS),
             age_distribution=get_age_distribution(
                 res.v3_meta_ht.ht(), res.updated_meta_ht.ht()
             ),
