@@ -93,39 +93,6 @@ JOIN_FREQS = ["release", "pop_diff", "added", "subtracted"]
 FREQ_GLOBALS = ("freq_meta", "freq_meta_sample_count")
 """Global annotations on the frequency Table."""
 
-DOWNSAMPLINGS = [
-    10,
-    20,
-    50,
-    100,
-    158,
-    200,
-    456,
-    500,
-    1000,
-    1047,
-    1736,
-    2000,
-    2419,
-    2604,
-    5000,
-    5316,
-    7647,
-    10000,
-    15000,
-    20000,
-    20744,
-    25000,
-    30000,
-    34029,
-    40000,
-    50000,
-    60000,
-    70000,
-    75000,
-]
-"""Downsamplings used in v3.1 release"""
-
 
 def filter_to_test(
     t: Union[hl.Table, hl.MatrixTable, hl.vds.VariantDataset],
@@ -1515,8 +1482,20 @@ def main(args):
             res.freq_join_ht.ht(), res.v3_release_an_ht.ht(), res.v3_pop_diff_an_ht.ht()
         )
         ht = get_histograms(ht, v3_sites_ht)
+        # NOTE: The v3.1 release HT doesn't have a downsamplings global. Since
+        #  non-standard downsampling values are created in the frequency script
+        #  corresponding to population totals, so this needs to be determined from the
+        #  freq_meta.
+        downsamplings = sorted(
+            {
+                int(x["downsampling"])
+                for x in hl.eval(ht.freq_meta)
+                if "downsampling" in x
+            }
+        )
+
         ht = ht.annotate_globals(
-            downsamplings=hl.literal(DOWNSAMPLINGS),
+            downsamplings=downsamplings,
             age_distribution=get_age_distribution(
                 res.v3_meta_ht.ht(), res.updated_meta_ht.ht()
             ),
