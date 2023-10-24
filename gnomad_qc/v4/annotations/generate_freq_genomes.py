@@ -1327,7 +1327,7 @@ def main(args):
     hl.init(
         log="/create_v4.0_genomes_freq.log",
         default_reference="GRCh38",
-        tmp_dir="gs://gnomad-tmp-4day",
+        tmp_dir="gs://gnomad-tmp-30day",
     )
     v4_genome_release_resources = get_v4_genomes_release_resources(
         test=test, overwrite=overwrite, pop_diff_an_only=args.pop_diff_an_only
