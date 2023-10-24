@@ -243,14 +243,28 @@ def unfurl_nested_annotations(
     )
 
     logger.info("Adding grpmax data...")
-    grpmax_idx = ht.grpmax.gnomad if data_type == "exomes" else ht.grpmax
-    grpmax_dict = {"grpmax": grpmax_idx.gen_anc}
-    grpmax_dict.update(
-        {
-            f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": grpmax_idx[f]
-            for f in [f for f in grpmax_idx._fields if f != "gen_anc"]
-        }
-    )
+    grpmax_idx = ht.grpmax
+    if data_type == "exomes":
+        grpmax_dict = {}
+        for s in grpmax_idx.keys():
+            grpmax_dict.update({f"{s}_grpmax": grpmax_idx[s].gen_anc})
+            grpmax_dict.update(
+                {
+                    f"{s}_{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": (
+                        grpmax_idx[s][f]
+                    )
+                    for f in grpmax_idx[s].keys()
+                    if f != "gen_anc"
+                }
+            )
+    else:
+        grpmax_dict = {"grpmax": grpmax_idx.gen_anc}
+        grpmax_dict.update(
+            {
+                f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": grpmax_idx[f]
+                for f in [f for f in grpmax_idx.keys() if f != "gen_anc"]
+            }
+        )
     expr_dict.update(grpmax_dict)
 
     logger.info("Adding joint grpmax data...")
@@ -274,7 +288,14 @@ def unfurl_nested_annotations(
 
     logger.info("Unfurling fafmax data...")
     fafmax_idx = ht.fafmax
-    fafmax_dict = {f"fafmax_{f}": fafmax_idx[f] for f in fafmax_idx.keys()}
+    if data_type == "exomes":
+        fafmax_dict = {
+            f"fafmax_{s}_{f}": fafmax_idx[s][f]
+            for s in fafmax_idx.keys()
+            for f in fafmax_idx[s].keys()
+        }
+    else:
+        fafmax_dict = {f"fafmax_{f}": fafmax_idx[f] for f in fafmax_idx.keys()}
     expr_dict.update(fafmax_dict)
 
     logger.info("Unfurling joint faf data...")
