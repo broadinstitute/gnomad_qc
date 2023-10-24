@@ -331,7 +331,7 @@ def generate_final_filter_ht(
     # Generate expressions for mono-allelic and only-het status if requested.
     if mono_allelic_flag:
         vqc_expr = vqc_expr.annotate(
-            monoallelic=(raw_freq_expr.AF == 1) | (raw_freq_expr.AF == 0)
+            monoallelic=(adj_freq_expr.AF == 1) | (adj_freq_expr.AF == 0)
         )
     if only_het_flag:
         vqc_expr = vqc_expr.annotate(
