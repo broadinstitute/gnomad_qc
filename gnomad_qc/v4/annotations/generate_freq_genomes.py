@@ -994,7 +994,7 @@ def generate_v4_genomes_callstats(
     # Merge the call stats from the v3.1 release, v3.1 AN of new v4.0 variants,
     # pop_diff, and added samples.
     freq_expr, freq_meta, sample_counts = merge_freq_arrays(
-        [ht.farrays[i] for i in range(hl.eval(hl.len(ht.farrays)))],
+        [ht.farrays[i] for i in range(len(fmeta))],
         fmeta,
         count_arrays={"counts": count_arrays},
     )
