@@ -181,9 +181,9 @@ def main(args):
     ts_ac_filter_expr = freq_idx.freq[1].AC == 1
 
     # Generate expressions for mono-allelic and only-het status.
-    mono_allelic_flag_expr = freq_idx.freq[1].AF == 1
+    mono_allelic_flag_expr = (freq_idx.freq[0].AC > 0) & (freq_idx.freq[1].AF == 1)
     only_het_flag_expr = (
-        (freq_idx.freq[1].AC > 0)
+        (freq_idx.freq[0].AC > 0)
         & ((freq_idx.freq[0].AC * 2) == freq_idx.freq[0].AN)
         & (freq_idx.freq[0].homozygote_count == 0)
     )
