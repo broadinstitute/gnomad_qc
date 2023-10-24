@@ -871,7 +871,7 @@ def compute_an_by_group_membership(
             sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
             group_membership=group_membership_ht[vmt.col_key].group_membership,
         )
-        .select_entries("AD", "DP", "GT", "GQ")
+        .select_entries("LAD", "DP", "LGT", "GQ")
         .select_rows()
     )
     vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
