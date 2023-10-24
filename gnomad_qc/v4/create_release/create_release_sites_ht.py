@@ -224,8 +224,8 @@ def get_config(
             "custom_select": custom_info_select,
         },
         "freq": {
-            "ht": get_freq(data_type=data_type).ht(),
-            "path": get_freq(data_type=data_type).path,
+            "ht": get_freq(data_type=data_type, test=True).ht(),
+            "path": get_freq(data_type=data_type, test=True).path,
             "select": [
                 "freq",
                 "faf",
