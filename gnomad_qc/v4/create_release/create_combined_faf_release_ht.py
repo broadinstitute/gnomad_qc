@@ -174,6 +174,15 @@ def get_joint_freq_and_faf(
         },
     )
     freq_meta = hl.literal(freq_meta)
+    freq_index_dict = hl.literal(make_freq_index_dict_from_meta(freq_meta))
+
+    logger.info("Setting Y metrics to NA for XX groups...")
+    freq = set_female_y_metrics_to_na_expr(
+        ht,
+        freq_expr=freq,
+        freq_meta_expr=freq_meta,
+        freq_index_dict_expr=freq_index_dict,
+    )
 
     # Compute FAF on the merged exomes + genomes frequencies.
     faf, faf_meta = faf_expr(
@@ -207,23 +216,10 @@ def get_joint_freq_and_faf(
 
     ht = ht.annotate_globals(
         joint_freq_meta=freq_meta,
-        joint_freq_index_dict=make_freq_index_dict_from_meta(freq_meta),
+        joint_freq_index_dict=freq_index_dict,
         joint_faf_meta=faf_meta,
         joint_faf_index_dict=make_freq_index_dict_from_meta(hl.literal(faf_meta)),
         joint_freq_meta_sample_count=count_arrays_dict["counts"],
-    )
-
-    logger.info("Setting Y metrics to NA for XX groups...")
-    ht = ht.annotate(
-        **{
-            f: set_female_y_metrics_to_na_expr(
-                ht,
-                freq_expr=ht[f],
-                freq_meta_expr=ht[f"{f}_meta"],
-                freq_index_dict_expr=ht[f"{f}_index_dict"],
-            )
-            for f in ["joint_freq", "joint_faf"]
-        }
     )
     ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"))
 
