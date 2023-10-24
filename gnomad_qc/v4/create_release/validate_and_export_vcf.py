@@ -24,6 +24,8 @@ from gnomad.utils.vcf import (
     REGION_FLAG_FIELDS,
     SITE_FIELDS,
     VRS_FIELDS_DICT,
+    build_vcf_export_reference,
+    rekey_new_reference,
 )
 from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
 
@@ -133,6 +135,15 @@ LEN_COMP_GLOBAL_ROWS = {
     ],
     "joint_faf": ["joint_faf_meta", "joint_faf_index_dict"],
 }
+
+# VCF INFO fields to reorder
+VCF_INFO_REORDER = [
+    "AC_adj",
+    "AN_adj",
+    "AF_adj",
+    "gnomad_grpmax",
+    "faf95_gnomad_grpmax",
+]
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -489,6 +500,31 @@ def prepare_ht_for_validation(
     return ht
 
 
+# Drop downsamplings from freq, rearrange info, make sure fields are vcf compatible
+def format_validated_ht_for_export(
+    ht: hl.Table,
+    data_type: str = "exomes",
+    VCF_INFO_REORDER: Optional[List[str]] = None,
+) -> hl.Table:
+    """
+    Format validated HT for export.
+
+    :param ht: Validated HT
+    :param data_type: Data type to format validated HT for. One of "exomes" or "genomes".
+        Default is "exomes".
+    :param VCF_INFO_REORDER: Order of VCF INFO fields. These will be placed in front of all other fields in the order specified.
+    :return: Formatted HT for export
+    """
+    freq_entries_to_remove = ht.freq_meta.map(lambda x: x.contains("downsampling"))
+
+    {str(x["downsampling"]) for x in hl.eval(ht.freq_meta) if "downsampling" in x}
+
+    logger.info("Rearranging fields to desired order...")
+    ht = ht.annotate(
+        info=ht.info.select(*VCF_INFO_REORDER, *ht.info.drop(*VCF_INFO_REORDER))
+    )
+
+
 def process_vep_csq_header(vep_csq_header: str = VEP_CSQ_HEADER) -> str:
     """
     Process VEP CSQ header string, delimited by |, to remove polyphen and sift annotations.
@@ -572,7 +608,10 @@ def main(args):  # noqa: D103
             check_global_and_row_annot_lengths(ht, LEN_COMP_GLOBAL_ROWS)
 
             logger.info("Preparing HT for validity checks and export...")
-            ht = prepare_ht_for_validation(ht, data_type=data_type)
+            ht = prepare_ht_for_validation(
+                ht,
+                data_type=data_type,
+            )
             # Note: Checkpoint saves time in validity checks and final export by not
             # needing to run the VCF HT prep on each chromosome -- more needs to happen
             # before ready for export, but this is an intermediate write.
@@ -596,6 +635,53 @@ def main(args):  # noqa: D103
             )
 
             ht.describe()
+        # TODO: Prep VCF header dict
+        if args.export_vcf:
+            contig = args.contig
+            contig = f"chr{args.contig}" if args.contig else None
+
+            if contig and args.test:
+                raise ValueError(
+                    "Test argument cannot be used with contig argument as test filters"
+                    " to chr20, X, and Y."
+                )
+
+            logger.info(f"Exporting VCF{f' for chr{contig}' if contig else ''}...")
+            res = resources.export_vcf
+            res.check_resource_existence()
+            ht = res.validated_ht.ht()
+            export_reference = build_vcf_export_reference("gnomAD_GRCh38")
+
+            if test:
+                logger.info("Filtering to chr20, X, and Y for tests...")
+                ht = filter_to_test(ht)
+            if contig:
+                logger.info(f"Filtering to {contig}...")
+                ht = ht.filter_intervals([hl.parse_locus_interval(contig)])
+
+            ht = format_validated_ht_for_export(ht, data_type=data_type)
+
+            """
+            if args.prepare_vcf_header_dict:
+                    logger.info("Making histogram bin edges...")
+                    bin_edges = make_hist_bin_edges_expr(
+                        parameter_dict["ht"],
+                        prefix="gnomad" if hgdp_tgp else "",
+                        include_age_hists=parameter_dict["include_age_hists"],
+                    )
+                    parameter_dict["ht"].describe()
+                    header_dict = prepare_vcf_header_dict(
+                        prepared_vcf_ht,
+                        bin_edges=bin_edges,
+                        age_hist_data=parameter_dict["age_hist_data"],
+                        subset_list=parameter_dict["subsets"],
+                        pops=parameter_dict["pops"],
+                        filtering_model_field=parameter_dict["filtering_model_field"],
+                        # NOTE: This is not currently on the 3.1.1 (or earlier) Table, but will be on the 3.1.2 Table # noqa
+                        # parameter_dict["ht"].inbreeding_coeff_cutoff,
+                        inbreeding_coeff_cutoff=INBREEDING_COEFF_HARD_CUTOFF,
+                    )
+            """
 
     finally:
         logger.info("Copying log to logging bucket...")
@@ -630,6 +716,16 @@ if __name__ == "__main__":
         help="Data type to run validity checks on.",
         default="exomes",
         choices=["exomes", "genomes"],
+    )
+    parser.add_argument(
+        "--export-vcf",
+        help="Export VCF",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--contig",
+        help="Contig to export VCF for",
+        default=None,
     )
 
     main(parser.parse_args())
