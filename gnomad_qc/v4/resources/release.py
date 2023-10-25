@@ -83,26 +83,44 @@ def _release_root(
     )
 
 
-def annotation_hists_path(release_version: str = CURRENT_RELEASE) -> str:
+def annotation_hists_params_path(
+    release_version: str = CURRENT_RELEASE,
+    data_type: str = "exomes",
+) -> str:
     """
-    Return path to file containing ANNOTATIONS_HISTS dictionary.
+    Return path to file containing dictionary of parameters for site metric histograms.
 
-    Dictionary contains histogram values for each metric.
+    The keys of the dictionary are the names of the site quality metrics
+    while the values are: [lower bound, upper bound, number  of bins].
     For example, "InbreedingCoeff": [-0.25, 0.25, 50].
 
+    :param release_version: Release version. Defaults to CURRENT RELEASE.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
+        Default is "exomes".
+    :param test: Whether to use a tmp path for testing. Default is False.
     :return: Path to file with annotation histograms
     """
-    return f"gs://gnomad/release/{release_version}/json/annotation_hists.json"
+    return (
+        f"{_release_root(version=release_version, data_type=data_type, extension='json')}/gnomad.{data_type}.v{release_version}_annotation_hist_params.json"
+    )
 
 
-def qual_hists_json_path(release_version: str = CURRENT_RELEASE) -> str:
+def qual_hists_json_path(
+    release_version: str = CURRENT_RELEASE,
+    data_type: str = "exomes",
+    test: bool = False,
+) -> str:
     """
     Fetch filepath for qual histograms JSON.
 
     :param release_version: Release version. Defaults to CURRENT RELEASE
+    :param data_type: Data type 'exomes' or 'genomes'. Default is 'exomes'.
+    :param test: Whether to use a tmp path for testing. Default is False.
     :return: File path for histogram JSON
     """
-    return f"gs://gnomad/release/{release_version}/json/gnomad.exomes.v{release_version}.json"
+    return (
+        f"{_release_root(release_version, test, data_type, extension='json')}/gnomad.{data_type}.v{release_version}_qual_hists.json"
+    )
 
 
 def get_combined_faf_release(test: bool = False) -> VersionedTableResource:
