@@ -33,7 +33,7 @@ def create_frequency_bins_expr_inbreeding(
     AF: hl.expr.NumericExpression,
 ) -> hl.expr.StringExpression:
     """
-    Create bins for frequencies in preparation for aggregating QUAL by frequency bin.
+    Create bins for frequencies in preparation for aggregating Inbreedind Coefficient by frequency bin.
 
     Uses bins of < 0.0005 and >= 0.0005
 
