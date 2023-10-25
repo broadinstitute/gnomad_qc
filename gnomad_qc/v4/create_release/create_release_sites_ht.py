@@ -279,15 +279,16 @@ def get_config(
 
     dup_errors = []
     for c in config:
-        ht = config[c]["ht"]
-        distinct_count = ht.select().distinct().count()
-        if distinct_count != ht.count():
-            dup_errors.append(
-                f"HT {c} has {distinct_count} distinct rows but {ht.count()} total"
-                " rows."
-            )
-        else:
-            logger.info(f"HT {c} has no duplicate rows.")
+        if "ht" in config[c]:
+            ht = config[c]["ht"]
+            distinct_count = ht.select().distinct().count()
+            if distinct_count != ht.count():
+                dup_errors.append(
+                    f"HT {c} has {distinct_count} distinct rows but {ht.count()} total"
+                    " rows."
+                )
+            else:
+                logger.info(f"HT {c} has no duplicate rows.")
 
     if dup_errors:
         raise ValueError("\n".join(dup_errors))
