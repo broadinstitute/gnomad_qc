@@ -70,7 +70,7 @@ def import_updated_annotations(ht: hl.Table, subset_ht: hl.Table) -> hl.Table:
         | annot.gnomad_sample_filters.related_to_nonsubset
         | annot.gnomad_sample_filters.v4_exome_duplicate
     )
-    high_quality = annot.gnomad_high_quality
+    high_quality = annot.high_quality
     release = annot.gnomad_release
 
     ht1 = ht1.annotate(
