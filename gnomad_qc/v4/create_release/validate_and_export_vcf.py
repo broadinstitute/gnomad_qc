@@ -500,7 +500,34 @@ def prepare_ht_for_validation(
     return ht
 
 
-# Drop downsamplings from freq, rearrange info, make sure fields are vcf compatible
+def drop_downsamplings(ht: hl.Table, data_type: str = "exomes") -> hl.Table:
+    """
+    Drop downsampling specific annotations from info struct.
+
+    .. note::
+
+        This removes any annotation that contains any downsampling value in its name.
+
+    :param ht: Input Table.
+    :param data_type: Data type to drop downsampling specific annotations from.
+        One of "exomes" or "genomes".
+    :return: Table with downsampling specific annotations dropped from info struct.
+    """
+    if data_type == "exomes":
+        ds = hl.set(hl.flatten(ht.downsamplings.values()))
+    else:
+        ds = hl.set(ht.downsamplings)
+    ds = hl.eval(ds.map(lambda d: hl.str(d)))
+    ht = ht.annotate(
+        info=ht.info.drop(
+            *[field for d in ds for field in ht.info.keys() if str(d) in field]
+        )
+    )
+    return ht
+
+
+# Drop downsamplings from freq, globlas, rearrange info, make sure fields
+# are vcf compatible
 def format_validated_ht_for_export(
     ht: hl.Table,
     data_type: str = "exomes",
@@ -515,9 +542,8 @@ def format_validated_ht_for_export(
     :param VCF_INFO_REORDER: Order of VCF INFO fields. These will be placed in front of all other fields in the order specified.
     :return: Formatted HT for export
     """
-    freq_entries_to_remove = ht.freq_meta.map(lambda x: x.contains("downsampling"))
-
-    {str(x["downsampling"]) for x in hl.eval(ht.freq_meta) if "downsampling" in x}
+    logger.info("Dropping downsampling annotaitons from info struct...")
+    ht = drop_downsamplings(ht, data_type=data_type)
 
     logger.info("Rearranging fields to desired order...")
     ht = ht.annotate(
@@ -650,11 +676,18 @@ def main(args):  # noqa: D103
             res = resources.export_vcf
             res.check_resource_existence()
             ht = res.validated_ht.ht()
-            export_reference = build_vcf_export_reference("gnomAD_GRCh38")
 
             if test:
-                logger.info("Filtering to chr20, X, and Y for tests...")
-                ht = filter_to_test(ht)
+                logger.info("Filtering to PCSK9 region...")
+                # Keep only PCSK9.
+                ht = hl.filter_intervals(
+                    ht,
+                    [
+                        hl.parse_locus_interval(
+                            "chr1:55039447-55064852", reference_genome="GRCh38"
+                        )
+                    ],
+                )
             if contig:
                 logger.info(f"Filtering to {contig}...")
                 ht = ht.filter_intervals([hl.parse_locus_interval(contig)])
@@ -682,6 +715,7 @@ def main(args):  # noqa: D103
                         inbreeding_coeff_cutoff=INBREEDING_COEFF_HARD_CUTOFF,
                     )
             """
+            export_reference = build_vcf_export_reference("gnomAD_GRCh38")
 
     finally:
         logger.info("Copying log to logging bucket...")
@@ -707,7 +741,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--test",
-        help="Use test resources",
+        help=(
+            "For validation, test will run on chr20, chrX, and chrY. For VCF export,"
+            " test runs on PCSK9 region. Outputs to test bucket."
+        ),
         action="store_true",
     )
     parser.add_argument(
