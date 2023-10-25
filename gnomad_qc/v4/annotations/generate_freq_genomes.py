@@ -830,20 +830,18 @@ def compute_an_by_group_membership(
     vmt = vds.variant_data
     rmt = vds.reference_data.select_cols().select_rows()
 
-    # TODO: Uncomment before merge
     # Confirm that all variants in variant_filter_ht are present in the
     # vds.variant_dataset and throw an error if this is not the case since all samples
     # added to v4.0 genomes should be in this vds.
-    # TODO: This can be improved by setting split=False in get_gnomad_v3_vds and doing
-    #  the split multi on only the rows for this check then adding the split multi for
-    #  the full vds before the semi_join_rows below.
-    # if variant_filter_ht.aggregate(
-    #    hl.agg.any(hl.is_missing(vmt.rows()[variant_filter_ht.key]))
-    # ):
-    #    raise ValueError(
-    #        "Not all variants in the variant_filter_ht are found in the "
-    #        "vds.variant_dataset!"
-    #    )
+    vht = vmt.rows()
+    vht = hl.split_multi(vht)
+    if variant_filter_ht.aggregate(
+        hl.agg.any(hl.is_missing(vht[variant_filter_ht.key]))
+    ):
+        raise ValueError(
+            "Not all variants in the variant_filter_ht are found in the "
+            "vds.variant_dataset!"
+        )
 
     # Filter the VDS variant data and reference data to only keep samples that were in
     # the v3.1 release. We do it this way instead of using hl.vds.filter_samples because
@@ -1340,8 +1338,6 @@ def main(args):
 
     v3_vds = None
     if args.compute_allele_number_for_new_variants:
-        # Please refer to 'TODO' in compute_an_by_group_membership function to set
-        #  split=False for optimization.
         v3_vds = get_gnomad_v3_vds(split=False, samples_meta=True)
 
     if test:
