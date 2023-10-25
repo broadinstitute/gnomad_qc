@@ -1451,8 +1451,12 @@ def main(args):
             " variants. Freq meta: %s",
             hl.eval(pop_diff_group_membership_ht.freq_meta),
         )
+        # To avoid double counting, we need to filter out the variants that are in
+        # v4.0 genomes but not already present in pop_diff samples to get the AN.
+        join_ht = res.freq_join_ht.ht()
+        join_ht = join_ht.filter(hl.is_missing(join_ht.ann_array[1].freq)).select()
         ht = compute_an_by_group_membership(
-            v3_vds, pop_diff_group_membership_ht, res.freq_join_ht.ht().select()
+            v3_vds, pop_diff_group_membership_ht, join_ht
         )
         ht.write(res.v3_pop_diff_an_ht.path, overwrite=overwrite)
 
