@@ -173,21 +173,28 @@ def get_joint_freq_and_faf(
             ],
         },
     )
-    freq_meta = hl.literal(freq_meta)
-    freq_index_dict = hl.literal(make_freq_index_dict_from_meta(freq_meta))
+
+    ht = ht.annotate(joint_freq=freq)
+    ht = ht.annotate_globals(
+        joint_freq_meta=freq_meta,
+        joint_freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
+    )
+    # NOTE: This checkpoint prevents a Class Too Large error in hail 0.2.122
+    ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"))
 
     logger.info("Setting Y metrics to NA for XX groups...")
     freq = set_female_y_metrics_to_na_expr(
         ht,
-        freq_expr=freq,
-        freq_meta_expr=freq_meta,
-        freq_index_dict_expr=freq_index_dict,
+        freq_expr=ht.joint_freq,
+        freq_meta_expr=ht.joint_freq_meta,
+        freq_index_dict_expr=ht.joint_freq_index_dict,
     )
+    ht = ht.annotate(joint_freq=freq)
 
     # Compute FAF on the merged exomes + genomes frequencies.
     faf, faf_meta = faf_expr(
-        freq,
-        freq_meta,
+        ht.joint_freq,
+        ht.joint_freq_meta,
         ht.locus,
         pops_to_exclude=faf_pops_to_exclude,
         pop_label="gen_anc",
@@ -200,13 +207,15 @@ def get_joint_freq_and_faf(
     faf_meta_by_pop = hl.literal(faf_meta_by_pop)
     # Compute group max (popmax) on the merged exomes + genomes frequencies.
     grpmax = pop_max_expr(
-        freq, freq_meta, pops_to_exclude=faf_pops_to_exclude, pop_label="gen_anc"
+        ht.joint_freq,
+        ht.joint_freq_meta,
+        pops_to_exclude=faf_pops_to_exclude,
+        pop_label="gen_anc",
     )
     grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.gen_anc)].faf95)
 
     # Annotate Table with all joint exomes + genomes computations.
     ht = ht.annotate(
-        joint_freq=freq,
         joint_faf=faf,
         joint_fafmax=gen_anc_faf_max_expr(
             faf, hl.literal(faf_meta), pop_label="gen_anc"
@@ -215,27 +224,10 @@ def get_joint_freq_and_faf(
     )
 
     ht = ht.annotate_globals(
-        joint_freq_meta=freq_meta,
-        joint_freq_index_dict=freq_index_dict,
         joint_faf_meta=faf_meta,
         joint_faf_index_dict=make_freq_index_dict_from_meta(hl.literal(faf_meta)),
         joint_freq_meta_sample_count=count_arrays_dict["counts"],
     )
-
-    logger.info("Setting Y metrics to NA for XX groups...")
-    ht = ht.annotate(
-        **{
-            f: set_female_y_metrics_to_na_expr(
-                ht,
-                freq_expr=ht[f],
-                freq_meta_expr=ht[f"{f}_meta"],
-                freq_index_dict_expr=ht[f"{f}_index_dict"],
-            )
-            for f in ["joint_freq", "joint_faf"]
-        }
-    )
-
-    ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"))
 
     return ht
 
@@ -444,6 +436,7 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
+    hl._set_flags(use_ssa_logs="1")
     test_gene = args.test_gene
     overwrite = args.overwrite
     pops = list(set(POPS["v3"] + POPS["v4"]))
