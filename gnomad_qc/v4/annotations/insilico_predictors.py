@@ -537,14 +537,10 @@ def main(args):
         logger.info("Creating REVEL Hail Table for GRCh38...")
 
         ht = create_revel_grch38_ht()
-        ht.write("gs://gnomad-tmp/mwilson/revel.ht")
-        logger.info(
-            f" HT variant count is {ht.count()} and it has"
-            f" {ht.distinct().count()} distinct variants"
+        ht.write(
+            get_insilico_predictors(predictor="revel").path,
+            overwrite=args.overwrite,
         )
-        #           get_insilico_predictors(predictor="revel").path,
-        #           overwrite=args.overwrite,
-        #       )
         logger.info("REVEL Hail Table for GRCh38 created.")
     if args.phylop:
         logger.info("Creating PhyloP Hail Table for GRCh38...")
