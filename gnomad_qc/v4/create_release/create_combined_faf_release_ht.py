@@ -179,7 +179,7 @@ def get_joint_freq_and_faf(
         joint_freq_meta=freq_meta,
         joint_freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
     )
-    # NOTE: This checkpoint prevents a Class Too Large error, drop globals before return
+    # NOTE: This checkpoint prevents a Class Too Large error in hail 0.2.122
     ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"))
 
     logger.info("Setting Y metrics to NA for XX groups...")
