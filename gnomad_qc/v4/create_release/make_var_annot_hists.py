@@ -164,8 +164,8 @@ def main(args):  # noqa: D103
             _localize=False,
         )
 
-        # Defining hist range and bins for allele frequency groups because they
-        # needed different ranges
+        # # Defining hist range for inbreeding coefficient and bins for allele frequency
+        # groups because they needed different ranges
         ht = ht.annotate(af_bin=create_frequency_bins_expr_inbreeding(AF=ht.freq[1].AF))
         inbreeding_hists = [
             ht.aggregate(
