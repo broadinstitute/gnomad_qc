@@ -277,22 +277,6 @@ def get_config(
         },
     }
 
-    dup_errors = []
-    for c in config:
-        if "ht" in config[c]:
-            ht = config[c]["ht"]
-            distinct_count = ht.select().distinct().count()
-            if distinct_count != ht.count():
-                dup_errors.append(
-                    f"HT {c} has {distinct_count} distinct rows but {ht.count()} total"
-                    " rows."
-                )
-            else:
-                logger.info(f"HT {c} has no duplicate rows.")
-
-    if dup_errors:
-        raise ValueError("\n".join(dup_errors))
-
     if release_exists:
         config["release"].update(
             {
@@ -807,7 +791,22 @@ def main(args):
         "Getting config for %s release HT to check Tables for duplicate variants...",
         data_type,
     )
-    get_config(data_type=data_type, release_exists=args.release_exists)
+    config = get_config(data_type=data_type, release_exists=args.release_exists)
+    dup_errors = []
+    for c in config:
+        if "ht" in config[c]:
+            ht = config[c]["ht"]
+            distinct_count = ht.select().distinct().count()
+            if distinct_count != ht.count():
+                dup_errors.append(
+                    f"HT {c} has {distinct_count} distinct rows but {ht.count()} total"
+                    " rows."
+                )
+            else:
+                logger.info(f"HT {c} has no duplicate rows.")
+
+    if dup_errors:
+        raise ValueError("\n".join(dup_errors))
 
     logger.info(f"Creating {data_type} release HT...")
     ht = join_hts(
