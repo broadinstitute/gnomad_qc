@@ -448,7 +448,7 @@ def create_revel_grch38_ht() -> hl.Table:
         "Merge max REVEL scores for MANE Select transcripts and canonical transcripts"
         " to one HT..."
     )
-    final_ht = max_revel_mane.union(max_revel_canonical)
+    final_ht = max_revel_mane.join(max_revel_canonical, how="outer")
     final_ht = final_ht.select(
         revel_max=hl.or_else(final_ht.revel_mane_max, final_ht.revel_canonical_max)
     )
@@ -537,10 +537,14 @@ def main(args):
         logger.info("Creating REVEL Hail Table for GRCh38...")
 
         ht = create_revel_grch38_ht()
-        ht.write(
-            get_insilico_predictors(predictor="revel").path,
-            overwrite=args.overwrite,
+        ht.write("gs://gnomad-tmp/mwilson/revel.ht")
+        logger.info(
+            f" HT variant count is {ht.count()} and it has"
+            f" {ht.distinct().count()} distinct variants"
         )
+        #           get_insilico_predictors(predictor="revel").path,
+        #           overwrite=args.overwrite,
+        #       )
         logger.info("REVEL Hail Table for GRCh38 created.")
     if args.phylop:
         logger.info("Creating PhyloP Hail Table for GRCh38...")
