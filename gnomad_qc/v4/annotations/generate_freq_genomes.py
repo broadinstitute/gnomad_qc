@@ -955,7 +955,7 @@ def generate_v4_genomes_callstats(
     :param ht: Table returned by `join_release_ht_with_subsets`.
     :param an_ht: Table with the allele number for new variants in the v4.0 release.
     :param pop_diff_an_ht: Table with the allele number for samples with updated pop
-        labels and new variants in the v4.0 release.
+        labels and variants in the v4.0 release but not present in the callstats of this subset.
     :return: Table with the updated call stats for the v4.0 genomes release.
     """
     logger.info("Updating AN Table HGDP pop labels and 'oth' -> 'remaining'...")
