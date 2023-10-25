@@ -132,6 +132,8 @@ def main(args):  # noqa: D103
             " file. --determine_bounds can be used to help define these ranges if"
             " initial results seem off..."
         )
+        # NOTE: QUALApprox and AS_QUALApprox are log10 scaled and also split into
+        # frequency bins
         hists = ht.aggregate(
             hl.array(
                 [
