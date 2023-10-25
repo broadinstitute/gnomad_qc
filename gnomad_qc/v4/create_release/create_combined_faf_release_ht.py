@@ -176,24 +176,25 @@ def get_joint_freq_and_faf(
 
     ht = ht.annotate(joint_freq=freq)
     ht = ht.annotate_globals(
-        freq_meta=freq_meta,
-        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
+        joint_freq_meta=freq_meta,
+        joint_freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
     )
+    # NOTE: This checkpoint prevents a Class Too Large error, drop globals before return
     ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"))
 
     logger.info("Setting Y metrics to NA for XX groups...")
     freq = set_female_y_metrics_to_na_expr(
         ht,
         freq_expr=ht.joint_freq,
-        freq_meta_expr=ht.freq_meta,
-        freq_index_dict_expr=ht.freq_index_dict,
+        freq_meta_expr=ht.joint_freq_meta,
+        freq_index_dict_expr=ht.joint_freq_index_dict,
     )
     ht = ht.annotate(joint_freq=freq)
 
     # Compute FAF on the merged exomes + genomes frequencies.
     faf, faf_meta = faf_expr(
         ht.joint_freq,
-        ht.freq_meta,
+        ht.joint_freq_meta,
         ht.locus,
         pops_to_exclude=faf_pops_to_exclude,
         pop_label="gen_anc",
@@ -207,7 +208,7 @@ def get_joint_freq_and_faf(
     # Compute group max (popmax) on the merged exomes + genomes frequencies.
     grpmax = pop_max_expr(
         ht.joint_freq,
-        ht.freq_meta,
+        ht.joint_freq_meta,
         pops_to_exclude=faf_pops_to_exclude,
         pop_label="gen_anc",
     )
