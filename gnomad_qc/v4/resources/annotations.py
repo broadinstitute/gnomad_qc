@@ -444,11 +444,19 @@ def hgdp_tgp_updated_callstats(
     Get the HGDP + 1KG/TGP subset updated callstats TableResource.
 
     :param subset: The subset of the HGDP + 1KG/TGP release to return,
-       must be "added", "subtracted", "pop_diff", "join", or "v3_release_an".
+        must be "added", "subtracted", "pop_diff", "join", "v3_release_an", or
+        "v3_pop_diff_an".
     :param test: Whether to return the annotation resource for testing purposes.
     :return: MatrixTableResource for specified subset.
     """
-    subsets = ["added", "subtracted", "pop_diff", "join", "v3_release_an"]
+    subsets = [
+        "added",
+        "subtracted",
+        "pop_diff",
+        "join",
+        "v3_release_an",
+        "v3_pop_diff_an",
+    ]
     if subset not in subsets:
         raise ValueError(f"Operation must be one of {subsets}")
 
