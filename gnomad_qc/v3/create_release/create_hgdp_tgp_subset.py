@@ -571,6 +571,7 @@ def create_full_subset_dense_mt(
     # https://github.com/broadinstitute/gnomad_qc/blob/efea6851a421f4bc66b73db588c0eeeb7cd27539/gnomad_qc/v3/annotations/generate_freq_data_hgdp_tgp.py#L129
     mt = mt.annotate_entries(unadjusted_GT=mt.GT)
     freq_ht = release_sites(public=True).versions["3.0"].ht().select("freq")
+    # Apply homalt hotfix first (before adjusting sex ploidy)
     mt = mt.annotate_entries(
         GT=hom_alt_depletion_fix(
             mt.GT,
@@ -582,9 +583,11 @@ def create_full_subset_dense_mt(
     mt = mt.drop("_het_non_ref")
 
     logger.info("Computing adj and sex adjusted genotypes...")
+    # Adjust sex ploidy on homalt hotfix adjusted GTs
     gt_expr = adjusted_sex_ploidy_expr(
         mt.locus, mt.GT, mt.gnomad_sex_imputation.sex_karyotype
     )
+    # Adjust sex ploidy on unadjusted GTs
     no_hom_alt_depletion_fix_gt_expr = adjusted_sex_ploidy_expr(
         mt.locus, mt.unadjusted_GT, mt.gnomad_sex_imputation.sex_karyotype
     )
@@ -613,7 +616,7 @@ def create_full_subset_dense_mt(
         # Adj on the original unadjusted GT.
         unadjusted_adj=get_adj_expr(mt.unadjusted_GT, mt.GQ, mt.DP, mt.AD),
         # Adj on the sex ploidy adjusted GT with no hom_alt_depletion_fix.
-        sex_poidy_adjusted_adj=sex_poidy_adjusted_adj,
+        sex_ploidy_adjusted_adj=sex_ploidy_adjusted_adj,
     )
 
     logger.info("Add all variant annotations and variant global annotations...")
