@@ -563,25 +563,62 @@ def create_full_subset_dense_mt(
     logger.info("Splitting multi-allelics...")
     mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
 
-    logger.info("Computing adj and sex adjusted genotypes...")
-    mt = mt.annotate_entries(
-        GT=adjusted_sex_ploidy_expr(
-            mt.locus, mt.GT, mt.gnomad_sex_imputation.sex_karyotype
-        ),
-        adj=get_adj_expr(mt.GT, mt.GQ, mt.DP, mt.AD),
-    )
-
     logger.info(
         "Setting het genotypes at sites with > 1% AF (using precomputed v3.0"
         " frequencies) and > 0.9 AB to homalt..."
     )
     # NOTE: Using v3.0 frequencies here and not v3.1 frequencies because the frequency code adjusted genotypes (homalt depletion fix) using v3.0 frequencies # noqa
     # https://github.com/broadinstitute/gnomad_qc/blob/efea6851a421f4bc66b73db588c0eeeb7cd27539/gnomad_qc/v3/annotations/generate_freq_data_hgdp_tgp.py#L129
+    mt = mt.annotate_entries(unadjusted_GT=mt.GT)
     freq_ht = release_sites(public=True).versions["3.0"].ht().select("freq")
-    mt = hom_alt_depletion_fix(
-        mt, het_non_ref_expr=mt._het_non_ref, af_expr=freq_ht[mt.row_key].freq[0].AF
+    # Apply homalt hotfix first (before adjusting sex ploidy)
+    mt = mt.annotate_entries(
+        GT=hom_alt_depletion_fix(
+            mt.GT,
+            het_non_ref_expr=mt._het_non_ref,
+            af_expr=freq_ht[mt.row_key].freq[0].AF,
+            ab_expr=mt.AD[1] / mt.DP,
+        )
     )
-    mt = mt.drop("_het_non_ref")
+
+    logger.info("Computing adj and sex adjusted genotypes...")
+    # Adjust sex ploidy on homalt hotfix adjusted GTs
+    gt_expr = adjusted_sex_ploidy_expr(
+        mt.locus, mt.GT, mt.gnomad_sex_imputation.sex_karyotype
+    )
+    # Adjust sex ploidy on unadjusted GTs
+    no_hom_alt_depletion_fix_gt_expr = adjusted_sex_ploidy_expr(
+        mt.locus, mt.unadjusted_GT, mt.gnomad_sex_imputation.sex_karyotype
+    )
+    sex_ploidy_adjusted_adj = get_adj_expr(
+        no_hom_alt_depletion_fix_gt_expr, mt.GQ, mt.DP, mt.AD
+    )
+    mt = mt.annotate_entries(
+        # GT after hom_alt_depletion_fix GT followed by sex ploidy adjustment.
+        GT=gt_expr,
+        # Adj on hom_alt_depletion_fix GT followed by sex ploidy adjustment.
+        adj=get_adj_expr(gt_expr, mt.GQ, mt.DP, mt.AD),
+        hom_alt_fix_investigation=hl.struct(
+            # GT with sex ploidy adjustment and no hom_alt_depletion_fix.
+            sex_ploidy_adjusted_GT=no_hom_alt_depletion_fix_gt_expr,
+            # For the v3.1.2 GTs we adjust sex ploidy -> annotate adj -> homalt hot fix.
+            # https://github.com/broadinstitute/gnomad_qc/blob/main/gnomad_qc/v3/annotations/generate_freq_data.py#L181.
+            v3_1_GT=hl.or_missing(
+                sex_ploidy_adjusted_adj,
+                hom_alt_depletion_fix(
+                    no_hom_alt_depletion_fix_gt_expr,
+                    het_non_ref_expr=mt._het_non_ref,
+                    af_expr=freq_ht[mt.row_key].freq[0].AF,
+                    ab_expr=mt.AD[1] / mt.DP,
+                    use_v3_1_correction=True,
+                ),
+            ),
+            # Adj on the original unadjusted GT.
+            unadjusted_adj=get_adj_expr(mt.unadjusted_GT, mt.GQ, mt.DP, mt.AD),
+            # Adj on the sex ploidy adjusted GT with no hom_alt_depletion_fix.
+            sex_ploidy_adjusted_adj=sex_ploidy_adjusted_adj,
+        ),
+    )
 
     logger.info("Add all variant annotations and variant global annotations...")
     mt = mt.annotate_rows(**variant_annotation_ht[mt.row_key])
