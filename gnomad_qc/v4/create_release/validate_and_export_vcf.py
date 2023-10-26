@@ -205,6 +205,11 @@ def get_export_resources(
     prepare_vcf_header_dict = PipelineStepResourceCollection(
         "--prepare-vcf-header-dict",
         pipeline_input_steps=[validate_release_ht],
+        add_input_resources={
+            "create_release_sites_ht.py": {
+                "release_ht": release_sites(data_type=data_type)
+            }
+        },
         output_resources={
             "vcf_header_dict": release_header_path(test=test, data_type=data_type)
         },
@@ -961,7 +966,8 @@ def main(args):  # noqa: D103
             logger.info("Preparing VCF header dict...")
             res = resources.prepare_vcf_header_dict
             res.check_resource_existence()
-            ht = res.validated_ht.ht()
+            ht = res.release_ht.ht()
+            validated_ht = res.validated_ht.ht()
 
             logger.info("Preparing VCF header dict...")
             header_dict = prepare_vcf_header_dict(
@@ -970,7 +976,7 @@ def main(args):  # noqa: D103
                     ht,
                     include_age_hists=True,
                 ),
-                age_hist_data=ht.age_distribution,
+                age_hist_data=ht.age_distribution,  # TODO Continue through this
                 subset_list=SUBSETS[data_type],
                 pops=POPS,
                 filtering_model_field=ht.filtering_model,
