@@ -580,7 +580,6 @@ def create_full_subset_dense_mt(
             ab_expr=mt.AD[1] / mt.DP,
         )
     )
-    mt = mt.drop("_het_non_ref")
 
     logger.info("Computing adj and sex adjusted genotypes...")
     # Adjust sex ploidy on homalt hotfix adjusted GTs
