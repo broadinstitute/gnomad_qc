@@ -571,8 +571,13 @@ def create_full_subset_dense_mt(
     # https://github.com/broadinstitute/gnomad_qc/blob/efea6851a421f4bc66b73db588c0eeeb7cd27539/gnomad_qc/v3/annotations/generate_freq_data_hgdp_tgp.py#L129
     mt = mt.annotate_entries(unadjusted_GT=mt.GT)
     freq_ht = release_sites(public=True).versions["3.0"].ht().select("freq")
-    mt = hom_alt_depletion_fix(
-        mt, het_non_ref_expr=mt._het_non_ref, af_expr=freq_ht[mt.row_key].freq[0].AF
+    mt = mt.annotate_entries(
+        GT=hom_alt_depletion_fix(
+            mt.GT,
+            het_non_ref_expr=mt._het_non_ref,
+            af_expr=freq_ht[mt.row_key].freq[0].AF,
+            ab_expr=mt.AD[1] / mt.DP,
+        )
     )
     mt = mt.drop("_het_non_ref")
 
@@ -580,9 +585,30 @@ def create_full_subset_dense_mt(
     gt_expr = adjusted_sex_ploidy_expr(
         mt.locus, mt.GT, mt.gnomad_sex_imputation.sex_karyotype
     )
+    no_hom_alt_depletion_fix_gt_expr = adjusted_sex_ploidy_expr(
+        mt.locus, mt.unadjusted_GT, mt.gnomad_sex_imputation.sex_karyotype
+    )
     mt = mt.annotate_entries(
+        # GT after hom_alt_depletion_fix GT followed by sex ploidy adjustment.
         GT=gt_expr,
+        # GT with sex ploidy adjustment and no hom_alt_depletion_fix.
+        sex_poidy_adjusted_GT=no_hom_alt_depletion_fix_gt_expr,
+        # v3.1 GT performed the hom_alt_depletion_fix on the sex adjusted genotypes.
+        v3_1_GT=hom_alt_depletion_fix(
+            no_hom_alt_depletion_fix_gt_expr,
+            het_non_ref_expr=mt._het_non_ref,
+            af_expr=freq_ht[mt.row_key].freq[0].AF,
+            ab_expr=mt.AD[1] / mt.DP,
+            use_v3_1_correction=True,
+        ),
+        # Adj on hom_alt_depletion_fix GT followed by sex ploidy adjustment.
         adj=get_adj_expr(gt_expr, mt.GQ, mt.DP, mt.AD),
+        # Adj on the original unadjusted GT.
+        unadjusted_adj=get_adj_expr(mt.unadjusted_GT, mt.GQ, mt.DP, mt.AD),
+        # Adj on the sex ploidy adjusted GT with no hom_alt_depletion_fix.
+        sex_poidy_adjusted_adj=get_adj_expr(
+            no_hom_alt_depletion_fix_gt_expr, mt.GQ, mt.DP, mt.AD
+        ),
     )
 
     logger.info("Add all variant annotations and variant global annotations...")
