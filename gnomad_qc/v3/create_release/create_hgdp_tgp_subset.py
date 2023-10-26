@@ -591,18 +591,18 @@ def create_full_subset_dense_mt(
     no_hom_alt_depletion_fix_gt_expr = adjusted_sex_ploidy_expr(
         mt.locus, mt.unadjusted_GT, mt.gnomad_sex_imputation.sex_karyotype
     )
-    sex_poidy_adjusted_adj = get_adj_expr(
+    sex_ploidy_adjusted_adj = get_adj_expr(
         no_hom_alt_depletion_fix_gt_expr, mt.GQ, mt.DP, mt.AD
     )
     mt = mt.annotate_entries(
         # GT after hom_alt_depletion_fix GT followed by sex ploidy adjustment.
         GT=gt_expr,
         # GT with sex ploidy adjustment and no hom_alt_depletion_fix.
-        sex_poidy_adjusted_GT=no_hom_alt_depletion_fix_gt_expr,
+        sex_ploidy_adjusted_GT=no_hom_alt_depletion_fix_gt_expr,
         # For the v3.1.2 GTs we adjust sex ploidy -> annotate adj -> homalt hot fix.
         # https://github.com/broadinstitute/gnomad_qc/blob/main/gnomad_qc/v3/annotations/generate_freq_data.py#L181.
         v3_1_GT=hl.or_missing(
-            sex_poidy_adjusted_adj,
+            sex_ploidy_adjusted_adj,
             hom_alt_depletion_fix(
                 no_hom_alt_depletion_fix_gt_expr,
                 het_non_ref_expr=mt._het_non_ref,
