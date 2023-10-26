@@ -25,12 +25,11 @@ def hom_alt_depletion_fix(
     """
     return mt.annotate_entries(
         GT=hl.if_else(
-            mt.GT.is_het()
-            # Skip adjusting genotypes if sample originally had a het nonref genotype
-            & ~het_non_ref_expr
-            & (af_expr > af_cutoff)
-            & (mt.AD[1] / mt.DP > ab_cutoff),
+            (af_expr > af_cutoff) & mt.GT.is_het()
+            # Skip adjusting genotypes if sample originally had a het nonref genotype.
+            & ~mt.is_het_non_ref & (mt.AD[1] / mt.DP > 0.9),
             hl.call(1, 1),
             mt.GT,
-        )
+            missing_false=True,
+        ),
     )
