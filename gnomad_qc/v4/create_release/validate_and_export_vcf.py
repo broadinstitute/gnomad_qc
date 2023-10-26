@@ -653,7 +653,7 @@ def populate_info_dict(
     #     )
 
     vcf_info_dict = info_dict.copy()
-
+    # TODO: This is what v3 does, how do we drop fields from the existing gnomad methods info dict
     # # Remove MISSING_INFO_FIELDS from info dict
     # for field in MISSING_INFO_FIELDS:
     #     vcf_info_dict.pop(field, None)
@@ -731,9 +731,13 @@ def prepare_vcf_header_dict(
     filter_dict = make_vcf_filter_dict(
         hl.eval(ht.filtering_model.snv_cutoff.min_score),
         hl.eval(ht.filtering_model.indel_cutoff.min_score),
-        inbreeding_cutoff=ht.inbreeding_coeff_cutoff,
-        variant_qc_filter=ht.filtering_model.filter_name,
+        inbreeding_cutoff=hl.eval(ht.inbreeding_coeff_cutoff),
+        variant_qc_filter=hl.eval(ht.filtering_model.filter_name),
     )
+    # NOTE: Change 'InbreedingCoeff' to 'inbreeding_coeff' in filter dict
+    filter_dict.update({"inbreeding_coeff": filter_dict.pop("InbreedingCoeff")})
+
+    # TODO: Do we need to set missing filters to PASS?
 
     logger.info("Making INFO dict for VCF...")
     vcf_info_dict = populate_info_dict(
