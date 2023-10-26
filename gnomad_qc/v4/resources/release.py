@@ -207,17 +207,23 @@ def release_vcf_path(
         )
 
 
-def release_header_path(release_version: Optional[str] = None) -> str:
+def release_header_path(
+    release_version: Optional[str] = None, data_type: str = "exomes", test: bool = False
+) -> str:
     """
     Fetch path to pickle file containing VCF header dictionary.
 
     :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used
+    :param data_type: Data type of release resource to return. Should be one of 'exomes' or 'genomes'. Default is 'exomes'.
+    :param test: Whether to use a tmp path for testing. Default is False.
     :return: Filepath for header dictionary pickle
     """
     if release_version is None:
         release_version = CURRENT_RELEASE
 
-    return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}_header_dict.pickle"
+    return (
+        f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}_header_dict.pickle"
+    )
 
 
 def append_to_vcf_header_path(
