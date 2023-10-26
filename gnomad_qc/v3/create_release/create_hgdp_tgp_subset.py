@@ -588,27 +588,32 @@ def create_full_subset_dense_mt(
     no_hom_alt_depletion_fix_gt_expr = adjusted_sex_ploidy_expr(
         mt.locus, mt.unadjusted_GT, mt.gnomad_sex_imputation.sex_karyotype
     )
+    sex_poidy_adjusted_adj = get_adj_expr(
+        no_hom_alt_depletion_fix_gt_expr, mt.GQ, mt.DP, mt.AD
+    )
     mt = mt.annotate_entries(
         # GT after hom_alt_depletion_fix GT followed by sex ploidy adjustment.
         GT=gt_expr,
         # GT with sex ploidy adjustment and no hom_alt_depletion_fix.
         sex_poidy_adjusted_GT=no_hom_alt_depletion_fix_gt_expr,
-        # v3.1 GT performed the hom_alt_depletion_fix on the sex adjusted genotypes.
-        v3_1_GT=hom_alt_depletion_fix(
-            no_hom_alt_depletion_fix_gt_expr,
-            het_non_ref_expr=mt._het_non_ref,
-            af_expr=freq_ht[mt.row_key].freq[0].AF,
-            ab_expr=mt.AD[1] / mt.DP,
-            use_v3_1_correction=True,
+        # For the v3.1.2 GTs we adjust sex ploidy -> annotate adj -> homalt hot fix.
+        # https://github.com/broadinstitute/gnomad_qc/blob/main/gnomad_qc/v3/annotations/generate_freq_data.py#L181.
+        v3_1_GT=hl.or_missing(
+            sex_poidy_adjusted_adj,
+            hom_alt_depletion_fix(
+                no_hom_alt_depletion_fix_gt_expr,
+                het_non_ref_expr=mt._het_non_ref,
+                af_expr=freq_ht[mt.row_key].freq[0].AF,
+                ab_expr=mt.AD[1] / mt.DP,
+                use_v3_1_correction=True,
+            ),
         ),
         # Adj on hom_alt_depletion_fix GT followed by sex ploidy adjustment.
         adj=get_adj_expr(gt_expr, mt.GQ, mt.DP, mt.AD),
         # Adj on the original unadjusted GT.
         unadjusted_adj=get_adj_expr(mt.unadjusted_GT, mt.GQ, mt.DP, mt.AD),
         # Adj on the sex ploidy adjusted GT with no hom_alt_depletion_fix.
-        sex_poidy_adjusted_adj=get_adj_expr(
-            no_hom_alt_depletion_fix_gt_expr, mt.GQ, mt.DP, mt.AD
-        ),
+        sex_poidy_adjusted_adj=sex_poidy_adjusted_adj,
     )
 
     logger.info("Add all variant annotations and variant global annotations...")
