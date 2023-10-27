@@ -308,8 +308,9 @@ def unfurl_nested_annotations(
     if data_type == "exomes":
         grpmax_dict = {}
         for s in grpmax_idx.keys():
-            s = f"_{s}" if s != "gnomad" else ""
-            grpmax_dict.update({f"grpmax{s}": grpmax_idx[s].gen_anc})
+            grpmax_dict.update(
+                {f"grpmax{'_'+s if s != 'gnomad' else ''}": grpmax_idx[s].gen_anc}
+            )
             grpmax_dict.update(
                 {
                     f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax{s}": (
