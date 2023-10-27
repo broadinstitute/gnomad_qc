@@ -647,7 +647,7 @@ def populate_info_dict(
     :param subset_pops: Dict of sample global genetic ancestry group names to use for all subsets in `subset_list` unless the subset
         is 'gnomad', in that case `gnomad_pops` is used. Default is POPS.
     :param gnomad_pops: Dict of sample global genetic ancestry group names for gnomAD genomes. Default is POPS.
-    :param faf_pops: Dict with faf pop names (keys) and descriptions (values).  Default is FAF_POPS.
+    :param faf_pops: Dict with faf genentic ancestry group names (keys) and descriptions (values).  Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
     :param vrs_fields_dict: Dictionary with VRS annotations.
@@ -763,7 +763,7 @@ def get_downsamplings_fields(ht: hl.Table, data_type: str = "exomes") -> List[st
 
     .. note::
 
-        This removes any annotation that contains any downsampling value in its name.
+        This retrieves any annotation that contains any downsampling value in its name.
 
     :param ht: Input Table.
     :param data_type: Data type to drop downsampling specific annotations from.

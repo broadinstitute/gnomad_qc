@@ -189,7 +189,6 @@ def release_vcf_path(
     :param test: Whether to use a tmp path for testing. Default is False.
     :param data_type: Data type of release resource to return. Should be one of 'exomes' or 'genomes'. Default is 'exomes'.
     :param contig: String containing the name of the desired reference contig. Defaults to the full (all contigs) sites VCF path
-        sites VCF path
     :return: Filepath for the desired VCF
     """
     if release_version is None:
