@@ -82,7 +82,6 @@ REGION_FLAG_FIELDS = deepcopy(REGION_FLAG_FIELDS)
 REGION_FLAG_FIELDS = remove_fields_from_constant(
     REGION_FLAG_FIELDS, ["decoy", "nonpar"]
 )
-REGION_FLAG_FIELDS.append("non_par")
 REGION_FLAG_FIELDS = {
     "exomes": REGION_FLAG_FIELDS + [
         "fail_interval_qc",
@@ -375,7 +374,10 @@ def unfurl_nested_annotations(
     logger.info("Unfurling joint fafmax data...")
     joint_fafmax_idx = ht.joint_fafmax
     joint_fafmax_dict = {
-        f"joint_fafmax_{f}": joint_fafmax_idx[f] for f in joint_fafmax_idx.keys()
+        f"joint_fafmax_{f if f != 'joint_fafmax_data_type' else 'data_type'}": (
+            joint_fafmax_idx[f]
+        )
+        for f in joint_fafmax_idx.keys()
     }
     expr_dict.update(joint_fafmax_dict)
 
@@ -563,7 +565,7 @@ def populate_subset_info_dict(
         vcf_info_dict.update(
             make_info_dict(
                 prefix=subset,
-                prefix_before_metric=True if "gnomad" in subset else False,
+                prefix_before_metric=True if "joint" in subset else False,
                 pop_names=faf_pops,
                 label_groups=label_group,
                 label_delimiter=label_delimiter,
@@ -577,7 +579,7 @@ def populate_subset_info_dict(
         vcf_info_dict.update(
             make_info_dict(
                 prefix=subset,
-                prefix_before_metric=True if "gnomad" in subset else False,
+                prefix_before_metric=True if "joint" in subset else False,
                 pop_names=pops,
                 label_groups=label_group,
                 label_delimiter=label_delimiter,
@@ -585,13 +587,24 @@ def populate_subset_info_dict(
             )
         )
 
-    # Add popmax to info dict
+    # Add grpmax
     vcf_info_dict.update(
         make_info_dict(
-            prefix=subset,
+            prefix="gnomad_" if subset == "" else subset,
             label_delimiter=label_delimiter,
             pop_names=pops,
-            popmax=True,
+            grpmax=True,
+            description_text=description_text,
+        )
+    )
+
+    # Add fafmax
+    vcf_info_dict.update(
+        make_info_dict(
+            prefix="gnomad" if subset == "" else subset,
+            label_delimiter=label_delimiter,
+            pop_names=pops,
+            fafmax=True,
             description_text=description_text,
         )
     )
@@ -600,6 +613,7 @@ def populate_subset_info_dict(
 
 
 def populate_info_dict(
+    info_fields: List[str],
     bin_edges: Dict[str, str],
     age_hist_data: str = None,
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
@@ -624,6 +638,7 @@ def populate_info_dict(
         - INFO fields for filtering allele frequency (faf) annotations
         - INFO fields for variant histograms (hist_bin_freq for each histogram and hist_n_larger for DP histograms)
 
+    :param info_fields: List of info fields to add to the info dict. Default is None.
     :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
     :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param info_dict: INFO dict to be populated.
@@ -638,25 +653,9 @@ def populate_info_dict(
     :param label_delimiter: String to use as delimiter when making group label combinations.
     :return: Updated INFO dictionary for VCF export.
     """
-    # Wont work the way these field imports are changed
-    # def _get_missing_info_fields(data_type: str = "exomes") -> List[str]:
-    #     """
-    #     Get missing info fields for `data_type`.
-
-    #     :param data_type: Data type to get missing info fields for. One of "exomes" or "genomes". Default is "exomes".
-    #     :return: List of missing info fields for `data_type`.
-    #     """
-    #     missing_info_fields = []
-    #     missing_info_fields.extend(ALLELE_TYPE_FIELDS - ALLELE_TYPE_FIELDS["exomes"])
-    #     missing_info_fields.extend(
-    #         AS_FIELDS + MISSING_REGION_FIELDS + MISSING_SITES_FIELDS + RF_FIELDS
-    #     )
-
+    # Get existing info fields from info_dict
     vcf_info_dict = info_dict.copy()
-    # TODO: This is what v3 does, how do we drop fields from the existing gnomad methods info dict
-    # # Remove MISSING_INFO_FIELDS from info dict
-    # for field in MISSING_INFO_FIELDS:
-    #     vcf_info_dict.pop(field, None)
+    vcf_info_dict = {f: vcf_info_dict[f] for f in info_fields if f in vcf_info_dict}
 
     # Add allele-specific fields to info dict, including AS_VQSR_FIELDS
     vcf_info_dict.update(
@@ -690,7 +689,8 @@ def populate_info_dict(
             prefix="",
             label_delimiter=label_delimiter,
             bin_edges=bin_edges,
-            popmax=True,
+            grpmax=True,
+            fafmax=True,
             age_hist_data=age_hist_data,
         )
     )
@@ -734,13 +734,14 @@ def prepare_vcf_header_dict(
         inbreeding_cutoff=hl.eval(ht.inbreeding_coeff_cutoff),
         variant_qc_filter=hl.eval(ht.filtering_model.filter_name),
     )
-    # NOTE: Change 'InbreedingCoeff' to 'inbreeding_coeff' in filter dict
-    filter_dict.update({"inbreeding_coeff": filter_dict.pop("InbreedingCoeff")})
 
-    # TODO: Do we need to set missing filters to PASS?
-
+    # NOTE: JUST PASS THE INFO STRUCT FIELDS AS A LIST list(ht.info) and pull any existing definitions out of the existing header
+    # Log fields that arent in it and then manually add them to the header dict
+    # NOTE: Add subset = "" to represent full dataset in VCF header construction
+    subset_list.extend(["", "joint"])
     logger.info("Making INFO dict for VCF...")
     vcf_info_dict = populate_info_dict(
+        info_fields=list(ht.info),
         bin_edges=bin_edges,
         age_hist_data=age_hist_data,
         subset_list=subset_list,
