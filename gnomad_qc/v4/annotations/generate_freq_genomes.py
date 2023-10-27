@@ -51,6 +51,7 @@ from gnomad_qc.v3.resources.release import (
     release_sites,
 )
 from gnomad_qc.v3.resources.sample_qc import relatedness as v3_relatedness
+from gnomad_qc.v3.utils import hom_alt_depletion_fix
 from gnomad_qc.v4.resources.annotations import get_freq as v4_get_freq
 from gnomad_qc.v4.resources.annotations import hgdp_tgp_updated_callstats
 from gnomad_qc.v4.resources.basics import meta as v4_meta
@@ -883,12 +884,16 @@ def compute_an_by_group_membership(
     vds.write(tmp_vds_path)
     vds = hl.vds.read_vds(tmp_vds_path)
 
-    # Densify the VDS, adjust GT sex ploidy, and annotate entires with adj. Adj
+    # NOTE: The correct thing to do here is the following commented out code but in
+    # order to be consistent with v3.1 we will add the adj annotation before adjusting
+    # for sex ploidy.
+    # Densify the VDS, adjust GT sex ploidy, and annotate entries with adj. Adj
     # annotation must happen after sex ploidy adjustment because haploid GTs have
     # different adj filtering criteria.
     mt = hl.vds.to_dense_mt(vds)
-    mt = adjust_sex_ploidy(mt, mt.sex_karyotype, male_str="XY", female_str="XX")
+    # mt = adjust_sex_ploidy(mt, mt.sex_karyotype, male_str="XY", female_str="XX")
     mt = annotate_adj(mt)
+    mt = adjust_sex_ploidy(mt, mt.sex_karyotype, male_str="XY", female_str="XX")
     mt = mt.select_entries("GT", "adj")
 
     # Convert MT to HT with a row annotation that is an array of all samples entries
@@ -1350,6 +1355,41 @@ def main(args):
                 v3_vds,
                 gene_on_chrx=gene_on_chrx,
             )
+
+    # NOTE: there was a bug in the v3.1 frequency code where we used the v3.0
+    #  freq_ht for the hotfix of depletion of homozygous frequency calculation,
+    #  once a variant is new in v3.1 (i.e. not present in v3.0 freq_ht) and is from
+    #  samples with heterozygous non-reference genotypes with high allele balances,
+    #  their GT was set to missing in the v3.1 freq_ht. Here we are using a GT that was
+    #  created in the same manner so that we can correctly merge with the existing
+    #  v3.1.2 release sites HT.
+
+    logger.info(
+        "Annotating GT and the sex ploidy adjusted GT and adj as adj on the genotype "
+        "without sex ploidy adjustment..."
+    )
+    v3_hgdp_tgp_dense_mt = v3_hgdp_tgp_dense_mt.annotate_entries(
+        GT=v3_hgdp_tgp_dense_mt.hom_alt_fix_investigation.sex_ploidy_adjusted_GT,
+        adj=v3_hgdp_tgp_dense_mt.unadjusted_adj,
+    )
+
+    # Temporary hotfix for depletion of homozygous alternate genotypes
+    logger.info(
+        "Setting het genotypes at sites with >1% AF (using v3.0 frequencies) and >"
+        " 0.9 AB to homalt..."
+    )
+    # Load v3.0 allele frequencies to avoid an extra frequency calculation
+    # NOTE: Using previous callset AF works for small incremental changes to a callset, but we will need to revisit for large increments # noqa
+    freq_ht = release_sites(public=True).versions["3.0"].ht().select("freq")
+    v3_hgdp_tgp_dense_mt = v3_hgdp_tgp_dense_mt.annotate_entries(
+        GT=hom_alt_depletion_fix(
+            v3_hgdp_tgp_dense_mt.GT,
+            het_non_ref_expr=v3_hgdp_tgp_dense_mt._het_non_ref,
+            af_expr=freq_ht[v3_hgdp_tgp_dense_mt.row_key].freq[0].AF,
+            ab_expr=v3_hgdp_tgp_dense_mt.AD[1] / v3_hgdp_tgp_dense_mt.DP,
+            use_v3_1_correction=True,
+        ),
+    )
 
     if args.get_related_to_nonsubset:
         res = v4_genome_release_resources.get_related_to_nonsubset
