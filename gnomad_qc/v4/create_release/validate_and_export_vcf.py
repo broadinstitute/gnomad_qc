@@ -156,9 +156,9 @@ VCF_INFO_REORDER = [
     "AC",
     "AN",
     "AF",
-    "gnomad_grpmax",  # grpmax is the only ann where subset preceeds metric -- need to update this
-    "fafmax_gnomad_faf95_max",
-    "fafmax_gnomad_faf95_max_gen_anc",
+    "grpmax",
+    "fafmax_faf95_max",
+    "fafmax_faf95_max_gen_anc",
 ]  # TODO:Confirm this is ok
 
 
@@ -279,7 +279,7 @@ def unfurl_nested_annotations(
     expr_dict = {}
 
     # Unfurl freq index dict
-    # Cycles through each key and index (e.g., k=adj_afr, i=31)
+    # Cycles through each key and index (e.g., k=afr_XX, i=31)
     logger.info("Unfurling freq data...")
     freq_idx = hl.eval(ht.freq_index_dict)
     expr_dict.update(
@@ -294,7 +294,7 @@ def unfurl_nested_annotations(
     joint_freq_idx = hl.eval(ht.joint_freq_index_dict)
     expr_dict.update(
         {
-            f"joint_{f if f != 'homozygote_count' else 'nhomalt'}_{k}": ht.joint_freq[
+            f"{f if f != 'homozygote_count' else 'nhomalt'}_{k}_joint": ht.joint_freq[
                 i
             ][f]
             for k, i in joint_freq_idx.items()
@@ -302,17 +302,17 @@ def unfurl_nested_annotations(
         }
     )
 
-    # TODO: Discuss how this gets formatted -- subset is first
-    # 'gnomad_AC_grpmax', usually we put metric first `AC_gnomad_grpmax`
+    # This creates fields like grpmax, AC_grpmax_non_ukb...
     logger.info("Adding grpmax data...")
     grpmax_idx = ht.grpmax
     if data_type == "exomes":
         grpmax_dict = {}
         for s in grpmax_idx.keys():
-            grpmax_dict.update({f"{s}_grpmax": grpmax_idx[s].gen_anc})
+            s = f"_{s}" if s != "gnomad" else ""
+            grpmax_dict.update({f"grpmax{s}": grpmax_idx[s].gen_anc})
             grpmax_dict.update(
                 {
-                    f"{s}_{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": (
+                    f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax{s}": (
                         grpmax_idx[s][f]
                     )
                     for f in grpmax_idx[s].keys()
@@ -329,12 +329,13 @@ def unfurl_nested_annotations(
         )
     expr_dict.update(grpmax_dict)
 
+    # Create the fields
     logger.info("Adding joint grpmax data...")
     joint_grpmax_idx = ht.joint_grpmax
     joint_grpmax_dict = {"joint_grpmax": joint_grpmax_idx.gen_anc}
     joint_grpmax_dict.update(
         {
-            f"joint_{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": (
+            f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax_joint": (
                 joint_grpmax_idx[f]
             )
             for f in [f for f in joint_grpmax_idx._fields if f != "gen_anc"]
@@ -353,7 +354,7 @@ def unfurl_nested_annotations(
     fafmax_idx = ht.fafmax
     if data_type == "exomes":
         fafmax_dict = {
-            f"fafmax_{s}_{f}": fafmax_idx[s][f]
+            f"fafmax_{f}_{s if s!= 'gnomad' else ''}": fafmax_idx[s][f]
             for s in fafmax_idx.keys()
             for f in fafmax_idx[s].keys()
         }
@@ -374,7 +375,7 @@ def unfurl_nested_annotations(
     logger.info("Unfurling joint fafmax data...")
     joint_fafmax_idx = ht.joint_fafmax
     joint_fafmax_dict = {
-        f"joint_fafmax_{f if f != 'joint_fafmax_data_type' else 'data_type'}": (
+        f"fafmax_{f if f != 'joint_fafmax_data_type' else 'data_type'}_joint": (
             joint_fafmax_idx[f]
         )
         for f in joint_fafmax_idx.keys()
@@ -498,9 +499,7 @@ def prepare_ht_for_validation(
         release_ht_info=ht.info,
         info=info_struct,
         rsid=hl.str(";").join(ht.rsid),
-        vep=vep_struct_to_csq(
-            ht.vep, has_polyphen_sift=False
-        ),  # TODO: Remove polyhen and sift from vep csq header in vcf
+        vep=vep_struct_to_csq(ht.vep, has_polyphen_sift=False),
     )
     # Add variant annotations to INFO field
     # This adds the following:
@@ -551,7 +550,7 @@ def populate_subset_info_dict(
         - INFO fields for AC, AN, AF, nhomalt for each combination of sample population, sex both for adj and raw data
         - INFO fields for filtering allele frequency (faf) annotations
 
-    :param subset: Sample subset in dataset.
+    :param subset: Sample subset in dataset. "" is used as a placeholder for the full dataset.
     :param description_text: Text describing the sample subset that should be added to the INFO description.
     :param pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
     :param faf_pops: Dict with faf pop names (keys) and descriptions (values).  Default is FAF_POPS.
@@ -560,12 +559,12 @@ def populate_subset_info_dict(
     :return: Dictionary containing Subset specific INFO header fields.
     """
     vcf_info_dict = {}
+    # Add FAF fields to dict
     faf_label_groups = create_label_groups(pops=faf_pops, sexes=sexes)
     for label_group in faf_label_groups:
         vcf_info_dict.update(
             make_info_dict(
-                prefix=subset,
-                prefix_before_metric=True if "joint" in subset else False,
+                suffix=subset,
                 pop_names=faf_pops,
                 label_groups=label_group,
                 label_delimiter=label_delimiter,
@@ -573,13 +572,12 @@ def populate_subset_info_dict(
                 description_text=description_text,
             )
         )
-
+    # Add AC, AN, AF, nhomalt fields to dict
     label_groups = create_label_groups(pops=pops, sexes=sexes)
     for label_group in label_groups:
         vcf_info_dict.update(
             make_info_dict(
-                prefix=subset,
-                prefix_before_metric=True if "joint" in subset else False,
+                suffix=subset,
                 pop_names=pops,
                 label_groups=label_group,
                 label_delimiter=label_delimiter,
@@ -590,7 +588,7 @@ def populate_subset_info_dict(
     # Add grpmax
     vcf_info_dict.update(
         make_info_dict(
-            prefix="gnomad_" if subset == "" else subset,
+            suffix=subset,
             label_delimiter=label_delimiter,
             pop_names=pops,
             grpmax=True,
@@ -601,7 +599,7 @@ def populate_subset_info_dict(
     # Add fafmax
     vcf_info_dict.update(
         make_info_dict(
-            prefix="gnomad" if subset == "" else subset,
+            suffix=subset,
             label_delimiter=label_delimiter,
             pop_names=pops,
             fafmax=True,
@@ -618,8 +616,7 @@ def populate_info_dict(
     age_hist_data: str = None,
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS,
-    subset_pops: Dict[str, str] = POPS,
-    gnomad_pops: Dict[str, str] = POPS,
+    pops: Dict[str, str] = POPS,
     faf_pops: Dict[str, str] = FAF_POPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
@@ -653,7 +650,8 @@ def populate_info_dict(
     :param label_delimiter: String to use as delimiter when making group label combinations.
     :return: Updated INFO dictionary for VCF export.
     """
-    # Get existing info fields from info_dict
+    # Get existing info fields from predefined info_dict, e.g. `FS`,
+    # `non_par`, `negative_train_site`...
     vcf_info_dict = info_dict.copy()
     vcf_info_dict = {f: vcf_info_dict[f] for f in info_fields if f in vcf_info_dict}
 
@@ -663,12 +661,7 @@ def populate_info_dict(
     )
 
     for subset in subset_list:
-        if subset == "gnomad":
-            description_text = " in gnomAD"
-            pops = gnomad_pops
-        else:
-            description_text = "" if subset == "" else f" in {subset} subset"
-            pops = subset_pops
+        description_text = "" if subset == "" else f" in {subset} subset"
 
         vcf_info_dict.update(
             populate_subset_info_dict(
@@ -684,13 +677,11 @@ def populate_info_dict(
     if age_hist_data:
         age_hist_data = "|".join(str(x) for x in age_hist_data)
 
+    # Add age histogram data to info dict
     vcf_info_dict.update(
         make_info_dict(
-            prefix="",
             label_delimiter=label_delimiter,
             bin_edges=bin_edges,
-            grpmax=True,
-            fafmax=True,
             age_hist_data=age_hist_data,
         )
     )
@@ -709,6 +700,7 @@ def populate_info_dict(
 
 def prepare_vcf_header_dict(
     ht: hl.Table,
+    validated_ht: hl.Table,
     bin_edges: Dict[str, str],
     age_hist_data: str,
     subset_list: List[str],
@@ -718,7 +710,8 @@ def prepare_vcf_header_dict(
     """
     Prepare VCF header dictionary.
 
-    :param t: Input Table
+    :param ht: Input Table
+    :param validated_ht: Validated HT with unfurled info fields.
     :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
     :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param subset_list: List of sample subsets in dataset.
@@ -741,20 +734,18 @@ def prepare_vcf_header_dict(
     subset_list.extend(["", "joint"])
     logger.info("Making INFO dict for VCF...")
     vcf_info_dict = populate_info_dict(
-        info_fields=list(ht.info),
+        info_fields=list(validated_ht.info),
         bin_edges=bin_edges,
         age_hist_data=age_hist_data,
         subset_list=subset_list,
-        subset_pops=pops,
+        pops=pops,
     )
 
-    vcf_info_dict.update({"vep": {"Description": hl.eval(ht.vep_csq_header)}})
+    vcf_info_dict.update({"vep": {"Description": hl.eval(validated_ht.vep_csq_header)}})
 
     # Adjust keys to remove adj tags before exporting to VCF
     # VCF 4.3 specs do not allow hyphens in info fields
-    new_vcf_info_dict = {
-        i.replace("_adj", "").replace("-", "_"): j for i, j in vcf_info_dict.items()
-    }
+    new_vcf_info_dict = {i.replace("_adj", ""): j for i, j in vcf_info_dict.items()}
 
     header_dict = {
         "info": new_vcf_info_dict,
@@ -977,11 +968,12 @@ def main(args):  # noqa: D103
             logger.info("Preparing VCF header dict...")
             header_dict = prepare_vcf_header_dict(
                 ht,
+                validated_ht,
                 bin_edges=make_hist_bin_edges_expr(
                     ht,
                     include_age_hists=True,
                 ),
-                age_hist_data=ht.age_distribution,  # TODO Continue through this
+                age_hist_data=ht.age_distribution,
                 subset_list=SUBSETS[data_type],
                 pops=POPS,
                 filtering_model_field=ht.filtering_model,
@@ -992,8 +984,6 @@ def main(args):  # noqa: D103
             with hl.hadoop_open(res.header_dict.path, "w") as f:
                 json.dump(header_dict, f, indent=4)
 
-        # TODO: Prep VCF header dict, see if drop any histogram fields? n_larger
-        # or bins?
         if args.export_vcf:
             contig = f"chr{contig}" if contig else None
 
