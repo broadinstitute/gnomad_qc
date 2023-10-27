@@ -1,7 +1,6 @@
 # noqa: D100
 
 import argparse
-import json
 import logging
 import pickle
 from copy import deepcopy
@@ -678,7 +677,7 @@ def populate_info_dict(
             populate_subset_info_dict(
                 subset=subset,
                 description_text=description_text,
-                pops=pops,
+                pops=subset_pops,
                 faf_pops=faf_pops,
                 sexes=sexes,
                 label_delimiter=label_delimiter,
