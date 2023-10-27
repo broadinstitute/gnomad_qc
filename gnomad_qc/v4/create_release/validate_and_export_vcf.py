@@ -3,6 +3,7 @@
 import argparse
 import json
 import logging
+import pickle
 from copy import deepcopy
 from pprint import pprint
 from typing import Dict, List, Optional, Set, Tuple
@@ -201,7 +202,7 @@ def get_export_resources(
             "validated_ht": validated_release_ht(test=test, data_type=data_type)
         },
     )
-    prepare_vcf_header_dict = PipelineStepResourceCollection(
+    prepare_vcf_header = PipelineStepResourceCollection(
         "--prepare-vcf-header-dict",
         pipeline_input_steps=[validate_release_ht],
         add_input_resources={
@@ -210,12 +211,12 @@ def get_export_resources(
             }
         },
         output_resources={
-            "vcf_header_dict": release_header_path(test=test, data_type=data_type)
+            "vcf_header_path": release_header_path(test=test, data_type=data_type)
         },
     )
     export_vcf = PipelineStepResourceCollection(
         "--export-vcf",
-        pipeline_input_steps=[validate_release_ht],
+        pipeline_input_steps=[validate_release_ht, prepare_vcf_header],
         output_resources={
             "release_vcf": release_vcf_path(
                 test=test,
@@ -228,7 +229,7 @@ def get_export_resources(
     export_pipeline.add_steps(
         {
             "validate_release_ht": validate_release_ht,
-            "prepare_vcf_header_dict": prepare_vcf_header_dict,
+            "prepare_vcf_header": prepare_vcf_header,
             "export_vcf": export_vcf,
         }
     )
@@ -959,9 +960,9 @@ def main(args):  # noqa: D103
             )
 
             ht.describe()
-        if args.prepare_vcf_header_dict:
+        if args.prepare_vcf_header:
             logger.info("Preparing VCF header dict...")
-            res = resources.prepare_vcf_header_dict
+            res = resources.prepare_vcf_header
             res.check_resource_existence()
             ht = res.release_ht.ht()
             validated_ht = res.validated_ht.ht()
@@ -982,8 +983,8 @@ def main(args):  # noqa: D103
             )
 
             logger.info("Writing VCF header dict...")
-            with hl.hadoop_open(res.header_dict.path, "w") as f:
-                json.dump(header_dict, f, indent=4)
+            with hl.hadoop_open(res.vcf_header_path, "wb") as p:
+                pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
         if args.export_vcf:
             contig = f"chr{contig}" if contig else None
@@ -998,6 +999,8 @@ def main(args):  # noqa: D103
             res = resources.export_vcf
             res.check_resource_existence()
             ht = res.validated_ht.ht()
+            with hl.hadoop_open(res.vcf_header_path, "rb") as f:
+                header_dict = pickle.load(f)
 
             if test:
                 logger.info("Filtering to PCSK9 region...")
