@@ -884,7 +884,7 @@ def compute_an_by_group_membership(
     vds.write(tmp_vds_path)
     vds = hl.vds.read_vds(tmp_vds_path)
 
-    # NOTE: The correct thing to do here is the following commented out code but in
+    # NOTE: The correct thing to do here is the following commented out code, but in
     # order to be consistent with v3.1 we will add the adj annotation before adjusting
     # for sex ploidy.
     # Densify the VDS, adjust GT sex ploidy, and annotate entries with adj. Adj
