@@ -728,9 +728,8 @@ def prepare_vcf_header_dict(
         variant_qc_filter=hl.eval(ht.filtering_model.filter_name),
     )
 
-    # NOTE: JUST PASS THE INFO STRUCT FIELDS AS A LIST list(ht.info) and pull any existing definitions out of the existing header
-    # Log fields that arent in it and then manually add them to the header dict
-    # NOTE: Add subset = "" to represent full dataset in VCF header construction
+    # subset = "" represents full dataset in VCF header construction, the
+    # logic in gnomad_methods is built around this.
     subset_list.extend(["", "joint"])
     logger.info("Making INFO dict for VCF...")
     vcf_info_dict = populate_info_dict(
@@ -744,13 +743,11 @@ def prepare_vcf_header_dict(
     vcf_info_dict.update({"vep": {"Description": hl.eval(validated_ht.vep_csq_header)}})
 
     # Adjust keys to remove adj tags before exporting to VCF
-    # VCF 4.3 specs do not allow hyphens in info fields
     new_vcf_info_dict = {i.replace("_adj", ""): j for i, j in vcf_info_dict.items()}
 
     header_dict = {
         "info": new_vcf_info_dict,
         "filter": filter_dict,
-        "format": format_dict,
     }
 
     return header_dict
@@ -1015,6 +1012,8 @@ def main(args):  # noqa: D103
 
             ht, new_row_annots = format_validated_ht_for_export(ht, data_type=data_type)
 
+            # TODO: This may fail as I adjust the labeling order of annotations inside
+            # the VCF and the header
             logger.info("Running check on VCF fields and info dict...")
             if not vcf_field_check(ht, header_dict, new_row_annots):
                 raise ValueError("Did not pass VCF field check")
