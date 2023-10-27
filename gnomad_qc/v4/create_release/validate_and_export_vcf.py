@@ -550,13 +550,13 @@ def populate_subset_info_dict(
     Call `make_info_dict` to populate INFO dictionary for the requested `subset`.
 
     Creates:
-        - INFO fields for AC, AN, AF, nhomalt for each combination of sample population, sex both for adj and raw data
+        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic ancestry group, sex both for adj and raw data
         - INFO fields for filtering allele frequency (faf) annotations
 
     :param subset: Sample subset in dataset. "" is used as a placeholder for the full dataset.
     :param description_text: Text describing the sample subset that should be added to the INFO description.
-    :param pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
-    :param faf_pops: Dict with faf pop names (keys) and descriptions (values).  Default is FAF_POPS.
+    :param pops: Dict of sample global genetic ancestry names for gnomAD genomes. Default is POPS.
+    :param faf_pops: Dict with faf genetic ancestry names (keys) and descriptions (values).  Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
     :return: Dictionary containing Subset specific INFO header fields.
@@ -634,8 +634,8 @@ def populate_info_dict(
 
     Creates:
         - INFO fields for age histograms (bin freq, n_smaller, and n_larger for heterozygous and homozygous variant carriers)
-        - INFO fields for popmax AC, AN, AF, nhomalt, and popmax population
-        - INFO fields for AC, AN, AF, nhomalt for each combination of sample population, sex both for adj and raw data
+        - INFO fields for grpmax AC, AN, AF, nhomalt, and grpmax genetic ancestry group
+        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic ancestry group, sex both for adj and raw data
         - INFO fields for filtering allele frequency (faf) annotations
         - INFO fields for variant histograms (hist_bin_freq for each histogram and hist_n_larger for DP histograms)
 
@@ -644,9 +644,9 @@ def populate_info_dict(
     :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param info_dict: INFO dict to be populated.
     :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
-    :param subset_pops: Dict of sample global population names to use for all subsets in `subset_list` unless the subset
+    :param subset_pops: Dict of sample global genetic ancestry group names to use for all subsets in `subset_list` unless the subset
         is 'gnomad', in that case `gnomad_pops` is used. Default is POPS.
-    :param gnomad_pops: Dict of sample global population names for gnomAD genomes. Default is POPS.
+    :param gnomad_pops: Dict of sample global genetic ancestry group names for gnomAD genomes. Default is POPS.
     :param faf_pops: Dict with faf pop names (keys) and descriptions (values).  Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
@@ -719,7 +719,7 @@ def prepare_vcf_header_dict(
     :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
     :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param subset_list: List of sample subsets in dataset.
-    :param pops: List of sample global population names for gnomAD genomes.
+    :param pops: List of sample global genetic ancestry group names for gnomAD genomes.
     :param format_dict: Dictionary describing MatrixTable entries. Used in header for VCF export.
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter used for variants.
     :return: Prepared VCF header dictionary.
