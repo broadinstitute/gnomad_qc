@@ -353,7 +353,6 @@ def unfurl_nested_annotations(
         {f"{f}_{k}": ht.faf[i][f] for f in ht.faf[0].keys() for k, i in faf_idx.items()}
     )
 
-    # TODO: Also discuss how this is formatted: `fafmax_gnomad_faf95_max` is this ok?
     logger.info("Unfurling fafmax data...")
     fafmax_idx = ht.fafmax
     if data_type == "exomes":
@@ -564,7 +563,9 @@ def populate_subset_info_dict(
     """
     vcf_info_dict = {}
     # Add FAF fields to dict
-    faf_label_groups = create_label_groups(pops=faf_pops, sexes=sexes)
+    faf_label_groups = create_label_groups(
+        pops=faf_pops, sexes=sexes, all_groups=["adj"]
+    )
     for label_group in faf_label_groups:
         vcf_info_dict.update(
             make_info_dict(
@@ -668,6 +669,9 @@ def populate_info_dict(
     )
 
     for subset in subset_list:
+        subset_pops = deepcopy(pops)
+        if subset == "joint":
+            subset_pops.update({"ami": "Amish"})
         description_text = "" if subset == "" else f" in {subset} subset"
 
         vcf_info_dict.update(
