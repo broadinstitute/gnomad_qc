@@ -681,7 +681,7 @@ def populate_info_dict(
     if age_hist_data:
         age_hist_data = "|".join(str(x) for x in age_hist_data)
 
-    # Add age histogram data to info dict
+    # Add age histogram data to info dict.
     vcf_info_dict.update(
         make_info_dict(
             label_delimiter=label_delimiter,
@@ -690,13 +690,13 @@ def populate_info_dict(
         )
     )
 
-    # Add variant quality histograms to info dict
+    # Add variant quality histograms to info dict.
     vcf_info_dict.update(make_hist_dict(bin_edges, adj=True))
 
-    # Add in silico prediction annotations to info_dict
+    # Add in silico prediction annotations to info_dict.
     vcf_info_dict.update(in_silico_dict)
 
-    # Add VRS annotations to info_dict
+    # Add VRS annotations to info_dict.
     vcf_info_dict.update(vrs_fields_dict)
 
     return vcf_info_dict
@@ -791,9 +791,9 @@ def format_validated_ht_for_export(
     """
     Format validated HT for export.
 
-    Drop downsamplings frequency stats from info, rearrange info, and make sure fields are vcf compatible
+    Drop downsamplings frequency stats from info, rearrange info, and make sure fields are VCF compatible.
 
-    :param ht: Validated HT
+    :param ht: Validated HT.
     :param data_type: Data type to format validated HT for. One of "exomes" or "genomes".
         Default is "exomes".
     :param Vvcf_info_reorder: Order of VCF INFO fields. These will be placed in front of all other fields in the order specified.
@@ -831,7 +831,7 @@ def format_validated_ht_for_export(
         )
     )
     # The Table is already split so there are no annotations that need to be
-    # pipe delimited
+    # pipe delimited.
     ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
 
     # TODO: Confirm vcf_info_reorder is what we want, front heavy on freqs
@@ -1076,17 +1076,17 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--prepare-vcf-header-dict",
-        help="Prepare VCF header dict",
+        help="Prepare VCF header dict.",
         action="store_true",
     )
     parser.add_argument(
         "--export-vcf",
-        help="Export VCF",
+        help="Export VCF.",
         action="store_true",
     )
     parser.add_argument(
         "--contig",
-        help="Contig to export VCF for",
+        help="Contig to export VCF for.",
         default=None,
     )
 
