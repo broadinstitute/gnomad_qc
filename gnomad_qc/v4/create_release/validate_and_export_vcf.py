@@ -313,9 +313,11 @@ def unfurl_nested_annotations(
             )
             grpmax_dict.update(
                 {
-                    f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax{s}": (
-                        grpmax_idx[s][f]
-                    )
+                    f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax{'_'+s if s != 'gnomad' else ''}": grpmax_idx[
+                        s
+                    ][
+                        f
+                    ]
                     for f in grpmax_idx[s].keys()
                     if f != "gen_anc"
                 }
@@ -355,7 +357,7 @@ def unfurl_nested_annotations(
     fafmax_idx = ht.fafmax
     if data_type == "exomes":
         fafmax_dict = {
-            f"fafmax_{f}_{s if s!= 'gnomad' else ''}": fafmax_idx[s][f]
+            f"fafmax_{f}{'_'+s if s != 'gnomad' else ''}": fafmax_idx[s][f]
             for s in fafmax_idx.keys()
             for f in fafmax_idx[s].keys()
         }
@@ -367,7 +369,7 @@ def unfurl_nested_annotations(
     joint_faf_idx = hl.eval(ht.joint_faf_index_dict)
     expr_dict.update(
         {
-            f"joint_{f}_{k}": ht.joint_faf[i][f]
+            f"{f}_joint_{k}": ht.joint_faf[i][f]
             for f in ht.joint_faf[0].keys()
             for k, i in joint_faf_idx.items()
         }
@@ -565,7 +567,8 @@ def populate_subset_info_dict(
     for label_group in faf_label_groups:
         vcf_info_dict.update(
             make_info_dict(
-                suffix=subset,
+                prefix=subset,
+                prefix_before_metric=False,
                 pop_names=faf_pops,
                 label_groups=label_group,
                 label_delimiter=label_delimiter,
