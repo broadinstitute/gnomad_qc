@@ -1365,8 +1365,8 @@ def main(args):
     #  v3.1.2 release sites HT.
 
     logger.info(
-        "Annotating GT with sex ploidy adjusted genotypes and adj calculated on genotypes 
-        without sex ploidy adjustment..."
+        "Annotating GT with sex ploidy adjusted genotypes and adj calculated on "
+        "genotypes without sex ploidy adjustment..."
     )
     v3_hgdp_tgp_dense_mt = v3_hgdp_tgp_dense_mt.annotate_entries(
         GT=v3_hgdp_tgp_dense_mt.hom_alt_fix_investigation.sex_ploidy_adjusted_GT,
