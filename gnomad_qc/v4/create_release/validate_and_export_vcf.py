@@ -295,7 +295,7 @@ def unfurl_nested_annotations(
     joint_freq_idx = hl.eval(ht.joint_freq_index_dict)
     expr_dict.update(
         {
-            f"{f if f != 'homozygote_count' else 'nhomalt'}_{k}_joint": ht.joint_freq[
+            f"{f if f != 'homozygote_count' else 'nhomalt'}_joint_{k}": ht.joint_freq[
                 i
             ][f]
             for k, i in joint_freq_idx.items()
@@ -336,7 +336,7 @@ def unfurl_nested_annotations(
     # Create the fields
     logger.info("Adding joint grpmax data...")
     joint_grpmax_idx = ht.joint_grpmax
-    joint_grpmax_dict = {"joint_grpmax": joint_grpmax_idx.gen_anc}
+    joint_grpmax_dict = {"grpmax_joint": joint_grpmax_idx.gen_anc}
     joint_grpmax_dict.update(
         {
             f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax_joint": (
@@ -582,11 +582,13 @@ def populate_subset_info_dict(
     for label_group in label_groups:
         vcf_info_dict.update(
             make_info_dict(
-                suffix=subset,
+                prefix=subset,
+                prefix_before_metric=False,
                 pop_names=pops,
                 label_groups=label_group,
                 label_delimiter=label_delimiter,
                 description_text=description_text,
+                callstats=True,
             )
         )
 
@@ -967,7 +969,6 @@ def main(args):  # noqa: D103
             ht = res.release_ht.ht()
             validated_ht = res.validated_ht.ht()
 
-            logger.info("Preparing VCF header dict...")
             header_dict = prepare_vcf_header_dict(
                 ht,
                 validated_ht,
@@ -978,8 +979,6 @@ def main(args):  # noqa: D103
                 age_hist_data=ht.age_distribution,
                 subset_list=SUBSETS[data_type],
                 pops=POPS,
-                filtering_model_field=ht.filtering_model,
-                inbreeding_coeff_cutoff=ht.inbreeding_coeff_cutoff,
             )
 
             logger.info("Writing VCF header dict...")
