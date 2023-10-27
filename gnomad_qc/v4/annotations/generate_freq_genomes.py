@@ -1370,7 +1370,7 @@ def main(args):
     )
     v3_hgdp_tgp_dense_mt = v3_hgdp_tgp_dense_mt.annotate_entries(
         GT=v3_hgdp_tgp_dense_mt.hom_alt_fix_investigation.sex_ploidy_adjusted_GT,
-        adj=v3_hgdp_tgp_dense_mt.unadjusted_adj,
+        adj=v3_hgdp_tgp_dense_mt.hom_alt_fix_investigation.unadjusted_adj,
     )
 
     # Temporary hotfix for depletion of homozygous alternate genotypes
