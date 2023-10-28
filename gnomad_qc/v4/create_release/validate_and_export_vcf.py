@@ -697,7 +697,9 @@ def populate_info_dict(
     )
 
     # Add variant quality histograms to info dict.
-    vcf_info_dict.update(make_hist_dict(bin_edges, adj=True))
+    vcf_info_dict.update(
+        make_hist_dict(bin_edges, adj=True, drop_n_smaller_larger=True)
+    )
 
     # Add in silico prediction annotations to info_dict.
     vcf_info_dict.update(in_silico_dict)
