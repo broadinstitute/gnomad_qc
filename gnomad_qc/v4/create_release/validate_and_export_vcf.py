@@ -202,7 +202,7 @@ def get_export_resources(
         },
     )
     prepare_vcf_header = PipelineStepResourceCollection(
-        "--prepare-vcf-header-dict",
+        "--prepare-vcf-header",
         pipeline_input_steps=[validate_release_ht],
         add_input_resources={
             "create_release_sites_ht.py": {
@@ -1081,7 +1081,7 @@ if __name__ == "__main__":
         choices=["exomes", "genomes"],
     )
     parser.add_argument(
-        "--prepare-vcf-header-dict",
+        "--prepare-vcf-header",
         help="Prepare VCF header dict.",
         action="store_true",
     )
