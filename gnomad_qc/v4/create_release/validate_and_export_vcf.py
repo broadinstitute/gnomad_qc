@@ -757,8 +757,15 @@ def prepare_vcf_header_dict(
     # Adjust keys to remove adj tags before exporting to VCF
     new_vcf_info_dict = {i.replace("_adj", ""): j for i, j in vcf_info_dict.items()}
 
+    # Match header order to info field order
+    ordered_vcf_info_dict = {
+        k: new_vcf_info_dict[k]
+        for k in list(validated_ht.info)
+        if k in new_vcf_info_dict
+    }
+
     header_dict = {
-        "info": new_vcf_info_dict,
+        "info": ordered_vcf_info_dict,
         "filter": filter_dict,
     }
 
