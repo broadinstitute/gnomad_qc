@@ -554,7 +554,7 @@ def populate_subset_info_dict(
 
     :param subset: Sample subset in dataset. "" is used as a placeholder for the full dataset.
     :param description_text: Text describing the sample subset that should be added to the INFO description.
-    :param pops: Dict of sample global genetic ancestry names for gnomAD genomes. Default is POPS.
+    :param pops: Dict of sample global genetic ancestry names for the gnomAD data type. Default is POPS.
     :param faf_pops: Dict with faf genetic ancestry names (keys) and descriptions (values).  Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
@@ -649,7 +649,7 @@ def populate_info_dict(
     :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
     :param subset_pops: Dict of sample global genetic ancestry group names to use for all subsets in `subset_list` unless the subset
         is 'gnomad', in that case `gnomad_pops` is used. Default is POPS.
-    :param gnomad_pops: Dict of sample global genetic ancestry group names for gnomAD genomes. Default is POPS.
+    :param gnomad_pops: Dict of sample global genetic ancestry group names for gnomAD data type. Default is POPS.
     :param faf_pops: Dict with faf genentic ancestry group names (keys) and descriptions (values).  Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
@@ -725,7 +725,7 @@ def prepare_vcf_header_dict(
     :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
     :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param subset_list: List of sample subsets in dataset.
-    :param pops: List of sample global genetic ancestry group names for gnomAD genomes.
+    :param pops: List of sample global genetic ancestry group names for gnomAD data type.
     :param format_dict: Dictionary describing MatrixTable entries. Used in header for VCF export.
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter used for variants.
     :return: Prepared VCF header dictionary.
