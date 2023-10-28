@@ -1029,7 +1029,7 @@ def main(args):  # noqa: D103
                 raise ValueError("Did not pass VCF field check")
 
             output_path = (
-                f"{qc_temp_prefix(data_type=data_type)}gnomad.{data_type}.test.chr{contig}.vcf.bgz"
+                f"{qc_temp_prefix(data_type=data_type)}gnomad.{data_type}.test{'.chr'+contig if contig else ''}.vcf.bgz"
                 if test
                 else release_vcf_path(contig=contig)
             )
