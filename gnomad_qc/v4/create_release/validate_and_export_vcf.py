@@ -620,7 +620,7 @@ def populate_subset_info_dict(
 def populate_info_dict(
     info_fields: List[str],
     bin_edges: Dict[str, str],
-    age_hist_data: str = None,
+    age_hist_distribution: str = None,
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS,
     pops: Dict[str, str] = POPS,
@@ -644,7 +644,7 @@ def populate_info_dict(
 
     :param info_fields: List of info fields to add to the info dict. Default is None.
     :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
-    :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
+    :param age_hist_distribution: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param info_dict: INFO dict to be populated.
     :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
     :param subset_pops: Dict of sample global genetic ancestry group names to use for all subsets in `subset_list` unless the subset
@@ -684,15 +684,15 @@ def populate_info_dict(
             )
         )
 
-    if age_hist_data:
-        age_hist_data = "|".join(str(x) for x in age_hist_data)
+    if age_hist_distribution:
+        age_hist_distribution = "|".join(str(x) for x in age_hist_distribution)
 
     # Add age histogram data to info dict.
     vcf_info_dict.update(
         make_info_dict(
             label_delimiter=label_delimiter,
             bin_edges=bin_edges,
-            age_hist_data=age_hist_data,
+            age_hist_distribution=age_hist_distribution,
         )
     )
 
@@ -712,7 +712,7 @@ def prepare_vcf_header_dict(
     ht: hl.Table,
     validated_ht: hl.Table,
     bin_edges: Dict[str, str],
-    age_hist_data: str,
+    age_hist_distribution: str,
     subset_list: List[str],
     pops: Dict[str, str],
     format_dict: Dict[str, Dict[str, str]] = FORMAT_DICT,
@@ -723,7 +723,7 @@ def prepare_vcf_header_dict(
     :param ht: Input Table
     :param validated_ht: Validated HT with unfurled info fields.
     :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
-    :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
+    :param age_hist_distribution: Pipe-delimited string of age histograms, from `get_age_distributions`.
     :param subset_list: List of sample subsets in dataset.
     :param pops: List of sample global genetic ancestry group names for gnomAD data type.
     :param format_dict: Dictionary describing MatrixTable entries. Used in header for VCF export.
@@ -745,7 +745,7 @@ def prepare_vcf_header_dict(
     vcf_info_dict = populate_info_dict(
         info_fields=list(validated_ht.info),
         bin_edges=bin_edges,
-        age_hist_data=age_hist_data,
+        age_hist_distribution=age_hist_distribution,
         subset_list=subset_list,
         pops=pops,
     )
@@ -980,7 +980,7 @@ def main(args):  # noqa: D103
                     ht,
                     include_age_hists=True,
                 ),
-                age_hist_data=ht.age_distribution,
+                age_hist_distribution=ht.age_distribution,
                 subset_list=SUBSETS[data_type],
                 pops=POPS,
             )
