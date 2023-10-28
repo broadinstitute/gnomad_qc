@@ -1038,7 +1038,9 @@ def main(args):  # noqa: D103
             # Match header order to info field order
             logger.info("Matching header order to info field order...")
             ordered_vcf_info_dict = {
-                f: header_dict.info[f] for f in list(ht.info) if f in header_dict
+                f: header_dict["info"][f]
+                for f in list(ht.info)
+                if f in header_dict["info"]
             }
             header_dict.update({"info": ordered_vcf_info_dict})
 
