@@ -757,15 +757,8 @@ def prepare_vcf_header_dict(
     # Adjust keys to remove adj tags before exporting to VCF
     new_vcf_info_dict = {i.replace("_adj", ""): j for i, j in vcf_info_dict.items()}
 
-    # Match header order to info field order
-    ordered_vcf_info_dict = {
-        k: new_vcf_info_dict[k]
-        for k in list(validated_ht.info)
-        if k in new_vcf_info_dict
-    }
-
     header_dict = {
-        "info": ordered_vcf_info_dict,
+        "info": new_vcf_info_dict,
         "filter": filter_dict,
     }
 
@@ -1042,6 +1035,12 @@ def main(args):  # noqa: D103
                 if test
                 else release_vcf_path(contig=contig)
             )
+            # Match header order to info field order
+            logger.info("Matching header order to info field order...")
+            ordered_vcf_info_dict = {
+                f: header_dict.info[f] for f in list(ht.info) if f in header_dict
+            }
+            header_dict.update({"info": ordered_vcf_info_dict})
 
             logger.info("Exporting VCF...")
             export_reference = build_vcf_export_reference("gnomAD_GRCh38")
