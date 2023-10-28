@@ -1174,15 +1174,13 @@ def get_age_distribution(
 
 
 def get_v4_genomes_release_resources(
-    test: bool, overwrite: bool, pop_diff_an_only: bool = False
+    test: bool, overwrite: bool
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed to create the gnomAD v4.0 genomes release.
 
     :param test: Whether to gather all resources for testing.
     :param overwrite: Whether to overwrite resources if they exist.
-    :param pop_diff_an_only: Whether to only get the AN resource for the pop_diff
-        samples.
     :return: PipelineResourceCollection containing resources for all steps of the
         gnomAD v4.0 genomes release pipeline.
     """
@@ -1254,19 +1252,23 @@ def get_v4_genomes_release_resources(
             "freq_join_ht": hgdp_tgp_updated_callstats(subset="join", test=test),
         },
     )
-    an_output_resources = {
-        "v3_pop_diff_an_ht": hgdp_tgp_updated_callstats(
-            subset="v3_pop_diff_an", test=test
-        )
-    }
-    if not pop_diff_an_only:
-        an_output_resources["v3_release_an_ht"] = hgdp_tgp_updated_callstats(
-            subset="v3_release_an", test=test
-        )
     compute_an_for_new_variants = PipelineStepResourceCollection(
-        "--compute-an-for-new-variants",
+        "--compute-allele-number-for-new-variants",
         pipeline_input_steps=[update_annotations, join_callstats_for_update],
-        output_resources=an_output_resources,
+        output_resources={
+            "v3_release_an_ht": hgdp_tgp_updated_callstats(
+                subset="v3_release_an", test=test
+            ),
+        },
+    )
+    compute_an_for_pop_diff = PipelineStepResourceCollection(
+        "--compute-allele-number-for-pop-diff",
+        pipeline_input_steps=[update_annotations, join_callstats_for_update],
+        output_resources={
+            "v3_pop_diff_an_ht": hgdp_tgp_updated_callstats(
+                subset="v3_pop_diff_an", test=test
+            )
+        },
     )
     update_release_callstats = PipelineStepResourceCollection(
         "--update-release-callstats",
@@ -1292,6 +1294,7 @@ def get_v4_genomes_release_resources(
             "get_callstats_for_updated_samples": get_callstats_for_updated_samples,
             "join_callstats_for_update": join_callstats_for_update,
             "compute_an_for_new_variants": compute_an_for_new_variants,
+            "compute_an_for_pop_diff": compute_an_for_pop_diff,
             "update_release_callstats": update_release_callstats,
         }
     )
@@ -1335,7 +1338,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-30day",
     )
     v4_genome_release_resources = get_v4_genomes_release_resources(
-        test=test, overwrite=overwrite, pop_diff_an_only=args.pop_diff_an_only
+        test=test, overwrite=overwrite
     )
     v3_hgdp_tgp_meta_ht = v4_genome_release_resources.meta_ht.ht()
     v3_hgdp_tgp_dense_mt = v4_genome_release_resources.dense_mt.mt()
@@ -1463,6 +1466,27 @@ def main(args):
         v3_sites_meta_ht = v3_sites_meta_ht.filter(v3_sites_meta_ht.meta.release)
 
         logger.info(
+            "Annotating call stats group membership for each v3.1 release sample..."
+        )
+        group_membership_ht = get_group_membership_ht_for_an(v3_sites_meta_ht)
+        group_membership_ht = group_membership_ht.checkpoint(
+            new_temp_file("group_membership_all", "ht")
+        )
+
+        logger.info(
+            "Computing the AN HT of v3.1 samples for new v4.0 genomes variants..."
+        )
+        ht = compute_an_by_group_membership(v3_vds, group_membership_ht, ht)
+        ht.write(res.v3_release_an_ht.path, overwrite=overwrite)
+
+    if args.compute_allele_number_for_pop_diff:
+        res = v4_genome_release_resources.compute_an_for_pop_diff
+        res.check_resource_existence()
+
+        v3_sites_meta_ht = v3_vds.variant_data.cols()
+        v3_sites_meta_ht = v3_sites_meta_ht.filter(v3_sites_meta_ht.meta.release)
+
+        logger.info(
             "Annotating call stats group membership for pop diff release samples..."
         )
         # Need to make sure we are using the names that are in the vds for the release
@@ -1495,21 +1519,6 @@ def main(args):
             v3_vds, pop_diff_group_membership_ht, join_ht
         )
         ht.write(res.v3_pop_diff_an_ht.path, overwrite=overwrite)
-
-        if not args.pop_diff_an_only:
-            logger.info(
-                "Annotating call stats group membership for each v3.1 release sample..."
-            )
-            group_membership_ht = get_group_membership_ht_for_an(v3_sites_meta_ht)
-            group_membership_ht = group_membership_ht.checkpoint(
-                new_temp_file("group_membership_all", "ht")
-            )
-
-            logger.info(
-                "Computing the AN HT of v3.1 samples for new v4.0 genomes variants..."
-            )
-            ht = compute_an_by_group_membership(v3_vds, group_membership_ht, ht)
-            ht.write(res.v3_release_an_ht.path, overwrite=overwrite)
 
     if args.update_release_callstats:
         res = v4_genome_release_resources.update_release_callstats
@@ -1602,11 +1611,10 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--pop-diff-an-only",
+        "--compute-allele-number-for-pop-diff",
         help=(
-            "Only run --compute-allele-number-for-new-variants step to get the AN of "
-            "all v4.0 variants on the samples that have different pops in v4.0."
-            "have different pops in v4.0."
+            "Compute the allele number of all v4.0 variants on the samples that have "
+            "different pops in v4.0."
         ),
         action="store_true",
     )
