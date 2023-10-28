@@ -989,7 +989,7 @@ def main(args):  # noqa: D103
                     ht,
                     include_age_hists=True,
                 ),
-                age_hist_distribution=ht.age_distribution.bin_freq,
+                age_hist_distribution=hl.eval(ht.age_distribution.bin_freq),
                 subset_list=SUBSETS[data_type],
                 pops=POPS,
             )
