@@ -1276,6 +1276,7 @@ def get_v4_genomes_release_resources(
             update_annotations,
             join_callstats_for_update,
             compute_an_for_new_variants,
+            compute_an_for_pop_diff,
         ],
         add_input_resources={
             "v3.1 metadata": {"v3_meta_ht": v3_meta},
