@@ -821,7 +821,7 @@ def format_validated_ht_for_export(
         "Dropping the following fields from info struct: %s...",
         pprint(info_fields_to_drop),
     )
-    ht = ht.annotate(info=ht.info.drop(*ds_fields))
+    ht = ht.annotate(info=ht.info.drop(*info_fields_to_drop))
 
     logger.info("Dropping _'adj' from info fields...")
     row_annots = list(ht.info)
