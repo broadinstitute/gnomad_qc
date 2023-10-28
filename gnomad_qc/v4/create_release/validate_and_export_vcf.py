@@ -858,6 +858,7 @@ def process_vep_csq_header(vep_csq_header: str = VEP_CSQ_HEADER) -> str:
     logger.info("Processing VEP CSQ header...")
     vep_csq_header = vep_csq_header.split("|")
     vep_csq_header = [f for f in vep_csq_header if f not in ["PolyPhen", "SIFT"]]
+    vep_csq_header = "|".join(vep_csq_header)
     return vep_csq_header
 
 
