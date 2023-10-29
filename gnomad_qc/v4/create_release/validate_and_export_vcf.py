@@ -1049,7 +1049,9 @@ def main(args):  # noqa: D103
             header_dict.update({"info": ordered_vcf_info_dict})
 
             logger.info("Exporting VCF...")
-            export_reference = build_vcf_export_reference("gnomAD_GRCh38")
+            export_reference = build_vcf_export_reference(
+                "gnomAD_GRCh38", keep_chrM=False
+            )
             hl.export_vcf(
                 rekey_new_reference(ht, export_reference),
                 output_path,
