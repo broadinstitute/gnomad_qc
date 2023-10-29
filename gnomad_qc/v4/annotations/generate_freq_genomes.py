@@ -1264,25 +1264,18 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     # correctly in the fix for high AB hets.
     freq_groups1 = hl.set(
         [
-            {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
+            {"group": "raw", "subset": "hgdp"},
             {"group": "adj", "subset": "hgdp"},
+            {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
+            {"group": "adj", "subset": "hgdp", "sex": "XX"},
+            {"group": "adj", "subset": "hgdp", "gen_anc": "han", "sex": "XX"},
         ]
     )
     patch1_ht = hl.Table.parallelize(
         [
             {"locus": hl.parse_locus("chr1:111544780"), "alleles": ["C", "T"]},
-            {"locus": hl.parse_locus("chr7:14689208"), "alleles": ["T", "TTTTTTTTA"]},
-            {"locus": hl.parse_locus("chr9:43045892"), "alleles": ["C", "A"]},
             {"locus": hl.parse_locus("chr11:119744028"), "alleles": ["G", "C"]},
-            {
-                "locus": hl.parse_locus("chr12:10380059"),
-                "alleles": ["GTTTTTTTTTTTTTTT", "G"],
-            },
             {"locus": hl.parse_locus("chr12:82828211"), "alleles": ["CTTTTTTT", "C"]},
-            {
-                "locus": hl.parse_locus("chr16:73308279"),
-                "alleles": ["TCATCCATCCACACACCAGCATCTCATC", "T"],
-            },
             {"locus": hl.parse_locus("chr16:87738638"), "alleles": ["C", "T"]},
             {"locus": hl.parse_locus("chr22:22399516"), "alleles": ["G", "A"]},
         ]
@@ -1302,20 +1295,112 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
         freq_ht.freq_meta,
     )
 
+    freq_groups2 = hl.set(
+        [
+            {"group": "raw", "subset": "hgdp"},
+            {"group": "adj", "subset": "hgdp"},
+            {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
+            {"group": "adj", "subset": "hgdp", "sex": "XY"},
+            {"group": "adj", "subset": "hgdp", "gen_anc": "han", "sex": "XY"},
+        ]
+    )
+    patch2_ht = hl.Table.parallelize(
+        [
+            {
+                "locus": hl.parse_locus("chr12:10380059"),
+                "alleles": ["GTTTTTTTTTTTTTTT", "G"],
+            },
+            {
+                "locus": hl.parse_locus("chr16:73308279"),
+                "alleles": ["TCATCCATCCACACACCAGCATCTCATC", "T"],
+            },
+        ]
+    ).key_by("locus", "alleles")
+    patch2_expr = hl.map(
+        lambda x, m: hl.if_else(
+            freq_groups2.contains(m),
+            hl.struct(
+                AC=x.AC + 1,
+                AF=(x.AC + 1) / (x.AN - 2),
+                AN=x.AN - 2,
+                homozygote_count=x.homozygote_count,
+            ),
+            x,
+        ),
+        freq_ht.freq,
+        freq_ht.freq_meta,
+    )
+
+    freq_groups3 = hl.set(
+        [
+            {"group": "raw", "subset": "hgdp"},
+            {"group": "adj", "subset": "hgdp"},
+            {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan"},
+            {"group": "adj", "subset": "hgdp", "sex": "XY"},
+            {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan", "sex": "XY"},
+        ]
+    )
+    patch3_ht = hl.Table.parallelize(
+        [{"locus": hl.parse_locus("chr7:14689208"), "alleles": ["T", "TTTTTTTTA"]}]
+    ).key_by("locus", "alleles")
+    patch3_expr = hl.map(
+        lambda x, m: hl.if_else(
+            freq_groups3.contains(m),
+            hl.struct(
+                AC=x.AC + 1,
+                AF=(x.AC + 1) / (x.AN - 2),
+                AN=x.AN - 2,
+                homozygote_count=x.homozygote_count,
+            ),
+            x,
+        ),
+        freq_ht.freq,
+        freq_ht.freq_meta,
+    )
+
+    freq_groups4 = hl.set(
+        [
+            {"group": "raw", "subset": "hgdp"},
+            {"group": "adj", "subset": "hgdp"},
+            {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan"},
+            {"group": "adj", "subset": "hgdp", "sex": "XX"},
+            {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan", "sex": "XX"},
+        ]
+    )
+    patch4_ht = hl.Table.parallelize(
+        [{"locus": hl.parse_locus("chr9:43045892"), "alleles": ["C", "A"]}]
+    ).key_by("locus", "alleles")
+    patch4_expr = hl.map(
+        lambda x, m: hl.if_else(
+            freq_groups4.contains(m),
+            hl.struct(
+                AC=x.AC + 1,
+                AF=(x.AC + 1) / (x.AN - 2),
+                AN=x.AN - 2,
+                homozygote_count=x.homozygote_count,
+            ),
+            x,
+        ),
+        freq_ht.freq,
+        freq_ht.freq_meta,
+    )
+
     # chr16:89834177 ["G","GGCC"], ["GCC","G"], and
     # ["GCCTGGATAAGCATAGCCCGTGTGAATCTGTGAACCTGCCTGTGCTCACGGTTGGCCGTCGTAGAAGCA", "G"].
     # Code added to the HGDP + 1KG subset to remove alleles not in the subset caused
     # the duplication of a single site that changed position during the minrep. This
     # results in 2 of the Han samples being given NA instead of 0/0 as their GT. To fix
     # this we are subtracting 4 (2 samples * 2 alleles) from AN.
-    freq_groups2 = hl.set(
+    freq_groups5 = hl.set(
         [
-            {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan"},
+            {"group": "raw", "subset": "hgdp"},
             {"group": "adj", "subset": "hgdp"},
+            {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan"},
+            {"group": "adj", "subset": "hgdp", "sex": "XY"},
+            {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan", "sex": "XY"},
         ]
     )
-    # TODO: Look at adj of these GTs and see if raw AN needs to be adjusted too.
-    patch2_ht = hl.Table.parallelize(
+    patch5_ht = hl.Table.parallelize(
         [
             {"locus": hl.parse_locus("chr16:89834177"), "alleles": ["G", "GGCC"]},
             {"locus": hl.parse_locus("chr16:89834177"), "alleles": ["GCC", "G"]},
@@ -1328,9 +1413,9 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
             },
         ]
     ).key_by("locus", "alleles")
-    patch2_expr = hl.map(
+    patch5_expr = hl.map(
         lambda x, m: hl.if_else(
-            freq_groups2.contains(m),
+            freq_groups5.contains(m),
             hl.struct(
                 AC=x.AC,
                 AF=x.AC / (x.AN - 4),
@@ -1348,14 +1433,17 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     # computation for v4.0, the _het_non_ref of True caused it to be given a 0/1 (the
     # hl.if_else statement gets a False, so it defaults to the input GT. The original v3
     # code didn't include the _het_non_ref check, and therefore it would have evaluated
-    # to missing.
-    freq_groups3 = hl.set(
+    # to missing. Set Han sample GT to missing to match v3.1.
+    freq_groups6 = hl.set(
         [
-            {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
+            {"group": "raw", "subset": "hgdp"},
             {"group": "adj", "subset": "hgdp"},
+            {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
+            {"group": "adj", "subset": "hgdp", "sex": "XX"},
+            {"group": "adj", "subset": "hgdp", "gen_anc": "han", "sex": "XX"},
         ]
     )
-    patch3_ht = hl.Table.parallelize(
+    patch6_ht = hl.Table.parallelize(
         [
             {
                 "locus": hl.parse_locus("chr9:93596925"),
@@ -1363,9 +1451,9 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
             }
         ]
     ).key_by("locus", "alleles")
-    patch3_expr = hl.map(
+    patch6_expr = hl.map(
         lambda x, m: hl.if_else(
-            freq_groups3.contains(m),
+            freq_groups6.contains(m),
             hl.struct(
                 AC=x.AC - 1,
                 AF=(x.AC - 1) / (x.AN - 2),
@@ -1382,13 +1470,13 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     # This variant has an AC raw of 1 and AC adj of 2 because one of the TGP samples
     # being removed has a raw GT 0/1, but adj GT of None because it fails adj. In v3.1
     # it was None for both and therefore shouldn't be subtracted from raw either.
-    freq_groups4 = hl.set([{"group": "raw", "subset": "tgp"}, {"group": "raw"}])
-    patch4_ht = hl.Table.parallelize(
+    freq_groups7 = hl.set([{"group": "raw", "subset": "tgp"}, {"group": "raw"}])
+    patch7_ht = hl.Table.parallelize(
         [{"locus": hl.parse_locus("chr13:20656122"), "alleles": ["T", "TAAAAAAAAGAA"]}]
     ).key_by("locus", "alleles")
-    patch4_expr = hl.map(
+    patch7_expr = hl.map(
         lambda x, m: hl.if_else(
-            freq_groups4.contains(m),
+            freq_groups7.contains(m),
             hl.struct(
                 AC=x.AC + 1,
                 AF=(x.AC + 1) / (x.AN + 2),
@@ -1404,11 +1492,15 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     # Patch the call stats for the variants that need it.
     freq_ht = freq_ht.annotate(
         freq=(
-            hl.case()
+            hl.case(missing_false=True)
             .when(hl.is_defined(patch1_ht[freq_ht.key]), patch1_expr)
             .when(hl.is_defined(patch2_ht[freq_ht.key]), patch2_expr)
             .when(hl.is_defined(patch3_ht[freq_ht.key]), patch3_expr)
             .when(hl.is_defined(patch4_ht[freq_ht.key]), patch4_expr)
+            .when(hl.is_defined(patch5_ht[freq_ht.key]), patch5_expr)
+            .when(hl.is_defined(patch6_ht[freq_ht.key]), patch6_expr)
+            .when(hl.is_defined(patch7_ht[freq_ht.key]), patch7_expr)
+            .default(freq_ht.freq)
         )
     )
 
