@@ -48,6 +48,7 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.v4.resources.basics import get_logging_path, qc_temp_prefix
 from gnomad_qc.v4.resources.release import (
+    append_to_vcf_header_path,
     release_header_path,
     release_sites,
     release_vcf_path,
@@ -817,6 +818,9 @@ def format_validated_ht_for_export(
     logger.info("Add age_histogram bin edges to info fields to drop...")
     info_fields_to_drop.extend(["age_hist_het_bin_edges", "age_hist_hom_bin_edges"])
 
+    logger.info("Adding 'SB' to info fields to drop...")
+    info_fields_to_drop.append("SB")
+
     logger.info(
         "Dropping the following fields from info struct: %s...",
         pprint(info_fields_to_drop),
@@ -1050,6 +1054,7 @@ def main(args):  # noqa: D103
                 rekey_new_reference(ht, export_reference),
                 output_path,
                 metadata=header_dict,
+                append_to_header=append_to_vcf_header_path(data_type=data_type),
                 tabix=True,
             )
 

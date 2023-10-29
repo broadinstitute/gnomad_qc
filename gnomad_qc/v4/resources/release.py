@@ -226,7 +226,9 @@ def release_header_path(
 
 
 def append_to_vcf_header_path(
-    subset: str, release_version: str = CURRENT_RELEASE
+    subset: str,
+    release_version: str = CURRENT_RELEASE,
+    data_type: str = "exomes",
 ) -> str:
     """
     Fetch path to TSV file containing extra fields to append to VCF header.
@@ -235,10 +237,11 @@ def append_to_vcf_header_path(
 
     :param subset: One of the possible release subsets
     :param release_version: Release version. Defaults to CURRENT RELEASE
+    :param data_type: Data type of release resource to return. Should be one of 'exomes' or 'genomes'. Default is 'exomes'.
     :return: Filepath for extra fields TSV file
     """
     return (
-        f"gs://gnomad/release/{release_version}/vcf/exomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
+        f"gs://gnomad/release/{release_version}/vcf/{data_type}/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
     )
 
 
