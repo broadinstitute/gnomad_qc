@@ -1241,9 +1241,7 @@ def get_pop_diff_v3_vds_group_membership(
     return pop_diff_group_membership_ht
 
 
-def patch_v4_genomes_callstats(
-    v3_vds: hl.vds.VariantDataset, meta_ht: hl.Table, freq_ht: hl.Table
-) -> hl.Table:
+def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     """
     Patch the call stats for some inconsistent variant calls found during validity checks.
 
@@ -1255,28 +1253,26 @@ def patch_v4_genomes_callstats(
         This is a temporary fix until we can recompute the call stats for the all the
         samples.
 
-    :param v3_vds: VDS with the v3.1 release samples.
-    :param meta_ht: Table with the updated HGDP + 1KG sample metadata.
     :param freq_ht: Table with the call stats for the v4.0 genomes release.
     :return: Table with the patched call stats for the v4.0 genomes release.
     """
-    pop_diff_group_membership_ht = get_pop_diff_v3_vds_group_membership(v3_vds, meta_ht)
-
     # For most of the variants, there is a single Han sample that was 0/1 in v3.1, but
     # from the dense MT in v4.0 frequencies it was given a missing genotype. These
     # variants are not in v3, which is why they get a missing genotype in the v4.0
     # freq. We don’t understand why they were 0/1 in v3.1, we would expect them to
     # have been missing. It should be 0/1 if missing v3 frequency had been handled
     # correctly in the fix for high AB hets.
-    pop_diff_patch_ht = hl.Table.parallelize(
+    freq_groups1 = hl.set(
+        [
+            {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
+            {"group": "adj", "subset": "hgdp"},
+        ]
+    )
+    patch1_ht = hl.Table.parallelize(
         [
             {"locus": hl.parse_locus("chr1:111544780"), "alleles": ["C", "T"]},
             {"locus": hl.parse_locus("chr7:14689208"), "alleles": ["T", "TTTTTTTTA"]},
             {"locus": hl.parse_locus("chr9:43045892"), "alleles": ["C", "A"]},
-            {
-                "locus": hl.parse_locus("chr9:93596925"),
-                "alleles": ["ATTTTTTTTTTTTTT", "A"],
-            },
             {"locus": hl.parse_locus("chr11:119744028"), "alleles": ["G", "C"]},
             {
                 "locus": hl.parse_locus("chr12:10380059"),
@@ -1288,14 +1284,39 @@ def patch_v4_genomes_callstats(
                 "alleles": ["TCATCCATCCACACACCAGCATCTCATC", "T"],
             },
             {"locus": hl.parse_locus("chr16:87738638"), "alleles": ["C", "T"]},
-            # chr16:89834177 ["G","GGCC"], ["GCC","G"], and
-            # ["GCCTGGATAAGCATAGCCCGTGTGAATCTGTGAACCTGCCTGTGCTCACGGTTGGCCGTCGTAGAAGCA",
-            # "G"].
-            # Code added to the HGDP + 1KG subset to remove alleles not in the subset
-            # caused the duplication of a single site that changed position during the
-            # minrep. This results in 2 of the Han samples being given NA instead of
-            # 0/0 as their GT. To fix this we are using the VDS to directly get the
-            # genotypes for the pop_diff samples from the full v3 VDS.
+            {"locus": hl.parse_locus("chr22:22399516"), "alleles": ["G", "A"]},
+        ]
+    ).key_by("locus", "alleles")
+    patch1_expr = hl.map(
+        lambda x, m: hl.if_else(
+            freq_groups1.contains(m),
+            hl.struct(
+                AC=x.AC + 1,
+                AF=(x.AC + 1) / (x.AN - 2),
+                AN=x.AN - 2,
+                homozygote_count=x.homozygote_count,
+            ),
+            x,
+        ),
+        freq_ht.freq,
+        freq_ht.freq_meta,
+    )
+
+    # chr16:89834177 ["G","GGCC"], ["GCC","G"], and
+    # ["GCCTGGATAAGCATAGCCCGTGTGAATCTGTGAACCTGCCTGTGCTCACGGTTGGCCGTCGTAGAAGCA", "G"].
+    # Code added to the HGDP + 1KG subset to remove alleles not in the subset caused
+    # the duplication of a single site that changed position during the minrep. This
+    # results in 2 of the Han samples being given NA instead of 0/0 as their GT. To fix
+    # this we are subtracting 4 (2 samples * 2 alleles) from AN.
+    freq_groups2 = hl.set(
+        [
+            {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan"},
+            {"group": "adj", "subset": "hgdp"},
+        ]
+    )
+    # TODO: Look at adj of these GTs and see if raw AN needs to be adjusted too.
+    patch2_ht = hl.Table.parallelize(
+        [
             {"locus": hl.parse_locus("chr16:89834177"), "alleles": ["G", "GGCC"]},
             {"locus": hl.parse_locus("chr16:89834177"), "alleles": ["GCC", "G"]},
             {
@@ -1305,22 +1326,22 @@ def patch_v4_genomes_callstats(
                     "G",
                 ],
             },
-            {"locus": hl.parse_locus("chr22:22399516"), "alleles": ["G", "A"]},
         ]
     ).key_by("locus", "alleles")
-
-    # Filter to only the intervals that have a variant in the patch HT so not all the
-    # VDS needs to be loaded.
-    v3_vds = hl.vds.filter_intervals(
-        v3_vds, [hl.parse_locus_interval(f"chr{i}") for i in [1, 7, 9, 11, 12, 16, 22]]
+    patch2_expr = hl.map(
+        lambda x, m: hl.if_else(
+            freq_groups2.contains(m),
+            hl.struct(
+                AC=x.AC,
+                AF=x.AC / (x.AN - 4),
+                AN=x.AN - 4,
+                homozygote_count=x.homozygote_count,
+            ),
+            x,
+        ),
+        freq_ht.freq,
+        freq_ht.freq_meta,
     )
-
-    pop_diff_patch_ht = compute_an_by_group_membership(
-        v3_vds,
-        pop_diff_group_membership_ht,
-        pop_diff_patch_ht,
-        include_full_call_stats=True,
-    ).checkpoint(new_temp_file("pop_diff_89834177", "ht"))
 
     # Frequency groups that need a patch for variant chr9-93596925-ATTTTTTTTTTTTTT-A.
     # In the original v3.1 a single Han sample had a missing GT at this variant. In the
@@ -1328,72 +1349,66 @@ def patch_v4_genomes_callstats(
     # hl.if_else statement gets a False, so it defaults to the input GT. The original v3
     # code didn't include the _het_non_ref check, and therefore it would have evaluated
     # to missing.
-    freq_groups = [
-        {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
-        {"group": "adj", "subset": "hgdp"},
-    ]
-    pop_diff_patch_ht = pop_diff_patch_ht.annotate(
-        freq=hl.map(
-            lambda x, m: hl.if_else(
-                (pop_diff_patch_ht.locus == hl.parse_locus("chr9:93596925"))
-                & (pop_diff_patch_ht.alleles == hl.array(["ATTTTTTTTTTTTTT", "A"]))
-                & freq_groups.contains(m),
-                hl.struct(
-                    AC=x.AC - 1,
-                    AF=(x.AC - 1) / (x.AN - 2),
-                    AN=x.AN - 2,
-                    homozygote_count=x.homozygote_count,
-                ),
-                x,
+    freq_groups3 = hl.set(
+        [
+            {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
+            {"group": "adj", "subset": "hgdp"},
+        ]
+    )
+    patch3_ht = hl.Table.parallelize(
+        [
+            {
+                "locus": hl.parse_locus("chr9:93596925"),
+                "alleles": ["ATTTTTTTTTTTTTT", "A"],
+            }
+        ]
+    ).key_by("locus", "alleles")
+    patch3_expr = hl.map(
+        lambda x, m: hl.if_else(
+            freq_groups3.contains(m),
+            hl.struct(
+                AC=x.AC - 1,
+                AF=(x.AC - 1) / (x.AN - 2),
+                AN=x.AN - 2,
+                homozygote_count=x.homozygote_count,
             ),
-            pop_diff_patch_ht.freq,
-            pop_diff_patch_ht.freq_meta,
-        )
+            x,
+        ),
+        freq_ht.freq,
+        freq_ht.freq_meta,
     )
 
     # Frequency groups that need a patch for variant chr13-20656122-T-TAAAAAAAAGAA.
     # This variant has an AC raw of 1 and AC adj of 2 because one of the TGP samples
     # being removed has a raw GT 0/1, but adj GT of None because it fails adj. In v3.1
     # it was None for both and therefore shouldn't be subtracted from raw either.
-    freq_groups = hl.set([{"group": "raw", "subset": "tgp"}, {"group": "raw"}])
+    freq_groups4 = hl.set([{"group": "raw", "subset": "tgp"}, {"group": "raw"}])
+    patch4_ht = hl.Table.parallelize(
+        [{"locus": hl.parse_locus("chr13:20656122"), "alleles": ["T", "TAAAAAAAAGAA"]}]
+    ).key_by("locus", "alleles")
+    patch4_expr = hl.map(
+        lambda x, m: hl.if_else(
+            freq_groups4.contains(m),
+            hl.struct(
+                AC=x.AC + 1,
+                AF=(x.AC + 1) / (x.AN + 2),
+                AN=x.AN + 2,
+                homozygote_count=x.homozygote_count,
+            ),
+            x,
+        ),
+        freq_ht.freq,
+        freq_ht.freq_meta,
+    )
 
     # Patch the call stats for the variants that need it.
-    pop_diff_patch = pop_diff_patch_ht[freq_ht.key]
-    freq_groups = pop_diff_patch_ht.index_globals().freq_meta
     freq_ht = freq_ht.annotate(
         freq=(
             hl.case()
-            .when(
-                hl.is_defined(pop_diff_patch),
-                hl.map(
-                    lambda x, m: hl.if_else(
-                        freq_groups.contains(m),
-                        pop_diff_patch.freq[freq_groups.index(m)],
-                        x,
-                    ),
-                    freq_ht.freq,
-                    freq_ht.freq_meta,
-                ),
-                freq_ht.freq,
-            )
-            .when(
-                (freq_ht.locus == hl.parse_locus("chr13:20656122"))
-                & (freq_ht.alleles == hl.array(["T", "TAAAAAAAAGAA"])),
-                hl.map(
-                    lambda x, m: hl.if_else(
-                        freq_groups.contains(m),
-                        hl.struct(
-                            AC=x.AC + 1,
-                            AF=(x.AC + 1) / (x.AN + 2),
-                            AN=x.AN + 2,
-                            homozygote_count=x.homozygote_count,
-                        ),
-                        x,
-                    ),
-                    freq_ht.freq,
-                    freq_ht.freq_meta,
-                ),
-            )
+            .when(hl.is_defined(patch1_ht[freq_ht.key]), patch1_expr)
+            .when(hl.is_defined(patch2_ht[freq_ht.key]), patch2_expr)
+            .when(hl.is_defined(patch3_ht[freq_ht.key]), patch3_expr)
+            .when(hl.is_defined(patch4_ht[freq_ht.key]), patch4_expr)
         )
     )
 
@@ -1585,7 +1600,12 @@ def main(args):
     v3_hgdp_tgp_dense_mt = v4_genome_release_resources.dense_mt.mt()
     v3_sites_ht = v4_genome_release_resources.v3_sites_ht.ht()
 
-    v3_vds = get_gnomad_v3_vds(split=False, samples_meta=True)
+    v3_vds = None
+    if (
+        args.compute_allele_number_for_new_variants
+        or args.compute_allele_number_for_pop_diff
+    ):
+        v3_vds = get_gnomad_v3_vds(split=False, samples_meta=True)
 
     if test:
         v3_hgdp_tgp_dense_mt = filter_to_test(
@@ -1593,10 +1613,7 @@ def main(args):
         )
         v3_sites_ht = filter_to_test(v3_sites_ht, gene_on_chrx=gene_on_chrx)
         if v3_vds is not None:
-            v3_vds = filter_to_test(
-                v3_vds,
-                gene_on_chrx=gene_on_chrx,
-            )
+            v3_vds = filter_to_test(v3_vds, gene_on_chrx=gene_on_chrx)
 
     # NOTE: there was a bug in the v3.1 frequency code where we used the v3.0
     #  freq_ht for the hotfix of depletion of homozygous frequency calculation,
@@ -1755,9 +1772,7 @@ def main(args):
     if args.apply_patch_to_freq_ht:
         res = v4_genome_release_resources.apply_patch_to_freq_ht
         res.check_resource_existence()
-        ht = patch_v4_genomes_callstats(
-            v3_vds, res.updated_meta_ht.ht(), res.pre_v4_freq_ht.ht()
-        )
+        ht = patch_v4_genomes_callstats(res.pre_v4_freq_ht.ht())
         ht = finalize_v4_genomes_callstats(
             ht, v3_sites_ht, res.v3_meta_ht.ht(), res.updated_meta_ht.ht()
         )
