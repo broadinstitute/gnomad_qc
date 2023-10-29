@@ -152,7 +152,7 @@ LEN_COMP_GLOBAL_ROWS = {
 }
 
 
-# VCF INFO fields to reorder
+# VCF INFO fields to reorder.
 VCF_INFO_REORDER = [
     "AC",
     "AN",
@@ -562,7 +562,7 @@ def populate_subset_info_dict(
     :return: Dictionary containing Subset specific INFO header fields.
     """
     vcf_info_dict = {}
-    # Add FAF fields to dict
+    # Add FAF fields to dict.
     faf_label_groups = create_label_groups(
         pops=faf_pops, sexes=sexes, all_groups=["adj"]
     )
@@ -578,7 +578,7 @@ def populate_subset_info_dict(
                 description_text=description_text,
             )
         )
-    # Add AC, AN, AF, nhomalt fields to dict
+    # Add AC, AN, AF, nhomalt fields to dict.
     label_groups = create_label_groups(pops=pops, sexes=sexes)
     for label_group in label_groups:
         vcf_info_dict.update(
@@ -593,7 +593,7 @@ def populate_subset_info_dict(
             )
         )
 
-    # Add grpmax
+    # Add grpmax.
     vcf_info_dict.update(
         make_info_dict(
             suffix=subset,
@@ -604,7 +604,7 @@ def populate_subset_info_dict(
         )
     )
 
-    # Add fafmax
+    # Add fafmax.
     vcf_info_dict.update(
         make_info_dict(
             suffix=subset,
@@ -645,7 +645,7 @@ def populate_info_dict(
 
     :param info_fields: List of info fields to add to the info dict. Default is None.
     :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
-    :param age_hist_distribution: Pipe-delimited string of overal age histogram bin frequency.
+    :param age_hist_distribution: Pipe-delimited string of overall age histogram bin frequency.
     :param info_dict: INFO dict to be populated.
     :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
     :param subset_pops: Dict of sample global genetic ancestry group names to use for all subsets in `subset_list` unless the subset
@@ -755,7 +755,7 @@ def prepare_vcf_header_dict(
 
     vcf_info_dict.update({"vep": {"Description": hl.eval(validated_ht.vep_csq_header)}})
 
-    # Adjust keys to remove adj tags before exporting to VCF
+    # Adjust keys to remove adj tags before exporting to VCF.
     new_vcf_info_dict = {i.replace("_adj", ""): j for i, j in vcf_info_dict.items()}
 
     header_dict = {
