@@ -226,7 +226,7 @@ def release_header_path(
 
 
 def append_to_vcf_header_path(
-    subset: str,
+    subset: str = None,
     release_version: str = CURRENT_RELEASE,
     data_type: str = "exomes",
 ) -> str:
