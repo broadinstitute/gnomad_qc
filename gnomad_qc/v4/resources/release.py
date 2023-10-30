@@ -343,7 +343,6 @@ def release_coverage(
         private bucket. Default is private.
     :param test: Whether to use a tmp path for testing. Default is False.
     :param stratify: Whether to stratify results by platform and subset. Default is True.
-
     :return: Coverage release Table.
     """
     return VersionedTableResource(
