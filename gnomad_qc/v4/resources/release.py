@@ -392,4 +392,4 @@ def get_freq_array_readme(data_type: str = "exomes") -> str:
             " “200_eas_adj”,\ndownsampling_group_gen-anc, e.g. “non_ukb_218035_eas_adj”"
         )
     else:
-        return FREQUENCY_README.format("\n")
+        return FREQUENCY_README.format("")
