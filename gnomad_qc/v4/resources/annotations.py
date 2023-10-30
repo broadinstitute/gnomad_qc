@@ -328,18 +328,21 @@ def get_freq(
     )
 
 
-def get_combined_frequency(test: bool = False) -> VersionedTableResource:
+def get_combined_frequency(
+    test: bool = False, filtered: bool = False
+) -> VersionedTableResource:
     """
     Get the combined v4 genome and exome frequency annotation VersionedTableResource.
 
     :param test: Whether to use a tmp path for testing.
+    :param filtered: Whether to return the resource for the filtered combined frequency.
     :return: Hail Table containing combined frequency annotations.
     """
     return VersionedTableResource(
         CURRENT_COMBINED_FAF_RELEASE,
         {
             version: TableResource(
-                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.frequencies.ht"
+                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.frequencies{'.filtered' if filtered else ''}.ht"
             )
             for version in COMBINED_FAF_RELEASES
         },
@@ -375,7 +378,7 @@ def get_freq_comparison(
         CURRENT_COMBINED_FAF_RELEASE,
         {
             version: TableResource(
-                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.compare_frequencies.{method}.ht"
+                f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.compare_frequencies.{method}{'.filtered' if filtered else ''}.ht"
             )
             for version in COMBINED_FAF_RELEASES
         },

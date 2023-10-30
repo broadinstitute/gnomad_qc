@@ -138,7 +138,7 @@ def get_combined_faf_release(
         versions={
             release: TableResource(
                 path=(
-                    f"gs://gnomad{'-tmp' if test else ''}/release/{release}/ht/joint/gnomad.joint.v{release}.faf.ht"
+                    f"gs://gnomad{'-tmp' if test else ''}/release/{release}/ht/joint/gnomad.joint.v{release}.faf{'.filtered' if filtered else ''}.ht"
                 )
             )
             for release in COMBINED_FAF_RELEASES
