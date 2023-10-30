@@ -1288,7 +1288,10 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
             {"locus": hl.parse_locus("chr1:111544780"), "alleles": ["C", "T"]},
             {"locus": hl.parse_locus("chr11:119744028"), "alleles": ["G", "C"]},
             {"locus": hl.parse_locus("chr12:82828211"), "alleles": ["CTTTTTTT", "C"]},
-            {"locus": hl.parse_locus("chr16:87738638"), "alleles": ["C", "T"]},
+            {
+                "locus": hl.parse_locus("chr16:87738638"),
+                "alleles": ["TCATCCATCCACACACCAGCATCTCATC", "T"],
+            },
             {"locus": hl.parse_locus("chr22:22399516"), "alleles": ["G", "A"]},
         ]
     ).key_by("locus", "alleles")
@@ -1321,7 +1324,7 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
             },
             {
                 "locus": hl.parse_locus("chr16:73308279"),
-                "alleles": ["TCATCCATCCACACACCAGCATCTCATC", "T"],
+                "alleles": ["T", "G"],
             },
         ]
     ).key_by("locus", "alleles")
@@ -1418,8 +1421,8 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
             freq_groups5.contains(m),
             hl.struct(
                 AC=x.AC,
-                AF=x.AC / (x.AN - 4),
-                AN=x.AN - 4,
+                AF=x.AC / (x.AN + 4),
+                AN=x.AN + 4,
                 homozygote_count=x.homozygote_count,
             ),
             x,
