@@ -268,6 +268,7 @@ def release_coverage_path(
     release_version: str = CURRENT_RELEASE,
     public: bool = True,
     test: bool = False,
+    stratify: bool = True,
 ) -> str:
     """
     Fetch filepath for coverage release Table.
@@ -277,6 +278,7 @@ def release_coverage_path(
     :param public: Determines whether release coverage Table is read from public or
         private bucket. Default is public.
     :param test: Whether to use a tmp path for testing. Default is False.
+    :param stratify: Whether to stratify results by platform and subset. Default is True.
     :return: File path for desired coverage Hail Table.
     """
     if public:
@@ -297,12 +299,14 @@ def release_coverage_path(
                 data_type,
                 release_version,
             )
-            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.coverage.ht"
+            return (
+                f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.coverage{'.all' if not stratify else ''}.ht"
+            )
         else:
             return path
     else:
         return (
-            f"{_release_root(release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.coverage.ht"
+            f"{_release_root(release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.coverage{'.all' if not stratify else ''}.ht"
         )
 
 
@@ -320,12 +324,15 @@ def release_coverage_tsv_path(
     :return: Coverage TSV path.
     """
     return (
-        f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.coverage.tsv.bgz"
+        f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.coverage.all.tsv.bgz"
     )
 
 
 def release_coverage(
-    data_type: str = "exomes", public: bool = False, test: bool = False
+    data_type: str = "exomes",
+    public: bool = False,
+    test: bool = False,
+    stratify: bool = True,
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for coverage release Table.
@@ -345,6 +352,7 @@ def release_coverage(
                     release_version=release,
                     public=public,
                     test=test,
+                    stratify=stratify,
                 )
             )
             for release in COVERAGE_RELEASES[data_type]

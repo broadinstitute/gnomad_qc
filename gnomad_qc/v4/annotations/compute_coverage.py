@@ -61,7 +61,8 @@ def get_coverage_resources(
     export_coverage_tsv = PipelineStepResourceCollection(
         "--export-coverage-tsv",
         output_resources={
-            "coverage_tsv": release_coverage_tsv_path("exomes", test=test)
+            "coverage_tsv": release_coverage_tsv_path("exomes", test=test),
+            "release_ht": release_coverage(public=False, test=test, stratify=False),
         },
         pipeline_input_steps=[compute_coverage_ht],
     )
@@ -161,7 +162,7 @@ def main(args):
             coverage_ht = coverage_ht.naive_coalesce(5000)
             coverage_ht.write(res.coverage_ht.path, overwrite=overwrite)
 
-        if args.export_coverage_tsv:
+        if args.export_release_files:
             logger.info("Exporting coverage tsv...")
             res = coverage_resources.export_coverage_tsv
             res.check_resource_existence()
@@ -170,6 +171,7 @@ def main(args):
                 ht = ht.select(
                     **{k: ht.coverage_stats[0][k] for k in ht.coverage_stats[0]}
                 )
+            ht.write(res.release_ht.path, overwrite=overwrite)
             ht.export(res.coverage_tsv)
 
     finally:
@@ -218,7 +220,7 @@ if __name__ == "__main__":
         default=50,
     )
     parser.add_argument(
-        "--export-coverage-tsv", help="Exports coverage TSV file.", action="store_true"
+        "--export-release-files", help="Exports coverage TSV file.", action="store_true"
     )
 
     main(parser.parse_args())
