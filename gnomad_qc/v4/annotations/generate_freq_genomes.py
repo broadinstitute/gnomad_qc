@@ -1078,7 +1078,7 @@ def finalize_v4_genomes_callstats(
 
     # Compute filtering allele frequency (faf), grpmax, and gen_anc_faf_max.
     faf, faf_meta = faf_expr(ht.freq, freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
-    grpmax = pop_max_expr(ht.freq, ht.freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
+    grpmax = pop_max_expr(ht.freq, freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
     grpmax = grpmax.annotate(
         gen_anc=grpmax.pop,
         faf95=faf[
