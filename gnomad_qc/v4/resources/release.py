@@ -165,9 +165,9 @@ def release_ht_path(
         if file_exists(public_release(data_type).versions[release_version].path):
             return public_release(data_type).versions[release_version].path
         else:
-            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
+            return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.filtered_combined_faf.ht"
     else:
-        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
+        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.filtered_combined_faf.ht"
 
 
 def release_sites(
@@ -353,7 +353,7 @@ def included_datasets_json_path(
     :return: File path for release versions included datasets JSON
     """
     return (
-        f"{_release_root(release_version, test=test, data_type=data_type, extension='json')}/gnomad.exomes.v{release_version}.included_datasets.json"
+        f"{_release_root(release_version, test=test, data_type=data_type, extension='json')}/gnomad.exomes.v{release_version}.included_datasets.filtered_combined_faf.json"
     )
 
 
@@ -373,7 +373,7 @@ def validated_release_ht(
         {
             version: TableResource(
                 path=(
-                    f"{_release_root(version, data_type=data_type, test=test)}/gnomad.{data_type}.v{version}.validated_release.ht"
+                    f"{_release_root(version, data_type=data_type, test=test)}/gnomad.{data_type}.v{version}.validated_release.filtered_combined_faf.ht"
                 )
             )
             for version in RELEASES
