@@ -1396,7 +1396,7 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     # Code added to the HGDP + 1KG subset to remove alleles not in the subset caused
     # the duplication of a single site that changed position during the minrep. This
     # results in 2 of the Han samples being given NA instead of 0/0 as their GT. To fix
-    # this we are subtracting 4 (2 samples * 2 alleles) from AN.
+    # this we are adding 4 (2 samples * 2 alleles) to AN.
     freq_groups5 = hl.set(
         [
             {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan"},
