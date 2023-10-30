@@ -1035,10 +1035,9 @@ def generate_v4_genomes_callstats(
     ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
 
     # Change the 'pop' keys in the freq_meta array to 'gen_anc'.
-    freq_meta, faf_meta = [
-        hl.literal([{("gen_anc" if k == "pop" else k): m[k] for k in m} for m in meta])
-        for meta in [freq_meta]
-    ]
+    freq_meta = hl.literal(
+        [{("gen_anc" if k == "pop" else k): m[k] for k in m} for m in freq_meta]
+    )
     ht = ht.annotate_globals(freq_meta=freq_meta)
 
     return ht
@@ -1069,8 +1068,16 @@ def finalize_v4_genomes_callstats(
     logger.info("Drop downsampling call stats for v4.0 genomes release...")
     ht = filter_freq_arrays(ht, ["downsampling"], keep=False)
 
+    # Change the 'gen_anc' keys in the freq_meta array to 'pop' to compute faf.
+    freq_meta = hl.literal(
+        [
+            {("pop" if k == "gen_anc" else k): m[k] for k in m}
+            for m in hl.eval(ht.freq_meta)
+        ]
+    )
+
     # Compute filtering allele frequency (faf), grpmax, and gen_anc_faf_max.
-    faf, faf_meta = faf_expr(ht.freq, ht.freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
+    faf, faf_meta = faf_expr(ht.freq, freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
     grpmax = pop_max_expr(ht.freq, ht.freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
     grpmax = grpmax.annotate(
         gen_anc=grpmax.pop,
@@ -1094,7 +1101,15 @@ def finalize_v4_genomes_callstats(
         "'freq_index_dict' and 'faf_index_dict'..."
     )
     faf_index_dict = make_freq_index_dict_from_meta(hl.literal(faf_meta))
+
+    # Change the 'pop' keys back to 'gen_anc' in the freq_meta and faf_meta arrays.
+    freq_meta, faf_meta = [
+        hl.literal([{("gen_anc" if k == "pop" else k): m[k] for k in m} for m in meta])
+        for meta in [hl.eval(freq_meta), faf_meta]
+    ]
     ht = ht.annotate_globals(
+        freq_meta=freq_meta,
+        freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
         faf_meta=faf_meta,
         faf_index_dict=faf_index_dict,
     )
@@ -1503,6 +1518,7 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
             .default(freq_ht.freq)
         )
     )
+    freq_ht = freq_ht.checkpoint(new_temp_file("patched", "ht"))
 
     return freq_ht
 
