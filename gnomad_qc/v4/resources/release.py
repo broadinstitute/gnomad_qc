@@ -31,9 +31,7 @@ group, e.g. “adj”, “raw”
 sex_group, e.g. “XX_adj”
 subset_group, e.g. “non_ukb_raw”
 gen-anc_group, e.g. “afr_adj”
-gen-anc_sex_group, e.g. “ami_XX_adj”
-downsampling_group_gen-anc, e.g. “200_eas_adj”,
-downsampling_group_gen-anc, e.g. “non_ukb_218035_eas_adj”
+gen-anc_sex_group, e.g. “ami_XX_adj”{}
 subset_gen-anc_group, e.g. “non_ukb_sas_adj”
 subset_gen-anc_group, e.g. “non_ukb_XY_adj”
 subset_gen-anc_sex_group, e.g. “non_ukb_mid_XX_adj”,
@@ -379,3 +377,20 @@ def validated_release_ht(
             for version in RELEASES
         },
     )
+
+
+def get_freq_array_readme(data_type: str = "exomes") -> str:
+    """
+    Fetch README for freq array for the specified data_type.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :return: README for freq array.
+    """
+    if data_type == "exomes":
+        return FREQUENCY_README.format("""
+
+            downsampling_group_gen-anc, e.g. “200_eas_adj”,
+            downsampling_group_gen-anc, e.g. “non_ukb_218035_eas_adj”
+            """)
+    else:
+        return FREQUENCY_README.format("")

@@ -45,8 +45,8 @@ from gnomad_qc.v4.resources.annotations import (
 from gnomad_qc.v4.resources.basics import calling_intervals, qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v4.resources.release import (
-    FREQUENCY_README,
     get_combined_faf_release,
+    get_freq_array_readme,
     included_datasets_json_path,
     release_sites,
 )
@@ -849,7 +849,7 @@ def main(args):
         ),
         date=datetime.now().isoformat(),
         version=args.version,
-        frequency_README=FREQUENCY_README,
+        frequency_README=get_freq_array_readme(data_type=data_type),
     )
 
     if data_type == "exomes":
