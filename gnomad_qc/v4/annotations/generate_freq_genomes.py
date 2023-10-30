@@ -1279,8 +1279,6 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     # correctly in the fix for high AB hets.
     freq_groups1 = hl.set(
         [
-            {"group": "raw", "subset": "hgdp"},
-            {"group": "adj", "subset": "hgdp"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
             {"group": "adj", "subset": "hgdp", "sex": "XX"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "han", "sex": "XX"},
@@ -1312,8 +1310,6 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
 
     freq_groups2 = hl.set(
         [
-            {"group": "raw", "subset": "hgdp"},
-            {"group": "adj", "subset": "hgdp"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
             {"group": "adj", "subset": "hgdp", "sex": "XY"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "han", "sex": "XY"},
@@ -1348,8 +1344,6 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
 
     freq_groups3 = hl.set(
         [
-            {"group": "raw", "subset": "hgdp"},
-            {"group": "adj", "subset": "hgdp"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan"},
             {"group": "adj", "subset": "hgdp", "sex": "XY"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan", "sex": "XY"},
@@ -1375,8 +1369,6 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
 
     freq_groups4 = hl.set(
         [
-            {"group": "raw", "subset": "hgdp"},
-            {"group": "adj", "subset": "hgdp"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan"},
             {"group": "adj", "subset": "hgdp", "sex": "XX"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan", "sex": "XX"},
