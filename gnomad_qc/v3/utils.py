@@ -39,6 +39,6 @@ def hom_alt_depletion_fix(
         # Skip adjusting genotypes if sample originally had a het nonref genotype.
         & ~het_non_ref_expr & (ab_expr > ab_cutoff),
         hl.call(1, 1),
-        gt_expr.GT,
+        gt_expr,
         missing_false=False if use_v3_1_correction else True,
     )
