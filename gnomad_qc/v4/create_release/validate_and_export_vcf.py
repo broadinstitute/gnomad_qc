@@ -655,6 +655,7 @@ def populate_info_dict(
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
     :param vrs_fields_dict: Dictionary with VRS annotations.
     :param label_delimiter: String to use as delimiter when making group label combinations.
+    :param data_type: Data type to populate info dict for. One of "exomes" or "genomes". Default is "exomes".
     :return: Updated INFO dictionary for VCF export.
     """
     # Get existing info fields from predefined info_dict, e.g. `FS`,
@@ -731,7 +732,7 @@ def prepare_vcf_header_dict(
     :param pops: List of sample global genetic ancestry group names for gnomAD data type.
     :param format_dict: Dictionary describing MatrixTable entries. Used in header for VCF export.
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter used for variants.
-    :param data_type: Data type to prepare VCF header for. One of "exomes" or "genomes". Default is "exomes". 
+    :param data_type: Data type to prepare VCF header for. One of "exomes" or "genomes". Default is "exomes".
     :return: Prepared VCF header dictionary.
     """
     logger.info("Making FILTER dict for VCF...")
