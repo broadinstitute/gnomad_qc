@@ -1265,7 +1265,7 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     this function applies the needed patches to these variants.
 
     .. note::
-        This is a temporary fix until we can recompute the call stats for the all the
+        This is a temporary fix until we can recompute the call stats for all the
         samples.
 
     :param freq_ht: Table with the call stats for the v4.0 genomes release.
@@ -1474,8 +1474,9 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
 
     # Frequency groups that need a patch for variant chr13-20656122-T-TAAAAAAAAGAA.
     # This variant has an AC raw of 1 and AC adj of 2 because one of the TGP samples
-    # being removed has a raw GT 0/1, but adj GT of None because it fails adj. In v3.1
-    # it was None for both and therefore shouldn't be subtracted from raw either.
+    # being removed has a raw GT of 0/1 but adj GT of None because it fails
+    # adj. In v3.1 it was None for both and therefore shouldn't be subtracted
+    # from raw either.
     freq_groups7 = hl.set([{"group": "raw", "subset": "tgp"}, {"group": "raw"}])
     patch7_ht = hl.Table.parallelize(
         [{"locus": hl.parse_locus("chr13:20656122"), "alleles": ["T", "TAAAAAAAAGAA"]}]
