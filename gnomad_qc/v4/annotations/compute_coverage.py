@@ -58,10 +58,11 @@ def get_coverage_resources(
         input_resources=coverage_input_resources,
         output_resources={"coverage_ht": release_coverage(public=False, test=test)},
     )
-    export_coverage_tsv = PipelineStepResourceCollection(
+    export_coverage_files = PipelineStepResourceCollection(
         "--export-coverage-tsv",
         output_resources={
-            "coverage_tsv": release_coverage_tsv_path("exomes", test=test)
+            "coverage_tsv": release_coverage_tsv_path("exomes", test=test),
+            "release_ht": release_coverage(public=False, test=test, stratify=False),
         },
         pipeline_input_steps=[compute_coverage_ht],
     )
@@ -70,7 +71,7 @@ def get_coverage_resources(
     coverage_pipeline.add_steps(
         {
             "compute_coverage_ht": compute_coverage_ht,
-            "export_coverage_tsv": export_coverage_tsv,
+            "export_coverage_files": export_coverage_files,
         }
     )
 
@@ -161,15 +162,16 @@ def main(args):
             coverage_ht = coverage_ht.naive_coalesce(5000)
             coverage_ht.write(res.coverage_ht.path, overwrite=overwrite)
 
-        if args.export_coverage_tsv:
+        if args.export_release_files:
             logger.info("Exporting coverage tsv...")
-            res = coverage_resources.export_coverage_tsv
+            res = coverage_resources.export_coverage_files
             res.check_resource_existence()
             ht = res.coverage_ht.ht()
             if "coverage_stats" in ht.row:
                 ht = ht.select(
                     **{k: ht.coverage_stats[0][k] for k in ht.coverage_stats[0]}
                 )
+            ht = ht.checkpoint(res.release_ht.path, overwrite=overwrite)
             ht.export(res.coverage_tsv)
 
     finally:
@@ -218,7 +220,7 @@ if __name__ == "__main__":
         default=50,
     )
     parser.add_argument(
-        "--export-coverage-tsv", help="Exports coverage TSV file.", action="store_true"
+        "--export-release-files", help="Exports coverage TSV file.", action="store_true"
     )
 
     main(parser.parse_args())
