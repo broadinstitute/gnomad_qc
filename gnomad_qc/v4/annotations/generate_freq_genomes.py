@@ -1396,10 +1396,7 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     # this we are subtracting 4 (2 samples * 2 alleles) from AN.
     freq_groups5 = hl.set(
         [
-            {"group": "raw", "subset": "hgdp"},
-            {"group": "adj", "subset": "hgdp"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan"},
-            {"group": "adj", "subset": "hgdp", "sex": "XY"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan", "sex": "XY"},
         ]
     )
@@ -1439,10 +1436,7 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     # to missing. Set Han sample GT to missing to match v3.1.
     freq_groups6 = hl.set(
         [
-            {"group": "raw", "subset": "hgdp"},
-            {"group": "adj", "subset": "hgdp"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
-            {"group": "adj", "subset": "hgdp", "sex": "XX"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "han", "sex": "XX"},
         ]
     )
