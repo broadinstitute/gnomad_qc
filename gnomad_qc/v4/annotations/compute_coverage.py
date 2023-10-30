@@ -171,6 +171,7 @@ def main(args):
                 ht = ht.select(
                     **{k: ht.coverage_stats[0][k] for k in ht.coverage_stats[0]}
                 )
+            ht = ht.drop("coverage_stats_meta", "coverage_stats_meta_sample_count")
             ht = ht.checkpoint(res.release_ht.path, overwrite=overwrite)
             ht.export(res.coverage_tsv)
 
