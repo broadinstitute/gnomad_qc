@@ -731,7 +731,7 @@ def prepare_vcf_header_dict(
     :param pops: List of sample global genetic ancestry group names for gnomAD data type.
     :param format_dict: Dictionary describing MatrixTable entries. Used in header for VCF export.
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter used for variants.
-    :param data_type: Data type to prepare VCF header for. One of "exomes" or "genomes".
+    :param data_type: Data type to prepare VCF header for. One of "exomes" or "genomes". Default is "exomes". 
     :return: Prepared VCF header dictionary.
     """
     logger.info("Making FILTER dict for VCF...")
