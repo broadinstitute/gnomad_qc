@@ -231,7 +231,7 @@ def populate_subset_info_dict(
 
 def populate_info_dict(
     bin_edges: Dict[str, str],
-    age_hist_data: str = None,
+    age_hist_distribution: str = None,
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS,
     subset_pops: Dict[str, str] = POPS,
@@ -255,7 +255,7 @@ def populate_info_dict(
         - INFO fields for variant histograms (hist_bin_freq for each histogram and hist_n_larger for DP histograms)
 
     :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
-    :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
+    :param age_hist_distribution: Pipe-delimited string of age histograms distribution.
     :param info_dict: INFO dict to be populated.
     :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
     :param subset_pops: Dict of sample global population names to use for all subsets in `subset_list` unless the subset
@@ -298,8 +298,8 @@ def populate_info_dict(
             )
         )
 
-    if age_hist_data:
-        age_hist_data = "|".join(str(x) for x in age_hist_data)
+    if age_hist_distribution:
+        age_hist_distribution = "|".join(str(x) for x in age_hist_distribution)
 
     vcf_info_dict.update(
         make_info_dict(
@@ -307,7 +307,7 @@ def populate_info_dict(
             label_delimiter=label_delimiter,
             bin_edges=bin_edges,
             popmax=True,
-            age_hist_data=age_hist_data,
+            age_hist_distribution=age_hist_distribution,
         )
     )
 
@@ -683,7 +683,7 @@ def prepare_vcf_ht(
 def prepare_vcf_header_dict(
     t: Union[hl.Table, hl.MatrixTable],
     bin_edges: Dict[str, str],
-    age_hist_data: str,
+    age_hist_distribution: str,
     subset_list: List[str],
     pops: Dict[str, str],
     filtering_model_field: str = "filtering_model",
@@ -695,7 +695,7 @@ def prepare_vcf_header_dict(
 
     :param t: Input MatrixTable/Table
     :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
-    :param age_hist_data: Pipe-delimited string of age histograms, from `get_age_distributions`.
+    :param age_hist_distribution: Pipe-delimited string of age histogram distribution.
     :param subset_list: List of sample subsets in dataset.
     :param pops: List of sample global population names for gnomAD genomes.
     :param filtering_model_field: String indicating the filtering model global annotation.
@@ -714,7 +714,7 @@ def prepare_vcf_header_dict(
     logger.info("Making INFO dict for VCF...")
     vcf_info_dict = populate_info_dict(
         bin_edges=bin_edges,
-        age_hist_data=age_hist_data,
+        age_hist_distribution=age_hist_distribution,
         subset_list=subset_list,
         subset_pops=pops,
     )
@@ -817,7 +817,7 @@ def build_parameter_dict(
             "vcf_info_reorder": HGDP_TGP_VCF_INFO_REORDER,
             "ht": hgdp_tgp_subset(dense=True).mt().rows(),
             "freq_entries_to_remove": set(),
-            "age_hist_data": None,
+            "age_hist_distribution": None,
             "filtering_model_field": "variant_filtering_model",
         }
 
@@ -842,7 +842,9 @@ def build_parameter_dict(
         }
         freq_entries_to_remove.update(set(COHORTS_WITH_POP_STORED_AS_SUBPOP))
         parameter_dict["freq_entries_to_remove"] = freq_entries_to_remove
-        parameter_dict["age_hist_data"] = hl.eval(parameter_dict["ht"].age_distribution)
+        parameter_dict["age_hist_distribution"] = hl.eval(
+            parameter_dict["ht"].age_distribution
+        )
         parameter_dict["filtering_model_field"] = "filtering_model"
 
     return parameter_dict
@@ -902,7 +904,7 @@ def main(args):  # noqa: D103
             header_dict = prepare_vcf_header_dict(
                 prepared_vcf_ht,
                 bin_edges=bin_edges,
-                age_hist_data=parameter_dict["age_hist_data"],
+                age_hist_distribution=parameter_dict["age_hist_distribution"],
                 subset_list=parameter_dict["subsets"],
                 pops=parameter_dict["pops"],
                 filtering_model_field=parameter_dict["filtering_model_field"],

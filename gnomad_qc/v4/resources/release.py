@@ -196,42 +196,57 @@ def release_sites(
 
 def release_vcf_path(
     release_version: Optional[str] = None,
+    test: bool = False,
+    data_type: str = "exomes",
     contig: Optional[str] = None,
 ) -> str:
     """
     Fetch bucket for release (sites-only) VCFs.
 
     :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param data_type: Data type of release resource to return. Should be one of 'exomes' or 'genomes'. Default is 'exomes'.
     :param contig: String containing the name of the desired reference contig. Defaults to the full (all contigs) sites VCF path
-        sites VCF path
     :return: Filepath for the desired VCF
     """
     if release_version is None:
         release_version = CURRENT_RELEASE
 
     if contig:
-        return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}.sites.{contig}.vcf.bgz"
+        return (
+            f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}.sites.{contig}.vcf.bgz"
+        )
     else:
         # If contig is None, return path to sharded vcf bucket.
         # NOTE: need to add .bgz or else hail will not bgzip shards.
-        return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}.sites.vcf.bgz"
+        return (
+            f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}.sites.vcf.bgz"
+        )
 
 
-def release_header_path(release_version: Optional[str] = None) -> str:
+def release_header_path(
+    release_version: Optional[str] = None, data_type: str = "exomes", test: bool = False
+) -> str:
     """
     Fetch path to pickle file containing VCF header dictionary.
 
     :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used
+    :param data_type: Data type of release resource to return. Should be one of 'exomes' or 'genomes'. Default is 'exomes'.
+    :param test: Whether to use a tmp path for testing. Default is False.
     :return: Filepath for header dictionary pickle
     """
     if release_version is None:
         release_version = CURRENT_RELEASE
 
-    return f"gs://gnomad/release/{release_version}/vcf/exomes/gnomad.exomes.v{release_version}_header_dict.pickle"
+    return (
+        f"{_release_root(version=release_version, test=test, data_type=data_type, extension='vcf')}/gnomad.{data_type}.v{release_version}_header_dict.pickle"
+    )
 
 
 def append_to_vcf_header_path(
-    subset: str, release_version: str = CURRENT_RELEASE
+    subset: str = None,
+    release_version: str = CURRENT_RELEASE,
+    data_type: str = "exomes",
 ) -> str:
     """
     Fetch path to TSV file containing extra fields to append to VCF header.
@@ -240,10 +255,11 @@ def append_to_vcf_header_path(
 
     :param subset: One of the possible release subsets
     :param release_version: Release version. Defaults to CURRENT RELEASE
+    :param data_type: Data type of release resource to return. Should be one of 'exomes' or 'genomes'. Default is 'exomes'.
     :return: Filepath for extra fields TSV file
     """
     return (
-        f"gs://gnomad/release/{release_version}/vcf/exomes/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
+        f"gs://gnomad/release/{release_version}/vcf/{data_type}/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"
     )
 
 

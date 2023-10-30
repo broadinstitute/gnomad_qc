@@ -2,15 +2,17 @@
 
 import argparse
 import logging
+import pickle
 from copy import deepcopy
 from pprint import pprint
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
 
 import hail as hl
 from gnomad.assessment.validity_checks import (
     check_global_and_row_annot_lengths,
     pprint_global_anns,
     validate_release_t,
+    vcf_field_check,
 )
 from gnomad.resources.grch38.gnomad import HGDP_POPS, POPS, SUBSETS, TGP_POPS
 from gnomad.sample_qc.ancestry import POP_NAMES
@@ -20,10 +22,23 @@ from gnomad.utils.vcf import (
     AS_FIELDS,
     AS_VQSR_FIELDS,
     FAF_POPS,
+    FORMAT_DICT,
     HISTS,
+    IN_SILICO_ANNOTATIONS_INFO_DICT,
+    INFO_DICT,
     REGION_FLAG_FIELDS,
+    SEXES,
     SITE_FIELDS,
     VRS_FIELDS_DICT,
+    add_as_info_dict,
+    adjust_vcf_incompatible_types,
+    build_vcf_export_reference,
+    create_label_groups,
+    make_hist_bin_edges_expr,
+    make_hist_dict,
+    make_info_dict,
+    make_vcf_filter_dict,
+    rekey_new_reference,
 )
 from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
 
@@ -31,8 +46,14 @@ from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
 )
-from gnomad_qc.v4.resources.basics import get_logging_path
-from gnomad_qc.v4.resources.release import release_sites, validated_release_ht
+from gnomad_qc.v4.resources.basics import get_logging_path, qc_temp_prefix
+from gnomad_qc.v4.resources.release import (
+    append_to_vcf_header_path,
+    release_header_path,
+    release_sites,
+    release_vcf_path,
+    validated_release_ht,
+)
 
 # Add new site fields
 NEW_SITE_FIELDS = [
@@ -53,6 +74,7 @@ AS_VQSR_FIELDSS = deepcopy(AS_VQSR_FIELDS)
 AS_VQSR_FIELDS.extend(NEW_AS_VQSR_FIELDS)
 
 # Update inbreeding coeff
+MISSING_AS_FIELDS = ["InbreedingCoeff"]
 AS_FIELDS = remove_fields_from_constant(AS_FIELDS, ["InbreedingCoeff"])
 AS_FIELDS.append("inbreeding_coeff")
 
@@ -61,7 +83,6 @@ REGION_FLAG_FIELDS = deepcopy(REGION_FLAG_FIELDS)
 REGION_FLAG_FIELDS = remove_fields_from_constant(
     REGION_FLAG_FIELDS, ["decoy", "nonpar"]
 )
-REGION_FLAG_FIELDS.append("non_par")
 REGION_FLAG_FIELDS = {
     "exomes": REGION_FLAG_FIELDS + [
         "fail_interval_qc",
@@ -130,6 +151,18 @@ LEN_COMP_GLOBAL_ROWS = {
     "joint_faf": ["joint_faf_meta", "joint_faf_index_dict"],
 }
 
+
+# VCF INFO fields to reorder.
+VCF_INFO_REORDER = [
+    "AC",
+    "AN",
+    "AF",
+    "grpmax",
+    "fafmax_faf95_max",
+    "fafmax_faf95_max_gen_anc",
+]  # TODO:Confirm this is ok
+
+
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
@@ -142,6 +175,7 @@ def get_export_resources(
     overwrite: bool = False,
     data_type: str = "exomes",
     test: Optional[bool] = False,
+    contig: Optional[str] = None,
 ) -> PipelineResourceCollection:
     """
     Get export resources.
@@ -150,6 +184,7 @@ def get_export_resources(
     :param data_type: Data type to get resources for. One of "exomes" or "genomes".
         Default is "exomes".
     :param test: Whether to use test resources.
+    :param contig: Contig to get resources for. Default is None.
     :return: Export resources.
     """
     export_pipeline = PipelineResourceCollection(
@@ -167,9 +202,35 @@ def get_export_resources(
             "validated_ht": validated_release_ht(test=test, data_type=data_type)
         },
     )
+    prepare_vcf_header = PipelineStepResourceCollection(
+        "--prepare-vcf-header",
+        pipeline_input_steps=[validate_release_ht],
+        add_input_resources={
+            "create_release_sites_ht.py": {
+                "release_ht": release_sites(data_type=data_type)
+            }
+        },
+        output_resources={
+            "vcf_header_path": release_header_path(test=test, data_type=data_type)
+        },
+    )
+    export_vcf = PipelineStepResourceCollection(
+        "--export-vcf",
+        pipeline_input_steps=[validate_release_ht, prepare_vcf_header],
+        output_resources={
+            "release_vcf": release_vcf_path(
+                test=test,
+                data_type=data_type,
+                contig=contig,
+            )
+        },
+    )
+
     export_pipeline.add_steps(
         {
             "validate_release_ht": validate_release_ht,
+            "prepare_vcf_header": prepare_vcf_header,
+            "export_vcf": export_vcf,
         }
     )
     return export_pipeline
@@ -219,7 +280,7 @@ def unfurl_nested_annotations(
     expr_dict = {}
 
     # Unfurl freq index dict
-    # Cycles through each key and index (e.g., k=adj_afr, i=31)
+    # Cycles through each key and index (e.g., k=afr_XX, i=31)
     logger.info("Unfurling freq data...")
     freq_idx = hl.eval(ht.freq_index_dict)
     expr_dict.update(
@@ -234,7 +295,7 @@ def unfurl_nested_annotations(
     joint_freq_idx = hl.eval(ht.joint_freq_index_dict)
     expr_dict.update(
         {
-            f"joint_{f if f != 'homozygote_count' else 'nhomalt'}_{k}": ht.joint_freq[
+            f"{f if f != 'homozygote_count' else 'nhomalt'}_joint_{k}": ht.joint_freq[
                 i
             ][f]
             for k, i in joint_freq_idx.items()
@@ -242,17 +303,22 @@ def unfurl_nested_annotations(
         }
     )
 
+    # This creates fields like grpmax, AC_grpmax_non_ukb...
     logger.info("Adding grpmax data...")
     grpmax_idx = ht.grpmax
     if data_type == "exomes":
         grpmax_dict = {}
         for s in grpmax_idx.keys():
-            grpmax_dict.update({f"{s}_grpmax": grpmax_idx[s].gen_anc})
+            grpmax_dict.update(
+                {f"grpmax{'_'+s if s != 'gnomad' else ''}": grpmax_idx[s].gen_anc}
+            )
             grpmax_dict.update(
                 {
-                    f"{s}_{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": (
-                        grpmax_idx[s][f]
-                    )
+                    f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax{'_'+s if s != 'gnomad' else ''}": grpmax_idx[
+                        s
+                    ][
+                        f
+                    ]
                     for f in grpmax_idx[s].keys()
                     if f != "gen_anc"
                 }
@@ -267,12 +333,13 @@ def unfurl_nested_annotations(
         )
     expr_dict.update(grpmax_dict)
 
+    # Create the fields
     logger.info("Adding joint grpmax data...")
     joint_grpmax_idx = ht.joint_grpmax
-    joint_grpmax_dict = {"joint_grpmax": joint_grpmax_idx.gen_anc}
+    joint_grpmax_dict = {"grpmax_joint": joint_grpmax_idx.gen_anc}
     joint_grpmax_dict.update(
         {
-            f"joint_{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": (
+            f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax_joint": (
                 joint_grpmax_idx[f]
             )
             for f in [f for f in joint_grpmax_idx._fields if f != "gen_anc"]
@@ -290,7 +357,7 @@ def unfurl_nested_annotations(
     fafmax_idx = ht.fafmax
     if data_type == "exomes":
         fafmax_dict = {
-            f"fafmax_{s}_{f}": fafmax_idx[s][f]
+            f"fafmax_{f}{'_'+s if s != 'gnomad' else ''}": fafmax_idx[s][f]
             for s in fafmax_idx.keys()
             for f in fafmax_idx[s].keys()
         }
@@ -302,7 +369,7 @@ def unfurl_nested_annotations(
     joint_faf_idx = hl.eval(ht.joint_faf_index_dict)
     expr_dict.update(
         {
-            f"joint_{f}_{k}": ht.joint_faf[i][f]
+            f"{f}_joint_{k}": ht.joint_faf[i][f]
             for f in ht.joint_faf[0].keys()
             for k, i in joint_faf_idx.items()
         }
@@ -311,7 +378,10 @@ def unfurl_nested_annotations(
     logger.info("Unfurling joint fafmax data...")
     joint_fafmax_idx = ht.joint_fafmax
     joint_fafmax_dict = {
-        f"joint_fafmax_{f}": joint_fafmax_idx[f] for f in joint_fafmax_idx.keys()
+        f"fafmax_{f if f != 'joint_fafmax_data_type' else 'data_type'}_joint": (
+            joint_fafmax_idx[f]
+        )
+        for f in joint_fafmax_idx.keys()
     }
     expr_dict.update(joint_fafmax_dict)
 
@@ -432,9 +502,7 @@ def prepare_ht_for_validation(
         release_ht_info=ht.info,
         info=info_struct,
         rsid=hl.str(";").join(ht.rsid),
-        vep=vep_struct_to_csq(
-            ht.vep, has_polyphen_sift=False
-        ),  # TODO: Remove polyhen and sift from vep csq header in vcf
+        vep=vep_struct_to_csq(ht.vep, has_polyphen_sift=False),
     )
     # Add variant annotations to INFO field
     # This adds the following:
@@ -470,6 +538,322 @@ def prepare_ht_for_validation(
     return ht
 
 
+def populate_subset_info_dict(
+    subset: str,
+    description_text: str,
+    pops: Dict[str, str] = POPS,
+    faf_pops: Dict[str, str] = FAF_POPS,
+    sexes: List[str] = SEXES,
+    label_delimiter: str = "_",
+) -> Dict[str, Dict[str, str]]:
+    """
+    Call `make_info_dict` to populate INFO dictionary for the requested `subset`.
+
+    Creates:
+        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic ancestry group, sex both for adj and raw data
+        - INFO fields for filtering allele frequency (faf) annotations
+
+    :param subset: Sample subset in dataset. "" is used as a placeholder for the full dataset.
+    :param description_text: Text describing the sample subset that should be added to the INFO description.
+    :param pops: Dict of sample global genetic ancestry names for the gnomAD data type. Default is POPS.
+    :param faf_pops: Dict with faf genetic ancestry names (keys) and descriptions (values).  Default is FAF_POPS.
+    :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
+    :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
+    :return: Dictionary containing Subset specific INFO header fields.
+    """
+    vcf_info_dict = {}
+    # Add FAF fields to dict.
+    faf_label_groups = create_label_groups(
+        pops=faf_pops, sexes=sexes, all_groups=["adj"]
+    )
+    for label_group in faf_label_groups:
+        vcf_info_dict.update(
+            make_info_dict(
+                prefix=subset,
+                prefix_before_metric=False,
+                pop_names=faf_pops,
+                label_groups=label_group,
+                label_delimiter=label_delimiter,
+                faf=True,
+                description_text=description_text,
+            )
+        )
+    # Add AC, AN, AF, nhomalt fields to dict.
+    label_groups = create_label_groups(pops=pops, sexes=sexes)
+    for label_group in label_groups:
+        vcf_info_dict.update(
+            make_info_dict(
+                prefix=subset,
+                prefix_before_metric=False,
+                pop_names=pops,
+                label_groups=label_group,
+                label_delimiter=label_delimiter,
+                description_text=description_text,
+                callstats=True,
+            )
+        )
+
+    # Add grpmax.
+    vcf_info_dict.update(
+        make_info_dict(
+            suffix=subset,
+            label_delimiter=label_delimiter,
+            pop_names=pops,
+            grpmax=True,
+            description_text=description_text,
+        )
+    )
+
+    # Add fafmax.
+    vcf_info_dict.update(
+        make_info_dict(
+            suffix=subset,
+            label_delimiter=label_delimiter,
+            pop_names=pops,
+            fafmax=True,
+            description_text=description_text,
+        )
+    )
+
+    return vcf_info_dict
+
+
+def populate_info_dict(
+    info_fields: List[str],
+    bin_edges: Dict[str, str],
+    age_hist_distribution: str = None,
+    info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
+    subset_list: List[str] = SUBSETS,
+    pops: Dict[str, str] = POPS,
+    faf_pops: Dict[str, str] = FAF_POPS,
+    sexes: List[str] = SEXES,
+    in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
+    vrs_fields_dict: Dict[str, Dict[str, str]] = VRS_FIELDS_DICT,
+    label_delimiter: str = "_",
+) -> Dict[str, Dict[str, str]]:
+    """
+    Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary.
+
+    Used during VCF export.
+
+    Creates:
+        - INFO fields for age histograms (bin freq, n_smaller, and n_larger for heterozygous and homozygous variant carriers)
+        - INFO fields for grpmax AC, AN, AF, nhomalt, and grpmax genetic ancestry group
+        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic ancestry group, sex both for adj and raw data
+        - INFO fields for filtering allele frequency (faf) annotations
+        - INFO fields for variant histograms (hist_bin_freq for each histogram and hist_n_larger for DP histograms)
+
+    :param info_fields: List of info fields to add to the info dict. Default is None.
+    :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
+    :param age_hist_distribution: Pipe-delimited string of overall age histogram bin frequency.
+    :param info_dict: INFO dict to be populated.
+    :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
+    :param subset_pops: Dict of sample global genetic ancestry group names to use for all subsets in `subset_list` unless the subset
+        is 'gnomad', in that case `gnomad_pops` is used. Default is POPS.
+    :param gnomad_pops: Dict of sample global genetic ancestry group names for gnomAD data type. Default is POPS.
+    :param faf_pops: Dict with faf genentic ancestry group names (keys) and descriptions (values).  Default is FAF_POPS.
+    :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
+    :param in_silico_dict: Dictionary of in silico predictor score descriptions.
+    :param vrs_fields_dict: Dictionary with VRS annotations.
+    :param label_delimiter: String to use as delimiter when making group label combinations.
+    :return: Updated INFO dictionary for VCF export.
+    """
+    # Get existing info fields from predefined info_dict, e.g. `FS`,
+    # `non_par`, `negative_train_site`...
+    vcf_info_dict = info_dict.copy()
+    vcf_info_dict = {f: vcf_info_dict[f] for f in info_fields if f in vcf_info_dict}
+
+    # Add allele-specific fields to info dict, including AS_VQSR_FIELDS
+    vcf_info_dict.update(
+        add_as_info_dict(info_dict=info_dict, as_fields=AS_FIELDS + AS_VQSR_FIELDS)
+    )
+
+    for subset in subset_list:
+        subset_pops = deepcopy(pops)
+        if subset == "joint":
+            subset_pops.update({"ami": "Amish"})
+        description_text = "" if subset == "" else f" in {subset} subset"
+
+        vcf_info_dict.update(
+            populate_subset_info_dict(
+                subset=subset,
+                description_text=description_text,
+                pops=subset_pops,
+                faf_pops=faf_pops,
+                sexes=sexes,
+                label_delimiter=label_delimiter,
+            )
+        )
+
+    if age_hist_distribution:
+        age_hist_distribution = "|".join(str(x) for x in age_hist_distribution)
+
+    # Add age histogram data to info dict.
+    vcf_info_dict.update(
+        make_info_dict(
+            label_delimiter=label_delimiter,
+            bin_edges=bin_edges,
+            age_hist_distribution=age_hist_distribution,
+        )
+    )
+
+    # Add variant quality histograms to info dict.
+    vcf_info_dict.update(
+        make_hist_dict(bin_edges, adj=True, drop_n_smaller_larger=True)
+    )
+
+    # Add in silico prediction annotations to info_dict.
+    vcf_info_dict.update(in_silico_dict)
+
+    # Add VRS annotations to info_dict.
+    vcf_info_dict.update(vrs_fields_dict)
+
+    return vcf_info_dict
+
+
+def prepare_vcf_header_dict(
+    ht: hl.Table,
+    validated_ht: hl.Table,
+    bin_edges: Dict[str, str],
+    age_hist_distribution: str,
+    subset_list: List[str],
+    pops: Dict[str, str],
+    format_dict: Dict[str, Dict[str, str]] = FORMAT_DICT,
+) -> Dict[str, Dict[str, str]]:
+    """
+    Prepare VCF header dictionary.
+
+    :param ht: Input Table
+    :param validated_ht: Validated HT with unfurled info fields.
+    :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
+    :param age_hist_distribution: Pipe-delimited string of overal age histogram bin frequency.
+    :param subset_list: List of sample subsets in dataset.
+    :param pops: List of sample global genetic ancestry group names for gnomAD data type.
+    :param format_dict: Dictionary describing MatrixTable entries. Used in header for VCF export.
+    :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter used for variants.
+    :return: Prepared VCF header dictionary.
+    """
+    logger.info("Making FILTER dict for VCF...")
+    filter_dict = make_vcf_filter_dict(
+        hl.eval(ht.filtering_model.snv_cutoff.min_score),
+        hl.eval(ht.filtering_model.indel_cutoff.min_score),
+        inbreeding_cutoff=hl.eval(ht.inbreeding_coeff_cutoff),
+        variant_qc_filter=hl.eval(ht.filtering_model.filter_name),
+    )
+
+    # subset = "" represents full dataset in VCF header construction, the
+    # logic in gnomad_methods is built around this.
+    subset_list.extend(["", "joint"])
+    logger.info("Making INFO dict for VCF...")
+    vcf_info_dict = populate_info_dict(
+        info_fields=list(validated_ht.info),
+        bin_edges=bin_edges,
+        age_hist_distribution=age_hist_distribution,
+        subset_list=subset_list,
+        pops=pops,
+    )
+
+    vcf_info_dict.update({"vep": {"Description": hl.eval(validated_ht.vep_csq_header)}})
+
+    # Adjust keys to remove adj tags before exporting to VCF.
+    new_vcf_info_dict = {i.replace("_adj", ""): j for i, j in vcf_info_dict.items()}
+
+    header_dict = {
+        "info": new_vcf_info_dict,
+        "filter": filter_dict,
+    }
+
+    return header_dict
+
+
+def get_downsamplings_fields(ht: hl.Table, data_type: str = "exomes") -> List[str]:
+    """
+    Get downsampling specific annotations from info struct.
+
+    .. note::
+
+        This retrieves any annotation that contains any downsampling value in its name.
+
+    :param ht: Input Table.
+    :param data_type: Data type to drop downsampling specific annotations from.
+        One of "exomes" or "genomes".
+    :return: List of downsampling specific annotations to drop from info struct.
+    """
+    if data_type == "exomes":
+        ds = hl.set(hl.flatten(ht.downsamplings.values()))
+    else:
+        ds = hl.set(ht.downsamplings)
+    ds = hl.eval(ds.map(lambda d: hl.str(d)))
+    ds_fields = list(
+        set([field for d in ds for field in list(ht.info) if str(d) in field])
+    )
+
+    return ds_fields
+
+
+def format_validated_ht_for_export(
+    ht: hl.Table,
+    data_type: str = "exomes",
+    vcf_info_reorder: Optional[List[str]] = VCF_INFO_REORDER,
+    info_fields_to_drop: Optional[List[str]] = None,
+) -> Tuple[hl.Table, List[str]]:
+    """
+    Format validated HT for export.
+
+    Drop downsamplings frequency stats from info, rearrange info, and make sure fields are VCF compatible.
+
+    :param ht: Validated HT.
+    :param data_type: Data type to format validated HT for. One of "exomes" or "genomes".
+        Default is "exomes".
+    :param Vvcf_info_reorder: Order of VCF INFO fields. These will be placed in front of all other fields in the order specified.
+    :return: Formatted HT and list rename row annotations.
+    """
+    if info_fields_to_drop is None:
+        info_fields_to_drop = []
+
+    logger.info("Getting downsampling annotations to drop from info struct...")
+    ds_fields = get_downsamplings_fields(ht, data_type=data_type)
+    info_fields_to_drop.extend(ds_fields)
+
+    logger.info("Add age_histogram bin edges to info fields to drop...")
+    info_fields_to_drop.extend(["age_hist_het_bin_edges", "age_hist_hom_bin_edges"])
+
+    logger.info("Adding 'SB' to info fields to drop...")
+    info_fields_to_drop.append("SB")
+
+    logger.info(
+        "Dropping the following fields from info struct: %s...",
+        pprint(info_fields_to_drop),
+    )
+    ht = ht.annotate(info=ht.info.drop(*info_fields_to_drop))
+
+    logger.info("Dropping _'adj' from info fields...")
+    row_annots = list(ht.info)
+    new_row_annots = [x.replace("_adj", "") for x in row_annots]
+    info_annot_mapping = dict(
+        zip(new_row_annots, [ht.info[f"{x}"] for x in row_annots])
+    )
+    ht = ht.transmute(info=hl.struct(**info_annot_mapping))
+
+    logger.info("Adjusting VCF incompatible types...")
+    # Reformat AS_SB_TABLE for use in adjust_vcf_incompatible_types
+    ht = ht.annotate(
+        info=ht.info.annotate(
+            AS_SB_TABLE=hl.array([ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]])
+        )
+    )
+    # The Table is already split so there are no annotations that need to be
+    # pipe delimited.
+    ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
+
+    # TODO: Confirm vcf_info_reorder is what we want, front heavy on freqs
+    logger.info("Rearranging fields to desired order...")
+    ht = ht.annotate(
+        info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
+    )
+    return ht, new_row_annots
+
+
 def process_vep_csq_header(vep_csq_header: str = VEP_CSQ_HEADER) -> str:
     """
     Process VEP CSQ header string, delimited by |, to remove polyphen and sift annotations.
@@ -480,6 +864,7 @@ def process_vep_csq_header(vep_csq_header: str = VEP_CSQ_HEADER) -> str:
     logger.info("Processing VEP CSQ header...")
     vep_csq_header = vep_csq_header.split("|")
     vep_csq_header = [f for f in vep_csq_header if f not in ["PolyPhen", "SIFT"]]
+    vep_csq_header = "|".join(vep_csq_header)
     return vep_csq_header
 
 
@@ -531,7 +916,14 @@ def main(args):  # noqa: D103
     overwrite = args.overwrite
     test = args.test
     data_type = args.data_type
+    contig = args.contig
     resources = get_export_resources(overwrite, data_type, test)
+
+    if contig and test:
+        raise ValueError(
+            "Test argument cannot be used with contig argument as test filters"
+            " to chr20, X, and Y."
+        )
 
     try:
         if args.validate_release_ht:
@@ -553,7 +945,10 @@ def main(args):  # noqa: D103
             check_global_and_row_annot_lengths(ht, LEN_COMP_GLOBAL_ROWS)
 
             logger.info("Preparing HT for validity checks and export...")
-            ht = prepare_ht_for_validation(ht, data_type=data_type)
+            ht = prepare_ht_for_validation(
+                ht,
+                data_type=data_type,
+            )
             # Note: Checkpoint saves time in validity checks and final export by not
             # needing to run the VCF HT prep on each chromosome -- more needs to happen
             # before ready for export, but this is an intermediate write.
@@ -577,6 +972,93 @@ def main(args):  # noqa: D103
             )
 
             ht.describe()
+        if args.prepare_vcf_header:
+            logger.info("Preparing VCF header dict...")
+            res = resources.prepare_vcf_header
+            res.check_resource_existence()
+            ht = res.release_ht.ht()
+            validated_ht = res.validated_ht.ht()
+
+            header_dict = prepare_vcf_header_dict(
+                ht,
+                validated_ht,
+                bin_edges=make_hist_bin_edges_expr(
+                    ht,
+                    include_age_hists=True,
+                ),
+                age_hist_distribution=hl.eval(ht.age_distribution.bin_freq),
+                subset_list=SUBSETS[data_type],
+                pops=POPS,
+            )
+
+            logger.info("Writing VCF header dict...")
+            with hl.hadoop_open(res.vcf_header_path, "wb") as p:
+                pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
+
+        if args.export_vcf:
+            contig = f"chr{contig}" if contig else None
+
+            if contig and test:
+                raise ValueError(
+                    "Test argument cannot be used with contig argument as test filters"
+                    " to chr20, X, and Y."
+                )
+
+            logger.info(f"Exporting VCF{f' for chr{contig}' if contig else ''}...")
+            res = resources.export_vcf
+            res.check_resource_existence()
+            ht = res.validated_ht.ht()
+            with hl.hadoop_open(res.vcf_header_path, "rb") as f:
+                header_dict = pickle.load(f)
+
+            if test:
+                logger.info("Filtering to PCSK9 region...")
+                # Keep only PCSK9.
+                ht = hl.filter_intervals(
+                    ht,
+                    [
+                        hl.parse_locus_interval(
+                            "chr1:55039447-55064852", reference_genome="GRCh38"
+                        )
+                    ],
+                )
+            if contig:
+                logger.info(f"Filtering to {contig}...")
+                ht = ht.filter_intervals([hl.parse_locus_interval(contig)])
+
+            ht, new_row_annots = format_validated_ht_for_export(ht, data_type=data_type)
+
+            # TODO: This may fail as I adjust the labeling order of annotations inside
+            # the VCF and the header
+            logger.info("Running check on VCF fields and info dict...")
+            if not vcf_field_check(ht, header_dict, new_row_annots):
+                raise ValueError("Did not pass VCF field check")
+
+            output_path = (
+                f"{qc_temp_prefix(data_type=data_type)}gnomad.{data_type}.test{'.chr'+contig if contig else ''}.vcf.bgz"
+                if test
+                else release_vcf_path(contig=contig)
+            )
+            # Match header order to info field order
+            logger.info("Matching header order to info field order...")
+            ordered_vcf_info_dict = {
+                f: header_dict["info"][f]
+                for f in list(ht.info)
+                if f in header_dict["info"]
+            }
+            header_dict.update({"info": ordered_vcf_info_dict})
+
+            logger.info("Exporting VCF...")
+            export_reference = build_vcf_export_reference(
+                "gnomAD_GRCh38", keep_chrM=False
+            )
+            hl.export_vcf(
+                rekey_new_reference(ht, export_reference),
+                output_path,
+                metadata=header_dict,
+                append_to_header=append_to_vcf_header_path(data_type=data_type),
+                tabix=True,
+            )
 
     finally:
         logger.info("Copying log to logging bucket...")
@@ -602,7 +1084,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--test",
-        help="Use test resources",
+        help=(
+            "For validation, test will run on chr20, chrX, and chrY. For VCF export,"
+            " test runs on PCSK9 region. Outputs to test bucket."
+        ),
         action="store_true",
     )
     parser.add_argument(
@@ -611,6 +1096,21 @@ if __name__ == "__main__":
         help="Data type to run validity checks on.",
         default="exomes",
         choices=["exomes", "genomes"],
+    )
+    parser.add_argument(
+        "--prepare-vcf-header",
+        help="Prepare VCF header dict.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--export-vcf",
+        help="Export VCF.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--contig",
+        help="Contig to export VCF for.",
+        default=None,
     )
 
     main(parser.parse_args())
