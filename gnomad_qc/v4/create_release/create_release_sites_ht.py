@@ -232,19 +232,14 @@ def get_config(
                 "histograms",
             ],
             "custom_select": custom_freq_select,
-            "select_globals": (
-                [
-                    "freq_meta",
-                    "freq_index_dict",
-                    "freq_meta_sample_count",
-                    "faf_meta",
-                    "faf_index_dict",
-                    "age_distribution",
-                ]
-                + ["downsamplings"]
-                if data_type == "exomes"
-                else []
-            ),
+            "select_globals": [
+                "freq_meta",
+                "freq_index_dict",
+                "freq_meta_sample_count",
+                "faf_meta",
+                "faf_index_dict",
+                "age_distribution",
+            ] + (["downsamplings"] if data_type == "exomes" else []),
         },
         "vep": {
             "ht": get_vep(data_type=data_type).ht(),
@@ -790,6 +785,7 @@ def main(args):
     )
     if data_type == "genomes":
         FINALIZED_SCHEMA["globals"].remove("interval_qc_parameters")
+        FINALIZED_SCHEMA["globals"].remove("downsamplings")
 
     logger.info(
         "Getting config for %s release HT to check Tables for duplicate variants...",
