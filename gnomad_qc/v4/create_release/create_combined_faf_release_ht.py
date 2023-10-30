@@ -501,9 +501,11 @@ def main(args):
             )
             if apply_release_filters:
                 genomes_ht.annotate(
-                    filters=res.genomes_filter_ht[genomes_ht.key].filters
+                    filters=res.genomes_filter_ht.ht()[genomes_ht.key].filters
                 )
-                exomes_ht.annotate(filters=res.exomes_filter_ht[exomes_ht.key].filters)
+                exomes_ht.annotate(
+                    filters=res.exomes_filter_ht.ht()[exomes_ht.key].filters
+                )
 
             exomes_ht = extract_freq_info(exomes_ht, "exomes", apply_release_filters)
             genomes_ht = extract_freq_info(genomes_ht, "genomes", apply_release_filters)
