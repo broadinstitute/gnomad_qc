@@ -59,7 +59,7 @@ def get_coverage_resources(
         output_resources={"coverage_ht": release_coverage(public=False, test=test)},
     )
     export_coverage_files = PipelineStepResourceCollection(
-        "--export-coverage-tsv",
+        "--export-release-files",
         output_resources={
             "coverage_tsv": release_coverage_tsv_path("exomes", test=test),
             "release_ht": release_coverage(public=False, test=test, stratify=False),
