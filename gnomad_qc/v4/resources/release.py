@@ -123,11 +123,14 @@ def qual_hists_json_path(
     )
 
 
-def get_combined_faf_release(test: bool = False) -> VersionedTableResource:
+def get_combined_faf_release(
+    test: bool = False, filtered: bool = False
+) -> VersionedTableResource:
     """
     Retrieve versioned resource for the combined genome + exome FAF release Table.
 
     :param test: Whether to use a tmp path for testing. Default is False.
+    :param filtered: Whether to use the filtered FAF release. Default is False.
     :return: Combined genome + exome FAF release VersionedTableResource.
     """
     return VersionedTableResource(

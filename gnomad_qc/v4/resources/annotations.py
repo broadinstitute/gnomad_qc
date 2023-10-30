@@ -346,7 +346,9 @@ def get_combined_frequency(test: bool = False) -> VersionedTableResource:
     )
 
 
-def get_freq_comparison(method: str, test: bool = False) -> VersionedTableResource:
+def get_freq_comparison(
+    method: str, test: bool = False, filtered: bool = False
+) -> VersionedTableResource:
     """
     Get VersionedTableResource for a frequency comparison between v4 genomes and exomes.
 
@@ -359,6 +361,7 @@ def get_freq_comparison(method: str, test: bool = False) -> VersionedTableResour
     :param method: Method used to compare frequencies between v4 genomes and exomes.
         Can be one of `contingency_table_test` or `cmh_test`.
     :param test: Whether to use a tmp path for testing. Default is False.
+    :param filtered: Whether to return the filtered frequency comparison Table.
     :return: VersionedTableResource containing results from the specified comparison
         `method`.
     """
