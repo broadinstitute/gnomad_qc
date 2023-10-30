@@ -84,6 +84,12 @@ def extract_freq_info(
         Table. Default is False.
     :return: Table with filtered frequency and FAF information.
     """
+    if apply_release_filters:
+        # Filter out chrM, AS_lowqual sites (these sites are dropped in the
+        # final_filters HT so will not have information in `filters`) and AC_raw == 0.
+        ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
+        ht = ht.filter(hl.is_defined(ht.filters) & (ht.freq[1].AC > 0))
+
     logger.info(
         "Keeping only frequencies for adj, raw, adj by pop, adj by sex, and adj by "
         "pop/sex..."
@@ -139,12 +145,6 @@ def extract_freq_info(
             f"{prefix}_faf_meta": faf_meta,
         }
     )
-
-    if apply_release_filters:
-        # Filter out chrM, AS_lowqual sites (these sites are dropped in the
-        # final_filters HT so will not have information in `filters`) and AC_raw == 0.
-        ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
-        ht = ht.filter(hl.is_defined(ht.filters) & (ht.freq[1].AC > 0))
 
     ht = ht.checkpoint(hl.utils.new_temp_file("extract_freq_info", "ht"))
 
