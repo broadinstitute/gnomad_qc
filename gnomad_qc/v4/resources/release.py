@@ -386,6 +386,8 @@ def get_freq_array_readme(data_type: str = "exomes") -> str:
     :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
     :return: README for freq array.
     """
+    # Add information about downsamplings only to exomes
+    # (genomes release does not contain downsampling)
     if data_type == "exomes":
         return FREQUENCY_README.format(
             "\ndownsampling_group_gen-anc, e.g."
