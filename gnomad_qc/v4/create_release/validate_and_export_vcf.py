@@ -160,7 +160,7 @@ VCF_INFO_REORDER = [
     "grpmax",
     "fafmax_faf95_max",
     "fafmax_faf95_max_gen_anc",
-]  # TODO:Confirm this is ok
+]
 
 
 logging.basicConfig(
@@ -520,9 +520,7 @@ def prepare_ht_for_validation(
         )
     else:
         ht = ht.annotate_globals(
-            vep_csq_header=process_vep_csq_header(
-                VEP_CSQ_HEADER
-            ),  # TODO: Process this to drop polyphen and sift
+            vep_csq_header=process_vep_csq_header(VEP_CSQ_HEADER),
             freq_entries_to_remove=hl.empty_set(hl.tstr),
         )
 
@@ -630,6 +628,7 @@ def populate_info_dict(
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
     vrs_fields_dict: Dict[str, Dict[str, str]] = VRS_FIELDS_DICT,
     label_delimiter: str = "_",
+    data_type: str = "exomes",
 ) -> Dict[str, Dict[str, str]]:
     """
     Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary.
@@ -670,7 +669,7 @@ def populate_info_dict(
 
     for subset in subset_list:
         subset_pops = deepcopy(pops)
-        if subset == "joint":
+        if (subset == "joint") | (data_type == "genomes"):
             subset_pops.update({"ami": "Amish"})
         description_text = "" if subset == "" else f" in {subset} subset"
 
@@ -719,6 +718,7 @@ def prepare_vcf_header_dict(
     subset_list: List[str],
     pops: Dict[str, str],
     format_dict: Dict[str, Dict[str, str]] = FORMAT_DICT,
+    data_type: str = "exomes",
 ) -> Dict[str, Dict[str, str]]:
     """
     Prepare VCF header dictionary.
@@ -731,6 +731,7 @@ def prepare_vcf_header_dict(
     :param pops: List of sample global genetic ancestry group names for gnomAD data type.
     :param format_dict: Dictionary describing MatrixTable entries. Used in header for VCF export.
     :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter used for variants.
+    :param data_type: Data type to prepare VCF header for. One of "exomes" or "genomes".
     :return: Prepared VCF header dictionary.
     """
     logger.info("Making FILTER dict for VCF...")
@@ -751,6 +752,7 @@ def prepare_vcf_header_dict(
         age_hist_distribution=age_hist_distribution,
         subset_list=subset_list,
         pops=pops,
+        data_type=data_type,
     )
 
     vcf_info_dict.update({"vep": {"Description": hl.eval(validated_ht.vep_csq_header)}})
@@ -766,7 +768,7 @@ def prepare_vcf_header_dict(
     return header_dict
 
 
-def get_downsamplings_fields(ht: hl.Table, data_type: str = "exomes") -> List[str]:
+def get_downsamplings_fields(ht: hl.Table) -> List[str]:
     """
     Get downsampling specific annotations from info struct.
 
@@ -775,14 +777,9 @@ def get_downsamplings_fields(ht: hl.Table, data_type: str = "exomes") -> List[st
         This retrieves any annotation that contains any downsampling value in its name.
 
     :param ht: Input Table.
-    :param data_type: Data type to drop downsampling specific annotations from.
-        One of "exomes" or "genomes".
     :return: List of downsampling specific annotations to drop from info struct.
     """
-    if data_type == "exomes":
-        ds = hl.set(hl.flatten(ht.downsamplings.values()))
-    else:
-        ds = hl.set(ht.downsamplings)
+    ds = hl.set(hl.flatten(ht.downsamplings.values()))
     ds = hl.eval(ds.map(lambda d: hl.str(d)))
     ds_fields = list(
         set([field for d in ds for field in list(ht.info) if str(d) in field])
@@ -811,9 +808,10 @@ def format_validated_ht_for_export(
     if info_fields_to_drop is None:
         info_fields_to_drop = []
 
-    logger.info("Getting downsampling annotations to drop from info struct...")
-    ds_fields = get_downsamplings_fields(ht, data_type=data_type)
-    info_fields_to_drop.extend(ds_fields)
+    if data_type == "exomes":
+        logger.info("Getting downsampling annotations to drop from info struct...")
+        ds_fields = get_downsamplings_fields(ht)
+        info_fields_to_drop.extend(ds_fields)
 
     logger.info("Add age_histogram bin edges to info fields to drop...")
     info_fields_to_drop.extend(["age_hist_het_bin_edges", "age_hist_hom_bin_edges"])
@@ -846,7 +844,6 @@ def format_validated_ht_for_export(
     # pipe delimited.
     ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
 
-    # TODO: Confirm vcf_info_reorder is what we want, front heavy on freqs
     logger.info("Rearranging fields to desired order...")
     ht = ht.annotate(
         info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
@@ -979,6 +976,9 @@ def main(args):  # noqa: D103
             ht = res.release_ht.ht()
             validated_ht = res.validated_ht.ht()
 
+            # v4 Genomes drops subsets from VCF
+            subsets = SUBSETS["exomes"] if data_type == "exomes" else []
+
             header_dict = prepare_vcf_header_dict(
                 ht,
                 validated_ht,
@@ -987,8 +987,9 @@ def main(args):  # noqa: D103
                     include_age_hists=True,
                 ),
                 age_hist_distribution=hl.eval(ht.age_distribution.bin_freq),
-                subset_list=SUBSETS[data_type],
+                subset_list=subsets,
                 pops=POPS,
+                data_type=data_type,
             )
 
             logger.info("Writing VCF header dict...")
@@ -1028,8 +1029,6 @@ def main(args):  # noqa: D103
 
             ht, new_row_annots = format_validated_ht_for_export(ht, data_type=data_type)
 
-            # TODO: This may fail as I adjust the labeling order of annotations inside
-            # the VCF and the header
             logger.info("Running check on VCF fields and info dict...")
             if not vcf_field_check(ht, header_dict, new_row_annots):
                 raise ValueError("Did not pass VCF field check")
