@@ -1429,11 +1429,17 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     )
 
     # Frequency groups that need a patch for variant chr9-93596925-ATTTTTTTTTTTTTT-A.
-    # In the original v3.1 a single Han sample had a missing GT at this variant. In the
-    # computation for v4.0, the _het_non_ref of True caused it to be given a 0/1 (the
-    # hl.if_else statement gets a False, so it defaults to the input GT. The original v3
-    # code didn't include the _het_non_ref check, and therefore it would have evaluated
-    # to missing. Set Han sample GT to missing to match v3.1.
+    # There is a single Han sample causing a discrepancy in the AC and AN count between
+    # v3.1.2 and v4.0. This sample's GT was set to missing in the v3.1.2 release HT,
+    # but in the computation for v4.0 the sample's GT was set to 0/1. This is because in
+    # the original code for v3.1 (before the correction to account for het_non_ref
+    # samples), the hl.if_else statement in the correction for high AB hets (now in
+    # gnomad_qc.v3.utils.hom_alt_depletion_fix) didn't include the _het_non_ref check.
+    # Without that check, the rest of the hl.if_else statement would evaluate to
+    # missing because of the missing v3.0 frequency. However, when the _het_non_ref
+    # check is added, the presence of a False (~_het_non_ref evaluates to False for a
+    # het_non_ref) in the hl.if_else statement causes it to be given a 0/1 instead.
+    # To correct for this we set Han sample GT to missing to match v3.1.2 value.
     freq_groups6 = hl.set(
         [
             {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
