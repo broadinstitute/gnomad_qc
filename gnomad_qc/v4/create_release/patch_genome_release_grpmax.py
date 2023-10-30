@@ -17,17 +17,15 @@ logger.setLevel(logging.INFO)
 ht = release_sites(data_type="genomes").ht()
 ht = ht.checkpoint("gs://gnomad-tmp/patch_grpmax_genomes_release.ht")
 
-# Change the 'gen_anc' keys in the freq_meta array to 'pop' to compute grpmax.
-freq_meta = hl.literal(
-    [{("pop" if k == "gen_anc" else k): m[k] for k in m} for m in hl.eval(ht.freq_meta)]
-)
-
 # Compute grpmax.
-grpmax = pop_max_expr(ht.freq, freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
+grpmax = pop_max_expr(
+    ht.freq, ht.freq_meta, POPS_TO_REMOVE_FOR_POPMAX, pop_label="gen_anc"
+)
 grpmax = grpmax.annotate(
-    gen_anc=grpmax.pop,
-    faf95=ht.faf[ht.faf_meta.index(lambda y: y.values() == ["adj", grpmax.pop])].faf95,
-).drop("pop")
+    faf95=ht.faf[
+        ht.faf_meta.index(lambda y: y.values() == ["adj", grpmax.gen_anc])
+    ].faf95,
+)
 
 logger.info("Annotating 'grpmax'...")
 ht = ht.annotate(grpmax=grpmax)
