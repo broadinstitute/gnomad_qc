@@ -813,6 +813,13 @@ def format_validated_ht_for_export(
         ds_fields = get_downsamplings_fields(ht)
         info_fields_to_drop.extend(ds_fields)
 
+    # Drop and info annotation with "hgdp" or "tgp" in the name for genome
+    if data_type == "genomes":
+        logger.info("Dropping hgdp and tgp annotations from info struct...")
+        info_fields_to_drop.extend(
+            [f for f in list(ht.info) if (("hgdp" in f) | ("tgp" in f))]
+        )
+
     logger.info("Add age_histogram bin edges to info fields to drop...")
     info_fields_to_drop.extend(["age_hist_het_bin_edges", "age_hist_hom_bin_edges"])
 
