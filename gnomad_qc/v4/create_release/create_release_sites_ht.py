@@ -45,8 +45,8 @@ from gnomad_qc.v4.resources.annotations import (
 from gnomad_qc.v4.resources.basics import calling_intervals, qc_temp_prefix
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v4.resources.release import (
-    FREQUENCY_README,
     get_combined_faf_release,
+    get_freq_array_readme,
     included_datasets_json_path,
     release_sites,
 )
@@ -262,8 +262,8 @@ def get_config(
             "path": release_sites(data_type=data_type).path,
         },
         "joint_faf": {
-            "ht": get_combined_faf_release().ht(),
-            "path": get_combined_faf_release().path,
+            "ht": get_combined_faf_release(filtered=True).ht(),
+            "path": get_combined_faf_release(filtered=True).path,
             "select": ["joint_freq", "joint_faf", "joint_fafmax"],
             "custom_select": custom_joint_faf_select,
             "select_globals": [
@@ -845,7 +845,7 @@ def main(args):
         ),
         date=datetime.now().isoformat(),
         version=args.version,
-        frequency_README=FREQUENCY_README,
+        frequency_README=get_freq_array_readme(data_type=data_type),
     )
 
     if data_type == "exomes":

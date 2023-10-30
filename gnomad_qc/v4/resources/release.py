@@ -31,9 +31,7 @@ group, e.g. “adj”, “raw”
 sex_group, e.g. “XX_adj”
 subset_group, e.g. “non_ukb_raw”
 gen-anc_group, e.g. “afr_adj”
-gen-anc_sex_group, e.g. “ami_XX_adj”
-downsampling_group_gen-anc, e.g. “200_eas_adj”,
-downsampling_group_gen-anc, e.g. “non_ukb_218035_eas_adj”
+gen-anc_sex_group, e.g. “ami_XX_adj”{}
 subset_gen-anc_group, e.g. “non_ukb_sas_adj”
 subset_gen-anc_group, e.g. “non_ukb_XY_adj”
 subset_gen-anc_sex_group, e.g. “non_ukb_mid_XX_adj”,
@@ -123,11 +121,14 @@ def qual_hists_json_path(
     )
 
 
-def get_combined_faf_release(test: bool = False) -> VersionedTableResource:
+def get_combined_faf_release(
+    test: bool = False, filtered: bool = False
+) -> VersionedTableResource:
     """
     Retrieve versioned resource for the combined genome + exome FAF release Table.
 
     :param test: Whether to use a tmp path for testing. Default is False.
+    :param filtered: Whether to use the filtered FAF release. Default is False.
     :return: Combined genome + exome FAF release VersionedTableResource.
     """
     return VersionedTableResource(
@@ -135,7 +136,7 @@ def get_combined_faf_release(test: bool = False) -> VersionedTableResource:
         versions={
             release: TableResource(
                 path=(
-                    f"gs://gnomad{'-tmp' if test else ''}/release/{release}/ht/joint/gnomad.joint.v{release}.faf.ht"
+                    f"gs://gnomad{'-tmp' if test else ''}/release/{release}/ht/joint/gnomad.joint.v{release}.faf{'.filtered' if filtered else ''}.ht"
                 )
             )
             for release in COMBINED_FAF_RELEASES
@@ -392,3 +393,21 @@ def validated_release_ht(
             for version in RELEASES
         },
     )
+
+
+def get_freq_array_readme(data_type: str = "exomes") -> str:
+    """
+    Fetch README for freq array for the specified data_type.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :return: README for freq array.
+    """
+    # Add information about downsamplings only to exomes
+    # (genomes release does not contain downsampling)
+    if data_type == "exomes":
+        return FREQUENCY_README.format(
+            "\ndownsampling_group_gen-anc, e.g."
+            " “200_eas_adj”,\ndownsampling_group_gen-anc, e.g. “non_ukb_218035_eas_adj”"
+        )
+    else:
+        return FREQUENCY_README.format("")

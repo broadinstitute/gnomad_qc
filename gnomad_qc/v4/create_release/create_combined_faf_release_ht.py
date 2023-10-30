@@ -40,6 +40,7 @@ from gnomad_qc.v4.resources.annotations import (
 )
 from gnomad_qc.v4.resources.basics import get_logging_path
 from gnomad_qc.v4.resources.release import get_combined_faf_release
+from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("compute_combined_faf")
@@ -60,8 +61,7 @@ def filter_gene_to_test(ht: hl.Table) -> hl.Table:
 
 
 def extract_freq_info(
-    ht: hl.Table,
-    prefix: str,
+    ht: hl.Table, prefix: str, apply_release_filters: bool = False
 ) -> hl.Table:
     """
     Extract frequencies and FAF for adj, raw (only for frequencies), adj by pop, adj by sex, and adj by pop/sex.
@@ -80,8 +80,16 @@ def extract_freq_info(
 
     :param ht: Table with frequency and FAF information.
     :param prefix: Prefix to add to each of the filtered annotations.
+    :param apply_release_filters: Whether to apply the final release filters to the
+        Table. Default is False.
     :return: Table with filtered frequency and FAF information.
     """
+    if apply_release_filters:
+        # Filter out chrM, AS_lowqual sites (these sites are dropped in the
+        # final_filters HT so will not have information in `filters`) and AC_raw == 0.
+        ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
+        ht = ht.filter(hl.is_defined(ht.filters) & (ht.freq[1].AC > 0))
+
     logger.info(
         "Keeping only frequencies for adj, raw, adj by pop, adj by sex, and adj by "
         "pop/sex..."
@@ -359,6 +367,7 @@ def perform_cmh_test(
 def get_combine_faf_resources(
     overwrite: bool = False,
     test: bool = False,
+    apply_release_filters: bool = False,
     include_contingency_table_test: bool = False,
     include_cochran_mantel_haenszel_test: bool = False,
 ) -> PipelineResourceCollection:
@@ -367,6 +376,7 @@ def get_combine_faf_resources(
 
     :param overwrite: Whether to overwrite existing resources. Default is False.
     :param test: Whether to use test resources. Default is False.
+    :param apply_release_filters: Whether to get the resources for the filtered Tables.
     :param include_contingency_table_test: Whether to include the results from
         '--perform-contingency-table-test' on the combined FAF release Table.
     :param include_cochran_mantel_haenszel_test: Whether to include the results from
@@ -383,11 +393,19 @@ def get_combine_faf_resources(
     # Create resource collection for each step of the pipeline.
     combined_frequency = PipelineStepResourceCollection(
         "--create-combined-frequency-table",
-        output_resources={"comb_freq_ht": get_combined_frequency(test=test)},
+        output_resources={
+            "comb_freq_ht": get_combined_frequency(
+                test=test, filtered=apply_release_filters
+            )
+        },
         input_resources={
             "generate_freq.py": {"exomes_ht": get_freq(test=test)},
             "generate_freq_genomes.py": {
                 "genomes_ht": get_freq(test=test, data_type="genomes")
+            },
+            "final_filter.py": {"exomes_filter_ht": final_filter(data_type="exomes")},
+            "final_filter_genomes.py": {
+                "genomes_filter_ht": final_filter(data_type="genomes")
             },
         },
     )
@@ -395,14 +413,18 @@ def get_combine_faf_resources(
         "--perform-contingency-table-test",
         output_resources={
             "contingency_table_ht": get_freq_comparison(
-                "contingency_table_test", test=test
+                "contingency_table_test", test=test, filtered=apply_release_filters
             )
         },
         pipeline_input_steps=[combined_frequency],
     )
     cmh_test = PipelineStepResourceCollection(
         "--perform-cochran-mantel-haenszel-test",
-        output_resources={"cmh_ht": get_freq_comparison("cmh_test", test=test)},
+        output_resources={
+            "cmh_ht": get_freq_comparison(
+                "cmh_test", test=test, filtered=apply_release_filters
+            )
+        },
         pipeline_input_steps=[combined_frequency],
     )
     finalize_faf_input_steps = [combined_frequency]
@@ -412,7 +434,11 @@ def get_combine_faf_resources(
         finalize_faf_input_steps.append(cmh_test)
     finalize_faf = PipelineStepResourceCollection(
         "--finalize-combined-faf-release",
-        output_resources={"final_combined_faf_ht": get_combined_faf_release(test=test)},
+        output_resources={
+            "final_combined_faf_ht": get_combined_faf_release(
+                test=test, filtered=apply_release_filters
+            )
+        },
         pipeline_input_steps=finalize_faf_input_steps,
     )
 
@@ -439,11 +465,13 @@ def main(args):
     hl._set_flags(use_ssa_logs="1")
     test_gene = args.test_gene
     overwrite = args.overwrite
+    apply_release_filters = args.apply_release_filters
     pops = list(set(POPS["v3"] + POPS["v4"]))
     faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX]
     combine_faf_resources = get_combine_faf_resources(
         overwrite,
         test_gene,
+        apply_release_filters,
         args.include_contingency_table_test,
         args.include_cochran_mantel_haenszel_test,
     )
@@ -471,8 +499,16 @@ def main(args):
                     lambda x: x.annotate(homozygote_count=hl.int32(x.homozygote_count))
                 )
             )
-            exomes_ht = extract_freq_info(exomes_ht, "exomes")
-            genomes_ht = extract_freq_info(genomes_ht, "genomes")
+            if apply_release_filters:
+                genomes_ht = genomes_ht.annotate(
+                    filters=res.genomes_filter_ht.ht()[genomes_ht.key].filters
+                )
+                exomes_ht = exomes_ht.annotate(
+                    filters=res.exomes_filter_ht.ht()[exomes_ht.key].filters
+                )
+
+            exomes_ht = extract_freq_info(exomes_ht, "exomes", apply_release_filters)
+            genomes_ht = extract_freq_info(genomes_ht, "genomes", apply_release_filters)
 
             ht = get_joint_freq_and_faf(genomes_ht, exomes_ht)
             ht = ht.annotate_globals(
@@ -589,6 +625,12 @@ if __name__ == "__main__":
             "adj for all populations found in both the exomes and genomes. The table "
             "also includes FAF computed on the joint frequencies."
         ),
+        action="store_true",
+    )
+    parser.add_argument(
+        # TODO: consider flipping this to be --skip-apply-release-filters
+        "--apply-release-filters",
+        help="Whether to apply the final release filters to the Table.",
         action="store_true",
     )
     parser.add_argument(
