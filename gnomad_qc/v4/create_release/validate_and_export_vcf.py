@@ -814,7 +814,7 @@ def format_validated_ht_for_export(
         ds_fields = get_downsamplings_fields(ht)
         info_fields_to_drop.extend(ds_fields)
 
-    # Drop and info annotation with "hgdp" or "tgp" in the name for genome
+    # Drop any info annotation with "hgdp" or "tgp" in the name for genomes.
     if data_type == "genomes":
         logger.info("Dropping hgdp and tgp annotations from info struct...")
         info_fields_to_drop.extend(
