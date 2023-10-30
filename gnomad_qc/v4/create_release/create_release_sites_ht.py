@@ -785,6 +785,7 @@ def main(args):
     )
     if data_type == "genomes":
         FINALIZED_SCHEMA["globals"].remove("interval_qc_parameters")
+        FINALIZED_SCHEMA["globals"].remove("downsamplings")
 
     logger.info(
         "Getting config for %s release HT to check Tables for duplicate variants...",
