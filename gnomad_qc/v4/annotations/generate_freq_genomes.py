@@ -1300,8 +1300,8 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
             freq_groups1.contains(m),
             hl.struct(
                 AC=x.AC + 1,
-                AF=(x.AC + 1) / (x.AN - 2),
-                AN=x.AN - 2,
+                AF=(x.AC + 1) / (x.AN + 2),
+                AN=x.AN + 2,
                 homozygote_count=x.homozygote_count,
             ),
             x,
