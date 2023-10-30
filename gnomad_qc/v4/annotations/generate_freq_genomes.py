@@ -1280,7 +1280,6 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     freq_groups1 = hl.set(
         [
             {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
-            {"group": "adj", "subset": "hgdp", "sex": "XX"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "han", "sex": "XX"},
         ]
     )
@@ -1311,7 +1310,6 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     freq_groups2 = hl.set(
         [
             {"group": "adj", "subset": "hgdp", "gen_anc": "han"},
-            {"group": "adj", "subset": "hgdp", "sex": "XY"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "han", "sex": "XY"},
         ]
     )
@@ -1332,8 +1330,8 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
             freq_groups2.contains(m),
             hl.struct(
                 AC=x.AC + 1,
-                AF=(x.AC + 1) / (x.AN - 2),
-                AN=x.AN - 2,
+                AF=(x.AC + 1) / (x.AN + 2),
+                AN=x.AN + 2,
                 homozygote_count=x.homozygote_count,
             ),
             x,
@@ -1345,7 +1343,6 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     freq_groups3 = hl.set(
         [
             {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan"},
-            {"group": "adj", "subset": "hgdp", "sex": "XY"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan", "sex": "XY"},
         ]
     )
@@ -1357,8 +1354,8 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
             freq_groups3.contains(m),
             hl.struct(
                 AC=x.AC + 1,
-                AF=(x.AC + 1) / (x.AN - 2),
-                AN=x.AN - 2,
+                AF=(x.AC + 1) / (x.AN + 2),
+                AN=x.AN + 2,
                 homozygote_count=x.homozygote_count,
             ),
             x,
@@ -1370,7 +1367,6 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     freq_groups4 = hl.set(
         [
             {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan"},
-            {"group": "adj", "subset": "hgdp", "sex": "XX"},
             {"group": "adj", "subset": "hgdp", "gen_anc": "northernhan", "sex": "XX"},
         ]
     )
@@ -1382,8 +1378,8 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
             freq_groups4.contains(m),
             hl.struct(
                 AC=x.AC + 1,
-                AF=(x.AC + 1) / (x.AN - 2),
-                AN=x.AN - 2,
+                AF=(x.AC + 1) / (x.AN + 2),
+                AN=x.AN + 2,
                 homozygote_count=x.homozygote_count,
             ),
             x,
