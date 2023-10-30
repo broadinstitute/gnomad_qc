@@ -58,7 +58,7 @@ def get_coverage_resources(
         input_resources=coverage_input_resources,
         output_resources={"coverage_ht": release_coverage(public=False, test=test)},
     )
-    export_coverage_tsv = PipelineStepResourceCollection(
+    export_coverage_files = PipelineStepResourceCollection(
         "--export-coverage-tsv",
         output_resources={
             "coverage_tsv": release_coverage_tsv_path("exomes", test=test),
@@ -164,7 +164,7 @@ def main(args):
 
         if args.export_release_files:
             logger.info("Exporting coverage tsv...")
-            res = coverage_resources.export_coverage_tsv
+            res = coverage_resources.export_coverage_files
             res.check_resource_existence()
             ht = res.coverage_ht.ht()
             if "coverage_stats" in ht.row:
