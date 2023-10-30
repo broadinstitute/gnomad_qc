@@ -628,6 +628,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
+        # TODO: consider flipping this to be --skip-apply-release-filters
         "--apply-release-filters",
         help="Whether to apply the final release filters to the Table.",
         action="store_true",
