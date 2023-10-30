@@ -1024,7 +1024,7 @@ def main(args):  # noqa: D103
                 )
             if contig:
                 logger.info(f"Filtering to {contig}...")
-                ht = hl.filter_intervals(ht, [hl.parse_locus_interval(contig)])
+                ht = hl.filter_intervals(ht, [hl.parse_locus_interval(contig, reference_genome='GRCh38')])
 
             ht, new_row_annots = format_validated_ht_for_export(ht, data_type=data_type)
 
