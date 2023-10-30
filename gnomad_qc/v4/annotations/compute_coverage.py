@@ -71,7 +71,7 @@ def get_coverage_resources(
     coverage_pipeline.add_steps(
         {
             "compute_coverage_ht": compute_coverage_ht,
-            "export_coverage_tsv": export_coverage_tsv,
+            "export_coverage_files": export_coverage_files,
         }
     )
 
