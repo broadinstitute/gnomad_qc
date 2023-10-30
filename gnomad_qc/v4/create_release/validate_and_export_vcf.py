@@ -1004,7 +1004,7 @@ def main(args):  # noqa: D103
                     " to chr20, X, and Y."
                 )
 
-            logger.info(f"Exporting VCF{f' for chr{contig}' if contig else ''}...")
+            logger.info(f"Exporting VCF{f' for {contig}' if contig else ''}...")
             res = resources.export_vcf
             res.check_resource_existence()
             ht = res.validated_ht.ht()
@@ -1024,7 +1024,9 @@ def main(args):  # noqa: D103
                 )
             if contig:
                 logger.info(f"Filtering to {contig}...")
-                ht = ht.filter_intervals([hl.parse_locus_interval(contig)])
+                ht = hl.filter_intervals(
+                    ht, [hl.parse_locus_interval(contig, reference_genome="GRCh38")]
+                )
 
             ht, new_row_annots = format_validated_ht_for_export(ht, data_type=data_type)
 
