@@ -387,8 +387,9 @@ def get_freq_array_readme(data_type: str = "exomes") -> str:
     :return: README for freq array.
     """
     if data_type == "exomes":
-        return FREQUENCY_README.format("""
-downsampling_group_gen-anc, e.g. “200_eas_adj”,
-downsampling_group_gen-anc, e.g. “non_ukb_218035_eas_adj”""")
+        return FREQUENCY_README.format(
+            "\ndownsampling_group_gen-anc, e.g."
+            " “200_eas_adj”,\ndownsampling_group_gen-anc, e.g. “non_ukb_218035_eas_adj”"
+        )
     else:
-        return FREQUENCY_README.format("")
+        return FREQUENCY_README.format("\n")
