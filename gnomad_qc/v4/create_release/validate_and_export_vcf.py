@@ -1017,6 +1017,9 @@ def main(args):  # noqa: D103
             res = resources.export_vcf
             res.check_resource_existence()
             ht = res.validated_ht.ht()
+            logger.info(
+                "Reading release HT from %s header dict...", res.validated_ht.path
+            )
             with hl.hadoop_open(res.vcf_header_path, "rb") as f:
                 header_dict = pickle.load(f)
 
@@ -1046,7 +1049,7 @@ def main(args):  # noqa: D103
             output_path = (
                 f"{qc_temp_prefix(data_type=data_type)}gnomad.{data_type}.test{'.chr'+contig if contig else ''}.vcf.bgz"
                 if test
-                else release_vcf_path(contig=contig)
+                else release_vcf_path(contig=contig, data_type=data_type)
             )
             # Match header order to info field order
             logger.info("Matching header order to info field order...")
