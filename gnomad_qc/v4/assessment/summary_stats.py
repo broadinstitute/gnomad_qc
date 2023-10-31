@@ -40,6 +40,7 @@ def main(args):
 
     test = args.test
     overwrite = args.overwrite
+    data_type = args.data_type
 
     try:
         if args.get_summary_counts:
@@ -93,68 +94,71 @@ def main(args):
                 mane_select_only=True,
                 index=freq_index,
             )
-            meta_ht = meta.ht()
+            if data_type=="genomes":
+                meta_ht = hl.read_table('gs://gnomad/v4.0/metadata/genomes/gnomad.genomes.v4.0.sample_qc_metadata.ht')
+            else:
+                meta_ht = meta.ht()
             meta_ht = meta_ht.filter(meta_ht.release)
 
             logger.info(f"Number of release samples: {meta_ht.count()}")
             ht = ht.annotate_globals(num_release_samples=meta_ht.count())
             ht.write(
                 release_summary_stats(
-                    test=test, data_type="exomes", filter_name=filter_name
+                    test=test, data_type=data_type, filter_name=filter_name
                 ).path,
                 overwrite,
             )
 
-        if args.generate_gene_lof_matrix:
-            vds = get_gnomad_v4_vds(release_only=True, annotate_meta=True)
-            rmt = (vds.reference_data,)
-            vmt = vds.variant_data.select_entries("LA", "LGT", "LAD", "GQ", "DP")
-            if test:
-                rmt = rmt._filter_partitions(range(2))
-                vmt = vmt._filter_partitions(range(2))
-            vds = hl.vds.VariantDataset(rmt, vmt)
-            vds = hl.vds.split_multi(vds, filter_changed_loci=True)
-            mt = hl.vds.to_dense_mt(vds)
-            mt = filter_to_adj(mt)
+        # if args.generate_gene_lof_matrix:
+        #     vds = get_gnomad_v4_vds(release_only=True, annotate_meta=True)
+        #     rmt = (vds.reference_data,)
+        #     vmt = vds.variant_data.select_entries("LA", "LGT", "LAD", "GQ", "DP")
+        #     if test:
+        #         rmt = rmt._filter_partitions(range(2))
+        #         vmt = vmt._filter_partitions(range(2))
+        #     vds = hl.vds.VariantDataset(rmt, vmt)
+        #     vds = hl.vds.split_multi(vds, filter_changed_loci=True)
+        #     mt = hl.vds.to_dense_mt(vds)
+        #     mt = filter_to_adj(mt)
 
-            release_ht = release_sites().ht()
-            mt = mt.annotate_rows(
-                freq=release_ht[mt.row_key].freq,
-                vep=release_ht[mt.row_key].vep,
-                filters=release_ht[mt.row_key].filters,
-                fail_interval_qc=release_ht[mt.row_key].region_flags.fail_interval_qc,
-                broad_ukb_union_intervals=(
-                    ~ht.region_flags.outside_ukb_capture_region
-                    | ~ht.region_flags.outside_broad_capture_region
-                ),
-                broad_ukb_intersection_intervals=~(
-                    ht.region_flags.outside_ukb_capture_region
-                    | ht.region_flags.outside_broad_capture_region
-                ),
-            )
+        #     release_ht = release_sites().ht()
+        #     mt = mt.annotate_rows(
+        #         freq=release_ht[mt.row_key].freq,
+        #         vep=release_ht[mt.row_key].vep,
+        #         filters=release_ht[mt.row_key].filters,
+        #         fail_interval_qc=release_ht[mt.row_key].region_flags.fail_interval_qc,
+        #         broad_ukb_union_intervals=(
+        #             ~ht.region_flags.outside_ukb_capture_region
+        #             | ~ht.region_flags.outside_broad_capture_region
+        #         ),
+        #         broad_ukb_intersection_intervals=~(
+        #             ht.region_flags.outside_ukb_capture_region
+        #             | ht.region_flags.outside_broad_capture_region
+        #         ),
+        #     )
 
-            mt = default_generate_gene_lof_matrix(
-                mt=mt,
-                tx_ht=None,
-                additional_grps=[
-                    "broad_ukb_union_intervals",
-                    "broad_ukb_intersection_intervals",
-                    "fail_interval_qc",
-                ],
-            )
-            mt.write(
-                release_lof(test=test, data_type="exomes", mt=True).path,
-                overwrite,
-            )
+        #     mt = default_generate_gene_lof_matrix(
+        #         mt=mt,
+        #         tx_ht=None,
+        #         additional_grps=[
+        #             "broad_ukb_union_intervals",
+        #             "broad_ukb_intersection_intervals",
+        #             "fail_interval_qc",
+        #         ],
+        #     )
+            # mt.write(
+            #     release_lof(test=test, data_type=data_type, mt=True).path,
+            #     overwrite,
+            # )
 
         if args.summarize_gene_lof_matrix:
-            mt = release_lof(test=test, data_type="exomes", mt=True).mt()
+            mt = release_lof(test=test, data_type=data_type, mt=True).mt()
             mt = mt.annotate_cols(
                 meta=mt.meta.annotate(pop=mt.meta.population_inference.pop)
             )
             ht = default_generate_gene_lof_summary(mt)
             ht.write(
-                release_lof(test=test, data_type="exomes").path,
+                release_lof(test=test, data_type=data_type).path,
                 overwrite,
             )
 
@@ -220,6 +224,12 @@ if __name__ == "__main__":
         "--summarize-gene-lof-matrix",
         help="Creates gene LoF matrix summary Table.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--data-type",
+        default="exomes",
+        choices=["exomes","genomes"],
+        help="Data type (exomes or genomes) to produce summary stats for."
     )
     args = parser.parse_args()
 
