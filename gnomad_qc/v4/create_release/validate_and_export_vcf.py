@@ -1017,9 +1017,7 @@ def main(args):  # noqa: D103
             res = resources.export_vcf
             res.check_resource_existence()
             ht = res.validated_ht.ht()
-            logger.info(
-                "Reading release HT from %s header dict...", res.validated_ht.path
-            )
+            logger.info("Reading release HT from %s...", res.validated_ht.path)
             with hl.hadoop_open(res.vcf_header_path, "rb") as f:
                 header_dict = pickle.load(f)
 
