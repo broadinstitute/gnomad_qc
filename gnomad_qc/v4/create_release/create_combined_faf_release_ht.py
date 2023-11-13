@@ -277,12 +277,13 @@ def perform_contingency_table_test(
         Default is 5.
     :return: ArrayExpression for contingency table test results.
     """
+    # Using the joint_meta_expr to get the indexes of the two frequency expressions.
     freq_meta_idx = joint_meta_expr.map(
         lambda x: (freq1_meta_expr.index(x), freq2_meta_expr.index(x))
     )
 
     logger.info("Computing chi squared and fisher exact tests on frequencies...")
-    # If both frequency structs are defined and at least on AC is greater than 0,
+    # If both frequency structs are defined and at least one AC is greater than 0,
     # compute the chi-squared test otherwise return missing.
     return freq_meta_idx.map(
         lambda x: hl.or_missing(
