@@ -161,7 +161,8 @@ def get_joint_freq_and_faf(
 
     :param genomes_ht: Table with genomes frequency and FAF information.
     :param exomes_ht: Table with exomes frequency and FAF information.
-    :param faf_pops_to_exclude: Set of populations to exclude from the FAF calculation.
+    :param faf_pops_to_exclude: Set of genetic ancestry groups to exclude from the FAF
+        calculation.
     :return: Table with joint genomes and exomes frequency and FAF information.
     """
     logger.info("Performing an outer join on frequency HTs...")
@@ -243,7 +244,10 @@ def get_joint_freq_and_faf(
 def perform_contingency_table_test(
     freq1_expr: hl.expr.ArrayExpression,
     freq2_expr: hl.expr.ArrayExpression,
-    min_cell_count: int = 1000,
+    freq1_meta_expr: hl.expr.ArrayExpression,
+    freq2_meta_expr: hl.expr.ArrayExpression,
+    joint_meta_expr: hl.expr.ArrayExpression,
+    min_cell_count: int = 5,
 ) -> hl.expr.ArrayExpression:
     """
     Perform Hail's `contingency_table_test` on the alleles counts between two frequency expressions.
@@ -255,18 +259,46 @@ def perform_contingency_table_test(
     `freq1_expr` and `freq2_expr` should be ArrayExpressions of structs with 'AN' and
     'AC' annotations.
 
+    .. note::
+
+        The order of the output array expression will be the same as `joint_meta_expr`
+        and any frequency group with missing or zero AC in both `freq1_expr` and
+        `freq2_expr` (based on `freq1_meta_expr` and `freq2_meta_expr`) will be set to
+        missing. Any frequency group in `freq1_meta_expr` or `freq2_meta_expr` that is
+        not in `joint_meta_expr` will be excluded from tests.
+
     :param freq1_expr: First ArrayExpression of frequencies to combine.
     :param freq2_expr: Second ArrayExpression of frequencies to combine.
+    :param freq1_meta_expr: Frequency metadata for `freq1_expr`.
+    :param freq2_meta_expr: Frequency metadata for `freq2_expr`.
+    :param joint_meta_expr: Joint frequency metadata, only used for ordering the output
+        array expression.
     :param min_cell_count: Minimum count in every cell to use the chi-squared test.
+        Default is 5.
     :return: ArrayExpression for contingency table test results.
     """
+    # Using the joint_meta_expr to get the indexes of the two frequency expressions.
+    freq_meta_idx = joint_meta_expr.map(
+        lambda x: (freq1_meta_expr.index(x), freq2_meta_expr.index(x))
+    )
+
     logger.info("Computing chi squared and fisher exact tests on frequencies...")
-    return hl.map(
-        lambda x, y: hl.contingency_table_test(
-            x.AC, x.AN - x.AC, y.AC, y.AN - y.AC, min_cell_count
-        ),
-        freq1_expr,
-        freq2_expr,
+    # If both frequency structs are defined and at least one AC is greater than 0,
+    # compute the chi-squared test otherwise return missing.
+    return freq_meta_idx.map(
+        lambda x: hl.or_missing(
+            hl.is_defined(x[0]) & hl.is_defined(x[1]),
+            hl.bind(
+                lambda f1, f2: hl.or_missing(
+                    (f1.AC > 0) | (f2.AC > 0),
+                    hl.contingency_table_test(
+                        f1.AC, f1.AN - f1.AC, f2.AC, f2.AN - f2.AC, min_cell_count
+                    ),
+                ),
+                freq1_expr[x[0]],
+                freq2_expr[x[1]],
+            ),
+        )
     )
 
 
@@ -279,24 +311,29 @@ def perform_cmh_test(
     pops: List[str],
 ) -> hl.Table:
     """
-    Perform the Cochran–Mantel–Haenszel test on the alleles counts between two frequency expressions using population as the stratification.
+    Perform the Cochran–Mantel–Haenszel test on the alleles counts between two frequency expressions using genetic ancestry group as the stratification.
 
     This is done by creating a list of 2x2 matrices of freq1/freq2 reference and
-    alternate allele counts for each population in pops. The stats used in
+    alternate allele counts for each genetic ancestry group in pops. The stats used in
     `perform_contingency_table_test` can only be used on 2x2 matrices, so we perform
-    that per population to get one statistic per population. The CMH test allows for
-    multiple 2x2 matrices for a specific stratification, giving a single statistic
-    across all populations.
+    that per genetic ancestry group to get one statistic per genetic ancestry group.
+    The CMH test allows for multiple 2x2 matrices for a specific stratification, giving
+    a single statistic across all genetic ancestry groups.
 
     `freq1_expr` and `freq2_expr` should be ArrayExpressions of structs with 'AN' and
     'AC' annotations.
+
+    .. note::
+
+        Any genetic ancestry group with zero AC in both `freq1_expr` and `freq2_expr`
+        will be excluded from the test.
 
     :param ht: Table with joint exomes and genomes frequency and FAF information.
     :param freq1_expr: First ArrayExpression of frequencies to combine.
     :param freq2_expr: Second ArrayExpression of frequencies to combine.
     :param freq1_meta_expr: Frequency metadata for `freq1_expr`.
     :param freq2_meta_expr: Frequency metadata for `freq2_expr`.
-    :param pops: List of populations to  include in the CMH test.
+    :param pops: List of genetic ancestry groups to include in the CMH test.
     :return: ArrayExpression for Cochran–Mantel–Haenszel test results.
     """
 
@@ -308,7 +345,7 @@ def perform_cmh_test(
 
         :param freq_expr: ArrayExpression of frequencies to combine.
         :param meta_expr: Frequency metadata for `freq_expr`.
-        :return: Dictionary of frequency StructExpressions by population.
+        :return: Dictionary of frequency StructExpressions by genetic ancestry group.
         """
         return {
             m.get("gen_anc"): freq_expr[i]
@@ -319,18 +356,28 @@ def perform_cmh_test(
     freq1_by_pop = _get_freq_by_pop(freq1_expr, freq1_meta_expr)
     freq2_by_pop = _get_freq_by_pop(freq2_expr, freq2_meta_expr)
 
-    # Create list on 2x2 matrices of reference and alternate allele counts for each
-    # population in pops and export to pandas for CMH test.
+    # Create list of 2x2 matrices of reference and alternate allele counts for each
+    # genetic ancestry group in pops and export to pandas for CMH test.
     _ht = ht.select(
         an=[
             hl.bind(
-                lambda x, y: [[x.AC, x.AN - x.AC], [y.AC, y.AN - y.AC]],
+                lambda x, y: hl.or_missing(
+                    (x.AC > 0) | (y.AC > 0), [[x.AC, x.AN - x.AC], [y.AC, y.AN - y.AC]]
+                ),
                 freq1_by_pop[pop],
                 freq2_by_pop[pop],
             )
             for pop in pops
         ]
     )
+
+    # Remove any missing values from the list of 2x2 matrices and filter rows where
+    # there are no 2x2 matrices.
+    _ht = _ht.annotate(an=_ht.an.filter(lambda x: hl.is_defined(x)))
+    _ht = _ht.filter(hl.len(_ht.an) > 0)
+
+    # Add a temporary index to the Table to easily map values back to variants after
+    # converting to a pandas DataFrame and back to a Hail Table.
     _ht = _ht.add_index(name="tmp_idx")
     _ht = _ht.annotate(tmp_idx=hl.int32(_ht.tmp_idx))
     tmp_path = hl.utils.new_temp_file("cmh_test", "parquet")
@@ -399,10 +446,8 @@ def get_combine_faf_resources(
             )
         },
         input_resources={
-            "generate_freq.py": {"exomes_ht": get_freq(test=test)},
-            "generate_freq_genomes.py": {
-                "genomes_ht": get_freq(test=test, data_type="genomes")
-            },
+            "generate_freq.py": {"exomes_ht": get_freq()},
+            "generate_freq_genomes.py": {"genomes_ht": get_freq(data_type="genomes")},
             "final_filter.py": {"exomes_filter_ht": final_filter(data_type="exomes")},
             "final_filter_genomes.py": {
                 "genomes_filter_ht": final_filter(data_type="genomes")
@@ -531,6 +576,9 @@ def main(args):
                 contingency_table_test=perform_contingency_table_test(
                     ht.genomes_freq,
                     ht.exomes_freq,
+                    ht.genomes_freq_meta,
+                    ht.exomes_freq_meta,
+                    ht.joint_freq_meta,
                     min_cell_count=args.min_cell_count,
                 )
             )
@@ -548,7 +596,7 @@ def main(args):
                     ht,
                     ht.genomes_freq,
                     ht.exomes_freq,
-                    ht.exomes_freq_meta,
+                    ht.genomes_freq_meta,
                     ht.exomes_freq_meta,
                     pops=faf_pops,
                 ),
@@ -622,8 +670,8 @@ if __name__ == "__main__":
         help=(
             "Create a Table with frequency information for exomes, genomes, and the "
             "joint exome + genome frequencies. Included frequencies are adj, raw, and "
-            "adj for all populations found in both the exomes and genomes. The table "
-            "also includes FAF computed on the joint frequencies."
+            "adj for all genetic ancestry groups found in both the exomes and genomes. "
+            "The table also includes FAF computed on the joint frequencies."
         ),
         action="store_true",
     )
@@ -645,14 +693,15 @@ if __name__ == "__main__":
         "--min-cell-count",
         help="Minimum count in every cell to use the chi-squared test.",
         type=int,
-        default=25,
+        default=5,
     )
     parser.add_argument(
         "--perform-cochran-mantel-haenszel-test",
         help=(
             "Perform the Cochran–Mantel–Haenszel test, a stratified test of "
-            "independence for 2x2xK contingency tables, on the allele"
-            " frequencies where K is the number of populations with FAF computed."
+            "independence for 2x2xK contingency tables, on the allele "
+            "frequencies where K is the number of genetic ancestry groups with FAF "
+            "computed."
         ),
         action="store_true",
     )
