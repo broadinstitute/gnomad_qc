@@ -502,8 +502,7 @@ def prepare_ht_for_validation(
     )
 
     logger.info("Constructing INFO field")
-    # Remove SIFT and Polyphen from csq fields or they will be inserted with
-    # missing values by vep_struct_to_csq
+    # Remove SIFT and Polyphen from CSQ fields or they will be inserted with
     csq_fields = "|".join(
         [
             c
