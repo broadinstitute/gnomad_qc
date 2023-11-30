@@ -14,7 +14,12 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v4.resources.constants import CURRENT_VERSION, VERSIONS
+from gnomad_qc.v4.resources.constants import (
+    CURRENT_VARIANT_QC_RESULT_VERSION,
+    CURRENT_VARIANT_QC_VERSION,
+    VARIANT_QC_RESULT_VERSIONS,
+    VARIANT_QC_VERSIONS,
+)
 
 VQSR_FEATURES = {
     "exomes": {
@@ -92,7 +97,9 @@ following:
 
 
 def _variant_qc_root(
-    version: str = CURRENT_VERSION, test: bool = False, data_type: str = "exomes"
+    version: str = CURRENT_VARIANT_QC_VERSION,
+    test: bool = False,
+    data_type: str = "exomes",
 ) -> str:
     """
     Return path to variant QC root folder.
@@ -126,22 +133,22 @@ def get_callset_truth_data(
     """
     if mt:
         return VersionedMatrixTableResource(
-            CURRENT_VERSION,
+            CURRENT_VARIANT_QC_VERSION,
             {
                 version: MatrixTableResource(
                     f"{_variant_qc_root(version, test=test)}/truth_samples/gnomad.exomes.v{version}.{truth_sample}.mt"
                 )
-                for version in VERSIONS
+                for version in VARIANT_QC_VERSIONS
             },
         )
     else:
         return VersionedTableResource(
-            CURRENT_VERSION,
+            CURRENT_VARIANT_QC_VERSION,
             {
                 version: TableResource(
                     f"{_variant_qc_root(version, test=test)}/truth_samples/gnomad.exomes.v{version}.{truth_sample}.ht"
                 )
-                for version in VERSIONS
+                for version in VARIANT_QC_VERSIONS
             },
         )
 
@@ -160,12 +167,12 @@ def get_score_bins(
     :return: Path to desired hail Table
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_VARIANT_QC_RESULT_VERSION,
         {
             version: TableResource(
                 f"{_variant_qc_root(version, test=test)}/score_bins/gnomad.exomes.v{version}.{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
             )
-            for version in VERSIONS
+            for version in VARIANT_QC_RESULT_VERSIONS
         },
     )
 
@@ -187,17 +194,19 @@ def get_binned_concordance(
     :return: Path to binned truth data concordance Hail Table.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_VARIANT_QC_RESULT_VERSION,
         {
             version: TableResource(
                 f"{_variant_qc_root(version, test=test)}/binned_concordance/gnomad.exomes.v{version}.{truth_sample}.{model_id}.binned_concordance.ht"
             )
-            for version in VERSIONS
+            for version in VARIANT_QC_RESULT_VERSIONS
         },
     )
 
 
-def get_rf_run_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
+def get_rf_run_path(
+    version: str = CURRENT_VARIANT_QC_VERSION, test: bool = False
+) -> str:
     """
     Return the path to the json file containing the RF runs list.
 
@@ -211,7 +220,7 @@ def get_rf_run_path(version: str = CURRENT_VERSION, test: bool = False) -> str:
 
 
 def get_rf_model_path(
-    model_id: str, version: str = CURRENT_VERSION, test: bool = False
+    model_id: str, version: str = CURRENT_VARIANT_QC_VERSION, test: bool = False
 ) -> str:
     """
     Get the path to the RF model for a given run.
@@ -235,12 +244,12 @@ def get_rf_training(model_id: str, test: bool = False) -> VersionedTableResource
     :return: VersionedTableResource for RF training data.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_VARIANT_QC_VERSION,
         {
             version: TableResource(
                 f"{_variant_qc_root(version, test=test)}/rf/models/{model_id}/gnomad.exomes.v{version}.training.ht"
             )
-            for version in VERSIONS
+            for version in VARIANT_QC_VERSIONS
         },
     )
 
@@ -263,12 +272,12 @@ def get_variant_qc_result(
             f"Model ID must start with 'rf_', 'vqsr_', or 'if_', but found {model_id}"
         )
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_VARIANT_QC_RESULT_VERSION,
         {
             version: TableResource(
                 f"{_variant_qc_root(version, test=test)}/{model_type}/models/{model_id}/gnomad.exomes.v{version}.{model_type}_result{'' if split else '.unsplit'}.ht"
             )
-            for version in VERSIONS
+            for version in VARIANT_QC_RESULT_VERSIONS
         },
     )
 
@@ -284,11 +293,11 @@ def final_filter(
     :return: VersionedTableResource for final variant QC data.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_VARIANT_QC_RESULT_VERSION,
         {
             version: TableResource(
                 f"{_variant_qc_root(version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.final_filter.ht"
             )
-            for version in VERSIONS
+            for version in VARIANT_QC_RESULT_VERSIONS
         },
     )

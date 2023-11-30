@@ -10,7 +10,11 @@ from gnomad.resources.resource_utils import (
     VersionedVariantDatasetResource,
 )
 
-from gnomad_qc.v4.resources.constants import CURRENT_VERSION
+from gnomad_qc.v4.resources.constants import (
+    CURRENT_RAW_VERSION,
+    CURRENT_SAMPLE_QC_VERSION,
+    CURRENT_VERSION,
+)
 from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.variant_qc import TRUTH_SAMPLES
 
@@ -229,10 +233,10 @@ def get_gnomad_v4_vds(
                     "Filtering VDS to hard filtered samples (without sex imputation"
                     " filtering) only..."
                 )
-                filter_ht = hard_filtered_samples.versions[CURRENT_VERSION].ht()
+                filter_ht = hard_filtered_samples.ht()
             else:
                 logger.info("Filtering VDS to hard filtered samples only...")
-                filter_ht = hard_filtered_samples_no_sex.versions[CURRENT_VERSION].ht()
+                filter_ht = hard_filtered_samples_no_sex.ht()
 
             filter_s = filter_ht.s.collect()
             if keep_controls:
@@ -287,7 +291,7 @@ _gnomad_v4_genotypes = {
 }
 
 gnomad_v4_genotypes = VersionedVariantDatasetResource(
-    CURRENT_VERSION,
+    CURRENT_RAW_VERSION,
     _gnomad_v4_genotypes,
 )
 
@@ -386,7 +390,9 @@ def get_logging_path(name: str, version: str = CURRENT_VERSION) -> str:
 
 
 def add_meta(
-    mt: hl.MatrixTable, version: str = CURRENT_VERSION, meta_name: str = "meta"
+    mt: hl.MatrixTable,
+    version: str = CURRENT_SAMPLE_QC_VERSION,
+    meta_name: str = "meta",
 ) -> hl.MatrixTable:
     """
     Add metadata to MT in 'meta_name' column.
