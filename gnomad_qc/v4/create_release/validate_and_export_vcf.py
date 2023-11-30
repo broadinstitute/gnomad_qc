@@ -40,7 +40,12 @@ from gnomad.utils.vcf import (
     make_vcf_filter_dict,
     rekey_new_reference,
 )
-from gnomad.utils.vep import VEP_CSQ_HEADER, vep_struct_to_csq
+from gnomad.utils.vep import (
+    CURRENT_VEP_VERSION,
+    VEP_CSQ_FIELDS,
+    VEP_CSQ_HEADER,
+    vep_struct_to_csq,
+)
 
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
@@ -497,12 +502,23 @@ def prepare_ht_for_validation(
     )
 
     logger.info("Constructing INFO field")
+    # Remove SIFT and Polyphen from CSQ fields or they will be inserted with
+    # missing values by vep_struct_to_csq. These fields are processed separately
+    # as in silico annotations.
+    csq_fields = "|".join(
+        [
+            c
+            for c in VEP_CSQ_FIELDS[CURRENT_VEP_VERSION].split("|")
+            if c != "PolyPhen" and c != "SIFT"
+        ]
+    )
+
     ht = ht.annotate(
         region_flag=ht.region_flags,
         release_ht_info=ht.info,
         info=info_struct,
         rsid=hl.str(";").join(ht.rsid),
-        vep=vep_struct_to_csq(ht.vep, has_polyphen_sift=False),
+        vep=vep_struct_to_csq(ht.vep, csq_fields=csq_fields, has_polyphen_sift=False),
     )
     # Add variant annotations to INFO field
     # This adds the following:
