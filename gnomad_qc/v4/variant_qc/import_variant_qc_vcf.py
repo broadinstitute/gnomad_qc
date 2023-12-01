@@ -131,6 +131,7 @@ def main(args):
         args.header_path,
         args.array_elements_required,
         args.is_split,
+        args.deduplication_check,
     )
 
     for ht, split in zip(hts, [True, False]):
@@ -251,14 +252,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--snp-features",
         help="Features used in the SNP VQSR model.",
-        default=VQSR_FEATURES["snv"],
+        default=VQSR_FEATURES["exomes"]["snv"],
         type=str,
         nargs="+",
     )
     parser.add_argument(
         "--indel-features",
         help="Features used in the indel VQSR model.",
-        default=VQSR_FEATURES["indel"],
+        default=VQSR_FEATURES["exomes"]["indel"],
         type=str,
         nargs="+",
     )

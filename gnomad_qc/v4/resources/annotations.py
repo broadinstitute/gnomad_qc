@@ -1,7 +1,6 @@
 """Script containing annotation related resources."""
 from typing import Optional
 
-from gnomad.resources.grch37.gnomad import EXOME_RELEASES, GENOME_RELEASES
 from gnomad.resources.grch38.gnomad import SUBSETS
 from gnomad.resources.resource_utils import (
     DataException,
@@ -10,9 +9,10 @@ from gnomad.resources.resource_utils import (
     VersionedTableResource,
 )
 
-from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.constants import (
+    ANNOTATION_VERSIONS,
     COMBINED_FAF_RELEASES,
+    CURRENT_ANNOTATION_VERSION,
     CURRENT_COMBINED_FAF_RELEASE,
     CURRENT_HGDP_TGP_RELEASE,
     CURRENT_VERSION,
@@ -24,7 +24,7 @@ SUBSETS = SUBSETS["v4"]
 
 
 def _annotations_root(
-    version: str = CURRENT_VERSION,
+    version: str = CURRENT_ANNOTATION_VERSION,
     test: bool = False,
     data_type: str = "exomes",
 ) -> str:
@@ -54,7 +54,7 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
     :return: gnomAD v4 info VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 path=(
@@ -75,7 +75,7 @@ def get_vep(test: bool = False, data_type: str = "exomes") -> VersionedTableReso
     :return: gnomAD v4 VEP VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 path=(
@@ -98,7 +98,7 @@ def validate_vep_path(
     :return: gnomAD v4 VEP VersionedTableResource containing validity check.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 path=(
@@ -118,7 +118,7 @@ def get_trio_stats(test: bool = False) -> VersionedTableResource:
     :return: gnomAD v4 trio stats VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.trio_stats.ht"
@@ -136,7 +136,7 @@ def get_sib_stats(test: bool = False) -> VersionedTableResource:
     :return: gnomAD v4 sibling stats VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.sib_stats.ht"
@@ -172,7 +172,7 @@ def get_variant_qc_annotations(test: bool = False) -> VersionedTableResource:
     :return: Table with variant QC annotations.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.variant_qc_annotations.ht"
@@ -184,7 +184,7 @@ def get_variant_qc_annotations(test: bool = False) -> VersionedTableResource:
 
 def info_vcf_path(
     info_method: str = "AS",
-    version: str = CURRENT_VERSION,
+    version: str = CURRENT_ANNOTATION_VERSION,
     split: bool = False,
     test: bool = False,
 ) -> str:
@@ -210,7 +210,7 @@ def info_vcf_path(
 
 
 def get_true_positive_vcf_path(
-    version: str = CURRENT_VERSION,
+    version: str = CURRENT_ANNOTATION_VERSION,
     test: bool = False,
     adj: bool = False,
     true_positive_type: str = "transmitted_singleton",
@@ -271,7 +271,7 @@ def get_downsampling(
     :return: Hail Table containing subset or overall dataset downsampling annotations.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.downsampling{f'.{subset}' if subset else ''}.ht"
@@ -385,19 +385,16 @@ def get_freq_comparison(
     )
 
 
-def get_insilico_predictors(
-    version: str = CURRENT_VERSION,
-    predictor: str = "cadd",
-) -> VersionedTableResource:
+def get_insilico_predictors(predictor: str = "cadd") -> VersionedTableResource:
     """
     Get the path to the in silico predictors TableResource for a specified release.
 
-    :param version: Version of annotation path to return.
-    :param predictor: One of the in silico predictors available in gnomAD v4, including cadd, revel, primate_ai, splice_ai, and pangolin.
+    :param predictor: One of the in silico predictors available in gnomAD v4, including
+        cadd, revel, primate_ai, splice_ai, and pangolin.
     :return: in silico predictor VersionedTableResource for gnomAD v4.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 path=f"gs://gnomad/v{version}/annotations/in_silico_predictors/gnomad.v{version}.{predictor}.grch38.ht"
@@ -408,7 +405,6 @@ def get_insilico_predictors(
 
 
 def get_vrs(
-    version: str = CURRENT_VERSION,
     original_annotations: bool = False,
     test: bool = False,
     data_type: str = "exomes",
@@ -416,7 +412,6 @@ def get_vrs(
     """
     Get the gnomAD v4 VersionedTableResource containing VRS annotations.
 
-    :param version: Version of annotation path to return.
     :param original_annotations: Whether to obtain the original input Table with
            all its annotations in addition to the added on VRS annotations.
            If set to False, obtain a Table with only the VRS annotations.
@@ -427,7 +422,7 @@ def get_vrs(
     :return: gnomAD v4 VRS VersionedTableResource.
     """
     return VersionedTableResource(
-        CURRENT_VERSION,
+        CURRENT_ANNOTATION_VERSION,
         {
             version: TableResource(
                 path=(
