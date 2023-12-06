@@ -1,16 +1,15 @@
 """Script to filter the gnomAD v4 VariantDataset to a subset of specified samples."""
 import argparse
 import logging
+from typing import Dict, List, Optional
 
 import hail as hl
 from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 
-# TODO: include this when we have the sample QC meta HT: from gnomad_qc.v4.resources.meta import meta # noqa
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
-
-# TODO: Can remove when we use the full sample QC meta HT.
-from gnomad_qc.v4.resources.meta import project_meta
+from gnomad_qc.v4.resources.meta import meta
+from gnomad_qc.v4.resources.release import release_sites
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("subset")
@@ -154,16 +153,55 @@ SUBSET_CALLSTATS_INFO_DICT = {
 }
 
 
+def make_variant_qc_annotations_dict(
+    key_expr: hl.expr.StructExpression,
+    vqc_annotations: Optional[List[str]] = None,
+) -> Dict[str, hl.expr.Expression]:
+    """
+    Make a dictionary of gnomAD release annotation expressions to annotate onto the subsetted data.
+
+    :param key_expr: Key to join annotations on.
+    :param vqc_annotations: Optional list of desired annotations from the release HT.
+    :return: Dictionary containing Hail expressions to annotate onto subset.
+    """
+    ht = release_sites().ht()
+    selected_variant_qc_annotations = {}
+    if vqc_annotations is None:
+        vqc_annotations = ht.row_value
+        vqc_annotations.remove("a_index")
+        vqc_annotations.remove("was_split")
+
+    for ann in vqc_annotations:
+        if ann not in ht.row:
+            raise ValueError(f"{ann} is not a valid variant QC annotation.")
+        selected_variant_qc_annotations.update([(ann, ht[key_expr][ann])])
+
+    return selected_variant_qc_annotations
+
+
 def main(args):
     """Filter the gnomAD v4 VariantDataset to a subset of specified samples."""
-    hl.init(log="/subset.log", default_reference="GRCh38")
+    hl.init(
+        log="/v4_subset.log",
+        default_reference="GRCh38",
+        tmp_dir="gs://gnomad-tmp-4day",
+    )
     test = args.test
     output_path = args.output_path
     header_dict = HEADER_DICT
+    add_variant_qc = args.add_variant_qc
+    variant_qc_annotations = args.variant_qc_annotations
+    pass_only = args.pass_only
+    split_multi = args.split_multi
 
-    if args.vcf and not args.split_multi:
+    if args.vcf and not split_multi:
         raise ValueError(
             "VCF export without split multi is not supported at this time."
+        )
+    if (add_variant_qc or pass_only) and not split_multi:
+        raise ValueError(
+            "Cannot annotate variant QC annotations or filter to PASS variants on an"
+            " unsplit dataset."
         )
 
     vds = get_gnomad_v4_vds(
@@ -176,7 +214,7 @@ def main(args):
             vds.variant_data._filter_partitions(range(2)),
         )
 
-    meta_ht = project_meta.ht()
+    meta_ht = meta.ht()
     subset_ht = hl.import_table(args.subset_samples or args.subset_workspaces)
 
     if args.subset_workspaces:
@@ -211,6 +249,16 @@ def main(args):
         vds.variant_data.count_cols(),
     )
 
+    logger.info(
+        "Applying min_rep to the variant data MT because remove_dead_alleles may "
+        "result in variants that do not have the minimum representation."
+    )
+    vd = vds.variant_data
+    vds = hl.vds.VariantDataset(
+        vds.reference_data,
+        vd.key_rows_by(**hl.min_rep(vd.locus, vd.alleles)),
+    )
+
     if args.include_ukb_200k:
         # TODO: add option to provide an application linking file as an argument. Default is ATGU ID. # noqa
         vds = hl.vds.VariantDataset(
@@ -231,7 +279,7 @@ def main(args):
             s=hl.coalesce(meta_ht.project_meta.ukb_meta.eid_31063, meta_ht.s)
         )
 
-    if args.split_multi:
+    if split_multi:
         logger.info("Splitting multi-allelics")
         vd = vds.variant_data
         vd = vd.annotate_rows(
@@ -243,6 +291,19 @@ def main(args):
         vds = hl.vds.split_multi(
             hl.vds.VariantDataset(vds.reference_data, vd), filter_changed_loci=True
         )
+
+    if add_variant_qc or pass_only:
+        vd = vds.variant_data
+        ht = release_sites().ht()
+        if pass_only:
+            logger.info("Filtering to variants that passed variant QC.")
+            vd = vd.filter_rows(ht[vd.row_key].filters.length() == 0)
+        if add_variant_qc:
+            logger.info("Adding variant QC annotations.")
+            vd = vd.annotate_rows(
+                **make_variant_qc_annotations_dict(vd.row_key, variant_qc_annotations)
+            )
+        vds = hl.vds.VariantDataset(vds.reference_data, vd)
 
     if args.vcf or args.dense_mt or args.subset_call_stats:
         logger.info("Densifying VDS")
@@ -280,11 +341,18 @@ def main(args):
                 overwrite=args.overwrite,
             )
             ht = adjust_vcf_incompatible_types(ht)
-            mt = mt.annotate_rows(info=ht[mt.row_key].info)
+
+            info_expr = ht[mt.row_key].info
+            if add_variant_qc:
+                info_expr = mt.info.annotate(**info_expr)
+            mt = mt.annotate_rows(info=info_expr)
 
             if args.vds:
                 vd = vds.variant_data
-                vd = vd.annotate_rows(info=ht[vd.row_key].info)
+                info_expr = ht[vd.row_key].info
+                if add_variant_qc:
+                    info_expr = vd.info.annotate(**info_expr)
+                vd = vd.annotate_rows(info=info_expr)
                 vds = hl.vds.VariantDataset(vds.reference_data, vd)
 
         if args.dense_mt:
@@ -380,6 +448,32 @@ if __name__ == "__main__":
         "--subset-call-stats",
         help="Adds subset callstats, AC, AN, AF, nhomalt.",
         action="store_true",
+    )
+    parser.add_argument(
+        "--add-variant-qc",
+        help=(
+            "Annotate exported file with gnomAD's variant QC annotations. Defaults to"
+            " all annotations if a subset of annotations are not specified using the"
+            " --variant-qc-fields arg"
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--pass-only",
+        help=(
+            "Keep only the variants that passed variant QC, i.e. the filter field is"
+            " PASS."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--variant-qc-annotations",
+        nargs="+",
+        type=str,
+        help=(
+            "Variant QC annotations to add to the output file. Defaults to all"
+            " annotations."
+        ),
     )
     parser.add_argument(
         "--export-meta",
