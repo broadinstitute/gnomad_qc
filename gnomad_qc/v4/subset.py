@@ -214,7 +214,7 @@ def main(args):
             vds.variant_data._filter_partitions(range(2)),
         )
 
-    meta_ht = meta.ht()
+    meta_ht = meta().ht()
     subset_ht = hl.import_table(args.subset_samples or args.subset_workspaces)
 
     if args.subset_workspaces:
