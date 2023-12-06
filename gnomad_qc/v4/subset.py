@@ -167,7 +167,7 @@ def make_variant_qc_annotations_dict(
     ht = release_sites().ht()
     selected_variant_qc_annotations = {}
     if vqc_annotations is None:
-        vqc_annotations = ht.row_value
+        vqc_annotations = list(ht.row_value.keys())
         vqc_annotations.remove("a_index")
         vqc_annotations.remove("was_split")
 
