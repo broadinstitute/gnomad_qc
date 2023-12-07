@@ -1050,7 +1050,8 @@ hgdp_tgp_duplicated_to_exomes = TableResource(
     path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_duplicated_in_exomes.ht",
 )
 
-# Table with HGDP + 1KG/TGP relatedness information from Alicia Martin's group sample QC
+# Table with HGDP + 1KG/TGP relatedness information from Alicia Martin's
+# group sample QC.
 hgdp_tgp_relatedness = TableResource(
     path="gs://gnomad/v4.0/sample_qc/additional_resources/gnomad.genomes.v4.0.hgdp_tgp_relatedness.ht",
 )
