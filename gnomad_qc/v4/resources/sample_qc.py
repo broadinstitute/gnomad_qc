@@ -1,4 +1,5 @@
 """Script containing sample QC related resources."""
+
 from typing import Optional
 
 from gnomad.resources.resource_utils import (
@@ -590,7 +591,7 @@ def _get_ancestry_pca_ht_path(
     :return: Path to requested ancestry PCA file.
     """
     return (
-        f"{get_sample_qc_root(version, test, data_type)}/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
+        f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pca_{part}{'_with_unreleasable_samples' if include_unreleasable_samples else ''}.ht"
     )
 
 
