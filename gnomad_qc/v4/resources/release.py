@@ -1,4 +1,5 @@
 """Script containing release related resources."""
+
 import logging
 from typing import Optional
 
@@ -376,7 +377,7 @@ def included_datasets_json_path(
     :return: File path for release versions included datasets JSON
     """
     return (
-        f"{_release_root(release_version, test=test, data_type=data_type, extension='json')}/gnomad.exomes.v{release_version}.included_datasets.json"
+        f"{_release_root(release_version, test=test, data_type=data_type, extension='json')}/gnomad.{data_type}.v{release_version}.included_datasets.json"
     )
 
 

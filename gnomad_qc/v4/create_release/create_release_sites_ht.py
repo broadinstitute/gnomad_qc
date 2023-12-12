@@ -1,4 +1,5 @@
 """Script to create release sites HT for v4.0 exomes and genomes."""
+
 import argparse
 import json
 import logging
@@ -753,6 +754,7 @@ def join_hts(
     if "release" in tables:
         with hl.utils.hadoop_open(
             included_datasets_json_path(
+                data_type=data_type,
                 test=test,
                 release_version=hl.eval(
                     get_config(data_type=data_type)["release"]["ht"].version
@@ -768,7 +770,10 @@ def join_hts(
         }
     )
     with hl.utils.hadoop_open(
-        included_datasets_json_path(test=test, release_version=version), "w"
+        included_datasets_json_path(
+            data_type=data_type, test=test, release_version=version
+        ),
+        "w",
     ) as f:
         f.write(hl.eval(hl.json(included_datasets)))
 
