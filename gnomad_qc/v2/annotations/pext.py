@@ -8,12 +8,18 @@ from gnomad.resources.grch37.reference_data import gtex_rsem, vep_context
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.transcript_annotation import (
     get_max_pext_per_gene,
+    get_worst_csq_per_variant,
     process_annotate_aggregate_variants,
     summarize_transcript_expression,
 )
 from hail.utils import new_temp_file
 
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v2.resources.basics import get_gnomad_public_data
 
 # List of tissues to exclude from the analysis, including reproductive tissues,
 # cell lines and any tissue with less than 100 samples in GTEx v7.
@@ -52,6 +58,9 @@ def main(args):
     test = args.test
     max_pext = args.max_pext
     overwrite = args.overwrite
+    annotation_level = args.annotation_level
+    base_level = args.base_level
+    worst_csq_per_variant = args.worst_csq_per_variant
 
     hl.init(
         log="/v2_pext.log",
@@ -92,13 +101,31 @@ def main(args):
         )
 
     tx = summarize_transcript_expression(tx)
-    ht = process_annotate_aggregate_variants(ht, tx)
-    ht = ht.checkpoint(new_temp_file(f"{f'test_' if test else ''}pext_v2", "ht"))
 
-    if max_pext:
-        max_ht = get_max_pext_per_gene(ht, tissues_to_filter=TISSUES_TO_EXCLUDE)
-        max_ht.checkpoint(
-            new_temp_file(f"{f'test_' if test else ''}max_pext_per_gene if test", "ht"),
+    if annotation_level:
+        ht = process_annotate_aggregate_variants(ht, tx)
+        ht = ht.checkpoint(
+            new_temp_file(f"{f'test_' if test else ''}pext_annotation-level_v2", "ht")
+        )
+        if worst_csq_per_variant:
+            worst_ht = get_worst_csq_per_variant(ht)
+            worst_ht.checkpoint(
+                new_temp_file(f"{f'test_' if test else ''}worst_pext_per_variant", "ht")
+            )
+        if max_pext:
+            max_ht = get_max_pext_per_gene(ht, tissues_to_filter=TISSUES_TO_EXCLUDE)
+            max_ht.checkpoint(
+                new_temp_file(
+                    f"{f'test_' if test else ''}max_pext_per_gene if test", "ht"
+                ),
+            )
+
+    if base_level:
+        ht = process_annotate_aggregate_variants(
+            ht, tx, additional_group_by=["gene_id"]
+        )
+        ht = ht.checkpoint(
+            new_temp_file(f"{f'test_' if test else ''}pext_base-level_v2", "ht")
         )
 
 
@@ -113,6 +140,17 @@ if __name__ == "__main__":
     parser.add_argument("--slack-token", help="Slack API token.")
     parser.add_argument(
         "--test", help="Test on a small number of genes.", action="store_true"
+    )
+    parser.add_argument(
+        "--annotation-level",
+        help="Get annotation-level pext scores.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--base-level", help="Get base-level pext scores.", action="store_true"
+    )
+    parser.add_argument(
+        "--worst-csq-per-variant", help="Pull worst pext per gene.", action="store_true"
     )
     parser.add_argument(
         "--max-pext", help="Get maximum pext per gene.", action="store_true"
