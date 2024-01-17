@@ -8,6 +8,7 @@ from gnomad.assessment.summary_stats import (
     default_generate_gene_lof_summary,
     get_summary_counts,
 )
+from gnomad.utils import vep
 from gnomad.utils.filtering import filter_to_adj
 from gnomad.utils.slack import slack_notifications
 
@@ -75,17 +76,99 @@ def per_sample_datatype(
     print("mean called per exome: ", mean_called_per)
 
 
-def variant_types():
-    # what is needed: stats from your notebook for: 
-    # Indels and Snps per data type
-    # How many (number and proportion) pass VQSR and pass All Filters
-    pass
+def count_variant_types(
+    data_type: str = "exomes",
+    exclusive: bool = False,
+    do_snp: bool = True,
+    check_snp_filters: bool = True,
+    do_vep_lof: bool = False,
+    synonymous: bool = False,
+    filter_empty_csq: bool = True,
+    canonical: bool = False,
+    mane_select: bool = True,
+    check_is_snp: bool = False,
+    check_iqc: bool = False,
+    check_calling: bool = False,
+    check_filters: bool = False,
+) -> dict:
+    """
+    Function to return variant count information, either by snp/indel or vep/lof consequence terms.
 
-def vep_consequences():
-    # what is needed: stats from notebook for: 
-    # VEP consequence breakdown , in those two different returns
-    # let users specify: pass all filters, pass VQSR, or all variants
-    pass
+    :param data_type: String of either "exomes" or "genomes" for the sample type.
+    :param exclusive: Boolean to anti-join chosen data type with opposite, to have a HT without variants found in the other
+    :param do_snp: Boolean to calculate amount of snp and indel variants.
+    :param check_snp_filters: Boolean to count snp and indel variants by all 'filters' fields, instead of the default of passing all filters or not
+    :param do_vep_lof: Boolean to generate vep consequence and lof term counts 
+    """
+    # Read in release sites table to calculate numbers for
+    ht_release = release_sites(data_type).ht()
+    if exclusive:
+        # Do check if what we're looking for already exists, should add
+        opposite = list(set(["exomes", "genomes"]) - set([data_type]))[0]
+        ht_opposite = release_sites(opposite).ht()
+        ht_release = ht_opposite.anti_join(ht_opposite)
+    # ht_release = ht_release.select() there's much to maybe select from, so I'll hold off
+
+    return_tables = {}
+
+    # Generate snp and indel counts
+    if do_snp:
+        snp_args = []
+        if check_snp_filters:
+            snp_args.append("filters")
+
+        snp_aggregate_table = ht_release.group_by(
+            is_snp=hl.is_snp(ht_release.alleles[0], ht_release.alleles[1]),
+            all_pass=hl.len(ht_release.filters) == 0,
+            *snp_args,
+        ).aggregate(n=hl.agg.count())
+
+        # Print and return snp results
+        snp_aggregate_table.show()
+
+        return_tables["snp"] = snp_aggregate_table
+
+    # Generate vep and lof counts
+    if do_vep_lof:
+        # Generate and appropriately filter vep counts
+        ht_vep = vep.filter_vep_transcript_csqs(
+            ht_release,
+            synonymous=synonymous,
+            filter_empty_csq=filter_empty_csq,
+            canonical=canonical,
+            mane_select=mane_select,
+        )
+
+        ht_vep = vep.get_most_severe_consequence_for_summary(ht_vep)
+
+        # For all vep terms
+        vep_aggregate_table = ht_vep.group_by(csq=ht_vep.most_severe_csq).aggregate(
+            n=hl.agg.count()
+        )
+
+        vep_aggregate_table.show(n=100)
+
+        # Filter to only loss-of-function and appropriately return these 
+        ht_lof = ht_vep.filter(~hl.is_missing(ht_vep.lof))
+
+        lof_group_by_list = []
+        for argument in [check_is_snp, check_iqc, check_calling, check_filters]:
+            if argument is True:
+                lof_group_by_list.append(argument)
+
+        lof_aggregate_table = ht_lof.group_by(
+            *lof_group_by_list,
+            all_pass=hl.len(ht_release.filters) == 0,
+            csq=ht_lof.most_severe_csq,
+        ).aggregate(n=hl.agg.count())
+
+        lof_aggregate_table.show(n=100)
+
+        # Return all outputs
+        return_tables["vep"] = vep_aggregate_table
+        return_tables["lof"] = lof_aggregate_table
+
+        return return_tables
 
 
 def main(args):
@@ -102,8 +185,19 @@ def main(args):
     test = args.test
     overwrite = args.overwrite
 
+    returns = []
+
     if args.get_per_sample:
-        per_sample_datatype(data_type, test, overwrite)
+        r1 = per_sample_datatype(data_type, test, overwrite)
+        returns.append(r1)
+    if args.get_snp_indel_counts or args.get_vep_counts:
+        r2 = count_variant_types(
+            data_type, do_snp=args.get_snp_indel_counts, do_vep_lof=args.get_vep_counts
+        )
+        returns.append(r2)
+
+    
+    
 
 
 if __name__ == "__main__":
@@ -123,8 +217,13 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--get-summary-counts",
-        help="Get summary counts per variant category.",
+        "--get-snp-indel-counts",
+        help="Get counts for snps and indels.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--get-vep-counts",
+        help="Get counts for VEP consequences.",
         action="store_true",
     )
     parser.add_argument(
