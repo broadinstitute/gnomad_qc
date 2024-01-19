@@ -940,11 +940,11 @@ def main(args):  # noqa: D103
     contig = args.contig
     resources = get_export_resources(overwrite, data_type, test)
 
-    if contig and test:
-        raise ValueError(
-            "Test argument cannot be used with contig argument as test filters"
-            " to chr20, X, and Y."
-        )
+    # if contig and test:
+    #     raise ValueError(
+    #         "Test argument cannot be used with contig argument as test filters"
+    #         " to chr20, X, and Y."
+    #     )
 
     try:
         if args.validate_release_ht:
@@ -1022,13 +1022,6 @@ def main(args):  # noqa: D103
 
         if args.export_vcf:
             contig = f"chr{contig}" if contig else None
-
-            if contig and test:
-                raise ValueError(
-                    "Test argument cannot be used with contig argument as test filters"
-                    " to chr20, X, and Y."
-                )
-
             logger.info(f"Exporting VCF{f' for {contig}' if contig else ''}...")
             res = resources.export_vcf
             res.check_resource_existence()
@@ -1038,16 +1031,18 @@ def main(args):  # noqa: D103
                 header_dict = pickle.load(f)
 
             if test:
-                logger.info("Filtering to PCSK9 region...")
-                # Keep only PCSK9.
-                ht = hl.filter_intervals(
-                    ht,
-                    [
-                        hl.parse_locus_interval(
-                            "chr1:55039447-55064852", reference_genome="GRCh38"
-                        )
-                    ],
-                )
+                logger.info("Filtering to test partitions...")
+                ht = filter_to_test(ht)
+                # logger.info("Filtering to PCSK9 region...")
+                # # Keep only PCSK9.
+                # ht = hl.filter_intervals(
+                #     ht,
+                #     [
+                #         hl.parse_locus_interval(
+                #             "chr1:55039447-55064852", reference_genome="GRCh38"
+                #         )
+                #     ],
+                # )
             if contig:
                 logger.info(f"Filtering to {contig}...")
                 ht = hl.filter_intervals(

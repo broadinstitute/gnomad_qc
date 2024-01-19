@@ -304,13 +304,15 @@ def main(args):  # noqa: D103
 
             logger.info("Computing filtering allele frequencies and popmax...")
             faf, faf_meta = faf_expr(
-                mt.freq, mt.freq_meta, mt.locus, POPS_TO_REMOVE_FOR_POPMAX
+                mt.freq, mt.freq_meta, mt.locus, POPS_TO_REMOVE_FOR_POPMAX["v3"]
             )
             mt = mt.select_rows(
                 "InbreedingCoeff",
                 "freq",
                 faf=faf,
-                popmax=pop_max_expr(mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX),
+                popmax=pop_max_expr(
+                    mt.freq, mt.freq_meta, POPS_TO_REMOVE_FOR_POPMAX["v3"]
+                ),
             )
             mt = mt.annotate_globals(
                 faf_meta=faf_meta,
