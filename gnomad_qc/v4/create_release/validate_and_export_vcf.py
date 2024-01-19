@@ -682,7 +682,7 @@ def populate_info_dict(
     )
 
     # Remove unnecessary pop names from FAF_POPS dict depending on data type
-    # and version of FAF_POPS
+    # and version of FAF_POPS.
     faf_pops_version = "v4" if data_type == "exomes" else "v3"
     faf_pops = {pop: POP_NAMES[pop] for pop in faf_pops[faf_pops_version]}
 
@@ -942,11 +942,11 @@ def main(args):  # noqa: D103
     contig = args.contig
     resources = get_export_resources(overwrite, data_type, test)
 
-    # if contig and test:
-    #     raise ValueError(
-    #         "Test argument cannot be used with contig argument as test filters"
-    #         " to chr20, X, and Y."
-    #     )
+    if contig and test:
+        raise ValueError(
+            "Test argument cannot be used with contig argument as test filters"
+            " to chr20, X, and Y."
+        )
 
     try:
         if args.validate_release_ht:
