@@ -141,9 +141,6 @@ SAMPLE_SUM_SETS_AND_POPS = {
     "genomes": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
 }
 
-# Remove unnecessary pop names from FAF_POPS dict
-FAF_POPS = {pop: POP_NAMES[pop] for pop in FAF_POPS}
-
 # Row annotaions and their associated global annotations for length comparison
 LEN_COMP_GLOBAL_ROWS = {
     "freq": ["freq_meta", "freq_index_dict", "freq_meta_sample_count"],
@@ -639,7 +636,7 @@ def populate_info_dict(
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS,
     pops: Dict[str, str] = POPS,
-    faf_pops: Dict[str, str] = FAF_POPS,
+    faf_pops: Dict[str, List[str]] = FAF_POPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
     vrs_fields_dict: Dict[str, Dict[str, str]] = VRS_FIELDS_DICT,
@@ -666,7 +663,7 @@ def populate_info_dict(
     :param subset_pops: Dict of sample global genetic ancestry group names to use for all subsets in `subset_list` unless the subset
         is 'gnomad', in that case `gnomad_pops` is used. Default is POPS.
     :param gnomad_pops: Dict of sample global genetic ancestry group names for gnomAD data type. Default is POPS.
-    :param faf_pops: Dict with faf genentic ancestry group names (keys) and descriptions (values).  Default is FAF_POPS.
+    :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group names(values).  Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
     :param vrs_fields_dict: Dictionary with VRS annotations.
@@ -683,6 +680,11 @@ def populate_info_dict(
     vcf_info_dict.update(
         add_as_info_dict(info_dict=info_dict, as_fields=AS_FIELDS + AS_VQSR_FIELDS)
     )
+
+    # Remove unnecessary pop names from FAF_POPS dict depending on data type
+    # and version of FAF_POPS
+    faf_pops_version = "v4" if data_type == "exomes" else "v3"
+    faf_pops = {pop: POP_NAMES[pop] for pop in faf_pops[faf_pops_version]}
 
     for subset in subset_list:
         subset_pops = deepcopy(pops)
