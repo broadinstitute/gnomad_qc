@@ -9,17 +9,12 @@ from gnomad.utils.slack import slack_notifications
 from gnomad.utils.transcript_annotation import (
     get_max_pext_per_gene,
     get_worst_csq_per_variant,
-    process_annotate_aggregate_variants,
+    perform_tx_annotation_pipeline,
     summarize_transcript_expression,
 )
 from hail.utils import new_temp_file
 
-from gnomad_qc.resource_utils import (
-    PipelineResourceCollection,
-    PipelineStepResourceCollection,
-)
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v2.resources.basics import get_gnomad_public_data
 
 # List of tissues to exclude from the analysis, including reproductive tissues,
 # cell lines and any tissue with less than 100 samples in GTEx v7.
@@ -79,12 +74,14 @@ def main(args):
                 "1:910579-917497"
             ),  # ENSG00000187642, C1orf170/PERM1
             hl.parse_locus_interval("1:6521211-6526255"),  # ENSG00000215788, TNFRSF25
+            hl.parse_locus_interval("1:1138888-1142071"),  # ENSG00000186891, TNFRSF18
         ]
         test_genes = [
             "ENSG00000130203",
             "ENSG00000102468",
             "ENSG00000187642",
             "ENSG00000215788",
+            "ENSG00000186891",
         ]
 
         logger.info(
@@ -102,17 +99,20 @@ def main(args):
 
     tx = summarize_transcript_expression(tx)
 
+    # TODO: Whether to annotate the result Table back to original variant HT.
     if annotation_level:
-        ht = process_annotate_aggregate_variants(ht, tx)
+        ht = perform_tx_annotation_pipeline(ht, tx)
         ht = ht.checkpoint(
             new_temp_file(f"{f'test_' if test else ''}pext_annotation-level_v2", "ht")
         )
         if worst_csq_per_variant:
+            ht = ht.collect_by_key("tx_annotation")
             worst_ht = get_worst_csq_per_variant(ht)
             worst_ht.checkpoint(
                 new_temp_file(f"{f'test_' if test else ''}worst_pext_per_variant", "ht")
             )
         if max_pext:
+            ht = ht.collect_by_key("tx_annotation")
             max_ht = get_max_pext_per_gene(ht, tissues_to_filter=TISSUES_TO_EXCLUDE)
             max_ht.checkpoint(
                 new_temp_file(
@@ -121,8 +121,10 @@ def main(args):
             )
 
     if base_level:
-        ht = process_annotate_aggregate_variants(
-            ht, tx, additional_group_by=["gene_id"]
+        ht = perform_tx_annotation_pipeline(
+            ht,
+            tx,
+            additional_group_by=["gene_symbol"],
         )
         ht = ht.checkpoint(
             new_temp_file(f"{f'test_' if test else ''}pext_base-level_v2", "ht")
