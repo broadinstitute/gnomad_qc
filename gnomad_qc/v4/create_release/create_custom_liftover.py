@@ -4,21 +4,11 @@ import logging
 
 import hail as hl
 
-from gnomad.resources.resource_utils import (
-    MatrixTableResource,
-    PedigreeResource,
-    TableResource,
-    VersionedMatrixTableResource,
-    VersionedPedigreeResource,
-    VersionedTableResource,
-)
 from gnomad_qc.v2.resources.basics import get_gnomad_liftover_data_path
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE, RELEASES
 from gnomad_qc.v4.resources.release import (
-    # release_lof,
     _release_root,
     release_sites,
-    # release_summary_stats
 )
 
 
@@ -28,6 +18,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("subset")
 logger.setLevel(logging.INFO)
+
+GENES_OF_INTEREST = ["KCNE1", "CBS", "CRYAA"]
 
 
 def get_custom_liftover_three_genes_path(
@@ -45,78 +37,69 @@ def get_custom_liftover_three_genes_path(
     )
 
 
-def main(args):
-    # Read in liftover file
-    liftover_ht = hl.read_table(
-        get_gnomad_liftover_data_path(data_type="exomes", version="2.1.1").path
+def read_and_filter(
+    data_type: str,
+) -> hl.Table:
+    """
+    Read in gnomAD v2 liftover table, filter to genes of interest, and return the Table.
+
+    :param data_type: String of either exome of genome
+    :return: filtered Hail Table
+    """
+    ht = hl.read_table(
+        get_gnomad_liftover_data_path(data_type=data_type, version="2.1.1").path
     )
 
-    # Create and filter to genes of interest
-    # Current coordinates grabbed from gnomAD v4 browser, have reached out to browser team about something more professional.
-    # CBS: 21:43053191-43076943
-    cbs_interval = hl.locus_interval(
-        contig="chr21", start=43053191, end=43076943, reference_genome="GRCh38"
-    )
-    # KCNE1: 21:34446688-34512214
-    kcne1_interval = hl.locus_interval(
-        contig="chr21", start=34446688, end=34512214, reference_genome="GRCh38"
-    )
-    # CRYAA interval: 21:43169008-43172805
-    cryaa_interval = hl.locus_interval(
-        contig="chr21", start=43169008, end=43172805, reference_genome="GRCh38"
-    )
-    interval_list = [kcne1_interval, cbs_interval, cryaa_interval]
+    # Filter to chr21, since it is known that is where all 3 of the genes are.
+    ht = ht.filter(ht.locus.contig=="chr21")
 
-    # Create liftover ht at only three relevant genes
-    lifted_three_genes = hl.filter_intervals(liftover_ht, interval_list)
-
-    # Read in v4 information
-    genomes_frequency_info = hl.filter_intervals(
-        hl.read_table(release_sites("genomes").path),
-        interval_list,
-    )
-
-    exomes_frequency_info = hl.filter_intervals(
-        hl.read_table(release_sites("genomes").path),
-        interval_list,
-    )
-
-    # Create a new struct with v2, v4 exomes, and v4 genomes frequency annotation
-    lifted_three_genes_combined_freq = lifted_three_genes.annotate(
-        combined_frequency=hl.struct(
-            v2_exomes_freq=lifted_three_genes.freq,
-            v4_exomes_freq=exomes_frequency_info[
-                lifted_three_genes.locus, lifted_three_genes.alleles
-            ].freq,
-            v4_genomes_freq=genomes_frequency_info[
-                lifted_three_genes.locus, lifted_three_genes.alleles
-            ].freq,
-        )
-    )
-
-    # Annotate table with the names of the relevant genes - useful for clinicians possibly
-    lifted_three_genes_combined_freq = lifted_three_genes_combined_freq.annotate(
-        gene_symbol="No Gene Name"
-    )
-    for pair in [
-        ["KCNE1", kcne1_interval],
-        ["CBS", cbs_interval],
-        ["CRYAA", cryaa_interval],
-    ]:
-        gene_interval = pair[1]
-        new_gene_symbol = pair[0]
-        lifted_three_genes_combined_freq = lifted_three_genes_combined_freq.annotate(
-            gene_symbol=hl.if_else(
-                gene_interval.contains(lifted_three_genes_combined_freq.locus),
-                new_gene_symbol,
-                lifted_three_genes_combined_freq.gene_symbol,
+    # Filter using lambda statement for any of the 3 genes of interest in the gene_symbol array.
+    ht = ht.filter(
+        hl.set(GENES_OF_INTEREST).any(
+            lambda gene_symbol: ht.vep.transcript_consequences.gene_symbol.contains(
+                gene_symbol
             )
         )
-
-    # Write output to created resource with release root
-    lifted_three_genes_combined_freq = lifted_three_genes_combined_freq.checkpoint(
-        get_custom_liftover_three_genes_path(), overwrite=args.overwrite
     )
+
+    return ht
+
+
+def main(args):
+    """
+    These are the three clinically relevant genes impacted by false duplications in the GRCh38 reference. 
+    To make it easier for our users to switch to gnomAD v4 and the new reference build, 
+    we should create a new release file that combines information from the v2 exomes and genomes only for these three genes. 
+    To create this file, filter the v2 liftover files (https://gnomad.broadinstitute.org/downloads#v2-liftover) to these genes, 
+    and then merge frequency information across the exomes and genomes
+    """
+    # Read in liftover files.
+    exome_ht = read_and_filter('exomes')
+    genome_ht = read_and_filter('genomes')
+
+    # Union and merge to contain any variant present in either.
+    # Note: only about ~550 overlap, with ~187k exome variants and ~12k genome variants.
+    # This makes sense in exonic regions.
+    ht = exome_ht.select().select_globals().union(genome_ht.select().select_globals()).distinct()
+
+    # Annotate with information from both exomes and genomes - many will be NaN.
+    ht = ht.annotate(
+        v2_exomes = exome_ht[ht.locus,ht.alleles],
+        v2_genomes = genome_ht[ht.locus,ht.alleles],
+        v2_freq = hl.struct(
+            exome_freq = exome_ht[ht.locus,ht.alleles].freq,
+            genome_freq = genome_ht[ht.locus,ht.alleles].freq,
+        )
+    )
+
+    # Annotate with globals from v2 exomes and v2 genomes.
+    ht = ht.annotate_globals(
+        v2_exome_globals = exome_ht.globals.collect(),
+        v2_genome_globals = genome_ht.globals.collect()
+    )
+
+    # Write output to created resource.
+    ht = ht.checkpoint(get_custom_liftover_three_genes_path(), overwrite=args.overwrite)
 
 
 if __name__ == "__main__":
