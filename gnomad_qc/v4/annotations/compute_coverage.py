@@ -120,11 +120,12 @@ def adjust_interval_padding(ht: hl.Table, padding: int) -> hl.Table:
     :param padding: Padding to use.
     :return: HT with adjusted interval padding.
     """
-    return ht.annotate(
+    return ht.key_by(
         interval=hl.locus_interval(
+            ht.interval.start.contig,
             ht.interval.start.position - padding,
             ht.interval.end.position + padding,
-            reference_genome=ht.interval.reference_genome,
+            reference_genome=ht.interval.start.dtype.reference_genome,
         )
     )
 
@@ -151,7 +152,7 @@ def get_coverage_resources(
         overwrite=overwrite,
     )
     # Create resource collection for each step of the coverage pipeline.
-    if calling_interval_name and calling_interval_padding:
+    if calling_interval_name is not None and calling_interval_padding is not None:
         coverage_input_resources = {
             "interval list": {
                 "interval_ht": calling_intervals(
@@ -173,9 +174,11 @@ def get_coverage_resources(
         input_resources={
             **coverage_input_resources,
             **{
-                "meta_ht": meta,
-                "ds_ht": get_downsampling(),
-                "non_ukb_ds_ht": get_downsampling(subset="non_ukb"),
+                "metadata Table": {"meta_ht": meta()},
+                "downsampling Tables": {
+                    "ds_ht": get_downsampling(),
+                    "non_ukb_ds_ht": get_downsampling(subset="non_ukb"),
+                },
             },
         },
         output_resources={
