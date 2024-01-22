@@ -19,21 +19,21 @@ logging.basicConfig(
 logger = logging.getLogger("subset")
 logger.setLevel(logging.INFO)
 
-GENES_OF_INTEREST = ["KCNE1", "CBS", "CRYAA"]
+FALSE_DUP_GENES = ["KCNE1", "CBS", "CRYAA"]
 
 
-def get_custom_liftover_three_genes_path(
+def get_false_dup_genes_path(
     release_version: str = CURRENT_RELEASE,
     test: bool = False,
     data_type: str = "genomes",
 ) -> str:
     """
-    Retrieve path for the liftover table containing three genes of interest.
+    Retrieve path for the liftover table containing three genes of interest within a false duplication in GRCh38.
 
-    :return: Combined custom liftover table path.
+    :return: Combined custom liftover table path for the three genes in false duplication.
     """
     return (
-        f"{_release_root(version=release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}_custom_liftover_three_genes.ht"
+        f"{_release_root(version=release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}_three_false_dup_genes_liftover.ht"
     )
 
 
@@ -47,7 +47,7 @@ def read_and_filter(
     :return: filtered Hail Table
     """
     ht = hl.read_table(
-        get_gnomad_liftover_data_path(data_type=data_type, version="2.1.1").path
+        get_gnomad_liftover_data_path(data_type=data_type, version="2.1.1")
     )
 
     # Filter to chr21, since it is known that is where all 3 of the genes are.
@@ -55,7 +55,7 @@ def read_and_filter(
 
     # Filter using lambda statement for any of the 3 genes of interest in the gene_symbol array.
     ht = ht.filter(
-        hl.set(GENES_OF_INTEREST).any(
+        hl.set(FALSE_DUP_GENES).any(
             lambda gene_symbol: ht.vep.transcript_consequences.gene_symbol.contains(
                 gene_symbol
             )
@@ -99,7 +99,7 @@ def main(args):
     )
 
     # Write output to created resource.
-    ht = ht.checkpoint(get_custom_liftover_three_genes_path(), overwrite=args.overwrite)
+    ht = ht.checkpoint(get_false_dup_genes_path(), overwrite=args.overwrite)
 
 
 if __name__ == "__main__":
