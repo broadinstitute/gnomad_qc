@@ -172,6 +172,7 @@ class PipelineStepResourceCollection:
         self.overwrite = overwrite
         self.pipeline_step = step_name
         self.previous_steps = pipeline_input_steps
+        self.next_steps = []
         self._output_resource_dict = output_resources
 
         self._add_output_resource_attributes(output_resources)
@@ -183,6 +184,7 @@ class PipelineStepResourceCollection:
         if input_resources is None:
             for step in pipeline_input_steps:
                 self.input_resources.update(step.output_resources)
+                step.next_steps.append(self)
                 # Add the output of all the previous pipeline steps as attributes to the
                 # current object. This allows the resource to be called from this
                 # object. For example (from the class example above):

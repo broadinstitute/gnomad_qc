@@ -19,9 +19,6 @@ from gnomad.utils.slack import slack_notifications
 from hail.utils.misc import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v3.create_release.create_hgdp_tgp_subset import (
-    convert_heterogeneous_dict_to_struct,
-)
 from gnomad_qc.v4.resources.basics import all_ukb_samples_to_remove, get_gnomad_v4_vds
 from gnomad_qc.v4.resources.meta import gatk_versions, meta, project_meta
 from gnomad_qc.v4.resources.sample_qc import (
@@ -56,6 +53,24 @@ logger.setLevel(logging.INFO)
 # TODO: Should we have a joint HT that has v3 info? Including adding v3 relationships
 #  to the relationships set, or have different annotation for that. gnomad_production
 #  issue #902.
+
+
+def convert_heterogeneous_dict_to_struct(global_dict: Dict) -> hl.struct:
+    """
+    Convert heterogeneous dictionary (one with unspecified levels of nested dicts) into a multi-level Hail struct.
+
+    :param global_dict: Heterogeneous dictionary to convert into a Hail struct.
+    :return: Global dictionary converted to struct.
+    """
+    if isinstance(global_dict, dict):
+        return hl.struct(
+            **{
+                k: convert_heterogeneous_dict_to_struct(global_dict[k])
+                for k in global_dict
+            }
+        )
+    else:
+        return global_dict
 
 
 def get_project_meta() -> hl.Table:
