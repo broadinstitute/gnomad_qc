@@ -1,7 +1,7 @@
 # gnomAD v4 production overview:
 ```mermaid
 flowchart LR;
-  classDef node_color fill:#BE4603
+  classDef node_color fill:#2C5D4A
 
   sample_qc --> annotations;
   click sample_qc "#sampleqc-"
@@ -13,8 +13,8 @@ flowchart LR;
 ```
 ## sample_qc:
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   prepare-cuking-inputs["relatedness.py --prepare-cuking-inputs"] --> print_cuking_command["print_cuking_command"];
   print-cuking-command["relatedness.py --print-cuking-command"] --> create_cuking_relatedness_table["create_cuking_relatedness_table"];
@@ -51,8 +51,8 @@ flowchart LR;
 ```
 ## annotations:
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   compute-info["generate_variant_qc_annotations.py --compute-info"] --> split_info["split_info"];
   split-info["generate_variant_qc_annotations.py --split-info"] --> create_variant_qc_annotation_ht["create_variant_qc_annotation_ht"];
@@ -107,8 +107,8 @@ flowchart LR;
 ```
 ## variant_qc:
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   train-rf["random_forest.py --train-rf"] --> apply_rf["apply_rf"];
   train-rf["random_forest.py --train-rf"] --> apply-rf["random_forest.py --apply-rf"];
@@ -132,8 +132,8 @@ flowchart LR;
 ```
 ## create_release:
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   finalize-freq-ht["generate_freq.py --finalize-freq-ht"] --> create_combined_frequency_table["create_combined_frequency_table"];
   apply-patch-to-freq-ht["generate_freq_genomes.py --apply-patch-to-freq-ht"] --> create_combined_frequency_table["create_combined_frequency_table"];
@@ -155,8 +155,8 @@ flowchart LR;
 ## sample_qc:
 ### [relatedness.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/relatedness.py): Script to compute relatedness estimates among pairs of samples in the callset.
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   prepare-cuking-inputs["--prepare-cuking-inputs"] --> print_cuking_command["print_cuking_command"];
   print_cuking_command["print_cuking_command"] --> print_cuking_command[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/relatedness.py#L46'>print_cuking_command</a>"]]:::node_color;
@@ -182,8 +182,8 @@ flowchart LR;
 ```
 ### [outlier_filtering.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/outlier_filtering.py): Script to determine sample QC metric outliers that should be filtered.
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   apply-regressed-filters["--apply-regressed-filters"] --> create_finalized_outlier_filter["create_finalized_outlier_filter"];
   create_finalized_outlier_filter["create_finalized_outlier_filter"] --> create_finalized_outlier_filter_ht[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/outlier_filtering.py#L587'>create_finalized_outlier_filter_ht</a>"]]:::node_color;
@@ -196,8 +196,8 @@ flowchart LR;
 ```
 ### [identify_trios.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/identify_trios.py): Script to identify trios from relatedness data and filter based on Mendel errors and de novos.
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   compute-related-samples-to-drop["relatedness.py --compute-related-samples-to-drop"] --> identify_duplicates["identify_duplicates"];
   identify-duplicates["--identify-duplicates"] --> infer_families["infer_families"];
@@ -225,8 +225,8 @@ flowchart LR;
 ## annotations:
 ### [generate_variant_qc_annotations.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_variant_qc_annotations.py): Script to generate annotations for variant QC on gnomAD v4.
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   compute-info["--compute-info"] --> run_compute_info[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_variant_qc_annotations.py#L221'>run_compute_info</a>"]]:::node_color;
   run_compute_info[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_variant_qc_annotations.py#L221'>run_compute_info</a>"]]:::node_color --> split_info["split_info"];
@@ -254,8 +254,8 @@ flowchart LR;
 ```
 ### [generate_freq.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq.py): Script to generate the frequency data annotations across v4 exomes.
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   write-split-vds-and-downsampling-ht["--write-split-vds-and-downsampling-ht"] --> get_vds_for_freq[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq.py#L202'>get_vds_for_freq</a>"]]:::node_color;
   get_vds_for_freq[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq.py#L202'>get_vds_for_freq</a>"]]:::node_color --> get_downsampling_ht[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq.py#L548'>get_downsampling_ht</a>"]]:::node_color;
@@ -282,8 +282,8 @@ flowchart LR;
 ```
 ### [generate_freq_genomes.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq_genomes.py): Script to create frequencies HT for v4.0 genomes.
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   finalize-relatedness-ht["relatedness.py --finalize-relatedness-ht"] --> get_duplicated_to_exomes["get_duplicated_to_exomes"];
   update-annotations["--update-annotations"] --> add_updated_sample_qc_annotations[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq_genomes.py#L253'>add_updated_sample_qc_annotations</a>"]]:::node_color;
@@ -332,8 +332,8 @@ flowchart LR;
 ```
 ### [compute_coverage.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/compute_coverage.py): Script to compute coverage statistics on gnomAD v4 exomes.
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   compute-coverage-ht["--compute-coverage-ht"] --> export_release_files["export_release_files"];
   compute-coverage-ht["--compute-coverage-ht"] --> export-release-files["--export-release-files"];
@@ -341,8 +341,8 @@ flowchart LR;
 ## variant_qc:
 ### [random_forest.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/random_forest.py): Script for running random forest model on gnomAD v4 variant QC data.
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   train-rf["--train-rf"] --> train_rf[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/random_forest.py#L57'>train_rf</a>"]]:::node_color;
   train_rf[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/random_forest.py#L57'>train_rf</a>"]]:::node_color --> add_model_to_run_list[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/random_forest.py#L172'>add_model_to_run_list</a>"]]:::node_color;
@@ -351,8 +351,8 @@ flowchart LR;
 ```
 ### [evaluation.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/evaluation.py): Script to create Tables with aggregate variant statistics by variant QC score bins needed for evaluation plots.
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   create-variant-qc-annotation-ht["generate_variant_qc_annotations.py --create-variant-qc-annotation-ht"] --> create_bin_ht["create_bin_ht"];
   create_bin_ht["create_bin_ht"] --> create_bin_ht[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/evaluation.py#L42'>create_bin_ht</a>"]]:::node_color;
@@ -375,8 +375,8 @@ flowchart LR;
 ```
 ### [final_filter.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/final_filter.py): Script to create final filter Table for release.
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   create-bin-ht["evaluation.py --create-bin-ht"] --> final_filter.py["final_filter.py"];
   create-aggregated-bin-ht["evaluation.py --create-aggregated-bin-ht"] --> final_filter.py["final_filter.py"];
@@ -385,16 +385,16 @@ flowchart LR;
 ```
 ### [final_filter_genomes.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/final_filter_genomes.py): Script to create final filter Table for v4 genomes release.
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   apply-patch-to-freq-ht["generate_freq_genomes.py --apply-patch-to-freq-ht"] --> final_filter.py["final_filter.py"];
 ```
 ## create_release:
 ### [create_combined_faf_release_ht.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/create_release/create_combined_faf_release_ht.py): Create a joint gnomAD v4 exome and genome frequency and FAF.
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   finalize-freq-ht["generate_freq.py --finalize-freq-ht"] --> create_combined_frequency_table["create_combined_frequency_table"];
   create_combined_frequency_table["create_combined_frequency_table"] --> extract_freq_info[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/create_release/create_combined_faf_release_ht.py#L63'>extract_freq_info</a>"]]:::node_color;
@@ -418,8 +418,8 @@ flowchart LR;
 ```
 ### [validate_and_export_vcf.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/create_release/validate_and_export_vcf.py):
 ```mermaid
-flowchart LR;
-  classDef node_color fill:#BE4603
+flowchart TB;
+  classDef node_color fill:#2C5D4A
 
   validate-release-ht["--validate-release-ht"] --> check_globals_for_retired_terms[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/create_release/validate_and_export_vcf.py#L892'>check_globals_for_retired_terms</a>"]]:::node_color;
   check_globals_for_retired_terms[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/create_release/validate_and_export_vcf.py#L892'>check_globals_for_retired_terms</a>"]]:::node_color --> prepare_ht_for_validation[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/create_release/validate_and_export_vcf.py#L481'>prepare_ht_for_validation</a>"]]:::node_color;
