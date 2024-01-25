@@ -554,7 +554,7 @@ def populate_subset_info_dict(
     description_text: str,
     data_type: str = "exomes",
     pops: Dict[str, str] = POPS,
-    faf_pops: Dict[str, str] = FAF_POPS,
+    faf_pops: Dict[str, List[str]] = FAF_POPS,
     sexes: List[str] = SEXES,
     label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
