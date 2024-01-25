@@ -552,6 +552,7 @@ def prepare_ht_for_validation(
 def populate_subset_info_dict(
     subset: str,
     description_text: str,
+    data_type: str = "exomes",
     pops: Dict[str, str] = POPS,
     faf_pops: Dict[str, str] = FAF_POPS,
     sexes: List[str] = SEXES,
@@ -566,13 +567,19 @@ def populate_subset_info_dict(
 
     :param subset: Sample subset in dataset. "" is used as a placeholder for the full dataset.
     :param description_text: Text describing the sample subset that should be added to the INFO description.
+    :param data_type: One of "exomes" or "genomes". Default is "exomes".
     :param pops: Dict of sample global genetic ancestry names for the gnomAD data type. Default is POPS.
-    :param faf_pops: Dict with faf genetic ancestry names (keys) and descriptions (values).  Default is FAF_POPS.
+    :param faf_pops: Dict with faf genetic ancestry names (keys) and descriptions (values). Default is dictionary of FAF_POPS and descriptions.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
     :return: Dictionary containing Subset specific INFO header fields.
     """
     vcf_info_dict = {}
+    # Remove unnecessary pop names from FAF_POPS dict depending on data type
+    # and version of FAF_POPS.
+    faf_pops_version = "v4" if data_type == "exomes" else "v3"
+    faf_pops = {pop: POP_NAMES[pop] for pop in faf_pops[faf_pops_version]}
+
     # Add FAF fields to dict.
     faf_label_groups = create_label_groups(
         pops=faf_pops, sexes=sexes, all_groups=["adj"]
@@ -681,11 +688,6 @@ def populate_info_dict(
         add_as_info_dict(info_dict=info_dict, as_fields=AS_FIELDS + AS_VQSR_FIELDS)
     )
 
-    # Remove unnecessary pop names from FAF_POPS dict depending on data type
-    # and version of FAF_POPS.
-    faf_pops_version = "v4" if data_type == "exomes" else "v3"
-    faf_pops = {pop: POP_NAMES[pop] for pop in faf_pops[faf_pops_version]}
-
     for subset in subset_list:
         subset_pops = deepcopy(pops)
         if (subset == "joint") | (data_type == "genomes"):
@@ -696,6 +698,7 @@ def populate_info_dict(
             populate_subset_info_dict(
                 subset=subset,
                 description_text=description_text,
+                data_type=data_type,
                 pops=subset_pops,
                 faf_pops=faf_pops,
                 sexes=sexes,
@@ -1023,6 +1026,11 @@ def main(args):  # noqa: D103
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
         if args.export_vcf:
+            if contig and test:
+                raise ValueError(
+                    "Test argument cannot be used with contig argument as test filters"
+                    " to chr20, X, and Y."
+                )
             contig = f"chr{contig}" if contig else None
             logger.info(f"Exporting VCF{f' for {contig}' if contig else ''}...")
             res = resources.export_vcf
@@ -1033,18 +1041,8 @@ def main(args):  # noqa: D103
                 header_dict = pickle.load(f)
 
             if test:
-                logger.info("Filtering to test partitions...")
+                logger.info("Filtering to test partitions on chr20, X, and Y...")
                 ht = filter_to_test(ht)
-                # logger.info("Filtering to PCSK9 region...")
-                # # Keep only PCSK9.
-                # ht = hl.filter_intervals(
-                #     ht,
-                #     [
-                #         hl.parse_locus_interval(
-                #             "chr1:55039447-55064852", reference_genome="GRCh38"
-                #         )
-                #     ],
-                # )
             if contig:
                 logger.info(f"Filtering to {contig}...")
                 ht = hl.filter_intervals(
