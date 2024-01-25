@@ -227,7 +227,7 @@ def main(args):
         test=test,
         overwrite=overwrite,
         calling_interval_name=args.calling_interval_name,
-        # We only have interval lists with 0 ir 50bp padding, so if a different padding
+        # We only have interval lists with 0 or 50bp padding, so if a different padding
         # is requested, use 0bp and adjust it based on the desired padding.
         calling_interval_padding=0 if adjust_padding else calling_interval_padding,
     )
@@ -328,7 +328,7 @@ def main(args):
             an_ht = an_ht.checkpoint(hl.utils.new_temp_file("an", "ht"))
 
             # Naive coalesce and write out final Table.
-            an_ht = an_ht.naive_coalesce(5000)
+            an_ht = an_ht.naive_coalesce(n_partitions)
             an_ht.write(res.allele_number_ht.path, overwrite=overwrite)
 
         if args.export_release_files:

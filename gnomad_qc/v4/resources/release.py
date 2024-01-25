@@ -381,7 +381,7 @@ def release_all_sites_an(
     Retrieve versioned resource for all sites allele number release Table.
 
     :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
-    :param public: Determines whether release coverage Table is read from public or
+    :param public: Determines whether release allele number Table is read from public or
         private bucket. Default is private.
     :param test: Whether to use a tmp path for testing. Default is False.
     :return: All sites allele number release Table.
