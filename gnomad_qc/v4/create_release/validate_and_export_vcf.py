@@ -569,7 +569,7 @@ def populate_subset_info_dict(
     :param description_text: Text describing the sample subset that should be added to the INFO description.
     :param data_type: One of "exomes" or "genomes". Default is "exomes".
     :param pops: Dict of sample global genetic ancestry names for the gnomAD data type. Default is POPS.
-    :param faf_pops: Dict with faf genetic ancestry names (keys) and descriptions (values). Default is dictionary of FAF_POPS and descriptions.
+    :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group names(values).  Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
     :return: Dictionary containing Subset specific INFO header fields.
