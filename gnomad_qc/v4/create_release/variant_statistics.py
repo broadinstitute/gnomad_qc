@@ -3,6 +3,7 @@ import argparse
 import logging
 
 import hail as hl
+
 # from gnomad.assessment.summary_stats import (
 #     default_generate_gene_lof_matrix,
 #     default_generate_gene_lof_summary,
@@ -12,6 +13,7 @@ from gnomad.resources.resource_utils import (
     TableResource,
     VersionedTableResource,
 )
+
 # from gnomad.utils.filtering import filter_to_adj
 from gnomad.utils.slack import slack_notifications
 
@@ -25,7 +27,7 @@ from gnomad_qc.v4.resources.release import (
     release_sites,
     CURRENT_RELEASE,
     RELEASES,
-    _release_root
+    _release_root,
 )
 
 
@@ -64,6 +66,7 @@ def per_sample_datatype(
     overwrite: bool = False,
     filter_variant_qc: bool = False,
     filter_calling_intervals: bool = False,
+    singletons_by_pop: bool = False,
 ) -> None:
     """
     Write out Hail's sample_qc output for desired samples and variants.
@@ -75,6 +78,7 @@ def per_sample_datatype(
     :param overwrite: Boolean to overwrite checkpoint files if requested.
     :param filter_variant_qc: Bool to only count variants that pass all variant qc filters (i.e. VQSR, AC0).
     :param filter_calling_intervals: Bool to filter only to variants in calling intervals.
+    :param singletons_by_pop: Bool to calculate the mean number of singletons by population group.
     """
 
     # Read in release data and metadata and VDS
@@ -112,6 +116,10 @@ def per_sample_datatype(
         meta_ht[vds_data_filtered.s].release
     )
 
+    vds_data_filtered = vds_data_filtered.annotate_cols(
+        pop=meta_ht[vds_data_filtered.s].population_inference.pop
+    )
+
     # Select data down to: only variant locus & alleles and only if samples do or don't have it
     # Create then select down to GT
     vds_data_filtered = vds_data_filtered.annotate_entries(
@@ -119,7 +127,6 @@ def per_sample_datatype(
     )
     vds_data_filtered = vds_data_filtered.select_entries("GT")
     vds_data_filtered = vds_data_filtered.select_rows()
-    vds_data_filtered = vds_data_filtered.select_cols()
 
     # Perform Hail's Sample QC module
     # Resulting table is of most interest for further analysis
@@ -133,15 +140,46 @@ def per_sample_datatype(
     # Column 'n_called' is a per-sample metric of the number of variants called
     # Report some stats of interest from this table
     called_per_distribution = sample_qc_ht.aggregate(
-        hl.agg.approx_quantiles(
-            sample_qc_ht.sample_qc.n_called, qs=[0, 0.25, 0.50, 0.75, 1.0]
+        hl.struct(
+            mean=hl.agg.mean(sample_qc_ht.sample_qc.n_called),
+            quantiles=hl.agg.approx_quantiles(
+                sample_qc_ht.sample_qc.n_called, qs=[0, 0.25, 0.50, 0.75, 1.0]
+            ),
         )
     )
 
     logger.info(
         f"Quantiles called per {data_type} by 0th, 25th, 50th, 75th, and 100th"
-        f" quantiles \n: {called_per_distribution}"
+        f" quantiles \n: {called_per_distribution.quantiles}"
+        f" and a mean of {called_per_distribution.mean}"
     )
+
+    if singletons_by_pop:
+        # Add population information to sample_qc_ht, both keyed by 's'.
+        dictionary_results = sample_qc_ht.aggregate(
+            hl.agg.group_by(
+                sample_qc_ht.pop,
+                hl.struct(
+                    mean=hl.agg.mean(sample_qc_ht.sample_qc.n_singleton),
+                    quantiles=hl.agg.approx_quantiles(
+                        sample_qc_ht.sample_qc.n_singleton,
+                        qs=[0, 0.25, 0.50, 0.75, 1.0],
+                    ),
+                ),
+            )
+        )
+
+        logger.info(dictionary_results)
+
+        for pop_record in dictionary_results.items():
+            pop_label = pop_record[0]
+            mean = pop_record[1].mean
+            quantiles = pop_record[1].quantiles
+            logger.info(
+                f"For pop {pop_label}, mean # singletons called is {mean}"
+                " with distribution by 0th, 25th, 50th, 75th, and 100th"
+                f" percentiles as: {quantiles}"
+            )
 
 
 def variant_types():
@@ -173,6 +211,7 @@ def main(args):
     overwrite = args.overwrite
     per_sample_filter_variant_qc = args.per_sample_filter_variant_qc
     per_sample_filter_calling_intervals = args.per_sample_filter_calling_intervals
+    per_sample_singletons_by_pop = args.per_sample_singletons_by_pop
 
     if args.get_per_sample:
         per_sample_datatype(
@@ -181,6 +220,7 @@ def main(args):
             overwrite=overwrite,
             filter_variant_qc=per_sample_filter_variant_qc,
             filter_calling_intervals=per_sample_filter_calling_intervals,
+            singletons_by_pop=per_sample_singletons_by_pop,
         )
 
 
@@ -230,6 +270,11 @@ if __name__ == "__main__":
             "Only calculate per-sample variants for those variants inside of calling"
             " intervals."
         ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--per-sample-singletons-by-pop",
+        help="Output statistics for number of singletons by population group",
         action="store_true",
     )
     args = parser.parse_args()
