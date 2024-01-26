@@ -2,7 +2,7 @@
 ```mermaid
 flowchart LR;
   classDef script_color fill:#2C5D4A,color:#000000
-  classDef step_color fill:#DDE9FB,color:#000000
+  classDef step_color fill:#98BFFF,color:#000000
   classDef func_color fill:#E0D5E6,color:#000000
   classDef gnomad_methods_color fill:#F9F2CE,color:#000000
   classDef hail_color fill:#FAEACE,color:#000000
