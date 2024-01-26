@@ -8,6 +8,7 @@ flowchart TB;
   classDef hail_color fill:#FAEACE,color:#000000
   classDef resource_color fill:#D6D6D6,color:#000000
   classDef validity_check_color fill:#2C5D4A,color:#000000
+
   step_compute_info["generate_variant_qc_annotations.py --compute-info"]:::step_color;
   resource_get_info("<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/annotations.py#L47'>get_info</a>"):::resource_color;
   step_split_info["generate_variant_qc_annotations.py --split-info"]:::step_color;
@@ -46,7 +47,8 @@ flowchart TB;
   step_apply_patch_to_freq_ht["generate_freq_genomes.py --apply-patch-to-freq-ht"]:::step_color;
   step_compute_coverage_ht["compute_coverage.py --compute-coverage-ht"]:::step_color;
   resource_release_coverage_path("<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/release.py#L268'>release_coverage_path</a>"):::resource_color;
-  step_export_release_files["compute_coverage.py --export-release-files"]:::step_color;  step_compute_info --> resource_get_info;
+  step_export_release_files["compute_coverage.py --export-release-files"]:::step_color;
+  step_compute_info --> resource_get_info;
   resource_get_info --> step_split_info;
   step_split_info --> resource_get_info;
   resource_get_info --> step_create_variant_qc_annotation_ht;
@@ -100,6 +102,7 @@ flowchart TB;
   classDef hail_color fill:#FAEACE,color:#000000
   classDef resource_color fill:#D6D6D6,color:#000000
   classDef validity_check_color fill:#2C5D4A,color:#000000
+
   step_compute_info["--compute-info"]:::step_color;
   func_run_compute_info[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_variant_qc_annotations.py#L221'>run_compute_info</a>"]]:::func_color;
   resource_get_info("<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/annotations.py#L47'>get_info</a>"):::resource_color;
@@ -120,7 +123,8 @@ flowchart TB;
   step_finalize_ped["identify_trios.py --finalize-ped"]:::step_color;
   resource_pedigree("<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L913'>pedigree</a>"):::resource_color;
   step_finalize_relatedness_ht["relatedness.py --finalize-relatedness-ht"]:::step_color;
-  resource_relatedness("<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L473'>relatedness</a>"):::resource_color;  step_compute_info --> func_run_compute_info;
+  resource_relatedness("<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L473'>relatedness</a>"):::resource_color;
+  step_compute_info --> func_run_compute_info;
   func_run_compute_info --> resource_get_info;
   resource_get_info --> step_split_info;
   step_split_info --> func_split_info;
@@ -151,6 +155,7 @@ flowchart TB;
   classDef hail_color fill:#FAEACE,color:#000000
   classDef resource_color fill:#D6D6D6,color:#000000
   classDef validity_check_color fill:#2C5D4A,color:#000000
+
   step_write_split_vds_and_downsampling_ht["--write-split-vds-and-downsampling-ht"]:::step_color;
   func_get_vds_for_freq[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq.py#L202'>get_vds_for_freq</a>"]]:::func_color;
   func_get_downsampling_ht[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq.py#L548'>get_downsampling_ht</a>"]]:::func_color;
@@ -170,7 +175,8 @@ flowchart TB;
   func_compute_inbreeding_coeff[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq.py#L882'>compute_inbreeding_coeff</a>"]]:::func_color;
   resource_freq("<a href=''>freq</a>"):::resource_color;
   step_finalize_freq_ht["--finalize-freq-ht"]:::step_color;
-  func_create_final_freq_ht[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq.py#L896'>create_final_freq_ht</a>"]]:::func_color;  step_write_split_vds_and_downsampling_ht --> func_get_vds_for_freq;
+  func_create_final_freq_ht[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq.py#L896'>create_final_freq_ht</a>"]]:::func_color;
+  step_write_split_vds_and_downsampling_ht --> func_get_vds_for_freq;
   func_get_vds_for_freq --> func_get_downsampling_ht;
   func_get_downsampling_ht --> resource_get_split_vds;
   resource_get_split_vds --> step_run_freq_and_dense_annotations;
@@ -201,6 +207,7 @@ flowchart TB;
   classDef hail_color fill:#FAEACE,color:#000000
   classDef resource_color fill:#D6D6D6,color:#000000
   classDef validity_check_color fill:#2C5D4A,color:#000000
+
   step_finalize_relatedness_ht["relatedness.py --finalize-relatedness-ht"]:::step_color;
   resource_relatedness("<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L473'>relatedness</a>"):::resource_color;
   step_get_duplicated_to_exomes["--get-duplicated-to-exomes"]:::step_color;
@@ -223,7 +230,8 @@ flowchart TB;
   step_compute_allele_number_for_pop_diff["--compute-allele-number-for-pop-diff"]:::step_color;
   func_get_pop_diff_v3_vds_group_membership[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq_genomes.py#L1221'>get_pop_diff_v3_vds_group_membership</a>"]]:::func_color;
   step_apply_patch_to_freq_ht["--apply-patch-to-freq-ht"]:::step_color;
-  func_patch_v4_genomes_callstats[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq_genomes.py#L1259'>patch_v4_genomes_callstats</a>"]]:::func_color;  step_finalize_relatedness_ht --> resource_relatedness;
+  func_patch_v4_genomes_callstats[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq_genomes.py#L1259'>patch_v4_genomes_callstats</a>"]]:::func_color;
+  step_finalize_relatedness_ht --> resource_relatedness;
   resource_relatedness --> step_get_duplicated_to_exomes;
   step_update_annotations --> func_add_updated_sample_qc_annotations;
   func_add_updated_sample_qc_annotations --> resource_hgdp_tgp_meta_updated;
@@ -265,8 +273,10 @@ flowchart TB;
   classDef hail_color fill:#FAEACE,color:#000000
   classDef resource_color fill:#D6D6D6,color:#000000
   classDef validity_check_color fill:#2C5D4A,color:#000000
+
   step_compute_coverage_ht["--compute-coverage-ht"]:::step_color;
   resource_release_coverage_path("<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/release.py#L268'>release_coverage_path</a>"):::resource_color;
-  step_export_release_files["--export-release-files"]:::step_color;  step_compute_coverage_ht --> resource_release_coverage_path;
+  step_export_release_files["--export-release-files"]:::step_color;
+  step_compute_coverage_ht --> resource_release_coverage_path;
   resource_release_coverage_path --> step_export_release_files;
 ```
