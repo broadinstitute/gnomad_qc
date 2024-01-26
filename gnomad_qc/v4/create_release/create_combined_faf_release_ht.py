@@ -9,6 +9,7 @@ joint frequency, a joint FAF, and the following tests comparing the two frequenc
       contingency tables.
 
 """
+
 import argparse
 import logging
 from typing import Dict, List, Set
@@ -154,7 +155,7 @@ def extract_freq_info(
 def get_joint_freq_and_faf(
     genomes_ht: hl.Table,
     exomes_ht: hl.Table,
-    faf_pops_to_exclude: Set[str] = POPS_TO_REMOVE_FOR_POPMAX,
+    faf_pops_to_exclude: Set[str] = POPS_TO_REMOVE_FOR_POPMAX["v4"],
 ) -> hl.Table:
     """
     Get joint genomes and exomes frequency and FAF information.
@@ -512,7 +513,7 @@ def main(args):
     overwrite = args.overwrite
     apply_release_filters = args.apply_release_filters
     pops = list(set(POPS["v3"] + POPS["v4"]))
-    faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX]
+    faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX["v4"]]
     combine_faf_resources = get_combine_faf_resources(
         overwrite,
         test_gene,
