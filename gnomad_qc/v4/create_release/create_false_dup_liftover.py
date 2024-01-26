@@ -4,7 +4,13 @@ import logging
 
 import hail as hl
 
-from gnomad.utils.annotations import merge_freq_arrays
+from gnomad.utils.annotations import (
+    faf_expr,
+    gen_anc_faf_max_expr,
+    merge_freq_arrays,
+    pop_max_expr,
+    set_female_y_metrics_to_na_expr,
+)
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad_qc.v2.resources.basics import get_gnomad_liftover_data_path
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
@@ -78,6 +84,7 @@ def main(args):
     # Union and merge to contain any variant present in either.
     # Note: only about ~550 overlap, with ~187k exome variants and ~12k genome variants.
     # This makes sense in exonic regions.
+    # Genome global annotations stored with _1
     ht = exome_ht.select().join(genome_ht.select(), how="outer").distinct()
 
     # Annotate with information from both exomes and genomes - many will be NaN.
@@ -86,19 +93,14 @@ def main(args):
         v2_genomes=genome_ht[ht.locus, ht.alleles],
     )
 
-    # Annotate with globals from v2 exomes and v2 genomes.
-    ht = ht.annotate_globals(
-        v2_exome_globals=exome_ht.globals.collect(),
-        v2_genome_globals=genome_ht.globals.collect(),
-    )
-
-    # Checkpoint output to created resource.
+    # Checkpoint output to new temp file.
     ht = ht.checkpoint(hl.utils.new_temp_file("three_dup_genes_liftover", "ht"))
 
     # Merge exomes and genomes frequencies.
     # Code adapted from
     # gnomad_qc/v4/create_release/create_combined_faf_release_ht.py#L155
     # as of 01-26-2025
+    # Changed for 'gen_anc' -> pop
     freq, freq_meta, count_arrays_dict = merge_freq_arrays(
         farrays=[ht.v2_exomes.freq, ht.v2_genomes.freq],
         fmeta=[ht.index_globals().freq_meta, ht.index_globals().freq_meta_1],
@@ -110,10 +112,70 @@ def main(args):
         },
     )
 
-    ht = ht.annotate(v2_joint_freq=freq)
+    # Create a new struct to hold all joint information.
+    ht = ht.annotate(v2_joint=hl.struct(joint_freq=freq))
+
     ht = ht.annotate_globals(
         joint_freq_meta=freq_meta,
         joint_freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
+    )
+
+    # Checkpoint output to new temp file.
+    ht = ht.checkpoint(hl.utils.new_temp_file("three_dup_genes_liftover", "ht"))
+
+    logger.info("Setting Y metrics to NA for XX groups...")
+    freq = set_female_y_metrics_to_na_expr(
+        ht,
+        freq_expr=ht.v2_joint.joint_freq,
+        freq_meta_expr=ht.joint_freq_meta,
+        freq_index_dict_expr=ht.joint_freq_index_dict,
+    )
+    ht = ht.annotate(v2_joint=ht.v2_joint.annotate(joint_freq=freq))
+
+    # Checkpoint output to new temp file.
+    ht = ht.checkpoint(hl.utils.new_temp_file("three_dup_genes_liftover", "ht"))
+
+    # Compute FAF on the merged exomes + genomes frequencies.
+    logger.info("Generating faf metrics...")
+    faf, faf_meta = faf_expr(
+        ht.v2_joint.joint_freq,
+        ht.joint_freq_meta,
+        ht.locus,
+        pops_to_exclude=None,
+        pop_label="pop",
+    )
+    faf_meta_by_pop = {
+        m.get("pop"): i for i, m in enumerate(faf_meta) if m.get("pop") and len(m) == 2
+    }
+    faf_meta_by_pop = hl.literal(faf_meta_by_pop)
+    # Compute group max (popmax) on the merged exomes + genomes frequencies.
+    logger.info("Computing grpmax...")
+    grpmax = pop_max_expr(
+        ht.v2_joint.joint_freq,
+        ht.joint_freq_meta,
+        pops_to_exclude=None,
+        pop_label="pop",
+    )
+    grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.pop)].faf95)
+
+    # Annotate Table with all joint exomes + genomes computations.
+    ht = ht.annotate(
+        v2_joint=ht.v2_joint.annotate(
+            joint_faf=faf,
+            joint_fafmax=gen_anc_faf_max_expr(
+                faf, hl.literal(faf_meta), pop_label="pop"
+            ),
+            joint_grpmax=grpmax,
+        )
+    )
+
+    # Checkpoint for grpmax - avoid Hail Array Index Out Of Bounds error when checkpointing later.
+    ht = ht.checkpoint(hl.utils.new_temp_file("grpmax_checkpoint", "ht"))
+
+    ht = ht.annotate_globals(
+        joint_faf_meta=faf_meta,
+        joint_faf_index_dict=make_freq_index_dict_from_meta(hl.literal(faf_meta)),
+        # joint_freq_meta_sample_count=count_arrays_dict["counts"],
     )
 
     # Checkpoint output to created resource.
