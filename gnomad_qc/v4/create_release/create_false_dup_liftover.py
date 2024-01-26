@@ -78,17 +78,13 @@ def main(args):
     # Union and merge to contain any variant present in either.
     # Note: only about ~550 overlap, with ~187k exome variants and ~12k genome variants.
     # This makes sense in exonic regions.
-    ht = (
-        exome_ht.select()
-        .join(genome_ht.select(), how="outer")
-        .distinct()
-    )
+    ht = exome_ht.select().join(genome_ht.select(), how="outer").distinct()
 
     # Annotate with information from both exomes and genomes - many will be NaN.
     ht = ht.annotate(
         v2_exomes=exome_ht[ht.locus, ht.alleles],
-        v2_genomes=genome_ht[ht.locus, ht.alleles]
-        )
+        v2_genomes=genome_ht[ht.locus, ht.alleles],
+    )
 
     # Annotate with globals from v2 exomes and v2 genomes.
     ht = ht.annotate_globals(
@@ -100,15 +96,12 @@ def main(args):
     ht = ht.checkpoint(hl.utils.new_temp_file("three_dup_genes_liftover", "ht"))
 
     # Merge exomes and genomes frequencies.
-    # Code adapted from 
+    # Code adapted from
     # gnomad_qc/v4/create_release/create_combined_faf_release_ht.py#L155
     # as of 01-26-2025
     freq, freq_meta, count_arrays_dict = merge_freq_arrays(
         farrays=[ht.v2_exomes.freq, ht.v2_genomes.freq],
-        fmeta=[
-            ht.index_globals().freq_meta,
-            ht.index_globals().freq_meta_1
-        ],
+        fmeta=[ht.index_globals().freq_meta, ht.index_globals().freq_meta_1],
         count_arrays={
             "counts": [
                 ht.index_globals().freq_index_dict.values(),
@@ -124,9 +117,9 @@ def main(args):
     )
 
     # Checkpoint output to created resource.
-    ht = ht.checkpoint(get_false_dup_genes_path(test = args.test), overwrite=args.overwrite)
-
-
+    ht = ht.checkpoint(
+        get_false_dup_genes_path(test=args.test), overwrite=args.overwrite
+    )
 
 
 if __name__ == "__main__":
