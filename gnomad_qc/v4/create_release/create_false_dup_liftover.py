@@ -4,6 +4,8 @@ import logging
 
 import hail as hl
 
+from gnomad.utils.annotations import merge_freq_arrays
+from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad_qc.v2.resources.basics import get_gnomad_liftover_data_path
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v4.resources.release import _release_root
@@ -78,20 +80,15 @@ def main(args):
     # This makes sense in exonic regions.
     ht = (
         exome_ht.select()
-        .select_globals()
-        .union(genome_ht.select().select_globals())
+        .join(genome_ht.select(), how="outer")
         .distinct()
     )
 
     # Annotate with information from both exomes and genomes - many will be NaN.
     ht = ht.annotate(
         v2_exomes=exome_ht[ht.locus, ht.alleles],
-        v2_genomes=genome_ht[ht.locus, ht.alleles],
-        v2_freq=hl.struct(
-            exome_freq=exome_ht[ht.locus, ht.alleles].freq,
-            genome_freq=genome_ht[ht.locus, ht.alleles].freq,
-        ),
-    )
+        v2_genomes=genome_ht[ht.locus, ht.alleles]
+        )
 
     # Annotate with globals from v2 exomes and v2 genomes.
     ht = ht.annotate_globals(
@@ -99,8 +96,37 @@ def main(args):
         v2_genome_globals=genome_ht.globals.collect(),
     )
 
-    # Write output to created resource.
-    ht = ht.checkpoint(get_false_dup_genes_path(), overwrite=args.overwrite)
+    # Checkpoint output to created resource.
+    ht = ht.checkpoint(hl.utils.new_temp_file("three_dup_genes_liftover", "ht"))
+
+    # Merge exomes and genomes frequencies.
+    # Code adapted from 
+    # gnomad_qc/v4/create_release/create_combined_faf_release_ht.py#L155
+    # as of 01-26-2025
+    freq, freq_meta, count_arrays_dict = merge_freq_arrays(
+        farrays=[ht.v2_exomes.freq, ht.v2_genomes.freq],
+        fmeta=[
+            ht.index_globals().freq_meta,
+            ht.index_globals().freq_meta_1
+        ],
+        count_arrays={
+            "counts": [
+                ht.index_globals().freq_index_dict.values(),
+                ht.index_globals().freq_index_dict_1.values(),
+            ],
+        },
+    )
+
+    ht = ht.annotate(v2_joint_freq=freq)
+    ht = ht.annotate_globals(
+        joint_freq_meta=freq_meta,
+        joint_freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
+    )
+
+    # Checkpoint output to created resource.
+    ht = ht.checkpoint(get_false_dup_genes_path(test = args.test), overwrite=args.overwrite)
+
+
 
 
 if __name__ == "__main__":
@@ -108,6 +134,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--overwrite",
         help="Option to overwrite existing custom liftover table",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test",
+        help="Option to store output at test paths",
         action="store_true",
     )
     args = parser.parse_args()
