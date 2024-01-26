@@ -791,19 +791,51 @@ def create_finalized_outlier_filter_ht(
 
 
 def get_outlier_filtering_resources(
-    args: argparse.Namespace,
+    test: bool = False,
+    overwrite: bool = False,
+    exclude_unreleasable_samples_all_steps: bool = False,
+    regress_population: bool = False,
+    regress_platform: bool = False,
+    regress_per_platform: bool = False,
+    stratify_population: bool = False,
+    stratify_platform: bool = False,
+    nearest_neighbors_per_platform: bool = False,
+    use_nearest_neighbors_approximation: bool = False,
+    apply_regressed_filtering: bool = False,
+    apply_stratified_filtering: bool = False,
+    apply_nearest_neighbor_filtering: bool = False,
+    create_finalized_outlier_filter_ht: bool = False,
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the outlier filtering pipeline.
 
-    :param args: argparse Namespace for arguments passed to the outlier_filtering.py
-        script.
+    :param test: If True, use test data.
+    :param overwrite: If True, overwrite all resources.
+    :param exclude_unreleasable_samples_all_steps: If True, exclude unreleasable samples
+        from all steps of the outlier filtering pipeline.
+    :param regress_population: If True, regress population PCs and filter outliers.
+    :param regress_platform: If True, regress platform PCs and filter outliers.
+    :param regress_per_platform: If True, regress platform PCs and filter outliers
+        separately for each platform.
+    :param stratify_population: If True, stratify by population and filter outliers.
+    :param stratify_platform: If True, stratify by platform and filter outliers.
+    :param nearest_neighbors_per_platform: If True, stratify by platform and determine
+        nearest neighbors for each sample.
+    :param use_nearest_neighbors_approximation: If True, use an approximation to
+        determine nearest neighbors.
+    :param apply_regressed_filtering: If True, apply the regress population and/or
+        platform filtering.
+    :param apply_stratified_filtering: If True, apply the stratified filtering.
+    :param apply_nearest_neighbor_filtering: If True, apply the nearest neighbor
+        filtering.
+    :param create_finalized_outlier_filter_ht: If True, create the finalized outlier
+        filtering Table.
     :return: PipelineResourceCollection containing resources for all steps of the
         outlier filtering pipeline.
     """
-    test = args.test
-    overwrite = args.overwrite
-    exclude_releasable_samples_all_steps = args.exclude_unreleasable_samples_all_steps
+    test = test
+    overwrite = overwrite
+    exclude_releasable_samples_all_steps = exclude_unreleasable_samples_all_steps
 
     # Adding resources from previous scripts that are used by multiple steps in the
     # outlier filtering pipeline.
@@ -846,9 +878,9 @@ def get_outlier_filtering_resources(
         output_resources={
             "regressed_filter_ht": regressed_filtering(
                 test=test,
-                pop_pc_regressed=args.regress_population,
-                platform_pc_regressed=args.regress_platform,
-                platform_stratified=args.regress_per_platform,
+                pop_pc_regressed=regress_population,
+                platform_pc_regressed=regress_platform,
+                platform_stratified=regress_per_platform,
             )
         },
         input_resources={
@@ -864,8 +896,8 @@ def get_outlier_filtering_resources(
         output_resources={
             "stratified_filter_ht": stratified_filtering(
                 test=test,
-                pop_stratified=args.stratify_population,
-                platform_stratified=args.stratify_platform,
+                pop_stratified=stratify_population,
+                platform_stratified=stratify_platform,
             )
         },
         input_resources={**sample_qc_input, **pop_assign_input, **platform_input},
@@ -875,8 +907,8 @@ def get_outlier_filtering_resources(
         output_resources={
             "nn_ht": nearest_neighbors(
                 test=test,
-                platform_stratified=args.nearest_neighbors_per_platform,
-                approximation=args.use_nearest_neighbors_approximation,
+                platform_stratified=nearest_neighbors_per_platform,
+                approximation=use_nearest_neighbors_approximation,
                 include_unreleasable_samples=not exclude_releasable_samples_all_steps,
             )
         },
@@ -890,14 +922,14 @@ def get_outlier_filtering_resources(
     )
 
     finalized_input_steps = []
-    if args.apply_regressed_filters:
+    if apply_regressed_filtering:
         finalized_input_steps.append(apply_regressed_filters)
-    if args.apply_stratified_filters:
+    if apply_stratified_filtering:
         finalized_input_steps.append(apply_stratified_filters)
-    if args.apply_nearest_neighbor_filters:
+    if apply_nearest_neighbor_filtering:
         finalized_input_steps.append(apply_nearest_neighbor_filters)
 
-    if args.create_finalized_outlier_filter and len(finalized_input_steps) == 0:
+    if create_finalized_outlier_filter_ht and len(finalized_input_steps) == 0:
         raise ValueError(
             "At least one filtering method and relevant options must be supplied "
             "when using '--create-finalized-outlier-filter'"
@@ -930,6 +962,7 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-4day",
     )
+    test = args.test
     overwrite = args.overwrite
     filtering_qc_metrics = args.filtering_qc_metrics
     apply_r_ti_tv_singleton_filter = args.apply_n_singleton_filter_to_r_ti_tv_singleton
@@ -950,7 +983,22 @@ def main(args):
         if err_msg:
             raise ValueError(err_msg)
 
-    outlier_resources = get_outlier_filtering_resources(args)
+    outlier_resources = get_outlier_filtering_resources(
+        test=test,
+        overwrite=overwrite,
+        exclude_unreleasable_samples_all_steps=exclude_releasable_samples_all_steps,
+        regress_population=args.regress_population,
+        regress_platform=args.regress_platform,
+        regress_per_platform=args.regress_per_platform,
+        stratify_population=args.stratify_population,
+        stratify_platform=args.stratify_platform,
+        nearest_neighbors_per_platform=nn_platform_stratified,
+        use_nearest_neighbors_approximation=nn_approximation,
+        apply_regressed_filtering=args.apply_regressed_filtering,
+        apply_stratified_filtering=args.apply_stratified_filtering,
+        apply_nearest_neighbor_filtering=args.apply_nearest_neighbor_filtering,
+        create_finalized_outlier_filter_ht=args.create_finalized_outlier_filter,
+    )
     outlier_resources.check_resource_existence()
     pop_ht = outlier_resources.pop_ht.ht()
     platform_ht = outlier_resources.platform_ht.ht()

@@ -699,7 +699,7 @@ def get_pop_ht(
     version: str = CURRENT_SAMPLE_QC_VERSION,
     test: bool = False,
     data_type: str = "joint",
-):
+) -> TableResource:
     """
     Get the TableResource of samples' inferred population for the indicated gnomAD version.
 
