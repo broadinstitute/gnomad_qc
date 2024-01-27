@@ -161,39 +161,55 @@ flowchart TB;
   resource_relatedness_method_cuking[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L473'>relatedness(method=cuking)</a>"/]:::resource_color;
   step_run_ibd_on_cuking_pairs{{"--run-ibd-on-cuking-pairs"}}:::step_color;
   func_compute_ibd_on_cuking_pair_subset[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/relatedness.py#L93'>compute_ibd_on_cuking_pair_subset</a>"]]:::func_color;
+  ibd_[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L503'>ibd()</a>"/]:::resource_color;
   step_finalize_relatedness_ht{{"--finalize-relatedness-ht"}}:::step_color;
   func_finalize_relatedness_ht[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/relatedness.py#L175'>finalize_relatedness_ht</a>"]]:::func_color;
+  relatedness_method_None[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L473'>relatedness(method=None)</a>"/]:::resource_color;
   resource_joint_qc_meta[/"<a href=''>joint_qc_meta</a>"/]:::resource_color;
   step_create_pc_relate_relatedness_table{{"--create-pc-relate-relatedness-table"}}:::step_color;
   resource_relatedness_method_pc_relate[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L473'>relatedness(method=pc_relate)</a>"/]:::resource_color;
   resource_relatedness_method_None[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L473'>relatedness(method=None)</a>"/]:::resource_color;
   step_compute_related_samples_to_drop{{"--compute-related-samples-to-drop"}}:::step_color;
   func_run_compute_related_samples_to_drop[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/relatedness.py#L315'>run_compute_related_samples_to_drop</a>"]]:::func_color;
+  related_samples_to_drop_release_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L521'>related_samples_to_drop(release=False)</a>"/]:::resource_color;
+  sample_rankings_release_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L547'>sample_rankings(release=False)</a>"/]:::resource_color;
+  related_samples_to_drop_release_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L521'>related_samples_to_drop(release=True)</a>"/]:::resource_color;
+  sample_rankings_release_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L547'>sample_rankings(release=True)</a>"/]:::resource_color;
   step_create_finalized_outlier_filter{{"outlier_filtering.py
 --create-finalized-outlier-filter"}}:::step_color;
   resource_finalized_outlier_filtering_[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L874'>finalized_outlier_filtering()</a>"/]:::resource_color;
   step_run_pc_relate_pca{{"--run-pc-relate-pca"}}:::step_color;
+  pc_relate_pca_scores_[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L455'>pc_relate_pca_scores()</a>"/]:::resource_color;
   resource_pc_relate_pca_scores_[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L455'>pc_relate_pca_scores()</a>"/]:::resource_color;
+  relatedness_method_pc_relate[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L473'>relatedness(method=pc_relate)</a>"/]:::resource_color;
   resource_get_joint_qc_ --> step_prepare_cuking_inputs;
   step_create_cuking_relatedness_table --> resource_relatedness_method_cuking;
   resource_relatedness_method_cuking --> step_run_ibd_on_cuking_pairs;
   step_run_ibd_on_cuking_pairs --> func_compute_ibd_on_cuking_pair_subset;
+  func_compute_ibd_on_cuking_pair_subset --> ibd_;
   resource_get_joint_qc_ --> step_run_ibd_on_cuking_pairs;
   resource_relatedness_method_cuking --> step_finalize_relatedness_ht;
   step_finalize_relatedness_ht --> func_finalize_relatedness_ht;
+  func_finalize_relatedness_ht --> relatedness_method_None;
   resource_joint_qc_meta --> step_finalize_relatedness_ht;
   step_create_pc_relate_relatedness_table --> resource_relatedness_method_pc_relate;
   resource_relatedness_method_pc_relate --> step_finalize_relatedness_ht;
   func_finalize_relatedness_ht --> resource_relatedness_method_None;
   resource_relatedness_method_None --> step_compute_related_samples_to_drop;
   step_compute_related_samples_to_drop --> func_run_compute_related_samples_to_drop;
+  func_run_compute_related_samples_to_drop --> related_samples_to_drop_release_False;
+  func_run_compute_related_samples_to_drop --> sample_rankings_release_False;
+  func_run_compute_related_samples_to_drop --> related_samples_to_drop_release_True;
+  func_run_compute_related_samples_to_drop --> sample_rankings_release_True;
   resource_get_joint_qc_ --> step_compute_related_samples_to_drop;
   resource_joint_qc_meta --> step_compute_related_samples_to_drop;
   step_create_finalized_outlier_filter --> resource_finalized_outlier_filtering_;
   resource_finalized_outlier_filtering_ --> step_compute_related_samples_to_drop;
   resource_get_joint_qc_ --> step_run_pc_relate_pca;
+  step_run_pc_relate_pca --> pc_relate_pca_scores_;
   step_run_pc_relate_pca --> resource_pc_relate_pca_scores_;
   resource_pc_relate_pca_scores_ --> step_create_pc_relate_relatedness_table;
+  step_create_pc_relate_relatedness_table --> relatedness_method_pc_relate;
   resource_get_joint_qc_ --> step_create_pc_relate_relatedness_table;
 ```
 
@@ -327,6 +343,16 @@ flowchart TB;
 strat=under_three_alt_alleles,
 data_type=exomes)</a>"/]:::resource_color;
   step_apply_regressed_filters{{"--apply-regressed-filters"}}:::step_color;
+  regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_False_platform_stratified_True_include_unreleasable_samples_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L780'>regressed_filtering(
+pop_pc_regressed=True,
+platform_pc_regressed=False,
+platform_stratified=True,
+include_unreleasable_samples=False)</a>"/]:::resource_color;
+  regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_True_platform_stratified_False_include_unreleasable_samples_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L780'>regressed_filtering(
+pop_pc_regressed=True,
+platform_pc_regressed=True,
+platform_stratified=False,
+include_unreleasable_samples=False)</a>"/]:::resource_color;
   resource_ancestry_pca_scores_include_unreleasable_samples_False_data_type_joint[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L624'>ancestry_pca_scores(
 include_unreleasable_samples=False,
 data_type=joint)</a>"/]:::resource_color;
@@ -339,6 +365,7 @@ pop_stratified=True,
 platform_stratified=True)</a>"/]:::resource_color;
   step_create_finalized_outlier_filter{{"--create-finalized-outlier-filter"}}:::step_color;
   func_create_finalized_outlier_filter_ht[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/outlier_filtering.py#L587'>create_finalized_outlier_filter_ht</a>"]]:::func_color;
+  finalized_outlier_filtering_[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L874'>finalized_outlier_filtering()</a>"/]:::resource_color;
   step_apply_nearest_neighbor_filters{{"--apply-nearest-neighbor-filters"}}:::step_color;
   resource_nearest_neighbors_filtering_[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L856'>nearest_neighbors_filtering()</a>"/]:::resource_color;
   resource_regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_True_platform_stratified_False_include_unreleasable_samples_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L780'>regressed_filtering(
@@ -351,12 +378,22 @@ pop_pc_regressed=True,
 platform_pc_regressed=False,
 platform_stratified=True,
 include_unreleasable_samples=False)</a>"/]:::resource_color;
+  stratified_filtering_pop_stratified_True_platform_stratified_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L749'>stratified_filtering(
+pop_stratified=True,
+platform_stratified=True)</a>"/]:::resource_color;
   step_determine_nearest_neighbors{{"--determine-nearest-neighbors"}}:::step_color;
+  nearest_neighbors_platform_stratified_True_approximation_False_include_unreleasable_samples_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L820'>nearest_neighbors(
+platform_stratified=True,
+approximation=False,
+include_unreleasable_samples=True)</a>"/]:::resource_color;
+  nearest_neighbors_filtering_[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L856'>nearest_neighbors_filtering()</a>"/]:::resource_color;
   resource_nearest_neighbors_platform_stratified_True_approximation_False_include_unreleasable_samples_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L820'>nearest_neighbors(
 platform_stratified=True,
 approximation=False,
 include_unreleasable_samples=True)</a>"/]:::resource_color;
   resource_get_sample_qc_strat_under_three_alt_alleles_data_type_exomes --> step_apply_regressed_filters;
+  step_apply_regressed_filters --> regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_False_platform_stratified_True_include_unreleasable_samples_False;
+  step_apply_regressed_filters --> regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_True_platform_stratified_False_include_unreleasable_samples_False;
   resource_ancestry_pca_scores_include_unreleasable_samples_False_data_type_joint --> step_apply_regressed_filters;
   resource_get_pop_ht_data_type_joint --> step_apply_regressed_filters;
   resource_platform --> step_apply_regressed_filters;
@@ -364,6 +401,7 @@ include_unreleasable_samples=True)</a>"/]:::resource_color;
   step_apply_stratified_filters --> resource_stratified_filtering_pop_stratified_True_platform_stratified_True;
   resource_stratified_filtering_pop_stratified_True_platform_stratified_True --> step_create_finalized_outlier_filter;
   step_create_finalized_outlier_filter --> func_create_finalized_outlier_filter_ht;
+  func_create_finalized_outlier_filter_ht --> finalized_outlier_filtering_;
   step_apply_nearest_neighbor_filters --> resource_nearest_neighbors_filtering_;
   resource_nearest_neighbors_filtering_ --> step_create_finalized_outlier_filter;
   step_apply_regressed_filters --> resource_regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_True_platform_stratified_False_include_unreleasable_samples_False;
@@ -371,12 +409,15 @@ include_unreleasable_samples=True)</a>"/]:::resource_color;
   step_apply_regressed_filters --> resource_regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_False_platform_stratified_True_include_unreleasable_samples_False;
   resource_regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_False_platform_stratified_True_include_unreleasable_samples_False --> step_create_finalized_outlier_filter;
   resource_get_sample_qc_strat_under_three_alt_alleles_data_type_exomes --> step_apply_stratified_filters;
+  step_apply_stratified_filters --> stratified_filtering_pop_stratified_True_platform_stratified_True;
   resource_get_pop_ht_data_type_joint --> step_apply_stratified_filters;
   resource_platform --> step_apply_stratified_filters;
   resource_get_sample_qc_strat_under_three_alt_alleles_data_type_exomes --> step_determine_nearest_neighbors;
+  step_determine_nearest_neighbors --> nearest_neighbors_platform_stratified_True_approximation_False_include_unreleasable_samples_True;
   resource_get_pop_ht_data_type_joint --> step_determine_nearest_neighbors;
   resource_platform --> step_determine_nearest_neighbors;
   resource_get_sample_qc_strat_under_three_alt_alleles_data_type_exomes --> step_apply_nearest_neighbor_filters;
+  step_apply_nearest_neighbor_filters --> nearest_neighbors_filtering_;
   step_determine_nearest_neighbors --> resource_nearest_neighbors_platform_stratified_True_approximation_False_include_unreleasable_samples_True;
   resource_nearest_neighbors_platform_stratified_True_approximation_False_include_unreleasable_samples_True --> step_apply_nearest_neighbor_filters;
 ```
@@ -395,17 +436,25 @@ flowchart TB;
 --compute-related-samples-to-drop"}}:::step_color;
   resource_sample_rankings_release_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L547'>sample_rankings(release=True)</a>"/]:::resource_color;
   step_identify_duplicates{{"--identify-duplicates"}}:::step_color;
+  duplicates_[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L895'>duplicates()</a>"/]:::resource_color;
   resource_duplicates_[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L895'>duplicates()</a>"/]:::resource_color;
   step_infer_families{{"--infer-families"}}:::step_color;
   func_filter_ped_to_same_platform[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/identify_trios.py#L188'>filter_ped_to_same_platform</a>"]]:::func_color;
+  pedigree_finalized_False_fake_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L913'>pedigree(
+finalized=False,
+fake=False)</a>"/]:::resource_color;
   resource_sex[/"<a href=''>sex</a>"/]:::resource_color;
   resource_pedigree_finalized_False_fake_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L913'>pedigree(
 finalized=False,
 fake=False)</a>"/]:::resource_color;
   step_create_fake_pedigree{{"--create-fake-pedigree"}}:::step_color;
   func_run_create_fake_pedigree[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/identify_trios.py#L105'>run_create_fake_pedigree</a>"]]:::func_color;
+  pedigree_finalized_False_fake_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L913'>pedigree(
+finalized=False,
+fake=True)</a>"/]:::resource_color;
   step_run_mendel_errors{{"--run-mendel-errors"}}:::step_color;
   func_run_mendel_errors[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/identify_trios.py#L140'>run_mendel_errors</a>"]]:::func_color;
+  ped_mendel_errors_[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L966'>ped_mendel_errors()</a>"/]:::resource_color;
   resource_pedigree_finalized_False_fake_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L913'>pedigree(
 finalized=False,
 fake=True)</a>"/]:::resource_color;
@@ -415,24 +464,34 @@ all_platforms=True)</a>"/]:::resource_color;
   step_finalize_ped{{"--finalize-ped"}}:::step_color;
   func_filter_ped[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/identify_trios.py#L218'>filter_ped</a>"]]:::func_color;
   func_families_to_trios[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/identify_trios.py#L46'>families_to_trios</a>"]]:::func_color;
+  trios_fake_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L945'>trios(fake=False)</a>"/]:::resource_color;
+  pedigree_finalized_True_fake_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L913'>pedigree(
+finalized=True,
+fake=False)</a>"/]:::resource_color;
   resource_ped_mendel_errors_[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L966'>ped_mendel_errors()</a>"/]:::resource_color;
   step_compute_related_samples_to_drop --> resource_sample_rankings_release_True;
   resource_sample_rankings_release_True --> step_identify_duplicates;
+  step_identify_duplicates --> duplicates_;
   step_identify_duplicates --> resource_duplicates_;
   resource_duplicates_ --> step_infer_families;
   step_infer_families --> func_filter_ped_to_same_platform;
+  func_filter_ped_to_same_platform --> pedigree_finalized_False_fake_False;
   resource_sex --> step_infer_families;
   func_filter_ped_to_same_platform --> resource_pedigree_finalized_False_fake_False;
   resource_pedigree_finalized_False_fake_False --> step_create_fake_pedigree;
   step_create_fake_pedigree --> func_run_create_fake_pedigree;
+  func_run_create_fake_pedigree --> pedigree_finalized_False_fake_True;
   resource_pedigree_finalized_False_fake_False --> step_run_mendel_errors;
   step_run_mendel_errors --> func_run_mendel_errors;
+  func_run_mendel_errors --> ped_mendel_errors_;
   func_run_create_fake_pedigree --> resource_pedigree_finalized_False_fake_True;
   resource_pedigree_finalized_False_fake_True --> step_run_mendel_errors;
   resource_interval_qc_pass_per_platform_False_all_platforms_True --> step_run_mendel_errors;
   resource_pedigree_finalized_False_fake_False --> step_finalize_ped;
   step_finalize_ped --> func_filter_ped;
   func_filter_ped --> func_families_to_trios;
+  func_families_to_trios --> trios_fake_False;
+  func_families_to_trios --> pedigree_finalized_True_fake_False;
   func_run_mendel_errors --> resource_ped_mendel_errors_;
   resource_ped_mendel_errors_ --> step_finalize_ped;
 ```
