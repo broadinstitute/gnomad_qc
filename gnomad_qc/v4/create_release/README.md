@@ -129,8 +129,6 @@ data_type=genomes,
 public=False)</a>"/]:::resource_color;
   step_prepare_vcf_header{{"--prepare-vcf-header"}}:::step_color;
   func_prepare_vcf_header_dict[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/create_release/validate_and_export_vcf.py#L730'>prepare_vcf_header_dict</a>"]]:::func_color;
-  release_header_path_data_type_genomes[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/release.py#L229'>release_header_path(data_type=genomes)</a>"/]:::resource_color;
-  release_header_path_data_type_exomes[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/release.py#L229'>release_header_path(data_type=exomes)</a>"/]:::resource_color;
   resource_release_header_path_data_type_exomes[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/release.py#L229'>release_header_path(data_type=exomes)</a>"/]:::resource_color;
   step_export_vcf{{"--export-vcf"}}:::step_color;
   func_format_validated_ht_for_export[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/create_release/validate_and_export_vcf.py#L808'>format_validated_ht_for_export</a>"]]:::func_color;
@@ -142,8 +140,6 @@ public=False)</a>"/]:::resource_color;
   resource_release_sites_data_type_genomes_public_False --> step_validate_release_ht;
   resource_release_sites_data_type_exomes_public_False --> step_prepare_vcf_header;
   step_prepare_vcf_header --> func_prepare_vcf_header_dict;
-  func_prepare_vcf_header_dict --> release_header_path_data_type_genomes;
-  func_prepare_vcf_header_dict --> release_header_path_data_type_exomes;
   resource_release_sites_data_type_genomes_public_False --> step_prepare_vcf_header;
   func_prepare_vcf_header_dict --> resource_release_header_path_data_type_exomes;
   resource_release_header_path_data_type_exomes --> step_export_vcf;

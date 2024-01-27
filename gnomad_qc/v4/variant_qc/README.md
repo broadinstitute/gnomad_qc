@@ -60,11 +60,21 @@ mt=True)</a>"/]:::resource_color;
   resource_na12878_giab_hc_intervals[/"<a href=''>na12878_giab_hc_intervals</a>"/]:::resource_color;
   resource_syndip[/"<a href=''>syndip</a>"/]:::resource_color;
   resource_na12878_giab[/"<a href=''>na12878_giab</a>"/]:::resource_color;
+  get_callset_truth_data_truth_sample_UKB_NA12878_mt_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L119'>get_callset_truth_data(
+truth_sample=UKB_NA12878,
+mt=False)</a>"/]:::resource_color;
+  get_callset_truth_data_truth_sample_NA12878_mt_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L119'>get_callset_truth_data(
+truth_sample=NA12878,
+mt=False)</a>"/]:::resource_color;
+  get_callset_truth_data_truth_sample_syndip_mt_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L119'>get_callset_truth_data(
+truth_sample=syndip,
+mt=False)</a>"/]:::resource_color;
   step_final_filter.py{{"final_filter.py"}}:::step_color;
   resource_get_score_bins_aggregated_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L156'>get_score_bins(aggregated=True)</a>"/]:::resource_color;
   step_split_info{{"generate_variant_qc_annotations.py
 --split-info"}}:::step_color;
   resource_get_info_split_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/annotations.py#L47'>get_info(split=True)</a>"/]:::resource_color;
+  final_filter_data_type_exomes[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L285'>final_filter(data_type=exomes)</a>"/]:::resource_color;
   resource_interval_qc_pass_per_platform_False_all_platforms_True --> step_train_rf;
   step_train_rf --> resource_get_rf_training_;
   resource_get_rf_training_ --> step_apply_rf;
@@ -95,11 +105,15 @@ mt=True)</a>"/]:::resource_color;
   resource_na12878_giab_hc_intervals --> step_merge_with_truth_data;
   resource_syndip --> step_merge_with_truth_data;
   resource_na12878_giab --> step_merge_with_truth_data;
+  step_merge_with_truth_data --> get_callset_truth_data_truth_sample_UKB_NA12878_mt_False;
+  step_merge_with_truth_data --> get_callset_truth_data_truth_sample_NA12878_mt_False;
+  step_merge_with_truth_data --> get_callset_truth_data_truth_sample_syndip_mt_False;
   resource_get_score_bins_aggregated_False --> step_final_filter.py;
   step_create_aggregated_bin_ht --> resource_get_score_bins_aggregated_True;
   resource_get_score_bins_aggregated_True --> step_final_filter.py;
   step_split_info --> resource_get_info_split_True;
   resource_get_info_split_True --> step_final_filter.py;
+  step_final_filter.py --> final_filter_data_type_exomes;
 ```
 ### [random_forest.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/random_forest.py): Script for running random forest model on gnomAD v4 variant QC data.
 ```mermaid
@@ -159,9 +173,6 @@ flowchart TB;
 --generate-trio-stats"}}:::step_color;
   resource_get_trio_stats_[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/annotations.py#L113'>get_trio_stats()</a>"/]:::resource_color;
   step_bin_truth_sample_concordance{{"--bin-truth-sample-concordance"}}:::step_color;
-  get_binned_concordance_truth_sample_NA12878[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L180'>get_binned_concordance(truth_sample=NA12878)</a>"/]:::resource_color;
-  get_binned_concordance_truth_sample_UKB_NA12878[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L180'>get_binned_concordance(truth_sample=UKB_NA12878)</a>"/]:::resource_color;
-  get_binned_concordance_truth_sample_syndip[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L180'>get_binned_concordance(truth_sample=syndip)</a>"/]:::resource_color;
   step_merge_with_truth_data{{"--merge-with-truth-data"}}:::step_color;
   resource_get_callset_truth_data_truth_sample_syndip_mt_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L119'>get_callset_truth_data(
 truth_sample=syndip,
@@ -176,14 +187,14 @@ mt=False)</a>"/]:::resource_color;
   resource_get_callset_truth_data_truth_sample_syndip_mt_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L119'>get_callset_truth_data(
 truth_sample=syndip,
 mt=True)</a>"/]:::resource_color;
+  get_callset_truth_data_truth_sample_UKB_NA12878_mt_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L119'>get_callset_truth_data(
+truth_sample=UKB_NA12878,
+mt=False)</a>"/]:::resource_color;
   get_callset_truth_data_truth_sample_NA12878_mt_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L119'>get_callset_truth_data(
 truth_sample=NA12878,
 mt=False)</a>"/]:::resource_color;
   get_callset_truth_data_truth_sample_syndip_mt_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L119'>get_callset_truth_data(
 truth_sample=syndip,
-mt=False)</a>"/]:::resource_color;
-  get_callset_truth_data_truth_sample_UKB_NA12878_mt_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L119'>get_callset_truth_data(
-truth_sample=UKB_NA12878,
 mt=False)</a>"/]:::resource_color;
   resource_get_callset_truth_data_truth_sample_NA12878_mt_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L119'>get_callset_truth_data(
 truth_sample=NA12878,
@@ -207,9 +218,6 @@ mt=True)</a>"/]:::resource_color;
   step_generate_trio_stats --> resource_get_trio_stats_;
   resource_get_trio_stats_ --> step_create_aggregated_bin_ht;
   resource_get_score_bins_aggregated_False --> step_bin_truth_sample_concordance;
-  step_bin_truth_sample_concordance --> get_binned_concordance_truth_sample_NA12878;
-  step_bin_truth_sample_concordance --> get_binned_concordance_truth_sample_UKB_NA12878;
-  step_bin_truth_sample_concordance --> get_binned_concordance_truth_sample_syndip;
   step_merge_with_truth_data --> resource_get_callset_truth_data_truth_sample_syndip_mt_False;
   resource_get_callset_truth_data_truth_sample_syndip_mt_False --> step_bin_truth_sample_concordance;
   step_merge_with_truth_data --> resource_get_callset_truth_data_truth_sample_NA12878_mt_False;
@@ -218,9 +226,9 @@ mt=True)</a>"/]:::resource_color;
   resource_get_callset_truth_data_truth_sample_UKB_NA12878_mt_False --> step_bin_truth_sample_concordance;
   step_extract_truth_samples --> resource_get_callset_truth_data_truth_sample_syndip_mt_True;
   resource_get_callset_truth_data_truth_sample_syndip_mt_True --> step_merge_with_truth_data;
+  step_merge_with_truth_data --> get_callset_truth_data_truth_sample_UKB_NA12878_mt_False;
   step_merge_with_truth_data --> get_callset_truth_data_truth_sample_NA12878_mt_False;
   step_merge_with_truth_data --> get_callset_truth_data_truth_sample_syndip_mt_False;
-  step_merge_with_truth_data --> get_callset_truth_data_truth_sample_UKB_NA12878_mt_False;
   step_extract_truth_samples --> resource_get_callset_truth_data_truth_sample_NA12878_mt_True;
   resource_get_callset_truth_data_truth_sample_NA12878_mt_True --> step_merge_with_truth_data;
   step_extract_truth_samples --> resource_get_callset_truth_data_truth_sample_UKB_NA12878_mt_True;
@@ -245,6 +253,10 @@ flowchart TB;
 --create-bin-ht"}}:::step_color;
   resource_get_score_bins_aggregated_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L156'>get_score_bins(aggregated=False)</a>"/]:::resource_color;
   step_final_filter.py{{"final_filter.py"}}:::step_color;
+  func_get_final_variant_qc_resources[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/final_filter_genomes.py#L66'>get_final_variant_qc_resources</a>"]]:::func_color;
+  func_process_score_cutoffs[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/final_filter.py#L110'>process_score_cutoffs</a>"]]:::func_color;
+  func_generate_final_filter_ht[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/final_filter.py#L229'>generate_final_filter_ht</a>"]]:::func_color;
+  final_filter_data_type_exomes[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L285'>final_filter(data_type=exomes)</a>"/]:::resource_color;
   step_create_aggregated_bin_ht{{"evaluation.py
 --create-aggregated-bin-ht"}}:::step_color;
   resource_get_score_bins_aggregated_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L156'>get_score_bins(aggregated=True)</a>"/]:::resource_color;
@@ -253,6 +265,10 @@ flowchart TB;
   resource_get_info_split_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/annotations.py#L47'>get_info(split=True)</a>"/]:::resource_color;
   step_create_bin_ht --> resource_get_score_bins_aggregated_False;
   resource_get_score_bins_aggregated_False --> step_final_filter.py;
+  step_final_filter.py --> func_get_final_variant_qc_resources;
+  func_get_final_variant_qc_resources --> func_process_score_cutoffs;
+  func_process_score_cutoffs --> func_generate_final_filter_ht;
+  func_generate_final_filter_ht --> final_filter_data_type_exomes;
   step_create_aggregated_bin_ht --> resource_get_score_bins_aggregated_True;
   resource_get_score_bins_aggregated_True --> step_final_filter.py;
   step_split_info --> resource_get_info_split_True;
