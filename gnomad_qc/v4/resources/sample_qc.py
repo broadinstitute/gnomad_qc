@@ -79,77 +79,111 @@ fingerprinting_failed = VersionedTableResource(
     },
 )
 
-# Mean chr20 DP per sample using Hail's interval_coverage results.
-sample_chr20_mean_dp = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.sample_chr20_mean_dp.ht"
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
 
-# Sample callrate on variants in the v4 precomputed QC MT.
-sample_qc_mt_callrate = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.sample_qc_mt_callrate.ht"
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
+def sample_chr20_mean_dp(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for mean chr20 DP per sample using Hail's interval_coverage results.
 
-# Sample contamination estimate Table.
-contamination = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.contamination.ht"
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource for mean chr20 DP per sample.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}/hard_filtering/gnomad.exomes.v{version}.sample_chr20_mean_dp.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
 
-hard_filtered_samples_no_sex = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.hard_filtered_samples_no_sex.ht"
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
 
-hard_filtered_samples = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/hard_filtering/gnomad.exomes.v{version}.hard_filtered_samples.ht"
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
+def sample_qc_mt_callrate(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for sample callrate on variants in the v4 precomputed QC MT.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource for sample callrate on variants in the v4
+        precomputed QC MT.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}/hard_filtering/gnomad.exomes.v{version}.sample_qc_mt_callrate.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def contamination(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for sample contamination estimate Table.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource for sample contamination estimate Table.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}/hard_filtering/gnomad.exomes.v{version}.contamination.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def hard_filtered_samples(
+    include_sex_filter: bool = True, test: bool = False
+) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for hard-filtered samples Table.
+
+    :param include_sex_filter: Whether to get the hard-filtered samples Table that
+        includes a sex karyotype annotation filter.
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource for hard-filtered samples Table.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}/hard_filtering/gnomad.exomes.v{version}.hard_filtered_samples{'' if include_sex_filter else '_no_sex'}.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
 
 ######################################################################
 # Platform inference resources
 ######################################################################
 
-# VDS Hail interval_coverage results.
-interval_coverage = VersionedMatrixTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: MatrixTableResource(
-            f"{get_sample_qc_root(version)}/platform_inference/gnomad.exomes.v{version}.interval_coverage.mt"
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
+
+def interval_coverage(test: bool = False) -> VersionedMatrixTableResource:
+    """
+    Get VersionedMatrixTableResource for VDS Hail interval_coverage results.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedMatrixTableResource for VDS Hail interval_coverage results.
+    """
+    return VersionedMatrixTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: MatrixTableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}/platform_inference/gnomad.exomes.v{version}.interval_coverage.mt"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
 
 
 def _get_platform_pca_ht_path(
-    part: str, version: str = CURRENT_SAMPLE_QC_VERSION
+    part: str,
+    version: str = CURRENT_SAMPLE_QC_VERSION,
+    test: bool = False,
 ) -> str:
     """
     Get path to files related to platform PCA.
@@ -158,106 +192,154 @@ def _get_platform_pca_ht_path(
     :param version: Version of sample QC path to return
     :return: Path to requested platform PCA file
     """
-    return f"{get_sample_qc_root(version)}/platform_inference/gnomad.exomes.v{version}.platform_pca_{part}.ht"
+    return (
+        f"{get_sample_qc_root(version, test, data_type='exomes')}/platform_inference/gnomad.exomes.v{version}.platform_pca_{part}.ht"
+    )
 
 
-platform_pca_loadings = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: TableResource(
-            _get_platform_pca_ht_path(
-                "loadings",
-                version,
+def platform_pca_loadings(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for platform PCA loadings.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource for platform PCA loadings.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(_get_platform_pca_ht_path("loadings", version, test))
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def platform_pca_eigenvalues(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for platform PCA eigenvalues.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource for platform PCA eigenvalues.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                _get_platform_pca_ht_path("eigenvalues", version, test)
             )
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
 
-platform_pca_scores = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: TableResource(
-            _get_platform_pca_ht_path(
-                "scores",
-                version,
+
+def platform_pca_scores(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for platform PCA scores.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource for platform PCA scores.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(_get_platform_pca_ht_path("scores", version, test))
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def platform(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for inferred sample platforms.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource for inferred sample platforms.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}/platform_inference/gnomad.exomes.v{version}.platform.ht"
             )
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
 
-platform_pca_eigenvalues = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: TableResource(
-            _get_platform_pca_ht_path(
-                "eigenvalues",
-                version,
-            )
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
-
-# Inferred sample platforms.
-platform = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/platform_inference/gnomad.exomes.v{version}.platform.ht"
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
 
 ######################################################################
 # Sex inference resources
 ######################################################################
 
-# HT with bi-allelic SNPs on chromosome X used in sex imputation f-stat calculation.
-f_stat_sites = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/sex_inference/gnomad.exomes.v{version}.f_stat_sites.ht"
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
 
-# Sex chromosome coverage aggregate stats MT.
-sex_chr_coverage = VersionedMatrixTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: MatrixTableResource(
-            f"{get_sample_qc_root(version)}/sex_inference/gnomad.exomes.v{version}.sex_chr_coverage.mt"
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
+def f_stat_sites(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource HT with bi-allelic SNPs on chromosome X used in sex imputation f-stat calculation.
 
-# Table containing aggregate stats for interval QC specific to sex imputation.
-sex_imputation_interval_qc = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/sex_inference/gnomad.exomes.v{version}.sex_imputation_interval_qc.ht"
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource for f-stat sites.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}/sex_inference/gnomad.exomes.v{version}.f_stat_sites.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
 
-# Ploidy imputation results.
-ploidy = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/sex_inference/gnomad.exomes.v{version}.ploidy.ht"
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
+
+def sex_chr_coverage(test: bool = False) -> VersionedMatrixTableResource:
+    """
+    Get VersionedMatrixTableResource HT with sex chromosome coverage aggregate stats MT.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedMatrixTableResource with sex chromosome coverage aggregate stats MT.
+    """
+    return VersionedMatrixTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: MatrixTableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}/sex_inference/gnomad.exomes.v{version}.sex_chr_coverage.mt"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def sex_imputation_interval_qc(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource HT containing aggregate stats for interval QC specific to sex imputation.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource containing aggregate stats for interval QC specific to sex imputation.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}/sex_inference/gnomad.exomes.v{version}.sex_imputation_interval_qc.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
+
+def ploidy(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for ploidy imputation results.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource for ploidy imputation results.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}/sex_inference/gnomad.exomes.v{version}.ploidy.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
 
 
 # Sex imputation results.
@@ -277,15 +359,23 @@ def get_ploidy_cutoff_json_path(
         return f"{get_sample_qc_root(version)}/sex_inference/gnomad.exomes.v{version}.ploidy_cutoffs.json"
 
 
-sex = VersionedTableResource(
-    CURRENT_SAMPLE_QC_VERSION,
-    {
-        version: TableResource(
-            f"{get_sample_qc_root(version)}/sex_inference/gnomad.exomes.v{version}.sex.ht"
-        )
-        for version in SAMPLE_QC_VERSIONS
-    },
-)
+def sex(test: bool = False) -> VersionedTableResource:
+    """
+    Get VersionedTableResource for sex imputation results.
+
+    :param test: Whether to use a tmp path for a test resource.
+    :return: VersionedTableResource for sex imputation results.
+    """
+    return VersionedTableResource(
+        CURRENT_SAMPLE_QC_VERSION,
+        {
+            version: TableResource(
+                f"{get_sample_qc_root(version, test, data_type='exomes')}/sex_inference/gnomad.exomes.v{version}.sex.ht"
+            )
+            for version in SAMPLE_QC_VERSIONS
+        },
+    )
+
 
 ######################################################################
 # Interval QC resources

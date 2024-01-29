@@ -11,6 +11,10 @@ from gnomad.sample_qc.sex import get_sex_expr
 from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import (
     get_checkpoint_path,
@@ -21,7 +25,7 @@ from gnomad_qc.v4.resources.basics import (
 from gnomad_qc.v4.resources.sample_qc import (
     f_stat_sites,
     get_ploidy_cutoff_json_path,
-    hard_filtered_samples_no_sex,
+    hard_filtered_samples,
     interval_coverage,
     platform,
     ploidy,
@@ -100,64 +104,10 @@ def determine_fstat_sites(
     return ht
 
 
-def load_platform_ht(
-    test: bool = False,
-    calling_interval_name: str = "intersection",
-    calling_interval_padding: int = 50,
-) -> hl.Table:
-    """
-    Load platform assignment Table or test Table and return an error if requested Table does not exist.
-
-    .. note::
-
-        If `test` is True and the test platform assignment Table does not exist, the function will load the final
-        platform assignment Table instead if it already exists.
-
-    :param test: Whether a test platform assignment Table should be loaded.
-    :param calling_interval_name: Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or
-        'intersection'. Only used if `test` is True.
-    :param calling_interval_padding: Number of base pair padding to use on the calling intervals. One of 0 or 50 bp.
-        Only used if `test` is True.
-    :return: Platform assignment Table.
-    """
-    logger.info("Loading platform information...")
-    test_platform_path = get_checkpoint_path(
-        f"test_platform_assignment.{calling_interval_name}.pad{calling_interval_padding}"
-    )
-    if test and file_exists(test_platform_path):
-        ht = hl.read_table(test_platform_path)
-    elif file_exists(platform.path):
-        ht = platform.ht()
-        if test:
-            logger.warning(
-                "Test platform file does not exist for calling interval %s and interval"
-                " padding %s, using final platform assignment Table instead. To use a"
-                " test platform assignment please run platform_inference.py"
-                " --assign-platforms with the --test argument and needed"
-                " --calling-interval-name/--calling-interval-padding arguments.",
-                calling_interval_name,
-                calling_interval_padding,
-            )
-    elif test:
-        raise FileNotFoundError(
-            "There is no test platform assignment Table written for calling interval"
-            f" {calling_interval_name} and interval padding"
-            f" {calling_interval_padding} and a final platform assignment Table does"
-            " not exist. Please run platform_inference.py --assign-platforms with the"
-            " --test argument and needed"
-            " --calling-interval-name/--calling-interval-padding arguments."
-        )
-    else:
-        raise FileNotFoundError(
-            f"There is no final platform assignment Table written. Please run:"
-            f" platform_inference.py --assign-platforms to compute the platform"
-            f" assignment Table."
-        )
-
-    return ht
-
-
 def prepare_sex_imputation_coverage_mt(
+    coverage_mt: hl.MatrixTable,
+    hard_filtered_ht: hl.Table,
+    sex_coverage_mt: hl.Table,
     normalization_contig: str = "chr20",
     test: bool = False,
     read_if_exists: bool = False,
@@ -169,6 +119,9 @@ def prepare_sex_imputation_coverage_mt(
     (before sex hard filter) and union it with the sex coverage MatrixTable after excluding intervals that overlap
     PAR regions.
 
+    :param coverage_mt: Input full interval coverage MatrixTable.
+    :param hard_filtered_ht: Table with hard filtered samples.
+    :param sex_coverage_mt: MatrixTable with coverage information on the sex chromosomes.
     :param normalization_contig: Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.
         Default is 'chr20'.
     :param test: Whether to use gnomAD v4 test dataset. Default is False.
@@ -177,22 +130,18 @@ def prepare_sex_imputation_coverage_mt(
     :return: Interval coverage MatrixTable for sex imputation.
     """
     logger.info(
-        "Loading the full interval coverage MT and filtering to the desired"
-        " normalization contig..."
+        "Filtering the full interval coverage MT and to the desired normalization "
+        "contig..."
     )
-    coverage_mt = interval_coverage.mt()
     coverage_mt = coverage_mt.filter_rows(
         coverage_mt.interval.start.contig == normalization_contig
     )
 
     logger.info("Removing hard-filtered samples from the full interval coverage MT...")
     coverage_mt = coverage_mt.filter_cols(
-        hl.is_missing(hard_filtered_samples_no_sex.ht()[coverage_mt.col_key])
+        hl.is_missing(hard_filtered_ht[coverage_mt.col_key])
     )
     if test:
-        sex_coverage_mt = hl.read_matrix_table(
-            get_checkpoint_path("test_sex_imputation_cov", mt=True)
-        )
         logger.info(
             "Filtering to columns in both the coverage MT and the sex coverage MT for"
             " testing...",
@@ -222,8 +171,6 @@ def prepare_sex_imputation_coverage_mt(
             )
         )
         sex_coverage_mt = sex_coverage_mt.choose_cols(idx_in_sex_coverage_mt)
-    else:
-        sex_coverage_mt = sex_chr_coverage.mt()
 
     logger.info(
         "Excluding intervals that overlap PAR regions from the sex coverage MT..."
@@ -729,6 +676,86 @@ def reformat_ploidy_cutoffs_for_json(
     return cutoffs
 
 
+def get_sex_inference_resources(
+    test: bool,
+    overwrite: bool,
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the sex inference pipeline.
+
+    :param test: Whether to gather all resources for the test dataset.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :return: PipelineResourceCollection containing resources for all steps of the sex
+        inference pipeline.
+    """
+    coverage_input_resources = {
+        "interval_qc.py --sex-chr-interval-coverage": {
+            "sex_chr_coverage_ht": sex_chr_coverage(test=test)
+        },
+        "hard_filters.py --compute-hard-filters": {
+            "hard_filter_ht": hard_filtered_samples(include_sex_filter=False, test=test)
+        },
+        "hard_filters.py --compute-coverage": {
+            "coverage_mt": interval_coverage(test=test)
+        },
+        "platform_inference.py --assign-platforms": {
+            "platform_ht": platform(test=test)
+        },
+    }
+
+    # Initialize sex inference pipeline resource collection.
+    sex_inference_pipeline = PipelineResourceCollection(
+        pipeline_name="sex_inference",
+        overwrite=overwrite,
+    )
+
+    # Create resource collection for each step of the sex inference pipeline.
+    run_determine_fstat_sites = PipelineStepResourceCollection(
+        "--determine-fstat-sites",
+        output_resources={
+            "f_stat_sites_ht": f_stat_sites(test=test),
+        },
+    )
+    run_sex_imputation_interval_qc = PipelineStepResourceCollection(
+        "--sex-imputation-interval-qc",
+        input_resources=coverage_input_resources,
+        output_resources={
+            "sex_interval_qc_ht": sex_imputation_interval_qc(test=test),
+        },
+    )
+    impute_sex_ploidy = PipelineStepResourceCollection(
+        "--impute-sex-ploidy",
+        pipeline_input_steps=[
+            run_determine_fstat_sites,
+            run_sex_imputation_interval_qc,
+        ],
+        add_input_resources=coverage_input_resources,
+        output_resources={
+            "ploidy_ht": ploidy(test=test),
+        },
+    )
+    annotate_sex_karyotype = PipelineStepResourceCollection(
+        "--annotate-sex-karyotype",
+        pipeline_input_steps=[impute_sex_ploidy],
+        output_resources={
+            "sex_ht": sex(test=test),
+            "ploidy_cutoff_json_path": get_ploidy_cutoff_json_path(test=test),
+        },
+    )
+
+    # Add all steps to the sex inference pipeline resource collection.
+    sex_inference_pipeline.add_steps(
+        {
+            "run_determine_fstat_sites": run_determine_fstat_sites,
+            "run_sex_imputation_interval_qc": run_sex_imputation_interval_qc,
+            "impute_sex_ploidy": impute_sex_ploidy,
+            "annotate_sex_karyotype": annotate_sex_karyotype,
+        }
+    )
+
+    return sex_inference_pipeline
+
+
 def main(args):
     """Impute chromosomal sex karyotype annotation."""
     hl.init(
@@ -749,9 +776,16 @@ def main(args):
     read_sex_cov_if_exists = args.read_sex_imputation_coverage_mt_if_exists
     apply_x_frac_hom_alt_cutoffs = args.apply_x_frac_hom_alt_cutoffs
 
+    sex_inference_resources = get_sex_inference_resources(
+        test=test,
+        overwrite=overwrite,
+    )
+
     try:
         if args.determine_fstat_sites:
             logger.info("Determining sites to use for f-stat computations...")
+            res = sex_inference_resources.run_determine_fstat_sites
+            res.check_resource_existence()
             vds = get_gnomad_v4_vds(
                 remove_hard_filtered_samples=False,
                 remove_hard_filtered_samples_no_sex=True,
@@ -764,36 +798,33 @@ def main(args):
                 min_callrate=args.min_callrate,
             )
             ht.naive_coalesce(args.fstat_n_partitions).write(
-                get_checkpoint_path("test_f_stat_sites") if test else f_stat_sites.path,
-                overwrite=overwrite,
+                res.f_stat_sites_ht.path, overwrite=overwrite
             )
 
         if args.sex_imputation_interval_qc:
+            res = sex_inference_resources.run_sex_imputation_interval_qc
+            res.check_resource_existence()
             sex_coverage_mt = prepare_sex_imputation_coverage_mt(
+                res.coverage_mt.mt(),
+                res.hard_filter_ht.ht(),
+                res.sex_chr_coverage_ht.ht(),
                 normalization_contig,
                 test,
                 read_sex_cov_if_exists,
             )
-            platform_ht = load_platform_ht(
-                test,
-                sex_coverage_mt.calling_interval_name.collect()[0],
-                sex_coverage_mt.calling_interval_padding.collect()[0],
-            )
+            platform_ht = res.platform_ht.ht()
             ht = compute_interval_qc(
                 sex_coverage_mt,
                 platform_ht=platform_ht,
                 mean_dp_thresholds=args.mean_dp_thresholds,
             )
             ht.naive_coalesce(args.interval_qc_n_partitions).write(
-                (
-                    get_checkpoint_path("test_sex_chr_interval_qc")
-                    if test
-                    else sex_imputation_interval_qc.path
-                ),
-                overwrite=overwrite,
+                res.sex_interval_qc_ht.path, overwrite=overwrite
             )
 
         if args.impute_sex_ploidy:
+            res = sex_inference_resources.impute_sex_ploidy
+            res.check_resource_existence()
             vds = get_gnomad_v4_vds(
                 remove_hard_filtered_samples=False,
                 remove_hard_filtered_samples_no_sex=True,
@@ -807,35 +838,17 @@ def main(args):
                 # computation allele frequency cutoff (args.min-af).
                 freq_ht = ukb_f_stat.ht()
             else:
-                freq_ht = (
-                    hl.read_table(get_checkpoint_path("test_f_stat_sites"))
-                    if test
-                    else f_stat_sites.ht()
-                )
-
-            ploidy_ht_path = (
-                get_checkpoint_path(f"ploidy_imputation") if test else ploidy.path
-            )
-
-            # Added because without this impute_sex_chromosome_ploidy will still run
-            # even with overwrite=False.
-            if file_exists(ploidy_ht_path) and not overwrite:
-                raise DataException(
-                    f"{ploidy_ht_path} already exists and the --overwrite option was"
-                    " not used!"
-                )
+                freq_ht = res.f_stat_sites_ht.ht()
 
             coverage_mt = prepare_sex_imputation_coverage_mt(
+                res.coverage_mt.mt(),
+                res.hard_filter_ht.ht(),
+                res.sex_chr_coverage_ht.ht(),
                 normalization_contig,
                 test,
                 read_sex_cov_if_exists,
             )
-            platform_ht = load_platform_ht(
-                test,
-                coverage_mt.calling_interval_name.collect()[0],
-                coverage_mt.calling_interval_padding.collect()[0],
-            )
-
+            platform_ht = res.platform_ht.ht()
             high_qual_cutoffs = None
             if args.high_qual_by_mean_fraction_over_dp_0:
                 # The same cutoffs are used for x_non_par, and y_non_par within their
@@ -859,11 +872,7 @@ def main(args):
 
             interval_qc_ht = None
             if high_qual_intervals or high_qual_per_platform or high_qual_all_platforms:
-                interval_qc_ht = (
-                    hl.read_table(get_checkpoint_path("test_sex_chr_interval_qc"))
-                    if test
-                    else sex_imputation_interval_qc.ht()
-                )
+                interval_qc_ht = res.sex_interval_qc_ht.ht()
                 if (
                     interval_qc_ht.normalization_contig.collect()[0]
                     != normalization_contig
@@ -906,15 +915,13 @@ def main(args):
             )
             ploidy_ht = ploidy_ht.annotate_globals(f_stat_ukb_var=args.f_stat_ukb_var)
             logger.info("Writing ploidy Table...")
-            ploidy_ht.write(ploidy_ht_path, overwrite=overwrite)
+            ploidy_ht.write(res.ploidy_ht.path, overwrite=overwrite)
 
         if args.annotate_sex_karyotype:
+            res = sex_inference_resources.annotate_sex_karyotype
+            res.check_resource_existence()
             # TODO: Add drop of `is_female` in future versions.
-            ploidy_ht = (
-                hl.read_table(get_checkpoint_path(f"ploidy_imputation"))
-                if test
-                else ploidy.ht()
-            )
+            ploidy_ht = res.ploidy_ht.ht()
 
             if args.sex_karyotype_cutoffs:
                 with hl.hadoop_open(args.sex_karyotype_cutoffs, "r") as d:
@@ -937,19 +944,17 @@ def main(args):
             sex_ht = sex_ht.annotate_globals(**karyotype_ht.index_globals())
 
             logger.info("Writing sex HT with karyotype annotation...")
-            sex_ht.write(
-                get_checkpoint_path("sex") if test else sex.path,
-                overwrite=overwrite,
-            )
+            sex_ht = sex_ht.checkpoint(res.sex_ht.path, overwrite=overwrite)
 
             ploidy_cutoffs = reformat_ploidy_cutoffs_for_json(
                 sex_ht,
                 per_platform=per_platform,
                 include_x_frac_hom_alt_cutoffs=apply_x_frac_hom_alt_cutoffs,
             )
-            cutoff_json_path = get_ploidy_cutoff_json_path(test=test)
-            logger.info("Writing ploidy cutoffs dictionary to %s.", cutoff_json_path)
-            with hl.hadoop_open(cutoff_json_path, "w") as d:
+            logger.info(
+                "Writing ploidy cutoffs dictionary to %s.", res.ploidy_cutoff_json_path
+            )
+            with hl.hadoop_open(res.ploidy_cutoff_json_path, "w") as d:
                 d.write(json.dumps(ploidy_cutoffs))
     finally:
         logger.info("Copying log to logging bucket...")

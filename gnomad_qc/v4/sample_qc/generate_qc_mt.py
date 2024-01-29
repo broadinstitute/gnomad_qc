@@ -19,6 +19,10 @@ from gnomad.sample_qc.pipeline import get_qc_mt
 from gnomad.utils.annotations import annotate_adj
 from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.basics import get_gnomad_v3_mt
 from gnomad_qc.v3.resources.meta import meta as v3_meta
@@ -109,7 +113,7 @@ def generate_qc_mt(
     )
     logger.info("Number of (variants, samples) in the v4 MatrixTable: %s...", v4_count)
     # Remove v4 hard filtered samples.
-    v4_mt = v4_mt.anti_join_cols(hard_filtered_samples.ht())
+    v4_mt = v4_mt.anti_join_cols(hard_filtered_samples().ht())
 
     samples_in_both = v4_mt.cols().semi_join(v3_mt.cols())
     n_samples_in_both = samples_in_both.count()
@@ -210,8 +214,8 @@ def generate_qc_meta_ht() -> hl.Table:
     )
 
     v4_meta_ht = v4_meta.ht()
-    chr20_mean_dp_ht = sample_chr20_mean_dp.ht()
-    hardfilter_ht = hard_filtered_samples.ht()
+    chr20_mean_dp_ht = sample_chr20_mean_dp().ht()
+    hardfilter_ht = hard_filtered_samples().ht()
 
     v4_meta_ht = v4_meta_ht.select(
         v2_meta=hl.struct(
@@ -239,6 +243,57 @@ def generate_qc_meta_ht() -> hl.Table:
     return v3_meta_ht.union(v4_meta_ht, unify=True)
 
 
+def get_generate_qc_mt_resources(
+    test: bool,
+    overwrite: bool,
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the QC MT generation pipeline.
+
+    :param test: Whether to gather all resources for the test dataset.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :return: PipelineResourceCollection containing resources for all steps of the QC MT
+        generation pipeline.
+    """
+    # Initialize QC MT generation pipeline resource collection.
+    generate_qc_mt_pipeline = PipelineResourceCollection(
+        pipeline_name="generate_qc_mt",
+        overwrite=overwrite,
+    )
+
+    # Create resource collection for each step of the QC MT generation pipeline.
+    create_v3_filtered_dense_mt = PipelineStepResourceCollection(
+        "--create-v3-filtered-dense-mt",
+        output_resources={
+            "v3_predetermined_qc_mt": get_predetermined_qc(version="3.1", test=test)
+        },
+    )
+    create_v4_filtered_dense_mt = PipelineStepResourceCollection(
+        "--create-v4-filtered-dense-mt",
+        output_resources={"v4_predetermined_qc_mt": get_predetermined_qc(test=test)},
+    )
+    generate_joint_qc_mt = PipelineStepResourceCollection(
+        "--generate-qc-mt",
+        pipeline_input_steps=[create_v3_filtered_dense_mt, create_v4_filtered_dense_mt],
+        output_resources={"joint_qc_mt": get_joint_qc(test=test)},
+    )
+    generate_qc_meta = PipelineStepResourceCollection(
+        "--generate-qc-meta",
+        output_resources={"joint_qc_meta_ht": joint_qc_meta},
+    )
+    # Add all steps to the QC MT generation pipeline resource collection.
+    generate_qc_mt_pipeline.add_steps(
+        {
+            "create_v3_filtered_dense_mt": create_v3_filtered_dense_mt,
+            "create_v4_filtered_dense_mt": create_v4_filtered_dense_mt,
+            "generate_joint_qc_mt": generate_joint_qc_mt,
+            "generate_qc_meta": generate_qc_meta,
+        }
+    )
+
+    return generate_qc_mt_pipeline
+
+
 def main(args):
     """Create a dense MT of a diverse set of variants for relatedness/ancestry PCA."""
     hl.init(
@@ -253,15 +308,20 @@ def main(args):
     ld_r2 = args.ld_r2
     test = args.test
 
+    generate_qc_mt_resources = get_generate_qc_mt_resources(
+        test=test,
+        overwrite=overwrite,
+    )
+
     try:
         if args.create_v3_filtered_dense_mt:
+            res = generate_qc_mt_resources.create_v3_filtered_dense_mt
+            res.check_resource_existence()
+
             # NOTE: This command removes hard filtered samples.
             mt = get_gnomad_v3_mt(key_by_locus_and_alleles=True, test=test)
             mt = create_filtered_dense_mt(mt, split=True)
-            mt = mt.checkpoint(
-                get_predetermined_qc(version="3.1", test=test).path,
-                overwrite=overwrite,
-            )
+            mt = mt.checkpoint(res.v3_predetermined_qc_mt.path, overwrite=overwrite)
             logger.info(
                 "Number of predetermined QC variants found in the gnomAD v3"
                 " MatrixTable: %d...",
@@ -269,6 +329,9 @@ def main(args):
             )
 
         if args.create_v4_filtered_dense_mt:
+            res = generate_qc_mt_resources.create_v4_filtered_dense_mt
+            res.check_resource_existence()
+
             # NOTE: This subset dense MatrixTable was created before the final hard filtering was determined. # noqa
             # Hard filtering is performed in `generate_qc_mt` before applying variant
             # filters.
@@ -276,20 +339,18 @@ def main(args):
                 split=True, remove_hard_filtered_samples=False, test=test
             )
             mt = create_filtered_dense_mt(vds)
-            mt = mt.checkpoint(
-                get_predetermined_qc(test=test).path, overwrite=overwrite
-            )
+            mt = mt.checkpoint(res.v4_predetermined_qc_mt.path, overwrite=overwrite)
             logger.info(
                 "Number of predetermined QC variants found in the gnomAD v4 VDS: %d...",
                 mt.count_rows(),
             )
 
         if args.generate_qc_mt:
-            v3_mt = get_predetermined_qc(version="3.1", test=test).mt()
-            v4_mt = get_predetermined_qc(test=test).mt()
+            res = generate_qc_mt_resources.generate_joint_qc_mt
+            res.check_resource_existence()
             mt = generate_qc_mt(
-                v3_mt,
-                v4_mt,
+                res.v3_predetermined_qc_mt.mt(),
+                res.v4_predetermined_qc_mt.mt(),
                 bi_allelic_only=args.bi_allelic_only,
                 min_af=args.min_af,
                 min_callrate=args.min_callrate,
@@ -298,10 +359,12 @@ def main(args):
                 n_partitions=args.n_partitions,
                 block_size=args.block_size,
             )
-            mt.write(get_joint_qc(test=test).path, overwrite=overwrite)
+            mt.write(res.joint_qc_mt.path, overwrite=overwrite)
 
         if args.generate_qc_meta:
-            generate_qc_meta_ht().write(joint_qc_meta.path, overwrite=overwrite)
+            res = generate_qc_mt_resources.generate_qc_meta
+            res.check_resource_existence()
+            generate_qc_meta_ht().write(res.joint_qc_meta_ht.path, overwrite=overwrite)
 
     finally:
         logger.info("Copying hail log to logging bucket...")

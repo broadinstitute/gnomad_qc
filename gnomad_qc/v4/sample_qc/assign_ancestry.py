@@ -10,8 +10,11 @@ from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relate
 from gnomad.utils.slack import slack_notifications
 from hail.utils.misc import new_temp_file
 
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_pop_outliers
-from gnomad_qc.v4.resources.basics import get_checkpoint_path
 from gnomad_qc.v4.resources.sample_qc import (
     ancestry_pca_eigenvalues,
     ancestry_pca_loadings,
@@ -108,8 +111,8 @@ def run_pca(
 
 
 def prep_ht_for_rf(
-    include_unreleasable_samples: bool = False,
-    test: bool = False,
+    pop_pca_scores_ht: hl.Table,
+    joint_meta_ht: hl.Table,
     include_v2_known_in_training: bool = False,
     v4_population_spike: Optional[List[str]] = None,
     v3_population_spike: Optional[List[str]] = None,
@@ -119,16 +122,13 @@ def prep_ht_for_rf(
 
     Either train the RF with only HGDP and TGP, or HGDP and TGP and all v2 known labels. Can also specify list of pops with known v3/v4 labels to include (v3_population_spike/v4_population_spike) for training. Pops supplied for v4 are specified by race/ethnicity and converted to an ancestry group using V4_POP_SPIKE_DICT.
 
-    :param include_unreleasable_samples: Should unreleasable samples be included in the PCA.
-    :param test: Whether RF should run on the test QC MT.
+    :param pop_pca_scores_ht: Table of scores returned by run_pca.
+    :param joint_meta_ht: Table of joint metadata.
     :param include_v2_known_in_training: Whether to train RF classifier using v2 known pop labels. Default is False.
     :param v4_population_spike: Optional List of populations to spike into training. Must be in V4_POP_SPIKE_DICT dictionary. Default is None.
     :param v3_population_spike: Optional List of populations to spike into training. Must be in V3_SPIKE_PROJECTS dictionary. Default is None.
     :return Table with input for the random forest.
     """
-    pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples, test).ht()
-    joint_meta_ht = joint_qc_meta.ht()
-
     # Collect sample names of hgdp/tgp outliers to remove (these are outliers
     # found by Alicia Martin's group during pop-specific PCA analyses as well
     # as one duplicate sample)
@@ -205,12 +205,12 @@ def prep_ht_for_rf(
 
 
 def assign_pops(
+    pop_pca_scores_ht: hl.Table,
+    joint_meta_ht: hl.Table,
     min_prob: float,
     include_unreleasable_samples: bool = False,
     pcs: List[int] = list(range(1, 21)),
     missing_label: str = "remaining",
-    test: bool = False,
-    overwrite: bool = False,
     include_v2_known_in_training: bool = False,
     v4_population_spike: Optional[List[str]] = None,
     v3_population_spike: Optional[List[str]] = None,
@@ -221,12 +221,12 @@ def assign_pops(
     Training data is the known label for HGDP and 1KG samples and all v2 samples with known pops unless specificied to restrict only to 1KG and HGDP samples. Can also specify a list of pops with known v3/v4 labels to include (v3_population_spike/v4_population_spike) for training. Pops supplied for v4 are specified by race/ethnicity and converted to a ancestry group using V4_POP_SPIKE_DICT. The method assigns
     a population label to all samples in the dataset.
 
+    :param pop_pca_scores_ht: Table of scores returned by run_pca.
+    :param joint_meta_ht: Table of joint metadata.
     :param min_prob: Minimum RF probability for pop assignment.
     :param include_unreleasable_samples: Whether unreleasable samples were included in PCA.
     :param pcs: List of PCs to use in the RF.
     :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`.
-    :param test: Whether running assigment on a test dataset.
-    :param overwrite: Whether to overwrite existing files.
     :param include_v2_known_in_training: Whether to train RF classifier using v2 known pop labels. Default is False.
     :param v4_population_spike: Optional List of v4 populations to spike into the RF. Must be in v4_pop_spike dictionary. Defaults to None.
     :param v3_population_spike: Optional List of v3 populations to spike into the RF. Must be in v4_pop_spike dictionary. Defaults to None.
@@ -234,8 +234,8 @@ def assign_pops(
     """
     logger.info("Prepping HT for RF...")
     pop_pca_scores_ht = prep_ht_for_rf(
-        include_unreleasable_samples,
-        test,
+        pop_pca_scores_ht,
+        joint_meta_ht,
         include_v2_known_in_training,
         v4_population_spike,
         v3_population_spike,
@@ -282,19 +282,18 @@ def write_pca_results(
     pop_pca_eigenvalues: List[float],
     pop_pca_scores_ht: hl.Table,
     pop_pca_loadings_ht: hl.Table,
-    overwrite: hl.bool = False,
-    included_unreleasables: hl.bool = False,
-    test: hl.bool = False,
-):
+    resources: PipelineResourceCollection,
+    overwrite: bool,
+) -> None:
     """
     Write out the eigenvalue hail Table, scores hail Table, and loadings hail Table returned by run_pca().
 
     :param pop_pca_eigenvalues: List of eigenvalues returned by run_pca.
     :param pop_pca_scores_ht: Table of scores returned by run_pca.
     :param pop_pca_loadings_ht: Table of loadings returned by run_pca.
+    :param resources: PipelineResourceCollection containing paths to write out PCA
+        results.
     :param overwrite: Whether to overwrite an existing file.
-    :param included_unreleasables: Whether run_pca included unreleasable samples.
-    :param test: Whether the test QC MT was used in the PCA.
     :return: None
     """
     pop_pca_eigenvalues_ht = hl.Table.parallelize(
@@ -304,15 +303,11 @@ def write_pca_results(
         )
     )
     pop_pca_eigenvalues_ht.write(
-        ancestry_pca_eigenvalues(included_unreleasables, test).path,
-        overwrite=overwrite,
+        resources.ancestry_pca_eigenvalues_ht.path, overwrite=overwrite
     )
-    pop_pca_scores_ht.write(
-        ancestry_pca_scores(included_unreleasables, test).path,
-        overwrite=overwrite,
-    )
+    pop_pca_scores_ht.write(resources.ancestry_pca_scores_ht.path, overwrite=overwrite)
     pop_pca_loadings_ht.write(
-        ancestry_pca_loadings(included_unreleasables, test).path,
+        resources.ancestry_pca_loadings_ht.path,
         overwrite=overwrite,
     )
 
@@ -478,6 +473,104 @@ def assign_pop_with_per_pop_probs(
     return pop_ht
 
 
+def get_ancestry_assignment_resources(
+    test: bool,
+    overwrite: bool,
+    include_unreleasable_samples: hl.bool = False,
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the ancestry assignment pipeline.
+
+    :param test: Whether to gather all resources for the test dataset.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :param include_unreleasable_samples: Whether unreleasable samples should be
+        included in the ancestry assignment pipeline. Default is False.
+    :param include_unreleasable_samples: Whether to get resources for run_pca including
+        unreleasable samples.
+    :return: PipelineResourceCollection containing resources for all steps of the
+        ancestry assignment pipeline.
+    """
+    joint_meta_input = {
+        "generate_qc_mt.py --generate-qc-meta": {"joint_meta_ht": joint_qc_meta}
+    }
+
+    # Initialize ancestry assignment pipeline resource collection.
+    ancestry_assignment_pipeline = PipelineResourceCollection(
+        pipeline_name="ancestry_assignment",
+        overwrite=overwrite,
+    )
+
+    # Create resource collection for each step of the ancestry assignment pipeline.
+    run_ancestry_pca = PipelineStepResourceCollection(
+        "--run-pca",
+        input_resources={
+            "relatedness.py --compute-related-samples-to-drop": {
+                "samples_to_drop_ht": related_samples_to_drop(release=False).ht()
+            },
+        },
+        output_resources={
+            "ancestry_pca_scores_ht": ancestry_pca_scores(
+                include_unreleasable_samples, test=test
+            ),
+            "ancestry_pca_loadings_ht": ancestry_pca_loadings(
+                include_unreleasable_samples, test=test
+            ),
+            "ancestry_pca_eigenvalues_ht": ancestry_pca_eigenvalues(
+                include_unreleasable_samples, test=test
+            ),
+        },
+    )
+    run_assign_pops = PipelineStepResourceCollection(
+        "--assign-pops",
+        input_resources={
+            **joint_meta_input,
+            "--run-pca": {
+                "ancestry_pca_scores_ht": ancestry_pca_scores(
+                    include_unreleasable_samples, test=test
+                )
+            },
+        },
+        output_resources={
+            "pop_ht": get_pop_ht(test=test),
+            "pop_rf_path": pop_rf_path(test=test),
+        },
+    )
+    run_compute_precision_recall = PipelineStepResourceCollection(
+        "--compute-precision-recall",
+        pipeline_input_steps=[run_assign_pops],
+        output_resources={
+            "pop_pr_ht": get_pop_pr_ht(test=test),
+        },
+    )
+    apply_per_pop_min_rf_probs = PipelineStepResourceCollection(
+        "--apply-per-pop-min-rf-probs",
+        pipeline_input_steps=[run_assign_pops, run_compute_precision_recall],
+        output_resources={
+            "pop_ht": get_pop_ht(test=test),
+            "rf_probs_json_path": per_pop_min_rf_probs_json_path(),
+        },
+    )
+    set_ami_exomes_to_remaining = PipelineStepResourceCollection(
+        "--set-ami-exomes-to-remaining",
+        pipeline_input_steps=[apply_per_pop_min_rf_probs],
+        add_input_resources=joint_meta_input,
+        output_resources={"pop_ht": get_pop_ht(test=test)},
+    )
+
+    # Add all steps to the ancestry assignment pipeline resource collection.
+    ancestry_assignment_pipeline.add_steps(
+        {
+            "run_ancestry_pca": run_ancestry_pca,
+            "run_assign_pops": run_assign_pops,
+            "run_compute_precision_recall": run_compute_precision_recall,
+            "apply_per_pop_min_rf_probs": apply_per_pop_min_rf_probs,
+            "set_ami_exomes_to_remaining": set_ami_exomes_to_remaining,
+        }
+    )
+
+    return ancestry_assignment_pipeline
+
+
 def main(args):
     """Assign global ancestry labels to samples."""
     hl.init(
@@ -491,9 +584,17 @@ def main(args):
         test = args.test
         include_v2_known_in_training = args.include_v2_known_in_training
 
+        ancestry_assignment_resources = get_ancestry_assignment_resources(
+            test=test,
+            overwrite=overwrite,
+            include_unreleasable_samples=include_unreleasable_samples,
+        )
+
         if args.run_pca:
+            res = ancestry_assignment_resources.run_ancestry_pca
+            res.check_resource_existence()
             pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
-                related_samples_to_drop(release=False).ht(),
+                res.samples_to_drop_ht.ht(),
                 include_unreleasable_samples,
                 args.n_pcs,
                 test,
@@ -509,40 +610,45 @@ def main(args):
             )
 
         if args.assign_pops:
+            res = ancestry_assignment_resources.run_assign_pops
+            res.check_resource_existence()
             pop_pcs = args.pop_pcs
             pop_pcs = list(range(1, pop_pcs[0] + 1)) if len(pop_pcs) == 1 else pop_pcs
             logger.info("Using following PCs: %s", pop_pcs)
             pop_ht, pops_rf_model = assign_pops(
+                res.pop_pca_scores_ht.ht(),
+                res.joint_meta_ht.ht(),
                 args.min_pop_prob,
                 include_unreleasable_samples,
                 pcs=pop_pcs,
-                test=test,
-                overwrite=overwrite,
                 include_v2_known_in_training=include_v2_known_in_training,
                 v4_population_spike=args.v4_population_spike,
                 v3_population_spike=args.v3_population_spike,
             )
 
             logger.info("Writing pop ht...")
-            pop_ht.write(get_pop_ht(test=test).path, overwrite=overwrite)
+            pop_ht.write(res.pop_ht.path, overwrite=overwrite)
 
             with hl.hadoop_open(
-                pop_rf_path(test=test),
+                res.pop_rf_path,
                 "wb",
             ) as out:
                 pickle.dump(pops_rf_model, out)
 
         if args.compute_precision_recall:
+            res = ancestry_assignment_resources.run_compute_precision_recall
+            res.check_resource_existence()
             ht = compute_precision_recall(
-                get_pop_ht(test=test).ht(), num_pr_points=args.number_pr_points
+                res.pop_ht.ht(), num_pr_points=args.number_pr_points
             )
-            ht.write(get_pop_pr_ht(test=test).path, overwrite=overwrite)
+            ht.write(res.pop_pr_ht.path, overwrite=overwrite)
 
         if args.apply_per_pop_min_rf_probs:
-            pop = get_pop_ht(test=test)
+            res = ancestry_assignment_resources.apply_per_pop_min_rf_probs
+            res.check_resource_existence()
             if args.infer_per_pop_min_rf_probs:
                 min_probs = infer_per_pop_min_rf_probs(
-                    get_pop_pr_ht(test=test).ht(),
+                    res.pop_pr_ht.ht(),
                     min_recall=args.min_recall,
                     min_precision=args.min_precision,
                 )
@@ -552,28 +658,30 @@ def main(args):
                 min_probs = {
                     pop: cutoff["min_prob_cutoff"] for pop, cutoff in min_probs.items()
                 }
-                with hl.hadoop_open(per_pop_min_rf_probs_json_path(), "w") as d:
+                with hl.hadoop_open(res.rf_probs_json_path, "w") as d:
                     d.write(json.dumps(min_probs))
 
-            with hl.hadoop_open(per_pop_min_rf_probs_json_path(), "r") as d:
+            with hl.hadoop_open(res.rf_probs_json_path, "r") as d:
                 min_probs = json.load(d)
             logger.info(
                 "Using the following min prob cutoff per ancestry group: %s", min_probs
             )
-            pop_ht = pop.ht().checkpoint(new_temp_file("pop_ht", extension="ht"))
+            pop_ht = res.pop_ht.ht().checkpoint(new_temp_file("pop_ht", extension="ht"))
             pop_ht = assign_pop_with_per_pop_probs(pop_ht, min_probs)
-            pop_ht.write(pop.path, overwrite=overwrite)
+            pop_ht.write(res.pop_ht.path, overwrite=overwrite)
 
         # TODO: Parameterize a cutoff to apply to all pops and decide which
         #  filters to incorporate beforehand. This was needed for gnomAD v4.0
         #  because there were only 5 exomes assigned to 'ami'.
         if args.set_ami_exomes_to_remaining:
+            res = ancestry_assignment_resources.set_ami_exomes_to_remaining
+            res.check_resource_existence()
             logger.info("Reassigning exomes inferred as 'ami' to 'remaining'...")
-            joint_meta = joint_qc_meta.ht()
+            joint_meta_ht = res.joint_meta_ht.ht()
             exome_samples = hl.literal(
-                joint_meta.filter(joint_meta.data_type == "exomes").s.collect()
+                joint_meta_ht.filter(joint_meta_ht.data_type == "exomes").s.collect()
             )
-            pop_ht = get_pop_ht(test=test).ht()
+            pop_ht = res.pop_ht.ht()
             # In gnomAD v4.0, there are 5 exomes that are reassigned from amish to
             # remaining.
             pop_ht = pop_ht.annotate(
@@ -584,7 +692,7 @@ def main(args):
                 )
             )
             pop_ht = pop_ht.checkpoint(new_temp_file("pop_ht_rem", extension="ht"))
-            pop_ht.write(get_pop_ht(test=test).path, overwrite=overwrite)
+            pop_ht.write(res.pop_ht.path, overwrite=overwrite)
 
     finally:
         hl.copy_log(

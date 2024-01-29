@@ -28,7 +28,6 @@ from gnomad_qc.v4.resources.sample_qc import (
     get_sample_qc,
     get_sample_qc_field_def_json_path,
     hard_filtered_samples,
-    hard_filtered_samples_no_sex,
     joint_qc_meta,
     platform,
     related_samples_to_drop,
@@ -124,9 +123,11 @@ def get_hard_filters_ht(ht: hl.Table) -> hl.Table:
     :return: Reformatted hard-filters Table.
     """
     # Get hard filtered samples before sex imputation.
-    hf_no_sex_s = hl.literal(hard_filtered_samples_no_sex.ht().s.collect())
+    hf_no_sex_s = hl.literal(
+        hard_filtered_samples(include_sex_filter=False).ht().s.collect()
+    )
 
-    hf_ht = hard_filtered_samples.ht()
+    hf_ht = hard_filtered_samples().ht()
     hf_ht = hf_ht.annotate(hf_no_sex=hf_no_sex_s.contains(hf_ht.s))
 
     hf_explode_ht = hf_ht.explode(hf_ht.hard_filters)
@@ -521,7 +522,7 @@ def get_sample_filter_ht(base_ht: hl.Table, relationship_ht: hl.Table) -> hl.Tab
     # Get list of UKB samples that should be removed.
     ukb_remove = hl.import_table(all_ukb_samples_to_remove, no_header=True).f0.collect()
     # Get list of hard filtered samples with sex imputation.
-    hf_s = hard_filtered_samples.ht().s.collect()
+    hf_s = hard_filtered_samples().ht().s.collect()
     # Get list of unreleasable samples, the outlier filtering Table only includes
     # releasable samples.
     meta_ht = project_meta.ht()
@@ -629,9 +630,9 @@ def get_sample_qc_meta_ht(base_ht: hl.Table) -> hl.Table:
     # Get list of UKB samples that should be removed.
     ukb_remove = hl.import_table(all_ukb_samples_to_remove, no_header=True).f0.collect()
     # Get list of hard filtered samples before sex imputation.
-    hf_no_sex_s = hard_filtered_samples_no_sex.ht().s.collect()
+    hf_no_sex_s = hard_filtered_samples(include_sex_filter=False).ht().s.collect()
     # Get list of hard filtered samples with sex imputation.
-    hf_s = hard_filtered_samples.ht().s.collect()
+    hf_s = hard_filtered_samples().ht().s.collect()
     # Get list of v3 samples (expected in relatedness and pop).
     v3_s = joint_qc_meta.ht().s.collect()
 

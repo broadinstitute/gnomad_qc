@@ -73,7 +73,7 @@ def get_sample_qc_ht(
     # Exclude hard filtered samples from the sample QC Table.
     # They should not be included in the metric distribution stats.
     sample_qc_ht = sample_qc_ht.filter(
-        hl.is_missing(hard_filtered_samples.ht()[sample_qc_ht.key])
+        hl.is_missing(hard_filtered_samples().ht()[sample_qc_ht.key])
     )
     # Add 'r_snp_indel' annotation the sample QC HT.
     sample_qc_ht = sample_qc_ht.annotate(

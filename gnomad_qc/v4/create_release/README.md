@@ -123,7 +123,7 @@ public=False)</a>"/]:::resource_color;
   step_validate_release_ht{{"--validate-release-ht"}}:::step_color;
   func_check_globals_for_retired_terms[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/create_release/validate_and_export_vcf.py#L892'>check_globals_for_retired_terms</a>"]]:::func_color;
   func_prepare_ht_for_validation[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/create_release/validate_and_export_vcf.py#L481'>prepare_ht_for_validation</a>"]]:::func_color;
-  func_filter_to_test[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/interval_qc.py#L92'>filter_to_test</a>"]]:::func_color;
+  func_filter_to_test[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/interval_qc.py#L96'>filter_to_test</a>"]]:::func_color;
   resource_release_sites_data_type_genomes_public_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/release.py#L172'>release_sites(
 data_type=genomes,
 public=False)</a>"/]:::resource_color;
