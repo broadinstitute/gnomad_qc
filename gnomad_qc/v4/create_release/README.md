@@ -8,6 +8,7 @@ flowchart TB;
   classDef hail_color fill:#FAEACE,color:#000000
   classDef resource_color fill:#D6D6D6,color:#000000
   classDef validity_check_color fill:#2C5D4A,color:#000000
+classDef subgraph_padding fill:none,stroke:none,margin-top:100
 
   step_final_filter.py{{"final_filter.py"}}:::step_color;
   resource_final_filter_data_type_exomes[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L285'>final_filter(data_type=exomes)</a>"/]:::resource_color;
@@ -40,24 +41,34 @@ public=False)</a>"/]:::resource_color;
   step_export_vcf{{"validate_and_export_vcf.py
 --export-vcf"}}:::step_color;
   resource_release_header_path_data_type_genomes[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/release.py#L229'>release_header_path(data_type=genomes)</a>"/]:::resource_color;
-  step_final_filter.py --> resource_final_filter_data_type_exomes;
-  resource_final_filter_data_type_exomes --> step_create_combined_frequency_table;
-  step_create_combined_frequency_table --> resource_get_combined_frequency_filtered_True;
-  resource_get_combined_frequency_filtered_True --> step_perform_contingency_table_test;
-  resource_get_combined_frequency_filtered_True --> step_finalize_combined_faf_release;
-  step_perform_contingency_table_test --> resource_get_freq_comparison_method_contingency_table_test_filtered_True;
-  resource_get_freq_comparison_method_contingency_table_test_filtered_True --> step_finalize_combined_faf_release;
-  step_perform_cochran_mantel_haenszel_test --> resource_get_freq_comparison_method_cmh_test_filtered_True;
-  resource_get_freq_comparison_method_cmh_test_filtered_True --> step_finalize_combined_faf_release;
-  resource_get_combined_frequency_filtered_True --> step_perform_cochran_mantel_haenszel_test;
-  resource_release_sites_data_type_exomes_public_False --> step_validate_release_ht;
-  resource_release_sites_data_type_genomes_public_False --> step_validate_release_ht;
-  resource_release_sites_data_type_exomes_public_False --> step_prepare_vcf_header;
-  resource_release_sites_data_type_genomes_public_False --> step_prepare_vcf_header;
-  step_prepare_vcf_header --> resource_release_header_path_data_type_exomes;
-  resource_release_header_path_data_type_exomes --> step_export_vcf;
-  step_prepare_vcf_header --> resource_release_header_path_data_type_genomes;
-  resource_release_header_path_data_type_genomes --> step_export_vcf;
+  subgraph cluster_create_combined_faf_release_ht[<font size=72>create_combined_faf_release_ht.py]
+subgraph cluster_create_combined_faf_release_ht_padding [ ]
+    step_final_filter.py --> resource_final_filter_data_type_exomes;
+    resource_final_filter_data_type_exomes --> step_create_combined_frequency_table;
+    step_create_combined_frequency_table --> resource_get_combined_frequency_filtered_True;
+    resource_get_combined_frequency_filtered_True --> step_perform_contingency_table_test;
+    resource_get_combined_frequency_filtered_True --> step_finalize_combined_faf_release;
+    step_perform_contingency_table_test --> resource_get_freq_comparison_method_contingency_table_test_filtered_True;
+    resource_get_freq_comparison_method_contingency_table_test_filtered_True --> step_finalize_combined_faf_release;
+    step_perform_cochran_mantel_haenszel_test --> resource_get_freq_comparison_method_cmh_test_filtered_True;
+    resource_get_freq_comparison_method_cmh_test_filtered_True --> step_finalize_combined_faf_release;
+    resource_get_combined_frequency_filtered_True --> step_perform_cochran_mantel_haenszel_test;
+  end
+end
+class cluster_create_combined_faf_release_ht_padding subgraph_padding
+  subgraph cluster_validate_and_export_vcf[<font size=72>validate_and_export_vcf.py]
+subgraph cluster_validate_and_export_vcf_padding [ ]
+    resource_release_sites_data_type_exomes_public_False --> step_validate_release_ht;
+    resource_release_sites_data_type_genomes_public_False --> step_validate_release_ht;
+    resource_release_sites_data_type_exomes_public_False --> step_prepare_vcf_header;
+    resource_release_sites_data_type_genomes_public_False --> step_prepare_vcf_header;
+    step_prepare_vcf_header --> resource_release_header_path_data_type_exomes;
+    resource_release_header_path_data_type_exomes --> step_export_vcf;
+    step_prepare_vcf_header --> resource_release_header_path_data_type_genomes;
+    resource_release_header_path_data_type_genomes --> step_export_vcf;
+  end
+end
+class cluster_validate_and_export_vcf_padding subgraph_padding
 ```
 ### [create_combined_faf_release_ht.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/create_release/create_combined_faf_release_ht.py): Create a joint gnomAD v4 exome and genome frequency and FAF.
 ```mermaid

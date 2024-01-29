@@ -8,6 +8,7 @@ flowchart TB;
   classDef hail_color fill:#FAEACE,color:#000000
   classDef resource_color fill:#D6D6D6,color:#000000
   classDef validity_check_color fill:#2C5D4A,color:#000000
+classDef subgraph_padding fill:none,stroke:none,margin-top:100
 
   step_compute_info{{"generate_variant_qc_annotations.py
 --compute-info"}}:::step_color;
@@ -34,12 +35,12 @@ flowchart TB;
 --validate-vep"}}:::step_color;
   step_finalize_ped{{"identify_trios.py
 --finalize-ped"}}:::step_color;
-  resource_pedigree_finalized_True_fake_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L1002'>pedigree(
+  resource_pedigree_finalized_True_fake_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L1003'>pedigree(
 finalized=True,
 fake=False)</a>"/]:::resource_color;
   step_finalize_relatedness_ht{{"relatedness.py
 --finalize-relatedness-ht"}}:::step_color;
-  resource_relatedness_method_None[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L562'>relatedness(method=None)</a>"/]:::resource_color;
+  resource_relatedness_method_None[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L563'>relatedness(method=None)</a>"/]:::resource_color;
   step_write_split_vds_and_downsampling_ht{{"generate_freq.py
 --write-split-vds-and-downsampling-ht"}}:::step_color;
   resource_get_downsampling[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/annotations.py#L262'>get_downsampling()</a>"/]:::resource_color;
@@ -82,51 +83,71 @@ stratify=True)</a>"/]:::resource_color;
 data_type=exomes,
 public=False,
 stratify=False)</a>"/]:::resource_color;
-  step_compute_info --> resource_get_info_split_False;
-  resource_get_info_split_False --> step_split_info;
-  step_split_info --> resource_get_info_split_True;
-  resource_get_info_split_True --> step_create_variant_qc_annotation_ht;
-  step_generate_trio_stats --> resource_get_trio_stats;
-  resource_get_trio_stats --> step_create_variant_qc_annotation_ht;
-  step_generate_sib_stats --> resource_get_sib_stats;
-  resource_get_sib_stats --> step_create_variant_qc_annotation_ht;
-  resource_get_info_split_False --> step_export_info_vcf;
-  resource_get_info_split_False --> step_export_split_info_vcf;
-  step_run_vep --> resource_get_vep_data_type_exomes;
-  resource_get_vep_data_type_exomes --> step_validate_vep;
-  step_finalize_ped --> resource_pedigree_finalized_True_fake_False;
-  resource_pedigree_finalized_True_fake_False --> step_generate_trio_stats;
-  step_finalize_relatedness_ht --> resource_relatedness_method_None;
-  resource_relatedness_method_None --> step_generate_sib_stats;
-  step_write_split_vds_and_downsampling_ht --> resource_get_downsampling;
-  resource_get_downsampling --> step_run_freq_and_dense_annotations;
-  resource_relatedness_method_None --> step_get_duplicated_to_exomes;
-  step_update_annotations --> resource_hgdp_tgp_meta_updated;
-  resource_hgdp_tgp_meta_updated --> step_get_callstats_for_updated_samples;
-  step_get_callstats_for_updated_samples --> resource_hgdp_tgp_updated_callstats_subset_added;
-  resource_hgdp_tgp_updated_callstats_subset_added --> step_join_callstats_for_update;
-  step_get_callstats_for_updated_samples --> resource_hgdp_tgp_updated_callstats_subset_subtracted;
-  resource_hgdp_tgp_updated_callstats_subset_subtracted --> step_join_callstats_for_update;
-  step_get_callstats_for_updated_samples --> resource_hgdp_tgp_updated_callstats_subset_pop_diff;
-  resource_hgdp_tgp_updated_callstats_subset_pop_diff --> step_join_callstats_for_update;
-  resource_hgdp_tgp_meta_updated --> step_compute_allele_number_for_new_variants;
-  step_join_callstats_for_update --> resource_hgdp_tgp_updated_callstats_subset_join;
-  resource_hgdp_tgp_updated_callstats_subset_join --> step_compute_allele_number_for_new_variants;
-  resource_hgdp_tgp_meta_updated --> step_update_release_callstats;
-  resource_hgdp_tgp_updated_callstats_subset_join --> step_update_release_callstats;
-  step_compute_allele_number_for_new_variants --> resource_hgdp_tgp_updated_callstats_subset_v3_release_an;
-  resource_hgdp_tgp_updated_callstats_subset_v3_release_an --> step_update_release_callstats;
-  step_compute_allele_number_for_pop_diff --> resource_hgdp_tgp_updated_callstats_subset_v3_pop_diff_an;
-  resource_hgdp_tgp_updated_callstats_subset_v3_pop_diff_an --> step_update_release_callstats;
-  resource_hgdp_tgp_meta_updated --> step_apply_patch_to_freq_ht;
-  step_update_release_callstats --> resource_hgdp_tgp_updated_callstats_subset_pre_validity_check;
-  resource_hgdp_tgp_updated_callstats_subset_pre_validity_check --> step_apply_patch_to_freq_ht;
-  resource_hgdp_tgp_meta_updated --> step_compute_allele_number_for_pop_diff;
-  resource_hgdp_tgp_updated_callstats_subset_join --> step_compute_allele_number_for_pop_diff;
-  step_compute_coverage_ht --> resource_release_coverage_path_data_type_exomes_public_False_stratify_True;
-  resource_release_coverage_path_data_type_exomes_public_False_stratify_True --> step_export_release_files;
-  step_export_release_files --> resource_release_coverage_tsv_path_data_type_exomes;
-  step_export_release_files --> resource_release_coverage_path_data_type_exomes_public_False_stratify_False;
+  subgraph cluster_generate_variant_qc_annotations[<font size=72>generate_variant_qc_annotations.py]
+subgraph cluster_generate_variant_qc_annotations_padding [ ]
+    step_compute_info --> resource_get_info_split_False;
+    resource_get_info_split_False --> step_split_info;
+    step_split_info --> resource_get_info_split_True;
+    resource_get_info_split_True --> step_create_variant_qc_annotation_ht;
+    step_generate_trio_stats --> resource_get_trio_stats;
+    resource_get_trio_stats --> step_create_variant_qc_annotation_ht;
+    step_generate_sib_stats --> resource_get_sib_stats;
+    resource_get_sib_stats --> step_create_variant_qc_annotation_ht;
+    resource_get_info_split_False --> step_export_info_vcf;
+    resource_get_info_split_False --> step_export_split_info_vcf;
+    step_run_vep --> resource_get_vep_data_type_exomes;
+    resource_get_vep_data_type_exomes --> step_validate_vep;
+    step_finalize_ped --> resource_pedigree_finalized_True_fake_False;
+    resource_pedigree_finalized_True_fake_False --> step_generate_trio_stats;
+    step_finalize_relatedness_ht --> resource_relatedness_method_None;
+    resource_relatedness_method_None --> step_generate_sib_stats;
+  end
+end
+class cluster_generate_variant_qc_annotations_padding subgraph_padding
+  subgraph cluster_generate_freq[<font size=72>generate_freq.py]
+subgraph cluster_generate_freq_padding [ ]
+    step_write_split_vds_and_downsampling_ht --> resource_get_downsampling;
+    resource_get_downsampling --> step_run_freq_and_dense_annotations;
+  end
+end
+class cluster_generate_freq_padding subgraph_padding
+  subgraph cluster_generate_freq_genomes[<font size=72>generate_freq_genomes.py]
+subgraph cluster_generate_freq_genomes_padding [ ]
+    resource_relatedness_method_None --> step_get_duplicated_to_exomes;
+    step_update_annotations --> resource_hgdp_tgp_meta_updated;
+    resource_hgdp_tgp_meta_updated --> step_get_callstats_for_updated_samples;
+    step_get_callstats_for_updated_samples --> resource_hgdp_tgp_updated_callstats_subset_added;
+    resource_hgdp_tgp_updated_callstats_subset_added --> step_join_callstats_for_update;
+    step_get_callstats_for_updated_samples --> resource_hgdp_tgp_updated_callstats_subset_subtracted;
+    resource_hgdp_tgp_updated_callstats_subset_subtracted --> step_join_callstats_for_update;
+    step_get_callstats_for_updated_samples --> resource_hgdp_tgp_updated_callstats_subset_pop_diff;
+    resource_hgdp_tgp_updated_callstats_subset_pop_diff --> step_join_callstats_for_update;
+    resource_hgdp_tgp_meta_updated --> step_compute_allele_number_for_new_variants;
+    step_join_callstats_for_update --> resource_hgdp_tgp_updated_callstats_subset_join;
+    resource_hgdp_tgp_updated_callstats_subset_join --> step_compute_allele_number_for_new_variants;
+    resource_hgdp_tgp_meta_updated --> step_update_release_callstats;
+    resource_hgdp_tgp_updated_callstats_subset_join --> step_update_release_callstats;
+    step_compute_allele_number_for_new_variants --> resource_hgdp_tgp_updated_callstats_subset_v3_release_an;
+    resource_hgdp_tgp_updated_callstats_subset_v3_release_an --> step_update_release_callstats;
+    step_compute_allele_number_for_pop_diff --> resource_hgdp_tgp_updated_callstats_subset_v3_pop_diff_an;
+    resource_hgdp_tgp_updated_callstats_subset_v3_pop_diff_an --> step_update_release_callstats;
+    resource_hgdp_tgp_meta_updated --> step_apply_patch_to_freq_ht;
+    step_update_release_callstats --> resource_hgdp_tgp_updated_callstats_subset_pre_validity_check;
+    resource_hgdp_tgp_updated_callstats_subset_pre_validity_check --> step_apply_patch_to_freq_ht;
+    resource_hgdp_tgp_meta_updated --> step_compute_allele_number_for_pop_diff;
+    resource_hgdp_tgp_updated_callstats_subset_join --> step_compute_allele_number_for_pop_diff;
+  end
+end
+class cluster_generate_freq_genomes_padding subgraph_padding
+  subgraph cluster_compute_coverage[<font size=72>compute_coverage.py]
+subgraph cluster_compute_coverage_padding [ ]
+    step_compute_coverage_ht --> resource_release_coverage_path_data_type_exomes_public_False_stratify_True;
+    resource_release_coverage_path_data_type_exomes_public_False_stratify_True --> step_export_release_files;
+    step_export_release_files --> resource_release_coverage_tsv_path_data_type_exomes;
+    step_export_release_files --> resource_release_coverage_path_data_type_exomes_public_False_stratify_False;
+  end
+end
+class cluster_compute_coverage_padding subgraph_padding
 ```
 ### [generate_variant_qc_annotations.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_variant_qc_annotations.py): Script to generate annotations for variant QC on gnomAD v4.
 ```mermaid
@@ -163,12 +184,12 @@ flowchart TB;
   resource_validate_vep_path_data_type_exomes[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/annotations.py#L90'>validate_vep_path(data_type=exomes)</a>"/]:::resource_color;
   step_finalize_ped{{"identify_trios.py
 --finalize-ped"}}:::step_color;
-  resource_pedigree_finalized_True_fake_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L1002'>pedigree(
+  resource_pedigree_finalized_True_fake_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L1003'>pedigree(
 finalized=True,
 fake=False)</a>"/]:::resource_color;
   step_finalize_relatedness_ht{{"relatedness.py
 --finalize-relatedness-ht"}}:::step_color;
-  resource_relatedness_method_None[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L562'>relatedness(method=None)</a>"/]:::resource_color;
+  resource_relatedness_method_None[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L563'>relatedness(method=None)</a>"/]:::resource_color;
   step_compute_info --> func_run_compute_info;
   func_run_compute_info --> resource_get_info_split_False;
   resource_get_info_split_False --> step_split_info;
@@ -235,7 +256,7 @@ flowchart TB;
 
   step_finalize_relatedness_ht{{"relatedness.py
 --finalize-relatedness-ht"}}:::step_color;
-  resource_relatedness_method_None[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L562'>relatedness(method=None)</a>"/]:::resource_color;
+  resource_relatedness_method_None[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L563'>relatedness(method=None)</a>"/]:::resource_color;
   step_get_duplicated_to_exomes{{"--get-duplicated-to-exomes"}}:::step_color;
   resource_hgdp_tgp_duplicated_to_exomes[/"<a href=''>hgdp_tgp_duplicated_to_exomes</a>"/]:::resource_color;
   step_update_annotations{{"--update-annotations"}}:::step_color;
@@ -245,9 +266,9 @@ flowchart TB;
   func_get_updated_release_samples[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq_genomes.py#L398'>get_updated_release_samples</a>"]]:::func_color;
   func_get_hgdp_tgp_callstats_for_selected_samples[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq_genomes.py#L518'>get_hgdp_tgp_callstats_for_selected_samples</a>"]]:::func_color;
   func_filter_freq_arrays[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq_genomes.py#L566'>filter_freq_arrays</a>"]]:::func_color;
+  resource_hgdp_tgp_updated_callstats_subset_subtracted[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/annotations.py#L441'>hgdp_tgp_updated_callstats(subset=subtracted)</a>"/]:::resource_color;
   resource_hgdp_tgp_updated_callstats_subset_pop_diff[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/annotations.py#L441'>hgdp_tgp_updated_callstats(subset=pop_diff)</a>"/]:::resource_color;
   resource_hgdp_tgp_updated_callstats_subset_added[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/annotations.py#L441'>hgdp_tgp_updated_callstats(subset=added)</a>"/]:::resource_color;
-  resource_hgdp_tgp_updated_callstats_subset_subtracted[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/annotations.py#L441'>hgdp_tgp_updated_callstats(subset=subtracted)</a>"/]:::resource_color;
   step_join_callstats_for_update{{"--join-callstats-for-update"}}:::step_color;
   func_join_release_ht_with_subsets[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/annotations/generate_freq_genomes.py#L652'>join_release_ht_with_subsets</a>"]]:::func_color;
   resource_hgdp_tgp_updated_callstats_subset_join[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/annotations.py#L441'>hgdp_tgp_updated_callstats(subset=join)</a>"/]:::resource_color;
@@ -273,9 +294,9 @@ flowchart TB;
   step_get_callstats_for_updated_samples --> func_get_updated_release_samples;
   func_get_updated_release_samples --> func_get_hgdp_tgp_callstats_for_selected_samples;
   func_get_hgdp_tgp_callstats_for_selected_samples --> func_filter_freq_arrays;
+  func_filter_freq_arrays --> resource_hgdp_tgp_updated_callstats_subset_subtracted;
   func_filter_freq_arrays --> resource_hgdp_tgp_updated_callstats_subset_pop_diff;
   func_filter_freq_arrays --> resource_hgdp_tgp_updated_callstats_subset_added;
-  func_filter_freq_arrays --> resource_hgdp_tgp_updated_callstats_subset_subtracted;
   resource_hgdp_tgp_updated_callstats_subset_added --> step_join_callstats_for_update;
   step_join_callstats_for_update --> func_join_release_ht_with_subsets;
   func_join_release_ht_with_subsets --> resource_hgdp_tgp_updated_callstats_subset_join;

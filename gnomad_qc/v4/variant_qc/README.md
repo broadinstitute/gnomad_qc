@@ -8,10 +8,11 @@ flowchart TB;
   classDef hail_color fill:#FAEACE,color:#000000
   classDef resource_color fill:#D6D6D6,color:#000000
   classDef validity_check_color fill:#2C5D4A,color:#000000
+classDef subgraph_padding fill:none,stroke:none,margin-top:100
 
   step_generate_interval_qc_pass_ht{{"interval_qc.py
 --generate-interval-qc-pass-ht"}}:::step_color;
-  resource_interval_qc_pass_per_platform_False_all_platforms_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L395'>interval_qc_pass(
+  resource_interval_qc_pass_per_platform_False_all_platforms_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L396'>interval_qc_pass(
 per_platform=False,
 all_platforms=True)</a>"/]:::resource_color;
   step_train_rf{{"random_forest.py
@@ -68,43 +69,58 @@ mt=True)</a>"/]:::resource_color;
 --split-info"}}:::step_color;
   resource_get_info_split_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/annotations.py#L47'>get_info(split=True)</a>"/]:::resource_color;
   resource_final_filter_data_type_exomes[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L285'>final_filter(data_type=exomes)</a>"/]:::resource_color;
-  step_generate_interval_qc_pass_ht --> resource_interval_qc_pass_per_platform_False_all_platforms_True;
-  resource_interval_qc_pass_per_platform_False_all_platforms_True --> step_train_rf;
-  step_train_rf --> resource_get_rf_training;
-  resource_get_rf_training --> step_apply_rf;
-  step_train_rf --> resource_get_rf_model_path;
-  resource_get_rf_model_path --> step_apply_rf;
-  step_create_variant_qc_annotation_ht --> resource_get_variant_qc_annotations;
-  resource_get_variant_qc_annotations --> step_create_bin_ht;
-  resource_get_variant_qc_result_split_True --> step_create_bin_ht;
-  step_create_bin_ht --> resource_get_score_bins_aggregated_False;
-  resource_get_score_bins_aggregated_False --> step_score_bin_validity_check;
-  resource_get_score_bins_aggregated_False --> step_create_aggregated_bin_ht;
-  step_generate_trio_stats --> resource_get_trio_stats;
-  resource_get_trio_stats --> step_create_aggregated_bin_ht;
-  resource_get_score_bins_aggregated_False --> step_bin_truth_sample_concordance;
-  step_merge_with_truth_data --> resource_get_callset_truth_data_truth_sample_syndip_mt_False;
-  resource_get_callset_truth_data_truth_sample_syndip_mt_False --> step_bin_truth_sample_concordance;
-  step_merge_with_truth_data --> resource_get_callset_truth_data_truth_sample_NA12878_mt_False;
-  resource_get_callset_truth_data_truth_sample_NA12878_mt_False --> step_bin_truth_sample_concordance;
-  step_merge_with_truth_data --> resource_get_callset_truth_data_truth_sample_UKB_NA12878_mt_False;
-  resource_get_callset_truth_data_truth_sample_UKB_NA12878_mt_False --> step_bin_truth_sample_concordance;
-  step_extract_truth_samples --> resource_get_callset_truth_data_truth_sample_syndip_mt_True;
-  resource_get_callset_truth_data_truth_sample_syndip_mt_True --> step_merge_with_truth_data;
-  step_extract_truth_samples --> resource_get_callset_truth_data_truth_sample_NA12878_mt_True;
-  resource_get_callset_truth_data_truth_sample_NA12878_mt_True --> step_merge_with_truth_data;
-  step_extract_truth_samples --> resource_get_callset_truth_data_truth_sample_UKB_NA12878_mt_True;
-  resource_get_callset_truth_data_truth_sample_UKB_NA12878_mt_True --> step_merge_with_truth_data;
-  resource_syndip_hc_intervals --> step_merge_with_truth_data;
-  resource_na12878_giab_hc_intervals --> step_merge_with_truth_data;
-  resource_syndip --> step_merge_with_truth_data;
-  resource_na12878_giab --> step_merge_with_truth_data;
-  resource_get_score_bins_aggregated_False --> step_final_filter.py;
-  step_create_aggregated_bin_ht --> resource_get_score_bins_aggregated_True;
-  resource_get_score_bins_aggregated_True --> step_final_filter.py;
-  step_split_info --> resource_get_info_split_True;
-  resource_get_info_split_True --> step_final_filter.py;
-  step_final_filter.py --> resource_final_filter_data_type_exomes;
+  subgraph cluster_random_forest[<font size=72>random_forest.py]
+subgraph cluster_random_forest_padding [ ]
+    step_generate_interval_qc_pass_ht --> resource_interval_qc_pass_per_platform_False_all_platforms_True;
+    resource_interval_qc_pass_per_platform_False_all_platforms_True --> step_train_rf;
+    step_train_rf --> resource_get_rf_training;
+    resource_get_rf_training --> step_apply_rf;
+    step_train_rf --> resource_get_rf_model_path;
+    resource_get_rf_model_path --> step_apply_rf;
+  end
+end
+class cluster_random_forest_padding subgraph_padding
+  subgraph cluster_evaluation[<font size=72>evaluation.py]
+subgraph cluster_evaluation_padding [ ]
+    step_create_variant_qc_annotation_ht --> resource_get_variant_qc_annotations;
+    resource_get_variant_qc_annotations --> step_create_bin_ht;
+    resource_get_variant_qc_result_split_True --> step_create_bin_ht;
+    step_create_bin_ht --> resource_get_score_bins_aggregated_False;
+    resource_get_score_bins_aggregated_False --> step_score_bin_validity_check;
+    resource_get_score_bins_aggregated_False --> step_create_aggregated_bin_ht;
+    step_generate_trio_stats --> resource_get_trio_stats;
+    resource_get_trio_stats --> step_create_aggregated_bin_ht;
+    resource_get_score_bins_aggregated_False --> step_bin_truth_sample_concordance;
+    step_merge_with_truth_data --> resource_get_callset_truth_data_truth_sample_syndip_mt_False;
+    resource_get_callset_truth_data_truth_sample_syndip_mt_False --> step_bin_truth_sample_concordance;
+    step_merge_with_truth_data --> resource_get_callset_truth_data_truth_sample_NA12878_mt_False;
+    resource_get_callset_truth_data_truth_sample_NA12878_mt_False --> step_bin_truth_sample_concordance;
+    step_merge_with_truth_data --> resource_get_callset_truth_data_truth_sample_UKB_NA12878_mt_False;
+    resource_get_callset_truth_data_truth_sample_UKB_NA12878_mt_False --> step_bin_truth_sample_concordance;
+    step_extract_truth_samples --> resource_get_callset_truth_data_truth_sample_syndip_mt_True;
+    resource_get_callset_truth_data_truth_sample_syndip_mt_True --> step_merge_with_truth_data;
+    step_extract_truth_samples --> resource_get_callset_truth_data_truth_sample_NA12878_mt_True;
+    resource_get_callset_truth_data_truth_sample_NA12878_mt_True --> step_merge_with_truth_data;
+    step_extract_truth_samples --> resource_get_callset_truth_data_truth_sample_UKB_NA12878_mt_True;
+    resource_get_callset_truth_data_truth_sample_UKB_NA12878_mt_True --> step_merge_with_truth_data;
+    resource_syndip_hc_intervals --> step_merge_with_truth_data;
+    resource_na12878_giab_hc_intervals --> step_merge_with_truth_data;
+    resource_syndip --> step_merge_with_truth_data;
+    resource_na12878_giab --> step_merge_with_truth_data;
+  end
+end
+class cluster_evaluation_padding subgraph_padding
+  subgraph cluster_final_filter[<font size=72>final_filter.py]
+subgraph cluster_final_filter_padding [ ]
+    resource_get_score_bins_aggregated_False --> step_final_filter.py;
+    step_create_aggregated_bin_ht --> resource_get_score_bins_aggregated_True;
+    resource_get_score_bins_aggregated_True --> step_final_filter.py;
+    step_split_info --> resource_get_info_split_True;
+    resource_get_info_split_True --> step_final_filter.py;
+    step_final_filter.py --> resource_final_filter_data_type_exomes;
+  end
+end
+class cluster_final_filter_padding subgraph_padding
 ```
 ### [random_forest.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/random_forest.py): Script for running random forest model on gnomAD v4 variant QC data.
 ```mermaid
@@ -119,21 +135,21 @@ flowchart TB;
 
   step_generate_interval_qc_pass_ht{{"interval_qc.py
 --generate-interval-qc-pass-ht"}}:::step_color;
-  resource_interval_qc_pass_per_platform_False_all_platforms_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L395'>interval_qc_pass(
+  resource_interval_qc_pass_per_platform_False_all_platforms_True[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L396'>interval_qc_pass(
 per_platform=False,
 all_platforms=True)</a>"/]:::resource_color;
   step_train_rf{{"--train-rf"}}:::step_color;
   func_train_rf[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/random_forest.py#L57'>train_rf</a>"]]:::func_color;
   func_add_model_to_run_list[["<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/variant_qc/random_forest.py#L172'>add_model_to_run_list</a>"]]:::func_color;
-  resource_get_rf_model_path[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L222'>get_rf_model_path()</a>"/]:::resource_color;
   resource_get_rf_training[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L238'>get_rf_training()</a>"/]:::resource_color;
+  resource_get_rf_model_path[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/variant_qc.py#L222'>get_rf_model_path()</a>"/]:::resource_color;
   step_apply_rf{{"--apply-rf"}}:::step_color;
   step_generate_interval_qc_pass_ht --> resource_interval_qc_pass_per_platform_False_all_platforms_True;
   resource_interval_qc_pass_per_platform_False_all_platforms_True --> step_train_rf;
   step_train_rf --> func_train_rf;
   func_train_rf --> func_add_model_to_run_list;
-  func_add_model_to_run_list --> resource_get_rf_model_path;
   func_add_model_to_run_list --> resource_get_rf_training;
+  func_add_model_to_run_list --> resource_get_rf_model_path;
   resource_get_rf_training --> step_apply_rf;
   resource_get_rf_model_path --> step_apply_rf;
 ```
