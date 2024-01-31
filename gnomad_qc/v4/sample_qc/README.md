@@ -8,7 +8,7 @@ flowchart TB;
   classDef hail_color fill:#FAEACE,color:#000000
   classDef resource_color fill:#D6D6D6,color:#000000
   classDef validity_check_color fill:#2C5D4A,color:#000000
-classDef subgraph_padding fill:none,stroke:none,margin-top:100
+  classDef subgraph_padding fill:none,stroke:none,margin-top:100
 
   step_create_v3_filtered_dense_mt{{"generate_qc_mt.py
 --create-v3-filtered-dense-mt"}}:::step_color;
@@ -161,160 +161,177 @@ all_platforms=True)</a>"/]:::resource_color;
 finalized=True,
 fake=False)</a>"/]:::resource_color;
   resource_trios_fake_False[/"<a href='https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/resources/sample_qc.py#L1035'>trios(fake=False)</a>"/]:::resource_color;
+   subgraph final_outputs[<font size=72>testing final outputs]
+     direction LR;
+     resource_get_joint_qc;
+     resource_interval_coverage;
+     resource_hard_filtered_samples_include_sex_filter_False;
+     resource_platform;
+     resource_sex_chr_coverage;
+     resource_sex;
+     resource_hard_filtered_samples_include_sex_filter_True;
+     resource_relatedness_method_None;
+     resource_get_pop_ht_data_type_joint;
+     resource_finalized_outlier_filtering;
+  end
   subgraph cluster_generate_qc_mt[<font size=72>generate_qc_mt.py]
-subgraph cluster_generate_qc_mt_padding [ ]
-    step_create_v3_filtered_dense_mt --> resource_v3_predetermined_qc;
-    resource_v3_predetermined_qc --> step_generate_qc_mt;
-    step_create_v4_filtered_dense_mt --> resource_v4_predetermined_qc;
-    resource_v4_predetermined_qc --> step_generate_qc_mt;
-    step_generate_qc_mt --> resource_get_joint_qc;
+    direction LR;
+    subgraph cluster_generate_qc_mt_padding [ ]
+      direction LR;
+      step_create_v3_filtered_dense_mt --> resource_v3_predetermined_qc --> step_generate_qc_mt;
+      step_create_v4_filtered_dense_mt --> resource_v4_predetermined_qc --> step_generate_qc_mt;
+      step_generate_qc_mt --> resource_get_joint_qc;
+    end
   end
-end
-class cluster_generate_qc_mt_padding subgraph_padding
-  subgraph cluster_hard_filters[<font size=72>hard_filters.py]
-subgraph cluster_hard_filters_padding [ ]
-    step_compute_contamination_estimate --> resource_contamination;
-    resource_contamination --> step_compute_hard_filters;
-    step_compute_chr20_mean_dp --> resource_sample_chr20_mean_dp;
-    resource_sample_chr20_mean_dp --> step_compute_hard_filters;
-    step_compute_qc_mt_callrate --> resource_sample_qc_mt_callrate;
-    resource_sample_qc_mt_callrate --> step_compute_hard_filters;
-    step_annotate_sex_karyotype --> resource_sex;
-    resource_sex --> step_compute_hard_filters;
-    resource_calling_intervals_interval_name_intersection_calling_interval_padding_50 --> step_compute_coverage;
-    step_compute_coverage --> resource_interval_coverage;
-    resource_interval_coverage --> step_compute_chr20_mean_dp;
-    resource_v4_predetermined_qc --> step_compute_qc_mt_callrate;
+  class cluster_generate_qc_mt_padding subgraph_padding
+  subgraph cluster_hard_filters_no_sex[<font size=72>Identify samples to hard filter]
+    direction TB;
+    style cluster_hard_filters_padding fill:none,stroke:none,boxMargin:100,padding:100;
+    subgraph cluster_hard_filters_padding [ ]
+      direction TB;
+      style cluster_hard_filters_padding fill:none,stroke:none,boxMargin:100,padding:100;
+      step_compute_contamination_estimate --> resource_contamination --> step_compute_hard_filters;
+      resource_calling_intervals_interval_name_intersection_calling_interval_padding_50 --> step_compute_coverage --> resource_interval_coverage --> step_compute_chr20_mean_dp --> resource_sample_chr20_mean_dp --> step_compute_hard_filters;
+      resource_v4_predetermined_qc --> step_compute_qc_mt_callrate --> resource_sample_qc_mt_callrate --> step_compute_hard_filters;
+      step_compute_hard_filters --> resource_hard_filtered_samples_include_sex_filter_False;
+      resource_sex --> step_compute_hard_filterss --> resource_hard_filtered_samples_include_sex_filter_False;
+    end
   end
-end
-class cluster_hard_filters_padding subgraph_padding
   subgraph cluster_platform_inference[<font size=72>platform_inference.py]
-subgraph cluster_platform_inference_padding [ ]
-    resource_interval_coverage --> step_run_platform_pca;
-    step_compute_hard_filters --> resource_hard_filtered_samples_include_sex_filter_False;
-    resource_hard_filtered_samples_include_sex_filter_False --> step_run_platform_pca;
-    step_run_platform_pca --> resource_platform_pca_scores;
-    resource_platform_pca_scores --> step_assign_platforms;
-    step_assign_platforms --> resource_platform;
+    direction TB;
+    subgraph cluster_platform_inference_padding [ ]
+      direction TB;
+      resource_interval_coverage --> step_run_platform_pca;
+      resource_hard_filtered_samples_include_sex_filter_False --> step_run_platform_pca;
+      step_run_platform_pca --> resource_platform_pca_scores --> step_assign_platforms --> resource_platform;
+    end
   end
-end
-class cluster_platform_inference_padding subgraph_padding
-  subgraph cluster_interval_qc[<font size=72>interval_qc.py]
-subgraph cluster_interval_qc_padding [ ]
-    resource_calling_intervals_interval_name_intersection_calling_interval_padding_50 --> step_sex_chr_interval_coverage;
-    resource_sex --> step_generate_interval_qc_ht;
-    step_compute_hard_filters --> resource_hard_filtered_samples_include_sex_filter_True;
-    resource_hard_filtered_samples_include_sex_filter_True --> step_generate_interval_qc_ht;
-    step_generate_interval_qc_ht --> resource_interval_qc;
-    resource_interval_qc --> step_generate_interval_qc_pass_ht;
-    step_generate_interval_qc_pass_ht --> resource_interval_qc_pass_per_platform_False_all_platforms_False;
-  end
-end
-class cluster_interval_qc_padding subgraph_padding
+  class cluster_platform_inference_padding subgraph_padding
   subgraph cluster_sex_inference[<font size=72>sex_inference.py]
-subgraph cluster_sex_inference_padding [ ]
-    step_determine_fstat_sites --> resource_f_stat_sites;
-    resource_f_stat_sites --> step_impute_sex_ploidy;
-    step_sex_imputation_interval_qc --> resource_sex_imputation_interval_qc;
-    resource_sex_imputation_interval_qc --> step_impute_sex_ploidy;
-    resource_sex_chr_coverage --> step_impute_sex_ploidy;
-    resource_hard_filtered_samples_include_sex_filter_False --> step_impute_sex_ploidy;
-    resource_interval_coverage --> step_impute_sex_ploidy;
-    resource_platform --> step_impute_sex_ploidy;
-    step_impute_sex_ploidy --> resource_ploidy;
-    resource_ploidy --> step_annotate_sex_karyotype;
-    resource_sex_chr_coverage --> step_sex_imputation_interval_qc;
-    resource_hard_filtered_samples_include_sex_filter_False --> step_sex_imputation_interval_qc;
-    resource_interval_coverage --> step_sex_imputation_interval_qc;
-    resource_platform --> step_sex_imputation_interval_qc;
+    direction TB;
+    subgraph cluster_sex_inference_padding [ ]
+      direction TB;
+      step_determine_fstat_sites --> resource_f_stat_sites --> step_impute_sex_ploidy;
+      resource_sex_chr_coverage --> step_impute_sex_ploidy;
+      resource_sex_chr_coverage --> step_sex_imputation_interval_qc --> resource_sex_imputation_interval_qc --> step_impute_sex_ploidy;
+      resource_hard_filtered_samples_include_sex_filter_False --> step_impute_sex_ploidy;
+      resource_interval_coverage --> step_impute_sex_ploidy;
+      resource_platform --> step_impute_sex_ploidy;
+      step_impute_sex_ploidy --> resource_ploidy --> step_annotate_sex_karyotype;
+      resource_hard_filtered_samples_include_sex_filter_False --> step_sex_imputation_interval_qc;
+      resource_interval_coverage --> step_sex_imputation_interval_qc;
+      resource_platform --> step_sex_imputation_interval_qc;
+    end
   end
-end
-class cluster_sex_inference_padding subgraph_padding
+  class cluster_sex_inference_padding subgraph_padding
+    subgraph cluster_interval_qc[<font size=72>interval_qc.py]
+    direction TB;
+    subgraph cluster_interval_qc_padding [ ]
+      direction TB;
+      resource_calling_intervals_interval_name_intersection_calling_interval_padding_50 --> step_sex_chr_interval_coverage;
+      step_compute_hard_filters --> resource_hard_filtered_samples_include_sex_filter_True;
+      resource_hard_filtered_samples_include_sex_filter_True --> step_generate_interval_qc_ht;
+      step_generate_interval_qc_ht --> resource_interval_qc;
+      resource_interval_qc --> step_generate_interval_qc_pass_ht;
+      step_generate_interval_qc_pass_ht --> resource_interval_qc_pass_per_platform_False_all_platforms_False;
+      resource_sex --> step_generate_interval_qc_ht;
+    end
+  end
+  class cluster_interval_qc_padding subgraph_padding
   subgraph cluster_relatedness[<font size=72>relatedness.py]
-subgraph cluster_relatedness_padding [ ]
-    resource_get_joint_qc --> step_prepare_cuking_inputs;
-    step_create_cuking_relatedness_table --> resource_relatedness_method_cuking;
-    resource_relatedness_method_cuking --> step_run_ibd_on_cuking_pairs;
-    resource_get_joint_qc --> step_run_ibd_on_cuking_pairs;
-    resource_relatedness_method_cuking --> step_finalize_relatedness_ht;
-    step_generate_qc_meta --> resource_joint_qc_meta;
-    resource_joint_qc_meta --> step_finalize_relatedness_ht;
-    step_create_pc_relate_relatedness_table --> resource_relatedness_method_pc_relate;
-    resource_relatedness_method_pc_relate --> step_finalize_relatedness_ht;
-    step_finalize_relatedness_ht --> resource_relatedness_method_None;
-    resource_relatedness_method_None --> step_compute_related_samples_to_drop;
-    resource_get_joint_qc --> step_compute_related_samples_to_drop;
-    resource_joint_qc_meta --> step_compute_related_samples_to_drop;
-    step_create_finalized_outlier_filter --> resource_finalized_outlier_filtering;
-    resource_finalized_outlier_filtering --> step_compute_related_samples_to_drop;
-    resource_get_joint_qc --> step_run_pc_relate_pca;
-    step_run_pc_relate_pca --> resource_pc_relate_pca_scores;
-    resource_pc_relate_pca_scores --> step_create_pc_relate_relatedness_table;
-    resource_get_joint_qc --> step_create_pc_relate_relatedness_table;
+    direction TB;
+    subgraph cluster_relatedness_padding [ ]
+      direction TB;
+      resource_get_joint_qc --> step_prepare_cuking_inputs;
+      step_create_cuking_relatedness_table --> resource_relatedness_method_cuking;
+      resource_relatedness_method_cuking --> step_run_ibd_on_cuking_pairs;
+      resource_get_joint_qc --> step_run_ibd_on_cuking_pairs;
+      resource_relatedness_method_cuking --> step_finalize_relatedness_ht;
+      step_generate_qc_meta --> resource_joint_qc_meta;
+      resource_joint_qc_meta --> step_finalize_relatedness_ht;
+      step_create_pc_relate_relatedness_table --> resource_relatedness_method_pc_relate;
+      resource_relatedness_method_pc_relate --> step_finalize_relatedness_ht;
+      step_finalize_relatedness_ht --> resource_relatedness_method_None;
+      resource_relatedness_method_None --> step_compute_related_samples_to_drop;
+      resource_get_joint_qc --> step_compute_related_samples_to_drop;
+      resource_joint_qc_meta --> step_compute_related_samples_to_drop;
+      step_create_finalized_outlier_filter --> resource_finalized_outlier_filtering;
+      resource_finalized_outlier_filtering --> step_compute_related_samples_to_drop;
+      resource_get_joint_qc --> step_run_pc_relate_pca;
+      step_run_pc_relate_pca --> resource_pc_relate_pca_scores;
+      resource_pc_relate_pca_scores --> step_create_pc_relate_relatedness_table;
+      resource_get_joint_qc --> step_create_pc_relate_relatedness_table;
+      step_annotate_sex_karyotype --> resource_sex;
+    end
   end
-end
-class cluster_relatedness_padding subgraph_padding
+  class cluster_relatedness_padding subgraph_padding
   subgraph cluster_assign_ancestry[<font size=72>assign_ancestry.py]
-subgraph cluster_assign_ancestry_padding [ ]
-    resource_joint_qc_meta --> step_assign_pops;
-    step_run_pca --> resource_ancestry_pca_scores_include_unreleasable_samples_False_data_type_joint;
-    resource_ancestry_pca_scores_include_unreleasable_samples_False_data_type_joint --> step_assign_pops;
-    step_set_ami_exomes_to_remaining --> resource_get_pop_ht_data_type_joint;
-    resource_get_pop_ht_data_type_joint --> step_compute_precision_recall;
-    step_assign_pops --> resource_pop_rf_path_data_type_joint;
-    resource_pop_rf_path_data_type_joint --> step_compute_precision_recall;
-    resource_get_pop_ht_data_type_joint --> step_apply_per_pop_min_rf_probs;
-    resource_pop_rf_path_data_type_joint --> step_apply_per_pop_min_rf_probs;
-    resource_get_pop_ht_data_type_joint --> step_set_ami_exomes_to_remaining;
-    resource_joint_qc_meta --> step_set_ami_exomes_to_remaining;
+    direction TB;
+    subgraph cluster_assign_ancestry_padding [ ]
+      direction TB;
+      resource_joint_qc_meta --> step_assign_pops;
+      step_run_pca --> resource_ancestry_pca_scores_include_unreleasable_samples_False_data_type_joint;
+      resource_ancestry_pca_scores_include_unreleasable_samples_False_data_type_joint --> step_assign_pops;
+      step_set_ami_exomes_to_remaining --> resource_get_pop_ht_data_type_joint;
+      resource_get_pop_ht_data_type_joint --> step_compute_precision_recall;
+      step_assign_pops --> resource_pop_rf_path_data_type_joint;
+      resource_pop_rf_path_data_type_joint --> step_compute_precision_recall;
+      resource_get_pop_ht_data_type_joint --> step_apply_per_pop_min_rf_probs;
+      resource_pop_rf_path_data_type_joint --> step_apply_per_pop_min_rf_probs;
+      resource_get_pop_ht_data_type_joint --> step_set_ami_exomes_to_remaining;
+      resource_joint_qc_meta --> step_set_ami_exomes_to_remaining;
+    end
   end
-end
-class cluster_assign_ancestry_padding subgraph_padding
+  class cluster_assign_ancestry_padding subgraph_padding
   subgraph cluster_outlier_filtering[<font size=72>outlier_filtering.py]
-subgraph cluster_outlier_filtering_padding [ ]
-    resource_get_sample_qc_strat_under_three_alt_alleles_data_type_exomes --> step_apply_regressed_filters;
-    resource_ancestry_pca_scores_include_unreleasable_samples_False_data_type_joint --> step_apply_regressed_filters;
-    resource_get_pop_ht_data_type_joint --> step_apply_regressed_filters;
-    resource_joint_qc_meta --> step_apply_regressed_filters;
-    step_apply_stratified_filters --> resource_stratified_filtering_pop_stratified_True_platform_stratified_True;
-    resource_stratified_filtering_pop_stratified_True_platform_stratified_True --> step_create_finalized_outlier_filter;
-    step_apply_nearest_neighbor_filters --> resource_nearest_neighbors_filtering;
-    resource_nearest_neighbors_filtering --> step_create_finalized_outlier_filter;
-    step_apply_regressed_filters --> resource_regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_True_platform_stratified_False_include_unreleasable_samples_False;
-    resource_regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_True_platform_stratified_False_include_unreleasable_samples_False --> step_create_finalized_outlier_filter;
-    step_apply_regressed_filters --> resource_regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_False_platform_stratified_True_include_unreleasable_samples_False;
-    resource_regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_False_platform_stratified_True_include_unreleasable_samples_False --> step_create_finalized_outlier_filter;
-    resource_get_sample_qc_strat_under_three_alt_alleles_data_type_exomes --> step_apply_stratified_filters;
-    resource_get_pop_ht_data_type_joint --> step_apply_stratified_filters;
-    resource_get_sample_qc_strat_under_three_alt_alleles_data_type_exomes --> step_determine_nearest_neighbors;
-    resource_get_pop_ht_data_type_joint --> step_determine_nearest_neighbors;
-    resource_get_sample_qc_strat_under_three_alt_alleles_data_type_exomes --> step_apply_nearest_neighbor_filters;
-    step_determine_nearest_neighbors --> resource_nearest_neighbors_platform_stratified_True_approximation_False_include_unreleasable_samples_True;
-    resource_nearest_neighbors_platform_stratified_True_approximation_False_include_unreleasable_samples_True --> step_apply_nearest_neighbor_filters;
+    direction TB;
+    subgraph cluster_outlier_filtering_padding [ ]
+      direction TB;
+      resource_get_sample_qc_strat_under_three_alt_alleles_data_type_exomes --> step_apply_regressed_filters;
+      resource_ancestry_pca_scores_include_unreleasable_samples_False_data_type_joint --> step_apply_regressed_filters;
+      resource_get_pop_ht_data_type_joint --> step_apply_regressed_filters;
+      resource_joint_qc_meta --> step_apply_regressed_filters;
+      step_apply_stratified_filters --> resource_stratified_filtering_pop_stratified_True_platform_stratified_True;
+      resource_stratified_filtering_pop_stratified_True_platform_stratified_True --> step_create_finalized_outlier_filter;
+      step_apply_nearest_neighbor_filters --> resource_nearest_neighbors_filtering;
+      resource_nearest_neighbors_filtering --> step_create_finalized_outlier_filter;
+      step_apply_regressed_filters --> resource_regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_True_platform_stratified_False_include_unreleasable_samples_False;
+      resource_regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_True_platform_stratified_False_include_unreleasable_samples_False --> step_create_finalized_outlier_filter;
+      step_apply_regressed_filters --> resource_regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_False_platform_stratified_True_include_unreleasable_samples_False;
+      resource_regressed_filtering_pop_pc_regressed_True_platform_pc_regressed_False_platform_stratified_True_include_unreleasable_samples_False --> step_create_finalized_outlier_filter;
+      resource_get_sample_qc_strat_under_three_alt_alleles_data_type_exomes --> step_apply_stratified_filters;
+      resource_get_pop_ht_data_type_joint --> step_apply_stratified_filters;
+      resource_get_sample_qc_strat_under_three_alt_alleles_data_type_exomes --> step_determine_nearest_neighbors;
+      resource_get_pop_ht_data_type_joint --> step_determine_nearest_neighbors;
+      resource_get_sample_qc_strat_under_three_alt_alleles_data_type_exomes --> step_apply_nearest_neighbor_filters;
+      step_determine_nearest_neighbors --> resource_nearest_neighbors_platform_stratified_True_approximation_False_include_unreleasable_samples_True;
+      resource_nearest_neighbors_platform_stratified_True_approximation_False_include_unreleasable_samples_True --> step_apply_nearest_neighbor_filters;
+    end
   end
-end
-class cluster_outlier_filtering_padding subgraph_padding
+  class cluster_outlier_filtering_padding subgraph_padding
   subgraph cluster_identify_trios[<font size=72>identify_trios.py]
-subgraph cluster_identify_trios_padding [ ]
-    step_compute_related_samples_to_drop --> resource_sample_rankings_release_True;
-    resource_sample_rankings_release_True --> step_identify_duplicates;
-    step_identify_duplicates --> resource_duplicates;
-    resource_duplicates --> step_infer_families;
-    step_infer_families --> resource_pedigree_finalized_False_fake_False;
-    resource_pedigree_finalized_False_fake_False --> step_create_fake_pedigree;
-    resource_pedigree_finalized_False_fake_False --> step_run_mendel_errors;
-    step_create_fake_pedigree --> resource_pedigree_finalized_False_fake_True;
-    resource_pedigree_finalized_False_fake_True --> step_run_mendel_errors;
-    step_generate_interval_qc_pass_ht --> resource_interval_qc_pass_per_platform_False_all_platforms_True;
-    resource_interval_qc_pass_per_platform_False_all_platforms_True --> step_run_mendel_errors;
-    resource_pedigree_finalized_False_fake_False --> step_finalize_ped;
-    step_run_mendel_errors --> resource_ped_mendel_errors;
-    resource_ped_mendel_errors --> step_finalize_ped;
-    step_finalize_ped --> resource_pedigree_finalized_True_fake_False;
-    step_finalize_ped --> resource_trios_fake_False;
+    direction TB;
+    subgraph cluster_identify_trios_padding [ ]
+      direction TB;
+      step_compute_related_samples_to_drop --> resource_sample_rankings_release_True;
+      resource_sample_rankings_release_True --> step_identify_duplicates;
+      step_identify_duplicates --> resource_duplicates;
+      resource_duplicates --> step_infer_families;
+      step_infer_families --> resource_pedigree_finalized_False_fake_False;
+      resource_pedigree_finalized_False_fake_False --> step_create_fake_pedigree;
+      resource_pedigree_finalized_False_fake_False --> step_run_mendel_errors;
+      step_create_fake_pedigree --> resource_pedigree_finalized_False_fake_True;
+      resource_pedigree_finalized_False_fake_True --> step_run_mendel_errors;
+      step_generate_interval_qc_pass_ht --> resource_interval_qc_pass_per_platform_False_all_platforms_True;
+      resource_interval_qc_pass_per_platform_False_all_platforms_True --> step_run_mendel_errors;
+      resource_pedigree_finalized_False_fake_False --> step_finalize_ped;
+      step_run_mendel_errors --> resource_ped_mendel_errors;
+      resource_ped_mendel_errors --> step_finalize_ped;
+      step_finalize_ped --> resource_pedigree_finalized_True_fake_False;
+      step_finalize_ped --> resource_trios_fake_False;
+    end
   end
-end
-class cluster_identify_trios_padding subgraph_padding
+  class cluster_identify_trios_padding subgraph_padding
 ```
 ### [generate_qc_mt.py](https://github.com/broadinstitute/gnomad_qc/tree/main/gnomad_qc/v4/sample_qc/generate_qc_mt.py):     Generate combined gnomAD v3 and v4 QC MatrixTable for use in relatedness and ancestry inference.
 ```mermaid
