@@ -3,7 +3,7 @@
 import argparse
 import logging
 from copy import deepcopy
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Optional
 
 import hail as hl
 from gnomad.resources.grch38.gnomad import (
@@ -11,22 +11,8 @@ from gnomad.resources.grch38.gnomad import (
     POPS_TO_REMOVE_FOR_POPMAX,
     release_all_sites_an,
 )
-from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
-from gnomad.utils.annotations import (
-    age_hists_expr,
-    bi_allelic_site_inbreeding_expr,
-    faf_expr,
-    gen_anc_faf_max_expr,
-    generate_freq_group_membership_array,
-    get_adj_expr,
-    merge_freq_arrays,
-    merge_histograms,
-    pop_max_expr,
-    qual_hist_expr,
-    set_female_y_metrics_to_na_expr,
-)
+from gnomad.utils.annotations import merge_freq_arrays, merge_histograms, qual_hist_expr
 from gnomad.utils.filtering import filter_arrays_by_meta
-from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import SORT_ORDER
 
