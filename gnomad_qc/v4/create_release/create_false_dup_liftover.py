@@ -12,6 +12,7 @@ from gnomad.utils.annotations import (
     set_female_y_metrics_to_na_expr,
 )
 from gnomad.utils.release import make_freq_index_dict_from_meta
+from gnomad_qc.v2.annotations.generate_frequency_data import POPS_TO_REMOVE_FOR_POPMAX
 from gnomad_qc.v2.resources.basics import get_gnomad_liftover_data_path
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
 from gnomad_qc.v4.resources.release import _release_root
@@ -47,7 +48,7 @@ def filter_liftover_to_false_dups(
     """
     Read in gnomAD v2 liftover table, filter to genes of interest, and return the Table.
 
-    :param data_type: String of either exome of genome.
+    :param data_type: String of either "exomes" or "genomes" for data type.
     :return: Filtered Hail Table.
     """
     ht = hl.read_table(
@@ -78,14 +79,14 @@ def main(args):
     and then merge frequency information across the exomes and genomes
     """
     # Read in liftover files.
-    exome_ht = read_and_filter("exomes")
-    genome_ht = read_and_filter("genomes")
+    exome_ht = filter_liftover_to_false_dups("exomes")
+    genome_ht = filter_liftover_to_false_dups("genomes")
 
     # Union and merge to contain any variant present in either.
     # Note: only about ~550 overlap, with ~187k exome variants and ~12k genome variants.
     # This makes sense in exonic regions.
     # Genome global annotations stored with _1
-    ht = exome_ht.select().join(genome_ht.select(), how="outer").distinct()
+    ht = exome_ht.select().join(genome_ht.select(), how="outer")
 
     # Annotate with information from both exomes and genomes - many will be NaN.
     ht = ht.annotate(
@@ -101,16 +102,16 @@ def main(args):
     # gnomad_qc/v4/create_release/create_combined_faf_release_ht.py#L155
     # as of 01-26-2025
     # Changed for 'gen_anc' -> pop
-    freq, freq_meta, count_arrays_dict = merge_freq_arrays(
+    freq, freq_meta = merge_freq_arrays(
         farrays=[ht.v2_exomes.freq, ht.v2_genomes.freq],
         fmeta=[ht.index_globals().freq_meta, ht.index_globals().freq_meta_1],
-        count_arrays={
-            "counts": [
-                ht.index_globals().freq_index_dict.values(),
-                ht.index_globals().freq_index_dict_1.values(),
-            ],
-        },
     )
+
+    # Select to first 28 groups, containing:
+    # Raw, adj, adj male & female, and adj sex-split pops for 8 pops.
+    # Hail sets this to first 28 of each entry in the array, not first 28 of array.
+    freq = freq[:28]
+    freq_meta = freq_meta[:28]
 
     # Create a new struct to hold all joint information.
     ht = ht.annotate(v2_joint=hl.struct(joint_freq=freq))
@@ -123,39 +124,19 @@ def main(args):
     # Checkpoint output to new temp file.
     ht = ht.checkpoint(hl.utils.new_temp_file("three_dup_genes_liftover", "ht"))
 
-    logger.info("Setting Y metrics to NA for XX groups...")
-    freq = set_female_y_metrics_to_na_expr(
-        ht,
-        freq_expr=ht.v2_joint.joint_freq,
-        freq_meta_expr=ht.joint_freq_meta,
-        freq_index_dict_expr=ht.joint_freq_index_dict,
-    )
-    ht = ht.annotate(v2_joint=ht.v2_joint.annotate(joint_freq=freq))
-
-    # Checkpoint output to new temp file.
-    ht = ht.checkpoint(hl.utils.new_temp_file("three_dup_genes_liftover", "ht"))
-
     # Compute FAF on the merged exomes + genomes frequencies.
     logger.info("Generating faf metrics...")
     faf, faf_meta = faf_expr(
         ht.v2_joint.joint_freq,
         ht.joint_freq_meta,
         ht.locus,
-        pops_to_exclude=None,
+        pops_to_exclude=POPS_TO_REMOVE_FOR_POPMAX,
         pop_label="pop",
     )
     faf_meta_by_pop = {
         m.get("pop"): i for i, m in enumerate(faf_meta) if m.get("pop") and len(m) == 2
     }
     faf_meta_by_pop = hl.literal(faf_meta_by_pop)
-    # Compute group max (popmax) on the merged exomes + genomes frequencies.
-    logger.info("Computing grpmax...")
-    grpmax = pop_max_expr(
-        ht.v2_joint.joint_freq,
-        ht.joint_freq_meta,
-        pops_to_exclude=None,
-        pop_label="pop",
-    )
 
     # Annotate Table with all joint exomes + genomes computations.
     ht = ht.annotate(
@@ -164,17 +145,12 @@ def main(args):
             joint_fafmax=gen_anc_faf_max_expr(
                 faf, hl.literal(faf_meta), pop_label="pop"
             ),
-            joint_grpmax=grpmax,
         )
     )
-
-    # Checkpoint for grpmax - avoid Hail Array Index Out Of Bounds error when checkpointing later.
-    ht = ht.checkpoint(hl.utils.new_temp_file("grpmax_checkpoint", "ht"))
 
     ht = ht.annotate_globals(
         joint_faf_meta=faf_meta,
         joint_faf_index_dict=make_freq_index_dict_from_meta(hl.literal(faf_meta)),
-        # joint_freq_meta_sample_count=count_arrays_dict["counts"],
     )
 
     # Checkpoint output to created resource.
