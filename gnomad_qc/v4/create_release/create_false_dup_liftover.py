@@ -41,14 +41,14 @@ def get_false_dup_genes_path(
     )
 
 
-def read_and_filter(
+def filter_liftover_to_false_dups(
     data_type: str,
 ) -> hl.Table:
     """
     Read in gnomAD v2 liftover table, filter to genes of interest, and return the Table.
 
-    :param data_type: String of either exome of genome
-    :return: filtered Hail Table
+    :param data_type: String of either exome of genome.
+    :return: Filtered Hail Table.
     """
     ht = hl.read_table(
         get_gnomad_liftover_data_path(data_type=data_type, version="2.1.1")
@@ -57,7 +57,7 @@ def read_and_filter(
     # Filter to chr21, since it is known that is where all 3 of the genes are.
     ht = ht.filter(ht.locus.contig == "chr21")
 
-    # Filter using lambda statement for any of the 3 genes of interest in the gene_symbol array.
+    # Filter to any variant located in one of the 3 genes of interest.
     ht = ht.filter(
         hl.set(FALSE_DUP_GENES).any(
             lambda gene_symbol: ht.vep.transcript_consequences.gene_symbol.contains(
@@ -71,9 +71,9 @@ def read_and_filter(
 
 def main(args):
     """
-    These are the three clinically relevant genes impacted by false duplications in the GRCh38 reference.
+    There are three clinically relevant genes impacted by false duplications in the GRCh38 reference (KCNE1, CBS, and CRYAA).
     To make it easier for our users to switch to gnomAD v4 and the new reference build,
-    we should create a new release file that combines information from the v2 exomes and genomes only for these three genes.
+    this script creates a new release file that combines information from the v2 exomes and genomes only for these three genes.
     To create this file, filter the v2 liftover files (https://gnomad.broadinstitute.org/downloads#v2-liftover) to these genes,
     and then merge frequency information across the exomes and genomes
     """
@@ -156,7 +156,6 @@ def main(args):
         pops_to_exclude=None,
         pop_label="pop",
     )
-    grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.pop)].faf95)
 
     # Annotate Table with all joint exomes + genomes computations.
     ht = ht.annotate(
@@ -188,12 +187,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite",
-        help="Option to overwrite existing custom liftover table",
+        help="Option to overwrite existing custom liftover table.",
         action="store_true",
     )
     parser.add_argument(
         "--test",
-        help="Option to store output at test paths",
+        help="Option to store output at test paths.",
         action="store_true",
     )
     args = parser.parse_args()
