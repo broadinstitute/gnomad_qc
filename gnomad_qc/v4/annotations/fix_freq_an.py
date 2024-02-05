@@ -2,12 +2,13 @@
 
 import argparse
 import logging
-from typing import Tuple
+from typing import Optional, Tuple
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import vep_context
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
+    agg_by_strata,
     get_adj_het_ab_expr,
     get_dp_gq_adj_expr,
     merge_freq_arrays,
@@ -49,21 +50,15 @@ logger.setLevel(logging.INFO)
 
 
 def vds_annotate_adj(
-    vds: hl.vds.VariantDataset, freq_ht: hl.Table
+    vds: hl.vds.VariantDataset, freq_ht: Optional[hl.Table] = None
 ) -> hl.vds.VariantDataset:
     """
     Annotate adj, _het_ad, and select fields to reduce memory usage.
 
     :param vds: Hail VDS to annotate adj onto variant data.
-    :param freq_ht: Hail Table containing frequency information.
+    :param freq_ht: Optional Hail Table containing frequency information.
     :return: Hail VDS with adj annotation.
     """
-    freq_ht = hl.Table(
-        hl.ir.TableKeyBy(
-            freq_ht._tir, ["locus"], is_sorted=True
-        )  # Prevents hail from running sort on HT which is already sorted.
-    )
-
     rmt = vds.reference_data
     vmt = vds.variant_data
 
@@ -89,24 +84,51 @@ def vds_annotate_adj(
     vmt = vmt.annotate_entries(
         LGT=vmt_gt_expr,
         adj=get_dp_gq_adj_expr(vmt.GQ, vmt.DP, gt_expr=vmt_gt_expr),
-        fail_adj_ab_LA=hl.or_missing(
-            ~vmt.get_adj_het_ab_expr(vmt_gt_expr, vmt.DP, vmt.LAD)
-            & vmt_gt_expr.is_het(),
-            hl.if_else(
-                vmt_gt_expr.is_het_ref(),
-                vmt.LA[vmt_gt_expr[1]],
-                vmt.LA[
-                    vmt_gt_expr[
-                        hl.argmin([vmt.LAD[vmt_gt_expr[0]], vmt.LAD[vmt_gt_expr[1]]])
-                    ]
-                ],
-            ),
-        ),
+        fail_adj_ab=~vmt.get_adj_het_ab_expr(vmt_gt_expr, vmt.DP, vmt.LAD),
     )
 
-    vmt = vmt.annotate_rows(in_freq=hl.is_defined(freq_ht[vmt.locus]))
+    if freq_ht is not None:
+        freq_ht = hl.Table(
+            hl.ir.TableKeyBy(
+                freq_ht._tir, ["locus"], is_sorted=True
+            )  # Prevents hail from running sort on HT which is already sorted.
+        )
+        vmt = vmt.annotate_rows(in_freq=hl.is_defined(freq_ht[vmt.locus]))
 
     return hl.vds.VariantDataset(rmt, vmt)
+
+
+def compute_an_and_hists_het_fail_adj_ab(
+    vds: hl.vds.VariantDataset,
+    group_membership_ht: hl.Table,
+    freq_ht: hl.Table,
+) -> hl.Table:
+    """
+    Compute allele number and histograms for het fail adj ab.
+
+    :param vds: Input VariantDataset.
+    :param group_membership_ht: Table of samples group memberships.
+    :param freq_ht: Table of frequency data.
+    :return: Table of allele number and histograms for het fail adj ab.
+    """
+    vds = vds_annotate_adj(vds)
+    vmt = vds.variant_data
+    vmt = vmt.filter_entries(vmt.adj & vmt.fail_adj_ab)
+    vmt = vmt.select_entries("LA", "LGT", "LAD", "DP", "GQ")
+    vmt = hl.experimental.sparse_split_multi(vmt)
+    vmt = vmt.filter_rows(hl.is_defined(freq_ht[vmt.row_key]))
+    vmt = vmt.annotate_rows(
+        qual_hists_het_fail_adj_ab=qual_hist_expr(gq_expr=vmt.GQ, dp_expr=vmt.DP)
+    )
+
+    ht = agg_by_strata(
+        vmt,
+        {"AN_het_fail_adj_ab": get_allele_number_agg_func("GT")},
+        select_fields=["gq_hist_all", "dp_hist_all"],
+        group_membership_ht=group_membership_ht,
+    )
+
+    return ht
 
 
 def compute_allele_number_per_ref_site_with_adj(
@@ -115,32 +137,20 @@ def compute_allele_number_per_ref_site_with_adj(
     interval_ht: hl.Table,
     group_membership_ht: hl.Table,
     freq_ht: hl.Table,
-) -> Tuple[hl.Table, hl.Table, hl.Table]:
+    het_fail_adj_ab_ht: hl.Table,
+) -> Tuple[hl.Table, hl.Table]:
     """
-    Compute the allele number per reference site including per allele adj.
+    Compute allele number per reference site and histograms for frequency correction.
 
     :param vds: Input VariantDataset.
     :param reference_ht: Table of reference sites.
     :param interval_ht: Table of intervals.
     :param group_membership_ht: Table of samples group memberships.
     :param freq_ht: Table of frequency data.
-    :return: Tuple of Table of allele number per reference site, Table of AN for
-        frequency correction, and Table of variant data histograms.
+    :param het_fail_adj_ab_ht: Table of variant data histograms for het fail adj ab.
+    :return: Table of allele number per reference site and Table of AN and GQ/DP hists
+        for frequency correction.
     """
-
-    def _transform_fail_adj_an(t: hl.MatrixTable) -> hl.expr.Expression:
-        return hl.or_missing(
-            hl.is_defined(t.fail_adj_ab_LA), [t.fail_adj_ab_LA, t.LGT.ploidy]
-        )
-
-    def _get_fail_adj_an(adj_expr: hl.expr.CallExpression) -> hl.expr.Expression:
-        # Get the source Table for the CallExpression to grab alleles.
-        t = adj_expr._indices.source
-        fail_adj_an_expr = hl.or_missing(
-            t.in_freq, hl.agg.group_by(adj_expr[0], hl.agg.sum(adj_expr[1]))
-        )
-
-        return fail_adj_an_expr
 
     def _get_hists(qual_expr) -> hl.expr.Expression:
         # Get the source Table for the CallExpression to grab alleles.
@@ -156,9 +166,7 @@ def compute_allele_number_per_ref_site_with_adj(
         )
 
     vds = vds_annotate_adj(vds, freq_ht)
-
     entry_agg_funcs = {
-        "AN_fail_adj": (_transform_fail_adj_an, _get_fail_adj_an),
         "AN": get_allele_number_agg_func("LGT"),
         "qual_hists": (lambda t: [t.GQ, t.DP, t.adj], _get_hists),
     }
@@ -170,79 +178,46 @@ def compute_allele_number_per_ref_site_with_adj(
         entry_agg_funcs,
         interval_ht=interval_ht,
         group_membership_ht=group_membership_ht,
-        entry_keep_fields=["fail_adj_ab_LA", "GQ", "DP"],
+        entry_keep_fields=["GQ", "DP"],
         row_keep_fields=["in_freq"],
         entry_agg_group_membership={"qual_hists": [{"group": "raw"}]},
     )
+    ht = ht.checkpoint(hl.utils.new_temp_file("an_hist_ref_sites", "ht"))
 
-    # TODO: Is this checkponit needed?
-    ht = ht.checkpoint(
-        "gs://gnomad/v4.1/temp/frequency_fix/ref_an_checkpoint.ht", overwrite=True
+    freq_correction = ht[het_fail_adj_ab_ht.locus]
+    qual_hists = freq_correction.qual_hists[0].qual_hists
+    sub_hists = het_fail_adj_ab_ht.qual_hists_het_fail_adj_ab
+    sub_hists = sub_hists.annotate(
+        **{
+            k: v.annotate(
+                bin_freq=v.bin_freq.map(lambda x: -x),
+                n_smaller=-v.n_smaller,
+                n_larger=-v.n_larger,
+            )
+            for k, v in qual_hists.items()
+        }
     )
 
-    logger.info("Calculating variant GQ and DP histograms")
-    vmt = vds.variant_data
-    vmt = vmt.select_entries("LA", "LGT", "LAD", "DP", "GQ")
-    vmt = hl.experimental.sparse_split_multi(vmt)
-    gt_expr = adjusted_sex_ploidy_expr(
-        vmt.locus, vmt.GT, vmt.meta.sex_imputation.sex_karyotype
-    )
-    vmt = vmt.annotate_entries(
-        adj_gq_dp=(
-            (vmt.GQ >= 20) & hl.if_else(gt_expr.is_haploid(), vmt.DP >= 5, vmt.DP >= 10)
+    freq_correction_ht = het_fail_adj_ab_ht.select(
+        AN=hl.map(
+            lambda an, an_fail_adj, m: hl.if_else(
+                m.get("group") == "adj", an - hl.coalesce(an_fail_adj, 0), an
+            ),
+            freq_correction.AN,
+            het_fail_adj_ab_ht.AN_het_fail_adj_ab,
+            het_fail_adj_ab_ht.strata_meta,
         ),
-        adj_ab=(
-            hl.case()
-            .when(~gt_expr.is_het(), True)
-            .when(gt_expr.is_het_ref(), vmt.AD[gt_expr[1]] / vmt.DP >= 0.2)
-            .default(
-                (vmt.AD[gt_expr[0]] / vmt.DP >= 0.2)
-                & (vmt.AD[gt_expr[1]] / vmt.DP >= 0.2)
+        qual_hists=freq_correction.qual_hists[0].annotate(
+            qual_hists=hl.struct(
+                **{
+                    k: merge_histograms([v, sub_hists[k]])
+                    for k, v in qual_hists.items()
+                }
             )
         ),
     )
-    vmt = vmt.filter_entries(vmt.adj_gq_dp & ~vmt.adj_ab)
-    vmt_hists_ht = (
-        vmt.annotate_rows(
-            **qual_hist_expr(
-                gq_expr=vmt.GQ,
-                dp_expr=vmt.DP,
-            )
-        )
-        .rows()
-        .select("gq_hist_all", "dp_hist_all")
-    )
 
-    freq_correction_ht = vds.variant_data.rows()
-    freq_correction_ht = freq_correction_ht.annotate_globals(**ht.index_globals())
-    freq_correction = ht[freq_correction_ht.locus]
-
-    freq_correction_ht = freq_correction_ht.select(
-        AN=hl.enumerate(freq_correction_ht.alleles[1:]).map(
-            lambda i: (
-                i[1],
-                hl.map(
-                    lambda an, an_fail_adj, m: hl.if_else(
-                        m.get("group") == "adj", an - an_fail_adj.get(i[0] + 1, 0), an
-                    ),
-                    freq_correction.AN,
-                    freq_correction.AN_fail_adj,
-                    freq_correction_ht.strata_meta,
-                ),
-            )
-        ),
-        qual_hists=freq_correction.qual_hists[0],
-    )
-    freq_correction_ht = freq_correction_ht.explode("AN")
-    freq_correction_ht = freq_correction_ht.key_by(
-        **hl.min_rep(
-            freq_correction_ht.locus,
-            [freq_correction_ht.alleles[0], freq_correction_ht.AN[0]],
-        )
-    )
-    freq_correction_ht = freq_correction_ht.annotate(AN=freq_correction_ht.AN[1])
-
-    return ht.select("AN"), freq_correction_ht, vmt_hists_ht
+    return ht.select("AN"), freq_correction_ht
 
 
 def update_freq_an_and_hists(
@@ -379,14 +354,23 @@ def main(args):
                 150,
             )
 
-            an_ht, freq_correction_ht, vmt_hists_ht = (
-                compute_allele_number_per_ref_site_with_adj(
-                    vds,
-                    ref_ht,
-                    interval_ht,
-                    group_membership_ht,
-                    freq_ht,
-                )
+            het_fail_adj_ab_ht = compute_an_and_hists_het_fail_adj_ab(
+                vds,
+                group_membership_ht,
+                freq_ht,
+            )
+            het_fail_adj_ab_ht = het_fail_adj_ab_ht.checkpoint(
+                "gs://gnomad/v4.1/temp/frequency_fix/het_fail_adj_ab_ht.ht",
+                overwrite=overwrite,
+            )
+
+            an_ht, freq_correction_ht = compute_allele_number_per_ref_site_with_adj(
+                vds,
+                ref_ht,
+                interval_ht,
+                group_membership_ht,
+                freq_ht,
+                het_fail_adj_ab_ht,
             )
 
             an_ht.write(
@@ -395,9 +379,6 @@ def main(args):
             freq_correction_ht.write(
                 "gs://gnomad/v4.1/temp/frequency_fix/freq_an_correction.ht",
                 overwrite=overwrite,
-            )
-            vmt_hists_ht.write(
-                "gs://gnomad/v4.1/temp/frequency_fix/vmt_hists.ht", overwrite=overwrite
             )
 
         if args.update_freq_an_and_hists:
