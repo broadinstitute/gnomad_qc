@@ -159,11 +159,14 @@ def is_haploid(
     return hl.or_missing(~(xx & (y_par | y_nonpar)), xy & (x_nonpar | y_nonpar))
 
 
-def vds_annotate_adj(vds: hl.vds.VariantDataset, freq_ht) -> hl.vds.VariantDataset:
+def vds_annotate_adj(
+    vds: hl.vds.VariantDataset, freq_ht: hl.Table
+) -> hl.vds.VariantDataset:
     """
     Annotate adj, _het_ad, and select fields to reduce memory usage.
 
     :param vds: Hail VDS to annotate adj onto variant data.
+    :param freq_ht: Hail Table containing frequency information.
     :return: Hail VDS with adj annotation.
     """
     freq_ht = hl.Table(
@@ -248,6 +251,8 @@ def compute_allele_number_per_ref_site_with_adj(
 
     :param vds: Input VariantDataset.
     :param reference_ht: Table of reference sites.
+    :param interval_ht: Table of intervals.
+    :param group_membership_ht: Table of samples group memberships.
     :return: Tuple of Table of allele number per reference site, Table of AN for frequency correction, and Table of variant data histograms.
     """
 
@@ -286,6 +291,7 @@ def compute_allele_number_per_ref_site_with_adj(
         "qual_hists": (lambda t: [t.GQ, t.DP, t.adj], _get_hists),
     }
 
+    logger.info("Computing allele number and histograms per reference site...")
     ht = compute_stats_per_ref_site(
         vds,
         reference_ht,
@@ -297,11 +303,12 @@ def compute_allele_number_per_ref_site_with_adj(
         entry_agg_group_membership={"qual_hists": [{"group": "raw"}]},
     )
 
+    # TODO: Is this checkponit needed?
     ht = ht.checkpoint(
-        "gs://gnomad-tmp/julia/test_all_sites_an_and_qual_hists.intermediate.rerun_2_2_24.hail_127.fix_het_non_ref.ht",
-        # _read_if_exists=True,
-        overwrite=True,
+        "gs://gnomad/v4.1/temp/frequency_fix/ref_an_checkpoint.ht", overwrite=True
     )
+
+    logger.info("Calculating variant GQ and DP histograms")
     vmt = vds.variant_data
     vmt = vmt.select_entries("LA", "LGT", "LAD", "DP", "GQ")
     vmt = hl.experimental.sparse_split_multi(vmt)
@@ -366,11 +373,11 @@ def compute_allele_number_per_ref_site_with_adj(
     return ht.select("AN"), freq_correction_ht, vmt_hists_ht
 
 
-def update_freq_an(
+def update_freq_an_and_hists(
     freq_ht: hl.Table, an_ht: hl.Table, vmt_hists_ht: hl.Table
 ) -> hl.Table:
     """
-    Update frequency HT AN field with the correct AN from the AN HT.
+    Update frequency HT AN field and histograms with the correct AN from the AN HT.
 
     This module updates the freq_ht AN field which is an array of ints with the correct
     AN from the AN HT integer array annotation. It uses the an_ht dictionary and the
@@ -413,6 +420,9 @@ def update_freq_an(
     )
     freq_ht = freq_ht.annotate(freq=freq)
     freq_ht = freq_ht.annotate_globals(freq_meta=freq_meta)
+
+    # TODO: Merge variant and ref histograms, need to be on same table like
+    # freq to use merge_histograms
     return freq_ht
 
 
@@ -469,7 +479,7 @@ def main(args):
         # not work for ref data because of ref blocks. Investigating if we can do
         #  this in the AN script for ref data and then filter to variant sites and then
         #  merge with variant histogram data.
-        if args.regenerate_ref_an_and_gq_dp_hists:
+        if args.regenerate_ref_an_hists:
             logger.info("Regenerating reference AN and GQ/DP histograms...")
 
             ref_ht = vep_context.versions["105"].ht()
@@ -518,7 +528,7 @@ def main(args):
                 "gs://gnomad/v4.1/temp/frequency_fix/vmt_hists.ht", overwrite=overwrite
             )
 
-        if args.update_freq_an:
+        if args.update_freq_an_and_hists:
             logger.info("Updating AN in freq HT...")
 
             an_ht = hl.read_table(
@@ -535,7 +545,7 @@ def main(args):
                 "gs://gnomad/v4.1/temp/frequency_fix/vmt_hists.ht"
             )
             freq_ht = drop_gatk_groupings(freq_ht)
-            ht = update_freq_an(freq_ht, an_ht, vmt_hists_ht)
+            ht = update_freq_an_and_hists(freq_ht, an_ht, vmt_hists_ht)
             ht.write(
                 get_freq(
                     version="4.1",
@@ -547,7 +557,7 @@ def main(args):
                 overwrite=overwrite,
             )
 
-        if args.update_af_dependent_annotations:
+        if args.update_af_dependent_anns:
             logger.info("Updatings AF dependent annotations...")
 
             ht = get_freq(
@@ -601,7 +611,7 @@ def main(args):
             )
     finally:
         logger.info("Copying log to logging bucket...")
-        hl.copy_log(get_logging_path("frequency_data"))
+        hl.copy_log(get_logging_path("frequency_fix"))
 
 
 if __name__ == "__main__":
@@ -635,29 +645,23 @@ if __name__ == "__main__":
         "--overwrite", help="Overwrites existing files.", action="store_true"
     )
     parser.add_argument(
-        "--slack-channel", help="Slack channel to post results and notifications to."
+        "--regenerate-ref-an-hists",
+        help="Calculate reference allele number and GQ/DP histograms for all sites.",
+        action="store_true",
     )
     parser.add_argument(
-        "--run-freq-and-dense-annotations",
+        "--update-freq-an-and-hists",
         help=(
-            "Calculate frequencies, histograms, and high AB sites per sample grouping."
+            "Update frequency HT AN field and GQ and DP hists with the correct AN and"
+            " hists from the AN HT."
         ),
         action="store_true",
     )
     parser.add_argument(
-        "--combine-freq-hts",
+        "--update-af-dependent-anns",
         help=(
-            "Combine frequency and histogram Tables for UKB and non-UKB samples into a"
-            " single Table."
-        ),
-        action="store_true",
-    )
-    parser.add_argument(
-        "--correct-for-high-ab-hets",
-        help=(
-            "Correct each frequency entry to account for homozygous alternate depletion"
-            " present in GATK versions released prior to 4.1.4.1 and run chosen"
-            " downstream annotations."
+            "Update AF dependent annotations in frequency HT with the new AF based on"
+            " updated AN."
         ),
         action="store_true",
     )
