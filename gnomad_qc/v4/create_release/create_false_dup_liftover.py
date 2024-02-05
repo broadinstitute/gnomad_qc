@@ -9,7 +9,6 @@ from gnomad.utils.annotations import (
     gen_anc_faf_max_expr,
     merge_freq_arrays,
     pop_max_expr,
-    set_female_y_metrics_to_na_expr,
 )
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad_qc.v2.annotations.generate_frequency_data import POPS_TO_REMOVE_FOR_POPMAX
@@ -84,11 +83,10 @@ def main(args):
 
     # Union and merge to contain any variant present in either.
     # Note: only about ~550 overlap, with ~187k exome variants and ~12k genome variants.
-    # This makes sense in exonic regions.
     # Genome global annotations stored with _1
     ht = exome_ht.select().join(genome_ht.select(), how="outer")
 
-    # Annotate with information from both exomes and genomes - many will be NaN.
+    # Annotate with information from both exomes and genomes - many will be NaN from the lack of overlap.
     ht = ht.annotate(
         v2_exomes=exome_ht[ht.locus, ht.alleles],
         v2_genomes=genome_ht[ht.locus, ht.alleles],
@@ -100,8 +98,7 @@ def main(args):
     # Merge exomes and genomes frequencies.
     # Code adapted from
     # gnomad_qc/v4/create_release/create_combined_faf_release_ht.py#L155
-    # as of 01-26-2025
-    # Changed for 'gen_anc' -> pop
+    # as of 01-26-2025 with changing 'gen_anc' -> pop.
     freq, freq_meta = merge_freq_arrays(
         farrays=[ht.v2_exomes.freq, ht.v2_genomes.freq],
         fmeta=[ht.index_globals().freq_meta, ht.index_globals().freq_meta_1],
