@@ -1,17 +1,15 @@
-"""Updates the freq HT with the the correct AN."""
+"""Updates the v4.0 freq HT with the correct AN for the v4.1 release."""
 
 import argparse
 import logging
 from typing import Tuple
 
 import hail as hl
-from gnomad.resources.grch38.gnomad import release_all_sites_an
 from gnomad.resources.grch38.reference_data import vep_context
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
-    annotate_adj,
-    build_freq_stratification_list,
-    generate_freq_group_membership_array,
+    get_adj_het_ab_expr,
+    get_dp_gq_adj_expr,
     merge_freq_arrays,
     merge_histograms,
     qual_hist_expr,
@@ -22,6 +20,10 @@ from gnomad.utils.sparse_mt import (
     get_allele_number_agg_func,
 )
 
+from gnomad_qc.v4.annotations.compute_coverage import (
+    adjust_interval_padding,
+    get_group_membership_ht,
+)
 from gnomad_qc.v4.annotations.generate_freq import (
     compute_inbreeding_coeff,
     correct_for_high_ab_hets,
@@ -35,128 +37,15 @@ from gnomad_qc.v4.resources.basics import (
     get_logging_path,
 )
 from gnomad_qc.v4.resources.meta import meta
+from gnomad_qc.v4.resources.release import release_all_sites_an
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s: %(message)s",
     datefmt="%m/%d/%Y %I:%M:%S %p",
 )
-logger = logging.getLogger("gnomAD_exomes_AN_fix")
+logger = logging.getLogger("gnomAD_4.1_exomes_AN_fix")
 logger.setLevel(logging.INFO)
-
-
-def get_group_membership_ht(
-    meta_ht: hl.Table,
-    ds_ht: hl.Table,
-    non_ukb_ds_ht: hl.Table,
-) -> hl.Table:
-    """
-    Get group membership HT for all sites allele number stratification.
-
-    :param meta_ht: Metadata HT.
-    :param ds_ht: Full frequency downsampling HT.
-    :param non_ukb_ds_ht: Non-UKB frequency downsampling HT.
-    :return: Group membership HT.
-    """
-    meta_ht = meta_ht.filter(meta_ht.release)
-    non_ukb_meta_ht = meta_ht.filter(~meta_ht.project_meta.ukb_sample)
-
-    # Create group membership HT.
-    ht = generate_freq_group_membership_array(
-        meta_ht,
-        build_freq_stratification_list(
-            sex_expr=meta_ht.sex_imputation.sex_karyotype,
-            pop_expr=meta_ht.population_inference.pop,
-            downsampling_expr=ds_ht[meta_ht.key].downsampling,
-        ),
-        downsamplings=hl.eval(ds_ht.downsamplings),
-        ds_pop_counts=hl.eval(ds_ht.ds_pop_counts),
-    )
-
-    # Add non-UKB group membership to HT.
-    non_ukb_ht = generate_freq_group_membership_array(
-        non_ukb_meta_ht,
-        build_freq_stratification_list(
-            sex_expr=non_ukb_meta_ht.sex_imputation.sex_karyotype,
-            pop_expr=non_ukb_meta_ht.population_inference.pop,
-            downsampling_expr=non_ukb_ds_ht[non_ukb_meta_ht.key].downsampling,
-        ),
-        downsamplings=hl.eval(non_ukb_ds_ht.downsamplings),
-        ds_pop_counts=hl.eval(non_ukb_ds_ht.ds_pop_counts),
-    )
-    n_non_ukb = hl.eval(hl.len(non_ukb_ht.freq_meta))
-    ht = ht.annotate(
-        group_membership=ht.group_membership.extend(
-            hl.coalesce(
-                non_ukb_ht[ht.key].group_membership,
-                hl.range(n_non_ukb).map(lambda x: False),
-            )
-        )
-    )
-
-    # Add non-UKB group metadata and sample counts to HT.
-    non_ukb_globals = non_ukb_ht.index_globals()
-    ht = ht.annotate_globals(
-        freq_meta=ht.freq_meta.extend(
-            non_ukb_globals.freq_meta.map(
-                lambda d: hl.dict(d.items().append(("subset", "non_ukb")))
-            )
-        ).map(
-            lambda d: hl.dict(
-                d.items().map(lambda x: hl.if_else(x[0] == "pop", ("gen_anc", x[1]), x))
-            )
-        ),
-        freq_meta_sample_count=ht.freq_meta_sample_count.extend(
-            non_ukb_globals.freq_meta_sample_count
-        ),
-    )
-
-    return ht
-
-
-def adjust_interval_padding(ht: hl.Table, padding: int) -> hl.Table:
-    """
-    Adjust interval padding in HT.
-
-    .. warning::
-
-        This function can lead to overlapping intervals, so it is not recommended for
-        most applications. For example, it can be used to filter a variant list to all
-        variants within the returned interval list, but would not work for getting an
-        aggregate statistic for each interval if the desired output is independent
-        statistics.
-
-    :param ht: HT to adjust.
-    :param padding: Padding to use.
-    :return: HT with adjusted interval padding.
-    """
-    return ht.key_by(
-        interval=hl.locus_interval(
-            ht.interval.start.contig,
-            ht.interval.start.position - padding,
-            ht.interval.end.position + padding,
-            reference_genome=ht.interval.start.dtype.reference_genome,
-        )
-    )
-
-
-def is_haploid(
-    locus_expr: hl.expr.LocusExpression,
-    karyotype_expr: hl.expr.StringExpression,
-) -> hl.expr.CallExpression:
-    """
-    Add description.
-
-    :param locus_expr: Hail locus expression.
-    :param karyotype_expr:
-    """
-    xy = karyotype_expr == "XY"
-    xx = karyotype_expr == "XX"
-    x_nonpar = locus_expr.in_x_nonpar()
-    y_par = locus_expr.in_y_par()
-    y_nonpar = locus_expr.in_y_nonpar()
-
-    return hl.or_missing(~(xx & (y_par | y_nonpar)), xy & (x_nonpar | y_nonpar))
 
 
 def vds_annotate_adj(
@@ -185,13 +74,8 @@ def vds_annotate_adj(
         keep=False,
     )
     rmt = rmt.annotate_entries(
-        adj=(
-            (rmt.GQ >= 20)
-            & hl.if_else(
-                ~rmt.locus.in_autosome() & is_haploid(rmt.locus, rmt_sex_expr),
-                rmt.DP >= 5,
-                rmt.DP >= 10,
-            )
+        adj=get_dp_gq_adj_expr(
+            rmt.GQ, rmt.DP, locus_expr=rmt.locus, karyotype_expr=rmt_sex_expr
         )
     )
 
@@ -204,36 +88,21 @@ def vds_annotate_adj(
     )
     vmt = vmt.annotate_entries(
         LGT=vmt_gt_expr,
-        adj=(
-            (vmt.GQ >= 20)
-            & hl.if_else(
-                vmt_gt_expr.is_haploid(),
-                vmt.DP >= 5,
-                vmt.DP >= 10,
-            )
-        ),
-        adj_ab=(
-            hl.is_defined(vmt_gt_expr)
-            & vmt_gt_expr.is_het()
-            & hl.if_else(
+        adj=get_dp_gq_adj_expr(vmt.GQ, vmt.DP, gt_expr=vmt_gt_expr),
+        fail_adj_ab_LA=hl.or_missing(
+            ~vmt.get_adj_het_ab_expr(vmt_gt_expr, vmt.DP, vmt.LAD)
+            & vmt_gt_expr.is_het(),
+            hl.if_else(
                 vmt_gt_expr.is_het_ref(),
-                (vmt.LAD[vmt_gt_expr[1]] / vmt.DP) >= 0.2,
-                ((vmt.LAD[vmt_gt_expr[0]] / vmt.DP) >= 0.2)
-                & ((vmt.LAD[vmt_gt_expr[1]] / vmt.DP) >= 0.2),
-            )
+                vmt.LA[vmt_gt_expr[1]],
+                vmt.LA[
+                    vmt_gt_expr[
+                        hl.argmin([vmt.LAD[vmt_gt_expr[0]], vmt.LAD[vmt_gt_expr[1]]])
+                    ]
+                ],
+            ),
         ),
     )
-    # TODO: Could probably be combined with above instead of keeping adj_ab
-    vmt = vmt.annotate_entries(
-        fail_adj_ab_LA=hl.or_missing(
-            ~vmt.adj_ab & vmt.LGT.is_het(),
-            hl.if_else(
-                vmt.LGT.is_het_ref(),
-                vmt.LA[vmt.LGT[1]],
-                vmt.LA[vmt.LGT[hl.argmin([vmt.LAD[vmt.LGT[0]], vmt.LAD[vmt.LGT[1]]])]],
-            ),
-        )
-    ).drop("adj_ab")
 
     vmt = vmt.annotate_rows(in_freq=hl.is_defined(freq_ht[vmt.locus]))
 
@@ -245,6 +114,7 @@ def compute_allele_number_per_ref_site_with_adj(
     reference_ht: hl.Table,
     interval_ht: hl.Table,
     group_membership_ht: hl.Table,
+    freq_ht: hl.Table,
 ) -> Tuple[hl.Table, hl.Table, hl.Table]:
     """
     Compute the allele number per reference site including per allele adj.
@@ -253,11 +123,10 @@ def compute_allele_number_per_ref_site_with_adj(
     :param reference_ht: Table of reference sites.
     :param interval_ht: Table of intervals.
     :param group_membership_ht: Table of samples group memberships.
-    :return: Tuple of Table of allele number per reference site, Table of AN for frequency correction, and Table of variant data histograms.
+    :param freq_ht: Table of frequency data.
+    :return: Tuple of Table of allele number per reference site, Table of AN for
+        frequency correction, and Table of variant data histograms.
     """
-
-    def _transform_adj(t: hl.MatrixTable) -> hl.expr.BooleanExpression:
-        return hl.or_else(t.adj, True)
 
     def _transform_fail_adj_an(t: hl.MatrixTable) -> hl.expr.Expression:
         return hl.or_missing(
@@ -274,6 +143,7 @@ def compute_allele_number_per_ref_site_with_adj(
         return fail_adj_an_expr
 
     def _get_hists(qual_expr) -> hl.expr.Expression:
+        # Get the source Table for the CallExpression to grab alleles.
         t = qual_expr._indices.source
         return hl.or_missing(
             t.in_freq,
@@ -284,6 +154,8 @@ def compute_allele_number_per_ref_site_with_adj(
                 split_adj_and_raw=True,
             ),
         )
+
+    vds = vds_annotate_adj(vds, freq_ht)
 
     entry_agg_funcs = {
         "AN_fail_adj": (_transform_fail_adj_an, _get_fail_adj_an),
@@ -507,13 +379,13 @@ def main(args):
                 150,
             )
 
-            vds = vds_annotate_adj(vds, freq_ht)
             an_ht, freq_correction_ht, vmt_hists_ht = (
                 compute_allele_number_per_ref_site_with_adj(
                     vds,
                     ref_ht,
                     interval_ht,
                     group_membership_ht,
+                    freq_ht,
                 )
             )
 
