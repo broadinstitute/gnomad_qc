@@ -62,18 +62,23 @@ def vds_annotate_adj(
     rmt = vds.reference_data
     vmt = vds.variant_data
 
-    logger.info("Computing sex adjusted genotypes...")
+    logger.info(
+        "Filtering chrY reference data MT entries for XX sex karyotype samples..."
+    )
     rmt_sex_expr = vmt.cols()[rmt.col_key].meta.sex_imputation.sex_karyotype
     rmt.filter_entries(
         (rmt.locus.in_y_par() | rmt.locus.in_y_nonpar()) & (rmt_sex_expr == "XX"),
         keep=False,
     )
+
+    logger.info("Annotating reference data MT with DP and GQ adj...")
     rmt = rmt.annotate_entries(
         adj=get_dp_gq_adj_expr(
             rmt.GQ, rmt.DP, locus_expr=rmt.locus, karyotype_expr=rmt_sex_expr
         )
     )
 
+    logger.info("Adjusting sex ploidy for variant data MT and annotating adj info...")
     vmt_gt_expr = hl.if_else(
         vmt.locus.in_autosome(),
         vmt.LGT,
@@ -88,6 +93,7 @@ def vds_annotate_adj(
     )
 
     if freq_ht is not None:
+        logger.info("Annotating variant data MT with in_freq field...")
         freq_ht = hl.Table(
             hl.ir.TableKeyBy(
                 freq_ht._tir, ["locus"], is_sorted=True
@@ -113,14 +119,27 @@ def compute_an_and_hists_het_fail_adj_ab(
     """
     vds = vds_annotate_adj(vds)
     vmt = vds.variant_data
+
+    logger.info(
+        "Filtering variant data MT entries to those passing GQ and DP adj thresholds, "
+        "but failing het allele balance adj threshold..."
+    )
     vmt = vmt.filter_entries(vmt.adj & vmt.fail_adj_ab)
     vmt = vmt.select_entries("adj", "LA", "LGT", "DP", "GQ")
+
+    logger.info("Splitting multi-allelic sites and filtering to sites in freq HT...")
     vmt = hl.experimental.sparse_split_multi(vmt)
     vmt = vmt.filter_rows(hl.is_defined(freq_ht[vmt.row_key]))
+
+    logger.info(
+        "Annotating variant data MT with DP and GQ qual hists for het fail adj allele "
+        "balance..."
+    )
     vmt = vmt.annotate_rows(
         qual_hists_het_fail_adj_ab=qual_hist_expr(gq_expr=vmt.GQ, dp_expr=vmt.DP)
     )
 
+    logger.info("Computing allele number for het fail adj allele balance...")
     ht = agg_by_strata(
         vmt,
         {"AN_het_fail_adj_ab": get_allele_number_agg_func("GT")},
@@ -184,6 +203,9 @@ def compute_allele_number_per_ref_site_with_adj(
     )
     ht = ht.checkpoint(hl.utils.new_temp_file("an_hist_ref_sites", "ht"))
 
+    logger.info(
+        "Adjusting allele number and histograms for het fail adj allele balance..."
+    )
     global_annotations = ht.index_globals()
     freq_correction = ht[het_fail_adj_ab_ht.locus]
     qual_hists = freq_correction.qual_hists[0].qual_hists
