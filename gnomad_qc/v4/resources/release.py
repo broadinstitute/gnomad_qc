@@ -3,7 +3,7 @@
 import logging
 from typing import Optional
 
-from gnomad.resources.grch38.gnomad import coverage, public_release
+from gnomad.resources.grch38.gnomad import all_sites_an, coverage, public_release
 from gnomad.resources.resource_utils import (
     DataException,
     TableResource,
@@ -12,8 +12,10 @@ from gnomad.resources.resource_utils import (
 from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v4.resources.constants import (
+    ALL_SITES_AN_RELEASES,
     COMBINED_FAF_RELEASES,
     COVERAGE_RELEASES,
+    CURRENT_ALL_SITES_AN_RELEASE,
     CURRENT_COMBINED_FAF_RELEASE,
     CURRENT_COVERAGE_RELEASE,
     CURRENT_RELEASE,
@@ -271,9 +273,10 @@ def release_coverage_path(
     public: bool = True,
     test: bool = False,
     stratify: bool = True,
+    coverage_type: str = "coverage",
 ) -> str:
     """
-    Fetch filepath for coverage release Table.
+    Fetch filepath for all sites coverage or allele number release Table.
 
     :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
     :param release_version: Release version.
@@ -281,13 +284,17 @@ def release_coverage_path(
         private bucket. Default is public.
     :param test: Whether to use a tmp path for testing. Default is False.
     :param stratify: Whether to stratify results by platform and subset. Default is True.
+    :param coverage_type: 'coverage' or 'allele_number'. Default is 'coverage'.
     :return: File path for desired coverage Hail Table.
     """
     if public:
         if test:
             raise ValueError("Cannot use test=True with public=True!")
         try:
-            cov = coverage(data_type)
+            if coverage_type == "coverage":
+                cov = coverage(data_type)
+            else:
+                cov = all_sites_an(data_type)
             if release_version in cov.versions:
                 path = cov.versions[release_version].path
             else:
@@ -302,13 +309,13 @@ def release_coverage_path(
                 release_version,
             )
             return (
-                f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.coverage{'.all' if not stratify else ''}.ht"
+                f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.{coverage_type}{'.all' if not stratify else ''}.ht"
             )
         else:
             return path
     else:
         return (
-            f"{_release_root(release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.coverage{'.all' if not stratify else ''}.ht"
+            f"{_release_root(release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.{coverage_type}{'.all' if not stratify else ''}.ht"
         )
 
 
@@ -316,6 +323,7 @@ def release_coverage_tsv_path(
     data_type: str = "exomes",
     release_version: str = CURRENT_COVERAGE_RELEASE["exomes"],
     test: bool = False,
+    coverage_type: str = "coverage",
 ) -> str:
     """
     Fetch path to coverage TSV file.
@@ -323,10 +331,11 @@ def release_coverage_tsv_path(
     :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
     :param release_version: Release version. Default is CURRENT_COVERAGE_RELEASE["exomes"].
     :param test: Whether to use a tmp path for testing. Default is False.
+    :param coverage_type: 'coverage' or 'allele_number'. Default is 'coverage'.
     :return: Coverage TSV path.
     """
     return (
-        f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.coverage.all.tsv.bgz"
+        f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.{coverage_type}.all.tsv.bgz"
     )
 
 
@@ -359,6 +368,38 @@ def release_coverage(
                 )
             )
             for release in COVERAGE_RELEASES[data_type]
+        },
+    )
+
+
+def release_all_sites_an(
+    data_type: str = "exomes",
+    public: bool = False,
+    test: bool = False,
+) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for all sites allele number release Table.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :param public: Determines whether release allele number Table is read from public or
+        private bucket. Default is private.
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: All sites allele number release Table.
+    """
+    return VersionedTableResource(
+        default_version=CURRENT_ALL_SITES_AN_RELEASE[data_type],
+        versions={
+            release: TableResource(
+                path=release_coverage_path(
+                    data_type=data_type,
+                    release_version=release,
+                    public=public,
+                    test=test,
+                    stratify=True,
+                    coverage_type="allele_number",
+                )
+            )
+            for release in ALL_SITES_AN_RELEASES[data_type]
         },
     )
 
