@@ -84,7 +84,7 @@ def vds_annotate_adj(
     vmt = vmt.annotate_entries(
         LGT=vmt_gt_expr,
         adj=get_dp_gq_adj_expr(vmt.GQ, vmt.DP, gt_expr=vmt_gt_expr),
-        fail_adj_ab=~vmt.get_adj_het_ab_expr(vmt_gt_expr, vmt.DP, vmt.LAD),
+        fail_adj_ab=~get_adj_het_ab_expr(vmt_gt_expr, vmt.DP, vmt.LAD),
     )
 
     if freq_ht is not None:
@@ -114,7 +114,7 @@ def compute_an_and_hists_het_fail_adj_ab(
     vds = vds_annotate_adj(vds)
     vmt = vds.variant_data
     vmt = vmt.filter_entries(vmt.adj & vmt.fail_adj_ab)
-    vmt = vmt.select_entries("LA", "LGT", "LAD", "DP", "GQ")
+    vmt = vmt.select_entries("adj", "LA", "LGT", "DP", "GQ")
     vmt = hl.experimental.sparse_split_multi(vmt)
     vmt = vmt.filter_rows(hl.is_defined(freq_ht[vmt.row_key]))
     vmt = vmt.annotate_rows(
@@ -124,7 +124,7 @@ def compute_an_and_hists_het_fail_adj_ab(
     ht = agg_by_strata(
         vmt,
         {"AN_het_fail_adj_ab": get_allele_number_agg_func("GT")},
-        select_fields=["gq_hist_all", "dp_hist_all"],
+        select_fields=["qual_hists_het_fail_adj_ab"],
         group_membership_ht=group_membership_ht,
     )
 
@@ -184,6 +184,7 @@ def compute_allele_number_per_ref_site_with_adj(
     )
     ht = ht.checkpoint(hl.utils.new_temp_file("an_hist_ref_sites", "ht"))
 
+    global_annotations = ht.index_globals()
     freq_correction = ht[het_fail_adj_ab_ht.locus]
     qual_hists = freq_correction.qual_hists[0].qual_hists
     sub_hists = het_fail_adj_ab_ht.qual_hists_het_fail_adj_ab
@@ -205,7 +206,7 @@ def compute_allele_number_per_ref_site_with_adj(
             ),
             freq_correction.AN,
             het_fail_adj_ab_ht.AN_het_fail_adj_ab,
-            het_fail_adj_ab_ht.strata_meta,
+            global_annotations.strata_meta,
         ),
         qual_hists=freq_correction.qual_hists[0].annotate(
             qual_hists=hl.struct(
@@ -216,6 +217,7 @@ def compute_allele_number_per_ref_site_with_adj(
             )
         ),
     )
+    freq_correction_ht = freq_correction_ht.annotate_globals(**global_annotations)
 
     return ht.select("AN"), freq_correction_ht
 
