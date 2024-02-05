@@ -3,7 +3,6 @@ import argparse
 import logging
 
 import hail as hl
-
 from gnomad.utils.annotations import (
     faf_expr,
     gen_anc_faf_max_expr,
@@ -11,6 +10,7 @@ from gnomad.utils.annotations import (
     pop_max_expr,
 )
 from gnomad.utils.release import make_freq_index_dict_from_meta
+
 from gnomad_qc.v2.annotations.generate_frequency_data import POPS_TO_REMOVE_FOR_POPMAX
 from gnomad_qc.v2.resources.basics import get_gnomad_liftover_data_path
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
