@@ -34,6 +34,9 @@ def get_false_dup_genes_path(
     """
     Retrieve path for the liftover table containing three genes of interest within a false duplication in GRCh38.
 
+    :param release_version: Release version. Defaults to CURRENT RELEASE
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param data_type: Data type 'exomes' or 'genomes'. Default is 'exomes'.
     :return: Combined custom liftover table path for the three genes in false duplication.
     """
     return (
@@ -47,7 +50,7 @@ def filter_liftover_to_false_dups(
     """
     Read in gnomAD v2 liftover table, filter to genes of interest, and return the Table.
 
-    :param data_type: String of either "exomes" or "genomes" for data type.
+    :param data_type: Data type 'exomes' or 'genomes'. Default is 'exomes'.
     :return: Filtered Hail Table.
     """
     ht = hl.read_table(
@@ -59,10 +62,8 @@ def filter_liftover_to_false_dups(
 
     # Filter to any variant located in one of the 3 genes of interest.
     ht = ht.filter(
-        hl.set(FALSE_DUP_GENES).any(
-            lambda gene_symbol: ht.vep.transcript_consequences.gene_symbol.contains(
-                gene_symbol
-            )
+        ht.vep.transcript_consequences.gene_symbol.any(
+            lambda x: hl.literal(FALSE_DUP_GENES).contains(x)
         )
     )
 
@@ -135,6 +136,15 @@ def main(args):
     }
     faf_meta_by_pop = hl.literal(faf_meta_by_pop)
 
+    # Compute group max (popmax) on the merged exomes + genomes frequencies.
+    logger.info("Computing grpmax...")
+    grpmax = pop_max_expr(
+        ht.v2_joint.joint_freq,
+        ht.joint_freq_meta,
+        pops_to_exclude=POPS_TO_REMOVE_FOR_POPMAX,
+        pop_label="pop",
+    )
+
     # Annotate Table with all joint exomes + genomes computations.
     ht = ht.annotate(
         v2_joint=ht.v2_joint.annotate(
@@ -142,6 +152,7 @@ def main(args):
             joint_fafmax=gen_anc_faf_max_expr(
                 faf, hl.literal(faf_meta), pop_label="pop"
             ),
+            joint_grpmax=grpmax,
         )
     )
 
@@ -151,9 +162,7 @@ def main(args):
     )
 
     # Checkpoint output to created resource.
-    ht = ht.checkpoint(
-        get_false_dup_genes_path(test=args.test), overwrite=args.overwrite
-    )
+    ht = ht.write(get_false_dup_genes_path(test=args.test), overwrite=args.overwrite)
 
 
 if __name__ == "__main__":
