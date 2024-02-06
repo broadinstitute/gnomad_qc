@@ -54,7 +54,7 @@ def filter_liftover_to_false_dups(
 
 def main(args):
     """
-    Writes merged v2 exomes and genomes liftover table with joint information for three clinically relevant genes.
+    Write merged v2 exomes and genomes liftover table with joint information for three clinically relevant genes.
 
     There are three clinically relevant genes impacted by false duplications in the GRCh38 reference (KCNE1, CBS, and CRYAA).
     To make it easier for our users to switch to gnomAD v4 and the new reference build,
