@@ -137,7 +137,7 @@ def compute_an_and_hists_het_fail_adj_ab(
         "but failing het allele balance adj threshold..."
     )
     vmt = vmt.filter_entries(vmt.adj & vmt.fail_adj_ab)
-    vmt = vmt.select_entries("LA", "LGT", "DP", "GQ")
+    vmt = vmt.select_entries("LA", "LGT", "DP", "GQ", "AD")
 
     logger.info("Splitting multi-allelic sites and filtering to sites in freq HT...")
     vmt = hl.experimental.sparse_split_multi(vmt)
