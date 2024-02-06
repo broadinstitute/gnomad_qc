@@ -1,4 +1,4 @@
-"Script to create custom liftover file for genes CBS, KCNE1, and CRYAA."
+"""Script to create custom liftover file for three false dup genes CBS, KCNE1, and CRYAA."""
 import argparse
 import logging
 
