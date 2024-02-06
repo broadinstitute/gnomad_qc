@@ -14,7 +14,7 @@ from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad_qc.v2.annotations.generate_frequency_data import POPS_TO_REMOVE_FOR_POPMAX
 from gnomad_qc.v2.resources.basics import get_gnomad_liftover_data_path
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE
-from gnomad_qc.v4.resources.release import _release_root
+from gnomad_qc.v4.resources.release import get_false_dup_genes_path
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -24,24 +24,6 @@ logger = logging.getLogger("false_dup_genes")
 logger.setLevel(logging.INFO)
 
 FALSE_DUP_GENES = ["KCNE1", "CBS", "CRYAA"]
-
-
-def get_false_dup_genes_path(
-    release_version: str = CURRENT_RELEASE,
-    test: bool = False,
-    data_type: str = "genomes",
-) -> str:
-    """
-    Retrieve path for the liftover table containing three genes of interest within a false duplication in GRCh38.
-
-    :param release_version: Release version. Defaults to CURRENT RELEASE
-    :param test: Whether to use a tmp path for testing. Default is False.
-    :param data_type: Data type 'exomes' or 'genomes'. Default is 'exomes'.
-    :return: Combined custom liftover table path for the three genes in false duplication.
-    """
-    return (
-        f"{_release_root(version=release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}_three_false_dup_genes_liftover.ht"
-    )
 
 
 def filter_liftover_to_false_dups(
@@ -84,8 +66,19 @@ def main(args):
 
     # Union and merge to contain any variant present in either.
     # Note: only about ~550 overlap, with ~187k exome variants and ~12k genome variants.
-    # Genome global annotations stored with _1
+    # Genome global annotations stored with _1.
     ht = exome_ht.select().join(genome_ht.select(), how="outer")
+
+    # Clear naming for global annotations.
+    # Globals from exomes and genomes end with _exomes or _genomes.
+    renaming_dictionary = {}
+    for global_name in sorted(list(ht.globals)):
+        if "_1" in global_name:
+            renaming_dictionary[global_name] = global_name.replace("_1", "_genomes")
+        else:
+            renaming_dictionary[global_name] = f"{global_name}_exomes"
+
+    ht = ht.rename(renaming_dictionary)
 
     # Annotate with information from both exomes and genomes - many will be NaN from the lack of overlap.
     ht = ht.annotate(
@@ -102,7 +95,10 @@ def main(args):
     # as of 01-26-2025 with changing 'gen_anc' -> pop.
     freq, freq_meta = merge_freq_arrays(
         farrays=[ht.v2_exomes.freq, ht.v2_genomes.freq],
-        fmeta=[ht.index_globals().freq_meta, ht.index_globals().freq_meta_1],
+        fmeta=[
+            ht.index_globals().freq_meta_exomes,
+            ht.index_globals().freq_meta_genomes,
+        ],
     )
 
     # Select to first 28 groups, containing:
