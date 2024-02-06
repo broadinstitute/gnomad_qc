@@ -65,31 +65,40 @@ def vds_annotate_adj(
     logger.info(
         "Filtering chrY reference data MT entries for XX sex karyotype samples..."
     )
-    rmt_sex_expr = vmt.cols()[rmt.col_key].meta.sex_imputation.sex_karyotype
+    rmt = rmt.annotate_cols(
+        sex_karyotype=vmt.cols()[rmt.col_key].meta.sex_imputation.sex_karyotype
+    )
+    rmt = rmt.annotate_rows(
+        in_y_par=rmt.locus.in_y_par(),
+        in_y_nonpar=rmt.locus.in_y_nonpar(),
+        in_non_par=~rmt.locus.in_autosome_or_par(),
+    )
     rmt.filter_entries(
-        (rmt.locus.in_y_par() | rmt.locus.in_y_nonpar()) & (rmt_sex_expr == "XX"),
+        (rmt.in_y_par | rmt.in_y_nonpar()) & (rmt.sex_karyotype == "XX"),
         keep=False,
     )
 
     logger.info("Annotating reference data MT with DP and GQ adj...")
     rmt = rmt.annotate_entries(
         adj=get_dp_gq_adj_expr(
-            rmt.GQ, rmt.DP, locus_expr=rmt.locus, karyotype_expr=rmt_sex_expr
+            rmt.GQ, rmt.DP, locus_expr=rmt.locus, karyotype_expr=rmt.sex_karyotype
         )
     )
 
     logger.info("Adjusting sex ploidy for variant data MT and annotating adj info...")
-    vmt_gt_expr = hl.if_else(
-        vmt.locus.in_autosome(),
-        vmt.LGT,
-        adjusted_sex_ploidy_expr(
-            vmt.locus, vmt.LGT, vmt.meta.sex_imputation.sex_karyotype
-        ),
+    vmt = vmt.annotate_rows(in_non_par=~rmt.locus.in_autosome_or_par())
+    vmt = vmt.annotate_entries(
+        LGT=hl.if_else(
+            vmt.in_non_par,
+            adjusted_sex_ploidy_expr(
+                vmt.locus, vmt.LGT, vmt.meta.sex_imputation.sex_karyotype
+            ),
+            vmt.LGT,
+        )
     )
     vmt = vmt.annotate_entries(
-        LGT=vmt_gt_expr,
-        adj=get_dp_gq_adj_expr(vmt.GQ, vmt.DP, gt_expr=vmt_gt_expr),
-        fail_adj_ab=~get_adj_het_ab_expr(vmt_gt_expr, vmt.DP, vmt.LAD),
+        adj=get_dp_gq_adj_expr(vmt.GQ, vmt.DP, gt_expr=vmt.LGT),
+        fail_adj_ab=~get_adj_het_ab_expr(vmt.LGT, vmt.DP, vmt.LAD),
     )
 
     if freq_ht is not None:
@@ -117,19 +126,25 @@ def compute_an_and_hists_het_fail_adj_ab(
     :param freq_ht: Table of frequency data.
     :return: Table of allele number and histograms for het fail adj ab.
     """
-    vds = vds_annotate_adj(vds)
+    vds = vds_annotate_adj(vds, freq_ht)
     vmt = vds.variant_data
+    vmt = vmt.filter_rows(
+        vmt.in_freq & hl.agg.any(vmt.adj & vmt.fail_adj_ab & vmt.LGT.is_non_ref())
+    )
 
     logger.info(
         "Filtering variant data MT entries to those passing GQ and DP adj thresholds, "
         "but failing het allele balance adj threshold..."
     )
     vmt = vmt.filter_entries(vmt.adj & vmt.fail_adj_ab)
-    vmt = vmt.select_entries("adj", "LA", "LGT", "DP", "GQ")
+    vmt = vmt.select_entries("LA", "LGT", "DP", "GQ")
 
     logger.info("Splitting multi-allelic sites and filtering to sites in freq HT...")
     vmt = hl.experimental.sparse_split_multi(vmt)
     vmt = vmt.filter_rows(hl.is_defined(freq_ht[vmt.row_key]))
+    vmt = vmt.filter_entries(
+        vmt.GT.is_non_ref() & ~get_adj_het_ab_expr(vmt.GT, vmt.DP, vmt.AD)
+    )
 
     logger.info(
         "Annotating variant data MT with DP and GQ qual hists for het fail adj allele "
@@ -140,6 +155,15 @@ def compute_an_and_hists_het_fail_adj_ab(
     )
 
     logger.info("Computing allele number for het fail adj allele balance...")
+    group_membership_ht = group_membership_ht.annotate_globals(
+        freq_meta=group_membership_ht.freq_meta.map(
+            lambda x: hl.dict(
+                x.items().map(
+                    lambda m: hl.if_else(m[0] == "group", ("group", "raw"), m)
+                )
+            )
+        )
+    )
     ht = agg_by_strata(
         vmt,
         {"AN_het_fail_adj_ab": get_allele_number_agg_func("GT")},
@@ -172,10 +196,8 @@ def compute_allele_number_per_ref_site_with_adj(
     """
 
     def _get_hists(qual_expr) -> hl.expr.Expression:
-        # Get the source Table for the CallExpression to grab alleles.
-        t = qual_expr._indices.source
         return hl.or_missing(
-            t.in_freq,
+            hl.is_defined(qual_expr),
             qual_hist_expr(
                 gq_expr=qual_expr[0],
                 dp_expr=qual_expr[1],
@@ -187,7 +209,10 @@ def compute_allele_number_per_ref_site_with_adj(
     vds = vds_annotate_adj(vds, freq_ht)
     entry_agg_funcs = {
         "AN": get_allele_number_agg_func("LGT"),
-        "qual_hists": (lambda t: [t.GQ, t.DP, t.adj], _get_hists),
+        "qual_hists": (
+            lambda t: hl.or_missing(t.in_freq, [t.GQ, t.DP, t.adj]),
+            _get_hists,
+        ),
     }
 
     logger.info("Computing allele number and histograms per reference site...")
