@@ -65,6 +65,10 @@ def vds_annotate_adj(
     logger.info(
         "Filtering chrY reference data MT entries for XX sex karyotype samples..."
     )
+
+    # Annotating the cols and rows with annotations used in the filter_entries to
+    # prevent the need to recompute these annotations for every entry in the
+    # filter_entries.
     rmt = rmt.annotate_cols(
         sex_karyotype=vmt.cols()[rmt.col_key].meta.sex_imputation.sex_karyotype
     )
@@ -128,6 +132,11 @@ def compute_an_and_hists_het_fail_adj_ab(
     """
     vds = vds_annotate_adj(vds, freq_ht)
     vmt = vds.variant_data
+
+    # Only need to keep rows where the locus is in the freq HT and there is at least
+    # one non-ref genotype that fails the adj allele balance filter.
+    # This saves on computation by not keeping rows that will be filtered out later or
+    # don't have any genotypes that contribute to the aggregate counts.
     vmt = vmt.filter_rows(
         vmt.in_freq & hl.agg.any(vmt.adj & vmt.fail_adj_ab & vmt.LGT.is_non_ref())
     )
@@ -136,11 +145,19 @@ def compute_an_and_hists_het_fail_adj_ab(
         "Filtering variant data MT entries to those passing GQ and DP adj thresholds, "
         "but failing het allele balance adj threshold..."
     )
+    # Only need to keep entries where the genotype passes the DP & GQ adj filters and
+    # fails the adj allele balance filter.
+    # This saves on computation by not needing to split multi-allelic entries that are
+    # not contributing to the aggregate counts.
     vmt = vmt.filter_entries(vmt.adj & vmt.fail_adj_ab)
     vmt = vmt.select_entries("LA", "LGT", "DP", "GQ", "LAD")
 
     logger.info("Splitting multi-allelic sites and filtering to sites in freq HT...")
     vmt = hl.experimental.sparse_split_multi(vmt)
+
+    # Now that the multi-allelic sites are split, we can filter to only the variants in
+    # the freq HT, genotypes that are non ref (we don't want to count the ref), and
+    # correctly handle the allele balance filtering of het non-ref genotypes.
     vmt = vmt.filter_rows(hl.is_defined(freq_ht[vmt.row_key]))
     vmt = vmt.filter_entries(
         vmt.GT.is_non_ref() & ~get_adj_het_ab_expr(vmt.GT, vmt.DP, vmt.AD)
@@ -155,6 +172,8 @@ def compute_an_and_hists_het_fail_adj_ab(
     )
 
     logger.info("Computing allele number for het fail adj allele balance...")
+    # Set all the group membership fields to "raw" since we already handled the adj
+    # filtering above, we don't need to adj filter in `agg_by_strata`.
     group_membership_ht = group_membership_ht.annotate_globals(
         freq_meta=group_membership_ht.freq_meta.map(
             lambda x: hl.dict(
@@ -234,6 +253,9 @@ def compute_allele_number_per_ref_site_with_adj(
     global_annotations = ht.index_globals()
     freq_correction = ht[het_fail_adj_ab_ht.locus]
     qual_hists = freq_correction.qual_hists[0].qual_hists
+
+    # Convert the het fail adj allele balance histograms to negative values so that
+    # they can be subtracted from the reference histograms using merge_histograms.
     sub_hists = het_fail_adj_ab_ht.qual_hists_het_fail_adj_ab
     sub_hists = sub_hists.annotate(
         **{
