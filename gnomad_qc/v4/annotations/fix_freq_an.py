@@ -215,8 +215,10 @@ def compute_allele_number_per_ref_site_with_adj(
     """
 
     def _get_hists(qual_expr) -> hl.expr.Expression:
+        # Get the source Table for the CallExpression to grab alleles.
+        t = qual_expr._indices.source
         return hl.or_missing(
-            hl.is_defined(qual_expr),
+            t.in_freq,
             qual_hist_expr(
                 gq_expr=qual_expr[0],
                 dp_expr=qual_expr[1],
