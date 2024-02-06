@@ -74,7 +74,7 @@ def vds_annotate_adj(
         in_non_par=~rmt.locus.in_autosome_or_par(),
     )
     rmt.filter_entries(
-        (rmt.in_y_par | rmt.in_y_nonpar()) & (rmt.sex_karyotype == "XX"),
+        (rmt.in_y_par | rmt.in_y_nonpar) & (rmt.sex_karyotype == "XX"),
         keep=False,
     )
 
