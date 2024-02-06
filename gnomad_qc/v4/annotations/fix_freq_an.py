@@ -86,7 +86,7 @@ def vds_annotate_adj(
     )
 
     logger.info("Adjusting sex ploidy for variant data MT and annotating adj info...")
-    vmt = vmt.annotate_rows(in_non_par=~rmt.locus.in_autosome_or_par())
+    vmt = vmt.annotate_rows(in_non_par=~vmt.locus.in_autosome_or_par())
     vmt = vmt.annotate_entries(
         LGT=hl.if_else(
             vmt.in_non_par,
