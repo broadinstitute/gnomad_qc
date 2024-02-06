@@ -80,7 +80,8 @@ def main(args):
 
     ht = ht.rename(renaming_dictionary)
 
-    # Annotate with information from both exomes and genomes - many will be NaN from the lack of overlap.
+    # Annotate with information from both exomes and genomes.
+    # Many will be NaN from the lack of overlap.
     ht = ht.annotate(
         v2_exomes=exome_ht[ht.locus, ht.alleles],
         v2_genomes=genome_ht[ht.locus, ht.alleles],
