@@ -257,6 +257,7 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
 
         The following annotations need to be updated for the v4.0 genomes release based
         on the latest sample QC results of the subset:
+
             - `hgdp_tgp_meta.subcontinental_pca.outlier`: to apply the updated pop
               outlier filter implemented by Alicia Martin's group.
             - `gnomad_sample_filters.hard_filtered`: to apply the recomputed freemix

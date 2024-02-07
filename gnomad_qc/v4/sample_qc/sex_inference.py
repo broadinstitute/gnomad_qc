@@ -49,21 +49,23 @@ def determine_fstat_sites(
     """
     Write a Table with chromosome X SNPs that are bi-allelic, common, and high callrate by default.
 
-    This Table is designed to be used as a variant filter in sex imputation for f-stat computation.
+    This Table is designed to be used as a variant filter in sex imputation for f-stat
+    computation.
 
     .. warning::
 
-        By default `approx_af_and_no_callrate` is False and the final Table will be filtered to high callrate (> value
-        specified by `min_callrate`) variants. This requires a densify of chrX!"
+        By default `approx_af_and_no_callrate` is False and the final Table will be
+        filtered to high callrate (> value specified by `min_callrate`) variants. This
+        requires a densify of chrX!"
 
     .. note::
 
-        If `approx_af_and_no_callrate` is True, allele frequency is approximated with AC/(n_samples * 2) and no callrate
-        filter is used.
+        If `approx_af_and_no_callrate` is True, allele frequency is approximated with
+        AC/(n_samples * 2) and no callrate filter is used.
 
     :param vds: Input VariantDataset.
-    :param approx_af_and_no_callrate: Whether to approximate allele frequency with AC/(n_samples * 2) and use no
-        callrate cutoff to filter sites.
+    :param approx_af_and_no_callrate: Whether to approximate allele frequency with
+        AC/(n_samples * 2) and use no callrate cutoff to filter sites.
     :param min_af: Minimum alternate allele frequency cutoff used to filter sites.
     :param min_callrate: Minimum callrate cutoff used to filter sites.
     :return: Table of chromosome X sites to be used for f-stat computation.
@@ -110,14 +112,16 @@ def load_platform_ht(
 
     .. note::
 
-        If `test` is True and the test platform assignment Table does not exist, the function will load the final
-        platform assignment Table instead if it already exists.
+        If `test` is True and the test platform assignment Table does not exist, the
+        function will load the final platform assignment Table instead if it already
+        exists.
 
     :param test: Whether a test platform assignment Table should be loaded.
-    :param calling_interval_name: Name of calling intervals to use for interval coverage. One of: 'ukb', 'broad', or
-        'intersection'. Only used if `test` is True.
-    :param calling_interval_padding: Number of base pair padding to use on the calling intervals. One of 0 or 50 bp.
-        Only used if `test` is True.
+    :param calling_interval_name: Name of calling intervals to use for interval
+        coverage. One of: 'ukb', 'broad', or 'intersection'. Only used if `test` is
+        True.
+    :param calling_interval_padding: Number of base pair padding to use on the calling
+        intervals. One of 0 or 50 bp. Only used if `test` is True.
     :return: Platform assignment Table.
     """
     logger.info("Loading platform information...")
@@ -165,15 +169,15 @@ def prepare_sex_imputation_coverage_mt(
     """
     Prepare the sex imputation coverage MT.
 
-    Filter the full interval coverage MatrixTable to the specified normalization contig and hard filtered samples
-    (before sex hard filter) and union it with the sex coverage MatrixTable after excluding intervals that overlap
-    PAR regions.
+    Filter the full interval coverage MatrixTable to the specified normalization contig
+    and hard filtered samples (before sex hard filter) and union it with the sex
+    coverage MatrixTable after excluding intervals that overlap PAR regions.
 
-    :param normalization_contig: Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.
-        Default is 'chr20'.
+    :param normalization_contig: Which autosomal chromosome to use for normalizing the
+        coverage of chromosomes X and Y. Default is 'chr20'.
     :param test: Whether to use gnomAD v4 test dataset. Default is False.
-    :param read_if_exists: Whether to use the sex imputation coverage MT if it already exists rather than remaking
-        this intermediate temporary file. Default is False.
+    :param read_if_exists: Whether to use the sex imputation coverage MT if it already
+        exists rather than remaking this intermediate temporary file. Default is False.
     :return: Interval coverage MatrixTable for sex imputation.
     """
     logger.info(
@@ -265,51 +269,64 @@ def compute_sex_ploidy(
     """
     Impute sex chromosome ploidy, and optionally chrX heterozygosity and fraction homozygous alternate variants on chrX.
 
-    This function imputes sex chromosome ploidy from a VDS and a sex inference specific coverage MT (created by
-    `prepare_sex_imputation_coverage_mt`).
+    This function imputes sex chromosome ploidy from a VDS and a sex inference specific
+    coverage MT (created by `prepare_sex_imputation_coverage_mt`).
 
-    With no additional parameters passed, chrX and chrY ploidy will be imputed using Hail's
-    `hail.vds.impute_sex_chromosome_ploidy` method which computes chromosome ploidy using reference block DP per
-    calling interval (using intervals in `coverage_mt`). This method breaks up the reference blocks at the calling
-    interval boundaries, maintaining all reference block END information for the mean DP per interval computation.
+    With no additional parameters passed, chrX and chrY ploidy will be imputed using
+    Hail's `hail.vds.impute_sex_chromosome_ploidy` method which computes chromosome
+    ploidy using reference block DP per calling interval (using intervals in
+    `coverage_mt`). This method breaks up the reference blocks at the calling interval
+    boundaries, maintaining all reference block END information for the mean DP per
+    interval computation.
 
-    There is also the option to impute ploidy using mean variant depth within the specified calling intervals instead
-    of using reference block depths. This can be defined differently for chrX and chrY using
-    `variant_depth_only_x_ploidy` and `variant_depth_only_y_ploidy`.
+    There is also the option to impute ploidy using mean variant depth within the
+    specified calling intervals instead of using reference block depths. This can be
+    defined differently for chrX and chrY using `variant_depth_only_x_ploidy` and
+    `variant_depth_only_y_ploidy`.
 
-    If an `interval_qc_ht` Table is supplied, only high quality intervals will be used in sex chromosome ploidy
-    imputation. High quality intervals are defined by 'interval_qc_ht.pass_interval_qc'.
+    If an `interval_qc_ht` Table is supplied, only high quality intervals will be used
+    in sex chromosome ploidy imputation. High quality intervals are defined by
+    'interval_qc_ht.pass_interval_qc'.
 
-    If `high_qual_per_platform` is True, `interval_qc_ht` and `platform_ht` must be supplied, and
-    'interval_qc_ht.pass_interval_qc' should be a Struct with one BooleanExpression per platform.
+    If `high_qual_per_platform` is True, `interval_qc_ht` and `platform_ht` must be
+    supplied, and 'interval_qc_ht.pass_interval_qc' should be a Struct with one
+    BooleanExpression per platform.
 
     :param vds: Input VDS for use in sex inference.
     :param coverage_mt: Input sex inference specific interval coverage MatrixTable.
-    :param interval_qc_ht: Optional interval QC Table to use for filtering to high quality intervals before sex ploidy
-        imputation.
-    :param high_qual_per_platform: Whether to filter to per platform high quality intervals for the sex ploidy
-        imputation. Default is False.
-    :param platform_ht: Input platform assignment Table. This is only needed if `high_qual_per_platform` is True.
-    :param normalization_contig: Which autosomal chromosome to use for normalizing the coverage of chromosomes X and Y.
-        Default is 'chr20'.
-    :param variant_depth_only_x_ploidy: Whether to use depth of variant data within calling intervals instead of
-        reference data for chrX ploidy estimation. Default will only use reference data.
-    :param variant_depth_only_y_ploidy: Whether to use depth of variant data within calling intervals instead of
-        reference data for chrY ploidy estimation. Default will only use reference data.
-    :param variant_depth_only_ploidy_filter_lcr: Whether to filter out variants in LCR regions for variants only ploidy
-        estimation and fraction of homozygous alternate variants on chromosome X. Default is True.
-    :param variant_depth_only_ploidy_filter_segdup: Whether to filter out variants in segdup regions for variants only
-        ploidy estimation and fraction of homozygous alternate variants on chromosome X. Default is True.
-    :param variant_depth_only_ploidy_snv_only: Whether to filter to only single nucleotide variants for variants only
-        ploidy estimation and fraction of homozygous alternate variants on chromosome X. Default is False.
-    :param compute_x_frac_variants_hom_alt: Whether to return an annotation for the fraction of homozygous alternate
-        variants on chromosome X. Default is True.
-    :param freq_ht: Optional Table to use for f-stat allele frequency cutoff. The input VDS is filtered to sites in
-        this Table prior to running Hail's `impute_sex` module, and alternate allele frequency is used from this Table
-        with a `min_af` cutoff.
-    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations. Default is 0.001.
-    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY
-        are above cutoff. Default is -1.0.
+    :param interval_qc_ht: Optional interval QC Table to use for filtering to high
+        quality intervals before sex ploidy imputation.
+    :param high_qual_per_platform: Whether to filter to per platform high quality
+        intervals for the sex ploidy imputation. Default is False.
+    :param platform_ht: Input platform assignment Table. This is only needed if
+        `high_qual_per_platform` is True.
+    :param normalization_contig: Which autosomal chromosome to use for normalizing the
+        coverage of chromosomes X and Y. Default is 'chr20'.
+    :param variant_depth_only_x_ploidy: Whether to use depth of variant data within
+        calling intervals instead of reference data for chrX ploidy estimation. Default
+        will only use reference data.
+    :param variant_depth_only_y_ploidy: Whether to use depth of variant data within
+        calling intervals instead of reference data for chrY ploidy estimation. Default
+        will only use reference data.
+    :param variant_depth_only_ploidy_filter_lcr: Whether to filter out variants in LCR
+        regions for variants only ploidy estimation and fraction of homozygous
+        alternate variants on chromosome X. Default is True.
+    :param variant_depth_only_ploidy_filter_segdup: Whether to filter out variants in
+        segdup regions for variants only ploidy estimation and fraction of homozygous
+        alternate variants on chromosome X. Default is True.
+    :param variant_depth_only_ploidy_snv_only: Whether to filter to only single
+        nucleotide variants for variants only ploidy estimation and fraction of
+        homozygous alternate variants on chromosome X. Default is False.
+    :param compute_x_frac_variants_hom_alt: Whether to return an annotation for the
+        fraction of homozygous alternate variants on chromosome X. Default is True.
+    :param freq_ht: Optional Table to use for f-stat allele frequency cutoff. The input
+        VDS is filtered to sites in this Table prior to running Hail's `impute_sex`
+        module, and alternate allele frequency is used from this Table with a `min_af`
+        cutoff.
+    :param min_af: Minimum alternate allele frequency to be used in f-stat calculations.
+        Default is 0.001.
+    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX
+        samples are below cutoff and XY are above cutoff. Default is -1.0.
     :return: Table with imputed ploidies.
     """
     if high_qual_per_platform and platform_ht is None:
@@ -333,8 +350,10 @@ def compute_sex_ploidy(
         Perform `annotate_sex` using unchanged parameters with changes to the VDS and calling intervals.
 
         :param vds: Input VDS to use for sex ploidy annotation.
-        :param coverage_mt: Input precomputed coverage MT to use for sex ploidy annotation.
-        :param calling_intervals_ht: Table including only intervals wanted for sex annotation.
+        :param coverage_mt: Input precomputed coverage MT to use for sex ploidy
+            annotation.
+        :param calling_intervals_ht: Table including only intervals wanted for sex
+            annotation.
         :return: Table containing sex ploidy estimates for samples in the input VDS.
         """
         ploidy_ht = annotate_sex(
@@ -437,39 +456,77 @@ def annotate_sex_karyotype_from_ploidy_cutoffs(
     Determine sex karyotype annotation based on chromosome X and chromosome Y ploidy estimates and ploidy cutoffs.
 
     `ploidy_ht` must include the following annotations:
+
         - chrX_ploidy: chromosome X ploidy estimate
         - chrY_ploidy: chromosome X ploidy estimate
 
     The expected format of `sex_karyotype_ploidy_cutoffs` is one of:
+
         - If `per_platform` is False:
-        {
-            "x_ploidy_cutoffs": {"upper_cutoff_X": 2.6, "lower_cutoff_XX": 1.9, "upper_cutoff_XX": 6.8, "lower_cutoff_XXX": 6.6},
-            "y_ploidy_cutoffs": {"lower_cutoff_Y": 0.2, "upper_cutoff_Y": 1.3, "lower_cutoff_YY": 1.4}
-        }
-        - If `per_platform` is True:
-        {
-            "x_ploidy_cutoffs": {
-                "platform_1": {"upper_cutoff_X": 2.6, "lower_cutoff_XX": 1.9, "upper_cutoff_XX": 6.2, "lower_cutoff_XXX": 6.6},
-                "platform_0": {"upper_cutoff_X": 1.6, "lower_cutoff_XX": 1.5, "upper_cutoff_XX": 3.3, "lower_cutoff_XXX": 3.5},
-                ...
-            },
-            "y_ploidy_cutoffs": {
-                "platform_1": {"lower_cutoff_Y": 0.2, "upper_cutoff_Y": 1.3, "lower_cutoff_YY": 1.4},
-                "platform_0": {"lower_cutoff_Y": 0.1, "upper_cutoff_Y": 1.2, "lower_cutoff_YY": 1.1},
-                ...
+
+        .. code-block::
+
+            {
+                "x_ploidy_cutoffs": {
+                    "upper_cutoff_X": 2.6,
+                    "lower_cutoff_XX": 1.9,
+                    "upper_cutoff_XX": 6.8,
+                    "lower_cutoff_XXX": 6.6
+                },
+                "y_ploidy_cutoffs": {
+                    "lower_cutoff_Y": 0.2,
+                    "upper_cutoff_Y": 1.3,
+                    "lower_cutoff_YY": 1.4
+                }
             }
-        }
+
+        - If `per_platform` is True:
+
+        .. code-block::
+
+            {
+                "x_ploidy_cutoffs": {
+                    "platform_1": {
+                        "upper_cutoff_X": 2.6,
+                        "lower_cutoff_XX": 1.9,
+                        "upper_cutoff_XX": 6.2,
+                        "lower_cutoff_XXX": 6.6
+                    },
+                    "platform_0": {
+                        "upper_cutoff_X": 1.6,
+                        "lower_cutoff_XX": 1.5,
+                        "upper_cutoff_XX": 3.3,
+                        "lower_cutoff_XXX": 3.5
+                    },
+                    ...
+                },
+                "y_ploidy_cutoffs": {
+                    "platform_1": {
+                        "lower_cutoff_Y": 0.2,
+                        "upper_cutoff_Y": 1.3,
+                        "lower_cutoff_YY": 1.4
+                    },
+                    "platform_0": {
+                        "lower_cutoff_Y": 0.1,
+                        "upper_cutoff_Y": 1.2,
+                        "lower_cutoff_YY": 1.1
+                    },
+                    ...
+                }
+            }
 
     Returns a Table with the following annotations:
-        - X_karyotype: Sample assigned X karyotype
-        - Y_karyotype: Sample assigned Y karyotype
-        - sex_karyotype: Combination of X_karyotype and Y_karyotype
+
+        - X_karyotype: Sample assigned X karyotype.
+        - Y_karyotype: Sample assigned Y karyotype.
+        - sex_karyotype: Combination of X_karyotype and Y_karyotype.
 
     :param ploidy_ht: Table with chromosome X and chromosome Y ploidies.
     :param sex_karyotype_ploidy_cutoffs: Dictionary of sex karyotype ploidy cutoffs.
-    :param per_platform: Whether the `sex_karyotype_ploidy_cutoffs` should be applied per platform.
-    :param apply_x_frac_hom_alt_cutoffs: Whether to apply cutoffs for the fraction homozygous alternate genotypes
-        (hom-alt/(hom-alt + het)) on chromosome X.
+    :param per_platform: Whether the `sex_karyotype_ploidy_cutoffs` should be applied
+        per platform.
+    :param apply_x_frac_hom_alt_cutoffs: Whether to apply cutoffs for the fraction
+        homozygous alternate genotypes (hom-alt/(hom-alt + het)) on chromosome X.
     :return: Sex karyotype Table.
     """
     x_ploidy_cutoffs = sex_karyotype_ploidy_cutoffs["x_ploidy_cutoffs"]
@@ -616,13 +673,16 @@ def infer_sex_karyotype_from_ploidy(
     """
     Create a Table with X_karyotype, Y_karyotype, and sex_karyotype.
 
-    :param ploidy_ht: Table with chromosome X and chromosome Y ploidies, and f-stat if not `use_gmm_for_ploidy_cutoffs`.
-    :param per_platform: Whether the sex karyotype ploidy cutoff inference should be applied per platform.
-    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX samples are below cutoff and XY
-        are above cutoff.
-    :param use_gmm_for_ploidy_cutoffs: Use Gaussian mixture model to split samples into 'XX' and 'XY' instead of f-stat.
-    :param apply_x_frac_hom_alt_cutoffs: Whether to apply cutoffs for the fraction homozygous alternate genotypes
-        (hom-alt/(hom-alt + het)) on chromosome X.
+    :param ploidy_ht: Table with chromosome X and chromosome Y ploidies, and f-stat if
+        not `use_gmm_for_ploidy_cutoffs`.
+    :param per_platform: Whether the sex karyotype ploidy cutoff inference should be
+        applied per platform.
+    :param f_stat_cutoff: f-stat to roughly divide 'XX' from 'XY' samples. Assumes XX
+        samples are below cutoff and XY are above cutoff.
+    :param use_gmm_for_ploidy_cutoffs: Use Gaussian mixture model to split samples into
+        'XX' and 'XY' instead of f-stat.
+    :param apply_x_frac_hom_alt_cutoffs: Whether to apply cutoffs for the fraction
+        homozygous alternate genotypes (hom-alt/(hom-alt + het)) on chromosome X.
     :return: Table of imputed sex karyotypes.
     """
     logger.info("Running sex karyotype inference")
@@ -700,8 +760,8 @@ def reformat_ploidy_cutoffs_for_json(
 
     :param ht: Table including globals for x_ploidy_cutoffs and y_ploidy_cutoffs.
     :param per_platform: Whether the ploidy global cutoffs are per platform.
-    :param include_x_frac_hom_alt_cutoffs: Whether to include cutoffs for the fraction homozygous alternate
-        genotypes (hom-alt/(hom-alt + het)) on chromosome X.
+    :param include_x_frac_hom_alt_cutoffs: Whether to include cutoffs for the fraction
+        homozygous alternate genotypes (hom-alt/(hom-alt + het)) on chromosome X.
     :return: Dictionary of X and Y ploidy cutoffs for JSON export.
     """
     x_ploidy_cutoffs = dict(ht.index_globals().x_ploidy_cutoffs.collect()[0])

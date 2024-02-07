@@ -549,10 +549,10 @@ def gather_tranches(
     is broken down across genomic regions for parallel processing, and done in 3 steps:
 
         - Run the recalibrator with the following additional arguments:
-         --sample-every-Nth-variant <downsample_factor> --output-model <model_file>
+          ``--sample-every-Nth-variant <downsample_factor> --output-model <model_file>``
         - Apply the resulting model to each genomic interval with, running the
           recalibrator with the same base parameters, plus:
-          --input-model <model-file> --output-tranches-for-scatter
+          ``--input-model <model-file> --output-tranches-for-scatter``
         - Collate the resulting per-interval tranches with GatherTranches
 
     :param b: Batch object to add jobs to.

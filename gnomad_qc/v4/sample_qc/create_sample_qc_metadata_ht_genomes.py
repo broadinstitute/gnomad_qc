@@ -1,20 +1,25 @@
 """
 Script to create sample QC metadata HT for genomes.
 
-The main updates from v3.1 to v4.0 are due to the following updates in the HGDP + TGP subset meta:
-- 169 samples added
-- 110 samples removed
+The main updates from v3.1 to v4.0 are due to the following updates in the HGDP + TGP
+subset meta:
 
-The 169 samples added were diverse HGDP/TGP samples in v3.1 that were unintentionally removed during sample outlier detection.
+    - 169 samples added
+    - 110 samples removed
+
+The 169 samples added were diverse HGDP/TGP samples in v3.1 that were unintentionally
+removed during sample outlier detection.
 
 The 110 samples were removed due to the following reasons:
-- Contamination flagged by CHARR (CHARR score stored in `freemix` column).
-- Subcontinental PCA outliers within the subset.
-- Updated relatedness results within the subset, re-evaluation of relatedness
-  inference of the subset to the rest of gnomAD release samples, and removal of any
-  samples that are duplicates of v4.0 exomes release samples.
 
-All samples impacted (169 added, 110 released) are releasable; the updates we made here were to their sample QC status (high quality vs filtered).
+    - Contamination flagged by CHARR (CHARR score stored in `freemix` column).
+    - Subcontinental PCA outliers within the subset.
+    - Updated relatedness results within the subset, re-evaluation of relatedness
+      inference of the subset to the rest of gnomAD release samples, and removal of any
+      samples that are duplicates of v4.0 exomes release samples.
+
+All samples impacted (169 added, 110 released) are releasable; the updates we made here
+were to their sample QC status (high quality vs filtered).
 """
 
 

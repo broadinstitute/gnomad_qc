@@ -136,9 +136,11 @@ def get_gnomad_v4_vds(
         """
         Remove UKB samples with exact duplicate names based on column index.
 
-        :param mt: MatrixTable of either the variant data or reference data of a VDS
-        :param dup_ids: ArrayExpression of UKB samples to remove in format of <sample_name>_<col_idx>
-        :return: MatrixTable of UKB samples with exact duplicate names removed based on column index
+        :param mt: MatrixTable of either the variant data or reference data of a VDS.
+        :param dup_ids: ArrayExpression of UKB samples to remove in format of
+            <sample_name>_<col_idx>.
+        :return: MatrixTable of UKB samples with exact duplicate names removed based on
+            column index.
         """
         mt = mt.add_col_index()
         mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
@@ -412,8 +414,9 @@ def calling_intervals(
     Return path to capture intervals Table.
 
     :param interval_name: One of 'ukb', 'broad', 'intersection' or 'union'.
-    :param calling_interval_padding: Padding around calling intervals. Available options are 0 or 50
-    :return: Calling intervals resource
+    :param calling_interval_padding: Padding around calling intervals. Available
+        options are 0 or 50.
+    :return: Calling intervals resource.
     """
     if interval_name not in {"ukb", "broad", "intersection", "union"}:
         raise ValueError(

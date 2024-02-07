@@ -178,6 +178,7 @@ def correct_as_annotations(
 
     For some entries in the MatrixTable, the following annotations are longer than LA,
     when they should be the same length as LA:
+
         - AS_SB_TABLE
         - AS_RAW_MQ
         - AS_RAW_ReadPosRankSum

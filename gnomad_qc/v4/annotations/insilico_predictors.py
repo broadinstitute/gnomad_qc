@@ -75,11 +75,13 @@ def create_cadd_grch38_ht() -> hl.Table:
           (13M) was run on gnomAD v4 with CADD v1.6 in 2023. It contains 904,906 indels
           that are new in gnomAD v4 genomes because of the addition of HGDP/TGP samples.
 
-         .. note::
+    .. note::
+
          ~1,9M indels were duplicated in gnomAD v3.0 and v4.0 or in gnomAD v3.1 and
          v4.0. However, CADD only generates a score per loci. We keep only the latest
          prediction, v4.0, for these loci.
          The output generated a CADD HT with 9,110,177,520 rows.
+
     :return: Hail Table with CADD scores for GRCh38.
     """
 
@@ -235,9 +237,10 @@ def create_pangolin_grch38_ht() -> hl.Table:
     Create a Hail Table with Pangolin score for splicing for GRCh38.
 
     .. note::
-    The score was based on the splicing prediction tool Pangolin:
-    Zeng, T., Li, Y.I. Predicting RNA splicing from DNA sequence using Pangolin.
-     Genome Biol 23, 103 (2022). https://doi.org/10.1186/s13059-022-02664-4
+
+        The score was based on the splicing prediction tool Pangolin:
+        Zeng, T., Li, Y.I. Predicting RNA splicing from DNA sequence using Pangolin.
+        Genome Biol 23, 103 (2022). https://doi.org/10.1186/s13059-022-02664-4
 
     There's no precomputed score for all possible variants, the scores were
     generated for gnomAD v4 genomes (=v3 genomes) and v4 exomes variants in
@@ -365,17 +368,24 @@ def create_revel_grch38_ht() -> hl.Table:
     Create a Hail Table with REVEL scores for GRCh38.
 
     .. note::
-    Starting with gnomAD v4, we use REVEL scores for only MANE Select and
-    canonical transcripts. Even when a variant falls on multiple MANE/canonical
-    transcripts of different genes, the scores are equal.
+
+        Starting with gnomAD v4, we use REVEL scores for only MANE Select and
+        canonical transcripts. Even when a variant falls on multiple MANE/canonical
+        transcripts of different genes, the scores are equal.
+
     REVEL scores were downloaded from:
-       https://rothsj06.dmz.hpc.mssm.edu/revel-v1.3_all_chromosomes.zip
-       size ~648M, ~82,100,677 variants
+    https://rothsj06.dmz.hpc.mssm.edu/revel-v1.3_all_chromosomes.zip
+    size ~648M, ~82,100,677 variants
+
     REVEL's Ensembl ID is not from Ensembl 105, so we filter to transcripts
     that are in Ensembl 105. The Ensembl 105 ID file was downloaded from Ensembl
     105 archive. It contains the following columns:
-       Transcript stable ID, Ensembl Canonical, MANE Select
-    This deprecates the `has_duplicate` field present in gnomAD v3.
+
+        - Transcript stable ID
+        - Ensembl Canonical
+        - MANE Select
+
+    This deprecates the `has_duplicate` field present in gnomAD v3.1.
 
     :return: Hail Table with REVEL scores for GRCh38.
     """
@@ -461,17 +471,19 @@ def create_phylop_grch38_ht() -> hl.Table:
     """
     Convert PhyloP scores to Hail Table.
 
-    .. note::
     BigWig format of Phylop was download from here:
     https://cgl.gi.ucsc.edu/data/cactus/241-mammalian-2020v2-hub/Homo_sapiens/241-mammalian-2020v2.bigWig
     and converted it to bedGraph format with bigWigToBedGraph from the kent packages
     of UCSC (https://hgdownload.cse.ucsc.edu/admin/exe/) with the following command:
     `./bigWigToBedGraph ~/Downloads/241-mammalian-2020v2.bigWig ~/Downloads/241-mammalian-2020v2.bedGraph`
     The bedGraph file is bigzipped before importing to Hail.
-    Different to other in silico predictors, the Phylop HT is keyed by locus only. Since
-     the PhyloP scores have one value per position, we exploded the interval to store
-     the HT by locus. In result, we have Phylop scores for 2,852,623,265 locus from
-     2,648,607,958 intervals.
+
+    .. note::
+
+        Different to other in silico predictors, the Phylop HT is keyed by locus only.
+        Since the PhyloP scores have one value per position, we exploded the interval
+        to store the HT by locus. In result, we have Phylop scores for 2,852,623,265
+        locus from 2,648,607,958 intervals.
 
     :return: Hail Table with Phylop Scores for GRCh38
     """

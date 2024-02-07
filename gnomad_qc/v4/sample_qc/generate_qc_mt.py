@@ -4,11 +4,12 @@ Script to create a dense MatrixTable filtered to a diverse set of variants for r
 The variant set was determined using this script:
 https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py
 
-The full gnomAD v4 VariantDataset and v4 sparse MatrixTable are filtered to these sites and then densified. The resulting
-MatrixTables are merged and additional allele frequency and callrate filters are applied, then LD-pruning is
-performed.
+The full gnomAD v4 VariantDataset and v4 sparse MatrixTable are filtered to these sites
+and then densified. The resulting MatrixTables are merged and additional allele
+frequency and callrate filters are applied, then LD-pruning is performed.
 
-Additionally, the script creates a joint v3 and v4 metadata file for use in relatedness/ancestry PCA.
+Additionally, the script creates a joint v3 and v4 metadata file for use in
+relatedness/ancestry PCA.
 """
 import argparse
 import logging
@@ -50,7 +51,8 @@ def create_filtered_dense_mt(
     Filter a sparse MatrixTable or VariantDataset to a set of predetermined QC sites and return a dense MatrixTable.
 
     :param mtds: Input MatrixTable or VariantDataset.
-    :param split: Whether `mtds` should have multi-allelics split before filtering variants.
+    :param split: Whether `mtds` should have multi-allelics split before filtering
+        variants.
     :return: Filtered and densified MatrixTable.
     """
     is_vds = isinstance(mtds, hl.vds.VariantDataset)
@@ -96,9 +98,11 @@ def generate_qc_mt(
     :param bi_allelic_only: Whether to filter to bi-allelic variants.
     :param min_af: Minimum variant allele frequency to retain variant in QC MatrixTable.
     :param min_callrate: Minimum variant callrate to retain variant in QC MatrixTable.
-    :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to retain variant in QC MatrixTable.
+    :param min_inbreeding_coeff_threshold: Minimum site inbreeding coefficient to
+        retain variant in QC MatrixTable.
     :param ld_r2: LD-pruning cutoff.
-    :param n_partitions: Number of partitions to repartition the MT to before LD pruning.
+    :param n_partitions: Number of partitions to repartition the MT to before LD
+        pruning.
     :param block_size: Block size parameter to use for LD pruning.
     :return: MatrixTable of sites that pass QC filters.
     """

@@ -207,11 +207,14 @@ def release_vcf_path(
     """
     Fetch bucket for release (sites-only) VCFs.
 
-    :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used.
+    :param release_version: Release version. When no release_version is supplied
+        CURRENT_RELEASE is used.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param data_type: Data type of release resource to return. Should be one of 'exomes' or 'genomes'. Default is 'exomes'.
-    :param contig: String containing the name of the desired reference contig. Defaults to the full (all contigs) sites VCF path
-    :return: Filepath for the desired VCF
+    :param data_type: Data type of release resource to return. Should be one of
+        'exomes' or 'genomes'. Default is 'exomes'.
+    :param contig: String containing the name of the desired reference contig. Default
+        is the full (all contigs) sites VCF path.
+    :return: Filepath for the desired VCF.
     """
     if release_version is None:
         release_version = CURRENT_RELEASE
@@ -234,10 +237,12 @@ def release_header_path(
     """
     Fetch path to pickle file containing VCF header dictionary.
 
-    :param release_version: Release version. When no release_version is supplied CURRENT_RELEASE is used
-    :param data_type: Data type of release resource to return. Should be one of 'exomes' or 'genomes'. Default is 'exomes'.
+    :param release_version: Release version. When no release_version is supplied
+        CURRENT_RELEASE is used
+    :param data_type: Data type of release resource to return. Should be one of
+        'exomes' or 'genomes'. Default is 'exomes'.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :return: Filepath for header dictionary pickle
+    :return: Filepath for header dictionary pickle.
     """
     if release_version is None:
         release_version = CURRENT_RELEASE
@@ -257,10 +262,11 @@ def append_to_vcf_header_path(
 
     Extra fields are VEP and dbSNP versions.
 
-    :param subset: One of the possible release subsets
-    :param release_version: Release version. Defaults to CURRENT RELEASE
-    :param data_type: Data type of release resource to return. Should be one of 'exomes' or 'genomes'. Default is 'exomes'.
-    :return: Filepath for extra fields TSV file
+    :param subset: One of the possible release subsets.
+    :param release_version: Release version. Defaults to CURRENT RELEASE.
+    :param data_type: Data type of release resource to return. Should be one of .
+        'exomes' or 'genomes'. Default is 'exomes'.
+    :return: Filepath for extra fields TSV file.
     """
     return (
         f"gs://gnomad/release/{release_version}/vcf/{data_type}/extra_fields_for_header{f'_{subset}' if subset else ''}.tsv"

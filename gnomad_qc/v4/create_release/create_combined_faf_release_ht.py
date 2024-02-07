@@ -3,11 +3,11 @@ Create a joint gnomAD v4 exome and genome frequency and FAF.
 
 Generate a Hail Table containing frequencies for exomes and genomes in gnomAD v4, a
 joint frequency, a joint FAF, and the following tests comparing the two frequencies:
+
     - Hail's contingency table test -- chi-squared or Fisher’s exact test of
       independence depending on min cell count.
     - Cochran–Mantel–Haenszel test -- stratified test of independence for 2x2xK
       contingency tables.
-
 """
 
 import argparse
@@ -124,9 +124,9 @@ def extract_freq_info(
     grpmax_expr = ht.grpmax
     fafmax_expr = ht.gen_anc_faf_max
     if prefix == "exomes":
-        # Note: The `grpmax` and `fafmax` structs in the exomes freq HT have two nested structs:
-        # `gnomad` and `non_ukb`. This section selects only the `gnomad` values (values across full
-        # v4 exomes release)
+        # Note: The `grpmax` and `fafmax` structs in the exomes freq HT have two nested
+        # structs: `gnomad` and `non_ukb`. This section selects only the `gnomad`
+        # values (values across full v4 exomes release)
         grpmax_expr = grpmax_expr.gnomad
         fafmax_expr = fafmax_expr.gnomad
 

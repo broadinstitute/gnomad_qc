@@ -37,7 +37,8 @@ V4_POP_SPIKE_DICT = {
     "Qatari": "mid",
 }
 """
-Dictionary with potential pops to use for training (with v4 race/ethnicity as key and corresponding pop as value).
+Dictionary with potential pops to use for training (with v4 race/ethnicity as key and
+corresponding pop as value).
 """
 
 V3_SPIKE_PROJECTS = {
@@ -67,12 +68,19 @@ V3_SPIKE_PROJECTS = {
     ],
 }
 """
-Dictionary with v3 pops as keys and approved cohorts to use for training for those pops as values. Decisions were made based on results of an analysis to determine which v3 samples/cohorts to use as training samples. This analysis consisted of computing per sample mean Euclidean distances to all samples in a given population, and per sample the mean Euclidean distances limited to only HGDP/1KG samples in each population. Then cohorts were excluded based on the per cohort distributions of these mean distances.
+Dictionary with v3 pops as keys and approved cohorts to use for training for those pops
+as values. Decisions were made based on results of an analysis to determine which v3
+samples/cohorts to use as training samples. This analysis consisted of computing per
+sample mean Euclidean distances to all samples in a given population, and per sample
+the mean Euclidean distances limited to only HGDP/1KG samples in each population. Then
+cohorts were excluded based on the per cohort distributions of these mean distances.
+
 Projects that were excluded based on this analysis are:
-afr: NHLBI_WholeGenome_Sequencing
-ami: Pedigree-Based Whole Genome Sequencing of Affective and Psychotic Disorders
-amr: NHLBI_WholeGenome_Sequencing
-amr: PAGE: Women''s Health Initiative (WHI)
+
+    - afr: NHLBI_WholeGenome_Sequencing
+    - ami: Pedigree-Based Whole Genome Sequencing of Affective and Psychotic Disorders
+    - amr: NHLBI_WholeGenome_Sequencing
+    - amr: PAGE: Women''s Health Initiative (WHI)
 """
 
 
@@ -86,7 +94,8 @@ def run_pca(
     Run population PCA using `run_pca_with_relateds`.
 
     :param related_samples_to_drop: Table of related samples to drop from PCA run.
-    :param include_unreleasable_samples: Should unreleasable samples be included in the PCA.
+    :param include_unreleasable_samples: Should unreleasable samples be included in the
+        PCA.
     :param n_pcs: Number of PCs to compute.
     :param test: Subset QC MT to small test dataset.
     :return: Eigenvalues, scores and loadings from PCA.
@@ -117,14 +126,23 @@ def prep_ht_for_rf(
     """
     Prepare the PCA scores hail Table for the random forest population assignment runs.
 
-    Either train the RF with only HGDP and TGP, or HGDP and TGP and all v2 known labels. Can also specify list of pops with known v3/v4 labels to include (v3_population_spike/v4_population_spike) for training. Pops supplied for v4 are specified by race/ethnicity and converted to an ancestry group using V4_POP_SPIKE_DICT.
+    Either train the RF with only HGDP and TGP, or HGDP and TGP and all v2 known labels.
 
-    :param include_unreleasable_samples: Should unreleasable samples be included in the PCA.
+    Can also specify list of pops with known v3/v4 labels to include
+    (v3_population_spike/v4_population_spike) for training. Pops supplied for v4 are
+    specified by race/ethnicity and converted to an ancestry group using
+    V4_POP_SPIKE_DICT.
+
+    :param include_unreleasable_samples: Should unreleasable samples be included in the
+        PCA.
     :param test: Whether RF should run on the test QC MT.
-    :param include_v2_known_in_training: Whether to train RF classifier using v2 known pop labels. Default is False.
-    :param v4_population_spike: Optional List of populations to spike into training. Must be in V4_POP_SPIKE_DICT dictionary. Default is None.
-    :param v3_population_spike: Optional List of populations to spike into training. Must be in V3_SPIKE_PROJECTS dictionary. Default is None.
-    :return Table with input for the random forest.
+    :param include_v2_known_in_training: Whether to train RF classifier using v2 known
+        pop labels. Default is False.
+    :param v4_population_spike: Optional List of populations to spike into training.
+        Must be in V4_POP_SPIKE_DICT dictionary. Default is None.
+    :param v3_population_spike: Optional List of populations to spike into training.
+        Must be in V3_SPIKE_PROJECTS dictionary. Default is None.
+    :return: Table with input for the random forest.
     """
     pop_pca_scores_ht = ancestry_pca_scores(include_unreleasable_samples, test).ht()
     joint_meta_ht = joint_qc_meta.ht()
@@ -218,18 +236,28 @@ def assign_pops(
     """
     Use a random forest model to assign global population labels based on the results from `run_pca`.
 
-    Training data is the known label for HGDP and 1KG samples and all v2 samples with known pops unless specificied to restrict only to 1KG and HGDP samples. Can also specify a list of pops with known v3/v4 labels to include (v3_population_spike/v4_population_spike) for training. Pops supplied for v4 are specified by race/ethnicity and converted to a ancestry group using V4_POP_SPIKE_DICT. The method assigns
-    a population label to all samples in the dataset.
+    Training data is the known label for HGDP and 1KG samples and all v2 samples with
+    known pops unless specificied to restrict only to 1KG and HGDP samples. Can also
+    specify a list of pops with known v3/v4 labels to include
+    (v3_population_spike/v4_population_spike) for training. Pops supplied for v4 are
+    specified by race/ethnicity and converted to a ancestry group using
+    V4_POP_SPIKE_DICT. The method assigns a population label to all samples in the
+    dataset.
 
     :param min_prob: Minimum RF probability for pop assignment.
-    :param include_unreleasable_samples: Whether unreleasable samples were included in PCA.
+    :param include_unreleasable_samples: Whether unreleasable samples were included in
+        PCA.
     :param pcs: List of PCs to use in the RF.
-    :param missing_label: Label for samples for which the assignment probability is smaller than `min_prob`.
+    :param missing_label: Label for samples for which the assignment probability is
+        smaller than `min_prob`.
     :param test: Whether running assigment on a test dataset.
     :param overwrite: Whether to overwrite existing files.
-    :param include_v2_known_in_training: Whether to train RF classifier using v2 known pop labels. Default is False.
-    :param v4_population_spike: Optional List of v4 populations to spike into the RF. Must be in v4_pop_spike dictionary. Defaults to None.
-    :param v3_population_spike: Optional List of v3 populations to spike into the RF. Must be in v4_pop_spike dictionary. Defaults to None.
+    :param include_v2_known_in_training: Whether to train RF classifier using v2 known
+        pop labels. Default is False.
+    :param v4_population_spike: Optional List of v4 populations to spike into the RF.
+        Must be in v4_pop_spike dictionary. Defaults to None.
+    :param v3_population_spike: Optional List of v3 populations to spike into the RF.
+        Must be in v4_pop_spike dictionary. Defaults to None.
     :return: Table of pop assignments and the RF model.
     """
     logger.info("Prepping HT for RF...")
@@ -463,8 +491,10 @@ def assign_pop_with_per_pop_probs(
     Assign samples to populations based on population-specific minimum RF probabilities.
 
     :param pop_ht: Table containing results of population inference.
-    :param min_prob_cutoffs: Dictionary with population as key, and minimum RF probability required to assign a sample to that population as value.
-    :param missing_label: Label for samples for which the assignment probability is smaller than required minimum probability.
+    :param min_prob_cutoffs: Dictionary with population as key, and minimum RF
+        probability required to assign a sample to that population as value.
+    :param missing_label: Label for samples for which the assignment probability is
+        smaller than required minimum probability.
     :return: Table with 'pop' annotation based on supplied per pop min probabilities.
     """
     min_prob_cutoffs = hl.literal(min_prob_cutoffs)
