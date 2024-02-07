@@ -230,10 +230,7 @@ def compute_allele_number_per_ref_site_with_adj(
     vds = vds_annotate_adj(vds, freq_ht)
     entry_agg_funcs = {
         "AN": get_allele_number_agg_func("LGT"),
-        "qual_hists": (
-            lambda t: hl.or_missing(t.in_freq, [t.GQ, t.DP, t.adj]),
-            _get_hists,
-        ),
+        "qual_hists": (lambda t: [t.GQ, t.DP, t.adj], _get_hists),
     }
 
     logger.info("Computing allele number and histograms per reference site...")
@@ -253,12 +250,13 @@ def compute_allele_number_per_ref_site_with_adj(
         "Adjusting allele number and histograms for het fail adj allele balance..."
     )
     global_annotations = ht.index_globals()
-    freq_correction = ht[het_fail_adj_ab_ht.locus]
+    freq_correction = ht[freq_ht.locus]
+    het_fail_adj_ab = het_fail_adj_ab_ht[freq_ht.key]
     qual_hists = freq_correction.qual_hists[0].qual_hists
 
     # Convert the het fail adj allele balance histograms to negative values so that
     # they can be subtracted from the reference histograms using merge_histograms.
-    sub_hists = het_fail_adj_ab_ht.qual_hists_het_fail_adj_ab
+    sub_hists = het_fail_adj_ab.qual_hists_het_fail_adj_ab
     sub_hists = sub_hists.annotate(
         **{
             k: v.annotate(
@@ -266,18 +264,21 @@ def compute_allele_number_per_ref_site_with_adj(
                 n_smaller=-v.n_smaller,
                 n_larger=-v.n_larger,
             )
-            for k, v in qual_hists.items()
+            for k, v in sub_hists.items()
         }
     )
 
-    freq_correction_ht = het_fail_adj_ab_ht.select(
-        AN=hl.map(
-            lambda an, an_fail_adj, m: hl.if_else(
-                m.get("group") == "adj", an - hl.coalesce(an_fail_adj, 0), an
+    freq_correction_ht = freq_ht.select(
+        AN=hl.coalesce(
+            hl.map(
+                lambda an, an_fail_adj, m: hl.if_else(
+                    m.get("group") == "adj", an - hl.coalesce(an_fail_adj, 0), an
+                ),
+                freq_correction.AN,
+                het_fail_adj_ab.AN_het_fail_adj_ab,
+                global_annotations.strata_meta,
             ),
             freq_correction.AN,
-            het_fail_adj_ab_ht.AN_het_fail_adj_ab,
-            global_annotations.strata_meta,
         ),
         qual_hists=freq_correction.qual_hists[0].annotate(
             qual_hists=hl.struct(
