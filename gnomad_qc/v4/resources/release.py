@@ -435,5 +435,5 @@ def get_false_dup_genes_path(
     :return: Combined custom liftover table path for the three genes in false duplication.
     """
     return (
-        f"{_release_root(version=release_version, test=test)}/gnomad.v{release_version}_three_false_dup_genes_liftover.ht"
+        f"{_release_root(version=release_version, test=test, data_type='joint')}/gnomad.v{release_version}_three_false_dup_genes_liftover.ht"
     )
