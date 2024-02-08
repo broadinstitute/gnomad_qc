@@ -70,8 +70,10 @@ def get_vep(test: bool = False, data_type: str = "exomes") -> VersionedTableReso
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource.
 
-    :param test: Whether to use a tmp path for analysis of the test Table instead of the full v4 Table.
-    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
+    :param test: Whether to use a tmp path for analysis of the test Table instead of
+        the full v4 Table.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
+        Default is "exomes".
     :return: gnomAD v4 VEP VersionedTableResource.
     """
     return VersionedTableResource(
@@ -93,8 +95,10 @@ def validate_vep_path(
     """
     Get the gnomAD v4 VEP annotation VersionedTableResource for validation counts.
 
-    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS.
-    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes". Default is "exomes".
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
+        full v4 VDS.
+    :param data_type: Data type of annotation resource. e.g. "exomes" or "genomes".
+        Default is "exomes".
     :return: gnomAD v4 VEP VersionedTableResource containing validity check.
     """
     return VersionedTableResource(

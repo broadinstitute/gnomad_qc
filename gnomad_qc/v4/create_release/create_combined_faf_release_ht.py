@@ -3,12 +3,13 @@ Create a joint gnomAD v4 exome and genome frequency and FAF.
 
 Generate a Hail Table containing frequencies for exomes and genomes in gnomAD v4, a
 joint frequency, a joint FAF, and the following tests comparing the two frequencies:
+
     - Hail's contingency table test -- chi-squared or Fisher’s exact test of
       independence depending on min cell count.
     - Cochran–Mantel–Haenszel test -- stratified test of independence for 2x2xK
       contingency tables.
-
 """
+
 import argparse
 import logging
 from typing import Dict, List, Set
@@ -123,9 +124,9 @@ def extract_freq_info(
     grpmax_expr = ht.grpmax
     fafmax_expr = ht.gen_anc_faf_max
     if prefix == "exomes":
-        # Note: The `grpmax` and `fafmax` structs in the exomes freq HT have two nested structs:
-        # `gnomad` and `non_ukb`. This section selects only the `gnomad` values (values across full
-        # v4 exomes release)
+        # Note: The `grpmax` and `fafmax` structs in the exomes freq HT have two nested
+        # structs: `gnomad` and `non_ukb`. This section selects only the `gnomad`
+        # values (values across full v4 exomes release)
         grpmax_expr = grpmax_expr.gnomad
         fafmax_expr = fafmax_expr.gnomad
 
@@ -154,7 +155,7 @@ def extract_freq_info(
 def get_joint_freq_and_faf(
     genomes_ht: hl.Table,
     exomes_ht: hl.Table,
-    faf_pops_to_exclude: Set[str] = POPS_TO_REMOVE_FOR_POPMAX,
+    faf_pops_to_exclude: Set[str] = POPS_TO_REMOVE_FOR_POPMAX["v4"],
 ) -> hl.Table:
     """
     Get joint genomes and exomes frequency and FAF information.
@@ -512,7 +513,7 @@ def main(args):
     overwrite = args.overwrite
     apply_release_filters = args.apply_release_filters
     pops = list(set(POPS["v3"] + POPS["v4"]))
-    faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX]
+    faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX["v4"]]
     combine_faf_resources = get_combine_faf_resources(
         overwrite,
         test_gene,
@@ -650,7 +651,8 @@ def main(args):
         hl.copy_log(get_logging_path("compute_combined_faf"))
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
@@ -741,6 +743,11 @@ if __name__ == "__main__":
         default=10000,
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:

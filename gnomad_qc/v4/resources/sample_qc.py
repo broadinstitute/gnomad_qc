@@ -24,10 +24,11 @@ def get_sample_qc_root(
     """
     Return path to sample QC root folder.
 
-    :param version: Version of sample QC path to return
-    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS
-    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
-    :return: Root to sample QC path
+    :param version: Version of sample QC path to return.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
+        full v4 VDS.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: Root to sample QC path.
     """
     return (
         f"gs://gnomad-tmp/gnomad_v{version}_testing/sample_qc/{data_type}"
@@ -52,10 +53,11 @@ def get_sample_qc(
         - multi_allelic
         - all
 
-    :param strat: Which stratification to return
-    :param test: Whether to use a tmp path for analysis of the test VDS instead of the full v4 VDS
-    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
-    :return: Sample QC table
+    :param strat: Which stratification to return.
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
+        full v4 VDS.
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: Sample QC table.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
@@ -188,9 +190,10 @@ def _get_platform_pca_ht_path(
     """
     Get path to files related to platform PCA.
 
-    :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores)
-    :param version: Version of sample QC path to return
-    :return: Path to requested platform PCA file
+    :param part: String indicating the type of PCA file to return (loadings,
+        eigenvalues, or scores).
+    :param version: Version of sample QC path to return.
+    :return: Path to requested platform PCA file.
     """
     return (
         f"{get_sample_qc_root(version, test, data_type='exomes')}/platform_inference/gnomad.exomes.v{version}.platform_pca_{part}.ht"
@@ -674,7 +677,8 @@ def _get_ancestry_pca_ht_path(
     """
     Get path to files related to ancestry PCA.
 
-    :param part: String indicating the type of PCA file to return (loadings, eigenvalues, or scores).
+    :param part: String indicating the type of PCA file to return (loadings,
+        eigenvalues, or scores).
     :param version: Version of sample QC path to return.
     :param include_unreleasable_samples: Whether the PCA included unreleasable samples.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
@@ -693,7 +697,8 @@ def ancestry_pca_loadings(
     """
     Get the ancestry PCA loadings VersionedTableResource.
 
-    :param include_unreleasable_samples: Whether to get the PCA loadings from the PCA that used unreleasable samples.
+    :param include_unreleasable_samples: Whether to get the PCA loadings from the PCA
+        that used unreleasable samples.
     :param test: Whether to use a temp path.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
     :return: Ancestry PCA loadings
@@ -719,10 +724,11 @@ def ancestry_pca_scores(
     """
     Get the ancestry PCA scores VersionedTableResource.
 
-    :param include_unreleasable_samples: Whether to get the PCA scores from the PCA that used unreleasable samples.
+    :param include_unreleasable_samples: Whether to get the PCA scores from the PCA
+        that used unreleasable samples.
     :param test: Whether to use a temp path.
-    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
-    :return: Ancestry PCA scores
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: Ancestry PCA scores.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
@@ -745,10 +751,11 @@ def ancestry_pca_eigenvalues(
     """
     Get the ancestry PCA eigenvalues VersionedTableResource.
 
-    :param include_unreleasable_samples: Whether to get the PCA eigenvalues from the PCA that used unreleasable samples.
+    :param include_unreleasable_samples: Whether to get the PCA eigenvalues from the
+        PCA that used unreleasable samples.
     :param test: Whether to use a temp path.
-    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint"
-    :return: Ancestry PCA eigenvalues
+    :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
+    :return: Ancestry PCA eigenvalues.
     """
     return VersionedTableResource(
         CURRENT_SAMPLE_QC_VERSION,
@@ -775,10 +782,10 @@ def pop_rf_path(
     """
     Path to RF model used for inferring sample populations.
 
-    :param version: gnomAD Version
+    :param version: gnomAD Version.
     :param test: Whether the RF assignment was from a test dataset.
     :param data_type: Data type used in sample QC, e.g. "exomes" or "joint".
-    :return: String path to sample pop RF model
+    :return: String path to sample pop RF model.
     """
     return (
         f"{get_sample_qc_root(version, test, data_type)}/ancestry_inference/gnomad.{data_type}.v{version}.pop.RF_fit.pickle"
@@ -1010,7 +1017,8 @@ def pedigree(
     :param fake: Whether to return the fake pedigree resource.
     :param test: Whether to use a tmp path for a test resource. This is only an option
         for the finalized pedigree, which depends on `ped_mendel_errors`.
-    :return: VersionedPedigreeResource of trio pedigree including multiple trios per family.
+    :return: VersionedPedigreeResource of trio pedigree including multiple trios per
+        family.
     """
     if finalized and fake:
         raise ValueError("Only one of 'finalized' or 'fake' can be True!")

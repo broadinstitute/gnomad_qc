@@ -44,8 +44,8 @@ def meta(
     """
     Get the gnomAD v4 sample QC meta VersionedTableResource.
 
-    Function will check that metadata exists for the requested gnomAD version and data type
-    and will throw an error if it doesn't exist.
+    Function will check that metadata exists for the requested gnomAD version and data
+    type and will throw an error if it doesn't exist.
 
     :param version: gnomAD version.
     :param data_type: Data type ("exomes" or "genomes"). Default is "exomes".

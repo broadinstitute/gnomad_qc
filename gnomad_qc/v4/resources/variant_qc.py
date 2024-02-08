@@ -90,6 +90,7 @@ Dictionary containing necessary information for truth samples
 
 Current truth samples available are syndip and NA12878. Available data for each are the
 following:
+
     - s: Sample name in the callset
     - truth_mt: Truth sample MatrixTable resource
     - hc_intervals: High confidence interval Table resource in truth sample
@@ -257,11 +258,11 @@ def get_rf_training(model_id: str, test: bool = False) -> VersionedTableResource
 def get_variant_qc_result(
     model_id: str, test: bool = False, split: bool = True
 ) -> VersionedTableResource:
-    """
+    r"""
     Get the results of variant QC filtering for a given run.
 
-    :param model_id: Model ID of variant QC run to load. Must start with 'rf_', 'vqsr_',
-        or 'if_'.
+    :param model_id: Model ID of variant QC run to load. Must start with 'rf\_',
+        'vqsr\_', or 'if\_'.
     :param test: Whether to use a tmp path for variant QC tests.
     :param split: Whether to return the split or unsplit variant QC result.
     :return: VersionedTableResource for variant QC results.

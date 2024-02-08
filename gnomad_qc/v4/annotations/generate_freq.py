@@ -8,6 +8,7 @@ existing annotations when given the AF threshold using a high AB het array. The 
 then computes the inbreeding coefficient using the raw call stats. Finally, it computes
 the filtering allele frequency and grpmax with the AB-adjusted frequencies.
 """
+
 import argparse
 import logging
 from copy import deepcopy
@@ -846,8 +847,8 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     grpmax_exprs = {}
     gen_anc_faf_max_exprs = {}
     for dataset, (freq, meta) in freq_metas.items():
-        faf, faf_meta = faf_expr(freq, meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
-        grpmax = pop_max_expr(freq, meta, POPS_TO_REMOVE_FOR_POPMAX)
+        faf, faf_meta = faf_expr(freq, meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX["v4"])
+        grpmax = pop_max_expr(freq, meta, POPS_TO_REMOVE_FOR_POPMAX["v4"])
         grpmax = grpmax.annotate(
             gen_anc=grpmax.pop,
             faf95=faf[
@@ -1091,7 +1092,8 @@ def main(args):
         hl.copy_log(get_logging_path("frequency_data"))
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--use-test-dataset",
@@ -1191,6 +1193,12 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:

@@ -24,13 +24,13 @@ def import_variant_qc_vcf(
     is_split: bool = False,
     deduplicate_check: bool = False,
 ) -> Union[hl.Table, Tuple[hl.Table, hl.Table]]:
-    """
+    r"""
     Import variant QC result site VCF into a HT.
 
     :param vcf_path: Path to input variant QC result site vcf. This can be specified
         as Hadoop glob patterns.
-    :param model_id: Model ID for the variant QC results. Must start with 'rf_',
-        'vqsr_', or 'if_'.
+    :param model_id: Model ID for the variant QC results. Must start with 'rf\_',
+        'vqsr\_', or 'if\_'.
     :param num_partitions: Number of partitions to use for the output HT.
     :param import_header_path: Optional path to a header file to use for import.
     :param array_elements_required: Value of array_elements_required to pass to
@@ -151,7 +151,8 @@ def main(args):
         )
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-o",
@@ -263,6 +264,12 @@ if __name__ == "__main__":
         type=str,
         nargs="+",
     )
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:

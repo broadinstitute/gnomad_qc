@@ -349,6 +349,7 @@ def annotate_relatedness_filters(
 
     Add the following related filter boolean annotations to the input `ht` under a
     `relatedness_filters` struct:
+
         - related: Whether the sample was filtered for second-degree (or closer)
           relatedness in the ancestry inference PCA.
         - duplicate_or_twin: Whether the filtered sample has a duplicate or twin among
@@ -361,7 +362,8 @@ def annotate_relatedness_filters(
           annotations.
 
     These related filter annotations are also provided for release filtered samples
-    added to the input `ht` under a `release_relatedness_filters` struct::
+    added to the input `ht` under a `release_relatedness_filters` struct:
+
         - related: Whether the release filtered sample was filtered for
           second-degree (or closer) relatedness in the final release.
         - duplicate_or_twin: Whether the release filtered sample has a
@@ -428,7 +430,7 @@ def add_annotations(
     ann_ht_missing: Optional[List[str]] = None,
     sample_count_match: bool = True,
 ) -> hl.Table:
-    """
+    r"""
     Annotate `base_ht` with contents of `ann_ht` and optionally check that sample counts match.
 
     :param base_ht: Table to annotate.
@@ -439,7 +441,8 @@ def add_annotations(
     :param ann_top_level: Whether to add all annotations on `ann_ht` to the top level
         of `base_ht` instead of grouping them under a new annotation, `ann_label`.
     :param global_top_level: Whether to add all global annotations on `ann_ht` to the
-        top level instead of grouping them under a new annotation, `ann_label`_parameters.
+        top level instead of grouping them under a new annotation,
+        "`ann_label`\_parameters".
     :param base_ht_missing: Optional list of approved samples missing from `base_ht`,
         but present in `ann_ht`.
     :param ann_ht_missing: Optional list of approved samples missing from `ann_ht`, but
@@ -748,7 +751,8 @@ def main(args):
     logger.info("Final sample count: %s", ht.count())
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite",
@@ -759,6 +763,11 @@ if __name__ == "__main__":
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:

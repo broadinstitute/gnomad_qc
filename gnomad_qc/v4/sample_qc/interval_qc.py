@@ -2,11 +2,13 @@
 Script to define high quality intervals based on per interval aggregate statistics over samples.
 
 Two methods are available for defining high quality intervals:
-    - mean fraction of bases over DP 0 to determine high quality intervals.
-    - fraction of samples with a mean interval coverage over a specified coverage that is different for autosomes and
-      sex chromosomes.
 
-Aggregate statistics over samples can also be stratified by platform to determine per-platform high quality intervals.
+    - mean fraction of bases over DP 0 to determine high quality intervals.
+    - fraction of samples with a mean interval coverage over a specified coverage that
+      is different for autosomes and sex chromosomes.
+
+Aggregate statistics over samples can also be stratified by platform to determine
+per-platform high quality intervals.
 """
 import argparse
 import functools
@@ -103,14 +105,17 @@ def filter_to_test(
 
     .. note::
 
-        This returns the first `num_partitions` in `mt`, the first `num_partitions` in `sex_mt`, and all of chrY.
-        It makes the assumption that the first `num_partitions` in `mt` are on chr1 and that the first `num_partitions`
-        in `sex_mt` are on chrY. If `num_partitions` is too high this may not hold true.
+        This returns the first `num_partitions` in `mt`, the first `num_partitions` in
+        `sex_mt`, and all of chrY. It makes the assumption that the first
+        `num_partitions` in `mt` are on chr1 and that the first `num_partitions` in
+        `sex_mt` are on chrY. If `num_partitions` is too high this may not hold true.
 
     :param mt: Input MatrixTable to filter to specified number of partitions on chr1.
-    :param sex_mt: Input MatrixTable to filter to specified number of partitions on chrX and all of chrY.
+    :param sex_mt: Input MatrixTable to filter to specified number of partitions on
+        chrX and all of chrY.
     :param num_partitions: Number of partitions to grab from mt.
-    :return: Input MatrixTables filtered to `num_partitions` on chr1, chrX, and all of chrY.
+    :return: Input MatrixTables filtered to `num_partitions` on chr1, chrX, and all
+        of chrY.
     """
     logger.info(
         "Filtering to columns in both the coverage MT and the sex coverage MT for"
@@ -139,36 +144,48 @@ def compute_interval_qc(
     """
     Compute interval QC aggregate statistics per interval, per platform, and optionally split by sex karyotype.
 
-    The following annotations must be on `mt` (interval-by-sample MT output from `hl.vds.interval_coverage`):
+    The following annotations must be on `mt` (interval-by-sample MT output from
+    `hl.vds.interval_coverage`):
+
         - interval - Genomic interval of interest.
         - mean_dp - Mean depth of bases across the interval.
-        - fraction_over_dp_threshold - Fraction of interval (in bases) above each DP threshold. Second element must be
-        dp >= 1 (dp > 0).
+        - fraction_over_dp_threshold - Fraction of interval (in bases) above each DP
+          threshold. Second element must be dp >= 1 (dp > 0).
 
         If `split_by_sex`:
-            - sex_karyotype - StringExpression annotation with sex karyotype information including 'XX' and 'XY' values.
 
-    The `platform_ht` must have a 'qc_platform' annotation indicating the platform each sample was assigned.
+            - sex_karyotype - StringExpression annotation with sex karyotype
+              information including 'XX' and 'XY' values.
+
+    The `platform_ht` must have a 'qc_platform' annotation indicating the platform each
+    sample was assigned.
 
     Returns a Table with the following annotations:
-        - interval_mean_dp - Mean DP of the interval across 'all' samples and optionally split by 'XX' and 'XY'.
-        - fraction_over_{dp}x - for all 'dp' in `mean_dp_thresholds`, which is the fraction of samples with mean DP
-            over 'dp'. Computed across 'all' samples and optionally split by 'XX' and 'XY'.
-        - mean_fraction_over_dp_0 - Mean of the fraction of the interval (in bases) that is dp > 0. Computed across
-            'all' samples and optionally split by 'XX' and 'XY'.
-        - platform_interval_mean_dp - Same as 'interval_mean_dp', but instead of containing a single value, 'all'
-            (and 'XX' and 'XY' if `split_by_sex` is True) contains a dictionary of per platform values.
-        - platform_fraction_over_{dp}x  - Same as 'fraction_over_{dp}x', but instead of containing a single value, 'all'
-            (and 'XX' and 'XY' if `split_by_sex` is True) contains a dictionary of per platform values.
-        - platform_mean_fraction_over_dp_0 - Same as 'mean_fraction_over_dp_0', but instead of containing a single
-            value, 'all' (and 'XX' and 'XY' if `split_by_sex` is True) contains a dictionary of per platform values.
+
+        - interval_mean_dp - Mean DP of the interval across 'all' samples and
+          optionally split by 'XX' and 'XY'.
+        - fraction_over_{dp}x - for all 'dp' in `mean_dp_thresholds`, which is the
+          fraction of samples with mean DP over 'dp'. Computed across 'all' samples and
+          optionally split by 'XX' and 'XY'.
+        - mean_fraction_over_dp_0 - Mean of the fraction of the interval (in bases)
+          that is dp > 0. Computed across 'all' samples and optionally split by 'XX'
+          and 'XY'.
+        - platform_interval_mean_dp - Same as 'interval_mean_dp', but instead of
+          containing a single value, 'all' (and 'XX' and 'XY' if `split_by_sex` is
+          True) contains a dictionary of per platform values.
+        - platform_fraction_over_{dp}x  - Same as 'fraction_over_{dp}x', but instead of
+          containing a single value, 'all' (and 'XX' and 'XY' if `split_by_sex` is
+          True) contains a dictionary of per platform values.
+        - platform_mean_fraction_over_dp_0 - Same as 'mean_fraction_over_dp_0', but
+          instead of containing a single value, 'all' (and 'XX' and 'XY' if
+          `split_by_sex` is True) contains a dictionary of per platform values.
 
     :param mt: Input interval coverage MatrixTable.
     :param platform_ht: Input platform assignment Table.
-    :param mean_dp_thresholds: List of mean DP thresholds to use for computing the fraction of samples with mean
-        interval DP >= the threshold.
-    :param split_by_sex: Whether the interval QC should be stratified by sex. If True, `mt` must be annotated with
-        'sex_karyotype'.
+    :param mean_dp_thresholds: List of mean DP thresholds to use for computing the
+        fraction of samples with mean interval DP >= the threshold.
+    :param split_by_sex: Whether the interval QC should be stratified by sex. If True,
+        `mt` must be annotated with 'sex_karyotype'.
     :return: Table with interval QC annotations.
     """
 
@@ -181,8 +198,10 @@ def compute_interval_qc(
         Call `agg_func` on `expr` with optional stratification by sex karyotype and `group_by`.
 
         :param expr: Expression to pass to `agg_func`.
-        :param agg_func: Function to use for aggregation of `expr`. Default is hl.agg.mean.
-        :param group_by: Optional StringExpression to group by before applying `agg_func` to `expr`.
+        :param agg_func: Function to use for aggregation of `expr`. Default is
+            `hl.agg.mean`.
+        :param group_by: Optional StringExpression to group by before applying
+            `agg_func` to `expr`.
         :return: Aggregation expression.
         """
         if group_by is not None:
@@ -256,39 +275,53 @@ def get_high_qual_cutoff_dict(
 
     This Dictionary is meant to be used as input to `get_interval_qc_pass`.
 
-    If `split_by_sex` is True, the 'x_non_par' dictionary value will contain a cutoff for both 'XX' and 'XY', and
-    'y_non_par' will contain a cutoff for only 'XY'.
+    If `split_by_sex` is True, the 'x_non_par' dictionary value will contain a cutoff
+    for both 'XX' and 'XY', and 'y_non_par' will contain a cutoff for only 'XY'.
 
     The returned dictionary will be in this form if `split_by_sex` is False:
-      {
-          'autosome_par': [(`autosome_par_qc_ann`, 'all', `autosome_par_cutoff`)],
-          'x_non_par': [(`x_nonpar_qc_ann`, 'all', `x_nonpar_cutoff`)],
-          'y_non_par': [(`y_nonpar_qc_ann`, 'all', `y_nonpar_cutoff`)]
-      }
+
+        .. code-block::
+
+            {
+                'autosome_par': [(autosome_par_qc_ann, 'all', autosome_par_cutoff)],
+                'x_non_par': [(x_nonpar_qc_ann, 'all', x_nonpar_cutoff)],
+                'y_non_par': [(y_nonpar_qc_ann, 'all', y_nonpar_cutoff)]
+            }
 
     The returned dictionary will be in this form if `split_by_sex` is True:
-      {
-          'autosome_par': [(`autosome_par_qc_ann`, 'all', `autosome_par_cutoff`)],
-          'x_non_par': [(`x_nonpar_qc_ann`, 'XX', `x_nonpar_cutoff`), (`y_nonpar_qc_ann`, 'XY', `y_nonpar_cutoff`)],
-          'y_non_par': [(`y_nonpar_qc_ann`, 'XY', `y_nonpar_cutoff`)]
-      }
 
-    :param autosome_par_cutoff: Cutoff to define high coverage intervals for autosome and PAR intervals. Intervals
-        with `autosome_par_qc_ann` > `autosome_par_cutoff` are considered high coverage.
-    :param x_nonpar_cutoff: Cutoff to define high coverage intervals for chromosome X non PAR intervals (for XX
-        individuals if `split_by_sex` is True). Intervals with `x_nonpar_qc_ann` > `x_nonpar_cutoff` are considered
-        high coverage.
-    :param y_nonpar_cutoff: Cutoff to define high coverage intervals for chromosome Y non PAR intervals (for XY
-        individuals if `split_by_sex` is True). Intervals with `y_nonpar_qc_ann` > `y_nonpar_cutoff` are considered
-        high coverage. Also used to define high coverage X non PAR intervals if `split_by_sex` is True.
-    :param autosome_par_qc_ann: Annotation in an interval QC HT that will be used to filter high coverage intervals for
-        autosomes and PAR regions.
-    :param x_nonpar_qc_ann: Annotation in an interval QC HT that will be used to filter high coverage intervals for
-        chromosome X non PAR regions.
-    :param y_nonpar_qc_ann: Annotation in an interval QC HT that will be used to filter high coverage intervals for
-        chromosome Y non PAR regions. Also used for chromosome X non PAR regions if `split_by_sex` is True.
-    :param split_by_sex: Whether to split 'x_non_par' and 'y_non_par' cutoffs based on sex karyotype. Default is False.
-    :return: Dictionary of annotations and cutoffs to use to define high quality intervals.
+        .. code-block::
+
+            {
+                'autosome_par': [(autosome_par_qc_ann, 'all', autosome_par_cutoff)],
+                'x_non_par': [
+                    (x_nonpar_qc_ann, 'XX', x_nonpar_cutoff),
+                    (y_nonpar_qc_ann, 'XY', y_nonpar_cutoff)
+                ],
+                'y_non_par': [(y_nonpar_qc_ann, 'XY', y_nonpar_cutoff)]
+            }
+
+    :param autosome_par_cutoff: Cutoff to define high coverage intervals for autosome
+        and PAR intervals. Intervals with `autosome_par_qc_ann` > `autosome_par_cutoff`
+        are considered high coverage.
+    :param x_nonpar_cutoff: Cutoff to define high coverage intervals for chromosome X
+        non-PAR intervals (for XX individuals if `split_by_sex` is True). Intervals
+        with `x_nonpar_qc_ann` > `x_nonpar_cutoff` are considered high coverage.
+    :param y_nonpar_cutoff: Cutoff to define high coverage intervals for chromosome Y
+        non-PAR intervals (for XY individuals if `split_by_sex` is True). Intervals
+        with `y_nonpar_qc_ann` > `y_nonpar_cutoff` are considered high coverage. Also
+        used to define high coverage X non-PAR intervals if `split_by_sex` is True.
+    :param autosome_par_qc_ann: Annotation in an interval QC HT that will be used to
+        filter high coverage intervals for autosomes and PAR regions.
+    :param x_nonpar_qc_ann: Annotation in an interval QC HT that will be used to filter
+        high coverage intervals for chromosome X non-PAR regions.
+    :param y_nonpar_qc_ann: Annotation in an interval QC HT that will be used to filter
+        high coverage intervals for chromosome Y non-PAR regions. Also used for
+        chromosome X non-PAR regions if `split_by_sex` is True.
+    :param split_by_sex: Whether to split 'x_non_par' and 'y_non_par' cutoffs based on
+        sex karyotype. Default is False.
+    :return: Dictionary of annotations and cutoffs to use to define high quality
+        intervals.
     """
     if split_by_sex:
         xx = "XX"
@@ -319,47 +352,61 @@ def get_interval_qc_pass(
     all_platforms: bool = False,
     min_platform_size: int = 100,
 ) -> hl.Table:
-    """
+    r"""
     Add `interval_qc_pass` annotation to indicate whether the interval is high quality.
 
-    `interval_qc_ht` is the output of `compute_interval_qc` and contains annotations that can be used in the
-    `high_qual_cutoffs` dictionary to indicate intervals that are considered high quality.
+    `interval_qc_ht` is the output of `compute_interval_qc` and contains annotations
+    that can be used in the `high_qual_cutoffs` dictionary to indicate intervals that
+    are considered high quality.
 
-    The `high_qual_cutoffs` dictionary can be created using `get_high_qual_cutoff_dict`. It specifies annotations and
-    cutoffs  to use for determining high quality intervals. Annotations in the `high_qual_cutoffs` dictionary must
-    exist in  the `interval_qc_ht` Table. The `high_qual_cutoffs` dictionary must have the following keys:
-    'autosome_par', 'x_non_par' and 'y_non_par'. Each Key specifies a list of annotations and cutoffs to use for
+    The `high_qual_cutoffs` dictionary can be created using
+    `get_high_qual_cutoff_dict`. It specifies annotations and cutoffs  to use for
+    determining high quality intervals. Annotations in the `high_qual_cutoffs`
+    dictionary must exist in  the `interval_qc_ht` Table. The `high_qual_cutoffs`
+    dictionary must have the following keys: 'autosome_par', 'x_non_par' and
+    'y_non_par'. Each Key specifies a list of annotations and cutoffs to use for
     filtering.
 
-    Example of `high_qual_cutoffs` dictionary using annotations for the proportion of samples over a specified coverage:
-      {
-          'autosome_par': [('fraction_over_20x', 'all', 0.85)],
-          'x_non_par': [('fraction_over_20x', 'XX', 0.85), ('fraction_over_10x', 'XY', 0.85)],
-          'y_non_par': [('fraction_over_10x', 'XY', 0.85)]
-      }
+    Example of `high_qual_cutoffs` dictionary using annotations for the proportion of
+    samples over a specified coverage:
 
-    Example of `high_qual_cutoffs` dictionary using annotations for the proportion of samples over a specified coverage
-    and specifying differences by sex karyotype:
-      {
-          'autosome_par': [('fraction_over_20x', 'all', 0.85)],
-          'x_non_par': [('fraction_over_10x', 'all', 0.80)],
-          'y_non_par': [('fraction_over_5x', 'all', 0.35)]
-      }
+        .. code-block::
 
-    Only one of 'per_platform' and 'all_platforms' can be True, and if `per_platform` or `all_platforms` is True,
-    a prefix of "platform_" is added before the annotation in the `high_qual_cutoffs` dictionary.
+            {
+                'autosome_par': [('fraction_over_20x', 'all', 0.85)],
+                'x_non_par': [
+                    ('fraction_over_20x', 'XX', 0.85), ('fraction_over_10x', 'XY', 0.85)
+                ],
+                'y_non_par': [('fraction_over_10x', 'XY', 0.85)]
+            }
+
+    Example of `high_qual_cutoffs` dictionary using annotations for the proportion of
+    samples over a specified coverage and specifying differences by sex karyotype:
+
+        .. code-block::
+
+            {
+                'autosome_par': [('fraction_over_20x', 'all', 0.85)],
+                'x_non_par': [('fraction_over_10x', 'all', 0.80)],
+                'y_non_par': [('fraction_over_5x', 'all', 0.35)]
+            }
+
+    Only one of 'per_platform' and 'all_platforms' can be True, and if `per_platform`
+    or `all_platforms` is True, a prefix of "platform\_" is added before the annotation
+    in the `high_qual_cutoffs` dictionary.
 
     :param interval_qc_ht: Input interval QC Table.
-    :param high_qual_cutoffs: Dictionary containing annotations and cutoffs to use for filtering to high coverage
-        intervals.
-    :param per_platform: Whether to make the interval QC pass annotation a DictionaryExpression with interval QC pass
-        per platform.
-    :param all_platforms: Whether to consider an interval as passing QC only if it passes interval QC per platform
-        across all platforms (with a sample size above `min_platform_size`).
-    :param min_platform_size: Required size of a platform to be considered in `all_platforms`. Only platforms that
-        have # of samples > 'min_platform_size' are used to determine intervals that have a high coverage across all
-        platforms.
-    :return: MatrixTable or Table with samples removed
+    :param high_qual_cutoffs: Dictionary containing annotations and cutoffs to use for
+        filtering to high coverage intervals.
+    :param per_platform: Whether to make the interval QC pass annotation a
+        DictionaryExpression with interval QC pass per platform.
+    :param all_platforms: Whether to consider an interval as passing QC only if it
+        passes interval QC per platform across all platforms (with a sample size above
+        `min_platform_size`).
+    :param min_platform_size: Required size of a platform to be considered in
+        `all_platforms`. Only platforms that have # of samples > 'min_platform_size'
+        are used to determine intervals that have a high coverage across all platforms.
+    :return: MatrixTable or Table with samples removed.
     """
     if per_platform and all_platforms:
         raise ValueError("Only one of 'per_platform' and 'all_platforms' can be True!")
@@ -717,7 +764,8 @@ def main(args):
         hl.copy_log(get_logging_path("interval_qc"))
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite",
@@ -893,6 +941,11 @@ if __name__ == "__main__":
         default=0.85,
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.generate_interval_qc_pass_ht and not (

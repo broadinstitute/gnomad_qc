@@ -11,7 +11,6 @@ other call stats related annotations, including: filtering allele frequencies ('
 'grpmax', 'gen_anc_faf_max' and 'InbreedingCoeff' as done in v4.0 exomes.
 """
 
-
 import argparse
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -258,6 +257,7 @@ def add_updated_sample_qc_annotations(ht: hl.Table) -> hl.Table:
 
         The following annotations need to be updated for the v4.0 genomes release based
         on the latest sample QC results of the subset:
+
             - `hgdp_tgp_meta.subcontinental_pca.outlier`: to apply the updated pop
               outlier filter implemented by Alicia Martin's group.
             - `gnomad_sample_filters.hard_filtered`: to apply the recomputed freemix
@@ -1077,8 +1077,10 @@ def finalize_v4_genomes_callstats(
     )
 
     # Compute filtering allele frequency (faf), grpmax, and gen_anc_faf_max.
-    faf, faf_meta = faf_expr(ht.freq, freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
-    grpmax = pop_max_expr(ht.freq, freq_meta, POPS_TO_REMOVE_FOR_POPMAX)
+    faf, faf_meta = faf_expr(
+        ht.freq, freq_meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX["v3"]
+    )
+    grpmax = pop_max_expr(ht.freq, freq_meta, POPS_TO_REMOVE_FOR_POPMAX["v3"])
     grpmax = grpmax.annotate(
         gen_anc=grpmax.pop,
         faf95=faf[
@@ -1879,7 +1881,8 @@ def main(args):
         ht.write(res.v4_freq_ht.path, overwrite=overwrite)
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser(
         description="This script creates the v4.0 genomes release HT."
     )
@@ -1962,6 +1965,11 @@ if __name__ == "__main__":
         action="store_true",
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:
