@@ -68,6 +68,9 @@ MODULE_DOC_TEMPLATE = """{title}
 
 {argparse_doc}
 
+Module Functions
+================
+
 .. gnomad_automodulesummary:: {module_name}
 
 .. automodule:: {module_name}
