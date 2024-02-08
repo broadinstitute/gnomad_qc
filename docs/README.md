@@ -1,6 +1,6 @@
 # Documentation
 
-Documentation for gnomad is generated using [Sphinx](https://www.sphinx-doc.org/en/master/).
+Documentation for gnomad_qc is generated using [Sphinx](https://www.sphinx-doc.org/en/master/).
 
 To build the documentation, run:
 
