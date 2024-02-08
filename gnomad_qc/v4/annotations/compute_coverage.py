@@ -348,7 +348,8 @@ def main(args):
         hl.copy_log(f"gs://gnomad-tmp-4day/coverage/compute_coverage.log")
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
@@ -404,4 +405,9 @@ if __name__ == "__main__":
         "--export-release-files", help="Exports coverage TSV file.", action="store_true"
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     main(parser.parse_args())

@@ -325,7 +325,8 @@ def main(args):
         meta_ht.export(f"{output_path}/metadata.tsv.bgz")
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser(
         description=(
             "This script subsets gnomAD using a list of samples or terra workspaces."
@@ -404,6 +405,10 @@ if __name__ == "__main__":
         help="Overwrite all data from this subset (default: False).",
         action="store_true",
     )
-    args = parser.parse_args()
 
-    main(args)
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
+    main(parser.parse_args())

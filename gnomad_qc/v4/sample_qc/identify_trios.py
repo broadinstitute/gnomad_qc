@@ -566,7 +566,8 @@ def main(args):
             d.write(json.dumps(filters))
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--test",
@@ -723,6 +724,11 @@ if __name__ == "__main__":
         default=24,
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.ukb_max_mendel and not args.max_mendel:
@@ -735,6 +741,7 @@ if __name__ == "__main__":
             "--ukb-max-de-novo requires --max-de-novo to be specified for non-UKB "
             "samples."
         )
+
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
             main(args)

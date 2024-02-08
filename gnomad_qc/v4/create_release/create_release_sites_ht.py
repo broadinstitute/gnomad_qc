@@ -66,8 +66,7 @@ SUBSETS_TO_DROP = remove_fields_from_constant(SUBSETS["v3"], ["hgdp", "tgp"])
 
 # Remove InbreedingCoeff from allele-specific fields because it is processed separately
 # from the other fields.
-AS_FIELDS = deepcopy(AS_FIELDS)
-AS_FIELDS.remove("InbreedingCoeff")
+AS_FIELDS = [x for x in AS_FIELDS if x != "InbreedingCoeff"]
 SITE_FIELDS = deepcopy(SITE_FIELDS)
 
 # Remove original_alleles for containing non-releasable alleles.
@@ -146,14 +145,17 @@ def get_config(
     Get configuration dictionary for specified data type.
 
     Format:
+
+    .. code-block::
+
         '<Name of dataset>': {
-                'ht': '<Optional Hail Table for direct annotation extraction. This is not used for the join.>',
-                'path': 'gs://path/to/hail_table.ht',
-                'select': '<Optional list of fields to select or dict of new field name to location of old field in the dataset.>',
-                'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
-                'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
-                'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>'
-            },
+            'ht': '<Optional Hail Table for direct annotation extraction. This is not used for the join.>',
+            'path': 'gs://path/to/hail_table.ht',
+            'select': '<Optional list of fields to select or dict of new field name to location of old field in the dataset.>',
+            'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
+            'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
+            'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>'
+        },
 
     .. warning::
 
@@ -340,10 +342,16 @@ def custom_freq_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
     These annotations will be combined with the others from freq's select in the config.
 
     .. note::
-        - The faf95 field in the grpmax struct is the FAF of the genetic ancestry group with the largest AF (grpmax AF).
-        - The FAF fields within the gen_anc_faf_max struct contains the FAFs from the genetic ancestry group(s) with the largest FAFs
-        - These values aren't necessarily the same; the group with the highest AF for a variant isn't necessarily the group with the highest FAF for a variant
-        - The filtering allele frequencies that are used by the community are the values within the gen_anc_faf_max struct, NOT grpmax FAF, which is why we are dropping grpmax.faf95 and renaming gen_anc_faf_max
+
+        - The faf95 field in the grpmax struct is the FAF of the genetic ancestry group
+          with the largest AF (grpmax AF).
+        - The FAF fields within the gen_anc_faf_max struct contains the FAFs from the
+          genetic ancestry group(s) with the largest FAFs
+        - These values aren't necessarily the same; the group with the highest AF for a
+          variant isn't necessarily the group with the highest FAF for a variant
+        - The filtering allele frequencies that are used by the community are the
+          values within the gen_anc_faf_max struct, NOT grpmax FAF, which is why we are
+          dropping grpmax.faf95 and renaming gen_anc_faf_max
 
     :param ht: Freq Hail Table
     :param data_type: Dataset's data type: 'exomes' or 'genomes'.
@@ -883,7 +891,8 @@ def main(args):
     logger.info("Final variant count: %d", ht.count())
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--new-partition-percent",
@@ -943,7 +952,13 @@ if __name__ == "__main__":
         default=10000,
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
+
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
             main(args)

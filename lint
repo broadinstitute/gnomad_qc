@@ -6,4 +6,4 @@ cd "$(dirname "$0")"
 # rather than a package, Pylint must be run with the list of individual Python
 # modules.
 
-find . -type f -name '*.py' | xargs pylint "$@"
+find gnomad_qc -type f -name '*.py' | xargs pylint "$@"

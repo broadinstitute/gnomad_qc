@@ -1,4 +1,4 @@
-# noqa: D100
+"""Script to validate and export gnomAD VCFs."""
 
 import argparse
 import logging
@@ -242,7 +242,7 @@ def filter_to_test(ht: hl.Table, num_partitions: int = 2) -> hl.Table:
     """
     Filter Table to `num_partitions` partitions on chr20, chrX, and chrY for testing.
 
-    :param t: Input Table to filter.
+    :param ht: Input Table to filter.
     :param num_partitions: Number of partitions to grab from each chromosome.
     :return: Input Table filtered to `num_partitions` on chr20, chrX, and chrY.
     """
@@ -271,13 +271,16 @@ def unfurl_nested_annotations(
     """
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays.
 
-    The values of the returned dictionary are Hail Expressions describing how to access the corresponding values.
+    The values of the returned dictionary are Hail Expressions describing how to access
+    the corresponding values.
 
     :param ht: Table containing the nested variant annotation arrays to be unfurled.
     :param entries_to_remove: Optional Set of frequency entries to remove for vcf_export.
-    :param data_type: Data type to unfurl nested annotations for. One of "exomes" or "genomes".
-    :return: StructExpression containing variant annotations and their corresponding expressions and updated entries and set of frequency entries to remove
-        to remove from the VCF.
+    :param data_type: Data type to unfurl nested annotations for. One of "exomes" or
+        "genomes".
+    :return: StructExpression containing variant annotations and their corresponding
+        expressions and updated entries and set of frequency entries to remove from the
+        VCF.
     """
     expr_dict = {}
 
@@ -417,7 +420,6 @@ def make_info_expr(
     :param data_type: Data type to make info expression for. One of "exomes" or
         "genomes". Default is "exomes".
     :return: Dictionary containing Hail expressions for relevant INFO annotations.
-    :rtype: Dict[str, hl.expr.Expression]
     """
     vcf_info_dict = {}
     # Add site-level annotations and AS annotations to vcf_info_dict
@@ -562,16 +564,22 @@ def populate_subset_info_dict(
     Call `make_info_dict` to populate INFO dictionary for the requested `subset`.
 
     Creates:
-        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic ancestry group, sex both for adj and raw data
-        - INFO fields for filtering allele frequency (faf) annotations
+        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic
+            ancestry group, sex both for adj and raw data.
+        - INFO fields for filtering allele frequency (faf) annotations.
 
-    :param subset: Sample subset in dataset. "" is used as a placeholder for the full dataset.
-    :param description_text: Text describing the sample subset that should be added to the INFO description.
+    :param subset: Sample subset in dataset. "" is used as a placeholder for the full
+        dataset.
+    :param description_text: Text describing the sample subset that should be added to
+        the INFO description.
     :param data_type: One of "exomes" or "genomes". Default is "exomes".
-    :param pops: Dict of sample global genetic ancestry names for the gnomAD data type. Default is POPS.
-    :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group names(values).  Default is FAF_POPS.
+    :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
+        Default is POPS.
+    :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
+        names (values). Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
-    :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
+    :param label_delimiter: String to use as delimiter when making group label
+        combinations. Default is '_'.
     :return: Dictionary containing Subset specific INFO header fields.
     """
     vcf_info_dict = {}
@@ -656,26 +664,32 @@ def populate_info_dict(
     Used during VCF export.
 
     Creates:
-        - INFO fields for age histograms (bin freq, n_smaller, and n_larger for heterozygous and homozygous variant carriers)
-        - INFO fields for grpmax AC, AN, AF, nhomalt, and grpmax genetic ancestry group
-        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic ancestry group, sex both for adj and raw data
-        - INFO fields for filtering allele frequency (faf) annotations
-        - INFO fields for variant histograms (hist_bin_freq for each histogram and hist_n_larger for DP histograms)
+        - INFO fields for age histograms (bin freq, n_smaller, and n_larger for
+          heterozygous and homozygous variant carriers).
+        - INFO fields for grpmax AC, AN, AF, nhomalt, and grpmax genetic ancestry group.
+        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic
+          ancestry group, sex both for adj and raw data.
+        - INFO fields for filtering allele frequency (faf) annotations.
+        - INFO fields for variant histograms (hist_bin_freq for each histogram and
+          hist_n_larger for DP histograms).
 
     :param info_fields: List of info fields to add to the info dict. Default is None.
-    :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
-    :param age_hist_distribution: Pipe-delimited string of overall age histogram bin frequency.
+    :param bin_edges: Dictionary of variant annotation histograms and their associated
+        bin edges.
+    :param age_hist_distribution: Pipe-delimited string of overall age histogram bin
+        frequency.
     :param info_dict: INFO dict to be populated.
     :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
-    :param subset_pops: Dict of sample global genetic ancestry group names to use for all subsets in `subset_list` unless the subset
-        is 'gnomad', in that case `gnomad_pops` is used. Default is POPS.
-    :param gnomad_pops: Dict of sample global genetic ancestry group names for gnomAD data type. Default is POPS.
-    :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group names(values).  Default is FAF_POPS.
+    :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
+    :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
+        names (values). Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
     :param vrs_fields_dict: Dictionary with VRS annotations.
-    :param label_delimiter: String to use as delimiter when making group label combinations.
-    :param data_type: Data type to populate info dict for. One of "exomes" or "genomes". Default is "exomes".
+    :param label_delimiter: String to use as delimiter when making group label
+        combinations.
+    :param data_type: Data type to populate info dict for. One of "exomes" or
+        "genomes". Default is "exomes".
     :return: Updated INFO dictionary for VCF export.
     """
     # Get existing info fields from predefined info_dict, e.g. `FS`,
@@ -747,13 +761,16 @@ def prepare_vcf_header_dict(
 
     :param ht: Input Table
     :param validated_ht: Validated HT with unfurled info fields.
-    :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
-    :param age_hist_distribution: Pipe-delimited string of overal age histogram bin frequency.
+    :param bin_edges: Dictionary of variant annotation histograms and their associated
+        bin edges.
+    :param age_hist_distribution: Pipe-delimited string of overall age histogram bin
+        frequency.
     :param subset_list: List of sample subsets in dataset.
     :param pops: List of sample global genetic ancestry group names for gnomAD data type.
-    :param format_dict: Dictionary describing MatrixTable entries. Used in header for VCF export.
-    :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter used for variants.
-    :param data_type: Data type to prepare VCF header for. One of "exomes" or "genomes". Default is "exomes".
+    :param format_dict: Dictionary describing MatrixTable entries. Used in header for
+        VCF export.
+    :param data_type: Data type to prepare VCF header for. One of "exomes" or "genomes".
+        Default is "exomes".
     :return: Prepared VCF header dictionary.
     """
     logger.info("Making FILTER dict for VCF...")
@@ -819,12 +836,15 @@ def format_validated_ht_for_export(
     """
     Format validated HT for export.
 
-    Drop downsamplings frequency stats from info, rearrange info, and make sure fields are VCF compatible.
+    Drop downsamplings frequency stats from info, rearrange info, and make sure fields
+    are VCF compatible.
 
     :param ht: Validated HT.
     :param data_type: Data type to format validated HT for. One of "exomes" or "genomes".
         Default is "exomes".
-    :param Vvcf_info_reorder: Order of VCF INFO fields. These will be placed in front of all other fields in the order specified.
+    :param vcf_info_reorder: Order of VCF INFO fields. These will be placed in front of
+        all other fields in the order specified.
+    :param info_fields_to_drop: List of info fields to drop from the info struct.
     :return: Formatted HT and list rename row annotations.
     """
     if info_fields_to_drop is None:
@@ -882,7 +902,7 @@ def format_validated_ht_for_export(
 
 def process_vep_csq_header(vep_csq_header: str = VEP_CSQ_HEADER) -> str:
     """
-    Process VEP CSQ header string, delimited by |, to remove polyphen and sift annotations.
+    Process VEP CSQ header string, delimited by '|', to remove polyphen and sift annotations.
 
     :param vep_csq_header: VEP CSQ header.
     :return: Processed VEP CSQ header.
@@ -928,7 +948,8 @@ def check_globals_for_retired_terms(ht: hl.Table) -> None:
         logger.info("Passed retired term check: No retired terms found in globals.")
 
 
-def main(args):  # noqa: D103
+def main(args):
+    """Validate release Table and export VCFs."""
     hl.init(
         log="/validate_and_export_vcf.log",
         default_reference="GRCh38",
@@ -1086,7 +1107,8 @@ def main(args):  # noqa: D103
         hl.copy_log(get_logging_path("validity_checks_and_export"))
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--validate-release-ht",
@@ -1134,4 +1156,9 @@ if __name__ == "__main__":
         default=None,
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     main(parser.parse_args())
