@@ -426,16 +426,14 @@ def get_freq_array_readme(data_type: str = "exomes") -> str:
 def get_false_dup_genes_path(
     release_version: str = CURRENT_RELEASE,
     test: bool = False,
-    data_type: str = "genomes",
 ) -> str:
     """
     Retrieve path for the liftover table containing three genes of interest within a false duplication in GRCh38.
 
     :param release_version: Release version. Defaults to CURRENT RELEASE
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param data_type: Data type 'exomes' or 'genomes'. Default is 'exomes'.
     :return: Combined custom liftover table path for the three genes in false duplication.
     """
     return (
-        f"{_release_root(version=release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}_three_false_dup_genes_liftover.ht"
+        f"{_release_root(version=release_version, test=test)}/gnomad.v{release_version}_three_false_dup_genes_liftover.ht"
     )
