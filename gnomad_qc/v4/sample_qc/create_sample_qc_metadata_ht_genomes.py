@@ -136,7 +136,8 @@ def main(args):
     ht.export(v4_meta_tsv_path(data_type="genomes"), delimiter="\t")
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser(
         """This script is used to create the sample QC metadata HT for genomes."""
     )
@@ -148,6 +149,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:

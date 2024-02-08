@@ -622,7 +622,8 @@ def main(args):
         )
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--slack-channel",
@@ -762,11 +763,14 @@ if __name__ == "__main__":
         action="store_true",
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:
-        from gnomad_qc.slack_creds import slack_token
-
         with slack_notifications(slack_token, args.slack_channel):
             main(args)
     else:

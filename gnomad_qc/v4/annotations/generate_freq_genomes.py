@@ -1881,7 +1881,8 @@ def main(args):
         ht.write(res.v4_freq_ht.path, overwrite=overwrite)
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser(
         description="This script creates the v4.0 genomes release HT."
     )
@@ -1964,6 +1965,11 @@ if __name__ == "__main__":
         action="store_true",
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:

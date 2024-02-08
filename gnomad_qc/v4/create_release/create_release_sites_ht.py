@@ -891,7 +891,8 @@ def main(args):
     logger.info("Final variant count: %d", ht.count())
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--new-partition-percent",
@@ -951,7 +952,13 @@ if __name__ == "__main__":
         default=10000,
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
+
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
             main(args)

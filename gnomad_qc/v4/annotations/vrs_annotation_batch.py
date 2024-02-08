@@ -393,7 +393,8 @@ def main(args):
         logger.info(f"Done! Final table written to {output_vrs_anno_ori_path}.")
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--billing-project", help="Project to bill.", type=str)
@@ -533,6 +534,9 @@ if __name__ == "__main__":
         type=str,
     )
 
-    args = parser.parse_args()
+    return parser
 
-    main(args)
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
+    main(parser.parse_args())

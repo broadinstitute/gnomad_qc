@@ -54,6 +54,7 @@ sphinx==6.2.1
     # via
     #   -r docs/requirements.docs.in
     #   myst-parser
+    #   sphinx-argparse
     #   sphinx-autodoc-typehints
     #   sphinx-rtd-theme
     #   sphinxcontrib-applehelp
@@ -62,6 +63,8 @@ sphinx==6.2.1
     #   sphinxcontrib-jquery
     #   sphinxcontrib-qthelp
     #   sphinxcontrib-serializinghtml
+sphinx-argparse==0.4.0
+    # via -r docs/requirements.docs.in
 sphinx-autodoc-typehints==1.23.0
     # via -r docs/requirements.docs.in
 sphinx-rtd-theme==1.3.0

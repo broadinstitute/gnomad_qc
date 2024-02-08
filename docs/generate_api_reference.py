@@ -66,9 +66,19 @@ MODULE_DOC_TEMPLATE = """{title}
 
 {module_doc}
 
+{argparse_doc}
+
 .. gnomad_automodulesummary:: {module_name}
 
 .. automodule:: {module_name}
+    :exclude-members: get_script_argument_parser
+"""
+
+ARGPARSE_TEMPLATE = """
+.. argparse::
+   :ref: {module_name}.get_script_argument_parser
+   :prog: {module_name}.py
+
 """
 
 
@@ -76,10 +86,16 @@ def write_module_doc(module_name):
     """Write API reference documentation file for a module."""
     module = importlib.import_module(module_name)
 
+    if hasattr(module, "get_script_argument_parser"):
+        argparse_doc = ARGPARSE_TEMPLATE.format(module_name=module_name)
+    else:
+        argparse_doc = ""
+
     doc = MODULE_DOC_TEMPLATE.format(
         module_name=module_name,
         title=format_title(module_name),
         module_doc=module.__doc__ or "",
+        argparse_doc=argparse_doc,
     )
 
     doc_path = module_doc_path(module)
@@ -104,7 +120,6 @@ def write_package_doc(package_name):
     module_links = []
 
     for module in pkgutil.iter_modules(package.__path__):
-        print(module.name)
         if module.name in EXCLUDE_PACKAGES:
             continue
 
@@ -124,6 +139,7 @@ def write_package_doc(package_name):
 
     doc_path = package_doc_path(package)
     write_file(doc_path, doc)
+
 
 
 if __name__ == "__main__":

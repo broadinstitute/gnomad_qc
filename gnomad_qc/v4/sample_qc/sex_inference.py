@@ -1016,7 +1016,8 @@ def main(args):
         hl.copy_log(get_logging_path("sex_inference"))
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite",
@@ -1388,6 +1389,11 @@ if __name__ == "__main__":
         type=str,
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if (

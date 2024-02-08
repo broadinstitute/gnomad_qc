@@ -563,7 +563,8 @@ def main(args):
         )
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
@@ -574,7 +575,14 @@ if __name__ == "__main__":
     parser.add_argument("--pangolin", help="Create Pangolin HT", action="store_true")
     parser.add_argument("--revel", help="Create REVEL HT.", action="store_true")
     parser.add_argument("--phylop", help="Create PhyloP HT.", action="store_true")
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
+
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
             main(args)

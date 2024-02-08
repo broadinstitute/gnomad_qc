@@ -1107,7 +1107,8 @@ def main(args):
         hl.copy_log(get_logging_path("validity_checks_and_export"))
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--validate-release-ht",
@@ -1155,4 +1156,9 @@ if __name__ == "__main__":
         default=None,
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     main(parser.parse_args())

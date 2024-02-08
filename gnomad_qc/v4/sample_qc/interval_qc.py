@@ -694,7 +694,8 @@ def main(args):
         hl.copy_log(get_logging_path("interval_qc"))
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--overwrite",
@@ -870,6 +871,11 @@ if __name__ == "__main__":
         default=0.85,
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.generate_interval_qc_pass_ht and not (

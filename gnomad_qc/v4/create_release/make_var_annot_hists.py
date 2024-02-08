@@ -195,7 +195,8 @@ def main(args):  # noqa: D103
             f.write(hists)
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--determine_bounds",
@@ -214,5 +215,10 @@ if __name__ == "__main__":
         help="Use test resources and test on PCSK9 region",
         action="store_true",
     )
-    args = parser.parse_args()
-    main(args)
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
+    main(parser.parse_args())
