@@ -10,6 +10,7 @@ from gnomad.sample_qc.ancestry import assign_population_pcs, run_pca_with_relate
 from gnomad.utils.slack import slack_notifications
 from hail.utils.misc import new_temp_file
 
+from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v3.resources.sample_qc import hgdp_tgp_pop_outliers
 from gnomad_qc.v4.resources.basics import get_checkpoint_path
 from gnomad_qc.v4.resources.sample_qc import (
