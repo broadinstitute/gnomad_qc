@@ -86,6 +86,7 @@ def module_flowchart_path(module, local=False):
 
     :param module: Module to get flowchart path for.
     :param local: Whether to return the absolute path to the file.
+        Default is False.
     :return: Path to the module's mermaid flowchart file.
     """
     mmd_path = os.path.join(
@@ -117,6 +118,7 @@ def package_flowchart_path(package, local=False):
 
     :param package: Package to get flowchart path for.
     :param local: Whether to return the absolute path to the file.
+        Default is False.
     :return: Path to the package's mermaid flowchart file.
     """
     mmd_path = os.path.join(
