@@ -21,7 +21,8 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx_autodoc_typehints",
     "myst_parser",
-    'sphinxarg.ext',
+    "sphinxarg.ext",
+    "sphinxcontrib.mermaid",
 ]
 
 # README.md contains developer documentation for building docs
