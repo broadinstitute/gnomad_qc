@@ -5,4 +5,5 @@ urllib3<2
 sphinx-argparse
 sphinx-autodoc-typehints
 sphinx-rtd-theme
+sphinxcontrib-mermaid
 Jinja2

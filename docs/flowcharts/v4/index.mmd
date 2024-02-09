@@ -1,0 +1,8 @@
+flowchart LR;
+  sample_qc["<a class="reference internal" href='sample_qc/index.html'>sample_qc</a>"];
+  annotations["<a class="reference internal" href='annotations/index.html'>annotations</a>"];
+  variant_qc["<a class="reference internal" href='variant_qc/index.html'>variant_qc</a>"];
+  create_release["<a class="reference internal" href='create_release/index.html'>create_release</a>"];
+  sample_qc --> annotations;
+  annotations --> variant_qc;
+  variant_qc --> create_release;
