@@ -221,7 +221,6 @@ def get_gnomad_v4_vds(
             from gnomad_qc.v4.resources.sample_qc import (
                 finalized_outlier_filtering,
                 hard_filtered_samples,
-                hard_filtered_samples_no_sex,
             )
 
             keep_samples = False
@@ -235,10 +234,10 @@ def get_gnomad_v4_vds(
                     "Filtering VDS to hard filtered samples (without sex imputation"
                     " filtering) only..."
                 )
-                filter_ht = hard_filtered_samples.ht()
+                filter_ht = hard_filtered_samples().ht()
             else:
                 logger.info("Filtering VDS to hard filtered samples only...")
-                filter_ht = hard_filtered_samples_no_sex.ht()
+                filter_ht = hard_filtered_samples(include_sex_filter=False).ht()
 
             filter_s = filter_ht.s.collect()
             if keep_controls:
