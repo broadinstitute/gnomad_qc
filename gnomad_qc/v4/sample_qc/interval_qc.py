@@ -19,6 +19,10 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import hail as hl
 from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import (
     calling_intervals,
@@ -537,6 +541,82 @@ def annotate_interval_qc_filter(
     return t
 
 
+def get_interval_qc_resources(
+    test: bool,
+    overwrite: bool,
+    calling_interval_name: str,
+    calling_interval_padding: int,
+    per_platform: bool = False,
+    all_platforms: bool = False,
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the interval QC pipeline.
+
+    :param test: Whether to gather all resources for the test dataset.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :param calling_interval_name: Name of calling intervals to use.
+    :param calling_interval_padding: Padding to use for calling intervals.
+    :param per_platform: Whether to make the interval QC pass annotation a
+        DictionaryExpression with interval QC pass per platform. Default is False.
+    :param all_platforms: Whether to consider an interval as passing QC only if it
+        passes interval QC per platform across all platforms (with a sample size above
+        `min_platform_size`). Only used if `per_platform` is True. Default is False.
+    :return: PipelineResourceCollection containing resources for all steps of the
+        interval QC pipeline.
+    """
+    # Initialize interval QC pipeline resource collection.
+    interval_qc_pipeline = PipelineResourceCollection(
+        pipeline_name="interval_qc",
+        overwrite=overwrite,
+    )
+
+    # Create resource collection for each step of the interval QC pipeline.
+    sex_chr_interval_coverage = PipelineStepResourceCollection(
+        "--sex-chr-interval-coverage",
+        input_resources={
+            "Calling intervals HT": {
+                "calling_intervals_ht": calling_intervals(
+                    calling_interval_name, calling_interval_padding
+                )
+            }
+        },
+        output_resources={"sex_chr_coverage_ht": sex_chr_coverage},
+    )
+    generate_interval_qc_ht = PipelineStepResourceCollection(
+        "--generate-interval-qc-ht",
+        pipeline_input_steps=[sex_chr_interval_coverage],
+        add_input_resources={
+            "sex_inference.py --annotate-sex-karyotype": {"sex_ht": sex(test=test)},
+            "hard_filters.py --compute-hard-filters": {
+                "hard_filter_ht": hard_filtered_samples()
+            },
+            "hard_filters.py --compute-coverage": {"coverage_mt": interval_coverage},
+            "platform_inference.py --assign-platforms": {"platform_ht": platform},
+        },
+        output_resources={"interval_qc_ht": interval_qc},
+    )
+    generate_interval_qc_pass_ht = PipelineStepResourceCollection(
+        "--generate-interval-qc-pass-ht",
+        pipeline_input_steps=[generate_interval_qc_ht],
+        output_resources={
+            "interval_qc_pass_ht": interval_qc_pass(
+                per_platform=per_platform, all_platforms=all_platforms
+            )
+        },
+    )
+
+    # Add all steps to the interval QC pipeline resource collection.
+    interval_qc_pipeline.add_steps(
+        {
+            "sex_chr_interval_coverage": sex_chr_interval_coverage,
+            "generate_interval_qc_ht": generate_interval_qc_ht,
+            "generate_interval_qc_pass_ht": generate_interval_qc_pass_ht,
+        }
+    )
+
+    return interval_qc_pipeline
+
+
 def main(args):
     """Define high quality intervals based on aggregate statistics over samples."""
     hl.init(
@@ -552,36 +632,39 @@ def main(args):
     overwrite = args.overwrite
     mean_dp_thresholds = args.mean_dp_thresholds
 
+    interval_qc_resources = get_interval_qc_resources(
+        test=test,
+        overwrite=overwrite,
+        calling_interval_name=calling_interval_name,
+        calling_interval_padding=calling_interval_padding,
+        per_platform=args.per_platform,
+        all_platforms=args.all_platforms,
+    )
+
     try:
         if args.sex_chr_interval_coverage:
+            res = interval_qc_resources.sex_chr_interval_coverage
+            res.check_resource_existence()
             vds = get_gnomad_v4_vds(
                 remove_hard_filtered_samples=False,
                 remove_hard_filtered_samples_no_sex=True,
                 test=test,
             )
-            calling_intervals_ht = calling_intervals(
-                calling_interval_name, calling_interval_padding
-            ).ht()
             sex_coverage_mt = generate_sex_chr_interval_coverage_mt(
-                vds,
-                calling_intervals_ht,
+                vds, res.calling_intervals_ht.ht()
             )
             sex_coverage_mt = sex_coverage_mt.annotate_globals(
                 calling_interval_name=calling_interval_name,
                 calling_interval_padding=calling_interval_padding,
             )
-            sex_coverage_mt.write(
-                (
-                    get_checkpoint_path("test_sex_imputation_cov", mt=True)
-                    if test
-                    else sex_chr_coverage.path
-                ),
-                overwrite=overwrite,
-            )
+            sex_coverage_mt.write(res.sex_chr_coverage_ht.path, overwrite=overwrite)
 
         if args.generate_interval_qc_ht:
-            platform_ht = platform.ht()
-            coverage_mt = interval_coverage.mt()
+            res = interval_qc_resources.generate_interval_qc_ht
+            res.check_resource_existence()
+
+            platform_ht = res.platform_ht()
+            coverage_mt = res.interval_coverage_mt.mt()
 
             if test:
                 coverage_mt, sex_coverage_mt = filter_to_test(
@@ -603,10 +686,10 @@ def main(args):
 
             logger.info("Removing hard-filtered samples from the coverage MTs...")
             coverage_mt = coverage_mt.filter_cols(
-                hl.is_missing(hard_filtered_samples.ht()[coverage_mt.col_key])
+                hl.is_missing(res.hard_filter_ht.ht()[coverage_mt.col_key])
             )
             sex_coverage_mt = sex_coverage_mt.filter_cols(
-                hl.is_missing(hard_filtered_samples.ht()[sex_coverage_mt.col_key])
+                hl.is_missing(res.hard_filter_ht.ht()[sex_coverage_mt.col_key])
             )
 
             logger.info("Computing interval QC on autosomes...")
@@ -621,7 +704,7 @@ def main(args):
             )
 
             logger.info("Filtering to XX and XY samples...")
-            sex_ht = sex.ht().select("sex_karyotype")
+            sex_ht = res.sex_ht.ht().select("sex_karyotype")
             sex_coverage_mt = sex_coverage_mt.annotate_cols(
                 **sex_ht[sex_coverage_mt.col_key]
             )
@@ -642,16 +725,12 @@ def main(args):
                     split_by_sex=True,
                 )
             )
-            ht.write(
-                get_checkpoint_path("interval_qc") if test else interval_qc.path,
-                overwrite=overwrite,
-            )
+            ht.write(res.interval_qc_ht.path, overwrite=overwrite)
+
         if args.generate_interval_qc_pass_ht:
-            ht = (
-                hl.read_table(get_checkpoint_path("interval_qc"))
-                if test
-                else interval_qc.ht()
-            )
+            res = interval_qc_resources.generate_interval_qc_pass_ht
+            res.check_resource_existence()
+            ht = res.interval_qc_ht.ht()
             if args.by_mean_fraction_over_dp_0:
                 # The same cutoffs and annotations are used for autosome_par,
                 # x_non_par, and y_non_par within their respective dictionaries.
@@ -679,16 +758,7 @@ def main(args):
                 min_platform_size=args.min_platform_size,
             )
 
-            ht.write(
-                (
-                    get_checkpoint_path("interval_qc_pass")
-                    if test
-                    else interval_qc_pass(
-                        per_platform=args.per_platform, all_platforms=args.all_platforms
-                    ).path
-                ),
-                overwrite=overwrite,
-            )
+            ht.write(res.interval_qc_pass_ht.path, overwrite=overwrite)
     finally:
         logger.info("Copying log to logging bucket...")
         hl.copy_log(get_logging_path("interval_qc"))

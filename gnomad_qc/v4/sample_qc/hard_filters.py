@@ -1,14 +1,19 @@
 """Script to determine samples that fail hard filtering thresholds."""
 import argparse
 import logging
+from typing import Optional
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import telomeres_and_centromeres
 from gnomad.sample_qc.filtering import compute_stratified_sample_qc
 from gnomad.utils.annotations import annotate_adj, bi_allelic_expr
-from gnomad.utils.filtering import add_filters_expr, filter_to_adj, filter_to_autosomes
+from gnomad.utils.filtering import add_filters_expr, filter_to_autosomes
 from gnomad.utils.slack import slack_notifications
 
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
+)
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import (
     calling_intervals,
@@ -21,14 +26,13 @@ from gnomad_qc.v4.resources.meta import project_meta
 from gnomad_qc.v4.resources.sample_qc import (
     contamination,
     fingerprinting_failed,
+    get_predetermined_qc,
     get_sample_qc,
     hard_filtered_samples,
-    hard_filtered_samples_no_sex,
     interval_coverage,
     sample_chr20_mean_dp,
     sample_qc_mt_callrate,
     sex,
-    v4_predetermined_qc,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -37,6 +41,7 @@ logger.setLevel(logging.INFO)
 
 
 def compute_sample_qc(
+    vds: hl.vds.VariantDataset,
     n_partitions: int = 500,
     test: bool = False,
     n_alt_alleles_strata: int = 3,
@@ -45,6 +50,7 @@ def compute_sample_qc(
     """
     Perform sample QC on the raw split matrix table using `compute_stratified_sample_qc`.
 
+    :param vds: Input VDS.
     :param n_partitions: Number of partitions to write the output sample QC HT to.
     :param test: Whether to use the gnomAD v4 test dataset. Default is to use the full
         dataset.
@@ -61,7 +67,6 @@ def compute_sample_qc(
     :return: Table containing sample QC metrics.
     """
     logger.info("Computing sample QC")
-    vds = get_gnomad_v4_vds(split=True, remove_hard_filtered_samples=False, test=test)
     vds = hl.vds.filter_chromosomes(vds, keep_autosomes=True)
 
     # Remove centromeres and telomeres in case they were included.
@@ -104,7 +109,11 @@ def compute_sample_qc(
 
 
 def compute_hard_filters(
-    include_sex_filter: bool = False,
+    ht: hl.Table,
+    fingerprinting_failed_ht: hl.Table,
+    project_meta_ht: hl.Table,
+    sample_qc_ht: hl.Table,
+    contamination_ht: hl.Table,
     max_n_singleton: float = 5000,
     max_r_het_hom_var: float = 10,
     min_bases_dp_over_1: float = 5e7,
@@ -112,10 +121,11 @@ def compute_hard_filters(
     max_chimera: float = 0.05,
     max_contamination_estimate: float = 0.015,
     test: bool = False,
-    chr20_mean_dp_ht: hl.Table = None,
-    min_cov: int = None,
-    qc_mt_callrate_ht: hl.Table = None,
-    min_qc_mt_adj_callrate: float = None,
+    chr20_mean_dp_ht: Optional[hl.Table] = None,
+    min_cov: Optional[int] = None,
+    qc_mt_callrate_ht: Optional[hl.Table] = None,
+    min_qc_mt_adj_callrate: Optional[float] = None,
+    sex_ht: Optional[hl.Table] = None,
 ) -> hl.Table:
     """
     Apply hard filters to samples and return a Table with the filtered samples and the reason for filtering.
@@ -127,7 +137,12 @@ def compute_hard_filters(
         The defaults used in this function are callset specific, these hardfilter
         cutoffs will need to be re-examined for each callset
 
-    :param include_sex_filter: If sex inference should be used in filtering.
+    :param ht: Table of samples to add hard filter information to.
+    :param fingerprinting_failed_ht: Table containing samples that failed fingerprinting.
+    :param project_meta_ht: Table containing project metadata with 'bam_metrics'
+        annotation.
+    :param sample_qc_ht: Table containing sample QC metrics.
+    :param contamination_ht: Table containing contamination estimates.
     :param max_n_singleton: Filtering threshold to use for the maximum number of
         singletons.
     :param max_r_het_hom_var: Filtering threshold to use for the maximum ratio of
@@ -148,11 +163,10 @@ def compute_hard_filters(
     :param min_qc_mt_adj_callrate: Filtering threshold to use for sample callrate
         computed on only predetermined QC variants (predetermined using CCDG
         genomes/exomes, gnomAD v3.1 genomes, and UKB exomes) after ADJ filtering.
+    :param sex_ht: Optional Table with sex karyotype annotations. If no Table is
+        supplied, no sex filters will be applied.
     :return: Table of hard filtered samples.
     """
-    ht = get_gnomad_v4_vds(
-        remove_hard_filtered_samples=False, test=test
-    ).variant_data.cols()
     ht = ht.annotate_globals(
         hard_filter_cutoffs=hl.struct(
             max_n_singleton=max_n_singleton,
@@ -174,32 +188,32 @@ def compute_hard_filters(
     sample_qc_metric_hard_filters = dict()
 
     # Flag samples failing fingerprinting.
-    fp_ht = fingerprinting_failed.ht()
-    hard_filters["failed_fingerprinting"] = hl.is_defined(fp_ht[ht.key])
+    hard_filters["failed_fingerprinting"] = hl.is_defined(
+        fingerprinting_failed_ht[ht.key]
+    )
 
-    # Flag extreme raw bi-allelic sample QC outliers.
-    bi_allelic_qc_ht = get_sample_qc("bi_allelic", test=test).ht()
+    # Flag extreme raw sample QC outliers.
     # Convert tuples to lists so we can find the index of the passed threshold.
-    bi_allelic_qc_ht = bi_allelic_qc_ht.annotate(
+    sample_qc_ht = sample_qc_ht.annotate(
         **{
-            f"bases_dp_over_{hl.eval(bi_allelic_qc_ht.dp_bins[i])}": (
-                bi_allelic_qc_ht.bases_over_dp_threshold[i]
+            f"bases_dp_over_{hl.eval(sample_qc_ht.dp_bins[i])}": (
+                sample_qc_ht.bases_over_dp_threshold[i]
             )
-            for i in range(len(bi_allelic_qc_ht.dp_bins))
+            for i in range(len(sample_qc_ht.dp_bins))
         },
     )
-    bi_allelic_qc_struct = bi_allelic_qc_ht[ht.key]
+    sample_qc_struct = sample_qc_ht[ht.key]
     sample_qc_metric_hard_filters["high_n_singleton"] = (
-        bi_allelic_qc_struct.n_singleton > max_n_singleton
+        sample_qc_struct.n_singleton > max_n_singleton
     )
     sample_qc_metric_hard_filters["high_r_het_hom_var"] = (
-        bi_allelic_qc_struct.r_het_hom_var > max_r_het_hom_var
+        sample_qc_struct.r_het_hom_var > max_r_het_hom_var
     )
     sample_qc_metric_hard_filters["low_bases_dp_over_1"] = (
-        bi_allelic_qc_struct.bases_dp_over_1 < min_bases_dp_over_1
+        sample_qc_struct.bases_dp_over_1 < min_bases_dp_over_1
     )
     sample_qc_metric_hard_filters["low_bases_dp_over_20"] = (
-        bi_allelic_qc_struct.bases_dp_over_20 < min_bases_dp_over_20
+        sample_qc_struct.bases_dp_over_20 < min_bases_dp_over_20
     )
     hard_filters["sample_qc_metrics"] = (
         sample_qc_metric_hard_filters["high_n_singleton"]
@@ -223,9 +237,8 @@ def compute_hard_filters(
             get_checkpoint_path("test_gnomad.exomes.contamination")
         )[ht.key]
     else:
-        project_meta_ht = project_meta.ht()
         bam_metrics_struct = project_meta_ht[ht.key].bam_metrics
-        contamination_struct = contamination.ht()[ht.key]
+        contamination_struct = contamination_ht[ht.key]
 
     hard_filters["chimera"] = bam_metrics_struct.chimeras_rate > max_chimera
     hard_filters["contamination"] = (
@@ -256,8 +269,8 @@ def compute_hard_filters(
             )
         )
 
-    if include_sex_filter:
-        sex_struct = sex.ht()[ht.key]
+    if sex_ht is not None:
+        sex_struct = sex_ht[ht.key]
         # Remove samples with ambiguous sex assignments.
         hard_filters["ambiguous_sex"] = sex_struct.sex_karyotype == "ambiguous"
         hard_filters["sex_aneuploidy"] = hl.is_defined(
@@ -280,6 +293,100 @@ def compute_hard_filters(
     return ht
 
 
+def get_hard_filter_resources(
+    test: bool,
+    overwrite: bool,
+    calling_interval_name: str,
+    calling_interval_padding: int,
+    include_sex_filter: bool,
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the hard filters pipeline.
+
+    :param test: Whether to gather all resources for the test dataset.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :param calling_interval_name: Name of calling intervals to use.
+    :param calling_interval_padding: Padding to use for calling intervals.
+    :param include_sex_filter: Whether sex filters should be included in hard filtering.
+    :return: PipelineResourceCollection containing resources for all steps of the
+        hard filters pipeline.
+    """
+    # Initialize hard filter pipeline resource collection.
+    hard_filter_pipeline = PipelineResourceCollection(
+        pipeline_name="hard_filters",
+        overwrite=overwrite,
+    )
+
+    # Create resource collection for each step of the relatedness pipeline.
+    run_sample_qc = PipelineStepResourceCollection(
+        "--sample-qc",
+        output_resources={"sample_qc_ht": get_sample_qc(test=test)},
+    )
+    compute_coverage = PipelineStepResourceCollection(
+        "--compute-coverage",
+        input_resources={
+            "Calling intervals": {
+                "interval_ht": calling_intervals(
+                    calling_interval_name, calling_interval_padding
+                )
+            }
+        },
+        output_resources={"interval_cov_mt": interval_coverage(test=test)},
+    )
+    compute_contamination_estimate = PipelineStepResourceCollection(
+        "--compute-contamination-estimate",
+        output_resources={"contamination_ht": contamination(test=test)},
+    )
+    compute_chr20_mean_dp = PipelineStepResourceCollection(
+        "--compute-chr20-mean-dp",
+        pipeline_input_steps=[compute_coverage],
+        output_resources={"chr20_mean_dp_ht": sample_chr20_mean_dp(test=test)},
+    )
+    compute_qc_mt_callrate = PipelineStepResourceCollection(
+        "--compute-qc-mt-callrate",
+        input_resources={
+            "generate_qc_mt.py --create-v4-filtered-dense-mt": {
+                "v4_predetermined_qc_ht": get_predetermined_qc(test=test)
+            }
+        },
+        output_resources={"sample_qc_mt_callrate_ht": sample_qc_mt_callrate(test=test)},
+    )
+
+    compute_hard_filters_ht = PipelineStepResourceCollection(
+        "--compute-hard-filters",
+        output_resources={
+            "hard_filter_ht": hard_filtered_samples(
+                include_sex_filter=include_sex_filter, test=test
+            )
+        },
+        pipeline_input_steps=[
+            run_sample_qc,
+            compute_contamination_estimate,
+            compute_chr20_mean_dp,
+            compute_qc_mt_callrate,
+        ],
+        add_input_resources=(
+            {"sex_inference.py --annotate-sex-karyotype": {"sex_ht": sex(test=test)}}
+            if include_sex_filter
+            else None
+        ),
+    )
+
+    # Add all steps to the relatedness pipeline resource collection.
+    hard_filter_pipeline.add_steps(
+        {
+            "run_sample_qc": run_sample_qc,
+            "compute_coverage": compute_coverage,
+            "compute_contamination_estimate": compute_contamination_estimate,
+            "compute_chr20_mean_dp": compute_chr20_mean_dp,
+            "compute_qc_mt_callrate": compute_qc_mt_callrate,
+            "compute_hard_filters_ht": compute_hard_filters_ht,
+        }
+    )
+
+    return hard_filter_pipeline
+
+
 def main(args):
     """Determine samples that fail hard filtering thresholds."""
     hl.init(
@@ -295,17 +402,33 @@ def main(args):
     test = args.test
     overwrite = args.overwrite
 
+    hard_filtering_resources = get_hard_filter_resources(
+        test=test,
+        overwrite=overwrite,
+        calling_interval_name=calling_interval_name,
+        calling_interval_padding=calling_interval_padding,
+        include_sex_filter=args.include_sex_filter,
+    )
+
     try:
         if args.sample_qc:
+            res = hard_filtering_resources.sample_qc
+            res.check_resource_existence()
+            vds = get_gnomad_v4_vds(
+                split=True, remove_hard_filtered_samples=False, test=test
+            )
             compute_sample_qc(
+                vds,
                 n_partitions=args.sample_qc_n_partitions,
                 test=test,
                 n_alt_alleles_strata=args.n_alt_alleles_strata,
                 n_alt_alleles_strata_name=args.n_alt_alleles_strata_name,
-            ).write(get_sample_qc(test=test).path, overwrite=overwrite)
+            ).write(res.sample_qc_ht.path, overwrite=overwrite)
 
         if args.compute_coverage:
             logger.info("Loading v4 VDS...")
+            res = hard_filtering_resources.compute_coverage
+            res.check_resource_existence()
             vds = get_gnomad_v4_vds(remove_hard_filtered_samples=False, test=test)
 
             logger.info(
@@ -313,23 +436,12 @@ def main(args):
                 calling_interval_name,
                 calling_interval_padding,
             )
-            ht = calling_intervals(calling_interval_name, calling_interval_padding).ht()
-            mt = hl.vds.interval_coverage(vds, intervals=ht)
+            mt = hl.vds.interval_coverage(vds, intervals=res.interval_ht.ht())
             mt = mt.annotate_globals(
                 calling_interval_name=calling_interval_name,
                 calling_interval_padding=calling_interval_padding,
             )
-            mt.write(
-                (
-                    get_checkpoint_path(
-                        f"test_interval_coverage.{calling_interval_name}.pad{calling_interval_padding}",
-                        mt=True,
-                    )
-                    if test
-                    else interval_coverage.path
-                ),
-                overwrite=overwrite,
-            )
+            mt.write(res.interval_cov_mt.path, overwrite=overwrite)
 
         if args.compute_contamination_estimate:
             logger.info(
@@ -338,6 +450,8 @@ def main(args):
                 " balances per sample...",
                 args.contam_dp_cutoff,
             )
+            res = hard_filtering_resources.compute_contamination_estimate
+            res.check_resource_existence()
             mt = filter_to_autosomes(
                 get_gnomad_v4_vds(
                     remove_hard_filtered_samples=False, test=test
@@ -353,44 +467,25 @@ def main(args):
                 mean_AB_snp_biallelic=hl.agg.mean(mt.LAD[0] / (mt.LAD[0] + mt.LAD[1]))
             )
             mt = mt.cols().annotate_globals(dp_cutoff=args.contam_dp_cutoff)
-            mt.write(
-                (
-                    get_checkpoint_path("test_gnomad.exomes.contamination")
-                    if test
-                    else contamination.path
-                ),
-                overwrite=overwrite,
-            )
+            mt.write(res.contamination_ht.path, overwrite=overwrite)
 
         if args.compute_chr20_mean_dp:
             # TODO: Add drop of `gq_thresholds` for future versions.
-            if test:
-                coverage_mt = hl.read_matrix_table(
-                    get_checkpoint_path(
-                        f"test_interval_coverage.{calling_interval_name}.pad{calling_interval_padding}",
-                        mt=True,
-                    )
-                )
-            else:
-                coverage_mt = interval_coverage.mt()
-
+            res = hard_filtering_resources.compute_chr20_mean_dp
+            res.check_resource_existence()
+            coverage_mt = res.interval_cov_mt.mt()
             coverage_mt = coverage_mt.filter_rows(
                 coverage_mt.interval.start.contig == "chr20"
             )
             coverage_mt.select_cols(
                 chr20_mean_dp=hl.agg.sum(coverage_mt.sum_dp)
                 / hl.agg.sum(coverage_mt.interval_size)
-            ).cols().write(
-                (
-                    get_checkpoint_path("test_gnomad.exomes.chr20_mean_dp")
-                    if test
-                    else sample_chr20_mean_dp.path
-                ),
-                overwrite=overwrite,
-            )
+            ).cols().write(res.chr20_mean_dp_ht.path, overwrite=overwrite)
 
         if args.compute_qc_mt_callrate:
-            mt = v4_predetermined_qc.mt()
+            res = hard_filtering_resources.compute_qc_mt_callrate
+            res.check_resource_existence()
+            mt = res.v4_predetermined_qc_ht.ht()
             num_samples = mt.count_cols()
 
             # Filter predetermined QC variants to AF > qc_mt_callrate_min_af
@@ -422,41 +517,18 @@ def main(args):
                 min_af=args.qc_mt_callrate_min_af,
                 min_site_callrate=args.qc_mt_callrate_min_site_callrate,
             )
-            ht.write(
-                (
-                    get_checkpoint_path("test_gnomad.exomes.qc_mt_callrate")
-                    if test
-                    else sample_qc_mt_callrate.path
-                ),
-                overwrite=overwrite,
-            )
+            ht.write(res.sample_qc_mt_callrate_ht.path, overwrite=overwrite)
 
         if args.compute_hard_filters:
-            if test:
-                chr20_mean_dp_ht = hl.read_table(
-                    get_checkpoint_path("test_gnomad.exomes.chr20_mean_dp")
-                )
-                qc_mt_callrate_ht = hl.read_table(
-                    get_checkpoint_path("test_gnomad.exomes.qc_mt_callrate")
-                )
-            else:
-                chr20_mean_dp_ht = sample_chr20_mean_dp.ht()
-                qc_mt_callrate_ht = sample_qc_mt_callrate.ht()
-
-            if args.include_sex_filter:
-                hard_filter_path = hard_filtered_samples.path
-                if test:
-                    hard_filter_path = get_checkpoint_path(
-                        "test_gnomad.exomes.hard_filtered_samples"
-                    )
-            else:
-                hard_filter_path = hard_filtered_samples_no_sex.path
-                if test:
-                    hard_filter_path = get_checkpoint_path(
-                        "test_gnomad.exomes.hard_filtered_samples_no_sex"
-                    )
-
+            res = hard_filtering_resources.compute_hard_filters_ht
+            res.check_resource_existence()
+            ht = get_gnomad_v4_vds(
+                remove_hard_filtered_samples=False, test=test
+            ).variant_data.cols()
             ht = compute_hard_filters(
+                ht,
+                fingerprinting_failed.ht(),
+                get_sample_qc("bi_allelic", test=test).ht(),
                 args.include_sex_filter,
                 args.max_n_singleton,
                 args.max_r_het_hom_var,
@@ -465,12 +537,12 @@ def main(args):
                 args.max_chimera,
                 args.max_contamination_estimate,
                 test,
-                chr20_mean_dp_ht,
+                res.chr20_mean_dp_ht.ht(),
                 args.min_cov,
-                qc_mt_callrate_ht,
+                res.sample_qc_mt_callrate_ht.ht(),
                 args.min_qc_mt_adj_callrate,
             )
-            ht = ht.checkpoint(hard_filter_path, overwrite=overwrite)
+            ht = ht.checkpoint(res.hard_filter_ht.path, overwrite=overwrite)
             ht.group_by("hard_filters").aggregate(n=hl.agg.count()).show(20)
             ht.group_by("sample_qc_metric_hard_filters").aggregate(
                 n=hl.agg.count()

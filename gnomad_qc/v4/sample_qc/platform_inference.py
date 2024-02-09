@@ -4,17 +4,16 @@ import logging
 
 import hail as hl
 from gnomad.sample_qc.platform import assign_platform_from_pcs, run_platform_pca
-from gnomad.utils.file_utils import file_exists
 from gnomad.utils.slack import slack_notifications
 
-from gnomad_qc.slack_creds import slack_token
-from gnomad_qc.v4.resources.basics import (
-    get_checkpoint_path,
-    get_logging_path,
-    gnomad_v4_testset_meta,
+from gnomad_qc.resource_utils import (
+    PipelineResourceCollection,
+    PipelineStepResourceCollection,
 )
+from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v4.resources.basics import get_logging_path, gnomad_v4_testset_meta
 from gnomad_qc.v4.resources.sample_qc import (
-    hard_filtered_samples_no_sex,
+    hard_filtered_samples,
     interval_coverage,
     platform,
     platform_pca_eigenvalues,
@@ -27,6 +26,62 @@ logger = logging.getLogger("platform_pca")
 logger.setLevel(logging.INFO)
 
 
+def get_platform_resources(
+    test: bool,
+    overwrite: bool,
+) -> PipelineResourceCollection:
+    """
+    Get PipelineResourceCollection for all resources needed in the platform inference pipeline.
+
+    :param test: Whether to gather all resources for the test dataset.
+    :param overwrite: Whether to overwrite resources if they exist.
+    :return: PipelineResourceCollection containing resources for all steps of the
+        platform inference pipeline.
+    """
+    # Initialize platform inference pipeline resource collection.
+    platform_pipeline = PipelineResourceCollection(
+        pipeline_name="platform_inference",
+        overwrite=overwrite,
+    )
+
+    # Create resource collection for each step of the platform inference pipeline.
+    platform_pca = PipelineStepResourceCollection(
+        "--run-platform-pca",
+        input_resources={
+            "hard_filters.py --compute-coverage": {
+                "coverage_mt": interval_coverage(test=test)
+            },
+            "hard_filters.py --compute-hard-filters": {
+                "hard_filter_ht": hard_filtered_samples(include_sex_filter=False)
+            },
+        },
+        output_resources={
+            "platform_pca_scores_ht": platform_pca_scores(test=test),
+            "platform_pca_loadings_ht": platform_pca_loadings(test=test),
+            "platform_pca_eigenvalues_ht": platform_pca_eigenvalues(test=test),
+        },
+    )
+    assign_platforms = PipelineStepResourceCollection(
+        "--assign-platforms",
+        input_resources={
+            "--run-platform-pca": {
+                "platform_pca_scores_ht": platform_pca_scores(test=test)
+            }
+        },
+        output_resources={"platform_ht": platform(test=test)},
+    )
+
+    # Add all steps to the platform inference pipeline resource collection.
+    platform_pipeline.add_steps(
+        {
+            "run_platform_pca": platform_pca,
+            "assign_platforms": assign_platforms,
+        }
+    )
+
+    return platform_pipeline
+
+
 def main(args):
     """Assign platforms based on PCA of per interval fraction of bases over DP 0."""
     hl.init(
@@ -37,33 +92,20 @@ def main(args):
     # NOTE: remove this flag when the new shuffle method is the default.
     hl._set_flags(use_new_shuffle="1")
 
-    calling_interval_name = args.calling_interval_name
-    calling_interval_padding = args.calling_interval_padding
+    test = args.test
+    overwrite = args.overwrite
     hdbscan_min_cluster_size = args.hdbscan_min_cluster_size
     hdbscan_min_samples = args.hdbscan_min_samples
     n_assignment_pcs = args.n_assignment_pcs
 
+    platform_resources = get_platform_resources(test=test, overwrite=overwrite)
+
     try:
         if args.run_platform_pca:
             logger.info("Running platform PCA...")
-            if args.test:
-                test_coverage_path = get_checkpoint_path(
-                    f"test_interval_coverage.{calling_interval_name}.pad{calling_interval_padding}",
-                    mt=True,
-                )
-                if file_exists(test_coverage_path):
-                    mt = hl.read_matrix_table(test_coverage_path)
-                else:
-                    raise FileNotFoundError(
-                        "The test interval coverage MatrixTable does not exist for"
-                        f" calling interval {calling_interval_name} and interval"
-                        f" padding {calling_interval_padding}. Please run"
-                        " --compute_coverage with the --test argument and needed"
-                        " --calling_interval_name/--calling_interval_padding"
-                        " arguments."
-                    )
-            else:
-                mt = interval_coverage.mt()
+            res = platform_resources.run_platform_pca
+            res.check_resource_existence()
+            mt = res.coverage_mt.mt()
 
             logger.info(
                 "Removing hard filtered samples from interval coverage MatrixTable..."
@@ -72,7 +114,7 @@ def main(args):
                 ht = gnomad_v4_testset_meta.ht()
                 ht = ht.filter(hl.len(ht.rand_sampling_meta.hard_filters_no_sex) != 0)
             else:
-                ht = hard_filtered_samples_no_sex.ht()
+                ht = res.hard_filter_ht.ht()
 
             mt = mt.filter_cols(hl.is_missing(ht[mt.col_key]))
 
@@ -92,27 +134,9 @@ def main(args):
                 mt, binarization_threshold=None, n_pcs=args.n_platform_pcs
             )
             scores_ht = scores_ht.annotate_globals(**mt.index_globals())
-            scores_ht.write(
-                (
-                    get_checkpoint_path(
-                        f"test_platform_scores.{calling_interval_name}.pad{calling_interval_padding}"
-                    )
-                    if args.test
-                    else platform_pca_scores.path
-                ),
-                overwrite=args.overwrite,
-            )
+            scores_ht.write(res.platform_pca_scores_ht.path, overwrite=overwrite)
             loadings_ht = loadings_ht.annotate_globals(**mt.index_globals())
-            loadings_ht.write(
-                (
-                    get_checkpoint_path(
-                        f"test_platform_loadings.{calling_interval_name}.pad{calling_interval_padding}"
-                    )
-                    if args.test
-                    else platform_pca_loadings.path
-                ),
-                overwrite=args.overwrite,
-            )
+            loadings_ht.write(res.platform_pca_loadings_ht.path, overwrite=overwrite)
             eigenvalues_ht = hl.Table.parallelize(
                 hl.literal(
                     [{"PC": i + 1, "eigenvalue": x} for i, x in enumerate(eigenvalues)],
@@ -121,39 +145,17 @@ def main(args):
             )
             eigenvalues_ht = eigenvalues_ht.annotate_globals(**mt.index_globals())
             eigenvalues_ht.write(
-                (
-                    get_checkpoint_path(
-                        f"test_platform_eigenvalues.{calling_interval_name}.pad{calling_interval_padding}"
-                    )
-                    if args.test
-                    else platform_pca_eigenvalues.path
-                ),
-                overwrite=args.overwrite,
+                res.platform_pca_eigenvalues_ht.path, overwrite=overwrite
             )
 
         if args.assign_platforms:
             # TODO: Add drop of `gq_thresholds` for future versions.
             logger.info("Assigning platforms based on platform PCA clustering")
-            if args.test:
-                test_scores_path = get_checkpoint_path(
-                    f"test_platform_scores.{calling_interval_name}.pad{calling_interval_padding}"
-                )
-                if file_exists(test_scores_path):
-                    scores_ht = hl.read_table(test_scores_path)
-                else:
-                    raise FileNotFoundError(
-                        "The test platform PCA Table does not exist for calling"
-                        f" interval {calling_interval_name} and interval padding"
-                        f" {calling_interval_padding}. Please run hard_filters.py"
-                        " --compute-coverage and platform_inference.py"
-                        " --run-platform-pca with the --test argument and needed"
-                        " --calling-interval-name/--calling-interval-padding"
-                        " arguments."
-                    )
-            else:
-                scores_ht = platform_pca_scores.ht()
+            res = platform_resources.assign_platforms
+            res.check_resource_existence()
+            scores_ht = res.platform_pca_scores_ht.ht()
 
-            platform_ht = assign_platform_from_pcs(
+            ht = assign_platform_from_pcs(
                 scores_ht.annotate(scores=scores_ht.scores[:n_assignment_pcs]),
                 hdbscan_min_cluster_size=hdbscan_min_cluster_size,
                 hdbscan_min_samples=hdbscan_min_samples,
@@ -164,23 +166,14 @@ def main(args):
                 hdbscan_min_samples = hdbscan_min_cluster_size
             else:
                 hdbscan_min_samples = hdbscan_min_samples
-            platform_ht = platform_ht.annotate_globals(
+            ht = ht.annotate_globals(
                 hdbscan_min_cluster_size=hdbscan_min_cluster_size,
                 hdbscan_min_samples=hdbscan_min_samples,
                 n_pcs=n_assignment_pcs,
                 **scores_ht.index_globals(),
             )
-            platform_ht = platform_ht.checkpoint(
-                (
-                    get_checkpoint_path(
-                        f"test_platform_assignment.{calling_interval_name}.pad{calling_interval_padding}"
-                    )
-                    if args.test
-                    else platform.path
-                ),
-                overwrite=args.overwrite,
-            )
-            logger.info(f"Platform PCA Table count: {platform_ht.count()}")
+            ht = ht.checkpoint(res.platform_ht.path, overwrite=overwrite)
+            logger.info(f"Platform PCA Table count: {ht.count()}")
 
     finally:
         logger.info("Copying log to logging bucket...")
@@ -200,26 +193,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--test",
         help="Use the v4 test dataset instead of the full dataset.",
         action="store_true",
-    )
-    parser.add_argument(
-        "--calling-interval-name",
-        help=(
-            "Name of calling intervals to use for interval coverage. One of: 'ukb',"
-            " 'broad', or 'intersection'."
-        ),
-        type=str,
-        choices=["ukb", "broad", "intersection"],
-        default="intersection",
-    )
-    parser.add_argument(
-        "--calling-interval-padding",
-        help=(
-            "Number of base pair padding to use on the calling intervals. One of 0 or"
-            " 50 bp."
-        ),
-        type=int,
-        choices=[0, 50],
-        default=50,
     )
     parser.add_argument(
         "--run-platform-pca",
