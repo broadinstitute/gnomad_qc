@@ -293,7 +293,7 @@ def compute_hard_filters(
     return ht
 
 
-def get_hard_filter_resources(
+def get_pipeline_resources(
     test: bool,
     overwrite: bool,
     calling_interval_name: str,
@@ -402,7 +402,7 @@ def main(args):
     test = args.test
     overwrite = args.overwrite
 
-    hard_filtering_resources = get_hard_filter_resources(
+    hard_filtering_resources = get_pipeline_resources(
         test=test,
         overwrite=overwrite,
         calling_interval_name=calling_interval_name,

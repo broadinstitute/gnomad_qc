@@ -110,7 +110,7 @@ age_hists, popmax, and faf.
 """
 
 
-def get_freq_resources(
+def get_pipeline_resources(
     overwrite: bool = False,
     test: Optional[bool] = False,
     chrom: Optional[str] = None,
@@ -985,7 +985,7 @@ def main(args):
     )
     # SSA Logs are easier to troubleshoot with.
     hl._set_flags(use_ssa_logs="1")
-    resources = get_freq_resources(overwrite, test, chrom, ukb, non_ukb)
+    resources = get_pipeline_resources(overwrite, test, chrom, ukb, non_ukb)
 
     try:
         if args.write_split_vds_and_downsampling_ht:

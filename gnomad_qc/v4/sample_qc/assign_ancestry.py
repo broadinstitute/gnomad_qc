@@ -503,7 +503,7 @@ def assign_pop_with_per_pop_probs(
     return pop_ht
 
 
-def get_ancestry_assignment_resources(
+def get_pipeline_resources(
     test: bool,
     overwrite: bool,
     include_unreleasable_samples: hl.bool = False,
@@ -614,7 +614,7 @@ def main(args):
         test = args.test
         include_v2_known_in_training = args.include_v2_known_in_training
 
-        ancestry_assignment_resources = get_ancestry_assignment_resources(
+        ancestry_assignment_resources = get_pipeline_resources(
             test=test,
             overwrite=overwrite,
             include_unreleasable_samples=include_unreleasable_samples,

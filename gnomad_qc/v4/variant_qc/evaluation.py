@@ -179,7 +179,7 @@ def create_aggregated_bin_ht(ht: hl.Table, trio_stats_ht: hl.Table) -> hl.Table:
     return agg_ht
 
 
-def get_evaluation_resources(
+def get_pipeline_resources(
     test: bool,
     overwrite: bool,
     model_id: str = None,
@@ -314,7 +314,7 @@ def main(args):
     model_id = args.model_id
     n_bins = args.n_bins
 
-    evaluation_resources = get_evaluation_resources(
+    evaluation_resources = get_pipeline_resources(
         test=test,
         overwrite=overwrite,
         model_id=model_id,

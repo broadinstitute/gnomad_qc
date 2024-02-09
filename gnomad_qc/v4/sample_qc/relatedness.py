@@ -374,7 +374,7 @@ def run_compute_related_samples_to_drop(
     return rank_ht, samples_to_drop_ht
 
 
-def get_relatedness_resources(
+def get_pipeline_resources(
     test: bool,
     release: bool,
     relatedness_method: str,
@@ -509,9 +509,7 @@ def main(args):
     release = args.release
     rel_method = args.finalize_relatedness_method
     second_degree_min_kin = args.second_degree_min_kin
-    relatedness_resources = get_relatedness_resources(
-        test, release, rel_method, overwrite
-    )
+    relatedness_resources = get_pipeline_resources(test, release, rel_method, overwrite)
 
     if args.print_cuking_command:
         res = relatedness_resources.print_cuking_command

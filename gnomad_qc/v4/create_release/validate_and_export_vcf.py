@@ -173,7 +173,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def get_export_resources(
+def get_pipeline_resources(
     overwrite: bool = False,
     data_type: str = "exomes",
     test: Optional[bool] = False,

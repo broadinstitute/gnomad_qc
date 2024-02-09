@@ -812,7 +812,7 @@ def create_finalized_outlier_filter_ht(
     return ht
 
 
-def get_outlier_filtering_resources(
+def get_pipeline_resources(
     test: bool = False,
     overwrite: bool = False,
     exclude_unreleasable_samples_all_steps: bool = False,
@@ -1005,7 +1005,7 @@ def main(args):
         if err_msg:
             raise ValueError(err_msg)
 
-    outlier_resources = get_outlier_filtering_resources(
+    outlier_resources = get_pipeline_resources(
         test=test,
         overwrite=overwrite,
         exclude_unreleasable_samples_all_steps=exclude_releasable_samples_all_steps,

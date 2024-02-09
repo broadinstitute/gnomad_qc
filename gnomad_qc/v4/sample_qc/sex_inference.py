@@ -734,7 +734,7 @@ def reformat_ploidy_cutoffs_for_json(
     return cutoffs
 
 
-def get_sex_inference_resources(
+def get_pipeline_resources(
     test: bool,
     overwrite: bool,
 ) -> PipelineResourceCollection:
@@ -834,7 +834,7 @@ def main(args):
     read_sex_cov_if_exists = args.read_sex_imputation_coverage_mt_if_exists
     apply_x_frac_hom_alt_cutoffs = args.apply_x_frac_hom_alt_cutoffs
 
-    sex_inference_resources = get_sex_inference_resources(
+    sex_inference_resources = get_pipeline_resources(
         test=test,
         overwrite=overwrite,
     )

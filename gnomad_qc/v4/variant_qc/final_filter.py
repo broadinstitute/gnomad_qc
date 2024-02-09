@@ -402,7 +402,7 @@ def generate_final_filter_ht(
     return ht
 
 
-def get_final_variant_qc_resources(
+def get_pipeline_resources(
     test: bool,
     overwrite: bool,
     model_id: str,
@@ -460,7 +460,7 @@ def main(args):
     overwrite = args.overwrite
 
     # Call method to return final VQC resources from evaluation runs.
-    final_vqc_resources = get_final_variant_qc_resources(
+    final_vqc_resources = get_pipeline_resources(
         test=test,
         overwrite=overwrite,
         model_id=args.model_id,

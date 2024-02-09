@@ -130,7 +130,7 @@ def adjust_interval_padding(ht: hl.Table, padding: int) -> hl.Table:
     )
 
 
-def get_coverage_resources(
+def get_pipeline_resources(
     test: bool,
     overwrite: bool,
     calling_interval_name: Optional[str] = None,
@@ -223,7 +223,7 @@ def main(args):
     calling_interval_padding = args.calling_interval_padding
     adjust_padding = calling_interval_padding not in [0, 50]
 
-    coverage_resources = get_coverage_resources(
+    coverage_resources = get_pipeline_resources(
         test=test,
         overwrite=overwrite,
         calling_interval_name=args.calling_interval_name,

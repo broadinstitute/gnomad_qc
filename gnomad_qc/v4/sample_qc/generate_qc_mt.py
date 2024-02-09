@@ -247,7 +247,7 @@ def generate_qc_meta_ht() -> hl.Table:
     return v3_meta_ht.union(v4_meta_ht, unify=True)
 
 
-def get_generate_qc_mt_resources(
+def get_pipeline_resources(
     test: bool,
     overwrite: bool,
 ) -> PipelineResourceCollection:
@@ -312,7 +312,7 @@ def main(args):
     ld_r2 = args.ld_r2
     test = args.test
 
-    generate_qc_mt_resources = get_generate_qc_mt_resources(
+    generate_qc_mt_resources = get_pipeline_resources(
         test=test,
         overwrite=overwrite,
     )

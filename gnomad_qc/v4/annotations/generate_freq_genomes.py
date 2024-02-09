@@ -1517,9 +1517,7 @@ def patch_v4_genomes_callstats(freq_ht: hl.Table) -> hl.Table:
     return freq_ht
 
 
-def get_v4_genomes_release_resources(
-    test: bool, overwrite: bool
-) -> PipelineResourceCollection:
+def get_pipeline_resources(test: bool, overwrite: bool) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed to create the gnomAD v4.0 genomes release.
 
@@ -1695,9 +1693,7 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-30day",
     )
-    v4_genome_release_resources = get_v4_genomes_release_resources(
-        test=test, overwrite=overwrite
-    )
+    v4_genome_release_resources = get_pipeline_resources(test=test, overwrite=overwrite)
     v3_hgdp_tgp_meta_ht = v4_genome_release_resources.meta_ht.ht()
     v3_hgdp_tgp_dense_mt = v4_genome_release_resources.dense_mt.mt()
     v3_sites_ht = v4_genome_release_resources.v3_sites_ht.ht()

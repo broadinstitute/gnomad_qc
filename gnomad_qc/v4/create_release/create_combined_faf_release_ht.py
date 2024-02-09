@@ -412,7 +412,7 @@ def perform_cmh_test(
     return cmh_ht[ht.key].cmh
 
 
-def get_combine_faf_resources(
+def get_pipeline_resources(
     overwrite: bool = False,
     test: bool = False,
     apply_release_filters: bool = False,
@@ -514,7 +514,7 @@ def main(args):
     apply_release_filters = args.apply_release_filters
     pops = list(set(POPS["v3"] + POPS["v4"]))
     faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX["v4"]]
-    combine_faf_resources = get_combine_faf_resources(
+    combine_faf_resources = get_pipeline_resources(
         overwrite,
         test_gene,
         apply_release_filters,

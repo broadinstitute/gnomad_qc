@@ -63,7 +63,7 @@ VARIANT_QC_GLOBAL_FIELDS = {
 """Variant QC global annotations to keep in the final filter Table."""
 
 
-def get_final_variant_qc_resources(
+def get_pipeline_resources(
     test: bool,
     overwrite: bool,
     model_id: str,
@@ -123,7 +123,7 @@ def main(args):
     inbreeding_coeff_cutoff = args.inbreeding_coeff_threshold
 
     # Call method to return final VQC resources from evaluation runs.
-    final_vqc_resources = get_final_variant_qc_resources(
+    final_vqc_resources = get_pipeline_resources(
         test=test,
         overwrite=overwrite,
         model_id=args.model_id,

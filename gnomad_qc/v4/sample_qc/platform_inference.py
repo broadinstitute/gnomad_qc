@@ -26,7 +26,7 @@ logger = logging.getLogger("platform_pca")
 logger.setLevel(logging.INFO)
 
 
-def get_platform_resources(
+def get_pipeline_resources(
     test: bool,
     overwrite: bool,
 ) -> PipelineResourceCollection:
@@ -98,7 +98,7 @@ def main(args):
     hdbscan_min_samples = args.hdbscan_min_samples
     n_assignment_pcs = args.n_assignment_pcs
 
-    platform_resources = get_platform_resources(test=test, overwrite=overwrite)
+    platform_resources = get_pipeline_resources(test=test, overwrite=overwrite)
 
     try:
         if args.run_platform_pca:

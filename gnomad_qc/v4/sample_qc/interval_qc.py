@@ -541,7 +541,7 @@ def annotate_interval_qc_filter(
     return t
 
 
-def get_interval_qc_resources(
+def get_pipeline_resources(
     test: bool,
     overwrite: bool,
     calling_interval_name: str,
@@ -632,7 +632,7 @@ def main(args):
     overwrite = args.overwrite
     mean_dp_thresholds = args.mean_dp_thresholds
 
-    interval_qc_resources = get_interval_qc_resources(
+    interval_qc_resources = get_pipeline_resources(
         test=test,
         overwrite=overwrite,
         calling_interval_name=calling_interval_name,

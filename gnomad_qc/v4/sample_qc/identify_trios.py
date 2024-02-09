@@ -384,7 +384,7 @@ def filter_ped(
     return hl.Pedigree([trio for trio in ped.trios if trio.s in trios]), cutoffs
 
 
-def get_trio_resources(overwrite: bool, test: bool) -> PipelineResourceCollection:
+def get_pipeline_resources(overwrite: bool, test: bool) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the trio identification pipeline.
 
@@ -481,7 +481,7 @@ def main(args):
 
     overwrite = args.overwrite
     test = args.test
-    trio_resources = get_trio_resources(overwrite, test)
+    trio_resources = get_pipeline_resources(overwrite, test)
     trio_resources.check_resource_existence()
     platform_ht = trio_resources.platform_ht.ht()
     filter_ht = trio_resources.filter_ht.ht()

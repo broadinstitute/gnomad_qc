@@ -205,7 +205,7 @@ def add_model_to_run_list(
         json.dump(rf_runs, f)
 
 
-def get_variant_qc_resources(
+def get_pipeline_resources(
     test: bool,
     overwrite: bool,
     model_id: str = None,
@@ -286,7 +286,7 @@ def main(args):
     test = args.test
     compute_info_method = args.compute_info_method
 
-    variant_qc_resources = get_variant_qc_resources(
+    variant_qc_resources = get_pipeline_resources(
         test=test,
         overwrite=overwrite,
         model_id=args.model_id,

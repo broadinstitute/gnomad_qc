@@ -643,7 +643,7 @@ def get_tp_ht_for_vcf_export(
     return tp_hts
 
 
-def get_variant_qc_annotation_resources(
+def get_pipeline_resources(
     test: bool,
     overwrite: bool,
     over_n_alleles: Optional[bool] = None,
@@ -819,7 +819,7 @@ def main(args):
     elif sibling_singletons:
         true_positive_type = "sibling_singleton"
 
-    vqc_resources = get_variant_qc_annotation_resources(
+    vqc_resources = get_pipeline_resources(
         test=test,
         overwrite=overwrite,
         over_n_alleles=over_n_alleles,
