@@ -129,10 +129,6 @@ def main(args):
         pops_to_exclude=POPS_TO_REMOVE_FOR_POPMAX,
         pop_label="pop",
     )
-    faf_meta_by_pop = {
-        m.get("pop"): i for i, m in enumerate(faf_meta) if m.get("pop") and len(m) == 2
-    }
-    faf_meta_by_pop = hl.literal(faf_meta_by_pop)
 
     # Compute group max (popmax) on the merged exomes + genomes frequencies.
     logger.info("Computing grpmax...")
