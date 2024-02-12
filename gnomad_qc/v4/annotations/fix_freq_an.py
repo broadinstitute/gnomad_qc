@@ -49,14 +49,11 @@ logger = logging.getLogger("gnomAD_4.1_exomes_AN_fix")
 logger.setLevel(logging.INFO)
 
 
-def vds_annotate_adj(
-    vds: hl.vds.VariantDataset, freq_ht: Optional[hl.Table] = None
-) -> hl.vds.VariantDataset:
+def vds_annotate_adj(vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
     """
     Annotate adj, _het_ad, and select fields to reduce memory usage.
 
     :param vds: Hail VDS to annotate adj onto variant data.
-    :param freq_ht: Optional Hail Table containing frequency information.
     :return: Hail VDS with adj annotation.
     """
     rmt = vds.reference_data
@@ -111,23 +108,21 @@ def vds_annotate_adj(
 def compute_an_and_hists_het_fail_adj_ab(
     vds: hl.vds.VariantDataset,
     group_membership_ht: hl.Table,
-    freq_ht: hl.Table,
 ) -> hl.Table:
     """
     Compute allele number and histograms for het fail adj ab.
 
     :param vds: Input VariantDataset.
     :param group_membership_ht: Table of samples group memberships.
-    :param freq_ht: Table of frequency data.
     :return: Table of allele number and histograms for het fail adj ab.
     """
-    vds = vds_annotate_adj(vds, freq_ht)
+    vds = vds_annotate_adj(vds)
     vmt = vds.variant_data
 
-    # Only need to keep rows where the locus is in the freq HT and there is at least
-    # one non-ref genotype that fails the adj allele balance filter.
-    # This saves on computation by not keeping rows that will be filtered out later or
-    # don't have any genotypes that contribute to the aggregate counts.
+    # Only need to keep rows where there is at least one non-ref genotype that fails
+    # the adj allele balance filter. This saves on computation by not keeping rows
+    # that will be filtered out later or don't have any genotypes that contribute
+    # to the aggregate counts.
     vmt = vmt.filter_rows(hl.agg.any(vmt.adj & vmt.fail_adj_ab & vmt.LGT.is_non_ref()))
 
     logger.info(
@@ -144,12 +139,9 @@ def compute_an_and_hists_het_fail_adj_ab(
     logger.info("Splitting multi-allelic sites and filtering to sites in freq HT...")
     vmt = hl.experimental.sparse_split_multi(vmt)
 
-    # Now that the multi-allelic sites are split, we can filter to only the variants in
-    # the freq HT, genotypes that are non ref (we don't want to count the ref), and
-    # correctly handle the allele balance filtering of het non-ref genotypes.
-    vmt = vmt.filter_rows(
-        hl.is_defined(freq_ht[vmt.row_key])
-    )  # NOTE: We also probably want to drop this line to keep all sites in this.
+    # Now that the multi-allelic sites are split, we can filter genotypes that
+    # are non ref (we don't want to count the ref), and correctly handle the
+    #  allele balance filtering of het non-ref genotypes.
     vmt = vmt.filter_entries(
         vmt.GT.is_non_ref()
         & ~get_het_ab_adj_expr(
@@ -217,7 +209,7 @@ def compute_allele_number_per_ref_site_with_adj(
             split_adj_and_raw=True,
         )
 
-    vds = vds_annotate_adj(vds, freq_ht)
+    vds = vds_annotate_adj(vds)
     entry_agg_funcs = {
         "AN": get_allele_number_agg_func("LGT"),
         "qual_hists": (lambda t: [t.GQ, t.DP, t.adj], _get_hists),
@@ -281,27 +273,27 @@ def compute_allele_number_per_ref_site_with_adj(
     )
     freq_correction_ht = freq_correction_ht.annotate_globals(**global_annotations)
 
-    return ht.select("AN"), freq_correction_ht
+    return ht.select("AN", "qual_hists"), freq_correction_ht
 
 
 def update_freq_an_and_hists(
-    freq_ht: hl.Table, an_ht: hl.Table, vmt_hists_ht: hl.Table
+    freq_ht: hl.Table,
+    freq_correction_ht: hl.Table,
 ) -> hl.Table:
     """
     Update frequency HT AN field and histograms with the correct AN from the AN HT.
 
     This module updates the freq_ht AN field which is an array of ints with the correct
-    AN from the AN HT integer array annotation. It uses the an_ht dictionary and the
+    AN from the AN HT integer array annotation. It uses the freq_correction_ht dictionary and the
     freq_ht dictionary to match the indexing of array annotations so each group is
     correctly updated. It then recomputes AF, AC/AN.
 
     :param freq_ht: Frequency HT to update.
     :param an_ht: AN HT to update from.
-    :param vmt_hists_ht: Variant data histograms HT.
     :return: Updated frequency HT.
     """
     freq_meta = freq_ht.index_globals().freq_meta
-    an_meta = an_ht.index_globals().strata_meta
+    freq_correction_meta = freq_correction_ht.index_globals().strata_meta
 
     # Set all freq_ht's ANs to 0 so can use the merge_freq function to update
     # the ANs (expects int64s)
@@ -315,25 +307,38 @@ def update_freq_an_and_hists(
 
     # Create freq array annotation of structs with AC and nhomozygotes set to 0 to
     # use merge_freq function (expects int64s)
-    an_ht = an_ht.transmute(
-        freq=an_ht.AN.map(
+    freq_correction_ht = freq_correction_ht.transmute(
+        freq=freq_correction_ht.AN.map(
             lambda x: hl.struct(
                 AC=0, AN=x, homozygote_count=0, AF=hl.missing(hl.tfloat64)
             )
         )
     )
+    freq_ht = freq_ht.annotate(
+        freq_correction_freq=freq_correction_ht[freq_ht.locus].freq
+    )
+    freq_ht = freq_ht.annotate_globals(freq_correction_strata_meta=freq_correction_meta)
 
-    # Add an_ht to freq_ht to call merge_freq_arrays
-    freq_ht = freq_ht.annotate(an_freq=an_ht[freq_ht.locus].freq)
-    freq_ht = freq_ht.annotate_globals(an_strata_meta=an_meta)
+    logger.info("Merging freq arrays from v4 and freq correction HT...")
     freq, freq_meta = merge_freq_arrays(
-        [freq_ht.freq, freq_ht.an_freq], [freq_ht.freq_meta, freq_ht.an_strata_meta]
+        [freq_ht.freq, freq_ht.freq_correction_freq],
+        [freq_ht.freq_meta, freq_ht.freq_correction_strata_meta],
     )
     freq_ht = freq_ht.annotate(freq=freq)
     freq_ht = freq_ht.annotate_globals(freq_meta=freq_meta)
 
-    # TODO: Merge variant and ref histograms, need to be on same table like
-    # freq to use merge_histograms
+    logger.info("Updating freq_ht with corrected GQ and DP histograms...")
+    corrected_index = freq_correction_ht[freq_ht.key]
+    freq_ht = freq_ht.annotate(
+        qual_hists=freq_ht.qual_hists.annotate(
+            gq_hist_all=corrected_index.qual_hists.gq_hist_all,
+            dp_hist_all=corrected_index.qual_hists.dp_hist_all,
+        ),
+        raw_qual_hists=freq_ht.raw_qual_hists.annotate(
+            gq_hist_all=corrected_index.raw_qual_hists.gq_hist_all,
+            dp_hist_all=corrected_index.raw_qual_hists.dp_hist_all,
+        ),
+    )
     return freq_ht
 
 
@@ -421,7 +426,6 @@ def main(args):
             het_fail_adj_ab_ht = compute_an_and_hists_het_fail_adj_ab(
                 vds,
                 group_membership_ht,
-                freq_ht,
             )
             het_fail_adj_ab_ht = het_fail_adj_ab_ht.checkpoint(
                 "gs://gnomad/v4.1/temp/frequency_fix/het_fail_adj_ab_ht.ht",
@@ -448,7 +452,7 @@ def main(args):
         if args.update_freq_an_and_hists:
             logger.info("Updating AN in freq HT...")
 
-            an_ht = hl.read_table(
+            freq_correction_ht = hl.read_table(
                 "gs://gnomad/v4.1/temp/frequency_fix/freq_an_correction.ht"
             )
             freq_ht = get_freq(
@@ -458,11 +462,8 @@ def main(args):
                 chrom=chrom,
                 finalized=False,
             )
-            vmt_hists_ht = hl.read_table(
-                "gs://gnomad/v4.1/temp/frequency_fix/vmt_hists.ht"
-            )
             freq_ht = drop_gatk_groupings(freq_ht)
-            ht = update_freq_an_and_hists(freq_ht, an_ht, vmt_hists_ht)
+            ht = update_freq_an_and_hists(freq_ht, freq_correction_ht)
             ht.write(
                 get_freq(
                     version="4.1",
