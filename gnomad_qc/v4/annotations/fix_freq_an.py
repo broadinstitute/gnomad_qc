@@ -9,8 +9,8 @@ from gnomad.resources.grch38.reference_data import vep_context
 from gnomad.sample_qc.sex import adjusted_sex_ploidy_expr
 from gnomad.utils.annotations import (
     agg_by_strata,
-    get_adj_het_ab_expr,
-    get_dp_gq_adj_expr,
+    get_gq_dp_adj_expr,
+    get_het_ab_adj_expr,
     merge_freq_arrays,
     merge_histograms,
     qual_hist_expr,
@@ -84,7 +84,7 @@ def vds_annotate_adj(
 
     logger.info("Annotating reference data MT with DP and GQ adj...")
     rmt = rmt.annotate_entries(
-        adj=get_dp_gq_adj_expr(
+        adj=get_gq_dp_adj_expr(
             rmt.GQ, rmt.DP, locus_expr=rmt.locus, karyotype_expr=rmt.sex_karyotype
         )
     )
@@ -101,8 +101,8 @@ def vds_annotate_adj(
         )
     )
     vmt = vmt.annotate_entries(
-        adj=get_dp_gq_adj_expr(vmt.GQ, vmt.DP, gt_expr=vmt.LGT),
-        fail_adj_ab=~get_adj_het_ab_expr(vmt.LGT, vmt.DP, vmt.LAD),
+        adj=get_gq_dp_adj_expr(vmt.GQ, vmt.DP, gt_expr=vmt.LGT),
+        fail_adj_ab=~get_het_ab_adj_expr(vmt.LGT, vmt.DP, vmt.LAD),
     )
 
     if freq_ht is not None:
@@ -138,17 +138,20 @@ def compute_an_and_hists_het_fail_adj_ab(
     # This saves on computation by not keeping rows that will be filtered out later or
     # don't have any genotypes that contribute to the aggregate counts.
     vmt = vmt.filter_rows(
-        vmt.in_freq & hl.agg.any(vmt.adj & vmt.fail_adj_ab & vmt.LGT.is_non_ref())
+        vmt.in_freq
+        & hl.agg.any(
+            vmt.adj & vmt.fail_adj_ab & vmt.LGT.is_non_ref()
+        )  # TODO: Possibly drop this in_freq ann because may be computing hists everywhere we compute AN
     )
 
     logger.info(
         "Filtering variant data MT entries to those passing GQ and DP adj thresholds, "
-        "but failing het allele balance adj threshold..."
+        "but failing the het allele balance adj threshold..."
     )
-    # Only need to keep entries where the genotype passes the DP & GQ adj filters and
-    # fails the adj allele balance filter.
-    # This saves on computation by not needing to split multi-allelic entries that are
-    # not contributing to the aggregate counts.
+    # Keep only the entries where the genotype passes the DP and GQ adj filters,
+    # but fails the adj allele balance filter.
+    # This optimization avoids splitting multi-allelic entries that do not contribute
+    # to the aggregate counts.
     vmt = vmt.filter_entries(vmt.adj & vmt.fail_adj_ab)
     vmt = vmt.select_entries("LA", "LGT", "DP", "GQ", "LAD")
 
@@ -158,9 +161,14 @@ def compute_an_and_hists_het_fail_adj_ab(
     # Now that the multi-allelic sites are split, we can filter to only the variants in
     # the freq HT, genotypes that are non ref (we don't want to count the ref), and
     # correctly handle the allele balance filtering of het non-ref genotypes.
-    vmt = vmt.filter_rows(hl.is_defined(freq_ht[vmt.row_key]))
+    vmt = vmt.filter_rows(
+        hl.is_defined(freq_ht[vmt.row_key])
+    )  # NOTE: We also probably want to drop this line to keep all sites in this.
     vmt = vmt.filter_entries(
-        vmt.GT.is_non_ref() & ~get_adj_het_ab_expr(vmt.GT, vmt.DP, vmt.AD)
+        vmt.GT.is_non_ref()
+        & ~get_het_ab_adj_expr(
+            vmt.GT, vmt.DP, vmt.AD
+        )  # TODO: Why reannotate this? its already fail_adj_ab?
     )
 
     logger.info(
@@ -173,7 +181,8 @@ def compute_an_and_hists_het_fail_adj_ab(
 
     logger.info("Computing allele number for het fail adj allele balance...")
     # Set all the group membership fields to "raw" since we already handled the adj
-    # filtering above, we don't need to adj filter in `agg_by_strata`.
+    # filtering above. This avoids the built-in adj filtering in `agg_by_strata`. This is
+    # technically the raw - adj group.
     group_membership_ht = group_membership_ht.annotate_globals(
         freq_meta=group_membership_ht.freq_meta.map(
             lambda x: hl.dict(
@@ -255,7 +264,8 @@ def compute_allele_number_per_ref_site_with_adj(
     qual_hists = freq_correction.qual_hists[0].qual_hists
 
     # Convert the het fail adj allele balance histograms to negative values so that
-    # they can be subtracted from the reference histograms using merge_histograms.
+    # they can be subtracted from the reference raw histograms using merge_histograms
+    # to create adj histograms.
     sub_hists = het_fail_adj_ab.qual_hists_het_fail_adj_ab
     sub_hists = sub_hists.annotate(
         **{
@@ -376,7 +386,7 @@ def drop_gatk_groupings(ht: hl.Table) -> hl.Table:
 
 
 def main(args):
-    """Script to generate frequency and dense dependent annotations on v4 exomes."""
+    """Script to generate all sites AN and v4.0 exomes frequency fix."""
     overwrite = args.overwrite
     use_test_dataset = args.use_test_dataset
     test_n_partitions = args.test_n_partitions
