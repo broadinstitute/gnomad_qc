@@ -105,7 +105,6 @@ def main(args):
 
     # Select to first 28 groups, containing:
     # Raw, adj, adj male & female, and adj sex-split pops for 8 pops.
-    # Hail sets this to first 28 of each entry in the array, not first 28 of array.
     freq = freq[:28]
     freq_meta = freq_meta[:28]
 
@@ -138,6 +137,9 @@ def main(args):
         pops_to_exclude=POPS_TO_REMOVE_FOR_POPMAX,
         pop_label="pop",
     )
+
+    # Rename 'pop' to 'gen_anc' to fit other joint annotations.
+    grpmax = grpmax.rename({"pop": "gen_anc"})
 
     # Annotate Table with all joint exomes + genomes computations.
     ht = ht.annotate(
