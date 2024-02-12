@@ -105,15 +105,6 @@ def vds_annotate_adj(
         fail_adj_ab=~get_het_ab_adj_expr(vmt.LGT, vmt.DP, vmt.LAD),
     )
 
-    if freq_ht is not None:
-        logger.info("Annotating variant data MT with in_freq field...")
-        freq_ht = hl.Table(
-            hl.ir.TableKeyBy(
-                freq_ht._tir, ["locus"], is_sorted=True
-            )  # Prevents hail from running sort on HT which is already sorted.
-        )
-        vmt = vmt.annotate_rows(in_freq=hl.is_defined(freq_ht[vmt.locus]))
-
     return hl.vds.VariantDataset(rmt, vmt)
 
 
@@ -137,12 +128,7 @@ def compute_an_and_hists_het_fail_adj_ab(
     # one non-ref genotype that fails the adj allele balance filter.
     # This saves on computation by not keeping rows that will be filtered out later or
     # don't have any genotypes that contribute to the aggregate counts.
-    vmt = vmt.filter_rows(
-        vmt.in_freq
-        & hl.agg.any(
-            vmt.adj & vmt.fail_adj_ab & vmt.LGT.is_non_ref()
-        )  # TODO: Possibly drop this in_freq ann because may be computing hists everywhere we compute AN
-    )
+    vmt = vmt.filter_rows(hl.agg.any(vmt.adj & vmt.fail_adj_ab & vmt.LGT.is_non_ref()))
 
     logger.info(
         "Filtering variant data MT entries to those passing GQ and DP adj thresholds, "
@@ -224,16 +210,11 @@ def compute_allele_number_per_ref_site_with_adj(
     """
 
     def _get_hists(qual_expr) -> hl.expr.Expression:
-        # Get the source Table for the CallExpression to grab alleles.
-        t = qual_expr._indices.source
-        return hl.or_missing(
-            t.in_freq,
-            qual_hist_expr(
-                gq_expr=qual_expr[0],
-                dp_expr=qual_expr[1],
-                adj_expr=qual_expr[2] == 1,
-                split_adj_and_raw=True,
-            ),
+        return qual_hist_expr(
+            gq_expr=qual_expr[0],
+            dp_expr=qual_expr[1],
+            adj_expr=qual_expr[2] == 1,
+            split_adj_and_raw=True,
         )
 
     vds = vds_annotate_adj(vds, freq_ht)
@@ -250,7 +231,6 @@ def compute_allele_number_per_ref_site_with_adj(
         interval_ht=interval_ht,
         group_membership_ht=group_membership_ht,
         entry_keep_fields=["GQ", "DP"],
-        row_keep_fields=["in_freq"],
         entry_agg_group_membership={"qual_hists": [{"group": "raw"}]},
     )
     ht = ht.checkpoint(hl.utils.new_temp_file("an_hist_ref_sites", "ht"))
