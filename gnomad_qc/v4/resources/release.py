@@ -430,7 +430,7 @@ def get_false_dup_genes_path(
     """
     Retrieve path for the liftover table containing three genes of interest within a false duplication in GRCh38.
 
-    :param release_version: Release version. Defaults to CURRENT RELEASE
+    :param release_version: Release version. Defaults to CURRENT RELEASE.
     :param test: Whether to use a tmp path for testing. Default is False.
     :return: Combined custom liftover table path for the three genes in false duplication.
     """
