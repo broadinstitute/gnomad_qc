@@ -2,7 +2,7 @@
 
 import argparse
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import vep_context
@@ -116,7 +116,6 @@ def compute_an_and_hists_het_fail_adj_ab(
     :param group_membership_ht: Table of samples group memberships.
     :return: Table of allele number and histograms for het fail adj ab.
     """
-    vds = vds_annotate_adj(vds)
     vmt = vds.variant_data
 
     # Only need to keep rows where there is at least one non-ref genotype that fails
@@ -136,17 +135,14 @@ def compute_an_and_hists_het_fail_adj_ab(
     vmt = vmt.filter_entries(vmt.adj & vmt.fail_adj_ab)
     vmt = vmt.select_entries("LA", "LGT", "DP", "GQ", "LAD")
 
-    logger.info("Splitting multi-allelic sites and filtering to sites in freq HT...")
+    logger.info("Splitting multi-allelic sites...")
     vmt = hl.experimental.sparse_split_multi(vmt)
 
     # Now that the multi-allelic sites are split, we can filter genotypes that
     # are non ref (we don't want to count the ref), and correctly handle the
     #  allele balance filtering of het non-ref genotypes.
     vmt = vmt.filter_entries(
-        vmt.GT.is_non_ref()
-        & ~get_het_ab_adj_expr(
-            vmt.GT, vmt.DP, vmt.AD
-        )  # TODO: Why reannotate this? its already fail_adj_ab?
+        vmt.GT.is_non_ref() & ~get_het_ab_adj_expr(vmt.GT, vmt.DP, vmt.AD)
     )
 
     logger.info(
@@ -159,8 +155,8 @@ def compute_an_and_hists_het_fail_adj_ab(
 
     logger.info("Computing allele number for het fail adj allele balance...")
     # Set all the group membership fields to "raw" since we already handled the adj
-    # filtering above. This avoids the built-in adj filtering in `agg_by_strata`. This is
-    # technically the raw - adj group.
+    # filtering above, keeping only entries that fail the AB adj condition. This
+    # avoids the built-in adj filtering in `agg_by_strata`.
     group_membership_ht = group_membership_ht.annotate_globals(
         freq_meta=group_membership_ht.freq_meta.map(
             lambda x: hl.dict(
@@ -209,13 +205,15 @@ def compute_allele_number_per_ref_site_with_adj(
             split_adj_and_raw=True,
         )
 
-    vds = vds_annotate_adj(vds)
     entry_agg_funcs = {
         "AN": get_allele_number_agg_func("LGT"),
         "qual_hists": (lambda t: [t.GQ, t.DP, t.adj], _get_hists),
     }
 
     logger.info("Computing allele number and histograms per reference site...")
+    # Below we use just the raw group for qual hist computations because qual hists
+    # has its own built-in adj filtering when adj is passed as an argument and will
+    # produce both adj and raw histograms.
     ht = compute_stats_per_ref_site(
         vds,
         reference_ht,
@@ -236,8 +234,8 @@ def compute_allele_number_per_ref_site_with_adj(
     qual_hists = freq_correction.qual_hists[0].qual_hists
 
     # Convert the het fail adj allele balance histograms to negative values so that
-    # they can be subtracted from the reference raw histograms using merge_histograms
-    # to create adj histograms.
+    # they can be subtracted from the partial adj (GQ/DP pass) histograms using
+    # merge_histograms to create complete adj (GQ, DP, and AB pass) histograms.
     sub_hists = het_fail_adj_ab.qual_hists_het_fail_adj_ab
     sub_hists = sub_hists.annotate(
         **{
@@ -422,6 +420,7 @@ def main(args):
                 ).ht(),
                 150,
             )
+            vds = vds_annotate_adj(vds)
 
             het_fail_adj_ab_ht = compute_an_and_hists_het_fail_adj_ab(
                 vds,
