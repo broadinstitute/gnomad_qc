@@ -323,6 +323,7 @@ def update_freq_an_and_hists(
     )
     freq_ht = freq_ht.annotate(freq=freq)
     freq_ht = freq_ht.annotate_globals(freq_meta=freq_meta)
+    freq_ht = freq_ht.drop("freq_correction_freq", "freq_correction_strata_meta")
 
     logger.info("Updating freq_ht with corrected GQ and DP histograms...")
     corrected_index = freq_correction_ht[freq_ht.key].qual_hists
