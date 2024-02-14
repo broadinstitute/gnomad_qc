@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+from typing import Tuple
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import vep_context
@@ -181,7 +182,7 @@ def compute_allele_number_per_ref_site_with_adj(
     interval_ht: hl.Table,
     group_membership_ht: hl.Table,
     het_fail_adj_ab_ht: hl.Table,
-) -> hl.Table:
+) -> Tuple[hl.Table, hl.Table]:
     """
     Compute allele number per reference site and histograms for frequency correction.
 
@@ -190,7 +191,8 @@ def compute_allele_number_per_ref_site_with_adj(
     :param interval_ht: Table of intervals.
     :param group_membership_ht: Table of samples group memberships.
     :param het_fail_adj_ab_ht: Table of variant data histograms for het fail adj ab.
-    :return: Table of allele number and GQ/DP hists for all samples per reference site.
+    :return: Table of AN and GQ/DP hists per reference site and Table of AN and GQ/DP hists
+        for frequency correction.
     """
 
     def _get_hists(qual_expr) -> hl.expr.Expression:
@@ -224,13 +226,16 @@ def compute_allele_number_per_ref_site_with_adj(
     logger.info(
         "Adjusting allele number and histograms for het fail adj allele balance..."
     )
+    freq_ht = get_freq("4.0").ht()
     global_annotations = ht.index_globals()
-    qual_hists = ht.qual_hists[0].qual_hists
+    freq_correction = ht[freq_ht.locus]
+    het_fail_adj_ab = het_fail_adj_ab_ht[freq_ht.key]
+    qual_hists = freq_correction.qual_hists[0].qual_hists
 
     # Convert the het fail adj allele balance histograms to negative values so that
     # they can be subtracted from the partial adj (GQ/DP pass) histograms using
     # merge_histograms to create complete adj (GQ, DP, and AB pass) histograms.
-    sub_hists = het_fail_adj_ab_ht.qual_hists_het_fail_adj_ab
+    sub_hists = het_fail_adj_ab.qual_hists_het_fail_adj_ab
     sub_hists = sub_hists.annotate(
         **{
             k: v.annotate(
@@ -242,19 +247,19 @@ def compute_allele_number_per_ref_site_with_adj(
         }
     )
 
-    ht = ht.select(
+    freq_correction_ht = freq_ht.select(
         AN=hl.coalesce(
             hl.map(
                 lambda an, an_fail_adj, m: hl.if_else(
                     m.get("group") == "adj", an - hl.coalesce(an_fail_adj, 0), an
                 ),
-                ht.AN,
-                het_fail_adj_ab_ht.AN_het_fail_adj_ab,
+                freq_correction.AN,
+                het_fail_adj_ab.AN_het_fail_adj_ab,
                 global_annotations.strata_meta,
             ),
-            ht.AN,
+            freq_correction.AN,
         ),
-        qual_hists=ht.qual_hists[0].annotate(
+        qual_hists=freq_correction.qual_hists[0].annotate(
             qual_hists=hl.struct(
                 **{
                     k: merge_histograms([v, sub_hists[k]])
@@ -263,13 +268,14 @@ def compute_allele_number_per_ref_site_with_adj(
             )
         ),
     )
+    freq_correction_ht = freq_correction_ht.annotate_globals(**global_annotations)
 
-    return ht
+    return ht.select("AN", "qual_hists"), freq_correction_ht
 
 
 def update_freq_an_and_hists(
     freq_ht: hl.Table,
-    an_ht: hl.Table,
+    freq_correction_ht: hl.Table,
 ) -> hl.Table:
     """
     Update frequency HT AN field and histograms with the correct AN from the AN HT.
@@ -280,11 +286,11 @@ def update_freq_an_and_hists(
     correctly updated. It then recomputes AF, AC/AN.
 
     :param freq_ht: Frequency HT to update.
-    :param an_ht: AN HT to update from.
+    :param freq_correction_ht: HT to update AN and histograms from.
     :return: Updated frequency HT.
     """
     freq_meta = freq_ht.index_globals().freq_meta
-    freq_correction_meta = an_ht.index_globals().strata_meta
+    freq_correction_meta = freq_correction_ht.index_globals().strata_meta
 
     # Set all freq_ht's ANs to 0 so can use the merge_freq function to update
     # the ANs (expects int64s)
@@ -298,14 +304,16 @@ def update_freq_an_and_hists(
 
     # Create freq array annotation of structs with AC and nhomozygotes set to 0 to
     # use merge_freq function (expects int64s)
-    an_ht = an_ht.transmute(
-        freq=an_ht.AN.map(
+    freq_correction_ht = freq_correction_ht.transmute(
+        freq=freq_correction_ht.AN.map(
             lambda x: hl.struct(
                 AC=0, AN=x, homozygote_count=0, AF=hl.missing(hl.tfloat64)
             )
         )
     )
-    freq_ht = freq_ht.annotate(freq_correction_freq=an_ht[freq_ht.locus].freq)
+    freq_ht = freq_ht.annotate(
+        freq_correction_freq=freq_correction_ht[freq_ht.key].freq
+    )
     freq_ht = freq_ht.annotate_globals(freq_correction_strata_meta=freq_correction_meta)
 
     logger.info("Merging freq arrays from v4 and freq correction HT...")
@@ -317,7 +325,7 @@ def update_freq_an_and_hists(
     freq_ht = freq_ht.annotate_globals(freq_meta=freq_meta)
 
     logger.info("Updating freq_ht with corrected GQ and DP histograms...")
-    corrected_index = an_ht[freq_ht.key]
+    corrected_index = freq_correction_ht[freq_ht.key].qual_hists
     freq_ht = freq_ht.annotate(
         qual_hists=freq_ht.qual_hists.annotate(
             gq_hist_all=corrected_index.qual_hists.gq_hist_all,
@@ -422,7 +430,7 @@ def main(args):
                 overwrite=overwrite,
             )
 
-            an_ht = compute_allele_number_per_ref_site_with_adj(
+            an_ht, freq_correction_ht = compute_allele_number_per_ref_site_with_adj(
                 vds,
                 ref_ht,
                 interval_ht,
@@ -433,20 +441,26 @@ def main(args):
             an_ht.write(
                 release_all_sites_an(public=False, test=test).path, overwrite=overwrite
             )
+            freq_correction_ht.write(
+                "gs://gnomad/v4.1/temp/frequency_fix/freq_correction.ht",
+                overwrite=overwrite,
+            )
 
         if args.update_freq_an_and_hists:
             logger.info("Updating AN in freq HT...")
 
-            an_ht = release_all_sites_an(public=False, test=test).ht()
+            freq_correction_ht = hl.read_table(
+                "gs://gnomad/v4.1/temp/frequency_fix/freq_correction.ht"
+            )
             freq_ht = get_freq(
                 version="4.0",
                 test=test,
                 hom_alt_adjusted=False,
                 chrom=chrom,
                 finalized=False,
-            )
+            ).ht()
             freq_ht = drop_gatk_groupings(freq_ht)
-            ht = update_freq_an_and_hists(freq_ht, an_ht)
+            ht = update_freq_an_and_hists(freq_ht, freq_correction_ht)
             ht.write(
                 get_freq(
                     version="4.1",
