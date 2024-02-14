@@ -388,27 +388,18 @@ def main(args):
     )  # TODO: Do we want to try the new restart run option out?
 
     try:
-        # Fill this in, can we do this on VDS? run DP and GQ hists over sparse MT
-        # then merge hists? Should be fine for variant data histograms but will
-        # not work for ref data because of ref blocks. Investigating if we can do
-        #  this in the AN script for ref data and then filter to variant sites and then
-        #  merge with variant histogram data.
         if args.regenerate_ref_an_hists:
             logger.info("Regenerating reference AN and GQ/DP histograms...")
 
             ref_ht = vep_context.versions["105"].ht()
-            if test:
-                ref_ht = ref_ht._filter_partitions(range(5))
-
             ref_ht = ref_ht.key_by("locus").select().distinct()
 
             vds = get_gnomad_v4_vds(
                 release_only=True,
-                test=test,
-                filter_partitions=range(2) if test else None,
+                test=use_test_dataset,
+                filter_partitions=range(2) if test_n_partitions else None,
                 annotate_meta=True,
             )
-            freq_ht = get_freq("4.0").ht()
             group_membership_ht = get_group_membership_ht(
                 meta().ht(),
                 get_downsampling().ht(),
@@ -421,13 +412,12 @@ def main(args):
                 150,
             )
             vds = vds_annotate_adj(vds)
-
             het_fail_adj_ab_ht = compute_an_and_hists_het_fail_adj_ab(
                 vds,
                 group_membership_ht,
             )
             het_fail_adj_ab_ht = het_fail_adj_ab_ht.checkpoint(
-                "gs://gnomad/v4.1/temp/frequency_fix/het_fail_adj_ab_ht.ht",
+                f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/het_fail_adj_ab_ht.ht",
                 overwrite=overwrite,
             )
 
@@ -443,7 +433,7 @@ def main(args):
                 release_all_sites_an(public=False, test=test).path, overwrite=overwrite
             )
             freq_correction_ht.write(
-                "gs://gnomad/v4.1/temp/frequency_fix/freq_correction.ht",
+                f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/freq_correction.ht",
                 overwrite=overwrite,
             )
 
@@ -451,15 +441,18 @@ def main(args):
             logger.info("Updating AN in freq HT...")
 
             freq_correction_ht = hl.read_table(
-                "gs://gnomad/v4.1/temp/frequency_fix/freq_correction.ht"
+                f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/freq_correction.ht"
             )
             freq_ht = get_freq(
                 version="4.0",
-                test=test,
                 hom_alt_adjusted=False,
                 chrom=chrom,
                 finalized=False,
             ).ht()
+
+            if test:
+                freq_ht = freq_ht.filter(hl.is_defined(freq_correction_ht[freq_ht.key]))
+
             freq_ht = drop_gatk_groupings(freq_ht)
             ht = update_freq_an_and_hists(freq_ht, freq_correction_ht)
             ht.write(
