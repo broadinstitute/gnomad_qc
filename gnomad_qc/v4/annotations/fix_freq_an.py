@@ -374,8 +374,7 @@ def main(args):
     overwrite = args.overwrite
     use_test_dataset = args.use_test_dataset
     test_n_partitions = args.test_n_partitions
-    test_gene = args.test_gene
-    test = use_test_dataset or test_n_partitions or test_gene
+    test = use_test_dataset or test_n_partitions
     chrom = args.chrom
     af_threshold = args.af_threshold
 
@@ -406,14 +405,16 @@ def main(args):
                 get_downsampling().ht(),
                 get_downsampling(subset="non_ukb").ht(),
             )
-            interval_ht = calling_intervals(
-                interval_name="union", calling_interval_padding=0
-            ).ht()
+            interval_ht = adjust_interval_padding(
+                calling_intervals(
+                    interval_name="union", calling_interval_padding=0
+                ).ht(),
+                150,
+            )
 
             # Filter out interval HT to only include intervals that have at least one
-            # loci in the VDS variant data. This saves on computation by not keeping
-            # as it reduces the number of ref loci we compute AN and hists on during
-            # the test
+            # loci in the VDS variant data. This saves on computation by reducing the
+            # number of ref loci we compute AN and hists on during the test
             if test:
                 tmp_interval_ht = interval_ht.annotate(in_interval=interval_ht.interval)
                 tmp_ht = vds.variant_data.rows()
@@ -444,7 +445,6 @@ def main(args):
                 group_membership_ht,
                 het_fail_adj_ab_ht,
             )
-
             an_ht.write(
                 release_all_sites_an(public=False, test=test).path, overwrite=overwrite
             )
@@ -471,6 +471,7 @@ def main(args):
 
             freq_ht = drop_gatk_groupings(freq_ht)
             ht = update_freq_an_and_hists(freq_ht, freq_correction_ht)
+
             ht.write(
                 get_freq(
                     version="4.1",
@@ -544,11 +545,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "--use-test-dataset",
         help="Runs a test on the gnomad test dataset.",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--test-gene",
-        help="Runs a test on the DRD2 gene in the gnomad test dataset.",
         action="store_true",
     )
     parser.add_argument(
