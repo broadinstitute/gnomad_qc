@@ -270,6 +270,7 @@ def compute_allele_number_per_ref_site_with_adj(
     )
     freq_correction_ht = freq_correction_ht.annotate_globals(**global_annotations)
 
+    # Note: Why do we not want to update the an_ht with the het_fail_adj_ab_ht?
     return ht.select("AN", "qual_hists"), freq_correction_ht
 
 
@@ -405,12 +406,27 @@ def main(args):
                 get_downsampling().ht(),
                 get_downsampling(subset="non_ukb").ht(),
             )
-            interval_ht = adjust_interval_padding(
-                calling_intervals(
-                    interval_name="union", calling_interval_padding=0
-                ).ht(),
-                150,
-            )
+            interval_ht = calling_intervals(
+                interval_name="union", calling_interval_padding=0
+            ).ht()
+
+            # Filter out interval HT to only include intervals that have at least one
+            # loci in the VDS variant data. This saves on computation by not keeping
+            # as it reduces the number of ref loci we compute AN and hists on during
+            # the test
+            if test:
+                tmp_interval_ht = interval_ht.annotate(in_interval=interval_ht.interval)
+                tmp_ht = vds.variant_data.rows()
+                tmp_ht = tmp_ht.annotate(
+                    in_interval=tmp_interval_ht[tmp_ht.locus].in_interval
+                )
+                test_intervals = hl.literal(
+                    tmp_ht.aggregate(hl.agg.collect_as_set(tmp_ht.in_interval))
+                )
+                interval_ht = interval_ht.filter(
+                    test_intervals.contains(interval_ht.interval)
+                )
+
             vds = vds_annotate_adj(vds)
             het_fail_adj_ab_ht = compute_an_and_hists_het_fail_adj_ab(
                 vds,
