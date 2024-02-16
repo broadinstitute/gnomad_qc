@@ -10,8 +10,10 @@ from gnomad.resources.resource_utils import (
 )
 
 from gnomad_qc.v4.resources.constants import (
+    ALL_SITES_AN_RELEASES,
     ANNOTATION_VERSIONS,
     COMBINED_FAF_RELEASES,
+    CURRENT_ALL_SITES_AN_RELEASE,
     CURRENT_ANNOTATION_VERSION,
     CURRENT_COMBINED_FAF_RELEASE,
     CURRENT_HGDP_TGP_RELEASE,
@@ -61,7 +63,7 @@ def get_info(split: bool = True, test: bool = False) -> VersionedTableResource:
                     f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.info{'.split' if split else ''}.ht"
                 )
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
@@ -82,7 +84,7 @@ def get_vep(test: bool = False, data_type: str = "exomes") -> VersionedTableReso
                     f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vep.ht"
                 )
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
@@ -105,7 +107,7 @@ def validate_vep_path(
                     f"{_annotations_root(version, test, data_type)}/gnomad.{data_type}.v{version}.vep.validate.ht"
                 )
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
@@ -123,7 +125,7 @@ def get_trio_stats(test: bool = False) -> VersionedTableResource:
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.trio_stats.ht"
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
@@ -141,7 +143,7 @@ def get_sib_stats(test: bool = False) -> VersionedTableResource:
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.sib_stats.ht"
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
@@ -177,7 +179,7 @@ def get_variant_qc_annotations(test: bool = False) -> VersionedTableResource:
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.variant_qc_annotations.ht"
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
@@ -276,7 +278,7 @@ def get_downsampling(
             version: TableResource(
                 f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.downsampling{f'.{subset}' if subset else ''}.ht"
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
@@ -289,7 +291,7 @@ def get_freq(
     chrom: Optional[str] = None,
     intermediate_subset: Optional[str] = None,
     finalized: bool = True,
-) -> VersionedTableResource:
+) -> TableResource:
     """
     Get the frequency annotation table for a specified release.
 
@@ -323,8 +325,24 @@ def get_freq(
             ht_name += ".test"
         ht_path = f"{_annotations_root(version, test, data_type)}/{ht_name}.ht"
 
+    return TableResource(ht_path)
+
+
+def get_all_sites_an_and_qual_hists(test: bool = False) -> VersionedTableResource:
+    """
+    Get the all sites AN and qual hists TableResource.
+
+    :param test: Whether to use a tmp path for testing.
+    :return: Hail Table containing all sites AN and qual hists annotations.
+    """
     return VersionedTableResource(
-        version, {version: TableResource(ht_path) for version in VERSIONS}
+        CURRENT_ALL_SITES_AN_RELEASE["exomes"],
+        {
+            version: TableResource(
+                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.all_sites_an_and_qual_hists.ht"
+            )
+            for version in ALL_SITES_AN_RELEASES["exomes"]
+        },
     )
 
 
@@ -399,7 +417,7 @@ def get_insilico_predictors(predictor: str = "cadd") -> VersionedTableResource:
             version: TableResource(
                 path=f"gs://gnomad/v{version}/annotations/in_silico_predictors/gnomad.v{version}.{predictor}.grch38.ht"
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
@@ -433,7 +451,7 @@ def get_vrs(
                     )
                 )
             )
-            for version in VERSIONS
+            for version in ANNOTATION_VERSIONS
         },
     )
 
