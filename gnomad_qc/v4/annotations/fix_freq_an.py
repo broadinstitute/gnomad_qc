@@ -12,14 +12,22 @@ from gnomad.utils.annotations import (
     get_gq_dp_adj_expr,
     get_het_ab_adj_expr,
     get_is_haploid_expr,
+    merge_freq_arrays,
     merge_histograms,
     qual_hist_expr,
 )
+from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.sparse_mt import compute_stats_per_ref_site
 
 from gnomad_qc.v4.annotations.compute_coverage import (
     adjust_interval_padding,
     get_group_membership_ht,
+)
+from gnomad_qc.v4.annotations.generate_freq import (
+    compute_inbreeding_coeff,
+    correct_for_high_ab_hets,
+    create_final_freq_ht,
+    generate_faf_grpmax,
 )
 from gnomad_qc.v4.resources.annotations import (
     get_all_sites_an_and_qual_hists,
@@ -330,12 +338,108 @@ def compute_allele_number_per_ref_site_with_adj(
     return ht, freq_correction_ht
 
 
+def update_freq_an_and_hists(
+    freq_ht: hl.Table,
+    freq_correction_ht: hl.Table,
+) -> hl.Table:
+    """
+    Update frequency HT AN field and histograms with the correct AN from the AN HT.
+
+    This module updates the freq_ht AN field which is an array of ints with the correct
+    AN from the AN HT integer array annotation. It uses the freq_correction_ht dictionary and the
+    freq_ht dictionary to match the indexing of array annotations so each group is
+    correctly updated. It then recomputes AF, AC/AN.
+
+    :param freq_ht: Frequency HT to update.
+    :param freq_correction_ht: HT to update AN and histograms from.
+    :return: Updated frequency HT.
+    """
+    freq_correction_meta = freq_correction_ht.index_globals().strata_meta
+
+    # Set all freq_ht's ANs to 0 so can use the merge_freq function to update
+    # the ANs (expects int64s)
+    freq_ht = freq_ht.annotate(
+        freq=freq_ht.freq.map(
+            lambda x: x.select(
+                AC=x.AC, AN=hl.int64(0), homozygote_count=x.homozygote_count, AF=x.AF
+            )
+        )
+    )
+
+    # Create freq array annotation of structs with AC and nhomozygotes set to 0 to
+    # use merge_freq function (expects int64s)
+    freq_correction_ht = freq_correction_ht.transmute(
+        freq=freq_correction_ht.AN.map(
+            lambda x: hl.struct(
+                AC=0, AN=x, homozygote_count=0, AF=hl.missing(hl.tfloat64)
+            )
+        )
+    )
+    freq_ht = freq_ht.annotate(
+        freq_correction_freq=freq_correction_ht[freq_ht.key].freq
+    )
+    freq_ht = freq_ht.annotate_globals(freq_correction_strata_meta=freq_correction_meta)
+
+    logger.info("Merging freq arrays from v4 and freq correction HT...")
+    freq, freq_meta = merge_freq_arrays(
+        [freq_ht.freq, freq_ht.freq_correction_freq],
+        [freq_ht.freq_meta, freq_ht.freq_correction_strata_meta],
+    )
+    freq_ht = freq_ht.annotate(freq=freq)
+    freq_ht = freq_ht.annotate_globals(freq_meta=freq_meta)
+    freq_ht = freq_ht.drop("freq_correction_freq", "freq_correction_strata_meta")
+
+    logger.info("Updating freq_ht with corrected GQ and DP histograms...")
+    corrected_index = freq_correction_ht[freq_ht.key].qual_hists
+    freq_ht = freq_ht.annotate(
+        qual_hists=freq_ht.qual_hists.annotate(
+            gq_hist_all=corrected_index.qual_hists.gq_hist_all,
+            dp_hist_all=corrected_index.qual_hists.dp_hist_all,
+        ),
+        raw_qual_hists=freq_ht.raw_qual_hists.annotate(
+            gq_hist_all=corrected_index.raw_qual_hists.gq_hist_all,
+            dp_hist_all=corrected_index.raw_qual_hists.dp_hist_all,
+        ),
+    )
+    return freq_ht
+
+
+def drop_gatk_groupings(ht: hl.Table) -> hl.Table:
+    """
+    Drop GATK groupings from the frequency HT.
+
+    :param ht: Frequency HT to drop GATK groupings from.
+    :return: Frequency HT with GATK groupings dropped.
+    """
+    freq_meta, array_exprs = filter_arrays_by_meta(
+        ht.freq_meta,
+        {
+            "freq": ht.freq,
+            "high_ab_hets_by_group": ht.high_ab_hets_by_group,
+            "freq_meta_sample_count": ht.index_globals().freq_meta_sample_count,
+        },
+        items_to_filter=["gatk_version"],
+        keep=False,
+    )
+    ht = ht.annotate(
+        freq=array_exprs["freq"],
+        high_ab_hets_by_group=array_exprs["high_ab_hets_by_group"],
+    )
+    ht = ht.annotate_globals(
+        freq_meta=freq_meta,
+        freq_meta_sample_count=array_exprs["freq_meta_sample_count"],
+    )
+    return ht
+
+
 def main(args):
     """Script to generate all sites AN and v4.0 exomes frequency fix."""
     overwrite = args.overwrite
     use_test_dataset = args.use_test_dataset
     test_n_partitions = args.test_n_partitions
     test = use_test_dataset or test_n_partitions
+    chrom = args.chrom
+    af_threshold = args.af_threshold
 
     hl.init(
         log="/frequency_an_update.log",
@@ -415,6 +519,88 @@ def main(args):
                 f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/freq_correction.ht",
                 overwrite=overwrite,
             )
+        if args.update_freq_an_and_hists:
+            logger.info("Updating AN in freq HT...")
+
+            freq_correction_ht = hl.read_table(
+                f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/freq_correction.ht"
+            )
+            freq_ht = get_freq(
+                version="4.0",
+                hom_alt_adjusted=False,
+                chrom=chrom,
+                finalized=False,
+            ).ht()
+
+            if test:
+                freq_ht = freq_ht.filter(hl.is_defined(freq_correction_ht[freq_ht.key]))
+
+            freq_ht = drop_gatk_groupings(freq_ht)
+            ht = update_freq_an_and_hists(freq_ht, freq_correction_ht)
+
+            ht.write(
+                get_freq(
+                    version="4.1",
+                    test=test,
+                    hom_alt_adjusted=False,
+                    chrom=chrom,
+                    finalized=False,
+                ).path,
+                overwrite=overwrite,
+            )
+
+        if args.update_af_dependent_anns:
+            logger.info("Updatings AF dependent annotations...")
+
+            ht = get_freq(
+                version="4.1",
+                test=test,
+                hom_alt_adjusted=False,
+                chrom=chrom,
+                finalized=False,
+            ).ht()
+
+            logger.info("Correcting call stats, qual AB hists, and age hists...")
+            ht = correct_for_high_ab_hets(ht, af_threshold=af_threshold)
+
+            logger.info("Computing FAF & grpmax...")
+            ht = generate_faf_grpmax(ht)
+
+            logger.info("Calculating InbreedingCoeff...")
+            ht = compute_inbreeding_coeff(ht)
+
+            logger.info("High AB het corrected frequency HT schema...")
+            ht.describe()
+
+            logger.info("Writing corrected frequency Table...")
+            ht.write(
+                get_freq(
+                    version="4.1",
+                    test=test,
+                    hom_alt_adjusted=True,
+                    chrom=chrom,
+                    finalized=False,
+                ).path,
+                overwrite=overwrite,
+            )
+
+        if args.finalize_freq_ht:
+            logger.info("Writing final frequency Table...")
+            freq_ht = get_freq(
+                version="4.1",
+                test=test,
+                hom_alt_adjusted=True,
+                chrom=chrom,
+                finalized=False,
+            ).ht()
+            freq_ht = create_final_freq_ht(freq_ht)
+
+            logger.info("Final frequency HT schema...")
+            freq_ht.describe()
+            freq_ht.write(
+                get_freq(version="4.1", test=test, finalized=True).path,
+                overwrite=overwrite,
+            )
 
     finally:
         logger.info("Copying log to logging bucket...")
@@ -439,11 +625,50 @@ if __name__ == "__main__":
         type=int,
     )
     parser.add_argument(
+        "--chrom",
+        help="If passed, script will only run on passed chromosome.",
+        type=str,
+    )
+    parser.add_argument(
         "--overwrite", help="Overwrites existing files.", action="store_true"
     )
     parser.add_argument(
         "--regenerate-ref-an-hists",
         help="Calculate reference allele number and GQ/DP histograms for all sites.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--update-freq-an-and-hists",
+        help=(
+            "Update frequency HT AN field and GQ and DP hists with the correct AN and"
+            " hists from the AN HT."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--update-af-dependent-anns",
+        help=(
+            "Update AF dependent annotations in frequency HT with the new AF based on"
+            " updated AN."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--af-threshold",
+        help=(
+            "Threshold at which to adjust site group frequencies at sites for"
+            " homozygous alternate depletion present in GATK versions released prior to"
+            " 4.1.4.1."
+        ),
+        type=float,
+        default=0.01,
+    )
+    parser.add_argument(
+        "--finalize-freq-ht",
+        help=(
+            "Finalize frequency Table by dropping unnecessary fields and renaming"
+            " remaining fields."
+        ),
         action="store_true",
     )
 
