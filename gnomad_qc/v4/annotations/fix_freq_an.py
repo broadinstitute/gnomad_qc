@@ -152,7 +152,7 @@ def compute_an_and_hists_het_fail_adj_ab(
     # This optimization avoids splitting multi-allelic entries that do not contribute
     # to the aggregate counts.
     vmt = vmt.filter_entries(vmt.adj & vmt.fail_adj_ab)
-    vmt = vmt.select_entries("LA", "LGT", "DP", "GQ", "LAD")
+    vmt = vmt.select_entries("LA", "LGT", "DP", "GQ", "LAD", "ploidy")
 
     logger.info("Splitting multi-allelic sites...")
     vmt = hl.experimental.sparse_split_multi(vmt)
