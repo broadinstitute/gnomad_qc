@@ -11,25 +11,15 @@ from gnomad.utils.annotations import (
     agg_by_strata,
     get_gq_dp_adj_expr,
     get_het_ab_adj_expr,
-    merge_freq_arrays,
+    get_is_haploid_expr,
     merge_histograms,
     qual_hist_expr,
 )
-from gnomad.utils.filtering import filter_arrays_by_meta
-from gnomad.utils.sparse_mt import (
-    compute_stats_per_ref_site,
-    get_allele_number_agg_func,
-)
+from gnomad.utils.sparse_mt import compute_stats_per_ref_site
 
 from gnomad_qc.v4.annotations.compute_coverage import (
     adjust_interval_padding,
     get_group_membership_ht,
-)
-from gnomad_qc.v4.annotations.generate_freq import (
-    compute_inbreeding_coeff,
-    correct_for_high_ab_hets,
-    create_final_freq_ht,
-    generate_faf_grpmax,
 )
 from gnomad_qc.v4.resources.annotations import (
     get_all_sites_an_and_qual_hists,
@@ -90,7 +80,15 @@ def vds_annotate_adj(
     rmt = rmt.annotate_entries(
         adj=get_gq_dp_adj_expr(
             rmt.GQ, rmt.DP, locus_expr=rmt.locus, karyotype_expr=rmt.sex_karyotype
-        )
+        ),
+        ploidy=hl.if_else(
+            rmt.in_non_par
+            & get_is_haploid_expr(
+                locus_expr=rmt.locus, karyotype_expr=rmt.sex_karyotype
+            ),
+            1,
+            2,
+        ),
     )
 
     logger.info("Adjusting sex ploidy for variant data MT and annotating adj info...")
@@ -107,6 +105,7 @@ def vds_annotate_adj(
     vmt = vmt.annotate_entries(
         adj=get_gq_dp_adj_expr(vmt.GQ, vmt.DP, gt_expr=vmt.LGT),
         fail_adj_ab=~get_het_ab_adj_expr(vmt.LGT, vmt.DP, vmt.LAD),
+        ploidy=hl.int32(vmt.LGT.ploidy),
     )
 
     if freq_ht is not None:
@@ -189,7 +188,7 @@ def compute_an_and_hists_het_fail_adj_ab(
     )
     ht = agg_by_strata(
         vmt,
-        {"AN_het_fail_adj_ab": get_allele_number_agg_func("GT")},
+        {"AN_het_fail_adj_ab": (lambda t: t.ploidy, hl.agg.sum)},
         select_fields=["qual_hists_het_fail_adj_ab"],
         group_membership_ht=group_membership_ht,
     )
@@ -227,7 +226,7 @@ def compute_allele_number_per_ref_site_with_adj(
         )
 
     entry_agg_funcs = {
-        "AN": get_allele_number_agg_func("LGT"),
+        "AN": (lambda t: t.ploidy, hl.agg.sum),
         "qual_hists": (lambda t: [t.GQ, t.DP, t.adj], _get_hists),
     }
 
@@ -241,7 +240,7 @@ def compute_allele_number_per_ref_site_with_adj(
         entry_agg_funcs,
         interval_ht=interval_ht,
         group_membership_ht=group_membership_ht,
-        entry_keep_fields=["GQ", "DP"],
+        entry_keep_fields=["GQ", "DP", "ploidy"],
         entry_agg_group_membership={"qual_hists": [{"group": "raw"}]},
     )
     ht = ht.checkpoint(hl.utils.new_temp_file("an_hist_ref_sites", "ht"))
