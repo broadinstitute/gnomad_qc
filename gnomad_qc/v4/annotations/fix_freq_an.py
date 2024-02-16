@@ -2,7 +2,7 @@
 
 import argparse
 import logging
-from typing import Tuple
+from typing import Optional, Tuple
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import vep_context
@@ -31,7 +31,11 @@ from gnomad_qc.v4.annotations.generate_freq import (
     create_final_freq_ht,
     generate_faf_grpmax,
 )
-from gnomad_qc.v4.resources.annotations import get_downsampling, get_freq
+from gnomad_qc.v4.resources.annotations import (
+    get_all_sites_an_and_qual_hists,
+    get_downsampling,
+    get_freq,
+)
 from gnomad_qc.v4.resources.basics import (
     calling_intervals,
     get_gnomad_v4_vds,
@@ -49,11 +53,14 @@ logger = logging.getLogger("gnomAD_4.1_exomes_AN_fix")
 logger.setLevel(logging.INFO)
 
 
-def vds_annotate_adj(vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
+def vds_annotate_adj(
+    vds: hl.vds.VariantDataset, freq_ht: Optional[hl.Table] = None
+) -> hl.vds.VariantDataset:
     """
     Annotate adj, _het_ad, and select fields to reduce memory usage.
 
     :param vds: Hail VDS to annotate adj onto variant data.
+    :param freq_ht: Optional Hail Table containing frequency information.
     :return: Hail VDS with adj annotation.
     """
     rmt = vds.reference_data
@@ -102,27 +109,40 @@ def vds_annotate_adj(vds: hl.vds.VariantDataset) -> hl.vds.VariantDataset:
         fail_adj_ab=~get_het_ab_adj_expr(vmt.LGT, vmt.DP, vmt.LAD),
     )
 
+    if freq_ht is not None:
+        logger.info("Annotating variant data MT with in_freq field...")
+        freq_ht = hl.Table(
+            hl.ir.TableKeyBy(
+                freq_ht._tir, ["locus"], is_sorted=True
+            )  # Prevents hail from running sort on HT which is already sorted.
+        )
+        vmt = vmt.annotate_rows(in_freq=hl.is_defined(freq_ht[vmt.locus]))
+
     return hl.vds.VariantDataset(rmt, vmt)
 
 
 def compute_an_and_hists_het_fail_adj_ab(
     vds: hl.vds.VariantDataset,
     group_membership_ht: hl.Table,
+    freq_ht: hl.Table,
 ) -> hl.Table:
     """
     Compute allele number and histograms for het fail adj ab.
 
     :param vds: Input VariantDataset.
     :param group_membership_ht: Table of samples group memberships.
+    :param freq_ht: Table of frequency data.
     :return: Table of allele number and histograms for het fail adj ab.
     """
     vmt = vds.variant_data
 
-    # Only need to keep rows where there is at least one non-ref genotype that fails
-    # the adj allele balance filter. This saves on computation by not keeping rows
-    # that will be filtered out later or don't have any genotypes that contribute
-    # to the aggregate counts.
-    vmt = vmt.filter_rows(hl.agg.any(vmt.adj & vmt.fail_adj_ab & vmt.LGT.is_non_ref()))
+    # Only need to keep rows where the locus is in the freq HT and there is at least
+    # one non-ref genotype that fails the adj allele balance filter.
+    # This saves on computation by not keeping rows that will be filtered out later or
+    # don't have any genotypes that contribute to the aggregate counts.
+    vmt = vmt.filter_rows(
+        vmt.in_freq & hl.agg.any(vmt.adj & vmt.fail_adj_ab & vmt.LGT.is_non_ref())
+    )
 
     logger.info(
         "Filtering variant data MT entries to those passing GQ and DP adj thresholds, "
@@ -140,7 +160,8 @@ def compute_an_and_hists_het_fail_adj_ab(
 
     # Now that the multi-allelic sites are split, we can filter genotypes that
     # are non ref (we don't want to count the ref), and correctly handle the
-    #  allele balance filtering of het non-ref genotypes.
+    # allele balance filtering of het non-ref genotypes.
+    vmt = vmt.filter_rows(hl.is_defined(freq_ht[vmt.row_key]))
     vmt = vmt.filter_entries(
         vmt.GT.is_non_ref() & ~get_het_ab_adj_expr(vmt.GT, vmt.DP, vmt.AD)
     )
@@ -181,6 +202,7 @@ def compute_allele_number_per_ref_site_with_adj(
     reference_ht: hl.Table,
     interval_ht: hl.Table,
     group_membership_ht: hl.Table,
+    freq_ht: hl.Table,
     het_fail_adj_ab_ht: hl.Table,
 ) -> Tuple[hl.Table, hl.Table]:
     """
@@ -190,6 +212,7 @@ def compute_allele_number_per_ref_site_with_adj(
     :param reference_ht: Table of reference sites.
     :param interval_ht: Table of intervals.
     :param group_membership_ht: Table of samples group memberships.
+    :param freq_ht: Table of frequency data.
     :param het_fail_adj_ab_ht: Table of variant data histograms for het fail adj ab.
     :return: Table of AN and GQ/DP hists per reference site and Table of AN and GQ/DP hists
         for frequency correction.
@@ -226,7 +249,6 @@ def compute_allele_number_per_ref_site_with_adj(
     logger.info(
         "Adjusting allele number and histograms for het fail adj allele balance..."
     )
-    freq_ht = get_freq("4.0").ht()
     global_annotations = ht.index_globals()
     freq_correction = ht[freq_ht.locus]
     het_fail_adj_ab = het_fail_adj_ab_ht[freq_ht.key]
@@ -270,8 +292,43 @@ def compute_allele_number_per_ref_site_with_adj(
     )
     freq_correction_ht = freq_correction_ht.annotate_globals(**global_annotations)
 
-    # Note: Why do we not want to update the an_ht with the het_fail_adj_ab_ht?
-    return ht.select("AN", "qual_hists"), freq_correction_ht
+    # Get the sum of het GTs that fail the adj allele balance filter for all alleles at
+    # each locus.
+    het_fail_adj_ab_ht = het_fail_adj_ab_ht.group_by("locus").aggregate(
+        AN_het_fail_adj_ab=hl.agg.array_sum(het_fail_adj_ab_ht.AN_het_fail_adj_ab),
+        qual_hists_het_fail_adj_ab=hl.struct(
+            **{
+                k: hl.struct(
+                    bin_edges=hl.agg.take(v.bin_edges, 1)[0],
+                    bin_freq=hl.agg.array_sum(v.bin_freq),
+                    n_smaller=hl.agg.sum(v.n_smaller),
+                    n_larger=hl.agg.sum(v.n_larger),
+                )
+                for k, v in het_fail_adj_ab_ht.qual_hists_het_fail_adj_ab.items()
+            }
+        ),
+    )
+
+    # Annotate the all sites AN and qual hists Table with the number of hets that fail
+    # the adj allele balance filter at the locus and add the AN corrected for the
+    # allele balance filter to the all sites AN and qual hists Table.
+    het_fail_adj_ab = het_fail_adj_ab_ht[ht.locus]
+    ht = ht.select(
+        "AN",
+        "qual_hists",
+        AN_het_fail_adj_ab=het_fail_adj_ab.AN_het_fail_adj_ab,
+        qual_hists_het_fail_adj_ab=het_fail_adj_ab.qual_hists_het_fail_adj_ab,
+        AN_adj_ab=hl.map(
+            lambda an, an_fail_adj, m: hl.if_else(
+                m.get("group") == "adj", an - hl.coalesce(an_fail_adj, 0), an
+            ),
+            ht.AN,
+            het_fail_adj_ab.AN_het_fail_adj_ab,
+            global_annotations.strata_meta,
+        ),
+    )
+
+    return ht, freq_correction_ht
 
 
 def update_freq_an_and_hists(
@@ -290,7 +347,6 @@ def update_freq_an_and_hists(
     :param freq_correction_ht: HT to update AN and histograms from.
     :return: Updated frequency HT.
     """
-    freq_meta = freq_ht.index_globals().freq_meta
     freq_correction_meta = freq_correction_ht.index_globals().strata_meta
 
     # Set all freq_ht's ANs to 0 so can use the merge_freq function to update
@@ -383,9 +439,7 @@ def main(args):
         default_reference="GRCh38",
         tmp_dir="gs://gnomad-tmp-30day",
     )
-    hl._set_flags(
-        use_ssa_logs="1"
-    )  # TODO: Do we want to try the new restart run option out?
+    hl._set_flags(use_ssa_logs="1")
 
     try:
         if args.regenerate_ref_an_hists:
@@ -400,6 +454,7 @@ def main(args):
                 filter_partitions=range(2) if test_n_partitions else None,
                 annotate_meta=True,
             )
+            freq_ht = get_freq("4.0").ht()
             group_membership_ht = get_group_membership_ht(
                 meta().ht(),
                 get_downsampling().ht(),
@@ -413,7 +468,7 @@ def main(args):
             )
 
             # Filter out interval HT to only include intervals that have at least one
-            # loci in the VDS variant data. This saves on computation by reducing the
+            # locus in the VDS variant data. This saves on computation by reducing the
             # number of ref loci we compute AN and hists on during the test
             if test:
                 tmp_interval_ht = interval_ht.annotate(in_interval=interval_ht.interval)
@@ -428,10 +483,10 @@ def main(args):
                     test_intervals.contains(interval_ht.interval)
                 )
 
-            vds = vds_annotate_adj(vds)
             het_fail_adj_ab_ht = compute_an_and_hists_het_fail_adj_ab(
-                vds,
+                vds_annotate_adj(vds, freq_ht),
                 group_membership_ht,
+                freq_ht,
             )
             het_fail_adj_ab_ht = het_fail_adj_ab_ht.checkpoint(
                 f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/het_fail_adj_ab_ht.ht",
@@ -439,12 +494,17 @@ def main(args):
             )
 
             an_ht, freq_correction_ht = compute_allele_number_per_ref_site_with_adj(
-                vds,
+                vds_annotate_adj(vds),
                 ref_ht,
                 interval_ht,
                 group_membership_ht,
+                freq_ht,
                 het_fail_adj_ab_ht,
             )
+            an_ht = an_ht.checkpoint(
+                get_all_sites_an_and_qual_hists(test=test).path, overwrite=overwrite
+            )
+            an_ht = an_ht.select(AN=an_ht.AN_adj_ab)
             an_ht.write(
                 release_all_sites_an(public=False, test=test).path, overwrite=overwrite
             )
@@ -530,8 +590,8 @@ def main(args):
             freq_ht = create_final_freq_ht(freq_ht)
 
             logger.info("Final frequency HT schema...")
-            ht.describe()
-            ht.write(
+            freq_ht.describe()
+            freq_ht.write(
                 get_freq(version="4.1", test=test, finalized=True).path,
                 overwrite=overwrite,
             )

@@ -126,6 +126,7 @@ def adjust_interval_padding(ht: hl.Table, padding: int) -> hl.Table:
             ht.interval.start.position - padding,
             ht.interval.end.position + padding,
             reference_genome=ht.interval.start.dtype.reference_genome,
+            includes_end=True,
         )
     )
 
