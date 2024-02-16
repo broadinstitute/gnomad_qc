@@ -1,4 +1,5 @@
 """Script to filter the gnomAD v4 VariantDataset to a subset of specified samples."""
+
 import argparse
 import logging
 from typing import Dict, List, Optional
@@ -361,6 +362,8 @@ def main(args):
         # TODO: add num-vcf-shards where no sharding happens if this is not set.
         if args.vcf:
             mt = mt.drop("gvcf_info")
+            mt = mt.transmute_rows(rsid=hl.str(";").join(mt.rsid))
+            mt = mt.annotate_rows(info=mt.info.annotate(**mt.info.vrs).drop("vrs"))
             if args.subset_call_stats:
                 mt = mt.drop("adj")
                 header_dict["info"] = SUBSET_CALLSTATS_INFO_DICT
