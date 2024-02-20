@@ -391,7 +391,7 @@ def adjust_per_site_an_and_hists_for_frequency(
     global_annotations = ht.index_globals()
     freq_correction = ht[freq_ht.locus]
     het_fail_adj_ab = het_fail_adj_ab_ht[freq_ht.key]
-    qual_hists = freq_correction.qual_hists[0].qual_hists
+    qual_hists = freq_correction.qual_hists[0]
 
     # Convert the het fail adj allele balance histograms to negative values so that
     # they can be subtracted from the partial adj (GQ/DP pass) histograms using
@@ -425,10 +425,10 @@ def adjust_per_site_an_and_hists_for_frequency(
                 ann: hl.struct(
                     **{
                         k: merge_histograms([v, sub_hists[ann][k]])
-                        for k, v in qual_hists.items()
+                        for k, v in hists.items()
                     }
                 )
-                for ann, hists in sub_hists.items()
+                for ann, hists in qual_hists.items()
             }
         ),
     )
