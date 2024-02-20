@@ -22,6 +22,7 @@ This script performs the following steps:
 
     - Generates allele number and GQ/DP histograms for all sites in the exome calling
       interval.
+
         - For raw genotypes, the AN is just the sum of the ploidy (more specifics on
           this below) for all genotypes.
         - For adj genotypes, the AN is the sum of the ploidy for all genotypes that pass
@@ -89,6 +90,7 @@ def prep_vds_for_all_sites_stats(vds: hl.vds.VariantDataset) -> hl.vds.VariantDa
     Prepare VDS for all sites stats.
 
     Adds the following annotations to the VDS:
+
         - 'ploidy': The ploidy of the genotype adjusted for sex karyotype.
         - 'adj': The adj filter for GQ and DP.
 
