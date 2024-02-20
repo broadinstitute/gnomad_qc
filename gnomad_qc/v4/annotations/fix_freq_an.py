@@ -393,24 +393,22 @@ def adjust_per_site_an_and_hists_for_frequency(
     global_annotations = ht.index_globals()
     freq_correction = ht[freq_ht.locus]
     het_fail_adj_ab = het_fail_adj_ab_ht[freq_ht.key]
-    qual_hists = freq_correction.qual_hists[0]
+    qual_hists = freq_correction.qual_hists[0].qual_hists
+    het_fail_adj_ab_qual_hists = het_fail_adj_ab.qual_hists_adjust.qual_hists
 
     # Convert the het fail adj allele balance histograms to negative values so that
     # they can be subtracted from the partial adj (GQ/DP pass) histograms using
     # merge_histograms to create complete adj (GQ, DP, and AB pass) histograms.
-    sub_hists = {
-        ann: hists.annotate(
-            **{
-                k: v.annotate(
-                    bin_freq=v.bin_freq.map(lambda x: -x),
-                    n_smaller=-v.n_smaller,
-                    n_larger=-v.n_larger,
-                )
-                for k, v in hists.items()
-            }
-        )
-        for ann, hists in het_fail_adj_ab.qual_hists_adjust.items()
-    }
+    sub_hists = het_fail_adj_ab_qual_hists.annotate(
+        **{
+            k: v.annotate(
+                bin_freq=v.bin_freq.map(lambda x: -x),
+                n_smaller=-v.n_smaller,
+                n_larger=-v.n_larger,
+            )
+            for k, v in het_fail_adj_ab_qual_hists.items()
+        }
+    )
 
     freq_correction_ht = freq_ht.select(
         AN=hl.coalesce(
@@ -423,15 +421,12 @@ def adjust_per_site_an_and_hists_for_frequency(
             freq_correction.AN,
         ),
         qual_hists=freq_correction.qual_hists[0].annotate(
-            **{
-                ann: hl.struct(
-                    **{
-                        k: merge_histograms([v, sub_hists[ann][k]])
-                        for k, v in hists.items()
-                    }
-                )
-                for ann, hists in qual_hists.items()
-            }
+            qual_hists=hl.struct(
+                **{
+                    k: merge_histograms([v, sub_hists[k]])
+                    for k, v in qual_hists.items()
+                }
+            )
         ),
     )
     freq_correction_ht = freq_correction_ht.annotate_globals(**global_annotations)
@@ -442,18 +437,13 @@ def adjust_per_site_an_and_hists_for_frequency(
         AN_adjust=hl.agg.array_sum(het_fail_adj_ab_ht.AN_adjust),
         qual_hists_adjust=hl.struct(
             **{
-                ann: hl.struct(
-                    **{
-                        k: hl.struct(
-                            bin_edges=hl.agg.take(v.bin_edges, 1)[0],
-                            bin_freq=hl.agg.array_sum(v.bin_freq),
-                            n_smaller=hl.agg.sum(v.n_smaller),
-                            n_larger=hl.agg.sum(v.n_larger),
-                        )
-                        for k, v in hists.items()
-                    }
+                k: hl.struct(
+                    bin_edges=hl.agg.take(v.bin_edges, 1)[0],
+                    bin_freq=hl.agg.array_sum(v.bin_freq),
+                    n_smaller=hl.agg.sum(v.n_smaller),
+                    n_larger=hl.agg.sum(v.n_larger),
                 )
-                for ann, hists in het_fail_adj_ab_ht.qual_hists_adjust.items()
+                for k, v in het_fail_adj_ab_ht.qual_hists_adjust.qual_hists.items()
             }
         ),
     )
