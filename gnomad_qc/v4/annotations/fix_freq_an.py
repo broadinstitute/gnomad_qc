@@ -483,9 +483,9 @@ def update_freq_an_and_hists(
     Update frequency HT AN field and histograms with the correct AN from the AN HT.
 
     This module updates the freq_ht AN field which is an array of ints with the correct
-    AN from the AN HT integer array annotation. It uses the freq_correction_ht dictionary and the
-    freq_ht dictionary to match the indexing of array annotations so each group is
-    correctly updated. It then recomputes AF, AC/AN.
+    AN from the AN HT integer array annotation. It uses the freq_correction_ht
+    dictionary and the freq_ht dictionary to match the indexing of array annotations so
+    each group is correctly updated. It then recomputes AF, AC/AN.
 
     :param freq_ht: Frequency HT to update.
     :param freq_correction_ht: HT to update AN and histograms from.
@@ -494,7 +494,7 @@ def update_freq_an_and_hists(
     freq_correction_meta = freq_correction_ht.index_globals().strata_meta
 
     # Set all freq_ht's ANs to 0 so can use the merge_freq function to update
-    # the ANs (expects int64s)
+    # the ANs (expects int64s).
     freq_ht = freq_ht.annotate(
         freq=freq_ht.freq.map(
             lambda x: x.select(
@@ -503,8 +503,8 @@ def update_freq_an_and_hists(
         )
     )
 
-    # Create freq array annotation of structs with AC and nhomozygotes set to 0 to
-    # use merge_freq function (expects int64s)
+    # Create freq array annotation of structs with AC and homozygote_count set to 0 to
+    # use merge_freq function (expects int64s).
     freq_correction_ht = freq_correction_ht.transmute(
         freq=freq_correction_ht.AN.map(
             lambda x: hl.struct(
@@ -706,7 +706,7 @@ def main(args):
             )
 
         if args.update_af_dependent_anns:
-            logger.info("Updatings AF dependent annotations...")
+            logger.info("Updating AF dependent annotations...")
 
             ht = get_freq(
                 version="4.1",
