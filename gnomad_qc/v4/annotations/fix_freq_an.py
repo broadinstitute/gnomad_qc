@@ -133,9 +133,6 @@ def prep_vds_for_all_sites_stats(vds: hl.vds.VariantDataset) -> hl.vds.VariantDa
     )
     rmt = hl.vds.segment_reference_blocks(rmt, rg_intervals)
 
-    logger.info(
-        "Filtering chrY reference data MT entries for XX sex karyotype samples..."
-    )
     # Annotating the cols and rows with annotations used in the filter_entries to
     # prevent the need to recompute these annotations for every entry in the
     # filter_entries.
@@ -144,10 +141,6 @@ def prep_vds_for_all_sites_stats(vds: hl.vds.VariantDataset) -> hl.vds.VariantDa
         in_y_par=rmt.locus.in_y_par(),
         in_y_nonpar=rmt.locus.in_y_nonpar(),
         in_non_par=~rmt.locus.in_autosome_or_par(),
-    )
-    rmt.filter_entries(
-        (rmt.in_y_par | rmt.in_y_nonpar) & (rmt.sex_karyotype == "XX"),
-        keep=False,
     )
 
     logger.info("Annotating reference data MT with DP/GQ adj and ploidy...")
@@ -279,6 +272,12 @@ def compute_an_and_hists_het_fail_adj_ab(
             gq_expr=hl.or_missing(adj_hist_include_expr, vmt.GQ),
             dp_expr=hl.or_missing(adj_hist_include_expr, vmt.DP),
         ),
+        # NOTE: This is not needed for the adjustment of the raw qual hists. They are
+        # not impacted by the non-PAR XY het genotypes being set to None because the
+        # GQ and DP are maintained. Adj qual hists are impacted by the non-PAR XY het
+        # genotypes being set to None because the adj annotation is dependent on the
+        # GT, and therefore the GQ and DP are not included in the histogram
+        # calculations.
         raw_qual_hists_is_nonpar_xy_het=qual_hist_expr(
             gq_expr=hl.or_missing(vmt.is_nonpar_xy_het, vmt.GQ),
             dp_expr=hl.or_missing(vmt.is_nonpar_xy_het, vmt.DP),
