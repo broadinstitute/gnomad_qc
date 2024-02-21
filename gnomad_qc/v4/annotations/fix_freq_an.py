@@ -14,8 +14,8 @@ not the expected behavior due to the following line of code:
 
 This line of code filters any row that has no genotypes in the sample subset. When the
 VariantDataset is densified prior to the frequency calculations this results in no
-reference data being filled in for that row, unless a row is part of multiallelic site that is not 
-exclusive to the sample subset, and therefore a missing AN for that row. When combining 
+reference data being filled in for that row, unless a row is part of multiallelic site that is not
+exclusive to the sample subset, and therefore a missing AN for that row. When combining
 the frequency data for the UKB and non-UKB subsets, the AN for these rows will
 only have the AN for the subset that has non-ref genotypes for that row.
 
@@ -250,20 +250,7 @@ def compute_an_and_hists_het_fail_adj_ab(
 
     This module computes the allele number and quality histograms for only the
     genotypes that are het and fail the adj allele balance or are non-PAR XY het
-    genotypes. These numbers can they be used to adjust the all sites AN and quality
-    histograms. The all sites values are only the reference AN and quality histograms
-    at the site level (keyed by locus) and don't take into account the differences in
-    the genotypes. The reasons a genotype's AN and quality histograms can be different
-    from the all sites values are:
-
-        - The reference AN adj filter doesn't take into account the allele balance adj
-          filter, so the variant AN can be smaller than the reference AN if there are
-          samples with het genotypes that fail the adj allele balance filter.
-
-        - The reference AN doesn't remove the non-PAR het genotypes in XY samples, so
-          the variant AN can be smaller than the reference AN if there are XY samples
-          with a het genotype in a non-PAR region on chrX or chrY.
-
+    genotypes.
 
     :param vds: Input VariantDataset.
     :param group_membership_ht: Table of samples group memberships.
@@ -376,8 +363,8 @@ def compute_an_and_hists_het_fail_adj_ab(
     )
     ht = ht.checkpoint(hl.utils.new_temp_file("an_qual_hist_adjust", "ht"))
 
-    # Adjust the raw groups using the count of 'non_par_xy_hets' rather than the sum of the
-    # ploidies of the failed AB adj hets.
+    # Adjust the raw groups using the count of 'non_par_xy_hets' rather than the sum of
+    # the ploidies of the failed AB adj hets.
     freq_meta = group_membership_ht.index_globals().freq_meta
     an_nonpar_xy_het_meta = hl.array(an_nonpar_xy_het_meta)
     ht = ht.select(
@@ -452,6 +439,22 @@ def adjust_per_site_an_and_hists_for_frequency(
 ) -> Tuple[hl.Table, hl.Table]:
     """
     Adjust allele number and histograms for frequency correction.
+
+    The all sites values on `ht` are only the reference AN and quality histograms
+    at the site level (keyed by locus) and don't take into account the differences in
+    the alleles. This function will adjust the all sites AN and quality histograms
+    by the `het_fail_adj_ab_ht` (computed by `compute_an_and_hists_het_fail_adj_ab`)
+    so they can be used for the variant frequency correction.
+
+    The reasons a variant's AN and quality histograms can be different from the all
+    sites values are:
+
+        - The reference AN adj filter doesn't take into account the allele balance adj
+          filter, so the variant AN can be smaller than the reference AN if there are
+          samples with het genotypes that fail the adj allele balance filter.
+        - The reference AN doesn't remove the non-PAR het genotypes in XY samples, so
+          the variant AN can be smaller than the reference AN if there are XY samples
+          with a het genotype in a non-PAR region on chrX or chrY.
 
     :param ht: Table of AN and GQ/DP hists per reference site.
     :param freq_ht: Table of frequency data.
