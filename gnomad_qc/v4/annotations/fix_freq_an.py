@@ -245,7 +245,24 @@ def compute_an_and_hists_het_fail_adj_ab(
     freq_ht: hl.Table,
 ) -> hl.Table:
     """
-    Compute allele number and histograms for het fail adj ab.
+    Compute allele number and histograms for het fail adj ab and non-PAR XY het.
+
+    This module computes the allele number and quality histograms for only the
+    genotypes that are het and fail the adj allele balance or are non-PAR XY het
+    genotypes. These numbers can they be used to adjust the all sites AN and quality
+    histograms. The all sites values are only the reference AN and quality histograms
+    at the site level (keyed by locus) and don't take into account the differences in
+    the genotypes. The reasons a genotype's AN and quality histograms can be different
+    from the all sites values are:
+
+        - The reference AN adj filter doesn't take into account the allele balance adj
+          filter, so the variant AN can be smaller than the reference AN if there are
+          samples with het genotypes that fail the adj allele balance filter.
+
+        - The reference AN doesn't remove the non-PAR het genotypes in XY samples, so
+          the variant AN can be smaller than the reference AN if there are XY samples
+          with a het genotype in a non-PAR region on chrX or chrY.
+
 
     :param vds: Input VariantDataset.
     :param group_membership_ht: Table of samples group memberships.
@@ -258,13 +275,9 @@ def compute_an_and_hists_het_fail_adj_ab(
         "Filtering variant data MT entries to those passing GQ and DP adj thresholds, "
         "but failing the het allele balance adj threshold..."
     )
-    # Keep only the entries where the genotype passes the DP and GQ adj filters,
-    # but fails the adj allele balance filter.
-    # This optimization avoids splitting multi-allelic entries that do not contribute
-    # to the aggregate counts.
     # Use the locus and karyotype to determine the GQ and DP adj correctly for sex
-    # ploidy. The adj allele balance filter is not dependent on sex ploidy so we can
-    # annotate that before adjusting the ploidy of the genotype.
+    # ploidy on unsplit data. The adj allele balance filter is not dependent on sex
+    # ploidy, so we can annotate that before adjusting the ploidy of the genotype.
     vmt = vmt.select_cols(
         sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
         xy=vmt.meta.sex_imputation.sex_karyotype == "XY",
@@ -277,12 +290,16 @@ def compute_an_and_hists_het_fail_adj_ab(
         fail_het_ab_adj=~get_het_ab_adj_expr(vmt.LGT, vmt.DP, vmt.LAD),
         is_nonpar_xy_het=vmt.in_non_par & vmt.xy & vmt.LGT.is_het(),
     )
+
+    # Keep only the entries where the genotype passes the DP and GQ adj filters,
+    # but fails the adj allele balance filter. This optimization avoids splitting
+    # multi-allelic entries that do not contribute to the aggregate counts.
     vmt = vmt.filter_entries((vmt.fail_het_ab_adj & vmt.adj) | vmt.is_nonpar_xy_het)
 
     # Only need to keep rows where the locus is in the freq HT and there is at least
-    # one non-ref genotype.
-    # This saves on computation by not keeping rows that will be filtered out later or
-    # don't have any genotypes that contribute to the aggregate counts.
+    # one non-ref genotype. This saves on computation by not keeping rows that will be
+    # filtered out later or don't have any genotypes that contribute to the aggregate
+    # counts.
     locus_freq_ht = hl.Table(
         hl.ir.TableKeyBy(
             freq_ht._tir, ["locus"], is_sorted=True
@@ -296,12 +313,14 @@ def compute_an_and_hists_het_fail_adj_ab(
     logger.info("Splitting multi-allelic sites...")
     vmt = hl.experimental.sparse_split_multi(vmt)
 
-    # Now that the multi-allelic sites are split, we can filter genotypes that
-    # are non ref (we don't want to count the ref), and correctly handle the
-    # allele balance filtering of het non-ref genotypes.
+    # Now that the multi-allelic sites are split, we can filter genotypes that are non
+    # ref (we don't want to count the ref), and correctly handle the allele balance
+    # filtering of het non-ref genotypes.
     vmt = vmt.filter_rows(hl.is_defined(freq_ht[vmt.row_key]))
 
-    # Adjust the genotype for sex ploidy.
+    # Redo the 'is_nonpar_xy_het' and 'fail_het_ab_adj' annotations after splitting
+    # multi-allelic sites to correctly handle the allele specific adj allele balance
+    # and non-PAR XY het genotypes.
     gt_expr = adjusted_sex_ploidy_expr(vmt.locus, vmt.GT, vmt.sex_karyotype)
     vmt = vmt.annotate_entries(
         is_nonpar_xy_het=vmt.in_non_par & vmt.xy & vmt.GT.is_het(),
@@ -339,6 +358,7 @@ def compute_an_and_hists_het_fail_adj_ab(
     ht = agg_by_strata(
         vmt.select_entries(
             "adj",
+            # Adjust the ploidy for non-PAR XY het genotypes to 1.
             ploidy=hl.if_else(vmt.is_nonpar_xy_het, 1, vmt.GT.ploidy),
             is_nonpar_xy_het=vmt.is_nonpar_xy_het,
         ),
