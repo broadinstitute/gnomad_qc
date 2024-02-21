@@ -686,7 +686,6 @@ def main(args):
             freq_ht = get_freq(
                 version="4.0",
                 hom_alt_adjusted=False,
-                chrom=chrom,
                 finalized=False,
             ).ht()
 
@@ -701,7 +700,6 @@ def main(args):
                     version="4.1",
                     test=test,
                     hom_alt_adjusted=False,
-                    chrom=chrom,
                     finalized=False,
                 ).path,
                 overwrite=overwrite,
@@ -714,7 +712,6 @@ def main(args):
                 version="4.1",
                 test=test,
                 hom_alt_adjusted=False,
-                chrom=chrom,
                 finalized=False,
             ).ht()
 
@@ -736,7 +733,6 @@ def main(args):
                     version="4.1",
                     test=test,
                     hom_alt_adjusted=True,
-                    chrom=chrom,
                     finalized=False,
                 ).path,
                 overwrite=overwrite,
@@ -748,7 +744,6 @@ def main(args):
                 version="4.1",
                 test=test,
                 hom_alt_adjusted=True,
-                chrom=chrom,
                 finalized=False,
             ).ht()
             freq_ht = create_final_freq_ht(freq_ht)
