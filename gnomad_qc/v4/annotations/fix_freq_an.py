@@ -14,8 +14,9 @@ not the expected behavior due to the following line of code:
 
 This line of code filters any row that has no genotypes in the sample subset. When the
 VariantDataset is densified prior to the frequency calculations this results in no
-reference data being filled in for that row and therefor a missing AN for that row. When
-combining the frequency data for the UKB and non-UKB subsets, the AN for these rows will
+reference data being filled in for that row, unless a row is part of multiallelic site that is not 
+exclusive to the sample subset, and therefore a missing AN for that row. When combining 
+the frequency data for the UKB and non-UKB subsets, the AN for these rows will
 only have the AN for the subset that has non-ref genotypes for that row.
 
 This script performs the following steps:
@@ -136,7 +137,7 @@ def prep_vds_for_all_sites_stats(vds: hl.vds.VariantDataset) -> hl.vds.VariantDa
                   are adjusting ploidy before splitting multi-allelic sites and this
                   missing annotation will be propagated to all split entries including
                   the reference genotypes causing discrepancies in adjusting ploidy
-                  before splitting and after splitting. Since hwe are using this VDS
+                  before splitting and after splitting. Since we are using this VDS
                   downstream to compute a reference AN, we want to keep this as a
                   ploidy of 1 even if the genotype is a het.
             - All other entries are set to the ploidy of the genotype.
@@ -222,7 +223,7 @@ def prep_vds_for_all_sites_stats(vds: hl.vds.VariantDataset) -> hl.vds.VariantDa
         .when(c_idx.xx & (r_idx.y_par | r_idx.y_nonpar), hl.missing(hl.tint32))
         # For XY non-PAR het genotypes, the reference ploidy is 1, so we set it to one
         # even if the genotype is a het. This is to keep the reference ploidy consistent
-        # with adjusting ploidy after splitting multi-allelic sites.
+        # with the adjusted ploidy after splitting multi-allelic sites.
         .when(c_idx.xy & r_idx.in_non_par & hl.is_defined(vmt.LGT.ploidy), 1)
         .default(vmt.LGT.ploidy)
     )
@@ -375,6 +376,8 @@ def compute_an_and_hists_het_fail_adj_ab(
     )
     ht = ht.checkpoint(hl.utils.new_temp_file("an_qual_hist_adjust", "ht"))
 
+    # Adjust the raw groups using the count of 'non_par_xy_hets' rather than the sum of the
+    # ploidies of the failed AB adj hets.
     freq_meta = group_membership_ht.index_globals().freq_meta
     an_nonpar_xy_het_meta = hl.array(an_nonpar_xy_het_meta)
     ht = ht.select(
