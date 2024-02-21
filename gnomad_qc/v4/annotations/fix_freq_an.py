@@ -102,6 +102,52 @@ def prep_vds_for_all_sites_stats(vds: hl.vds.VariantDataset) -> hl.vds.VariantDa
         - 'ploidy': The ploidy of the genotype adjusted for sex karyotype.
         - 'adj': The adj filter for GQ and DP.
 
+    The following steps are performed on the reference data MT:
+
+        - Segments the reference data MT at the PAR boundaries on chrX and chrY.
+
+            - This is done to ensure that entries are annotated with the correct
+              'ploidy' field when adjusting for sex karyotype.
+            - If the END field of an entry spans a PAR boundary, the entry will be
+              split into two separate entries so that a locus 'in_non_par' annotation
+              can be used to correctly annotate if the full reference block defined by
+              an entry is non-PAR or not.
+
+        - Annotates each entry with the ploidy of the reference block adjusting for
+          sex karyotype.
+
+            - chrY non-PAR XX entries are set to missing ploidy.
+            - chrX and chrY non-PAR XY entries are set to ploidy 1.
+            - All other entries are set to ploidy 2.
+
+        - Annotates each entry with the adj filter for GQ and DP taking into account
+          sex karyotype for DP.
+
+    The following steps are performed on the variant data MT:
+
+        - Annotates each entry with the ploidy of the genotype adjusting for sex
+          karyotype.
+
+            - chrY non-PAR XX entries are set to missing ploidy.
+            - chrX and chrY non-PAR XY entries are set to ploidy 1 if LGT is defined.
+
+                - This deviates from our standard ploidy adjustment where if the
+                  genotype is a het, the ploidy is set to missing. This is because we
+                  are adjusting ploidy before splitting multi-allelic sites and this
+                  missing annotation will be propagated to all split entries including
+                  the reference genotypes causing discrepancies in adjusting ploidy
+                  before splitting and after splitting. Since hwe are using this VDS
+                  downstream to compute a reference AN, we want to keep this as a
+                  ploidy of 1 even if the genotype is a het.
+            - All other entries are set to the ploidy of the genotype.
+
+        - Annotates each entry with the adj filter for GQ and DP taking into account
+          sex karyotype for DP.
+
+          - The sex karyotype and locus are used instead of the genotype to determine
+            if the genotype is haploid or not. This is for the same reason as described
+            above for the ploidy adjustment of non-PAR XY het genotypes.
+
     :param vds: Hail VDS to annotate adj onto variant data.
     :return: Hail VDS with adj annotation.
     """
@@ -145,13 +191,9 @@ def prep_vds_for_all_sites_stats(vds: hl.vds.VariantDataset) -> hl.vds.VariantDa
     # prevent the need to recompute these annotations for every entry in the
     # filter_entries.
     rmt = rmt.annotate_cols(sex_karyotype=vmt.cols()[rmt.col_key].sex_karyotype)
-    rmt = rmt.annotate_rows(
-        in_y_par=rmt.locus.in_y_par(),
-        in_y_nonpar=rmt.locus.in_y_nonpar(),
-        in_non_par=~rmt.locus.in_autosome_or_par(),
-    )
+    rmt = rmt.annotate_rows(in_non_par=~rmt.locus.in_autosome_or_par())
 
-    logger.info("Annotating reference data MT with DP/GQ adj and ploidy...")
+    logger.info("Annotating reference data MT with GQ and DP adj as well as ploidy...")
     rmt = rmt.annotate_entries(
         adj=get_gq_dp_adj_expr(
             rmt.GQ, rmt.DP, locus_expr=rmt.locus, karyotype_expr=rmt.sex_karyotype
