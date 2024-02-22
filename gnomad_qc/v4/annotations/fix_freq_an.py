@@ -562,21 +562,21 @@ def update_freq_an_and_hists(
     freq_correction_meta = freq_correction_ht.index_globals().strata_meta
 
     # Set all freq_ht's ANs to 0 so can use the merge_freq function to update
-    # the ANs (expects int64s).
+    # the ANs (expects int32s).
     freq_ht = freq_ht.annotate(
         freq=freq_ht.freq.map(
             lambda x: x.select(
-                AC=x.AC, AN=hl.int64(0), homozygote_count=x.homozygote_count, AF=x.AF
+                AC=x.AC, AN=hl.int32(0), homozygote_count=x.homozygote_count, AF=x.AF
             )
         )
     )
 
     # Create freq array annotation of structs with AC and homozygote_count set to 0 to
-    # use merge_freq function (expects int64s).
+    # use merge_freq function (expects int32s).
     freq_correction_ht = freq_correction_ht.transmute(
         freq=freq_correction_ht.AN.map(
             lambda x: hl.struct(
-                AC=0, AN=x, homozygote_count=0, AF=hl.missing(hl.tfloat64)
+                AC=0, AN=hl.int32(x), homozygote_count=0, AF=hl.missing(hl.tfloat64)
             )
         )
     )
@@ -702,7 +702,7 @@ def main(args):
                     ref_ht,
                     interval_ht,
                     group_membership_ht,
-                ).write(
+                ).naive_coalesce(10000).write(
                     f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/all_sites_an_before_adjustment.ht",
                     overwrite=overwrite,
                 )
@@ -722,8 +722,7 @@ def main(args):
 
         if args.adjust_freq_an_hists:
             an_ht = hl.read_table(
-                "gs://gnomad-tmp-30day/an_hist_ref_sites-mvP6jdzqFEZXF2SZQ7wnaD.ht"
-                # f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/all_sites_an_before_adjustment.ht",
+                f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/all_sites_an_before_adjustment.ht",
             )
             het_fail_adj_ab_ht = hl.read_table(
                 f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/het_fail_adj_ab_ht.ht",
@@ -750,6 +749,19 @@ def main(args):
 
             freq_correction_ht = hl.read_table(
                 f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/freq_correction.ht"
+            )
+            # The new correction HT has used "gen_anc" as the pop key from the
+            # start so replacing it with "pop" here to match the freq HT. Updating the
+            # freq_ht to "gen_anc" is the appropriate fix but it requires far more code
+            # updates to the imported functions of generate_freq.
+            freq_correction_ht = freq_correction_ht.annotate_globals(
+                strata_meta=freq_correction_ht.strata_meta.map(
+                    lambda d: hl.dict(
+                        d.items().map(
+                            lambda x: hl.if_else(x[0] == "gen_anc", ("pop", x[1]), x)
+                        )
+                    )
+                )
             )
             freq_ht = get_freq(
                 version="4.0",
