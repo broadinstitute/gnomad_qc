@@ -722,8 +722,7 @@ def main(args):
 
         if args.adjust_freq_an_hists:
             an_ht = hl.read_table(
-                "gs://gnomad-tmp-30day/an_hist_ref_sites-mvP6jdzqFEZXF2SZQ7wnaD.ht"
-                # f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/all_sites_an_before_adjustment.ht",
+                f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/all_sites_an_before_adjustment.ht",
             )
             het_fail_adj_ab_ht = hl.read_table(
                 f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/het_fail_adj_ab_ht.ht",
