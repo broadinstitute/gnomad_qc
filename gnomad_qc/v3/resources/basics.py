@@ -1,5 +1,6 @@
 # noqa: D100
 import logging
+from typing import List, Optional
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -23,24 +24,34 @@ def get_gnomad_v3_vds(
     release_only: bool = False,
     samples_meta: bool = False,
     test: bool = False,
+    filter_partitions: Optional[List[int]] = None,
 ) -> hl.vds.VariantDataset:
     """
     Get gnomAD VariantDataset with desired filtering and metadata annotations.
 
     :param split: Perform split on VDS - Note: this will perform a split on the VDS
-        rather than grab an already split VDS
+        rather than grab an already split VDS.
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard
-        filters (only relevant after sample QC)
+        filters (only relevant after sample QC).
     :param release_only: Whether to filter the VDS to only samples available for
-        release (can only be used if metadata is present)
-    :param samples_meta: Whether to add metadata to VDS variant_data in 'meta' column
-    :param test: Whether to use the test VDS instead of the full v3 VDS
-    :return: gnomAD v3 dataset with chosen annotations and filters
+        release (can only be used if metadata is present).
+    :param samples_meta: Whether to add metadata to VDS variant_data in 'meta' column.
+    :param test: Whether to use the test VDS instead of the full v3 VDS.
+    :param filter_partitions: Optional argument to filter the VDS to specific
+        partitions.
+    :return: gnomAD v3 dataset with chosen annotations and filters.
     """
     if test:
         vds = gnomad_v3_testset_vds.vds()
     else:
         vds = gnomad_v3_genotypes_vds.vds()
+
+    if filter_partitions:
+        logger.info("Filtering to %s partitions...", len(filter_partitions))
+        vds = hl.vds.VariantDataset(
+            vds.reference_data._filter_partitions(filter_partitions),
+            vds.variant_data._filter_partitions(filter_partitions),
+        )
 
     if remove_hard_filtered_samples:
         vds = hl.vds.filter_samples(

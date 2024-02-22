@@ -332,20 +332,23 @@ def get_freq(
     return TableResource(ht_path)
 
 
-def get_all_sites_an_and_qual_hists(test: bool = False) -> VersionedTableResource:
+def get_all_sites_an_and_qual_hists(
+    data_type: str = "exomes", test: bool = False
+) -> VersionedTableResource:
     """
     Get the all sites AN and qual hists TableResource.
 
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
     :param test: Whether to use a tmp path for testing.
     :return: Hail Table containing all sites AN and qual hists annotations.
     """
     return VersionedTableResource(
-        CURRENT_ALL_SITES_AN_RELEASE["exomes"],
+        CURRENT_ALL_SITES_AN_RELEASE[data_type],
         {
             version: TableResource(
-                f"{_annotations_root(version, test=test)}/gnomad.exomes.v{version}.all_sites_an_and_qual_hists.ht"
+                f"{_annotations_root(version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.all_sites_an_and_qual_hists.ht"
             )
-            for version in ALL_SITES_AN_RELEASES["exomes"]
+            for version in ALL_SITES_AN_RELEASES[data_type]
         },
     )
 
