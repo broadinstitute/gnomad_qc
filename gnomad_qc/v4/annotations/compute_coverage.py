@@ -287,7 +287,7 @@ def get_coverage_resources(
             },
         },
         output_resources={
-            "an_hist_ht": get_all_sites_an_and_qual_hists(
+            "an_qual_hist_ht": get_all_sites_an_and_qual_hists(
                 data_type=data_type, test=test
             ),
             "allele_number_ht": release_all_sites_an(
@@ -356,7 +356,7 @@ def main(args):
     )
 
     try:
-        if args.compute_coverage_ht or args.compute_allele_number_ht:
+        if args.compute_coverage_ht or args.compute_all_sites_an_and_qual_hist_ht:
             # Read in context Table.
             ref_ht = vep_context.versions["105"].ht()
             if test:
@@ -470,10 +470,7 @@ def main(args):
             an_ht = an_ht.checkpoint(hl.utils.new_temp_file("an", "ht"))
             # Naive coalesce and write out the intermediate HT.
             an_ht = an_ht.naive_coalesce(n_partitions)
-            an_ht = an_ht.checkpoint(
-                get_all_sites_an_and_qual_hists(test=test).path,
-                overwrite=overwrite,
-            )
+            an_ht = an_ht.checkpoint(res.an_qual_hist_ht.path, overwrite=overwrite)
             # Select only the AN and write out final Table.
             an_ht = an_ht.select("AN")
             an_ht.write(res.allele_number_ht.path, overwrite=overwrite)
