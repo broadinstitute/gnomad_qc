@@ -37,8 +37,7 @@ def get_gnomad_v3_vds(
         release (can only be used if metadata is present).
     :param samples_meta: Whether to add metadata to VDS variant_data in 'meta' column.
     :param test: Whether to use the test VDS instead of the full v3 VDS.
-    :param filter_partitions: Optional argument to filter the VDS to specific
-        partitions.
+    :param filter_partitions: Optional argument to filter the VDS to specific partitions in the provided list.
     :return: gnomAD v3 dataset with chosen annotations and filters.
     """
     if test:
