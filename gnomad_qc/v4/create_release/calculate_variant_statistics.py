@@ -3,6 +3,8 @@ import argparse
 import logging
 
 import hail as hl
+from hail.utils.misc import new_temp_file
+
 from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 from gnomad.utils import vep
 from gnomad.utils.slack import slack_notifications
@@ -17,6 +19,10 @@ from gnomad_qc.v4.resources.release import (
     get_per_sample_counts,
     release_sites,
 )
+from gnomad_qc.v4.resources.temp_hail_methods import (
+    vmt_sample_qc,
+    vmt_sample_qc_variant_annotations,
+)
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -26,191 +32,6 @@ logger = logging.getLogger("release")
 logger.setLevel(logging.INFO)
 
 from typing import Optional, Sequence
-
-from hail import ir
-from hail.expr import (
-    expr_any,
-    expr_array,
-    expr_bool,
-    expr_interval,
-    expr_locus,
-    expr_str,
-)
-from hail.expr.expressions import Expression
-from hail.expr.expressions.typed_expressions import StructExpression
-from hail.expr.functions import _allele_types, _num_allele_type
-from hail.matrixtable import MatrixTable
-from hail.methods.misc import require_first_key_field_locus
-from hail.table import Table
-from hail.typecheck import (
-    dictof,
-    enumeration,
-    func_spec,
-    nullable,
-    oneof,
-    sequenceof,
-    typecheck,
-)
-from hail.utils.java import Env, info, warning
-from hail.utils.misc import divide_null, new_temp_file, wrap_to_list
-from hail.vds.variant_dataset import VariantDataset
-
-
-def _vmt_sample_qc(
-    *,
-    global_gt: "Expression",
-    gq: "Expression",
-    variant_ac: "Expression",
-    variant_atypes: "Expression",
-    dp: Optional["Expression"] = None,
-    gq_bins: "Sequence[int]" = (0, 20, 60),
-    dp_bins: "Sequence[int]" = (0, 1, 10, 20, 30),
-    dp_field: Optional[str] = None,
-) -> "Expression":
-    """"""
-    allele_types = _allele_types[:]
-    allele_types.extend(["Transition", "Transversion"])
-    allele_enum = {i: v for i, v in enumerate(allele_types)}
-    allele_ints = {v: k for k, v in allele_enum.items()}
-
-    bound_exprs = {}
-
-    bound_exprs["n_het"] = hl.agg.count_where(global_gt.is_het())
-    bound_exprs["n_hom_var"] = hl.agg.count_where(global_gt.is_hom_var())
-    bound_exprs["n_singleton"] = hl.agg.sum(  # returns the sum per sample
-        hl.rbind(
-            global_gt,  # for each GT entry in GT
-            lambda global_gt: hl.sum(  # taking the sum of:
-                # either 0 or 1
-                hl.range(
-                    0, global_gt.ploidy
-                ).map(  # [0,1].map() # -> [False, True] or [False, False]
-                    # for every allele (ref or alt, 0,1):
-                    lambda i: hl.rbind(
-                        global_gt[i], lambda gti: (gti != 0) & (variant_ac[gti] == 1)
-                    )
-                )
-            ),
-        )
-    )
-    bound_exprs["n_singleton_ti"] = hl.agg.sum(
-        hl.rbind(
-            global_gt,
-            lambda global_gt: hl.sum(
-                hl.range(0, global_gt.ploidy).map(
-                    lambda i: hl.rbind(
-                        global_gt[i],
-                        lambda gti: (gti != 0)
-                        & (variant_ac[gti] == 1)
-                        & (variant_atypes[gti - 1] == allele_ints["Transition"]),
-                    )
-                )
-            ),
-        )
-    )
-    bound_exprs["n_singleton_tv"] = hl.agg.sum(
-        hl.rbind(
-            global_gt,
-            lambda global_gt: hl.sum(
-                hl.range(0, global_gt.ploidy).map(
-                    lambda i: hl.rbind(
-                        global_gt[i],
-                        lambda gti: (gti != 0)
-                        & (variant_ac[gti] == 1)
-                        & (variant_atypes[gti - 1] == allele_ints["Transversion"]),
-                    )
-                )
-            ),
-        )
-    )
-
-    bound_exprs["allele_type_counts"] = hl.agg.explode(
-        lambda allele_type: hl.tuple(
-            hl.agg.count_where(allele_type == i) for i in range(len(allele_ints))
-        ),
-        (
-            hl.range(0, global_gt.ploidy)
-            .map(lambda i: global_gt[i])
-            .filter(lambda allele_idx: allele_idx > 0)
-            .map(lambda allele_idx: variant_atypes[allele_idx - 1])
-        ),
-    )
-
-    dp_exprs = {}
-    if dp is not None:
-        dp_exprs["dp"] = hl.tuple(hl.agg.count_where(dp >= x) for x in dp_bins)
-
-    gq_dp_exprs = hl.struct(
-        **{"gq": hl.tuple(hl.agg.count_where(gq >= x) for x in gq_bins)}, **dp_exprs
-    )
-
-    return hl.rbind(
-        hl.struct(**bound_exprs),
-        lambda x: hl.rbind(
-            hl.struct(
-                **{
-                    "gq_dp_exprs": gq_dp_exprs,
-                    "n_het": x.n_het,
-                    "n_hom_var": x.n_hom_var,
-                    "n_non_ref": x.n_het + x.n_hom_var,
-                    "n_singleton": x.n_singleton,
-                    "n_singleton_ti": x.n_singleton_ti,
-                    "n_singleton_tv": x.n_singleton_tv,
-                    "n_snp": (
-                        x.allele_type_counts[allele_ints["Transition"]]
-                        + x.allele_type_counts[allele_ints["Transversion"]]
-                    ),
-                    "n_insertion": x.allele_type_counts[allele_ints["Insertion"]],
-                    "n_deletion": x.allele_type_counts[allele_ints["Deletion"]],
-                    "n_transition": x.allele_type_counts[allele_ints["Transition"]],
-                    "n_transversion": x.allele_type_counts[allele_ints["Transversion"]],
-                    "n_star": x.allele_type_counts[allele_ints["Star"]],
-                }
-            ),
-            lambda s: s.annotate(
-                r_ti_tv=divide_null(hl.float64(s.n_transition), s.n_transversion),
-                r_ti_tv_singleton=divide_null(
-                    hl.float64(s.n_singleton_ti), s.n_singleton_tv
-                ),
-                r_het_hom_var=divide_null(hl.float64(s.n_het), s.n_hom_var),
-                r_insertion_deletion=divide_null(
-                    hl.float64(s.n_insertion), s.n_deletion
-                ),
-            ),
-        ),
-    )
-
-
-def _vmt_sample_qc_variant_annotations(
-    *,
-    global_gt: "Expression",
-    alleles: "Expression",
-) -> "Expression":
-    """"""
-
-    allele_types = _allele_types[:]
-    allele_types.extend(["Transition", "Transversion"])
-    allele_enum = {i: v for i, v in enumerate(allele_types)}
-    allele_ints = {v: k for k, v in allele_enum.items()}
-
-    def allele_type(ref, alt):
-        return hl.bind(
-            lambda at: hl.if_else(
-                at == allele_ints["SNP"],
-                hl.if_else(
-                    hl.is_transition(ref, alt),
-                    allele_ints["Transition"],
-                    allele_ints["Transversion"],
-                ),
-                at,
-            ),
-            _num_allele_type(ref, alt),
-        )
-
-    return hl.struct(
-        variant_ac=hl.agg.call_stats(global_gt, alleles).AC,
-        variant_atypes=alleles[1:].map(lambda alt: allele_type(alleles[0], alt)),
-    )
 
 
 def create_per_sample_counts_resource(
@@ -235,14 +56,14 @@ def create_per_sample_counts_resource(
     :param data_type: String of either "exomes" or "genomes" for the sample type.
     :param test: Boolean for if you would like to use a small test set.
     :param overwrite: Boolean to overwrite checkpoint files if requested.
-    :param filter_variant_qc: bool = False,
-    :param filter_ukb_regions: bool = False,
-    :param filter_broad_regions: bool = False,
-    :param agg_variant_qc: bool = False,
-    :param agg_ukb_regions: bool = False,
-    :param agg_broad_regions: bool = False,
-    :param agg_lof: bool = False,
-    :param agg_rare_variants: bool = False,
+    :param filter_variant_qc: Filter to only variants which pass qc before any aggregation.
+    :param filter_ukb_regions: Filter to only variants in UKB regions before any aggregation.
+    :param filter_broad_regions: Filter to only variants in Broad regions before any aggregation.
+    :param agg_variant_qc: Stratify by variants which pass variant qc.
+    :param agg_ukb_regions: Stratify by variants in UKB regions.
+    :param agg_broad_regions: Stratify by variants in Broad regions.
+    :param agg_lof: Stratify by variants which are loss-of-function.
+    :param agg_rare_variants: Stratify by variants which have adj AF <0.1%.
     :param suffix: String of arguments to append to name.
     """
 
@@ -310,11 +131,13 @@ def create_per_sample_counts_resource(
     vmt = vds.variant_data
     logger.info("VDS created and checkpointing, without annotations")
     vmt = vmt.checkpoint(
-        new_temp_file(f'vmt_{"TEST" if test else ""}_mt', extension="mt")
+        new_temp_file(f'vmt_{"TEST" if test else ""}_mt', extension="mt"),
+        overwrite=overwrite,
+        _read_if_exists=not overwrite,
     )
 
     # Add extra Allele Count and A-Type, according to Hail standards, to help their computation
-    ac_and_atype = _vmt_sample_qc_variant_annotations(
+    ac_and_atype = vmt_sample_qc_variant_annotations(
         global_gt=vmt.GT, alleles=vmt.alleles
     )
     vmt = vmt.annotate_rows(**ac_and_atype)
@@ -366,7 +189,7 @@ def create_per_sample_counts_resource(
         **{
             ann: hl.agg.filter(
                 expr,
-                _vmt_sample_qc(
+                vmt_sample_qc(
                     global_gt=vmt.GT,
                     gq=vmt.GQ,
                     variant_ac=vmt.variant_ac,
@@ -395,7 +218,7 @@ def aggregate_and_stratify(
     agg_broad_regions: bool = False,
     agg_lof: bool = False,
     agg_rare_variants: bool = False,
-    singletons_by_pop: bool = False,
+    counts_by_pop: bool = False,
     suffix: str = None,
 ) -> None:
     """
@@ -403,12 +226,12 @@ def aggregate_and_stratify(
 
     :param data_type: String to read in either "exomes" or "genomes".
     :param test: Bool of whether or not to read in a test output.
-    :param agg_variant_qc: bool = False,
-    :param agg_ukb_regions: bool = False,
-    :param agg_broad_regions: bool = False,
-    :param agg_lof: bool = False,
-    :param agg_rare_variants: bool = False,
-    :param singletons_by_pop: Bool to calculate number of singletons by v4 pop.
+    :param agg_variant_qc: Stratify by variants which pass variant qc.
+    :param agg_ukb_regions: Stratify by variants in UKB regions.
+    :param agg_broad_regions: Stratify by variants in Broad regions.
+    :param agg_lof: Stratify by variants which are loss-of-function.
+    :param agg_rare_variants: Stratify by variants which have adj AF <0.1%.
+    :param counts_by_pop: Bool to calculate number of singletons, n_het, and n_hom by v4 pop.
     :param suffix: String of suffix of Sample QC table to read in.
     """
     logger.info("Reading Sample QC HT in from resource")
@@ -420,10 +243,7 @@ def aggregate_and_stratify(
         f" {get_per_sample_counts(test=test,data_type=data_type,suffix=suffix).path}"
     )
 
-    if singletons_by_pop:
-        logger.info("Reading in Meta HT.")
-        meta_ht = meta(data_type=data_type).ht()
-
+    # Create list of calls to stratify by
     stratifications = ["all_variants"]
 
     if agg_variant_qc:
@@ -454,46 +274,70 @@ def aggregate_and_stratify(
         )
 
         logger.info(
-            f"Quantiles called per {data_type} by 0th, 25th, 50th, 75th, and 100th"
-            f" quantiles \n: {called_per_distribution.quantiles}"
-            f" and a mean of {called_per_distribution.mean}"
-            f" for the stratification of {strat}"
+            f"Mean of {called_per_distribution.mean:.2f}"
+            f"\n\tQuantiles called per {data_type} by 0th, 25th, 50th, 75th, and 100th"
+            f"\n\t: {called_per_distribution.quantiles}"
+            f"\n\tfor the stratification of {strat}"
         )
 
-        # Calculate number of singletons by inputed ancestry.
-        if singletons_by_pop:
-            # Add population inference, as keyed by 's'.
-            sample_qc_ht = sample_qc_ht.annotate(
-                pop=meta_ht[sample_qc_ht.s].population_inference.pop
-            )
+    # Calculate number of singletons by inputed ancestry.
+    # We don't care about singletons by pop by the stratifiactions,
+    # But we do care about n_het and n_hom
+    if counts_by_pop:
+        logger.info("Reading in Meta HT.")
+        meta_ht = meta(data_type=data_type).ht()
 
-            # Aggregate and print outputs.
-            dictionary_results = sample_qc_ht.aggregate(
-                hl.agg.group_by(
-                    sample_qc_ht.pop,
-                    hl.struct(
-                        mean=hl.agg.mean(
-                            sample_qc_ht.aggregated_vmt_sample_qc[strat].n_singleton
-                        ),
-                        quantiles=hl.agg.approx_quantiles(
-                            sample_qc_ht.aggregated_vmt_sample_qc[strat].n_singleton,
-                            qs=[0, 0.25, 0.50, 0.75, 1.0],
-                        ),
+        # Add population inference, as keyed by 's'.
+        sample_qc_ht = sample_qc_ht.annotate(
+            pop=meta_ht[sample_qc_ht.s].population_inference.pop
+        )
+
+        # Aggregate and print outputs.
+        dictionary_results = sample_qc_ht.aggregate(
+            hl.agg.group_by(
+                sample_qc_ht.pop,
+                hl.struct(
+                    mean_nonref=hl.agg.mean(
+                        sample_qc_ht.aggregated_vmt_sample_qc[
+                            "all_variants"
+                        ].n_singleton
                     ),
-                )
+                    quantiles_nonref=hl.agg.approx_quantiles(
+                        sample_qc_ht.aggregated_vmt_sample_qc[
+                            "all_variants"
+                        ].n_singleton,
+                        qs=[0, 0.25, 0.50, 0.75, 1.0],
+                    ),
+                    mean_het=hl.agg.mean(
+                        sample_qc_ht.aggregated_vmt_sample_qc["all_variants"].n_het
+                    ),
+                    quantiles_het=hl.agg.approx_quantiles(
+                        sample_qc_ht.aggregated_vmt_sample_qc["all_variants"].n_het,
+                        qs=[0, 0.25, 0.50, 0.75, 1.0],
+                    ),
+                    mean_hom=hl.agg.mean(
+                        sample_qc_ht.aggregated_vmt_sample_qc["all_variants"].n_hom_var
+                    ),
+                    quantiles_hom=hl.agg.approx_quantiles(
+                        sample_qc_ht.aggregated_vmt_sample_qc["all_variants"].n_hom_var,
+                        qs=[0, 0.25, 0.50, 0.75, 1.0],
+                    ),
+                ),
             )
+        )
 
-            logger.info(dictionary_results)
-
-            for pop_record in dictionary_results.items():
-                pop_label = pop_record[0]
-                mean = pop_record[1].mean
-                quantiles = pop_record[1].quantiles
-                logger.info(
-                    f"For pop {pop_label} in stratification {strat}, mean # singletons"
-                    f" called is {mean} with distribution by 0th, 25th, 50th, 75th, and"
-                    f" 100th percentiles as: {quantiles}"
-                )
+        for pop_record in dictionary_results.items():
+            pop_label = pop_record[0]
+            mean_singletons = pop_record[1].mean_nonref
+            quantiles_singletons = pop_record[1].quantiles_nonref
+            mean_het = pop_record[1].mean_het
+            mean_hom = pop_record[1].mean_hom
+            logger.info(
+                f"For pop {pop_label}, mean # singletons called is"
+                f" {mean_singletons:.2f} with distribution by 0th, 25th, 50th, 75th,"
+                f" and 100th percentiles as: {quantiles_singletons} with mean (n_het ,"
+                f" n_hom) of: ({mean_het:.2f} , {mean_hom:.2f})"
+            )
 
 
 def variant_types():
@@ -531,7 +375,7 @@ def main(args):
     agg_broad_regions = args.agg_broad_regions
     agg_lof = args.agg_lof
     agg_rare_variants = args.agg_rare_variants
-    singletons_by_pop = args.singletons_by_pop
+    counts_by_pop = args.counts_by_pop
 
     suffix = (
         f"{'ukb_calling.' if filter_ukb_regions else ''}{'broad_calling.' if filter_broad_regions else ''}{'vqc.' if filter_variant_qc else ''}{args.custom_suffix if args.custom_suffix else ''}"
@@ -562,7 +406,7 @@ def main(args):
             agg_broad_regions=agg_broad_regions,
             agg_lof=agg_lof,
             agg_rare_variants=agg_rare_variants,
-            singletons_by_pop=singletons_by_pop,
+            counts_by_pop=counts_by_pop,
             suffix=suffix,
         )
 
@@ -612,19 +456,42 @@ if __name__ == "__main__":
         help="Filter to variants only in Broad capture regions",
         action="store_true",
     )
-    parser.add_argument("--agg-broad-regions", help="Aggregate", action="store_true")
-    parser.add_argument("--agg-ukb-regions", help="Aggregate", action="store_true")
-    parser.add_argument("--agg-rare-variants", help="Aggregate", action="store_true")
-    parser.add_argument("--agg-lof", help="Aggregate", action="store_true")
-    parser.add_argument("--agg-variant-qc", help="Aggregate", action="store_true")
+    parser.add_argument(
+        "--agg-broad-regions",
+        help="Stratify by variants in Broad regions.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--agg-ukb-regions",
+        help="Stratify by variants in UKB regions.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--agg-rare-variants",
+        help="Stratify by variants which have adj AF <0.1%.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--agg-lof",
+        help="Stratify by variants which are loss-of-function.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--agg-variant-qc",
+        help="Stratify by variants which pass variant qc.",
+        action="store_true",
+    )
     parser.add_argument(
         "--aggregate-and-stratify",
         help="Run code to aggregate and stratify (exising?) sample qc table",
         action="store_true",
     )
     parser.add_argument(
-        "--singletons-by-pop",
-        help="Output statistics for number of singletons by population group",
+        "--counts-by-pop",
+        help=(
+            "Output statistics for number of singletons, n_het, and n_hom by population"
+            " group"
+        ),
         action="store_true",
     )
     parser.add_argument(
