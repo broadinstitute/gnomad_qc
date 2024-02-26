@@ -557,7 +557,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         ),
         type=int,
         choices=[0, 50, 150],
-        default=50,
+        default=150,
     )
     parser.add_argument(
         "--export-release-files", help="Exports coverage TSV file.", action="store_true"

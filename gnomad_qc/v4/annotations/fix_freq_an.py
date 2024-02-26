@@ -532,11 +532,14 @@ def adjust_per_site_an_and_hists_for_frequency(
         "qual_hists",
         AN_adjust=het_fail_adj_ab.AN_adjust,
         qual_hists_adjust=het_fail_adj_ab.qual_hists_adjust,
-        AN_adj_ab=hl.map(
-            lambda an, an_fail_adj, m: an - hl.coalesce(an_fail_adj, 0),
+        AN_adj_ab=hl.coalesce(
+            hl.map(
+                lambda an, an_fail_adj, m: an - hl.coalesce(an_fail_adj, 0),
+                ht.AN,
+                het_fail_adj_ab.AN_adjust,
+                global_annotations.strata_meta,
+            ),
             ht.AN,
-            het_fail_adj_ab.AN_adjust,
-            global_annotations.strata_meta,
         ),
     )
 
