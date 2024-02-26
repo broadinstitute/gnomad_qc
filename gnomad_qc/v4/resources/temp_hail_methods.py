@@ -1,6 +1,6 @@
 """THIS IS A TEMPORARY FILE TO BE USED UNTIL THESE HAIL METHODS ARE RELEASED. 
 CODE WAS COPIED DIRECTLY FROM A PR IN GITHUB BROWSER ON 02/20 (iirc) AND SHOULD NOT BE RAN ON RELEASE."""
-# import hail as hl
+import hail as hl
 from typing import Optional, Sequence
 from hail.expr.expressions import Expression
 from hail.expr.functions import _allele_types, _num_allele_type
