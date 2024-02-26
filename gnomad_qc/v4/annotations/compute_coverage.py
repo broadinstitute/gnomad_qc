@@ -395,6 +395,7 @@ def main(args):
                     telomeres_and_centromeres.ht().interval.collect(),
                     keep=False,
                 )
+            ref_ht = ref_ht.checkpoint(hl.utils.new_temp_file("ref", "ht"))
 
         if args.compute_coverage_ht:
             logger.info("Running compute coverage...")
@@ -460,6 +461,9 @@ def main(args):
                 group_membership_ht = get_genomes_group_membership_ht(
                     res.meta_ht.ht(),
                 )
+            group_membership_ht = group_membership_ht.checkpoint(
+                hl.utils.new_temp_file("group_membership", "ht")
+            )
 
             an_ht = compute_an_and_qual_hists_per_ref_site(
                 vds,
