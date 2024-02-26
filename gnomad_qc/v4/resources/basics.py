@@ -10,6 +10,7 @@ from gnomad.resources.resource_utils import (
     VersionedVariantDatasetResource,
 )
 
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds
 from gnomad_qc.v4.resources.constants import (
     CURRENT_RAW_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
@@ -67,6 +68,7 @@ def get_gnomad_v4_vds(
         removing withdrawn UKB samples. Default is True.
     :param annotate_meta: Whether to annotate the VDS with the sample QC metadata.
         Default is False.
+    :param data_type: One of 'exomes' or 'genomes'. Default is 'exomes'.
     :return: gnomAD v4 dataset with chosen annotations and filters.
     """
     if remove_hard_filtered_samples and remove_hard_filtered_samples_no_sex:
@@ -284,6 +286,56 @@ def get_gnomad_v4_vds(
         )
         vmt = hl.experimental.sparse_split_multi(vmt, filter_changed_loci=True)
         vds = hl.vds.VariantDataset(vds.reference_data, vmt)
+
+    return vds
+
+
+def get_gnomad_v4_genomes_vds(
+    split: bool = False,
+    remove_hard_filtered_samples: bool = True,
+    release_only: bool = False,
+    samples_meta: bool = False,
+    test: bool = False,
+    filter_partitions: Optional[List[int]] = None,
+) -> hl.vds.VariantDataset:
+    """
+    Get gnomAD v4 genomes VariantDataset with desired filtering and metadata annotations.
+
+    :param split: Perform split on VDS - Note: this will perform a split on the VDS
+        rather than grab an already split VDS.
+    :param remove_hard_filtered_samples: Whether to remove samples that failed hard
+        filters (only relevant after sample QC).
+    :param release_only: Whether to filter the VDS to only samples available for
+        release (can only be used if metadata is present).
+    :param samples_meta: Whether to add v4 genomes metadata to VDS variant_data in
+        'meta' column.
+    :param test: Whether to use the test VDS instead of the full v4 genomes VDS.
+    :param filter_partitions: Optional argument to filter the VDS to specific partitions
+        in the provided list.
+    :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.
+    """
+    vds = get_gnomad_v3_vds(
+        split=split,
+        remove_hard_filtered_samples=remove_hard_filtered_samples,
+        release_only=False,
+        samples_meta=False,
+        test=test,
+        filter_partitions=filter_partitions,
+    )
+
+    if samples_meta or release_only:
+        meta_ht = meta(data_type="genomes").ht()
+        if release_only:
+            vds = hl.vds.filter_samples(
+                vds,
+                meta_ht.filter(meta_ht.release),
+            )
+
+        if samples_meta:
+            vd = vds.variant_data
+            vds = hl.vds.VariantDataset(
+                vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
+            )
 
     return vds
 
