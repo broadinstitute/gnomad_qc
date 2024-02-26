@@ -64,7 +64,7 @@ from gnomad.utils.sparse_mt import compute_stats_per_ref_site
 
 from gnomad_qc.v4.annotations.compute_coverage import (
     adjust_interval_padding,
-    get_group_membership_ht,
+    get_exomes_group_membership_ht,
 )
 from gnomad_qc.v4.annotations.generate_freq import (
     compute_inbreeding_coeff,
@@ -532,11 +532,14 @@ def adjust_per_site_an_and_hists_for_frequency(
         "qual_hists",
         AN_adjust=het_fail_adj_ab.AN_adjust,
         qual_hists_adjust=het_fail_adj_ab.qual_hists_adjust,
-        AN_adj_ab=hl.map(
-            lambda an, an_fail_adj, m: an - hl.coalesce(an_fail_adj, 0),
+        AN_adj_ab=hl.coalesce(
+            hl.map(
+                lambda an, an_fail_adj, m: an - hl.coalesce(an_fail_adj, 0),
+                ht.AN,
+                het_fail_adj_ab.AN_adjust,
+                global_annotations.strata_meta,
+            ),
             ht.AN,
-            het_fail_adj_ab.AN_adjust,
-            global_annotations.strata_meta,
         ),
     )
 
@@ -667,7 +670,7 @@ def main(args):
                 annotate_meta=True,
             )
 
-            group_membership_ht = get_group_membership_ht(
+            group_membership_ht = get_exomes_group_membership_ht(
                 meta().ht(),
                 get_downsampling().ht(),
                 get_downsampling(subset="non_ukb").ht(),
