@@ -132,8 +132,7 @@ def create_per_sample_counts_resource(
     logger.info("VDS created and checkpointing, without annotations")
     vmt = vmt.checkpoint(
         new_temp_file(f'vmt_{"TEST" if test else ""}_mt', extension="mt"),
-        overwrite=overwrite,
-        _read_if_exists=not overwrite,
+        overwrite=overwrite
     )
 
     # Add extra Allele Count and A-Type, according to Hail standards, to help their computation
@@ -163,11 +162,10 @@ def create_per_sample_counts_resource(
             )
         )
 
-    # This awkward structure is the ONLY thing that prevents a Hail error
-    # which says 'these expressions are from different matrix tables' essentially
-    # adding lof to the argument dictionary previoiusly causes it to fail???
-    vmt = vmt.annotate_rows(all_true=True)
-    argument_dictionary = {"all_variants": vmt.all_true}
+    # vmt = vmt.annotate_rows(all_true=True)
+    # Odd Hail behavior: all annotations need to be defined before an argument_dictionary is constructed.
+    # Or else it throws an error about differing sources.
+    argument_dictionary = {"all_variants": ~hl.is_missing(vmt.locus)}
 
     if agg_variant_qc:
         argument_dictionary["pass_all_vqc"] = hl.len(vmt.filters) == 0
@@ -259,6 +257,11 @@ def aggregate_and_stratify(
 
     # Column 'n_non_ref' is a per-sample metric of the number of variants called.
     # Report some stats of interest from this table.
+
+    if counts_by_pop:
+        logger.info("Reading in Meta HT.")
+        meta_ht = meta(data_type=data_type).ht()
+
     for strat in stratifications:
         logger.info(f"STRATIFICATION: {strat}")
         called_per_distribution = sample_qc_ht.aggregate(
@@ -274,70 +277,64 @@ def aggregate_and_stratify(
         )
 
         logger.info(
-            f"Mean of {called_per_distribution.mean:.2f}"
-            f"\n\tQuantiles called per {data_type} by 0th, 25th, 50th, 75th, and 100th"
-            f"\n\t: {called_per_distribution.quantiles}"
-            f"\n\tfor the stratification of {strat}"
+            f"For the stratification of {strat} in all ancestries:"
+            f"\n\tmean non-ref calls of {called_per_distribution.mean:.2f}"
+            f"\n\tQuantiles called per {data_type} by 0th, 25th, 50th, 75th, and 100th:"
+            f"\n\t{called_per_distribution.quantiles}"
         )
 
-    # Calculate number of singletons by inputed ancestry.
-    # We don't care about singletons by pop by the stratifiactions,
-    # But we do care about n_het and n_hom
-    if counts_by_pop:
-        logger.info("Reading in Meta HT.")
-        meta_ht = meta(data_type=data_type).ht()
-
-        # Add population inference, as keyed by 's'.
-        sample_qc_ht = sample_qc_ht.annotate(
-            pop=meta_ht[sample_qc_ht.s].population_inference.pop
-        )
-
-        # Aggregate and print outputs.
-        dictionary_results = sample_qc_ht.aggregate(
-            hl.agg.group_by(
-                sample_qc_ht.pop,
-                hl.struct(
-                    mean_nonref=hl.agg.mean(
-                        sample_qc_ht.aggregated_vmt_sample_qc[
-                            "all_variants"
-                        ].n_singleton
-                    ),
-                    quantiles_nonref=hl.agg.approx_quantiles(
-                        sample_qc_ht.aggregated_vmt_sample_qc[
-                            "all_variants"
-                        ].n_singleton,
-                        qs=[0, 0.25, 0.50, 0.75, 1.0],
-                    ),
-                    mean_het=hl.agg.mean(
-                        sample_qc_ht.aggregated_vmt_sample_qc["all_variants"].n_het
-                    ),
-                    quantiles_het=hl.agg.approx_quantiles(
-                        sample_qc_ht.aggregated_vmt_sample_qc["all_variants"].n_het,
-                        qs=[0, 0.25, 0.50, 0.75, 1.0],
-                    ),
-                    mean_hom=hl.agg.mean(
-                        sample_qc_ht.aggregated_vmt_sample_qc["all_variants"].n_hom_var
-                    ),
-                    quantiles_hom=hl.agg.approx_quantiles(
-                        sample_qc_ht.aggregated_vmt_sample_qc["all_variants"].n_hom_var,
-                        qs=[0, 0.25, 0.50, 0.75, 1.0],
-                    ),
-                ),
+        # Calculate number of singletons by inputed ancestry by stratification
+        # We don't care about singletons by pop by the stratifiactions,
+        # But we do care about n_het and n_hom
+        if counts_by_pop:
+            # Add population inference, as keyed by 's'.
+            sample_qc_ht = sample_qc_ht.annotate(
+                pop=meta_ht[sample_qc_ht.s].population_inference.pop
             )
-        )
 
-        for pop_record in dictionary_results.items():
-            pop_label = pop_record[0]
-            mean_singletons = pop_record[1].mean_nonref
-            quantiles_singletons = pop_record[1].quantiles_nonref
-            mean_het = pop_record[1].mean_het
-            mean_hom = pop_record[1].mean_hom
-            logger.info(
-                f"For pop {pop_label}, mean # singletons called is"
-                f" {mean_singletons:.2f} with distribution by 0th, 25th, 50th, 75th,"
-                f" and 100th percentiles as: {quantiles_singletons} with mean (n_het ,"
-                f" n_hom) of: ({mean_het:.2f} , {mean_hom:.2f})"
+            # Aggregate and print outputs.
+            dictionary_results = sample_qc_ht.aggregate(
+                hl.agg.group_by(
+                    sample_qc_ht.pop,
+                    hl.struct(
+                        mean_singletons=hl.agg.mean(
+                            sample_qc_ht.aggregated_vmt_sample_qc[strat].n_singleton
+                        ),
+                        quantiles_singletons=hl.agg.approx_quantiles(
+                            sample_qc_ht.aggregated_vmt_sample_qc[strat].n_singleton,
+                            qs=[0, 0.25, 0.50, 0.75, 1.0],
+                        ),
+                        mean_het=hl.agg.mean(
+                            sample_qc_ht.aggregated_vmt_sample_qc[strat].n_het
+                        ),
+                        quantiles_het=hl.agg.approx_quantiles(
+                            sample_qc_ht.aggregated_vmt_sample_qc[strat].n_het,
+                            qs=[0, 0.25, 0.50, 0.75, 1.0],
+                        ),
+                        mean_hom=hl.agg.mean(
+                            sample_qc_ht.aggregated_vmt_sample_qc[strat].n_hom_var
+                        ),
+                        quantiles_hom=hl.agg.approx_quantiles(
+                            sample_qc_ht.aggregated_vmt_sample_qc[strat].n_hom_var,
+                            qs=[0, 0.25, 0.50, 0.75, 1.0],
+                        ),
+                    ),
+                )
             )
+
+            for pop_record in dictionary_results.items():
+                pop_label = pop_record[0]
+                mean_singletons = pop_record[1].mean_singletons
+                quantiles_singletons = pop_record[1].quantiles_singletons
+                mean_het = pop_record[1].mean_het
+                mean_hom = pop_record[1].mean_hom
+                logger.info(
+                    f"For pop {pop_label} in stratification {strat}:\n\tmean #"
+                    f" singletons called is {mean_singletons:.2f} \n\twith distribution"
+                    " by 0th, 25th, 50th, 75th, and 100th percentiles as:"
+                    f" {quantiles_singletons} \n\twith mean (n_het ,n_hom) of:"
+                    f" ({mean_het:.2f} , {mean_hom:.2f})"
+                )
 
 
 def variant_types():
