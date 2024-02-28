@@ -33,7 +33,7 @@ from gnomad.utils.annotations import (
     qual_hist_expr,
     set_female_y_metrics_to_na_expr,
 )
-from gnomad.utils.filtering import filter_arrays_by_meta, split_vds_by_strata
+from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import SORT_ORDER
@@ -956,6 +956,37 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
     return ht
 
 
+# This function was added post-v4.0 and was not used in the v4.0 release.
+# It is here for reference on how a VDS should be split to ensure all reference
+# data is retained across all variant sites.
+def split_vds(
+    vds: hl.vds.VariantDataset, strata_expr: hl.expr.Expression
+) -> Dict[str, hl.vds.VariantDataset]:
+    """
+    Split a VDS into multiple VDSs based on `strata_expr`.
+
+    :param vds: Input VDS.
+    :param strata_expr: Expression on VDS variant_data MT to split on.
+    :return: Dictionary where strata value is key and VDS is value.
+    """
+    s_by_strata = vds.variant_data.aggregate_cols(
+        hl.agg.group_by(strata_expr, hl.agg.collect_as_set(vds.variant_data.s))
+    )
+    vds_dict = {}
+
+    for strata, samples in s_by_strata.items():
+        logger.info("Splitting VDS by %s...", strata)
+        samples = hl.literal(samples)
+        vmt = vds.variant_data
+        rmt = vds.reference_data
+        vmt = vmt.filter_cols(samples.contains(vmt.s))
+        rmt = rmt.filter_cols(samples.contains(rmt.s))
+        rmt = rmt.filter_rows(hl.agg.count() > 0)
+        vds_dict[strata] = hl.vds.VariantDataset(rmt, vmt)
+
+    return vds_dict
+
+
 def main(args):
     """Script to generate frequency and dense dependent annotations on v4 exomes."""
     overwrite = args.overwrite
@@ -1017,7 +1048,24 @@ def main(args):
                 "Splitting VDS by ukb_sample annotation to reduce data size for"
                 " densification..."
             )
-            vds_dict = split_vds_by_strata(vds, strata_expr=vds.variant_data.ukb_sample)
+            # For v4.0 the line of code this comment block was:
+            # vds_dict = split_vds_by_strata(vds, strata_expr=vds.variant_data.ukb_sample)
+            #
+            # This uses hail's hl.vds.filter_samples() function and keeps the default
+            # remove_dead_alleles=False. However, due to unexpected behavior in the
+            # code, the hl.vds.filter_samples() function still removes dead alleles by
+            # removing any variant row that does not have a defined entry. When the
+            # VDS is densified, this results in a loss of all homozygous reference calls
+            # in the reference data sparse MT at these dead allele sites. Because we
+            # had to split the VDS for v4.0 with intentions of rejoining the two subset
+            # VDSs across all variant sites, this unexpected behavior resulted in the
+            # loss of all homozygous reference calls in the reference data sparse MT and
+            # thus reduced Allele Number (AN) for any bi-allelic variant exclusive to
+            # one of the subsetted VDSs. The replacement code below uses our own custom
+            # function to split the VDS and keep the dead alleles in the reference data.
+            # It was never run in production, but it is the correct way to split the VDS
+            # and keep the dead alleles in the reference data.
+            vds_dict = split_vds(vds, strata_expr=vds.variant_data.ukb_sample)
             for strata, vds in vds_dict.items():
                 if ukb_only and strata == "non_ukb" or non_ukb_only and strata == "ukb":
                     continue
