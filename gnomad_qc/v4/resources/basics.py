@@ -68,7 +68,6 @@ def get_gnomad_v4_vds(
         removing withdrawn UKB samples. Default is True.
     :param annotate_meta: Whether to annotate the VDS with the sample QC metadata.
         Default is False.
-    :param data_type: One of 'exomes' or 'genomes'. Default is 'exomes'.
     :return: gnomAD v4 dataset with chosen annotations and filters.
     """
     if remove_hard_filtered_samples and remove_hard_filtered_samples_no_sex:
