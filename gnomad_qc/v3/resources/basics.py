@@ -1,6 +1,6 @@
 # noqa: D100
 import logging
-from typing import List, Optional
+from typing import List, Optional, Set, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -25,6 +25,7 @@ def get_gnomad_v3_vds(
     samples_meta: bool = False,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
+    chrom: Optional[Union[str, List[str], Set[str]]] = None,
 ) -> hl.vds.VariantDataset:
     """
     Get gnomAD VariantDataset with desired filtering and metadata annotations.
@@ -37,13 +38,22 @@ def get_gnomad_v3_vds(
         release (can only be used if metadata is present).
     :param samples_meta: Whether to add metadata to VDS variant_data in 'meta' column.
     :param test: Whether to use the test VDS instead of the full v3 VDS.
-    :param filter_partitions: Optional argument to filter the VDS to specific partitions in the provided list.
+    :param filter_partitions: Optional argument to filter the VDS to specific partitions
+        in the provided list.
+    :param chrom: Optional argument to filter the VDS to specific chromosomes.
     :return: gnomAD v3 dataset with chosen annotations and filters.
     """
     if test:
         vds = gnomad_v3_testset_vds.vds()
     else:
         vds = gnomad_v3_genotypes_vds.vds()
+
+    if isinstance(chrom, str):
+        chrom = [chrom]
+
+    if chrom is not None:
+        logger.info("Filtering to chromosome(s) %s...", chrom)
+        vds = hl.vds.filter_chromosomes(vds, keep=chrom)
 
     if filter_partitions:
         logger.info("Filtering to %s partitions...", len(filter_partitions))

@@ -224,6 +224,8 @@ def compute_an_and_qual_hists_per_ref_site(
         entry_agg_group_membership={"qual_hists": [{"group": "raw"}]},
         sex_karyotype_field="sex_karyotype",
     )
+    ht = ht.annotate(qual_hists=ht.qual_hists[0])
+
     return ht
 
 
@@ -334,7 +336,9 @@ def main(args):
     # SSA Logs are easier to troubleshoot with.
     hl._set_flags(use_ssa_logs="1")
 
-    test = args.test
+    test_2_partitions = args.test_2_partitions
+    test_chr22_chrx_chry = args.test_chr22_chrx_chry
+    test = test_2_partitions or test_chr22_chrx_chry
     overwrite = args.overwrite
     data_type = args.data_type
     n_partitions = args.n_partitions
@@ -362,7 +366,12 @@ def main(args):
         if args.compute_coverage_ht or args.compute_all_sites_an_and_qual_hist_ht:
             # Read in context Table.
             ref_ht = vep_context.versions["105"].ht()
-            if test:
+            if test_chr22_chrx_chry:
+                chrom = ["chr22", "chrX", "chrY"]
+                ref_ht = hl.filter_intervals(
+                    ref_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
+            elif test_2_partitions:
                 ref_ht = ref_ht._filter_partitions(range(5))
 
             # Retain only 'locus' annotation from context Table.
@@ -373,8 +382,9 @@ def main(args):
                 vds = get_gnomad_v4_vds(
                     release_only=True,
                     test=test,
-                    filter_partitions=range(2) if test else None,
+                    filter_partitions=range(2) if test_2_partitions else None,
                     annotate_meta=True,
+                    chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
                 )
                 interval_ht = coverage_resources.interval_ht.ht()
                 if adjust_padding:
@@ -386,8 +396,9 @@ def main(args):
                 vds = get_gnomad_v4_genomes_vds(
                     release_only=True,
                     test=test,
-                    filter_partitions=range(2) if test else None,
+                    filter_partitions=range(2) if test_2_partitions else None,
                     samples_meta=True,
+                    chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
                 )
                 interval_ht = None
 
@@ -506,10 +517,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
     )
     parser.add_argument(
-        "--test",
+        "--test-2-partitions",
         help=(
             "Whether to run a test using only the first 2 partitions of the VDS test"
             " dataset."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test-chr22-chrx-chry",
+        help=(
+            "Whether to run a test using only the chr22, chrX, and chrY chromosomes of"
+            " the VDS test dataset."
         ),
         action="store_true",
     )

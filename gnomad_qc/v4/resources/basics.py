@@ -1,6 +1,6 @@
 """Script containing generic resources."""
 import logging
-from typing import List, Optional
+from typing import List, Optional, Set, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -38,7 +38,7 @@ def get_gnomad_v4_vds(
     test: bool = False,
     n_partitions: Optional[int] = None,
     filter_partitions: Optional[List[int]] = None,
-    chrom: Optional[str] = None,
+    chrom: Optional[Union[str, List[str], Set[str]]] = None,
     remove_dead_alleles: bool = True,
     annotate_meta: bool = False,
 ) -> hl.vds.VariantDataset:
@@ -63,7 +63,7 @@ def get_gnomad_v4_vds(
     :param n_partitions: Optional argument to read the VDS with a specific number of
         partitions.
     :param filter_partitions: Optional argument to filter the VDS to specific partitions.
-    :param chrom: Optional argument to filter the VDS to a specific chromosome.
+    :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param remove_dead_alleles: Whether to remove dead alleles from the VDS when
         removing withdrawn UKB samples. Default is True.
     :param annotate_meta: Whether to annotate the VDS with the sample QC metadata.
@@ -82,16 +82,18 @@ def get_gnomad_v4_vds(
     else:
         gnomad_v4_resource = gnomad_v4_genotypes
 
+    if isinstance(chrom, str):
+        chrom = [chrom]
     if n_partitions and chrom:
         logger.info(
-            "Filtering to chromosome %s with %s partitions...", chrom, n_partitions
+            "Filtering to chromosome(s) %s with %s partitions...", chrom, n_partitions
         )
         reference_data = hl.read_matrix_table(
             hl.vds.VariantDataset._reference_path(gnomad_v4_resource.path)
         )
         reference_data = hl.filter_intervals(
             reference_data,
-            [hl.parse_locus_interval(x, reference_genome="GRCh38") for x in [chrom]],
+            [hl.parse_locus_interval(x, reference_genome="GRCh38") for x in chrom],
         )
         intervals = reference_data._calculate_new_partitions(n_partitions)
         reference_data = hl.read_matrix_table(
@@ -297,6 +299,7 @@ def get_gnomad_v4_genomes_vds(
     samples_meta: bool = False,
     test: bool = False,
     filter_partitions: Optional[List[int]] = None,
+    chrom: Optional[Union[str, List[str], Set[str]]] = None,
 ) -> hl.vds.VariantDataset:
     """
     Get gnomAD v4 genomes VariantDataset with desired filtering and metadata annotations.
@@ -312,6 +315,7 @@ def get_gnomad_v4_genomes_vds(
     :param test: Whether to use the test VDS instead of the full v4 genomes VDS.
     :param filter_partitions: Optional argument to filter the VDS to specific partitions
         in the provided list.
+    :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.
     """
     vds = get_gnomad_v3_vds(
@@ -321,6 +325,7 @@ def get_gnomad_v4_genomes_vds(
         samples_meta=False,
         test=test,
         filter_partitions=filter_partitions,
+        chrom=chrom,
     )
 
     if samples_meta or release_only:
