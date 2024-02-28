@@ -23,12 +23,15 @@ from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
     PipelineStepResourceCollection,
 )
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds
 from gnomad_qc.v4.resources.annotations import (
     get_all_sites_an_and_qual_hists,
     get_downsampling,
 )
-from gnomad_qc.v4.resources.basics import calling_intervals, get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import (
+    calling_intervals,
+    get_gnomad_v4_genomes_vds,
+    get_gnomad_v4_vds,
+)
 from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.release import (
     release_all_sites_an,
@@ -380,7 +383,7 @@ def main(args):
                     )
 
             else:
-                vds = get_gnomad_v3_vds(
+                vds = get_gnomad_v4_genomes_vds(
                     release_only=True,
                     test=test,
                     filter_partitions=range(2) if test else None,
@@ -395,6 +398,7 @@ def main(args):
                     telomeres_and_centromeres.ht().interval.collect(),
                     keep=False,
                 )
+            ref_ht = ref_ht.checkpoint(hl.utils.new_temp_file("ref", "ht"))
 
         if args.compute_coverage_ht:
             logger.info("Running compute coverage...")
@@ -460,6 +464,9 @@ def main(args):
                 group_membership_ht = get_genomes_group_membership_ht(
                     res.meta_ht.ht(),
                 )
+            group_membership_ht = group_membership_ht.checkpoint(
+                hl.utils.new_temp_file("group_membership", "ht")
+            )
 
             an_ht = compute_an_and_qual_hists_per_ref_site(
                 vds,
