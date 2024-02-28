@@ -29,11 +29,11 @@ CURRENT_VARIANT_QC_RESULT_VERSION = CURRENT_VERSION
 RELEASES = ["4.0"]
 CURRENT_RELEASE = "4.0"
 
-COVERAGE_RELEASES = {"exomes": ["4.0"]}
-CURRENT_COVERAGE_RELEASE = {"exomes": "4.0"}
+COVERAGE_RELEASES = {"exomes": ["4.0"], "genomes": ["3.0"]}
+CURRENT_COVERAGE_RELEASE = {"exomes": "4.0", "genomes": "3.0"}
 
-ALL_SITES_AN_RELEASES = {"exomes": ["4.1"]}
-CURRENT_ALL_SITES_AN_RELEASE = {"exomes": "4.1"}
+ALL_SITES_AN_RELEASES = {"exomes": ["4.1"], "genomes": ["4.1"]}
+CURRENT_ALL_SITES_AN_RELEASE = {"exomes": "4.1", "genomes": "4.1"}
 
 HGDP_TGP_RELEASES = ["4.0"]
 CURRENT_HGDP_TGP_RELEASE = "4.0"
