@@ -35,6 +35,7 @@ from gnomad_qc.v4.resources.basics import (
 from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.release import (
     release_all_sites_an,
+    release_all_sites_an_tsv_path,
     release_coverage,
     release_coverage_tsv_path,
 )
@@ -315,9 +316,7 @@ def get_coverage_resources(
     export_an_tsv = PipelineStepResourceCollection(
         "--export-all-sites-an-release-tsv",
         output_resources={
-            "allele_number_tsv": release_coverage_tsv_path(
-                data_type, test=test, coverage_type="allele_number"
-            ),
+            "allele_number_tsv": release_all_sites_an_tsv_path(data_type, test=test)
         },
         pipeline_input_steps=[compute_allele_number_ht],
     )
