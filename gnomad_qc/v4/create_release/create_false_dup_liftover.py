@@ -102,10 +102,11 @@ def _v4_false_dup_unfurl_annotations(
         grpmax_dict = {}
         grpmax_dict.update(
             {
-                f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax_{dt}": ht[
+                f"{f if f != 'homozygote_count' else 'nhomalt'}{k}_grpmax_{dt}": ht[
                     f"v2_{dt}"
-                ].popmax[f]
-                for f in [f for f in grpmax_idx.values()]
+                ].popmax[i][f]
+                for k, i in grpmax_idx.items()
+                for f in ht[f"v2_{dt}"].popmax[0].keys()
             }
         )
 
@@ -160,9 +161,9 @@ def _v4_false_dup_unfurl_annotations(
 
     for dt in data_types:
         logger.info(f"Unfurling age hists data in {dt}...")
-        hist_idx = (
-            ht[f"age_index_dict_{dt}"]
-        )  # index of which hists are which #ht[f"v2_{dt}"]
+        hist_idx = ht[
+            f"age_index_dict_{dt}"
+        ]  # index of which hists are which #ht[f"v2_{dt}"]
         age_hists = ["age_hist_het", "age_hist_hom"]  # in ht.v2_{dt}
         age_hist_dict = {
             f"{hist}_{key_name}_{dt}": (
