@@ -303,7 +303,7 @@ def get_coverage_resources(
         },
     )
     export_coverage_files = PipelineStepResourceCollection(
-        "--export-release-files",
+        "--export-coverage-release-files",
         output_resources={
             "coverage_tsv": release_coverage_tsv_path(data_type, test=test),
             "release_ht": release_coverage(
@@ -312,6 +312,15 @@ def get_coverage_resources(
         },
         pipeline_input_steps=[compute_coverage_ht],
     )
+    export_an_tsv = PipelineStepResourceCollection(
+        "--export-all-sites-an-release-tsv",
+        output_resources={
+            "allele_number_tsv": release_coverage_tsv_path(
+                data_type, test=test, coverage_type="allele_number"
+            ),
+        },
+        pipeline_input_steps=[compute_allele_number_ht],
+    )
 
     # Add all steps to the coverage pipeline resource collection.
     coverage_pipeline.add_steps(
@@ -319,6 +328,7 @@ def get_coverage_resources(
             "compute_coverage_ht": compute_coverage_ht,
             "compute_allele_number_ht": compute_allele_number_ht,
             "export_coverage_files": export_coverage_files,
+            "export_all_sites_an_release_tsv": export_an_tsv,
         }
     )
 
@@ -493,7 +503,7 @@ def main(args):
             an_ht = an_ht.select("AN")
             an_ht.write(res.allele_number_ht.path, overwrite=overwrite)
 
-        if args.export_release_files:
+        if args.export_coverage_release_files:
             logger.info("Exporting coverage tsv...")
             res = coverage_resources.export_coverage_files
             res.check_resource_existence()
@@ -505,6 +515,14 @@ def main(args):
             ht = ht.drop("coverage_stats_meta", "coverage_stats_meta_sample_count")
             ht = ht.checkpoint(res.release_ht.path, overwrite=overwrite)
             ht.export(res.coverage_tsv)
+
+        if args.export_all_sites_an_release_tsv:
+            logger.info("Exporting all sites AN tsv...")
+            res = coverage_resources.export_all_sites_an_release_tsv
+            res.check_resource_existence()
+            ht = res.allele_number_ht.ht()
+            ht = ht.select(AN=ht.AN[0])
+            ht.export(res.allele_number_tsv)
 
     finally:
         hl.copy_log(f"gs://gnomad-tmp-4day/coverage/compute_coverage.log")
@@ -586,7 +604,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=150,
     )
     parser.add_argument(
-        "--export-release-files", help="Exports coverage TSV file.", action="store_true"
+        "--export-coverage-release-files",
+        help="Exports coverage release HT and TSV file.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--export-all-sites-an-release-tsv",
+        help="Export all sites AN release file.",
+        action="store_true",
     )
 
     return parser
