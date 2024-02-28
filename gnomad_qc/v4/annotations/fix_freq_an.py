@@ -360,7 +360,9 @@ def compute_an_and_hists_het_fail_adj_ab(
         group_membership_ht=group_membership_ht,
         entry_agg_group_membership={"AN_nonpar_xy_het": an_nonpar_xy_het_meta},
     )
-    ht = ht.checkpoint(hl.utils.new_temp_file("an_qual_hist_adjust", "ht"))
+    ht = ht.naive_coalesce(1000).checkpoint(
+        hl.utils.new_temp_file("an_qual_hist_adjust", "ht")
+    )
 
     # Adjust the raw groups using the count of 'non_par_xy_hets' rather than the sum of
     # the ploidies of the failed AB adj hets.
