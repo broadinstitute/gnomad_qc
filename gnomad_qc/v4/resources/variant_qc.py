@@ -168,12 +168,12 @@ def get_score_bins(
     :return: Path to desired hail Table
     """
     return VersionedTableResource(
-        CURRENT_VARIANT_QC_RESULT_VERSION,
+        CURRENT_VARIANT_QC_RESULT_VERSION["exomes"],
         {
             version: TableResource(
                 f"{_variant_qc_root(version, test=test)}/score_bins/gnomad.exomes.v{version}.{model_id}.{'aggregated' if aggregated else 'bins'}.ht"
             )
-            for version in VARIANT_QC_RESULT_VERSIONS
+            for version in VARIANT_QC_RESULT_VERSIONS["exomes"]
         },
     )
 
@@ -195,12 +195,12 @@ def get_binned_concordance(
     :return: Path to binned truth data concordance Hail Table.
     """
     return VersionedTableResource(
-        CURRENT_VARIANT_QC_RESULT_VERSION,
+        CURRENT_VARIANT_QC_RESULT_VERSION["exomes"],
         {
             version: TableResource(
                 f"{_variant_qc_root(version, test=test)}/binned_concordance/gnomad.exomes.v{version}.{truth_sample}.{model_id}.binned_concordance.ht"
             )
-            for version in VARIANT_QC_RESULT_VERSIONS
+            for version in VARIANT_QC_RESULT_VERSIONS["exomes"]
         },
     )
 
@@ -273,12 +273,12 @@ def get_variant_qc_result(
             f"Model ID must start with 'rf_', 'vqsr_', or 'if_', but found {model_id}"
         )
     return VersionedTableResource(
-        CURRENT_VARIANT_QC_RESULT_VERSION,
+        CURRENT_VARIANT_QC_RESULT_VERSION["exomes"],
         {
             version: TableResource(
                 f"{_variant_qc_root(version, test=test)}/{model_type}/models/{model_id}/gnomad.exomes.v{version}.{model_type}_result{'' if split else '.unsplit'}.ht"
             )
-            for version in VARIANT_QC_RESULT_VERSIONS
+            for version in VARIANT_QC_RESULT_VERSIONS["exomes"]
         },
     )
 
@@ -294,11 +294,11 @@ def final_filter(
     :return: VersionedTableResource for final variant QC data.
     """
     return VersionedTableResource(
-        CURRENT_VARIANT_QC_RESULT_VERSION,
+        CURRENT_VARIANT_QC_RESULT_VERSION[data_type],
         {
             version: TableResource(
                 f"{_variant_qc_root(version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.final_filter.ht"
             )
-            for version in VARIANT_QC_RESULT_VERSIONS
+            for version in VARIANT_QC_RESULT_VERSIONS[data_type]
         },
     )

@@ -21,6 +21,7 @@ from gnomad.utils.annotations import (
     faf_expr,
     gen_anc_faf_max_expr,
     merge_freq_arrays,
+    merge_histograms,
     pop_max_expr,
     set_female_y_metrics_to_na_expr,
 )
@@ -41,6 +42,7 @@ from gnomad_qc.v4.resources.annotations import (
     get_freq_comparison,
 )
 from gnomad_qc.v4.resources.basics import get_logging_path
+from gnomad_qc.v4.resources.constants import CURRENT_FREQ_VERSION
 from gnomad_qc.v4.resources.release import get_combined_faf_release
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
@@ -138,8 +140,8 @@ def extract_freq_info(
             f"{prefix}_faf": faf["faf"],
             f"{prefix}_grpmax": grpmax_expr,
             f"{prefix}_fafmax": fafmax_expr,
-            f"{prefix}_qual_hists": ht.qual_hists,
-            f"{prefix}_raw_qual_hists": ht.raw_qual_hists,
+            f"{prefix}_qual_hists": ht.histograms.qual_hists,
+            f"{prefix}_raw_qual_hists": ht.histograms.raw_qual_hists,
         }
     )
     ht = ht.select_globals(
@@ -189,9 +191,9 @@ def add_all_sites_an_and_qual_hists(
         all_sites_an_expr = freq_meta_expr.map(
             lambda x: hl.struct(
                 AC=0,
-                AN=all_sites_an_expr[meta_map[x]],
-                homozygote_count=0,
                 AF=hl.missing(hl.tfloat64),
+                AN=hl.int32(all_sites_an_expr[meta_map[x]]),
+                homozygote_count=0,
             )
         )
         return hl.coalesce(freq_expr, all_sites_an_expr)
@@ -201,13 +203,17 @@ def add_all_sites_an_and_qual_hists(
         "exomes": exomes_all_sites_ht[ht.locus],
         "genomes": genomes_all_sites_ht[ht.locus],
     }
+    all_sites_meta_by_data_type = {
+        "exomes": exomes_all_sites_ht.index_globals().strata_meta,
+        "genomes": genomes_all_sites_ht.index_globals().strata_meta,
+    }
     ht = ht.annotate(
         **{
             f"{data_type}_freq": _get_freq_from_an_expr(
                 ht[f"{data_type}_freq"],
                 all_sites.AN,
                 ht.index_globals()[f"{data_type}_freq_meta"],
-                all_sites.index_globals().strata_meta,
+                all_sites_meta_by_data_type[data_type],
             )
             for data_type, all_sites in all_sites_by_data_type.items()
         },
@@ -216,7 +222,17 @@ def add_all_sites_an_and_qual_hists(
                 **{
                     k: hl.coalesce(
                         ht[f"{data_type}_{adj}qual_hists"][k],
-                        all_sites[f"{adj}qual_hists"][k],
+                        all_sites.qual_hists[f"{adj}qual_hists"].get(
+                            k,
+                            hl.missing(
+                                hl.tstruct(
+                                    bin_edges=hl.tarray(hl.tfloat64),
+                                    bin_freq=hl.tarray(hl.tint64),
+                                    n_smaller=hl.tint64,
+                                    n_larger=hl.tint64,
+                                )
+                            ),
+                        ),
                     )
                     for k in ht[f"{data_type}_{adj}qual_hists"]
                 }
@@ -266,7 +282,23 @@ def get_joint_freq_and_faf(
         },
     )
 
-    ht = ht.annotate(joint_freq=freq)
+    ht = ht.annotate(
+        joint_freq=freq,
+        **{
+            f"joint_{hist_struct}": hl.struct(
+                **{
+                    h: merge_histograms(
+                        [
+                            ht[f"genomes_{hist_struct}"][h],
+                            ht[f"genomes_{hist_struct}"][h],
+                        ]
+                    )
+                    for h in ht[f"genomes_{hist_struct}"]
+                }
+            )
+            for hist_struct in ["qual_hists", "raw_qual_hists"]
+        },
+    )
     ht = ht.annotate_globals(
         joint_freq_meta=freq_meta,
         joint_freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
@@ -651,8 +683,8 @@ def main(args):
             )
             ht = ht.annotate_globals(
                 versions=hl.struct(
-                    exomes=res.exomes_ht.default_version,
-                    genomes=res.genomes_ht.default_version,
+                    exomes=CURRENT_FREQ_VERSION["exomes"],
+                    genomes=CURRENT_FREQ_VERSION["genomes"],
                 )
             )
             ht.describe()
