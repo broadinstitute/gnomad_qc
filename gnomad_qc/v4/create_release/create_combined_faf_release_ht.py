@@ -191,7 +191,7 @@ def add_all_sites_an_and_qual_hists(
         all_sites_an_expr = freq_meta_expr.map(
             lambda x: hl.struct(
                 AC=0,
-                AF=hl.missing(hl.tfloat64),
+                AF=hl.or_missing(all_sites_an_expr[meta_map[x]] > 0, hl.float64(0.0)),
                 AN=hl.int32(all_sites_an_expr[meta_map[x]]),
                 homozygote_count=0,
             )
