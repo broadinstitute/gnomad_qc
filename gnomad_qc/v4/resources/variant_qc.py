@@ -160,6 +160,11 @@ def get_score_bins(
     """
     Return the path to a Table containing RF or VQSR scores and annotated with a bin based on rank of the metric scores.
 
+    .. note::
+
+        These Tables are only available for exomes data. Use the v3 resources for the
+        genomes data.
+
     :param model_id: RF or VQSR model ID for which to return score data.
     :param bool aggregated: Whether to get the aggregated data. If True, will return
         the path to Table grouped by bin that contains aggregated variant counts per
@@ -183,6 +188,11 @@ def get_binned_concordance(
 ) -> VersionedTableResource:
     """
     Return the path to a truth sample concordance Table.
+
+    .. note::
+
+        These Tables are only available for exomes data. Use the v3 resources for the
+        genomes data.
 
     This Table contains concordance information (TP, FP, FN) between a truth sample
     within the callset and the sample's truth data, grouped by bins of a metric (RF or
@@ -260,6 +270,11 @@ def get_variant_qc_result(
 ) -> VersionedTableResource:
     r"""
     Get the results of variant QC filtering for a given run.
+
+    .. note::
+
+        These Tables are only available for exomes data. Use the v3 resources for the
+        genomes data.
 
     :param model_id: Model ID of variant QC run to load. Must start with 'rf\_',
         'vqsr\_', or 'if\_'.
