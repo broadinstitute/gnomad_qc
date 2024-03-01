@@ -329,7 +329,6 @@ def release_coverage_tsv_path(
     data_type: str = "exomes",
     release_version: str = CURRENT_COVERAGE_RELEASE["exomes"],
     test: bool = False,
-    coverage_type: str = "coverage",
 ) -> str:
     """
     Fetch path to coverage TSV file.
@@ -337,11 +336,34 @@ def release_coverage_tsv_path(
     :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
     :param release_version: Release version. Default is CURRENT_COVERAGE_RELEASE["exomes"].
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param coverage_type: 'coverage' or 'allele_number'. Default is 'coverage'.
     :return: Coverage TSV path.
     """
     return (
-        f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.{coverage_type}.all.tsv.bgz"
+        f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.coverage.all.tsv.bgz"
+    )
+
+
+def release_all_sites_an_tsv_path(
+    data_type: str = "exomes",
+    release_version: str = None,
+    test: bool = False,
+) -> str:
+    """
+    Fetch path to all sites AN TSV file.
+
+    :param data_type: 'exomes' or 'genomes'. Default is 'exomes'.
+    :param release_version: Release version. Default is
+        CURRENT_ALL_SITES_AN_RELEASE[data_type].
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :return: All sites AN TSV path.
+    """
+    release_version = (
+        release_version
+        if release_version is not None
+        else CURRENT_ALL_SITES_AN_RELEASE[data_type]
+    )
+    return (
+        f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.allele_number.tsv.bgz"
     )
 
 

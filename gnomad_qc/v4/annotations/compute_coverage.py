@@ -35,6 +35,7 @@ from gnomad_qc.v4.resources.basics import (
 from gnomad_qc.v4.resources.meta import meta
 from gnomad_qc.v4.resources.release import (
     release_all_sites_an,
+    release_all_sites_an_tsv_path,
     release_coverage,
     release_coverage_tsv_path,
 )
@@ -224,6 +225,8 @@ def compute_an_and_qual_hists_per_ref_site(
         entry_agg_group_membership={"qual_hists": [{"group": "raw"}]},
         sex_karyotype_field="sex_karyotype",
     )
+    ht = ht.annotate(qual_hists=ht.qual_hists[0])
+
     return ht
 
 
@@ -301,7 +304,7 @@ def get_coverage_resources(
         },
     )
     export_coverage_files = PipelineStepResourceCollection(
-        "--export-release-files",
+        "--export-coverage-release-files",
         output_resources={
             "coverage_tsv": release_coverage_tsv_path(data_type, test=test),
             "release_ht": release_coverage(
@@ -310,6 +313,13 @@ def get_coverage_resources(
         },
         pipeline_input_steps=[compute_coverage_ht],
     )
+    export_an_tsv = PipelineStepResourceCollection(
+        "--export-all-sites-an-release-tsv",
+        output_resources={
+            "allele_number_tsv": release_all_sites_an_tsv_path(data_type, test=test)
+        },
+        pipeline_input_steps=[compute_allele_number_ht],
+    )
 
     # Add all steps to the coverage pipeline resource collection.
     coverage_pipeline.add_steps(
@@ -317,6 +327,7 @@ def get_coverage_resources(
             "compute_coverage_ht": compute_coverage_ht,
             "compute_allele_number_ht": compute_allele_number_ht,
             "export_coverage_files": export_coverage_files,
+            "export_all_sites_an_release_tsv": export_an_tsv,
         }
     )
 
@@ -334,7 +345,9 @@ def main(args):
     # SSA Logs are easier to troubleshoot with.
     hl._set_flags(use_ssa_logs="1")
 
-    test = args.test
+    test_2_partitions = args.test_2_partitions
+    test_chr22_chrx_chry = args.test_chr22_chrx_chry
+    test = test_2_partitions or test_chr22_chrx_chry
     overwrite = args.overwrite
     data_type = args.data_type
     n_partitions = args.n_partitions
@@ -362,7 +375,12 @@ def main(args):
         if args.compute_coverage_ht or args.compute_all_sites_an_and_qual_hist_ht:
             # Read in context Table.
             ref_ht = vep_context.versions["105"].ht()
-            if test:
+            if test_chr22_chrx_chry:
+                chrom = ["chr22", "chrX", "chrY"]
+                ref_ht = hl.filter_intervals(
+                    ref_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
+            elif test_2_partitions:
                 ref_ht = ref_ht._filter_partitions(range(5))
 
             # Retain only 'locus' annotation from context Table.
@@ -373,8 +391,9 @@ def main(args):
                 vds = get_gnomad_v4_vds(
                     release_only=True,
                     test=test,
-                    filter_partitions=range(2) if test else None,
+                    filter_partitions=range(2) if test_2_partitions else None,
                     annotate_meta=True,
+                    chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
                 )
                 interval_ht = coverage_resources.interval_ht.ht()
                 if adjust_padding:
@@ -386,8 +405,9 @@ def main(args):
                 vds = get_gnomad_v4_genomes_vds(
                     release_only=True,
                     test=test,
-                    filter_partitions=range(2) if test else None,
+                    filter_partitions=range(2) if test_2_partitions else None,
                     samples_meta=True,
+                    chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
                 )
                 interval_ht = None
 
@@ -482,7 +502,7 @@ def main(args):
             an_ht = an_ht.select("AN")
             an_ht.write(res.allele_number_ht.path, overwrite=overwrite)
 
-        if args.export_release_files:
+        if args.export_coverage_release_files:
             logger.info("Exporting coverage tsv...")
             res = coverage_resources.export_coverage_files
             res.check_resource_existence()
@@ -495,6 +515,14 @@ def main(args):
             ht = ht.checkpoint(res.release_ht.path, overwrite=overwrite)
             ht.export(res.coverage_tsv)
 
+        if args.export_all_sites_an_release_tsv:
+            logger.info("Exporting all sites AN tsv...")
+            res = coverage_resources.export_all_sites_an_release_tsv
+            res.check_resource_existence()
+            ht = res.allele_number_ht.ht()
+            ht = ht.select(AN=ht.AN[0])
+            ht.export(res.allele_number_tsv)
+
     finally:
         hl.copy_log(f"gs://gnomad-tmp-4day/coverage/compute_coverage.log")
 
@@ -506,10 +534,18 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--overwrite", help="Overwrite existing hail Tables.", action="store_true"
     )
     parser.add_argument(
-        "--test",
+        "--test-2-partitions",
         help=(
             "Whether to run a test using only the first 2 partitions of the VDS test"
             " dataset."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test-chr22-chrx-chry",
+        help=(
+            "Whether to run a test using only the chr22, chrX, and chrY chromosomes of"
+            " the VDS test dataset."
         ),
         action="store_true",
     )
@@ -567,7 +603,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         default=150,
     )
     parser.add_argument(
-        "--export-release-files", help="Exports coverage TSV file.", action="store_true"
+        "--export-coverage-release-files",
+        help="Exports coverage release HT and TSV file.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--export-all-sites-an-release-tsv",
+        help="Export all sites AN release file.",
+        action="store_true",
     )
 
     return parser
