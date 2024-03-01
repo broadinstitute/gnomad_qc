@@ -16,10 +16,10 @@ from gnomad_qc.v4.resources.constants import (
     CURRENT_ALL_SITES_AN_RELEASE,
     CURRENT_ANNOTATION_VERSION,
     CURRENT_COMBINED_FAF_RELEASE,
+    CURRENT_FREQ_VERSION,
     CURRENT_HGDP_TGP_RELEASE,
-    CURRENT_VERSION,
+    FREQ_VERSIONS,
     HGDP_TGP_RELEASES,
-    VERSIONS,
 )
 
 SUBSETS = SUBSETS["v4"]
@@ -245,22 +245,22 @@ def get_true_positive_vcf_path(
 
 
 freq = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_FREQ_VERSION["exomes"],
     {
         version: TableResource(
             f"{_annotations_root(version)}/gnomad.exomes.v{version}.frequencies.ht"
         )
-        for version in VERSIONS
+        for version in FREQ_VERSIONS["exomes"]
     },
 )
 
 qual_hist = VersionedTableResource(
-    CURRENT_VERSION,
+    CURRENT_FREQ_VERSION["exomes"],
     {
         version: TableResource(
             f"{_annotations_root(version)}/gnomad.exomes.v{version}.qual_hists.ht"
         )
-        for version in VERSIONS
+        for version in FREQ_VERSIONS["exomes"]
     },
 )
 
@@ -288,7 +288,7 @@ def get_downsampling(
 
 
 def get_freq(
-    version: str = CURRENT_VERSION,
+    version: str = None,
     data_type: str = "exomes",
     test: bool = False,
     hom_alt_adjusted=False,
@@ -310,6 +310,9 @@ def get_freq(
     :param finalized: Whether to return the finalized frequency table. Default is True.
     :return: Hail Table containing subset or overall cohort frequency annotations.
     """
+    if version is None:
+        version = CURRENT_FREQ_VERSION[data_type]
+
     ht_name = f"gnomad.{data_type}.v{version}.frequencies"
     if data_type == "exomes" and not finalized:
         if chrom:
@@ -354,13 +357,14 @@ def get_all_sites_an_and_qual_hists(
 
 
 def get_combined_frequency(
-    test: bool = False, filtered: bool = False
+    test: bool = False, filtered: bool = True
 ) -> VersionedTableResource:
     """
     Get the combined v4 genome and exome frequency annotation VersionedTableResource.
 
     :param test: Whether to use a tmp path for testing.
     :param filtered: Whether to return the resource for the filtered combined frequency.
+        Default is True.
     :return: Hail Table containing combined frequency annotations.
     """
     return VersionedTableResource(
@@ -375,7 +379,7 @@ def get_combined_frequency(
 
 
 def get_freq_comparison(
-    method: str, test: bool = False, filtered: bool = False
+    method: str, test: bool = False, filtered: bool = True
 ) -> VersionedTableResource:
     """
     Get VersionedTableResource for a frequency comparison between v4 genomes and exomes.
@@ -389,7 +393,8 @@ def get_freq_comparison(
     :param method: Method used to compare frequencies between v4 genomes and exomes.
         Can be one of `contingency_table_test` or `cmh_test`.
     :param test: Whether to use a tmp path for testing. Default is False.
-    :param filtered: Whether to return the filtered frequency comparison Table.
+    :param filtered: Whether to return the filtered frequency comparison Table. Default
+        is True.
     :return: VersionedTableResource containing results from the specified comparison
         `method`.
     """
@@ -499,7 +504,7 @@ def hgdp_tgp_updated_callstats(
 
 
 def get_split_vds(
-    version: str = CURRENT_VERSION,
+    version: str = None,
     data_type: str = "exomes",
     test: bool = False,
 ) -> VariantDatasetResource:
@@ -517,6 +522,9 @@ def get_split_vds(
            of the full v4 Table.
     :return: gnomAD v4 VariantDatasetResource.
     """
+    if version is None:
+        version = CURRENT_FREQ_VERSION[data_type]
+
     return VariantDatasetResource(
         f"{_annotations_root(version, test, data_type)}/temp/gnomad.{data_type}.v{version}.split_multi.vds"
     )
