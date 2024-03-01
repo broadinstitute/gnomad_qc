@@ -44,7 +44,6 @@ This script performs the following steps:
 
 import argparse
 import logging
-from typing import Tuple
 
 import hail as hl
 from gnomad.resources.grch38.reference_data import vep_context
@@ -432,11 +431,143 @@ def compute_allele_number_per_ref_site(
     return ht
 
 
+def get_all_sites_nonref_adjustment(
+    vds: hl.vds.VariantDataset,
+    group_membership_ht: hl.Table,
+) -> hl.Table:
+    """
+    Compute allele number and histograms for het non ref adjustments.
+
+    The adjustment numbers computed in `compute_an_and_hists_het_fail_adj_ab` are
+    correct for per allele AN and histogram adjustments for the frequency data, but
+    they are not correct for the all sites AN and histogram adjustments. This is
+    because when computing the sum of all per allele adjustment values, the
+    heterozygous non-ref genotypes can be counted 2 times if both alleles are adjusted.
+
+    This function will compute the number of het non-ref genotypes that are being
+    counted twice so the all sites AN and histograms can be adjusted correctly.
+
+    :param vds: Input VariantDataset.
+    :param group_membership_ht: Table of samples group memberships.
+    :return: Table of allele number and histograms for het fail adj ab.
+    """
+    vmt = vds.variant_data
+    vmt = vmt.select_cols(
+        sex_karyotype=vmt.meta.sex_imputation.sex_karyotype,
+        xy=vmt.meta.sex_imputation.sex_karyotype == "XY",
+    )
+    vmt = vmt.annotate_rows(in_non_par=~vmt.locus.in_autosome_or_par())
+
+    # Filter to only het non-ref genotypes that are either failing the adj allele
+    # balance for both alleles or are non-PAR XY het genotypes.
+    vmt = vmt.filter_entries(
+        vmt.LGT.is_het_non_ref()
+        & (
+            (vmt.in_non_par & vmt.xy)
+            | (
+                (vmt.LAD[vmt.LGT[0]] / vmt.DP < 0.2)
+                & (vmt.LAD[vmt.LGT[1]] / vmt.DP < 0.2)
+            )
+        )
+    )
+    vmt = vmt.filter_rows(hl.agg.any(hl.is_defined(vmt.LGT)))
+
+    # Add the DQ/DP adj filter to the entries.
+    vmt = vmt.annotate_entries(
+        adj=get_gq_dp_adj_expr(
+            vmt.GQ, vmt.DP, locus_expr=vmt.locus, karyotype_expr=vmt.sex_karyotype
+        ),
+    )
+
+    # Calculate adj histograms for the het non-ref genotypes.
+    vmt = vmt.annotate_rows(
+        qual_hists_het_nonref=qual_hist_expr(
+            gq_expr=hl.or_missing(vmt.adj, vmt.GQ),
+            dp_expr=hl.or_missing(vmt.adj, vmt.DP),
+        )
+    )
+
+    vmt = vmt.select_entries(
+        "adj",
+        is_nonpar_xy_het=vmt.in_non_par & vmt.xy & vmt.LGT.is_het_non_ref(),
+        ploidy=adjusted_sex_ploidy_expr(vmt.locus, vmt.LGT, vmt.sex_karyotype).ploidy,
+    )
+
+    # Compute the number of het non-ref genotypes that are being counted twice.
+    # XY het genotypes in non-PAR regions are set to ploidy 1, so we can use the
+    # ploidy to determine AN.
+    # The raw AN adjustment is only the count of XY het genotypes in non-PAR regions
+    # since it doesn't include adj genotypes.
+    an_nonref_raw_meta = [{"group": "raw"}, {"group": "raw", "subset": "non_ukb"}]
+    ht = agg_by_strata(
+        vmt.annotate_entries(ploidy=hl.if_else(vmt.is_nonpar_xy_het, 1, vmt.ploidy)),
+        {
+            "AN_het_nonref_adj": (lambda t: t.ploidy, hl.agg.sum),
+            "AN_het_nonref_raw": (lambda t: t.is_nonpar_xy_het, hl.agg.count_where),
+        },
+        select_fields=["qual_hists_het_nonref"],
+        group_membership_ht=group_membership_ht,
+        entry_agg_group_membership={"AN_het_nonref_raw": an_nonref_raw_meta},
+    )
+    ht = ht.key_by("locus").drop("alleles")
+    ht = ht.checkpoint(hl.utils.new_temp_file("an_qual_hist_het_nonref_adjust", "ht"))
+
+    # Modify the raw groups to use 'AN_het_nonref_raw' instead of 'AN_het_nonref_adj'.
+    freq_meta = group_membership_ht.index_globals().freq_meta
+    an_nonref_raw_meta = hl.array(an_nonref_raw_meta)
+    ht = ht.select(
+        "qual_hists_het_nonref",
+        AN_het_nonref=hl.map(
+            lambda m, an: hl.if_else(
+                an_nonref_raw_meta.contains(m),
+                ht.AN_het_nonref_raw[an_nonref_raw_meta.index(m)],
+                an,
+            ),
+            freq_meta,
+            ht.AN_het_nonref_adj,
+        ),
+    )
+
+    return ht
+
+
+def get_sub_hist_expr(
+    hist_expr: hl.expr.StructExpression,
+    sub_hist_expr: hl.expr.StructExpression,
+) -> hl.expr.StructExpression:
+    """
+    Subtract sub histograms from histograms.
+
+    :param hist_expr: Histograms to subtract from.
+    :param sub_hist_expr: Histograms to subtract.
+    :return: Subtracted histograms.
+    """
+    sub_hist_expr = sub_hist_expr.annotate(
+        **{
+            k: v.annotate(
+                bin_freq=v.bin_freq.map(lambda x: -x),
+                n_smaller=-v.n_smaller,
+                n_larger=-v.n_larger,
+            )
+            for k, v in sub_hist_expr.items()
+        }
+    )
+    hist_expr = hl.if_else(
+        hl.is_defined(sub_hist_expr),
+        hl.struct(
+            **{k: merge_histograms([v, sub_hist_expr[k]]) for k, v in hist_expr.items()}
+        ),
+        hist_expr,
+    )
+
+    return hist_expr
+
+
 def adjust_per_site_an_and_hists_for_frequency(
     ht: hl.Table,
     freq_ht: hl.Table,
     het_fail_adj_ab_ht: hl.Table,
-) -> Tuple[hl.Table, hl.Table]:
+) -> hl.Table:
     """
     Adjust allele number and histograms for frequency correction.
 
@@ -459,8 +590,7 @@ def adjust_per_site_an_and_hists_for_frequency(
     :param ht: Table of AN and GQ/DP hists per reference site.
     :param freq_ht: Table of frequency data.
     :param het_fail_adj_ab_ht: Table of variant data histograms for het fail adj ab.
-    :return: Adjusted all sites AN and GQ/DP hists Table and Table of AN and GQ/DP
-        hists for frequency correction.
+    :return: Table of adjusted AN and GQ/DP hists for frequency correction.
     """
     logger.info(
         "Adjusting allele number and histograms for het fail adj allele balance..."
@@ -474,17 +604,6 @@ def adjust_per_site_an_and_hists_for_frequency(
     # Convert the het fail adj allele balance histograms to negative values so that
     # they can be subtracted from the partial adj (GQ/DP pass) histograms using
     # merge_histograms to create complete adj (GQ, DP, and AB pass) histograms.
-    sub_hists = het_fail_adj_ab_qual_hists.annotate(
-        **{
-            k: v.annotate(
-                bin_freq=v.bin_freq.map(lambda x: -x),
-                n_smaller=-v.n_smaller,
-                n_larger=-v.n_larger,
-            )
-            for k, v in het_fail_adj_ab_qual_hists.items()
-        }
-    )
-
     freq_correction_ht = freq_ht.select(
         AN=hl.coalesce(
             hl.map(
@@ -496,16 +615,27 @@ def adjust_per_site_an_and_hists_for_frequency(
             freq_correction.AN,
         ),
         qual_hists=freq_correction.qual_hists[0].annotate(
-            qual_hists=hl.struct(
-                **{
-                    k: merge_histograms([v, sub_hists[k]])
-                    for k, v in qual_hists.items()
-                }
-            )
+            qual_hists=get_sub_hist_expr(qual_hists, het_fail_adj_ab_qual_hists)
         ),
     )
     freq_correction_ht = freq_correction_ht.annotate_globals(**global_annotations)
 
+    return freq_correction_ht
+
+
+def adjust_all_sites_an_and_hists(
+    ht: hl.Table,
+    het_fail_adj_ab_ht: hl.Table,
+    het_nonref_ht: hl.Table,
+) -> hl.Table:
+    """
+    Adjust all sites allele number and histograms Table.
+
+    :param ht: Table of AN and GQ/DP hists per reference site.
+    :param het_fail_adj_ab_ht: Table of variant data histograms for het fail adj ab.
+    :param het_nonref_ht: Table of AN and GQ/DP hists for only het non-ref calls.
+    :return: Adjusted all sites AN and GQ/DP hists Table.
+    """
     # Get the sum of het GTs that fail the adj allele balance filter for all alleles at
     # each locus.
     het_fail_adj_ab_ht = het_fail_adj_ab_ht.group_by("locus").aggregate(
@@ -524,26 +654,51 @@ def adjust_per_site_an_and_hists_for_frequency(
     )
 
     # Annotate the all sites AN and qual hists Table with the number of hets that fail
-    # the adj allele balance filter at the locus and add the AN corrected for the
-    # allele balance filter to the all sites AN and qual hists Table.
+    # the adj allele balance filter and het non-refs at the locus and add the AN
+    # corrected for the allele balance filter to the all sites AN and qual hists Table.
     het_fail_adj_ab = het_fail_adj_ab_ht[ht.locus]
+    het_nonref = het_nonref_ht[ht.locus]
     ht = ht.select(
-        "AN",
-        "qual_hists",
+        AN_pre_adjust=ht.AN,
+        qual_hists_pre_adjust=ht.qual_hists[0],
         AN_adjust=het_fail_adj_ab.AN_adjust,
+        AN_het_nonref=het_nonref.AN_het_nonref,
         qual_hists_adjust=het_fail_adj_ab.qual_hists_adjust,
-        AN_adj_ab=hl.coalesce(
-            hl.map(
-                lambda an, an_fail_adj, m: an - hl.coalesce(an_fail_adj, 0),
-                ht.AN,
-                het_fail_adj_ab.AN_adjust,
-                global_annotations.strata_meta,
-            ),
-            ht.AN,
-        ),
+        qual_hists_het_nonref=het_nonref.qual_hists_het_nonref,
     )
+    # Remove duplicate counts of the het non-ref sites from the adjustment histograms.
+    ht = ht.annotate(
+        _tmp_hist_adjust=get_sub_hist_expr(
+            ht.qual_hists_adjust, ht.qual_hists_het_nonref
+        )
+    )
+    # When present, remove duplicate counts of the het non-ref sites from the
+    # adjustment AN and then adjust the AN based on result. Adjust qual histograms with
+    # the previously het non-ref adjusted histograms.
+    ht = ht.annotate(
+        AN=hl.if_else(
+            hl.is_defined(ht.AN_adjust),
+            hl.enumerate(ht.AN_pre_adjust).map(
+                lambda x: (
+                    x[1]
+                    - (
+                        ht.AN_adjust[x[0]]
+                        - hl.if_else(
+                            hl.is_defined(ht.AN_het_nonref), ht.AN_het_nonref[x[0]], 0
+                        )
+                    )
+                )
+            ),
+            ht.AN_pre_adjust,
+        ),
+        qual_hists=ht.qual_hists_pre_adjust.annotate(
+            qual_hists=get_sub_hist_expr(
+                ht.qual_hists_pre_adjust.qual_hists, ht._tmp_hist_adjust
+            )
+        ),
+    ).drop("_tmp_hist_adjust")
 
-    return ht, freq_correction_ht
+    return ht
 
 
 def update_freq_an_and_hists(
@@ -644,8 +799,9 @@ def main(args):
     """Script to generate all sites AN and v4.0 exomes frequency fix."""
     overwrite = args.overwrite
     use_test_dataset = args.use_test_dataset
+    test_chr22_chrx_chry = args.test_chr22_chrx_chry
     test_n_partitions = args.test_n_partitions
-    test = use_test_dataset or test_n_partitions
+    test = use_test_dataset or test_n_partitions or test_chr22_chrx_chry
     af_threshold = args.af_threshold
 
     hl.init(
@@ -657,17 +813,28 @@ def main(args):
 
     freq_ht = get_freq("4.0").ht()
     try:
-        if args.regenerate_ref_an_hists or args.calculate_var_an_hists_adjustment:
+        if (
+            args.regenerate_ref_an_hists
+            or args.calculate_var_an_hists_adjustment
+            or args.calculate_all_sites_het_nonref_adjustment
+        ):
             logger.info("Regenerating reference AN and GQ/DP histograms...")
 
             ref_ht = vep_context.versions["105"].ht()
             ref_ht = ref_ht.key_by("locus").select().distinct()
 
+            if test_chr22_chrx_chry:
+                chrom = ["chr22", "chrX", "chrY"]
+                ref_ht = hl.filter_intervals(
+                    ref_ht, [hl.parse_locus_interval(c) for c in chrom]
+                )
+
             vds = get_gnomad_v4_vds(
                 release_only=True,
-                test=use_test_dataset,
+                test=use_test_dataset or test_chr22_chrx_chry,
                 filter_partitions=range(2) if test_n_partitions else None,
                 annotate_meta=True,
+                chrom=["chr22", "chrX", "chrY"] if test_chr22_chrx_chry else None,
             )
 
             group_membership_ht = get_exomes_group_membership_ht(
@@ -723,6 +890,41 @@ def main(args):
                     overwrite=overwrite,
                 )
 
+            if args.calculate_all_sites_het_nonref_adjustment:
+                logger.info("Calculating all sites het non ref adjustment...")
+                get_all_sites_nonref_adjustment(
+                    vds,
+                    group_membership_ht,
+                ).write(
+                    f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/het_nonref_adjust.ht",
+                    overwrite=overwrite,
+                )
+
+        if args.adjust_all_sites_an_and_hists:
+            an_ht = hl.read_table(
+                f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/all_sites_an_before_adjustment.ht",
+            )
+            het_fail_adj_ab_ht = hl.read_table(
+                f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/het_fail_adj_ab_ht.ht",
+            )
+            het_nonref_ht = hl.read_table(
+                f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/het_nonref_adjust.ht",
+            )
+            an_ht = adjust_all_sites_an_and_hists(
+                an_ht, het_fail_adj_ab_ht, het_nonref_ht
+            ).checkpoint(
+                f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/all_sites_an_after_adjustment.ht",
+                overwrite=overwrite,
+            )
+            an_ht = an_ht.select("AN", "qual_hists").checkpoint(
+                get_all_sites_an_and_qual_hists(test=test).path,
+                overwrite=overwrite,
+            )
+            an_ht.select("AN").write(
+                release_all_sites_an(public=False, test=test).path,
+                overwrite=overwrite,
+            )
+
         if args.adjust_freq_an_hists:
             an_ht = hl.read_table(
                 f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/all_sites_an_before_adjustment.ht",
@@ -731,17 +933,8 @@ def main(args):
                 f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/het_fail_adj_ab_ht.ht",
             )
 
-            an_ht, freq_correction_ht = adjust_per_site_an_and_hists_for_frequency(
+            freq_correction_ht = adjust_per_site_an_and_hists_for_frequency(
                 an_ht, freq_ht, het_fail_adj_ab_ht
-            )
-            an_ht = an_ht.checkpoint(
-                get_all_sites_an_and_qual_hists(test=test).path,
-                overwrite=overwrite,
-            )
-            an_ht = an_ht.select(AN=an_ht.AN_adj_ab)
-            an_ht.write(
-                release_all_sites_an(public=False, test=test).path,
-                overwrite=overwrite,
             )
             freq_correction_ht.write(
                 f"gs://gnomad{'-tmp-4day' if test else ''}/v4.1/temp/frequency_fix/freq_correction.ht",
@@ -861,6 +1054,14 @@ if __name__ == "__main__":
         type=int,
     )
     parser.add_argument(
+        "--test-chr22-chrx-chry",
+        help=(
+            "Whether to run a test using only the chr22, chrX, and chrY chromosomes of"
+            " the VDS test dataset."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
         "--overwrite", help="Overwrites existing files.", action="store_true"
     )
     parser.add_argument(
@@ -875,6 +1076,19 @@ if __name__ == "__main__":
             "histograms in order to be used for the multi-allelic split frequency "
             "Table."
         ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--calculate-all-sites-het-nonref-adjustment",
+        help=(
+            "Calculate the number of het non-ref genotypes that are being counted "
+            "twice so the all sites AN and histograms can be adjusted correctly."
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--adjust-all-sites-an-and-hists",
+        help="Adjust the all sites AN and GQ/DP histograms for the frequency Table.",
         action="store_true",
     )
     parser.add_argument(
