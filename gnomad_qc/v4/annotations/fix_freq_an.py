@@ -633,7 +633,7 @@ def adjust_all_sites_an_and_hists(
 
     :param ht: Table of AN and GQ/DP hists per reference site.
     :param het_fail_adj_ab_ht: Table of variant data histograms for het fail adj ab.
-    :param het_nonref_ht:
+    :param het_nonref_ht: Table of AN and GQ/DP hists for only het non-ref calls.
     :return: Adjusted all sites AN and GQ/DP hists Table.
     """
     # Get the sum of het GTs that fail the adj allele balance filter for all alleles at
@@ -654,8 +654,8 @@ def adjust_all_sites_an_and_hists(
     )
 
     # Annotate the all sites AN and qual hists Table with the number of hets that fail
-    # the adj allele balance filter at the locus and add the AN corrected for the
-    # allele balance filter to the all sites AN and qual hists Table.
+    # the adj allele balance filter and het non-refs at the locus and add the AN 
+    # corrected for the allele balance filter to the all sites AN and qual hists Table.
     het_fail_adj_ab = het_fail_adj_ab_ht[ht.locus]
     het_nonref = het_nonref_ht[ht.locus]
     ht = ht.select(
@@ -666,11 +666,15 @@ def adjust_all_sites_an_and_hists(
         qual_hists_adjust=het_fail_adj_ab.qual_hists_adjust,
         qual_hists_het_nonref=het_nonref.qual_hists_het_nonref,
     )
+    # Remove duplicate counts of the het non-ref sites from the adjustment histograms
     ht = ht.annotate(
         _tmp_hist_adjust=get_sub_hist_expr(
             ht.qual_hists_adjust, ht.qual_hists_het_nonref
         )
     )
+    # When present, remove duplicate counts of the het non-ref sites from the adjustment AN 
+    # and then adjust the AN based on result. Adjust qual histograms with the previously het non-ref 
+    # adjusted histograms.
     ht = ht.annotate(
         AN=hl.if_else(
             hl.is_defined(ht.AN_adjust),
@@ -887,7 +891,7 @@ def main(args):
                 )
 
             if args.calculate_all_sites_het_nonref_adjustment:
-                logger.info("...")
+                logger.info("Calculating all sites het non ref adjustment...")
                 get_all_sites_nonref_adjustment(
                     vds,
                     group_membership_ht,
