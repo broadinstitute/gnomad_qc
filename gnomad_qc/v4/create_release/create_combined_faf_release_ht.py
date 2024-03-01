@@ -289,7 +289,7 @@ def get_joint_freq_and_faf(
                 **{
                     h: merge_histograms(
                         [
-                            ht[f"genomes_{hist_struct}"][h],
+                            ht[f"exomes_{hist_struct}"][h],
                             ht[f"genomes_{hist_struct}"][h],
                         ]
                     )
