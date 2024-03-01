@@ -357,6 +357,7 @@ def release_all_sites_an_tsv_path(
     :param test: Whether to use a tmp path for testing. Default is False.
     :return: All sites AN TSV path.
     """
+    release_version = release_version if release_version is not None else CURRENT_ALL_SITES_AN_RELEASE[data_type]
     return (
         f"{_release_root(release_version, test=test, data_type=data_type, extension='tsv')}/gnomad.{data_type}.v{release_version}.allele_number.tsv.bgz"
     )
