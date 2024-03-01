@@ -41,9 +41,10 @@ from gnomad_qc.v4.resources.annotations import (
     get_freq,
     get_freq_comparison,
 )
-from gnomad_qc.v4.resources.basics import get_logging_path
+from gnomad_qc.v4.resources.basics import calling_intervals, get_logging_path
 from gnomad_qc.v4.resources.constants import CURRENT_FREQ_VERSION
 from gnomad_qc.v4.resources.release import get_combined_faf_release
+from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -526,6 +527,68 @@ def perform_cmh_test(
     return cmh_ht[ht.key].cmh
 
 
+def create_final_combined_faf_release(
+    ht,
+    contingency_table_ht: Optional[hl.Table] = None,
+    cmh_ht: Optional[hl.Table] = None,
+) -> hl.Table:
+    """
+    Create the final combined FAF release Table.
+
+    :param ht: Table with joint exomes and genomes frequency and FAF information.
+    :param contingency_table_ht: Optional Table with contingency table test results
+        to include on the final Table.
+    :param cmh_ht: Optional Table with Cochran–Mantel–Haenszel test results
+        to include on the final Table.
+    :return: Table with final combined FAF release information.
+    """
+    stats_expr = {}
+    if contingency_table_ht is not None:
+        stats_expr["contingency_table_test"] = contingency_table_ht.ht()[
+            ht.key
+        ].contingency_table_test
+    if cmh_ht is not None:
+        stats_expr["cochran_mantel_haenszel_test"] = cmh_ht.ht()[
+            ht.key
+        ].cochran_mantel_haenszel_test
+
+    ht = ht.annotate(
+        **stats_expr,
+        joint_metric_data_type=hl.case()
+        .when(
+            (hl.is_defined(ht.genomes_grpmax.AC)) & hl.is_defined(ht.exomes_grpmax.AC),
+            "both",
+        )
+        .when(hl.is_defined(ht.genomes_grpmax.AC), "genomes")
+        .when(hl.is_defined(ht.exomes_grpmax.AC), "exomes")
+        .default(hl.missing(hl.tstr)),
+        joint_fafmax=ht.joint_fafmax.annotate(
+            joint_fafmax_data_type=hl.case()
+            .when(
+                (hl.is_defined(ht.genomes_fafmax.faf95_max))
+                & hl.is_defined(ht.exomes_fafmax.faf95_max),
+                "both",
+            )
+            .when(hl.is_defined(ht.genomes_fafmax.faf95_max), "genomes")
+            .when(hl.is_defined(ht.exomes_fafmax.faf95_max), "exomes")
+            .default(hl.missing(hl.tstr)),
+        ),
+        fail_interval_qc=~interval_qc_pass(all_platforms=True)
+        .ht()[ht.locus]
+        .pass_interval_qc,
+        outside_ukb_capture_region=~hl.is_defined(
+            calling_intervals(interval_name="ukb", calling_interval_padding=50).ht()[
+                ht.locus
+            ]
+        ),
+        outside_broad_capture_region=~hl.is_defined(
+            calling_intervals(interval_name="broad", calling_interval_padding=50).ht()[
+                ht.locus
+            ]
+        ),
+    )
+
+
 def get_combine_faf_resources(
     overwrite: bool = False,
     test: bool = False,
@@ -732,39 +795,16 @@ def main(args):
             res = combine_faf_resources.finalize_faf
             res.check_resource_existence()
 
-            ht = res.comb_freq_ht.ht()
-            stats_expr = {}
-            if args.include_contingency_table_test:
-                stats_expr["contingency_table_test"] = res.contingency_table_ht.ht()[
-                    ht.key
-                ].contingency_table_test
-            if args.include_cochran_mantel_haenszel_test:
-                stats_expr["cochran_mantel_haenszel_test"] = res.cmh_ht.ht()[
-                    ht.key
-                ].cochran_mantel_haenszel_test
-            ht = ht.annotate(
-                **stats_expr,
-                joint_metric_data_type=hl.case()
-                .when(
-                    (hl.is_defined(ht.genomes_grpmax.AC))
-                    & hl.is_defined(ht.exomes_grpmax.AC),
-                    "both",
-                )
-                .when(hl.is_defined(ht.genomes_grpmax.AC), "genomes")
-                .when(hl.is_defined(ht.exomes_grpmax.AC), "exomes")
-                .default(hl.missing(hl.tstr)),
-                joint_fafmax=ht.joint_fafmax.annotate(
-                    joint_fafmax_data_type=hl.case()
-                    .when(
-                        (hl.is_defined(ht.genomes_fafmax.faf95_max))
-                        & hl.is_defined(ht.exomes_fafmax.faf95_max),
-                        "both",
-                    )
-                    .when(hl.is_defined(ht.genomes_fafmax.faf95_max), "genomes")
-                    .when(hl.is_defined(ht.exomes_fafmax.faf95_max), "exomes")
-                    .default(hl.missing(hl.tstr)),
+            ht = create_final_combined_faf_release(
+                res.comb_freq_ht.ht,
+                (
+                    res.contingency_table_ht.ht()
+                    if args.include_contingency_table_test
+                    else None
                 ),
+                res.cmh_ht if args.include_cochran_mantel_haenszel_test else None,
             )
+
             ht.describe()
             ht.naive_coalesce(args.n_partitions).write(
                 res.final_combined_faf_ht.path, overwrite=overwrite
