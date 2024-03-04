@@ -131,8 +131,8 @@ def _v4_false_dup_unfurl_annotations(
         faf_idx = hl.eval(ht[f"faf_index_dict_{dt}"])
         expr_dict.update(
             {
-                f"{f}_{k}": ht[f"v2_{dt}"].faf[i][f]
-                for f in ht[f"v2_{dt}"].faf[0].keys()
+                f"{f}_{k}_{dt}": ht[f"v2_{dt}"].faf[i][f]
+                for f in ht[f"v2_{dt}"].faf[0].keys() if 'meta' not in f
                 for k, i in faf_idx.items()
             }
         )
