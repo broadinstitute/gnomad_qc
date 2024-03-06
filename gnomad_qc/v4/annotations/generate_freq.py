@@ -957,8 +957,8 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
 
 
 # This function was added post-v4.0 and was not used in the v4.0 release.
-# It is here for reference on how a VDS should be split to ensure all reference
-# data is retained across all variant sites.
+# It is here for reference on how a VDS should be split by subsets of samples 
+# to ensure all reference data is retained across all variant sites.
 def split_vds(
     vds: hl.vds.VariantDataset, strata_expr: hl.expr.Expression
 ) -> Dict[str, hl.vds.VariantDataset]:
