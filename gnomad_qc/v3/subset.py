@@ -216,6 +216,11 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
+        "--test",
+        help="Filter to the first 2 partitions for testing.",
+        action="store_true",
+    )
+    parser.add_argument(
         "--dense-mt", help="Whether to make a dense MT.", action="store_true"
     )
     parser.add_argument(
@@ -271,7 +276,6 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
-    parser.add_argument("--test", help="Run on test dataset.", action="store_true")
     parser.add_argument(
         "--variant-qc-annotations",
         nargs="+",
