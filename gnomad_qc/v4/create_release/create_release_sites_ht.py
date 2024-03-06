@@ -572,7 +572,9 @@ def custom_vep_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
 
 
 def get_select_global_fields(
-    ht: hl.Table, data_type: str
+    ht: hl.Table,
+    data_type: str,
+    tables_for_join: List[str] = TABLES_FOR_RELEASE,
 ) -> Dict[str, hl.expr.Expression]:
     """
     Generate a dictionary of globals to select by checking the config of all tables joined.
@@ -589,7 +591,7 @@ def get_select_global_fields(
     """
     t_globals = []
     select_globals = {}
-    for t in TABLES_FOR_RELEASE:
+    for t in tables_for_join:
         config = get_config(data_type=data_type).get(t)
         if "select_globals" in config:
             select_globals = get_select_fields(config["select_globals"], ht)
@@ -780,6 +782,10 @@ def join_hts(
     ]
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
+    joined_ht = joined_ht.select_globals(
+        **get_select_global_fields(joined_ht, data_type, tables)
+    )
+
     # Track the datasets we've added as well as the source paths.
     # If release HT is included in tables, read in the included datasets json
     # and update the keys to the path for any new tables
@@ -862,7 +868,6 @@ def main(args):
     logger.info("Filtering out chrM, AS_lowqual, and AC_raw == 0 sites...")
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters) & (ht.freq[1].AC > 0))
-    ht = ht.select_globals(**get_select_global_fields(ht, data_type))
 
     logger.info("Finalizing the release HT global and row fields...")
     # Add additional globals that were not present on the joined HTs.
