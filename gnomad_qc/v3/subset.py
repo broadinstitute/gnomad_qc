@@ -2,17 +2,15 @@
 
 import argparse
 import logging
-from typing import Dict, List
 
 import hail as hl
-from gnomad.utils.annotations import get_adj_expr
 from gnomad.utils.vcf import adjust_vcf_incompatible_types
 
-from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds, get_logging_path
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds
 from gnomad_qc.v3.resources.meta import meta as metadata
 from gnomad_qc.v3.resources.release import release_sites
 from gnomad_qc.v3.resources.sample_qc import hard_filtered_samples
-from gnomad_qc.v4.subset import HEADER_DICT, SUBSET_CALLSTATS_INFO_DICT
+from gnomad_qc.v4.subset import HEADER_DICT, make_variant_qc_annotations_dict
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger(__name__)
@@ -48,75 +46,6 @@ VARIANT_QC_ANNOTATIONS = [
 ]
 
 
-def adjust_vcf_incompatible_types(
-    ht: hl.Table,
-    pipe_delimited_annotations: List[str] = INFO_VCF_AS_PIPE_DELIMITED_FIELDS,
-) -> hl.Table:
-    """
-    Create a Table ready for vcf export.
-
-    In particular, the following conversions are done:
-        - All int64 are coerced to int32
-        - Fields specified by `pipe_delimited_annotations` are converted from arrays to pipe-delimited strings
-
-    :param ht: Input Table.
-    :param pipe_delimited_annotations: List of info fields (they must be fields of the ht.info Struct).
-    :return: Table ready for VCF export.
-    """
-
-    def get_pipe_expr(array_expr: hl.expr.ArrayExpression) -> hl.expr.StringExpression:
-        return hl.delimit(array_expr.map(lambda x: hl.or_else(hl.str(x), "")), "|")
-
-    # Make sure the HT is keyed by locus, alleles
-    ht = ht.key_by("locus", "alleles")
-
-    info_type_convert_expr = {}
-    # Convert int64 fields to int32 (int64 isn't supported by VCF)
-    for f, ft in ht.info.dtype.items():
-        if ft == hl.dtype("int64"):
-            logger.warning(
-                "Coercing field info.%s from int64 to int32 for VCF output. Value will"
-                " be capped at int32 max value.",
-                f,
-            )
-            info_type_convert_expr.update(
-                {f: hl.int32(hl.min(2**31 - 1, ht.info[f]))}
-            )
-        elif ft == hl.dtype("array<int64>"):
-            logger.warning(
-                "Coercing field info.%s from array<int64> to array<int32> for VCF"
-                " output. Array values will be capped at int32 max value.",
-                f,
-            )
-            info_type_convert_expr.update(
-                {f: ht.info[f].map(lambda x: hl.int32(hl.min(2**31 - 1, x)))}
-            )
-
-    ht = ht.annotate(info=ht.info.annotate(**info_type_convert_expr))
-
-    info_expr = {}
-
-    # Make sure to pipe-delimit fields that need to.
-    # Note: the expr needs to be prefixed by "|" because GATK expect one value for the ref (always empty)
-    # Note2: this doesn't produce the correct annotation for AS_SB_TABLE, it
-    # is handled below
-    for f in pipe_delimited_annotations:
-        if f in ht.info and f != "AS_SB_TABLE":
-            info_expr[f] = "|" + get_pipe_expr(ht.info[f])
-
-    # Flatten SB if it is an array of arrays
-    if "SB" in ht.info and not isinstance(ht.info.SB, hl.expr.ArrayNumericExpression):
-        info_expr["SB"] = ht.info.SB[0].extend(ht.info.SB[1])
-
-    if "AS_SB_TABLE" in ht.info:
-        info_expr["AS_SB_TABLE"] = get_pipe_expr(ht.info.AS_SB_TABLE)
-
-    # Annotate with new expression
-    ht = ht.annotate(info=ht.info.annotate(**info_expr))
-
-    return ht
-
-
 def compute_partitions(
     mt, entry_size=3.5, partition_size=128000000, min_partitions=20
 ) -> int:  # TODO: move to gnomad_methods?
@@ -136,27 +65,6 @@ def compute_partitions(
     mt_disk_est = rows * columns * entry_size
     n_partitions = hl.eval(hl.max(int(mt_disk_est / partition_size), min_partitions))
     return n_partitions
-
-
-def make_variant_qc_annotations_dict(
-    key_expr: hl.expr.StructExpression,
-    vqc_annotations: List[str] = VARIANT_QC_ANNOTATIONS,
-) -> Dict[str, hl.expr.Expression]:
-    """
-    Make a dictionary of gnomAD release annotation expressions to annotate onto the subsetted data.
-
-    :param release_ht: The hail table containing desired annotations.
-    :param key_expr: Key to join annotations on.
-    :param vqc_annotations: List of desired annotations from the release HT.
-    :return: Dictionary containing Hail experssions to annotate onto subset.
-    """
-    ht = release_sites().ht()
-    selected_variant_qc_annotations = {}
-    for ann in vqc_annotations:
-        if ann in VARIANT_QC_ANNOTATIONS:
-            selected_variant_qc_annotations.update([(ann, ht[key_expr][ann])])
-
-    return selected_variant_qc_annotations
 
 
 def main(args):
