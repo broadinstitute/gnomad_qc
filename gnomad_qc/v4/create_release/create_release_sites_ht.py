@@ -587,6 +587,7 @@ def get_select_global_fields(
 
     :param ht: Final joined HT with globals.
     :param data_type: Dataset's data type: 'exomes' or 'genomes'.
+    :param tables_for_join: List of tables to join into final release HT.
     :return: select mapping from global annotation name to `ht` annotation.
     """
     t_globals = []
