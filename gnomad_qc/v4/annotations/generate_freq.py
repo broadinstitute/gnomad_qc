@@ -957,7 +957,7 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
 
 
 # This function was added post-v4.0 and was not used in the v4.0 release.
-# It is here for reference on how a VDS should be split by subsets of samples 
+# It is here for reference on how a VDS should be split by subsets of samples
 # to ensure all reference data is retained across all variant sites.
 def split_vds(
     vds: hl.vds.VariantDataset, strata_expr: hl.expr.Expression
@@ -966,7 +966,8 @@ def split_vds(
     Split a VDS into multiple VDSs based on `strata_expr`.
 
     :param vds: Input VDS.
-    :param strata_expr: Expression on VDS variant_data MT to split on.
+    :param strata_expr: Expression on VDS variant_data MT columns that will be used to
+        determine if a sample belongs to certian split or subset of the VDS.
     :return: Dictionary where strata value is key and VDS is value.
     """
     s_by_strata = vds.variant_data.aggregate_cols(
@@ -1054,17 +1055,22 @@ def main(args):
             # This uses hail's hl.vds.filter_samples() function and keeps the default
             # remove_dead_alleles=False. However, due to unexpected behavior in the
             # code, the hl.vds.filter_samples() function still removes dead alleles by
-            # removing any variant row that does not have a defined entry. When the
-            # VDS is densified, this results in a loss of all homozygous reference calls
-            # in the reference data sparse MT at these dead allele sites. Because we
-            # had to split the VDS for v4.0 with intentions of rejoining the two subset
-            # VDSs across all variant sites, this unexpected behavior resulted in the
-            # loss of all homozygous reference calls in the reference data sparse MT and
-            # thus reduced Allele Number (AN) for any bi-allelic variant exclusive to
-            # one of the subsetted VDSs. The replacement code below uses our own custom
+            # removing any variant row that does not have a defined entry. This behavior
+            # is present in all versions of hail with hl.vds.filter_samples() through
+            # the current version at the time of this commit, v0.2.128. When the VDS is
+            # densified, this results in a loss of all homozygous reference calls in the
+            # reference data sparse MT at these dead allele sites. Because we had to
+            # split the VDS for v4.0 with intentions of rejoining the two subset VDSs
+            # across all variant sites, this unexpected behavior resulted in the loss of
+            # all homozygous reference calls in the reference data sparse MT and thus
+            # reduced Allele Number (AN) for any bi-allelic variant exclusive to one of
+            # the subsetted VDSs. The replacement code below uses our own custom
             # function to split the VDS and keep the dead alleles in the reference data.
             # It was never run in production, but it is the correct way to split the VDS
-            # and keep the dead alleles in the reference data.
+            # and keep the dead alleles in the reference data. The corrected frequency
+            # table for v4.1 used: gnomad_qc/gnomad_qc/v4/annotations/fix_freq_an.py
+            # Details on the run can be found here:
+            # github.com/broadinstitute/gnomad_production/issues/1366
             vds_dict = split_vds(vds, strata_expr=vds.variant_data.ukb_sample)
             for strata, vds in vds_dict.items():
                 if ukb_only and strata == "non_ukb" or non_ukb_only and strata == "ukb":
