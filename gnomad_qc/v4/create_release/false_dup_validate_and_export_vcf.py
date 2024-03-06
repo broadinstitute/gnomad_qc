@@ -50,7 +50,7 @@ from gnomad.utils.vcf import (
     rekey_new_reference,
 )
 from gnomad.utils.vep import (
-    CURRENT_VEP_VERSION,
+    # CURRENT_VEP_VERSION,
     VEP_CSQ_FIELDS,
     VEP_CSQ_HEADER,
     vep_struct_to_csq,
@@ -70,8 +70,6 @@ FALSE_DUP_INFO = [
     "info_MQ",
     "info_DP",
     "qual",
-    "filters",  # I do NOT like this implementation
-    # honestly might take this here and then split, output two both with that joint information
 ]
 
 FALSE_DUP_AS = [
@@ -242,8 +240,6 @@ def v4_false_dup_unfurl_annotations(
 
 def custom_make_info_expr(
     t: hl.Table,
-    hist_prefix: str = "",
-    data_type: str = "exomes",
 ) -> Dict[str, hl.expr.Expression]:
     """
     Make Hail expression for variant annotations to be included in VCF INFO field.
@@ -258,19 +254,23 @@ def custom_make_info_expr(
 
     for dt in ["exomes", "genomes"]:
         for field in FALSE_DUP_INFO:  # .remove('QUALapprox'):
-            vcf_info_dict[field] = t[f"v2_{dt}"][f"{field}"]
+            vcf_info_dict[f"{field.replace('info_','')}_{dt}"] = t[f"v2_{dt}"][
+                f"{field}"
+            ]
         for as_field in FALSE_DUP_AS:
-            vcf_info_dict[f"as_{as_field}"] = t[f"v2_{dt}"].allele_info[f"{as_field}"]
+            vcf_info_dict[f"as_{as_field}_{dt}"] = t[f"v2_{dt}"].allele_info[
+                f"{as_field}"
+            ]
         for vqsr_field in FALSE_DUP_AS_VQSR:
-            vcf_info_dict[f"as_vqsr_{vqsr_field}"] = t[f"v2_{dt}"].allele_info[
+            vcf_info_dict[f"as_vqsr_{vqsr_field}_{dt}"] = t[f"v2_{dt}"].allele_info[
                 f"{vqsr_field}"
             ]
         # Add region_flag and allele_info fields to info dict
         for at_field in ALLELE_TYPE_FIELDS:
-            vcf_info_dict[at_field] = t[f"v2_{dt}"][f"{at_field}"]
+            vcf_info_dict[f"{at_field}_{dt}"] = t[f"v2_{dt}"][f"{at_field}"]
         for r_field in REGION_FLAG_FIELDS:
             if "non_par" not in r_field:
-                vcf_info_dict[r_field] = t[f"v2_{dt}"][f"{r_field}"]
+                vcf_info_dict[f"{r_field}_{dt}"] = t[f"v2_{dt}"][f"{r_field}"]
             else:
                 pass
 
@@ -288,16 +288,51 @@ def custom_make_info_expr(
                 )
 
         for age_hist in FALSE_DUP_AGE_HISTS:
-            # if "exomes" in age_hist:
-            age_hist_dict = {
-                f"{age_hist.replace(dt,'')}_bin_freq_{dt}": hl.delimit(
-                    t.info[f"{age_hist}"].bin_freq, delimiter="|"
-                ),
-            }
+            if dt in age_hist:
+                age_hist_dict = {
+                    f"{age_hist.replace(dt,'')}_bin_freq_{dt}": hl.delimit(
+                        t.info[f"{age_hist}"].bin_freq, delimiter="|"
+                    ),
+                }
 
             vcf_info_dict.update(age_hist_dict)
 
+        vcf_info_dict.update({f"vep_{dt}": t[f"v2_{dt}_vep"]})
+
     return vcf_info_dict
+
+
+def _joint_filters(ht: hl.Table) -> hl.Table:
+    """ "
+    Annotate Hail Table with new 'filters' field, for status in exomes and genomes.
+
+    :param ht: Hail Table with ht.v2_exomes.filters and h2.v2_genomes.filters
+    :return: Hail Table with added ht.filters of type set<str>
+    """
+    ht = ht.annotate(
+        exome_pass=(hl.len(ht.v2_exomes.filters) == 0)
+        & (~hl.is_missing(ht.v2_exomes.filters)),
+        genome_pass=(hl.len(ht.v2_genomes.filters) == 0)
+        & (~hl.is_missing(ht.v2_genomes.filters)),
+    )
+
+    ht = ht.annotate(
+        filters=hl.if_else(
+            (ht.exome_pass) & (ht.genome_pass),
+            {"PASS_EXOMES", "PASS_GENOMES"},
+            hl.if_else(
+                ht.exome_pass,
+                {"PASS_EXOMES", "NO_PASS_GENOMES"},
+                hl.if_else(
+                    ht.genome_pass,
+                    {"NO_PASS_EXOMES", "PASS_GENOMES"},
+                    {"NO_PASS_EXOMES", "NO_PASS_GENOMES"},
+                ),
+            ),
+        )
+    )
+
+    return ht
 
 
 def prepare_false_dup_ht_for_validation(
@@ -318,52 +353,46 @@ def prepare_false_dup_ht_for_validation(
 
     logger.info("Constructing INFO field")
     # Remove SIFT and Polyphen from CSQ fields or they will be inserted with
-    # missing values by vep_struct_to_csq. These fields are processed separately
-    # as in silico annotations.
-    # update: uhhhh not doing this since they are uhh not in in silico ?
     csq_fields = "|".join(
-        [
-            c
-            for c in VEP_CSQ_FIELDS[CURRENT_VEP_VERSION].split("|")
-            if c not in ["sift", "polyphen"]
-        ]
+        [c for c in VEP_CSQ_FIELDS["101"].split("|") if c not in ["SIFT", "PolyPhen"]]
     )
 
-    # These age hists have been unfurld, but they still need treated like the other hists.
-    # Cannot be exported as is
-    # info_struct_without_age = info_struct.drop(*FALSE_DUP_AGE_HISTS)
-
     ht = ht.annotate(
-        # region_flag=ht.region_flags,
-        # release_ht_info=ht.info,
         release_v2_exomes=ht.v2_exomes,
         release_v2_genomes=ht.v2_genomes,
         release_v2_joint=ht.v2_joint,
         info=info_struct,  # THIS IS THE BIG PART WOO
-        vep_v2_exomes=ht.v2_exomes.vep,  # vep_struct_to_csq(ht.v2_exomes.vep, csq_fields=csq_fields, has_polyphen_sift=False),
-        vep_v2_genomes=ht.v2_genomes.vep,  # vep_struct_to_csq(ht.v2_genomes.vep, csq_fields=csq_fields, has_polyphen_sift=False),
+        v2_exomes_vep=vep_struct_to_csq(
+            ht.v2_exomes.vep, csq_fields=csq_fields, has_polyphen_sift=False
+        ),
+        v2_genomes_vep=vep_struct_to_csq(
+            ht.v2_genomes.vep, csq_fields=csq_fields, has_polyphen_sift=False
+        ),
     )
 
     # Add variant annotations to INFO field
-    # This adds the following:
-    #   annotations in ht.release_ht_info (site and allele-specific annotations),
-    #   info struct (unfurled data obtained above),
-    #   dbSNP rsIDs
-    #   all VEP annotations
+    ht = ht.annotate(info=ht.info.annotate(**custom_make_info_expr(ht)))
 
-    #
-    ht = ht.annotate(
-        info=ht.info.annotate(**custom_make_info_expr(ht))
-    )  # info struct is used as input for this
-
+    # Add VEP-specific globals
     ht = ht.annotate_globals(
         vep_csq_header=process_vep_csq_header(VEP_CSQ_HEADER),
     )
 
+    # Remove
     ht = ht.annotate(info=ht.info.drop(*FALSE_DUP_AGE_HISTS))
 
+    ht = _joint_filters(ht)
+
+    ht = ht.annotate(
+        rsid=hl.if_else(
+            ~hl.is_missing(ht.v2_exomes.rsid), ht.v2_exomes.rsid, ht.v2_genomes.rsid
+        )
+    )
+
     # Select relevant fields for VCF export
-    ht = ht.select("info")  # we'd want filters information, that is IN
+    ht = ht.select(
+        "info", "filters", "rsid"
+    )  # we'd want filters information, that is IN
 
     return ht
 
@@ -371,7 +400,7 @@ def prepare_false_dup_ht_for_validation(
 def main(args):
     ht = hl.read_table(get_false_dup_genes_path())
     ht = prepare_false_dup_ht_for_validation(ht)
-    hl.export_vcf(ht, "gs://gnomad-tmp-4day/tester.vcf.bgz")
+    hl.export_vcf(ht, "gs://gnomad-tmp-4day/tester_with_filters.vcf.bgz")
 
 
 if __name__ == "__main__":
