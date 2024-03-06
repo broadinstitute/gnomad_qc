@@ -633,6 +633,31 @@ def get_select_fields(
     return select_fields
 
 
+def get_final_ht_fields(ht: hl.Table) -> Dict[str, List[str]]:
+    """
+    Get the final fields for the release HT.
+
+    Create a dictionary of lists of fields that are in the FINALIZED_SCHEMA and are
+    present in the HT. If a field is not present in the HT, log a warning.
+
+    :param ht: Hail Table.
+    :return: Dict of final fields for the release HT.
+    """
+    final_fields = {"rows": [], "globals": []}
+    for field in FINALIZED_SCHEMA["rows"]:
+        if field in ht.row:
+            final_fields["rows"].append(field)
+        else:
+            logger.warning(f"Field {field} from FINALIZED_SCHEMA not found in HT.")
+    for field in FINALIZED_SCHEMA["globals"]:
+        if field in ht.globals:
+            final_fields["globals"].append(field)
+        else:
+            logger.warning(f"Global {field} from FINALIZED_SCHEMA not found in HT.")
+
+    return final_fields
+
+
 def get_ht(
     dataset: str,
     _intervals: nullable(sequenceof(anytype)),
@@ -834,10 +859,12 @@ def main(args):
 
     # Filter out chrM, AS_lowqual sites (these sites are dropped in the final_filters HT
     # so will not have information in `filters`) and AC_raw == 0.
+    logger.info("Filtering out chrM, AS_lowqual, and AC_raw == 0 sites...")
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters) & (ht.freq[1].AC > 0))
     ht = ht.select_globals(**get_select_global_fields(ht, data_type))
 
+    logger.info("Finalizing the release HT global and row fields...")
     # Add additional globals that were not present on the joined HTs.
     ht = ht.annotate_globals(
         vep_globals=ht.vep_globals.annotate(
@@ -869,10 +896,10 @@ def main(args):
             .high_qual_interval_parameters
         )
 
-    # Reorder fields to match final schema.
-    ht = ht.select(*FINALIZED_SCHEMA["rows"]).select_globals(
-        *FINALIZED_SCHEMA["globals"]
-    )
+    # Organize the fields in the release HT to match the order of FINALIZED_SCHEMA when
+    # the fields are present in the HT.
+    final_fields = get_final_ht_fields(ht)
+    ht = ht.select(*final_fields["rows"]).select_globals(*final_fields["globals"])
 
     output_path = (
         f"{qc_temp_prefix(data_type=data_type)}release/gnomad.{data_type}.sites.test.{datetime.today().strftime('%Y-%m-%d')}.ht"
