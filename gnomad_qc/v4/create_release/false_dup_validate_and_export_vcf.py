@@ -87,27 +87,6 @@ FALSE_DUP_AS = [
 
 FALSE_DUP_AS_VQSR = ["culprit", "VQSLOD", "NEGATIVE_TRAIN_SITE", "POSITIVE_TRAIN_SITE"]
 
-FALSE_DUP_AGE_HISTS = [
-    "age_hist_het_controls_exomes",
-    "age_hist_het_gnomad_exomes",
-    "age_hist_het_non_cancer_exomes",
-    "age_hist_het_non_neuro_exomes",
-    "age_hist_het_non_topmed_exomes",
-    "age_hist_hom_controls_exomes",
-    "age_hist_hom_gnomad_exomes",
-    "age_hist_hom_non_cancer_exomes",
-    "age_hist_hom_non_neuro_exomes",
-    "age_hist_hom_non_topmed_exomes",
-    "age_hist_het_controls_genomes",
-    "age_hist_het_gnomad_genomes",
-    "age_hist_het_non_neuro_genomes",
-    "age_hist_het_non_topmed_genomes",
-    "age_hist_hom_controls_genomes",
-    "age_hist_hom_gnomad_genomes",
-    "age_hist_hom_non_neuro_genomes",
-    "age_hist_hom_non_topmed_genomes",
-]
-
 
 def v4_false_dup_unfurl_annotations(
     ht: hl.Table,
@@ -134,9 +113,9 @@ def v4_false_dup_unfurl_annotations(
         freq_idx = hl.eval(ht[f"freq_index_dict_{dt}"])
         expr_dict.update(
             {
-                f"{f if f != 'homozygote_count' else 'nhomalt'}_{k}_{dt}": [ht[
-                    f"v2_{dt}"
-                ].freq[i][f]]
+                f"{f if f != 'homozygote_count' else 'nhomalt'}_{k}_{dt}": [
+                    ht[f"v2_{dt}"].freq[i][f]
+                ]
                 for k, i in freq_idx.items()
                 for f in ht[f"v2_{dt}"].freq[0].keys()
             }
@@ -146,9 +125,9 @@ def v4_false_dup_unfurl_annotations(
     joint_freq_idx = hl.eval(ht.joint_freq_index_dict)
     expr_dict.update(
         {
-            f"{f if f != 'homozygote_count' else 'nhomalt'}_{k}_joint": [(
-                ht.v2_joint.joint_freq[i][f]
-            )]
+            f"{f if f != 'homozygote_count' else 'nhomalt'}_{k}_joint": [
+                (ht.v2_joint.joint_freq[i][f])
+            ]
             for k, i in joint_freq_idx.items()
             for f in ht.v2_joint.joint_freq[0].keys()
         }
@@ -160,9 +139,9 @@ def v4_false_dup_unfurl_annotations(
         grpmax_dict = {}
         grpmax_dict.update(
             {
-                f"{f if f != 'homozygote_count' else 'nhomalt'}{k}_grpmax_{dt}": [ht[
-                    f"v2_{dt}"
-                ].popmax[i][f]]
+                f"{f if f != 'homozygote_count' else 'nhomalt'}{k}_grpmax_{dt}": [
+                    ht[f"v2_{dt}"].popmax[i][f]
+                ]
                 for k, i in grpmax_idx.items()
                 for f in ht[f"v2_{dt}"].popmax[0].keys()
             }
@@ -176,9 +155,9 @@ def v4_false_dup_unfurl_annotations(
     joint_grpmax_dict = {"grpmax_joint": joint_grpmax_idx.gen_anc}
     joint_grpmax_dict.update(
         {
-            f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax_joint": [(
-                joint_grpmax_idx[f]
-            )]
+            f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax_joint": [
+                (joint_grpmax_idx[f])
+            ]
             for f in [f for f in joint_grpmax_idx._fields if f != "gen_anc"]
         }
     )
@@ -211,9 +190,9 @@ def v4_false_dup_unfurl_annotations(
     logger.info("Unfurling joint fafmax data...")
     joint_fafmax_idx = ht.v2_joint.joint_fafmax
     joint_fafmax_dict = {
-        f"fafmax_{f if f != 'joint_fafmax_data_type' else 'data_type'}_joint": [(
-            joint_fafmax_idx[f]
-        )]
+        f"fafmax_{f if f != 'joint_fafmax_data_type' else 'data_type'}_joint": [
+            (joint_fafmax_idx[f])
+        ]
         for f in joint_fafmax_idx.keys()
     }
     expr_dict.update(joint_fafmax_dict)
@@ -223,17 +202,28 @@ def v4_false_dup_unfurl_annotations(
         hist_idx = ht[
             f"age_index_dict_{dt}"
         ]  # index of which hists are which #ht[f"v2_{dt}"]
-        age_hists = ["age_hist_het", "age_hist_hom"]  # in ht.v2_{dt}
-        age_hist_dict = {
-            f"{hist}_{key_name}_{dt}": [(
-                hl.delimit(ht[f"v2_{dt}"][hist][index_val], delimiter="|")
-                if "bin" in key_name
-                else ht[f"v2_{dt}"][hist][index_val]
-            )]
-            for hist in age_hists
-            for key_name, index_val in hl.eval(hist_idx.items())
-        }
-        expr_dict.update(age_hist_dict)
+        age_hists = ["age_hist_het", "age_hist_hom"]
+        for hist in age_hists:
+            for key_name, index_val in hl.eval(hist_idx.items()):
+                age_hist_dict = {
+                    f"{hist}_{key_name}_bin_edges_{dt}": [
+                        hl.delimit(
+                            ht[f"v2_{dt}"][hist][index_val].bin_edges, delimiter="|"
+                        )
+                    ],
+                    f"{hist}_{key_name}_bin_freq_{dt}": [
+                        hl.delimit(
+                            ht[f"v2_{dt}"][hist][index_val].bin_freq, delimiter="|"
+                        )
+                    ],
+                    f"{hist}_{key_name}_n_smaller_{dt}": [
+                        ht[f"v2_{dt}"][hist][index_val].n_smaller
+                    ],
+                    f"{hist}_{key_name}_n_larger_{dt}": [
+                        ht[f"v2_{dt}"][hist][index_val].n_larger
+                    ],
+                }
+                expr_dict.update(age_hist_dict)
 
     return hl.struct(**expr_dict)
 
@@ -254,33 +244,33 @@ def custom_make_info_expr(
 
     for dt in ["exomes", "genomes"]:
         for field in FALSE_DUP_INFO:  # .remove('QUALapprox'):
-            if field!="qual":
-                vcf_info_dict[f"{field.replace('info_','')}_{dt}"] = [t[f"v2_{dt}"][
-                    f"{field}"
-                ]]
+            if field != "qual":
+                vcf_info_dict[f"{field.replace('info_','')}_{dt}"] = [
+                    t[f"v2_{dt}"][f"{field}"]
+                ]
             else:
                 vcf_info_dict[f"{field.replace('info_','')}_{dt}"] = t[f"v2_{dt}"][
                     f"{field}"
                 ]
         for as_field in FALSE_DUP_AS:
-            if as_field not in ["DS","DB"]:
-                vcf_info_dict[f"as_{as_field}_{dt}"] = [t[f"v2_{dt}"].allele_info[
-                    f"{as_field}"
-                ]]
+            if as_field not in ["DS", "DB"]:
+                vcf_info_dict[f"as_{as_field}_{dt}"] = [
+                    t[f"v2_{dt}"].allele_info[f"{as_field}"]
+                ]
             else:
                 vcf_info_dict[f"as_{as_field}_{dt}"] = t[f"v2_{dt}"].allele_info[
                     f"{as_field}"
                 ]
-        # Not made into arrays. These are bools. 
+        # Not made into arrays. These are bools.
         for vqsr_field in FALSE_DUP_AS_VQSR:
             vcf_info_dict[f"as_vqsr_{vqsr_field}_{dt}"] = t[f"v2_{dt}"].allele_info[
                 f"{vqsr_field}"
             ]
         # Add region_flag and allele_info fields to info dict
-        # Not array. These are bools. 
+        # Not array. These are bools.
         for at_field in ALLELE_TYPE_FIELDS:
             vcf_info_dict[f"{at_field}_{dt}"] = t[f"v2_{dt}"][f"{at_field}"]
-        # Also not array. These are bool. 
+        # Also not array. These are bool.
         for r_field in REGION_FLAG_FIELDS:
             if "non_par" not in r_field:
                 vcf_info_dict[f"{r_field}_{dt}"] = t[f"v2_{dt}"][f"{r_field}"]
@@ -299,22 +289,6 @@ def custom_make_info_expr(
                 vcf_info_dict.update(
                     {f"{hist}_n_larger_{dt}": t[f"v2_{dt}"][hist].n_larger},
                 )
-
-        for age_hist in FALSE_DUP_AGE_HISTS:
-            if dt in age_hist:
-                age_hist_dict = {
-                    f"{age_hist.replace(dt,'')}_bin_freq_{dt}": [hl.delimit(
-                        t.info[f"{age_hist}"].bin_freq, delimiter="|"
-                    )],
-                    f"{age_hist.replace(dt,'')}_n_smaller_{dt}": [hl.delimit(
-                        t.info[f"{age_hist}"].n_smaller, delimiter="|"
-                    )],
-                    f"{age_hist.replace(dt,'')}_n_larger_{dt}": [hl.delimit(
-                        t.info[f"{age_hist}"].n_larger, delimiter="|"
-                    )],
-                }
-
-            vcf_info_dict.update(age_hist_dict)
 
         vcf_info_dict.update({f"vep_{dt}": t[f"v2_{dt}_vep"]})
 
@@ -396,9 +370,6 @@ def prepare_false_dup_ht_for_validation(
     ht = ht.annotate_globals(
         vep_csq_header=process_vep_csq_header(VEP_CSQ_HEADER),
     )
-
-    # Remove
-    ht = ht.annotate(info=ht.info.drop(*FALSE_DUP_AGE_HISTS))
 
     ht = _joint_filters(ht)
 
