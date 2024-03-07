@@ -830,7 +830,8 @@ def main(args):
 
                     hts.append(split_ht)
 
-                ht = hl.Table.union(*hts)
+                if hts:
+                    ht = hl.Table.union(*hts)
 
             ht.naive_coalesce(args.n_partitions).write(
                 res.cmh_ht.path, overwrite=overwrite
