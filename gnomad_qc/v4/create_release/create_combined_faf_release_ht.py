@@ -413,7 +413,7 @@ def perform_contingency_table_test(
             hl.is_defined(x[0]) & hl.is_defined(x[1]),
             hl.bind(
                 lambda f1, f2: hl.or_missing(
-                    (f1.AC > 0) | (f2.AC > 0),
+                    (f1.AC > 0) | (f2.AC > 0) & (f1.AN > 0) & (f2.AN > 0),
                     hl.contingency_table_test(
                         f1.AC, f1.AN - f1.AC, f2.AC, f2.AN - f2.AC, min_cell_count
                     ),
