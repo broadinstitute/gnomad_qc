@@ -632,7 +632,6 @@ def get_combine_faf_resources(
                     get_checkpoint_path(f"contingency_table_{c}")
                 )
                 for c in CHR_LIST
-                if c not in ["chr11", "chr16", "chr17", "chr19"]
             }
         }
     else:
@@ -755,7 +754,6 @@ def main(args):
                     *[
                         getattr(res, f"{c}_contingency_table_ht").ht()
                         for c in [f"chr{c}" for c in range(1, 23)] + ["chrX", "chrY"]
-                        if c not in ["chr11", "chr16", "chr17", "chr19"]
                     ]
                 )
             else:
