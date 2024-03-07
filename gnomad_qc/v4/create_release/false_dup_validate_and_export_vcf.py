@@ -319,13 +319,13 @@ def _joint_filters(ht: hl.Table) -> hl.Table:
     ht = ht.annotate(
         filters=hl.if_else(
             (ht.exome_pass) & (ht.genome_pass),
-            {"PASS_EXOMES", "PASS_GENOMES"},
+            {"PASS"},
             hl.if_else(
                 ht.exome_pass,
-                {"PASS_EXOMES", "NO_PASS_GENOMES"},
+                {"NO_PASS_GENOMES"},
                 hl.if_else(
                     ht.genome_pass,
-                    {"NO_PASS_EXOMES", "PASS_GENOMES"},
+                    {"NO_PASS_EXOMES"},
                     {"NO_PASS_EXOMES", "NO_PASS_GENOMES"},
                 ),
             ),
