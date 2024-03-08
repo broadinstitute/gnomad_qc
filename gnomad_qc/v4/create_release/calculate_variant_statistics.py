@@ -1,30 +1,27 @@
-"""Produce per-exome stats, per-genome stats, and variant type counts for v4."""
+"""Script to get per-sample stats by variant type in v4."""
 import argparse
 import logging
 
 import hail as hl
-from hail.utils.misc import new_temp_file
-
-# from hail.vds.sample_qc import vmt_sample_qc, vmt_sample_qc_variant_annotations
-
 from gnomad.resources.resource_utils import TableResource, VersionedTableResource
-from gnomad.utils import vep
 from gnomad.utils.slack import slack_notifications
+from gnomad.utils.vep import (
+    filter_vep_transcript_csqs,
+    get_most_severe_consequence_for_summary,
+)
+from hail.utils.misc import new_temp_file
 
 import gnomad_qc.v4.resources.meta as meta
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
-from gnomad_qc.v4.resources.release import (
-    CURRENT_RELEASE,
-    RELEASES,
-    _release_root,
-    get_per_sample_counts,
-    release_sites,
-)
+from gnomad_qc.v4.resources.release import get_per_sample_counts, release_sites
 from gnomad_qc.v4.resources.temp_hail_methods import (
     vmt_sample_qc,
     vmt_sample_qc_variant_annotations,
 )
+
+# from hail.vds.sample_qc import vmt_sample_qc, vmt_sample_qc_variant_annotations
+
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -33,156 +30,100 @@ logging.basicConfig(
 logger = logging.getLogger("release")
 logger.setLevel(logging.INFO)
 
-from typing import Optional, Sequence
 
-
-def create_per_sample_counts_resource(
+def create_per_sample_counts(
     data_type: str = "exomes",
     test: bool = False,
     overwrite: bool = False,
-    filter_variant_qc: bool = False,
-    filter_ukb_regions: bool = False,
-    filter_broad_regions: bool = False,
-    agg_variant_qc: bool = False,
-    agg_ukb_regions: bool = False,
-    agg_broad_regions: bool = False,
-    agg_lof: bool = False,
-    agg_rare_variants: bool = False,
-    suffix: str = None,
-) -> None:
+    pass_filters: bool = False,
+    ukb_regions: bool = False,
+    broad_regions: bool = False,
+    by_csqs: bool = False,
+    rare_variants: bool = False,
+) -> hl.Table:
     """
     Write out Hail's sample_qc output for desired samples and variants.
+
     Useful for finding the amount of variants (total or specific types) per sample.
     Also prints distribution of total variants called per sample.
 
     :param data_type: String of either "exomes" or "genomes" for the sample type.
     :param test: Boolean for if you would like to use a small test set.
     :param overwrite: Boolean to overwrite checkpoint files if requested.
-    :param filter_variant_qc: Filter to only variants which pass qc before any aggregation.
-    :param filter_ukb_regions: Filter to only variants in UKB regions before any aggregation.
-    :param filter_broad_regions: Filter to only variants in Broad regions before any aggregation.
-    :param agg_variant_qc: Stratify by variants which pass variant qc.
-    :param agg_ukb_regions: Stratify by variants in UKB regions.
-    :param agg_broad_regions: Stratify by variants in Broad regions.
-    :param agg_lof: Stratify by variants which are loss-of-function.
-    :param agg_rare_variants: Stratify by variants which have adj AF <0.1%.
-    :param suffix: String of arguments to append to name.
+    :param pass_filters: Filter to variants which pass all variant qc filters.
+    :param ukb_regions: Filter to variants in UKB regions.
+    :param broad_regions: Filter to variants in Broad regions.
+    :param by_csqs: Stratify by variant consequence.
+    :param rare_variants: Stratify by variants which have adj AF <0.1%.
     """
-
-    # Read in release data and metadata and VDS.
-    ht_release_data = release_sites(data_type).ht()
-    if test:
-        logger.info("Test: filtering to only chr22 sites and 467 test samples in VDS")
-        ht_release_data = ht_release_data.filter(
-            ht_release_data.locus.contig == "chr22"
-        )
-
-    if filter_variant_qc:
-        logger.info("Filter to those which pass all variant qc filters")
-        ht_release_data = ht_release_data.filter(hl.len(ht_release_data.filters) == 0)
-
-    meta_ht = meta(data_type=data_type).ht()
     vds = get_gnomad_v4_vds(test=test, release_only=True, split=True)
 
-    # Filter to only variants and samples in release data.
-    logger.info("Filter to only variants and samples in gnomAD release.")
-    vds = hl.vds.filter_variants(
-        vds,
-        vds.variant_data.filter_rows(
-            ~hl.is_missing(ht_release_data[vds.variant_data.row_key])
-        )
-        .rows()
-        .select(),
-    )
+    # Read in release data and select relevant annotations.
+    ht = release_sites(data_type=data_type).ht()
+    ht = ht.select("freq", "filters", "region_flags", "vep")
 
-    vds = hl.vds.filter_samples(
-        vds,
-        vds.reference_data.filter_cols(meta_ht[vds.reference_data.s].release)
-        .cols()
-        .select(),
-    )
+    if test:
+        logger.info("Test: filtering to variants on chr22")
+        ht = ht.filter(ht.locus.contig == "chr22")
 
-    # Filter to variants only in requested calling intervals.
-    if filter_ukb_regions:
-        logger.info("Filter to only variants in UKB capture regions.")
-        filtered_ukb = (
-            vds.variant_data.filter_rows(
-                ht_release_data[
-                    vds.variant_data.row_key
-                ].region_flags.outside_ukb_capture_region
-            )
-            .rows()
-            .select()
-        )
-        vds = hl.vds.filter_variants(vds, filtered_ukb)
+    # logger.info("Filter VDS to variants in gnomAD release.")
+    # vds = hl.vds.filter_variants(vds, ht.select())
 
-    if filter_broad_regions:
-        logger.info("Filter to only variants in Broad capture regions.")
-        filtered_broad = (
-            vds.variant_data.filter_rows(
-                ht_release_data[
-                    vds.variant_data.row_key
-                ].region_flags.outside_broad_capture_region
-            )
-            .rows()
-            .select()
-        )
-        vds = hl.vds.filter_variants(vds, filtered_broad)
-
-    # Create variant matrix table from VDS and annotate with all relevant info
+    # Create variant matrix table from VDS and annotate with all relevant info.
     vmt = vds.variant_data
-    logger.info("VDS created and checkpointing, without annotations")
+    logger.info("Variant MT created and checkpointing, without annotations")
     vmt = vmt.checkpoint(
         new_temp_file(f'vmt_{"TEST" if test else ""}_mt', extension="mt"),
         overwrite=overwrite,
     )
 
-    # Add extra Allele Count and A-Type, according to Hail standards, to help their computation
+    # Add extra Allele Count and Allele Type annotations to variant Matrix
+    # Table, according to Hail standards, to help their computation.
     ac_and_atype = vmt_sample_qc_variant_annotations(
         global_gt=vmt.GT, alleles=vmt.alleles
     )
     vmt = vmt.annotate_rows(**ac_and_atype)
 
-    # NOTE: not size efficient, but we are never checkpointing THIS I don't believe
-    vmt = vmt.annotate_rows(**ht_release_data[vmt.row_key])
-
-    if agg_lof:
-        logger.info("Looking at variants that are VEP LOF")
-        vmt_vep = vep.filter_vep_transcript_csqs(
-            vmt,
+    if by_csqs:
+        ht = filter_vep_transcript_csqs(
+            ht,
             synonymous=False,
             filter_empty_csq=True,
             canonical=False,
             mane_select=True,
         )
 
-        ht_vep = vep.get_most_severe_consequence_for_summary(vmt_vep.rows())
+        ht = get_most_severe_consequence_for_summary(ht)
 
-        vmt = vmt.annotate_rows(
-            **ht_vep[vmt.row_key].select(
-                "most_severe_csq", "protein_coding", "lof", "no_lof_flags"
-            )
-        )
+        ht = ht.select("freq", "filters", "region_flags", "most_severe_csq", "lof")
 
-    # vmt = vmt.annotate_rows(all_true=True)
-    # Odd Hail behavior: all annotations need to be defined before an argument_dictionary is constructed.
-    # Or else it throws an error about differing sources.
-    argument_dictionary = {"all_variants": ~hl.is_missing(vmt.locus)}
+    # NOTE: not size efficient, but we are never checkpointing THIS I don't believe
+    vmt = vmt.annotate_rows(**ht[vmt.row_key])
 
-    if agg_variant_qc:
-        argument_dictionary["pass_all_vqc"] = hl.len(vmt.filters) == 0
-    if agg_ukb_regions:
-        argument_dictionary["inside_ukb_regions"] = (
-            ~vmt.region_flags.outside_ukb_capture_region
+    arg_dict = {"all_variants": ~hl.is_missing(vmt.locus)}
+
+    if pass_filters:
+        arg_dict.update({"pass_filters": hl.len(vmt.filters) == 0})
+    if ukb_regions:
+        arg_dict.update({"ukb_regions": ~vmt.region_flags.outside_ukb_capture_region})
+    if broad_regions:
+        arg_dict.update(
+            {"broad_regions": ~vmt.region_flags.outside_broad_capture_region}
         )
-    if agg_broad_regions:
-        argument_dictionary["inside_broad_regions"] = (
-            ~vmt.region_flags.outside_broad_capture_region
+    if ukb_regions & broad_regions:
+        arg_dict.update(
+            {
+                "ukb_and_broad_regions": (
+                    ~vmt.region_flags.outside_ukb_capture_region
+                ) & (~vmt.region_flags.outside_broad_capture_region)
+            }
         )
-    if agg_rare_variants:
-        argument_dictionary["rare_variants"] = vmt.freq[0].AF < 0.001
-    if agg_lof:
-        argument_dictionary["is_lof"] = ~hl.is_missing(vmt.lof)
+    if rare_variants:
+        arg_dict.update({"rare_variants": vmt.freq[0].AF < 0.001})
+    if by_csqs:
+        arg_dict.update({"lof": ~hl.is_missing(vmt.lof)})
+        arg_dict.update({"missense": vmt.most_severe_csq == "missense_variant"})
+        arg_dict.update({"synonymous": vmt.most_severe_csq == "synonymous_variant"})
 
     # Run Hail's stratified vmt_sample_qc for selected stratifications.
     qc = hl.struct(
@@ -197,17 +138,14 @@ def create_per_sample_counts_resource(
                     dp=vmt.DP,
                 ),
             )
-            for ann, expr in argument_dictionary.items()
+            for ann, expr in arg_dict.items()
         }
     )
     # Annotate stratified sample qc onto columns, then take and output columns
     vmt = vmt.annotate_cols(aggregated_vmt_sample_qc=qc)
     sample_qc_ht = vmt.cols()
 
-    sample_qc_ht = sample_qc_ht.checkpoint(
-        get_per_sample_counts(test=test, data_type=data_type, suffix=suffix).path,
-        overwrite=overwrite,
-    )
+    return sample_qc_ht
 
 
 def aggregate_and_stratify(
@@ -224,7 +162,7 @@ def aggregate_and_stratify(
     write_counts: bool = False,
 ) -> None:
     """
-    Method to read in Sample QC table and output relevant summary stats
+    Read in per-sample variant counts Table and output relevant summary stats.
 
     :param data_type: String to read in either "exomes" or "genomes".
     :param test: Bool of whether or not to read in a test output.
@@ -244,7 +182,7 @@ def aggregate_and_stratify(
     )
     logger.info(
         "via:"
-        f" {get_per_sample_counts(test=test,data_type=data_type,suffix=suffix).path}"
+        f" {get_per_sample_counts(test=test, data_type=data_type, suffix=suffix).path}"
     )
 
     # Define internal method to return all desired counts in a struct.
@@ -312,7 +250,7 @@ def aggregate_and_stratify(
     # Report some stats of interest from this table.
 
     if counts_by_pop:
-        logger.info("Reading in Meta HT.")
+        logger.info("Reading in meta HT.")
         meta_ht = meta(data_type=data_type).ht()
 
     # Dictionary to write out if user desires.
@@ -349,28 +287,6 @@ def aggregate_and_stratify(
 
                 returned_counts[f"{strat}_{pop_label}_specific"] = pop_struct
 
-    # Write out counts as a Hail struct
-    if write_counts:
-        path = (
-            f"{get_per_sample_counts(test=test, data_type=data_type, suffix=suffix).path.replace('.ht','_counts_output.txt')}"
-        )
-        logger.info(f"Writing paths to: {path}")
-        hl.literal(returned_counts).export(path)
-
-
-def variant_types():
-    # what is needed: stats from your notebook for:
-    # Indels and Snps per data type
-    # How many (number and proportion) pass VQSR and pass All Filters
-    pass
-
-
-def vep_consequences():
-    # what is needed: stats from notebook for:
-    # VEP consequence breakdown , in those two different returns
-    # let users specify: pass all filters, pass VQSR, or all variants
-    pass
-
 
 def main(args):
     """Collect summary stats of gnomAD v4 data."""
@@ -396,24 +312,20 @@ def main(args):
     counts_by_pop = args.counts_by_pop
     write_counts = args.write_counts
 
-    suffix = (
-        f"{'ukb_calling.' if filter_ukb_regions else ''}{'broad_calling.' if filter_broad_regions else ''}{'vqc.' if filter_variant_qc else ''}{args.custom_suffix if args.custom_suffix else ''}"
-    )
-
     if args.create_per_sample_counts_resource:
-        create_per_sample_counts_resource(
+        per_sample_ht = create_per_sample_counts(
             data_type=data_type,
             test=test,
+            pass_filters=filter_variant_qc,
+            ukb_regions=filter_ukb_regions,
+            broad_regions=filter_broad_regions,
+            by_csqs=True,
+            rare_variants=agg_rare_variants,
+        )
+
+        per_sample_ht = per_sample_ht.checkpoint(
+            get_per_sample_counts(test=test, data_type=data_type, suffix=suffix).path,
             overwrite=overwrite,
-            filter_variant_qc=filter_variant_qc,
-            filter_ukb_regions=filter_ukb_regions,
-            filter_broad_regions=filter_broad_regions,
-            agg_variant_qc=agg_variant_qc,
-            agg_ukb_regions=agg_ukb_regions,
-            agg_broad_regions=agg_broad_regions,
-            agg_lof=agg_lof,
-            agg_rare_variants=agg_rare_variants,
-            suffix=suffix,
         )
 
     if args.aggregate_and_stratify:
