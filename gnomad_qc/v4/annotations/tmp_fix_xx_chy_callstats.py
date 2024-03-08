@@ -8,11 +8,11 @@ from gnomad_qc.v4.resources.annotations import get_freq
 hl.init(
     log="/fix_chrY_missing_in_freq.log",
     default_reference="GRCh38",
-    tmp_dir="gs://gnomad-tmp-4day",
+    tmp_dir="gs://gnomad-tmp-30day",
 )
 
 ht = get_freq().ht()
-ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
+ht = ht.checkpoint(hl.utils.new_temp_file("exomes_freq_4_1", "ht"))
 
-ht = ht.checkpoint(hl.utils.new_temp_file("freq_temp", "ht"))
+ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
 ht.write(get_freq().path, overwrite=True)
