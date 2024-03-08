@@ -1029,10 +1029,15 @@ def generate_v4_genomes_callstats(
     ht = ht.checkpoint(new_temp_file("merged", "ht"))
 
     logger.info(
-        "Set Y-variant frequency call stats for female-specific "
-        "metrics to missing structs..."
+        "Set Y-variant frequency call stats for female-specific metrics to missing "
+        "structs and the allele frequency to missing for any call stats entries with "
+        "AN == 0..."
     )
-    ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
+    ht = ht.annotate(
+        freq=set_female_y_metrics_to_na_expr(ht).map(
+            lambda x: x.annotate(AF=hl.or_missing(x.AN > 0, x.AF))
+        )
+    )
 
     # Change the 'pop' keys in the freq_meta array to 'gen_anc'.
     freq_meta = hl.literal(
