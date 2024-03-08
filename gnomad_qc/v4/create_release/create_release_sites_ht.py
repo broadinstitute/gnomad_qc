@@ -83,6 +83,7 @@ TABLES_FOR_RELEASE = [
     "region_flags",
     "in_silico",
     "vep",
+    # "joint_faf",  # NOTE: joint_faf was only included in the v4.0 release.
 ]
 
 INSILICO_PREDICTORS = ["cadd", "revel", "spliceai", "pangolin", "phylop"]
