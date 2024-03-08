@@ -145,6 +145,10 @@ SAMPLE_SUM_SETS_AND_POPS = {
 LEN_COMP_GLOBAL_ROWS = {
     "freq": ["freq_meta", "freq_index_dict", "freq_meta_sample_count"],
     "faf": ["faf_meta", "faf_index_dict"],
+}
+
+# Joint row annotations and their associated global annotations for length comparison
+LEN_COMP_JOINT_GLOBAL_ROWS = {
     "joint_freq": [
         "joint_freq_meta",
         "joint_freq_index_dict",
@@ -267,6 +271,7 @@ def unfurl_nested_annotations(
     ht: hl.Table,
     entries_to_remove: Set[str] = None,
     data_type: str = "exomes",
+    joint_included: bool = False,
 ) -> [hl.expr.StructExpression, Set[str]]:
     """
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays.
@@ -278,6 +283,7 @@ def unfurl_nested_annotations(
     :param entries_to_remove: Optional Set of frequency entries to remove for vcf_export.
     :param data_type: Data type to unfurl nested annotations for. One of "exomes" or
         "genomes".
+    :param joint_included: Whether joint frequency data is included in the HT.
     :return: StructExpression containing variant annotations and their corresponding
         expressions and updated entries and set of frequency entries to remove from the
         VCF.
@@ -295,18 +301,18 @@ def unfurl_nested_annotations(
             for f in ht.freq[0].keys()
         }
     )
-
-    logger.info("Unfurling joint freq data...")
-    joint_freq_idx = hl.eval(ht.joint_freq_index_dict)
-    expr_dict.update(
-        {
-            f"{f if f != 'homozygote_count' else 'nhomalt'}_joint_{k}": ht.joint_freq[
-                i
-            ][f]
-            for k, i in joint_freq_idx.items()
-            for f in ht.joint_freq[0].keys()
-        }
-    )
+    if joint_included:
+        logger.info("Unfurling joint freq data...")
+        joint_freq_idx = hl.eval(ht.joint_freq_index_dict)
+        expr_dict.update(
+            {
+                f"{f if f != 'homozygote_count' else 'nhomalt'}_joint_{k}": (
+                    ht.joint_freq[i][f]
+                )
+                for k, i in joint_freq_idx.items()
+                for f in ht.joint_freq[0].keys()
+            }
+        )
 
     # This creates fields like grpmax, AC_grpmax_non_ukb...
     logger.info("Adding grpmax data...")
@@ -338,19 +344,19 @@ def unfurl_nested_annotations(
         )
     expr_dict.update(grpmax_dict)
 
-    # Create the fields
-    logger.info("Adding joint grpmax data...")
-    joint_grpmax_idx = ht.joint_grpmax
-    joint_grpmax_dict = {"grpmax_joint": joint_grpmax_idx.gen_anc}
-    joint_grpmax_dict.update(
-        {
-            f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax_joint": (
-                joint_grpmax_idx[f]
-            )
-            for f in [f for f in joint_grpmax_idx._fields if f != "gen_anc"]
-        }
-    )
-    expr_dict.update(joint_grpmax_dict)
+    if joint_included:
+        logger.info("Adding joint grpmax data...")
+        joint_grpmax_idx = ht.joint_grpmax
+        joint_grpmax_dict = {"grpmax_joint": joint_grpmax_idx.gen_anc}
+        joint_grpmax_dict.update(
+            {
+                f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax_joint": (
+                    joint_grpmax_idx[f]
+                )
+                for f in [f for f in joint_grpmax_idx._fields if f != "gen_anc"]
+            }
+        )
+        expr_dict.update(joint_grpmax_dict)
 
     logger.info("Unfurling faf data...")
     faf_idx = hl.eval(ht.faf_index_dict)
@@ -370,25 +376,26 @@ def unfurl_nested_annotations(
         fafmax_dict = {f"fafmax_{f}": fafmax_idx[f] for f in fafmax_idx.keys()}
     expr_dict.update(fafmax_dict)
 
-    logger.info("Unfurling joint faf data...")
-    joint_faf_idx = hl.eval(ht.joint_faf_index_dict)
-    expr_dict.update(
-        {
-            f"{f}_joint_{k}": ht.joint_faf[i][f]
-            for f in ht.joint_faf[0].keys()
-            for k, i in joint_faf_idx.items()
-        }
-    )
-
-    logger.info("Unfurling joint fafmax data...")
-    joint_fafmax_idx = ht.joint_fafmax
-    joint_fafmax_dict = {
-        f"fafmax_{f if f != 'joint_fafmax_data_type' else 'data_type'}_joint": (
-            joint_fafmax_idx[f]
+    if joint_included:
+        logger.info("Unfurling joint faf data...")
+        joint_faf_idx = hl.eval(ht.joint_faf_index_dict)
+        expr_dict.update(
+            {
+                f"{f}_joint_{k}": ht.joint_faf[i][f]
+                for f in ht.joint_faf[0].keys()
+                for k, i in joint_faf_idx.items()
+            }
         )
-        for f in joint_fafmax_idx.keys()
-    }
-    expr_dict.update(joint_fafmax_dict)
+
+        logger.info("Unfurling joint fafmax data...")
+        joint_fafmax_idx = ht.joint_fafmax
+        joint_fafmax_dict = {
+            f"fafmax_{f if f != 'joint_fafmax_data_type' else 'data_type'}_joint": (
+                joint_fafmax_idx[f]
+            )
+            for f in joint_fafmax_idx.keys()
+        }
+        expr_dict.update(joint_fafmax_dict)
 
     logger.info("Unfurling age hists...")
     hist_idx = ht.histograms.age_hists
@@ -482,6 +489,7 @@ def prepare_ht_for_validation(
     data_type: str = "exomes",
     freq_entries_to_remove: Optional[List[str]] = None,
     vcf_info_reorder: Optional[List[str]] = None,
+    joint_included: bool = False,
 ) -> hl.Table:
     """
     Prepare HT for validity checks and export.
@@ -491,13 +499,17 @@ def prepare_ht_for_validation(
         Default is "exomes".
     :param freq_entries_to_remove: List of entries to remove from freq
     :param vcf_info_reorder: Order of VCF INFO fields
+    :param joint_included: Whether joint frequency data is included in the HT.
     :return: Hail Table prepared for validity checks and export
     """
     logger.info(
         "Unfurling nested gnomAD frequency annotations and add to INFO field..."
     )
     info_struct, freq_entries_to_remove = unfurl_nested_annotations(
-        ht, entries_to_remove=freq_entries_to_remove, data_type=data_type
+        ht,
+        entries_to_remove=freq_entries_to_remove,
+        data_type=data_type,
+        joint_included=joint_included,
     )
 
     logger.info("Constructing INFO field")
@@ -755,6 +767,7 @@ def prepare_vcf_header_dict(
     pops: Dict[str, str],
     format_dict: Dict[str, Dict[str, str]] = FORMAT_DICT,
     data_type: str = "exomes",
+    joint_included: bool = False,
 ) -> Dict[str, Dict[str, str]]:
     """
     Prepare VCF header dictionary.
@@ -771,6 +784,7 @@ def prepare_vcf_header_dict(
         VCF export.
     :param data_type: Data type to prepare VCF header for. One of "exomes" or "genomes".
         Default is "exomes".
+    :param joint_included: Whether joint frequency data is included in the HT.
     :return: Prepared VCF header dictionary.
     """
     logger.info("Making FILTER dict for VCF...")
@@ -783,7 +797,7 @@ def prepare_vcf_header_dict(
 
     # subset = "" represents full dataset in VCF header construction, the
     # logic in gnomad_methods is built around this.
-    subset_list.extend(["", "joint"])
+    subset_list.extend(["", "joint"] if joint_included else [""])
     logger.info("Making INFO dict for VCF...")
     vcf_info_dict = populate_info_dict(
         info_fields=list(validated_ht.info),
@@ -964,6 +978,7 @@ def main(args):
     test = args.test
     data_type = args.data_type
     contig = args.contig
+    joint_included = args.joint_included
     resources = get_export_resources(overwrite, data_type, test)
 
     if contig and test:
@@ -989,12 +1004,19 @@ def main(args):
             )
             check_globals_for_retired_terms(ht)
             pprint_global_anns(ht)
-            check_global_and_row_annot_lengths(ht, LEN_COMP_GLOBAL_ROWS)
+
+            len_comp_global_rows = (
+                LEN_COMP_GLOBAL_ROWS + LEN_COMP_JOINT_GLOBAL_ROWS
+                if joint_included
+                else LEN_COMP_GLOBAL_ROWS
+            )
+            check_global_and_row_annot_lengths(ht, len_comp_global_rows)
 
             logger.info("Preparing HT for validity checks and export...")
             ht = prepare_ht_for_validation(
                 ht,
                 data_type=data_type,
+                joint_included=joint_included,
             )
             # Note: Checkpoint saves time in validity checks and final export by not
             # needing to run the VCF HT prep on each chromosome -- more needs to happen
@@ -1040,6 +1062,7 @@ def main(args):
                 subset_list=subsets,
                 pops=POPS,
                 data_type=data_type,
+                joint_included=joint_included,
             )
 
             logger.info("Writing VCF header dict...")
@@ -1154,6 +1177,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--contig",
         help="Contig to export VCF for.",
         default=None,
+    )
+    parser.add_argument(
+        "--joint-included",
+        help="Whether joint frequency data is included in the release HT.",
+        action="store_true",
     )
 
     return parser
