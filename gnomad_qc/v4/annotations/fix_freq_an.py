@@ -974,9 +974,6 @@ def main(args):
             freq_ht = drop_gatk_groupings(freq_ht)
             ht = update_freq_an_and_hists(freq_ht, freq_correction_ht)
 
-            logger.info("Setting XX samples call stats to missing on chrY...")
-            ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
-
             ht.write(
                 get_freq(
                     version="4.1",
@@ -996,6 +993,9 @@ def main(args):
                 hom_alt_adjusted=False,
                 finalized=False,
             ).ht()
+
+            logger.info("Setting XX samples call stats to missing on chrY...")
+            ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
 
             logger.info("Correcting call stats, qual AB hists, and age hists...")
             ht = correct_for_high_ab_hets(ht, af_threshold=af_threshold)
