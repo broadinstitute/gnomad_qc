@@ -1,3 +1,4 @@
+"""Temporary script to set allele frequency to missing for any call stats entries with AN == 0 in final freq HT."""
 import logging
 
 import hail as hl
@@ -8,6 +9,12 @@ from gnomad_qc.v4.resources.basics import get_checkpoint_path
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("temp_genome_freq_fix")
 logger.setLevel(logging.INFO)
+
+hl.init(
+    log="/fix_AN_0_AF_missing_in_genomes_freq.log",
+    default_reference="GRCh38",
+    tmp_dir="gs://gnomad-tmp-30day",
+)
 
 logger.info(
     "Setting allele frequency to missing for any call stats entries with AN == 0..."
