@@ -55,7 +55,7 @@ def main(args):
     ht = ht.drop(*joint_rows + joint_globals)
     ht = ht.annotate_globals(
         date=datetime.now().isoformat(),
-        release="4.1",
+        version="4.1",
     )
     ht.describe()
     output_path = (
