@@ -57,6 +57,7 @@ from gnomad.utils.annotations import (
     merge_freq_arrays,
     merge_histograms,
     qual_hist_expr,
+    set_female_y_metrics_to_na_expr,
 )
 from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.sparse_mt import compute_stats_per_ref_site
@@ -992,6 +993,9 @@ def main(args):
                 hom_alt_adjusted=False,
                 finalized=False,
             ).ht()
+
+            logger.info("Setting XX samples call stats to missing on chrY...")
+            ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
 
             logger.info("Correcting call stats, qual AB hists, and age hists...")
             ht = correct_for_high_ab_hets(ht, af_threshold=af_threshold)
