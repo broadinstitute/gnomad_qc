@@ -12,7 +12,7 @@ joint frequency, a joint FAF, and the following tests comparing the two frequenc
 
 import argparse
 import logging
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 import hail as hl
 import pandas as pd
@@ -552,41 +552,54 @@ def create_final_combined_faf_release(
             ht.key
         ].cochran_mantel_haenszel_test
 
-    ht = ht.annotate(
-        **stats_expr,
-        joint_metric_data_type=hl.case()
-        .when(
-            (hl.is_defined(ht.genomes_grpmax.AC)) & hl.is_defined(ht.exomes_grpmax.AC),
-            "both",
+    region_expr = {
+        "fail_interval_qc": (
+            ~interval_qc_pass(all_platforms=True).ht()[ht.locus].pass_interval_qc
+        ),
+        "outside_ukb_capture_region": ~hl.is_defined(
+            calling_intervals("broad", 50).ht()[ht.locus]
+        ),
+        "outside_broad_capture_region": ~hl.is_defined(
+            calling_intervals("broad", 50).ht()[ht.locus]
+        ),
+    }
+
+    def _get_joint_data_type(
+        genomes_expr: hl.expr.Expression, exomes_expr: hl.expr.Expression
+    ) -> hl.expr.StringExpression:
+        """
+        Get the joint data type from the genomes and exomes Expressions.
+
+        If both genomes and exomes are defined, return "both". If only genomes are
+        defined, return "genomes". If only exomes are defined, return "exomes". If
+        neither genomes nor exomes are defined, return missing.
+
+        :param genomes_expr: Expression for genomes.
+        :param exomes_expr: Expression for exomes.
+        :return: StringExpression for joint data type.
+        """
+        return (
+            hl.case()
+            .when(hl.is_defined(genomes_expr) & hl.is_defined(exomes_expr), "both")
+            .when(hl.is_defined(genomes_expr), "genomes")
+            .when(hl.is_defined(exomes_expr), "exomes")
+            .default(hl.missing(hl.tstr))
         )
-        .when(hl.is_defined(ht.genomes_grpmax.AC), "genomes")
-        .when(hl.is_defined(ht.exomes_grpmax.AC), "exomes")
-        .default(hl.missing(hl.tstr)),
+
+    ht = ht.annotate(
         joint_fafmax=ht.joint_fafmax.annotate(
-            joint_fafmax_data_type=hl.case()
-            .when(
-                (hl.is_defined(ht.genomes_fafmax.faf95_max))
-                & hl.is_defined(ht.exomes_fafmax.faf95_max),
-                "both",
+            joint_fafmax_data_type=_get_joint_data_type(
+                ht.genomes_fafmax.faf95_max, ht.exomes_fafmax.faf95_max
             )
-            .when(hl.is_defined(ht.genomes_fafmax.faf95_max), "genomes")
-            .when(hl.is_defined(ht.exomes_fafmax.faf95_max), "exomes")
-            .default(hl.missing(hl.tstr)),
         ),
-        fail_interval_qc=~interval_qc_pass(all_platforms=True)
-        .ht()[ht.locus]
-        .pass_interval_qc,
-        outside_ukb_capture_region=~hl.is_defined(
-            calling_intervals(interval_name="ukb", calling_interval_padding=50).ht()[
-                ht.locus
-            ]
+        joint_metric_data_type=_get_joint_data_type(
+            ht.genomes_grpmax.AC, ht.exomes_grpmax.AC
         ),
-        outside_broad_capture_region=~hl.is_defined(
-            calling_intervals(interval_name="broad", calling_interval_padding=50).ht()[
-                ht.locus
-            ]
-        ),
+        freq_comparison_stats=hl.struct(**stats_expr),
+        region_flags=hl.struct(**region_expr),
     )
+
+    return ht
 
 
 def get_combine_faf_resources(
