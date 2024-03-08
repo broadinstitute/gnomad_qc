@@ -797,8 +797,7 @@ def prepare_vcf_header_dict(
 
     # subset = "" represents full dataset in VCF header construction, the
     # logic in gnomad_methods is built around this.
-    extra_subsets_for_info_dict = [""] if not joint_included else ["", "joint"]
-    subset_list.extend(extra_subsets_for_info_dict)
+    subset_list.extend(["", "joint"] if joint_included else [""])
     logger.info("Making INFO dict for VCF...")
     vcf_info_dict = populate_info_dict(
         info_fields=list(validated_ht.info),
@@ -1007,9 +1006,9 @@ def main(args):
             pprint_global_anns(ht)
 
             len_comp_global_rows = (
-                LEN_COMP_GLOBAL_ROWS
-                if not joint_included
-                else LEN_COMP_GLOBAL_ROWS + LEN_COMP_JOINT_GLOBAL_ROWS
+                LEN_COMP_GLOBAL_ROWS + LEN_COMP_JOINT_GLOBAL_ROWS
+                if joint_included
+                else LEN_COMP_GLOBAL_ROWS
             )
             check_global_and_row_annot_lengths(ht, len_comp_global_rows)
 
