@@ -57,6 +57,7 @@ from gnomad.utils.annotations import (
     merge_freq_arrays,
     merge_histograms,
     qual_hist_expr,
+    set_female_y_metrics_to_na_expr,
 )
 from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.sparse_mt import compute_stats_per_ref_site
@@ -972,6 +973,9 @@ def main(args):
 
             freq_ht = drop_gatk_groupings(freq_ht)
             ht = update_freq_an_and_hists(freq_ht, freq_correction_ht)
+
+            logger.info("Setting XX samples call stats to missing on chrY...")
+            ht = ht.annotate(freq=set_female_y_metrics_to_na_expr(ht))
 
             ht.write(
                 get_freq(
