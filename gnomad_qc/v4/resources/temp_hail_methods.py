@@ -1,10 +1,14 @@
-"""THIS IS A TEMPORARY FILE TO BE USED UNTIL THESE HAIL METHODS ARE RELEASED. 
-CODE WAS COPIED DIRECTLY FROM A PR IN GITHUB BROWSER ON 02/20 (iirc) AND SHOULD NOT BE RAN ON RELEASE."""
-import hail as hl
+"""
+THIS IS A TEMPORARY FILE TO BE USED UNTIL THESE HAIL METHODS ARE RELEASED.
+
+CODE WAS COPIED DIRECTLY FROM A PR IN GITHUB BROWSER ON 02/20 (iirc) AND SHOULD NOT BE RAN ON RELEASE.
+"""
 from typing import Optional, Sequence
+
+import hail as hl
 from hail.expr.expressions import Expression
 from hail.expr.functions import _allele_types, _num_allele_type
-from hail.utils.misc import divide_null, new_temp_file, wrap_to_list
+from hail.utils.misc import divide_null
 
 
 def vmt_sample_qc(
@@ -16,9 +20,19 @@ def vmt_sample_qc(
     dp: Optional["Expression"] = None,
     gq_bins: "Sequence[int]" = (0, 20, 60),
     dp_bins: "Sequence[int]" = (0, 1, 10, 20, 30),
-    dp_field: Optional[str] = None,
 ) -> "Expression":
-    """"""
+    """
+    Compute sample QC metrics.
+
+    :param global_gt: Global GT field.
+    :param gq: GQ field.
+    :param variant_ac: Variant AC field.
+    :param variant_atypes: Variant allele types.
+    :param dp: DP field. Default is None.
+    :param gq_bins: GQ bins. Default is (0, 20, 60).
+    :param dp_bins: DP bins. Default is (0, 1, 10, 20, 30).
+    :return: StructExpression with sample QC metrics.
+    """
     allele_types = _allele_types[:]
     allele_types.extend(["Transition", "Transversion"])
     allele_enum = {i: v for i, v in enumerate(allele_types)}
@@ -137,8 +151,13 @@ def vmt_sample_qc_variant_annotations(
     global_gt: "Expression",
     alleles: "Expression",
 ) -> "Expression":
-    """"""
+    """
+    Compute sample QC metrics from variant annotations.
 
+    :param global_gt: Global GT field.
+    :param alleles: Alleles field.
+    :return: StructExpression with sample QC metrics.
+    """
     allele_types = _allele_types[:]
     allele_types.extend(["Transition", "Transversion"])
     allele_enum = {i: v for i, v in enumerate(allele_types)}
