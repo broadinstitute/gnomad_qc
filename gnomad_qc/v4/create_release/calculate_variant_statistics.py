@@ -66,16 +66,11 @@ def create_per_sample_counts(
         logger.info("Test: filtering to variants on chr22")
         ht = ht.filter(ht.locus.contig == "chr22")
 
-    # logger.info("Filter VDS to variants in gnomAD release.")
-    # vds = hl.vds.filter_variants(vds, ht.select())
+    logger.info("Filter VDS to variants in gnomAD release.")
+    vds = hl.vds.filter_variants(vds, ht.select())
 
     # Create variant matrix table from VDS and annotate with all relevant info.
     vmt = vds.variant_data
-    logger.info("Variant MT created and checkpointing, without annotations")
-    vmt = vmt.checkpoint(
-        new_temp_file(f'vmt_{"TEST" if test else ""}_mt', extension="mt"),
-        overwrite=overwrite,
-    )
 
     # Add extra Allele Count and Allele Type annotations to variant Matrix
     # Table, according to Hail standards, to help their computation.
@@ -99,7 +94,11 @@ def create_per_sample_counts(
 
     # NOTE: not size efficient, but we are never checkpointing THIS I don't believe
     vmt = vmt.annotate_rows(**ht[vmt.row_key])
-
+    logger.info("Variant MT created and checkpointing, with necessary annotations")
+    vmt = vmt.checkpoint(
+        new_temp_file(f'vmt_{"TEST" if test else ""}', extension="mt"),
+        overwrite=overwrite,
+    )
     arg_dict = {"all_variants": ~hl.is_missing(vmt.locus)}
 
     if pass_filters:
