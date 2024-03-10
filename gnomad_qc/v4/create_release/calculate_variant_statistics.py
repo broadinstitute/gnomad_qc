@@ -4,7 +4,6 @@ import logging
 from typing import List
 
 import hail as hl
-from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import (
     filter_vep_transcript_csqs,
@@ -12,8 +11,8 @@ from gnomad.utils.vep import (
 )
 from hail.utils.misc import new_temp_file
 
-import gnomad_qc.v4.resources.meta as meta
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v4.resources import meta
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
 from gnomad_qc.v4.resources.release import get_per_sample_counts, release_sites
 from gnomad_qc.v4.resources.temp_hail_methods import (
@@ -260,7 +259,9 @@ def main(args):
 
         stratified_agg_ht.checkpoint(
             get_per_sample_counts(
-                test=test, data_type=data_type, agg_globals=True
+                test=test,
+                data_type=data_type,
+                suffix="stratified_agg",
             ).path,
             overwrite=overwrite,
         )
