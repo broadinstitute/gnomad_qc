@@ -261,7 +261,7 @@ def main(args):
             get_per_sample_counts(
                 test=test,
                 data_type=data_type,
-                suffix="stratified_agg",
+                suffix="aggregated_",
             ).path,
             overwrite=overwrite,
         )
