@@ -78,10 +78,13 @@ def extract_freq_info(
         - fafmax: {prefix}_fafmax
         - qual_hists: {prefix}_qual_hists
         - raw_qual_hists: {prefix}_raw_qual_hists
+        - age_hists: {prefix}_age_hists
 
     The following global annotations are filtered and renamed:
         - freq_meta: {prefix}_freq_meta
         - faf_meta: {prefix}_faf_meta
+        - age_distribution: {prefix}_age_distribution
+
 
     :param ht: Table with frequency and FAF information.
     :param prefix: Prefix to add to each of the filtered annotations.
@@ -143,6 +146,7 @@ def extract_freq_info(
             f"{prefix}_fafmax": fafmax_expr,
             f"{prefix}_qual_hists": ht.histograms.qual_hists,
             f"{prefix}_raw_qual_hists": ht.histograms.raw_qual_hists,
+            f"{prefix}_age_hists": ht.histograms.age_hists,
         }
     )
     ht = ht.select_globals(
@@ -150,6 +154,7 @@ def extract_freq_info(
             f"{prefix}_freq_meta": freq_meta,
             f"{prefix}_freq_meta_sample_count": array_exprs["freq_meta_sample_count"],
             f"{prefix}_faf_meta": faf_meta,
+            f"{prefix}_age_distribution": ht.age_distribution,
         }
     )
 
@@ -297,7 +302,7 @@ def get_joint_freq_and_faf(
                     for h in ht[f"genomes_{hist_struct}"]
                 }
             )
-            for hist_struct in ["qual_hists", "raw_qual_hists"]
+            for hist_struct in ["qual_hists", "raw_qual_hists", "age_hists"]
         },
     )
     ht = ht.annotate_globals(
@@ -352,6 +357,9 @@ def get_joint_freq_and_faf(
         joint_faf_meta=faf_meta,
         joint_faf_index_dict=make_freq_index_dict_from_meta(hl.literal(faf_meta)),
         joint_freq_meta_sample_count=count_arrays_dict["counts"],
+        joint_age_distribution=merge_histograms(
+            [ht.genomes_age_distribution, ht.exomes_age_distribution]
+        ),
     )
 
     return ht
