@@ -544,11 +544,11 @@ def create_final_combined_faf_release(
     """
     stats_expr = {}
     if contingency_table_ht is not None:
-        stats_expr["contingency_table_test"] = contingency_table_ht.ht()[
+        stats_expr["contingency_table_test"] = contingency_table_ht[
             ht.key
         ].contingency_table_test
     if cmh_ht is not None:
-        stats_expr["cochran_mantel_haenszel_test"] = cmh_ht.ht()[
+        stats_expr["cochran_mantel_haenszel_test"] = cmh_ht[
             ht.key
         ].cochran_mantel_haenszel_test
 
@@ -809,13 +809,13 @@ def main(args):
             res.check_resource_existence()
 
             ht = create_final_combined_faf_release(
-                res.comb_freq_ht.ht,
+                res.comb_freq_ht.ht(),
                 (
                     res.contingency_table_ht.ht()
                     if args.include_contingency_table_test
                     else None
                 ),
-                res.cmh_ht if args.include_cochran_mantel_haenszel_test else None,
+                res.cmh_ht.ht() if args.include_cochran_mantel_haenszel_test else None,
             )
 
             ht.describe()
