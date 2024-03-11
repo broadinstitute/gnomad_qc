@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Set
 import hail as hl
 import pandas as pd
 from gnomad.resources.grch38.gnomad import POPS, POPS_TO_REMOVE_FOR_POPMAX
+from gnomad.resources.resource_utils import TableResource
 from gnomad.utils.annotations import (
     faf_expr,
     gen_anc_faf_max_expr,
@@ -41,7 +42,11 @@ from gnomad_qc.v4.resources.annotations import (
     get_freq,
     get_freq_comparison,
 )
-from gnomad_qc.v4.resources.basics import calling_intervals, get_logging_path
+from gnomad_qc.v4.resources.basics import (
+    calling_intervals,
+    get_checkpoint_path,
+    get_logging_path,
+)
 from gnomad_qc.v4.resources.constants import CURRENT_FREQ_VERSION
 from gnomad_qc.v4.resources.release import get_combined_faf_release
 from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
@@ -50,6 +55,9 @@ from gnomad_qc.v4.resources.variant_qc import final_filter
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("compute_combined_faf")
 logger.setLevel(logging.INFO)
+
+CHR_LIST = [f"chr{c}" for c in range(1, 23)] + ["chrX", "chrY"]
+"""List of chromosomes in the combined FAF release."""
 
 
 def filter_gene_to_test(ht: hl.Table) -> hl.Table:
@@ -137,6 +145,11 @@ def extract_freq_info(
         grpmax_expr = grpmax_expr.gnomad
         fafmax_expr = fafmax_expr.gnomad
 
+    # Drop 'faf95' annotation in the grpmax_expr if it exists. We no longer add this to
+    # releases.
+    if "faf95" in grpmax_expr:
+        grpmax_expr = grpmax_expr.drop("faf95")
+
     # Rename filtered annotations with supplied prefix.
     ht = ht.select(
         **{
@@ -197,7 +210,7 @@ def add_all_sites_an_and_qual_hists(
         all_sites_an_expr = freq_meta_expr.map(
             lambda x: hl.struct(
                 AC=0,
-                AF=hl.missing(hl.tfloat64),
+                AF=hl.or_missing(all_sites_an_expr[meta_map[x]] > 0, hl.float64(0.0)),
                 AN=hl.int32(all_sites_an_expr[meta_map[x]]),
                 homozygote_count=0,
             )
@@ -295,7 +308,7 @@ def get_joint_freq_and_faf(
                 **{
                     h: merge_histograms(
                         [
-                            ht[f"genomes_{hist_struct}"][h],
+                            ht[f"exomes_{hist_struct}"][h],
                             ht[f"genomes_{hist_struct}"][h],
                         ]
                     )
@@ -342,7 +355,6 @@ def get_joint_freq_and_faf(
         pops_to_exclude=faf_pops_to_exclude,
         pop_label="gen_anc",
     )
-    grpmax = grpmax.annotate(faf95=faf[faf_meta_by_pop.get(grpmax.gen_anc)].faf95)
 
     # Annotate Table with all joint exomes + genomes computations.
     ht = ht.annotate(
@@ -414,7 +426,7 @@ def perform_contingency_table_test(
             hl.is_defined(x[0]) & hl.is_defined(x[1]),
             hl.bind(
                 lambda f1, f2: hl.or_missing(
-                    (f1.AC > 0) | (f2.AC > 0),
+                    (f1.AC > 0) | (f2.AC > 0) & (f1.AN > 0) & (f2.AN > 0),
                     hl.contingency_table_test(
                         f1.AC, f1.AN - f1.AC, f2.AC, f2.AN - f2.AC, min_cell_count
                     ),
@@ -486,7 +498,8 @@ def perform_cmh_test(
         an=[
             hl.bind(
                 lambda x, y: hl.or_missing(
-                    (x.AC > 0) | (y.AC > 0), [[x.AC, x.AN - x.AC], [y.AC, y.AN - y.AC]]
+                    ((x.AC > 0) | (y.AC > 0)) & (x.AN > 0) & (y.AN > 0),
+                    [[x.AC, x.AN - x.AC], [y.AC, y.AN - y.AC]],
                 ),
                 freq1_by_pop[pop],
                 freq2_by_pop[pop],
@@ -551,14 +564,22 @@ def create_final_combined_faf_release(
     :return: Table with final combined FAF release information.
     """
     stats_expr = {}
-    if contingency_table_ht is not None:
-        stats_expr["contingency_table_test"] = contingency_table_ht[
-            ht.key
-        ].contingency_table_test
-    if cmh_ht is not None:
-        stats_expr["cochran_mantel_haenszel_test"] = cmh_ht[
-            ht.key
-        ].cochran_mantel_haenszel_test
+    if args.include_contingency_table_test:
+        stat_expr = contingency_table_ht[ht.key].contingency_table_test
+        stats_expr["contingency_table_test"] = stat_expr.map(
+            lambda x: hl.struct(
+                odds_ratio=hl.or_missing(~hl.is_nan(x.odds_ratio), x.odds_ratio),
+                p_value=hl.or_missing(~hl.is_nan(x.p_value), x.p_value),
+            )
+        )
+    if args.include_cochran_mantel_haenszel_test:
+        stat_expr = cmh_ht[ht.key].cochran_mantel_haenszel_test
+        stats_expr["cochran_mantel_haenszel_test"] = hl.struct(
+            odds_ratio=hl.or_missing(
+                ~hl.is_nan(stat_expr.odds_ratio), stat_expr.odds_ratio
+            ),
+            p_value=hl.or_missing(~hl.is_nan(stat_expr.p_value), stat_expr.p_value),
+        )
 
     region_expr = {
         "fail_interval_qc": (
@@ -616,6 +637,8 @@ def get_combine_faf_resources(
     filtered: bool = True,
     include_contingency_table_test: bool = False,
     include_cochran_mantel_haenszel_test: bool = False,
+    stats_chr: str = None,
+    stats_combine_all_chr: bool = False,
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the combined FAF resource creation pipeline.
@@ -628,9 +651,19 @@ def get_combine_faf_resources(
         '--perform-contingency-table-test' on the combined FAF release Table.
     :param include_cochran_mantel_haenszel_test: Whether to include the results from
         '--perform-cochran-mantel-haenszel-test' on the combined FAF release Table.
+    :param stats_chr: Chromosome to get temp stats resource for. Default is None, which
+        will return the resources for the stats on the full exome/genome.
+    :param stats_combine_all_chr: Whether to also get the stats resources for all
+        chromosomes to be combined. Default is False.
     :return: PipelineResourceCollection containing resources for all steps of the
         combined FAF resource creation pipeline.
     """
+    if stats_chr is not None and stats_combine_all_chr:
+        raise ValueError(
+            "Cannot specify both `stats_chr` and `stats_combine_all_chr`. Please "
+            "specify only one."
+        )
+
     # Initialize pipeline resource collection.
     combine_faf_pipeline = PipelineResourceCollection(
         pipeline_name="combine_faf",
@@ -660,21 +693,52 @@ def get_combine_faf_resources(
             },
         },
     )
-    contingency_table_test = PipelineStepResourceCollection(
-        "--perform-contingency-table-test",
-        output_resources={
+
+    cmh_resources = {}
+    contingency_test_resources = {}
+    if stats_chr is not None:
+        cmh_resources["output_resources"] = {
+            "cmh_ht": TableResource(get_checkpoint_path(f"cmh_{stats_chr}"))
+        }
+        contingency_test_resources["output_resources"] = {
+            "contingency_table_ht": TableResource(
+                get_checkpoint_path(f"contingency_table_{stats_chr}")
+            )
+        }
+    else:
+        cmh_resources["output_resources"] = {
+            "cmh_ht": get_freq_comparison("cmh_test", test=test, filtered=filtered)
+        }
+        contingency_test_resources["output_resources"] = {
             "contingency_table_ht": get_freq_comparison(
                 "contingency_table_test", test=test, filtered=filtered
             )
-        },
-        pipeline_input_steps=[combined_frequency],
+        }
+
+    if stats_combine_all_chr:
+        cmh_resources["input_resources"] = {
+            "--perform-cochran-mantel-haenszel-test --stats-chr (all chr)": {
+                f"{c}_cmh_ht": TableResource(get_checkpoint_path(f"cmh_{c}"))
+                for c in CHR_LIST
+            }
+        }
+        contingency_test_resources["input_resources"] = {
+            "--perform-contingency-table-test --stats-chr (all chr)": {
+                f"{c}_contingency_table_ht": TableResource(
+                    get_checkpoint_path(f"contingency_table_{c}")
+                )
+                for c in CHR_LIST
+            }
+        }
+    else:
+        cmh_resources["pipeline_input_steps"] = [combined_frequency]
+        contingency_test_resources["pipeline_input_steps"] = [combined_frequency]
+
+    contingency_table_test = PipelineStepResourceCollection(
+        "--perform-contingency-table-test", **contingency_test_resources
     )
     cmh_test = PipelineStepResourceCollection(
-        "--perform-cochran-mantel-haenszel-test",
-        output_resources={
-            "cmh_ht": get_freq_comparison("cmh_test", test=test, filtered=filtered)
-        },
-        pipeline_input_steps=[combined_frequency],
+        "--perform-cochran-mantel-haenszel-test", **cmh_resources
     )
     finalize_faf_input_steps = [combined_frequency]
     if include_contingency_table_test:
@@ -717,12 +781,16 @@ def main(args):
     apply_release_filters = not args.skip_apply_release_filters
     pops = list(set(POPS["v3"] + POPS["v4"]))
     faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX["v4"]]
+    stats_chr = args.stats_chr
+    stats_combine_all_chr = args.stats_combine_all_chr
     combine_faf_resources = get_combine_faf_resources(
         overwrite,
         test_gene,
         apply_release_filters,
         args.include_contingency_table_test,
         args.include_cochran_mantel_haenszel_test,
+        stats_chr,
+        stats_combine_all_chr,
     )
 
     try:
@@ -777,40 +845,92 @@ def main(args):
         if args.perform_contingency_table_test:
             res = combine_faf_resources.contingency_table_test
             res.check_resource_existence()
-            ht = res.comb_freq_ht.ht()
-            ht = ht.filter(
-                hl.is_defined(ht.genomes_freq) & hl.is_defined(ht.exomes_freq)
-            )
-            ht = ht.select(
-                contingency_table_test=perform_contingency_table_test(
-                    ht.genomes_freq,
-                    ht.exomes_freq,
-                    ht.genomes_freq_meta,
-                    ht.exomes_freq_meta,
-                    ht.joint_freq_meta,
-                    min_cell_count=args.min_cell_count,
+            if stats_combine_all_chr:
+                ht = hl.Table.union(
+                    *[
+                        getattr(res, f"{c}_contingency_table_ht").ht()
+                        for c in [f"chr{c}" for c in range(1, 23)] + ["chrX", "chrY"]
+                    ]
                 )
-            )
+            else:
+                ht = res.comb_freq_ht.ht()
+                ht = ht.filter(
+                    hl.is_defined(ht.genomes_freq) & hl.is_defined(ht.exomes_freq)
+                )
+                if stats_chr is not None:
+                    ht = hl.filter_intervals(ht, [hl.parse_locus_interval(stats_chr)])
+
+                ht = ht.select(
+                    contingency_table_test=perform_contingency_table_test(
+                        ht.genomes_freq,
+                        ht.exomes_freq,
+                        ht.genomes_freq_meta,
+                        ht.exomes_freq_meta,
+                        ht.joint_freq_meta,
+                        min_cell_count=args.min_cell_count,
+                    )
+                )
+
             ht.write(res.contingency_table_ht.path, overwrite=overwrite)
 
         if args.perform_cochran_mantel_haenszel_test:
             res = combine_faf_resources.cmh_test
             res.check_resource_existence()
-            ht = res.comb_freq_ht.ht()
-            ht = ht.filter(
-                hl.is_defined(ht.genomes_freq) & hl.is_defined(ht.exomes_freq)
+            if stats_combine_all_chr:
+                ht = hl.Table.union(
+                    *[
+                        getattr(res, f"{c}_cmh_ht").ht()
+                        for c in [f"chr{c}" for c in range(1, 23)] + ["chrX", "chrY"]
+                    ]
+                )
+            else:
+                ht = res.comb_freq_ht.ht()
+                ht = ht.filter(
+                    hl.is_defined(ht.genomes_freq) & hl.is_defined(ht.exomes_freq)
+                )
+                if stats_chr is not None:
+                    ht = hl.filter_intervals(ht, [hl.parse_locus_interval(stats_chr)])
+
+                # TODO: Modify how we apply the CMH test to avoid memory issues. This
+                #  was a temporary solution to avoid memory issues, but if we decide
+                #  to use this test again, more thought should be put into how to
+                #  do it efficiently.
+                # Split the Table into 10 parts by partitions and perform the CMH test
+                # on each part. This is done to avoid memory issues when performing the
+                # CMH test on the entire Table.
+                n_part = ht.n_partitions()
+                logger.info(f"Number of partitions: {n_part}")
+                n_split = int(n_part / 10)
+                hts = []
+                for i in range(0, n_part, n_split):
+                    logger.info(
+                        f"Processing partitions {i} to {min(i + n_split, n_part)}"
+                    )
+                    split_ht = ht._filter_partitions(range(i, min(i + n_split, n_part)))
+                    split_ht = split_ht.select(
+                        cochran_mantel_haenszel_test=perform_cmh_test(
+                            split_ht,
+                            split_ht.genomes_freq,
+                            split_ht.exomes_freq,
+                            split_ht.genomes_freq_meta,
+                            split_ht.exomes_freq_meta,
+                            pops=faf_pops,
+                        ),
+                    ).checkpoint(
+                        hl.utils.new_temp_file(
+                            f"cmh_test_{i}_to_{min(i + n_split, n_part)}", "ht"
+                        )
+                    )
+
+                    hts.append(split_ht)
+
+                ht = hts[0]
+                if len(hts) > 1:
+                    ht = hts[0].union(*hts[1:])
+
+            ht.naive_coalesce(args.n_partitions).write(
+                res.cmh_ht.path, overwrite=overwrite
             )
-            ht = ht.select(
-                cochran_mantel_haenszel_test=perform_cmh_test(
-                    ht,
-                    ht.genomes_freq,
-                    ht.exomes_freq,
-                    ht.genomes_freq_meta,
-                    ht.exomes_freq_meta,
-                    pops=faf_pops,
-                ),
-            )
-            ht.write(res.cmh_ht.path, overwrite=overwrite)
 
         if args.finalize_combined_faf_release:
             res = combine_faf_resources.finalize_faf
@@ -865,6 +985,19 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--skip-apply-release-filters",
         help="Whether to skip applying the final release filters to the Table.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--stats-chr",
+        help="Chromosome to compute stats on.",
+        type=str,
+    )
+    parser.add_argument(
+        "--stats-combine-all-chr",
+        help=(
+            "Whether to combined all chromosome stats. The stats calculations must "
+            "have been performed for each chromosome using the `--stats-chr` argument."
+        ),
         action="store_true",
     )
     parser.add_argument(
