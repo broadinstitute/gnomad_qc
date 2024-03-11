@@ -1,7 +1,7 @@
 """Temporary script to set XX samples chrY faf stats to missing in final freq HT."""
 
 import hail as hl
-from Typing import Union
+from typing import Union
 
 from gnomad_qc.v4.resources.annotations import get_freq
 
