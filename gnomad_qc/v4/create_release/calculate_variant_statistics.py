@@ -191,6 +191,7 @@ def compute_stratified_agg_stats(
         meta_ht = meta(data_type=data_type).ht()
         ht = ht.annotate(gen_anc=meta_ht[ht.s].population_inference.pop)
         by_ancestry_agg = ht.aggregate(hl.agg.group_by(ht.gen_anc, _get_agg_expr(ht)))
+        # Remove 'None' key, otherwise it can't be annotated to globals
         by_ancestry_agg.pop(None)
         ht = ht.annotate_globals(**by_ancestry_agg)
 
