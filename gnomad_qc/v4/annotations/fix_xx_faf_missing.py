@@ -47,20 +47,20 @@ def set_female_y_metrics_to_na_expr(
         lambda x: faf_index_dict_expr[x],
         hl.filter(lambda x: x.contains("XX"), faf_index_dict_expr.keys()),
     )
-    freq_idx_range = hl.range(hl.len(faf_meta_expr))
+    faf_idx_range = hl.range(hl.len(faf_meta_expr))
 
-    new_freq_expr = hl.if_else(
+    new_faf_expr = hl.if_else(
         (t.locus.in_y_nonpar() | t.locus.in_y_par()),
         hl.map(
             lambda x: hl.if_else(
                 female_idx.contains(x), missing_faf_expr(), faf_expr[x]
             ),
-            freq_idx_range,
+            faf_idx_range,
         ),
         faf_expr,
     )
 
-    return new_freq_expr
+    return new_faf_expr
 
 
 hl.init(
