@@ -409,13 +409,13 @@ def custom_region_flags_select(
             .ht()[ht.locus]
             .pass_interval_qc,
             outside_ukb_capture_region=~hl.is_defined(
-                calling_intervals(
-                    interval_name="ukb", calling_interval_padding=50
-                ).ht()[ht.locus]
+                calling_intervals(interval_name="ukb", calling_interval_padding=0).ht()[
+                    ht.locus
+                ]
             ),
             outside_broad_capture_region=~hl.is_defined(
                 calling_intervals(
-                    interval_name="broad", calling_interval_padding=50
+                    interval_name="broad", calling_interval_padding=0
                 ).ht()[ht.locus]
             ),
         )
