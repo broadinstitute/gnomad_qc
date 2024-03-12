@@ -37,6 +37,8 @@ def create_per_sample_counts(
     broad_regions: bool = False,
     by_csqs: bool = False,
     rare_variants: bool = False,
+    vep_canonical: bool = True,
+    vep_mane: bool = False,
 ) -> hl.Table:
     """
     Write out Hail's sample_qc output for desired samples and variants.
@@ -47,11 +49,14 @@ def create_per_sample_counts(
     :param data_type: String of either "exomes" or "genomes" for the sample type.
     :param test: Boolean for if you would like to use a small test set.
     :param overwrite: Boolean to overwrite checkpoint files if requested.
-    :param pass_filters: Filter to variants which pass all variant qc filters.
-    :param ukb_regions: Filter to variants in UKB regions.
-    :param broad_regions: Filter to variants in Broad regions.
+    :param pass_filters: Stratify by variants which pass all variant qc filters.
+    :param ukb_regions: Stratify by variants in UKB regions.
+    :param broad_regions: Stratify by variants in Broad regions.
     :param by_csqs: Stratify by variant consequence.
     :param rare_variants: Stratify by variants which have adj AF <0.1%.
+    :param vep_canonical: Stratify by canonical transcripts. If trying to get
+        variants in all transcripts, set it to False. Default is True.
+    :param vep_mane: Stratify by MANE transcripts. Default is False.
     """
     vds = get_gnomad_v4_vds(test=test, release_only=True, split=True)
 
@@ -85,9 +90,8 @@ def create_per_sample_counts(
         ht = filter_vep_transcript_csqs(
             ht,
             synonymous=False,
-            filter_empty_csq=True,
-            canonical=False,
-            mane_select=True,
+            canonical=vep_canonical,
+            mane_select=vep_mane,
         )
 
         ht = get_most_severe_consequence_for_summary(ht)
@@ -216,13 +220,6 @@ def main(args):
     broad_regions = args.filter_broad_regions
     by_csqs = args.by_csqs
     rare_variants = args.rare_variants
-    by_ancestry = args.by_ancestry
-
-    # suffix = (
-    #     f"{'ukb_calling.' if ukb_regions else ''}"
-    #     f"{'broad_calling.' if broad_regions else ''}"
-    #     f"{'pass.' if pass_filters else ''}{args.custom_suffix if args.custom_suffix else ''}"
-    # )
 
     if args.create_per_sample_counts:
         per_sample_ht = create_per_sample_counts(
@@ -233,6 +230,8 @@ def main(args):
             broad_regions=broad_regions,
             by_csqs=by_csqs,
             rare_variants=rare_variants,
+            vep_canonical=args.vep_canonical,
+            vep_mane=args.vep_mane,
         )
 
         per_sample_ht.checkpoint(
@@ -242,20 +241,26 @@ def main(args):
 
     if args.stratify_and_aggregate:
         per_sample_ht = get_per_sample_counts(test=test, data_type=data_type).ht()
+        strats = []
+        stratify_dictionary = {
+            "all_variants": True,
+            "pass_filters": pass_filters,
+            "ukb_regions": ukb_regions,
+            "broad_regions": broad_regions,
+            "ukb_and_broad_regions": ukb_regions and broad_regions,
+            "rare_variants": rare_variants,
+            "lof": by_csqs,
+            "missense": by_csqs,
+            "synonymous": by_csqs,
+        }
+
+        for key, item in stratify_dictionary.items():
+            strats.append(key)
         stratified_agg_ht = compute_stratified_agg_stats(
             per_sample_ht,
             data_type=data_type,
-            strats=[
-                "all_variants",
-                "pass_filters",
-                "ukb_regions",
-                "broad_regions",
-                "rare_variants",
-                "lof",
-                "missense",
-                "synonymous",
-            ],
-            by_ancestry=by_ancestry,
+            strats=strats,
+            by_ancestry=args.by_ancestry,
         )
 
         stratified_agg_ht.checkpoint(
@@ -310,17 +315,17 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--filter-ukb-regions",
-        help="Filter to variants in UKB capture regions",
+        help="Stratify by variants in UKB capture regions",
         action="store_true",
     )
     parser.add_argument(
         "--filter-broad-regions",
-        help="Filter to variants in Broad capture regions",
+        help="Stratify by variants in Broad capture regions",
         action="store_true",
     )
     parser.add_argument(
         "--rare-variants",
-        help="Filter to variants with adj AF <0.1%.",
+        help="Stratify by variants with adj AF <0.1%.",
         action="store_true",
     )
     parser.add_argument(
@@ -341,6 +346,16 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Custom string to append to output names",
+    )
+    parser.add_argument(
+        "--vep-canonical",
+        help="Canonical argument for filter_vep_transcript_csqs",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--vep-mane",
+        help="Mane_select argument for filter_vep_transcript_csqs",
+        action="store_true",
     )
     args = parser.parse_args()
 
