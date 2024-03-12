@@ -1,6 +1,7 @@
 """Script to validate and export only the false duplication Hail Table of 3 genes to a VCF."""
 import argparse
 import logging
+from copy import deepcopy
 
 import hail as hl
 from gnomad.utils.annotations import (
@@ -23,6 +24,22 @@ logger = logging.getLogger("false_dup_genes")
 logger.setLevel(logging.INFO)
 
 FALSE_DUP_GENES = ["KCNE1", "CBS", "CRYAA"]
+
+LIFTOVER_POPS = {
+    "afr": "African/African-American",
+    "amr": "Admixed American",
+    "asj": "Ashkenazi Jewish",
+    "eas": "East Asian",
+    "fin": "Finnish",
+    "nfe": "Non-Finnish European",
+    "oth": "Other",
+    "sas": "South Asian",
+}
+
+# TODO: is this different for exomes vs genomes ?
+LIFTOVER_SUBSETS = {
+    "v2_liftover": ["controls", "gnomad", "non_cancer", "non_neuro", "non_topmed"]
+}
 
 from typing import Dict, List, Optional
 
@@ -49,8 +66,7 @@ from gnomad.utils.vcf import (
     make_vcf_filter_dict,
     rekey_new_reference,
 )
-from gnomad.utils.vep import (
-    # CURRENT_VEP_VERSION,
+from gnomad.utils.vep import (  # CURRENT_VEP_VERSION,
     VEP_CSQ_FIELDS,
     VEP_CSQ_HEADER,
     vep_struct_to_csq,
@@ -387,9 +403,254 @@ def prepare_false_dup_ht_for_validation(
     return ht
 
 
+def prepare_vcf_filter_header(unfurled_ht: hl.Table) -> Dict[str, Dict]:
+    v2_exomes_filter_dict = make_vcf_filter_dict(
+        hl.eval(unfurled_ht.rf_exomes.rf_snv_cutoff.min_score),
+        hl.eval(unfurled_ht.rf_exomes.rf_indel_cutoff.min_score),
+        inbreeding_cutoff=-0.3,  # established
+        variant_qc_filter="RF",
+    )
+
+    v2_genomes_filter_dict = make_vcf_filter_dict(
+        hl.eval(unfurled_ht.rf_genomes.rf_snv_cutoff.min_score),
+        hl.eval(unfurled_ht.rf_genomes.rf_indel_cutoff.min_score),
+        inbreeding_cutoff=-0.3,  # established
+        variant_qc_filter="RF",
+    )
+
+    custom_filter_dict = {
+        "EXOMES_FILTERED": {
+            "Description": (
+                "Filtered out or not present in Exomes. See info annotation"
+                " filters_exomes for more."
+            )
+        },
+        "GENOMES_FILTERED": {
+            "Description": (
+                "Filtered out or not present in Genomes. See info annotation"
+                " filters_genomes for more."
+            )
+        },
+        "PASS": {"Description": "Passed all variant filters"},
+    }
+
+    return {
+        "exomes": v2_exomes_filter_dict,
+        "genomes": v2_genomes_filter_dict,
+        "FILTERS": custom_filter_dict,
+    }
+
+
+def populate_subset_info_dict(
+    subset: str,
+    description_text: str = "",
+    data_type: str = "exomes",
+    pops: Dict[str, str] = LIFTOVER_POPS,
+    faf_pops: Dict[str, List[str]] = FAF_POPS,
+    sexes: List[str] = ["male", "female"],
+    label_delimiter: str = "_",
+) -> Dict[str, Dict[str, str]]:
+    """
+    Call `make_info_dict` to populate INFO dictionary for the requested `subset`.
+
+    Creates:
+        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic
+            ancestry group, sex both for adj and raw data.
+        - INFO fields for filtering allele frequency (faf) annotations.
+
+    :param subset: Sample subset in dataset. "" is used as a placeholder for the full
+        dataset.
+    :param description_text: Text describing the sample subset that should be added to
+        the INFO description.
+    :param data_type: One of "exomes" or "genomes". Default is "exomes".
+    :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
+        Default is POPS.
+    :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
+        names (values). Default is FAF_POPS.
+    :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
+    :param label_delimiter: String to use as delimiter when making group label
+        combinations. Default is '_'.
+    :return: Dictionary containing Subset specific INFO header fields.
+    """
+    vcf_info_dict = {}
+    # Remove unnecessary pop names from FAF_POPS dict depending on data type
+    # and version of FAF_POPS.
+    faf_pops_version = "v4" if data_type == "exomes" else "v3"
+    faf_pops = {pop: POP_NAMES[pop] for pop in faf_pops[faf_pops_version]}
+
+    # Add FAF fields to dict.
+    faf_label_groups = create_label_groups(
+        pops=faf_pops, sexes=sexes, all_groups=["adj"]
+    )
+    for label_group in faf_label_groups:
+        faf_dict = {}
+        faf_dict.update(
+            make_info_dict(
+                prefix=subset,
+                prefix_before_metric=False,
+                pop_names=faf_pops,
+                label_groups=label_group,
+                label_delimiter=label_delimiter,
+                faf=True,
+                description_text=description_text,
+                suffix=data_type,
+            )
+        )
+        faf_dict_fix = {k.replace("_adj_", "_"): v for k, v in faf_dict.items()}
+        vcf_info_dict.update(faf_dict_fix)
+    # Add AC, AN, AF, nhomalt fields to dict.
+    label_groups = create_label_groups(pops=pops, sexes=sexes)
+    for label_group in label_groups:
+        label_group_dict = {}
+        label_group_dict.update(
+            make_info_dict(
+                prefix=subset,
+                prefix_before_metric=False,
+                pop_names=pops,
+                label_groups=label_group,
+                label_delimiter=label_delimiter,
+                description_text=description_text,
+                callstats=True,
+                suffix=data_type,
+            )
+        )
+        vcf_info_dict.update(
+            {k.replace("_adj_", "_"): v for k, v in label_group_dict.items()}
+        )
+
+    # Add grpmax.
+    grpmax_dict = make_info_dict(
+        suffix=f"{subset}_{data_type}",
+        label_delimiter=label_delimiter,
+        pop_names=pops,
+        grpmax=True,
+        description_text=description_text,
+    )
+    vcf_info_dict.update(
+        {
+            k.replace(
+                f"grpmax_{subset}",
+                f"{subset}_grpmax",
+            ): v
+            for k, v in grpmax_dict.items()
+        }
+    )
+
+    return vcf_info_dict
+
+
+def populate_info_dict(
+    info_fields: List[str],
+    bin_edges: Dict[str, str] = None,
+    age_hist_distribution: str = None,
+    info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
+    subset_list: List[str] = LIFTOVER_SUBSETS,
+    pops: Dict[str, str] = LIFTOVER_POPS,
+    faf_pops: Dict[str, List[str]] = FAF_POPS,
+    sexes: List[str] = SEXES,
+    in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
+    vrs_fields_dict: Dict[str, Dict[str, str]] = VRS_FIELDS_DICT,
+    label_delimiter: str = "_",
+    data_type: str = "exomes",
+) -> Dict[str, Dict[str, str]]:
+    """
+    Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary.
+
+    Used during VCF export.
+
+    Creates:
+        - INFO fields for age histograms (bin freq, n_smaller, and n_larger for
+          heterozygous and homozygous variant carriers).
+        - INFO fields for grpmax AC, AN, AF, nhomalt, and grpmax genetic ancestry group.
+        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic
+          ancestry group, sex both for adj and raw data.
+        - INFO fields for filtering allele frequency (faf) annotations.
+        - INFO fields for variant histograms (hist_bin_freq for each histogram and
+          hist_n_larger for DP histograms).
+
+    :param info_fields: List of info fields to add to the info dict. Default is None.
+    :param bin_edges: Dictionary of variant annotation histograms and their associated
+        bin edges.
+    :param age_hist_distribution: Pipe-delimited string of overall age histogram bin
+        frequency.
+    :param info_dict: INFO dict to be populated.
+    :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
+    :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
+    :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
+        names (values). Default is FAF_POPS.
+    :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
+    :param in_silico_dict: Dictionary of in silico predictor score descriptions.
+    :param vrs_fields_dict: Dictionary with VRS annotations.
+    :param label_delimiter: String to use as delimiter when making group label
+        combinations.
+    :param data_type: Data type to populate info dict for. One of "exomes" or
+        "genomes". Default is "exomes".
+    :return: Updated INFO dictionary for VCF export.
+    """
+    # Get existing info fields from predefined info_dict, e.g. `FS`,
+    # `non_par`, `negative_train_site`...
+    vcf_info_dict = info_dict.copy()
+    vcf_info_dict = {f: vcf_info_dict[f] for f in info_fields if f in vcf_info_dict}
+
+    # Add allele-specific fields to info dict, including AS_VQSR_FIELDS
+    vcf_info_dict.update(
+        add_as_info_dict(info_dict=info_dict, as_fields=AS_FIELDS + AS_VQSR_FIELDS)
+    )
+
+    for subset in subset_list:
+        subset_pops = deepcopy(pops)
+        if (subset == "joint") | (data_type == "genomes"):
+            subset_pops.update({"ami": "Amish"})
+        description_text = "" if subset == "" else f" in {subset} subset"
+
+        subset_info = populate_subset_info_dict(
+            subset=subset,
+            description_text=description_text,
+            data_type=data_type,
+            pops=subset_pops,
+            faf_pops=faf_pops,
+            sexes=sexes,
+            label_delimiter=label_delimiter,
+        )
+
+        vcf_info_dict.update(
+            {k.replace("v2_liftover_", ""): v for k, v in subset_info.items()}
+        )
+
+    if age_hist_distribution:
+        age_hist_distribution = "|".join(str(x) for x in age_hist_distribution)
+
+    # TODO: we'll have to pass in age_hists directly, sicne we don't have a 'hist' structure.
+    # # Add age histogram data to info dict.
+    # vcf_info_dict.update(
+    #     make_info_dict(
+    #         label_delimiter=label_delimiter,
+    #         bin_edges=bin_edges,
+    #         age_hist_distribution=age_hist_distribution,
+    #     )
+    # )
+
+    # # Add variant quality histograms to info dict.
+    # vcf_info_dict.update(
+    #     make_hist_dict(bin_edges, adj=True, drop_n_smaller_larger=True)
+    # )
+
+    #     # Add in silico prediction annotations to info_dict.
+    #     vcf_info_dict.update(in_silico_dict)
+
+    #     # Add VRS annotations to info_dict.
+    #     vcf_info_dict.update(vrs_fields_dict)
+
+    return vcf_info_dict
+
+
 def main(args):
     ht = hl.read_table(get_false_dup_genes_path(release_version="4.0"))
     ht = prepare_false_dup_ht_for_validation(ht)
+    header_dict = {
+        "info": prepare_vcf_filter_header(ht),
+        "filter": prepare_vcf_filter_header(ht),
+    }
     hl.export_vcf(ht, "gs://gnomad-tmp-4day/tester_with_filters.vcf.bgz")
 
 
