@@ -29,6 +29,7 @@ TRUTH_SAMPLES_S = [TRUTH_SAMPLES[s]["s"] for s in TRUTH_SAMPLES]
 #   gs://gnomad/v4.0/<module>/<exomes_or_genomes>/.
 def get_gnomad_v4_vds(
     split: bool = False,
+    remove_extreme_multi_allelic: bool = True,
     remove_hard_filtered_samples: bool = True,
     remove_hard_filtered_samples_no_sex: bool = False,
     high_quality_only: bool = False,
@@ -47,6 +48,9 @@ def get_gnomad_v4_vds(
 
     :param split: Perform split on VDS - Note: this will perform a split on the VDS
         rather than grab an already split VDS.
+    :param remove_extreme_multi_allelics: Whether to remove the chr19 site with
+        excessive numbers of alleles (n=27374) which tend to create memory issues
+        for `split_multi`.
     :param remove_hard_filtered_samples: Whether to remove samples that failed hard
         filters (only relevant after hard filtering is complete).
     :param remove_hard_filtered_samples_no_sex: Whether to remove samples that failed
@@ -279,6 +283,11 @@ def get_gnomad_v4_vds(
     if split:
         logger.info("Splitting multiallelics...")
         vmt = vds.variant_data
+        if remove_extreme_multi_allelic:
+            logger.info("Dropping excessively multi-allelic site at chr19:5787204...")
+            vmt = vmt.filter_rows(
+                vmt.locus != hl.parse_locus("chr19:5787204", reference_genome="GRCh38")
+            )
         vmt = vmt.annotate_rows(
             n_unsplit_alleles=hl.len(vmt.alleles),
             mixed_site=(hl.len(vmt.alleles) > 2)
