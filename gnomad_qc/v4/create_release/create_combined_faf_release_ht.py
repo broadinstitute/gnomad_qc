@@ -36,6 +36,7 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v4.annotations.compute_coverage import adjust_interval_padding
 from gnomad_qc.v4.resources.annotations import (
     get_all_sites_an_and_qual_hists,
     get_combined_frequency,
@@ -342,12 +343,7 @@ def get_joint_freq_and_faf(
         pops_to_exclude=faf_pops_to_exclude,
         pop_label="gen_anc",
     )
-    faf_meta_by_pop = {
-        m.get("gen_anc"): i
-        for i, m in enumerate(faf_meta)
-        if m.get("gen_anc") and len(m) == 2
-    }
-    faf_meta_by_pop = hl.literal(faf_meta_by_pop)
+
     # Compute group max (popmax) on the merged exomes + genomes frequencies.
     grpmax = pop_max_expr(
         ht.joint_freq,
@@ -581,16 +577,35 @@ def create_final_combined_faf_release(
             p_value=hl.or_missing(~hl.is_nan(stat_expr.p_value), stat_expr.p_value),
         )
 
+    broad_interval_ht = calling_intervals("broad", 0).ht()
+    broad_interval_150bp_ht = adjust_interval_padding(broad_interval_ht, 150)
+
+    ukb_interval_ht = calling_intervals("ukb", 0).ht()
+    ukb_interval_150bp_ht = adjust_interval_padding(ukb_interval_ht, 150)
+    # TODO: Any reason add LCR and segdups while we are already adding other region
+    #  flags?
+    num_exomes_an = ht.index_globals().exomes_freq_meta_sample_count[0] * 2
+    not_called_in_exomes = hl.is_missing(ht.exomes_freq) | hl.is_missing(
+        ht.exomes_freq[1].AN
+    )
     region_expr = {
         "fail_interval_qc": (
             ~interval_qc_pass(all_platforms=True).ht()[ht.locus].pass_interval_qc
         ),
-        "outside_ukb_capture_region": ~hl.is_defined(
-            calling_intervals("broad", 50).ht()[ht.locus]
+        "outside_ukb_capture_region": ~hl.is_defined(ukb_interval_ht[ht.locus]),
+        "outside_broad_capture_region": ~hl.is_defined(broad_interval_ht[ht.locus]),
+        "outside_ukb_calling_region": ~hl.is_defined(ukb_interval_150bp_ht[ht.locus]),
+        "outside_broad_calling_region": ~hl.is_defined(
+            broad_interval_150bp_ht[ht.locus]
         ),
-        "outside_broad_capture_region": ~hl.is_defined(
-            calling_intervals("broad", 50).ht()[ht.locus]
-        ),
+        "no_coverage_in_exomes_raw": not_called_in_exomes | (ht.exomes_freq[1].AN == 0),
+        "no_coverage_in_exomes_adj": not_called_in_exomes | (ht.exomes_freq[0].AN == 0),
+        # TODO: How are sex chromosomes handled?
+        "low_coverage_in_exomes_40_raw": ht.exomes_freq[1].AN < (num_exomes_an * 0.4),
+        "low_coverage_in_exomes_50_raw": ht.exomes_freq[1].AN < (num_exomes_an * 0.5),
+        "low_coverage_in_exomes_40_adj": ht.exomes_freq[0].AN < (num_exomes_an * 0.4),
+        "low_coverage_in_exomes_50_adj": ht.exomes_freq[0].AN < (num_exomes_an * 0.5),
+        "not_called_in_exomes": not_called_in_exomes,
     }
 
     def _get_joint_data_type(
