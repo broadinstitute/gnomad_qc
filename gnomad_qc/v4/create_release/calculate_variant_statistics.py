@@ -74,6 +74,7 @@ def create_per_sample_counts(
     # Create variant matrix table from VDS and annotate with all relevant info.
     vmt = vds.variant_data
     logger.info("Variant MT created and checkpointing, without annotations")
+
     vmt = vmt.checkpoint(
         new_temp_file(f'vmt_{"TEST" if test else ""}', extension="mt"),
         overwrite=overwrite,
@@ -101,16 +102,33 @@ def create_per_sample_counts(
     # NOTE: not size efficient, but we are never checkpointing THIS I don't believe
     vmt = vmt.annotate_rows(**ht[vmt.row_key])
 
+    logger.info("Creating argument dictionary")
+
     arg_dict = {"all_variants": ~hl.is_missing(vmt.locus)}
 
-    if pass_filters:
-        arg_dict.update({"pass_filters": hl.len(vmt.filters) == 0})
+    def _add_to_prior_dict_items(
+        bool_entries: List,
+        prior_entries: List,
+        new_entry: str,
+        incoming_dict: dict,
+    ) -> dict:
+        joined_prior_key = "_".join(prior_entries)
+        joined_with_new = "_".join([joined_prior_key, new_entry])
+        if all(bool_entries):
+            incoming_dict[joined_with_new] = (
+                incoming_dict[joined_prior_key] & incoming_dict[new_entry]
+            )
+
+        return incoming_dict
+
     if ukb_regions:
         arg_dict.update({"ukb_regions": ~vmt.region_flags.outside_ukb_capture_region})
+
     if broad_regions:
         arg_dict.update(
             {"broad_regions": ~vmt.region_flags.outside_broad_capture_region}
         )
+
     if ukb_regions and broad_regions:
         arg_dict.update(
             {
@@ -119,12 +137,49 @@ def create_per_sample_counts(
                 ) & (~vmt.region_flags.outside_broad_capture_region)
             }
         )
+    if pass_filters:
+        arg_dict.update({"pass_filters": hl.len(vmt.filters) == 0})
+        arg_dict = _add_to_prior_dict_items(
+            [ukb_regions, broad_regions],
+            ["ukb_and_broad_regions"],
+            "pass_filters",
+            arg_dict,
+        )
+
     if rare_variants:
         arg_dict.update({"rare_variants": vmt.freq[0].AF < 0.001})
+        arg_dict = _add_to_prior_dict_items(
+            [ukb_regions, broad_regions, pass_filters],
+            ["ukb_and_broad_regions", "pass_filters"],
+            "rare_variants",
+            arg_dict,
+        )
+
     if by_csqs:
         arg_dict.update({"lof": ~hl.is_missing(vmt.lof)})
         arg_dict.update({"missense": vmt.most_severe_csq == "missense_variant"})
         arg_dict.update({"synonymous": vmt.most_severe_csq == "synonymous_variant"})
+
+        csq_args = ["lof", "missense", "synonymous"]
+
+        for c_arg in csq_args:
+            arg_dict = _add_to_prior_dict_items(
+                [ukb_regions, broad_regions, pass_filters],
+                ["ukb_and_broad_regions", "pass_filters"],
+                c_arg,
+                arg_dict,
+            )
+            arg_dict = _add_to_prior_dict_items(
+                [ukb_regions, broad_regions, pass_filters, rare_variants],
+                ["ukb_and_broad_regions", "pass_filters", "rare_variants"],
+                c_arg,
+                arg_dict,
+            )
+
+    logger.info(
+        f"Argument dictinary of {list(arg_dict.keys())} constructed. Running stratified"
+        " sample_qc..."
+    )
 
     # Run Hail's stratified vmt_sample_qc for selected stratifications.
     qc = hl.struct(
@@ -138,13 +193,20 @@ def create_per_sample_counts(
                     variant_atypes=vmt.variant_atypes,
                     dp=vmt.DP,
                 ),
-            )
+            ).select("n_het", "n_hom_var", "n_non_ref", "n_singleton")
             for ann, expr in arg_dict.items()
         }
     )
+
+    logger.info("Stratified sample_qc call done.")
+
     # Annotate stratified sample qc onto columns, then take and output columns
     vmt = vmt.annotate_cols(aggregated_vmt_sample_qc=qc)
     sample_qc_ht = vmt.cols()
+
+    logger.info("Annotation call 'done'...")
+
+    logger.info(list(sample_qc_ht.aggregated_vmt_sample_qc))
 
     return sample_qc_ht
 
@@ -170,11 +232,11 @@ def compute_stratified_agg_stats(
     def _get_metric_stats(ht, strat, metric):
         metric_expr = ht.aggregated_vmt_sample_qc[strat][metric]
         metric_mean = hl.agg.mean(metric_expr)
-        metric_quantiles = hl.agg.approx_quantiles(
-            metric_expr, [0.0, 0.25, 0.5, 0.75, 1.0]
-        )
+        # metric_quantiles = hl.agg.approx_quantiles(
+        #     metric_expr, [0.0, 0.25, 0.5, 0.75, 1.0]
+        # )
 
-        return hl.struct(mean=metric_mean, quantiles=metric_quantiles)
+        return hl.struct(mean=metric_mean)  # , quantiles=metric_quantiles)
 
     def _get_agg_expr(ht):
         return hl.struct(
@@ -190,6 +252,8 @@ def compute_stratified_agg_stats(
         )
 
     ht = ht.annotate_globals(all_samples=ht.aggregate(_get_agg_expr(ht)))
+
+    ht.all_samples.show()
 
     if by_ancestry:
         meta_ht = meta(data_type=data_type).ht()
@@ -234,6 +298,8 @@ def main(args):
             vep_mane=args.vep_mane,
         )
 
+        logger.info("Checkpointing per_sample_ht...")
+
         per_sample_ht.checkpoint(
             get_per_sample_counts(test=test, data_type=data_type).path,
             overwrite=overwrite,
@@ -241,27 +307,15 @@ def main(args):
 
     if args.stratify_and_aggregate:
         per_sample_ht = get_per_sample_counts(test=test, data_type=data_type).ht()
-        strats = []
-        stratify_dictionary = {
-            "all_variants": True,
-            "pass_filters": pass_filters,
-            "ukb_regions": ukb_regions,
-            "broad_regions": broad_regions,
-            "ukb_and_broad_regions": ukb_regions and broad_regions,
-            "rare_variants": rare_variants,
-            "lof": by_csqs,
-            "missense": by_csqs,
-            "synonymous": by_csqs,
-        }
-
-        for key, item in stratify_dictionary.items():
-            strats.append(key)
+        strats = list(per_sample_ht.aggregated_vmt_sample_qc)
         stratified_agg_ht = compute_stratified_agg_stats(
             per_sample_ht,
             data_type=data_type,
             strats=strats,
             by_ancestry=args.by_ancestry,
         )
+
+        stratified_agg_ht.show()
 
         stratified_agg_ht.checkpoint(
             get_per_sample_counts(
