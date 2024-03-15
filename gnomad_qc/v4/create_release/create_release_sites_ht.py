@@ -66,8 +66,7 @@ SUBSETS_TO_DROP = remove_fields_from_constant(SUBSETS["v3"], ["hgdp", "tgp"])
 
 # Remove InbreedingCoeff from allele-specific fields because it is processed separately
 # from the other fields.
-AS_FIELDS = deepcopy(AS_FIELDS)
-AS_FIELDS.remove("InbreedingCoeff")
+AS_FIELDS = [x for x in AS_FIELDS if x != "InbreedingCoeff"]
 SITE_FIELDS = deepcopy(SITE_FIELDS)
 
 # Remove original_alleles for containing non-releasable alleles.
@@ -84,7 +83,7 @@ TABLES_FOR_RELEASE = [
     "region_flags",
     "in_silico",
     "vep",
-    "joint_faf",
+    # "joint_faf",  # NOTE: joint_faf was only included in the v4.0 release.
 ]
 
 INSILICO_PREDICTORS = ["cadd", "revel", "spliceai", "pangolin", "phylop"]
@@ -146,14 +145,17 @@ def get_config(
     Get configuration dictionary for specified data type.
 
     Format:
+
+    .. code-block::
+
         '<Name of dataset>': {
-                'ht': '<Optional Hail Table for direct annotation extraction. This is not used for the join.>',
-                'path': 'gs://path/to/hail_table.ht',
-                'select': '<Optional list of fields to select or dict of new field name to location of old field in the dataset.>',
-                'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
-                'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
-                'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>'
-            },
+            'ht': '<Optional Hail Table for direct annotation extraction. This is not used for the join.>',
+            'path': 'gs://path/to/hail_table.ht',
+            'select': '<Optional list of fields to select or dict of new field name to location of old field in the dataset.>',
+            'field_name': '<Optional name of root annotation in combined dataset, defaults to name of dataset.>',
+            'custom_select': '<Optional function name of custom select function that is needed for more advanced logic>',
+            'select_globals': '<Optional list of globals to select or dict of new global field name to old global field name. If not specified, all globals are selected.>'
+        },
 
     .. warning::
 
@@ -340,10 +342,16 @@ def custom_freq_select(ht: hl.Table, data_type: str) -> Dict[str, hl.expr.Expres
     These annotations will be combined with the others from freq's select in the config.
 
     .. note::
-        - The faf95 field in the grpmax struct is the FAF of the genetic ancestry group with the largest AF (grpmax AF).
-        - The FAF fields within the gen_anc_faf_max struct contains the FAFs from the genetic ancestry group(s) with the largest FAFs
-        - These values aren't necessarily the same; the group with the highest AF for a variant isn't necessarily the group with the highest FAF for a variant
-        - The filtering allele frequencies that are used by the community are the values within the gen_anc_faf_max struct, NOT grpmax FAF, which is why we are dropping grpmax.faf95 and renaming gen_anc_faf_max
+
+        - The faf95 field in the grpmax struct is the FAF of the genetic ancestry group
+          with the largest AF (grpmax AF).
+        - The FAF fields within the gen_anc_faf_max struct contains the FAFs from the
+          genetic ancestry group(s) with the largest FAFs
+        - These values aren't necessarily the same; the group with the highest AF for a
+          variant isn't necessarily the group with the highest FAF for a variant
+        - The filtering allele frequencies that are used by the community are the
+          values within the gen_anc_faf_max struct, NOT grpmax FAF, which is why we are
+          dropping grpmax.faf95 and renaming gen_anc_faf_max
 
     :param ht: Freq Hail Table
     :param data_type: Dataset's data type: 'exomes' or 'genomes'.
@@ -401,13 +409,13 @@ def custom_region_flags_select(
             .ht()[ht.locus]
             .pass_interval_qc,
             outside_ukb_capture_region=~hl.is_defined(
-                calling_intervals(
-                    interval_name="ukb", calling_interval_padding=50
-                ).ht()[ht.locus]
+                calling_intervals(interval_name="ukb", calling_interval_padding=0).ht()[
+                    ht.locus
+                ]
             ),
             outside_broad_capture_region=~hl.is_defined(
                 calling_intervals(
-                    interval_name="broad", calling_interval_padding=50
+                    interval_name="broad", calling_interval_padding=0
                 ).ht()[ht.locus]
             ),
         )
@@ -564,7 +572,9 @@ def custom_vep_select(ht: hl.Table, **_) -> Dict[str, hl.expr.Expression]:
 
 
 def get_select_global_fields(
-    ht: hl.Table, data_type: str
+    ht: hl.Table,
+    data_type: str,
+    tables_for_join: List[str] = TABLES_FOR_RELEASE,
 ) -> Dict[str, hl.expr.Expression]:
     """
     Generate a dictionary of globals to select by checking the config of all tables joined.
@@ -577,11 +587,12 @@ def get_select_global_fields(
 
     :param ht: Final joined HT with globals.
     :param data_type: Dataset's data type: 'exomes' or 'genomes'.
+    :param tables_for_join: List of tables to join into final release HT.
     :return: select mapping from global annotation name to `ht` annotation.
     """
     t_globals = []
     select_globals = {}
-    for t in TABLES_FOR_RELEASE:
+    for t in tables_for_join:
         config = get_config(data_type=data_type).get(t)
         if "select_globals" in config:
             select_globals = get_select_fields(config["select_globals"], ht)
@@ -623,6 +634,31 @@ def get_select_fields(
                     ht = ht[attr]
                 select_fields[key] = ht
     return select_fields
+
+
+def get_final_ht_fields(ht: hl.Table) -> Dict[str, List[str]]:
+    """
+    Get the final fields for the release HT.
+
+    Create a dictionary of lists of fields that are in the FINALIZED_SCHEMA and are
+    present in the HT. If a field is not present in the HT, log a warning.
+
+    :param ht: Hail Table.
+    :return: Dict of final fields for the release HT.
+    """
+    final_fields = {"rows": [], "globals": []}
+    for field in FINALIZED_SCHEMA["rows"]:
+        if field in ht.row:
+            final_fields["rows"].append(field)
+        else:
+            logger.warning(f"Field {field} from FINALIZED_SCHEMA not found in HT.")
+    for field in FINALIZED_SCHEMA["globals"]:
+        if field in ht.globals:
+            final_fields["globals"].append(field)
+        else:
+            logger.warning(f"Global {field} from FINALIZED_SCHEMA not found in HT.")
+
+    return final_fields
 
 
 def get_ht(
@@ -747,6 +783,10 @@ def join_hts(
     ]
     joined_ht = reduce((lambda joined_ht, ht: joined_ht.join(ht, "left")), hts)
 
+    joined_ht = joined_ht.select_globals(
+        **get_select_global_fields(joined_ht, data_type, tables)
+    )
+
     # Track the datasets we've added as well as the source paths.
     # If release HT is included in tables, read in the included datasets json
     # and update the keys to the path for any new tables
@@ -826,10 +866,11 @@ def main(args):
 
     # Filter out chrM, AS_lowqual sites (these sites are dropped in the final_filters HT
     # so will not have information in `filters`) and AC_raw == 0.
+    logger.info("Filtering out chrM, AS_lowqual, and AC_raw == 0 sites...")
     ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chrM")], keep=False)
     ht = ht.filter(hl.is_defined(ht.filters) & (ht.freq[1].AC > 0))
-    ht = ht.select_globals(**get_select_global_fields(ht, data_type))
 
+    logger.info("Finalizing the release HT global and row fields...")
     # Add additional globals that were not present on the joined HTs.
     ht = ht.annotate_globals(
         vep_globals=ht.vep_globals.annotate(
@@ -861,10 +902,10 @@ def main(args):
             .high_qual_interval_parameters
         )
 
-    # Reorder fields to match final schema.
-    ht = ht.select(*FINALIZED_SCHEMA["rows"]).select_globals(
-        *FINALIZED_SCHEMA["globals"]
-    )
+    # Organize the fields in the release HT to match the order of FINALIZED_SCHEMA when
+    # the fields are present in the HT.
+    final_fields = get_final_ht_fields(ht)
+    ht = ht.select(*final_fields["rows"]).select_globals(*final_fields["globals"])
 
     output_path = (
         f"{qc_temp_prefix(data_type=data_type)}release/gnomad.{data_type}.sites.test.{datetime.today().strftime('%Y-%m-%d')}.ht"
@@ -883,7 +924,8 @@ def main(args):
     logger.info("Final variant count: %d", ht.count())
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--new-partition-percent",
@@ -943,7 +985,13 @@ if __name__ == "__main__":
         default=10000,
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
+
     if args.slack_channel:
         with slack_notifications(slack_token, args.slack_channel):
             main(args)

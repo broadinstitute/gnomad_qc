@@ -3,12 +3,13 @@ Create a joint gnomAD v4 exome and genome frequency and FAF.
 
 Generate a Hail Table containing frequencies for exomes and genomes in gnomAD v4, a
 joint frequency, a joint FAF, and the following tests comparing the two frequencies:
+
     - Hail's contingency table test -- chi-squared or Fisher’s exact test of
       independence depending on min cell count.
     - Cochran–Mantel–Haenszel test -- stratified test of independence for 2x2xK
       contingency tables.
-
 """
+
 import argparse
 import logging
 from typing import Dict, List, Set
@@ -20,6 +21,7 @@ from gnomad.utils.annotations import (
     faf_expr,
     gen_anc_faf_max_expr,
     merge_freq_arrays,
+    merge_histograms,
     pop_max_expr,
     set_female_y_metrics_to_na_expr,
 )
@@ -34,11 +36,13 @@ from gnomad_qc.resource_utils import (
 )
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import (
+    get_all_sites_an_and_qual_hists,
     get_combined_frequency,
     get_freq,
     get_freq_comparison,
 )
 from gnomad_qc.v4.resources.basics import get_logging_path
+from gnomad_qc.v4.resources.constants import CURRENT_FREQ_VERSION
 from gnomad_qc.v4.resources.release import get_combined_faf_release
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
@@ -61,27 +65,27 @@ def filter_gene_to_test(ht: hl.Table) -> hl.Table:
 
 
 def extract_freq_info(
-    ht: hl.Table, prefix: str, apply_release_filters: bool = False
+    ht: hl.Table, prefix: str, apply_release_filters: bool = True
 ) -> hl.Table:
     """
     Extract frequencies and FAF for adj, raw (only for frequencies), adj by pop, adj by sex, and adj by pop/sex.
 
-    The following annotations are filtered and renamed:
+    The following annotations are renamed and where applicable, filtered:
         - freq: {prefix}_freq
         - faf: {prefix}_faf
         - grpmax: {prefix}_grpmax
         - fafmax: {prefix}_fafmax
+        - qual_hists: {prefix}_qual_hists
+        - raw_qual_hists: {prefix}_raw_qual_hists
 
     The following global annotations are filtered and renamed:
         - freq_meta: {prefix}_freq_meta
         - faf_meta: {prefix}_faf_meta
 
-    This only keeps variants that pass variant QC filtering.
-
     :param ht: Table with frequency and FAF information.
     :param prefix: Prefix to add to each of the filtered annotations.
     :param apply_release_filters: Whether to apply the final release filters to the
-        Table. Default is False.
+        Table. Default is True.
     :return: Table with filtered frequency and FAF information.
     """
     if apply_release_filters:
@@ -123,9 +127,9 @@ def extract_freq_info(
     grpmax_expr = ht.grpmax
     fafmax_expr = ht.gen_anc_faf_max
     if prefix == "exomes":
-        # Note: The `grpmax` and `fafmax` structs in the exomes freq HT have two nested structs:
-        # `gnomad` and `non_ukb`. This section selects only the `gnomad` values (values across full
-        # v4 exomes release)
+        # Note: The `grpmax` and `fafmax` structs in the exomes freq HT have two nested
+        # structs: `gnomad` and `non_ukb`. This section selects only the `gnomad`
+        # values (values across full v4 exomes release)
         grpmax_expr = grpmax_expr.gnomad
         fafmax_expr = fafmax_expr.gnomad
 
@@ -136,6 +140,8 @@ def extract_freq_info(
             f"{prefix}_faf": faf["faf"],
             f"{prefix}_grpmax": grpmax_expr,
             f"{prefix}_fafmax": fafmax_expr,
+            f"{prefix}_qual_hists": ht.histograms.qual_hists,
+            f"{prefix}_raw_qual_hists": ht.histograms.raw_qual_hists,
         }
     )
     ht = ht.select_globals(
@@ -151,22 +157,115 @@ def extract_freq_info(
     return ht
 
 
+def add_all_sites_an_and_qual_hists(
+    ht: hl.Table,
+    exomes_all_sites_ht: hl.Table,
+    genomes_all_sites_ht: hl.Table,
+) -> hl.Table:
+    """
+    Add all sites AN and qual hists to the Table.
+
+    :param ht: Table with frequency and FAF information.
+    :param exomes_all_sites_ht: Table with all sites AN and qual hists for exomes.
+    :param genomes_all_sites_ht: Table with all sites AN and qual hists for genomes.
+    :return: Table with all sites AN and qual hists added.
+    """
+
+    def _get_freq_from_an_expr(
+        freq_expr: hl.expr.ArrayExpression,
+        all_sites_an_expr: hl.expr.ArrayExpression,
+        freq_meta_expr: hl.expr.ArrayExpression,
+        an_meta_expr: hl.expr.ArrayExpression,
+    ) -> hl.expr.ArrayExpression:
+        """
+        Get freq expression with all sites AN added if `freq_expr` is missing.
+
+        :param freq_expr: ArrayExpression of frequencies.
+        :param all_sites_an_expr: ArrayExpression of all sites AN.
+        :param freq_meta_expr: Frequency metadata.
+        :param an_meta_expr: AN metadata.
+        :return: ArrayExpression of frequencies with all sites AN added if `freq_expr`
+            is missing.
+        """
+        meta_map = hl.dict(hl.enumerate(an_meta_expr).map(lambda x: (x[1], x[0])))
+        all_sites_an_expr = freq_meta_expr.map(
+            lambda x: hl.struct(
+                AC=0,
+                AF=hl.or_missing(all_sites_an_expr[meta_map[x]] > 0, hl.float64(0.0)),
+                AN=hl.int32(all_sites_an_expr[meta_map[x]]),
+                homozygote_count=0,
+            )
+        )
+        return hl.coalesce(freq_expr, all_sites_an_expr)
+
+    logger.info("Adding all sites AN and qual hists information where missing...")
+    all_sites_by_data_type = {
+        "exomes": exomes_all_sites_ht[ht.locus],
+        "genomes": genomes_all_sites_ht[ht.locus],
+    }
+    all_sites_meta_by_data_type = {
+        "exomes": exomes_all_sites_ht.index_globals().strata_meta,
+        "genomes": genomes_all_sites_ht.index_globals().strata_meta,
+    }
+    ht = ht.annotate(
+        **{
+            f"{data_type}_freq": _get_freq_from_an_expr(
+                ht[f"{data_type}_freq"],
+                all_sites.AN,
+                ht.index_globals()[f"{data_type}_freq_meta"],
+                all_sites_meta_by_data_type[data_type],
+            )
+            for data_type, all_sites in all_sites_by_data_type.items()
+        },
+        **{
+            f"{data_type}_{adj}qual_hists": hl.struct(
+                **{
+                    k: hl.coalesce(
+                        ht[f"{data_type}_{adj}qual_hists"][k],
+                        all_sites.qual_hists[f"{adj}qual_hists"].get(
+                            k,
+                            hl.missing(
+                                hl.tstruct(
+                                    bin_edges=hl.tarray(hl.tfloat64),
+                                    bin_freq=hl.tarray(hl.tint64),
+                                    n_smaller=hl.tint64,
+                                    n_larger=hl.tint64,
+                                )
+                            ),
+                        ),
+                    )
+                    for k in ht[f"{data_type}_{adj}qual_hists"]
+                }
+            )
+            for data_type, all_sites in all_sites_by_data_type.items()
+            for adj in ["", "raw_"]
+        },
+    )
+
+    return ht
+
+
 def get_joint_freq_and_faf(
     genomes_ht: hl.Table,
     exomes_ht: hl.Table,
-    faf_pops_to_exclude: Set[str] = POPS_TO_REMOVE_FOR_POPMAX,
+    genomes_all_sites_ht: hl.Table,
+    exomes_all_sites_ht: hl.Table,
+    faf_pops_to_exclude: Set[str] = POPS_TO_REMOVE_FOR_POPMAX["v4"],
 ) -> hl.Table:
     """
     Get joint genomes and exomes frequency and FAF information.
 
     :param genomes_ht: Table with genomes frequency and FAF information.
     :param exomes_ht: Table with exomes frequency and FAF information.
+    :param genomes_all_sites_ht: Table with all sites AN and qual hists for genomes.
+    :param exomes_all_sites_ht: Table with all sites AN and qual hists for exomes.
     :param faf_pops_to_exclude: Set of genetic ancestry groups to exclude from the FAF
         calculation.
     :return: Table with joint genomes and exomes frequency and FAF information.
     """
     logger.info("Performing an outer join on frequency HTs...")
     ht = genomes_ht.join(exomes_ht, how="outer")
+    ht = add_all_sites_an_and_qual_hists(ht, exomes_all_sites_ht, genomes_all_sites_ht)
 
     # Merge exomes and genomes frequencies.
     freq, freq_meta, count_arrays_dict = merge_freq_arrays(
@@ -183,7 +282,23 @@ def get_joint_freq_and_faf(
         },
     )
 
-    ht = ht.annotate(joint_freq=freq)
+    ht = ht.annotate(
+        joint_freq=freq,
+        **{
+            f"joint_{hist_struct}": hl.struct(
+                **{
+                    h: merge_histograms(
+                        [
+                            ht[f"exomes_{hist_struct}"][h],
+                            ht[f"genomes_{hist_struct}"][h],
+                        ]
+                    )
+                    for h in ht[f"genomes_{hist_struct}"]
+                }
+            )
+            for hist_struct in ["qual_hists", "raw_qual_hists"]
+        },
+    )
     ht = ht.annotate_globals(
         joint_freq_meta=freq_meta,
         joint_freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
@@ -414,7 +529,7 @@ def perform_cmh_test(
 def get_combine_faf_resources(
     overwrite: bool = False,
     test: bool = False,
-    apply_release_filters: bool = False,
+    filtered: bool = True,
     include_contingency_table_test: bool = False,
     include_cochran_mantel_haenszel_test: bool = False,
 ) -> PipelineResourceCollection:
@@ -423,7 +538,8 @@ def get_combine_faf_resources(
 
     :param overwrite: Whether to overwrite existing resources. Default is False.
     :param test: Whether to use test resources. Default is False.
-    :param apply_release_filters: Whether to get the resources for the filtered Tables.
+    :param filtered: Whether to get the resources for the filtered Tables. Default is
+        True.
     :param include_contingency_table_test: Whether to include the results from
         '--perform-contingency-table-test' on the combined FAF release Table.
     :param include_cochran_mantel_haenszel_test: Whether to include the results from
@@ -441,9 +557,7 @@ def get_combine_faf_resources(
     combined_frequency = PipelineStepResourceCollection(
         "--create-combined-frequency-table",
         output_resources={
-            "comb_freq_ht": get_combined_frequency(
-                test=test, filtered=apply_release_filters
-            )
+            "comb_freq_ht": get_combined_frequency(test=test, filtered=filtered)
         },
         input_resources={
             "generate_freq.py": {"exomes_ht": get_freq()},
@@ -452,13 +566,21 @@ def get_combine_faf_resources(
             "final_filter_genomes.py": {
                 "genomes_filter_ht": final_filter(data_type="genomes")
             },
+            "all sites AN and qual hists HTs": {
+                "exomes_all_sites_ht": get_all_sites_an_and_qual_hists(
+                    data_type="exomes"
+                ),
+                "genomes_all_sites_ht": get_all_sites_an_and_qual_hists(
+                    data_type="genomes"
+                ),
+            },
         },
     )
     contingency_table_test = PipelineStepResourceCollection(
         "--perform-contingency-table-test",
         output_resources={
             "contingency_table_ht": get_freq_comparison(
-                "contingency_table_test", test=test, filtered=apply_release_filters
+                "contingency_table_test", test=test, filtered=filtered
             )
         },
         pipeline_input_steps=[combined_frequency],
@@ -466,9 +588,7 @@ def get_combine_faf_resources(
     cmh_test = PipelineStepResourceCollection(
         "--perform-cochran-mantel-haenszel-test",
         output_resources={
-            "cmh_ht": get_freq_comparison(
-                "cmh_test", test=test, filtered=apply_release_filters
-            )
+            "cmh_ht": get_freq_comparison("cmh_test", test=test, filtered=filtered)
         },
         pipeline_input_steps=[combined_frequency],
     )
@@ -481,7 +601,7 @@ def get_combine_faf_resources(
         "--finalize-combined-faf-release",
         output_resources={
             "final_combined_faf_ht": get_combined_faf_release(
-                test=test, filtered=apply_release_filters
+                test=test, filtered=filtered
             )
         },
         pipeline_input_steps=finalize_faf_input_steps,
@@ -510,9 +630,9 @@ def main(args):
     hl._set_flags(use_ssa_logs="1")
     test_gene = args.test_gene
     overwrite = args.overwrite
-    apply_release_filters = args.apply_release_filters
+    apply_release_filters = not args.skip_apply_release_filters
     pops = list(set(POPS["v3"] + POPS["v4"]))
-    faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX]
+    faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX["v4"]]
     combine_faf_resources = get_combine_faf_resources(
         overwrite,
         test_gene,
@@ -555,11 +675,16 @@ def main(args):
             exomes_ht = extract_freq_info(exomes_ht, "exomes", apply_release_filters)
             genomes_ht = extract_freq_info(genomes_ht, "genomes", apply_release_filters)
 
-            ht = get_joint_freq_and_faf(genomes_ht, exomes_ht)
+            ht = get_joint_freq_and_faf(
+                genomes_ht,
+                exomes_ht,
+                res.genomes_all_sites_ht.ht(),
+                res.exomes_all_sites_ht.ht(),
+            )
             ht = ht.annotate_globals(
                 versions=hl.struct(
-                    exomes=res.exomes_ht.default_version,
-                    genomes=res.genomes_ht.default_version,
+                    exomes=CURRENT_FREQ_VERSION["exomes"],
+                    genomes=CURRENT_FREQ_VERSION["genomes"],
                 )
             )
             ht.describe()
@@ -650,7 +775,8 @@ def main(args):
         hl.copy_log(get_logging_path("compute_combined_faf"))
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
@@ -676,9 +802,8 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        # TODO: consider flipping this to be --skip-apply-release-filters
-        "--apply-release-filters",
-        help="Whether to apply the final release filters to the Table.",
+        "--skip-apply-release-filters",
+        help="Whether to skip applying the final release filters to the Table.",
         action="store_true",
     )
     parser.add_argument(
@@ -741,6 +866,11 @@ if __name__ == "__main__":
         default=10000,
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:

@@ -549,10 +549,10 @@ def gather_tranches(
     is broken down across genomic regions for parallel processing, and done in 3 steps:
 
         - Run the recalibrator with the following additional arguments:
-         --sample-every-Nth-variant <downsample_factor> --output-model <model_file>
+          ``--sample-every-Nth-variant <downsample_factor> --output-model <model_file>``
         - Apply the resulting model to each genomic interval with, running the
           recalibrator with the same base parameters, plus:
-          --input-model <model-file> --output-tranches-for-scatter
+          ``--input-model <model-file> --output-tranches-for-scatter``
         - Collate the resulting per-interval tranches with GatherTranches
 
     :param b: Batch object to add jobs to.
@@ -1216,7 +1216,8 @@ def main(args):
             )
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-o",
@@ -1358,14 +1359,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--snp-features",
         help="Features to use in the SNP VQSR model.",
-        default=VQSR_FEATURES["snv"],
+        default=VQSR_FEATURES["exomes"]["snv"],
         type=str,
         nargs="+",
     )
     parser.add_argument(
         "--indel-features",
         help="Features to use in the indel VQSR model.",
-        default=VQSR_FEATURES["indel"],
+        default=VQSR_FEATURES["exomes"]["indel"],
         type=str,
         nargs="+",
     )
@@ -1386,6 +1387,9 @@ if __name__ == "__main__":
         action="store_true",
     )
 
-    args = parser.parse_args()
+    return parser
 
-    main(args)
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
+    main(parser.parse_args())

@@ -62,7 +62,8 @@ def main(args):
         ht.write(out_vep_path, overwrite=args.overwrite)
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--input-context-ht-vep-version",
@@ -88,6 +89,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--overwrite", help="Overwrite data if it exists.", action="store_true"
     )
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:

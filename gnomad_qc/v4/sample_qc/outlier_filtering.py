@@ -407,46 +407,67 @@ def apply_n_singleton_filter_to_r_ti_tv_singleton(
     Apply n_singleton median sample filter and update the r_ti_tv_singleton outlier filtering.
 
     This function takes a Table (`ht`) returned from one of the filtering functions:
-    `apply_stratified_filtering_method`, `apply_regressed_filtering_method`, or
-    `apply_nearest_neighbor_filtering_method`, which must include filtering information
-    for 'n_singleton' or 'n_singleton_residuals'. Median values for 'n_singleton' or
-    'n_singleton_residuals' are extracted from 'qc_metrics_stats' in `ht`.
-    'qc_metrics_stats' takes different forms depending on `filtering_method` and the
-    use of 'strata' (defined as a global on `ht` if used) in filtering (described
-    below). Then the `sample_qc_ht` is filtered to only samples with 'n_singleton'
-    (or 'n_singleton_residuals') > the median in 'qc_metrics_stats' that is relevant to
-    the sample. This filtered `sample_qc_ht` is rerun through the filtering function
-    for `filtering_method` using only 'r_ti_tv_singleton', and `ht` is updated with new
+
+        - `apply_stratified_filtering_method`
+        - `apply_regressed_filtering_method`
+        - `apply_nearest_neighbor_filtering_method`
+
+    which must include filtering information for 'n_singleton' or
+    'n_singleton_residuals'.
+
+    Median values for 'n_singleton' or 'n_singleton_residuals' are extracted from
+    'qc_metrics_stats' in `ht`. 'qc_metrics_stats' takes different forms depending on
+    `filtering_method` and the use of 'strata' (defined as a global on `ht` if used) in
+    filtering (described below).
+
+    Then the `sample_qc_ht` is filtered to only samples with 'n_singleton' (or
+    'n_singleton_residuals') > the median in 'qc_metrics_stats' that is relevant to the
+    sample. This filtered `sample_qc_ht` is rerun through the filtering function for
+    `filtering_method` using only 'r_ti_tv_singleton', and `ht` is updated with new
     global and row values relevant to 'r_ti_tv_singleton' filtering.
 
     If `filtering_method` is 'stratified':
+
         - 'strata' is defined as a global annotation on `ht` in the form:
-          tuple<str, ...> where the number of string elements in the tuple depends on
-          the number of strata.
+          ``tuple<str, ...>`` where the number of string elements in the tuple depends
+          on the number of strata.
         - 'qc_metrics_stats' is defined as a global annotation on `ht` in the form:
-          dict<strata, struct {
-            metric: struct {
-              'median': float64, 'mad': float64, 'lower': float64, 'upper': float64
-            }
-          }>
+
+        .. code-block::
+
+            dict<strata, struct {
+                metric: struct {
+                    'median': float64, 'mad': float64, 'lower': float64, 'upper': float64
+                }
+            }>
+
     If `filtering_method` is 'regressed':
-        - 'qc_metrics_stats' is defined as a global annotation on `ht.
+
+        - 'qc_metrics_stats' is defined as a global annotation on `ht`.
         - If platform stratification was performed, the 'strata' global annotation is
-          tuple<'platform'>, and 'qc_metrics_stats' is in the same form as described
+          ``tuple<'platform'>``, and 'qc_metrics_stats' is in the same form as described
           for 'stratified', except metric -> metric_residual.
         - If there was no platform stratification, 'qc_metrics_stats' is in the form:
-          struct {
-            metric_residual: struct {
-              'median': float64, 'mad': float64, 'lower': float64, 'upper': float64
+
+        .. code-block::
+
+            struct {
+                metric_residual: struct {
+                    'median': float64, 'mad': float64, 'lower': float64, 'upper': float64
+                }
             }
-          }
+
     If `filtering_method` is 'nearest_neighbor':
+
         - 'qc_metrics_stats' is defined as a row annotation on `ht` in the form:
-          struct {
-            metric: struct {
-              'median': float64, 'mad': float64, 'lower': float64, 'upper': float64
+
+        .. code-block::
+
+            struct {
+                metric: struct {
+                'median': float64, 'mad': float64, 'lower': float64, 'upper': float64
+                }
             }
-          }
 
     :param ht: Input filtering Table with n_singleton or n_singleton_residuals medians
         computed.
@@ -604,9 +625,10 @@ def create_finalized_outlier_filter_ht(
     If `finalized_outlier_hts` includes multiple Tables, the reformatted Table
     annotations are grouped under top level annotations specified by the keys of
     `finalized_outlier_hts`. The following annotations are also added:
-        - `qc_metrics_fail` - includes the combined (using `ensemble_operator`) outlier
+
+        - `qc_metrics_fail`: includes the combined (using `ensemble_operator`) outlier
           fail boolean for each metric.
-        - `qc_metrics_filters` - The combined set of QC metrics that a sample is an
+        - `qc_metrics_filters`: The combined set of QC metrics that a sample is an
           outlier for using `ensemble_operator` for the combination ('and' uses set
           intersection, 'or' uses set union).
 
@@ -620,7 +642,7 @@ def create_finalized_outlier_filter_ht(
         filtering.
     :param ensemble_operator: Logical operator to use for combining filtering methods
         when multiple Tables are in `finalized_outlier_hts`. Options are ['or', 'and'].
-         Default is 'and'.
+        Default is 'and'.
     :return: Finalized outlier filtering Table.
     """
     if ensemble_operator == "and":
@@ -1085,7 +1107,8 @@ def main(args):
         ht.write(res.finalized_ht.path, overwrite=overwrite)
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-o",
@@ -1373,6 +1396,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:

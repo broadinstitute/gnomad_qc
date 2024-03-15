@@ -1,24 +1,27 @@
-r"""
+"""
 This is a batch script which adds VRS IDs to a Hail Table by creating sharded VCFs, running a vrs-annotation script on each shard, and merging the results into the original Hail Table.
 
 Advise to run from a backend (eg. hailctl batch submit) to avoid losing progress
  in case of disconnection.
 
-Example command to use `hailctl batch submit`:
-hailctl batch submit \
---image-name us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
-gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch.py \
--- \
---billing-project gnomad-annot \
---working-bucket gnomad-tmp-4day \
---image us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
---header-path gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt \
---run-vrs \
---annotate-original \
---overwrite \
---backend-mode batch \
---data-type exomes \
---test
+Example command to use:
+
+    .. code-block:: bash
+
+        hailctl batch submit \
+            --image-name us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
+            gnomad_qc/gnomad_qc/v4/annotations/vrs_annotation_batch.py \
+            -- \
+            --billing-project gnomad-annot \
+            --working-bucket gnomad-tmp-4day \
+            --image us-central1-docker.pkg.dev/broad-mpg-gnomad/images/vrs084 \
+            --header-path gs://gnomad/v4.0/annotations/exomes/vrs-header-fix.txt \
+            --run-vrs \
+            --annotate-original \
+            --overwrite \
+            --backend-mode batch \
+            --data-type exomes \
+            --test
 """
 
 import argparse
@@ -114,15 +117,15 @@ def init_job_with_gcloud(
     Create job and initialize glcoud authentication and gsutil commands.
 
     Wraps Ben Weisburd's init_job (https://github.com/broadinstitute/tgg_methods/blob/master/tgg/batch/batch_utils.py#L160) with additional gcloud steps.
-    Parameters passed through to init_job:
-        :param batch: Batch object.
-        :param name: Job label which will show up in the Batch web UI.
-        :param image: Docker image name (eg. "us-central1-docker.pkg.dev/broad-mpg-gnomad/ga4gh-vrs/marten_0615_vrs0_8_4").
-        :param cpu: Number of CPUs (between 0.25 to 16).
-        :param memory: Amount of RAM in Gb (eg. 3.75).
-        :param disk_size: Amount of disk in Gb (eg. 50).
-        :param mount: Name of GCP Bucket to mount using cloudfuse.
-        :return: New job object.
+
+    :param batch: Batch object.
+    :param name: Job label which will show up in the Batch web UI.
+    :param image: Docker image name (eg. "us-central1-docker.pkg.dev/broad-mpg-gnomad/ga4gh-vrs/marten_0615_vrs0_8_4").
+    :param cpu: Number of CPUs (between 0.25 to 16).
+    :param memory: Amount of RAM in Gb (eg. 3.75).
+    :param disk_size: Amount of disk in Gb (eg. 50).
+    :param mount: Name of GCP Bucket to mount using cloudfuse.
+    :return: New job object.
     """
     job = init_job(batch, name, image, cpu, memory, disk_size)
     # Retry gcloud auth and gsutil commands to avoid transient failures
@@ -390,7 +393,8 @@ def main(args):
         logger.info(f"Done! Final table written to {output_vrs_anno_ori_path}.")
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--billing-project", help="Project to bill.", type=str)
@@ -530,6 +534,9 @@ if __name__ == "__main__":
         type=str,
     )
 
-    args = parser.parse_args()
+    return parser
 
-    main(args)
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
+    main(parser.parse_args())

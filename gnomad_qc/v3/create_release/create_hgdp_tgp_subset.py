@@ -52,7 +52,7 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("create_subset")
 logger.setLevel(logging.INFO)
 
-AS_FIELDS.remove("InbreedingCoeff")
+AS_FIELDS = [x for x in AS_FIELDS if x != "InbreedingCoeff"]
 SAMPLE_QC_METRICS = [
     "n_deletion",
     "n_het",
