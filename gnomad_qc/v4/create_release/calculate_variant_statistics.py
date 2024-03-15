@@ -230,6 +230,7 @@ def compute_agg_sample_stats(
             }
         )
         for strat in ht.row_value
+        if isinstance(ht[strat], hl.expr.StructExpression)
     }
 
     if by_ancestry:
