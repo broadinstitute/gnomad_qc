@@ -213,9 +213,6 @@ def compute_agg_sample_stats(
             "If `by_ancestry` is True, a Table containing sample metadata is required."
         )
 
-    if by_ancestry:
-        ht = ht.annotate(gen_anc=meta_ht[ht.s].population_inference.pop)
-
     agg_expr = {
         strat: hl.struct(
             **{
@@ -227,22 +224,37 @@ def compute_agg_sample_stats(
                 )
                 for metric in ht[strat]
                 if isinstance(ht[strat][metric], hl.expr.NumericExpression)
-            }
+            },
         )
         for strat in ht.row_value
         if isinstance(ht[strat], hl.expr.StructExpression)
     }
 
+    stats_struct = ht.aggregate(agg_expr)
+
     if by_ancestry:
-        agg_expr = hl.struct(
-            all_samples=agg_expr,
-            # Remove missing gen_anc from stratified stats.
-            stratified_by_gen_anc=hl.agg.filter(
-                hl.is_defined(ht.gen_anc), hl.agg.group_by(ht.gen_anc, agg_expr)
+        # Performing aggregation for all samples and by genetic ancestry.
+        # Note: This is performing multiple aggregations, rather than a single group_by
+        # aggregation to avoid a Class too large error.
+        gen_anc_expr = meta_ht.population_inference.pop
+        gen_ancs = meta_ht.aggregate(
+            hl.agg.filter(
+                hl.is_defined(gen_anc_expr), hl.agg.collect_as_set(gen_anc_expr)
+            )
+        )
+        gen_anc_expr = meta_ht[ht.s].population_inference.pop
+
+        stats_struct = hl.struct(
+            all_samples=stats_struct,
+            stratified_by_ancestry=hl.struct(
+                **{
+                    anc: ht.aggregate(hl.agg.filter(gen_anc_expr == anc, agg_expr))
+                    for anc in gen_ancs
+                }
             ),
         )
 
-    return ht.aggregate(agg_expr)
+    return stats_struct
 
 
 def main(args):
