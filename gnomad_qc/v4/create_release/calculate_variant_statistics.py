@@ -230,7 +230,7 @@ def compute_agg_sample_stats(
         if isinstance(ht[strat], hl.expr.StructExpression)
     }
 
-    stats_struct = ht.aggregate(agg_expr)
+    stats_struct = ht.aggregate(agg_expr, _localize=False)
 
     if by_ancestry:
         # Performing aggregation for all samples and by genetic ancestry.
@@ -248,7 +248,9 @@ def compute_agg_sample_stats(
             all_samples=stats_struct,
             stratified_by_ancestry=hl.struct(
                 **{
-                    anc: ht.aggregate(hl.agg.filter(gen_anc_expr == anc, agg_expr))
+                    anc: ht.aggregate(
+                        hl.agg.filter(gen_anc_expr == anc, agg_expr), _localize=False
+                    )
                     for anc in gen_ancs
                 }
             ),
@@ -301,8 +303,8 @@ def main(args):
             meta_ht=meta(data_type=data_type).ht(),
             by_ancestry=args.by_ancestry,
         )
-        logger.info("Aggregate sample statistics: %s", sample_qc_agg_stats)
         ht = ht.annotate_globals(sample_qc_agg_stats=sample_qc_agg_stats)
+        logger.info("Aggregate sample statistics: %s", hl.eval(ht.sample_qc_agg_stats))
 
     ht.write(
         get_per_sample_counts(
