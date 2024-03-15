@@ -236,11 +236,9 @@ def compute_agg_sample_stats(
     if by_ancestry:
         agg_expr = hl.struct(
             all_samples=agg_expr,
-            stratified_by_gen_anc=hl.struct(
-                # Remove missing gen_anc from stratified stats.
-                hl.agg.filter(
-                    hl.is_defined(ht.gen_anc), hl.agg.group_by(ht.gen_anc, agg_expr)
-                )
+            # Remove missing gen_anc from stratified stats.
+            stratified_by_gen_anc=hl.agg.filter(
+                hl.is_defined(ht.gen_anc), hl.agg.group_by(ht.gen_anc, agg_expr)
             ),
         )
 
