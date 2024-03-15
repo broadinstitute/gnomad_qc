@@ -40,7 +40,7 @@ from gnomad.utils.vep import (
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources import meta
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, get_gnomad_v4_vds
 from gnomad_qc.v4.resources.release import get_per_sample_counts, release_sites
 from gnomad_qc.v4.resources.temp_hail_methods import (
     vmt_sample_qc,
@@ -147,7 +147,7 @@ def create_per_sample_counts_ht(
     annotation_ht = annotation_ht.select(*keep_annotations).checkpoint(
         hl.utils.new_temp_file("annotation_ht", "ht")
     )
-    mt = mt.annotate_rows(annotation_ht[mt.row_key])
+    mt = mt.annotate_rows(**annotation_ht[mt.row_key])
 
     filter_expr = {"all_variants": True}
 
@@ -226,9 +226,10 @@ def compute_agg_sample_stats(
                     ),
                 )
                 for metric in ht[strat]
+                if isinstance(ht[strat][metric], hl.expr.NumericExpression)
             }
         )
-        for strat in ht.row
+        for strat in ht.row_value
     }
 
     if by_ancestry:
@@ -261,13 +262,14 @@ def main(args):
 
     if data_type == "exomes":
         logger.info("Calculating per-sample variant statistics for exomes...")
-        mt = get_gnomad_v4_vds(test=test, release_only=True, split=True).variant_data
+        mt = get_gnomad_v4_vds(
+            test=test, release_only=True, split=True, chrom="chr22" if test else None
+        ).variant_data
     else:
         logger.info("Calculating per-sample variant statistics for genomes...")
-
-    if test:
-        logger.info("Test: filtering to variants on chr22...")
-        mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr22:1-5000000")])
+        mt = get_gnomad_v4_genomes_vds(
+            test=test, release_only=True, split=True, chrom="chr22" if test else None
+        ).variant_data
 
     ht = create_per_sample_counts_ht(
         mt,
