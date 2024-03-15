@@ -214,18 +214,16 @@ def compute_agg_sample_stats(
         )
 
     agg_expr = {
-        strat: hl.struct(
-            **{
-                metric: hl.struct(
-                    mean=hl.agg.mean(ht[strat][metric]),
-                    quantiles=hl.agg.approx_quantiles(
-                        ht[strat][metric], [0.0, 0.25, 0.5, 0.75, 1.0]
-                    ),
-                )
-                for metric in ht[strat]
-                if isinstance(ht[strat][metric], hl.expr.NumericExpression)
-            },
-        )
+        strat: {
+            metric: hl.struct(
+                mean=hl.agg.mean(ht[strat][metric]),
+                quantiles=hl.agg.approx_quantiles(
+                    ht[strat][metric], [0.0, 0.25, 0.5, 0.75, 1.0]
+                ),
+            )
+            for metric in ht[strat]
+            if isinstance(ht[strat][metric], hl.expr.NumericExpression)
+        }
         for strat in ht.row_value
         if isinstance(ht[strat], hl.expr.StructExpression)
     }
@@ -272,7 +270,7 @@ def main(args):
     data_type = args.data_type
     test = args.test
     overwrite = args.overwrite
-
+    """
     if data_type == "exomes":
         logger.info("Calculating per-sample variant statistics for exomes...")
         mt = get_gnomad_v4_vds(
@@ -295,7 +293,10 @@ def main(args):
         vep_canonical=args.vep_canonical,
         vep_mane=args.vep_mane,
     ).checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
-
+    """
+    ht = hl.read_table(
+        "gs://gnomad-tmp-30day/per_sample_counts-MvGu0S1ZZyrJq0vPbkJZJP.ht"
+    )
     if args.add_aggregate_sample_stats_global:
         logger.info("Computing aggregate sample statistics...")
         sample_qc_agg_stats = compute_agg_sample_stats(
@@ -304,14 +305,16 @@ def main(args):
             by_ancestry=args.by_ancestry,
         )
         ht = ht.annotate_globals(sample_qc_agg_stats=sample_qc_agg_stats)
-        logger.info("Aggregate sample statistics: %s", hl.eval(ht.sample_qc_agg_stats))
 
-    ht.write(
+    ht = ht.checkpoint(
         get_per_sample_counts(
             test=test, data_type=data_type, suffix=args.custom_suffix
         ).path,
         overwrite=overwrite,
     )
+
+    if args.add_aggregate_sample_stats_global:
+        logger.info("Aggregate sample statistics: %s", hl.eval(ht.sample_qc_agg_stats))
 
 
 if __name__ == "__main__":
