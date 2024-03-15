@@ -621,7 +621,7 @@ def get_combine_faf_resources(
 
     if stats_combine_all_chr:
         cmh_resources["input_resources"] = {
-            "--perform-cochran-mantel-haenszel-test --stats-chr (all chr)": {
+            "--perform-cochran-mantel-haenszel-test --stats-chr (any chr)": {
                 f"{c}_cmh_ht": TableResource(get_checkpoint_path(f"cmh_{c}"))
                 for c in CHR_LIST
             }
@@ -807,6 +807,7 @@ def main(args):
                 n_split = int(n_part / 10)
                 hts = []
                 for i in range(0, n_part, n_split):
+                    # Min to ensure we do not try to read more partitions than exist in the last loop iteration 
                     logger.info(
                         f"Processing partitions {i} to {min(i + n_split, n_part)}"
                     )
@@ -931,6 +932,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--stats-chr",
         help="Chromosome to compute stats on.",
         type=str,
+        choices=CHR_LIST,
     )
     parser.add_argument(
         "--stats-combine-all-chr",
