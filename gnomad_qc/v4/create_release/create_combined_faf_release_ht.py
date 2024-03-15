@@ -133,7 +133,7 @@ def extract_freq_info(
     if prefix == "exomes":
         # Note: The `grpmax` and `fafmax` structs in the exomes freq HT have two nested
         # structs: `gnomad` and `non_ukb`. This section selects only the `gnomad`
-        # values (values across full v4 exomes release)
+        # values (values across full v4 exomes release).
         grpmax_expr = grpmax_expr.gnomad
         fafmax_expr = fafmax_expr.gnomad
 
@@ -312,7 +312,7 @@ def get_joint_freq_and_faf(
         joint_freq_meta=freq_meta,
         joint_freq_index_dict=make_freq_index_dict_from_meta(hl.literal(freq_meta)),
     )
-    # NOTE: This checkpoint prevents a Class Too Large error in hail 0.2.122
+    # NOTE: This checkpoint prevents a Class Too Large error in hail 0.2.122.
     ht = ht.checkpoint(hl.utils.new_temp_file("combine_faf", "ht"))
 
     logger.info("Setting Y metrics to NA for XX groups...")
@@ -807,7 +807,8 @@ def main(args):
                 n_split = int(n_part / 10)
                 hts = []
                 for i in range(0, n_part, n_split):
-                    # Min to ensure we do not try to read more partitions than exist in the last loop iteration 
+                    # Min to ensure we do not try to read more partitions than exist in
+                    # the last loop iteration.
                     logger.info(
                         f"Processing partitions {i} to {min(i + n_split, n_part)}"
                     )
