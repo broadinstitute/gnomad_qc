@@ -124,7 +124,7 @@ def create_per_sample_counts_ht(
     :return: Table containing per-sample variant counts.
     """
     logger.info("Filtering input MT to variants in the supplied annotation HT...")
-    mt = mt.semi_join_rows(annotation_ht.rows())
+    mt = mt.semi_join_rows(annotation_ht)
 
     # Add extra Allele Count and Allele Type annotations to variant MatrixTable,
     # according to Hail standards, to help their computation.
@@ -144,7 +144,10 @@ def create_per_sample_counts_ht(
         keep_annotations.extend(["most_severe_csq", "lof"])
 
     # Annotate the MT with the needed annotations.
-    mt = mt.annotate_rows(**annotation_ht.select(*keep_annotations)[mt.row_key])
+    annotation_ht = annotation_ht.select(*keep_annotations).checkpoint(
+        hl.utils.new_temp_file("annotation_ht", "ht")
+    )
+    mt = mt.annotate_rows(annotation_ht[mt.row_key])
 
     filter_expr = {"all_variants": True}
 
@@ -170,21 +173,25 @@ def create_per_sample_counts_ht(
         filter_expr["synonymous"] = mt.most_severe_csq == "synonymous_variant"
 
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
-    return mt.select_cols(
-        **{
-            ann: hl.agg.filter(
-                expr,
-                vmt_sample_qc(
-                    global_gt=mt.GT,
-                    gq=mt.GQ,
-                    variant_ac=mt.variant_ac,
-                    variant_atypes=mt.variant_atypes,
-                    dp=mt.DP,
-                ),
-            )
-            for ann, expr in filter_expr.items()
-        }
+    ht = mt.select_cols(
+        _sample_qc=hl.struct(
+            **{
+                ann: hl.agg.filter(
+                    expr,
+                    vmt_sample_qc(
+                        global_gt=mt.GT,
+                        gq=mt.GQ,
+                        variant_ac=mt.variant_ac,
+                        variant_atypes=mt.variant_atypes,
+                        dp=mt.DP,
+                    ),
+                )
+                for ann, expr in filter_expr.items()
+            }
+        )
     ).cols()
+
+    return ht.select(**ht._sample_qc)
 
 
 def compute_agg_sample_stats(
@@ -252,17 +259,19 @@ def main(args):
     test = args.test
     overwrite = args.overwrite
 
-    mt = get_gnomad_v4_vds(test=test, release_only=True, split=True).variant_data
-    ht = release_sites(data_type=data_type).ht()
+    if data_type == "exomes":
+        logger.info("Calculating per-sample variant statistics for exomes...")
+        mt = get_gnomad_v4_vds(test=test, release_only=True, split=True).variant_data
+    else:
+        logger.info("Calculating per-sample variant statistics for genomes...")
 
     if test:
         logger.info("Test: filtering to variants on chr22...")
-        ht = hl.filter_intervals(ht, [hl.parse_locus_interval("chr22")])
+        mt = hl.filter_intervals(mt, [hl.parse_locus_interval("chr22:1-5000000")])
 
-    logger.info("Creating per-sample counts Table...")
     ht = create_per_sample_counts_ht(
         mt,
-        ht,
+        release_sites(data_type=data_type).ht(),
         pass_filters=args.pass_filters,
         ukb_capture=args.filter_ukb_capture_intervals,
         broad_capture=args.filter_broad_capture_intervals,
@@ -291,6 +300,8 @@ def main(args):
 
 
 if __name__ == "__main__":
+    # TODO: Could make some of these arguments --skip-<filter> instead of --<filter> so
+    #  by default they all run.
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-o",
