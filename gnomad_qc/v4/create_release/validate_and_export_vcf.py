@@ -1,4 +1,4 @@
-# noqa: D100
+"""Script to validate and export gnomAD VCFs."""
 
 import argparse
 import logging
@@ -141,13 +141,14 @@ SAMPLE_SUM_SETS_AND_POPS = {
     "genomes": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
 }
 
-# Remove unnecessary pop names from FAF_POPS dict
-FAF_POPS = {pop: POP_NAMES[pop] for pop in FAF_POPS}
-
 # Row annotaions and their associated global annotations for length comparison
 LEN_COMP_GLOBAL_ROWS = {
     "freq": ["freq_meta", "freq_index_dict", "freq_meta_sample_count"],
     "faf": ["faf_meta", "faf_index_dict"],
+}
+
+# Joint row annotations and their associated global annotations for length comparison
+LEN_COMP_JOINT_GLOBAL_ROWS = {
     "joint_freq": [
         "joint_freq_meta",
         "joint_freq_index_dict",
@@ -245,7 +246,7 @@ def filter_to_test(ht: hl.Table, num_partitions: int = 2) -> hl.Table:
     """
     Filter Table to `num_partitions` partitions on chr20, chrX, and chrY for testing.
 
-    :param t: Input Table to filter.
+    :param ht: Input Table to filter.
     :param num_partitions: Number of partitions to grab from each chromosome.
     :return: Input Table filtered to `num_partitions` on chr20, chrX, and chrY.
     """
@@ -270,17 +271,22 @@ def unfurl_nested_annotations(
     ht: hl.Table,
     entries_to_remove: Set[str] = None,
     data_type: str = "exomes",
+    joint_included: bool = False,
 ) -> [hl.expr.StructExpression, Set[str]]:
     """
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays.
 
-    The values of the returned dictionary are Hail Expressions describing how to access the corresponding values.
+    The values of the returned dictionary are Hail Expressions describing how to access
+    the corresponding values.
 
     :param ht: Table containing the nested variant annotation arrays to be unfurled.
     :param entries_to_remove: Optional Set of frequency entries to remove for vcf_export.
-    :param data_type: Data type to unfurl nested annotations for. One of "exomes" or "genomes".
-    :return: StructExpression containing variant annotations and their corresponding expressions and updated entries and set of frequency entries to remove
-        to remove from the VCF.
+    :param data_type: Data type to unfurl nested annotations for. One of "exomes" or
+        "genomes".
+    :param joint_included: Whether joint frequency data is included in the HT.
+    :return: StructExpression containing variant annotations and their corresponding
+        expressions and updated entries and set of frequency entries to remove from the
+        VCF.
     """
     expr_dict = {}
 
@@ -295,18 +301,18 @@ def unfurl_nested_annotations(
             for f in ht.freq[0].keys()
         }
     )
-
-    logger.info("Unfurling joint freq data...")
-    joint_freq_idx = hl.eval(ht.joint_freq_index_dict)
-    expr_dict.update(
-        {
-            f"{f if f != 'homozygote_count' else 'nhomalt'}_joint_{k}": ht.joint_freq[
-                i
-            ][f]
-            for k, i in joint_freq_idx.items()
-            for f in ht.joint_freq[0].keys()
-        }
-    )
+    if joint_included:
+        logger.info("Unfurling joint freq data...")
+        joint_freq_idx = hl.eval(ht.joint_freq_index_dict)
+        expr_dict.update(
+            {
+                f"{f if f != 'homozygote_count' else 'nhomalt'}_joint_{k}": (
+                    ht.joint_freq[i][f]
+                )
+                for k, i in joint_freq_idx.items()
+                for f in ht.joint_freq[0].keys()
+            }
+        )
 
     # This creates fields like grpmax, AC_grpmax_non_ukb...
     logger.info("Adding grpmax data...")
@@ -338,19 +344,19 @@ def unfurl_nested_annotations(
         )
     expr_dict.update(grpmax_dict)
 
-    # Create the fields
-    logger.info("Adding joint grpmax data...")
-    joint_grpmax_idx = ht.joint_grpmax
-    joint_grpmax_dict = {"grpmax_joint": joint_grpmax_idx.gen_anc}
-    joint_grpmax_dict.update(
-        {
-            f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax_joint": (
-                joint_grpmax_idx[f]
-            )
-            for f in [f for f in joint_grpmax_idx._fields if f != "gen_anc"]
-        }
-    )
-    expr_dict.update(joint_grpmax_dict)
+    if joint_included:
+        logger.info("Adding joint grpmax data...")
+        joint_grpmax_idx = ht.joint_grpmax
+        joint_grpmax_dict = {"grpmax_joint": joint_grpmax_idx.gen_anc}
+        joint_grpmax_dict.update(
+            {
+                f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax_joint": (
+                    joint_grpmax_idx[f]
+                )
+                for f in [f for f in joint_grpmax_idx._fields if f != "gen_anc"]
+            }
+        )
+        expr_dict.update(joint_grpmax_dict)
 
     logger.info("Unfurling faf data...")
     faf_idx = hl.eval(ht.faf_index_dict)
@@ -370,25 +376,26 @@ def unfurl_nested_annotations(
         fafmax_dict = {f"fafmax_{f}": fafmax_idx[f] for f in fafmax_idx.keys()}
     expr_dict.update(fafmax_dict)
 
-    logger.info("Unfurling joint faf data...")
-    joint_faf_idx = hl.eval(ht.joint_faf_index_dict)
-    expr_dict.update(
-        {
-            f"{f}_joint_{k}": ht.joint_faf[i][f]
-            for f in ht.joint_faf[0].keys()
-            for k, i in joint_faf_idx.items()
-        }
-    )
-
-    logger.info("Unfurling joint fafmax data...")
-    joint_fafmax_idx = ht.joint_fafmax
-    joint_fafmax_dict = {
-        f"fafmax_{f if f != 'joint_fafmax_data_type' else 'data_type'}_joint": (
-            joint_fafmax_idx[f]
+    if joint_included:
+        logger.info("Unfurling joint faf data...")
+        joint_faf_idx = hl.eval(ht.joint_faf_index_dict)
+        expr_dict.update(
+            {
+                f"{f}_joint_{k}": ht.joint_faf[i][f]
+                for f in ht.joint_faf[0].keys()
+                for k, i in joint_faf_idx.items()
+            }
         )
-        for f in joint_fafmax_idx.keys()
-    }
-    expr_dict.update(joint_fafmax_dict)
+
+        logger.info("Unfurling joint fafmax data...")
+        joint_fafmax_idx = ht.joint_fafmax
+        joint_fafmax_dict = {
+            f"fafmax_{f if f != 'joint_fafmax_data_type' else 'data_type'}_joint": (
+                joint_fafmax_idx[f]
+            )
+            for f in joint_fafmax_idx.keys()
+        }
+        expr_dict.update(joint_fafmax_dict)
 
     logger.info("Unfurling age hists...")
     hist_idx = ht.histograms.age_hists
@@ -420,7 +427,6 @@ def make_info_expr(
     :param data_type: Data type to make info expression for. One of "exomes" or
         "genomes". Default is "exomes".
     :return: Dictionary containing Hail expressions for relevant INFO annotations.
-    :rtype: Dict[str, hl.expr.Expression]
     """
     vcf_info_dict = {}
     # Add site-level annotations and AS annotations to vcf_info_dict
@@ -483,6 +489,7 @@ def prepare_ht_for_validation(
     data_type: str = "exomes",
     freq_entries_to_remove: Optional[List[str]] = None,
     vcf_info_reorder: Optional[List[str]] = None,
+    joint_included: bool = False,
 ) -> hl.Table:
     """
     Prepare HT for validity checks and export.
@@ -492,13 +499,17 @@ def prepare_ht_for_validation(
         Default is "exomes".
     :param freq_entries_to_remove: List of entries to remove from freq
     :param vcf_info_reorder: Order of VCF INFO fields
+    :param joint_included: Whether joint frequency data is included in the HT.
     :return: Hail Table prepared for validity checks and export
     """
     logger.info(
         "Unfurling nested gnomAD frequency annotations and add to INFO field..."
     )
     info_struct, freq_entries_to_remove = unfurl_nested_annotations(
-        ht, entries_to_remove=freq_entries_to_remove, data_type=data_type
+        ht,
+        entries_to_remove=freq_entries_to_remove,
+        data_type=data_type,
+        joint_included=joint_included,
     )
 
     logger.info("Constructing INFO field")
@@ -555,8 +566,9 @@ def prepare_ht_for_validation(
 def populate_subset_info_dict(
     subset: str,
     description_text: str,
+    data_type: str = "exomes",
     pops: Dict[str, str] = POPS,
-    faf_pops: Dict[str, str] = FAF_POPS,
+    faf_pops: Dict[str, List[str]] = FAF_POPS,
     sexes: List[str] = SEXES,
     label_delimiter: str = "_",
 ) -> Dict[str, Dict[str, str]]:
@@ -564,18 +576,30 @@ def populate_subset_info_dict(
     Call `make_info_dict` to populate INFO dictionary for the requested `subset`.
 
     Creates:
-        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic ancestry group, sex both for adj and raw data
-        - INFO fields for filtering allele frequency (faf) annotations
+        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic
+            ancestry group, sex both for adj and raw data.
+        - INFO fields for filtering allele frequency (faf) annotations.
 
-    :param subset: Sample subset in dataset. "" is used as a placeholder for the full dataset.
-    :param description_text: Text describing the sample subset that should be added to the INFO description.
-    :param pops: Dict of sample global genetic ancestry names for the gnomAD data type. Default is POPS.
-    :param faf_pops: Dict with faf genetic ancestry names (keys) and descriptions (values).  Default is FAF_POPS.
+    :param subset: Sample subset in dataset. "" is used as a placeholder for the full
+        dataset.
+    :param description_text: Text describing the sample subset that should be added to
+        the INFO description.
+    :param data_type: One of "exomes" or "genomes". Default is "exomes".
+    :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
+        Default is POPS.
+    :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
+        names (values). Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
-    :param label_delimiter: String to use as delimiter when making group label combinations. Default is '_'.
+    :param label_delimiter: String to use as delimiter when making group label
+        combinations. Default is '_'.
     :return: Dictionary containing Subset specific INFO header fields.
     """
     vcf_info_dict = {}
+    # Remove unnecessary pop names from FAF_POPS dict depending on data type
+    # and version of FAF_POPS.
+    faf_pops_version = "v4" if data_type == "exomes" else "v3"
+    faf_pops = {pop: POP_NAMES[pop] for pop in faf_pops[faf_pops_version]}
+
     # Add FAF fields to dict.
     faf_label_groups = create_label_groups(
         pops=faf_pops, sexes=sexes, all_groups=["adj"]
@@ -639,7 +663,7 @@ def populate_info_dict(
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS,
     pops: Dict[str, str] = POPS,
-    faf_pops: Dict[str, str] = FAF_POPS,
+    faf_pops: Dict[str, List[str]] = FAF_POPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
     vrs_fields_dict: Dict[str, Dict[str, str]] = VRS_FIELDS_DICT,
@@ -652,26 +676,32 @@ def populate_info_dict(
     Used during VCF export.
 
     Creates:
-        - INFO fields for age histograms (bin freq, n_smaller, and n_larger for heterozygous and homozygous variant carriers)
-        - INFO fields for grpmax AC, AN, AF, nhomalt, and grpmax genetic ancestry group
-        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic ancestry group, sex both for adj and raw data
-        - INFO fields for filtering allele frequency (faf) annotations
-        - INFO fields for variant histograms (hist_bin_freq for each histogram and hist_n_larger for DP histograms)
+        - INFO fields for age histograms (bin freq, n_smaller, and n_larger for
+          heterozygous and homozygous variant carriers).
+        - INFO fields for grpmax AC, AN, AF, nhomalt, and grpmax genetic ancestry group.
+        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic
+          ancestry group, sex both for adj and raw data.
+        - INFO fields for filtering allele frequency (faf) annotations.
+        - INFO fields for variant histograms (hist_bin_freq for each histogram and
+          hist_n_larger for DP histograms).
 
     :param info_fields: List of info fields to add to the info dict. Default is None.
-    :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
-    :param age_hist_distribution: Pipe-delimited string of overall age histogram bin frequency.
+    :param bin_edges: Dictionary of variant annotation histograms and their associated
+        bin edges.
+    :param age_hist_distribution: Pipe-delimited string of overall age histogram bin
+        frequency.
     :param info_dict: INFO dict to be populated.
     :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
-    :param subset_pops: Dict of sample global genetic ancestry group names to use for all subsets in `subset_list` unless the subset
-        is 'gnomad', in that case `gnomad_pops` is used. Default is POPS.
-    :param gnomad_pops: Dict of sample global genetic ancestry group names for gnomAD data type. Default is POPS.
-    :param faf_pops: Dict with faf genentic ancestry group names (keys) and descriptions (values).  Default is FAF_POPS.
+    :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
+    :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
+        names (values). Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param in_silico_dict: Dictionary of in silico predictor score descriptions.
     :param vrs_fields_dict: Dictionary with VRS annotations.
-    :param label_delimiter: String to use as delimiter when making group label combinations.
-    :param data_type: Data type to populate info dict for. One of "exomes" or "genomes". Default is "exomes".
+    :param label_delimiter: String to use as delimiter when making group label
+        combinations.
+    :param data_type: Data type to populate info dict for. One of "exomes" or
+        "genomes". Default is "exomes".
     :return: Updated INFO dictionary for VCF export.
     """
     # Get existing info fields from predefined info_dict, e.g. `FS`,
@@ -694,6 +724,7 @@ def populate_info_dict(
             populate_subset_info_dict(
                 subset=subset,
                 description_text=description_text,
+                data_type=data_type,
                 pops=subset_pops,
                 faf_pops=faf_pops,
                 sexes=sexes,
@@ -736,19 +767,24 @@ def prepare_vcf_header_dict(
     pops: Dict[str, str],
     format_dict: Dict[str, Dict[str, str]] = FORMAT_DICT,
     data_type: str = "exomes",
+    joint_included: bool = False,
 ) -> Dict[str, Dict[str, str]]:
     """
     Prepare VCF header dictionary.
 
     :param ht: Input Table
     :param validated_ht: Validated HT with unfurled info fields.
-    :param bin_edges: Dictionary of variant annotation histograms and their associated bin edges.
-    :param age_hist_distribution: Pipe-delimited string of overal age histogram bin frequency.
+    :param bin_edges: Dictionary of variant annotation histograms and their associated
+        bin edges.
+    :param age_hist_distribution: Pipe-delimited string of overall age histogram bin
+        frequency.
     :param subset_list: List of sample subsets in dataset.
     :param pops: List of sample global genetic ancestry group names for gnomAD data type.
-    :param format_dict: Dictionary describing MatrixTable entries. Used in header for VCF export.
-    :param inbreeding_coeff_cutoff: InbreedingCoeff hard filter used for variants.
-    :param data_type: Data type to prepare VCF header for. One of "exomes" or "genomes". Default is "exomes".
+    :param format_dict: Dictionary describing MatrixTable entries. Used in header for
+        VCF export.
+    :param data_type: Data type to prepare VCF header for. One of "exomes" or "genomes".
+        Default is "exomes".
+    :param joint_included: Whether joint frequency data is included in the HT.
     :return: Prepared VCF header dictionary.
     """
     logger.info("Making FILTER dict for VCF...")
@@ -761,7 +797,7 @@ def prepare_vcf_header_dict(
 
     # subset = "" represents full dataset in VCF header construction, the
     # logic in gnomad_methods is built around this.
-    subset_list.extend(["", "joint"])
+    subset_list.extend(["", "joint"] if joint_included else [""])
     logger.info("Making INFO dict for VCF...")
     vcf_info_dict = populate_info_dict(
         info_fields=list(validated_ht.info),
@@ -814,12 +850,15 @@ def format_validated_ht_for_export(
     """
     Format validated HT for export.
 
-    Drop downsamplings frequency stats from info, rearrange info, and make sure fields are VCF compatible.
+    Drop downsamplings frequency stats from info, rearrange info, and make sure fields
+    are VCF compatible.
 
     :param ht: Validated HT.
     :param data_type: Data type to format validated HT for. One of "exomes" or "genomes".
         Default is "exomes".
-    :param Vvcf_info_reorder: Order of VCF INFO fields. These will be placed in front of all other fields in the order specified.
+    :param vcf_info_reorder: Order of VCF INFO fields. These will be placed in front of
+        all other fields in the order specified.
+    :param info_fields_to_drop: List of info fields to drop from the info struct.
     :return: Formatted HT and list rename row annotations.
     """
     if info_fields_to_drop is None:
@@ -877,7 +916,7 @@ def format_validated_ht_for_export(
 
 def process_vep_csq_header(vep_csq_header: str = VEP_CSQ_HEADER) -> str:
     """
-    Process VEP CSQ header string, delimited by |, to remove polyphen and sift annotations.
+    Process VEP CSQ header string, delimited by '|', to remove polyphen and sift annotations.
 
     :param vep_csq_header: VEP CSQ header.
     :return: Processed VEP CSQ header.
@@ -923,7 +962,8 @@ def check_globals_for_retired_terms(ht: hl.Table) -> None:
         logger.info("Passed retired term check: No retired terms found in globals.")
 
 
-def main(args):  # noqa: D103
+def main(args):
+    """Validate release Table and export VCFs."""
     hl.init(
         log="/validate_and_export_vcf.log",
         default_reference="GRCh38",
@@ -938,6 +978,7 @@ def main(args):  # noqa: D103
     test = args.test
     data_type = args.data_type
     contig = args.contig
+    joint_included = args.joint_included
     resources = get_export_resources(overwrite, data_type, test)
 
     if contig and test:
@@ -963,12 +1004,19 @@ def main(args):  # noqa: D103
             )
             check_globals_for_retired_terms(ht)
             pprint_global_anns(ht)
-            check_global_and_row_annot_lengths(ht, LEN_COMP_GLOBAL_ROWS)
+
+            len_comp_global_rows = (
+                LEN_COMP_GLOBAL_ROWS + LEN_COMP_JOINT_GLOBAL_ROWS
+                if joint_included
+                else LEN_COMP_GLOBAL_ROWS
+            )
+            check_global_and_row_annot_lengths(ht, len_comp_global_rows)
 
             logger.info("Preparing HT for validity checks and export...")
             ht = prepare_ht_for_validation(
                 ht,
                 data_type=data_type,
+                joint_included=joint_included,
             )
             # Note: Checkpoint saves time in validity checks and final export by not
             # needing to run the VCF HT prep on each chromosome -- more needs to happen
@@ -1014,6 +1062,7 @@ def main(args):  # noqa: D103
                 subset_list=subsets,
                 pops=POPS,
                 data_type=data_type,
+                joint_included=joint_included,
             )
 
             logger.info("Writing VCF header dict...")
@@ -1021,14 +1070,12 @@ def main(args):  # noqa: D103
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
         if args.export_vcf:
-            contig = f"chr{contig}" if contig else None
-
             if contig and test:
                 raise ValueError(
                     "Test argument cannot be used with contig argument as test filters"
                     " to chr20, X, and Y."
                 )
-
+            contig = f"chr{contig}" if contig else None
             logger.info(f"Exporting VCF{f' for {contig}' if contig else ''}...")
             res = resources.export_vcf
             res.check_resource_existence()
@@ -1038,16 +1085,8 @@ def main(args):  # noqa: D103
                 header_dict = pickle.load(f)
 
             if test:
-                logger.info("Filtering to PCSK9 region...")
-                # Keep only PCSK9.
-                ht = hl.filter_intervals(
-                    ht,
-                    [
-                        hl.parse_locus_interval(
-                            "chr1:55039447-55064852", reference_genome="GRCh38"
-                        )
-                    ],
-                )
+                logger.info("Filtering to test partitions on chr20, X, and Y...")
+                ht = filter_to_test(ht)
             if contig:
                 logger.info(f"Filtering to {contig}...")
                 ht = hl.filter_intervals(
@@ -1091,7 +1130,8 @@ def main(args):  # noqa: D103
         hl.copy_log(get_logging_path("validity_checks_and_export"))
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--validate-release-ht",
@@ -1138,5 +1178,15 @@ if __name__ == "__main__":
         help="Contig to export VCF for.",
         default=None,
     )
+    parser.add_argument(
+        "--joint-included",
+        help="Whether joint frequency data is included in the release HT.",
+        action="store_true",
+    )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     main(parser.parse_args())

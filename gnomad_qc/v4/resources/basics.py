@@ -1,6 +1,6 @@
 """Script containing generic resources."""
 import logging
-from typing import List, Optional
+from typing import List, Optional, Set, Union
 
 import hail as hl
 from gnomad.resources.resource_utils import (
@@ -10,6 +10,7 @@ from gnomad.resources.resource_utils import (
     VersionedVariantDatasetResource,
 )
 
+from gnomad_qc.v3.resources.basics import get_gnomad_v3_vds
 from gnomad_qc.v4.resources.constants import (
     CURRENT_RAW_VERSION,
     CURRENT_SAMPLE_QC_VERSION,
@@ -37,7 +38,7 @@ def get_gnomad_v4_vds(
     test: bool = False,
     n_partitions: Optional[int] = None,
     filter_partitions: Optional[List[int]] = None,
-    chrom: Optional[str] = None,
+    chrom: Optional[Union[str, List[str], Set[str]]] = None,
     remove_dead_alleles: bool = True,
     annotate_meta: bool = False,
 ) -> hl.vds.VariantDataset:
@@ -62,7 +63,7 @@ def get_gnomad_v4_vds(
     :param n_partitions: Optional argument to read the VDS with a specific number of
         partitions.
     :param filter_partitions: Optional argument to filter the VDS to specific partitions.
-    :param chrom: Optional argument to filter the VDS to a specific chromosome.
+    :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
     :param remove_dead_alleles: Whether to remove dead alleles from the VDS when
         removing withdrawn UKB samples. Default is True.
     :param annotate_meta: Whether to annotate the VDS with the sample QC metadata.
@@ -80,16 +81,18 @@ def get_gnomad_v4_vds(
     else:
         gnomad_v4_resource = gnomad_v4_genotypes
 
+    if isinstance(chrom, str):
+        chrom = [chrom]
     if n_partitions and chrom:
         logger.info(
-            "Filtering to chromosome %s with %s partitions...", chrom, n_partitions
+            "Filtering to chromosome(s) %s with %s partitions...", chrom, n_partitions
         )
         reference_data = hl.read_matrix_table(
             hl.vds.VariantDataset._reference_path(gnomad_v4_resource.path)
         )
         reference_data = hl.filter_intervals(
             reference_data,
-            [hl.parse_locus_interval(x, reference_genome="GRCh38") for x in [chrom]],
+            [hl.parse_locus_interval(x, reference_genome="GRCh38") for x in chrom],
         )
         intervals = reference_data._calculate_new_partitions(n_partitions)
         reference_data = hl.read_matrix_table(
@@ -136,9 +139,11 @@ def get_gnomad_v4_vds(
         """
         Remove UKB samples with exact duplicate names based on column index.
 
-        :param mt: MatrixTable of either the variant data or reference data of a VDS
-        :param dup_ids: ArrayExpression of UKB samples to remove in format of <sample_name>_<col_idx>
-        :return: MatrixTable of UKB samples with exact duplicate names removed based on column index
+        :param mt: MatrixTable of either the variant data or reference data of a VDS.
+        :param dup_ids: ArrayExpression of UKB samples to remove in format of
+            <sample_name>_<col_idx>.
+        :return: MatrixTable of UKB samples with exact duplicate names removed based on
+            column index.
         """
         mt = mt.add_col_index()
         mt = mt.annotate_cols(new_s=hl.format("%s_%s", mt.s, mt.col_idx))
@@ -286,6 +291,59 @@ def get_gnomad_v4_vds(
     return vds
 
 
+def get_gnomad_v4_genomes_vds(
+    split: bool = False,
+    remove_hard_filtered_samples: bool = True,
+    release_only: bool = False,
+    samples_meta: bool = False,
+    test: bool = False,
+    filter_partitions: Optional[List[int]] = None,
+    chrom: Optional[Union[str, List[str], Set[str]]] = None,
+) -> hl.vds.VariantDataset:
+    """
+    Get gnomAD v4 genomes VariantDataset with desired filtering and metadata annotations.
+
+    :param split: Perform split on VDS - Note: this will perform a split on the VDS
+        rather than grab an already split VDS.
+    :param remove_hard_filtered_samples: Whether to remove samples that failed hard
+        filters (only relevant after sample QC).
+    :param release_only: Whether to filter the VDS to only samples available for
+        release (can only be used if metadata is present).
+    :param samples_meta: Whether to add v4 genomes metadata to VDS variant_data in
+        'meta' column.
+    :param test: Whether to use the test VDS instead of the full v4 genomes VDS.
+    :param filter_partitions: Optional argument to filter the VDS to specific partitions
+        in the provided list.
+    :param chrom: Optional argument to filter the VDS to a specific chromosome(s).
+    :return: gnomAD v4 genomes VariantDataset with chosen annotations and filters.
+    """
+    vds = get_gnomad_v3_vds(
+        split=split,
+        remove_hard_filtered_samples=remove_hard_filtered_samples,
+        release_only=False,
+        samples_meta=False,
+        test=test,
+        filter_partitions=filter_partitions,
+        chrom=chrom,
+    )
+
+    if samples_meta or release_only:
+        meta_ht = meta(data_type="genomes").ht()
+        if release_only:
+            vds = hl.vds.filter_samples(
+                vds,
+                meta_ht.filter(meta_ht.release),
+            )
+
+        if samples_meta:
+            vd = vds.variant_data
+            vds = hl.vds.VariantDataset(
+                vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
+            )
+
+    return vds
+
+
 _gnomad_v4_genotypes = {
     "4.0": VariantDatasetResource("gs://gnomad/v4.0/raw/exomes/gnomad_v4.0.vds")
 }
@@ -412,8 +470,9 @@ def calling_intervals(
     Return path to capture intervals Table.
 
     :param interval_name: One of 'ukb', 'broad', 'intersection' or 'union'.
-    :param calling_interval_padding: Padding around calling intervals. Available options are 0 or 50
-    :return: Calling intervals resource
+    :param calling_interval_padding: Padding around calling intervals. Available
+        options are 0 or 50.
+    :return: Calling intervals resource.
     """
     if interval_name not in {"ukb", "broad", "intersection", "union"}:
         raise ValueError(

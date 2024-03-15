@@ -178,6 +178,7 @@ def correct_as_annotations(
 
     For some entries in the MatrixTable, the following annotations are longer than LA,
     when they should be the same length as LA:
+
         - AS_SB_TABLE
         - AS_RAW_MQ
         - AS_RAW_ReadPosRankSum
@@ -938,7 +939,8 @@ def main(args):
         hl.copy_log(get_logging_path("variant_qc_annotations.log"))
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
@@ -1080,6 +1082,11 @@ if __name__ == "__main__":
         action="store_true",
     )
 
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:

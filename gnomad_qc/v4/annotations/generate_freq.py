@@ -8,6 +8,7 @@ existing annotations when given the AF threshold using a high AB het array. The 
 then computes the inbreeding coefficient using the raw call stats. Finally, it computes
 the filtering allele frequency and grpmax with the AB-adjusted frequencies.
 """
+
 import argparse
 import logging
 from copy import deepcopy
@@ -32,7 +33,7 @@ from gnomad.utils.annotations import (
     qual_hist_expr,
     set_female_y_metrics_to_na_expr,
 )
-from gnomad.utils.filtering import filter_arrays_by_meta, split_vds_by_strata
+from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vcf import SORT_ORDER
@@ -846,8 +847,8 @@ def generate_faf_grpmax(ht: hl.Table) -> hl.Table:
     grpmax_exprs = {}
     gen_anc_faf_max_exprs = {}
     for dataset, (freq, meta) in freq_metas.items():
-        faf, faf_meta = faf_expr(freq, meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX)
-        grpmax = pop_max_expr(freq, meta, POPS_TO_REMOVE_FOR_POPMAX)
+        faf, faf_meta = faf_expr(freq, meta, ht.locus, POPS_TO_REMOVE_FOR_POPMAX["v4"])
+        grpmax = pop_max_expr(freq, meta, POPS_TO_REMOVE_FOR_POPMAX["v4"])
         grpmax = grpmax.annotate(
             gen_anc=grpmax.pop,
             faf95=faf[
@@ -955,6 +956,38 @@ def create_final_freq_ht(ht: hl.Table) -> hl.Table:
     return ht
 
 
+# This function was added post-v4.0 and was not used in the v4.0 release.
+# It is here for reference on how a VDS should be split by subsets of samples
+# to ensure all reference data is retained across all variant sites.
+def split_vds(
+    vds: hl.vds.VariantDataset, strata_expr: hl.expr.Expression
+) -> Dict[str, hl.vds.VariantDataset]:
+    """
+    Split a VDS into multiple VDSs based on `strata_expr`.
+
+    :param vds: Input VDS.
+    :param strata_expr: Expression on VDS variant_data MT columns that will be used to
+        determine if a sample belongs to certian split or subset of the VDS.
+    :return: Dictionary where strata value is key and VDS is value.
+    """
+    s_by_strata = vds.variant_data.aggregate_cols(
+        hl.agg.group_by(strata_expr, hl.agg.collect_as_set(vds.variant_data.s))
+    )
+    vds_dict = {}
+
+    for strata, samples in s_by_strata.items():
+        logger.info("Splitting VDS by %s...", strata)
+        samples = hl.literal(samples)
+        vmt = vds.variant_data
+        rmt = vds.reference_data
+        vmt = vmt.filter_cols(samples.contains(vmt.s))
+        rmt = rmt.filter_cols(samples.contains(rmt.s))
+        rmt = rmt.filter_rows(hl.agg.count() > 0)
+        vds_dict[strata] = hl.vds.VariantDataset(rmt, vmt)
+
+    return vds_dict
+
+
 def main(args):
     """Script to generate frequency and dense dependent annotations on v4 exomes."""
     overwrite = args.overwrite
@@ -1016,7 +1049,29 @@ def main(args):
                 "Splitting VDS by ukb_sample annotation to reduce data size for"
                 " densification..."
             )
-            vds_dict = split_vds_by_strata(vds, strata_expr=vds.variant_data.ukb_sample)
+            # For v4.0 the line of code this comment block was:
+            # vds_dict = split_vds_by_strata(vds, strata_expr=vds.variant_data.ukb_sample)
+            #
+            # This uses hail's hl.vds.filter_samples() function and keeps the default
+            # remove_dead_alleles=False. However, due to unexpected behavior in the
+            # code, the hl.vds.filter_samples() function still removes dead alleles by
+            # removing any variant row that does not have a defined entry. This behavior
+            # is present in all versions of hail with hl.vds.filter_samples() through
+            # the current version at the time of this commit, v0.2.128. When the VDS is
+            # densified, this results in a loss of all homozygous reference calls in the
+            # reference data sparse MT at these dead allele sites. Because we had to
+            # split the VDS for v4.0 with intentions of rejoining the two subset VDSs
+            # across all variant sites, this unexpected behavior resulted in the loss of
+            # all homozygous reference calls in the reference data sparse MT and thus
+            # reduced Allele Number (AN) for any bi-allelic variant exclusive to one of
+            # the subsetted VDSs. The replacement code below uses our own custom
+            # function to split the VDS and keep the dead alleles in the reference data.
+            # It was never run in production, but it is the correct way to split the VDS
+            # and keep the dead alleles in the reference data. The corrected frequency
+            # table for v4.1 used: gnomad_qc/gnomad_qc/v4/annotations/fix_freq_an.py
+            # Details on the run can be found here:
+            # github.com/broadinstitute/gnomad_production/issues/1366
+            vds_dict = split_vds(vds, strata_expr=vds.variant_data.ukb_sample)
             for strata, vds in vds_dict.items():
                 if ukb_only and strata == "non_ukb" or non_ukb_only and strata == "ukb":
                     continue
@@ -1091,7 +1146,8 @@ def main(args):
         hl.copy_log(get_logging_path("frequency_data"))
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--use-test-dataset",
@@ -1191,6 +1247,12 @@ if __name__ == "__main__":
         ),
         action="store_true",
     )
+
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:

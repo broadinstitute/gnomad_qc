@@ -28,4 +28,4 @@ repos:
     rev: 6.3.0 # This should be kept in sync with the version in requirements-dev.in
     hooks:
       - id: pydocstyle
-        exclude: ^gnomad_qc/v2
+        exclude: ^gnomad_qc/v2|^docs/

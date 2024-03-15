@@ -279,7 +279,8 @@ def main(args):
     ht.write(res.final_ht.path, overwrite=args.overwrite)
 
 
-if __name__ == "__main__":
+def get_script_argument_parser() -> argparse.ArgumentParser:
+    """Get script argument parser."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--slack-channel", help="Slack channel to post results and notifications to."
@@ -338,6 +339,11 @@ if __name__ == "__main__":
         help="RF or VQSR score to use as cutoff for indels.",
         type=float,
     )
+    return parser
+
+
+if __name__ == "__main__":
+    parser = get_script_argument_parser()
     args = parser.parse_args()
 
     if args.slack_channel:
