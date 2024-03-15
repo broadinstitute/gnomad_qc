@@ -23,7 +23,7 @@ computed:
         - Mean
         - Quantiles (0.0, 0.25, 0.5, 0.75, 1.0)
 
-Aggregate statistics can also be computed by ancestry.
+Aggregated statistics can also be computed by ancestry.
 """
 # TODO: Maybe move to a folder called assessment and rename to
 #  calculate_per_sample_stats.py, also add a resource file for assessments.
