@@ -1,21 +1,18 @@
 """
 Script to get per-sample variant counts and aggregate sample statistics.
 
-The following per-sample variant counts can be calculated:
+The following per-sample variant counts (including heterozygous, homozygous, non-ref, singletons etc.) can be calculated:
 
     - Total number of variants
     - Number of variants that pass all variant qc filters
     - Number of variants in UK Biobank capture regions
     - Number of variants in Broad capture regions
+    - Number of variants in the intersect of UK Biobank and Broad capture regions
+    - Number of variants in the union of UK Biobank and Broad capture regions
     - Number of rare variants (adj AF <0.1%)
     - Number of loss-of-function variants
     - Number of missense variants
     - Number of synonymous variants
-    - Number of singletons
-    - Number of heterozygous variants
-    - Number of homozygous variants
-    - Number of non-reference variants
-    - Number of variants in UK Biobank and Broad capture regions
 
 The following aggregate sample stats of all of the above per-sample counts can be
 computed:
