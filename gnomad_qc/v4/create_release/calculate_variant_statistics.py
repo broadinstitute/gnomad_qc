@@ -26,6 +26,7 @@ Aggregated statistics can also be computed by ancestry.
 #  calculate_per_sample_stats.py, also add a resource file for assessments.
 import argparse
 import logging
+import pprint
 from typing import Optional
 
 import hail as hl
@@ -243,14 +244,12 @@ def compute_agg_sample_stats(
 
         stats_struct = hl.struct(
             all_samples=stats_struct,
-            stratified_by_ancestry=hl.struct(
-                **{
-                    anc: ht.aggregate(
-                        hl.agg.filter(gen_anc_expr == anc, agg_expr), _localize=False
-                    )
-                    for anc in gen_ancs
-                }
-            ),
+            **{
+                anc: ht.aggregate(
+                    hl.agg.filter(gen_anc_expr == anc, agg_expr), _localize=False
+                )
+                for anc in gen_ancs
+            },
         )
 
     return stats_struct
@@ -269,52 +268,63 @@ def main(args):
     data_type = args.data_type
     test = args.test
     overwrite = args.overwrite
+    per_sample_res = get_per_sample_counts(
+        test=test, data_type=data_type, suffix=args.custom_suffix
+    )
 
-    if data_type == "exomes":
-        logger.info("Calculating per-sample variant statistics for exomes...")
-        mt = get_gnomad_v4_vds(
-            test=test, release_only=True, split=True, chrom="chr22" if test else None
-        ).variant_data
-    else:
-        logger.info("Calculating per-sample variant statistics for genomes...")
-        mt = get_gnomad_v4_genomes_vds(
-            test=test, release_only=True, split=True, chrom="chr22" if test else None
-        ).variant_data
+    if args.create_per_sample_counts_ht:
+        chrom = "chr22" if test else None
+        if data_type == "exomes":
+            logger.info("Calculating per-sample variant statistics for exomes...")
+            mt = get_gnomad_v4_vds(
+                test=test, release_only=True, split=True, chrom=chrom
+            ).variant_data
+        else:
+            logger.info("Calculating per-sample variant statistics for genomes...")
+            mt = get_gnomad_v4_genomes_vds(
+                test=test, release_only=True, split=True, chrom=chrom
+            ).variant_data
 
-    release_ht = release_sites(data_type=data_type).ht()
-    if test:
-        release_ht = hl.filter_intervals(release_ht, [hl.parse_locus_interval("chr22")])
+        release_ht = release_sites(data_type=data_type).ht()
+        if test:
+            release_ht = hl.filter_intervals(
+                release_ht, [hl.parse_locus_interval("chr22")]
+            )
 
-    ht = create_per_sample_counts_ht(
-        mt,
-        release_ht,
-        pass_filters=args.pass_filters,
-        ukb_capture=args.filter_ukb_capture_intervals,
-        broad_capture=args.filter_broad_capture_intervals,
-        by_csqs=args.by_csqs,
-        rare_variants=args.rare_variants,
-        vep_canonical=args.vep_canonical,
-        vep_mane=args.vep_mane,
-    ).checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
+        create_per_sample_counts_ht(
+            mt,
+            release_ht,
+            pass_filters=args.pass_filters,
+            ukb_capture=args.filter_ukb_capture_intervals,
+            broad_capture=args.filter_broad_capture_intervals,
+            by_csqs=args.by_csqs,
+            rare_variants=args.rare_variants,
+            vep_canonical=args.vep_canonical,
+            vep_mane=args.vep_mane,
+        ).write(per_sample_res.path, overwrite=overwrite)
 
     if args.add_aggregate_sample_stats_global:
         logger.info("Computing aggregate sample statistics...")
-        sample_qc_agg_stats = compute_agg_sample_stats(
-            ht,
-            meta_ht=meta(data_type=data_type).ht(),
-            by_ancestry=args.by_ancestry,
+        ht = per_sample_res.ht().checkpoint(
+            hl.utils.new_temp_file("per_sample_counts", "ht")
         )
-        ht = ht.annotate_globals(sample_qc_agg_stats=sample_qc_agg_stats)
+        ht.annotate_globals(
+            sample_qc_agg_stats=compute_agg_sample_stats(
+                ht,
+                meta_ht=meta(data_type=data_type).ht(),
+                by_ancestry=args.by_ancestry,
+            )
+        ).write(per_sample_res.path, overwrite=overwrite)
 
-    ht = ht.checkpoint(
-        get_per_sample_counts(
-            test=test, data_type=data_type, suffix=args.custom_suffix
-        ).path,
-        overwrite=overwrite,
-    )
-
-    if args.add_aggregate_sample_stats_global:
-        logger.info("Aggregate sample statistics: %s", hl.eval(ht.sample_qc_agg_stats))
+    if args.add_aggregate_sample_stats_global or args.print_aggregate_sample_stats:
+        ht = per_sample_res.ht()
+        logger.info(
+            "Aggregate sample statistics: %s",
+            pprint.pformat(
+                hl.eval(ht.sample_qc_agg_stats),
+                compact=True,
+            ),
+        )
 
 
 if __name__ == "__main__":
@@ -342,11 +352,21 @@ if __name__ == "__main__":
         help="Data type (exomes or genomes) to produce summary stats for.",
     )
     parser.add_argument(
+        "--create-per-sample-counts-ht",
+        help="Create per-sample variant counts Table.",
+        action="store_true",
+    )
+    parser.add_argument(
         "--add-aggregate-sample-stats-global",
         help=(
             "Compute aggregate sample statistics from the per-sample counts and add "
             "them as globals to the output Table."
         ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--print-aggregate-sample-stats",
+        help="Print aggregate sample statistics to stdout.",
         action="store_true",
     )
     parser.add_argument(
