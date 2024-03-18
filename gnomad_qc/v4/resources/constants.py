@@ -33,8 +33,8 @@ CURRENT_VARIANT_QC_VERSION = "4.0"
 VARIANT_QC_RESULT_VERSIONS = {"exomes": ["4.0", "4.1"], "genomes": ["4.0"]}
 CURRENT_VARIANT_QC_RESULT_VERSION = {"exomes": "4.1", "genomes": "4.0"}
 
-RELEASES = ["4.0"]
-CURRENT_RELEASE = "4.0"
+RELEASES = ["4.0", "4.1"]
+CURRENT_RELEASE = "4.1"
 
 COVERAGE_RELEASES = {"exomes": ["4.0"], "genomes": ["3.0"]}
 CURRENT_COVERAGE_RELEASE = {"exomes": "4.0", "genomes": "3.0"}
