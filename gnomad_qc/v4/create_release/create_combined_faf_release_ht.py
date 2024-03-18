@@ -688,11 +688,11 @@ def create_final_combined_faf_release(
         return {stat_field: stat_expr}
 
     stats_expr = {}
-    if args.include_contingency_table_test:
+    if contingency_table_ht is not None:
         stats_expr.update(
             _prep_stats_annotation(ht, contingency_table_ht, "contingency_table_test")
         )
-    if args.include_cochran_mantel_haenszel_test:
+    if cmh_ht is not None:
         stats_expr.update(
             _prep_stats_annotation(ht, cmh_ht, "cochran_mantel_haenszel_test")
         )
