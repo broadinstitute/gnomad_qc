@@ -284,9 +284,13 @@ def main(args):
             test=test, release_only=True, split=True, chrom="chr22" if test else None
         ).variant_data
 
+    release_ht = release_sites(data_type=data_type).ht()
+    if test:
+        release_ht = hl.filter_intervals(release_ht, [hl.parse_locus_interval("chr22")])
+
     ht = create_per_sample_counts_ht(
         mt,
-        release_sites(data_type=data_type).ht(),
+        release_ht,
         pass_filters=args.pass_filters,
         ukb_capture=args.filter_ukb_capture_intervals,
         broad_capture=args.filter_broad_capture_intervals,
