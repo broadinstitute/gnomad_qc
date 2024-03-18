@@ -12,7 +12,7 @@ joint frequency, a joint FAF, and the following tests comparing the two frequenc
 
 import argparse
 import logging
-from typing import Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional, Set
 
 import hail as hl
 import pandas as pd
@@ -48,7 +48,11 @@ from gnomad_qc.v4.resources.basics import (
     get_checkpoint_path,
     get_logging_path,
 )
-from gnomad_qc.v4.resources.constants import CURRENT_FREQ_VERSION
+from gnomad_qc.v4.resources.constants import (
+    CURRENT_FREQ_VERSION,
+    DATA_TYPES,
+    RELEASE_DATA_TYPES,
+)
 from gnomad_qc.v4.resources.release import get_combined_faf_release
 from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
 from gnomad_qc.v4.resources.variant_qc import final_filter
@@ -308,10 +312,7 @@ def get_joint_freq_and_faf(
             f"joint_{hist_struct}": hl.struct(
                 **{
                     h: merge_histograms(
-                        [
-                            ht[f"exomes_{hist_struct}"][h],
-                            ht[f"genomes_{hist_struct}"][h],
-                        ]
+                        [ht[f"{d}_{hist_struct}"][h] for d in DATA_TYPES]
                     )
                     for h in ht[f"genomes_{hist_struct}"]
                 }
@@ -559,55 +560,9 @@ def create_final_combined_faf_release(
         to include on the final Table.
     :return: Table with final combined FAF release information.
     """
-    stats_expr = {}
-    if args.include_contingency_table_test:
-        stat_expr = contingency_table_ht[ht.key].contingency_table_test
-        stats_expr["contingency_table_test"] = stat_expr.map(
-            lambda x: hl.struct(
-                odds_ratio=hl.or_missing(~hl.is_nan(x.odds_ratio), x.odds_ratio),
-                p_value=hl.or_missing(~hl.is_nan(x.p_value), x.p_value),
-            )
-        )
-    if args.include_cochran_mantel_haenszel_test:
-        stat_expr = cmh_ht[ht.key].cochran_mantel_haenszel_test
-        stats_expr["cochran_mantel_haenszel_test"] = hl.struct(
-            odds_ratio=hl.or_missing(
-                ~hl.is_nan(stat_expr.odds_ratio), stat_expr.odds_ratio
-            ),
-            p_value=hl.or_missing(~hl.is_nan(stat_expr.p_value), stat_expr.p_value),
-        )
+    logger.info("Creating final combined FAF release Table...")
 
-    broad_interval_ht = calling_intervals("broad", 0).ht()
-    broad_interval_150bp_ht = adjust_interval_padding(broad_interval_ht, 150)
-
-    ukb_interval_ht = calling_intervals("ukb", 0).ht()
-    ukb_interval_150bp_ht = adjust_interval_padding(ukb_interval_ht, 150)
-    # TODO: Any reason add LCR and segdups while we are already adding other region
-    #  flags?
-    num_exomes_an = ht.index_globals().exomes_freq_meta_sample_count[0] * 2
-    not_called_in_exomes = hl.is_missing(ht.exomes_freq) | hl.is_missing(
-        ht.exomes_freq[1].AN
-    )
-    region_expr = {
-        "fail_interval_qc": (
-            ~interval_qc_pass(all_platforms=True).ht()[ht.locus].pass_interval_qc
-        ),
-        "outside_ukb_capture_region": ~hl.is_defined(ukb_interval_ht[ht.locus]),
-        "outside_broad_capture_region": ~hl.is_defined(broad_interval_ht[ht.locus]),
-        "outside_ukb_calling_region": ~hl.is_defined(ukb_interval_150bp_ht[ht.locus]),
-        "outside_broad_calling_region": ~hl.is_defined(
-            broad_interval_150bp_ht[ht.locus]
-        ),
-        "no_coverage_in_exomes_raw": not_called_in_exomes | (ht.exomes_freq[1].AN == 0),
-        "no_coverage_in_exomes_adj": not_called_in_exomes | (ht.exomes_freq[0].AN == 0),
-        # TODO: How are sex chromosomes handled?
-        "low_coverage_in_exomes_40_raw": ht.exomes_freq[1].AN < (num_exomes_an * 0.4),
-        "low_coverage_in_exomes_50_raw": ht.exomes_freq[1].AN < (num_exomes_an * 0.5),
-        "low_coverage_in_exomes_40_adj": ht.exomes_freq[0].AN < (num_exomes_an * 0.4),
-        "low_coverage_in_exomes_50_adj": ht.exomes_freq[0].AN < (num_exomes_an * 0.5),
-        "not_called_in_exomes": not_called_in_exomes,
-    }
-
+    # Add joint data type to the Table.
     def _get_joint_data_type(
         genomes_expr: hl.expr.Expression, exomes_expr: hl.expr.Expression
     ) -> hl.expr.StringExpression:
@@ -639,8 +594,120 @@ def create_final_combined_faf_release(
         joint_metric_data_type=_get_joint_data_type(
             ht.genomes_grpmax.AC, ht.exomes_grpmax.AC
         ),
-        freq_comparison_stats=hl.struct(**stats_expr),
+    )
+
+    def _get_struct_by_data_type(
+        in_ht: hl.Table,
+        annotation_expr: Optional[hl.expr.StructExpression] = None,
+        condition_func: Optional[Callable[[str], hl.expr.BooleanExpression]] = None,
+        postfix: str = "",
+    ) -> hl.expr.StructExpression:
+        """
+        Group all annotations from the same data type into a struct.
+
+        :param in_ht: Table with annotations to loop through.
+        :param annotation_expr: StructExpression with annotations to loop through. In
+            None, return use ht.row.
+        :param condition_func: Function that returns a BooleanExpression for a
+            condition to check in addition to data type.
+        :param postfix: String to add to the end of the new annotation following data
+            type.
+        :return: StructExpression of joint data type and the corresponding data type
+            struct.
+        """
+        if condition_func is None:
+            condition_func = lambda x: True
+        if annotation_expr is None:
+            annotation_expr = in_ht.row
+
+        return hl.struct(
+            **{
+                f"{data_type}{postfix}": hl.struct(
+                    **{
+                        x.replace(f"{data_type}_", ""): in_ht[x]
+                        for x in annotation_expr
+                        if x.startswith(data_type) and condition_func(x)
+                    }
+                )
+                for data_type in RELEASE_DATA_TYPES
+            }
+        )
+
+    # Group all the histograms into a single struct per data type.
+    ht = ht.transmute(
+        **_get_struct_by_data_type(
+            ht, condition_func=lambda x: x.endswith("_hists"), postfix="_histograms"
+        )
+    )
+
+    # Add capture and calling intervals as region flags.
+    intervals = [(c, calling_intervals(c, 0).ht()) for c in ["broad", "ukb"]]
+    intervals = [(f"{c}_capture", i) for c, i in intervals] + [
+        (f"{c}_calling", adjust_interval_padding(i, 150)) for c, i in intervals
+    ]
+
+    region_expr = {
+        "fail_interval_qc": (
+            ~interval_qc_pass(all_platforms=True).ht()[ht.locus].pass_interval_qc
+        ),
+        **{f"outside_{c}_region": hl.is_missing(i[ht.locus]) for c, i in intervals},
+        **{
+            f"not_called_in_{d}": hl.is_missing(ht[f"{d}_freq"]) | hl.is_missing(
+                ht[f"{d}_freq"][1].AN
+            )
+            for d in DATA_TYPES
+        },
+    }
+
+    # Get the stats expressions for the final Table.
+    def _prep_stats_annotation(in_ht: hl.Table, stat_ht: hl.Table, stat_field: str):
+        """
+        Prepare stats expressions for the final Table.
+
+        :param in_ht: Table to add stats to.
+        :param stat_ht: Table with stats to add to the final Table.
+        :param stat_field: Field to add to the final Table.
+        :return: Dictionary of stats expressions for the final Table.
+        """
+        stat_expr = stat_ht[in_ht.key][stat_field]
+        is_struct = False
+        if isinstance(stat_expr, hl.expr.StructExpression):
+            is_struct = True
+            stat_expr = hl.array([stat_expr])
+
+        stat_expr = stat_expr.map(
+            lambda x: hl.struct(
+                odds_ratio=hl.or_missing(~hl.is_nan(x.odds_ratio), x.odds_ratio),
+                p_value=hl.or_missing(~hl.is_nan(x.p_value), x.p_value),
+            )
+        )
+
+        if is_struct:
+            stat_expr = stat_expr[0]
+
+        return {stat_field: stat_expr}
+
+    stats_expr = {}
+    if args.include_contingency_table_test:
+        stats_expr.update(
+            _prep_stats_annotation(ht, contingency_table_ht, "contingency_table_test")
+        )
+    if args.include_cochran_mantel_haenszel_test:
+        stats_expr.update(
+            _prep_stats_annotation(ht, cmh_ht, "cochran_mantel_haenszel_test")
+        )
+
+    # Select the final columns for the Table, grouping all annotations from the same
+    # data type into a struct.
+    ht = ht.select(
         region_flags=hl.struct(**region_expr),
+        **_get_struct_by_data_type(ht),
+        freq_comparison_stats=hl.struct(**stats_expr),
+    )
+
+    # Group all global annotations from the same data type into a struct.
+    ht = ht.transmute_globals(
+        **_get_struct_by_data_type(ht, annotation_expr=ht.globals, postfix="_globals")
     )
 
     return ht

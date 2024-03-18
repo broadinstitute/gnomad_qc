@@ -1,4 +1,7 @@
 """Script containing version and release constants."""
+DATA_TYPES = ["exomes", "genomes"]
+RELEASE_DATA_TYPES = DATA_TYPES + ["joint"]
+
 VERSIONS = ["4.0", "4.1"]
 CURRENT_VERSION = "4.1"
 
