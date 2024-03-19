@@ -67,41 +67,7 @@ def create_per_sample_counts_ht(
     """
     Create Table of Hail's sample_qc output broken down by requested variant groupings.
 
-    Useful for finding the number of variants (total or specific types) per sample.
-
-    The following per-sample variant counts are calculated:
-
-        - Total number of variants
-        - Number of variants that pass all variant qc filters
-        - Number of variants in UK Biobank capture regions
-        - Number of variants in Broad capture regions
-        - Number of rare variants (adj AF <0.1%)
-        - Number of loss-of-function variants
-        - Number of missense variants
-        - Number of synonymous variants
-        - Number of singletons
-        - Number of heterozygous variants
-        - Number of homozygous variants
-        - Number of non-reference variants
-        - Number of variants in UK Biobank and Broad capture regions
-
-    Additionally, counts can be computed for the following variant filtering criteria:
-
-        - Variants that pass all variant qc filters
-        - Variants in UK Biobank capture regions
-        - Variants in Broad capture regions
-        - Variants in UK Biobank and Broad capture regions
-        - Rare variants (adj AF <0.1%)
-        - Loss-of-function variants
-        - Variant consequences:
-
-            - Loss-of-function
-            - Missense
-            - Synonymous
-
-        - Variants in all transcripts
-        - Variants in MANE transcripts
-        - Variants in canonical transcripts
+    Useful for finding the number of variants per sample, either all variants, or variants fall into specific capture regions, or variants that are rare (adj AF <0.1%), or variants categorized by predicted consequences in all, canonical or mane transcripts.
 
     :param mt: Input MatrixTable containing variant data. Must have multi-allelic sites
         split.
