@@ -265,11 +265,11 @@ def main(args):
         create_per_sample_counts_ht(
             mt,
             release_ht,
-            pass_filters=args.pass_filters,
-            ukb_capture=args.filter_ukb_capture_intervals,
-            broad_capture=args.filter_broad_capture_intervals,
-            by_csqs=args.by_csqs,
-            rare_variants=args.rare_variants,
+            pass_filters=not args.skip_pass_filters,
+            ukb_capture=not args.skip_filter_ukb_capture_intervals,
+            broad_capture=not args.skip_filter_broad_capture_intervals,
+            by_csqs=not args.skip_by_csqs,
+            rare_variants=not args.skip_rare_variants,
             vep_canonical=args.vep_canonical,
             vep_mane=args.vep_mane,
             rare_variants_af=args.rare_variants_af,
@@ -300,8 +300,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # TODO: Could make some of these arguments --skip-<filter> instead of --<filter> so
-    #  by default they all run.
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-o",
@@ -342,26 +340,32 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--pass-filters",
+        "--skip-pass-filters",
         help=(
-            "Calculate per-sample variants for those variants that pass all"
-            " variant QC filters."
+            "Whether to skip calculating the number of per-sample variants for those "
+            "variants that pass all variant QC filters."
         ),
         action="store_true",
     )
     parser.add_argument(
-        "--filter-ukb-capture-intervals",
-        help="Include counts of variants filtered to UK Biobank capture regions.",
+        "--skip-filter-ukb-capture-intervals",
+        help=(
+            "Whether to skip calculating the number of variants filtered to UK Biobank "
+            "capture regions."
+        ),
         action="store_true",
     )
     parser.add_argument(
-        "--filter-broad-capture-intervals",
-        help="Include counts of variants filtered to Broad capture regions.",
+        "--skip-filter-broad-capture-intervals",
+        help=(
+            "Whether to skip calculating the number of variants filtered to Broad "
+            "capture regions."
+        ),
         action="store_true",
     )
     parser.add_argument(
-        "--rare-variants",
-        help="Include counts of rare variants (adj AF <0.1%).",
+        "--skip-rare-variants",
+        help="Whether to skip calculating the number of rare variants (adj AF <0.1%).",
         action="store_true",
     )
     parser.add_argument(
@@ -371,10 +375,10 @@ if __name__ == "__main__":
         help="The allele frequency threshold to use for rare variants.",
     )
     parser.add_argument(
-        "--by-csqs",
+        "--skip-by-csqs",
         help=(
-            "Include counts of variants by consequence type: loss-of-function, "
-            "missense, and synonymous."
+            "Whether to skip calculating the number of variants by consequence type: "
+            "loss-of-function, missense, and synonymous."
         ),
         action="store_true",
     )
