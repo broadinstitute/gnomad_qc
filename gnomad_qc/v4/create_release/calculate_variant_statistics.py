@@ -63,11 +63,15 @@ def create_per_sample_counts_ht(
     rare_variants: bool = False,
     vep_canonical: bool = True,
     vep_mane: bool = False,
+    rare_variants_af: float = 0.001,
 ) -> hl.Table:
     """
     Create Table of Hail's sample_qc output broken down by requested variant groupings.
 
-    Useful for finding the number of variants per sample, either all variants, or variants fall into specific capture regions, or variants that are rare (adj AF <0.1%), or variants categorized by predicted consequences in all, canonical or mane transcripts.
+    Useful for finding the number of variants per sample, either all variants, or
+    variants fall into specific capture regions, or variants that are rare
+    (adj AF <0.1%), or variants categorized by predicted consequences in all, canonical
+    or mane transcripts.
 
     :param mt: Input MatrixTable containing variant data. Must have multi-allelic sites
         split.
@@ -85,6 +89,8 @@ def create_per_sample_counts_ht(
         If trying count variants in all transcripts, set it to False. Default is True.
     :param vep_mane: If `by_csqs` is True, filter to only MANE transcripts. Default is
         False.
+    :param rare_variants_af: The allele frequency threshold to use for rare variants.
+        Default is 0.001.
     :return: Table containing per-sample variant counts.
     """
     logger.info("Filtering input MT to variants in the supplied annotation HT...")
@@ -129,8 +135,7 @@ def create_per_sample_counts_ht(
             filter_expr["ukb_capture"] | filter_expr["broad_capture"]
         )
     if rare_variants:
-        # TODO: Maybe make this a parameter?
-        filter_expr["rare_variants"] = mt.freq[0].AF < 0.001
+        filter_expr["rare_variants"] = mt.freq[0].AF < rare_variants_af
     if by_csqs:
         filter_expr["lof"] = ~hl.is_missing(mt.lof)
         filter_expr["missense"] = mt.most_severe_csq == "missense_variant"
@@ -267,6 +272,7 @@ def main(args):
             rare_variants=args.rare_variants,
             vep_canonical=args.vep_canonical,
             vep_mane=args.vep_mane,
+            rare_variants_af=args.rare_variants_af,
         ).write(per_sample_res.path, overwrite=overwrite)
 
     if args.add_aggregate_sample_stats_global:
@@ -357,6 +363,12 @@ if __name__ == "__main__":
         "--rare-variants",
         help="Include counts of rare variants (adj AF <0.1%).",
         action="store_true",
+    )
+    parser.add_argument(
+        "--rare-variants-af",
+        type=float,
+        default=0.001,
+        help="The allele frequency threshold to use for rare variants.",
     )
     parser.add_argument(
         "--by-csqs",
