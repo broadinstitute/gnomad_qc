@@ -316,12 +316,7 @@ def get_coverage_resources(
         output_resources={
             "an_qual_hist_ht": get_all_sites_an_and_qual_hists(
                 data_type=data_type, test=test
-            ),
-            "allele_number_ht": release_all_sites_an(
-                data_type=data_type,
-                public=False,
-                test=test,
-            ),
+            )
         },
     )
     export_coverage_files = PipelineStepResourceCollection(
@@ -337,7 +332,12 @@ def get_coverage_resources(
     export_an_files = PipelineStepResourceCollection(
         "--export-all-sites-an-release-files",
         output_resources={
-            "allele_number_tsv": release_all_sites_an_tsv_path(data_type, test=test)
+            "allele_number_ht": release_all_sites_an(
+                data_type=data_type,
+                public=False,
+                test=test,
+            ),
+            "allele_number_tsv": release_all_sites_an_tsv_path(data_type, test=test),
         },
         pipeline_input_steps=[compute_allele_number_ht],
     )
