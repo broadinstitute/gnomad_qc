@@ -572,8 +572,8 @@ def create_final_combined_faf_release(
         Group all annotations from the same data type into a struct.
 
         :param ht: Table with annotations to loop through.
-        :param annotation_expr: StructExpression with annotations to loop through. In
-            None, return use ht.row.
+        :param annotation_expr: StructExpression with annotations to loop through. If
+            None, use ht.row.
         :param condition_func: Function that returns a BooleanExpression for a
             condition to check in addition to data type.
         :param postfix: String to add to the end of the new annotation following data
