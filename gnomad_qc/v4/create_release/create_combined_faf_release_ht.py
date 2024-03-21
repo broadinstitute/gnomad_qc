@@ -563,7 +563,7 @@ def create_final_combined_faf_release(
     logger.info("Creating final combined FAF release Table...")
 
     def _get_struct_by_data_type(
-        in_ht: hl.Table,
+        ht: hl.Table,
         annotation_expr: Optional[hl.expr.StructExpression] = None,
         condition_func: Optional[Callable[[str], hl.expr.BooleanExpression]] = None,
         postfix: str = "",
@@ -571,7 +571,7 @@ def create_final_combined_faf_release(
         """
         Group all annotations from the same data type into a struct.
 
-        :param in_ht: Table with annotations to loop through.
+        :param ht: Table with annotations to loop through.
         :param annotation_expr: StructExpression with annotations to loop through. In
             None, return use ht.row.
         :param condition_func: Function that returns a BooleanExpression for a
@@ -584,13 +584,13 @@ def create_final_combined_faf_release(
         if condition_func is None:
             condition_func = lambda x: True
         if annotation_expr is None:
-            annotation_expr = in_ht.row
+            annotation_expr = ht.row
 
         return hl.struct(
             **{
                 f"{data_type}{postfix}": hl.struct(
                     **{
-                        x.replace(f"{data_type}_", ""): in_ht[x]
+                        x.replace(f"{data_type}_", ""): ht[x]
                         for x in annotation_expr
                         if x.startswith(data_type) and condition_func(x)
                     }
@@ -626,16 +626,16 @@ def create_final_combined_faf_release(
     }
 
     # Get the stats expressions for the final Table.
-    def _prep_stats_annotation(in_ht: hl.Table, stat_ht: hl.Table, stat_field: str):
+    def _prep_stats_annotation(ht: hl.Table, stat_ht: hl.Table, stat_field: str):
         """
         Prepare stats expressions for the final Table.
 
-        :param in_ht: Table to add stats to.
+        :param ht: Table to add stats to.
         :param stat_ht: Table with stats to add to the final Table.
         :param stat_field: Field to add to the final Table.
         :return: Dictionary of stats expressions for the final Table.
         """
-        stat_expr = stat_ht[in_ht.key][stat_field]
+        stat_expr = stat_ht[ht.key][stat_field]
         is_struct = False
         if isinstance(stat_expr, hl.expr.StructExpression):
             is_struct = True
