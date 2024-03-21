@@ -32,9 +32,9 @@ from typing import Optional
 import hail as hl
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import (
+    LOF_CSQ_SET,
     filter_vep_transcript_csqs,
     get_most_severe_consequence_for_summary,
-    LOF_CSQ_SET,
 )
 
 from gnomad_qc.slack_creds import slack_token
@@ -143,6 +143,10 @@ def create_per_sample_counts_ht(
         )
     if rare_variants:
         filter_expr["rare_variants"] = mt.freq[0].AF < rare_variants_af
+    if by_csqs and not pass_filters:
+        raise Warning(
+            "Variant consequences only calculated in regions which pass filters..."
+        )
     if by_csqs & pass_filters:
         for csq in CSQ_SET:
             is_lof = csq in LOF_CSQ_SET
@@ -394,8 +398,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--skip-by-csqs",
         help=(
-            "Whether to skip calculating the number of variants by consequence type: "
-            "loss-of-function, missense, and synonymous."
+            "Whether to skip calculating the number of variants by consequence type:"
+            " missense, synonymous, and loss-of-function (splice_acceptor_variant,"
+            " splice_donor_variant, stop_gained, frameshift_variant)."
         ),
         action="store_true",
     )
