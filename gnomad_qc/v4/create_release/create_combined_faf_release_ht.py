@@ -12,7 +12,7 @@ joint frequency, a joint FAF, and the following tests comparing the two frequenc
 
 import argparse
 import logging
-from typing import Dict, List, Set
+from typing import Callable, Dict, List, Optional, Set
 
 import hail as hl
 import pandas as pd
@@ -36,15 +36,25 @@ from gnomad_qc.resource_utils import (
     PipelineStepResourceCollection,
 )
 from gnomad_qc.slack_creds import slack_token
+from gnomad_qc.v4.annotations.compute_coverage import adjust_interval_padding
 from gnomad_qc.v4.resources.annotations import (
     get_all_sites_an_and_qual_hists,
     get_combined_frequency,
     get_freq,
     get_freq_comparison,
 )
-from gnomad_qc.v4.resources.basics import get_checkpoint_path, get_logging_path
-from gnomad_qc.v4.resources.constants import CURRENT_FREQ_VERSION
+from gnomad_qc.v4.resources.basics import (
+    calling_intervals,
+    get_checkpoint_path,
+    get_logging_path,
+)
+from gnomad_qc.v4.resources.constants import (
+    CURRENT_FREQ_VERSION,
+    DATA_TYPES,
+    RELEASE_DATA_TYPES,
+)
 from gnomad_qc.v4.resources.release import get_combined_faf_release
+from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -81,10 +91,13 @@ def extract_freq_info(
         - fafmax: {prefix}_fafmax
         - qual_hists: {prefix}_qual_hists
         - raw_qual_hists: {prefix}_raw_qual_hists
+        - age_hists: {prefix}_age_hists
 
     The following global annotations are filtered and renamed:
         - freq_meta: {prefix}_freq_meta
         - faf_meta: {prefix}_faf_meta
+        - age_distribution: {prefix}_age_distribution
+
 
     :param ht: Table with frequency and FAF information.
     :param prefix: Prefix to add to each of the filtered annotations.
@@ -151,6 +164,7 @@ def extract_freq_info(
             f"{prefix}_fafmax": fafmax_expr,
             f"{prefix}_qual_hists": ht.histograms.qual_hists,
             f"{prefix}_raw_qual_hists": ht.histograms.raw_qual_hists,
+            f"{prefix}_age_hists": ht.histograms.age_hists,
         }
     )
     ht = ht.select_globals(
@@ -158,6 +172,7 @@ def extract_freq_info(
             f"{prefix}_freq_meta": freq_meta,
             f"{prefix}_freq_meta_sample_count": array_exprs["freq_meta_sample_count"],
             f"{prefix}_faf_meta": faf_meta,
+            f"{prefix}_age_distribution": ht.age_distribution,
         }
     )
 
@@ -297,15 +312,12 @@ def get_joint_freq_and_faf(
             f"joint_{hist_struct}": hl.struct(
                 **{
                     h: merge_histograms(
-                        [
-                            ht[f"exomes_{hist_struct}"][h],
-                            ht[f"genomes_{hist_struct}"][h],
-                        ]
+                        [ht[f"{d}_{hist_struct}"][h] for d in DATA_TYPES]
                     )
                     for h in ht[f"genomes_{hist_struct}"]
                 }
             )
-            for hist_struct in ["qual_hists", "raw_qual_hists"]
+            for hist_struct in ["qual_hists", "raw_qual_hists", "age_hists"]
         },
     )
     ht = ht.annotate_globals(
@@ -332,12 +344,7 @@ def get_joint_freq_and_faf(
         pops_to_exclude=faf_pops_to_exclude,
         pop_label="gen_anc",
     )
-    faf_meta_by_pop = {
-        m.get("gen_anc"): i
-        for i, m in enumerate(faf_meta)
-        if m.get("gen_anc") and len(m) == 2
-    }
-    faf_meta_by_pop = hl.literal(faf_meta_by_pop)
+
     # Compute group max (popmax) on the merged exomes + genomes frequencies.
     grpmax = pop_max_expr(
         ht.joint_freq,
@@ -359,6 +366,9 @@ def get_joint_freq_and_faf(
         joint_faf_meta=faf_meta,
         joint_faf_index_dict=make_freq_index_dict_from_meta(hl.literal(faf_meta)),
         joint_freq_meta_sample_count=count_arrays_dict["counts"],
+        joint_age_distribution=merge_histograms(
+            [ht.genomes_age_distribution, ht.exomes_age_distribution]
+        ),
     )
 
     return ht
@@ -533,6 +543,140 @@ def perform_cmh_test(
     )
 
     return cmh_ht[ht.key].cmh
+
+
+def create_final_combined_faf_release(
+    ht,
+    contingency_table_ht: Optional[hl.Table] = None,
+    cmh_ht: Optional[hl.Table] = None,
+) -> hl.Table:
+    """
+    Create the final combined FAF release Table.
+
+    :param ht: Table with joint exomes and genomes frequency and FAF information.
+    :param contingency_table_ht: Optional Table with contingency table test results
+        to include on the final Table.
+    :param cmh_ht: Optional Table with Cochran–Mantel–Haenszel test results
+        to include on the final Table.
+    :return: Table with final combined FAF release information.
+    """
+    logger.info("Creating final combined FAF release Table...")
+
+    def _get_struct_by_data_type(
+        ht: hl.Table,
+        annotation_expr: Optional[hl.expr.StructExpression] = None,
+        condition_func: Optional[Callable[[str], hl.expr.BooleanExpression]] = None,
+        postfix: str = "",
+    ) -> hl.expr.StructExpression:
+        """
+        Group all annotations from the same data type into a struct.
+
+        :param ht: Table with annotations to loop through.
+        :param annotation_expr: StructExpression with annotations to loop through. If
+            None, use ht.row.
+        :param condition_func: Function that returns a BooleanExpression for a
+            condition to check in addition to data type.
+        :param postfix: String to add to the end of the new annotation following data
+            type.
+        :return: StructExpression of joint data type and the corresponding data type
+            struct.
+        """
+        if condition_func is None:
+            condition_func = lambda x: True
+        if annotation_expr is None:
+            annotation_expr = ht.row
+
+        return hl.struct(
+            **{
+                f"{data_type}{postfix}": hl.struct(
+                    **{
+                        x.replace(f"{data_type}_", ""): ht[x]
+                        for x in annotation_expr
+                        if x.startswith(data_type) and condition_func(x)
+                    }
+                )
+                for data_type in RELEASE_DATA_TYPES
+            }
+        )
+
+    # Group all the histograms into a single struct per data type.
+    ht = ht.transmute(
+        **_get_struct_by_data_type(
+            ht, condition_func=lambda x: x.endswith("_hists"), postfix="_histograms"
+        )
+    )
+
+    # Add capture and calling intervals as region flags.
+    intervals = [(c, calling_intervals(c, 0).ht()) for c in ["broad", "ukb"]]
+    intervals = [(f"{c}_capture", i) for c, i in intervals] + [
+        (f"{c}_calling", adjust_interval_padding(i, 150)) for c, i in intervals
+    ]
+
+    region_expr = {
+        "fail_interval_qc": (
+            ~interval_qc_pass(all_platforms=True).ht()[ht.locus].pass_interval_qc
+        ),
+        **{f"outside_{c}_region": hl.is_missing(i[ht.locus]) for c, i in intervals},
+        **{
+            f"not_called_in_{d}": hl.is_missing(ht[f"{d}_freq"]) | hl.is_missing(
+                ht[f"{d}_freq"][1].AN
+            )
+            for d in DATA_TYPES
+        },
+    }
+
+    # Get the stats expressions for the final Table.
+    def _prep_stats_annotation(ht: hl.Table, stat_ht: hl.Table, stat_field: str):
+        """
+        Prepare stats expressions for the final Table.
+
+        :param ht: Table to add stats to.
+        :param stat_ht: Table with stats to add to the final Table.
+        :param stat_field: Field to add to the final Table.
+        :return: Dictionary of stats expressions for the final Table.
+        """
+        stat_expr = stat_ht[ht.key][stat_field]
+        is_struct = False
+        if isinstance(stat_expr, hl.expr.StructExpression):
+            is_struct = True
+            stat_expr = hl.array([stat_expr])
+
+        stat_expr = stat_expr.map(
+            lambda x: hl.struct(
+                odds_ratio=hl.or_missing(~hl.is_nan(x.odds_ratio), x.odds_ratio),
+                p_value=hl.or_missing(~hl.is_nan(x.p_value), x.p_value),
+            )
+        )
+
+        if is_struct:
+            stat_expr = stat_expr[0]
+
+        return {stat_field: stat_expr}
+
+    stats_expr = {}
+    if contingency_table_ht is not None:
+        stats_expr.update(
+            _prep_stats_annotation(ht, contingency_table_ht, "contingency_table_test")
+        )
+    if cmh_ht is not None:
+        stats_expr.update(
+            _prep_stats_annotation(ht, cmh_ht, "cochran_mantel_haenszel_test")
+        )
+
+    # Select the final columns for the Table, grouping all annotations from the same
+    # data type into a struct.
+    ht = ht.select(
+        region_flags=hl.struct(**region_expr),
+        **_get_struct_by_data_type(ht),
+        freq_comparison_stats=hl.struct(**stats_expr),
+    )
+
+    # Group all global annotations from the same data type into a struct.
+    ht = ht.transmute_globals(
+        **_get_struct_by_data_type(ht, annotation_expr=ht.globals, postfix="_globals")
+    )
+
+    return ht
 
 
 def get_combine_faf_resources(
@@ -842,52 +986,16 @@ def main(args):
             res = combine_faf_resources.finalize_faf
             res.check_resource_existence()
 
-            ht = res.comb_freq_ht.ht()
-            stats_expr = {}
-            if args.include_contingency_table_test:
-                stat_expr = res.contingency_table_ht.ht()[ht.key].contingency_table_test
-                stats_expr["contingency_table_test"] = stat_expr.map(
-                    lambda x: hl.struct(
-                        odds_ratio=hl.or_missing(
-                            ~hl.is_nan(x.odds_ratio), x.odds_ratio
-                        ),
-                        p_value=hl.or_missing(~hl.is_nan(x.p_value), x.p_value),
-                    )
-                )
-            if args.include_cochran_mantel_haenszel_test:
-                stat_expr = res.cmh_ht.ht()[ht.key].cochran_mantel_haenszel_test
-                stats_expr["cochran_mantel_haenszel_test"] = hl.struct(
-                    odds_ratio=hl.or_missing(
-                        ~hl.is_nan(stat_expr.odds_ratio), stat_expr.odds_ratio
-                    ),
-                    p_value=hl.or_missing(
-                        ~hl.is_nan(stat_expr.p_value), stat_expr.p_value
-                    ),
-                )
-
-            ht = ht.annotate(
-                **stats_expr,
-                joint_metric_data_type=hl.case()
-                .when(
-                    (hl.is_defined(ht.genomes_grpmax.AC))
-                    & hl.is_defined(ht.exomes_grpmax.AC),
-                    "both",
-                )
-                .when(hl.is_defined(ht.genomes_grpmax.AC), "genomes")
-                .when(hl.is_defined(ht.exomes_grpmax.AC), "exomes")
-                .default(hl.missing(hl.tstr)),
-                joint_fafmax=ht.joint_fafmax.annotate(
-                    joint_fafmax_data_type=hl.case()
-                    .when(
-                        (hl.is_defined(ht.genomes_fafmax.faf95_max))
-                        & hl.is_defined(ht.exomes_fafmax.faf95_max),
-                        "both",
-                    )
-                    .when(hl.is_defined(ht.genomes_fafmax.faf95_max), "genomes")
-                    .when(hl.is_defined(ht.exomes_fafmax.faf95_max), "exomes")
-                    .default(hl.missing(hl.tstr)),
+            ht = create_final_combined_faf_release(
+                res.comb_freq_ht.ht(),
+                (
+                    res.contingency_table_ht.ht()
+                    if args.include_contingency_table_test
+                    else None
                 ),
+                res.cmh_ht.ht() if args.include_cochran_mantel_haenszel_test else None,
             )
+
             ht.describe()
             ht.naive_coalesce(args.n_partitions).write(
                 res.final_combined_faf_ht.path, overwrite=overwrite
