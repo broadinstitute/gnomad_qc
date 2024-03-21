@@ -34,6 +34,7 @@ from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import (
     filter_vep_transcript_csqs,
     get_most_severe_consequence_for_summary,
+    LOF_CSQ_SET,
 )
 
 from gnomad_qc.slack_creds import slack_token
@@ -51,6 +52,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("per_sample_stats")
 logger.setLevel(logging.INFO)
+
+CSQ_SET = LOF_CSQ_SET.union({"missense_variant", "synonymous_variant"})
 
 
 def create_per_sample_counts_ht(
@@ -134,12 +137,25 @@ def create_per_sample_counts_ht(
         filter_expr["ukb_broad_capture_union"] = (
             filter_expr["ukb_capture"] | filter_expr["broad_capture"]
         )
+    if all(["ukb_capture", "broad_capture", "pass_filters"]):
+        filter_expr["ukb_broad_capture_union_pass_filters"] = (
+            filter_expr["ukb_broad_capture_union"] & filter_expr["pass_filters"]
+        )
     if rare_variants:
         filter_expr["rare_variants"] = mt.freq[0].AF < rare_variants_af
-    if by_csqs:
-        filter_expr["lof"] = ~hl.is_missing(mt.lof)
-        filter_expr["missense"] = mt.most_severe_csq == "missense_variant"
-        filter_expr["synonymous"] = mt.most_severe_csq == "synonymous_variant"
+    if by_csqs & pass_filters:
+        for csq in CSQ_SET:
+            is_lof = csq in LOF_CSQ_SET
+            csq_str = f"pass_filters_{'lof_' if is_lof else ''}{csq}"
+            filter_expr[csq_str] = (mt.most_severe_csq == csq) & (
+                filter_expr["pass_filters"]
+            )
+            if is_lof:
+                filter_expr[csq_str] = (filter_expr[csq_str]) & (~hl.is_missing(mt.lof))
+            if rare_variants:
+                filter_expr[f"rare_vairants_{csq_str}"] = (
+                    filter_expr[csq_str] & filter_expr["rare_variants"]
+                )
 
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
     ht = mt.select_cols(
@@ -167,6 +183,7 @@ def compute_agg_sample_stats(
     ht: hl.Table,
     meta_ht: Optional[hl.Table] = None,
     by_ancestry: bool = False,
+    by_ukb: bool = False,
 ) -> hl.Struct:
     """
     Compute aggregate statistics for per-sample QC metrics.
