@@ -548,7 +548,7 @@ def main(args):
 
             logger.info("Exporting all sites AN tsv...")
             # Only export the adj AN for all release samples.
-            ht = ht.select(AN=ht.AN[0])
+            ht = ht.annotate(AN=ht.AN[0])
             ht.export(res.allele_number_tsv)
 
     finally:
