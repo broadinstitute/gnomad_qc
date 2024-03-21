@@ -562,40 +562,6 @@ def create_final_combined_faf_release(
     """
     logger.info("Creating final combined FAF release Table...")
 
-    # Add joint data type to the Table.
-    def _get_joint_data_type(
-        genomes_expr: hl.expr.Expression, exomes_expr: hl.expr.Expression
-    ) -> hl.expr.StringExpression:
-        """
-        Get the joint data type from the genomes and exomes Expressions.
-
-        If both genomes and exomes are defined, return "both". If only genomes are
-        defined, return "genomes". If only exomes are defined, return "exomes". If
-        neither genomes nor exomes are defined, return missing.
-
-        :param genomes_expr: Expression for genomes.
-        :param exomes_expr: Expression for exomes.
-        :return: StringExpression for joint data type.
-        """
-        return (
-            hl.case()
-            .when(hl.is_defined(genomes_expr) & hl.is_defined(exomes_expr), "both")
-            .when(hl.is_defined(genomes_expr), "genomes")
-            .when(hl.is_defined(exomes_expr), "exomes")
-            .default(hl.missing(hl.tstr))
-        )
-
-    ht = ht.annotate(
-        joint_fafmax=ht.joint_fafmax.annotate(
-            joint_fafmax_data_type=_get_joint_data_type(
-                ht.genomes_fafmax.faf95_max, ht.exomes_fafmax.faf95_max
-            )
-        ),
-        joint_metric_data_type=_get_joint_data_type(
-            ht.genomes_grpmax.AC, ht.exomes_grpmax.AC
-        ),
-    )
-
     def _get_struct_by_data_type(
         in_ht: hl.Table,
         annotation_expr: Optional[hl.expr.StructExpression] = None,
