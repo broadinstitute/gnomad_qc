@@ -636,8 +636,8 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         action="store_true",
     )
     parser.add_argument(
-        "--export-all-sites-an-release-tsv",
-        help="Export all sites AN release file.",
+        "--export-all-sites-an-release-files",
+        help="Export all sites AN release HT and TSV file.",
         action="store_true",
     )
 
