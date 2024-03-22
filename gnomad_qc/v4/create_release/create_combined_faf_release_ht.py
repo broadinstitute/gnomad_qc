@@ -538,7 +538,7 @@ def perform_cmh_test(
     cmh_ht = cmh_ht.key_by("tmp_idx")
     cmh_ht = _ht.select(
         cmh=hl.struct(
-            odds_ratio=cmh_ht[_ht.tmp_idx].statistic, p_value=cmh_ht[_ht.tmp_idx].pvalue
+            chisq=cmh_ht[_ht.tmp_idx].statistic, p_value=cmh_ht[_ht.tmp_idx].pvalue
         )
     )
 
@@ -642,9 +642,8 @@ def create_final_combined_faf_release(
             stat_expr = hl.array([stat_expr])
 
         stat_expr = stat_expr.map(
-            lambda x: hl.struct(
-                odds_ratio=hl.or_missing(~hl.is_nan(x.odds_ratio), x.odds_ratio),
-                p_value=hl.or_missing(~hl.is_nan(x.p_value), x.p_value),
+            lambda x: x.annotate(
+                **{a: hl.or_missing(~hl.is_nan(x[a]), x[a]) for a in x}
             )
         )
 
