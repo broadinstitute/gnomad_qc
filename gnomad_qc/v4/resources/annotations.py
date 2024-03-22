@@ -405,12 +405,12 @@ def get_freq_comparison(
         )
 
     return VersionedTableResource(
-        CURRENT_COMBINED_FAF_RELEASE,
+        CURRENT_VERSION,
         {
             version: TableResource(
                 f"{_annotations_root(version, data_type='joint', test=test)}/gnomad.joint.v{version}.compare_frequencies.{method}{'.filtered' if filtered else ''}.ht"
             )
-            for version in COMBINED_FAF_RELEASES
+            for version in VERSIONS
         },
     )
 
