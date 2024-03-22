@@ -53,7 +53,7 @@ from gnomad_qc.v4.resources.constants import (
     DATA_TYPES,
     RELEASE_DATA_TYPES,
 )
-from gnomad_qc.v4.resources.release import get_combined_faf_release
+from gnomad_qc.v4.resources.release import release_sites
 from gnomad_qc.v4.resources.sample_qc import interval_qc_pass
 from gnomad_qc.v4.resources.variant_qc import final_filter
 
@@ -796,9 +796,7 @@ def get_combine_faf_resources(
     finalize_faf = PipelineStepResourceCollection(
         "--finalize-combined-faf-release",
         output_resources={
-            "final_combined_faf_ht": get_combined_faf_release(
-                test=test, filtered=filtered
-            )
+            "final_combined_faf_ht": release_sites(data_type="joint", test=test)
         },
         pipeline_input_steps=finalize_faf_input_steps,
     )
