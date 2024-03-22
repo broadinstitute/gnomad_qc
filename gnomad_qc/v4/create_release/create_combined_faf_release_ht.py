@@ -538,7 +538,7 @@ def perform_cmh_test(
     cmh_ht = cmh_ht.key_by("tmp_idx")
     cmh_ht = _ht.select(
         cmh=hl.struct(
-            chi_sq=cmh_ht[_ht.tmp_idx].statistic, p_value=cmh_ht[_ht.tmp_idx].pvalue
+            chisq=cmh_ht[_ht.tmp_idx].statistic, p_value=cmh_ht[_ht.tmp_idx].pvalue
         )
     )
 
