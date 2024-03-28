@@ -5,11 +5,12 @@ import logging
 import hail as hl
 from gnomad.resources.resource_utils import NO_CHR_TO_CHR_CONTIG_RECODING
 from gnomad.utils.slack import slack_notifications
-from gnomad.utils.vep import filter_vep_transcript_csqs
+from gnomad.utils.vep import filter_vep_transcript_csqs, process_consequences
 from hail.utils import new_temp_file
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources.annotations import get_insilico_predictors
+from gnomad_qc.v4.resources.release import release_sites
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -508,6 +509,90 @@ def create_phylop_grch38_ht() -> hl.Table:
     return ht
 
 
+def get_revel_for_unmatched_transcripts() -> None:
+    """Create Tables with REVEL scores for variants in v4.1 release in Ensembl v105 MANE Select transcripts that are not found in REVEL (Ensembl v64)."""
+
+    def _process_revel():
+        """Process REVEL scores."""
+        revel_csv = "gs://gnomad-insilico/revel/revel-v1.3_all_chromosomes_with_transcript_ids.csv.bgz"
+
+        ht = hl.import_table(
+            revel_csv,
+            delimiter=",",
+            min_partitions=1000,
+            types={"grch38_pos": hl.tstr, "REVEL": hl.tfloat64},
+        )
+
+        ht = ht.drop("hg19_pos", "aaref", "aaalt")
+        # drop variants that have no position in GRCh38 when lifted over from GRCh37
+        ht = ht.filter(ht.grch38_pos.contains("."), keep=False)
+        ht = ht.transmute(chr="chr" + ht.chr)
+        ht = ht.select(
+            locus=hl.locus(ht.chr, hl.int(ht.grch38_pos), reference_genome="GRCh38"),
+            alleles=hl.array([ht.ref, ht.alt]),
+            REVEL=ht.REVEL,
+            Transcript_stable_ID=ht.Ensembl_transcriptid.strip().split(";"),
+        )
+        ht = ht.key_by("locus", "alleles")
+        ht = ht.group_by("locus", "alleles").aggregate(
+            REVEL_max=hl.agg.max(revel.REVEL)
+        )
+        return ht
+
+    def _filter_release_ht(data_type, genes_list):
+        ht = release_sites(data_type=data_type).ht()
+        ht = process_consequences(ht)
+        ht = filter_vep_transcript_csqs(
+            ht, synonymous=False, genes=genes_list, csqs=["missense_variant"]
+        )
+        ht = ht.select(
+            gene_id=ht.vep.transcript_consequences.gene_id,
+            most_severe_consequence=ht.vep.transcript_consequences.most_severe_consequence,
+        )
+        return ht
+
+    # Get the max REVEL score for each variant
+    revel = _process_revel()
+    revel = revel
+    revel = revel.checkpoint(hl.utils.new_temp_file("revel_tmp", "ht"))
+
+    # Get genes missing revel scores
+    genes = hl.import_table(
+        "gs://gnomad-insilico/Ensembl105MANE_without_REVEL.txt",
+        impute=True,
+        comment="#",
+    )
+    genes_list = genes.Gene_stable_ID.collect()
+
+    # Filter exomes and genomes release sites to only include genes with missing revel
+    # scores and annotated as "missense_variant"
+    exomes = _filter_release_ht("exomes", genes_list)
+    exomes = exomes.checkpoint(hl.utils.new_temp_file("exomes_tmp_filtered", "ht"))
+
+    genomes = _filter_release_ht("genomes", genes_list)
+    genomes = genomes.checkpoint(hl.utils.new_temp_file("genomes_tmp_filtered", "ht"))
+
+    # Join REVEL scores with exomes and genomes release sites
+    exomes = exomes.annotate(REVEL_max=revel[exomes.key].REVEL_max)
+    genomes = genomes.annotate(REVEL_max=revel[genomes.key].REVEL_max)
+
+    # Filter out variants with missing REVEL scores
+    exomes = exomes.filter(hl.is_defined(exomes.REVEL_max))
+    # Check if this example variant now has a REVEL score
+    exomes.filter(
+        (exomes.locus.contig == "chr1") & (exomes.locus.position == 173856729)
+    ).show()
+    genomes = genomes.filter(hl.is_defined(genomes.REVEL_max))
+
+    # Write to file
+    exomes.export(
+        "gs://gnomad-insilico/revel/gnomad_v4.1_exomes_REVEL_for_genes_unmatching_transcripts.tsv.bgz"
+    )
+    genomes.export(
+        "gs://gnomad-insilico/revel/gnomad_v4.1_genomes_REVEL_for_genes_unmatching_transcripts.tsv.bgz"
+    )
+
+
 def main(args):
     """Generate Hail Tables with in silico predictors."""
     hl.init(
@@ -554,6 +639,13 @@ def main(args):
             overwrite=args.overwrite,
         )
         logger.info("REVEL Hail Table for GRCh38 created.")
+    if args.revel_unmatched_transcripts:
+        logger.info(
+            "Get REVEL score for variants in missing MANE transcripts in v4.1"
+            " release..."
+        )
+        get_revel_for_unmatched_transcripts()
+
     if args.phylop:
         logger.info("Creating PhyloP Hail Table for GRCh38...")
         ht = create_phylop_grch38_ht()
