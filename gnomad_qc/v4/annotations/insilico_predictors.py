@@ -645,7 +645,6 @@ def main(args):
             " release..."
         )
         get_revel_for_unmatched_transcripts()
-
     if args.phylop:
         logger.info("Creating PhyloP Hail Table for GRCh38...")
         ht = create_phylop_grch38_ht()
