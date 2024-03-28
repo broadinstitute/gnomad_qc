@@ -536,10 +536,10 @@ def perform_cmh_test(
     # Convert CMH result pandas DataFrame to a Table and restructure the annotation.
     cmh_ht = hl.Table.from_pandas(df)
     cmh_ht = cmh_ht.key_by("tmp_idx")
+    chisq_expr = cmh_ht[_ht.tmp_idx].statistic
+    chisq_expr = hl.or_missing(~hl.is_nan(chisq_expr), chisq_expr)
     cmh_ht = _ht.select(
-        cmh=hl.struct(
-            chisq=cmh_ht[_ht.tmp_idx].statistic, p_value=cmh_ht[_ht.tmp_idx].pvalue
-        )
+        cmh=hl.struct(chisq=chisq_expr, p_value=hl.pchisqtail(chisq_expr, 1))
     )
 
     return cmh_ht[ht.key].cmh
