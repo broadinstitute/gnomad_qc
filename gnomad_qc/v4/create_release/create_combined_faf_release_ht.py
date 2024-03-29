@@ -524,22 +524,26 @@ def perform_cmh_test(
     # Perform CMH test on the list of 2x2 matrices (list of lists of 2 lists with 2
     # elements each).
     df["cmh"] = df.apply(
-        lambda x: StratifiedTable(
-            [list([list(a) for a in p]) for p in x.an]
-        ).test_null_odds(),
-        axis=1,
+        lambda x: StratifiedTable([list([list(a) for a in p]) for p in x.an]), axis=1
     )
-    df["pvalue"] = df.apply(lambda x: x.cmh.pvalue, axis=1)
-    df["statistic"] = df.apply(lambda x: x.cmh.statistic, axis=1)
-    df = df[["tmp_idx", "pvalue", "statistic"]]
+    df["statistic"] = df.apply(lambda x: x.cmh.test_null_odds().statistic, axis=1)
+    df["oddsratio_pooled"] = df.apply(lambda x: x.cmh.oddsratio_pooled, axis=1)
+    df = df[["tmp_idx", "statistic", "oddsratio_pooled"]]
 
     # Convert CMH result pandas DataFrame to a Table and restructure the annotation.
     cmh_ht = hl.Table.from_pandas(df)
     cmh_ht = cmh_ht.key_by("tmp_idx")
-    chisq_expr = cmh_ht[_ht.tmp_idx].statistic
-    chisq_expr = hl.or_missing(~hl.is_nan(chisq_expr), chisq_expr)
+    cmh_keyed = cmh_ht[_ht.tmp_idx]
+    chisq_expr = cmh_keyed.statistic
     cmh_ht = _ht.select(
-        cmh=hl.struct(chisq=chisq_expr, p_value=hl.pchisqtail(chisq_expr, 1))
+        cmh=hl.or_missing(
+            ~hl.is_nan(chisq_expr),
+            hl.struct(
+                oddsratio_pooled=cmh_keyed.oddsratio_pooled,
+                chisq=chisq_expr,
+                p_value=hl.pchisqtail(chisq_expr, 1),
+            ),
+        )
     )
 
     return cmh_ht[ht.key].cmh
