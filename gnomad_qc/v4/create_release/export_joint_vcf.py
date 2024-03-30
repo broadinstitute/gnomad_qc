@@ -10,6 +10,7 @@ from gnomad.sample_qc.ancestry import POP_NAMES
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.vcf import (
     HISTS,
+    REGION_FLAGS_JOINT_INFO_DICT,
     SEXES,
     adjust_vcf_incompatible_types,
     create_label_groups,
@@ -164,6 +165,7 @@ def prepare_vcf_header_dict(
     :return: Prepared VCF header dictionary
     """
     vcf_info_dict = {}
+    vcf_info_dict.update(REGION_FLAGS_JOINT_INFO_DICT)
     for data_type in ["exomes", "genomes", "joint"]:
         description_text = f" in {data_type} subset"  # TODO: do we call it subset?
         logger.info("Preparing freq VCF header for %s subset...", data_type)
@@ -279,6 +281,66 @@ def prepare_vcf_header_dict(
     }
 
     return vcf_header_dict
+
+
+def prepare_ht_for_export(
+    ht: hl.Table,
+    vcf_info_reorder: Optional[List[str]] = VCF_INFO_REORDER,
+    info_fields_to_drop: Optional[List[str]] = None,
+) -> Tuple[hl.Table, List[str]]:
+    """
+    Format validated HT for export.
+
+    Drop downsamplings frequency stats from info, rearrange info, and make sure fields
+    are VCF compatible.
+
+    :param ht: Input joint release HT.
+    :param vcf_info_reorder: Order of VCF INFO fields. These will be placed in front of
+        all other fields in the order specified.
+    :param info_fields_to_drop: List of info fields to drop from the info struct.
+    :return: Formatted HT and list rename row annotations.
+    """
+    if vcf_info_reorder:
+        logger.info("Rearranging fields to desired order...")
+        ht = ht.annotate(
+            info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
+        )
+
+    # Select relevant fields for VCF export
+    ht = ht.select("info")
+
+    if info_fields_to_drop is None:
+        info_fields_to_drop = []
+
+    logger.info("Add age_histogram bin edges to info fields to drop...")
+    for data_type in ["exomes", "genomes", "joint"]:
+        info_fields_to_drop.extend(
+            [
+                f"age_hist_het_bin_edges_{data_type}",
+                f"age_hist_hom_bin_edges_{data_type}",
+            ]
+        )
+
+    logger.info(
+        "Dropping the following fields from info struct: %s...",
+        pprint(info_fields_to_drop),
+    )
+    ht = ht.annotate(info=ht.info.drop(*info_fields_to_drop))
+
+    logger.info("Dropping '_adj' from info fields...")
+    row_annots = list(ht.info)
+    new_row_annots = [x.replace("_adj", "") for x in row_annots]
+    info_annot_mapping = dict(
+        zip(new_row_annots, [ht.info[f"{x}"] for x in row_annots])
+    )
+    ht = ht.transmute(info=hl.struct(**info_annot_mapping))
+
+    logger.info("Adjusting VCF incompatible types...")
+    # The Table is already split so there are no annotations that need to be
+    # pipe delimited.
+    ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
+
+    return ht, new_row_annots
 
 
 def main(args):
