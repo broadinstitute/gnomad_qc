@@ -213,16 +213,16 @@ def prepare_vcf_header_dict(
             faf_pops_version = "v4"
         else:
             faf_pops_version = "v3"
-        faf_pops = faf_pops[faf_pops_version]
-        faf_pop_names = {pop: POP_NAMES[pop] for pop in faf_pops}
+        faf_pops_to_use = faf_pops[faf_pops_version]
+        faf_pop_names = {pop: POP_NAMES[pop] for pop in faf_pops_to_use}
         if data_type == "exomes" or data_type == "genomes":
             faf_label_groups = create_label_groups(
-                pops=faf_pops, sexes=[], all_groups=["adj"]
+                pops=faf_pops_to_use, sexes=[], all_groups=["adj"]
             )
         else:
             # There are sex-specific FAFs in the joint dataset.
             faf_label_groups = create_label_groups(
-                pops=faf_pops, sexes=SEXES, all_groups=["adj"]
+                pops=faf_pops_to_use, sexes=SEXES, all_groups=["adj"]
             )
         for label_group in faf_label_groups:
             vcf_info_dict.update(
@@ -453,13 +453,14 @@ def main(args):
     }
     header_dict.update({"info": ordered_vcf_info_dict})
 
+    pprint(header_dict)
+
     if args.prepare_vcf_header_only:
         logger.info("Writing VCF header dict...")
         with hl.hadoop_open(
             release_header_path(test=test, data_type=data_type), "wb"
         ) as p:
             pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
-        return
 
     if args.export_vcf:
         logger.info("Exporting VCF...")
