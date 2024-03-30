@@ -18,11 +18,7 @@ from gnomad.utils.vcf import (
     make_info_dict,
 )
 
-from gnomad_qc.v4.create_release.validate_and_export_vcf import (
-    FAF_POPS,
-    POPS,
-    populate_subset_info_dict,
-)
+from gnomad_qc.v4.create_release.validate_and_export_vcf import FAF_POPS, POPS
 from gnomad_qc.v4.resources.release import release_sites
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -52,7 +48,7 @@ VCF_INFO_REORDER = [
 ]
 
 
-def unfurl_nested_structs(ht: hl.Table) -> hl.expr.StructExpression:
+def prepare_info_fields(ht: hl.Table) -> hl.expr.StructExpression:
     """
     Unfurl nested annotations in a Table to a flat expression.
 
@@ -69,16 +65,16 @@ def unfurl_nested_structs(ht: hl.Table) -> hl.expr.StructExpression:
             annotation_index_dict = make_freq_index_dict_from_meta(annotation_meta)
             annotation_idx = hl.eval(annotation_index_dict)
 
-            logger.info(f"Unfurling {annotation} data...")
+            logger.info(f"Unfurling {annotation} data from {data_type}...")
             for k, i in annotation_idx.items():
                 for f in ht[data_type][annotation][0].keys():
                     key = (
-                        f"{f if f != 'homozygote_count' else 'nhomalt'}_{data_type}_{annotation}_{k}"
+                        f"{f if f != 'homozygote_count' else 'nhomalt'}_{data_type}_{k}"
                     )
                     expr = ht[data_type][annotation][i][f]
                     expr_dict[key] = expr
 
-        logger.info(f"Unfurling grpmax data...")
+        logger.info(f"Unfurling grpmax data from {data_type}...")
         grpmax_idx = ht[data_type].grpmax
         grpmax_dict = {"grpmax_" + data_type: grpmax_idx.gen_anc}
         for f in [field for field in grpmax_idx._fields if field != "gen_anc"]:
@@ -86,14 +82,14 @@ def unfurl_nested_structs(ht: hl.Table) -> hl.expr.StructExpression:
             grpmax_dict[key] = grpmax_idx[f]
         expr_dict.update(grpmax_dict)
 
-        logger.info(f"Unfurling fafmax data...")
+        logger.info(f"Unfurling fafmax data from {data_type}...")
         fafmax_idx = ht[data_type].fafmax
         fafmax_dict = {
             f"fafmax_{f}_{data_type}": fafmax_idx[f] for f in fafmax_idx.keys()
         }
         expr_dict.update(fafmax_dict)
 
-        logger.info(f"Unfurling age hists...")
+        logger.info(f"Unfurling age hists from {data_type}...")
         age_hist_idx = ht[data_type].histograms.age_hists
         AGE_HISTS = ["age_hist_het", "age_hist_hom"]
         for hist in AGE_HISTS:
@@ -106,13 +102,13 @@ def unfurl_nested_structs(ht: hl.Table) -> hl.expr.StructExpression:
                 )
                 expr_dict[key] = expr
 
+        logger.info(f"Unfurling variant quality histograms from {data_type}...")
         # Histograms to export are:
         # gq_hist_alt, gq_hist_all, dp_hist_alt, dp_hist_all, ab_hist_alt
         # We previously dropped:
         # _n_smaller for all hists
         # _bin_edges for all hists
         # _n_larger for all hists EXCEPT DP hists
-        # TODO: Are we still dropping them from joint VCF?
         for hist in HISTS:
             hist_dict = {
                 f"{hist}_bin_freq_{data_type}": hl.delimit(
@@ -129,6 +125,11 @@ def unfurl_nested_structs(ht: hl.Table) -> hl.expr.StructExpression:
                         )
                     },
                 )
+
+    logger.info("Unfurling region flags...")
+    for f in REGION_FLAG_FIELDS:
+        expr_dict[f] = ht.region_flags[f]
+
     logger.info(
         "Unfurling contingency table test results of exomes and genomes freq"
         " comparison..."
@@ -140,265 +141,144 @@ def unfurl_nested_structs(ht: hl.Table) -> hl.expr.StructExpression:
             expr = ht.freq_comparison_stats.contingency_table_test[i][f]
             expr_dict[key] = expr
 
-    return hl.struct(**expr_dict)
-
-
-def prepare_ht_for_export(
-    ht: hl.Table,
-    vcf_info_reorder: Optional[List[str]] = VCF_INFO_REORDER,
-    info_fields_to_drop: Optional[List[str]] = None,
-) -> Tuple[hl.Table, List[str]]:
-    """
-    Format validated HT for export.
-
-    Drop downsamplings frequency stats from info, rearrange info, and make sure fields
-    are VCF compatible.
-
-    :param ht: Inpuy joint release HT.
-    :param vcf_info_reorder: Order of VCF INFO fields. These will be placed in front of
-        all other fields in the order specified.
-    :param info_fields_to_drop: List of info fields to drop from the info struct.
-    :return: Formatted HT and list rename row annotations.
-    """
-    ht = ht.annotate(info=unfurl_nested_structs(ht))
-    ht = ht.annotate(info=ht.info.annotate(**{f: ht[f] for f in REGION_FLAG_FIELDS}))
-    ht = ht.annotate(
-        info=ht.info.annotate(
-            CMH_p_value=ht.freq_comparison_stats.cochran_mantel_haenszel_test.p_value,
-            CMH_chisq=ht.freq_comparison_stats.cochran_mantel_haenszel_test.chisq,
-        ),
-    )
-
-    if vcf_info_reorder:
-        logger.info("Rearranging fields to desired order...")
-        ht = ht.annotate(
-            info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
-        )
-
-    # Select relevant fields for VCF export
-    ht = ht.select("info")
-
-    if info_fields_to_drop is None:
-        info_fields_to_drop = []
-
-    # TODO: Are we dropping these fields from joint VCF?
-    logger.info("Add age_histogram bin edges to info fields to drop...")
-    info_fields_to_drop.extend(["age_hist_het_bin_edges", "age_hist_hom_bin_edges"])
-
     logger.info(
-        "Dropping the following fields from info struct: %s...",
-        pprint(info_fields_to_drop),
+        "Unfurling Cochran-Mantel-Haenszel test results of exomes and genomes freq"
+        " comparison..."
     )
-    ht = ht.annotate(info=ht.info.drop(*info_fields_to_drop))
-
-    logger.info("Dropping _'adj' from info fields...")
-    row_annots = list(ht.info)
-    new_row_annots = [x.replace("_adj", "") for x in row_annots]
-    info_annot_mapping = dict(
-        zip(new_row_annots, [ht.info[f"{x}"] for x in row_annots])
+    expr_dict["CMH_chisq"] = ht.freq_comparison_stats.cochran_mantel_haenszel_test.chisq
+    expr_dict["CMH_p_value"] = (
+        ht.freq_comparison_stats.cochran_mantel_haenszel_test.p_value
     )
-    ht = ht.transmute(info=hl.struct(**info_annot_mapping))
-
-    logger.info("Adjusting VCF incompatible types...")
-    # The Table is already split so there are no annotations that need to be
-    # pipe delimited.
-    ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
-
-    return ht, new_row_annots
-
-
-def populate_info_dict(
-    info_fields: List[str],
-    bin_edges: Dict[str, str],
-    age_hist_distribution: str = None,
-    subset_list: List[str] = ["exomes", "genomes", "joint"],
-    pops: Dict[str, str] = POPS,
-    faf_pops: Dict[str, List[str]] = FAF_POPS,
-    sexes: List[str] = SEXES,
-    label_delimiter: str = "_",
-    data_type: str = "exomes",
-) -> Dict[str, Dict[str, str]]:
-    """
-    Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary.
-
-    Used during VCF export.
-
-    Creates:
-        - INFO fields for age histograms (bin freq, n_smaller, and n_larger for
-          heterozygous and homozygous variant carriers).
-        - INFO fields for grpmax AC, AN, AF, nhomalt, and grpmax genetic ancestry group.
-        - INFO fields for AC, AN, AF, nhomalt for each combination of sample genetic
-          ancestry group, sex both for adj and raw data.
-        - INFO fields for filtering allele frequency (faf) annotations.
-        - INFO fields for variant histograms (hist_bin_freq for each histogram and
-          hist_n_larger for DP histograms).
-
-    :param info_fields: List of info fields to add to the info dict. Default is None.
-    :param bin_edges: Dictionary of variant annotation histograms and their associated
-        bin edges.
-    :param age_hist_distribution: Pipe-delimited string of overall age histogram bin
-        frequency.
-    :param info_dict: INFO dict to be populated.
-    :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
-    :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
-    :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
-        names (values). Default is FAF_POPS.
-    :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
-    :param label_delimiter: String to use as delimiter when making group label
-        combinations.
-    :param data_type: Data type to populate info dict for. One of "exomes" or
-        "genomes". Default is "exomes".
-    :return: Updated INFO dictionary for VCF export.
-    """
-    vcf_info_dict = {}
-    vcf_info_dict = {f: vcf_info_dict[f] for f in info_fields if f in vcf_info_dict}
-
-    for subset in subset_list:
-        subset_pops = deepcopy(pops)
-        if (subset == "joint") | (data_type == "genomes"):
-            subset_pops.update({"ami": "Amish"})
-        description_text = "" if subset == "" else f" in {subset} subset"
-
-        vcf_info_dict.update(
-            populate_subset_info_dict(
-                subset=subset,
-                description_text=description_text,
-                data_type=subset,  # Because we are using joint release
-                pops=subset_pops,
-                faf_pops=faf_pops,
-                sexes=sexes,
-                label_delimiter=label_delimiter,
-            )
-        )
-
-    if age_hist_distribution:
-        age_hist_distribution = "|".join(str(x) for x in age_hist_distribution)
-
-    # Add age histogram data to info dict.
-    vcf_info_dict.update(
-        make_info_dict(
-            label_delimiter=label_delimiter,
-            bin_edges=bin_edges,
-            age_hist_distribution=age_hist_distribution,
-        )
-    )
-
-    # Add variant quality histograms to info dict.
-    vcf_info_dict.update(
-        make_hist_dict(bin_edges, adj=True, drop_n_smaller_larger=True)
-    )
-
-    return vcf_info_dict
-
-
-def make_hist_bin_edges_expr(
-    ht: hl.Table,
-    hists: List[str] = HISTS,
-    row_name: str = "",
-    prefix: str = "",
-    label_delimiter: str = "_",
-    include_age_hists: bool = True,
-) -> Dict[str, str]:
-    """
-    Create dictionaries containing variant histogram annotations and their associated bin edges, formatted into a string separated by pipe delimiters.
-
-    :param ht: Table containing histogram variant annotations.
-    :param hists: List of variant histogram annotations. Default is HISTS.
-    :param row_name: Name of row annotation containing histogram data. In the joint releast HT, it could be "exomes", "genomes", or "joint".
-    :param prefix: Prefix text for age histogram bin edges.  Default is empty string.
-    :param label_delimiter: String used as delimiter between prefix and histogram annotation.
-    :param include_age_hists: Include age histogram annotations.
-    :return: Dictionary keyed by histogram annotation name, with corresponding reformatted bin edges for values.
-    """
-    # Add underscore to prefix if it isn't empty
-    if prefix != "":
-        prefix += label_delimiter
-
-    edges_dict = {}
-    if include_age_hists:
-        edges_dict.update(
-            {
-                f"{prefix}{call_type}": "|".join(
-                    map(
-                        lambda x: f"{x:.1f}",
-                        ht.head(1)[row_name]
-                        .histograms.age_hists[f"age_hist_{call_type}"]
-                        .collect()[0]
-                        .bin_edges,
-                    )
-                )
-                for call_type in ["het", "hom"]
-            }
-        )
-
-    for hist in hists:
-        # Parse hists calculated on both raw and adj-filtered data
-        for hist_type in [f"{prefix}raw_qual_hists", f"{prefix}qual_hists"]:
-            hist_name = hist
-            if "raw" in hist_type:
-                hist_name = f"{prefix}{hist}_raw"
-
-            edges_dict[hist_name] = "|".join(
-                map(
-                    lambda x: f"{x:.2f}" if "ab" in hist else str(int(x)),
-                    ht.head(1)[row_name]
-                    .histograms[hist_type][hist]
-                    .collect()[0]
-                    .bin_edges,
-                )
-            )
-
-    return edges_dict
+    return hl.struct(**expr_dict)
 
 
 def prepare_vcf_header_dict(
     ht: hl.Table,
-    bin_edges: Dict[str, str],
-    age_hist_distribution: str,
-    subset_list: List[str],
-    pops: Dict[str, str],
-    data_type: str = "exomes",
-    joint_included: bool = False,
+    pops: Dict[str, str] = POPS,
+    sexes: List[str] = SEXES,
 ) -> Dict[str, Dict[str, str]]:
     """
     Prepare VCF header dictionary.
 
     :param ht: Input Table
-    :param validated_ht: Validated HT with unfurled info fields.
-    :param bin_edges: Dictionary of variant annotation histograms and their associated
-        bin edges.
-    :param age_hist_distribution: Pipe-delimited string of overall age histogram bin
-        frequency.
-    :param subset_list: List of sample subsets in dataset.
-    :param pops: List of sample global genetic ancestry group names for gnomAD data type.
-    :param format_dict: Dictionary describing MatrixTable entries. Used in header for
-        VCF export.
-    :param data_type: Data type to prepare VCF header for. One of "exomes" or "genomes".
-        Default is "exomes".
-    :param joint_included: Whether joint frequency data is included in the HT.
-    :return: Prepared VCF header dictionary.
+    :return: Prepared VCF header dictionary
     """
-    # subset = "" represents full dataset in VCF header construction, the
-    # logic in gnomad_methods is built around this.
-    subset_list.extend(["", "joint"] if joint_included else [""])
-    logger.info("Making INFO dict for VCF...")
-    vcf_info_dict = populate_info_dict(
-        info_fields=list(ht.info),
-        bin_edges=bin_edges,
-        age_hist_distribution=age_hist_distribution,
-        subset_list=subset_list,
-        pops=pops,
-        data_type=data_type,
+    vcf_info_dict = {}
+    for data_type in ["exomes", "genomes", "joint"]:
+        description_text = f" in {data_type} subset"  # TODO: do we call it subset?
+        logger.info("Preparing freq VCF header for %s subset...", data_type)
+        if data_type == "exomes":
+            pops_to_use = pops.copy()
+        else:
+            pops_to_use = pops.copy()
+            pops_to_use.update({"ami": "Amish"})
+        freq_label_groups = create_label_groups(pops=pops_to_use, sexes=sexes)
+        for label_group in freq_label_groups:
+            vcf_info_dict.update(
+                make_info_dict(
+                    prefix=data_type,
+                    prefix_before_metric=False,
+                    pop_names=pops_to_use,
+                    label_groups=label_group,
+                    description_text=description_text,
+                    callstats=True,
+                )
+            )
+        logger.info("Preparing faf VCF header for %s subset...", data_type)
+        if data_type == "exomes" or data_type == "joint":
+            faf_pops_version = "v4"
+        else:
+            faf_pops_version = "v3"
+        faf_pops = {pop: POP_NAMES[pop] for pop in FAF_POPS[faf_pops_version]}
+        if data_type == "exomes" or data_type == "genomes":
+            # There are no sex-specific FAFs in the joint dataset.
+            faf_label_groups = create_label_groups(
+                pops=faf_pops, sexes=[], all_groups=["adj"]
+            )
+        else:
+            faf_label_groups = create_label_groups(
+                pops=faf_pops, sexes=SEXES, all_groups=["adj"]
+            )
+        for label_group in faf_label_groups:
+            vcf_info_dict.update(
+                make_info_dict(
+                    prefix=data_type,
+                    prefix_before_metric=False,
+                    pop_names=faf_pops,
+                    label_groups=label_group,
+                    faf=True,
+                    description_text=description_text,
+                )
+            )
+        logger.info(
+            "Preparing grpmax and fafmax VCF header for %s subset...", data_type
+        )
+        vcf_info_dict.update(
+            make_info_dict(
+                suffix=data_type,
+                pop_names=pops,
+                grpmax=True,
+                description_text=description_text,
+            )
+        )
+        vcf_info_dict.update(
+            make_info_dict(
+                suffix=data_type,
+                fafmax=True,
+                description_text=description_text,
+            )
+        )
+
+        logger.info("Preparing age histograms VCF header for %s subset...", data_type)
+        vcf_info_dict.update(
+            make_info_dict(
+                suffix=data_type,
+                bin_edges=make_hist_bin_edges_expr(ht, ann_with_hists=data_type),
+                age_hist_distribution=hl.eval(
+                    f"ht.{data_type}_globals.age_distribution)"
+                ),
+                description_text=description_text,
+            ),
+        )
+
+        logger.info(
+            "Preparing variant quality histograms VCF header for %s subset...",
+            data_type,
+        )
+        vcf_info_dict.update(
+            make_hist_dict(
+                make_hist_bin_edges_expr(ht, ann_with_hists=data_type),
+                adj=True,
+                drop_n_smaller_larger=True,
+                suffix=data_type,
+                description_text=description_text,
+            )
+        )
+
+    pops_ctt = pops.copy()
+    pops_ctt.update({"ami": "Amish"})
+    ctt_label_groups = create_label_groups(pops=pops_ctt, sexes=sexes)
+    for label_group in ctt_label_groups:
+        vcf_info_dict.update(
+            make_info_dict(
+                freq_ctt=True,
+                label_groups=label_group,
+            )
+        )
+    vcf_info_dict.update(
+        make_info_dict(
+            freq_cmh=True,
+        )
     )
 
     # Adjust keys to remove adj tags before exporting to VCF.
     new_vcf_info_dict = {i.replace("_adj", ""): j for i, j in vcf_info_dict.items()}
 
-    header_dict = {
+    vcf_header_dict = {
         "info": new_vcf_info_dict,
     }
 
-    return header_dict
+    return vcf_header_dict
 
 
 def main(args):
