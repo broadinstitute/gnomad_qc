@@ -1,6 +1,7 @@
 """Script to export joint release Table to VCF."""
 import argparse
 import logging
+import pickle
 from copy import deepcopy
 from pprint import pprint
 from typing import Dict, List, Optional
@@ -24,13 +25,16 @@ from gnomad.utils.vcf import (
 )
 
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
-from gnomad_qc.v4.resources.release import release_sites, release_vcf_path
+from gnomad_qc.v4.resources.release import (
+    release_header_path,
+    release_sites,
+    release_vcf_path,
+)
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("export_joint_vcf")
 logger.setLevel(logging.INFO)
 
-expr_dict = {}
 
 REGION_FLAG_FIELDS = [
     "fail_interval_qc",
@@ -449,15 +453,24 @@ def main(args):
     }
     header_dict.update({"info": ordered_vcf_info_dict})
 
-    logger.info("Exporting VCF...")
-    export_reference = build_vcf_export_reference("gnomAD_GRCh38", keep_chrM=False)
-    hl.export_vcf(
-        rekey_new_reference(ht, export_reference),
-        output_path,
-        metadata=header_dict,
-        tabix=True,
-        overwrite=overwrite,
-    )
+    if args.prepare_vcf_header_only:
+        logger.info("Writing VCF header dict...")
+        with hl.hadoop_open(
+            release_header_path(test=test, data_type=data_type), "wb"
+        ) as p:
+            pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
+        return
+
+    if args.export_vcf:
+        logger.info("Exporting VCF...")
+        export_reference = build_vcf_export_reference("gnomAD_GRCh38", keep_chrM=False)
+        hl.export_vcf(
+            rekey_new_reference(ht, export_reference),
+            output_path,
+            metadata=header_dict,
+            tabix=True,
+            overwrite=overwrite,
+        )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
@@ -477,6 +490,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--contig",
         help="Export only the specified contig.",
         type=str,
+    )
+    parser.add_argument(
+        "--prepare-vcf-header-only",
+        help="Prepare VCF header only.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--export-vcf",
+        help="Export VCF.",
+        action="store_true",
     )
     return parser
 
