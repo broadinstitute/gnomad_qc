@@ -404,7 +404,6 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-30day",
     )
 
-    overwrite = args.overwrite
     test = args.test
     contig = args.contig
     data_type = "joint"
@@ -470,18 +469,12 @@ def main(args):
             output_path,
             metadata=header_dict,
             tabix=True,
-            overwrite=overwrite,
         )
 
 
 def get_script_argument_parser() -> argparse.ArgumentParser:
     """Get script argument parser."""
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--overwrite",
-        help="Overwrite existing files.",
-        action="store_true",
-    )
     parser.add_argument(
         "--test",
         help="Export only the PCSK9 region for testing.",
