@@ -510,7 +510,26 @@ def create_phylop_grch38_ht() -> hl.Table:
 
 
 def get_revel_for_unmatched_transcripts() -> None:
-    """Create Tables with REVEL scores for variants in v4.1 release in Ensembl v105 MANE Select transcripts that are not found in REVEL (Ensembl v64)."""
+    """
+    Create Tables with alternative REVEL scores for variants in v4.1 release.
+
+    ..note:
+        REVEL was computed using transcripts from Ensembl v64. However, in gnomAD
+        v4.0 and v4.1, we used transcript information from Ensembl v105 in addition
+        to variant information (locus and alleles combination) to ascertain variant
+        REVEL scores, We also only reported scores for MANE select or canonical
+        transcripts. Please refer to create_revel_grch38_ht() function above. This
+        means that variants within 2,414 MANE select transcripts present in gnomAD
+        v4.0/v4.1 but not present in Ensembl v64 were missing REVEL scores.
+
+        To address this, we annotated REVEL scores for variants within those 2,
+        414 transcripts using locus and allele information only (taking the maximum
+        score if a variant had multiple scores). These files contain only variants
+        from these 2,414 genes. The exomes TSV adds REVEL scores for 1,936,321 out of
+        2,284,296 (87.77%) missense variants that were previously missing REVEL
+        scores in gnomAD v4.0. The genomes TSV adds REVEL scores for 528,204 out of
+        620,799 ( 85.08%) missense variants that were previously missing REVEL scores.
+    """
 
     def _process_revel():
         """Process REVEL scores."""
@@ -522,24 +541,22 @@ def get_revel_for_unmatched_transcripts() -> None:
             min_partitions=1000,
             types={"grch38_pos": hl.tstr, "REVEL": hl.tfloat64},
         )
-
-        ht = ht.drop("hg19_pos", "aaref", "aaalt")
         # drop variants that have no position in GRCh38 when lifted over from GRCh37
         ht = ht.filter(ht.grch38_pos.contains("."), keep=False)
-        ht = ht.transmute(chr="chr" + ht.chr)
         ht = ht.select(
-            locus=hl.locus(ht.chr, hl.int(ht.grch38_pos), reference_genome="GRCh38"),
+            locus=hl.locus(
+                "chr" + ht.chr, hl.int(ht.grch38_pos), reference_genome="GRCh38"
+            ),
             alleles=hl.array([ht.ref, ht.alt]),
             REVEL=ht.REVEL,
             Transcript_stable_ID=ht.Ensembl_transcriptid.strip().split(";"),
         )
         ht = ht.key_by("locus", "alleles")
-        ht = ht.group_by("locus", "alleles").aggregate(
-            REVEL_max=hl.agg.max(revel.REVEL)
-        )
+        ht = ht.group_by("locus", "alleles").aggregate(REVEL_max=hl.agg.max(ht.REVEL))
         return ht
 
     def _filter_release_ht(data_type, genes_list):
+        """Filter release sites to only include genes with missing revel scores."""
         ht = release_sites(data_type=data_type).ht()
         ht = process_consequences(ht)
         ht = filter_vep_transcript_csqs(
@@ -553,7 +570,6 @@ def get_revel_for_unmatched_transcripts() -> None:
 
     # Get the max REVEL score for each variant
     revel = _process_revel()
-    revel = revel
     revel = revel.checkpoint(hl.utils.new_temp_file("revel_tmp", "ht"))
 
     # Get genes missing revel scores
@@ -564,33 +580,18 @@ def get_revel_for_unmatched_transcripts() -> None:
     )
     genes_list = genes.Gene_stable_ID.collect()
 
-    # Filter exomes and genomes release sites to only include genes with missing revel
-    # scores and annotated as "missense_variant"
-    exomes = _filter_release_ht("exomes", genes_list)
-    exomes = exomes.checkpoint(hl.utils.new_temp_file("exomes_tmp_filtered", "ht"))
-
-    genomes = _filter_release_ht("genomes", genes_list)
-    genomes = genomes.checkpoint(hl.utils.new_temp_file("genomes_tmp_filtered", "ht"))
-
-    # Join REVEL scores with exomes and genomes release sites
-    exomes = exomes.annotate(REVEL_max=revel[exomes.key].REVEL_max)
-    genomes = genomes.annotate(REVEL_max=revel[genomes.key].REVEL_max)
-
-    # Filter out variants with missing REVEL scores
-    exomes = exomes.filter(hl.is_defined(exomes.REVEL_max))
-    # Check if this example variant now has a REVEL score
-    exomes.filter(
-        (exomes.locus.contig == "chr1") & (exomes.locus.position == 173856729)
-    ).show()
-    genomes = genomes.filter(hl.is_defined(genomes.REVEL_max))
-
-    # Write to file
-    exomes.export(
-        "gs://gnomad-insilico/revel/gnomad_v4.1_exomes_REVEL_for_genes_unmatching_transcripts.tsv.bgz"
-    )
-    genomes.export(
-        "gs://gnomad-insilico/revel/gnomad_v4.1_genomes_REVEL_for_genes_unmatching_transcripts.tsv.bgz"
-    )
+    for data_type in ["exomes", "genomes"]:
+        # Filter release sites to only include genes with missing revel
+        ht = _filter_release_ht(data_type, genes_list)
+        ht = ht.checkpoint(hl.utils.new_temp_file(f"{data_type}_tmp_filtered", "ht"))
+        # Join REVEL scores with release sites
+        ht = ht.annotate(REVEL_max=revel[ht.key].REVEL_max)
+        # Filter out variants with missing REVEL scores
+        ht = ht.filter(hl.is_defined(ht.REVEL_max))
+        ht.export(
+            "gs://gnomad-insilico/revel/gnomad.v4.1."
+            f"{data_type}.revel_unmatched_transcripts.tsv.bgz"
+        )
 
 
 def main(args):
@@ -644,6 +645,8 @@ def main(args):
             "Get REVEL score for variants in missing MANE transcripts in v4.1"
             " release..."
         )
+        # This will create a table with REVEL scores for variants in v4.1 release
+        # that don't have a score in release Table.
         get_revel_for_unmatched_transcripts()
     if args.phylop:
         logger.info("Creating PhyloP Hail Table for GRCh38...")
@@ -666,6 +669,14 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--pangolin", help="Create Pangolin HT", action="store_true")
     parser.add_argument("--revel", help="Create REVEL HT.", action="store_true")
     parser.add_argument("--phylop", help="Create PhyloP HT.", action="store_true")
+    parser.add_argument(
+        "--revel-unmatched-transcripts",
+        help=(
+            "Get alternative REVEL score for variants "
+            "in MANE transcripts in v4.1 release."
+        ),
+        action="store_true",
+    )
 
     return parser
 
