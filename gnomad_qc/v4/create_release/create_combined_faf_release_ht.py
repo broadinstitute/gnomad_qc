@@ -128,7 +128,7 @@ def extract_freq_info(
     faf_meta, faf = filter_arrays_by_meta(
         ht.faf_meta,
         {"faf": ht.faf},
-        ["group", "gen_anc"],
+        ["group", "gen_anc", "sex"],
         combine_operator="or",
         exact_match=True,
     )
