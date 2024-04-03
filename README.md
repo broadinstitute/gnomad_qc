@@ -1,4 +1,9 @@
-# gnomad_qc
+# Scripts run to create gnomAD v3.0 release
+
+
+
+
+## gnomad_qc
 
 This repo contains the complete set of scripts used to perform sample and variant QC for the gnomAD v2.1 release. We will continue to update and improve upon the code to handle new releases as they grow in size and complexity and as they require increasingly sophisticated QC treatment. The current code therefore represents the most recent iteration of our pipelines and is guaranteed to change over time.
 
