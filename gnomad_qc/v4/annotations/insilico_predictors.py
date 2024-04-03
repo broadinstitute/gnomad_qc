@@ -514,21 +514,21 @@ def get_revel_for_unmatched_transcripts() -> None:
     Create Tables with alternative REVEL scores for variants in v4.1 release.
 
     ..note:
-        REVEL was computed using transcripts from Ensembl v64. However, in gnomAD
-        v4.0 and v4.1, we used transcript information from Ensembl v105 in addition
+
+        REVEL was computed using transcripts from Ensembl v64. In gnomAD v4.0 and
+        v4.1 release Table, we used transcript information from Ensembl v105 in addition
         to variant information (locus and alleles combination) to ascertain variant
         REVEL scores, We also only reported scores for MANE select or canonical
-        transcripts. Please refer to create_revel_grch38_ht() function above. This
-        means that variants within 2,414 MANE select transcripts present in gnomAD
-        v4.0/v4.1 but not present in Ensembl v64 were missing REVEL scores.
+        transcripts. This means that variants within 2,414 MANE select transcripts
+        present in gnomAD v4.0/v4.1 but not present in Ensembl v64 were missing REVEL scores.
 
-        To address this, we annotated REVEL scores for variants within those 2,
-        414 transcripts using locus and allele information only (taking the maximum
-        score if a variant had multiple scores). These files contain only variants
-        from these 2,414 genes. The exomes TSV adds REVEL scores for 1,936,321 out of
-        2,284,296 (87.77%) missense variants that were previously missing REVEL
-        scores in gnomAD v4.0. The genomes TSV adds REVEL scores for 528,204 out of
-        620,799 ( 85.08%) missense variants that were previously missing REVEL scores.
+        To address this, we annotated the variants within the 2,414 genes with the
+        maximum REVEL score found at the specific locus and allele, rather than the
+        score for the MANE Select transcript.
+
+        The exomes TSV adds REVEL scores to 1,936,321 out of 2,284,296 (87.77%)
+        missense variants within the 2,414 genes. The genomes TSV adds REVEL scores
+        to 528,204 out of 620,799 ( 85.08%) missense variants within the 2,414 genes.
     """
 
     def _process_revel():
@@ -586,7 +586,7 @@ def get_revel_for_unmatched_transcripts() -> None:
         ht = ht.checkpoint(hl.utils.new_temp_file(f"{data_type}_tmp_filtered", "ht"))
         # Join REVEL scores with release sites
         ht = ht.annotate(REVEL_max=revel[ht.key].REVEL_max)
-        # Filter out variants with missing REVEL scores
+        # Filter out variants without a REVEL score
         ht = ht.filter(hl.is_defined(ht.REVEL_max))
         ht.export(
             "gs://gnomad-insilico/revel/gnomad.v4.1."
@@ -645,8 +645,6 @@ def main(args):
             "Get REVEL score for variants in missing MANE transcripts in v4.1"
             " release..."
         )
-        # This will create a table with REVEL scores for variants in v4.1 release
-        # that don't have a score in release Table.
         get_revel_for_unmatched_transcripts()
     if args.phylop:
         logger.info("Creating PhyloP Hail Table for GRCh38...")
