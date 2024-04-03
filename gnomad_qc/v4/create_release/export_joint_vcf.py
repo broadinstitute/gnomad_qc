@@ -18,7 +18,8 @@ from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.vcf import (
     FAF_POPS,
     HISTS,
-    REGION_FLAGS_JOINT_INFO_DICT,
+    JOINT_REGION_FLAG_FIELDS,
+    JOINT_REGION_FLAGS_INFO_DICT,
     SEXES,
     adjust_vcf_incompatible_types,
     build_vcf_export_reference,
@@ -42,17 +43,6 @@ from gnomad_qc.v4.resources.release import (
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("export_joint_vcf")
 logger.setLevel(logging.INFO)
-
-
-REGION_FLAG_FIELDS = [
-    "fail_interval_qc",
-    "outside_broad_capture_region",
-    "outside_ukb_capture_region",
-    "outside_broad_calling_region",
-    "outside_ukb_calling_region",
-    "not_called_in_exomes",
-    "not_called_in_genomes",
-]
 
 # VCF INFO fields to reorder.
 VCF_INFO_REORDER = [
@@ -84,7 +74,7 @@ def prepare_info_fields(ht: hl.Table) -> hl.expr.StructExpression:
     expr_dict = {}
 
     logger.info("Unfurling region flags...")
-    for f in REGION_FLAG_FIELDS:
+    for f in JOINT_REGION_FLAG_FIELDS:
         expr_dict[f] = ht.region_flags[f]
 
     for data_type in ["exomes", "genomes", "joint"]:
@@ -195,7 +185,7 @@ def prepare_vcf_header_dict(
     :return: Prepared VCF header dictionary
     """
     vcf_info_dict = {}
-    vcf_info_dict.update(REGION_FLAGS_JOINT_INFO_DICT)
+    vcf_info_dict.update(JOINT_REGION_FLAGS_INFO_DICT)
     pop_names = {
         pop: POP_NAMES[pop] if pop != "remaining" else "Remaining individuals"
         for pop in POPS
@@ -444,6 +434,12 @@ def main(args):
         ht = hl.filter_intervals(
             ht, [hl.parse_locus_interval(contig, reference_genome="GRCh38")]
         )
+    logger.info("Preparing info fields...")
+    ht = ht.annotate(info=prepare_info_fields(ht))
+    logger.info("Preparing VCF header dictionary...")
+    header_dict = prepare_vcf_header_dict(ht)
+    logger.info("Preparing HT for export...")
+    ht = prepare_ht_for_export(ht)
     if args.validate_release_ht:
         logger.info(
             "Checking globals for retired terms and checking their associated row"
@@ -453,48 +449,30 @@ def main(args):
         pprint_global_anns(ht)
 
         for data_type in ["exomes", "genomes", "joint"]:
+            ht_temp = ht.select(data_type, "region_flags")
+            ht_temp = ht_temp.select_globals(f"{data_type}_globals")
+            ht_temp = ht_temp.annotate_globals(**f"ht_temp.{data_type}_globals")
+            ht_temp = ht_temp.annotate(**ht_temp[data_type])
+            ht_temp = ht_temp.drop(data_type, f"{data_type}_globals")
+
             logger.info(
                 "Checking global and row annotation lengths for %s...", data_type
             )
             check_global_and_row_annot_lengths(
-                ht, row_to_globals_check=LEN_COMP_GLOBAL_ROWS, row_struct=data_type
+                ht_temp, row_to_globals_check=LEN_COMP_GLOBAL_ROWS
             )
 
-        logger.info("Preparing HT for validity checks and export...")
-        ht = prepare_ht_for_validation(
-            ht,
-            data_type=data_type,
-            joint_included=joint_included,
-        )
-        # Note: Checkpoint saves time in validity checks and final export by not
-        # needing to run the VCF HT prep on each chromosome -- more needs to happen
-        # before ready for export, but this is an intermediate write.
-        logger.info("Writing prepared VCF HT for validity checks and export...")
-        ht = ht.checkpoint(res.validated_ht.path, overwrite=overwrite)
-
-        validate_release_t(
-            ht,
-            subsets=SUBSETS[data_type],
-            pops=POPS,
-            site_gt_check_expr={
-                "monoallelic": ht.info.monoallelic,
-                "only_het": ht.info.only_het,
-            },
-            verbose=args.verbose,
-            delimiter="_",
-            sample_sum_sets_and_pops=SAMPLE_SUM_SETS_AND_POPS[data_type],
-            variant_filter_field="AS_VQSR",
-            problematic_regions=REGION_FLAG_FIELDS[data_type],
-            single_filter_count=True,
-        )
-
-        ht.describe()
-    logger.info("Preparing info fields...")
-    ht = ht.annotate(info=prepare_info_fields(ht))
-    logger.info("Preparing VCF header dictionary...")
-    header_dict = prepare_vcf_header_dict(ht)
-    logger.info("Preparing HT for export...")
-    ht = prepare_ht_for_export(ht)
+            validate_release_t(
+                ht_temp,
+                pops=POPS,
+                verbose=args.verbose,
+                delimiter="_",
+                variant_filter_field="",
+                filters_check=False,
+                subset_freq_check=False,
+                problematic_regions=JOINT_REGION_FLAG_FIELDS,
+            )
+            logger.info("Validation step done for %s!", data_type)
     logger.info("Running check on VCF fields and info dict...")
     if not check_vcf_field(ht, header_dict):
         raise ValueError("Did not pass VCF field check")
@@ -542,6 +520,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--contig",
         help="Export only the specified contig.",
         type=str,
+    )
+    parser.add_argument(
+        "--validate-release-ht",
+        help="Validate release HT.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--verbose",
+        help="Log successes in addition to failures during validation.",
+        action="store_true",
     )
     parser.add_argument(
         "--prepare-vcf-header-only",
