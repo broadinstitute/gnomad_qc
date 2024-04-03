@@ -7,6 +7,11 @@ from pprint import pprint
 from typing import Dict, List, Optional
 
 import hail as hl
+from gnomad.assessment.validity_checks import (
+    check_global_and_row_annot_lengths,
+    pprint_global_anns,
+    validate_release_t,
+)
 from gnomad.resources.grch38.gnomad import POPS
 from gnomad.sample_qc.ancestry import POP_NAMES
 from gnomad.utils.release import make_freq_index_dict_from_meta
@@ -24,6 +29,9 @@ from gnomad.utils.vcf import (
     rekey_new_reference,
 )
 
+from gnomad_qc.v4.create_release.validate_and_export_vcf import (
+    check_globals_for_retired_terms,
+)
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.release import (
     release_header_path,
@@ -55,6 +63,11 @@ VCF_INFO_REORDER = [
     "fafmax_faf95_max",
     "fafmax_faf95_max_gen_anc",
 ]
+
+LEN_COMP_GLOBAL_ROWS = {
+    "freq": ["freq_meta", "freq_index_dict", "freq_meta_sample_count"],
+    "faf": ["faf_meta", "faf_index_dict"],
+}
 
 # Exomes and genomes use the same pops for v4
 POPS = deepcopy(POPS["v4"])
@@ -431,6 +444,51 @@ def main(args):
         ht = hl.filter_intervals(
             ht, [hl.parse_locus_interval(contig, reference_genome="GRCh38")]
         )
+    if args.validate_release_ht:
+        logger.info(
+            "Checking globals for retired terms and checking their associated row"
+            " annotation lengths..."
+        )
+        check_globals_for_retired_terms(ht)
+        pprint_global_anns(ht)
+
+        for data_type in ["exomes", "genomes", "joint"]:
+            logger.info(
+                "Checking global and row annotation lengths for %s...", data_type
+            )
+            check_global_and_row_annot_lengths(
+                ht, row_to_globals_check=LEN_COMP_GLOBAL_ROWS, row_struct=data_type
+            )
+
+        logger.info("Preparing HT for validity checks and export...")
+        ht = prepare_ht_for_validation(
+            ht,
+            data_type=data_type,
+            joint_included=joint_included,
+        )
+        # Note: Checkpoint saves time in validity checks and final export by not
+        # needing to run the VCF HT prep on each chromosome -- more needs to happen
+        # before ready for export, but this is an intermediate write.
+        logger.info("Writing prepared VCF HT for validity checks and export...")
+        ht = ht.checkpoint(res.validated_ht.path, overwrite=overwrite)
+
+        validate_release_t(
+            ht,
+            subsets=SUBSETS[data_type],
+            pops=POPS,
+            site_gt_check_expr={
+                "monoallelic": ht.info.monoallelic,
+                "only_het": ht.info.only_het,
+            },
+            verbose=args.verbose,
+            delimiter="_",
+            sample_sum_sets_and_pops=SAMPLE_SUM_SETS_AND_POPS[data_type],
+            variant_filter_field="AS_VQSR",
+            problematic_regions=REGION_FLAG_FIELDS[data_type],
+            single_filter_count=True,
+        )
+
+        ht.describe()
     logger.info("Preparing info fields...")
     ht = ht.annotate(info=prepare_info_fields(ht))
     logger.info("Preparing VCF header dictionary...")
