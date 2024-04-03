@@ -125,6 +125,7 @@ def extract_freq_info(
         combine_operator="or",
         exact_match=True,
     )
+    freq_index_dict = make_freq_index_dict_from_meta(hl.literal(freq_meta))
     faf_meta, faf = filter_arrays_by_meta(
         ht.faf_meta,
         {"faf": ht.faf},
@@ -139,6 +140,7 @@ def extract_freq_info(
         {"group": ["adj"]},
         combine_operator="or",
     )
+    faf_index_dict = make_freq_index_dict_from_meta(hl.literal(faf_meta))
 
     # Select grpmax and fafmax
     grpmax_expr = ht.grpmax
@@ -170,8 +172,10 @@ def extract_freq_info(
     ht = ht.select_globals(
         **{
             f"{prefix}_freq_meta": freq_meta,
+            f"{prefix}_freq_index_dict": freq_index_dict,
             f"{prefix}_freq_meta_sample_count": array_exprs["freq_meta_sample_count"],
             f"{prefix}_faf_meta": faf_meta,
+            f"{prefix}_faf_index_dict": faf_index_dict,
             f"{prefix}_age_distribution": ht.age_distribution,
         }
     )
@@ -949,7 +953,12 @@ def main(args):
                 # CMH test on the entire Table.
                 n_part = ht.n_partitions()
                 logger.info(f"Number of partitions: {n_part}")
-                n_split = int(n_part / 10)
+                if n_part < 10:
+                    n_split = 1
+                else:
+                    n_split = int(n_part / 10)
+                # TODO: it fails if n_part < 10 when testing.
+                # n_part < 10
                 hts = []
                 for i in range(0, n_part, n_split):
                     # Min to ensure we do not try to read more partitions than exist in
