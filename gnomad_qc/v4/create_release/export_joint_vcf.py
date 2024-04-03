@@ -78,6 +78,7 @@ def prepare_info_fields(ht: hl.Table) -> hl.expr.StructExpression:
         for annotation in ["freq", "faf"]:
             # Generating index dictionary
             annotation_meta = getattr(ht[data_type + "_globals"], annotation + "_meta")
+            # TODO: This will change if the joint release globals are updated.
             annotation_index_dict = make_freq_index_dict_from_meta(annotation_meta)
             annotation_idx = hl.eval(annotation_index_dict)
 
@@ -215,6 +216,7 @@ def prepare_vcf_header_dict(
             faf_pops_version = "v3"
         faf_pops_to_use = faf_pops[faf_pops_version]
         faf_pop_names = {pop: POP_NAMES[pop] for pop in faf_pops_to_use}
+        # TODO: This will change if the joint release HT adds sex to faf.
         if data_type == "exomes" or data_type == "genomes":
             faf_label_groups = create_label_groups(
                 pops=faf_pops_to_use, sexes=[], all_groups=["adj"]
