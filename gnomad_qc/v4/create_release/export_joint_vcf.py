@@ -36,17 +36,6 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("export_joint_vcf")
 logger.setLevel(logging.INFO)
 
-
-# VCF INFO fields to reorder.
-VCF_INFO_REORDER = [
-    "AC",
-    "AN",
-    "AF",
-    "grpmax",
-    "fafmax_faf95_max",
-    "fafmax_faf95_max_gen_anc",
-]
-
 # Exomes and genomes use the same pops for v4
 POPS = deepcopy(POPS["v4"])
 
