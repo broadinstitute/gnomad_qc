@@ -558,9 +558,13 @@ def get_revel_for_unmatched_transcripts() -> None:
     def _filter_release_ht(data_type, genes_list):
         """Filter release sites to only include genes with missing revel scores."""
         ht = release_sites(data_type=data_type).ht()
-        ht = process_consequences(ht)
+        ht = process_consequences(ht, has_polyphen=False)
         ht = filter_vep_transcript_csqs(
-            ht, synonymous=False, genes=genes_list, csqs=["missense_variant"]
+            ht,
+            synonymous=False,
+            mane_select=True,
+            genes=genes_list,
+            csqs=["missense_variant"],
         )
         ht = ht.select(
             gene_id=ht.vep.transcript_consequences.gene_id,
@@ -588,6 +592,7 @@ def get_revel_for_unmatched_transcripts() -> None:
         ht = ht.annotate(REVEL_max=revel[ht.key].REVEL_max)
         # Filter out variants without a REVEL score
         ht = ht.filter(hl.is_defined(ht.REVEL_max))
+        print(ht.count())
         ht.export(
             "gs://gnomad-insilico/revel/gnomad.v4.1."
             f"{data_type}.revel_unmatched_transcripts.tsv.bgz"
