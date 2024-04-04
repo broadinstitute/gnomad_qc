@@ -592,7 +592,6 @@ def get_revel_for_unmatched_transcripts() -> None:
         ht = ht.annotate(REVEL_max=revel[ht.key].REVEL_max)
         # Filter out variants without a REVEL score
         ht = ht.filter(hl.is_defined(ht.REVEL_max))
-        print(ht.count())
         ht.export(
             "gs://gnomad-insilico/revel/gnomad.v4.1."
             f"{data_type}.revel_unmatched_transcripts.tsv.bgz"
