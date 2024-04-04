@@ -38,6 +38,7 @@ from gnomad_qc.v4.resources.release import (
     release_header_path,
     release_sites,
     release_vcf_path,
+    validated_release_ht,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
@@ -79,10 +80,9 @@ def prepare_info_fields(ht: hl.Table) -> hl.expr.StructExpression:
 
     for data_type in ["exomes", "genomes", "joint"]:
         for annotation in ["freq", "faf"]:
-            # Generating index dictionary
-            annotation_meta = getattr(ht[data_type + "_globals"], annotation + "_meta")
-            annotation_index_dict = make_freq_index_dict_from_meta(annotation_meta)
-            annotation_idx = hl.eval(annotation_index_dict)
+            annotation_idx = hl.eval(
+                ht[f"{data_type}_globals"][f"{annotation}_index_dict"]
+            )
 
             logger.info(f"Unfurling {annotation} data from {data_type}...")
             for k, i in annotation_idx.items():
@@ -218,15 +218,9 @@ def prepare_vcf_header_dict(
             faf_pops_version = "v3"
         faf_pops_to_use = faf_pops[faf_pops_version]
         faf_pop_names = {pop: POP_NAMES[pop] for pop in faf_pops_to_use}
-        if data_type == "exomes" or data_type == "genomes":
-            faf_label_groups = create_label_groups(
-                pops=faf_pops_to_use, sexes=[], all_groups=["adj"]
-            )
-        else:
-            # There are sex-specific FAFs in the joint dataset.
-            faf_label_groups = create_label_groups(
-                pops=faf_pops_to_use, sexes=SEXES, all_groups=["adj"]
-            )
+        faf_label_groups = create_label_groups(
+            pops=faf_pops_to_use, sexes=SEXES, all_groups=["adj"]
+        )
         for label_group in faf_label_groups:
             vcf_info_dict.update(
                 make_info_dict(
@@ -411,7 +405,7 @@ def main(args):
     contig = args.contig
     data_type = "joint"
 
-    ht = release_sites(data_type=data_type).ht()
+    ht = release_sites(data_type=data_type, test=test).ht()
 
     if contig and test:
         raise ValueError(
@@ -419,16 +413,16 @@ def main(args):
             " to chr20, X, and Y."
         )
 
-    if test:
-        logger.info("Filter to PCSK9: 1:55039447-55064852 for testing...")
-        ht = hl.filter_intervals(
-            ht,
-            [
-                hl.parse_locus_interval(
-                    "chr1:55039447-55064852", reference_genome="GRCh38"
-                )
-            ],
-        )
+    # if test:
+    #     logger.info("Filter to PCSK9: 1:55039447-55064852 for testing...")
+    #     ht = hl.filter_intervals(
+    #         ht,
+    #         [
+    #             hl.parse_locus_interval(
+    #                 "chr1:55039447-55064852", reference_genome="GRCh38"
+    #             )
+    #         ],
+    #     )
     if contig:
         logger.info(f"Filtering to {contig}...")
         ht = hl.filter_intervals(
@@ -436,10 +430,6 @@ def main(args):
         )
     logger.info("Preparing info fields...")
     ht = ht.annotate(info=prepare_info_fields(ht))
-    logger.info("Preparing VCF header dictionary...")
-    header_dict = prepare_vcf_header_dict(ht)
-    logger.info("Preparing HT for export...")
-    ht = prepare_ht_for_export(ht)
     if args.validate_release_ht:
         logger.info(
             "Checking globals for retired terms and checking their associated row"
@@ -449,30 +439,35 @@ def main(args):
         pprint_global_anns(ht)
 
         for data_type in ["exomes", "genomes", "joint"]:
-            ht_temp = ht.select(data_type, "region_flags")
-            ht_temp = ht_temp.select_globals(f"{data_type}_globals")
-            ht_temp = ht_temp.annotate_globals(**f"ht_temp.{data_type}_globals")
-            ht_temp = ht_temp.annotate(**ht_temp[data_type])
-            ht_temp = ht_temp.drop(data_type, f"{data_type}_globals")
-
             logger.info(
                 "Checking global and row annotation lengths for %s...", data_type
             )
             check_global_and_row_annot_lengths(
-                ht_temp, row_to_globals_check=LEN_COMP_GLOBAL_ROWS
+                ht,
+                row_to_globals_check=LEN_COMP_GLOBAL_ROWS,
+                row_struct=data_type,
             )
+        # Checking only the missingness.
+        validate_release_t(
+            ht,
+            verbose=args.verbose,
+            delimiter="_",
+            variant_filter_field="",
+            problematic_regions=JOINT_REGION_FLAG_FIELDS,
+            summarize_variants_check=True,
+            filters_check=False,
+            raw_adj_check=False,
+            subset_freq_check=False,
+            samples_sum_check=False,
+            sex_chr_check=True,
+            missingness_check=True,
+        )
 
-            validate_release_t(
-                ht_temp,
-                pops=POPS,
-                verbose=args.verbose,
-                delimiter="_",
-                variant_filter_field="",
-                filters_check=False,
-                subset_freq_check=False,
-                problematic_regions=JOINT_REGION_FLAG_FIELDS,
-            )
-            logger.info("Validation step done for %s!", data_type)
+    logger.info("Preparing VCF header dictionary...")
+    header_dict = prepare_vcf_header_dict(ht)
+    logger.info("Preparing HT for export...")
+    ht = prepare_ht_for_export(ht)
+
     logger.info("Running check on VCF fields and info dict...")
     if not check_vcf_field(ht, header_dict):
         raise ValueError("Did not pass VCF field check")
