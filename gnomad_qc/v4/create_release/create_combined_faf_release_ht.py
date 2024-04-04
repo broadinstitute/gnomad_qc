@@ -133,13 +133,6 @@ def extract_freq_info(
         combine_operator="or",
         exact_match=True,
     )
-    logger.info("Filtering to only adj frequencies for FAF...")
-    faf_meta, faf = filter_arrays_by_meta(
-        hl.literal(faf_meta),
-        {"faf": faf["faf"]},
-        {"group": ["adj"]},
-        combine_operator="or",
-    )
     faf_index_dict = make_freq_index_dict_from_meta(hl.literal(faf_meta))
 
     # Select grpmax and fafmax
@@ -957,12 +950,7 @@ def main(args):
                 # CMH test on the entire Table.
                 n_part = ht.n_partitions()
                 logger.info(f"Number of partitions: {n_part}")
-                if n_part < 10:
-                    n_split = 1
-                else:
-                    n_split = int(n_part / 10)
-                # TODO: it fails if n_part < 10 when testing.
-                # n_part < 10
+                n_split = min(n_part, args.max_partitions_for_cmh)
                 hts = []
                 for i in range(0, n_part, n_split):
                     # Min to ensure we do not try to read more partitions than exist in
@@ -1088,6 +1076,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "computed."
         ),
         action="store_true",
+    )
+    parser.add_argument(
+        "--max-partitions-for-cmh",
+        help="Max partitions for CMH test.",
+        type=int,
+        default=300,
     )
     parser.add_argument(
         "--finalize-combined-faf-release",
