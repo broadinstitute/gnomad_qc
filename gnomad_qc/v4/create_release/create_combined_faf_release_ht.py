@@ -650,8 +650,12 @@ def create_final_combined_faf_release(
             stat_expr = hl.array([stat_expr])
 
         stat_expr = stat_expr.map(
-            lambda x: x.annotate(
-                **{a: hl.or_missing(~hl.is_nan(x[a]), x[a]) for a in x}
+            lambda x: x.select(
+                **{
+                    a: hl.or_missing(~hl.is_nan(x[a]), x[a])
+                    for a in x
+                    if a != "oddsratio_pooled"
+                }
             )
         )
 
