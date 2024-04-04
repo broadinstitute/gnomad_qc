@@ -13,7 +13,8 @@ from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.vcf import (
     FAF_POPS,
     HISTS,
-    REGION_FLAGS_JOINT_INFO_DICT,
+    JOINT_REGION_FLAG_FIELDS,
+    JOINT_REGION_FLAGS_INFO_DICT,
     SEXES,
     adjust_vcf_incompatible_types,
     build_vcf_export_reference,
@@ -35,16 +36,6 @@ logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("export_joint_vcf")
 logger.setLevel(logging.INFO)
 
-
-REGION_FLAG_FIELDS = [
-    "fail_interval_qc",
-    "outside_broad_capture_region",
-    "outside_ukb_capture_region",
-    "outside_broad_calling_region",
-    "outside_ukb_calling_region",
-    "not_called_in_exomes",
-    "not_called_in_genomes",
-]
 
 # VCF INFO fields to reorder.
 VCF_INFO_REORDER = [
@@ -71,16 +62,15 @@ def prepare_info_fields(ht: hl.Table) -> hl.expr.StructExpression:
     expr_dict = {}
 
     logger.info("Unfurling region flags...")
-    for f in REGION_FLAG_FIELDS:
+    for f in JOINT_REGION_FLAG_FIELDS:
         expr_dict[f] = ht.region_flags[f]
 
     for data_type in ["exomes", "genomes", "joint"]:
         for annotation in ["freq", "faf"]:
             # Generating index dictionary
-            annotation_meta = getattr(ht[data_type + "_globals"], annotation + "_meta")
-            # TODO: This will change if the joint release globals are updated.
-            annotation_index_dict = make_freq_index_dict_from_meta(annotation_meta)
-            annotation_idx = hl.eval(annotation_index_dict)
+            annotation_idx = hl.eval(
+                ht[f"{data_type}_globals"][f"{annotation}_index_dict"]
+            )
 
             logger.info(f"Unfurling {annotation} data from {data_type}...")
             for k, i in annotation_idx.items():
@@ -183,7 +173,7 @@ def prepare_vcf_header_dict(
     :return: Prepared VCF header dictionary
     """
     vcf_info_dict = {}
-    vcf_info_dict.update(REGION_FLAGS_JOINT_INFO_DICT)
+    vcf_info_dict.update(JOINT_REGION_FLAGS_INFO_DICT)
     pop_names = {
         pop: POP_NAMES[pop] if pop != "remaining" else "Remaining individuals"
         for pop in POPS
@@ -216,16 +206,9 @@ def prepare_vcf_header_dict(
             faf_pops_version = "v3"
         faf_pops_to_use = faf_pops[faf_pops_version]
         faf_pop_names = {pop: POP_NAMES[pop] for pop in faf_pops_to_use}
-        # TODO: This will change if the joint release HT adds sex to faf.
-        if data_type == "exomes" or data_type == "genomes":
-            faf_label_groups = create_label_groups(
-                pops=faf_pops_to_use, sexes=[], all_groups=["adj"]
-            )
-        else:
-            # There are sex-specific FAFs in the joint dataset.
-            faf_label_groups = create_label_groups(
-                pops=faf_pops_to_use, sexes=SEXES, all_groups=["adj"]
-            )
+        faf_label_groups = create_label_groups(
+            pops=faf_pops_to_use, sexes=SEXES, all_groups=["adj"]
+        )
         for label_group in faf_label_groups:
             vcf_info_dict.update(
                 make_info_dict(
@@ -410,7 +393,7 @@ def main(args):
     contig = args.contig
     data_type = "joint"
 
-    ht = release_sites(data_type=data_type).ht()
+    ht = release_sites(data_type=data_type, test=test).ht()
 
     if contig and test:
         raise ValueError(
@@ -418,16 +401,16 @@ def main(args):
             " to chr20, X, and Y."
         )
 
-    if test:
-        logger.info("Filter to PCSK9: 1:55039447-55064852 for testing...")
-        ht = hl.filter_intervals(
-            ht,
-            [
-                hl.parse_locus_interval(
-                    "chr1:55039447-55064852", reference_genome="GRCh38"
-                )
-            ],
-        )
+    # if test:
+    #     logger.info("Filter to PCSK9: 1:55039447-55064852 for testing...")
+    #     ht = hl.filter_intervals(
+    #         ht,
+    #         [
+    #             hl.parse_locus_interval(
+    #                 "chr1:55039447-55064852", reference_genome="GRCh38"
+    #             )
+    #         ],
+    #     )
     if contig:
         logger.info(f"Filtering to {contig}...")
         ht = hl.filter_intervals(
