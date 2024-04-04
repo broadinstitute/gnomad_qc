@@ -515,12 +515,12 @@ def get_revel_for_unmatched_transcripts() -> None:
 
     ..note:
 
-        REVEL was computed using transcripts from Ensembl v64. In gnomAD v4.0 and
-        v4.1 release Table, we used transcript information from Ensembl v105 in addition
-        to variant information (locus and alleles combination) to ascertain variant
-        REVEL scores, We also only reported scores for MANE select or canonical
-        transcripts. This means that variants within 2,414 MANE select transcripts
-        present in gnomAD v4.0/v4.1 but not present in Ensembl v64 were missing REVEL scores.
+        REVEL was computed using transcripts from Ensembl v64. In the gnomAD v4.0
+        and v4.1 release Tables, transcript information from Ensembl v105 and variant
+        information (locus and alleles combination) were used to ascertain variant
+        REVEL scores for MANE select or canonical transcripts only. This means that
+        variants within 2,414 MANE select transcripts in gnomAD v4.0 and v4.1 are
+        missing REVEL scores because they are not present in Ensembl v64.
 
         To address this, we annotated the variants within the 2,414 genes with the
         maximum REVEL score found at the specific locus and allele, rather than the
@@ -574,7 +574,7 @@ def get_revel_for_unmatched_transcripts() -> None:
 
     # Get genes missing revel scores
     genes = hl.import_table(
-        "gs://gnomad-insilico/Ensembl105MANE_without_REVEL.txt",
+        "gs://gnomad-insilico/revel/Ensembl105MANE_without_REVEL.txt",
         impute=True,
         comment="#",
     )
