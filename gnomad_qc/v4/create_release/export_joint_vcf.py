@@ -56,7 +56,6 @@ def prepare_info_fields(ht: hl.Table) -> hl.expr.StructExpression:
 
     for data_type in ["exomes", "genomes", "joint"]:
         for annotation in ["freq", "faf"]:
-            # Generating index dictionary
             annotation_idx = hl.eval(
                 ht[f"{data_type}_globals"][f"{annotation}_index_dict"]
             )
