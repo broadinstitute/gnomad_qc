@@ -126,6 +126,11 @@ def extract_freq_info(
         exact_match=True,
     )
     freq_index_dict = make_freq_index_dict_from_meta(hl.literal(freq_meta))
+    logger.info(
+        "Keeping only FAF for adj, adj by pop, adj by sex, and adj by pop/sex..."
+    )
+    # Exomes FAF was calculated for the whole gnomad and the ukb subset, we only
+    # want to include the whole dataset in the joint release.
     faf_meta, faf = filter_arrays_by_meta(
         ht.faf_meta,
         {"faf": ht.faf},
