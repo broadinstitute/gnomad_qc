@@ -54,6 +54,144 @@ LEN_COMP_GLOBAL_ROWS = {
 POPS = deepcopy(POPS["v4"])
 
 
+def prepare_ht_per_data_type(ht: hl.Table, data_type: str) -> hl.Table:
+    """
+    Prepare HT per data type for export.
+
+    :param ht: Input joint release HT.
+    :param data_type: Data type to prepare HT for.
+    :return: Prepared HT.
+    """
+    allele_info = hl.struct(allele_type="", n_alt_alleles=1)
+    ht = ht.annotate(filters=hl.empty_set(hl.tstr), allele_info=allele_info)
+    if data_type == "joint":
+        ht_temp = ht.select(
+            data_type,
+            "region_flags",
+            "allele_info",
+            "freq_comparison_stats",
+        )
+    else:
+        ht_temp = ht.select(data_type, "region_flags", "allele_info")
+
+    ht_temp = ht_temp.select_globals(f"{data_type}_globals")
+    ht_temp = ht_temp.annotate_globals(**ht_temp[f"{data_type}_globals"])
+    ht_temp = ht_temp.annotate(**ht_temp[data_type])
+    ht_temp = ht_temp.drop(data_type, f"{data_type}_globals")
+    ht_temp = ht_temp.checkpoint(
+        hl.utils.new_temp_file(f"{data_type}_in_release_validated", "ht")
+    )
+    info_dict = prepare_info_dict_validate(ht_temp, include_allele_info=True)
+    if data_type == "joint":
+        info_dict.update(unfurl_freq_comparison_stats(ht_temp))
+
+    ht_temp = ht_temp.annotate(info=hl.struct(**info_dict))
+
+    return ht_temp
+
+
+def prepare_info_dict_validate(
+    ht: hl.Table, include_allele_info: bool = False
+) -> Dict[str, hl.expr.Expression]:
+    """
+    Prepare info fields on selected data type for validation.
+
+    :param ht: Input Table.
+    :param include_allele_info: Whether to include allele info fields.
+    :return: Dictionary of info fields.
+    """
+    expr_dict = {}
+
+    logger.info("Unfurling region flags...")
+    for f in JOINT_REGION_FLAG_FIELDS:
+        expr_dict[f] = ht.region_flags[f]
+
+    if include_allele_info:
+        expr_dict["allele_type"] = ht.allele_info.allele_type
+        expr_dict["n_alt_alleles"] = ht.allele_info.n_alt_alleles
+
+    for annotation in ["freq", "faf"]:
+        annotation_idx = hl.eval(ht[f"{annotation}_index_dict"])
+        logger.info(f"Unfurling {annotation} data...")
+        for k, i in annotation_idx.items():
+            for f in ht[annotation][0].keys():
+                key = f"{f if f != 'homozygote_count' else 'nhomalt'}_{k}"
+                expr = ht[annotation][i][f]
+                expr_dict[key] = expr
+
+    logger.info("Unfurling grpmax data...")
+    grpmax_idx = ht.grpmax
+    grpmax_dict = {"grpmax": grpmax_idx.gen_anc}
+    for f in [field for field in grpmax_idx._fields if field != "gen_anc"]:
+        key = f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax"
+        grpmax_dict[key] = grpmax_idx[f]
+    expr_dict.update(grpmax_dict)
+
+    logger.info("Unfurling fafmax data...")
+    fafmax_idx = ht.fafmax
+    fafmax_dict = {f"fafmax_{f}": fafmax_idx[f] for f in fafmax_idx.keys()}
+    expr_dict.update(fafmax_dict)
+
+    logger.info("Unfurling age hists...")
+    age_hist_idx = ht.histograms.age_hists
+    age_hists = ["age_hist_het", "age_hist_hom"]
+    for hist in age_hists:
+        for f in age_hist_idx[hist].keys():
+            key = f"{hist}_{f}"
+            expr = (
+                hl.delimit(age_hist_idx[hist][f], delimiter="|")
+                if "bin" in f
+                else age_hist_idx[hist][f]
+            )
+            expr_dict[key] = expr
+
+    logger.info("Unfurling variant quality histograms...")
+    for hist in HISTS:
+        hist_dict = {
+            f"{hist}_bin_freq": hl.delimit(
+                ht.histograms.qual_hists[hist].bin_freq, delimiter="|"
+            ),
+        }
+        expr_dict.update(hist_dict)
+
+        if "dp" in hist:
+            expr_dict.update(
+                {f"{hist}_n_larger": ht.histograms.qual_hists[hist].n_larger},
+            )
+
+    return expr_dict
+
+
+def unfurl_freq_comparison_stats(
+    ht: hl.Table, nest_ann: Optional[str] = None
+) -> hl.expr.StructExpression:
+    """
+    Unfurl freq comparison stats from Table to a flat expression.
+
+    :param ht: Table with freq comparison stats.
+    :param nest_ann: Annotation to nest the freq comparison stats under.
+    :return: StructExpression containing variant annotations and their corresponding
+        expressions and updated entries.
+    """
+    expr_dict = {}
+    logger.info("Unfurling contingency table test results...")
+    if nest_ann:
+        contingency_idx = hl.eval(ht[nest_ann].freq_index_dict)
+    else:
+        contingency_idx = hl.eval(ht.freq_index_dict)
+    for k, i in contingency_idx.items():
+        for f in ht.freq_comparison_stats.contingency_table_test[0].keys():
+            key = f"CTT_{f}_{k}"
+            expr = ht.freq_comparison_stats.contingency_table_test[i][f]
+            expr_dict[key] = expr
+    logger.info("Unfurling Cochran-Mantel-Haenszel test results...")
+    expr_dict["CMH_chisq"] = ht.freq_comparison_stats.cochran_mantel_haenszel_test.chisq
+    expr_dict["CMH_p_value"] = (
+        ht.freq_comparison_stats.cochran_mantel_haenszel_test.p_value
+    )
+    return hl.struct(**expr_dict)
+
+
 def prepare_info_fields(ht: hl.Table) -> hl.expr.StructExpression:
     """
     Unfurl nested annotations in a Table to a flat expression.
@@ -421,37 +559,39 @@ def main(args):
     logger.info("Preparing info fields...")
     ht = ht.annotate(info=prepare_info_fields(ht))
     if args.validate_release_ht:
-        logger.info(
-            "Checking globals for retired terms and checking their associated row"
-            " annotation lengths..."
-        )
-        check_globals_for_retired_terms(ht)
-        pprint_global_anns(ht)
-
         for data_type in ["exomes", "genomes", "joint"]:
+            ht_temp = prepare_ht_per_data_type(ht, data_type)
+            # empty allele_info field
+            allele_info = hl.struct(allele_type="", n_alt_alleles=hl.int32())
+            ht_temp = ht_temp.annotate(
+                filters=hl.empty_set(hl.tstr), allele_info=allele_info
+            )
+            ht_temp = ht_temp.checkpoint(
+                hl.utils.new_temp_file(f"{data_type}_in_release_validated", "ht")
+            )
+            logger.info(
+                "Checking globals for retired terms and checking their associated row"
+                " annotation lengths..."
+            )
+            check_globals_for_retired_terms(ht)
+            pprint_global_anns(ht)
             logger.info(
                 "Checking global and row annotation lengths for %s...", data_type
             )
             check_global_and_row_annot_lengths(
-                ht,
+                ht_temp,
                 row_to_globals_check=LEN_COMP_GLOBAL_ROWS,
-                row_struct=data_type,
             )
-        # Checking only the missingness.
-        validate_release_t(
-            ht,
-            verbose=args.verbose,
-            delimiter="_",
-            variant_filter_field="",
-            problematic_regions=JOINT_REGION_FLAG_FIELDS,
-            summarize_variants_check=True,
-            filters_check=False,
-            raw_adj_check=False,
-            subset_freq_check=False,
-            samples_sum_check=False,
-            sex_chr_check=True,
-            missingness_check=True,
-        )
+            # Checking only the missingness.
+            validate_release_t(
+                ht_temp,
+                pops=POPS,
+                verbose=args.verbose,
+                delimiter="_",
+                variant_filter_field="",
+                problematic_regions=JOINT_REGION_FLAG_FIELDS,
+                subset_freq_check=False,
+            )
 
     logger.info("Preparing VCF header dictionary...")
     header_dict = prepare_vcf_header_dict(ht)
