@@ -125,20 +125,20 @@ def extract_freq_info(
         combine_operator="or",
         exact_match=True,
     )
+    freq_index_dict = make_freq_index_dict_from_meta(hl.literal(freq_meta))
+    logger.info(
+        "Keeping only FAF for adj, adj by pop, adj by sex, and adj by pop/sex..."
+    )
+    # Exomes FAF was calculated for the whole gnomad and the ukb subset, we only
+    # want to include the whole dataset in the joint release.
     faf_meta, faf = filter_arrays_by_meta(
         ht.faf_meta,
         {"faf": ht.faf},
-        ["group", "gen_anc"],
+        ["group", "gen_anc", "sex"],
         combine_operator="or",
         exact_match=True,
     )
-    logger.info("Filtering to only adj frequencies for FAF...")
-    faf_meta, faf = filter_arrays_by_meta(
-        hl.literal(faf_meta),
-        {"faf": faf["faf"]},
-        {"group": ["adj"]},
-        combine_operator="or",
-    )
+    faf_index_dict = make_freq_index_dict_from_meta(hl.literal(faf_meta))
 
     # Select grpmax and fafmax
     grpmax_expr = ht.grpmax
@@ -170,8 +170,10 @@ def extract_freq_info(
     ht = ht.select_globals(
         **{
             f"{prefix}_freq_meta": freq_meta,
+            f"{prefix}_freq_index_dict": freq_index_dict,
             f"{prefix}_freq_meta_sample_count": array_exprs["freq_meta_sample_count"],
             f"{prefix}_faf_meta": faf_meta,
+            f"{prefix}_faf_index_dict": faf_index_dict,
             f"{prefix}_age_distribution": ht.age_distribution,
         }
     )
@@ -646,8 +648,12 @@ def create_final_combined_faf_release(
             stat_expr = hl.array([stat_expr])
 
         stat_expr = stat_expr.map(
-            lambda x: x.annotate(
-                **{a: hl.or_missing(~hl.is_nan(x[a]), x[a]) for a in x}
+            lambda x: x.select(
+                **{
+                    a: hl.or_missing(~hl.is_nan(x[a]), x[a])
+                    for a in x
+                    if a != "oddsratio_pooled"
+                }
             )
         )
 
@@ -949,7 +955,7 @@ def main(args):
                 # CMH test on the entire Table.
                 n_part = ht.n_partitions()
                 logger.info(f"Number of partitions: {n_part}")
-                n_split = int(n_part / 10)
+                n_split = min(n_part, args.max_partitions_for_cmh)
                 hts = []
                 for i in range(0, n_part, n_split):
                     # Min to ensure we do not try to read more partitions than exist in
@@ -1075,6 +1081,12 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "computed."
         ),
         action="store_true",
+    )
+    parser.add_argument(
+        "--max-partitions-for-cmh",
+        help="Max partitions for CMH test.",
+        type=int,
+        default=300,
     )
     parser.add_argument(
         "--finalize-combined-faf-release",
