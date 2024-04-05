@@ -7,11 +7,6 @@ from pprint import pprint
 from typing import Dict, List, Optional
 
 import hail as hl
-from gnomad.assessment.validity_checks import (
-    check_global_and_row_annot_lengths,
-    pprint_global_anns,
-    validate_release_t,
-)
 from gnomad.resources.grch38.gnomad import POPS
 from gnomad.sample_qc.ancestry import POP_NAMES
 from gnomad.utils.vcf import (
@@ -174,9 +169,7 @@ def prepare_info_dict(
         if data_type is not None:
             key += f"_{data_type}"
         hist_dict = {
-            key: hl.delimit(
-                ht[data_type].histograms.qual_hists[hist].bin_freq, delimiter="|"
-            ),
+            key: hl.delimit(histograms_idx.qual_hists[hist].bin_freq, delimiter="|"),
         }
         expr_dict.update(hist_dict)
 
@@ -333,11 +326,10 @@ def prepare_ht_for_export(
     info_fields_to_drop: Optional[List[str]] = None,
 ) -> hl.Table:
     """
-    Format validated HT for export.
+    Format table for export to VCF.
 
-    Drop downsamplings frequency stats from info, rearrange info, and make sure fields
+    Rearrange info, and make sure fields
     are VCF compatible.
-
     :param ht: Input joint release HT.
     :param info_fields_to_drop: List of info fields to drop from the info struct.
     :return: Formatted HT.
