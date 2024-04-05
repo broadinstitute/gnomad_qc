@@ -494,6 +494,36 @@ def main(args):
         ht = hl.filter_intervals(
             ht, [hl.parse_locus_interval(contig, reference_genome="GRCh38")]
         )
+    if args.validate_release_ht:
+        for data_type in ["exomes", "genomes", "joint"]:
+            ht_temp = prepare_ht_per_data_type(ht, data_type)
+            ht_temp = ht_temp.annotate(filters=hl.empty_set(hl.tstr))
+            ht_temp = ht_temp.checkpoint(
+                hl.utils.new_temp_file(f"{data_type}_to_validate", "ht")
+            )
+            logger.info(
+                "Checking globals for retired terms and checking their associated row"
+                " annotation lengths..."
+            )
+            check_globals_for_retired_terms(ht)
+            pprint_global_anns(ht)
+            logger.info(
+                "Checking global and row annotation lengths for %s...", data_type
+            )
+            check_global_and_row_annot_lengths(
+                ht_temp,
+                row_to_globals_check=LEN_COMP_GLOBAL_ROWS,
+            )
+            # Checking only the missingness.
+            validate_release_t(
+                ht_temp,
+                pops=POPS,
+                verbose=True,
+                delimiter="_",
+                variant_filter_field="",
+                problematic_regions=JOINT_REGION_FLAG_FIELDS,
+                subset_freq_check=False,
+            )
     logger.info("Preparing VCF header dictionary...")
     header_dict = prepare_vcf_header_dict(ht)
     logger.info("Preparing HT for export...")
