@@ -53,6 +53,42 @@ LEN_COMP_GLOBAL_ROWS = {
 POPS = deepcopy(POPS["v4"])
 
 
+def prepare_ht_per_data_type(ht: hl.Table, data_type: str) -> hl.Table:
+    """
+    Prepare HT per data type for export.
+
+    :param ht: Input joint release HT.
+    :param data_type: Data type to prepare HT for.
+    :return: Prepared HT.
+    """
+    allele_info = hl.struct(allele_type="", n_alt_alleles=1)
+    ht = ht.annotate(filters=hl.empty_set(hl.tstr), allele_info=allele_info)
+    if data_type == "joint":
+        ht_temp = ht.select(
+            data_type,
+            "region_flags",
+            "allele_info",
+            "freq_comparison_stats",
+        )
+    else:
+        ht_temp = ht.select(data_type, "region_flags", "allele_info")
+
+    ht_temp = ht_temp.select_globals(f"{data_type}_globals")
+    ht_temp = ht_temp.annotate_globals(**ht_temp[f"{data_type}_globals"])
+    ht_temp = ht_temp.annotate(**ht_temp[data_type])
+    ht_temp = ht_temp.drop(data_type, f"{data_type}_globals")
+    ht_temp = ht_temp.checkpoint(
+        hl.utils.new_temp_file(f"{data_type}_in_release_validated", "ht")
+    )
+    info_dict = prepare_info_dict(ht_temp, include_allele_info=True)
+    if data_type == "joint":
+        info_dict.update(unfurl_freq_comparison_stats(ht_temp))
+
+    ht_temp = ht_temp.annotate(info=hl.struct(**info_dict))
+
+    return ht_temp
+
+
 def unfurl_freq_comparison_stats(
     ht: hl.Table, nested_ann: Optional[str] = None
 ) -> Dict[str, hl.expr.Expression]:
