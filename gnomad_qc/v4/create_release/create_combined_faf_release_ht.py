@@ -496,7 +496,7 @@ def perform_cmh_test(
         [
             hl.bind(
                 lambda x, y: hl.or_missing(
-                    ((x.AC > 0) | (y.AC > 0)) & ((x.AN > 0) & (y.AN > 0)),
+                    ((x.AC > 0) | (y.AC > 0)) & (x.AN > 0) & (y.AN > 0),
                     [x.AC, x.AN - x.AC, y.AC, y.AN - y.AC],
                 ),
                 freq1_by_pop[pop],
