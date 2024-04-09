@@ -834,7 +834,7 @@ def main(args):
     test_gene = args.test_gene
     overwrite = args.overwrite
     apply_release_filters = not args.skip_apply_release_filters
-    pops = list(set(POPS["v3"] + POPS["v4"]["exomes"]))
+    pops = list(set(POPS["v3"]["genomes"] + POPS["v4"]["exomes"]))
     faf_pops = [pop for pop in pops if pop not in POPS_TO_REMOVE_FOR_POPMAX["v4"]]
     stats_chr = args.stats_chr
     stats_combine_all_chr = args.stats_combine_all_chr

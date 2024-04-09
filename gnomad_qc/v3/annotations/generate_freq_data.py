@@ -49,7 +49,7 @@ logger = logging.getLogger("gnomAD_frequency_data")
 logger.setLevel(logging.INFO)
 
 DOWNSAMPLINGS = DOWNSAMPLINGS["v3"]
-POPS = POPS["v3"]
+POPS = POPS["v3"]["genomes"]
 SUBSETS = SUBSETS["v3"]
 
 
