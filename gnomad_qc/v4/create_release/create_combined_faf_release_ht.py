@@ -15,7 +15,6 @@ import logging
 from typing import Callable, Dict, List, Optional, Set
 
 import hail as hl
-import pandas as pd
 from gnomad.resources.grch38.gnomad import POPS, POPS_TO_REMOVE_FOR_POPMAX
 from gnomad.resources.resource_utils import TableResource
 from gnomad.utils.annotations import (
@@ -29,7 +28,6 @@ from gnomad.utils.annotations import (
 from gnomad.utils.filtering import filter_arrays_by_meta
 from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.slack import slack_notifications
-from statsmodels.stats.contingency_tables import StratifiedTable
 
 from gnomad_qc.resource_utils import (
     PipelineResourceCollection,
@@ -485,70 +483,35 @@ def perform_cmh_test(
         return {
             m.get("gen_anc"): freq_expr[i]
             for i, m in enumerate(hl.eval(meta_expr))
-            if m.get("gen_anc") in pops
+            if m.get("gen_anc") in pops and len(m) == 2
         }
 
     freq1_by_pop = _get_freq_by_pop(freq1_expr, freq1_meta_expr)
     freq2_by_pop = _get_freq_by_pop(freq2_expr, freq2_meta_expr)
 
-    # Create list of 2x2 matrices of reference and alternate allele counts for each
-    # genetic ancestry group in pops and export to pandas for CMH test.
-    _ht = ht.select(
-        an=[
+    # Create list of the info for the 2x2 matrices of reference and alternate allele
+    # counts for each genetic ancestry group in pops and remove any missing pops
+    # from the list.
+    cmh_input_expr = hl.array(
+        [
             hl.bind(
                 lambda x, y: hl.or_missing(
-                    ((x.AC > 0) | (y.AC > 0)) & (x.AN > 0) & (y.AN > 0),
-                    [[x.AC, x.AN - x.AC], [y.AC, y.AN - y.AC]],
+                    ((x.AC > 0) | (y.AC > 0)) & ((x.AN > 0) & (y.AN > 0)),
+                    [x.AC, x.AN - x.AC, y.AC, y.AN - y.AC],
                 ),
                 freq1_by_pop[pop],
                 freq2_by_pop[pop],
             )
             for pop in pops
         ]
+    ).filter(hl.is_defined)
+
+    return hl.or_missing(
+        hl.len(cmh_input_expr) > 0,
+        hl.cochran_mantel_haenszel_test(
+            *[cmh_input_expr.map(lambda x: x[i]) for i in range(4)]
+        ).rename({"test_statistic": "chisq"}),
     )
-
-    # Remove any missing values from the list of 2x2 matrices and filter rows where
-    # there are no 2x2 matrices.
-    _ht = _ht.annotate(an=_ht.an.filter(lambda x: hl.is_defined(x)))
-    _ht = _ht.filter(hl.len(_ht.an) > 0)
-
-    # Add a temporary index to the Table to easily map values back to variants after
-    # converting to a pandas DataFrame and back to a Hail Table.
-    _ht = _ht.add_index(name="tmp_idx")
-    _ht = _ht.annotate(tmp_idx=hl.int32(_ht.tmp_idx))
-    tmp_path = hl.utils.new_temp_file("cmh_test", "parquet")
-
-    # Export one compressed Parquet file per partition.
-    df = _ht.to_spark().write.option("compression", "zstd")
-    df.mode("overwrite").parquet(tmp_path)
-    df = pd.read_parquet(tmp_path)
-
-    # Perform CMH test on the list of 2x2 matrices (list of lists of 2 lists with 2
-    # elements each).
-    df["cmh"] = df.apply(
-        lambda x: StratifiedTable([list([list(a) for a in p]) for p in x.an]), axis=1
-    )
-    df["statistic"] = df.apply(lambda x: x.cmh.test_null_odds().statistic, axis=1)
-    df["oddsratio_pooled"] = df.apply(lambda x: x.cmh.oddsratio_pooled, axis=1)
-    df = df[["tmp_idx", "statistic", "oddsratio_pooled"]]
-
-    # Convert CMH result pandas DataFrame to a Table and restructure the annotation.
-    cmh_ht = hl.Table.from_pandas(df)
-    cmh_ht = cmh_ht.key_by("tmp_idx")
-    cmh_keyed = cmh_ht[_ht.tmp_idx]
-    chisq_expr = cmh_keyed.statistic
-    cmh_ht = _ht.select(
-        cmh=hl.or_missing(
-            ~hl.is_nan(chisq_expr),
-            hl.struct(
-                oddsratio_pooled=cmh_keyed.oddsratio_pooled,
-                chisq=chisq_expr,
-                p_value=hl.pchisqtail(chisq_expr, 1),
-            ),
-        )
-    )
-
-    return cmh_ht[ht.key].cmh
 
 
 def create_final_combined_faf_release(
@@ -648,13 +611,7 @@ def create_final_combined_faf_release(
             stat_expr = hl.array([stat_expr])
 
         stat_expr = stat_expr.map(
-            lambda x: x.select(
-                **{
-                    a: hl.or_missing(~hl.is_nan(x[a]), x[a])
-                    for a in x
-                    if a != "oddsratio_pooled"
-                }
-            )
+            lambda x: x.select(**{a: hl.or_missing(~hl.is_nan(x[a]), x[a]) for a in x})
         )
 
         if is_struct:
@@ -943,48 +900,16 @@ def main(args):
                 ht = ht.filter(
                     hl.is_defined(ht.genomes_freq) & hl.is_defined(ht.exomes_freq)
                 )
-                if stats_chr is not None:
-                    ht = hl.filter_intervals(ht, [hl.parse_locus_interval(stats_chr)])
-
-                # TODO: Modify how we apply the CMH test to avoid memory issues. This
-                #  was a temporary solution to avoid memory issues, but if we decide
-                #  to use this test again, more thought should be put into how to
-                #  do it efficiently.
-                # Split the Table into 10 parts by partitions and perform the CMH test
-                # on each part. This is done to avoid memory issues when performing the
-                # CMH test on the entire Table.
-                n_part = ht.n_partitions()
-                logger.info(f"Number of partitions: {n_part}")
-                n_split = min(n_part, args.max_partitions_for_cmh)
-                hts = []
-                for i in range(0, n_part, n_split):
-                    # Min to ensure we do not try to read more partitions than exist in
-                    # the last loop iteration.
-                    logger.info(
-                        f"Processing partitions {i} to {min(i + n_split, n_part)}"
+                ht = ht.select(
+                    cochran_mantel_haenszel_test=perform_cmh_test(
+                        ht,
+                        ht.genomes_freq,
+                        ht.exomes_freq,
+                        ht.genomes_freq_meta,
+                        ht.exomes_freq_meta,
+                        pops=faf_pops,
                     )
-                    split_ht = ht._filter_partitions(range(i, min(i + n_split, n_part)))
-                    split_ht = split_ht.select(
-                        cochran_mantel_haenszel_test=perform_cmh_test(
-                            split_ht,
-                            split_ht.genomes_freq,
-                            split_ht.exomes_freq,
-                            split_ht.genomes_freq_meta,
-                            split_ht.exomes_freq_meta,
-                            pops=faf_pops,
-                        ),
-                    ).checkpoint(
-                        hl.utils.new_temp_file(
-                            f"cmh_test_{i}_to_{min(i + n_split, n_part)}", "ht"
-                        )
-                    )
-
-                    hts.append(split_ht)
-
-                ht = hts[0]
-                if len(hts) > 1:
-                    ht = hts[0].union(*hts[1:])
-
+                )
             ht.naive_coalesce(args.n_partitions).write(
                 res.cmh_ht.path, overwrite=overwrite
             )
@@ -1081,12 +1006,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
             "computed."
         ),
         action="store_true",
-    )
-    parser.add_argument(
-        "--max-partitions-for-cmh",
-        help="Max partitions for CMH test.",
-        type=int,
-        default=300,
     )
     parser.add_argument(
         "--finalize-combined-faf-release",
