@@ -26,6 +26,7 @@ from gnomad.utils.vcf import (
     HISTS,
     IN_SILICO_ANNOTATIONS_INFO_DICT,
     INFO_DICT,
+    JOINT_REGION_FLAG_FIELDS,
     REGION_FLAG_FIELDS,
     SEXES,
     SITE_FIELDS,
@@ -95,15 +96,7 @@ REGION_FLAG_FIELDS = {
         "outside_broad_capture_region",
     ],
     "genomes": REGION_FLAG_FIELDS,
-    "joint": REGION_FLAG_FIELDS + [
-        "fail_interval_qc",
-        "outside_broad_capture_region",
-        "outside_ukb_capture_region",
-        "outside_broad_calling_region",
-        "outside_ukb_calling_region",
-        "not_called_in_exomes",
-        "not_called_in_genomes",
-    ],
+    "joint": JOINT_REGION_FLAG_FIELDS,
 }
 
 # Remove original alleles for containing non-releasable alleles
@@ -484,10 +477,10 @@ def make_info_expr(
     """
     vcf_info_dict = {}
 
-    if "region_flag" in t.row:
+    if "region_flags" in t.row:
         # Add region_flag to info dict
         for field in REGION_FLAG_FIELDS[data_type]:
-            vcf_info_dict[field] = t["region_flag"][f"{field}"]
+            vcf_info_dict[field] = t["region_flags"][f"{field}"]
 
     # Add underscore to hist_prefix if it isn't empty
     if hist_prefix != "":
@@ -593,7 +586,7 @@ def prepare_ht_for_validation(
     if data_type == "joint":
         ann_expr = {"info": info_struct}
         if "region_flags" in ht.row:
-            ann_expr["region_flag"] = ht.region_flags
+            ann_expr["region_flags"] = ht.region_flags
     else:
         ann_expr = {
             "region_flag": ht.region_flags,
@@ -616,15 +609,22 @@ def prepare_ht_for_validation(
     #   all VEP annotations
     ht = ht.annotate(info=ht.info.annotate(**make_info_expr(ht, data_type=data_type)))
 
-    if freq_entries_to_remove:
+    if data_type == "joint":
         ht = ht.annotate_globals(
-            vep_csq_header=process_vep_csq_header(VEP_CSQ_HEADER),
-            freq_entries_to_remove=freq_entries_to_remove,
+            freq_entries_to_remove=(
+                freq_entries_to_remove
+                if freq_entries_to_remove
+                else hl.empty_set(hl.tstr)
+            ),
         )
     else:
         ht = ht.annotate_globals(
             vep_csq_header=process_vep_csq_header(VEP_CSQ_HEADER),
-            freq_entries_to_remove=hl.empty_set(hl.tstr),
+            freq_entries_to_remove=(
+                freq_entries_to_remove
+                if freq_entries_to_remove
+                else hl.empty_set(hl.tstr)
+            ),
         )
 
     # Select relevant fields for VCF export
