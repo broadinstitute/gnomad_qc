@@ -150,15 +150,9 @@ def create_table(
                 diff = f"\033[92m{diff}\033[0m"
             table.append([grpmax_group, v2_val, v4_val, diff])
         logger.info(
-            "Nonsynonymous variant count by grpmax genetic ancestry group where the "
-            f"grpmax AF is above {threshold} and the {data_subset} AF is below it..."
-        )
-        logger.info(
-            tabulate(
-                table,
-                headers=headers,
-                tablefmt="fancy_grid",
-            )
+            "\nNonsynonymous variant count by grpmax genetic ancestry group where the\n"
+            f"grpmax AF is above {threshold} and the {data_subset} AF is below it...\n"
+            f"{tabulate(table,headers=headers,tablefmt='fancy_grid')}"
         )
 
 
