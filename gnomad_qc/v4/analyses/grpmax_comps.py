@@ -17,7 +17,7 @@ logger.setLevel(logging.INFO)
 
 
 DIVERSE_GRPS = hl.literal({"afr", "amr", "eas", "mid", "sas"})
-EUR_GRPS = {"all": ["nfe", "fin", "asj"], "nfe_only": ["nfe"]}
+EUR_GRPS = {"all_eur": ["nfe", "fin", "asj"], "nfe_only": ["nfe"]}
 
 AF_THRESHOLDS = [0.0001, 0.001]
 NS_CONSEQ_TERMS = hl.literal(CSQ_CODING_HIGH_IMPACT + CSQ_CODING_MEDIUM_IMPACT)
@@ -27,8 +27,9 @@ def get_eur_freq(ht: hl.Table, eur_grps: list, version: str = "v4"):
     """
     Calculate European genetic ancestry super group AF.
 
-    :param ht: Table.
+    :param ht: gnomAD release Table
     :param eur_grps: Set of genetic ancestry groups to be included in AF
+    :param version: gnomAD version
     :return: Table with European AF annotation
     """
     if version == "v4":
@@ -60,9 +61,9 @@ def filter_to_threshold(
     version: str = "v4",
 ):
     """
-    Filter to variants where eur AF is < threshold.
+    Filter to variants where eur AF is < threshold while grpmax > threshold.
 
-    :param ht: Table.
+    :param ht: gnomAD release Table
     :param af_threshold: AF dividing threshold
     :param version: gnomAD version
     :return: Table filtered to variants meething threshold specifications
@@ -81,7 +82,7 @@ def version_stats(
     """
     Calculate grpmax stats for a given gnomAD version.
 
-    :param ht: Table.
+    :param ht: gnomAD release Table
     :param version: gnomAD version
     :return: Dictionary of grpmax stats
     """
@@ -124,30 +125,41 @@ def version_stats(
     return results_by_eur_grping
 
 
-def create_table(data_dict, data_subset, title) -> Dict[str, Dict[str, Dict[str, int]]]:
+def create_table(
+    version_dict: Dict[str, Dict[str, Dict[str, int]]],
+    data_subset: str,
+):
     """
-    Create a table of grpmax stats for a given data subset.
+    Create tables of grpmax stats.
 
-    :param data_dict: Dictionary of grpmax stats
-    :param data_subset: Subset of data to be included in the table
-    :param title: Title of the table
-    return: Dictionary of grpmax stats
+    Tables have a column for each version as well as the difference for each grpmax group.
+
+    :param version_dict: Dictionary of grpmax stats
+    :param data_subset: Data subset
     """
-    # Define table headers
-    headers = ["version"]
-    headers.extend([f"{key} ({val})" for key, val in data_subset[0.0001].items()])
-
-    # Prepare table data
-    table_data = []
-    for version, inner_dict in data_dict.items():
-        row = [version]
-        for key, val in inner_dict[data_subset].items():
-            row.append(val)
-        table_data.append(row)
-
-    # Print the table
-    print(f"\n** {title.upper()} Data **")
-    print(tabulate(table_data, headers=headers, tablefmt="grid"))
+    headers = ["grpmax_grp", "v2", "v4", "difference(v4-v2)"]
+    for threshold in AF_THRESHOLDS:
+        table = []
+        for grpmax_group in hl.eval(DIVERSE_GRPS):
+            v2_val = version_dict["v2"][data_subset][threshold].get(grpmax_group, 0)
+            v4_val = version_dict["v4"][data_subset][threshold].get(grpmax_group, 0)
+            diff = v4_val - v2_val
+            if diff < 0:
+                diff = f"\033[91m{diff}\033[0m"
+            else:
+                diff = f"\033[92m{diff}\033[0m"
+            table.append([grpmax_group, v2_val, v4_val, diff])
+        logger.info(
+            "Nonsynonymous variant count by grpmax genetic ancestry group where the "
+            f"grpmax AF is above {threshold} and the {data_subset} AF is below it..."
+        )
+        logger.info(
+            tabulate(
+                table,
+                headers=headers,
+                tablefmt="fancy_grid",
+            )
+        )
 
 
 def main():
@@ -160,9 +172,9 @@ def main():
             ht = get_gnomad_public_data("exomes")
         version_dict[version] = version_stats(ht, version=version)
 
-    # Create tables for "all" and "nfe_only" data
-    create_table(version_dict, data_subset="all", title="all")
-    create_table(version_dict, data_subset="nfe_only", title="nfe_only")
+    # Create tables for "all_eur" and "nfe_only" data
+    create_table(version_dict, data_subset="all_eur")
+    create_table(version_dict, data_subset="nfe_only")
 
 
 if __name__ == "__main__":
