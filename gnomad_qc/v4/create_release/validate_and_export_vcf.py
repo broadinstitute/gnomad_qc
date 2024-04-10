@@ -129,7 +129,7 @@ SUBSETS = {
 }
 
 # Exomes and genomes use the same pops for v4
-POPS = deepcopy(POPS["v4"])
+POPS = deepcopy(POPS["v4"]["exomes"])
 # Remove unnecessary pop names from POP_NAMES dict
 POPS = {
     pop: POP_NAMES[pop] if pop != "remaining" else "Remaining individuals"
