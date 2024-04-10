@@ -7,6 +7,11 @@ from pprint import pprint
 from typing import Dict, List, Optional
 
 import hail as hl
+from gnomad.assessment.validity_checks import (
+    check_global_and_row_annot_lengths,
+    pprint_global_anns,
+    validate_release_t,
+)
 from gnomad.resources.grch38.gnomad import POPS
 from gnomad.sample_qc.ancestry import POP_NAMES
 from gnomad.utils.vcf import (
@@ -24,19 +29,64 @@ from gnomad.utils.vcf import (
     rekey_new_reference,
 )
 
+from gnomad_qc.v4.create_release.validate_and_export_vcf import (
+    check_globals_for_retired_terms,
+)
 from gnomad_qc.v4.resources.basics import qc_temp_prefix
 from gnomad_qc.v4.resources.release import (
     release_header_path,
     release_sites,
     release_vcf_path,
+    validated_release_ht,
 )
 
 logging.basicConfig(format="%(levelname)s (%(name)s %(lineno)s): %(message)s")
 logger = logging.getLogger("export_joint_vcf")
 logger.setLevel(logging.INFO)
 
+LEN_COMP_GLOBAL_ROWS = {
+    "freq": ["freq_meta", "freq_index_dict", "freq_meta_sample_count"],
+    "faf": ["faf_meta", "faf_index_dict"],
+}
+
 # Exomes and genomes use the same pops for v4
 POPS = deepcopy(POPS["v4"])
+
+
+def prepare_ht_per_data_type(ht: hl.Table, data_type: str) -> hl.Table:
+    """
+    Prepare HT per data type for export.
+
+    :param ht: Input joint release HT.
+    :param data_type: Data type to prepare HT for.
+    :return: Prepared HT.
+    """
+    allele_info = hl.struct(allele_type="", n_alt_alleles=1)
+    ht = ht.annotate(filters=hl.empty_set(hl.tstr), allele_info=allele_info)
+    if data_type == "joint":
+        ht_temp = ht.select(
+            data_type,
+            "region_flags",
+            "allele_info",
+            "freq_comparison_stats",
+        )
+    else:
+        ht_temp = ht.select(data_type, "region_flags", "allele_info")
+
+    ht_temp = ht_temp.select_globals(f"{data_type}_globals")
+    ht_temp = ht_temp.annotate_globals(**ht_temp[f"{data_type}_globals"])
+    ht_temp = ht_temp.annotate(**ht_temp[data_type])
+    ht_temp = ht_temp.drop(data_type, f"{data_type}_globals")
+    ht_temp = ht_temp.checkpoint(
+        hl.utils.new_temp_file(f"{data_type}_in_release_validated", "ht")
+    )
+    info_dict = prepare_info_dict(ht_temp, include_allele_info=True)
+    if data_type == "joint":
+        info_dict.update(unfurl_freq_comparison_stats(ht_temp))
+
+    ht_temp = ht_temp.annotate(info=hl.struct(**info_dict))
+
+    return ht_temp
 
 
 def unfurl_freq_comparison_stats(
@@ -444,6 +494,36 @@ def main(args):
         ht = hl.filter_intervals(
             ht, [hl.parse_locus_interval(contig, reference_genome="GRCh38")]
         )
+    if args.validate_release_ht:
+        for data_type in ["exomes", "genomes", "joint"]:
+            ht_temp = prepare_ht_per_data_type(ht, data_type)
+            ht_temp = ht_temp.annotate(filters=hl.empty_set(hl.tstr))
+            ht_temp = ht_temp.checkpoint(
+                hl.utils.new_temp_file(f"{data_type}_to_validate", "ht")
+            )
+            logger.info(
+                "Checking globals for retired terms and checking their associated row"
+                " annotation lengths..."
+            )
+            check_globals_for_retired_terms(ht)
+            pprint_global_anns(ht)
+            logger.info(
+                "Checking global and row annotation lengths for %s...", data_type
+            )
+            check_global_and_row_annot_lengths(
+                ht_temp,
+                row_to_globals_check=LEN_COMP_GLOBAL_ROWS,
+            )
+            # Checking only the missingness.
+            validate_release_t(
+                ht_temp,
+                pops=POPS,
+                verbose=True,
+                delimiter="_",
+                variant_filter_field="",
+                problematic_regions=JOINT_REGION_FLAG_FIELDS,
+                subset_freq_check=False,
+            )
     logger.info("Preparing VCF header dictionary...")
     header_dict = prepare_vcf_header_dict(ht)
     logger.info("Preparing HT for export...")
@@ -495,6 +575,16 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         "--contig",
         help="Export only the specified contig.",
         type=str,
+    )
+    parser.add_argument(
+        "--validate-release-ht",
+        help="Validate release HT.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--verbose",
+        help="Log successes in addition to failures during validation.",
+        action="store_true",
     )
     parser.add_argument(
         "--output-vcf-header",
