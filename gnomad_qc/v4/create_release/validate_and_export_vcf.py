@@ -56,7 +56,6 @@ from gnomad_qc.resource_utils import (
 from gnomad_qc.v4.resources.basics import get_logging_path, qc_temp_prefix
 from gnomad_qc.v4.resources.release import (
     append_to_vcf_header_path,
-    joint_ht_for_export,
     release_header_path,
     release_sites,
     release_vcf_path,
