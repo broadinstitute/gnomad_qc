@@ -361,7 +361,7 @@ def unfurl_nested_annotations(
                 }
             )
     else:
-        grpmax_dict = {f"grpmax": grpmax_idx.gen_anc}
+        grpmax_dict = {"grpmax": grpmax_idx.gen_anc}
         grpmax_dict.update(
             {
                 f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": grpmax_idx[f]
@@ -1284,8 +1284,10 @@ def main(args):
                 pickle.dump(header_dict, p, protocol=pickle.HIGHEST_PROTOCOL)
 
         # NOTE: The following step is not yet implemented for joint and should not
-        # be reviewed
+        # be reviewed for it
         if args.export_vcf:
+            if data_type == "joint":
+                raise ValueError("Joint data type is not yet supported for VCF export.")
             if contig and test:
                 raise ValueError(
                     "Test argument cannot be used with contig argument as test filters"
@@ -1295,11 +1297,7 @@ def main(args):
             logger.info(f"Exporting VCF{f' for {contig}' if contig else ''}...")
             res = resources.export_vcf
             res.check_resource_existence()
-
-            if data_type == "genomes" or data_type == "exomes":
-                ht = res.validated_ht.ht()
-            else:
-                ht = res.export_ready_joint_ht.ht()
+            ht = res.validated_ht.ht()
             logger.info("Reading release HT from %s...", res.validated_ht.path)
             with hl.hadoop_open(res.vcf_header_path, "rb") as f:
                 header_dict = pickle.load(f)
@@ -1382,11 +1380,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help="Data type to run validity checks on.",
         default="exomes",
         choices=["exomes", "genomes", "joint"],
-    )
-    parser.add_argument(
-        "--prepare-joint-ht-for-export",
-        help="Prepare joint HT for export.",
-        action="store_true",
     )
     parser.add_argument(
         "--prepare-vcf-header",
