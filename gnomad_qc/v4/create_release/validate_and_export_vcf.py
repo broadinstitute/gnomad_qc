@@ -185,7 +185,6 @@ def get_export_resources(
     data_type: str = "exomes",
     test: Optional[bool] = False,
     contig: Optional[str] = None,
-    for_joint_vcf_export: Optional[bool] = False,
 ) -> PipelineResourceCollection:
     """
     Get export resources.
@@ -212,17 +211,6 @@ def get_export_resources(
             "validated_ht": validated_release_ht(test=test, data_type=data_type)
         },
     )
-    if for_joint_vcf_export:
-        prepare_joint_ht_for_export = PipelineStepResourceCollection(
-            "--prepare-ht-for-export",
-            input_resources={
-                "create_release_sites_ht.py": {
-                    "release_ht": release_sites(data_type=data_type, test=test)
-                }
-            },
-            output_resources={"export_ready_joint_ht": joint_ht_for_export(test=test)},
-        )
-
     prepare_vcf_header = PipelineStepResourceCollection(
         "--prepare-vcf-header",
         pipeline_input_steps=[validate_release_ht],
@@ -235,13 +223,9 @@ def get_export_resources(
             "vcf_header_path": release_header_path(test=test, data_type=data_type)
         },
     )
-    export_inputs = [validate_release_ht, prepare_vcf_header]
-    if for_joint_vcf_export:
-        export_inputs.append(prepare_joint_ht_for_export)
-
     export_vcf = PipelineStepResourceCollection(
         "--export-vcf",
-        pipeline_input_steps=export_inputs,
+        pipeline_input_steps=[validate_release_ht, prepare_vcf_header],
         output_resources={
             "release_vcf": release_vcf_path(
                 test=test,
@@ -258,13 +242,6 @@ def get_export_resources(
             "export_vcf": export_vcf,
         }
     )
-    if for_joint_vcf_export:
-        export_pipeline.add_steps(
-            {
-                "prepare_joint_ht_for_export": prepare_joint_ht_for_export,
-            }
-        )
-
     return export_pipeline
 
 
@@ -319,7 +296,6 @@ def unfurl_nested_annotations(
     data_type: str = "exomes",
     joint_included: bool = False,
     freq_comparison_included: bool = False,
-    for_joint_vcf_export: bool = False,
 ) -> [hl.expr.StructExpression, Set[str]]:
     """
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays.
@@ -333,7 +309,6 @@ def unfurl_nested_annotations(
         "genomes", or "joint". Default is "exomes".
     :param joint_included: Whether joint frequency data is included in the exome or
         genome HT. Default is False.
-    :param for_vcf_export: Whether to unfurl HT for joint VCF export. Default is False.
     :param freq_comparison_included: Whether frequency comparison data is included in
         the HT. Default is False.
     :return: StructExpression containing variant annotations and their corresponding
@@ -342,15 +317,13 @@ def unfurl_nested_annotations(
     """
     expr_dict = {}
 
-    dts = f"_{data_type}" if for_joint_vcf_export else ""
-
     # Unfurl freq index dict
     # Cycles through each key and index (e.g., k=afr_XX, i=31)
     logger.info("Unfurling freq data...")
     freq_idx = hl.eval(ht.freq_index_dict)
     expr_dict.update(
         {
-            f"{f if f != 'homozygote_count' else 'nhomalt'}{dts}_{k}": ht.freq[i][f]
+            f"{f if f != 'homozygote_count' else 'nhomalt'}_{k}": ht.freq[i][f]
             for k, i in freq_idx.items()
             for f in ht.freq[0].keys()
         }
@@ -371,7 +344,7 @@ def unfurl_nested_annotations(
     # This creates fields like grpmax, AC_grpmax_non_ukb...
     logger.info("Adding grpmax data...")
     grpmax_idx = ht.grpmax
-    if data_type == "exomes" and not for_joint_vcf_export:
+    if data_type == "exomes":
         grpmax_dict = {}
         for s in grpmax_idx.keys():
             grpmax_dict.update(
@@ -389,12 +362,10 @@ def unfurl_nested_annotations(
                 }
             )
     else:
-        grpmax_dict = {f"grpmax{dts if dts else ''}": grpmax_idx.gen_anc}
+        grpmax_dict = {f"grpmax": grpmax_idx.gen_anc}
         grpmax_dict.update(
             {
-                f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax{dts if dts else ''}": grpmax_idx[
-                    f
-                ]
+                f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": grpmax_idx[f]
                 for f in [f for f in grpmax_idx.keys() if f != "gen_anc"]
             }
         )
@@ -417,25 +388,19 @@ def unfurl_nested_annotations(
     logger.info("Unfurling faf data...")
     faf_idx = hl.eval(ht.faf_index_dict)
     expr_dict.update(
-        {
-            f"{f}{dts if dts else ''}_{k}": ht.faf[i][f]
-            for f in ht.faf[0].keys()
-            for k, i in faf_idx.items()
-        }
+        {f"{f}_{k}": ht.faf[i][f] for f in ht.faf[0].keys() for k, i in faf_idx.items()}
     )
 
     logger.info("Unfurling fafmax data...")
     fafmax_idx = ht.fafmax
-    if data_type == "exomes" and not for_joint_vcf_export:
+    if data_type == "exomes":
         fafmax_dict = {
             f"fafmax_{f}{'_'+s if s != 'gnomad' else ''}": fafmax_idx[s][f]
             for s in fafmax_idx.keys()
             for f in fafmax_idx[s].keys()
         }
     else:
-        fafmax_dict = {
-            f"fafmax_{f}{dts if dts else ''}": fafmax_idx[f] for f in fafmax_idx.keys()
-        }
+        fafmax_dict = {f"fafmax_{f}": fafmax_idx[f] for f in fafmax_idx.keys()}
     expr_dict.update(fafmax_dict)
 
     if joint_included:
@@ -463,7 +428,7 @@ def unfurl_nested_annotations(
     hist_idx = ht.histograms.age_hists
     age_hists = ["age_hist_het", "age_hist_hom"]
     age_hist_dict = {
-        f"{hist}_{f}{dts if dts else ''}": (
+        f"{hist}_{f}": (
             hl.delimit(hist_idx[hist][f], delimiter="|")
             if "bin" in f
             else hist_idx[hist][f]
@@ -497,7 +462,6 @@ def make_info_expr(
     hist_prefix: str = "",
     data_type: str = "exomes",
     for_joint_validation: bool = False,
-    for_joint_vcf_export: bool = False,
 ) -> Dict[str, hl.expr.Expression]:
     """
     Make Hail expression for variant annotations to be included in VCF INFO field.
@@ -507,7 +471,6 @@ def make_info_expr(
     :param data_type: Data type to make info expression for. One of "exomes", "genomes",
         or "joint". Default is "exomes".
     :param for_joint_validation: Whether to prepare HT for joint validation. Default is False.
-    :param for_joint_vcf_export: Whether to prepare HT for joint VCF export. Default is False.
     :return: Dictionary containing Hail expressions for relevant INFO annotations.
     """
     vcf_info_dict = {}
@@ -529,22 +492,18 @@ def make_info_expr(
     # _n_larger for all hists EXCEPT DP hists
     for hist in HISTS:
         hist_dict = {
-            f"{hist}_bin_freq{'_'+data_type if for_joint_vcf_export else ''}": (
-                hl.delimit(t.histograms.qual_hists[hist].bin_freq, delimiter="|")
+            f"{hist}_bin_freq": hl.delimit(
+                t.histograms.qual_hists[hist].bin_freq, delimiter="|"
             ),
         }
         vcf_info_dict.update(hist_dict)
 
         if "dp" in hist:
             vcf_info_dict.update(
-                {
-                    f"{hist}_n_larger{'_'+data_type if for_joint_vcf_export else ''}": (
-                        t.histograms.qual_hists[hist].n_larger
-                    )
-                },
+                {f"{hist}_n_larger": t.histograms.qual_hists[hist].n_larger},
             )
 
-    if for_joint_validation or for_joint_vcf_export:
+    if for_joint_validation:
         return vcf_info_dict
 
     # Add site-level annotations and AS annotations to vcf_info_dict
@@ -584,7 +543,6 @@ def prepare_ht_for_validation(
     vcf_info_reorder: Optional[List[str]] = None,
     joint_included: bool = False,
     for_joint_validation: bool = True,
-    for_joint_vcf_export: bool = False,
     freq_comparison_included: bool = False,
 ) -> hl.Table:
     """
@@ -599,8 +557,6 @@ def prepare_ht_for_validation(
         is False.
     :param for_joint_validation: Whether to prepare HT for joint validation. Default is
         True.
-    :param for_joint_vcf_export: Whether to prepare HT for joint VCF export. Default is
-        False.
     :param freq_comparison_included: Whether frequency comparison data is included in
         the HT. Default is False.
     :return: Hail Table prepared for validity checks and export.
@@ -608,13 +564,12 @@ def prepare_ht_for_validation(
     logger.info(
         "Unfurling nested gnomAD frequency annotations and add to INFO field..."
     )
-    for_joint = for_joint_validation or for_joint_vcf_export
+    for_joint = for_joint_validation
     info_struct, freq_entries_to_remove = unfurl_nested_annotations(
         ht,
         entries_to_remove=freq_entries_to_remove,
         data_type=data_type,
         joint_included=joint_included,
-        for_joint_vcf_export=for_joint_vcf_export,
         freq_comparison_included=freq_comparison_included,
     )
 
@@ -660,7 +615,6 @@ def prepare_ht_for_validation(
                 ht,
                 data_type=data_type,
                 for_joint_validation=for_joint_validation,
-                for_joint_vcf_export=for_joint_vcf_export,
             )
         )
     )
@@ -1176,7 +1130,6 @@ def main(args):
         overwrite,
         data_type,
         test,
-        for_joint_vcf_export=args.prepare_joint_ht_for_export,
     )
 
     if contig and test:
@@ -1278,44 +1231,7 @@ def main(args):
 
         # NOTE: This step is not yet implemented for joint and should not be reviewed
         if args.prepare_joint_ht_for_export:
-            logger.info("Preparing release joint HT for export...")
-            res = resources.prepare_joint_ht_for_export
-            res.check_resource_existence()
-            ht = res.release_ht.ht()
-
-            validate_hts = {}
-            for dt in ["exomes", "genomes", "joint"]:
-                dt_ht = select_type_from_joint_ht(ht, dt)
-                dt_ht = prepare_ht_for_validation(
-                    dt_ht,
-                    data_type=dt,
-                    joint_included=joint_included,
-                    for_joint_validation=False,
-                    for_joint_vcf_export=True,
-                    freq_comparison_included=(dt == "joint"),
-                ).checkpoint(
-                    hl.utils.new_temp_file(f"joint_vcf_export_ready_{dt}", "ht")
-                )
-
-                validate_hts[dt] = dt_ht
-            # This isnt what we want, need everything going in info and use single
-            # filters field
-            ht = validate_hts["joint"]
-            ht = ht.annotate(
-                info=ht.info.annotate(
-                    **{
-                        **validate_hts["exomes"][ht.key].info,
-                        **validate_hts["genomes"][ht.key].info,
-                    }
-                )
-            )
-            ht.describe()
-
-            # Note: Checkpoint saves time in validity checks and final export by not
-            # needing to run the VCF HT prep on each chromosome -- more needs to happen
-            # before ready for export, but this is an intermediate write.
-            logger.info("Writing joint HT prepared for VCF export...")
-            ht.write(res.export_ready_joint_ht.path, overwrite=overwrite)
+            logger.info("This is not yet implemented.")
 
         if args.prepare_vcf_header:
             logger.info("Preparing VCF header dict...")
