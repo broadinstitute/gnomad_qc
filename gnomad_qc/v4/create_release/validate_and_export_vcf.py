@@ -821,7 +821,10 @@ def populate_info_dict(
         subset_pops = deepcopy(pops)
         if (subset == "joint") | (data_type == "genomes") | (subset == "genomes"):
             subset_pops.update({"ami": "Amish"})
-        description_text = "" if subset == "" else f" in {subset} subset"
+        if data_type == "joint":
+            description_text = f"in {subset} subset" if subset != "" else ""
+        else:
+            description_text = "" if subset == "" else f" in {subset} subset"
 
         vcf_info_dict.update(
             populate_subset_info_dict(
@@ -861,7 +864,7 @@ def populate_info_dict(
         )
     )
     if data_type == "joint":
-        print(vcf_info_dict)
+        # print(vcf_info_dict)
         return vcf_info_dict
 
     # Add in silico prediction annotations to info_dict.
@@ -916,10 +919,10 @@ def prepare_vcf_header_dict(
             inbreeding_cutoff=hl.eval(ht.inbreeding_coeff_cutoff),
             variant_qc_filter=hl.eval(ht.filtering_model.filter_name),
         )
+        # subset = "" represents full dataset in VCF header construction, the
+        # logic in gnomad_methods is built around this.
+        subset_list.extend(["", "joint"] if joint_included else [""])
 
-    # subset = "" represents full dataset in VCF header construction, the
-    # logic in gnomad_methods is built around this.
-    subset_list.extend(["", "joint"] if joint_included else [""])
     logger.info("Making INFO dict for VCF...")
     vcf_info_dict = populate_info_dict(
         info_fields=info_fields,
@@ -932,6 +935,7 @@ def prepare_vcf_header_dict(
         extra_suffix=extra_suffix,
         extra_description_text=extra_description_text,
     )
+    # print(vcf_info_dict)
 
     if data_type != "joint":
         vcf_info_dict.update(
@@ -942,15 +946,12 @@ def prepare_vcf_header_dict(
     new_vcf_info_dict = {i.replace("_adj", ""): j for i, j in vcf_info_dict.items()}
 
     if data_type == "joint":
-        header_dict = {
-            "info": new_vcf_info_dict,
-        }
+        header_dict = new_vcf_info_dict
     else:
         header_dict = {
             "info": new_vcf_info_dict,
             "filter": filter_dict,
         }
-
     return header_dict
 
 
@@ -1218,6 +1219,7 @@ def main(args):
 
             # v4 Genomes drops subsets from VCF
             if data_type == "genomes" or data_type == "exomes":
+                header_dict = {}  # Initialize header_dict outside the loop
                 subsets = SUBSETS["exomes"] if data_type == "exomes" else []
                 header_dict = prepare_vcf_header_dict(
                     ht,
@@ -1233,8 +1235,8 @@ def main(args):
                     data_type=data_type,
                     joint_included=joint_included,
                 )
-
-            if data_type == "joint":
+            else:
+                header_dict = {"info": {}}
                 for dt in ["exomes", "genomes", "joint"]:
                     dt_ht = select_type_from_joint_ht(ht, dt)
                     temp_header_dict = prepare_vcf_header_dict(
@@ -1253,7 +1255,7 @@ def main(args):
                         extra_suffix=dt,
                         extra_description_text=f" in {dt} dataset",
                     )
-                    header_dict = {**temp_header_dict}
+                    header_dict["info"].update(temp_header_dict)
 
             logger.info("Writing VCF header dict...")
             with hl.hadoop_open(res.vcf_header_path, "wb") as p:
