@@ -132,7 +132,7 @@ SUBSETS = {
     "joint": [""],
 }
 
-# Exomes and genomes use the same pops for v4
+# Exomes doesn't have `ami` genetic ancestry group as genomes and joint do
 POPS = deepcopy(POPS["v4"]["exomes"])
 # Remove unnecessary pop names from POP_NAMES dict
 POPS = {pop: POP_NAMES[pop] for pop in POPS}
@@ -1146,10 +1146,13 @@ def main(args):
                         "only_het": dt_ht.info.only_het,
                     }
                 # TODO: Should we be adding filtering info to the joint HT?
+                pop_to_use = deepcopy(POPS)
+                if dt != "exomes":
+                    pop_to_use.update({"ami": "Amish"})
                 validate_release_t(
                     dt_ht,
                     subsets=SUBSETS[data_type],
-                    pops=POPS,
+                    pops=pop_to_use,
                     site_gt_check_expr=site_gt_check_expr,
                     verbose=args.verbose,
                     delimiter="_",
