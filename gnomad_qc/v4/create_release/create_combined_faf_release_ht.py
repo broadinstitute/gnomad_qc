@@ -232,11 +232,14 @@ def add_all_sites_an_and_qual_hists(
         """
         meta_map = hl.dict(hl.enumerate(an_meta_expr).map(lambda x: (x[1], x[0])))
         all_sites_an_expr = freq_meta_expr.map(
-            lambda x: hl.struct(
-                AC=0,
-                AF=hl.or_missing(all_sites_an_expr[meta_map[x]] > 0, hl.float64(0.0)),
-                AN=hl.int32(all_sites_an_expr[meta_map[x]]),
-                homozygote_count=0,
+            lambda x: hl.bind(
+                lambda an: hl.struct(
+                    AC=hl.or_missing(hl.is_defined(an), 0),
+                    AF=hl.or_missing(an > 0, hl.float64(0.0)),
+                    AN=hl.int32(an),
+                    homozygote_count=hl.or_missing(hl.is_defined(an), 0),
+                ),
+                all_sites_an_expr[meta_map[x]],
             )
         )
         logger.info("Setting XX samples call stats to missing on chrY...")
