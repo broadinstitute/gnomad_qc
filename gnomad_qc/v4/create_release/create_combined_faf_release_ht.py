@@ -63,16 +63,24 @@ CHR_LIST = [f"chr{c}" for c in range(1, 23)] + ["chrX", "chrY"]
 """List of chromosomes in the combined FAF release."""
 
 
-def filter_gene_to_test(ht: hl.Table) -> hl.Table:
+def filter_gene_to_test(ht: hl.Table, pcsk9: bool, zfy: bool) -> hl.Table:
     """
-    Filter to PCSK9 1:55039447-55064852 for testing.
+    Filter to PCSK9 1:55039447-55064852 and/or ZFY Y:2935281-2982506 for testing.
 
     :param ht: Table with frequency and FAF information.
+    :param pcsk9: Whether to filter to PCSK9 1:55039447-55064852.
+    :param zfy: Whether to filter to ZFY Y:2935281-2982506.
     :return: Table with frequency and FAF information of the filtered interval of a gene
     """
+    filter_loci = []
+    if pcsk9:
+        filter_loci.append("chr1:55039447-55064852")
+    if zfy:
+        filter_loci.append("chrY:2935281-2982506")
+
     return hl.filter_intervals(
         ht,
-        [hl.parse_locus_interval("chr1:55039447-55064852", reference_genome="GRCh38")],
+        [hl.parse_locus_interval(l, reference_genome="GRCh38") for l in filter_loci],
     )
 
 
@@ -818,7 +826,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
     hl._set_flags(use_ssa_logs="1")
-    test_gene = args.test_gene
+    test = args.test_gene or args.test_y_gene
     overwrite = args.overwrite
     apply_release_filters = not args.skip_apply_release_filters
     pops = list(set(POPS["v3"]["genomes"] + POPS["v4"]["exomes"]))
@@ -827,7 +835,7 @@ def main(args):
     stats_combine_all_chr = args.stats_combine_all_chr
     combine_faf_resources = get_combine_faf_resources(
         overwrite,
-        test_gene,
+        test,
         apply_release_filters,
         stats_chr,
         stats_combine_all_chr,
@@ -840,10 +848,13 @@ def main(args):
             exomes_ht = res.exomes_ht.ht()
             genomes_ht = res.genomes_ht.ht()
 
-            if test_gene:
-                # filter to PCSK9 1:55039447-55064852 for testing.
-                exomes_ht = filter_gene_to_test(exomes_ht)
-                genomes_ht = filter_gene_to_test(genomes_ht)
+            if test:
+                exomes_ht = filter_gene_to_test(
+                    exomes_ht, pcsk9=args.test_gene, zfy=args.test_y_gene
+                )
+                genomes_ht = filter_gene_to_test(
+                    genomes_ht, pcsk9=args.test_gene, zfy=args.test_y_gene
+                )
 
             # TODO: Need to resolve the type difference.
             genomes_ht = genomes_ht.annotate(
@@ -974,6 +985,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--test-gene",
         help="Filter Tables to only the PCSK9 gene for testing.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test-y-gene",
+        help="Test on a subset of variants in ZFY on chrY.",
         action="store_true",
     )
     parser.add_argument(
