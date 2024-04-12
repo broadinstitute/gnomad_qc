@@ -286,7 +286,6 @@ def select_type_from_joint_ht(ht: hl.Table, data_type: str) -> hl.Table:
     ht = ht.select(*row_fields)
     ht = ht.transmute_globals(**ht[f"{data_type}_globals"])
     ht = ht.transmute(**ht[data_type])
-    # if the freq_index_dict doesn't exist, create it
     if "freq_index_dict" not in ht.globals.keys():
         ht = ht.annotate_globals(
             freq_index_dict=make_freq_index_dict_from_meta(ht.freq_meta)
