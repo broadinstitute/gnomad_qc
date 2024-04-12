@@ -1086,14 +1086,10 @@ def main(args):
         )
     try:
         if args.validate_release_ht:
-            logger.info("Running release HT validation...")
+            logger.info("Running %s release HT validation...", data_type)
             res = resources.validate_release_ht
             res.check_resource_existence()
             ht = res.release_ht.ht()
-
-            # if test:
-            #    logger.info("Filtering to test partitions...")
-            #    ht = filter_to_test(ht)
 
             logger.info(
                 "Checking globals for retired terms and checking their associated row"
