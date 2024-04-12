@@ -96,15 +96,13 @@ def extract_freq_info(
         - faf_meta: {prefix}_faf_meta
         - age_distribution: {prefix}_age_distribution
 
-    If `apply_release_filters` is True, the following variants are filtered:
+    If `apply_release_filters` is True, a {prefix}_filters annotation is added to the 
+    Table and the following variants are filtered:
         - chrM
         - AS_lowqual sites (these sites are dropped in the
           final_filters HT so will not have information in `filters`,
           hl.is_defined(ht.filters) is used)
         - AC_raw == 0
-
-    If `apply_release_filters` is True, a {prefix}_filters annotation is added to the
-    Table.
 
 
     :param ht: Table with frequency and FAF information.
