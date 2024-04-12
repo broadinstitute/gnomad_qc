@@ -451,6 +451,12 @@ def unfurl_nested_annotations(
         expr_dict["CMH_p_value"] = (
             ht.freq_comparison_stats.cochran_mantel_haenszel_test.p_value
         )
+        logger.info("Unfurling unionized stats...")
+        expr_dict["stat_union_p_value"] = ht.freq_comparison_stats.stat_union.p_value
+        expr_dict["stat_union_test"] = (
+            ht.freq_comparison_stats.stat_union.stat_test_name
+        )
+        expr_dict["stat_union_gen_ancs"] = ht.freq_comparison_stats.stat_union.gen_ancs
 
     return hl.struct(**expr_dict), entries_to_remove
 
