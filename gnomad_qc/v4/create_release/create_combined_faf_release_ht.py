@@ -497,7 +497,7 @@ def perform_cmh_test(
             hl.bind(
                 lambda x, y: hl.or_missing(
                     ((x.AC > 0) | (y.AC > 0)) & (x.AN > 0) & (y.AN > 0),
-                    [x.AC, x.AN - x.AC, y.AC, y.AN - y.AC],
+                    ([x.AC, x.AN - x.AC, y.AC, y.AN - y.AC], pop),
                 ),
                 freq1_by_pop[pop],
                 freq2_by_pop[pop],
@@ -509,24 +509,26 @@ def perform_cmh_test(
     return hl.or_missing(
         hl.len(cmh_input_expr) > 0,
         hl.cochran_mantel_haenszel_test(
-            *[cmh_input_expr.map(lambda x: x[i]) for i in range(4)]
-        ).rename({"test_statistic": "chisq"}),
+            *[cmh_input_expr.map(lambda x: x[0][i]) for i in range(4)]
+        )
+        .annotate(gen_ancs=cmh_input_expr.map(lambda x: x[1]))
+        .rename({"test_statistic": "chisq"}),
     )
 
 
 def create_final_combined_faf_release(
     ht,
-    contingency_table_ht: Optional[hl.Table] = None,
-    cmh_ht: Optional[hl.Table] = None,
+    contingency_table_ht: hl.Table,
+    cmh_ht: hl.Table,
 ) -> hl.Table:
     """
     Create the final combined FAF release Table.
 
     :param ht: Table with joint exomes and genomes frequency and FAF information.
-    :param contingency_table_ht: Optional Table with contingency table test results
-        to include on the final Table.
-    :param cmh_ht: Optional Table with Cochran–Mantel–Haenszel test results
-        to include on the final Table.
+    :param contingency_table_ht: Table with contingency table test results to include
+        on the final Table.
+    :param cmh_ht: Table with Cochran–Mantel–Haenszel test results to include on the
+        final Table.
     :return: Table with final combined FAF release information.
     """
     logger.info("Creating final combined FAF release Table...")
@@ -611,23 +613,42 @@ def create_final_combined_faf_release(
             stat_expr = hl.array([stat_expr])
 
         stat_expr = stat_expr.map(
-            lambda x: x.select(**{a: hl.or_missing(~hl.is_nan(x[a]), x[a]) for a in x})
+            lambda x: x.select(
+                **{
+                    a: hl.or_missing(~hl.is_nan(x[a]), x[a])
+                    for a in x
+                    if a != "gen_ancs"
+                }
+            )
         )
 
         if is_struct:
             stat_expr = stat_expr[0]
 
-        return {stat_field: stat_expr}
+        return stat_expr
 
-    stats_expr = {}
-    if contingency_table_ht is not None:
-        stats_expr.update(
-            _prep_stats_annotation(ht, contingency_table_ht, "contingency_table_test")
-        )
-    if cmh_ht is not None:
-        stats_expr.update(
-            _prep_stats_annotation(ht, cmh_ht, "cochran_mantel_haenszel_test")
-        )
+    # Prepare stats annotations for the final Table.
+    ct_expr = _prep_stats_annotation(ht, contingency_table_ht, "contingency_table_test")
+    cmh_expr = _prep_stats_annotation(ht, cmh_ht, "cochran_mantel_haenszel_test")
+    anc_expr = cmh_ht[ht.key]["cochran_mantel_haenszel_test"].gen_ancs
+    ct_union_expr = ct_expr[ht.joint_freq_index_dict[anc_expr[0] + "_adj"]]
+
+    # Create a union stats annotation that uses the contingency table test if there is
+    # only one genetic ancestry group, otherwise use the CMH test.
+    union_expr = hl.if_else(
+        hl.len(anc_expr) == 1,
+        ct_union_expr.select("p_value").annotate(
+            stat_test_name="contingency_table_test", gen_ancs=anc_expr
+        ),
+        cmh_expr.select("p_value").annotate(
+            stat_test_name="cochran_mantel_haenszel_test", gen_ancs=anc_expr
+        ),
+    )
+    stats_expr = {
+        "contingency_table_test": ct_expr,
+        "cochran_mantel_haenszel_test": cmh_expr,
+        "stat_union": union_expr,
+    }
 
     # Select the final columns for the Table, grouping all annotations from the same
     # data type into a struct.
@@ -649,8 +670,6 @@ def get_combine_faf_resources(
     overwrite: bool = False,
     test: bool = False,
     filtered: bool = True,
-    include_contingency_table_test: bool = False,
-    include_cochran_mantel_haenszel_test: bool = False,
     stats_chr: str = None,
     stats_combine_all_chr: bool = False,
 ) -> PipelineResourceCollection:
@@ -661,10 +680,6 @@ def get_combine_faf_resources(
     :param test: Whether to use test resources. Default is False.
     :param filtered: Whether to get the resources for the filtered Tables. Default is
         True.
-    :param include_contingency_table_test: Whether to include the results from
-        '--perform-contingency-table-test' on the combined FAF release Table.
-    :param include_cochran_mantel_haenszel_test: Whether to include the results from
-        '--perform-cochran-mantel-haenszel-test' on the combined FAF release Table.
     :param stats_chr: Chromosome to get temp stats resource for. Default is None, which
         will return the resources for the stats on the full exome/genome.
     :param stats_combine_all_chr: Whether to also get the stats resources for all
@@ -754,17 +769,12 @@ def get_combine_faf_resources(
     cmh_test = PipelineStepResourceCollection(
         "--perform-cochran-mantel-haenszel-test", **cmh_resources
     )
-    finalize_faf_input_steps = [combined_frequency]
-    if include_contingency_table_test:
-        finalize_faf_input_steps.append(contingency_table_test)
-    if include_cochran_mantel_haenszel_test:
-        finalize_faf_input_steps.append(cmh_test)
     finalize_faf = PipelineStepResourceCollection(
         "--finalize-combined-faf-release",
         output_resources={
             "final_combined_faf_ht": release_sites(data_type="joint", test=test)
         },
-        pipeline_input_steps=finalize_faf_input_steps,
+        pipeline_input_steps=[combined_frequency, contingency_table_test, cmh_test],
     )
 
     # Add all steps to the combined FAF pipeline resource collection.
@@ -799,8 +809,6 @@ def main(args):
         overwrite,
         test_gene,
         apply_release_filters,
-        args.include_contingency_table_test,
-        args.include_cochran_mantel_haenszel_test,
         stats_chr,
         stats_combine_all_chr,
     )
@@ -919,13 +927,7 @@ def main(args):
             res.check_resource_existence()
 
             ht = create_final_combined_faf_release(
-                res.comb_freq_ht.ht(),
-                (
-                    res.contingency_table_ht.ht()
-                    if args.include_contingency_table_test
-                    else None
-                ),
-                res.cmh_ht.ht() if args.include_cochran_mantel_haenszel_test else None,
+                res.comb_freq_ht.ht(), res.contingency_table_ht.ht(), res.cmh_ht.ht()
             )
 
             ht.describe()
@@ -1015,23 +1017,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     finalize_combined_faf = parser.add_argument_group(
         "Create finalized combined FAF release Table.",
         "Arguments for finalizing the combined FAF release Table.",
-    )
-    finalize_combined_faf.add_argument(
-        "--include-contingency-table-test",
-        help=(
-            "Whether to include the results from '--perform-contingency-table-test' on "
-            "the combined FAF release Table"
-        ),
-        action="store_true",
-    )
-    finalize_combined_faf.add_argument(
-        "--include-cochran-mantel-haenszel-test",
-        help=(
-            "Whether to include the results from"
-            " '--perform-cochran-mantel-haenszel-test' on the combined FAF release"
-            " Table"
-        ),
-        action="store_true",
     )
     finalize_combined_faf.add_argument(
         "--n-partitions",
