@@ -17,6 +17,7 @@ from gnomad.assessment.validity_checks import (
 from gnomad.resources.grch38.gnomad import HGDP_POPS, POPS, SUBSETS, TGP_POPS
 from gnomad.sample_qc.ancestry import POP_NAMES
 from gnomad.utils.filtering import remove_fields_from_constant
+from gnomad.utils.release import make_freq_index_dict_from_meta
 from gnomad.utils.vcf import (
     ALLELE_TYPE_FIELDS,
     AS_FIELDS,
@@ -285,6 +286,15 @@ def select_type_from_joint_ht(ht: hl.Table, data_type: str) -> hl.Table:
     ht = ht.select(*row_fields)
     ht = ht.transmute_globals(**ht[f"{data_type}_globals"])
     ht = ht.transmute(**ht[data_type])
+    # if the freq_index_dict doesn't exist, create it
+    if "freq_index_dict" not in ht.globals.keys():
+        ht = ht.annotate_globals(
+            freq_index_dict=make_freq_index_dict_from_meta(ht.freq_meta)
+        )
+    if "faf_index_dict" not in ht.globals.keys():
+        ht = ht.annotate_globals(
+            faf_index_dict=make_freq_index_dict_from_meta(ht.faf_meta)
+        )
     return ht
 
 
