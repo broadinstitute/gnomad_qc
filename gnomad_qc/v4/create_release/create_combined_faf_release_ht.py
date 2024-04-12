@@ -74,8 +74,10 @@ def filter_gene_to_test(ht: hl.Table, pcsk9: bool, zfy: bool) -> hl.Table:
     """
     filter_loci = []
     if pcsk9:
+        logger.info("Filtering to a subset of variants on PCSK9 on chr1...")
         filter_loci.append("chr1:55039447-55064852")
     if zfy:
+        logger.info("Filtering to a subset of variants on ZFY on chrY...")
         filter_loci.append("chrY:2935281-2982506")
 
     return hl.filter_intervals(
