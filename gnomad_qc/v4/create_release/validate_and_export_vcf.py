@@ -131,13 +131,14 @@ SUBSETS = {
     "joint": [""],
 }
 
-# Exomes and genomes use the same pops for v4
-POPS = deepcopy(POPS["v4"]["exomes"])
+POPS = deepcopy(POPS["v4"])
+POPS["joint"] = set(POPS["exomes"]) | set(POPS["genomes"])
+
 # Remove unnecessary pop names from POP_NAMES dict
-POPS = {pop: POP_NAMES[pop] for pop in POPS}
+POPS = {d: {pop: POP_NAMES[pop] for pop in pops} for d, pops in POPS.items()}
 
 SAMPLE_SUM_SETS_AND_POPS = {
-    "exomes": {"non_ukb": POPS},
+    "exomes": {"non_ukb": POPS["exomes"]},
     "genomes": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
     "joint": None,
 }
@@ -660,7 +661,7 @@ def populate_subset_info_dict(
     subset: str,
     description_text: str,
     data_type: str = "exomes",
-    pops: Dict[str, str] = POPS,
+    pops: Dict[str, str] = POPS["exomes"],
     faf_pops: Dict[str, List[str]] = FAF_POPS,
     sexes: List[str] = SEXES,
     label_delimiter: str = "_",
@@ -755,7 +756,7 @@ def populate_info_dict(
     age_hist_distribution: str = None,
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS,
-    pops: Dict[str, str] = POPS,
+    pops: Dict[str, str] = POPS["exomes"],
     faf_pops: Dict[str, List[str]] = FAF_POPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
@@ -1140,7 +1141,7 @@ def main(args):
                 validate_release_t(
                     dt_ht,
                     subsets=SUBSETS[data_type],
-                    pops=POPS,
+                    pops=POPS[dt],
                     site_gt_check_expr=site_gt_check_expr,
                     verbose=args.verbose,
                     delimiter="_",
@@ -1192,7 +1193,7 @@ def main(args):
                 ),
                 age_hist_distribution=hl.eval(ht.age_distribution.bin_freq),
                 subset_list=subsets,
-                pops=POPS,
+                pops=POPS[data_type],
                 data_type=data_type,
                 joint_included=joint_included,
             )
