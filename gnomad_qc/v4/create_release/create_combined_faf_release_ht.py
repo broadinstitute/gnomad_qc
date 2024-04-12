@@ -93,7 +93,9 @@ def extract_freq_info(
 
     The following global annotations are filtered and renamed:
         - freq_meta: {prefix}_freq_meta
+        - freq_index_dict: {prefix}_freq_index_dict
         - faf_meta: {prefix}_faf_meta
+        - faf_index_dict: {prefix}_faf_index_dict
         - age_distribution: {prefix}_age_distribution
 
     If `apply_release_filters` is True, a {prefix}_filters annotation is added to the Table and the following variants are filtered:
@@ -206,6 +208,7 @@ def add_all_sites_an_and_qual_hists(
         freq_expr: hl.expr.ArrayExpression,
         all_sites_an_expr: hl.expr.ArrayExpression,
         freq_meta_expr: hl.expr.ArrayExpression,
+        freq_index_dict_expr: hl.expr.DictExpression,
         an_meta_expr: hl.expr.ArrayExpression,
     ) -> hl.expr.ArrayExpression:
         """
@@ -214,6 +217,7 @@ def add_all_sites_an_and_qual_hists(
         :param freq_expr: ArrayExpression of frequencies.
         :param all_sites_an_expr: ArrayExpression of all sites AN.
         :param freq_meta_expr: Frequency metadata.
+        :param freq_index_dict_expr: Frequency index dictionary.
         :param an_meta_expr: AN metadata.
         :return: ArrayExpression of frequencies with all sites AN added if `freq_expr`
             is missing.
@@ -227,6 +231,14 @@ def add_all_sites_an_and_qual_hists(
                 homozygote_count=0,
             )
         )
+        logger.info("Setting XX samples call stats to missing on chrY...")
+        all_sites_an_expr = set_female_y_metrics_to_na_expr(
+            ht,
+            freq_expr=all_sites_an_expr,
+            freq_meta_expr=freq_meta_expr,
+            freq_index_dict_expr=freq_index_dict_expr,
+        )
+
         return hl.coalesce(freq_expr, all_sites_an_expr)
 
     logger.info("Adding all sites AN and qual hists information where missing...")
@@ -244,6 +256,7 @@ def add_all_sites_an_and_qual_hists(
                 ht[f"{data_type}_freq"],
                 all_sites.AN,
                 ht.index_globals()[f"{data_type}_freq_meta"],
+                ht.index_globals()[f"{data_type}_freq_index_dict"],
                 all_sites_meta_by_data_type[data_type],
             )
             for data_type, all_sites in all_sites_by_data_type.items()
