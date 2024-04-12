@@ -27,7 +27,6 @@ from gnomad.utils.vcf import (
     IN_SILICO_ANNOTATIONS_INFO_DICT,
     INFO_DICT,
     JOINT_REGION_FLAG_FIELDS,
-    JOINT_REGION_FLAGS_INFO_DICT,
     REGION_FLAG_FIELDS,
     SEXES,
     SITE_FIELDS,
@@ -1171,10 +1170,6 @@ def main(args):
             # before ready for export, but this is an intermediate write.
             logger.info("Writing prepared VCF HT for validity checks and export...")
             ht.write(res.validated_ht.path, overwrite=overwrite)
-
-        # NOTE: This step is not yet implemented for joint and should not be reviewed
-        if args.prepare_joint_ht_for_export:
-            logger.info("This is not yet implemented.")
 
         if args.prepare_vcf_header:
             logger.info("Preparing VCF header dict...")
