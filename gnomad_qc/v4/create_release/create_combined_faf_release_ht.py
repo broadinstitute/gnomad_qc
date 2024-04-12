@@ -63,16 +63,26 @@ CHR_LIST = [f"chr{c}" for c in range(1, 23)] + ["chrX", "chrY"]
 """List of chromosomes in the combined FAF release."""
 
 
-def filter_gene_to_test(ht: hl.Table) -> hl.Table:
+def filter_gene_to_test(ht: hl.Table, pcsk9: bool, zfy: bool) -> hl.Table:
     """
-    Filter to PCSK9 1:55039447-55064852 for testing.
+    Filter to PCSK9 1:55039447-55064852 and/or ZFY Y:2935281-2982506 for testing.
 
     :param ht: Table with frequency and FAF information.
+    :param pcsk9: Whether to filter to PCSK9 1:55039447-55064852.
+    :param zfy: Whether to filter to ZFY Y:2935281-2982506.
     :return: Table with frequency and FAF information of the filtered interval of a gene
     """
+    filter_loci = []
+    if pcsk9:
+        logger.info("Filtering to a subset of variants on PCSK9 on chr1...")
+        filter_loci.append("chr1:55039447-55064852")
+    if zfy:
+        logger.info("Filtering to a subset of variants on ZFY on chrY...")
+        filter_loci.append("chrY:2935281-2982506")
+
     return hl.filter_intervals(
         ht,
-        [hl.parse_locus_interval("chr1:55039447-55064852", reference_genome="GRCh38")],
+        [hl.parse_locus_interval(l, reference_genome="GRCh38") for l in filter_loci],
     )
 
 
@@ -93,7 +103,9 @@ def extract_freq_info(
 
     The following global annotations are filtered and renamed:
         - freq_meta: {prefix}_freq_meta
+        - freq_index_dict: {prefix}_freq_index_dict
         - faf_meta: {prefix}_faf_meta
+        - faf_index_dict: {prefix}_faf_index_dict
         - age_distribution: {prefix}_age_distribution
 
     If `apply_release_filters` is True, a {prefix}_filters annotation is added to the Table and the following variants are filtered:
@@ -206,6 +218,7 @@ def add_all_sites_an_and_qual_hists(
         freq_expr: hl.expr.ArrayExpression,
         all_sites_an_expr: hl.expr.ArrayExpression,
         freq_meta_expr: hl.expr.ArrayExpression,
+        freq_index_dict_expr: hl.expr.DictExpression,
         an_meta_expr: hl.expr.ArrayExpression,
     ) -> hl.expr.ArrayExpression:
         """
@@ -214,19 +227,31 @@ def add_all_sites_an_and_qual_hists(
         :param freq_expr: ArrayExpression of frequencies.
         :param all_sites_an_expr: ArrayExpression of all sites AN.
         :param freq_meta_expr: Frequency metadata.
+        :param freq_index_dict_expr: Frequency index dictionary.
         :param an_meta_expr: AN metadata.
         :return: ArrayExpression of frequencies with all sites AN added if `freq_expr`
             is missing.
         """
         meta_map = hl.dict(hl.enumerate(an_meta_expr).map(lambda x: (x[1], x[0])))
         all_sites_an_expr = freq_meta_expr.map(
-            lambda x: hl.struct(
-                AC=0,
-                AF=hl.or_missing(all_sites_an_expr[meta_map[x]] > 0, hl.float64(0.0)),
-                AN=hl.int32(all_sites_an_expr[meta_map[x]]),
-                homozygote_count=0,
+            lambda x: hl.bind(
+                lambda an: hl.struct(
+                    AC=hl.or_missing(hl.is_defined(an), 0),
+                    AF=hl.or_missing(an > 0, hl.float64(0.0)),
+                    AN=hl.int32(an),
+                    homozygote_count=hl.or_missing(hl.is_defined(an), 0),
+                ),
+                all_sites_an_expr[meta_map[x]],
             )
         )
+        logger.info("Setting XX samples call stats to missing on chrY...")
+        all_sites_an_expr = set_female_y_metrics_to_na_expr(
+            ht,
+            freq_expr=all_sites_an_expr,
+            freq_meta_expr=freq_meta_expr,
+            freq_index_dict_expr=freq_index_dict_expr,
+        )
+
         return hl.coalesce(freq_expr, all_sites_an_expr)
 
     logger.info("Adding all sites AN and qual hists information where missing...")
@@ -244,6 +269,7 @@ def add_all_sites_an_and_qual_hists(
                 ht[f"{data_type}_freq"],
                 all_sites.AN,
                 ht.index_globals()[f"{data_type}_freq_meta"],
+                ht.index_globals()[f"{data_type}_freq_index_dict"],
                 all_sites_meta_by_data_type[data_type],
             )
             for data_type, all_sites in all_sites_by_data_type.items()
@@ -805,7 +831,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
     hl._set_flags(use_ssa_logs="1")
-    test_gene = args.test_gene
+    test = args.test_gene or args.test_y_gene
     overwrite = args.overwrite
     apply_release_filters = not args.skip_apply_release_filters
     pops = list(set(POPS["v3"]["genomes"] + POPS["v4"]["exomes"]))
@@ -814,7 +840,7 @@ def main(args):
     stats_combine_all_chr = args.stats_combine_all_chr
     combine_faf_resources = get_combine_faf_resources(
         overwrite,
-        test_gene,
+        test,
         apply_release_filters,
         stats_chr,
         stats_combine_all_chr,
@@ -827,10 +853,13 @@ def main(args):
             exomes_ht = res.exomes_ht.ht()
             genomes_ht = res.genomes_ht.ht()
 
-            if test_gene:
-                # filter to PCSK9 1:55039447-55064852 for testing.
-                exomes_ht = filter_gene_to_test(exomes_ht)
-                genomes_ht = filter_gene_to_test(genomes_ht)
+            if test:
+                exomes_ht = filter_gene_to_test(
+                    exomes_ht, pcsk9=args.test_gene, zfy=args.test_y_gene
+                )
+                genomes_ht = filter_gene_to_test(
+                    genomes_ht, pcsk9=args.test_gene, zfy=args.test_y_gene
+                )
 
             # TODO: Need to resolve the type difference.
             genomes_ht = genomes_ht.annotate(
@@ -961,6 +990,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--test-gene",
         help="Filter Tables to only the PCSK9 gene for testing.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test-y-gene",
+        help="Test on a subset of variants in ZFY on chrY.",
         action="store_true",
     )
     parser.add_argument(
