@@ -453,7 +453,7 @@ def unfurl_nested_annotations(
         )
         logger.info("Unfurling unionized stats...")
         expr_dict["stat_union_p_value"] = ht.freq_comparison_stats.stat_union.p_value
-        expr_dict["stat_union_test"] = (
+        expr_dict["stat_union_test_name"] = (
             ht.freq_comparison_stats.stat_union.stat_test_name
         )
         expr_dict["stat_union_gen_ancs"] = ht.freq_comparison_stats.stat_union.gen_ancs
