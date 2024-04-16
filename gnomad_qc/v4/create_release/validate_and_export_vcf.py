@@ -279,9 +279,9 @@ def select_type_from_joint_ht(ht: hl.Table, data_type: str) -> hl.Table:
     :return: Joint HT with fields relevant to `data_type`.
     """
     global_fields = [f"{data_type}_globals"]
-    row_fields = [data_type]
+    row_fields = [data_type, "region_flags"]
     if data_type == "joint":
-        row_fields.extend(["region_flags", "freq_comparison_stats"])
+        row_fields.append("freq_comparison_stats")
     ht = ht.select_globals(*global_fields)
     ht = ht.select(*row_fields)
     ht = ht.transmute_globals(**ht[f"{data_type}_globals"])
