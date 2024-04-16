@@ -295,7 +295,8 @@ def unfurl_nested_annotations(
     data_type: str = "exomes",
     joint_included: bool = False,
     freq_comparison_included: bool = False,
-) -> [hl.expr.StructExpression, Set[str]]:
+    for_joint_validation: bool = False,
+) -> [hl.expr.StructExpression, Set[str], Dict[str, str]]:
     """
     Create dictionary keyed by the variant annotation labels to be extracted from variant annotation arrays.
 
@@ -310,23 +311,26 @@ def unfurl_nested_annotations(
         genome HT. Default is False.
     :param freq_comparison_included: Whether frequency comparison data is included in
         the HT. Default is False.
+    :param for_joint_validation: Whether to prepare HT for joint validation. Default is
+        False.
     :return: StructExpression containing variant annotations and their corresponding
-        expressions and updated entries and set of frequency entries to remove from the
-        VCF.
+        expressions and updated entries, set of frequency entries to remove from the
+        VCF, and a dict of fields to rename when `for_joint_validation` is True.
     """
     expr_dict = {}
+    rename_dict = {}
 
     # Unfurl freq index dict
     # Cycles through each key and index (e.g., k=afr_XX, i=31)
     logger.info("Unfurling freq data...")
     freq_idx = hl.eval(ht.freq_index_dict)
-    expr_dict.update(
-        {
-            f"{f if f != 'homozygote_count' else 'nhomalt'}_{k}": ht.freq[i][f]
-            for k, i in freq_idx.items()
-            for f in ht.freq[0].keys()
-        }
-    )
+    for k, i in freq_idx.items():
+        for f in ht.freq[0].keys():
+            field_name = f if f != "homozygote_count" else "nhomalt"
+            expr_dict[f"{field_name}_{k}"] = ht.freq[i][f]
+            if for_joint_validation:
+                rename_dict[f"{field_name}_{k}"] = f"{field_name}_{data_type}_{k}"
+
     if joint_included:
         logger.info("Unfurling joint freq data...")
         joint_freq_idx = hl.eval(ht.joint_freq_index_dict)
@@ -343,7 +347,7 @@ def unfurl_nested_annotations(
     # This creates fields like grpmax, AC_grpmax_non_ukb...
     logger.info("Adding grpmax data...")
     grpmax_idx = ht.grpmax
-    if data_type == "exomes":
+    if data_type == "exomes" and not for_joint_validation:
         grpmax_dict = {}
         for s in grpmax_idx.keys():
             grpmax_dict.update(
@@ -362,12 +366,22 @@ def unfurl_nested_annotations(
             )
     else:
         grpmax_dict = {"grpmax": grpmax_idx.gen_anc}
+        grpmax_rename = {
+            f: f if f != "homozygote_count" else "nhomalt"
+            for f in grpmax_idx.keys()
+            if f != "gen_anc"
+        }
         grpmax_dict.update(
-            {
-                f"{f if f != 'homozygote_count' else 'nhomalt'}_grpmax": grpmax_idx[f]
-                for f in [f for f in grpmax_idx.keys() if f != "gen_anc"]
-            }
+            {f"{v}_grpmax": grpmax_idx[k] for k, v in grpmax_rename.items()}
         )
+        if for_joint_validation:
+            rename_dict["grpmax"] = f"grpmax_{data_type}"
+            rename_dict.update(
+                {
+                    f"{v}_grpmax": f"{v}_grpmax_{data_type}"
+                    for v in grpmax_rename.values()
+                }
+            )
     expr_dict.update(grpmax_dict)
 
     if joint_included:
@@ -386,13 +400,15 @@ def unfurl_nested_annotations(
 
     logger.info("Unfurling faf data...")
     faf_idx = hl.eval(ht.faf_index_dict)
-    expr_dict.update(
-        {f"{f}_{k}": ht.faf[i][f] for f in ht.faf[0].keys() for k, i in faf_idx.items()}
-    )
+    for k, i in faf_idx.items():
+        for f in ht.faf[0].keys():
+            expr_dict[f"{f}_{k}"] = ht.faf[i][f]
+            if for_joint_validation:
+                rename_dict[f"{f}_{k}"] = f"{f}_{data_type}_{k}"
 
     logger.info("Unfurling fafmax data...")
     fafmax_idx = ht.fafmax
-    if data_type == "exomes":
+    if data_type == "exomes" and not for_joint_validation:
         fafmax_dict = {
             f"fafmax_{f}{'_'+s if s != 'gnomad' else ''}": fafmax_idx[s][f]
             for s in fafmax_idx.keys()
@@ -400,6 +416,10 @@ def unfurl_nested_annotations(
         }
     else:
         fafmax_dict = {f"fafmax_{f}": fafmax_idx[f] for f in fafmax_idx.keys()}
+        if for_joint_validation:
+            rename_dict.update(
+                {f"fafmax_{f}": f"fafmax_{f}_{data_type}" for f in fafmax_idx.keys()}
+            )
     expr_dict.update(fafmax_dict)
 
     if joint_included:
@@ -426,16 +446,16 @@ def unfurl_nested_annotations(
     logger.info("Unfurling age hists...")
     hist_idx = ht.histograms.age_hists
     age_hists = ["age_hist_het", "age_hist_hom"]
-    age_hist_dict = {
-        f"{hist}_{f}": (
-            hl.delimit(hist_idx[hist][f], delimiter="|")
-            if "bin" in f
-            else hist_idx[hist][f]
-        )
-        for hist in age_hists
-        for f in hist_idx[hist].keys()
-    }
-    expr_dict.update(age_hist_dict)
+    for hist in age_hists:
+        for f in hist_idx[hist].keys():
+            expr_dict[f"{hist}_{f}"] = (
+                hl.delimit(hist_idx[hist][f], delimiter="|")
+                if "bin" in f
+                else hist_idx[hist][f]
+            )
+            if for_joint_validation:
+                rename_dict[f"{hist}_{f}"] = f"{hist}_{data_type}_{f}"
+
     if freq_comparison_included:
         logger.info("Unfurling contingency table test results...")
         contingency_idx = hl.eval(ht.freq_index_dict)
@@ -459,7 +479,7 @@ def unfurl_nested_annotations(
         )
         expr_dict["stat_union_gen_ancs"] = ht.freq_comparison_stats.stat_union.gen_ancs
 
-    return hl.struct(**expr_dict), entries_to_remove
+    return hl.struct(**expr_dict), entries_to_remove, rename_dict
 
 
 def make_info_expr(
@@ -479,6 +499,11 @@ def make_info_expr(
     :return: Dictionary containing Hail expressions for relevant INFO annotations.
     """
     vcf_info_dict = {}
+
+    # Set data type to joint if for_joint_validation is True so the correct region flag
+    # fields are used.
+    if for_joint_validation:
+        data_type = "joint"
 
     if "region_flags" in t.row:
         # Add region_flag to info dict
@@ -564,17 +589,19 @@ def prepare_ht_for_validation(
         True.
     :param freq_comparison_included: Whether frequency comparison data is included in
         the HT. Default is False.
-    :return: Hail Table prepared for validity checks and export.
+    :return: Hail Table prepared for validity checks and export and a dictionary of
+        fields to rename when `for_joint_validation` is True.
     """
     logger.info(
         "Unfurling nested gnomAD frequency annotations and add to INFO field..."
     )
-    info_struct, freq_entries_to_remove = unfurl_nested_annotations(
+    info_struct, freq_entries_to_remove, rename_dict = unfurl_nested_annotations(
         ht,
         entries_to_remove=freq_entries_to_remove,
         data_type=data_type,
         joint_included=joint_included,
         freq_comparison_included=freq_comparison_included,
+        for_joint_validation=for_joint_validation,
     )
 
     logger.info("Constructing INFO field")
@@ -657,7 +684,7 @@ def prepare_ht_for_validation(
             info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
         )
 
-    return ht
+    return ht, rename_dict
 
 
 def populate_subset_info_dict(
@@ -1127,13 +1154,14 @@ def main(args):
                 check_global_and_row_annot_lengths(dt_ht, len_comp_global_rows)
 
                 logger.info("Preparing %s HT for validity checks and export...", dt)
-                dt_ht = prepare_ht_for_validation(
+                dt_ht, rename_dict = prepare_ht_for_validation(
                     dt_ht,
                     data_type=data_type,
                     joint_included=joint_included,
                     freq_comparison_included=(dt == "joint"),
                     for_joint_validation=for_joint,
-                ).checkpoint(hl.utils.new_temp_file(f"validate_{dt}", "ht"))
+                )
+                dt_ht = dt_ht.checkpoint(hl.utils.new_temp_file(f"validate_{dt}", "ht"))
                 site_gt_check_expr = None
 
                 if data_type != "joint":
@@ -1156,9 +1184,7 @@ def main(args):
                     filters_check=False if dt == "joint" else True,
                 )
                 if for_joint:
-                    dt_ht = dt_ht.annotate(
-                        info=dt_ht.info.rename({f: f"{dt}_{f}" for f in dt_ht.info})
-                    )
+                    dt_ht = dt_ht.annotate(info=dt_ht.info.rename(rename_dict))
                     if dt != "joint":
                         dt_ht = dt_ht.select("info")
 
@@ -1170,12 +1196,13 @@ def main(args):
 
             ht = validate_hts[data_type]
             if for_joint:
-                ht = ht.annotate(
-                    info=ht.info.annotate(
-                        **validate_hts["exomes"][ht.key].info,
-                        **validate_hts["genomes"][ht.key].info,
+                in_joint_ht = set(ht.info.keys())
+                for dt in ["exomes", "genomes"]:
+                    info_expr = validate_hts[dt][ht.key].info
+                    info_expr = info_expr.select(
+                        *[f for f in info_expr if f not in in_joint_ht]
                     )
-                )
+                    ht = ht.annotate(info=ht.info.annotate(**info_expr))
 
             ht.describe()
 
