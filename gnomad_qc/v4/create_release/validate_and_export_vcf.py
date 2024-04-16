@@ -569,7 +569,6 @@ def prepare_ht_for_validation(
     logger.info(
         "Unfurling nested gnomAD frequency annotations and add to INFO field..."
     )
-    for_joint = for_joint_validation
     info_struct, freq_entries_to_remove = unfurl_nested_annotations(
         ht,
         entries_to_remove=freq_entries_to_remove,
@@ -590,7 +589,7 @@ def prepare_ht_for_validation(
         ]
     )
 
-    if for_joint:
+    if for_joint_validation:
         ann_expr = {"info": info_struct}
         if "region_flags" in ht.row:
             ann_expr["region_flags"] = ht.region_flags
@@ -624,7 +623,7 @@ def prepare_ht_for_validation(
         )
     )
 
-    if for_joint:
+    if for_joint_validation:
         ht = ht.annotate_globals(
             freq_entries_to_remove=(
                 freq_entries_to_remove
@@ -643,7 +642,7 @@ def prepare_ht_for_validation(
         )
 
     # Select relevant fields for VCF export
-    if for_joint:
+    if for_joint_validation:
         if "filters" in ht.row:
             filters_expr = ht.filters
         else:
