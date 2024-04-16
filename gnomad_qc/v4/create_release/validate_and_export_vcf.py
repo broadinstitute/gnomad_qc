@@ -1141,8 +1141,7 @@ def main(args):
                         "monoallelic": dt_ht.info.monoallelic,
                         "only_het": dt_ht.info.only_het,
                     }
-                # TODO: Should we be adding filtering info to the joint HT?
-                dt_ht.describe()
+
                 validate_release_t(
                     dt_ht,
                     subsets=SUBSETS[data_type],
