@@ -1149,6 +1149,7 @@ def main(args):
                     variant_filter_field="AS_VQSR",
                     problematic_regions=REGION_FLAG_FIELDS[data_type],
                     single_filter_count=True,
+                    filters_check=False if dt == "joint" else True,
                 )
                 if for_joint:
                     dt_ht = dt_ht.annotate(
