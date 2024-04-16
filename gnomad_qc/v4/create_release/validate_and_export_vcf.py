@@ -1156,7 +1156,7 @@ def main(args):
                 logger.info("Preparing %s HT for validity checks and export...", dt)
                 dt_ht, rename_dict = prepare_ht_for_validation(
                     dt_ht,
-                    data_type=data_type,
+                    data_type=dt,
                     joint_included=joint_included,
                     freq_comparison_included=(dt == "joint"),
                     for_joint_validation=for_joint,
