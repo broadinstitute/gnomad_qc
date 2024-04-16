@@ -1152,19 +1152,26 @@ def main(args):
                     filters_check=not for_joint,
                 )
                 if for_joint:
-                    no_dt = ["region_flags", "allele_info", "freq_comparison_stats"]
-                    dt_ht = dt_ht.rename(
-                        {f: f"{dt}_{f}" for f in dt_ht.row_value if f not in no_dt}
+                    dt_ht = dt_ht.annotate(
+                        info=dt_ht.info.rename({f: f"{dt}_{f}" for f in dt_ht.info})
                     )
-                    dt_ht = dt_ht.transmute_globals(
-                        **{f"{dt}_globals": hl.Struct(**dt_ht.globals)}
+                    if dt != "joint":
+                        dt_ht = dt_ht.select("info")
+
+                    dt_ht = dt_ht.select_globals(
+                        **{f"{dt}_{f}": dt_ht[f] for f in dt_ht.globals}
                     )
+
                 validate_hts[dt] = dt_ht
 
             ht = validate_hts[data_type]
             if for_joint:
-                ht = ht.join(validate_hts["exomes"])
-                ht = ht.join(validate_hts["genomes"])
+                ht = ht.annotate(
+                    info=ht.info.annotate(
+                        **validate_hts["exomes"][ht.key].info,
+                        **validate_hts["genomes"][ht.key].info,
+                    )
+                )
 
             ht.describe()
 
