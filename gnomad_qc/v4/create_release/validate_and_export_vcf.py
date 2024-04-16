@@ -643,7 +643,7 @@ def prepare_ht_for_validation(
         )
 
     # Select relevant fields for VCF export
-    if for_joint:
+    if data_type == "joint":
         ht = ht.select("info", filters=hl.missing(hl.tset(hl.tstr)))
     else:
         ht = ht.select("info", "filters", "rsid")
@@ -1149,7 +1149,6 @@ def main(args):
                     variant_filter_field="AS_VQSR",
                     problematic_regions=REGION_FLAG_FIELDS[data_type],
                     single_filter_count=True,
-                    filters_check=not for_joint,
                 )
                 if for_joint:
                     dt_ht = dt_ht.annotate(
