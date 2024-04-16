@@ -1132,6 +1132,7 @@ def main(args):
                     data_type=data_type,
                     joint_included=joint_included,
                     freq_comparison_included=(dt == "joint"),
+                    for_joint_validation=for_joint,
                 ).checkpoint(hl.utils.new_temp_file(f"validate_{dt}", "ht"))
                 site_gt_check_expr = None
 
