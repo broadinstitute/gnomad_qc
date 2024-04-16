@@ -696,7 +696,7 @@ def create_final_combined_faf_release(
         **_get_struct_by_data_type(ht, annotation_expr=ht.globals, postfix="_globals")
     )
 
-    return ht
+    return ht.drop("versions")
 
 
 def get_combine_faf_resources(

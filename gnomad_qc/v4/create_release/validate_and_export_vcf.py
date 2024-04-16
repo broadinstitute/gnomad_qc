@@ -131,13 +131,14 @@ SUBSETS = {
     "joint": [""],
 }
 
-# Exomes and genomes use the same pops for v4
-POPS = deepcopy(POPS["v4"]["exomes"])
+POPS = deepcopy(POPS["v4"])
+POPS["joint"] = set(POPS["exomes"]) | set(POPS["genomes"])
+
 # Remove unnecessary pop names from POP_NAMES dict
-POPS = {pop: POP_NAMES[pop] for pop in POPS}
+POPS = {d: {pop: POP_NAMES[pop] for pop in pops} for d, pops in POPS.items()}
 
 SAMPLE_SUM_SETS_AND_POPS = {
-    "exomes": {"non_ukb": POPS},
+    "exomes": {"non_ukb": POPS["exomes"]},
     "genomes": {"hgdp": HGDP_POPS, "tgp": TGP_POPS},
     "joint": None,
 }
@@ -278,9 +279,9 @@ def select_type_from_joint_ht(ht: hl.Table, data_type: str) -> hl.Table:
     :return: Joint HT with fields relevant to `data_type`.
     """
     global_fields = [f"{data_type}_globals"]
-    row_fields = [data_type]
+    row_fields = [data_type, "region_flags"]
     if data_type == "joint":
-        row_fields.extend(["region_flags", "freq_comparison_stats"])
+        row_fields.append("freq_comparison_stats")
     ht = ht.select_globals(*global_fields)
     ht = ht.select(*row_fields)
     ht = ht.transmute_globals(**ht[f"{data_type}_globals"])
@@ -568,7 +569,6 @@ def prepare_ht_for_validation(
     logger.info(
         "Unfurling nested gnomAD frequency annotations and add to INFO field..."
     )
-    for_joint = for_joint_validation
     info_struct, freq_entries_to_remove = unfurl_nested_annotations(
         ht,
         entries_to_remove=freq_entries_to_remove,
@@ -589,7 +589,7 @@ def prepare_ht_for_validation(
         ]
     )
 
-    if for_joint:
+    if for_joint_validation:
         ann_expr = {"info": info_struct}
         if "region_flags" in ht.row:
             ann_expr["region_flags"] = ht.region_flags
@@ -623,7 +623,7 @@ def prepare_ht_for_validation(
         )
     )
 
-    if for_joint:
+    if for_joint_validation:
         ht = ht.annotate_globals(
             freq_entries_to_remove=(
                 freq_entries_to_remove
@@ -642,8 +642,12 @@ def prepare_ht_for_validation(
         )
 
     # Select relevant fields for VCF export
-    if for_joint:
-        ht = ht.select("info", filters=hl.missing(hl.tset(hl.tstr)))
+    if for_joint_validation:
+        if "filters" in ht.row:
+            filters_expr = ht.filters
+        else:
+            filters_expr = hl.missing(hl.tset(hl.tstr))
+        ht = ht.select("info", filters=filters_expr)
     else:
         ht = ht.select("info", "filters", "rsid")
 
@@ -660,7 +664,7 @@ def populate_subset_info_dict(
     subset: str,
     description_text: str,
     data_type: str = "exomes",
-    pops: Dict[str, str] = POPS,
+    pops: Dict[str, str] = POPS["exomes"],
     faf_pops: Dict[str, List[str]] = FAF_POPS,
     sexes: List[str] = SEXES,
     label_delimiter: str = "_",
@@ -755,7 +759,7 @@ def populate_info_dict(
     age_hist_distribution: str = None,
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS,
-    pops: Dict[str, str] = POPS,
+    pops: Dict[str, str] = POPS["exomes"],
     faf_pops: Dict[str, List[str]] = FAF_POPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
@@ -1128,6 +1132,7 @@ def main(args):
                     data_type=data_type,
                     joint_included=joint_included,
                     freq_comparison_included=(dt == "joint"),
+                    for_joint_validation=for_joint,
                 ).checkpoint(hl.utils.new_temp_file(f"validate_{dt}", "ht"))
                 site_gt_check_expr = None
 
@@ -1136,11 +1141,11 @@ def main(args):
                         "monoallelic": dt_ht.info.monoallelic,
                         "only_het": dt_ht.info.only_het,
                     }
-                # TODO: Should we be adding filtering info to the joint HT?
+
                 validate_release_t(
                     dt_ht,
                     subsets=SUBSETS[data_type],
-                    pops=POPS,
+                    pops=POPS[dt],
                     site_gt_check_expr=site_gt_check_expr,
                     verbose=args.verbose,
                     delimiter="_",
@@ -1148,22 +1153,29 @@ def main(args):
                     variant_filter_field="AS_VQSR",
                     problematic_regions=REGION_FLAG_FIELDS[data_type],
                     single_filter_count=True,
-                    filters_check=not for_joint,
+                    filters_check=False if dt == "joint" else True,
                 )
                 if for_joint:
-                    no_dt = ["region_flags", "allele_info", "freq_comparison_stats"]
-                    dt_ht = dt_ht.rename(
-                        {f: f"{dt}_{f}" for f in dt_ht.row_value if f not in no_dt}
+                    dt_ht = dt_ht.annotate(
+                        info=dt_ht.info.rename({f: f"{dt}_{f}" for f in dt_ht.info})
                     )
-                    dt_ht = dt_ht.transmute_globals(
-                        **{f"{dt}_globals": hl.Struct(**dt_ht.globals)}
+                    if dt != "joint":
+                        dt_ht = dt_ht.select("info")
+
+                    dt_ht = dt_ht.select_globals(
+                        **{f"{dt}_{f}": dt_ht[f] for f in dt_ht.globals}
                     )
+
                 validate_hts[dt] = dt_ht
 
             ht = validate_hts[data_type]
             if for_joint:
-                ht = ht.join(validate_hts["exomes"])
-                ht = ht.join(validate_hts["genomes"])
+                ht = ht.annotate(
+                    info=ht.info.annotate(
+                        **validate_hts["exomes"][ht.key].info,
+                        **validate_hts["genomes"][ht.key].info,
+                    )
+                )
 
             ht.describe()
 
@@ -1192,7 +1204,7 @@ def main(args):
                 ),
                 age_hist_distribution=hl.eval(ht.age_distribution.bin_freq),
                 subset_list=subsets,
-                pops=POPS,
+                pops=POPS[data_type],
                 data_type=data_type,
                 joint_included=joint_included,
             )
