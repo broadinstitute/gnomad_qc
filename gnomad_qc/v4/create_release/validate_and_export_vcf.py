@@ -643,8 +643,12 @@ def prepare_ht_for_validation(
         )
 
     # Select relevant fields for VCF export
-    if data_type == "joint":
-        ht = ht.select("info", filters=hl.missing(hl.tset(hl.tstr)))
+    if for_joint:
+        if "filters" in ht.row:
+            filters_expr = ht.filters
+        else:
+            filters_expr = hl.missing(hl.tset(hl.tstr))
+        ht = ht.select("info", filters=filters_expr)
     else:
         ht = ht.select("info", "filters", "rsid")
 
@@ -1138,6 +1142,7 @@ def main(args):
                         "only_het": dt_ht.info.only_het,
                     }
                 # TODO: Should we be adding filtering info to the joint HT?
+                dt_ht.describe()
                 validate_release_t(
                     dt_ht,
                     subsets=SUBSETS[data_type],
