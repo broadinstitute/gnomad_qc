@@ -22,7 +22,6 @@ from gnomad.utils.vcf import (
     AS_FIELDS,
     AS_VQSR_FIELDS,
     FAF_POPS,
-    FORMAT_DICT,
     HISTS,
     IN_SILICO_ANNOTATIONS_INFO_DICT,
     INFO_DICT,
@@ -665,7 +664,7 @@ def populate_subset_info_dict(
     subset: str,
     description_text: str,
     data_type: str = "exomes",
-    pops: Dict[str, str] = POPS,
+    pops: Dict[str, str] = POPS["exomes"],
     faf_pops: Dict[str, List[str]] = FAF_POPS,
     sexes: List[str] = SEXES,
     label_delimiter: str = "_",
@@ -695,7 +694,7 @@ def populate_subset_info_dict(
     vcf_info_dict = {}
     # Remove unnecessary pop names from FAF_POPS dict depending on data type
     # and version of FAF_POPS.
-    faf_pops_version = "v3" if data_type == "genomes" else "v4"
+    faf_pops_version = "v3" if data_type == "genomes" or subset == "genomes" else "v4"
     faf_pops = {pop: POP_NAMES[pop] for pop in faf_pops[faf_pops_version]}
 
     # Add FAF fields to dict.
@@ -779,7 +778,7 @@ def populate_info_dict(
     age_hist_distribution: str = None,
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS["exomes"],
-    pops: Dict[str, str] = POP_NAMES,
+    pops: Dict[str, str] = POPS,
     faf_pops: Dict[str, List[str]] = FAF_POPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
@@ -844,9 +843,10 @@ def populate_info_dict(
 
     for subset in subset_list:
         subset_pops = deepcopy(pops)
-        if (subset == "joint") | (data_type == "genomes") | (subset == "genomes"):
-            subset_pops.update({"ami": "Amish"})
-        description_text = "" if subset == "" else f" in {subset} subset"
+        if data_type == "joint":
+            description_text = f"in {subset} subset" if subset != "" else ""
+        else:
+            description_text = "" if subset == "" else f" in {subset} subset"
 
         vcf_info_dict.update(
             populate_subset_info_dict(
@@ -939,10 +939,10 @@ def prepare_vcf_header_dict(
             inbreeding_cutoff=hl.eval(ht.inbreeding_coeff_cutoff),
             variant_qc_filter=hl.eval(ht.filtering_model.filter_name),
         )
+        # subset = "" represents full dataset in VCF header construction, the
+        # logic in gnomad_methods is built around this.
+        subset_list.extend(["", "joint"] if joint_included else [""])
 
-    # subset = "" represents full dataset in VCF header construction, the
-    # logic in gnomad_methods is built around this.
-    subset_list.extend(["", "joint"] if joint_included else [""])
     logger.info("Making INFO dict for VCF...")
     vcf_info_dict = populate_info_dict(
         info_fields=info_fields,
@@ -965,9 +965,7 @@ def prepare_vcf_header_dict(
     new_vcf_info_dict = {i.replace("_adj", ""): j for i, j in vcf_info_dict.items()}
 
     if data_type == "joint":
-        header_dict = {
-            "info": new_vcf_info_dict,
-        }
+        header_dict = new_vcf_info_dict
     else:
         header_dict = {
             "info": new_vcf_info_dict,
@@ -1255,6 +1253,7 @@ def main(args):
             if data_type == "genomes" or data_type == "exomes":
                 subsets = SUBSETS["exomes"] if data_type == "exomes" else []
                 header_dict = prepare_vcf_header_dict(
+                    ht,
                     validated_ht=validated_ht,
                     info_fields=list(validated_ht.info),
                     bin_edges=make_hist_bin_edges_expr(
@@ -1263,37 +1262,31 @@ def main(args):
                     ),
                     age_hist_distribution=hl.eval(ht.age_distribution.bin_freq),
                     subset_list=subsets,
-                    pops=POPS,
+                    pops=POPS[data_type],
                     data_type=data_type,
                     joint_included=joint_included,
                 )
             else:
-                if data_type == "joint":
-                    for dt in ["exomes", "genomes", "joint"]:
-                        dt_ht = select_type_from_joint_ht(ht, dt)
-                        temp_header_dict = prepare_vcf_header_dict(
-                            dt_ht,
-                            validated_ht=validated_ht,
-                            info_fields=[
-                                f
-                                for f in ht.info.keys()
-                                if dt in validated_ht.info.keys()
-                            ],
-                            bin_edges=make_hist_bin_edges_expr(
-                                dt_ht, include_age_hists=True
-                            ),
-                            age_hist_distribution=hl.eval(
-                                dt_ht.age_distribution.bin_freq
-                            ),
-                            subset_list=[dt],
-                            pops=POPS,
-                            data_type="joint",
-                            joint_included=joint_included,
-                            freq_comparison_included=(dt == "joint"),
-                            extra_suffix=dt,
-                            extra_description_text=f" in {dt} dataset",
-                        )
-                        header_dict = {**temp_header_dict}
+                header_dict = {"info": {}}
+                for dt in ["exomes", "genomes", "joint"]:
+                    dt_ht = select_type_from_joint_ht(ht, dt)
+                    temp_header_dict = prepare_vcf_header_dict(
+                        dt_ht,
+                        validated_ht=validated_ht,
+                        info_fields=[f for f in validated_ht.info.keys() if dt in f],
+                        bin_edges=make_hist_bin_edges_expr(
+                            dt_ht, include_age_hists=True
+                        ),
+                        age_hist_distribution=hl.eval(dt_ht.age_distribution.bin_freq),
+                        subset_list=[dt],
+                        pops=POPS[dt],
+                        data_type="joint",
+                        joint_included=joint_included,
+                        freq_comparison_included=(dt == "joint"),
+                        extra_suffix=dt,
+                        extra_description_text=f" in {dt} dataset",
+                    )
+                    header_dict["info"].update(temp_header_dict)
 
             logger.info("Writing VCF header dict...")
             with hl.hadoop_open(res.vcf_header_path, "wb") as p:
