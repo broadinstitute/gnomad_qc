@@ -294,6 +294,7 @@ def unfurl_nested_annotations(
     entries_to_remove: Set[str] = None,
     data_type: str = "exomes",
     joint_included: bool = False,
+    hist_prefix: str = "",
     freq_comparison_included: bool = False,
     for_joint_validation: bool = False,
 ) -> [hl.expr.StructExpression, Set[str], Dict[str, str]]:
@@ -309,6 +310,7 @@ def unfurl_nested_annotations(
         "genomes", or "joint". Default is "exomes".
     :param joint_included: Whether joint frequency data is included in the exome or
         genome HT. Default is False.
+    :param hist_prefix: Prefix to use for histograms. Default is "".
     :param freq_comparison_included: Whether frequency comparison data is included in
         the HT. Default is False.
     :param for_joint_validation: Whether to prepare HT for joint validation. Default is
@@ -454,7 +456,39 @@ def unfurl_nested_annotations(
                 else hist_idx[hist][f]
             )
             if for_joint_validation:
-                rename_dict[f"{hist}_{f}"] = f"{hist}_{data_type}_{f}"
+                rename_dict[f"{hist}_{f}"] = f"{hist}_{f}_{data_type}"
+
+    logger.info("Unfurling variant quality histograms...")
+    # Add underscore to hist_prefix if it isn't empty
+    if hist_prefix != "":
+        hist_prefix += "_"
+
+    # Histograms to export are:
+    # gq_hist_alt, gq_hist_all, dp_hist_alt, dp_hist_all, ab_hist_alt
+    # We previously dropped:
+    # _n_smaller for all hists
+    # _bin_edges for all hists
+    # _n_larger for all hists EXCEPT DP hists
+    for hist in HISTS:
+        hist_dict = {
+            f"{hist}_bin_freq": hl.delimit(
+                ht.histograms.qual_hists[hist].bin_freq, delimiter="|"
+            ),
+        }
+        expr_dict.update(hist_dict)
+        if for_joint_validation:
+            rename_dict.update(
+                {f"{hist}_bin_freq": f"{hist_prefix}{hist}_bin_freq_{data_type}"}
+            )
+
+        if "dp" in hist:
+            expr_dict.update(
+                {f"{hist}_n_larger": ht.histograms.qual_hists[hist].n_larger},
+            )
+            if for_joint_validation:
+                rename_dict.update(
+                    {f"{hist}_n_larger": f"{hist_prefix}{hist}_n_larger_{data_type}"}
+                )
 
     if freq_comparison_included:
         logger.info("Unfurling contingency table test results...")
@@ -484,7 +518,6 @@ def unfurl_nested_annotations(
 
 def make_info_expr(
     t: hl.Table,
-    hist_prefix: str = "",
     data_type: str = "exomes",
     for_joint_validation: bool = False,
 ) -> Dict[str, hl.expr.Expression]:
@@ -509,29 +542,6 @@ def make_info_expr(
         # Add region_flag to info dict
         for field in REGION_FLAG_FIELDS[data_type]:
             vcf_info_dict[field] = t["region_flags"][f"{field}"]
-
-    # Add underscore to hist_prefix if it isn't empty
-    if hist_prefix != "":
-        hist_prefix += "_"
-
-    # Histograms to export are:
-    # gq_hist_alt, gq_hist_all, dp_hist_alt, dp_hist_all, ab_hist_alt
-    # We previously dropped:
-    # _n_smaller for all hists
-    # _bin_edges for all hists
-    # _n_larger for all hists EXCEPT DP hists
-    for hist in HISTS:
-        hist_dict = {
-            f"{hist}_bin_freq": hl.delimit(
-                t.histograms.qual_hists[hist].bin_freq, delimiter="|"
-            ),
-        }
-        vcf_info_dict.update(hist_dict)
-
-        if "dp" in hist:
-            vcf_info_dict.update(
-                {f"{hist}_n_larger": t.histograms.qual_hists[hist].n_larger},
-            )
 
     if for_joint_validation:
         return vcf_info_dict
@@ -1184,7 +1194,10 @@ def main(args):
                     filters_check=False if dt == "joint" else True,
                 )
                 if for_joint:
-                    dt_ht = dt_ht.annotate(info=dt_ht.info.rename(rename_dict))
+                    ordered_rename_dict = {
+                        key: rename_dict.get(key, key) for key in dt_ht.info.keys()
+                    }
+                    dt_ht = dt_ht.annotate(info=dt_ht.info.rename(ordered_rename_dict))
                     if dt != "joint":
                         dt_ht = dt_ht.select("info")
 
