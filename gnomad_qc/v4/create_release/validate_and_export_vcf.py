@@ -1274,7 +1274,11 @@ def main(args):
                         temp_header_dict = prepare_vcf_header_dict(
                             dt_ht,
                             validated_ht=validated_ht,
-                            info_fields=(validated_ht[f"{dt}_info"]),
+                            info_fields=[
+                                f
+                                for f in ht.info.keys()
+                                if dt in validated_ht.info.keys()
+                            ],
                             bin_edges=make_hist_bin_edges_expr(
                                 dt_ht, include_age_hists=True
                             ),
