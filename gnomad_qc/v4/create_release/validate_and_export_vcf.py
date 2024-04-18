@@ -778,7 +778,7 @@ def populate_info_dict(
     age_hist_distribution: str = None,
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
     subset_list: List[str] = SUBSETS["exomes"],
-    pops: Dict[str, str] = POPS,
+    pops: Dict[str, str] = POPS["exomes"],
     faf_pops: Dict[str, List[str]] = FAF_POPS,
     sexes: List[str] = SEXES,
     in_silico_dict: Dict[str, Dict[str, str]] = IN_SILICO_ANNOTATIONS_INFO_DICT,
