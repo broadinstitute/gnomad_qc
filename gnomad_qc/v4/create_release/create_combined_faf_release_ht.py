@@ -63,16 +63,26 @@ CHR_LIST = [f"chr{c}" for c in range(1, 23)] + ["chrX", "chrY"]
 """List of chromosomes in the combined FAF release."""
 
 
-def filter_gene_to_test(ht: hl.Table) -> hl.Table:
+def filter_gene_to_test(ht: hl.Table, pcsk9: bool, zfy: bool) -> hl.Table:
     """
-    Filter to PCSK9 1:55039447-55064852 for testing.
+    Filter to PCSK9 1:55039447-55064852 and/or ZFY Y:2935281-2982506 for testing.
 
     :param ht: Table with frequency and FAF information.
+    :param pcsk9: Whether to filter to PCSK9 1:55039447-55064852.
+    :param zfy: Whether to filter to ZFY Y:2935281-2982506.
     :return: Table with frequency and FAF information of the filtered interval of a gene
     """
+    filter_loci = []
+    if pcsk9:
+        logger.info("Filtering to a subset of variants on PCSK9 on chr1...")
+        filter_loci.append("chr1:55039447-55064852")
+    if zfy:
+        logger.info("Filtering to a subset of variants on ZFY on chrY...")
+        filter_loci.append("chrY:2935281-2982506")
+
     return hl.filter_intervals(
         ht,
-        [hl.parse_locus_interval("chr1:55039447-55064852", reference_genome="GRCh38")],
+        [hl.parse_locus_interval(l, reference_genome="GRCh38") for l in filter_loci],
     )
 
 
@@ -93,9 +103,17 @@ def extract_freq_info(
 
     The following global annotations are filtered and renamed:
         - freq_meta: {prefix}_freq_meta
+        - freq_index_dict: {prefix}_freq_index_dict
         - faf_meta: {prefix}_faf_meta
+        - faf_index_dict: {prefix}_faf_index_dict
         - age_distribution: {prefix}_age_distribution
 
+    If `apply_release_filters` is True, a {prefix}_filters annotation is added to the Table and the following variants are filtered:
+        - chrM
+        - AS_lowqual sites (these sites are dropped in the
+          final_filters HT so will not have information in `filters`,
+          hl.is_defined(ht.filters) is used)
+        - AC_raw == 0
 
     :param ht: Table with frequency and FAF information.
     :param prefix: Prefix to add to each of the filtered annotations.
@@ -155,6 +173,7 @@ def extract_freq_info(
 
     # Rename filtered annotations with supplied prefix.
     ht = ht.select(
+        **{f"{prefix}_filters": ht.filters} if apply_release_filters else {},
         **{
             f"{prefix}_freq": array_exprs["freq"],
             f"{prefix}_faf": faf["faf"],
@@ -163,7 +182,7 @@ def extract_freq_info(
             f"{prefix}_qual_hists": ht.histograms.qual_hists,
             f"{prefix}_raw_qual_hists": ht.histograms.raw_qual_hists,
             f"{prefix}_age_hists": ht.histograms.age_hists,
-        }
+        },
     )
     ht = ht.select_globals(
         **{
@@ -199,6 +218,7 @@ def add_all_sites_an_and_qual_hists(
         freq_expr: hl.expr.ArrayExpression,
         all_sites_an_expr: hl.expr.ArrayExpression,
         freq_meta_expr: hl.expr.ArrayExpression,
+        freq_index_dict_expr: hl.expr.DictExpression,
         an_meta_expr: hl.expr.ArrayExpression,
     ) -> hl.expr.ArrayExpression:
         """
@@ -207,19 +227,31 @@ def add_all_sites_an_and_qual_hists(
         :param freq_expr: ArrayExpression of frequencies.
         :param all_sites_an_expr: ArrayExpression of all sites AN.
         :param freq_meta_expr: Frequency metadata.
+        :param freq_index_dict_expr: Frequency index dictionary.
         :param an_meta_expr: AN metadata.
         :return: ArrayExpression of frequencies with all sites AN added if `freq_expr`
             is missing.
         """
         meta_map = hl.dict(hl.enumerate(an_meta_expr).map(lambda x: (x[1], x[0])))
         all_sites_an_expr = freq_meta_expr.map(
-            lambda x: hl.struct(
-                AC=0,
-                AF=hl.or_missing(all_sites_an_expr[meta_map[x]] > 0, hl.float64(0.0)),
-                AN=hl.int32(all_sites_an_expr[meta_map[x]]),
-                homozygote_count=0,
+            lambda x: hl.bind(
+                lambda an: hl.struct(
+                    AC=hl.or_missing(hl.is_defined(an), 0),
+                    AF=hl.or_missing(an > 0, hl.float64(0.0)),
+                    AN=hl.int32(an),
+                    homozygote_count=hl.or_missing(hl.is_defined(an), 0),
+                ),
+                all_sites_an_expr[meta_map[x]],
             )
         )
+        logger.info("Setting XX samples call stats to missing on chrY...")
+        all_sites_an_expr = set_female_y_metrics_to_na_expr(
+            ht,
+            freq_expr=all_sites_an_expr,
+            freq_meta_expr=freq_meta_expr,
+            freq_index_dict_expr=freq_index_dict_expr,
+        )
+
         return hl.coalesce(freq_expr, all_sites_an_expr)
 
     logger.info("Adding all sites AN and qual hists information where missing...")
@@ -237,6 +269,7 @@ def add_all_sites_an_and_qual_hists(
                 ht[f"{data_type}_freq"],
                 all_sites.AN,
                 ht.index_globals()[f"{data_type}_freq_meta"],
+                ht.index_globals()[f"{data_type}_freq_index_dict"],
                 all_sites_meta_by_data_type[data_type],
             )
             for data_type, all_sites in all_sites_by_data_type.items()
@@ -497,7 +530,7 @@ def perform_cmh_test(
             hl.bind(
                 lambda x, y: hl.or_missing(
                     ((x.AC > 0) | (y.AC > 0)) & (x.AN > 0) & (y.AN > 0),
-                    [x.AC, x.AN - x.AC, y.AC, y.AN - y.AC],
+                    ([x.AC, x.AN - x.AC, y.AC, y.AN - y.AC], pop),
                 ),
                 freq1_by_pop[pop],
                 freq2_by_pop[pop],
@@ -509,24 +542,26 @@ def perform_cmh_test(
     return hl.or_missing(
         hl.len(cmh_input_expr) > 0,
         hl.cochran_mantel_haenszel_test(
-            *[cmh_input_expr.map(lambda x: x[i]) for i in range(4)]
-        ).rename({"test_statistic": "chisq"}),
+            *[cmh_input_expr.map(lambda x: x[0][i]) for i in range(4)]
+        )
+        .annotate(gen_ancs=cmh_input_expr.map(lambda x: x[1]))
+        .rename({"test_statistic": "chisq"}),
     )
 
 
 def create_final_combined_faf_release(
     ht,
-    contingency_table_ht: Optional[hl.Table] = None,
-    cmh_ht: Optional[hl.Table] = None,
+    contingency_table_ht: hl.Table,
+    cmh_ht: hl.Table,
 ) -> hl.Table:
     """
     Create the final combined FAF release Table.
 
     :param ht: Table with joint exomes and genomes frequency and FAF information.
-    :param contingency_table_ht: Optional Table with contingency table test results
-        to include on the final Table.
-    :param cmh_ht: Optional Table with Cochran–Mantel–Haenszel test results
-        to include on the final Table.
+    :param contingency_table_ht: Table with contingency table test results to include
+        on the final Table.
+    :param cmh_ht: Table with Cochran–Mantel–Haenszel test results to include on the
+        final Table.
     :return: Table with final combined FAF release information.
     """
     logger.info("Creating final combined FAF release Table...")
@@ -611,23 +646,42 @@ def create_final_combined_faf_release(
             stat_expr = hl.array([stat_expr])
 
         stat_expr = stat_expr.map(
-            lambda x: x.select(**{a: hl.or_missing(~hl.is_nan(x[a]), x[a]) for a in x})
+            lambda x: x.select(
+                **{
+                    a: hl.or_missing(~hl.is_nan(x[a]), x[a])
+                    for a in x
+                    if a != "gen_ancs"
+                }
+            )
         )
 
         if is_struct:
             stat_expr = stat_expr[0]
 
-        return {stat_field: stat_expr}
+        return stat_expr
 
-    stats_expr = {}
-    if contingency_table_ht is not None:
-        stats_expr.update(
-            _prep_stats_annotation(ht, contingency_table_ht, "contingency_table_test")
-        )
-    if cmh_ht is not None:
-        stats_expr.update(
-            _prep_stats_annotation(ht, cmh_ht, "cochran_mantel_haenszel_test")
-        )
+    # Prepare stats annotations for the final Table.
+    ct_expr = _prep_stats_annotation(ht, contingency_table_ht, "contingency_table_test")
+    cmh_expr = _prep_stats_annotation(ht, cmh_ht, "cochran_mantel_haenszel_test")
+    anc_expr = cmh_ht[ht.key]["cochran_mantel_haenszel_test"].gen_ancs
+    ct_union_expr = ct_expr[ht.joint_freq_index_dict[anc_expr[0] + "_adj"]]
+
+    # Create a union stats annotation that uses the contingency table test if there is
+    # only one genetic ancestry group, otherwise use the CMH test.
+    union_expr = hl.if_else(
+        hl.len(anc_expr) == 1,
+        ct_union_expr.select("p_value").annotate(
+            stat_test_name="contingency_table_test", gen_ancs=anc_expr
+        ),
+        cmh_expr.select("p_value").annotate(
+            stat_test_name="cochran_mantel_haenszel_test", gen_ancs=anc_expr
+        ),
+    )
+    stats_expr = {
+        "contingency_table_test": ct_expr,
+        "cochran_mantel_haenszel_test": cmh_expr,
+        "stat_union": union_expr,
+    }
 
     # Select the final columns for the Table, grouping all annotations from the same
     # data type into a struct.
@@ -642,15 +696,13 @@ def create_final_combined_faf_release(
         **_get_struct_by_data_type(ht, annotation_expr=ht.globals, postfix="_globals")
     )
 
-    return ht
+    return ht.drop("versions")
 
 
 def get_combine_faf_resources(
     overwrite: bool = False,
     test: bool = False,
     filtered: bool = True,
-    include_contingency_table_test: bool = False,
-    include_cochran_mantel_haenszel_test: bool = False,
     stats_chr: str = None,
     stats_combine_all_chr: bool = False,
 ) -> PipelineResourceCollection:
@@ -661,10 +713,6 @@ def get_combine_faf_resources(
     :param test: Whether to use test resources. Default is False.
     :param filtered: Whether to get the resources for the filtered Tables. Default is
         True.
-    :param include_contingency_table_test: Whether to include the results from
-        '--perform-contingency-table-test' on the combined FAF release Table.
-    :param include_cochran_mantel_haenszel_test: Whether to include the results from
-        '--perform-cochran-mantel-haenszel-test' on the combined FAF release Table.
     :param stats_chr: Chromosome to get temp stats resource for. Default is None, which
         will return the resources for the stats on the full exome/genome.
     :param stats_combine_all_chr: Whether to also get the stats resources for all
@@ -754,17 +802,12 @@ def get_combine_faf_resources(
     cmh_test = PipelineStepResourceCollection(
         "--perform-cochran-mantel-haenszel-test", **cmh_resources
     )
-    finalize_faf_input_steps = [combined_frequency]
-    if include_contingency_table_test:
-        finalize_faf_input_steps.append(contingency_table_test)
-    if include_cochran_mantel_haenszel_test:
-        finalize_faf_input_steps.append(cmh_test)
     finalize_faf = PipelineStepResourceCollection(
         "--finalize-combined-faf-release",
         output_resources={
             "final_combined_faf_ht": release_sites(data_type="joint", test=test)
         },
-        pipeline_input_steps=finalize_faf_input_steps,
+        pipeline_input_steps=[combined_frequency, contingency_table_test, cmh_test],
     )
 
     # Add all steps to the combined FAF pipeline resource collection.
@@ -788,7 +831,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-4day",
     )
     hl._set_flags(use_ssa_logs="1")
-    test_gene = args.test_gene
+    test = args.test_gene or args.test_y_gene
     overwrite = args.overwrite
     apply_release_filters = not args.skip_apply_release_filters
     pops = list(set(POPS["v3"]["genomes"] + POPS["v4"]["exomes"]))
@@ -797,10 +840,8 @@ def main(args):
     stats_combine_all_chr = args.stats_combine_all_chr
     combine_faf_resources = get_combine_faf_resources(
         overwrite,
-        test_gene,
+        test,
         apply_release_filters,
-        args.include_contingency_table_test,
-        args.include_cochran_mantel_haenszel_test,
         stats_chr,
         stats_combine_all_chr,
     )
@@ -812,10 +853,13 @@ def main(args):
             exomes_ht = res.exomes_ht.ht()
             genomes_ht = res.genomes_ht.ht()
 
-            if test_gene:
-                # filter to PCSK9 1:55039447-55064852 for testing.
-                exomes_ht = filter_gene_to_test(exomes_ht)
-                genomes_ht = filter_gene_to_test(genomes_ht)
+            if test:
+                exomes_ht = filter_gene_to_test(
+                    exomes_ht, pcsk9=args.test_gene, zfy=args.test_y_gene
+                )
+                genomes_ht = filter_gene_to_test(
+                    genomes_ht, pcsk9=args.test_gene, zfy=args.test_y_gene
+                )
 
             # TODO: Need to resolve the type difference.
             genomes_ht = genomes_ht.annotate(
@@ -919,13 +963,7 @@ def main(args):
             res.check_resource_existence()
 
             ht = create_final_combined_faf_release(
-                res.comb_freq_ht.ht(),
-                (
-                    res.contingency_table_ht.ht()
-                    if args.include_contingency_table_test
-                    else None
-                ),
-                res.cmh_ht.ht() if args.include_cochran_mantel_haenszel_test else None,
+                res.comb_freq_ht.ht(), res.contingency_table_ht.ht(), res.cmh_ht.ht()
             )
 
             ht.describe()
@@ -952,6 +990,11 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--test-gene",
         help="Filter Tables to only the PCSK9 gene for testing.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--test-y-gene",
+        help="Test on a subset of variants in ZFY on chrY.",
         action="store_true",
     )
     parser.add_argument(
@@ -1015,23 +1058,6 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     finalize_combined_faf = parser.add_argument_group(
         "Create finalized combined FAF release Table.",
         "Arguments for finalizing the combined FAF release Table.",
-    )
-    finalize_combined_faf.add_argument(
-        "--include-contingency-table-test",
-        help=(
-            "Whether to include the results from '--perform-contingency-table-test' on "
-            "the combined FAF release Table"
-        ),
-        action="store_true",
-    )
-    finalize_combined_faf.add_argument(
-        "--include-cochran-mantel-haenszel-test",
-        help=(
-            "Whether to include the results from"
-            " '--perform-cochran-mantel-haenszel-test' on the combined FAF release"
-            " Table"
-        ),
-        action="store_true",
     )
     finalize_combined_faf.add_argument(
         "--n-partitions",
