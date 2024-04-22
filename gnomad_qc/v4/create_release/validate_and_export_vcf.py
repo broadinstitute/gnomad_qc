@@ -1215,12 +1215,7 @@ def main(args):
                         *[f for f in info_expr if f not in in_joint_ht]
                     )
                     ht = ht.annotate(info=ht.info.annotate(**info_expr))
-                    ht = ht.annotate_globals(
-                        **{
-                            f"{dt}_{f}": validate_hts[dt].globals[f]
-                            for f in validate_hts[dt].globals
-                        }
-                    )
+                    ht = ht.annotate_globals(**validate_hts[dt].index_globals())
 
             ht.describe()
 
