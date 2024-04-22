@@ -269,6 +269,8 @@ def main(args):
         data_type=data_type,
         suffix=args.custom_suffix,
         aggregated=True,
+        by_ancestry=args.by_ancestry,
+        by_subset=args.by_subset,
     )
     if data_type != "exomes" and args.by_subset:
         raise ValueError("Stratifying by subset is only working on exomes data type.")
