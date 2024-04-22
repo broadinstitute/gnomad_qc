@@ -1053,12 +1053,11 @@ def format_validated_ht_for_export(
     """
     if info_fields_to_drop is None:
         info_fields_to_drop = []
-
+    logger.info("Dropping fields from info struct...")
     if data_type == "exomes":
         logger.info("Getting downsampling annotations to drop from info struct...")
         ds_fields = get_downsamplings_fields(ht)
         info_fields_to_drop.extend(ds_fields)
-
     # Drop any info annotation with "hgdp" or "tgp" in the name for genomes.
     if data_type == "genomes":
         logger.info("Dropping hgdp and tgp annotations from info struct...")
@@ -1066,11 +1065,20 @@ def format_validated_ht_for_export(
             [f for f in list(ht.info) if (("hgdp" in f) | ("tgp" in f))]
         )
 
-    logger.info("Add age_histogram bin edges to info fields to drop...")
-    info_fields_to_drop.extend(["age_hist_het_bin_edges", "age_hist_hom_bin_edges"])
+    if data_type == "joint":
+        for dt in ["exomes", "genomes", "joint"]:
+            info_fields_to_drop.extend(
+                [
+                    f"age_hist_het_bin_edges_{dt}",
+                    f"age_hist_hom_bin_edges_{dt}",
+                ]
+            )
+    else:
+        logger.info("Add age_histogram bin edges to info fields to drop...")
+        info_fields_to_drop.extend(["age_hist_het_bin_edges", "age_hist_hom_bin_edges"])
 
-    logger.info("Adding 'SB' to info fields to drop...")
-    info_fields_to_drop.append("SB")
+        logger.info("Adding 'SB' to info fields to drop...")
+        info_fields_to_drop.append("SB")
 
     logger.info(
         "Dropping the following fields from info struct: %s...",
@@ -1087,20 +1095,23 @@ def format_validated_ht_for_export(
     ht = ht.transmute(info=hl.struct(**info_annot_mapping))
 
     logger.info("Adjusting VCF incompatible types...")
-    # Reformat AS_SB_TABLE for use in adjust_vcf_incompatible_types
-    ht = ht.annotate(
-        info=ht.info.annotate(
-            AS_SB_TABLE=hl.array([ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]])
+    if data_type != "joint":
+        # Reformat AS_SB_TABLE for use in adjust_vcf_incompatible_types
+        ht = ht.annotate(
+            info=ht.info.annotate(
+                AS_SB_TABLE=hl.array([ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]])
+            )
         )
-    )
     # The Table is already split so there are no annotations that need to be
     # pipe delimited.
     ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
 
-    logger.info("Rearranging fields to desired order...")
-    ht = ht.annotate(
-        info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
-    )
+    if data_type != "joint":
+        logger.info("Rearranging fields to desired order...")
+        ht = ht.annotate(
+            info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
+        )
+
     return ht, new_row_annots
 
 
@@ -1335,8 +1346,6 @@ def main(args):
         # NOTE: The following step is not yet implemented for joint and should not
         # be reviewed for it
         if args.export_vcf:
-            if data_type == "joint":
-                raise ValueError("Joint data type is not yet supported for VCF export.")
             if contig and test:
                 raise ValueError(
                     "Test argument cannot be used with contig argument as test filters"
