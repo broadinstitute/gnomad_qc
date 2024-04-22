@@ -265,6 +265,12 @@ def main(args):
     per_sample_res = get_per_sample_counts(
         test=test, data_type=data_type, suffix=args.custom_suffix
     )
+    per_sample_agg_res = get_per_sample_counts(
+        test=test,
+        data_type=data_type,
+        suffix=args.custom_suffix,
+        aggregated=True,
+    )
 
     if args.create_per_sample_counts_ht:
         chrom = "chr22" if test else None
@@ -298,28 +304,13 @@ def main(args):
             rare_variants_af=args.rare_variants_af,
         ).write(per_sample_res.path, overwrite=overwrite)
 
-    if args.add_aggregate_sample_stats_global:
+    if args.aggregate_sample_stats:
         logger.info("Computing aggregate sample statistics...")
         ht = per_sample_res.ht().checkpoint(
             hl.utils.new_temp_file("per_sample_counts", "ht")
         )
-        ht.annotate_globals(
-            sample_qc_agg_stats=compute_agg_sample_stats(
-                ht,
-                meta_ht=meta(data_type=data_type).ht(),
-                by_ancestry=args.by_ancestry,
-            )
-        ).write(per_sample_res.path, overwrite=overwrite)
-
-    if args.add_aggregate_sample_stats_global or args.print_aggregate_sample_stats:
-        ht = per_sample_res.ht()
-        logger.info(
-            "Aggregate sample statistics: %s",
-            pprint.pformat(
-                hl.eval(ht.sample_qc_agg_stats),
-                compact=True,
-            ),
-        )
+        ht = compute_agg_sample_stats(ht)
+        ht.write(per_sample_agg_res.path, overwrite=overwrite)
 
 
 if __name__ == "__main__":
@@ -350,7 +341,7 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--add-aggregate-sample-stats-global",
+        "--aggregate-sample-stats",
         help=(
             "Compute aggregate sample statistics from the per-sample counts and add "
             "them as globals to the output Table."
