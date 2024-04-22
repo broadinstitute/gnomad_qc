@@ -162,7 +162,7 @@ def create_per_sample_counts_ht(
             mt.most_severe_csq == "synonymous_variant"
         )
 
-    # Run Hail's 'vmt_sample_qc_sample_qc' for all requested filter groups.
+    # Run Hail's 'vmt_sample_qc' for all requested filter groups.
     ht = mt.select_cols(
         _sample_qc=hl.struct(
             **{
