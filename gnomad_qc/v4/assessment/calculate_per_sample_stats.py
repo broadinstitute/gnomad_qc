@@ -271,6 +271,8 @@ def main(args):
         suffix=args.custom_suffix,
         aggregated=True,
     )
+    if data_type != "exomes" and args.by_subset:
+        raise ValueError("Stratifying by subset is only working on exomes data type.")
 
     if args.create_per_sample_counts_ht:
         chrom = "chr22" if test else None
@@ -309,7 +311,12 @@ def main(args):
         ht = per_sample_res.ht().checkpoint(
             hl.utils.new_temp_file("per_sample_counts", "ht")
         )
-        ht = compute_agg_sample_stats(ht)
+        ht = compute_agg_sample_stats(
+            ht,
+            meta(data_type=data_type).ht(),
+            by_ancestry=args.by_ancestry,
+            by_subset=args.by_subset,
+        )
         ht.write(per_sample_agg_res.path, overwrite=overwrite)
 
 
@@ -346,11 +353,6 @@ if __name__ == "__main__":
             "Compute aggregate sample statistics from the per-sample counts and add "
             "them as globals to the output Table."
         ),
-        action="store_true",
-    )
-    parser.add_argument(
-        "--print-aggregate-sample-stats",
-        help="Print aggregate sample statistics to stdout.",
         action="store_true",
     )
     parser.add_argument(
@@ -413,6 +415,14 @@ if __name__ == "__main__":
             "Output statistics for number of singletons, n_het, and n_hom by inferred "
             "genetic ancestry group. Only relevant when using "
             "--compute-aggregate-sample-stats"
+        ),
+        action="store_true",
+    )
+    parser.add_argument(
+        "--by-subset",
+        help=(
+            "Get aggregate statistics for the whole dataset and for ukb and non-ukb "
+            "subsets. This is only working on exomes data type."
         ),
         action="store_true",
     )
