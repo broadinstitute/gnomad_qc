@@ -24,7 +24,6 @@ Aggregated statistics can also be computed by ancestry.
 """
 import argparse
 import logging
-import pprint
 from typing import Optional
 
 import hail as hl
