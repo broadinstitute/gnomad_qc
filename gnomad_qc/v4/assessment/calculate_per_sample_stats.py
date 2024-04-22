@@ -189,8 +189,8 @@ def compute_agg_sample_stats(
     ht: hl.Table,
     meta_ht: Optional[hl.Table] = None,
     by_ancestry: bool = False,
-    by_ukb: bool = False,
-) -> hl.Struct:
+    by_subset: bool = False,
+) -> hl.Table:
     """
     Compute aggregate statistics for per-sample QC metrics.
 
@@ -198,6 +198,8 @@ def compute_agg_sample_stats(
     :param meta_ht: Optional Table containing sample metadata. Required if
         `by_ancestry` is True.
     :param by_ancestry: Boolean indicating whether to stratify by ancestry.
+    :param by_subset: Boolean indicating whether to stratify by subset. This is only
+         working on "exomes" data.
     :return: Struct of aggregate statistics for per-sample QC metrics.
     """
     if by_ancestry and meta_ht is None:
@@ -205,48 +207,46 @@ def compute_agg_sample_stats(
             "If `by_ancestry` is True, a Table containing sample metadata is required."
         )
 
-    agg_expr = {
-        strat: hl.struct(
-            **{
-                metric: hl.struct(
-                    mean=hl.agg.mean(ht[strat][metric]),
-                    quantiles=hl.agg.approx_quantiles(
-                        ht[strat][metric], [0.0, 0.25, 0.5, 0.75, 1.0]
-                    ),
-                )
-                for metric in ht[strat]
-                if isinstance(ht[strat][metric], hl.expr.NumericExpression)
-            }
-        )
-        for strat in ht.row_value
-        if isinstance(ht[strat], hl.expr.StructExpression)
-    }
+    subset = (
+        ["gnomad"]
+        if not by_subset
+        else [
+            "gnomad",
+            hl.if_else(meta_ht[ht.s].project_meta.ukb_sample, "ukb", "non-ukb"),
+        ]
+    )
+    gen_anc = (
+        ["global"]
+        if not by_ancestry
+        else ["global", meta_ht[ht.s].population_inference.pop]
+    )
 
-    stats_struct = ht.aggregate(agg_expr, _localize=False)
+    all_strats = [
+        s for s in ht.row_value if isinstance(ht[s], hl.expr.StructExpression)
+    ]
 
-    if by_ancestry:
-        # Performing aggregation for all samples and by genetic ancestry.
-        # Note: This is performing multiple aggregations, rather than a single group_by
-        # aggregation to avoid a Class too large error.
-        gen_anc_expr = meta_ht.population_inference.pop
-        gen_ancs = meta_ht.aggregate(
-            hl.agg.filter(
-                hl.is_defined(gen_anc_expr), hl.agg.collect_as_set(gen_anc_expr)
+    ht = ht.transmute(
+        subset=subset,
+        gen_anc=gen_anc,
+        _stats_array=[(s, ht[s]) for s in all_strats],
+    )
+
+    ht = ht.explode("_stats_array").explode("gen_anc").explode("subset")
+
+    ht = ht.group_by("subset", "gen_anc", variant_filter=ht._stats_array[0]).aggregate(
+        **{
+            m: hl.struct(
+                mean=hl.agg.mean(ht._stats_array[1][m]),
+                quantiles=hl.agg.approx_quantiles(
+                    ht._stats_array[1][m], [0.0, 0.25, 0.5, 0.75, 1.0]
+                ),
             )
-        )
-        gen_anc_expr = meta_ht[ht.s].population_inference.pop
+            for m in ht._stats_array[1]
+            if isinstance(ht._stats_array[1][m], hl.expr.NumericExpression)
+        }
+    )
 
-        stats_struct = hl.struct(
-            all_samples=stats_struct,
-            **{
-                anc: ht.aggregate(
-                    hl.agg.filter(gen_anc_expr == anc, agg_expr), _localize=False
-                )
-                for anc in gen_ancs
-            },
-        )
-
-    return stats_struct
+    return ht
 
 
 def main(args):
