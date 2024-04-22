@@ -35,15 +35,12 @@ from gnomad.utils.vep import (
     filter_vep_transcript_csqs,
     get_most_severe_consequence_for_summary,
 )
+from hail.vds.sample_qc import vmt_sample_qc, vmt_sample_qc_variant_annotations
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources import meta
 from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, get_gnomad_v4_vds
 from gnomad_qc.v4.resources.release import get_per_sample_counts, release_sites
-from gnomad_qc.v4.resources.temp_hail_methods import (
-    vmt_sample_qc,
-    vmt_sample_qc_variant_annotations,
-)
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
@@ -95,13 +92,21 @@ def create_per_sample_counts_ht(
         Default is 0.001.
     :return: Table containing per-sample variant counts.
     """
+    logger.info("Filtering out low confidence regions...")
+    mt = filter_low_conf_regions(mt, filter_decoy=False)
+
     logger.info("Filtering input MT to variants in the supplied annotation HT...")
     mt = mt.semi_join_rows(annotation_ht)
 
     # Add extra Allele Count and Allele Type annotations to variant MatrixTable,
     # according to Hail standards, to help their computation.
+    variant_ac, variant_types = vmt_sample_qc_variant_annotations(
+        global_gt=mt.GT, alleles=mt.alleles
+    )
+
     mt = mt.annotate_rows(
-        **vmt_sample_qc_variant_annotations(global_gt=mt.GT, alleles=mt.alleles)
+        variant_ac=variant_ac,
+        variant_atypes=variant_types,
     )
 
     keep_annotations = ["freq", "filters", "region_flags"]
@@ -143,28 +148,22 @@ def create_per_sample_counts_ht(
     if rare_variants:
         filter_expr["rare_variants"] = mt.freq[0].AF < rare_variants_af
     if by_csqs:
-        filter_expr["filter_low_conf_regions"] = filter_low_conf_regions(mt)
         filter_expr["lof"] = (
-            filter_expr["filter_low_conf_regions"]
-            & filter_expr["pass_filters"]
-            & (LOF_CSQ_SET in mt.most_severe_csq)
+            filter_expr["pass_filters"]
+            & hl.if_else(
+                hl.any(lambda csq: mt.most_severe_csq == csq, LOF_CSQ_SET), True, False
+            )
             & (mt.lof == "HC")
             & mt.no_lof_flags
         )
-        filter_expr["missense"] = (
-            filter_expr["filter_low_conf_regions"]
-            & filter_expr["pass_filters"]
-            & mt.most_severe_csq
-            == "missense_variant"
+        filter_expr["missense"] = filter_expr["pass_filters"] & (
+            mt.most_severe_csq == "missense_variant"
         )
-        filter_expr["synonymous"] = (
-            filter_expr["filter_low_conf_regions"]
-            & filter_expr["pass_filters"]
-            & mt.most_severe_csq
-            == "synonymous_variant"
+        filter_expr["synonymous"] = filter_expr["pass_filters"] & (
+            mt.most_severe_csq == "synonymous_variant"
         )
 
-    # Run Hail's 'vmt_sample_qc' for all requested filter groups.
+    # Run Hail's 'vmt_sample_qc_sample_qc' for all requested filter groups.
     ht = mt.select_cols(
         _sample_qc=hl.struct(
             **{
