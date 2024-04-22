@@ -22,14 +22,13 @@ computed:
 
 Aggregated statistics can also be computed by ancestry.
 """
-# TODO: Maybe move to a folder called assessment and rename to
-#  calculate_per_sample_stats.py, also add a resource file for assessments.
 import argparse
 import logging
 import pprint
 from typing import Optional
 
 import hail as hl
+from gnomad.utils.filtering import filter_low_conf_regions
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import (
     LOF_CSQ_SET,
@@ -114,7 +113,7 @@ def create_per_sample_counts_ht(
             mane_select=vep_mane,
         )
         annotation_ht = get_most_severe_consequence_for_summary(annotation_ht)
-        keep_annotations.extend(["most_severe_csq", "lof"])
+        keep_annotations.extend(["most_severe_csq", "lof", "no_lof_flags"])
 
     # Annotate the MT with the needed annotations.
     annotation_ht = annotation_ht.select(*keep_annotations).checkpoint(
@@ -143,23 +142,27 @@ def create_per_sample_counts_ht(
         )
     if rare_variants:
         filter_expr["rare_variants"] = mt.freq[0].AF < rare_variants_af
-    if by_csqs and not pass_filters:
-        raise Warning(
-            "Variant consequences only calculated in regions which pass filters..."
+    if by_csqs:
+        filter_expr["filter_low_conf_regions"] = filter_low_conf_regions(mt)
+        filter_expr["lof"] = (
+            filter_expr["filter_low_conf_regions"]
+            & filter_expr["pass_filters"]
+            & (LOF_CSQ_SET in mt.most_severe_csq)
+            & (mt.lof == "HC")
+            & mt.no_lof_flags
         )
-    if by_csqs & pass_filters:
-        for csq in CSQ_SET:
-            is_lof = csq in LOF_CSQ_SET
-            csq_str = f"pass_filters_{'lof_' if is_lof else ''}{csq}"
-            filter_expr[csq_str] = (mt.most_severe_csq == csq) & (
-                filter_expr["pass_filters"]
-            )
-            if is_lof:
-                filter_expr[csq_str] = (filter_expr[csq_str]) & (~hl.is_missing(mt.lof))
-            if rare_variants:
-                filter_expr[f"rare_vairants_{csq_str}"] = (
-                    filter_expr[csq_str] & filter_expr["rare_variants"]
-                )
+        filter_expr["missense"] = (
+            filter_expr["filter_low_conf_regions"]
+            & filter_expr["pass_filters"]
+            & mt.most_severe_csq
+            == "missense_variant"
+        )
+        filter_expr["synonymous"] = (
+            filter_expr["filter_low_conf_regions"]
+            & filter_expr["pass_filters"]
+            & mt.most_severe_csq
+            == "synonymous_variant"
+        )
 
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
     ht = mt.select_cols(
