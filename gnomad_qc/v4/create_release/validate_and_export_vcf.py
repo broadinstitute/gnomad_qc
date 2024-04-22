@@ -525,7 +525,6 @@ def make_info_expr(
     Make Hail expression for variant annotations to be included in VCF INFO field.
 
     :param t: Table containing variant annotations to be reformatted for VCF export.
-    :param hist_prefix: Prefix to use for histograms.
     :param data_type: Data type to make info expression for. One of "exomes", "genomes",
         or "joint". Default is "exomes".
     :param for_joint_validation: Whether to prepare HT for joint validation. Default is False.
