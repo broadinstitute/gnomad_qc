@@ -13,8 +13,10 @@ from gnomad.utils.file_utils import file_exists
 
 from gnomad_qc.v4.resources.constants import (
     ALL_SITES_AN_RELEASES,
+    COMBINED_FAF_RELEASES,
     COVERAGE_RELEASES,
     CURRENT_ALL_SITES_AN_RELEASE,
+    CURRENT_COMBINED_FAF_RELEASE,
     CURRENT_COVERAGE_RELEASE,
     CURRENT_RELEASE,
     RELEASES,
@@ -122,21 +124,42 @@ def qual_hists_json_path(
     )
 
 
+def get_combined_faf_release(
+    test: bool = False, filtered: bool = False
+) -> VersionedTableResource:
+    """
+    Retrieve versioned resource for the combined genome + exome FAF release Table.
+
+    :param test: Whether to use a tmp path for testing. Default is False.
+    :param filtered: Whether to use the filtered FAF release. Default is False.
+    :return: Combined genome + exome FAF release VersionedTableResource.
+    """
+    return VersionedTableResource(
+        default_version=CURRENT_COMBINED_FAF_RELEASE,
+        versions={
+            release: TableResource(
+                path=(
+                    f"gs://gnomad{'-tmp' if test else ''}/release/{release}/ht/joint/gnomad.joint.v{release}.faf{'.filtered' if filtered else ''}.ht"
+                )
+            )
+            for release in COMBINED_FAF_RELEASES
+        },
+    )
+
+
 def release_ht_path(
     data_type: str = "exomes",
     release_version: str = CURRENT_RELEASE,
     public: bool = False,
-    test: bool = False,
 ) -> str:
     """
     Fetch filepath for release (variant-only) Hail Tables.
 
     :param data_type: Data type of release resource to return. Should be one of
-        'exomes', 'genomes' or 'joint'. Default is 'exomes'.
+        'exomes' or 'genomes'. Default is 'exomes'.
     :param release_version: Release version. Default is CURRENT_RELEASE.
     :param public: Whether release sites Table path returned is from public or private
         bucket. Default is False.
-    :param test: Whether to use a tmp path for testing. Default is False.
     :return: File path for desired release Hail Table.
     """
     if public:
@@ -145,24 +168,19 @@ def release_ht_path(
         else:
             return f"gs://gnomad-public-requester-pays/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
     else:
-        # Note: This function was not used to write out the v4.0 joint release HT. That
-        # is gs://gnomad/release/4.0/ht/joint/gnomad.joint.v4.0.faf.filtered.ht
-        return (
-            f"{_release_root(version=release_version, test=test, data_type=data_type)}/gnomad.{data_type}.v{release_version}.sites.ht"
-        )
+        return f"gs://gnomad/release/{release_version}/ht/{data_type}/gnomad.{data_type}.v{release_version}.sites.ht"
 
 
 def release_sites(
-    data_type: str = "exomes", public: bool = False, test: bool = False
+    data_type: str = "exomes", public: bool = False
 ) -> VersionedTableResource:
     """
     Retrieve versioned resource for sites-only release Table.
 
     :param data_type: Data type of release resource to return. Should be one of
-        'exomes', 'genomes', or 'joint'. Default is 'exomes'.
+        'exomes' or 'genomes'. Default is 'exomes'.
     :param public: Whether release sites Table path returned is from public or private
         bucket. Default is False.
-    :param test: Whether to use a tmp path for testing. Default is False.
     :return: Sites-only release Table.
     """
     return VersionedTableResource(
@@ -173,7 +191,6 @@ def release_sites(
                     data_type=data_type,
                     release_version=release,
                     public=public,
-                    test=test,
                 )
             )
             for release in RELEASES
