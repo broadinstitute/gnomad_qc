@@ -1412,10 +1412,7 @@ def main(args):
                 header_dict = pickle.load(f)
 
             if test:
-                if data_type == "joint":
-                    logger.info("Filtering to the test region...")
-                    ht = ht
-                else:
+                if data_type != "joint":
                     logger.info("Filtering to test partitions on chr20, X, and Y...")
                     ht = filter_to_test(ht)
             if contig:
