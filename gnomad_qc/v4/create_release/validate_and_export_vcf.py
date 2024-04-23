@@ -1169,46 +1169,39 @@ def check_globals_for_retired_terms(ht: hl.Table) -> None:
         logger.info("Passed retired term check: No retired terms found in globals.")
 
 
-def transmute_joint_filters(ht: hl.Table) -> hl.Table:
+def get_joint_filters(ht: hl.Table) -> hl.Table:
     """
-    Transmute exomes and genomes filters to joint filters.
+    Transform exomes and genomes filters to joint filters.
 
     :param ht: Input Table
-    :return: Table with joint filters transmuted to a single field.
+    :return: Table with joint filters transformed from exomes and genomes filters.
     """
-    ht = ht.transmute(
+    exomes_filters = ht.info.exomes_filters
+    genomes_filters = ht.info.genomes_filters
+    ht = ht.annotate(
         filters=(
             hl.case()
             .when(
-                ((hl.len(ht.exomes_filters) == 0) | hl.is_missing(ht.exomes_filters))
-                & (
-                    (hl.len(ht.genomes_filters) == 0)
-                    | hl.is_missing(ht.genomes_filters)
-                ),
+                ((hl.len(exomes_filters) == 0) | hl.is_missing(exomes_filters))
+                & ((hl.len(genomes_filters) == 0) | hl.is_missing(genomes_filters)),
                 hl.set(["PASS"]),
             )
             .when(
-                (hl.len(ht.exomes_filters) != 0)
-                & (
-                    (hl.len(ht.genomes_filters) == 0)
-                    | hl.is_missing(ht.genomes_filters)
-                ),
+                (hl.len(exomes_filters) != 0)
+                & ((hl.len(genomes_filters) == 0) | hl.is_missing(genomes_filters)),
                 hl.set(["EXOMES_FILTERED"]),
             )
             .when(
-                ((hl.len(ht.exomes_filters) == 0) | hl.is_missing(ht.exomes_filters))
-                & (hl.len(ht.genomes_filters) != 0),
+                ((hl.len(exomes_filters) == 0) | hl.is_missing(exomes_filters))
+                & (hl.len(genomes_filters) != 0),
                 hl.set(["GENOMES_FILTERED"]),
             )
             .when(
-                (hl.len(ht.exomes_filters) != 0) & (hl.len(ht.genomes_filters) != 0),
+                (hl.len(exomes_filters) != 0) & (hl.len(genomes_filters) != 0),
                 hl.set(["EXOMES_FILTERED", "GENOMES_FILTERED"]),
             )
             .when(
-                (
-                    hl.is_missing(ht.exomes_filters)
-                    & (hl.is_missing(ht.genomes_filters))
-                ),
+                (hl.is_missing(exomes_filters) & (hl.is_missing(genomes_filters))),
                 hl.set(["MISSING_FILTERS"]),
             )
             .default(hl.empty_set(hl.tstr))
@@ -1339,9 +1332,11 @@ def main(args):
                     ht = ht.annotate(info=ht.info.annotate(**info_expr))
                     ht = ht.annotate_globals(**validate_hts[dt].index_globals())
                     ht = ht.annotate(
-                        **{f"{dt}_filters": validate_hts[dt][ht.key].filters}
+                        info=ht.info.annotate(
+                            **{f"{dt}_filters": validate_hts[dt][ht.key].filters}
+                        )
                     )
-                ht = transmute_joint_filters(ht)
+                ht = get_joint_filters(ht)
             ht.describe()
 
             # Note: Checkpoint saves time in validity checks and final export by not
