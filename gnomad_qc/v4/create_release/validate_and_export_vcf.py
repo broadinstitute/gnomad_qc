@@ -1173,7 +1173,7 @@ def get_joint_filters(ht: hl.Table) -> hl.Table:
     """
     Transform exomes and genomes filters to joint filters.
 
-    :param ht: Input Table
+    :param ht: Input Table.
     :return: Table with joint filters transformed from exomes and genomes filters.
     """
     exomes_filters = ht.info.exomes_filters
