@@ -922,6 +922,12 @@ def populate_info_dict(
         )
     )
     if data_type == "joint":
+        vcf_info_dict["exomes_filters"] = {
+            "Description": "Filters annotation for exomes data type."
+        }
+        vcf_info_dict["genomes_filters"] = {
+            "Description": "Filters annotation for genomes data type."
+        }
         return vcf_info_dict
 
     # Add in silico prediction annotations to info_dict.
