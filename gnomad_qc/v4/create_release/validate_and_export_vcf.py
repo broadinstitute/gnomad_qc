@@ -682,7 +682,7 @@ def prepare_ht_for_validation(
         if "filters" in ht.row:
             filters_expr = ht.filters
         else:
-            filters_expr = hl.missing(hl.tset(hl.tstr))
+            filters_expr = hl.empty_set(hl.tstr)
         ht = ht.select("info", filters=filters_expr)
     else:
         ht = ht.select("info", "filters", "rsid")
@@ -1163,6 +1163,54 @@ def check_globals_for_retired_terms(ht: hl.Table) -> None:
         logger.info("Passed retired term check: No retired terms found in globals.")
 
 
+def transmute_joint_filters(ht: hl.Table) -> hl.Table:
+    """
+    Transmute exomes and genomes filters to joint filters.
+
+    :param ht: Input Table
+    :return: Table with joint filters transmuted to a single field.
+    """
+    ht = ht.transmute(
+        filters=(
+            hl.case()
+            .when(
+                ((hl.len(ht.exomes_filters) == 0) | hl.is_missing(ht.exomes_filters))
+                & (
+                    (hl.len(ht.genomes_filters) == 0)
+                    | hl.is_missing(ht.genomes_filters)
+                ),
+                hl.set(["PASS"]),
+            )
+            .when(
+                (hl.len(ht.exomes_filters) != 0)
+                & (
+                    (hl.len(ht.genomes_filters) == 0)
+                    | hl.is_missing(ht.genomes_filters)
+                ),
+                hl.set(["EXOMES_FILTERED"]),
+            )
+            .when(
+                ((hl.len(ht.exomes_filters) == 0) | hl.is_missing(ht.exomes_filters))
+                & (hl.len(ht.genomes_filters) != 0),
+                hl.set(["GENOMES_FILTERED"]),
+            )
+            .when(
+                (hl.len(ht.exomes_filters) != 0) & (hl.len(ht.genomes_filters) != 0),
+                hl.set(["EXOMES_FILTERED", "GENOMES_FILTERED"]),
+            )
+            .when(
+                (
+                    hl.is_missing(ht.exomes_filters)
+                    & (hl.is_missing(ht.genomes_filters))
+                ),
+                hl.set(["MISSING_FILTERS"]),
+            )
+            .default(hl.empty_set(hl.tstr))
+        )
+    )
+    return ht
+
+
 def main(args):
     """Validate release Table and export VCFs."""
     hl.init(
@@ -1266,7 +1314,7 @@ def main(args):
                     }
                     dt_ht = dt_ht.annotate(info=dt_ht.info.rename(ordered_rename_dict))
                     if dt != "joint":
-                        dt_ht = dt_ht.select("info")
+                        dt_ht = dt_ht.select("info", "filters")
 
                     dt_ht = dt_ht.select_globals(
                         **{f"{dt}_{f}": dt_ht[f] for f in dt_ht.globals}
@@ -1284,7 +1332,10 @@ def main(args):
                     )
                     ht = ht.annotate(info=ht.info.annotate(**info_expr))
                     ht = ht.annotate_globals(**validate_hts[dt].index_globals())
-
+                    ht = ht.annotate(
+                        **{f"{dt}_filters": validate_hts[dt][ht.key].filters}
+                    )
+                ht = transmute_joint_filters(ht)
             ht.describe()
 
             # Note: Checkpoint saves time in validity checks and final export by not
@@ -1361,8 +1412,12 @@ def main(args):
                 header_dict = pickle.load(f)
 
             if test:
-                logger.info("Filtering to test partitions on chr20, X, and Y...")
-                ht = filter_to_test(ht)
+                if data_type == "joint":
+                    logger.info("Filtering to the test region...")
+                    ht = ht
+                else:
+                    logger.info("Filtering to test partitions on chr20, X, and Y...")
+                    ht = filter_to_test(ht)
             if contig:
                 logger.info(f"Filtering to {contig}...")
                 ht = hl.filter_intervals(
@@ -1397,7 +1452,11 @@ def main(args):
                 rekey_new_reference(ht, export_reference),
                 output_path,
                 metadata=header_dict,
-                append_to_header=append_to_vcf_header_path(data_type=data_type),
+                append_to_header=(
+                    append_to_vcf_header_path(data_type=data_type)
+                    if data_type != "joint"
+                    else None
+                ),
                 tabix=True,
             )
 
