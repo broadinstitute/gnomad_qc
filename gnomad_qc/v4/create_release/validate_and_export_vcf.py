@@ -967,10 +967,7 @@ def prepare_vcf_header_dict(
     :param extra_description_text: Extra description text to add to INFO field.
     :return: Prepared VCF header dictionary.
     """
-    if data_type == "joint":
-        logger.info("Making FILTER dict for VCF...")
-        filter_dict = make_vcf_filter_dict(joint=True)
-    else:
+    if data_type != "joint":
         logger.info("Making FILTER dict for VCF...")
         filter_dict = make_vcf_filter_dict(
             hl.eval(ht.filtering_model.snv_cutoff.min_score),
@@ -1310,7 +1307,9 @@ def main(args):
                     }
                     dt_ht = dt_ht.annotate(info=dt_ht.info.rename(ordered_rename_dict))
                     if dt != "joint":
-                        dt_ht = dt_ht.annotate(info=dt_ht.info.annotate(**{f"{dt}_filters":dt_ht.filters})
+                        dt_ht = dt_ht.annotate(
+                            info=dt_ht.info.annotate(**{f"{dt}_filters": dt_ht.filters})
+                        )
                         dt_ht = dt_ht.select("info")
 
                     dt_ht = dt_ht.select_globals(
@@ -1363,7 +1362,7 @@ def main(args):
                     joint_included=joint_included,
                 )
             else:
-                header_dict = {"info": {}}
+                header_dict = {"filter": make_vcf_filter_dict(joint=True), "info": {}}
                 for dt in ["exomes", "genomes", "joint"]:
                     dt_ht = select_type_from_joint_ht(ht, dt)
                     temp_header_dict = prepare_vcf_header_dict(
