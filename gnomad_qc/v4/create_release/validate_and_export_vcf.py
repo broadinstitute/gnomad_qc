@@ -967,7 +967,10 @@ def prepare_vcf_header_dict(
     :param extra_description_text: Extra description text to add to INFO field.
     :return: Prepared VCF header dictionary.
     """
-    if data_type != "joint":
+    if data_type == "joint":
+        logger.info("Making FILTER dict for VCF...")
+        filter_dict = make_vcf_filter_dict(joint=True)
+    else:
         logger.info("Making FILTER dict for VCF...")
         filter_dict = make_vcf_filter_dict(
             hl.eval(ht.filtering_model.snv_cutoff.min_score),
