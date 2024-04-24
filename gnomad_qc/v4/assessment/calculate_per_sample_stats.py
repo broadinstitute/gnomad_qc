@@ -30,6 +30,8 @@ import hail as hl
 from gnomad.utils.filtering import filter_low_conf_regions
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import (
+    CSQ_CODING,
+    CSQ_NON_CODING,
     LOF_CSQ_SET,
     filter_vep_transcript_csqs,
     get_most_severe_consequence_for_summary,
@@ -47,8 +49,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("per_sample_stats")
 logger.setLevel(logging.INFO)
-
-CSQ_SET = LOF_CSQ_SET.union({"missense_variant", "synonymous_variant"})
 
 
 def create_per_sample_counts_ht(
@@ -147,6 +147,12 @@ def create_per_sample_counts_ht(
     if rare_variants:
         filter_expr["rare_variants"] = mt.freq[0].AF < rare_variants_af
     if by_csqs:
+        filter_expr["coding"] = filter_expr["pass_filters"] & CSQ_CODING.contains(
+            mt.most_severe_csq
+        )
+        filter_expr["non_coding"] = filter_expr[
+            "pass_filters"
+        ] & CSQ_NON_CODING.contains(mt.most_severe_csq)
         filter_expr["lof"] = (
             filter_expr["pass_filters"]
             & hl.if_else(
@@ -160,6 +166,12 @@ def create_per_sample_counts_ht(
         )
         filter_expr["synonymous"] = filter_expr["pass_filters"] & (
             mt.most_severe_csq == "synonymous_variant"
+        )
+        filter_expr["intronic"] = filter_expr["pass_filters"] & (
+            mt.most_severe_csq == "intron_variant"
+        )
+        filter_expr["intergenic"] = filter_expr["pass_filters"] & (
+            mt.most_severe_csq == "intergenic_variant"
         )
 
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
@@ -229,21 +241,21 @@ def compute_agg_sample_stats(
     ht = ht.transmute(
         subset=subset,
         gen_anc=gen_anc,
-        _stats_array=[(strat, ht[strat]) for strat in all_strats],
+        stats_array=[(strat, ht[strat]) for strat in all_strats],
     )
 
     ht = ht.explode("_stats_array").explode("gen_anc").explode("subset")
 
-    ht = ht.group_by("subset", "gen_anc", variant_filter=ht._stats_array[0]).aggregate(
+    ht = ht.group_by("subset", "gen_anc", variant_filter=ht.stats_array[0]).aggregate(
         **{
-            m: hl.struct(
-                mean=hl.agg.mean(ht._stats_array[1][m]),
+            metric: hl.struct(
+                mean=hl.agg.mean(ht.stats_array[1][metric]),
                 quantiles=hl.agg.approx_quantiles(
-                    ht._stats_array[1][m], [0.0, 0.25, 0.5, 0.75, 1.0]
+                    ht.stats_array[1][metric], [0.0, 0.25, 0.5, 0.75, 1.0]
                 ),
             )
-            for m in ht._stats_array[1]
-            if isinstance(ht._stats_array[1][m], hl.expr.NumericExpression)
+            for metric in ht.stats_array[1]
+            if isinstance(ht.stats_array[1][metric], hl.expr.NumericExpression)
         }
     )
 
