@@ -25,6 +25,7 @@ from gnomad.utils.vcf import (
     HISTS,
     IN_SILICO_ANNOTATIONS_INFO_DICT,
     INFO_DICT,
+    JOINT_FILTERS_INFO_DICT,
     JOINT_REGION_FLAG_FIELDS,
     JOINT_REGION_FLAGS_INFO_DICT,
     REGION_FLAG_FIELDS,
@@ -920,12 +921,7 @@ def populate_info_dict(
         )
     )
     if data_type == "joint":
-        vcf_info_dict["exomes_filters"] = {
-            "Description": "Filters annotation for exomes data type."
-        }
-        vcf_info_dict["genomes_filters"] = {
-            "Description": "Filters annotation for genomes data type."
-        }
+        vcf_info_dict.update(JOINT_FILTERS_INFO_DICT)
         return vcf_info_dict
 
     # Add in silico prediction annotations to info_dict.
