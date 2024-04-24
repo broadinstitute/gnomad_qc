@@ -1202,7 +1202,7 @@ def get_joint_filters(ht: hl.Table) -> hl.Table:
             )
             .when(
                 (hl.len(exomes_filters) != 0) & (hl.len(genomes_filters) != 0),
-                ["EXOMES_FILTERED", "GENOMES_FILTERED"],
+                ["BOTH_FILTERED"],
             )
             .default(["MISSING_FILTERS"])
         )
