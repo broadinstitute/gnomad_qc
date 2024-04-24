@@ -221,13 +221,15 @@ def compute_agg_sample_stats(
     )
 
     all_strats = [
-        s for s in ht.row_value if isinstance(ht[s], hl.expr.StructExpression)
+        strat
+        for strat in ht.row_value
+        if isinstance(ht[strat], hl.expr.StructExpression)
     ]
 
     ht = ht.transmute(
         subset=subset,
         gen_anc=gen_anc,
-        _stats_array=[(s, ht[s]) for s in all_strats],
+        _stats_array=[(strat, ht[strat]) for strat in all_strats],
     )
 
     ht = ht.explode("_stats_array").explode("gen_anc").explode("subset")
