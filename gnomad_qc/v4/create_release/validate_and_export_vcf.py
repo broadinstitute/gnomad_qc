@@ -1442,11 +1442,7 @@ def main(args):
                 rekey_new_reference(ht, export_reference),
                 output_path,
                 metadata=header_dict,
-                append_to_header=(
-                    append_to_vcf_header_path(data_type=data_type)
-                    if data_type != "joint"
-                    else None
-                ),
+                append_to_header=(append_to_vcf_header_path(data_type=data_type)),
                 tabix=True,
             )
 
