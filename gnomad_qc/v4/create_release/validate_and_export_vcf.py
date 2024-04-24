@@ -1112,12 +1112,16 @@ def format_validated_ht_for_export(
     # pipe delimited.
     ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
 
-    if data_type != "joint":
-        logger.info("Rearranging fields to desired order...")
-        ht = ht.annotate(
-            info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
-        )
-
+    logger.info("Rearranging fields to desired order...")
+    if data_type == "joint":
+        vcf_info_reorder = [
+            f"{f}_{dt}"
+            for dt in ["joint", "exomes", "genomes"]
+            for f in vcf_info_reorder
+        ]
+    ht = ht.annotate(
+        info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
+    )
     return ht, new_row_annots
 
 
@@ -1179,32 +1183,28 @@ def get_joint_filters(ht: hl.Table) -> hl.Table:
     exomes_filters = ht.info.exomes_filters
     genomes_filters = ht.info.genomes_filters
     ht = ht.annotate(
-        filters=(
+        filters=hl.set(
             hl.case()
             .when(
                 ((hl.len(exomes_filters) == 0) | hl.is_missing(exomes_filters))
                 & ((hl.len(genomes_filters) == 0) | hl.is_missing(genomes_filters)),
-                hl.set(["PASS"]),
+                ["PASS"],
             )
             .when(
                 (hl.len(exomes_filters) != 0)
                 & ((hl.len(genomes_filters) == 0) | hl.is_missing(genomes_filters)),
-                hl.set(["EXOMES_FILTERED"]),
+                ["EXOMES_FILTERED"],
             )
             .when(
                 ((hl.len(exomes_filters) == 0) | hl.is_missing(exomes_filters))
                 & (hl.len(genomes_filters) != 0),
-                hl.set(["GENOMES_FILTERED"]),
+                ["GENOMES_FILTERED"],
             )
             .when(
                 (hl.len(exomes_filters) != 0) & (hl.len(genomes_filters) != 0),
-                hl.set(["EXOMES_FILTERED", "GENOMES_FILTERED"]),
+                ["EXOMES_FILTERED", "GENOMES_FILTERED"],
             )
-            .when(
-                (hl.is_missing(exomes_filters) & (hl.is_missing(genomes_filters))),
-                hl.set(["MISSING_FILTERS"]),
-            )
-            .default(hl.empty_set(hl.tstr))
+            .default(["MISSING_FILTERS"])
         )
     )
     return ht
@@ -1331,11 +1331,6 @@ def main(args):
                     )
                     ht = ht.annotate(info=ht.info.annotate(**info_expr))
                     ht = ht.annotate_globals(**validate_hts[dt].index_globals())
-                    ht = ht.annotate(
-                        info=ht.info.annotate(
-                            **{f"{dt}_filters": validate_hts[dt][ht.key].filters}
-                        )
-                    )
                 ht = get_joint_filters(ht)
             ht.describe()
 
