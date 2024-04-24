@@ -718,7 +718,7 @@ def populate_subset_info_dict(
         dataset.
     :param description_text: Text describing the sample subset that should be added to
         the INFO description.
-    :param data_type: One of "exomes" or "genomes". Default is "exomes".
+    :param data_type: One of "exomes", "genomes", or "joint". Default is "exomes".
     :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
         names (values). Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
@@ -735,7 +735,7 @@ def populate_subset_info_dict(
 
     # Add FAF fields to dict.
     faf_label_groups = create_label_groups(
-        pops=list(faf_pops.keys()), sexes=sexes, all_groups=["adj"]
+        pops=faf_pops, sexes=sexes, all_groups=["adj"]
     )
     for label_group in faf_label_groups:
         vcf_info_dict.update(
@@ -750,7 +750,7 @@ def populate_subset_info_dict(
             )
         )
     # Add AC, AN, AF, nhomalt fields to dict.
-    label_groups = create_label_groups(pops=list(pops.keys()), sexes=sexes)
+    label_groups = create_label_groups(pops=pops, sexes=sexes)
     for label_group in label_groups:
         vcf_info_dict.update(
             make_info_dict(
@@ -786,7 +786,7 @@ def populate_subset_info_dict(
         )
     )
     if freq_comparison_included:
-        ctt_label_groups = create_label_groups(pops=list(pops.keys()), sexes=sexes)
+        ctt_label_groups = create_label_groups(pops=pops, sexes=sexes)
         for label_group in ctt_label_groups:
             vcf_info_dict.update(
                 make_info_dict(
@@ -846,7 +846,7 @@ def populate_info_dict(
     :param age_hist_distribution: Pipe-delimited string of overall age histogram bin
         frequency.
     :param info_dict: INFO dict to be populated.
-    :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
+    :param subset_list: List of sample subsets in dataset. Default is SUBSETS["exomes"].
     :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
     :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
         names (values). Default is FAF_POPS.
@@ -863,9 +863,7 @@ def populate_info_dict(
     :return: Updated INFO dictionary for VCF export.
     """
     vcf_info_dict = {}
-    if data_type == "joint" and "joint" not in subset_list:
-        vcf_info_dict.update({})
-    elif data_type == "joint" and "joint" in subset_list:
+    if data_type == "joint" and "joint" in subset_list:
         vcf_info_dict.update(JOINT_REGION_FLAGS_INFO_DICT)
     else:
         # Get existing info fields from predefined info_dict, e.g. `FS`,
@@ -880,7 +878,7 @@ def populate_info_dict(
     for subset in subset_list:
         subset_pops = deepcopy(pops)
         if data_type == "joint":
-            description_text = f"in {subset} subset" if subset != "" else ""
+            description_text = f" in {subset} dataset " if subset != "" else ""
         else:
             description_text = "" if subset == "" else f" in {subset} subset"
 
@@ -1295,8 +1293,8 @@ def main(args):
             ht = res.release_ht.ht()
             validated_ht = res.validated_ht.ht()
 
-            # v4 Genomes drops subsets from VCF
-            if data_type == "genomes" or data_type == "exomes":
+            if not for_joint:
+                # v4 Genomes drops subsets from VCF
                 subsets = SUBSETS["exomes"] if data_type == "exomes" else []
                 header_dict = prepare_vcf_header_dict(
                     ht,
