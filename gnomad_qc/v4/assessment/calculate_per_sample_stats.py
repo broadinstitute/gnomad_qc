@@ -147,12 +147,13 @@ def create_per_sample_counts_ht(
     if rare_variants:
         filter_expr["rare_variants"] = mt.freq[0].AF < rare_variants_af
     if by_csqs:
-        filter_expr["coding"] = filter_expr["pass_filters"] & CSQ_CODING.contains(
-            mt.most_severe_csq
+        filter_expr["coding"] = filter_expr["pass_filters"] & hl.if_else(
+            hl.any(lambda csq: mt.most_severe_csq == csq, CSQ_CODING), True, False
         )
-        filter_expr["non_coding"] = filter_expr[
-            "pass_filters"
-        ] & CSQ_NON_CODING.contains(mt.most_severe_csq)
+
+        filter_expr["non_coding"] = filter_expr["pass_filters"] & hl.if_else(
+            hl.any(lambda csq: mt.most_severe_csq == csq, CSQ_NON_CODING), True, False
+        )
         filter_expr["lof"] = (
             filter_expr["pass_filters"]
             & hl.if_else(
@@ -244,7 +245,7 @@ def compute_agg_sample_stats(
         stats_array=[(strat, ht[strat]) for strat in all_strats],
     )
 
-    ht = ht.explode("_stats_array").explode("gen_anc").explode("subset")
+    ht = ht.explode("stats_array").explode("gen_anc").explode("subset")
 
     ht = ht.group_by("subset", "gen_anc", variant_filter=ht.stats_array[0]).aggregate(
         **{
