@@ -154,13 +154,24 @@ def create_per_sample_counts_ht(
         filter_expr["non_coding"] = filter_expr["pass_filters"] & hl.if_else(
             hl.any(lambda csq: mt.most_severe_csq == csq, CSQ_NON_CODING), True, False
         )
-        filter_expr["lof"] = (
-            filter_expr["pass_filters"]
-            & hl.if_else(
-                hl.any(lambda csq: mt.most_severe_csq == csq, LOF_CSQ_SET), True, False
-            )
-            & (mt.lof == "HC")
-            & mt.no_lof_flags
+        filter_expr["lof"] = filter_expr["pass_filters"] & hl.if_else(
+            hl.any(lambda csq: mt.most_severe_csq == csq, LOF_CSQ_SET), True, False
+        )
+        filter_expr["lof_HC"] = filter_expr["lof"] & (mt.lof == "HC")
+        filter_expr["lof_LC"] = filter_expr["lof"] & (mt.lof == "LC")
+        filter_expr["lof_OS"] = filter_expr["lof"] & (mt.lof == "OS")
+        filter_expr["lof_HC_no_flags"] = filter_expr["lof_HC"] & mt.no_lof_flags
+        filter_expr["splice_acceptor_variant"] = filter_expr["lof_HC_no_flags"] & (
+            mt.most_severe_csq == "splice_acceptor_variant"
+        )
+        filter_expr["splice_donor_variant"] = filter_expr["lof_HC_no_flags"] & (
+            mt.most_severe_csq == "splice_donor_variant"
+        )
+        filter_expr["stop_gained"] = filter_expr["lof_HC_no_flags"] & (
+            mt.most_severe_csq == "stop_gained"
+        )
+        filter_expr["frameshift_variant"] = filter_expr["lof_HC_no_flags"] & (
+            mt.most_severe_csq == "frameshift_variant"
         )
         filter_expr["missense"] = filter_expr["pass_filters"] & (
             mt.most_severe_csq == "missense_variant"
@@ -251,6 +262,8 @@ def compute_agg_sample_stats(
         **{
             metric: hl.struct(
                 mean=hl.agg.mean(ht.stats_array[1][metric]),
+                min=hl.agg.min(ht.stats_array[1][metric]),
+                max=hl.agg.max(ht.stats_array[1][metric]),
                 quantiles=hl.agg.approx_quantiles(
                     ht.stats_array[1][metric], [0.0, 0.25, 0.5, 0.75, 1.0]
                 ),
