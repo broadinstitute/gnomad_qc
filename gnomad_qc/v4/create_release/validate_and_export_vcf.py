@@ -1310,7 +1310,8 @@ def main(args):
                     }
                     dt_ht = dt_ht.annotate(info=dt_ht.info.rename(ordered_rename_dict))
                     if dt != "joint":
-                        dt_ht = dt_ht.select("info", "filters")
+                        dt_ht = dt_ht.annotate(info=dt_ht.info.annotate(**{f"{dt}_filters":dt_ht.filters})
+                        dt_ht = dt_ht.select("info")
 
                     dt_ht = dt_ht.select_globals(
                         **{f"{dt}_{f}": dt_ht[f] for f in dt_ht.globals}
