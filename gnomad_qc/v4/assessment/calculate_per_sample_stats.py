@@ -164,33 +164,36 @@ def create_per_sample_counts_ht(
         )
 
         for lof_label in ["HC", "LC", "OS"]:
-            for lof_flag in [True, False]:
-                filter_expr[
-                    f"lof_{lof_label}_{'no' if not lof_flag else 'with'}_flags"
-                ] = (
-                    filter_expr["pass_filters"]
-                    & (
-                        hl.if_else(
-                            hl.any(lambda csq: mt.most_severe_csq == csq, LOF_CSQ_SET),
-                            True,
-                            False,
-                        )
+            filter_expr[f"lof_{lof_label}"] = (
+                filter_expr["pass_filters"]
+                & (
+                    hl.if_else(
+                        hl.any(lambda csq: mt.most_severe_csq == csq, LOF_CSQ_SET),
+                        True,
+                        False,
                     )
-                    & (mt.lof == lof_label)
-                    & (mt.no_lof_flags == lof_flag)
                 )
+                & (mt.lof == lof_label)
+            )
+
+        for lof_flag in [True, False]:
+            filter_expr[f"lof_HC_{'no' if not lof_flag else 'with'}_flags"] = (
+                filter_expr["lof_HC"] & (mt.no_lof_flags == lof_flag)
+            )
 
         for lof_variant in LOF_CSQ_SET:
             for lof_label in ["HC", "LC", "OS"]:
-                for lof_flag in [True, False]:
-                    filter_expr[
-                        f"{lof_variant}_{lof_label}_{'no' if not lof_flag else 'with'}_flags"
-                    ] = (
-                        filter_expr["pass_filters"]
-                        & (mt.most_severe_csq == lof_variant)
-                        & (mt.lof == lof_label)
-                        & (mt.no_lof_flags == lof_flag)
-                    )
+                filter_expr[f"{lof_variant}_{lof_label}"] = (
+                    filter_expr["pass_filters"]
+                    & (mt.most_severe_csq == lof_variant)
+                    & (mt.lof == lof_label)
+                )
+
+        for lof_variant in LOF_CSQ_SET:
+            for lof_flag in [True, False]:
+                filter_expr[
+                    f"{lof_variant}_HC_{'no' if not lof_flag else 'with'}_flags"
+                ] = filter_expr[f"{lof_variant}_HC"] & (mt.no_lof_flags == lof_flag)
 
         for csq in [
             "missense_variant",
