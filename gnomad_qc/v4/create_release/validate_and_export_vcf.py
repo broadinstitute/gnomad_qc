@@ -720,6 +720,7 @@ def populate_subset_info_dict(
     :param description_text: Text describing the sample subset that should be added to
         the INFO description.
     :param data_type: One of "exomes", "genomes", or "joint". Default is "exomes".
+    :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
     :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
         names (values). Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
@@ -864,8 +865,9 @@ def populate_info_dict(
     :return: Updated INFO dictionary for VCF export.
     """
     vcf_info_dict = {}
-    if data_type == "joint" and "joint" in subset_list:
-        vcf_info_dict.update(JOINT_REGION_FLAGS_INFO_DICT)
+    if data_type == "joint":
+        if "joint" in subset_list:
+            vcf_info_dict.update(JOINT_REGION_FLAGS_INFO_DICT)
     else:
         # Get existing info fields from predefined info_dict, e.g. `FS`,
         # `non_par`, `negative_train_site`...
@@ -967,10 +969,7 @@ def prepare_vcf_header_dict(
     :param extra_description_text: Extra description text to add to INFO field.
     :return: Prepared VCF header dictionary.
     """
-    if data_type == "joint":
-        logger.info("Making FILTER dict for VCF...")
-        filter_dict = make_vcf_filter_dict(joint=True)
-    else:
+    if data_type != "joint":
         logger.info("Making FILTER dict for VCF...")
         filter_dict = make_vcf_filter_dict(
             hl.eval(ht.filtering_model.snv_cutoff.min_score),
@@ -1310,7 +1309,7 @@ def main(args):
                     joint_included=joint_included,
                 )
             else:
-                header_dict = {"info": {}}
+                header_dict = {"filter": make_vcf_filter_dict(joint=True), "info": {}}
                 for dt in ["exomes", "genomes", "joint"]:
                     dt_ht = select_type_from_joint_ht(ht, dt)
                     temp_header_dict = prepare_vcf_header_dict(
