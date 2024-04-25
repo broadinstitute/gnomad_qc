@@ -40,7 +40,11 @@ from hail.vds.sample_qc import vmt_sample_qc, vmt_sample_qc_variant_annotations
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources import meta
-from gnomad_qc.v4.resources.basics import get_gnomad_v4_genomes_vds, get_gnomad_v4_vds
+from gnomad_qc.v4.resources.basics import (
+    get_gnomad_v4_genomes_vds,
+    get_gnomad_v4_vds,
+    get_logging_path,
+)
 from gnomad_qc.v4.resources.release import get_per_sample_counts, release_sites
 
 logging.basicConfig(
@@ -154,37 +158,47 @@ def create_per_sample_counts_ht(
         filter_expr["non_coding"] = filter_expr["pass_filters"] & hl.if_else(
             hl.any(lambda csq: mt.most_severe_csq == csq, CSQ_NON_CODING), True, False
         )
+
         filter_expr["lof"] = filter_expr["pass_filters"] & hl.if_else(
             hl.any(lambda csq: mt.most_severe_csq == csq, LOF_CSQ_SET), True, False
         )
-        filter_expr["lof_HC"] = filter_expr["lof"] & (mt.lof == "HC")
-        filter_expr["lof_LC"] = filter_expr["lof"] & (mt.lof == "LC")
-        filter_expr["lof_OS"] = filter_expr["lof"] & (mt.lof == "OS")
-        filter_expr["lof_HC_no_flags"] = filter_expr["lof_HC"] & mt.no_lof_flags
-        filter_expr["splice_acceptor_variant"] = filter_expr["lof_HC_no_flags"] & (
-            mt.most_severe_csq == "splice_acceptor_variant"
-        )
-        filter_expr["splice_donor_variant"] = filter_expr["lof_HC_no_flags"] & (
-            mt.most_severe_csq == "splice_donor_variant"
-        )
-        filter_expr["stop_gained"] = filter_expr["lof_HC_no_flags"] & (
-            mt.most_severe_csq == "stop_gained"
-        )
-        filter_expr["frameshift_variant"] = filter_expr["lof_HC_no_flags"] & (
-            mt.most_severe_csq == "frameshift_variant"
-        )
-        filter_expr["missense"] = filter_expr["pass_filters"] & (
-            mt.most_severe_csq == "missense_variant"
-        )
-        filter_expr["synonymous"] = filter_expr["pass_filters"] & (
-            mt.most_severe_csq == "synonymous_variant"
-        )
-        filter_expr["intronic"] = filter_expr["pass_filters"] & (
-            mt.most_severe_csq == "intron_variant"
-        )
-        filter_expr["intergenic"] = filter_expr["pass_filters"] & (
-            mt.most_severe_csq == "intergenic_variant"
-        )
+
+        for lof_label in ["HC", "LC", "OS"]:
+            for lof_flag in [True, False]:
+                filter_expr[
+                    f"lof_{lof_label}_{'no' if not lof_flag else 'with'}_flags"
+                ] = (
+                    filter_expr["pass_filters"]
+                    & (
+                        hl.if_else(
+                            hl.any(lambda csq: mt.most_severe_csq == csq, LOF_CSQ_SET),
+                            True,
+                            False,
+                        )
+                    )
+                    & (mt.lof == lof_label)
+                    & (mt.no_lof_flags == lof_flag)
+                )
+
+        for lof_variant in LOF_CSQ_SET:
+            for lof_label in ["HC", "LC", "OS"]:
+                for lof_flag in [True, False]:
+                    filter_expr[
+                        f"{lof_variant}_{lof_label}_{'no' if not lof_flag else 'with'}_flags"
+                    ] = (
+                        filter_expr["pass_filters"]
+                        & (mt.most_severe_csq == lof_variant)
+                        & (mt.lof == lof_label)
+                        & (mt.no_lof_flags == lof_flag)
+                    )
+
+        for csq in [
+            "missense_variant",
+            "synonymous_variant",
+            "intron_variant",
+            "intergenic_variant",
+        ]:
+            filter_expr[csq] = filter_expr["pass_filters"] & (mt.most_severe_csq == csq)
 
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
     ht = mt.select_cols(
@@ -206,6 +220,7 @@ def create_per_sample_counts_ht(
     ).cols()
 
     ht = ht.select(**ht._sample_qc)
+
     # Add 'n_indel' to the output Table.
     for field in ht.row_value:
         ht = ht.annotate(
@@ -313,50 +328,54 @@ def main(args):
     if data_type != "exomes" and args.by_subset:
         raise ValueError("Stratifying by subset is only working on exomes data type.")
 
-    if args.create_per_sample_counts_ht:
-        chrom = "chr22" if test else None
-        if data_type == "exomes":
-            logger.info("Calculating per-sample variant statistics for exomes...")
-            mt = get_gnomad_v4_vds(
-                test=test, release_only=True, split=True, chrom=chrom
-            ).variant_data
-        else:
-            logger.info("Calculating per-sample variant statistics for genomes...")
-            mt = get_gnomad_v4_genomes_vds(
-                test=test, release_only=True, split=True, chrom=chrom
-            ).variant_data
+    try:
+        if args.create_per_sample_counts_ht:
+            chrom = "chr22" if test else None
+            if data_type == "exomes":
+                logger.info("Calculating per-sample variant statistics for exomes...")
+                mt = get_gnomad_v4_vds(
+                    test=test, release_only=True, split=True, chrom=chrom
+                ).variant_data
+            else:
+                logger.info("Calculating per-sample variant statistics for genomes...")
+                mt = get_gnomad_v4_genomes_vds(
+                    test=test, release_only=True, split=True, chrom=chrom
+                ).variant_data
 
-        release_ht = release_sites(data_type=data_type).ht()
-        if test:
-            release_ht = hl.filter_intervals(
-                release_ht, [hl.parse_locus_interval("chr22")]
+            release_ht = release_sites(data_type=data_type).ht()
+            if test:
+                release_ht = hl.filter_intervals(
+                    release_ht, [hl.parse_locus_interval("chr22")]
+                )
+
+            create_per_sample_counts_ht(
+                mt,
+                release_ht,
+                pass_filters=not args.skip_pass_filters,
+                ukb_capture=not args.skip_filter_ukb_capture_intervals,
+                broad_capture=not args.skip_filter_broad_capture_intervals,
+                by_csqs=not args.skip_by_csqs,
+                rare_variants=not args.skip_rare_variants,
+                vep_canonical=args.vep_canonical,
+                vep_mane=args.vep_mane,
+                rare_variants_af=args.rare_variants_af,
+            ).write(per_sample_res.path, overwrite=overwrite)
+
+        if args.aggregate_sample_stats:
+            logger.info("Computing aggregate sample statistics...")
+            ht = per_sample_res.ht().checkpoint(
+                hl.utils.new_temp_file("per_sample_counts", "ht")
             )
-
-        create_per_sample_counts_ht(
-            mt,
-            release_ht,
-            pass_filters=not args.skip_pass_filters,
-            ukb_capture=not args.skip_filter_ukb_capture_intervals,
-            broad_capture=not args.skip_filter_broad_capture_intervals,
-            by_csqs=not args.skip_by_csqs,
-            rare_variants=not args.skip_rare_variants,
-            vep_canonical=args.vep_canonical,
-            vep_mane=args.vep_mane,
-            rare_variants_af=args.rare_variants_af,
-        ).write(per_sample_res.path, overwrite=overwrite)
-
-    if args.aggregate_sample_stats:
-        logger.info("Computing aggregate sample statistics...")
-        ht = per_sample_res.ht().checkpoint(
-            hl.utils.new_temp_file("per_sample_counts", "ht")
-        )
-        ht = compute_agg_sample_stats(
-            ht,
-            meta(data_type=data_type).ht(),
-            by_ancestry=args.by_ancestry,
-            by_subset=args.by_subset,
-        )
-        ht.write(per_sample_agg_res.path, overwrite=overwrite)
+            ht = compute_agg_sample_stats(
+                ht,
+                meta(data_type=data_type).ht(),
+                by_ancestry=args.by_ancestry,
+                by_subset=args.by_subset,
+            )
+            ht.write(per_sample_agg_res.path, overwrite=overwrite)
+    finally:
+        logger.info("Copying log to logging bucket...")
+        hl.copy_log(get_logging_path("per_sample_stats"))
 
 
 if __name__ == "__main__":
