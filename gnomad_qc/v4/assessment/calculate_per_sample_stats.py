@@ -205,7 +205,17 @@ def create_per_sample_counts_ht(
         )
     ).cols()
 
-    return ht.select(**ht._sample_qc)
+    ht = ht.select(**ht._sample_qc)
+    # Add 'n_indel' to the output Table.
+    for field in ht.row_value:
+        ht = ht.annotate(
+            **{
+                field: ht[field].annotate(
+                    n_indel=ht[field].n_insertion + ht[field].n_deletion
+                )
+            }
+        )
+    return ht
 
 
 def compute_agg_sample_stats(
