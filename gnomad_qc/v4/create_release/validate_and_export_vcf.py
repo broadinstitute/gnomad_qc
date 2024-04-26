@@ -22,11 +22,12 @@ from gnomad.utils.vcf import (
     AS_FIELDS,
     AS_VQSR_FIELDS,
     FAF_POPS,
-    FORMAT_DICT,
     HISTS,
     IN_SILICO_ANNOTATIONS_INFO_DICT,
     INFO_DICT,
+    JOINT_FILTERS_INFO_DICT,
     JOINT_REGION_FLAG_FIELDS,
+    JOINT_REGION_FLAGS_INFO_DICT,
     REGION_FLAG_FIELDS,
     SEXES,
     SITE_FIELDS,
@@ -682,7 +683,7 @@ def prepare_ht_for_validation(
         if "filters" in ht.row:
             filters_expr = ht.filters
         else:
-            filters_expr = hl.missing(hl.tset(hl.tstr))
+            filters_expr = hl.empty_set(hl.tstr)
         ht = ht.select("info", filters=filters_expr)
     else:
         ht = ht.select("info", "filters", "rsid")
@@ -704,6 +705,7 @@ def populate_subset_info_dict(
     faf_pops: Dict[str, List[str]] = FAF_POPS,
     sexes: List[str] = SEXES,
     label_delimiter: str = "_",
+    freq_comparison_included: bool = False,
 ) -> Dict[str, Dict[str, str]]:
     """
     Call `make_info_dict` to populate INFO dictionary for the requested `subset`.
@@ -717,20 +719,20 @@ def populate_subset_info_dict(
         dataset.
     :param description_text: Text describing the sample subset that should be added to
         the INFO description.
-    :param data_type: One of "exomes" or "genomes". Default is "exomes".
+    :param data_type: One of "exomes", "genomes", or "joint". Default is "exomes".
     :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
-        Default is POPS.
     :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
         names (values). Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
     :param label_delimiter: String to use as delimiter when making group label
         combinations. Default is '_'.
+    :param freq_comparison_included: Whether frequency comparison data is included in the HT.
     :return: Dictionary containing Subset specific INFO header fields.
     """
     vcf_info_dict = {}
     # Remove unnecessary pop names from FAF_POPS dict depending on data type
     # and version of FAF_POPS.
-    faf_pops_version = "v4" if data_type == "exomes" else "v3"
+    faf_pops_version = "v3" if data_type == "genomes" or subset == "genomes" else "v4"
     faf_pops = {pop: POP_NAMES[pop] for pop in faf_pops[faf_pops_version]}
 
     # Add FAF fields to dict.
@@ -785,6 +787,25 @@ def populate_subset_info_dict(
             description_text=description_text,
         )
     )
+    if freq_comparison_included:
+        ctt_label_groups = create_label_groups(pops=pops, sexes=sexes)
+        for label_group in ctt_label_groups:
+            vcf_info_dict.update(
+                make_info_dict(
+                    freq_ctt=True,
+                    label_groups=label_group,
+                )
+            )
+        vcf_info_dict.update(
+            make_info_dict(
+                freq_cmh=True,
+            )
+        )
+        vcf_info_dict.update(
+            make_info_dict(
+                freq_stat_union=True,
+            )
+        )
 
     return vcf_info_dict
 
@@ -794,7 +815,7 @@ def populate_info_dict(
     bin_edges: Dict[str, str],
     age_hist_distribution: str = None,
     info_dict: Dict[str, Dict[str, str]] = INFO_DICT,
-    subset_list: List[str] = SUBSETS,
+    subset_list: List[str] = SUBSETS["exomes"],
     pops: Dict[str, str] = POPS["exomes"],
     faf_pops: Dict[str, List[str]] = FAF_POPS,
     sexes: List[str] = SEXES,
@@ -802,6 +823,9 @@ def populate_info_dict(
     vrs_fields_dict: Dict[str, Dict[str, str]] = VRS_FIELDS_DICT,
     label_delimiter: str = "_",
     data_type: str = "exomes",
+    freq_comparison_included: bool = False,
+    extra_suffix: str = None,
+    extra_description_text: str = None,
 ) -> Dict[str, Dict[str, str]]:
     """
     Call `make_info_dict` and `make_hist_dict` to populate INFO dictionary.
@@ -824,7 +848,7 @@ def populate_info_dict(
     :param age_hist_distribution: Pipe-delimited string of overall age histogram bin
         frequency.
     :param info_dict: INFO dict to be populated.
-    :param subset_list: List of sample subsets in dataset. Default is SUBSETS.
+    :param subset_list: List of sample subsets in dataset. Default is SUBSETS["exomes"].
     :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
     :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
         names (values). Default is FAF_POPS.
@@ -835,23 +859,32 @@ def populate_info_dict(
         combinations.
     :param data_type: Data type to populate info dict for. One of "exomes" or
         "genomes". Default is "exomes".
+    :param freq_comparison_included: Whether frequency comparison data is included in the HT.
+    :param extra_suffix: Suffix to add to INFO field.
+    :param extra_description_text: Extra description text to add to INFO field.
     :return: Updated INFO dictionary for VCF export.
     """
-    # Get existing info fields from predefined info_dict, e.g. `FS`,
-    # `non_par`, `negative_train_site`...
-    vcf_info_dict = info_dict.copy()
-    vcf_info_dict = {f: vcf_info_dict[f] for f in info_fields if f in vcf_info_dict}
-
-    # Add allele-specific fields to info dict, including AS_VQSR_FIELDS
-    vcf_info_dict.update(
-        add_as_info_dict(info_dict=info_dict, as_fields=AS_FIELDS + AS_VQSR_FIELDS)
-    )
+    vcf_info_dict = {}
+    if data_type == "joint":
+        # vcf_info_dict stays empty if data_type is "joint" and subset is not "joint"
+        if "joint" in subset_list:
+            vcf_info_dict.update(JOINT_REGION_FLAGS_INFO_DICT)
+    else:
+        # Get existing info fields from predefined info_dict, e.g. `FS`,
+        # `non_par`, `negative_train_site`...
+        vcf_info_dict.update(info_dict)
+        vcf_info_dict = {f: vcf_info_dict[f] for f in info_fields if f in vcf_info_dict}
+        # Add allele-specific fields to info dict, including AS_VQSR_FIELDS
+        vcf_info_dict.update(
+            add_as_info_dict(info_dict=info_dict, as_fields=AS_FIELDS + AS_VQSR_FIELDS)
+        )
 
     for subset in subset_list:
         subset_pops = deepcopy(pops)
-        if (subset == "joint") | (data_type == "genomes"):
-            subset_pops.update({"ami": "Amish"})
-        description_text = "" if subset == "" else f" in {subset} subset"
+        if data_type == "joint":
+            description_text = f" in {subset} dataset" if subset != "" else ""
+        else:
+            description_text = "" if subset == "" else f" in {subset} subset"
 
         vcf_info_dict.update(
             populate_subset_info_dict(
@@ -862,6 +895,7 @@ def populate_info_dict(
                 faf_pops=faf_pops,
                 sexes=sexes,
                 label_delimiter=label_delimiter,
+                freq_comparison_included=freq_comparison_included,
             )
         )
 
@@ -871,16 +905,27 @@ def populate_info_dict(
     # Add age histogram data to info dict.
     vcf_info_dict.update(
         make_info_dict(
+            suffix=extra_suffix,
             label_delimiter=label_delimiter,
             bin_edges=bin_edges,
             age_hist_distribution=age_hist_distribution,
+            description_text=extra_description_text,
         )
     )
 
     # Add variant quality histograms to info dict.
     vcf_info_dict.update(
-        make_hist_dict(bin_edges, adj=True, drop_n_smaller_larger=True)
+        make_hist_dict(
+            bin_edges,
+            adj=True,
+            drop_n_smaller_larger=True,
+            suffix=extra_suffix,
+            description_text=extra_description_text,
+        )
     )
+    if data_type == "joint":
+        vcf_info_dict.update(JOINT_FILTERS_INFO_DICT)
+        return vcf_info_dict
 
     # Add in silico prediction annotations to info_dict.
     vcf_info_dict.update(in_silico_dict)
@@ -893,63 +938,78 @@ def populate_info_dict(
 
 def prepare_vcf_header_dict(
     ht: hl.Table,
-    validated_ht: hl.Table,
+    validated_ht: Optional[hl.Table],
+    info_fields: List[str],
     bin_edges: Dict[str, str],
     age_hist_distribution: str,
     subset_list: List[str],
     pops: Dict[str, str],
-    format_dict: Dict[str, Dict[str, str]] = FORMAT_DICT,
     data_type: str = "exomes",
     joint_included: bool = False,
+    freq_comparison_included: bool = False,
+    extra_suffix: str = None,
+    extra_description_text: str = None,
 ) -> Dict[str, Dict[str, str]]:
     """
     Prepare VCF header dictionary.
 
     :param ht: Input Table
     :param validated_ht: Validated HT with unfurled info fields.
+    :param info_fields: List of info fields to add to the info dict.
     :param bin_edges: Dictionary of variant annotation histograms and their associated
         bin edges.
     :param age_hist_distribution: Pipe-delimited string of overall age histogram bin
         frequency.
     :param subset_list: List of sample subsets in dataset.
     :param pops: List of sample global genetic ancestry group names for gnomAD data type.
-    :param format_dict: Dictionary describing MatrixTable entries. Used in header for
-        VCF export.
     :param data_type: Data type to prepare VCF header for. One of "exomes" or "genomes".
         Default is "exomes".
-    :param joint_included: Whether joint frequency data is included in the HT.
+    :param joint_included: Whether joint frequency data is included in the HT. Default is False.
+    :param freq_comparison_included: Whether frequency comparison data is included in the HT.
+    :param extra_suffix: Suffix to add to INFO field.
+    :param extra_description_text: Extra description text to add to INFO field.
     :return: Prepared VCF header dictionary.
     """
-    logger.info("Making FILTER dict for VCF...")
-    filter_dict = make_vcf_filter_dict(
-        hl.eval(ht.filtering_model.snv_cutoff.min_score),
-        hl.eval(ht.filtering_model.indel_cutoff.min_score),
-        inbreeding_cutoff=hl.eval(ht.inbreeding_coeff_cutoff),
-        variant_qc_filter=hl.eval(ht.filtering_model.filter_name),
-    )
+    if data_type != "joint":
+        logger.info("Making FILTER dict for VCF...")
+        filter_dict = make_vcf_filter_dict(
+            hl.eval(ht.filtering_model.snv_cutoff.min_score),
+            hl.eval(ht.filtering_model.indel_cutoff.min_score),
+            inbreeding_cutoff=hl.eval(ht.inbreeding_coeff_cutoff),
+            variant_qc_filter=hl.eval(ht.filtering_model.filter_name),
+        )
+        # subset = "" represents full dataset in VCF header construction, the
+        # logic in gnomad_methods is built around this.
+        subset_list.extend(["", "joint"] if joint_included else [""])
 
-    # subset = "" represents full dataset in VCF header construction, the
-    # logic in gnomad_methods is built around this.
-    subset_list.extend(["", "joint"] if joint_included else [""])
     logger.info("Making INFO dict for VCF...")
     vcf_info_dict = populate_info_dict(
-        info_fields=list(validated_ht.info),
+        info_fields=info_fields,
         bin_edges=bin_edges,
         age_hist_distribution=age_hist_distribution,
         subset_list=subset_list,
         pops=pops,
         data_type=data_type,
+        freq_comparison_included=freq_comparison_included,
+        extra_suffix=extra_suffix,
+        extra_description_text=extra_description_text,
     )
 
-    vcf_info_dict.update({"vep": {"Description": hl.eval(validated_ht.vep_csq_header)}})
+    if data_type != "joint":
+        vcf_info_dict.update(
+            {"vep": {"Description": hl.eval(validated_ht.vep_csq_header)}}
+        )
 
     # Adjust keys to remove adj tags before exporting to VCF.
     new_vcf_info_dict = {i.replace("_adj", ""): j for i, j in vcf_info_dict.items()}
 
-    header_dict = {
-        "info": new_vcf_info_dict,
-        "filter": filter_dict,
-    }
+    if data_type == "joint":
+        header_dict = new_vcf_info_dict
+    else:
+        header_dict = {
+            "info": new_vcf_info_dict,
+            "filter": filter_dict,
+        }
 
     return header_dict
 
@@ -996,12 +1056,11 @@ def format_validated_ht_for_export(
     """
     if info_fields_to_drop is None:
         info_fields_to_drop = []
-
+    logger.info("Dropping fields from info struct...")
     if data_type == "exomes":
         logger.info("Getting downsampling annotations to drop from info struct...")
         ds_fields = get_downsamplings_fields(ht)
         info_fields_to_drop.extend(ds_fields)
-
     # Drop any info annotation with "hgdp" or "tgp" in the name for genomes.
     if data_type == "genomes":
         logger.info("Dropping hgdp and tgp annotations from info struct...")
@@ -1009,11 +1068,20 @@ def format_validated_ht_for_export(
             [f for f in list(ht.info) if (("hgdp" in f) | ("tgp" in f))]
         )
 
-    logger.info("Add age_histogram bin edges to info fields to drop...")
-    info_fields_to_drop.extend(["age_hist_het_bin_edges", "age_hist_hom_bin_edges"])
+    if data_type == "joint":
+        for dt in ["exomes", "genomes", "joint"]:
+            info_fields_to_drop.extend(
+                [
+                    f"age_hist_het_bin_edges_{dt}",
+                    f"age_hist_hom_bin_edges_{dt}",
+                ]
+            )
+    else:
+        logger.info("Add age_histogram bin edges to info fields to drop...")
+        info_fields_to_drop.extend(["age_hist_het_bin_edges", "age_hist_hom_bin_edges"])
 
-    logger.info("Adding 'SB' to info fields to drop...")
-    info_fields_to_drop.append("SB")
+        logger.info("Adding 'SB' to info fields to drop...")
+        info_fields_to_drop.append("SB")
 
     logger.info(
         "Dropping the following fields from info struct: %s...",
@@ -1030,17 +1098,27 @@ def format_validated_ht_for_export(
     ht = ht.transmute(info=hl.struct(**info_annot_mapping))
 
     logger.info("Adjusting VCF incompatible types...")
-    # Reformat AS_SB_TABLE for use in adjust_vcf_incompatible_types
-    ht = ht.annotate(
-        info=ht.info.annotate(
-            AS_SB_TABLE=hl.array([ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]])
+    if data_type != "joint":
+        # Reformat AS_SB_TABLE for use in adjust_vcf_incompatible_types
+        ht = ht.annotate(
+            info=ht.info.annotate(
+                AS_SB_TABLE=hl.array([ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]])
+            )
         )
-    )
     # The Table is already split so there are no annotations that need to be
     # pipe delimited.
     ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
 
     logger.info("Rearranging fields to desired order...")
+    if data_type == "joint":
+        special_items = {"exomes": "exomes_filters", "genomes": "genomes_filters"}
+        new_vcf_info_reorder = []
+        for dt in ["joint", "exomes", "genomes"]:
+            new_vcf_info_reorder += [f"{f}_{dt}" for f in vcf_info_reorder]
+            if dt in special_items:
+                new_vcf_info_reorder.append(special_items[dt])
+        vcf_info_reorder = new_vcf_info_reorder
+
     ht = ht.annotate(
         info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
     )
@@ -1095,6 +1173,43 @@ def check_globals_for_retired_terms(ht: hl.Table) -> None:
         logger.info("Passed retired term check: No retired terms found in globals.")
 
 
+def get_joint_filters(ht: hl.Table) -> hl.Table:
+    """
+    Transform exomes and genomes filters to joint filters.
+
+    :param ht: Input Table.
+    :return: Table with joint filters transformed from exomes and genomes filters.
+    """
+    exomes_filters = ht.info.exomes_filters
+    genomes_filters = ht.info.genomes_filters
+    ht = ht.annotate(
+        filters=hl.set(
+            hl.case()
+            .when(
+                ((hl.len(exomes_filters) == 0) | hl.is_missing(exomes_filters))
+                & ((hl.len(genomes_filters) == 0) | hl.is_missing(genomes_filters)),
+                ["PASS"],
+            )
+            .when(
+                (hl.len(exomes_filters) != 0)
+                & ((hl.len(genomes_filters) == 0) | hl.is_missing(genomes_filters)),
+                ["EXOMES_FILTERED"],
+            )
+            .when(
+                ((hl.len(exomes_filters) == 0) | hl.is_missing(exomes_filters))
+                & (hl.len(genomes_filters) != 0),
+                ["GENOMES_FILTERED"],
+            )
+            .when(
+                (hl.len(exomes_filters) != 0) & (hl.len(genomes_filters) != 0),
+                ["BOTH_FILTERED"],
+            )
+            .default(["MISSING_FILTERS"])
+        )
+    )
+    return ht
+
+
 def main(args):
     """Validate release Table and export VCFs."""
     hl.init(
@@ -1122,8 +1237,8 @@ def main(args):
 
     if contig and test:
         raise ValueError(
-            "Test argument cannot be used with contig argument as test filters"
-            " to chr20, X, and Y."
+            "Test argument cannot be used with contig argument as test uses the dataset"
+            " filtered to test gene(s). "
         )
     if data_type == "joint" and joint_included:
         raise ValueError(
@@ -1198,6 +1313,9 @@ def main(args):
                     }
                     dt_ht = dt_ht.annotate(info=dt_ht.info.rename(ordered_rename_dict))
                     if dt != "joint":
+                        dt_ht = dt_ht.annotate(
+                            info=dt_ht.info.annotate(**{f"{dt}_filters": dt_ht.filters})
+                        )
                         dt_ht = dt_ht.select("info")
 
                     dt_ht = dt_ht.select_globals(
@@ -1216,7 +1334,7 @@ def main(args):
                     )
                     ht = ht.annotate(info=ht.info.annotate(**info_expr))
                     ht = ht.annotate_globals(**validate_hts[dt].index_globals())
-
+                ht = get_joint_filters(ht)
             ht.describe()
 
             # Note: Checkpoint saves time in validity checks and final export by not
@@ -1232,22 +1350,44 @@ def main(args):
             ht = res.release_ht.ht()
             validated_ht = res.validated_ht.ht()
 
-            # v4 Genomes drops subsets from VCF
-            subsets = SUBSETS["exomes"] if data_type == "exomes" else []
-
-            header_dict = prepare_vcf_header_dict(
-                ht,
-                validated_ht,
-                bin_edges=make_hist_bin_edges_expr(
+            if not for_joint:
+                # v4 Genomes drops subsets from VCF
+                subsets = SUBSETS["exomes"] if data_type == "exomes" else []
+                header_dict = prepare_vcf_header_dict(
                     ht,
-                    include_age_hists=True,
-                ),
-                age_hist_distribution=hl.eval(ht.age_distribution.bin_freq),
-                subset_list=subsets,
-                pops=POPS[data_type],
-                data_type=data_type,
-                joint_included=joint_included,
-            )
+                    validated_ht=validated_ht,
+                    info_fields=list(validated_ht.info),
+                    bin_edges=make_hist_bin_edges_expr(
+                        ht,
+                        include_age_hists=True,
+                    ),
+                    age_hist_distribution=hl.eval(ht.age_distribution.bin_freq),
+                    subset_list=subsets,
+                    pops=POPS[data_type],
+                    data_type=data_type,
+                    joint_included=joint_included,
+                )
+            else:
+                header_dict = {"filter": make_vcf_filter_dict(joint=True), "info": {}}
+                for dt in ["exomes", "genomes", "joint"]:
+                    dt_ht = select_type_from_joint_ht(ht, dt)
+                    temp_header_dict = prepare_vcf_header_dict(
+                        dt_ht,
+                        validated_ht=validated_ht,
+                        info_fields=[f for f in validated_ht.info.keys() if dt in f],
+                        bin_edges=make_hist_bin_edges_expr(
+                            dt_ht, include_age_hists=True
+                        ),
+                        age_hist_distribution=hl.eval(dt_ht.age_distribution.bin_freq),
+                        subset_list=[dt],
+                        pops=POPS[dt],
+                        data_type="joint",
+                        joint_included=joint_included,
+                        freq_comparison_included=(dt == "joint"),
+                        extra_suffix=dt,
+                        extra_description_text=f" in {dt} dataset",
+                    )
+                    header_dict["info"].update(temp_header_dict)
 
             logger.info("Writing VCF header dict...")
             with hl.hadoop_open(res.vcf_header_path, "wb") as p:
@@ -1256,13 +1396,6 @@ def main(args):
         # NOTE: The following step is not yet implemented for joint and should not
         # be reviewed for it
         if args.export_vcf:
-            if data_type == "joint":
-                raise ValueError("Joint data type is not yet supported for VCF export.")
-            if contig and test:
-                raise ValueError(
-                    "Test argument cannot be used with contig argument as test filters"
-                    " to chr20, X, and Y."
-                )
             contig = f"chr{contig}" if contig else None
             logger.info(f"Exporting VCF{f' for {contig}' if contig else ''}...")
             res = resources.export_vcf
@@ -1272,9 +1405,6 @@ def main(args):
             with hl.hadoop_open(res.vcf_header_path, "rb") as f:
                 header_dict = pickle.load(f)
 
-            if test:
-                logger.info("Filtering to test partitions on chr20, X, and Y...")
-                ht = filter_to_test(ht)
             if contig:
                 logger.info(f"Filtering to {contig}...")
                 ht = hl.filter_intervals(
