@@ -866,6 +866,7 @@ def populate_info_dict(
     """
     vcf_info_dict = {}
     if data_type == "joint":
+        # vcf_info_dict stays empty if data_type is "joint" and subset is not "joint"
         if "joint" in subset_list:
             vcf_info_dict.update(JOINT_REGION_FLAGS_INFO_DICT)
     else:
@@ -881,7 +882,7 @@ def populate_info_dict(
     for subset in subset_list:
         subset_pops = deepcopy(pops)
         if data_type == "joint":
-            description_text = f" in {subset} dataset " if subset != "" else ""
+            description_text = f" in {subset} dataset" if subset != "" else ""
         else:
             description_text = "" if subset == "" else f" in {subset} subset"
 
@@ -1110,11 +1111,14 @@ def format_validated_ht_for_export(
 
     logger.info("Rearranging fields to desired order...")
     if data_type == "joint":
-        vcf_info_reorder = [
-            f"{f}_{dt}"
-            for dt in ["joint", "exomes", "genomes"]
-            for f in vcf_info_reorder
-        ]
+        special_items = {"exomes": "exomes_filters", "genomes": "genomes_filters"}
+        new_vcf_info_reorder = []
+        for dt in ["joint", "exomes", "genomes"]:
+            new_vcf_info_reorder += [f"{f}_{dt}" for f in vcf_info_reorder]
+            if dt in special_items:
+                new_vcf_info_reorder.append(special_items[dt])
+        vcf_info_reorder = new_vcf_info_reorder
+
     ht = ht.annotate(
         info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
     )
@@ -1233,8 +1237,8 @@ def main(args):
 
     if contig and test:
         raise ValueError(
-            "Test argument cannot be used with contig argument as test filters"
-            " to chr20, X, and Y."
+            "Test argument cannot be used with contig argument as test uses the dataset"
+            " filtered to test gene(s). "
         )
     if data_type == "joint" and joint_included:
         raise ValueError(
@@ -1440,7 +1444,7 @@ def main(args):
                 rekey_new_reference(ht, export_reference),
                 output_path,
                 metadata=header_dict,
-                append_to_header=(append_to_vcf_header_path(data_type=data_type)),
+                append_to_header=append_to_vcf_header_path(data_type=data_type),
                 tabix=True,
             )
 
