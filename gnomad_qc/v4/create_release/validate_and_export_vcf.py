@@ -1404,10 +1404,6 @@ def main(args):
             with hl.hadoop_open(res.vcf_header_path, "rb") as f:
                 header_dict = pickle.load(f)
 
-            if test:
-                if data_type != "joint":
-                    logger.info("Filtering to test partitions on chr20, X, and Y...")
-                    ht = filter_to_test(ht)
             if contig:
                 logger.info(f"Filtering to {contig}...")
                 ht = hl.filter_intervals(
