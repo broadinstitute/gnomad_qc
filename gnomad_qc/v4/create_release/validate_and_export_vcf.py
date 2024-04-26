@@ -1396,11 +1396,6 @@ def main(args):
         # NOTE: The following step is not yet implemented for joint and should not
         # be reviewed for it
         if args.export_vcf:
-            if contig and test:
-                raise ValueError(
-                    "Test argument cannot be used with contig argument as test uses the"
-                    " dataset filtered to test gene(s). "
-                )
             contig = f"chr{contig}" if contig else None
             logger.info(f"Exporting VCF{f' for {contig}' if contig else ''}...")
             res = resources.export_vcf
