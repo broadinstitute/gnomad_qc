@@ -720,6 +720,7 @@ def populate_subset_info_dict(
     :param description_text: Text describing the sample subset that should be added to
         the INFO description.
     :param data_type: One of "exomes", "genomes", or "joint". Default is "exomes".
+    :param pops: Dict of sample global genetic ancestry names for the gnomAD data type.
     :param faf_pops: Dict with gnomAD version (keys) and faf genentic ancestry group
         names (values). Default is FAF_POPS.
     :param sexes: gnomAD sample sexes used in VCF export. Default is SEXES.
@@ -864,8 +865,9 @@ def populate_info_dict(
     :return: Updated INFO dictionary for VCF export.
     """
     vcf_info_dict = {}
-    if data_type == "joint" and "joint" in subset_list:
-        vcf_info_dict.update(JOINT_REGION_FLAGS_INFO_DICT)
+    if data_type == "joint":
+        if "joint" in subset_list:
+            vcf_info_dict.update(JOINT_REGION_FLAGS_INFO_DICT)
     else:
         # Get existing info fields from predefined info_dict, e.g. `FS`,
         # `non_par`, `negative_train_site`...
