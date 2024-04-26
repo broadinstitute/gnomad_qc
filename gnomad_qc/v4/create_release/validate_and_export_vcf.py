@@ -683,7 +683,7 @@ def prepare_ht_for_validation(
         if "filters" in ht.row:
             filters_expr = ht.filters
         else:
-            filters_expr = hl.missing(hl.tset(hl.tstr))
+            filters_expr = hl.empty_set(hl.tstr)
         ht = ht.select("info", filters=filters_expr)
     else:
         ht = ht.select("info", "filters", "rsid")
@@ -1055,12 +1055,11 @@ def format_validated_ht_for_export(
     """
     if info_fields_to_drop is None:
         info_fields_to_drop = []
-
+    logger.info("Dropping fields from info struct...")
     if data_type == "exomes":
         logger.info("Getting downsampling annotations to drop from info struct...")
         ds_fields = get_downsamplings_fields(ht)
         info_fields_to_drop.extend(ds_fields)
-
     # Drop any info annotation with "hgdp" or "tgp" in the name for genomes.
     if data_type == "genomes":
         logger.info("Dropping hgdp and tgp annotations from info struct...")
@@ -1068,11 +1067,20 @@ def format_validated_ht_for_export(
             [f for f in list(ht.info) if (("hgdp" in f) | ("tgp" in f))]
         )
 
-    logger.info("Add age_histogram bin edges to info fields to drop...")
-    info_fields_to_drop.extend(["age_hist_het_bin_edges", "age_hist_hom_bin_edges"])
+    if data_type == "joint":
+        for dt in ["exomes", "genomes", "joint"]:
+            info_fields_to_drop.extend(
+                [
+                    f"age_hist_het_bin_edges_{dt}",
+                    f"age_hist_hom_bin_edges_{dt}",
+                ]
+            )
+    else:
+        logger.info("Add age_histogram bin edges to info fields to drop...")
+        info_fields_to_drop.extend(["age_hist_het_bin_edges", "age_hist_hom_bin_edges"])
 
-    logger.info("Adding 'SB' to info fields to drop...")
-    info_fields_to_drop.append("SB")
+        logger.info("Adding 'SB' to info fields to drop...")
+        info_fields_to_drop.append("SB")
 
     logger.info(
         "Dropping the following fields from info struct: %s...",
@@ -1089,17 +1097,24 @@ def format_validated_ht_for_export(
     ht = ht.transmute(info=hl.struct(**info_annot_mapping))
 
     logger.info("Adjusting VCF incompatible types...")
-    # Reformat AS_SB_TABLE for use in adjust_vcf_incompatible_types
-    ht = ht.annotate(
-        info=ht.info.annotate(
-            AS_SB_TABLE=hl.array([ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]])
+    if data_type != "joint":
+        # Reformat AS_SB_TABLE for use in adjust_vcf_incompatible_types
+        ht = ht.annotate(
+            info=ht.info.annotate(
+                AS_SB_TABLE=hl.array([ht.info.AS_SB_TABLE[:2], ht.info.AS_SB_TABLE[2:]])
+            )
         )
-    )
     # The Table is already split so there are no annotations that need to be
     # pipe delimited.
     ht = adjust_vcf_incompatible_types(ht, pipe_delimited_annotations=[])
 
     logger.info("Rearranging fields to desired order...")
+    if data_type == "joint":
+        vcf_info_reorder = [
+            f"{f}_{dt}"
+            for dt in ["joint", "exomes", "genomes"]
+            for f in vcf_info_reorder
+        ]
     ht = ht.annotate(
         info=ht.info.select(*vcf_info_reorder, *ht.info.drop(*vcf_info_reorder))
     )
@@ -1152,6 +1167,43 @@ def check_globals_for_retired_terms(ht: hl.Table) -> None:
         pprint(errors)
     else:
         logger.info("Passed retired term check: No retired terms found in globals.")
+
+
+def get_joint_filters(ht: hl.Table) -> hl.Table:
+    """
+    Transform exomes and genomes filters to joint filters.
+
+    :param ht: Input Table.
+    :return: Table with joint filters transformed from exomes and genomes filters.
+    """
+    exomes_filters = ht.info.exomes_filters
+    genomes_filters = ht.info.genomes_filters
+    ht = ht.annotate(
+        filters=hl.set(
+            hl.case()
+            .when(
+                ((hl.len(exomes_filters) == 0) | hl.is_missing(exomes_filters))
+                & ((hl.len(genomes_filters) == 0) | hl.is_missing(genomes_filters)),
+                ["PASS"],
+            )
+            .when(
+                (hl.len(exomes_filters) != 0)
+                & ((hl.len(genomes_filters) == 0) | hl.is_missing(genomes_filters)),
+                ["EXOMES_FILTERED"],
+            )
+            .when(
+                ((hl.len(exomes_filters) == 0) | hl.is_missing(exomes_filters))
+                & (hl.len(genomes_filters) != 0),
+                ["GENOMES_FILTERED"],
+            )
+            .when(
+                (hl.len(exomes_filters) != 0) & (hl.len(genomes_filters) != 0),
+                ["BOTH_FILTERED"],
+            )
+            .default(["MISSING_FILTERS"])
+        )
+    )
+    return ht
 
 
 def main(args):
@@ -1257,6 +1309,9 @@ def main(args):
                     }
                     dt_ht = dt_ht.annotate(info=dt_ht.info.rename(ordered_rename_dict))
                     if dt != "joint":
+                        dt_ht = dt_ht.annotate(
+                            info=dt_ht.info.annotate(**{f"{dt}_filters": dt_ht.filters})
+                        )
                         dt_ht = dt_ht.select("info")
 
                     dt_ht = dt_ht.select_globals(
@@ -1275,7 +1330,7 @@ def main(args):
                     )
                     ht = ht.annotate(info=ht.info.annotate(**info_expr))
                     ht = ht.annotate_globals(**validate_hts[dt].index_globals())
-
+                ht = get_joint_filters(ht)
             ht.describe()
 
             # Note: Checkpoint saves time in validity checks and final export by not
@@ -1337,8 +1392,6 @@ def main(args):
         # NOTE: The following step is not yet implemented for joint and should not
         # be reviewed for it
         if args.export_vcf:
-            if data_type == "joint":
-                raise ValueError("Joint data type is not yet supported for VCF export.")
             if contig and test:
                 raise ValueError(
                     "Test argument cannot be used with contig argument as test filters"
@@ -1353,9 +1406,6 @@ def main(args):
             with hl.hadoop_open(res.vcf_header_path, "rb") as f:
                 header_dict = pickle.load(f)
 
-            if test:
-                logger.info("Filtering to test partitions on chr20, X, and Y...")
-                ht = filter_to_test(ht)
             if contig:
                 logger.info(f"Filtering to {contig}...")
                 ht = hl.filter_intervals(
@@ -1390,7 +1440,7 @@ def main(args):
                 rekey_new_reference(ht, export_reference),
                 output_path,
                 metadata=header_dict,
-                append_to_header=append_to_vcf_header_path(data_type=data_type),
+                append_to_header=(append_to_vcf_header_path(data_type=data_type)),
                 tabix=True,
             )
 
