@@ -189,16 +189,16 @@ def create_per_sample_counts_ht(
 
         # LOF variants breakdowns
         for lof_variant in LOF_CSQ_SET:
-            for lof_label in ["HC", "LC", "OS"]:
-                filter_expr[f"{lof_variant}_{lof_label}"] = create_filter_by_csq(
-                    {lof_variant}, lof_label=lof_label
-                )
             for no_lof_flag in [True, False]:
                 flag_desc = "with" if not no_lof_flag else "no"
                 filter_expr[f"{lof_variant}_HC_{flag_desc}_flags"] = (
                     create_filter_by_csq(
                         {lof_variant}, lof_label="HC", no_lof_flag=no_lof_flag
                     )
+                )
+            for lof_label in ["LC", "OS"]:
+                filter_expr[f"{lof_variant}_{lof_label}"] = create_filter_by_csq(
+                    {lof_variant}, lof_label=lof_label
                 )
 
         for csq in [
