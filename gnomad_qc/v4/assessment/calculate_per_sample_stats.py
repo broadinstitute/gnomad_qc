@@ -151,49 +151,55 @@ def create_per_sample_counts_ht(
     if rare_variants:
         filter_expr["rare_variants"] = mt.freq[0].AF < rare_variants_af
     if by_csqs:
-        filter_expr["coding"] = filter_expr["pass_filters"] & hl.if_else(
-            hl.any(lambda csq: mt.most_severe_csq == csq, CSQ_CODING), True, False
-        )
 
-        filter_expr["non_coding"] = filter_expr["pass_filters"] & hl.if_else(
-            hl.any(lambda csq: mt.most_severe_csq == csq, CSQ_NON_CODING), True, False
-        )
+        def create_filter_by_csq(
+            csq_set, lof_label=None, no_lof_flag=None
+        ) -> hl.expr.BooleanExpression:
+            """
+            Create filters based on consequence, labels, and flags.
 
-        filter_expr["lof"] = filter_expr["pass_filters"] & hl.if_else(
-            hl.any(lambda csq: mt.most_severe_csq == csq, LOF_CSQ_SET), True, False
-        )
+            :param csq_set: Set of consequence types to filter by.
+            :param lof_label: Label to filter by loss-of-function annotations.
+            :param no_lof_flag: Flag to filter by loss-of-function annotations.
+            :return: Filter expression.
+            """
+            base_filter = filter_expr["pass_filters"] & hl.any(
+                lambda csq: mt.most_severe_csq == csq, csq_set
+            )
+            if lof_label:
+                base_filter &= mt.lof == lof_label
+            if no_lof_flag is not None:
+                base_filter &= mt.no_lof_flags == no_lof_flag
+            return base_filter
+
+        filter_expr["coding"] = create_filter_by_csq(set(CSQ_CODING))
+        filter_expr["non_coding"] = create_filter_by_csq(set(CSQ_NON_CODING))
+        filter_expr["lof"] = create_filter_by_csq(LOF_CSQ_SET)
 
         for lof_label in ["HC", "LC", "OS"]:
-            filter_expr[f"lof_{lof_label}"] = (
-                filter_expr["pass_filters"]
-                & (
-                    hl.if_else(
-                        hl.any(lambda csq: mt.most_severe_csq == csq, LOF_CSQ_SET),
-                        True,
-                        False,
-                    )
-                )
-                & (mt.lof == lof_label)
+            filter_expr[f"lof_{lof_label}"] = create_filter_by_csq(
+                LOF_CSQ_SET, lof_label
             )
 
-        for lof_flag in [True, False]:
-            filter_expr[f"lof_HC_{'no' if not lof_flag else 'with'}_flags"] = (
-                filter_expr["lof_HC"] & (mt.no_lof_flags == lof_flag)
+        for no_lof_flag in [True, False]:
+            flag_desc = "with" if not no_lof_flag else "no"
+            filter_expr[f"lof_HC_{flag_desc}_flags"] = create_filter_by_csq(
+                LOF_CSQ_SET, lof_label="HC", no_lof_flag=no_lof_flag
             )
 
+        # LOF variants breakdowns
         for lof_variant in LOF_CSQ_SET:
             for lof_label in ["HC", "LC", "OS"]:
-                filter_expr[f"{lof_variant}_{lof_label}"] = (
-                    filter_expr["pass_filters"]
-                    & (mt.most_severe_csq == lof_variant)
-                    & (mt.lof == lof_label)
+                filter_expr[f"{lof_variant}_{lof_label}"] = create_filter_by_csq(
+                    {lof_variant}, lof_label=lof_label
                 )
-
-        for lof_variant in LOF_CSQ_SET:
-            for lof_flag in [True, False]:
-                filter_expr[
-                    f"{lof_variant}_HC_{'no' if not lof_flag else 'with'}_flags"
-                ] = filter_expr[f"{lof_variant}_HC"] & (mt.no_lof_flags == lof_flag)
+            for no_lof_flag in [True, False]:
+                flag_desc = "with" if not no_lof_flag else "no"
+                filter_expr[f"{lof_variant}_HC_{flag_desc}_flags"] = (
+                    create_filter_by_csq(
+                        {lof_variant}, lof_label="HC", no_lof_flag=no_lof_flag
+                    )
+                )
 
         for csq in [
             "missense_variant",
@@ -201,7 +207,7 @@ def create_per_sample_counts_ht(
             "intron_variant",
             "intergenic_variant",
         ]:
-            filter_expr[csq] = filter_expr["pass_filters"] & (mt.most_severe_csq == csq)
+            filter_expr[csq] = create_filter_by_csq({csq})
 
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
     ht = mt.select_cols(
