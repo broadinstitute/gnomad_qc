@@ -162,8 +162,10 @@ def create_per_sample_counts_ht(
         )
     if rare_variants:
         for af in rare_variants_afs:
+            logger.info(f"Filtering to rare variants with adj AF <{af}...")
             filter_expr[f"rare_{af}"] = mt.freq[0].AF < af
     if by_csqs:
+        logger.info("Filtering to variants by consequence type...")
 
         def create_filter_by_csq(
             csq_set, lof_label=None, no_lof_flag=None
