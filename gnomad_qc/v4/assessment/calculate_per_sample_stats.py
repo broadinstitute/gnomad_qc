@@ -65,7 +65,7 @@ def create_per_sample_counts_ht(
     rare_variants: bool = False,
     vep_canonical: bool = True,
     vep_mane: bool = False,
-    rare_variants_af: float = 0.001,
+    rare_variants_afs: Optional[list[float]] = None,
 ) -> hl.Table:
     """
     Create Table of Hail's sample_qc output broken down by requested variant groupings.
@@ -91,8 +91,7 @@ def create_per_sample_counts_ht(
         If trying count variants in all transcripts, set it to False. Default is True.
     :param vep_mane: If `by_csqs` is True, filter to only MANE transcripts. Default is
         False.
-    :param rare_variants_af: The allele frequency threshold to use for rare variants.
-        Default is 0.001.
+    :param rare_variants_afs: The allele frequency thresholds to use for rare variants.
     :return: Table containing per-sample variant counts.
     """
     logger.info("Filtering out low confidence regions...")
@@ -149,7 +148,8 @@ def create_per_sample_counts_ht(
             filter_expr["ukb_broad_capture_union"] & filter_expr["pass_filters"]
         )
     if rare_variants:
-        filter_expr["rare_variants"] = mt.freq[0].AF < rare_variants_af
+        for af in rare_variants_afs:
+            filter_expr[f"rare_{af}"] = mt.freq[0].AF < af
     if by_csqs:
 
         def create_filter_by_csq(
@@ -367,7 +367,7 @@ def main(args):
                 rare_variants=not args.skip_rare_variants,
                 vep_canonical=args.vep_canonical,
                 vep_mane=args.vep_mane,
-                rare_variants_af=args.rare_variants_af,
+                rare_variants_afs=args.rare_variants_afs,
             ).write(per_sample_res.path, overwrite=overwrite)
 
         if args.aggregate_sample_stats:
@@ -452,9 +452,9 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--rare-variants-af",
+        "--rare-variants-afs",
         type=float,
-        default=0.001,
+        default=[0.0001, 0.001, 0.01],
         help="The allele frequency threshold to use for rare variants.",
     )
     parser.add_argument(
