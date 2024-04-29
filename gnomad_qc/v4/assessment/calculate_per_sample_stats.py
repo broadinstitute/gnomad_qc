@@ -171,7 +171,7 @@ def create_per_sample_counts_ht(
             csq_set: hl.set, lof_label: str = None, no_lof_flag: bool = None
         ) -> hl.expr.BooleanExpression:
             """
-            Create filters based on consequence, labels, and flags. Always filters to variant which pass all variant qc filters.
+            Create filters based on consequence, labels, and flags. Always filters to variants which pass all variant qc filters.
 
             :param csq_set: Set of consequence types to filter by.
             :param lof_label: Label to filter by loss-of-function annotations.
