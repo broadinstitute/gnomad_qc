@@ -131,19 +131,32 @@ def create_per_sample_counts_ht(
     filter_expr = {"all_variants": True}
 
     if pass_filters:
+        logger.info("Filtering to variants that pass all variant QC filters...")
         filter_expr["pass_filters"] = hl.len(mt.filters) == 0
     if ukb_capture:
+        logger.info("Filtering to variants in UK Biobank capture regions...")
         filter_expr["ukb_capture"] = ~mt.region_flags.outside_ukb_capture_region
     if broad_capture:
+        logger.info("Filtering to variants in Broad capture regions...")
         filter_expr["broad_capture"] = ~mt.region_flags.outside_broad_capture_region
     if ukb_capture and broad_capture:
+        logger.info(
+            "Filtering to variants in the intersect of UKB and Broad capture regions..."
+        )
         filter_expr["ukb_broad_capture_intersect"] = (
             filter_expr["ukb_capture"] & filter_expr["broad_capture"]
+        )
+        logger.info(
+            "Filtering to variants in the union of UKB and Broad capture regions..."
         )
         filter_expr["ukb_broad_capture_union"] = (
             filter_expr["ukb_capture"] | filter_expr["broad_capture"]
         )
-    if all(["ukb_capture", "broad_capture", "pass_filters"]):
+    if all([ukb_capture, broad_capture, pass_filters]):
+        logger.info(
+            "Filtering to variants in the union of UKB and Broad capture regions and"
+            " pass filters..."
+        )
         filter_expr["ukb_broad_capture_union_pass_filters"] = (
             filter_expr["ukb_broad_capture_union"] & filter_expr["pass_filters"]
         )
@@ -361,8 +374,16 @@ def main(args):
                 mt,
                 release_ht,
                 pass_filters=not args.skip_pass_filters,
-                ukb_capture=not args.skip_filter_ukb_capture_intervals,
-                broad_capture=not args.skip_filter_broad_capture_intervals,
+                ukb_capture=(
+                    not args.skip_filter_ukb_capture_intervals
+                    if data_type == "exomes"
+                    else False
+                ),
+                broad_capture=(
+                    not args.skip_filter_broad_capture_intervals
+                    if data_type == "exomes"
+                    else False
+                ),
                 by_csqs=not args.skip_by_csqs,
                 rare_variants=not args.skip_rare_variants,
                 vep_canonical=args.vep_canonical,
