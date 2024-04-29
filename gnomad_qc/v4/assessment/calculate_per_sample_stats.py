@@ -168,10 +168,10 @@ def create_per_sample_counts_ht(
         logger.info("Filtering to variants by consequence type...")
 
         def create_filter_by_csq(
-            csq_set, lof_label=None, no_lof_flag=None
+            csq_set: hl.set, lof_label: str = None, no_lof_flag: bool = None
         ) -> hl.expr.BooleanExpression:
             """
-            Create filters based on consequence, labels, and flags.
+            Create filters based on consequence, labels, and flags. Always filters to variant which pass all variant qc filters.
 
             :param csq_set: Set of consequence types to filter by.
             :param lof_label: Label to filter by loss-of-function annotations.
