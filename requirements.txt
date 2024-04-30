@@ -5,3 +5,4 @@ networkx
 scikit-learn
 scipy
 hail
+statsmodels

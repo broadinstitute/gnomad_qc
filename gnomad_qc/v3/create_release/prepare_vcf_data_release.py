@@ -85,7 +85,7 @@ SITE_FIELDS = remove_fields_from_constant(SITE_FIELDS, MISSING_SITES_FIELDS)
 MISSING_AS_FIELDS = ["AS_VarDP"]
 AS_FIELDS = remove_fields_from_constant(AS_FIELDS, MISSING_AS_FIELDS)
 
-POPS = POPS["v3"]["genomes"]
+POPS = POPS["v3"]
 SUBSETS = SUBSETS["v3"]
 
 # Make subset list (used in properly filling out VCF header descriptions
