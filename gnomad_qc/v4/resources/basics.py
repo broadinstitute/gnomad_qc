@@ -119,6 +119,15 @@ def get_gnomad_v4_vds(
             vds.variant_data._filter_partitions(filter_partitions),
         )
 
+    # Remove the chr19 site with excessive numbers of alleles (n=27374) which tends to
+    # create memory issues for `split_multi`.
+    logger.info("Dropping excessively multi-allelic site at chr19:5787204...")
+    vds = hl.vds.filter_intervals(
+        vds,
+        [hl.parse_locus_interval("chr19:5787204-5787205", reference_genome="GRCh38")],
+        keep=False,
+    )
+
     # Count current number of samples in the VDS.
     n_samples = vds.variant_data.count_cols()
 

@@ -1,4 +1,6 @@
 """Script containing version and release constants."""
+DATA_TYPES = ["exomes", "genomes"]
+RELEASE_DATA_TYPES = DATA_TYPES + ["joint"]
 
 VERSIONS = ["4.0", "4.1"]
 CURRENT_VERSION = "4.1"
@@ -42,6 +44,3 @@ CURRENT_ALL_SITES_AN_RELEASE = {"exomes": "4.1", "genomes": "4.1"}
 
 HGDP_TGP_RELEASES = ["4.0"]
 CURRENT_HGDP_TGP_RELEASE = "4.0"
-
-COMBINED_FAF_RELEASES = ["4.0", "4.1"]
-CURRENT_COMBINED_FAF_RELEASE = "4.1"
