@@ -22,6 +22,7 @@ computed:
 
 Aggregated statistics can also be computed by ancestry.
 """
+
 import argparse
 import logging
 from typing import Optional
@@ -257,6 +258,42 @@ def create_per_sample_counts_ht(
     return ht
 
 
+def compute_per_callset_stats(ht: hl.Table) -> hl.Struct:
+    """
+    Compute a set number of per-callset variant statistics.
+
+    :param ht: Table containing per-sample variant counts.
+    :return: Struct containing sums of a set of these above counts.
+    """
+    top_level = set([row_i for row_i in ht.row])
+    queries = set(
+        [
+            "all_variants",
+            "pass_filters",
+            "lof_HC",
+            "lof_LC",
+            "lof_OS",
+            "lof_HC_no_flags",
+            "lof_HC_with_flags",
+        ]
+    )
+    queries = list(queries.intersection(top_level))
+
+    sums = ["n_non_ref", "n_singleton", "n_snp", "n_indel"]
+
+    sum_struct = hl.struct(
+        **{
+            f"{query_i}_{sum_i}": ht_001.aggregate(hl.agg.sum(ht_001[query_i][sum_i]))
+            for query_i in queries
+            for sum_i in sums
+        }
+    )
+
+    sum_struct.show(-1)
+
+    return sum_struct
+
+
 def compute_agg_sample_stats(
     ht: hl.Table,
     meta_ht: Optional[hl.Table] = None,
@@ -393,6 +430,13 @@ def main(args):
                 rare_variants_afs=args.rare_variants_afs,
             ).write(per_sample_res.path, overwrite=overwrite)
 
+        if args.compute_per_callset_stats:
+            logger.info("Computing a set number of per-callset variant stats...")
+            ht = per_sample_res.ht().checkpoint(
+                hl.utils.new_temp_file("per_sample_counts", "ht")
+            )
+            compute_per_callset_stats(ht)
+
         if args.aggregate_sample_stats:
             logger.info("Computing aggregate sample statistics...")
             ht = per_sample_res.ht().checkpoint(
@@ -497,6 +541,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--vep-mane",
         help="Whether to filter to only MANE transcripts. when using --by-csqs.",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--compute-per-callset-stats",
+        help="Compute a set number of per-callset stats",
         action="store_true",
     )
     parser.add_argument(
