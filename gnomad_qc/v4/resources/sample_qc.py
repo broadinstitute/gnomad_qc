@@ -434,27 +434,6 @@ def interval_qc_pass(
 # Generate QC MT resources
 ######################################################################
 
-
-def get_predetermined_qc(
-    version: str = CURRENT_SAMPLE_QC_VERSION, test: bool = False
-) -> MatrixTableResource:
-    """
-    Get the dense MatrixTableResource of all predetermined QC sites for the indicated gnomAD version.
-
-    :param version: Version of QC MatrixTableResource to return.
-    :param test: Whether to use a tmp path for a test MatrixTableResource.
-    :return: MatrixTableResource of predetermined QC sites.
-    """
-    if test:
-        return MatrixTableResource(
-            get_checkpoint_path(f"dense_pre_ld_prune_qc_sites.v{version}.test", mt=True)
-        )
-    elif version == "3.1":
-        return v3_predetermined_qc
-    else:
-        return v4_predetermined_qc.versions[version]
-
-
 # HT of pre LD pruned variants chosen from CCDG, gnomAD v3, and UKB variant info.
 # See: https://github.com/Nealelab/ccdg_qc/blob/master/scripts/pca_variant_filter.py
 predetermined_qc_sites = TableResource(
@@ -476,6 +455,26 @@ v4_predetermined_qc = VersionedMatrixTableResource(
         for version in SAMPLE_QC_VERSIONS
     },
 )
+
+
+def get_predetermined_qc(
+    version: str = CURRENT_SAMPLE_QC_VERSION, test: bool = False
+) -> MatrixTableResource:
+    """
+    Get the dense MatrixTableResource of all predetermined QC sites for the indicated gnomAD version.
+
+    :param version: Version of QC MatrixTableResource to return.
+    :param test: Whether to use a tmp path for a test MatrixTableResource.
+    :return: MatrixTableResource of predetermined QC sites.
+    """
+    if test:
+        return MatrixTableResource(
+            get_checkpoint_path(f"dense_pre_ld_prune_qc_sites.v{version}.test", mt=True)
+        )
+    elif version == "3.1":
+        return v3_predetermined_qc
+    else:
+        return v4_predetermined_qc.versions[version]
 
 
 def get_joint_qc(test: bool = False) -> VersionedMatrixTableResource:

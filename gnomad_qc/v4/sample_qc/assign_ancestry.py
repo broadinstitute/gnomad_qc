@@ -89,24 +89,24 @@ Projects that were excluded based on this analysis are:
 
 
 def run_pca(
+    qc_mt: hl.MatrixTable,
+    joint_meta: hl.Table,
     related_samples_to_drop: hl.Table,
     include_unreleasable_samples: hl.bool = False,
     n_pcs: int = 30,
-    test: hl.bool = False,
 ) -> Tuple[List[float], hl.Table, hl.Table]:
     """
     Run population PCA using `run_pca_with_relateds`.
 
+    :param qc_mt: MatrixTable with variants filtered for QC.
+    :param joint_meta: Table of joint metadata.
     :param related_samples_to_drop: Table of related samples to drop from PCA run.
     :param include_unreleasable_samples: Should unreleasable samples be included in the
         PCA.
     :param n_pcs: Number of PCs to compute.
-    :param test: Subset QC MT to small test dataset.
     :return: Eigenvalues, scores and loadings from PCA.
     """
     logger.info("Running population PCA")
-    qc_mt = get_joint_qc(test=test).mt()
-    joint_meta = joint_qc_meta.ht()
     samples_to_drop = related_samples_to_drop.select()
 
     if not include_unreleasable_samples:
@@ -537,6 +537,10 @@ def get_pipeline_resources(
             "relatedness.py --compute-related-samples-to-drop": {
                 "samples_to_drop_ht": related_samples_to_drop(release=False).ht()
             },
+            "generate_qc_mt.py --generate-qc-mt": {
+                "joint_qc_mt": get_joint_qc(test=test)
+            },
+            **joint_meta_input,
         },
         output_resources={
             "ancestry_pca_scores_ht": ancestry_pca_scores(
@@ -624,10 +628,11 @@ def main(args):
             res = ancestry_assignment_resources.run_ancestry_pca
             res.check_resource_existence()
             pop_eigenvalues, pop_scores_ht, pop_loadings_ht = run_pca(
+                res.joint_qc_mt.mt(),
+                res.joint_meta_ht.ht(),
                 res.samples_to_drop_ht.ht(),
                 include_unreleasable_samples,
                 args.n_pcs,
-                test,
             )
 
             write_pca_results(

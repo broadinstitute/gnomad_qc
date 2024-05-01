@@ -50,6 +50,13 @@ autodoc_default_options = {
     "member-order": "bysource",
 }
 
+# Mermaid related args
+mermaid_version = "10.9.0"
+mermaid_output_format = 'raw'
+mermaid_params = ['--width', '200']
+mermaid_init_js = "mermaid.initialize({startOnLoad:true, flowchart:{useMaxWidth:true, defaultRenderer: 'elk'}})"
+mermaid_verbose = True
+
 # Configuration for sphinx_autodoc_typehints
 # Document parameter types even if the parameter is otherwise undocumented.
 always_document_param_types = True

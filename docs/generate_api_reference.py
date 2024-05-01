@@ -159,7 +159,7 @@ def write_module_doc(module_name):
         argparse_doc = ""
 
     if os.path.exists(module_flowchart_path(module, local=True)):
-        flowchart = MERMAID_TEMPLATE.format(mmd_path=package_flowchart_path(module))
+        flowchart = MERMAID_TEMPLATE.format(mmd_path=module_flowchart_path(module))
     else:
         flowchart = ""
 

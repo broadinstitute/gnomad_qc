@@ -299,6 +299,7 @@ def get_pipeline_resources(
     calling_interval_name: str,
     calling_interval_padding: int,
     include_sex_filter: bool,
+    n_alt_alleles_strata_name: str = "three",
 ) -> PipelineResourceCollection:
     """
     Get PipelineResourceCollection for all resources needed in the hard filters pipeline.
@@ -308,6 +309,8 @@ def get_pipeline_resources(
     :param calling_interval_name: Name of calling intervals to use.
     :param calling_interval_padding: Padding to use for calling intervals.
     :param include_sex_filter: Whether sex filters should be included in hard filtering.
+    :param n_alt_alleles_strata_name: Name to use for number of alternative allele
+        stratification.
     :return: PipelineResourceCollection containing resources for all steps of the
         hard filters pipeline.
     """
@@ -317,10 +320,15 @@ def get_pipeline_resources(
         overwrite=overwrite,
     )
 
+    if n_alt_alleles_strata_name != "bi-allelic":
+        n_alt_alleles_strata_name = f"under_{n_alt_alleles_strata_name}_alt_alleles"
+
     # Create resource collection for each step of the relatedness pipeline.
     run_sample_qc = PipelineStepResourceCollection(
         "--sample-qc",
-        output_resources={"sample_qc_ht": get_sample_qc(test=test)},
+        output_resources={
+            "sample_qc_ht": get_sample_qc(n_alt_alleles_strata_name, test=test)
+        },
     )
     compute_coverage = PipelineStepResourceCollection(
         "--compute-coverage",
@@ -375,7 +383,7 @@ def get_pipeline_resources(
     # Add all steps to the relatedness pipeline resource collection.
     hard_filter_pipeline.add_steps(
         {
-            "run_sample_qc": run_sample_qc,
+            "sample_qc": run_sample_qc,
             "compute_coverage": compute_coverage,
             "compute_contamination_estimate": compute_contamination_estimate,
             "compute_chr20_mean_dp": compute_chr20_mean_dp,
@@ -408,6 +416,7 @@ def main(args):
         calling_interval_name=calling_interval_name,
         calling_interval_padding=calling_interval_padding,
         include_sex_filter=args.include_sex_filter,
+        n_alt_alleles_strata_name=args.n_alt_alleles_strata_name,
     )
 
     try:
@@ -528,7 +537,7 @@ def main(args):
             ht = compute_hard_filters(
                 ht,
                 fingerprinting_failed.ht(),
-                get_sample_qc("bi_allelic", test=test).ht(),
+                res.sample_qc_ht.ht(),
                 args.include_sex_filter,
                 args.max_n_singleton,
                 args.max_r_het_hom_var,
