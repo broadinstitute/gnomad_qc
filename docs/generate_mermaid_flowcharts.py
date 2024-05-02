@@ -53,7 +53,13 @@ MODULES_TO_SKIP = {
     "cuKING",
     "resources",
     "subset",
-    "create_release_utils"
+    "create_release_utils",
+    "insilico_predictors",
+    "vep_context_ht",
+    "vrs_annotation_batch",
+    "make_var_annot_hists",
+    "create_sample_qc_metadata_ht_genomes",
+    "import_variant_qc_vcf"
 }
 """Modules to skip when constructing the flowchart."""
 
@@ -126,6 +132,12 @@ KWARG_OPTIONS_BY_RESOURCE = {
     "get_sample_qc": {
         "strat": ["under_three_alt_alleles"]
     },
+    "get_downsampling": {
+        "subset": [None, "non_ukb"]
+    },
+    "info_vcf_path": {
+        "info_method": ["AS", "quasi", "set_long_AS_missing"]
+    }
 }
 """Resource function parameter options to include in the resource nodes."""
 
@@ -158,6 +170,10 @@ KWARG_OPTIONS_BY_MODULE = {
         "exclude_unreleasable_samples_all_steps": [False],
         "use_nearest_neighbors_approximation": [False],
         "apply_stratified_filtering": [False],
+    },
+    "gnomad_qc.v4.annotations.compute_coverage": {
+        "calling_interval_name": ["intersection"],  # ["broad", "ukb", "intersection"],
+        "calling_interval_padding": [50],  # [0, 50]
     },
 }
 """Parameter options to pass to 'get_pipeline_resources' function by module."""
@@ -562,12 +578,13 @@ class BaseQCParser:
         :return: ID for the ResourceNode.
         """
         bind_kwargs = self.remove_excluded_parameters(bind_kwargs)
+        name_reformat = self.name.replace('--', '').replace('-', '_')
         if bind_kwargs is None or len(bind_kwargs) == 0:
-            return f"{self.type}_{self.name}"
+            return f"{self.type}_{name_reformat}"
         else:
             res_arg_str = "_".join("{}_{}".format(k, v) for k, v in bind_kwargs.items())
 
-            return f"{self.type}_{self.name}_{res_arg_str}"
+            return f"{self.type}_{name_reformat}_{res_arg_str}"
 
     def get_doc_link(self, relative=True, add_function=True):
         """
@@ -1022,8 +1039,6 @@ def parse_qc_package(flowchart, package, full_package_name, resource_pkg=False):
         # the flowchart scripts.
         if not resource_pkg and rel_module_name in MODULES_TO_SKIP:
             continue
-        #if not resource_pkg and module.name != "gnomad_qc.v4.sample_qc.hard_filters":
-        #    continue
 
         resource_parsers = []
         pipeline_parsers = []
@@ -1570,7 +1585,6 @@ def main(args):
         for n, d in fc.nodes(data=True):
             if d.get("type") not in {"resource"}:
                 continue
-            #if d.get("id") is not None and "get_predetermined_qc" in d.get("id"):
             if d.get("is_raw_resource", ""):
                 node_attribute_change[n] = {'type': "raw_resource"}
 
@@ -1578,12 +1592,7 @@ def main(args):
             input_steps = find_input_modules(fc, n)
 
             if creator_step is not None and len(input_steps) > 0 and {creator_step} != set(input_steps):
-                #print(n, d)
-                #print("\tCreator step:", creator_step)
-                #print("\tInput steps:", input_steps)
                 node_attribute_change[n] = {'type': "main_resource"}
-
-            #print()
 
         nx.set_node_attributes(fc, node_attribute_change)
 
