@@ -266,6 +266,8 @@ def compute_per_callset_stats(ht: hl.Table, all_stats: bool = False) -> hl.Struc
     :return: Struct containing sums of a set of these above counts.
     """
     top_level = set([row_i for row_i in ht.row])
+
+    # Build queries, the list of stratifications to count within.
     if not all_stats:
         queries = set(
             [
@@ -282,8 +284,10 @@ def compute_per_callset_stats(ht: hl.Table, all_stats: bool = False) -> hl.Struc
     else:
         queries = list(top_level)
 
+    # Sums as the specific counts to sum up. Open to change. 
     sums = ["n_non_ref", "n_singleton", "n_snp", "n_indel"]
 
+    # Possible to do within a table, but prior table being keyed by samples made this difficult.
     sum_struct = hl.struct(
         **{
             f"{query_i}_{sum_i}": ht.aggregate(hl.agg.sum(ht[query_i][sum_i]))
