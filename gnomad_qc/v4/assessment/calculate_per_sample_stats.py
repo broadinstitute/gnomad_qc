@@ -279,7 +279,7 @@ def compute_per_callset_stats(ht: hl.Table, all_stats: bool = False) -> hl.Struc
             ]
         )
         queries = list(queries.intersection(top_level))
-    else: 
+    else:
         queries = list(top_level)
 
     sums = ["n_non_ref", "n_singleton", "n_snp", "n_indel"]
@@ -438,13 +438,15 @@ def main(args):
             ht = per_sample_res.ht().checkpoint(
                 hl.utils.new_temp_file("per_sample_counts", "ht")
             )
-            per_callset_expression = compute_per_callset_stats(ht,all_stats=args.callset_stats_all_levels)
+            per_callset_expression = compute_per_callset_stats(
+                ht, all_stats=args.callset_stats_all_levels
+            )
 
             per_callset_expression_path = per_sample_res = get_per_sample_counts(
-                test=test, data_type=data_type, suffix=args.custom_suffix).path.replace('.ht','_per_callset.tsv')
+                test=test, data_type=data_type, suffix=args.custom_suffix
+            ).path.replace(".ht", "_per_callset.tsv")
 
-            per_callset_expression.export(per_callset_expression_path,overwrite=True)
-
+            per_callset_expression.export(per_callset_expression_path, overwrite=True)
 
         if args.aggregate_sample_stats:
             logger.info("Computing aggregate sample statistics...")
