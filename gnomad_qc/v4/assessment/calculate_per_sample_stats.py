@@ -258,7 +258,7 @@ def create_per_sample_counts_ht(
     return ht
 
 
-def compute_per_callset_stats(ht: hl.Table) -> hl.Struct:
+def compute_per_callset_stats(ht: hl.Table, all_stats: bool = False) -> hl.Struct:
     """
     Compute a set number of per-callset variant statistics.
 
@@ -266,24 +266,27 @@ def compute_per_callset_stats(ht: hl.Table) -> hl.Struct:
     :return: Struct containing sums of a set of these above counts.
     """
     top_level = set([row_i for row_i in ht.row])
-    queries = set(
-        [
-            "all_variants",
-            "pass_filters",
-            "lof_HC",
-            "lof_LC",
-            "lof_OS",
-            "lof_HC_no_flags",
-            "lof_HC_with_flags",
-        ]
-    )
-    queries = list(queries.intersection(top_level))
+    if not all_stats:
+        queries = set(
+            [
+                "all_variants",
+                "pass_filters",
+                "lof_HC",
+                "lof_LC",
+                "lof_OS",
+                "lof_HC_no_flags",
+                "lof_HC_with_flags",
+            ]
+        )
+        queries = list(queries.intersection(top_level))
+    else: 
+        queries = list(top_level)
 
     sums = ["n_non_ref", "n_singleton", "n_snp", "n_indel"]
 
     sum_struct = hl.struct(
         **{
-            f"{query_i}_{sum_i}": ht_001.aggregate(hl.agg.sum(ht_001[query_i][sum_i]))
+            f"{query_i}_{sum_i}": ht.aggregate(hl.agg.sum(ht[query_i][sum_i]))
             for query_i in queries
             for sum_i in sums
         }
@@ -430,12 +433,18 @@ def main(args):
                 rare_variants_afs=args.rare_variants_afs,
             ).write(per_sample_res.path, overwrite=overwrite)
 
-        if args.compute_per_callset_stats:
+        if args.callset_stats:
             logger.info("Computing a set number of per-callset variant stats...")
             ht = per_sample_res.ht().checkpoint(
                 hl.utils.new_temp_file("per_sample_counts", "ht")
             )
-            compute_per_callset_stats(ht)
+            per_callset_expression = compute_per_callset_stats(ht,all_stats=args.callset_stats_all_levels)
+
+            per_callset_expression_path = per_sample_res = get_per_sample_counts(
+                test=test, data_type=data_type, suffix=args.custom_suffix).path.replace('.ht','_per_callset.tsv')
+
+            per_callset_expression.export(per_callset_expression_path,overwrite=True)
+
 
         if args.aggregate_sample_stats:
             logger.info("Computing aggregate sample statistics...")
@@ -544,8 +553,13 @@ if __name__ == "__main__":
         action="store_true",
     )
     parser.add_argument(
-        "--compute-per-callset-stats",
+        "--callset-stats",
         help="Compute a set number of per-callset stats",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--callset-stats-all-levels",
+        help="Compute n_singleton, n_snp, n_indel, and n_non_ref for all top-level stratifications.",
         action="store_true",
     )
     parser.add_argument(
