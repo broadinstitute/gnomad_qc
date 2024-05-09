@@ -134,7 +134,6 @@ def get_summary_stats_filter_groups_ht(
     :param rare_variants_afs: The allele frequency thresholds to use for rare variants.
     :return: Table containing filter groups for summary stats.
     """
-    # TODO: Still need to handle the AF cutoffs
     # Filter to only canonical or MANE transcripts if requested and get the most severe
     # consequence for each variant.
     if by_csqs:
@@ -330,6 +329,9 @@ def main(args):
     data_type = args.data_type
     test = args.test
     overwrite = args.overwrite
+    ukb_capture_intervals = not args.skip_filter_ukb_capture_intervals
+    broad_capture_intervals = not args.skip_filter_broad_capture_intervals
+    rare_variants_afs = args.rare_variants_afs if not args.skip_rare_variants else None
     per_sample_res = get_per_sample_counts(
         test=test, data_type=data_type, suffix=args.custom_suffix
     )
@@ -357,6 +359,8 @@ def main(args):
                 mt = get_gnomad_v4_genomes_vds(
                     test=test, release_only=True, split=True, chrom=chrom
                 ).variant_data
+                ukb_capture_intervals = False
+                broad_capture_intervals = False
 
             release_ht = release_sites(data_type=data_type).ht()
             if test:
@@ -367,22 +371,12 @@ def main(args):
             filter_groups_ht = get_summary_stats_filter_groups_ht(
                 release_ht,
                 pass_filters=not args.skip_pass_filters,
-                ukb_capture=(
-                    not args.skip_filter_ukb_capture_intervals
-                    if data_type == "exomes"
-                    else False
-                ),
-                broad_capture=(
-                    not args.skip_filter_broad_capture_intervals
-                    if data_type == "exomes"
-                    else False
-                ),
+                ukb_capture=ukb_capture_intervals,
+                broad_capture=broad_capture_intervals,
                 by_csqs=not args.skip_by_csqs,
                 vep_canonical=args.vep_canonical,
                 vep_mane=args.vep_mane,
-                rare_variants_afs=(
-                    args.rare_variants_afs if not args.skip_rare_variants else None
-                ),
+                rare_variants_afs=rare_variants_afs,
             )
             create_per_sample_counts_ht(mt, filter_groups_ht).write(
                 per_sample_res.path, overwrite=overwrite
