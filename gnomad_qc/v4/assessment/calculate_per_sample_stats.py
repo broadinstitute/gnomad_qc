@@ -101,7 +101,7 @@ def get_capture_filter_exprs(
                 filter_expr["ukb_broad_capture_union"] & pass_filter_expr
             )
 
-    logger.info("Adding filtering for:\n%s...", "\n\t".join(log_list))
+    logger.info("Adding filtering for:\n\t%s...", "\n\t".join(log_list))
 
     return filter_expr
 
@@ -127,8 +127,6 @@ def get_summary_stats_filter_groups_ht(
     :param broad_capture: Include count of variants that are in Broad capture intervals
     :param by_csqs: Include count of variants by variant consequence: loss-of-function,
         missense, and synonymous.
-    :param rare_variants: Include count of rare variants, defined as those which have
-        adj AF <0.1%.
     :param vep_canonical: If `by_csqs` is True, filter to only canonical transcripts.
         If trying count variants in all transcripts, set it to False. Default is True.
     :param vep_mane: If `by_csqs` is True, filter to only MANE transcripts. Default is
@@ -153,7 +151,7 @@ def get_summary_stats_filter_groups_ht(
         ht,
         filter_lcr=True,
         filter_expr=ht.filters if pass_filters else None,
-        freq_expr=ht.freq[0],
+        freq_expr=ht.freq[0].AF,
         max_af=rare_variants_afs,
     )
 
@@ -182,7 +180,7 @@ def get_summary_stats_filter_groups_ht(
                 "coding": set(CSQ_CODING),
                 "non_coding": set(CSQ_NON_CODING),
             },
-            additional_csqs=LOF_CSQ_SET + additional_csqs,
+            additional_csqs=additional_csqs,
         )
 
         # For all csq breakdowns, filter to only variants that pass all filters.
@@ -194,7 +192,10 @@ def get_summary_stats_filter_groups_ht(
         filter_exprs.pop("pass_filters")
 
     ht = ht.select(**filter_exprs)
-    ht = ht.annotate_globals(filter_groups=filter_exprs.keys())
+    filter_groups = list(filter_exprs.keys())
+    filter_groups.remove("no_lcr")
+    ht = ht.annotate_globals(filter_groups=filter_groups)
+    logger.info("Filter groups for summary stats: %s", filter_groups)
 
     # Filter to only variants that are not in low confidence regions.
     ht = ht.filter(ht.no_lcr).drop("no_lcr")
@@ -239,8 +240,12 @@ def create_per_sample_counts_ht(
     )
     filter_groups = hl.eval(filter_group_ht.filter_groups)
     ht = mt.select_cols(
-        **{grp: hl.agg.filter(mt[grp], qc_expr) for grp in filter_groups}
+        _sample_qc=hl.struct(
+            **{grp: hl.agg.filter(mt[grp], qc_expr) for grp in filter_groups}
+        )
     ).cols()
+
+    ht = ht.select(**ht._sample_qc)
 
     # Add 'n_indel' to the output Table.
     ht = ht.annotate(
@@ -376,10 +381,11 @@ def main(args):
                     else False
                 ),
                 by_csqs=not args.skip_by_csqs,
-                rare_variants=not args.skip_rare_variants,
                 vep_canonical=args.vep_canonical,
                 vep_mane=args.vep_mane,
-                rare_variants_afs=args.rare_variants_afs,
+                rare_variants_afs=(
+                    args.rare_variants_afs if not args.skip_rare_variants else None
+                ),
             )
             create_per_sample_counts_ht(mt, filter_groups_ht).write(
                 per_sample_res.path, overwrite=overwrite
