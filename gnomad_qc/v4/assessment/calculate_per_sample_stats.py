@@ -24,15 +24,20 @@ Aggregated statistics can also be computed by ancestry.
 """
 import argparse
 import logging
-from typing import Optional
+from typing import Dict, Optional
 
 import hail as hl
-from gnomad.utils.filtering import filter_low_conf_regions
+from gnomad.assessment.summary_stats import (
+    get_summary_stats_csq_filter_expr,
+    get_summary_stats_variant_filter_expr,
+)
+from gnomad.utils.annotations import annotate_with_ht
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import (
     CSQ_CODING,
     CSQ_NON_CODING,
     LOF_CSQ_SET,
+    LOFTEE_LABELS,
     filter_vep_transcript_csqs,
     get_most_severe_consequence_for_summary,
 )
@@ -55,31 +60,68 @@ logger = logging.getLogger("per_sample_stats")
 logger.setLevel(logging.INFO)
 
 
-def create_per_sample_counts_ht(
-    mt: hl.MatrixTable,
-    annotation_ht: hl.Table,
+def get_capture_filter_exprs(
+    ht: hl.Table,
+    pass_filter_expr: Optional[hl.expr.BooleanExpression] = None,
+    ukb_capture: bool = False,
+    broad_capture: bool = False,
+) -> Dict[str, hl.expr.BooleanExpression]:
+    """
+    Get filter expressions for UK Biobank and Broad capture regions.
+
+    :param ht: Table containing variant annotations. The following annotations are
+        required: 'region_flags'.
+    :param pass_filter_expr: Expression for variants that pass all variant QC filters.
+    :param ukb_capture: Include count of variants that are in UKB capture intervals.
+    :param broad_capture: Include count of variants that are in Broad capture intervals.
+    :return: Dictionary of filter expressions for UK Biobank and Broad capture regions.
+    """
+    filter_expr = {}
+    log_list = []
+    if ukb_capture:
+        log_list.append("variants in UK Biobank capture regions")
+        filter_expr["ukb_capture"] = ~ht.region_flags.outside_ukb_capture_region
+    if broad_capture:
+        log_list.append("variants in Broad capture regions")
+        filter_expr["broad_capture"] = ~ht.region_flags.outside_broad_capture_region
+    if ukb_capture and broad_capture:
+        log_list.append("variants in the intersect of UKB and Broad capture regions")
+        filter_expr["ukb_broad_capture_intersect"] = (
+            filter_expr["ukb_capture"] & filter_expr["broad_capture"]
+        )
+        log_list.append("variants in the union of UKB and Broad capture regions")
+        filter_expr["ukb_broad_capture_union"] = (
+            filter_expr["ukb_capture"] | filter_expr["broad_capture"]
+        )
+        if pass_filter_expr is not None:
+            log_list.append(
+                "PASS variants in the intersect of UKB and Broad capture regions"
+            )
+            filter_expr["ukb_broad_capture_union_pass_filters"] = (
+                filter_expr["ukb_broad_capture_union"] & pass_filter_expr
+            )
+
+    logger.info("Adding filtering for:\n%s...", "\n\t".join(log_list))
+
+    return filter_expr
+
+
+def get_summary_stats_filter_groups_ht(
+    ht: hl.Table,
     pass_filters: bool = False,
     ukb_capture: bool = False,
     broad_capture: bool = False,
     by_csqs: bool = False,
-    rare_variants: bool = False,
     vep_canonical: bool = True,
     vep_mane: bool = False,
     rare_variants_afs: Optional[list[float]] = None,
 ) -> hl.Table:
     """
-    Create Table of Hail's sample_qc output broken down by requested variant groupings.
+    Create Table of filter groups for summary stats.
 
-    Useful for finding the number of variants per sample, either all variants, or
-    variants fall into specific capture regions, or variants that are rare
-    (adj AF <0.1%), or variants categorized by predicted consequences in all, canonical
-    or mane transcripts.
-
-    :param mt: Input MatrixTable containing variant data. Must have multi-allelic sites
-        split.
-    :param annotation_ht: Table containing variant annotations. The following
-        annotations are required: 'freq', 'filters', and 'region_flags'. If `by_csqs` is
-        True, 'vep' is also required.
+    :param ht: Table containing variant annotations. The following annotations are
+        required: 'freq', 'filters', and 'region_flags'. If `by_csqs` is True, 'vep' is
+        also required.
     :param pass_filters: Include count of variants that pass all variant QC filters.
     :param ukb_capture: Include count of variants that are in UKB capture intervals.
     :param broad_capture: Include count of variants that are in Broad capture intervals
@@ -92,168 +134,122 @@ def create_per_sample_counts_ht(
     :param vep_mane: If `by_csqs` is True, filter to only MANE transcripts. Default is
         False.
     :param rare_variants_afs: The allele frequency thresholds to use for rare variants.
+    :return: Table containing filter groups for summary stats.
+    """
+    # TODO: Still need to handle the AF cutoffs
+    # Filter to only canonical or MANE transcripts if requested and get the most severe
+    # consequence for each variant.
+    if by_csqs:
+        ht = filter_vep_transcript_csqs(
+            ht,
+            synonymous=False,
+            canonical=vep_canonical,
+            mane_select=vep_mane,
+        )
+        ht = get_most_severe_consequence_for_summary(ht)
+
+    # Create filter expressions for the requested variant groupings.
+    filter_exprs = get_summary_stats_variant_filter_expr(
+        ht,
+        filter_lcr=True,
+        filter_expr=ht.filters if pass_filters else None,
+        freq_expr=ht.freq[0],
+        max_af=rare_variants_afs,
+    )
+
+    # Create filter expressions for the requested variant groupings.
+    pass_expr = filter_exprs.get("pass_filters")
+    filter_exprs.update(
+        get_capture_filter_exprs(ht, pass_expr, ukb_capture, broad_capture)
+    )
+
+    # Create filter expressions for the requested consequence types.
+    if by_csqs:
+        additional_csqs = [
+            "missense_variant",
+            "synonymous_variant",
+            "intron_variant",
+            "intergenic_variant",
+        ]
+        csq_filter_expr = get_summary_stats_csq_filter_expr(
+            ht,
+            lof_csq_set=LOF_CSQ_SET,
+            lof_label_set=LOFTEE_LABELS,
+            lof_no_flags=True,
+            lof_any_flags=True,
+            lof_loftee_combinations=True,
+            additional_csq_sets={
+                "coding": set(CSQ_CODING),
+                "non_coding": set(CSQ_NON_CODING),
+            },
+            additional_csqs=LOF_CSQ_SET + additional_csqs,
+        )
+
+        # For all csq breakdowns, filter to only variants that pass all filters.
+        csq_filter_expr = {k: v & pass_expr for k, v in csq_filter_expr.items()}
+        filter_exprs.update(csq_filter_expr)
+
+    # Remove 'pass_filters' filter expression if not requested as a summary stats group.
+    if not pass_filters:
+        filter_exprs.pop("pass_filters")
+
+    ht = ht.select(**filter_exprs)
+    ht = ht.annotate_globals(filter_groups=filter_exprs.keys())
+
+    # Filter to only variants that are not in low confidence regions.
+    ht = ht.filter(ht.no_lcr).drop("no_lcr")
+    ht = ht.checkpoint(hl.utils.new_temp_file("stats_annotation", "ht"))
+
+    return ht
+
+
+def create_per_sample_counts_ht(
+    mt: hl.MatrixTable, filter_group_ht: hl.Table
+) -> hl.Table:
+    """
+    Create Table of Hail's sample_qc output broken down by requested variant groupings.
+
+    Useful for finding the number of variants per sample, either all variants, or
+    variants fall into specific capture regions, or variants that are rare
+    (adj AF <0.1%), or variants categorized by predicted consequences in all, canonical
+    or mane transcripts.
+
+    :param mt: Input MatrixTable containing variant data. Must have multi-allelic sites
+        split.
+    :param filter_group_ht: Table containing filter groups for summary stats.
     :return: Table containing per-sample variant counts.
     """
-    logger.info("Filtering out low confidence regions...")
-    mt = filter_low_conf_regions(mt, filter_decoy=False)
-
-    logger.info("Filtering input MT to variants in the supplied annotation HT...")
-    mt = mt.semi_join_rows(annotation_ht)
-
     # Add extra Allele Count and Allele Type annotations to variant MatrixTable,
     # according to Hail standards, to help their computation.
     variant_ac, variant_types = vmt_sample_qc_variant_annotations(
         global_gt=mt.GT, alleles=mt.alleles
     )
-
-    mt = mt.annotate_rows(
-        variant_ac=variant_ac,
-        variant_atypes=variant_types,
-    )
-
-    keep_annotations = ["freq", "filters", "region_flags"]
-    if by_csqs:
-        annotation_ht = filter_vep_transcript_csqs(
-            annotation_ht,
-            synonymous=False,
-            canonical=vep_canonical,
-            mane_select=vep_mane,
-        )
-        annotation_ht = get_most_severe_consequence_for_summary(annotation_ht)
-        keep_annotations.extend(["most_severe_csq", "lof", "no_lof_flags"])
+    mt = mt.annotate_rows(variant_ac=variant_ac, variant_atypes=variant_types)
 
     # Annotate the MT with the needed annotations.
-    annotation_ht = annotation_ht.select(*keep_annotations).checkpoint(
-        hl.utils.new_temp_file("annotation_ht", "ht")
-    )
-    mt = mt.annotate_rows(**annotation_ht[mt.row_key])
-
-    filter_expr = {"all_variants": True}
-
-    if pass_filters:
-        logger.info("Filtering to variants that pass all variant QC filters...")
-        filter_expr["pass_filters"] = hl.len(mt.filters) == 0
-    if ukb_capture:
-        logger.info("Filtering to variants in UK Biobank capture regions...")
-        filter_expr["ukb_capture"] = ~mt.region_flags.outside_ukb_capture_region
-    if broad_capture:
-        logger.info("Filtering to variants in Broad capture regions...")
-        filter_expr["broad_capture"] = ~mt.region_flags.outside_broad_capture_region
-    if ukb_capture and broad_capture:
-        logger.info(
-            "Filtering to variants in the intersect of UKB and Broad capture regions..."
-        )
-        filter_expr["ukb_broad_capture_intersect"] = (
-            filter_expr["ukb_capture"] & filter_expr["broad_capture"]
-        )
-        logger.info(
-            "Filtering to variants in the union of UKB and Broad capture regions..."
-        )
-        filter_expr["ukb_broad_capture_union"] = (
-            filter_expr["ukb_capture"] | filter_expr["broad_capture"]
-        )
-    if all([ukb_capture, broad_capture, pass_filters]):
-        logger.info(
-            "Filtering to variants in the union of UKB and Broad capture regions and"
-            " pass filters..."
-        )
-        filter_expr["ukb_broad_capture_union_pass_filters"] = (
-            filter_expr["ukb_broad_capture_union"] & filter_expr["pass_filters"]
-        )
-    if rare_variants:
-        for af in rare_variants_afs:
-            logger.info(f"Filtering to rare variants with adj AF <{af}...")
-            filter_expr[f"rare_{af}"] = mt.freq[0].AF < af
-    if by_csqs:
-        logger.info("Filtering to variants by consequence type...")
-
-        def create_filter_by_csq(
-            csq_set: hl.set, lof_label: str = None, no_lof_flag: bool = None
-        ) -> hl.expr.BooleanExpression:
-            """
-            Create filters based on consequence, labels, and flags. Always filters to variants which pass all variant qc filters.
-
-            :param csq_set: Set of consequence types to filter by.
-            :param lof_label: Label to filter by loss-of-function annotations.
-            :param no_lof_flag: Flag to filter by loss-of-function annotations.
-            :return: Filter expression.
-            """
-            base_filter = filter_expr["pass_filters"] & hl.any(
-                lambda csq: mt.most_severe_csq == csq, csq_set
-            )
-            if lof_label:
-                base_filter &= mt.lof == lof_label
-            if no_lof_flag is not None:
-                base_filter &= mt.no_lof_flags == no_lof_flag
-            return base_filter
-
-        filter_expr["coding"] = create_filter_by_csq(set(CSQ_CODING))
-        filter_expr["non_coding"] = create_filter_by_csq(set(CSQ_NON_CODING))
-        filter_expr["lof"] = create_filter_by_csq(LOF_CSQ_SET)
-
-        for lof_label in ["HC", "LC", "OS"]:
-            filter_expr[f"lof_{lof_label}"] = create_filter_by_csq(
-                LOF_CSQ_SET, lof_label
-            )
-
-        for no_lof_flag in [True, False]:
-            flag_desc = "with" if not no_lof_flag else "no"
-            filter_expr[f"lof_HC_{flag_desc}_flags"] = create_filter_by_csq(
-                LOF_CSQ_SET, lof_label="HC", no_lof_flag=no_lof_flag
-            )
-
-        # LOF variants breakdowns
-        for lof_variant in LOF_CSQ_SET:
-            for no_lof_flag in [True, False]:
-                flag_desc = "with" if not no_lof_flag else "no"
-                filter_expr[f"{lof_variant}_HC_{flag_desc}_flags"] = (
-                    create_filter_by_csq(
-                        {lof_variant}, lof_label="HC", no_lof_flag=no_lof_flag
-                    )
-                )
-            for lof_label in ["LC", "OS"]:
-                filter_expr[f"{lof_variant}_{lof_label}"] = create_filter_by_csq(
-                    {lof_variant}, lof_label=lof_label
-                )
-
-        for csq in [
-            "missense_variant",
-            "synonymous_variant",
-            "intron_variant",
-            "intergenic_variant",
-        ]:
-            filter_expr[csq] = create_filter_by_csq({csq})
+    mt = annotate_with_ht(mt, filter_group_ht, filter_missing=True)
 
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
+    qc_expr = vmt_sample_qc(
+        global_gt=mt.GT,
+        gq=mt.GQ,
+        variant_ac=mt.variant_ac,
+        variant_atypes=mt.variant_atypes,
+        dp=mt.DP,
+    )
+    filter_groups = hl.eval(filter_group_ht.filter_groups)
     ht = mt.select_cols(
-        _sample_qc=hl.struct(
-            **{
-                ann: hl.agg.filter(
-                    expr,
-                    vmt_sample_qc(
-                        global_gt=mt.GT,
-                        gq=mt.GQ,
-                        variant_ac=mt.variant_ac,
-                        variant_atypes=mt.variant_atypes,
-                        dp=mt.DP,
-                    ),
-                )
-                for ann, expr in filter_expr.items()
-            }
-        )
+        **{grp: hl.agg.filter(mt[grp], qc_expr) for grp in filter_groups}
     ).cols()
 
-    ht = ht.select(**ht._sample_qc)
-
     # Add 'n_indel' to the output Table.
-    for field in ht.row_value:
-        ht = ht.annotate(
-            **{
-                field: ht[field].annotate(
-                    n_indel=ht[field].n_insertion + ht[field].n_deletion
-                )
-            }
-        )
+    ht = ht.annotate(
+        **{
+            x: ht[x].annotate(n_indel=ht[x].n_insertion + ht[x].n_deletion)
+            for x in ht.row_value
+        }
+    )
+
     return ht
 
 
@@ -274,24 +270,18 @@ def compute_agg_sample_stats(
          working on "exomes" data.
     :return: Struct of aggregate statistics for per-sample QC metrics.
     """
-    if by_ancestry and meta_ht is None:
-        raise ValueError(
-            "If `by_ancestry` is True, a Table containing sample metadata is required."
-        )
+    if meta_ht is None and by_ancestry:
+        raise ValueError("If `by_ancestry` is True, `meta_ht` is required.")
+    if meta_ht is None and by_subset:
+        raise ValueError("If `by_subset` is True, `meta_ht` is required.")
 
-    subset = (
-        ["gnomad"]
-        if not by_subset
-        else [
-            "gnomad",
-            hl.if_else(meta_ht[ht.s].project_meta.ukb_sample, "ukb", "non-ukb"),
-        ]
-    )
-    gen_anc = (
-        ["global"]
-        if not by_ancestry
-        else ["global", meta_ht[ht.s].population_inference.pop]
-    )
+    subset = ["gnomad"]
+    gen_anc = ["global"]
+    if meta_ht is not None:
+        meta_s = meta_ht[ht.s]
+        subset_expr = hl.if_else(meta_s.project_meta.ukb_sample, "ukb", "non-ukb")
+        subset += [subset_expr] if by_subset else []
+        gen_anc += [meta_s.population_inference.pop] if by_ancestry else []
 
     all_strats = [
         strat
@@ -372,8 +362,7 @@ def main(args):
                     release_ht, [hl.parse_locus_interval("chr22")]
                 )
 
-            create_per_sample_counts_ht(
-                mt,
+            filter_groups_ht = get_summary_stats_filter_groups_ht(
                 release_ht,
                 pass_filters=not args.skip_pass_filters,
                 ukb_capture=(
@@ -391,7 +380,10 @@ def main(args):
                 vep_canonical=args.vep_canonical,
                 vep_mane=args.vep_mane,
                 rare_variants_afs=args.rare_variants_afs,
-            ).write(per_sample_res.path, overwrite=overwrite)
+            )
+            create_per_sample_counts_ht(mt, filter_groups_ht).write(
+                per_sample_res.path, overwrite=overwrite
+            )
 
         if args.aggregate_sample_stats:
             logger.info("Computing aggregate sample statistics...")
