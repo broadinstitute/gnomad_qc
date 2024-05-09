@@ -241,7 +241,7 @@ def create_per_sample_counts_ht(
     )
     filter_groups = hl.eval(filter_group_ht.filter_groups_meta)
     ht = mt.select_cols(
-        _qc=hl.agg.array_agg(lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups),
+        _qc=hl.agg.array_agg(lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups)
     ).cols()
     ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
 
