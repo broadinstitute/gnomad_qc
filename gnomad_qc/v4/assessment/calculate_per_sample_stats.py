@@ -191,14 +191,16 @@ def get_summary_stats_filter_groups_ht(
     if not pass_filters:
         filter_exprs.pop("pass_filters")
 
-    ht = ht.select(**filter_exprs)
+    no_lcr_expr = filter_exprs.pop("no_lcr")
     filter_groups = list(filter_exprs.keys())
-    filter_groups.remove("no_lcr")
-    ht = ht.annotate_globals(filter_groups=filter_groups)
+    ht = ht.select(
+        _no_lcr=no_lcr_expr, filter_groups=[filter_exprs[g] for g in filter_groups]
+    )
+    ht = ht.annotate_globals(filter_groups_meta=filter_groups)
     logger.info("Filter groups for summary stats: %s", filter_groups)
 
     # Filter to only variants that are not in low confidence regions.
-    ht = ht.filter(ht.no_lcr).drop("no_lcr")
+    ht = ht.filter(ht._no_lcr).drop("_no_lcr")
     ht = ht.checkpoint(hl.utils.new_temp_file("stats_annotation", "ht"))
 
     return ht
@@ -238,22 +240,17 @@ def create_per_sample_counts_ht(
         variant_atypes=mt.variant_atypes,
         dp=mt.DP,
     )
-    filter_groups = hl.eval(filter_group_ht.filter_groups)
+    filter_groups = hl.eval(filter_group_ht.filter_groups_meta)
     ht = mt.select_cols(
-        _sample_qc=hl.struct(
-            **{grp: hl.agg.filter(mt[grp], qc_expr) for grp in filter_groups}
-        )
+        _qc=hl.agg.array_agg(lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups),
     ).cols()
-
-    ht = ht.select(**ht._sample_qc)
+    ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
 
     # Add 'n_indel' to the output Table.
-    ht = ht.annotate(
-        **{
-            x: ht[x].annotate(n_indel=ht[x].n_insertion + ht[x].n_deletion)
-            for x in ht.row_value
-        }
-    )
+    qc_expr = ht._qc.map(lambda x: x.annotate(n_indel=x.n_insertion + x.n_deletion))
+
+    # Convert each element of the summary stats array to a row annotation on the Table.
+    ht = ht.select(**{f: qc_expr[i] for i, f in enumerate(filter_groups)})
 
     return ht
 
