@@ -323,7 +323,7 @@ def get_summary_stats_filter_groups_ht(
     ss_filters["max_af"] = rare_variants_afs
     filter_combinations = generate_filter_combinations(all_sum_stat_filters=ss_filters)
     map_filter_field_to_meta = map_filter_field_to_metadata(filter_combinations)
-    ht = ht.annotate_globals(
+    ht = ht.select_globals(
         filter_group_fields=filter_groups,
         filter_group_meta={f: map_filter_field_to_meta[f] for f in filter_groups},
     )
@@ -374,6 +374,7 @@ def create_per_sample_counts_ht(
     ht = mt.select_cols(
         _qc=hl.agg.array_agg(lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups)
     ).cols()
+    ht = ht.annotate_globals(**filter_group_ht.index_globals())
     ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
 
     # Add 'n_indel' to the output Table.
