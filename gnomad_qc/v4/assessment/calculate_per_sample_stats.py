@@ -23,6 +23,7 @@ computed:
 Aggregated statistics can also be computed by ancestry.
 """
 import argparse
+import itertools
 import logging
 from typing import Dict, Optional
 
@@ -59,6 +60,112 @@ logging.basicConfig(
 logger = logging.getLogger("per_sample_stats")
 logger.setLevel(logging.INFO)
 
+SUM_STAT_FILTERS = {
+    "pass_filters": [False, True],
+    "capture": ["ukb", "broad", "ukb_broad_intersect", "ukb_broad_union"],
+    "max_af": [0.0001, 0.001, 0.01],
+    "csq_set": ["lof", "coding", "non_coding"],
+    "lof_csq": LOF_CSQ_SET,
+    "csq": [
+        "missense_variant",
+        "synonymous_variant",
+        "intron_variant",
+        "intergenic_variant",
+    ],
+    "lof": LOFTEE_LABELS,
+    "lof_no_HC": {l for l in LOFTEE_LABELS if l != "HC"},
+    "lof_HC": ["no_flags", "with_flags"],
+}
+"""
+Dictionary of default filter settings for summary stats.
+"""
+
+COMMON_FILTERS = {"pass_filters": [True], "capture": ["ukb_broad_intersect"]}
+"""
+Dictionary of common filter settings to use for most summary stats.
+"""
+
+FILTER_COMBOS = [["pass_filters"], ["pass_filters", "capture"]]
+"""
+List of variant filter combinations to use for summary stats.
+"""
+
+LOF_FILTER_COMBOS = [["lof_csq", "lof_no_HC"], ["lof_csq", "lof_HC"]]
+"""
+List of loss-of-function consequence combinations to use for summary stats.
+"""
+
+
+def generate_filter_combinations(
+    all_sum_stat_filters: Dict[str, list] = SUM_STAT_FILTERS,
+    common_filters: Dict[str, list] = COMMON_FILTERS,
+    combos: list = FILTER_COMBOS,
+    lof_combos: list = LOF_FILTER_COMBOS,
+) -> list:
+    """
+    Generate all possible filter combinations for summary stats.
+
+    :param all_sum_stat_filters: Dictionary of all possible filter types.
+    :param common_filters: Dictionary of common filter settings to use for most
+        summary stats.
+    :param combos: List of variant filter combinations to use for summary stats.
+    :param lof_combos: List of loss-of-function consequence combinations to use for
+        summary stats.
+    :return: List of all possible filter combinations for summary stats.
+    """
+    # Combine basic combos with common filters.
+    filter_meta = [{f: all_sum_stat_filters[f] for f in combo} for combo in combos]
+    filter_meta += [
+        {**common_filters, **{k: v}}
+        for k, v in all_sum_stat_filters.items()
+        if k not in common_filters
+    ]
+    filter_meta += [
+        {**common_filters, **{f: all_sum_stat_filters[f] for f in lof_combo}}
+        for lof_combo in lof_combos
+    ]
+
+    # Create combinations of filter options.
+    def expand_combinations(filter_dict):
+        keys, values = zip(*filter_dict.items())
+        return [dict(zip(keys, combo)) for combo in itertools.product(*values)]
+
+    # Flatten list of combinations.
+    expanded_meta = [
+        item for sublist in filter_meta for item in expand_combinations(sublist)
+    ]
+
+    return expanded_meta
+
+
+def map_filter_field_to_metadata(filter_combinations: list) -> dict:
+    """
+    Map filter field to metadata.
+
+    :param filter_combinations: List of filter combinations.
+    :return: Dictionary of filter field to metadata.
+    """
+    map_filter_field_to_meta = {}
+    for f in filter_combinations:
+        filter_list = []
+        for k, v in f.items():
+            # Skip adding common filters to the field name unless there are not other
+            # filters.
+            if len(f) > 2 and k in COMMON_FILTERS:
+                continue
+            # Rename "pass_filters" to "all_variants" if the value of pass_filters
+            # is False.
+            if k == "pass_filters":
+                label = k if v else "all_variants"
+            elif k == "lof_no_HC":
+                label = f"lof_{v}"
+            else:
+                label = f"{k}_{v}"
+            filter_list.append(label)
+        map_filter_field_to_meta["_".join(filter_list)] = f
+
+    return map_filter_field_to_meta
+
 
 def get_capture_filter_exprs(
     ht: hl.Table,
@@ -80,30 +187,36 @@ def get_capture_filter_exprs(
     log_list = []
     if ukb_capture:
         log_list.append("variants in UK Biobank capture regions")
-        filter_expr["ukb_capture"] = ~ht.region_flags.outside_ukb_capture_region
+        filter_expr["capture_ukb"] = ~ht.region_flags.outside_ukb_capture_region
+
     if broad_capture:
         log_list.append("variants in Broad capture regions")
-        filter_expr["broad_capture"] = ~ht.region_flags.outside_broad_capture_region
+        filter_expr["capture_broad"] = ~ht.region_flags.outside_broad_capture_region
+
     if ukb_capture and broad_capture:
         log_list.append("variants in the intersect of UKB and Broad capture regions")
-        filter_expr["ukb_broad_capture_intersect"] = (
-            filter_expr["ukb_capture"] & filter_expr["broad_capture"]
+        filter_expr["capture_ukb_broad_intersect"] = (
+            filter_expr["capture_ukb"] & filter_expr["capture_broad"]
         )
+
         log_list.append("variants in the union of UKB and Broad capture regions")
-        filter_expr["ukb_broad_capture_union"] = (
-            filter_expr["ukb_capture"] | filter_expr["broad_capture"]
+        filter_expr["capture_ukb_broad_union"] = (
+            filter_expr["capture_ukb"] | filter_expr["capture_broad"]
         )
-        if pass_filter_expr is not None:
-            log_list.append(
-                "PASS variants in the intersect of UKB and Broad capture regions"
-            )
-            filter_expr["ukb_broad_capture_union_pass_filters"] = (
-                filter_expr["ukb_broad_capture_union"] & pass_filter_expr
-            )
+
+    # Add "all_variants" prefix to all capture filter names.
+    all_filter_expr = {f"all_variants_{k}": v for k, v in filter_expr.items()}
+
+    # Include capture filters for variants that pass all variant QC filters.
+    if pass_filter_expr is not None:
+        log_list.append("All of the above for only PASS variants")
+        all_filter_expr.update(
+            {f"pass_filters_{k}": v & pass_filter_expr for k, v in filter_expr.items()}
+        )
 
     logger.info("Adding filtering for:\n\t%s...", "\n\t".join(log_list))
 
-    return filter_expr
+    return all_filter_expr
 
 
 def get_summary_stats_filter_groups_ht(
@@ -146,7 +259,7 @@ def get_summary_stats_filter_groups_ht(
         ht = get_most_severe_consequence_for_summary(ht)
 
     # Create filter expressions for the requested variant groupings.
-    filter_exprs = get_summary_stats_variant_filter_expr(
+    variant_filter_exprs = get_summary_stats_variant_filter_expr(
         ht,
         filter_lcr=True,
         filter_expr=ht.filters if pass_filters else None,
@@ -154,20 +267,29 @@ def get_summary_stats_filter_groups_ht(
         max_af=rare_variants_afs,
     )
 
-    # Create filter expressions for the requested variant groupings.
-    pass_expr = filter_exprs.get("pass_filters")
-    filter_exprs.update(
-        get_capture_filter_exprs(ht, pass_expr, ukb_capture, broad_capture)
+    # Remove 'pass_filters' filter expression if not requested as a summary stats group.
+    pass_expr = variant_filter_exprs.get("pass_filters")
+    if not pass_filters:
+        variant_filter_exprs.pop("pass_filters")
+
+    # Create filter expressions for the requested capture regions.
+    capture_filter_exprs = get_capture_filter_exprs(
+        ht, pass_expr, ukb_capture, broad_capture
     )
+
+    # For all rare variant AFs, filter to only variants that pass all filters and/or
+    # are within capture interval intersection.
+    add_expr = pass_expr if pass_filters else hl.literal(True)
+    add_expr &= capture_filter_exprs.get("capture_ukb_broad_intersect", True)
+    variant_filter_exprs = {
+        k: v & add_expr if k.startswith("max_af") else v
+        for k, v in variant_filter_exprs.items()
+    }
+
+    filter_exprs = {**variant_filter_exprs, **capture_filter_exprs}
 
     # Create filter expressions for the requested consequence types.
     if by_csqs:
-        additional_csqs = [
-            "missense_variant",
-            "synonymous_variant",
-            "intron_variant",
-            "intergenic_variant",
-        ]
         csq_filter_expr = get_summary_stats_csq_filter_expr(
             ht,
             lof_csq_set=LOF_CSQ_SET,
@@ -179,23 +301,32 @@ def get_summary_stats_filter_groups_ht(
                 "coding": set(CSQ_CODING),
                 "non_coding": set(CSQ_NON_CODING),
             },
-            additional_csqs=additional_csqs,
+            additional_csqs=SUM_STAT_FILTERS["csq"],
         )
 
-        # For all csq breakdowns, filter to only variants that pass all filters.
-        csq_filter_expr = {k: v & pass_expr for k, v in csq_filter_expr.items()}
+        # For all csq breakdowns, filter to only variants that pass all filters and/or
+        # are within capture interval intersection.
+        csq_filter_expr = {k: v & add_expr for k, v in csq_filter_expr.items()}
         filter_exprs.update(csq_filter_expr)
 
-    # Remove 'pass_filters' filter expression if not requested as a summary stats group.
-    if not pass_filters:
-        filter_exprs.pop("pass_filters")
-
+    # Remove 'no_lcr' filter expression from filter groups and annotate the Table with
+    # the no_lcr filter and an array of the filter groups.
     no_lcr_expr = filter_exprs.pop("no_lcr")
     filter_groups = list(filter_exprs.keys())
     ht = ht.select(
         _no_lcr=no_lcr_expr, filter_groups=[filter_exprs[g] for g in filter_groups]
     )
-    ht = ht.annotate_globals(filter_groups_meta=filter_groups)
+
+    # Map the filter group field to a metadata dictionary detailing the filters used
+    # in each filter group.
+    ss_filters = SUM_STAT_FILTERS.copy()
+    ss_filters["max_af"] = rare_variants_afs
+    filter_combinations = generate_filter_combinations(all_sum_stat_filters=ss_filters)
+    map_filter_field_to_meta = map_filter_field_to_metadata(filter_combinations)
+    ht = ht.annotate_globals(
+        filter_group_fields=filter_groups,
+        filter_group_meta={f: map_filter_field_to_meta[f] for f in filter_groups},
+    )
     logger.info("Filter groups for summary stats: %s", filter_groups)
 
     # Filter to only variants that are not in low confidence regions.
@@ -239,7 +370,7 @@ def create_per_sample_counts_ht(
         variant_atypes=mt.variant_atypes,
         dp=mt.DP,
     )
-    filter_groups = hl.eval(filter_group_ht.filter_groups_meta)
+    filter_groups = hl.eval(filter_group_ht.filter_group_fields)
     ht = mt.select_cols(
         _qc=hl.agg.array_agg(lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups)
     ).cols()
@@ -466,7 +597,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--rare-variants-afs",
         type=float,
-        default=[0.0001, 0.001, 0.01],
+        default=SUM_STAT_FILTERS["max_af"],
         help="The allele frequency threshold to use for rare variants.",
     )
     parser.add_argument(
