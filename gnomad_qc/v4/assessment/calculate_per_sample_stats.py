@@ -140,9 +140,7 @@ def generate_filter_combinations(
         return [dict(zip(keys, combo)) for combo in itertools.product(*values)]
 
     # Flatten list of combinations.
-    expanded_meta = [
-        item for sublist in combos for item in _expand_combinations(sublist)
-    ]
+    expanded_meta = sum([_expand_combinations(sublist) for sublist in combos], [])
 
     return expanded_meta
 
@@ -180,7 +178,7 @@ def get_filter_group_meta(
 
     filter_combinations = generate_filter_combinations(filter_meta)
 
-    map_filter_field_to_meta = {"all_variants": {"variant_qc": ["none"]}}
+    map_filter_field_to_meta = {"all_variants": {"variant_qc": "none"}}
     for filter_group in filter_combinations:
         filter_group = {
             k.replace("lof_no_HC", "lof"): v
