@@ -244,20 +244,12 @@ def main(args):
             subset_ht.count(),
         )
 
-    vds = hl.vds.filter_samples(vds, subset_ht, remove_dead_alleles=True)
+    vds = hl.vds.filter_samples(
+        vds, subset_ht, remove_dead_alleles=False if split_multi else True
+    )
     logger.info(
         "Final number of samples being kept in the VDS: %d.",
         vds.variant_data.count_cols(),
-    )
-
-    logger.info(
-        "Applying min_rep to the variant data MT because remove_dead_alleles may "
-        "result in variants that do not have the minimum representation."
-    )
-    vd = vds.variant_data
-    vds = hl.vds.VariantDataset(
-        vds.reference_data,
-        vd.key_rows_by(**hl.min_rep(vd.locus, vd.alleles)),
     )
 
     if args.include_ukb_200k:
@@ -280,9 +272,9 @@ def main(args):
             s=hl.coalesce(meta_ht.project_meta.ukb_meta.eid_31063, meta_ht.s)
         )
 
+    vd = vds.variant_data
     if split_multi:
         logger.info("Splitting multi-allelics")
-        vd = vds.variant_data
         vd = vd.annotate_rows(
             n_unsplit_alleles=hl.len(vd.alleles),
             mixed_site=(hl.len(vd.alleles) > 2)
@@ -291,6 +283,16 @@ def main(args):
         )
         vds = hl.vds.split_multi(
             hl.vds.VariantDataset(vds.reference_data, vd), filter_changed_loci=True
+        )
+    else:
+        logger.info(
+            "Applying min_rep to the variant data MT because remove_dead_alleles in"
+            " hl.vds.filter_samples may result in variants that do not have the minimum"
+            " representation."
+        )
+        vds = hl.vds.VariantDataset(
+            vds.reference_data,
+            vd.key_rows_by(**hl.min_rep(vd.locus, vd.alleles)),
         )
 
     if add_variant_qc or pass_only:
@@ -458,7 +460,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
         help=(
             "Annotate exported file with gnomAD's variant QC annotations. Defaults to"
             " all annotations if a subset of annotations are not specified using the"
-            " --variant-qc-fields arg"
+            " --variant-qc-annotations arg"
         ),
         action="store_true",
     )
@@ -481,7 +483,7 @@ def get_script_argument_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--export-meta",
-        help="Pull sample subset metadata and export to a .tsv.",
+        help="Pull sample subset metadata and export to a HT and .tsv.",
         action="store_true",
     )
     parser.add_argument(
