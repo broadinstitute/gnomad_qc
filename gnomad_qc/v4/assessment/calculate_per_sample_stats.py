@@ -75,7 +75,7 @@ SUM_STAT_FILTERS = {
         "intergenic_variant",
     ],
     "lof": LOFTEE_LABELS,
-    "lof_no_HC": {l for l in LOFTEE_LABELS if l != "HC"},
+    "lof_non_HC": {l for l in LOFTEE_LABELS if l != "HC"},
     "lof_HC": ["no_flags", "with_flags"],
 }
 """
@@ -95,7 +95,7 @@ COMMON_FILTER_COMBOS = [
 List of variant filter combinations to use for summary stats.
 """
 
-LOF_FILTER_COMBOS = [["lof_csq", "lof_no_HC"], ["lof_csq", "lof_HC"]]
+LOF_FILTER_COMBOS = [["lof_csq", "lof_non_HC"], ["lof_csq", "lof_HC"]]
 """
 List of loss-of-function consequence combinations to use for summary stats.
 """
@@ -181,7 +181,7 @@ def get_filter_group_meta(
     map_filter_field_to_meta = {"all_variants": {"variant_qc": "none"}}
     for filter_group in filter_combinations:
         filter_group = {
-            k.replace("lof_no_HC", "lof"): v
+            k.replace("lof_non_HC", "lof"): v
             for k, v in filter_group.items()
             if not (k == "variant_qc" and v == "none")
         }
@@ -252,7 +252,17 @@ def get_summary_stats_filter_groups_ht(
     rare_variants_afs: Optional[list[float]] = None,
 ) -> hl.Table:
     """
-    Create Table of filter groups for summary stats.
+    Create Table annotated with an array of booleans indicating which filter groups a variant belongs to.
+
+    A 'filter_groups' annotation is added to the Table containing an ArrayExpression of
+    BooleanExpressions for each requested filter group.
+
+    The following global annotations are added to the Table:
+        - filter_group_fields: Array of filter group names. Combined filter groups are
+          separated by underscores.
+        - filter_group_meta: Dictionary of filter group names (those in
+          'filter_group_fields') to metadata detailing the filters used in each filter
+          group. For example, 'variant_qc_pass': {'variant_qc': 'pass'}.
 
     :param ht: Table containing variant annotations. The following annotations are
         required: 'freq', 'filters', and 'region_flags'. If `by_csqs` is True, 'vep' is
@@ -267,7 +277,7 @@ def get_summary_stats_filter_groups_ht(
     :param vep_mane: If `by_csqs` is True, filter to only MANE transcripts. Default is
         False.
     :param rare_variants_afs: The allele frequency thresholds to use for rare variants.
-    :return: Table containing filter groups for summary stats.
+    :return: Table containing an ArrayExpression of filter groups for summary stats.
     """
     # Filter to only canonical or MANE transcripts if requested and get the most severe
     # consequence for each variant.
