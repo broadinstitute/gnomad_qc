@@ -92,7 +92,7 @@ COMMON_FILTER_COMBOS = [
     {f: COMMON_FILTERS[f] for f in combo} for combo in COMMON_FILTER_COMBOS
 ]
 """
-List of variant filter combinations to use for summary stats.
+List of common variant filter combinations to use for summary stats.
 """
 
 LOF_FILTER_COMBOS = [["lof_csq", "lof_non_HC"], ["lof_csq", "lof_HC"]]
@@ -135,6 +135,7 @@ def generate_filter_combinations(
         Expand filter combinations.
 
         :param filter_dict: Dictionary of filter options.
+        :return: List of dicts of expanded filter options.
         """
         keys, values = zip(*filter_dict.items())
         return [dict(zip(keys, combo)) for combo in itertools.product(*values)]
@@ -203,8 +204,8 @@ def get_capture_filter_exprs(
     :param ht: Table containing variant annotations. The following annotations are
         required: 'region_flags'.
     :param pass_filter_expr: Expression for variants that pass all variant QC filters.
-    :param ukb_capture: Include count of variants that are in UKB capture intervals.
-    :param broad_capture: Include count of variants that are in Broad capture intervals.
+    :param ukb_capture: Expression for variants that are in UKB capture intervals.
+    :param broad_capture: Expression for variants that are in Broad capture intervals.
     :return: Dictionary of filter expressions for UK Biobank and Broad capture regions.
     """
     filter_expr = {}
