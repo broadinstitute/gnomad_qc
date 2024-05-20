@@ -186,7 +186,9 @@ def get_filter_group_meta(
             for k, v in filter_group.items()
             if not (k == "variant_qc" and v == "none")
         }
-        filter_field = "_".join([f"{k}_{v}" for k, v in filter_group.items()])
+        filter_field = "_".join(
+            [v if "csq" in k else f"{k}_{v}" for k, v in filter_group.items()]
+        )
         map_filter_field_to_meta[filter_field] = filter_group
 
     return map_filter_field_to_meta
