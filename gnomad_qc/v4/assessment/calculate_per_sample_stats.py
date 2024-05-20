@@ -87,9 +87,9 @@ COMMON_FILTERS = {"variant_qc": ["pass"], "capture": ["ukb_broad_intersect"]}
 Dictionary of common filter settings to use for most summary stats.
 """
 
-COMMON_FILTER_COMBOS = [["variant_qc"], ["variant_qc", "capture"]]
 COMMON_FILTER_COMBOS = [
-    {f: COMMON_FILTERS[f] for f in combo} for combo in COMMON_FILTER_COMBOS
+    {f: COMMON_FILTERS[f] for f in combo}
+    for combo in [["variant_qc"], ["variant_qc", "capture"]]
 ]
 """
 List of common variant filter combinations to use for summary stats.
