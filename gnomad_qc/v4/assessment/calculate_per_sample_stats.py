@@ -115,7 +115,7 @@ List of loss-of-function consequence combinations to use for summary stats.
 
 MAP_FILTER_FIELD_TO_META = {
     "lof_csq": "csq",
-    "loftee_HC": "loftee_labels",
+    "loftee_HC": "loftee_label",
 }
 """
 Dictionary to rename keys in `SUM_STAT_FILTERS`, `COMMON_FILTERS`, or
@@ -438,6 +438,7 @@ def get_summary_stats_filter_groups_ht(
     # Create filter expressions for each filter group by combining the filter
     # expressions for each filter in the filter group metadata.
     filter_groups_expr = []
+    final_meta = []
     for filter_group in filter_group_meta:
         # Initialize filter expression for the filter group with True to allow for
         # a filtering group that has no filters, e.g. all variants.
@@ -460,12 +461,19 @@ def get_summary_stats_filter_groups_ht(
 
         if filter_group_requested:
             filter_groups_expr.append(filter_expr)
+            final_meta.append(filter_group)
+        else:
+            logger.warning(
+                "Filter group %s was not requested and will not be included in the "
+                "summary stats.",
+                filter_group,
+            )
 
     # Remove 'no_lcr' filter expression from filter groups and annotate the Table with
     # the no_lcr filter and an array of the filter groups.
     ht = ht.select(_no_lcr=filter_exprs["no_lcr"], filter_groups=filter_groups_expr)
 
-    ht = ht.select_globals(filter_group_meta=filter_group_meta)
+    ht = ht.select_globals(filter_group_meta=final_meta)
     logger.info("Filter groups for summary stats: %s", filter_group_meta)
 
     # Filter to only variants that are not in low confidence regions.
