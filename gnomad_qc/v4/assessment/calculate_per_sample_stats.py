@@ -27,7 +27,8 @@ import functools
 import itertools
 import logging
 import operator
-from typing import Dict, List, Optional
+from copy import deepcopy
+from typing import Dict, List, Optional, Union
 
 import hail as hl
 from gnomad.assessment.summary_stats import (
@@ -62,8 +63,12 @@ logging.basicConfig(
 logger = logging.getLogger("per_sample_stats")
 logger.setLevel(logging.INFO)
 
+# V4 has no OS in LOFTEE_LABELS.
+LOFTEE_LABELS = deepcopy(LOFTEE_LABELS)
+LOFTEE_LABELS.remove("OS")
+
 SUM_STAT_FILTERS = {
-    "variant_qc": ["pass", "none"],  # Quality control status of the variant.
+    "variant_qc": ["none", "pass"],  # Quality control status of the variant.
     "capture": [  # Capture methods used.
         "ukb",
         "broad",
@@ -72,18 +77,15 @@ SUM_STAT_FILTERS = {
     ],
     "max_af": [0.0001, 0.001, 0.01],  # Maximum allele frequency thresholds.
     "csq_set": ["lof", "coding", "non_coding"],  # Consequence sets.
-    "lof_csq": LOF_CSQ_SET,  # Loss-of-function consequence set.
+    "lof_csq": deepcopy(LOF_CSQ_SET),  # Loss-of-function consequence set.
     "csq": [  # Additional consequence types.
         "missense_variant",
         "synonymous_variant",
         "intron_variant",
         "intergenic_variant",
     ],
-    "lof": LOFTEE_LABELS,  # LOFTEE loss-of-function labels.
-    "lof_non_HC": {  # Non-high-confidence LOFTEE labels.
-        l for l in LOFTEE_LABELS if l != "HC"
-    },
-    "lof_HC": ["no_flags", "with_flags"],  # High-confidence LOFTEE flag options.
+    "loftee_label": deepcopy(LOFTEE_LABELS),  # LOFTEE loss-of-function labels.
+    "loftee_flags": ["no_flags", "with_flags"],  # High-confidence LOFTEE flag options.
 }
 """
 Dictionary of default filter settings for summary stats.
@@ -94,22 +96,38 @@ COMMON_FILTERS = {"variant_qc": ["pass"], "capture": ["ukb_broad_intersect"]}
 Dictionary of common filter settings to use for most summary stats.
 """
 
-COMMON_FILTER_COMBOS = [
-    {f: COMMON_FILTERS[f] for f in combo}
-    for combo in [["variant_qc"], ["variant_qc", "capture"]]
-]
+COMMON_FILTER_COMBOS = [["variant_qc"], ["variant_qc", "capture"]]
 """
 List of common variant filter combinations to use for summary stats.
 """
 
-LOF_FILTER_COMBOS = [["lof_csq", "lof_non_HC"], ["lof_csq", "lof_HC"]]
+LOF_FILTERS_FOR_COMBO = {"loftee_HC": ["HC"]}
+"""
+Dictionary of an additional filter group to use for loss-of-function filter
+combinations.
+"""
+
+LOF_FILTER_COMBOS = [
+    ["lof_csq", "loftee_label"],
+    ["lof_csq", "loftee_HC", "loftee_flags"],
+]
 """
 List of loss-of-function consequence combinations to use for summary stats.
 """
 
+MAP_FILTER_FIELD_TO_META = {
+    "lof_csq": "csq",
+    "loftee_HC": "loftee_labels",
+}
+"""
+Dictionary to rename keys in `SUM_STAT_FILTERS`, `COMMON_FILTERS`, or
+`LOF_FILTERS_FOR_COMBO` to final metadata keys.
+"""
+
 
 def generate_filter_combinations(
-    combos: List[Dict[str, List[str]]]
+    combos: List[Union[List[str], Dict[str, List[str]]]],
+    combo_options: Optional[Dict[str, List[str]]] = None,
 ) -> List[Dict[str, str]]:
     """
     Generate all possible filter combinations from a list of filter options.
@@ -137,8 +155,17 @@ def generate_filter_combinations(
         ]
 
     :param combos: List of filter groups and their options.
+    :param combo_options: Dictionary of filter groups and their options that can be
+        supplied if `combos` is a list of lists.
     :return: List of all possible filter combinations for each filter group.
     """
+    if isinstance(combos[0], list):
+        if combo_options is None:
+            raise ValueError(
+                "If `combos` is a list of lists, `combo_options` must be provided."
+            )
+        combos = [{k: combo_options[k] for k in combo} for combo in combos]
+
     # Create combinations of filter options.
 
     def _expand_combinations(filter_dict: Dict[str, List[str]]) -> List[Dict[str, str]]:
@@ -159,9 +186,12 @@ def generate_filter_combinations(
 
 def get_filter_group_meta(
     all_sum_stat_filters: Dict[str, List[str]] = SUM_STAT_FILTERS,
-    common_filter_combos: List[Dict[str, List[str]]] = COMMON_FILTER_COMBOS,
+    common_filter_combos: List[List[str]] = COMMON_FILTER_COMBOS,
+    common_combo_override: Dict[str, List[str]] = COMMON_FILTERS,
     lof_combos: List[List[str]] = LOF_FILTER_COMBOS,
-) -> Dict[str, Dict[str, str]]:
+    lof_combo_override: Dict[str, List[str]] = LOF_FILTERS_FOR_COMBO,
+    filter_group_key_rename: Dict[str, str] = MAP_FILTER_FIELD_TO_META,
+) -> List[Dict[str, str]]:
     """
     Generate all possible filter combinations for summary stats.
 
@@ -172,7 +202,7 @@ def get_filter_group_meta(
     .. note::
 
         - An 'all_variants' filter name is added to represent all variants, and maps to
-          a filter metadata of {'variant_qc': 'none'}.
+          a filter metadata of {}.
         - When 'lof_non_HC' is found in the filter name is replaced with 'lof'.
         - The filter name is created by concatenating the filter field and value with an
           underscore unless the filter field contains 'csq' in which case only the
@@ -194,102 +224,91 @@ def get_filter_group_meta(
             common_filter_combos = [
                 {"variant_qc": ["pass"]}, {"variant_qc": ["pass"], "capture": ["1"]}
             ]
-            lof_combos = [["lof_csq", "lof_HC"]]
+            lof_combos = ["lof_csq", "lof_HC"]
 
         The function will generate the following filter combinations:
 
         .. code-block:: python
 
-            {
+            [
                 # Combinations of all common filter keys and their possible values.
-                'all_variants': {'variant_qc': 'none'},
-                'variant_qc_pass': {'variant_qc': 'pass'},
-                'capture_1': {'capture': '1'},
-                'capture_2': {'capture': '2'},
-                'variant_qc_pass_capture_1': {'variant_qc': 'pass', 'capture': '1'},
-                'variant_qc_pass_capture_2': {'variant_qc': 'pass', 'capture': '2'},
+                {},
+                {'variant_qc': 'pass'},
+                {'capture': '1'},
+                {'capture': '2'},
+                {'variant_qc': 'pass', 'capture': '1'},
+                {'variant_qc': 'pass', 'capture': '2'},
                 # Combinations of all requested common filter combinations with all
                 # possible other filter keys and values.
-                'variant_qc_pass_max_af_0.01': {'variant_qc': 'pass', 'max_af': 0.01},
-                'variant_qc_pass_stop_gained': {
-                    'variant_qc': 'pass', 'lof_csq': 'stop_gained'
-                },
-                'variant_qc_pass_lof_HC_no_flags': {
-                    'variant_qc': 'pass', 'lof_HC': 'no_flags'
-                },
-                'variant_qc_pass_capture_1_max_af_0.01': {
-                    'variant_qc': 'pass', 'capture': '1', 'max_af': 0.01
-                },
-                'variant_qc_pass_capture_1_stop_gained': {
-                    'variant_qc': 'pass', 'capture': '1', 'lof_csq': 'stop_gained'
-                },
+                {'variant_qc': 'pass', 'max_af': 0.01},
+                {'variant_qc': 'pass', 'lof_csq': 'stop_gained'},
+                {'variant_qc': 'pass', 'lof_HC_flags': 'no_flags'},
+                {'variant_qc': 'pass', 'capture': '1', 'max_af': 0.01},
+                {'variant_qc': 'pass', 'capture': '1', 'lof_csq': 'stop_gained'},
                 # Combinations of all requested common filter combinations with all
                 # requested LOF filter combination keys and their requested values.
-                'variant_qc_pass_capture_1_lof_HC_no_flags': {
-                    'variant_qc': 'pass', 'capture': '1', 'lof_HC': 'no_flags'
-                },
-                'variant_qc_pass_stop_gained_lof_HC_no_flags': {
-                    'variant_qc': 'pass', 'lof_csq': 'stop_gained', 'lof_HC': 'no_flags'
-                },
-                'variant_qc_pass_capture_1_stop_gained_lof_HC_no_flags': {
-                    'variant_qc': 'pass', 'capture': '1', 'lof_csq': 'stop_gained',
-                    'lof_HC': 'no_flags'
-                }
+                {'variant_qc': 'pass', 'capture': '1', 'lof_HC_flags': 'no_flags'},
+                {'variant_qc': 'pass', 'lof_csq': 'stop_gained', 'lof_HC_flags': 'no_flags'},
+                {'variant_qc': 'pass', 'capture': '1', 'lof_csq': 'stop_gained', 'lof_HC_flags': 'no_flags'}
             }
 
     :param all_sum_stat_filters: Dictionary of all possible filter types.
-    :param common_filter_combos: List of variant filter combinations to use for
-        summary stats.
-    :param lof_combos: List of loss-of-function consequence combinations to use for
-        summary stats.
+    :param common_filter_combos: List of lists of common filter keys to use for creating
+        common filter combinations.
+    :param common_combo_override: Dictionary of filter groups and their options to
+        override the values in `all_sum_stat_filters` for use with values in
+        `common_filter_combos`.
+    :param lof_combos: List of loss-of-function keys in all_sum_stat_filters to use for
+        creating filter combinations.
+    :param lof_combo_override: Dictionary of filter groups and their options to override
+        the values in `all_sum_stat_filters` for use with values in `lof_combos`.
+    :param filter_group_key_rename: Dictionary to rename keys in `all_sum_stat_filters`,
+        `common_combo_override`, or `lof_combo_override` to final metadata keys.
     :return: Dictionary of filter field to metadata.
     """
+    all_sum_stat_filters = deepcopy(all_sum_stat_filters)
+
     # Initialize list to store filter metadata combinations.
-    filter_meta = [
-        {f: all_sum_stat_filters[f] for f in combo} for combo in common_filter_combos
-    ]
+    filter_combinations = generate_filter_combinations(
+        [{f: all_sum_stat_filters[f] for f in combo} for combo in common_filter_combos]
+    )
 
     # Add combinations of common filters with all other filters.
-    filter_meta += [
-        {**c, **{k: v}}
-        for c in common_filter_combos
-        for k, v in all_sum_stat_filters.items()
-        if k not in c
-    ]
+    all_sum_stat_filters.update(common_combo_override)
+    filter_combinations.extend(
+        generate_filter_combinations(
+            [
+                c + [f]
+                for c in common_filter_combos
+                for f in all_sum_stat_filters
+                if f not in c
+            ],
+            all_sum_stat_filters,
+        )
+    )
 
     # Add combinations of common filters with LOF specific filters.
-    filter_meta += [
-        {**c, **{f: all_sum_stat_filters[f] for f in lof_combo}}
-        for c in common_filter_combos
-        for lof_combo in lof_combos
-    ]
-
-    # Generate all filter combinations from the filter metadata.
-    filter_combinations = generate_filter_combinations(filter_meta)
-
-    # Map filter fields to metadata.
-    map_filter_field_to_meta = {"all_variants": {"variant_qc": "none"}}
-    for filter_group in filter_combinations:
-        # Replace 'lof_non_HC' with 'lof' and exclude combinations where 'variant_qc'
-        # is 'none' because it is handled above.
-        filter_group = {
-            k.replace("lof_non_HC", "lof"): v
+    all_sum_stat_filters.update(lof_combo_override)
+    filter_combinations.extend(
+        generate_filter_combinations(
+            [c + f for c in common_filter_combos for f in lof_combos],
+            all_sum_stat_filters,
+        )
+    )
+    filter_combinations = [
+        {
+            filter_group_key_rename.get(str(k), str(k)): str(v)
             for k, v in filter_group.items()
             if not (k == "variant_qc" and v == "none")
         }
-        # Create a descriptive string key for each filter combination.
-        # If the filter field contains 'csq', only use the value.
-        filter_field = "_".join(
-            [v if "csq" in k else f"{k}_{v}" for k, v in filter_group.items()]
-        )
-        map_filter_field_to_meta[filter_field] = filter_group
+        for filter_group in filter_combinations
+    ]
 
-    return map_filter_field_to_meta
+    return filter_combinations
 
 
 def get_capture_filter_exprs(
     ht: hl.Table,
-    pass_filter_expr: Optional[hl.expr.BooleanExpression] = None,
     ukb_capture: bool = False,
     broad_capture: bool = False,
 ) -> Dict[str, hl.expr.BooleanExpression]:
@@ -298,7 +317,6 @@ def get_capture_filter_exprs(
 
     :param ht: Table containing variant annotations. The following annotations are
         required: 'region_flags'.
-    :param pass_filter_expr: Expression for variants that pass all variant QC filters.
     :param ukb_capture: Expression for variants that are in UKB capture intervals.
     :param broad_capture: Expression for variants that are in Broad capture intervals.
     :return: Dictionary of filter expressions for UK Biobank and Broad capture regions.
@@ -323,14 +341,6 @@ def get_capture_filter_exprs(
         filter_expr["capture_ukb_broad_union"] = (
             filter_expr["capture_ukb"] | filter_expr["capture_broad"]
         )
-
-    # Include capture filters for variants that pass all variant QC filters.
-    if pass_filter_expr is not None:
-        log_list.append("All of the above for only PASS variants")
-        add_pass_expr = {
-            f"variant_qc_pass_{k}": v & pass_filter_expr for k, v in filter_expr.items()
-        }
-        filter_expr.update(add_pass_expr)
 
     logger.info("Adding filtering for:\n\t%s...", "\n\t".join(log_list))
 
@@ -375,9 +385,10 @@ def get_summary_stats_filter_groups_ht(
     :param rare_variants_afs: The allele frequency thresholds to use for rare variants.
     :return: Table containing an ArrayExpression of filter groups for summary stats.
     """
-    # Filter to only canonical or MANE transcripts if requested and get the most severe
-    # consequence for each variant.
+    csq_filter_expr = {}
     if by_csqs:
+        # Filter to only canonical or MANE transcripts if requested and get the most
+        # severe consequence for each variant.
         ht = filter_vep_transcript_csqs(
             ht,
             synonymous=False,
@@ -386,88 +397,68 @@ def get_summary_stats_filter_groups_ht(
         )
         ht = get_most_severe_consequence_for_summary(ht)
 
-    # Create filter expressions for LCR and variant QC filters if requested.
+        # Create filter expressions for the requested consequence types.
+        csq_filter_expr.update(
+            get_summary_stats_csq_filter_expr(
+                ht,
+                lof_csq_set=LOF_CSQ_SET,
+                lof_label_set=LOFTEE_LABELS,
+                lof_no_flags=True,
+                lof_any_flags=True,
+                additional_csq_sets={
+                    "coding": set(CSQ_CODING),
+                    "non_coding": set(CSQ_NON_CODING),
+                },
+                additional_csqs=set(SUM_STAT_FILTERS["csq"]),
+            )
+        )
+
+    # Create filter expressions for LCR, variant QC filters, and rare variant AFs if
+    # requested.
     filter_exprs = {
         "all_variants": hl.literal(True),
+        **get_capture_filter_exprs(ht, ukb_capture, broad_capture),
         **get_summary_stats_variant_filter_expr(
-            ht, filter_lcr=True, filter_expr=ht.filters if pass_filters else None
-        ),
-    }
-
-    # Create filter expressions for the requested capture regions.
-    pass_expr = filter_exprs.get("variant_qc_pass")
-    filter_exprs.update(
-        get_capture_filter_exprs(ht, pass_expr, ukb_capture, broad_capture)
-    )
-
-    # Create filter expressions for the common filter groups that should be included in
-    # all rare variant AFs and csq summary stats. By default, these are variants that
-    # pass all variant QC filters and/or are within capture interval intersection.
-    common_filters = [
-        [f"{k}_{v}" for k, v in filter_group.items() if f"{k}_{v}" in filter_exprs]
-        for filter_group in generate_filter_combinations(COMMON_FILTER_COMBOS)
-    ]
-    common_filters = {
-        "_".join(g): functools.reduce(operator.iand, (filter_exprs[f] for f in g))
-        for g in common_filters
-        if len(g) > 0
-    }
-
-    # Create filter expressions for the requested rare variant AFs and apply common
-    # filter groups.
-    af_filter_exprs = get_summary_stats_variant_filter_expr(
-        ht, freq_expr=ht.freq[0].AF, max_af=rare_variants_afs
-    )
-    filter_exprs.update(
-        {
-            f"{f}_{v}": v_expr & f_expr
-            for v, v_expr in af_filter_exprs.items()
-            for f, f_expr in common_filters.items()
-        }
-    )
-
-    # Create filter expressions for the requested consequence types.
-    if by_csqs:
-        csq_filter_expr = get_summary_stats_csq_filter_expr(
             ht,
-            lof_csq_set=LOF_CSQ_SET,
-            lof_label_set=LOFTEE_LABELS,
-            lof_no_flags=True,
-            lof_any_flags=True,
-            lof_loftee_combinations=True,
-            additional_csq_sets={
-                "coding": set(CSQ_CODING),
-                "non_coding": set(CSQ_NON_CODING),
-            },
-            additional_csqs=SUM_STAT_FILTERS["csq"],
-        )
+            filter_lcr=True,
+            filter_expr=ht.filters if pass_filters else None,
+            freq_expr=ht.freq[0].AF,
+            max_af=rare_variants_afs,
+        ),
+        **csq_filter_expr,
+    }
 
-        # Apply common filter groups to all csq breakdowns.
-        filter_exprs.update(
-            {
-                f"{f}_{c}": c_expr & f_expr
-                for c, c_expr in csq_filter_expr.items()
-                for f, f_expr in common_filters.items()
-            }
-        )
+    # Create the metadata for all requested filter groups.
+    ss_filters = deepcopy(SUM_STAT_FILTERS)
+    ss_filters["max_af"] = rare_variants_afs
+    filter_group_meta = get_filter_group_meta(all_sum_stat_filters=ss_filters)
+
+    # Create filter expressions for each filter group by combining the filter
+    # expressions for each filter in the filter group metadata.
+    filter_groups_expr = []
+    for filter_group in filter_group_meta:
+        # Initialize filter expression for the filter group with True to allow for
+        # a filtering group that has no filters, e.g. all variants.
+        filter_expr = hl.literal(True)
+        filter_group_requested = True
+        for k, v in filter_group.items():
+            # Rename "loftee_flags" to "loftee" to match the filter expression keys.
+            k = k.replace("loftee_flags", "loftee")
+            # Determine the correct key for filter_expr.
+            f_expr = filter_exprs.get(f"{k}_{v}")
+            f_struct = filter_exprs.get(k)
+            if f_expr is None and f_struct is None:
+                filter_group_requested = False
+                break
+            filter_expr &= f_struct[v] if f_expr is None else f_expr
+        if filter_group_requested:
+            filter_groups_expr.append(filter_expr)
 
     # Remove 'no_lcr' filter expression from filter groups and annotate the Table with
     # the no_lcr filter and an array of the filter groups.
-    no_lcr_expr = filter_exprs.pop("no_lcr")
-    filter_groups = list(filter_exprs.keys())
-    ht = ht.select(
-        _no_lcr=no_lcr_expr, filter_groups=[filter_exprs[g] for g in filter_groups]
-    )
+    ht = ht.select(_no_lcr=filter_exprs["no_lcr"], filter_groups=filter_groups_expr)
 
-    # Map the filter group field to a metadata dictionary detailing the filters used
-    # in each filter group.
-    ss_filters = SUM_STAT_FILTERS.copy()
-    ss_filters["max_af"] = rare_variants_afs
-    filter_group_meta = get_filter_group_meta(all_sum_stat_filters=ss_filters)
-    filter_group_meta = {f: filter_group_meta[f] for f in filter_groups}
-    ht = ht.select_globals(
-        filter_group_fields=filter_groups, filter_group_meta=filter_group_meta
-    )
+    ht = ht.select_globals(filter_group_meta=filter_group_meta)
     logger.info("Filter groups for summary stats: %s", filter_group_meta)
 
     # Filter to only variants that are not in low confidence regions.
@@ -511,18 +502,15 @@ def create_per_sample_counts_ht(
         variant_atypes=mt.variant_atypes,
         dp=mt.DP,
     )
-    filter_groups = hl.eval(filter_group_ht.filter_group_fields)
     ht = mt.select_cols(
         _qc=hl.agg.array_agg(lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups)
     ).cols()
-    ht = ht.annotate_globals(**filter_group_ht.index_globals())
     ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
 
     # Add 'n_indel' to the output Table.
     qc_expr = ht._qc.map(lambda x: x.annotate(n_indel=x.n_insertion + x.n_deletion))
 
-    # Convert each element of the summary stats array to a row annotation on the Table.
-    ht = ht.select(**{f: qc_expr[i] for i, f in enumerate(filter_groups)})
+    ht = ht.annotate_globals(**filter_group_ht.index_globals())
 
     return ht
 
