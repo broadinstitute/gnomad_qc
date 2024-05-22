@@ -23,10 +23,8 @@ computed:
 Aggregated statistics can also be computed by ancestry.
 """
 import argparse
-import functools
 import itertools
 import logging
-import operator
 from copy import deepcopy
 from typing import Dict, List, Optional, Union
 
