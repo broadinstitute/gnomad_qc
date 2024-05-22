@@ -369,12 +369,8 @@ def get_summary_stats_filter_groups_ht(
     A 'filter_groups' annotation is added to the Table containing an ArrayExpression of
     BooleanExpressions for each requested filter group.
 
-    The following global annotations are added to the Table:
-        - filter_group_fields: Array of filter group names. Combined filter groups are
-          separated by underscores.
-        - filter_group_meta: Dictionary of filter group names (those in
-          'filter_group_fields') to metadata detailing the filters used in each filter
-          group. For example, 'variant_qc_pass': {'variant_qc': 'pass'}.
+    A 'filter_group_meta' global annotation is added to the Table containing an array
+    of dictionaries detailing the filters used in each filter group.
 
     :param ht: Table containing variant annotations. The following annotations are
         required: 'freq', 'filters', and 'region_flags'. If `by_csqs` is True, 'vep' is
@@ -555,12 +551,6 @@ def compute_agg_sample_stats(
         subset_expr = hl.if_else(meta_s.project_meta.ukb_sample, "ukb", "non-ukb")
         subset += [subset_expr] if by_subset else []
         gen_anc += [meta_s.population_inference.pop] if by_ancestry else []
-
-    all_strats = [
-        strat
-        for strat in ht.row_value
-        if isinstance(ht[strat], hl.expr.StructExpression)
-    ]
 
     ht = ht.transmute(
         subset=subset,
