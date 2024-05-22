@@ -510,14 +510,21 @@ def create_per_sample_counts_ht(
         dp=mt.DP,
     )
     ht = mt.select_cols(
-        _qc=hl.agg.array_agg(lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups)
+        summary_stats=hl.agg.array_agg(
+            lambda f: hl.agg.filter(f, qc_expr), mt.filter_groups
+        )
     ).cols()
+    ht = ht.annotate_globals(
+        summary_stats_meta=filter_group_ht.index_globals().filter_group_meta
+    )
     ht = ht.checkpoint(hl.utils.new_temp_file("per_sample_counts", "ht"))
 
     # Add 'n_indel' to the output Table.
-    qc_expr = ht._qc.map(lambda x: x.annotate(n_indel=x.n_insertion + x.n_deletion))
-
-    ht = ht.annotate_globals(**filter_group_ht.index_globals())
+    ht = ht.annotate(
+        summary_stats=ht.summary_stats.map(
+            lambda x: x.annotate(n_indel=x.n_insertion + x.n_deletion)
+        )
+    )
 
     return ht
 
@@ -555,23 +562,23 @@ def compute_agg_sample_stats(
     ht = ht.transmute(
         subset=subset,
         gen_anc=gen_anc,
-        stats_array=[(strat, ht[strat]) for strat in all_strats],
+        summary_stats=hl.zip(ht.summary_stats_meta, ht.summary_stats),
     )
 
-    ht = ht.explode("stats_array").explode("gen_anc").explode("subset")
+    ht = ht.explode("summary_stats").explode("gen_anc").explode("subset")
 
-    ht = ht.group_by("subset", "gen_anc", variant_filter=ht.stats_array[0]).aggregate(
+    ht = ht.group_by("subset", "gen_anc", variant_filter=ht.summary_stats[0]).aggregate(
         **{
             metric: hl.struct(
-                mean=hl.agg.mean(ht.stats_array[1][metric]),
-                min=hl.agg.min(ht.stats_array[1][metric]),
-                max=hl.agg.max(ht.stats_array[1][metric]),
+                mean=hl.agg.mean(ht.summary_stats[1][metric]),
+                min=hl.agg.min(ht.summary_stats[1][metric]),
+                max=hl.agg.max(ht.summary_stats[1][metric]),
                 quantiles=hl.agg.approx_quantiles(
-                    ht.stats_array[1][metric], [0.0, 0.25, 0.5, 0.75, 1.0]
+                    ht.summary_stats[1][metric], [0.0, 0.25, 0.5, 0.75, 1.0]
                 ),
             )
-            for metric in ht.stats_array[1]
-            if isinstance(ht.stats_array[1][metric], hl.expr.NumericExpression)
+            for metric in ht.summary_stats[1]
+            if isinstance(ht.summary_stats[1][metric], hl.expr.NumericExpression)
         }
     )
 
