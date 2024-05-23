@@ -82,7 +82,6 @@ SUM_STAT_FILTERS = {
         "intron_variant",
         "intergenic_variant",
     ],
-    "loftee_label": deepcopy(LOFTEE_LABELS),  # LOFTEE loss-of-function labels.
 }
 """
 Dictionary of default filter settings for summary stats.
@@ -99,8 +98,9 @@ List of common variant filter combinations to use for summary stats.
 """
 
 LOF_FILTERS_FOR_COMBO = {
-    "lof_csq_set": ["lof"],
-    "loftee_HC": ["HC"],
+    "lof_csq_set": ["lof"],  # Loss-of-function consequence set.
+    "loftee_label": deepcopy(LOFTEE_LABELS),  # LOFTEE loss-of-function labels.
+    "loftee_HC": ["HC"],  # High-confidence LOFTEE label.
     "loftee_flags": ["no_flags", "with_flags"],  # High-confidence LOFTEE flag options.
 }
 """
