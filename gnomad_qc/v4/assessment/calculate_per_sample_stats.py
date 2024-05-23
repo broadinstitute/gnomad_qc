@@ -215,12 +215,13 @@ def get_filter_group_meta(
                 "capture": ["1", "2"],
                 "max_af": [0.01],
                 "lof_csq": ["stop_gained"],
-                "loftee_flags": ["with_flags"]
             }
             common_filter_combos = [["variant_qc"], ["variant_qc", "capture"]]
             common_combo_override = {"variant_qc": ["pass"], "capture": ["1"]}
-            lof_combos = [ ["lof_csq", "loftee_HC", "loftee_flags"]]
-            lof_combo_override = {"loftee_HC": ["HC"]}
+            lof_combos = [
+                ["loftee_HC", "loftee_flags"], ["lof_csq", "loftee_HC", "loftee_flags"]
+            ]
+            lof_combo_override = {"loftee_HC": ["HC"], "loftee_flags": ["with_flags"]}
             filter_group_key_rename = {"lof_csq": "csq","loftee_HC": "loftee_labels"}
 
         The function will generate the following filter combinations:
@@ -240,15 +241,21 @@ def get_filter_group_meta(
                 # possible other filter keys and values.
                 {'variant_qc': 'pass', 'max_af': '0.01'},
                 {'variant_qc': 'pass', 'csq': 'stop_gained'},
-                {'variant_qc': 'pass', 'loftee_flags': 'with_flags'},
                 {'variant_qc': 'pass', 'capture': '1', 'max_af': '0.01'},
                 {'variant_qc': 'pass', 'capture': '1', 'csq': 'stop_gained'},
-                {'variant_qc': 'pass', 'capture': '1', 'loftee_flags': 'with_flags'},
 
                 # Combinations of all requested common filter combinations with all
                 # requested LOF filter combination keys and their requested values.
                 {
+                    'variant_qc': 'pass', 'loftee_labels': 'HC',
+                    'loftee_flags': 'with_flags'
+                },
+                {
                     'variant_qc': 'pass', 'csq': 'stop_gained', 'loftee_labels': 'HC',
+                    'loftee_flags': 'with_flags'
+                },
+                 {
+                    'variant_qc': 'pass', 'capture': '1', 'loftee_labels': 'HC',
                     'loftee_flags': 'with_flags'
                 },
                 {
