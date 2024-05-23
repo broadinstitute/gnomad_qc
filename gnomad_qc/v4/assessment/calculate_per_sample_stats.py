@@ -110,7 +110,7 @@ combinations.
 
 LOF_FILTER_COMBOS = [
     ["lof_csq", "loftee_label"],
-    ["lof_csq_set", "loftee_HC"],
+    ["lof_csq_set", "loftee_label"],
     ["lof_csq_set", "loftee_HC", "loftee_flags"],
     ["lof_csq", "loftee_HC", "loftee_flags"],
 ]
