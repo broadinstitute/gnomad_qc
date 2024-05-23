@@ -189,12 +189,12 @@ def generate_filter_combinations(
 
 
 def get_filter_group_meta(
-    all_sum_stat_filters: Dict[str, List[str]] = SUM_STAT_FILTERS,
-    common_filter_combos: List[List[str]] = COMMON_FILTER_COMBOS,
-    common_combo_override: Dict[str, List[str]] = COMMON_FILTERS,
-    lof_combos: List[List[str]] = LOF_FILTER_COMBOS,
-    lof_combo_override: Dict[str, List[str]] = LOF_FILTERS_FOR_COMBO,
-    filter_group_key_rename: Dict[str, str] = MAP_FILTER_FIELD_TO_META,
+    all_sum_stat_filters: Dict[str, List[str]],
+    common_filter_combos: List[List[str]] = None,
+    common_combo_override: Dict[str, List[str]] = None,
+    lof_combos: Optional[List[List[str]]] = None,
+    lof_combo_override: Dict[str, List[str]] = None,
+    filter_group_key_rename: Dict[str, str] = None,
 ) -> List[Dict[str, str]]:
     """
     Generate list of filter combinations for summary stats.
@@ -254,6 +254,7 @@ def get_filter_group_meta(
                 # possible other filter keys and values.
                 {'variant_qc': 'pass', 'max_af': '0.01'},
                 {'variant_qc': 'pass', 'csq': 'stop_gained'},
+                {'variant_qc': 'pass', 'csq_set': 'lof'},
                 {'variant_qc': 'pass', 'capture': '1', 'max_af': '0.01'},
                 {'variant_qc': 'pass', 'capture': '1', 'csq': 'stop_gained'},
                 {'variant_qc': 'pass', 'capture': '1', 'csq_set': 'lof'},
@@ -284,25 +285,50 @@ def get_filter_group_meta(
             ]
 
     :param all_sum_stat_filters: Dictionary of all possible filter types.
-    :param common_filter_combos: List of lists of common filter keys to use for creating
-        common filter combinations.
-    :param common_combo_override: Dictionary of filter groups and their options to
-        override the values in `all_sum_stat_filters` for use with values in
-        `common_filter_combos`.
-    :param lof_combos: List of loss-of-function keys in all_sum_stat_filters to use for
-        creating filter combinations.
-    :param lof_combo_override: Dictionary of filter groups and their options to override
-        the values in `all_sum_stat_filters` for use with values in `lof_combos`.
-    :param filter_group_key_rename: Dictionary to rename keys in `all_sum_stat_filters`,
-        `common_combo_override`, or `lof_combo_override` to final metadata keys.
+    :param common_filter_combos: Optional list of lists of common filter keys to use
+        for creating common filter combinations.
+    :param common_combo_override: Optional dictionary of filter groups and their
+        options to override the values in `all_sum_stat_filters` for use with values in
+        `common_filter_combos`. This is only used if `common_filter_combos` is not None.
+    :param lof_combos: Optional List of loss-of-function keys in all_sum_stat_filters
+        to use for creating filter combinations.
+    :param lof_combo_override: Optional Dictionary of filter groups and their options
+        to override the values in `all_sum_stat_filters` for use with values in
+        `lof_combos`. This is only used if `lof_combos` is not None.
+    :param filter_group_key_rename: Optional dictionary to rename keys in
+        `all_sum_stat_filters`, `common_combo_override`, or `lof_combo_override` to
+        final metadata keys.
     :return: Dictionary of filter field to metadata.
     """
-    all_sum_stat_filters = deepcopy(all_sum_stat_filters)
+    if common_combo_override is not None and common_filter_combos is None:
+        raise ValueError(
+            "If `common_combo_override` is provided, `common_filter_combos` must be "
+            "provided."
+        )
+    if lof_combo_override is not None and lof_combos is None:
+        raise ValueError(
+            "If `lof_combo_override` is provided, `lof_combos` must be provided."
+        )
 
-    # Initialize list to store filter metadata combinations.
-    filter_combinations = generate_filter_combinations(
-        [{f: all_sum_stat_filters[f] for f in combo} for combo in common_filter_combos]
-    )
+    # Initialize dictionaries and lists to handle cases where the optional parameters
+    # are not provided.
+    common_combo_override = common_combo_override or {}
+    lof_combo_override = lof_combo_override or {}
+    filter_group_key_rename = filter_group_key_rename or {}
+
+    # Generate all possible filter combinations for common filter combinations.
+    all_sum_stat_filters = deepcopy(all_sum_stat_filters)
+    filter_combinations = []
+    if common_filter_combos is not None:
+        filter_combinations.extend(
+            generate_filter_combinations(
+                [
+                    {f: all_sum_stat_filters[f] for f in combo}
+                    for combo in common_filter_combos
+                ]
+            )
+        )
+    common_filter_combos = common_filter_combos or [[]]
 
     # Update the common filter combinations with the common filter override, and remove
     # them from the all_sum_stat_filters and into a common filter dictionary.
@@ -319,14 +345,16 @@ def get_filter_group_meta(
         )
     )
 
-    # Add combinations of common filters with LOF specific filters.
-    all_sum_stat_filters.update(lof_combo_override)
-    filter_combinations.extend(
-        generate_filter_combinations(
-            [c + f for c in common_filter_combos for f in lof_combos],
-            {**all_sum_stat_filters, **common_filters},
+    if lof_combos is not None:
+        # Add combinations of common filters with LOF specific filters.
+        all_sum_stat_filters.update(lof_combo_override)
+        filter_combinations.extend(
+            generate_filter_combinations(
+                [c + f for c in common_filter_combos for f in lof_combos],
+                {**all_sum_stat_filters, **common_filters},
+            )
         )
-    )
+
     filter_combinations = [
         {
             filter_group_key_rename.get(str(k), str(k)): str(v)
@@ -459,7 +487,14 @@ def get_summary_stats_filter_groups_ht(
     # Create the metadata for all requested filter groups.
     ss_filters = deepcopy(SUM_STAT_FILTERS)
     ss_filters["max_af"] = rare_variants_afs
-    filter_group_meta = get_filter_group_meta(all_sum_stat_filters=ss_filters)
+    filter_group_meta = get_filter_group_meta(
+        ss_filters,
+        common_filter_combos=COMMON_FILTER_COMBOS,
+        common_combo_override=COMMON_FILTERS,
+        lof_combos=LOF_FILTER_COMBOS,
+        lof_combo_override=LOF_FILTERS_FOR_COMBO,
+        filter_group_key_rename=MAP_FILTER_FIELD_TO_META,
+    )
 
     # Create filter expressions for each filter group by combining the filter
     # expressions for each filter in the filter group metadata.
