@@ -99,7 +99,7 @@ COMMON_FILTER_COMBOS = [["variant_qc"], ["variant_qc", "capture"]]
 List of common variant filter combinations to use for summary stats.
 """
 
-LOF_FILTERS_FOR_COMBO = {"loftee_HC": ["HC"]}
+LOF_FILTERS_FOR_COMBO = {"loftee_HC": ["HC"], "lof_csq_set": ["lof"]}
 """
 Dictionary of an additional filter group to use for loss-of-function filter
 combinations.
@@ -107,6 +107,8 @@ combinations.
 
 LOF_FILTER_COMBOS = [
     ["lof_csq", "loftee_label"],
+    ["lof_csq_set", "loftee_HC"],
+    ["lof_csq_set", "loftee_HC", "loftee_flags"],
     ["lof_csq", "loftee_HC", "loftee_flags"],
 ]
 """
@@ -116,6 +118,7 @@ List of loss-of-function consequence combinations to use for summary stats.
 MAP_FILTER_FIELD_TO_META = {
     "lof_csq": "csq",
     "loftee_HC": "loftee_label",
+    "lof_csq_set": "csq_set",
 }
 """
 Dictionary to rename keys in `SUM_STAT_FILTERS`, `COMMON_FILTERS`, or
