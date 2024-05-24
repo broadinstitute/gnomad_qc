@@ -47,12 +47,13 @@ from hail.vds.sample_qc import vmt_sample_qc, vmt_sample_qc_variant_annotations
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources import meta
+from gnomad_qc.v4.resources.assessment import get_per_sample_counts
 from gnomad_qc.v4.resources.basics import (
     get_gnomad_v4_genomes_vds,
     get_gnomad_v4_vds,
     get_logging_path,
 )
-from gnomad_qc.v4.resources.release import get_per_sample_counts, release_sites
+from gnomad_qc.v4.resources.release import release_sites
 
 logging.basicConfig(
     format="%(asctime)s (%(name)s %(lineno)s): %(message)s",
