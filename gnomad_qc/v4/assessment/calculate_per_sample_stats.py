@@ -330,8 +330,9 @@ def get_filter_group_meta(
         )
     common_filter_combos = common_filter_combos or [[]]
 
-    # Update the common filter combinations with the common filter override, and remove
-    # them from the all_sum_stat_filters and into a common filter dictionary.
+    # Update the all_sum_stat_filters dictionary with common_combo_override values and
+    # remove all filters in common_filter_combos from all_sum_stat_filters and
+    # into a common_filters dictionary.
     all_sum_stat_filters.update(common_combo_override)
     common_filters = {
         k: all_sum_stat_filters.pop(k) for k in set(sum(common_filter_combos, []))
