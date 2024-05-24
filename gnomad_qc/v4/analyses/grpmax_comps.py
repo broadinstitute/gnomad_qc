@@ -1,5 +1,6 @@
 """Find grpmax stats for gnomAD v4 and v2."""
 
+import argparse
 import logging
 from pprint import pprint
 from typing import Dict
@@ -50,8 +51,6 @@ def get_eur_freq(ht: hl.Table, eur_grps: list, version: str = "v4"):
             )
         )
     )
-    ht = ht.filter(hl.is_defined(ht.eur_AF))
-
     return ht
 
 
@@ -77,23 +76,54 @@ def filter_to_threshold(
 
 
 def version_stats(
-    ht: hl.Table, version: str = "v4"
+    ht: hl.Table, version: str = "v4", can_only: bool = False
 ) -> Dict[str, Dict[str, Dict[str, int]]]:
     """
     Calculate grpmax stats for a given gnomAD version.
 
     :param ht: gnomAD release Table
     :param version: gnomAD version
+    :param can_only: Only consider MANE Select and canonical transcripts.
     :return: Dictionary of grpmax stats
     """
     logger.info(f"Calculating grpmax stats for {version}")
     # Group results into nfe and all eur grps
     results_by_eur_grping = {}
+
+    logger.info(
+        "Total number of variants in %s before filtering: %s", version, ht.count()
+    )
+    if can_only:
+        ht = ht.explode(ht.vep.transcript_consequences)
+        ht.show()
+        if version == "v2":
+            ht = ht.filter(hl.is_defined(ht.vep.transcript_consequences.canonical))
+        else:
+            ht = ht.filter(
+                hl.is_defined(ht.vep.transcript_consequences.canonical)
+                | hl.is_defined(ht.vep.transcript_consequences.mane_select)
+            )
+
+    logger.info(
+        "Total number of variants in % after canonical/MANE_Select filtering: %s",
+        version,
+        ht.count(),
+    )
     # Filter to only non-synonymous terms CSQ_CODING_HIGH_IMPACT +
     # CSQ_CODING_MEDIUM_IMPACT
     ht = ht.filter(NS_CONSEQ_TERMS.contains(ht.vep.most_severe_consequence))
+
+    logger.info(
+        "Total number of variants in %s after consequence filtering: %s",
+        version,
+        ht.count(),
+    )
     # Filter to PASS variants only
     ht = ht.filter(ht.filters.length() == 0)
+
+    logger.info(
+        "Total number of variants in % after filtering to PASS: %s", version, ht.count()
+    )
     # Iterate through just nfe group and all eur grp for calculating eur AF
     for grp_id, grps in EUR_GRPS.items():
         # Get european frequency by calculating the cumulative AF in the passed
@@ -156,7 +186,7 @@ def create_table(
         )
 
 
-def main():
+def main(args):
     """Find grpmax stats for gnomAD v4 and v2."""
     version_dict = {}
     for version in ["v4", "v2"]:
@@ -164,7 +194,9 @@ def main():
             ht = release_sites().ht()
         else:
             ht = get_gnomad_public_data("exomes")
-        version_dict[version] = version_stats(ht, version=version)
+        version_dict[version] = version_stats(
+            ht, version=version, can_only=args.canonical_only
+        )
 
     # Create tables for "all_eur" and "nfe_only" data
     create_table(version_dict, data_subset="all_eur")
@@ -172,4 +204,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--canonical-only",
+        action="store_true",
+        help="Only consider MANE Select and canonical transcripts",
+    )
+    args = parser.parse_args()
+    main(args)
