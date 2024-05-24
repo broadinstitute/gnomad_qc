@@ -40,18 +40,19 @@ def get_eur_freq(ht: hl.Table, eur_grps: list, version: str = "v4"):
             lambda g: ht.freq_index_dict["gnomad_" + g]
         )
     ht = ht.annotate(
-        eur_AF=hl.sum(
+        eur_AC=hl.sum(
             eur_indices.map(
                 lambda f: hl.if_else(hl.is_defined(ht.freq[f].AC), ht.freq[f].AC, 0)
             )
-        )
-        / hl.sum(
+        ),
+        eur_AN=hl.sum(
             eur_indices.map(
                 lambda f: hl.if_else(hl.is_defined(ht.freq[f].AN), ht.freq[f].AN, 0)
             )
-        )
+        ),
     )
-    return ht
+    ht = ht.annotate(eur_AF=hl.if_else(ht.eur_AN > 0, ht.eur_AC / ht.eur_AN, 0.0))
+    return ht.drop("eur_AC", "eur_AN")
 
 
 def filter_to_threshold(
@@ -86,16 +87,17 @@ def version_stats(
     :param can_only: Only consider MANE Select and canonical transcripts.
     :return: Dictionary of grpmax stats
     """
-    logger.info(f"Calculating grpmax stats for {version}")
+    logger.info("Calculating grpmax stats for %s", version)
     # Group results into nfe and all eur grps
     results_by_eur_grping = {}
 
     logger.info(
         "Total number of variants in %s before filtering: %s", version, ht.count()
     )
+    t_variants = ht.count()
     if can_only:
+        logger.info("Filtering to only MANE Select and canonical transcripts")
         ht = ht.explode(ht.vep.transcript_consequences)
-        ht.show()
         if version == "v2":
             ht = ht.filter(hl.is_defined(ht.vep.transcript_consequences.canonical))
         else:
@@ -103,26 +105,62 @@ def version_stats(
                 hl.is_defined(ht.vep.transcript_consequences.canonical)
                 | hl.is_defined(ht.vep.transcript_consequences.mane_select)
             )
+        logger.info(
+            "Filtering on mane_select and canonical transcript consequence term to "
+            "keep only non-synonymous variants..."
+        )
+        ht = ht.filter(
+            hl.any(
+                ht.vep.transcript_consequences.consequence_terms.map(
+                    lambda x: NS_CONSEQ_TERMS.contains(x)
+                )
+            )
+        )
+        # Remove duplicate sites after exploding, most_severe_consequence is the same for all
+        # transcript consequences so we can use distinct to remove duplicates
+        ht = ht.distinct()
+        ht = ht.checkpoint(
+            f"gs://gnomad-tmp-4day/grpmax_comps_{version}_canonical_non_syn.ht",
+            overwrite=True,
+        )
+        ns_variants = ht.count()
+        logger.info(
+            "Total number of variants in %s after canonical/mane and consequence "
+            "filtering: %s (%.2f%% of total variants)",
+            version,
+            ns_variants,
+            (ns_variants / t_variants) * 100,
+        )
 
-    logger.info(
-        "Total number of variants in % after canonical/MANE_Select filtering: %s",
-        version,
-        ht.count(),
-    )
-    # Filter to only non-synonymous terms CSQ_CODING_HIGH_IMPACT +
-    # CSQ_CODING_MEDIUM_IMPACT
-    ht = ht.filter(NS_CONSEQ_TERMS.contains(ht.vep.most_severe_consequence))
-
-    logger.info(
-        "Total number of variants in %s after consequence filtering: %s",
-        version,
-        ht.count(),
-    )
+    else:
+        # Filter to only non-synonymous terms CSQ_CODING_HIGH_IMPACT +
+        # CSQ_CODING_MEDIUM_IMPACT
+        logger.info(
+            "Filtering on most_severe_consequence to keep only non-synonymous"
+            " variants..."
+        )
+        ht = ht.filter(NS_CONSEQ_TERMS.contains(ht.vep.most_severe_consequence))
+        ht = ht.checkpoint(
+            f"gs://gnomad-tmp-4day/grpmax_comps_{version}_non_syn.ht", overwrite=True
+        )
+        ns_variants = ht.count()
+        logger.info(
+            "Total number of variants in %s after consequence filtering: %s (%.2f%% of "
+            "total variants)",
+            version,
+            ns_variants,
+            (ns_variants / t_variants) * 100,
+        )
     # Filter to PASS variants only
     ht = ht.filter(ht.filters.length() == 0)
-
+    p_ns_variants = ht.count()
     logger.info(
-        "Total number of variants in % after filtering to PASS: %s", version, ht.count()
+        "Total number of variants in %s after filtering to PASS: %s (%.2f%% of"
+        " non-synonymous variants, %.2f%% of total variants)",
+        version,
+        p_ns_variants,
+        (p_ns_variants / ns_variants) * 100,
+        (p_ns_variants / t_variants) * 100,
     )
     # Iterate through just nfe group and all eur grp for calculating eur AF
     for grp_id, grps in EUR_GRPS.items():
@@ -134,6 +172,21 @@ def version_stats(
         for threshold in AF_THRESHOLDS:
             # Filter to keep only variants that split at the AF threshold
             t_ht = filter_to_threshold(p_ht, threshold, version=version)
+            t_ht = t_ht.checkpoint(
+                f"gs://gnomad-tmp-4day/grpmax_comps_{version}_{grp_id}_{threshold}.ht",
+                overwrite=True,
+            )
+            logger.info(
+                "Number of variants after filtering to AF threshold for %s at %s "
+                "threshold in %s: %s (%.2f%% of passing non-synonymous variants, %.2f%%"
+                " of total variants)",
+                grp_id,
+                threshold,
+                version,
+                t_ht.count(),
+                t_ht.count() / p_ns_variants * 100,
+                t_ht.count() / t_variants * 100,
+            )
             if version == "v4":
                 grpmax_ga_expr = t_ht.grpmax.gnomad.gen_anc
             else:
@@ -149,6 +202,9 @@ def version_stats(
             grpmax_by_thresholds[threshold] = t_ht.aggregate(
                 hl.agg.counter(grpmax_ga_expr)
             )
+            # Add a total count for all groups
+            grpmax_by_thresholds[threshold]["all"] = t_ht.count()
+
         results_by_eur_grping[grp_id] = grpmax_by_thresholds
     logger.info(f"Results for {version}")
     pprint(results_by_eur_grping, sort_dicts=False)
@@ -170,7 +226,7 @@ def create_table(
     headers = ["grpmax_grp", "v2", "v4", "difference(v4-v2)"]
     for threshold in AF_THRESHOLDS:
         table = []
-        for grpmax_group in hl.eval(DIVERSE_GRPS):
+        for grpmax_group in hl.eval(hl.array(DIVERSE_GRPS)) + ["all"]:
             v2_val = version_dict["v2"][data_subset][threshold].get(grpmax_group, 0)
             v4_val = version_dict["v4"][data_subset][threshold].get(grpmax_group, 0)
             diff = v4_val - v2_val
