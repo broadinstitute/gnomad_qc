@@ -213,6 +213,7 @@ def get_summary_stats_filter_groups_ht(
             synonymous=False,
             canonical=vep_canonical,
             mane_select=vep_mane,
+            filter_empty_csq=False,
         )
         ht = get_most_severe_consequence_for_summary(ht)
 
