@@ -419,7 +419,7 @@ def get_summary_stats_filter_groups_ht(
     rare_variants_afs: Optional[list[float]] = None,
 ) -> hl.Table:
     """
-    Create Table annotated with an array of booleans indicating which filter groups a variant belongs to.
+    Create Table annotated with an array of booleans indicating whether a variant belongs to certain filter groups. 
 
     A 'filter_groups' annotation is added to the Table containing an ArrayExpression of
     BooleanExpressions for each requested filter group.
