@@ -1,4 +1,4 @@
-"""Script containing annotation related resources."""
+"""Script containing assessment related resources."""
 from gnomad.resources.resource_utils import TableResource, VersionedTableResource
 
 from gnomad_qc.v4.resources.constants import CURRENT_RELEASE, RELEASES
