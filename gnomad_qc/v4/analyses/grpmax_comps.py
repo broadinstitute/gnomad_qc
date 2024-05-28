@@ -6,7 +6,12 @@ from pprint import pprint
 from typing import Dict
 
 import hail as hl
-from gnomad.utils.vep import CSQ_CODING_HIGH_IMPACT, CSQ_CODING_MEDIUM_IMPACT
+from gnomad.utils.vep import (
+    CSQ_CODING_HIGH_IMPACT,
+    CSQ_CODING_LOW_IMPACT,
+    CSQ_CODING_MEDIUM_IMPACT,
+    CSQ_NON_CODING,
+)
 from tabulate import tabulate
 
 from gnomad_qc.v2.resources.basics import get_gnomad_public_data
@@ -19,7 +24,7 @@ logger.setLevel(logging.INFO)
 
 DIVERSE_GRPS = hl.literal({"afr", "amr", "eas", "mid", "sas"})
 EUR_GRPS = {"all_eur": ["nfe", "fin", "asj"], "nfe_only": ["nfe"]}
-
+FILTER_VALUES_TO_DROP = hl.array(["AC0", "InbreedingCoeff"])
 AF_THRESHOLDS = [0.0001, 0.001]
 NS_CONSEQ_TERMS = hl.literal(CSQ_CODING_HIGH_IMPACT + CSQ_CODING_MEDIUM_IMPACT)
 
@@ -112,7 +117,9 @@ def version_stats(
         ht = ht.filter(
             hl.any(
                 ht.vep.transcript_consequences.consequence_terms.map(
-                    lambda x: NS_CONSEQ_TERMS.contains(x)
+                    lambda x: ~hl.literal(
+                        CSQ_NON_CODING + CSQ_CODING_LOW_IMPACT
+                    ).contains(x)
                 )
             )
         )
@@ -139,7 +146,11 @@ def version_stats(
             "Filtering on most_severe_consequence to keep only non-synonymous"
             " variants..."
         )
-        ht = ht.filter(NS_CONSEQ_TERMS.contains(ht.vep.most_severe_consequence))
+        ht = ht.filter(
+            ~hl.literal(CSQ_NON_CODING + CSQ_CODING_LOW_IMPACT).contains(
+                ht.vep.most_severe_consequence
+            )
+        )
         ht = ht.checkpoint(
             f"gs://gnomad-tmp-4day/grpmax_comps_{version}_non_syn.ht", overwrite=True
         )
@@ -151,13 +162,19 @@ def version_stats(
             ns_variants,
             (ns_variants / t_variants) * 100,
         )
-    # Filter to PASS variants only
-    ht = ht.filter(ht.filters.length() == 0)
+    if args.drop_hard_filtered_variants:
+        # Filter out AC0 and InbreedingCoeff variants
+        ht = ht.filter(~ht.filters.any(lambda x: FILTER_VALUES_TO_DROP.contains(x)))
+        log_message = "ONLY hard filters (RF/VQSR are retained)"
+    else:
+        ht = ht.filter(hl.len(ht.filters) == 0)
+        log_message = "all filters"
+
     p_ns_variants = ht.count()
     logger.info(
-        "Total number of variants in %s after filtering to PASS: %s (%.2f%% of"
+        "Total number of variants passing %s: %s (%.2f%% of"
         " non-synonymous variants, %.2f%% of total variants)",
-        version,
+        log_message,
         p_ns_variants,
         (p_ns_variants / ns_variants) * 100,
         (p_ns_variants / t_variants) * 100,
@@ -265,6 +282,11 @@ if __name__ == "__main__":
         "--canonical-only",
         action="store_true",
         help="Only consider MANE Select and canonical transcripts",
+    )
+    parser.add_argument(
+        "--drop-hard-filtered-variants",
+        action="store_true",
+        help="Drop variants that have been hard filtered",
     )
     args = parser.parse_args()
     main(args)
