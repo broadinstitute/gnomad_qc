@@ -6,6 +6,7 @@ from pprint import pprint
 from typing import Dict
 
 import hail as hl
+from gnomad.utils.annotations import pop_max_expr
 from gnomad.utils.vep import (
     CSQ_CODING_HIGH_IMPACT,
     CSQ_CODING_MEDIUM_IMPACT,
@@ -21,11 +22,12 @@ logger = logging.getLogger("grpmax_comps")
 logger.setLevel(logging.INFO)
 
 
-DIVERSE_GRPS = hl.literal({"afr", "amr", "eas", "mid", "sas"})
+DIVERSE_GRPS = hl.literal({"afr", "amr", "eas", "mid", "sas", "remaining"})
 EUR_GRPS = {"all_eur": ["nfe", "fin", "asj"], "nfe_only": ["nfe"]}
 FILTER_VALUES_TO_DROP = hl.array(["AC0", "InbreedingCoeff"])
 AF_THRESHOLDS = [0.0001, 0.001]
 NS_CONSEQ_TERMS = hl.literal(CSQ_CODING_HIGH_IMPACT + CSQ_CODING_MEDIUM_IMPACT)
+REMOVE_FOR_POPMAX = ["fin", "asj", "ami"]
 
 
 def get_eur_freq(ht: hl.Table, eur_grps: list, version: str = "v4"):
@@ -72,11 +74,13 @@ def filter_to_threshold(
     :param version: gnomAD version
     :return: Table filtered to variants meething threshold specifications
     """
-    if version == "v4":
-        grpmax_expr = ht.grpmax.gnomad
-    else:
-        grpmax_expr = ht.popmax[0]
-    ht = ht.filter((grpmax_expr.AF > af_threshold) & (ht.eur_AF < af_threshold))
+    # if version == "v4":
+    #     grpmax_expr = ht.grpmax.gnomad
+    # else:
+    #     grpmax_expr = ht.popmax[0]
+    ht = ht.filter(
+        (ht.grpmax_w_remaining.AF > af_threshold) & (ht.eur_AF < af_threshold)
+    )
     return ht
 
 
@@ -98,6 +102,7 @@ def version_stats(
     logger.info("Calculating grpmax stats for %s", version)
     # Group results into nfe and all eur grps
     results_by_eur_grping = {}
+    pop_label = "gen_anc" if version == "v4" else "pop"
 
     logger.info(
         "Total number of variants in %s before filtering: %s", version, ht.count()
@@ -166,6 +171,15 @@ def version_stats(
         (p_ns_variants / ns_variants) * 100,
         (p_ns_variants / t_variants) * 100,
     )
+    logger.info("Reannotating grpmax and including remaining...")
+    ht = ht.annotate(
+        grpmax_w_remaining=pop_max_expr(
+            ht.freq,
+            ht.freq_meta,
+            pops_to_exclude=REMOVE_FOR_POPMAX,
+            pop_label=pop_label,
+        )
+    )
     # Iterate through just nfe group and all eur grp for calculating eur AF
     for grp_id, grps in EUR_GRPS.items():
         # Get european frequency by calculating the cumulative AF in the passed
@@ -191,17 +205,21 @@ def version_stats(
                 t_ht.count() / p_ns_variants * 100,
                 t_ht.count() / t_variants * 100,
             )
-            if version == "v4":
-                t_ht = t_ht.annotate(grpmax_ga=t_ht.grpmax.gnomad.gen_anc)
-            else:
-                t_ht = t_ht.annotate(grpmax_ga=t_ht.popmax[0].pop)
 
+            t_ht = t_ht.annotate(grpmax_ga=t_ht.grpmax_w_remaining[pop_label])
+
+            # Update v2 other -> remaining
+            t_ht = t_ht.transmute(
+                grpmax_ga=hl.if_else(
+                    t_ht.grpmax_ga == "oth", "remaining", t_ht.grpmax_ga
+                )
+            )
             t_ht = t_ht.filter(DIVERSE_GRPS.contains(t_ht.grpmax_ga))
 
             # For each diverse genetic ancestry group, aggregate the number of
             # variants where that group is grpmax
             grpmax_by_thresholds[threshold] = t_ht.aggregate(
-                hl.agg.counter(ht.grpmax_ga)
+                hl.agg.counter(t_ht.grpmax_ga)
             )
             # Add a total count for all groups
             grpmax_by_thresholds[threshold]["all"] = t_ht.count()
