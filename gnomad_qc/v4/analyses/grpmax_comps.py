@@ -8,9 +8,8 @@ from typing import Dict
 import hail as hl
 from gnomad.utils.vep import (
     CSQ_CODING_HIGH_IMPACT,
-    CSQ_CODING_LOW_IMPACT,
     CSQ_CODING_MEDIUM_IMPACT,
-    CSQ_NON_CODING,
+    filter_vep_to_canonical_transcripts,
 )
 from tabulate import tabulate
 
@@ -82,7 +81,10 @@ def filter_to_threshold(
 
 
 def version_stats(
-    ht: hl.Table, version: str = "v4", can_only: bool = False, drop_hard_filtered_variants: bool = False,
+    ht: hl.Table,
+    version: str = "v4",
+    can_only: bool = False,
+    drop_hard_filtered_variants: bool = False,
 ) -> Dict[str, Dict[str, Dict[str, int]]]:
     """
     Calculate grpmax stats for a given gnomAD version.
@@ -103,25 +105,16 @@ def version_stats(
     t_variants = ht.count()
     if can_only:
         logger.info("Filtering to only MANE Select and canonical transcripts")
-        ht = ht.explode(ht.vep.transcript_consequences)
+        ht = filter_vep_to_canonical_transcripts(ht, filter_empty_csq=True)
         # All MANE select transcripts in v4 are also the canonical transcript
-        ht = ht.filter(hl.is_defined(ht.vep.transcript_consequences.canonical))
-        logger.info(
-            "Filtering on mane_select and canonical transcript consequence term to "
-            "keep only non-synonymous variants..."
-        )
+        logger.info("Filtering to keep only non-synonymous variants...")
         ht = ht.filter(
             hl.any(
                 ht.vep.transcript_consequences.consequence_terms.map(
-                    lambda x: ~hl.literal(
-                        CSQ_NON_CODING + CSQ_CODING_LOW_IMPACT
-                    ).contains(x)
+                    lambda x: hl.literal(NS_CONSEQ_TERMS).contains(x)
                 )
             )
         )
-        # Remove duplicate sites after exploding, most_severe_consequence is the same for all
-        # transcript consequences so we can use distinct to remove duplicates
-        ht = ht.distinct()
         ht = ht.checkpoint(
             f"gs://gnomad-tmp-4day/grpmax_comps_{version}_canonical_non_syn.ht",
             overwrite=True,
@@ -143,9 +136,7 @@ def version_stats(
             " variants..."
         )
         ht = ht.filter(
-            ~hl.literal(CSQ_NON_CODING + CSQ_CODING_LOW_IMPACT).contains(
-                ht.vep.most_severe_consequence
-            )
+            hl.literal(NS_CONSEQ_TERMS).contains(ht.vep.most_severe_consequence)
         )
         ht = ht.checkpoint(
             f"gs://gnomad-tmp-4day/grpmax_comps_{version}_non_syn.ht", overwrite=True
@@ -201,19 +192,16 @@ def version_stats(
                 t_ht.count() / t_variants * 100,
             )
             if version == "v4":
-                grpmax_ga_expr = t_ht.grpmax.gnomad.gen_anc
+                t_ht = t_ht.annotate(grpmax_ga=t_ht.grpmax.gnomad.gen_anc)
             else:
-                grpmax_ga_expr = t_ht.popmax[0].pop
+                t_ht = t_ht.annotate(grpmax_ga=t_ht.popmax[0].pop)
 
-            t_ht = t_ht.filter(DIVERSE_GRPS.contains(grpmax_ga_expr))
-            if version == "v4":
-                grpmax_ga_expr = t_ht.grpmax.gnomad.gen_anc
-            else:
-                grpmax_ga_expr = t_ht.popmax[0].pop
+            t_ht = t_ht.filter(DIVERSE_GRPS.contains(t_ht.grpmax_ga))
+
             # For each diverse genetic ancestry group, aggregate the number of
             # variants where that group is grpmax
             grpmax_by_thresholds[threshold] = t_ht.aggregate(
-                hl.agg.counter(grpmax_ga_expr)
+                hl.agg.counter(ht.grpmax_ga)
             )
             # Add a total count for all groups
             grpmax_by_thresholds[threshold]["all"] = t_ht.count()
@@ -264,7 +252,10 @@ def main(args):
         else:
             ht = get_gnomad_public_data("exomes")
         version_dict[version] = version_stats(
-            ht, version=version, can_only=args.canonical_only
+            ht,
+            version=version,
+            can_only=args.canonical_only,
+            drop_hard_filtered_variants=args.drop_hard_filtered_variants,
         )
 
     # Create tables for "all_eur" and "nfe_only" data
