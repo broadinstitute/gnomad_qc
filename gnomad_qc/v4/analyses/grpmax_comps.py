@@ -82,7 +82,7 @@ def filter_to_threshold(
 
 
 def version_stats(
-    ht: hl.Table, version: str = "v4", can_only: bool = False
+    ht: hl.Table, version: str = "v4", can_only: bool = False, drop_hard_filtered_variants: bool = False,
 ) -> Dict[str, Dict[str, Dict[str, int]]]:
     """
     Calculate grpmax stats for a given gnomAD version.
@@ -90,6 +90,7 @@ def version_stats(
     :param ht: gnomAD release Table
     :param version: gnomAD version
     :param can_only: Only consider MANE Select and canonical transcripts.
+    :param drop_hard_filtered_variants: Remove only hard filtered variants but keep all other variants regardless of variant QC status
     :return: Dictionary of grpmax stats
     """
     logger.info("Calculating grpmax stats for %s", version)
@@ -103,13 +104,8 @@ def version_stats(
     if can_only:
         logger.info("Filtering to only MANE Select and canonical transcripts")
         ht = ht.explode(ht.vep.transcript_consequences)
-        if version == "v2":
-            ht = ht.filter(hl.is_defined(ht.vep.transcript_consequences.canonical))
-        else:
-            ht = ht.filter(
-                hl.is_defined(ht.vep.transcript_consequences.canonical)
-                | hl.is_defined(ht.vep.transcript_consequences.mane_select)
-            )
+        # All MANE select transcripts in v4 are also the canonical transcript
+        ht = ht.filter(hl.is_defined(ht.vep.transcript_consequences.canonical))
         logger.info(
             "Filtering on mane_select and canonical transcript consequence term to "
             "keep only non-synonymous variants..."
@@ -162,7 +158,7 @@ def version_stats(
             ns_variants,
             (ns_variants / t_variants) * 100,
         )
-    if args.drop_hard_filtered_variants:
+    if drop_hard_filtered_variants:
         # Filter out AC0 and InbreedingCoeff variants
         ht = ht.filter(~ht.filters.any(lambda x: FILTER_VALUES_TO_DROP.contains(x)))
         log_message = "ONLY hard filters (RF/VQSR are retained)"
