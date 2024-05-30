@@ -6,7 +6,6 @@ from pprint import pprint
 from typing import Dict
 
 import hail as hl
-from gnomad.utils.annotations import pop_max_expr
 from gnomad.utils.vep import (
     CSQ_CODING_HIGH_IMPACT,
     CSQ_CODING_MEDIUM_IMPACT,
@@ -22,12 +21,11 @@ logger = logging.getLogger("grpmax_comps")
 logger.setLevel(logging.INFO)
 
 
-DIVERSE_GRPS = hl.literal({"afr", "amr", "eas", "mid", "sas", "remaining"})
+DIVERSE_GRPS = hl.literal({"afr", "amr", "eas", "mid", "sas"})
 EUR_GRPS = {"all_eur": ["nfe", "fin", "asj"], "nfe_only": ["nfe"]}
 FILTER_VALUES_TO_DROP = hl.array(["AC0", "InbreedingCoeff"])
 AF_THRESHOLDS = [0.0001, 0.001]
 NS_CONSEQ_TERMS = hl.literal(CSQ_CODING_HIGH_IMPACT + CSQ_CODING_MEDIUM_IMPACT)
-REMOVE_FOR_POPMAX = ["fin", "asj", "ami"]
 
 
 def get_eur_freq(ht: hl.Table, eur_grps: list, version: str = "v4"):
@@ -74,13 +72,11 @@ def filter_to_threshold(
     :param version: gnomAD version
     :return: Table filtered to variants meething threshold specifications
     """
-    # if version == "v4":
-    #     grpmax_expr = ht.grpmax.gnomad
-    # else:
-    #     grpmax_expr = ht.popmax[0]
-    ht = ht.filter(
-        (ht.grpmax_w_remaining.AF > af_threshold) & (ht.eur_AF < af_threshold)
-    )
+    if version == "v4":
+        grpmax_expr = ht.grpmax.gnomad
+    else:
+        grpmax_expr = ht.popmax[0]
+    ht = ht.filter((grpmax_expr.AF > af_threshold) & (ht.eur_AF < af_threshold))
     return ht
 
 
@@ -89,6 +85,7 @@ def version_stats(
     version: str = "v4",
     can_only: bool = False,
     drop_hard_filtered_variants: bool = False,
+    all_variants: bool = False,
 ) -> Dict[str, Dict[str, Dict[str, int]]]:
     """
     Calculate grpmax stats for a given gnomAD version.
@@ -97,12 +94,12 @@ def version_stats(
     :param version: gnomAD version
     :param can_only: Only consider MANE Select and canonical transcripts.
     :param drop_hard_filtered_variants: Remove only hard filtered variants but keep all other variants regardless of variant QC status
+    :param all_variants: Keep all variants regardless of variant QC status
     :return: Dictionary of grpmax stats
     """
     logger.info("Calculating grpmax stats for %s", version)
     # Group results into nfe and all eur grps
     results_by_eur_grping = {}
-    pop_label = "gen_anc" if version == "v4" else "pop"
 
     logger.info(
         "Total number of variants in %s before filtering: %s", version, ht.count()
@@ -154,31 +151,25 @@ def version_stats(
             ns_variants,
             (ns_variants / t_variants) * 100,
         )
-    if drop_hard_filtered_variants:
+    if all_variants:
+        log_message = "of variants, regardless of variant QC status"
+    elif drop_hard_filtered_variants:
         # Filter out AC0 and InbreedingCoeff variants
         ht = ht.filter(~ht.filters.any(lambda x: FILTER_VALUES_TO_DROP.contains(x)))
-        log_message = "ONLY hard filters (RF/VQSR are retained)"
+        log_message = "of variants passing ONLY hard filters (RF/VQSR are retained)"
     else:
+        # Filter to only PASS
         ht = ht.filter(hl.len(ht.filters) == 0)
-        log_message = "all filters"
+        log_message = "of variants passing all filters"
 
     p_ns_variants = ht.count()
     logger.info(
-        "Total number of variants passing %s: %s (%.2f%% of"
+        "Total number %s: %s (%.2f%% of"
         " non-synonymous variants, %.2f%% of total variants)",
         log_message,
         p_ns_variants,
         (p_ns_variants / ns_variants) * 100,
         (p_ns_variants / t_variants) * 100,
-    )
-    logger.info("Reannotating grpmax and including remaining...")
-    ht = ht.annotate(
-        grpmax_w_remaining=pop_max_expr(
-            ht.freq,
-            ht.freq_meta,
-            pops_to_exclude=REMOVE_FOR_POPMAX,
-            pop_label=pop_label,
-        )
     )
     # Iterate through just nfe group and all eur grp for calculating eur AF
     for grp_id, grps in EUR_GRPS.items():
@@ -196,24 +187,20 @@ def version_stats(
             )
             logger.info(
                 "Number of variants after filtering to AF threshold for %s at %s "
-                "threshold in %s: %s (%.2f%% of passing non-synonymous variants, %.2f%%"
+                "threshold in %s: %s ( %.2f%%"
                 " of total variants)",
                 grp_id,
                 threshold,
                 version,
                 t_ht.count(),
-                t_ht.count() / p_ns_variants * 100,
+                # t_ht.count() / p_ns_variants * 100,
                 t_ht.count() / t_variants * 100,
             )
+            if version == "v4":
+                t_ht = t_ht.annotate(grpmax_ga=t_ht.grpmax.gnomad.gen_anc)
+            else:
+                t_ht = t_ht.annotate(grpmax_ga=t_ht.popmax[0].pop)
 
-            t_ht = t_ht.annotate(grpmax_ga=t_ht.grpmax_w_remaining[pop_label])
-
-            # Update v2 other -> remaining
-            t_ht = t_ht.transmute(
-                grpmax_ga=hl.if_else(
-                    t_ht.grpmax_ga == "oth", "remaining", t_ht.grpmax_ga
-                )
-            )
             t_ht = t_ht.filter(DIVERSE_GRPS.contains(t_ht.grpmax_ga))
 
             # For each diverse genetic ancestry group, aggregate the number of
@@ -274,6 +261,7 @@ def main(args):
             version=version,
             can_only=args.canonical_only,
             drop_hard_filtered_variants=args.drop_hard_filtered_variants,
+            all_variants=args.all_variants,
         )
 
     # Create tables for "all_eur" and "nfe_only" data
@@ -293,5 +281,14 @@ if __name__ == "__main__":
         action="store_true",
         help="Drop variants that have been hard filtered",
     )
+    parser.add_argument(
+        "--all-variants",
+        action="store_true",
+        help="Keep all variants regardless of variant QC status",
+    )
     args = parser.parse_args()
+    if args.drop_hard_filtered_variants and args.all_variants:
+        raise ValueError(
+            "Cannot use --drop-hard-filtered-variants and --all-variants together"
+        )
     main(args)
