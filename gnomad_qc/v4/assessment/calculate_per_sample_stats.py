@@ -34,6 +34,7 @@ from gnomad.assessment.summary_stats import (
     get_summary_stats_variant_filter_expr,
 )
 from gnomad.utils.annotations import annotate_with_ht
+from gnomad.utils.filtering import filter_to_adj
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import (
     CSQ_CODING,
@@ -43,6 +44,8 @@ from gnomad.utils.vep import (
     filter_vep_transcript_csqs,
     get_most_severe_consequence_for_summary,
 )
+from hail.genetics.allele_type import AlleleType
+from hail.methods.qc import _qc_allele_type
 from hail.vds.sample_qc import vmt_sample_qc, vmt_sample_qc_variant_annotations
 
 from gnomad_qc.slack_creds import slack_token
@@ -128,6 +131,14 @@ MAP_FILTER_FIELD_TO_META = {
 Dictionary to rename keys in `SUM_STAT_FILTERS`, `COMMON_FILTERS`, or
 `LOF_FILTERS_FOR_COMBO` to final metadata keys.
 """
+
+ALLELE_TYPE_MAP = {
+    "insertion": AlleleType.INSERTION,
+    "deletion": AlleleType.DELETION,
+    "transition": AlleleType.TRANSITION,
+    "transversion": AlleleType.TRANSVERSION,
+    "star": AlleleType.STAR,
+}
 
 
 def get_capture_filter_exprs(
@@ -296,8 +307,11 @@ def get_summary_stats_filter_groups_ht(
 
     # Remove 'no_lcr' filter expression from filter groups and annotate the Table with
     # the no_lcr filter and an array of the filter groups.
-    ht = ht.select(_no_lcr=filter_exprs["no_lcr"], filter_groups=filter_groups_expr)
-
+    ht = ht.select(
+        _no_lcr=filter_exprs["no_lcr"],
+        filter_groups=filter_groups_expr,
+        variant_ac=[hl.missing(hl.tint32), ht.freq[0].AC],
+    )
     ht = ht.select_globals(filter_group_meta=final_meta)
     logger.info("Filter groups for summary stats: %s", filter_group_meta)
 
@@ -324,15 +338,23 @@ def create_per_sample_counts_ht(
     :param filter_group_ht: Table containing filter groups for summary stats.
     :return: Table containing per-sample variant counts.
     """
+    mt = mt.filter_entries(mt.LGT.is_non_ref())
+    mt = mt.select_entries("LGT", "GQ", "DP", "LAD", "LA")
+    filter_group_locus_ht = filter_group_ht.select().key_by("locus")
+    mt = mt.filter_rows(hl.is_defined(filter_group_locus_ht[mt.locus]))
+    mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
+
     # Add extra Allele Count and Allele Type annotations to variant MatrixTable,
     # according to Hail standards, to help their computation.
-    variant_ac, variant_types = vmt_sample_qc_variant_annotations(
+    _, variant_types = vmt_sample_qc_variant_annotations(
         global_gt=mt.GT, alleles=mt.alleles
     )
-    mt = mt.annotate_rows(variant_ac=variant_ac, variant_atypes=variant_types)
+    mt = mt.annotate_rows(variant_atypes=variant_types)
 
     # Annotate the MT with the needed annotations.
     mt = annotate_with_ht(mt, filter_group_ht, filter_missing=True)
+    mt = filter_to_adj(mt)
+    mt = mt.select_entries("GT", "GQ", "DP")
 
     # Run Hail's 'vmt_sample_qc' for all requested filter groups.
     qc_expr = vmt_sample_qc(
@@ -426,7 +448,7 @@ def main(args):
         tmp_dir="gs://gnomad-tmp-30day",
     )
     # SSA Logs are easier to troubleshoot with.
-    hl._set_flags(use_ssa_logs="1")
+    hl._set_flags(use_ssa_logs="1", no_whole_stage_codegen="1")
 
     data_type = args.data_type
     test = args.test
@@ -450,25 +472,30 @@ def main(args):
 
     try:
         if args.create_per_sample_counts_ht:
-            chrom = "chr22" if test else None
+            # chrom = "chr22" if test else None
+            test = False
             if data_type == "exomes":
                 logger.info("Calculating per-sample variant statistics for exomes...")
                 mt = get_gnomad_v4_vds(
-                    test=test, release_only=True, split=True, chrom=chrom
+                    test=test,
+                    release_only=True,
+                    filter_partitions=list(range(50)),  # split=True, chrom=chrom
                 ).variant_data
             else:
                 logger.info("Calculating per-sample variant statistics for genomes...")
                 mt = get_gnomad_v4_genomes_vds(
-                    test=test, release_only=True, split=True, chrom=chrom
+                    test=test,
+                    release_only=True,  # split=True, chrom=chrom
                 ).variant_data
                 ukb_capture_intervals = False
                 broad_capture_intervals = False
 
             release_ht = release_sites(data_type=data_type).ht()
             if test:
-                release_ht = hl.filter_intervals(
-                    release_ht, [hl.parse_locus_interval("chr22")]
-                )
+                release_ht = release_ht._filter_partitions(range(10))
+                # release_ht = hl.filter_intervals(
+                #    release_ht, [hl.parse_locus_interval("chr22")]
+                # )
 
             filter_groups_ht = get_summary_stats_filter_groups_ht(
                 release_ht,
