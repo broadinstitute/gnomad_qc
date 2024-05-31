@@ -45,12 +45,14 @@ from gnomad.utils.vep import (
     get_most_severe_consequence_for_summary,
 )
 from hail.genetics.allele_type import AlleleType
-from hail.methods.qc import _qc_allele_type
 from hail.vds.sample_qc import vmt_sample_qc, vmt_sample_qc_variant_annotations
 
 from gnomad_qc.slack_creds import slack_token
 from gnomad_qc.v4.resources import meta
-from gnomad_qc.v4.resources.assessment import get_per_sample_counts
+from gnomad_qc.v4.resources.assessment import (
+    get_per_sample_counts,
+    get_summary_stats_filtering_groups,
+)
 from gnomad_qc.v4.resources.basics import (
     get_gnomad_v4_genomes_vds,
     get_gnomad_v4_vds,
@@ -316,10 +318,7 @@ def get_summary_stats_filter_groups_ht(
     logger.info("Filter groups for summary stats: %s", filter_group_meta)
 
     # Filter to only variants that are not in low confidence regions.
-    ht = ht.filter(ht._no_lcr).drop("_no_lcr")
-    ht = ht.checkpoint(hl.utils.new_temp_file("stats_annotation", "ht"))
-
-    return ht
+    return ht.filter(ht._no_lcr).drop("_no_lcr")
 
 
 def create_per_sample_counts_ht(
@@ -338,14 +337,7 @@ def create_per_sample_counts_ht(
     :param filter_group_ht: Table containing filter groups for summary stats.
     :return: Table containing per-sample variant counts.
     """
-    mt = mt.filter_entries(mt.LGT.is_non_ref())
-    mt = mt.select_entries("LGT", "GQ", "DP", "LAD", "LA")
-    filter_group_locus_ht = filter_group_ht.select().key_by("locus")
-    mt = mt.filter_rows(hl.is_defined(filter_group_locus_ht[mt.locus]))
-    mt = hl.experimental.sparse_split_multi(mt, filter_changed_loci=True)
-
-    # Add extra Allele Count and Allele Type annotations to variant MatrixTable,
-    # according to Hail standards, to help their computation.
+    # Add Allele Type annotations to variant MatrixTable.
     _, variant_types = vmt_sample_qc_variant_annotations(
         global_gt=mt.GT, alleles=mt.alleles
     )
@@ -353,6 +345,7 @@ def create_per_sample_counts_ht(
 
     # Annotate the MT with the needed annotations.
     mt = annotate_with_ht(mt, filter_group_ht, filter_missing=True)
+    mt = mt.filter_entries(mt.GT.is_non_ref())
     mt = filter_to_adj(mt)
     mt = mt.select_entries("GT", "GQ", "DP")
 
@@ -451,11 +444,22 @@ def main(args):
     hl._set_flags(use_ssa_logs="1", no_whole_stage_codegen="1")
 
     data_type = args.data_type
-    test = args.test
+    test_dataset = args.test_dataset
+    test_n_partitions = args.test_n_partitions
+    test = args.test_n_partitions or args.test_dataset
     overwrite = args.overwrite
-    ukb_capture_intervals = not args.skip_filter_ukb_capture_intervals
-    broad_capture_intervals = not args.skip_filter_broad_capture_intervals
+    ukb_capture_intervals = (
+        False if data_type == "genomes" else not args.skip_filter_ukb_capture_intervals
+    )
+    broad_capture_intervals = (
+        False
+        if data_type == "genomes"
+        else not args.skip_filter_broad_capture_intervals
+    )
     rare_variants_afs = args.rare_variants_afs if not args.skip_rare_variants else None
+    filtering_groups_res = get_summary_stats_filtering_groups(
+        test=test, data_type=data_type
+    )
     per_sample_res = get_per_sample_counts(
         test=test, data_type=data_type, suffix=args.custom_suffix
     )
@@ -471,33 +475,12 @@ def main(args):
         raise ValueError("Stratifying by subset is only working on exomes data type.")
 
     try:
-        if args.create_per_sample_counts_ht:
-            # chrom = "chr22" if test else None
-            test = False
-            if data_type == "exomes":
-                logger.info("Calculating per-sample variant statistics for exomes...")
-                mt = get_gnomad_v4_vds(
-                    test=test,
-                    release_only=True,
-                    filter_partitions=list(range(50)),  # split=True, chrom=chrom
-                ).variant_data
-            else:
-                logger.info("Calculating per-sample variant statistics for genomes...")
-                mt = get_gnomad_v4_genomes_vds(
-                    test=test,
-                    release_only=True,  # split=True, chrom=chrom
-                ).variant_data
-                ukb_capture_intervals = False
-                broad_capture_intervals = False
-
+        if args.create_filter_group_ht:
             release_ht = release_sites(data_type=data_type).ht()
-            if test:
-                release_ht = release_ht._filter_partitions(range(10))
-                # release_ht = hl.filter_intervals(
-                #    release_ht, [hl.parse_locus_interval("chr22")]
-                # )
+            if test_n_partitions:
+                release_ht = release_ht._filter_partitions(range(test_n_partitions))
 
-            filter_groups_ht = get_summary_stats_filter_groups_ht(
+            get_summary_stats_filter_groups_ht(
                 release_ht,
                 pass_filters=not args.skip_pass_filters,
                 ukb_capture=ukb_capture_intervals,
@@ -506,7 +489,31 @@ def main(args):
                 vep_canonical=args.vep_canonical,
                 vep_mane=args.vep_mane,
                 rare_variants_afs=rare_variants_afs,
-            )
+            ).write(filtering_groups_res.path, overwrite=overwrite)
+
+        if args.create_per_sample_counts_ht:
+            filter_groups_ht = filtering_groups_res.ht()
+            if data_type == "exomes":
+                logger.info("Calculating per-sample variant statistics for exomes...")
+                mt = get_gnomad_v4_vds(
+                    test=test_dataset,
+                    split=True,
+                    release_only=True,
+                    filter_partitions=list(range(test_n_partitions)),
+                    filter_variant_ht=filter_groups_ht,
+                    entries_to_keep=["GT", "GQ", "DP", "AD"],
+                ).variant_data
+            else:
+                logger.info("Calculating per-sample variant statistics for genomes...")
+                mt = get_gnomad_v4_genomes_vds(
+                    test=test_dataset,
+                    split=True,
+                    release_only=True,
+                    filter_partitions=list(range(test_n_partitions)),
+                    filter_variant_ht=filter_groups_ht,
+                    entries_to_keep=["GT", "GQ", "DP", "AD"],
+                ).variant_data
+
             create_per_sample_counts_ht(mt, filter_groups_ht).write(
                 per_sample_res.path, overwrite=overwrite
             )
@@ -525,7 +532,7 @@ def main(args):
             ht.write(per_sample_agg_res.path, overwrite=overwrite)
     finally:
         logger.info("Copying log to logging bucket...")
-        hl.copy_log(get_logging_path("per_sample_stats"))
+        hl.copy_log(get_logging_path("per_sample_stats.original.non_ukb.big_executors"))
 
 
 if __name__ == "__main__":
@@ -540,7 +547,12 @@ if __name__ == "__main__":
         "--slack-channel", help="Slack channel to post results and notifications to."
     )
     parser.add_argument(
-        "--test",
+        "--test-n-partitions",
+        type=int,
+        help="Number of partitions to use for testing.",
+    )
+    parser.add_argument(
+        "--test-dataset",
         help="Test on a small number of variants",
         action="store_true",
     )
@@ -549,6 +561,11 @@ if __name__ == "__main__":
         default="exomes",
         choices=["exomes", "genomes"],
         help="Data type (exomes or genomes) to produce summary stats for.",
+    )
+    parser.add_argument(
+        "--create-filter-group-ht",
+        help="Create Table of filter groups for summary stats.",
+        action="store_true",
     )
     parser.add_argument(
         "--create-per-sample-counts-ht",

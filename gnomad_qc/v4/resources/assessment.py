@@ -26,6 +26,30 @@ def _assessment_root(
     )
 
 
+def get_summary_stats_filtering_groups(
+    test: bool = False,
+    data_type: str = "exomes",
+) -> VersionedTableResource:
+    """
+    Get the filtering groups used in the summary stats.
+
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
+        full v4 VDS.
+    :param data_type: Data type for summary stats filtering groups, e.g. "exomes" or
+        "genomes".
+    :return: Filtering groups used in the summary stats.
+    """
+    return VersionedTableResource(
+        CURRENT_RELEASE,
+        {
+            version: TableResource(
+                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.per_sample_variant_counts.ht"
+            )
+            for version in RELEASES
+        },
+    )
+
+
 def get_per_sample_counts(
     test: bool = False,
     data_type: str = "exomes",
@@ -54,7 +78,7 @@ def get_per_sample_counts(
         CURRENT_RELEASE,
         {
             version: TableResource(
-                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.{suffix if suffix else ''}per_sample_variant_counts{'_aggregated' if aggregated else ''}{'_by_ancestry' if by_ancestry else ''}{'_by_subset' if by_subset else ''}.ht"
+                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.{suffix if suffix else ''}per_sample_variant_counts{'_aggregated' if aggregated else ''}{'_by_ancestry' if by_ancestry else ''}{'_by_subset' if by_subset else ''}.test_original.non_ukb.big_executors.ht"
             )
             for version in RELEASES
         },
