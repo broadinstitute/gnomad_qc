@@ -445,7 +445,9 @@ def main(args):
 
     data_type = args.data_type
     test_dataset = args.test_dataset
-    test_n_partitions = args.test_n_partitions
+    test_n_partitions = (
+        list(range(args.test_n_partitions)) if args.test_n_partitions else None
+    )
     test = args.test_n_partitions or args.test_dataset
     overwrite = args.overwrite
     ukb_capture_intervals = (
@@ -478,7 +480,7 @@ def main(args):
         if args.create_filter_group_ht:
             release_ht = release_sites(data_type=data_type).ht()
             if test_n_partitions:
-                release_ht = release_ht._filter_partitions(range(test_n_partitions))
+                release_ht = release_ht._filter_partitions(test_n_partitions)
 
             get_summary_stats_filter_groups_ht(
                 release_ht,
@@ -499,7 +501,7 @@ def main(args):
                     test=test_dataset,
                     split=True,
                     release_only=True,
-                    filter_partitions=list(range(test_n_partitions)),
+                    filter_partitions=test_n_partitions,
                     filter_variant_ht=filter_groups_ht,
                     entries_to_keep=["GT", "GQ", "DP", "AD"],
                 ).variant_data
@@ -509,7 +511,7 @@ def main(args):
                     test=test_dataset,
                     split=True,
                     release_only=True,
-                    filter_partitions=list(range(test_n_partitions)),
+                    filter_partitions=test_n_partitions,
                     filter_variant_ht=filter_groups_ht,
                     entries_to_keep=["GT", "GQ", "DP", "AD"],
                 ).variant_data
