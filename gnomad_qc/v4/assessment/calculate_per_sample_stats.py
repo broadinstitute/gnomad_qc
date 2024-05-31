@@ -448,6 +448,10 @@ def main(args):
     test_partitions = (
         list(range(args.test_n_partitions)) if args.test_n_partitions else None
     )
+
+    # The following four exome partitions have given us trouble with out-of-memory
+    # errors in the past. We are testing on these partitions to ensure that the
+    # per-sample stats script can handle them before running the entire dataset.
     test_partitions = (
         [20180, 40916, 41229, 46085]
         if args.test_difficult_partitions and data_type == "exomes"
