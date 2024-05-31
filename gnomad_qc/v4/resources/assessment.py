@@ -78,7 +78,7 @@ def get_per_sample_counts(
         CURRENT_RELEASE,
         {
             version: TableResource(
-                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.{suffix if suffix else ''}per_sample_variant_counts{'_aggregated' if aggregated else ''}{'_by_ancestry' if by_ancestry else ''}{'_by_subset' if by_subset else ''}.test_original.non_ukb.big_executors.ht"
+                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.{suffix if suffix else ''}per_sample_variant_counts{'_aggregated' if aggregated else ''}{'_by_ancestry' if by_ancestry else ''}{'_by_subset' if by_subset else ''}.ht"
             )
             for version in RELEASES
         },
