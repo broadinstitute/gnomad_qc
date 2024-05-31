@@ -449,7 +449,7 @@ def main(args):
         list(range(args.test_n_partitions)) if args.test_n_partitions else None
     )
     test_partitions = (
-        [20180, 41229, 46085, 40916]
+        [20180, 40916, 41229, 46085]
         if args.test_difficult_partitions and data_type == "exomes"
         else test_partitions
     )
