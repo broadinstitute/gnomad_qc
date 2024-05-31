@@ -562,8 +562,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--test-difficult-partitions",
-        type=int,
         help="Whether to test on a set of 4 difficult exome partitions.",
+        action="store_true",
     )
     parser.add_argument(
         "--test-dataset",
