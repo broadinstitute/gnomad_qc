@@ -91,16 +91,16 @@ def get_gnomad_v3_vds(
                 vds.reference_data, vd.annotate_cols(meta=meta_ht[vd.col_key])
             )
 
+    vd = vds.variant_data
     if split:
-        vds = v4_basics._split_and_filter_variant_data_for_loading(
-            vds, filter_variant_ht, entries_to_keep
+        vd = v4_basics._split_and_filter_variant_data_for_loading(
+            vd, filter_variant_ht, entries_to_keep
         )
 
     if entries_to_keep is not None:
-        vds = hl.vds.VariantDataset(
-            vds.reference_data,
-            vds.variant_data.select_entries(*entries_to_keep),
-        )
+        vd = vd.select_entries(*entries_to_keep)
+
+    vds = hl.vds.VariantDataset(vds.reference_data, vd)
 
     return vds
 

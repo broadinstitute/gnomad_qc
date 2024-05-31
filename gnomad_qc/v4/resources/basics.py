@@ -301,10 +301,7 @@ def get_gnomad_v4_vds(
         )
 
     if entries_to_keep is not None:
-        vds = hl.vds.VariantDataset(
-            vds.reference_data,
-            vds.variant_data.select_entries(*entries_to_keep),
-        )
+        vmt = vmt.select_entries(*entries_to_keep)
 
     vds = hl.vds.VariantDataset(vds.reference_data, vmt)
 
