@@ -445,10 +445,15 @@ def main(args):
 
     data_type = args.data_type
     test_dataset = args.test_dataset
-    test_n_partitions = (
+    test_partitions = (
         list(range(args.test_n_partitions)) if args.test_n_partitions else None
     )
-    test = args.test_n_partitions or args.test_dataset
+    test_partitions = (
+        [20180, 41229, 46085, 40916]
+        if args.test_difficult_partitions and data_type == "exomes"
+        else test_partitions
+    )
+    test = test_partitions or test_dataset
     overwrite = args.overwrite
     ukb_capture_intervals = (
         False if data_type == "genomes" else not args.skip_filter_ukb_capture_intervals
@@ -478,9 +483,10 @@ def main(args):
 
     try:
         if args.create_filter_group_ht:
+            logger.info("Creating Table of filter groups for summary stats...")
             release_ht = release_sites(data_type=data_type).ht()
-            if test_n_partitions:
-                release_ht = release_ht._filter_partitions(test_n_partitions)
+            if args.test_n_partitions:
+                release_ht = release_ht._filter_partitions(test_partitions)
 
             get_summary_stats_filter_groups_ht(
                 release_ht,
@@ -495,23 +501,24 @@ def main(args):
 
         if args.create_per_sample_counts_ht:
             filter_groups_ht = filtering_groups_res.ht()
+            logger.info(
+                "Calculating per-sample variant statistics for %s...", data_type
+            )
             if data_type == "exomes":
-                logger.info("Calculating per-sample variant statistics for exomes...")
                 mt = get_gnomad_v4_vds(
                     test=test_dataset,
                     split=True,
                     release_only=True,
-                    filter_partitions=test_n_partitions,
+                    filter_partitions=test_partitions,
                     filter_variant_ht=filter_groups_ht,
                     entries_to_keep=["GT", "GQ", "DP", "AD"],
                 ).variant_data
             else:
-                logger.info("Calculating per-sample variant statistics for genomes...")
                 mt = get_gnomad_v4_genomes_vds(
                     test=test_dataset,
                     split=True,
                     release_only=True,
-                    filter_partitions=test_n_partitions,
+                    filter_partitions=test_partitions,
                     filter_variant_ht=filter_groups_ht,
                     entries_to_keep=["GT", "GQ", "DP", "AD"],
                 ).variant_data
@@ -552,6 +559,11 @@ if __name__ == "__main__":
         "--test-n-partitions",
         type=int,
         help="Number of partitions to use for testing.",
+    )
+    parser.add_argument(
+        "--test-difficult-partitions",
+        type=int,
+        help="Whether to test on a set of 4 difficult exome partitions.",
     )
     parser.add_argument(
         "--test-dataset",
