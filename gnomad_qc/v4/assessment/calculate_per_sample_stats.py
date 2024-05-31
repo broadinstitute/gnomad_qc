@@ -485,6 +485,9 @@ def main(args):
         if args.create_filter_group_ht:
             logger.info("Creating Table of filter groups for summary stats...")
             release_ht = release_sites(data_type=data_type).ht()
+            filtering_groups_res = get_summary_stats_filtering_groups(
+                test=test, data_type=data_type
+            )
             if args.test_n_partitions:
                 release_ht = release_ht._filter_partitions(test_partitions)
 
