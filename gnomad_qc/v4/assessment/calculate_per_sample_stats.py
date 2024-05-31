@@ -464,9 +464,6 @@ def main(args):
         else not args.skip_filter_broad_capture_intervals
     )
     rare_variants_afs = args.rare_variants_afs if not args.skip_rare_variants else None
-    filtering_groups_res = get_summary_stats_filtering_groups(
-        test=test, data_type=data_type
-    )
     per_sample_res = get_per_sample_counts(
         test=test, data_type=data_type, suffix=args.custom_suffix
     )
