@@ -34,7 +34,7 @@ from gnomad.assessment.summary_stats import (
     get_summary_stats_variant_filter_expr,
 )
 from gnomad.utils.annotations import annotate_with_ht
-from gnomad.utils.filtering import filter_to_adj
+from gnomad.utils.filtering import filter_to_adj, filter_to_autosomes
 from gnomad.utils.slack import slack_notifications
 from gnomad.utils.vep import (
     CSQ_CODING,
@@ -444,6 +444,7 @@ def main(args):
     hl._set_flags(use_ssa_logs="1", no_whole_stage_codegen="1")
 
     data_type = args.data_type
+    autosomes_only = args.autosomes_only
     test_dataset = args.test_dataset
     test_partitions = (
         list(range(args.test_n_partitions)) if args.test_n_partitions else None
@@ -469,12 +470,16 @@ def main(args):
     )
     rare_variants_afs = args.rare_variants_afs if not args.skip_rare_variants else None
     per_sample_res = get_per_sample_counts(
-        test=test, data_type=data_type, suffix=args.custom_suffix
+        test=test,
+        data_type=data_type,
+        suffix=args.custom_suffix,
+        autosomes_only=autosomes_only,
     )
     per_sample_agg_res = get_per_sample_counts(
         test=test,
         data_type=data_type,
         suffix=args.custom_suffix,
+        autosomes_only=autosomes_only,
         aggregated=True,
         by_ancestry=args.by_ancestry,
         by_subset=args.by_subset,
@@ -487,10 +492,12 @@ def main(args):
             logger.info("Creating Table of filter groups for summary stats...")
             release_ht = release_sites(data_type=data_type).ht()
             filtering_groups_res = get_summary_stats_filtering_groups(
-                test=test, data_type=data_type
+                data_type=data_type, test=test, autosomes_only=autosomes_only
             )
             if args.test_n_partitions:
                 release_ht = release_ht._filter_partitions(test_partitions)
+            if autosomes_only:
+                release_ht = filter_to_autosomes(release_ht)
 
             get_summary_stats_filter_groups_ht(
                 release_ht,
@@ -504,31 +511,27 @@ def main(args):
             ).write(filtering_groups_res.path, overwrite=overwrite)
 
         if args.create_per_sample_counts_ht:
-            filtering_groups_res = get_summary_stats_filtering_groups(
-                data_type=data_type
-            )
-            filter_groups_ht = filtering_groups_res.ht()
             logger.info(
                 "Calculating per-sample variant statistics for %s...", data_type
             )
-            if data_type == "exomes":
-                mt = get_gnomad_v4_vds(
-                    test=test_dataset,
-                    split=True,
-                    release_only=True,
-                    filter_partitions=test_partitions,
-                    filter_variant_ht=filter_groups_ht,
-                    entries_to_keep=["GT", "GQ", "DP", "AD"],
-                ).variant_data
-            else:
-                mt = get_gnomad_v4_genomes_vds(
-                    test=test_dataset,
-                    split=True,
-                    release_only=True,
-                    filter_partitions=test_partitions,
-                    filter_variant_ht=filter_groups_ht,
-                    entries_to_keep=["GT", "GQ", "DP", "AD"],
-                ).variant_data
+            filter_groups_ht = get_summary_stats_filtering_groups(
+                data_type, autosomes_only=autosomes_only
+            ).ht()
+            vds_load_func = (
+                get_gnomad_v4_vds
+                if data_type == "exomes"
+                else get_gnomad_v4_genomes_vds
+            )
+            mt = vds_load_func(
+                test=test_dataset,
+                split=True,
+                release_only=True,
+                filter_partitions=test_partitions,
+                filter_variant_ht=filter_groups_ht,
+                entries_to_keep=["GT", "GQ", "DP", "AD"],
+            ).variant_data
+            if autosomes_only:
+                mt = filter_to_autosomes(mt)
 
             create_per_sample_counts_ht(mt, filter_groups_ht).write(
                 per_sample_res.path, overwrite=overwrite
@@ -536,16 +539,12 @@ def main(args):
 
         if args.aggregate_sample_stats:
             logger.info("Computing aggregate sample statistics...")
-            ht = per_sample_res.ht().checkpoint(
-                hl.utils.new_temp_file("per_sample_counts", "ht")
-            )
-            ht = compute_agg_sample_stats(
-                ht,
+            compute_agg_sample_stats(
+                per_sample_res.ht(),
                 meta(data_type=data_type).ht(),
                 by_ancestry=args.by_ancestry,
                 by_subset=args.by_subset,
-            )
-            ht.write(per_sample_agg_res.path, overwrite=overwrite)
+            ).write(per_sample_agg_res.path, overwrite=overwrite)
     finally:
         logger.info("Copying log to logging bucket...")
         hl.copy_log(get_logging_path("per_sample_stats.original.non_ukb.big_executors"))
@@ -582,6 +581,11 @@ if __name__ == "__main__":
         default="exomes",
         choices=["exomes", "genomes"],
         help="Data type (exomes or genomes) to produce summary stats for.",
+    )
+    parser.add_argument(
+        "--autosomes-only",
+        help="Whether to restrict analysis to autosomes only.",
+        action="store_true",
     )
     parser.add_argument(
         "--create-filter-group-ht",

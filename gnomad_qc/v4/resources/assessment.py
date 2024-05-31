@@ -27,23 +27,26 @@ def _assessment_root(
 
 
 def get_summary_stats_filtering_groups(
-    test: bool = False,
     data_type: str = "exomes",
+    test: bool = False,
+    autosomes_only: bool = False,
 ) -> VersionedTableResource:
     """
     Get the filtering groups used in the summary stats.
 
-    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
-        full v4 VDS.
     :param data_type: Data type for summary stats filtering groups, e.g. "exomes" or
         "genomes".
+    :param test: Whether to use a tmp path for analysis of the test VDS instead of the
+        full v4 VDS.
+    :param autosomes_only: Whether to use the autosomes only filtering groups table.
+        Default is False.
     :return: Filtering groups used in the summary stats.
     """
     return VersionedTableResource(
         CURRENT_RELEASE,
         {
             version: TableResource(
-                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.per_sample_filtering_groups.ht"
+                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.per_sample_filtering_groups{'.autosomes' if autosomes_only else ''}.ht"
             )
             for version in RELEASES
         },
@@ -54,6 +57,7 @@ def get_per_sample_counts(
     test: bool = False,
     data_type: str = "exomes",
     suffix: str = None,
+    autosomes_only: bool = False,
     aggregated: bool = False,
     by_ancestry: bool = False,
     by_subset: bool = False,
@@ -66,6 +70,8 @@ def get_per_sample_counts(
     :param data_type: Data type used in sample QC, e.g. "exomes" or "genomes".
     :param suffix: Additional name to append, containing some method or filtering
         information.
+    :param autosomes_only: Whether to use the autosomes only per-sample counts table.
+        Default is False.
     :param aggregated: Whether to use the aggregated per-sample counts table. Default
         is False.
     :param by_ancestry: Whether to use the per-sample counts table stratified by
@@ -78,7 +84,7 @@ def get_per_sample_counts(
         CURRENT_RELEASE,
         {
             version: TableResource(
-                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}.{suffix if suffix else ''}per_sample_variant_counts{'_aggregated' if aggregated else ''}{'_by_ancestry' if by_ancestry else ''}{'_by_subset' if by_subset else ''}.ht"
+                f"{_assessment_root(version=version, test=test, data_type=data_type)}/gnomad.{data_type}.v{version}{'.'+suffix if suffix else ''}.per_sample_variant_counts{'.autosomes' if autosomes_only else ''}{'.aggregated' if aggregated else ''}{'_by_ancestry' if by_ancestry else ''}{'_by_subset' if by_subset else ''}.ht"
             )
             for version in RELEASES
         },
